@@ -34,6 +34,9 @@ public ref struct TxFilteringState(Transaction tx, IAccountStateProvider account
     /// executed its validation prefix. A peer's validation budget stays charged for a rejection after this point.</summary>
     internal bool FrameValidationRan { get; set; }
 
+    /// <summary>Set when the transaction was rejected only for its blob sidecar, which its hash does not commit to.</summary>
+    internal bool SidecarRejected { get; set; }
+
     /// <summary>Whether a filter has taken this transaction's EIP-8141 paymaster slot and still owes its release.</summary>
     /// <remarks>The slot is counted before the filters that follow can reject, so the pool unwinds it once the
     /// outcome is known rather than leaving the sponsor permanently short.</remarks>

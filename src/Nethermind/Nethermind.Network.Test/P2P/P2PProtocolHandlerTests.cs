@@ -19,6 +19,7 @@ using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -53,7 +54,7 @@ namespace Nethermind.Network.Test.P2P
         private readonly Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
         private INodeStatsManager _nodeStatsManager;
 
-        private Packet CreatePacket<T>(T message) where T : P2PMessage => new(new ZeroPacket(_serializer.ZeroSerialize(message))
+        private Packet CreatePacket<T>(T message) where T : P2PMessage => new(new NettyBufferPacket(_serializer.ZeroSerialize(message))
         {
             Protocol = message.Protocol,
             PacketType = (byte)message.PacketType,
@@ -547,7 +548,7 @@ namespace Nethermind.Network.Test.P2P
             };
             using HelloMessage secondHello = CreateHello();
 
-            Assert.Catch<RlpException>(() => p2PProtocolHandler.HandleMessage(malformedFirstHello));
+            Assert.Catch<RlpReaderException>(() => p2PProtocolHandler.HandleMessage(malformedFirstHello));
             Assert.DoesNotThrow(() => p2PProtocolHandler.HandleMessage(CreateP2PPacket(secondHello)));
 
             using (Assert.EnterMultipleScope())

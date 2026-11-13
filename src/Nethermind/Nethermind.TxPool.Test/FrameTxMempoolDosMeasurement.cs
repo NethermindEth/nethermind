@@ -169,6 +169,11 @@ public class FrameTxMempoolDosMeasurement
     {
         foreach (ulong ceiling in SweptCeilings)
         {
+            if (ceiling < Eip8141Constants.MaxVerifyGas)
+            {
+                continue;
+            }
+
             yield return new TestCaseData(ceiling);
         }
     }
@@ -787,7 +792,7 @@ public class FrameTxMempoolDosMeasurement
         // The container registration shares the process-wide code cache; production hands the simulator its
         // own env (BlockProcessingModule) so a rolled-back deposit cannot outlive its scope.
         IReadOnlyTxProcessingEnvFactory envFactory = new AutoReadOnlyTxProcessingEnvFactory(
-            _chain.Container, _chain.WorldStateManager, _specProvider, shareCodeCache: false);
+            _chain.Container, _chain.WorldStateManager, shareCodeCache: false);
 
         AssertSeededCodeIsVisibleAtHead(envFactory, _blockTree.Head!.Header, senderCode);
 

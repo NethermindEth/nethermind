@@ -60,6 +60,75 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         TracerConfig = config is not null ? JsonSerializer.Deserialize<JsonElement>(config) : null
     };
 
+    [TestCase("99", "unknown panic code: 0x99", false)]
+    [TestCase("99", "unknown panic code: 0x99", true)]
+    [TestCase("10000000000000000", "unknown panic code: 0x10000000000000000", false)]
+    [TestCase("10000000000000000", "unknown panic code: 0x10000000000000000", true)]
+    [TestCase("22", "invalid encoded storage byte array accessed", false)]
+    [TestCase("22", "invalid encoded storage byte array accessed", true)]
+    public void Call_tracer_decodes_panic_reason(string code, string expected, bool nested)
+    {
+        byte[] output = Bytes.FromHexString("4e487b71" + code.PadLeft(64, '0'));
+        Transaction tx = Build.A.Transaction.WithGasLimit(100000).TestObject;
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(null));
+        tracer.ReportAction(79000, 0, TestItem.AddressA, TestItem.AddressB, ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
+        if (nested)
+            tracer.ReportAction(50000, 0, TestItem.AddressB, TestItem.AddressC, ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
+        tracer.ReportActionRevert(40000, output);
+        if (nested)
+        {
+            tracer.ReportActionEnd(30000, ReadOnlyMemory<byte>.Empty);
+            tracer.MarkAsSuccess(TestItem.AddressB, new GasConsumed(49000, 49000), [], []);
+        }
+        else
+            tracer.MarkAsFailed(TestItem.AddressB, new GasConsumed(39000, 39000), output, TransactionSubstate.GetErrorMessage(output));
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        using JsonDocument json = JsonDocument.Parse(JsonSerializer.Serialize(trace.CustomTracerResult!.Value, SerializerOptions));
+        JsonElement frame = nested ? json.RootElement.GetProperty("calls")[0] : json.RootElement;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(frame.GetProperty("error").GetString(), Is.EqualTo("execution reverted"));
+            Assert.That(frame.GetProperty("revertReason").GetString(), Is.EqualTo(expected));
+            Assert.That(frame.GetProperty("output").GetString(), Is.EqualTo(output.ToHexString(withZeroX: true)));
+        }
+    }
+
+    [Test]
+    public void Call_tracer_omits_empty_decoded_revert_reason([Values] bool nested, [Values("", " ", "reason")] string reason)
+    {
+        const int abiWordLength = 32;
+        int selectorLength = TransactionSubstate.ErrorFunctionSelector.Length;
+        int stringDataOffset = selectorLength + 2 * abiWordLength;
+        byte[] output = new byte[stringDataOffset + (reason.Length == 0 ? 0 : abiWordLength)];
+        TransactionSubstate.ErrorFunctionSelector.CopyTo(output, 0);
+        output[selectorLength + abiWordLength - 1] = abiWordLength;
+        output[stringDataOffset - 1] = (byte)reason.Length;
+        Encoding.ASCII.GetBytes(reason).CopyTo(output, stringDataOffset);
+        Transaction tx = Build.A.Transaction.WithGasLimit(100000).TestObject;
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(null));
+        tracer.ReportAction(79000, 0, TestItem.AddressA, TestItem.AddressB, ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
+        if (nested)
+            tracer.ReportAction(50000, 0, TestItem.AddressB, TestItem.AddressC, ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
+        tracer.ReportActionRevert(40000, output);
+        if (nested)
+            tracer.ReportActionEnd(60000, ReadOnlyMemory<byte>.Empty);
+        else
+            tracer.MarkAsFailed(TestItem.AddressB, new GasConsumed(39000, 39000), output, TransactionSubstate.GetErrorMessage(output));
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        using JsonDocument json = JsonDocument.Parse(JsonSerializer.Serialize(trace.CustomTracerResult!.Value, SerializerOptions));
+        JsonElement frame = nested ? json.RootElement.GetProperty("calls")[0] : json.RootElement;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(frame.GetProperty("error").GetString(), Is.EqualTo("execution reverted"));
+            Assert.That(frame.GetProperty("output").GetString(), Is.EqualTo(output.ToHexString(withZeroX: true)));
+            Assert.That(frame.TryGetProperty("revertReason", out JsonElement decoded), Is.EqualTo(reason.Length != 0));
+            if (reason.Length != 0)
+                Assert.That(decoded.GetString(), Is.EqualTo(reason));
+        }
+    }
+
     [Test]
     public void Call_tracer_records_insufficient_balance_attempt(
         [Values(null, WithLog, OnlyTopCall)] string? config,
@@ -83,6 +152,32 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             Assert.That(calls[0].GetProperty("type").GetString(), Is.EqualTo(opcode.ToString()));
             Assert.That(calls[0].GetProperty("input").GetString(), Is.EqualTo(withInput ? "0xdeadbeef" : "0x"));
             Assert.That(calls[0].GetProperty("to").GetString(), Is.EqualTo("0x000000000000000000000000000000000000beef"));
+        }
+    }
+
+    [Test]
+    public void Depth_rejected_frame_preserves_call_type_and_value(
+        [Values(ExecutionType.CALL, ExecutionType.CALLCODE, ExecutionType.DELEGATECALL, ExecutionType.STATICCALL)] ExecutionType callType,
+        [Values(null, OnlyTopCall)] string? config)
+    {
+        Transaction tx = Build.A.Transaction.WithGasLimit(100000).TestObject;
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(config));
+        tracer.ReportAction(79000, 1, TestItem.AddressA, TestItem.AddressB, ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
+        tracer.ReportRejectedAction(10000, 10000, 1, TestItem.AddressB, TestItem.AddressC, ReadOnlyMemory<byte>.Empty, callType, EvmExceptionType.CallDepthExceeded);
+        tracer.ReportActionEnd(70000, ReadOnlyMemory<byte>.Empty);
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        NativeCallTracerCallFrame root = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
+        Assert.That(root.Calls, Has.Count.EqualTo(config == OnlyTopCall ? 0 : 1));
+        if (config == OnlyTopCall) return;
+
+        NativeCallTracerCallFrame child = root.Calls[0];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(child.Type, Is.EqualTo(callType.ToInstruction()));
+            Assert.That(child.Error, Is.EqualTo("max call depth exceeded"));
+            Assert.That(child.GasUsed, Is.Zero);
+            Assert.That(child.Gas, Is.EqualTo(10000));
+            Assert.That(child.Value, callType == ExecutionType.STATICCALL ? Is.Null : Is.EqualTo((UInt256)1));
         }
     }
 
@@ -541,6 +636,25 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
                 Assert.That(root.GetProperty("calls")[0].GetProperty("error").GetString(),
                     Is.EqualTo("out of gas: not enough gas for reentrancy sentry"));
         }
+    }
+
+    [Test]
+    public void Call_trace_decodes_non_ascii_and_padded_offset_revert_reasons(
+        [Values("réverted ✓", "a\nb\tc")] string reason, [Values(32, 64)] int offset, [Values] bool nested)
+    {
+        byte[] payload = TransactionSubstateTests.ErrorStringPayload(reason, offset);
+        byte[] revertCode = Prepare.EvmCode.StoreDataInMemory(0, payload).Revert(payload.Length, 0).Done;
+        byte[] code = revertCode;
+        if (nested)
+        {
+            TestState.CreateAccount(TestItem.AddressC, 0);
+            TestState.InsertCode(TestItem.AddressC, revertCode, Spec);
+            code = Prepare.EvmCode.Call(TestItem.AddressC, 50000).STOP().Done;
+        }
+
+        using JsonDocument trace = JsonDocument.Parse(ExecuteCallTrace(code));
+        JsonElement frame = nested ? trace.RootElement.GetProperty("calls")[0] : trace.RootElement;
+        Assert.That(frame.GetProperty("revertReason").GetString(), Is.EqualTo(reason));
     }
 
     private static TestCaseData[] ActionDiagnosticCompositionCases =>
@@ -1456,17 +1570,21 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec((block.Header.Number, block.Header.Timestamp))), tracer);
         using GethLikeTxTrace trace = tracer.BuildResult();
 
-        if (outcome == CreateOutcome.AddressCollision)
-        {
-            Assert.That(trace.CustomTracerResult, Is.Null,
-                "address-collision path never enters the EVM; no call frame should be produced");
-            return;
-        }
-
         NativeCallTracerCallFrame? frame = trace.CustomTracerResult?.Value as NativeCallTracerCallFrame;
         Assert.That(frame, Is.Not.Null, "expected a top-level CREATE call frame");
         Assert.That(frame!.Type, Is.EqualTo(Instruction.CREATE));
-        if (outcome == CreateOutcome.Success)
+        if (outcome == CreateOutcome.AddressCollision)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(frame.Error, Is.EqualTo("contract address collision"));
+                Assert.That(frame.To, Is.Null);
+                Assert.That(frame.Gas, Is.EqualTo(100000UL));
+                Assert.That(frame.GasUsed, Is.EqualTo(100000UL), "a collision consumes all the gas");
+                Assert.That(frame.Input.ToArray(), Is.EqualTo(initCode));
+            }
+        }
+        else if (outcome == CreateOutcome.Success)
         {
             using (Assert.EnterMultipleScope())
             {

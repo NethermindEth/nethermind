@@ -39,6 +39,12 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
 
         base.Load(builder);
         builder
+            // Ahead of NethermindModule so it runs before FlatLayoutResolver, which would pick a layout from the test
+            // hardware info and record it under the default BaseDbPath.
+            .Intercept<IFlatDbConfig>(flatDbConfig =>
+            {
+                if (flatDbConfig.Layout == FlatLayout.Auto) flatDbConfig.Layout = FlatLayout.Flat;
+            })
             .AddModule(new NethermindModule(spec, configProvider, logManager))
             .AddModule(new PseudoNetworkModule())
             .AddModule(new TestBlockProcessingModule())

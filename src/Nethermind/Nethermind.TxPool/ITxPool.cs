@@ -80,8 +80,9 @@ namespace Nethermind.TxPool
         /// </summary>
         void ForgetRejectedBlobTransaction(Hash256 hash);
         /// <summary>
-        /// Forgets <paramref name="hash"/> only if a copy of it was rejected in the current block with
-        /// <see cref="AcceptTxResult.InvalidBlobProofs"/>, so a copy carrying another sidecar can be judged.
+        /// Forgets <paramref name="hash"/> only if a copy of it was rejected in the current block for its sidecar
+        /// (<see cref="AcceptTxResult.InvalidBlobProofs"/>, or <see cref="AcceptTxResult.Invalid"/> for a sidecar
+        /// defect), so a copy carrying another sidecar can be judged.
         /// </summary>
         /// <returns><c>true</c> if the hash was forgotten.</returns>
         bool ForgetInvalidBlobProofs(Hash256 hash);

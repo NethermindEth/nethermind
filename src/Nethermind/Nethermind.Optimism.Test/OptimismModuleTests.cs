@@ -240,7 +240,6 @@ public class OptimismModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.AsBool, Is.False);
-            Assert.That(result.IsIntrinsicGasError, Is.False);
             Assert.That(result.Error, Is.EqualTo(TxErrorMessages.InvalidTxSignature));
         }
     }

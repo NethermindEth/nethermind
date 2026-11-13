@@ -9,4 +9,8 @@ public enum FlatLayout
     FlatInTrie,
     PreimageFlatV1,
     PreimageFlat,
+
+    /// <summary>Resolved to a concrete layout at startup and never stored in the flat DB metadata.</summary>
+    /// <remarks>Kept last: the metadata stores a layout as its numeric value.</remarks>
+    Auto,
 }

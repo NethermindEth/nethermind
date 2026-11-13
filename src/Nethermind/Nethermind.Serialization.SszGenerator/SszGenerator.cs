@@ -1245,12 +1245,17 @@ internal static partial class SszCodecHelpers
                     "merkleizer.CalculateRoot(out root);",
                 ]);
             }
-            bool isByteListItself = decl.IsSszListItself && decl.IsStruct && IsByteList(variables[0]);
-            string byteListVariableName = isByteListItself ? VarName(variables[0].Name) : string.Empty;
-            string byteListAssignment = isByteListItself ? DecodeAssignmentExpression(variables[0], byteListVariableName, sourceIsArray: true) : string.Empty;
+            // The item is built in a local before its slot is addressed, so the slot address is not held across the build.
+            // Skipping `new()` is only safe when it runs no user constructor. The locals have fixed names that cannot clash with the decoder's own locals.
+            bool decodesItemDirectly = decl.IsSszListItself && decl.IsStruct && !decl.HasExplicitParameterlessConstructor;
+            bool isByteListItself = decodesItemDirectly && IsByteList(variables[0]);
+            bool isConstructedByteListItself = decodesItemDirectly && IsConstructedByteList(variables[0]);
+            string byteListAssignment = isByteListItself ? DecodeAssignmentExpression(variables[0], "__value", sourceIsArray: true) : string.Empty;
             string DecodeCollectionItem(string sliceExpression, string destination) => isByteListItself
-                ? $"{{ byte[] {byteListVariableName} = DecodeSszByteList({sliceExpression}, {variables[0].Limit}UL, nameof({decl.TypeReferenceName}), nameof({variables[0].Name})); {destination}.{variables[0].Name} = {byteListAssignment}; }}"
-                : $"Decode({sliceExpression}, out {destination});";
+                ? $"{{ byte[] __value = DecodeSszByteList({sliceExpression}, {variables[0].Limit}UL, nameof({decl.TypeReferenceName}), nameof({variables[0].Name})); {destination}.{variables[0].Name} = {byteListAssignment}; }}"
+                : isConstructedByteListItself
+                    ? $"{{ ReadOnlySpan<byte> __item = {sliceExpression}; ValidateSszListLimit(__item, {variables[0].Limit}UL, nameof({decl.TypeReferenceName}), nameof({variables[0].Name})); {variables[0].CollectionTypeReferenceName} __value = new {variables[0].CollectionTypeReferenceName}(__item); {destination}.{variables[0].Name} = __value; }}"
+                    : $"Decode({sliceExpression}, out {destination});";
             string result = FixWhitespace(decl.IsSszListItself ?
 $@"using Nethermind.Serialization.Ssz.Merkleization;
 using Nethermind.Serialization.Ssz;

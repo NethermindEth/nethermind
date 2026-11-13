@@ -23,6 +23,7 @@
     <Project Path="Nethermind.Network.Contract/Nethermind.Network.Contract.csproj" />
     <Project Path="Nethermind.Network.Enr/Nethermind.Network.Enr.csproj" />
     <Project Path="Nethermind.Network.Stats/Nethermind.Network.Stats.csproj" />
+    <Project Path="Nethermind.Serialization.FluentRlp/Nethermind.Serialization.FluentRlp.csproj" />
     <Project Path="Nethermind.Serialization.Json/Nethermind.Serialization.Json.csproj" />
     <Project Path="Nethermind.Serialization.Rlp/Nethermind.Serialization.Rlp.csproj" />
     <Project Path="Nethermind.Serialization.Ssz/Nethermind.Serialization.Ssz.csproj" />
@@ -32,6 +33,7 @@
     <Project Path="Nethermind.Synchronization/Nethermind.Synchronization.csproj" />
     <Project Path="Nethermind.Trie/Nethermind.Trie.csproj" />
     <Project Path="Nethermind.TxPool/Nethermind.TxPool.csproj" />
+    <Project Path="Nethermind.Zkvm.Abstractions/Nethermind.Zkvm.Abstractions.csproj" />
   </Folder>
   <Project Path="Nethermind.Stateless.AirbenderGuest/Nethermind.Stateless.AirbenderGuest.csproj" />
   <Project Path="Nethermind.Stateless.Executor/Nethermind.Stateless.Executor.csproj" />

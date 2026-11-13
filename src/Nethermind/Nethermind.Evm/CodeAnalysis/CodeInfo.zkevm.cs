@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
@@ -24,7 +25,7 @@ public sealed partial class CodeInfo
     partial void InitializeCode(ReadOnlyMemory<byte> code) =>
         _code = code.IsEmpty ? code
             : ExecutableCodeMemory.TryGetExecutionBuffer(code, out byte[]? buffer) ? buffer.AsMemory(0, code.Length)
-            : FirstTouchMemoryFlag.IsActive && ExecutableCodeMemory.IsPlaced(code) ? code
+            : (FirstTouchMemoryFlag.IsActive || AirbenderFlag.IsActive) && ExecutableCodeMemory.IsPlaced(code) ? code
             : CreatePaddedCode(code.Span).AsMemory(0, code.Length);
 
     public partial ReadOnlyMemory<byte> Code => _code;
@@ -34,6 +35,67 @@ public sealed partial class CodeInfo
     internal partial int CodeLength => _code.Length;
 
     internal partial ReadOnlySpan<byte> ExecutionCodeSpan => _code.Span;
+
+    /// <summary>The most memory all handler caches together take.</summary>
+    /// <remarks>
+    /// The guest never frees memory, and a block can run many large codes for little gas, such as creations with
+    /// large init code, so the caches need a bound of their own. Real blocks take a few MiB.
+    /// </remarks>
+    private const long HandlerCacheBudget = 64L << 20;
+
+    private static long s_handlerCacheBytes;
+    private static nint[]? s_readOnlyHandlerCache;
+
+    private nint[]? _handlerCache;
+    private nint[]? _handlerCacheTable;
+
+    /// <summary>
+    /// The handlers guest dispatch has resolved for this code under the paired table <paramref name="table"/>, by
+    /// position, or <see langword="null"/> once the caches have taken <see cref="HandlerCacheBudget"/>.
+    /// </summary>
+    /// <remarks>Another table, as a traced run uses, starts a new cache; one the budget refuses leaves the previous
+    /// table's cache to the runs under that table.</remarks>
+    internal nint[]? GetHandlerCache(nint[] table)
+    {
+        if (!ReferenceEquals(_handlerCacheTable, table))
+        {
+            nint[]? cache = TryCreateHandlerCache(CodeLength);
+            if (cache is null) return null;
+            _handlerCache = cache;
+            _handlerCacheTable = table;
+        }
+
+        return _handlerCache;
+    }
+
+    /// <summary>An empty handler cache for <paramref name="codeLength"/> code bytes, or <see langword="null"/> past <see cref="HandlerCacheBudget"/>.</summary>
+    internal static nint[]? TryCreateHandlerCache(int codeLength)
+    {
+        long bytes = (long)HandlerCacheLength(codeLength) * IntPtr.Size;
+        if (s_handlerCacheBytes + bytes > HandlerCacheBudget) return null;
+        s_handlerCacheBytes += bytes;
+        return GC.AllocateArray<nint>(HandlerCacheLength(codeLength), pinned: true);
+    }
+
+    /// <summary>An empty handler cache for <paramref name="codeLength"/> code bytes that dispatch only reads, shared by every code past <see cref="HandlerCacheBudget"/>.</summary>
+    internal static nint[] ReadOnlyHandlerCache(int codeLength)
+    {
+        nint[]? cache = s_readOnlyHandlerCache;
+        if (cache is null || cache.Length < HandlerCacheLength(codeLength))
+        {
+            // The guest cannot reclaim previous arrays, so geometric growth bounds their total size too.
+            int capacity = (int)BitOperations.RoundUpToPowerOf2((uint)HandlerCacheLength(codeLength));
+            s_readOnlyHandlerCache = cache = GC.AllocateArray<nint>(capacity, pinned: true);
+        }
+        return cache;
+    }
+
+    /// <summary>The slots a handler cache for <paramref name="codeLength"/> code bytes takes.</summary>
+    /// <remarks>
+    /// One slot for each position dispatch reaches: past a PUSH32 in the last byte, the next opcode is read at the
+    /// next-to-last padding byte (see <see cref="ExecutionPadding"/>).
+    /// </remarks>
+    private static int HandlerCacheLength(int codeLength) => codeLength + ExecutionPadding - 1;
 
     // Guest execution is single-threaded; bitmap writes and the resume cursor are not synchronized.
     private long[]? _incrementalJumpBitmap;

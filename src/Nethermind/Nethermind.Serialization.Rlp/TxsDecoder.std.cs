@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Threading;
+using Nethermind.Serialization.FluentRlp;
 
 namespace Nethermind.Serialization.Rlp;
 
@@ -26,7 +27,7 @@ public static partial class TxsDecoder
                     {
                         state.decoded[i] = DecodeTransaction(state.rlpDecoder, state.txData[i], state.borrowMemory);
                     }
-                    catch (Exception e) when (state.skipErrors && e is RlpException or ArgumentException)
+                    catch (Exception e) when (state.skipErrors && e is RlpReaderException or ArgumentException)
                     {
                     }
 

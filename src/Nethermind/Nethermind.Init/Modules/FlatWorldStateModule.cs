@@ -127,6 +127,11 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<FlatInTriePersistence>()
             .Add<CarryForwardCachingPersistence>()
             .AddDecorator<IRocksDbConfigFactory, FlatRocksDbConfigAdjuster>()
+            .AddSingleton<FlatLayoutResolver>()
+            .Intercept<IFlatDbConfig>((config, ctx) =>
+            {
+                if (config.Layout == FlatLayout.Auto) ctx.Resolve<FlatLayoutResolver>().Resolve(config);
+            })
 
             .AddSingleton<IPersistence, IFlatDbConfig, IProcessExitSource, ILogManager, IComponentContext>((flatDbConfig, exitSource, logManager, ctx) =>
             {

@@ -193,6 +193,34 @@ public class TraceRpcModuleTests
     }
 
     [Test]
+    public async Task Trace_call_executes_empty_contract_creation(
+        [Values("trace_call", "trace_callMany")] string method, [Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        object transaction = new { from = TestItem.AddressA, gas = "0x186a0", input = "0x" };
+        string[] traceTypes = ["trace"];
+        object[] parameters = method == "trace_call"
+            ? [transaction, traceTypes, "latest"]
+            : [new[] { new object[] { transaction, traceTypes } }, "latest"];
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, parameters);
+        JToken json = JToken.Parse(response);
+        Assert.That(json["error"], Is.Null, response);
+        JToken? result = method == "trace_call" ? json["result"] : json["result"]?[0];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((string?)result?["output"], Is.EqualTo("0x"), response);
+            Assert.That((JArray?)result?["trace"], Has.Count.EqualTo(1), response);
+            Assert.That((string?)result?["trace"]?[0]?["type"], Is.EqualTo("create"), response);
+            Assert.That((string?)result?["trace"]?[0]?["result"]?["code"], Is.EqualTo("0x"), response);
+            Assert.That((string?)result?["trace"]?[0]?["result"]?["gasUsed"], Is.EqualTo("0x0"), response);
+            Assert.That(result?["trace"]?[0]?["error"], Is.Null, response);
+        }
+    }
+
+    [Test]
     public async Task Trace_call_rejects_a_chain_id_for_another_chain_as_invalid_params(
         [Values("trace_call", "trace_callMany")] string method, [Values("0x0", "0x2")] string type, [Values] bool matching)
     {
@@ -228,12 +256,12 @@ public class TraceRpcModuleTests
         using TestRpcBlockchain blockchain = context.Blockchain;
         ulong chainId = blockchain.BlockTree.ChainId;
         string otherChainId = $"0x{chainId + 1:x}";
-        // A creation without data fails conversion, and block 0x100000 does not exist.
+        // Conflicting fee styles fail conversion, and block 0x100000 does not exist.
         object[] parameters = method == "trace_call"
-            ? [new { from = TestItem.AddressA, gas = "0x186a0", chainId = otherChainId }, new[] { "trace" }, blockParameter]
+            ? [new { from = TestItem.AddressA, gas = "0x186a0", gasPrice = "0x1", maxFeePerGas = "0x2", chainId = otherChainId }, new[] { "trace" }, blockParameter]
             : [new[]
             {
-                new object[] { new { from = TestItem.AddressA, gas = "0x186a0" }, new[] { "trace" } },
+                new object[] { new { from = TestItem.AddressA, gas = "0x186a0", gasPrice = "0x1", maxFeePerGas = "0x2" }, new[] { "trace" } },
                 new object[] { new { from = TestItem.AddressA, to = TestItem.AddressB, gas = "0x186a0", chainId = otherChainId }, new[] { "trace" } },
             }, blockParameter];
 
@@ -3510,6 +3538,29 @@ public class TraceRpcModuleTests
             Assert.That(result.GetProperty("trace")[0].GetProperty("action").GetProperty("gas").GetString(),
                 Is.EqualTo("0x13498")); // 100,000 signed gas minus 21,000 intrinsic gas.
         }
+    }
+
+    /// <summary>A signed call of <c>trace_call</c> and <c>trace_callMany</c> runs as its <c>from</c>, the zero address when omitted.</summary>
+    [Test]
+    public async Task Trace_call_runs_a_signed_call_as_its_from(
+        [Values("trace_call", "trace_callMany")] string method, [Values] bool fromOmitted, [Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build(new TestSpecProvider(Cancun.Instance));
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        Address from = fromOmitted ? Address.Zero : TestItem.AddressF;
+        EIP1559TransactionForRpc call = SignedCallScenario.BuildCall(blockchain.EthereumEcdsa, blockchain.SpecProvider.ChainId, fromOmitted ? null : from, unpriced: true);
+        string[] traceTypes = ["trace"];
+        object[] parameters = method == "trace_call"
+            ? [call, traceTypes, "latest"]
+            : [new[] { new object[] { call, traceTypes } }, "latest"];
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, parameters);
+
+        JToken? result = JToken.Parse(response)["result"];
+        string? caller = (string?)(method == "trace_call" ? result : result?[0])?["trace"]?[0]?["action"]?["from"];
+        Assert.That(caller is null ? null : new Address(caller), Is.EqualTo(from), response);
     }
 
     [Test]

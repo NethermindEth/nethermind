@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.P2P;
 using Nethermind.Xdc.Test.Helpers;
@@ -19,7 +20,7 @@ namespace Nethermind.Network.Benchmarks;
 
 /// <summary>
 /// Measures serializing XDC consensus messages into a packet the way the packet sender does, and
-/// deserializing them from a DotNetty buffer the way the XDC protocol handlers do.
+/// deserializing them from a received packet the way the XDC protocol handlers do.
 /// </summary>
 [MemoryDiagnoser]
 public class XdcMessageBenchmarks
@@ -39,8 +40,8 @@ public class XdcMessageBenchmarks
 
     private XdcTestBlockchain _chain = null!;
     private Func<int> _serialize = null!;
-    private Func<IByteBuffer, P2PMessage> _deserialize = null!;
-    private IByteBuffer _body = null!;
+    private Func<ZeroPacket, P2PMessage> _deserialize = null!;
+    private NettyBufferPacket _body = null!;
 
     [ParamsAllValues]
     public Message Type { get; set; }
@@ -84,7 +85,6 @@ public class XdcMessageBenchmarks
     [Benchmark]
     public int Deserialize()
     {
-        _body.SetReaderIndex(0);
         using P2PMessage message = _deserialize(_body);
         return message.PacketType;
     }
@@ -102,7 +102,7 @@ public class XdcMessageBenchmarks
 
         IByteBuffer packet = service.ZeroSerialize(message);
         packet.SkipBytes(Rlp.LengthOf(message.AdaptivePacketType));
-        _body = Unpooled.WrappedBuffer(packet.ReadAllBytesAsArray());
+        _body = new NettyBufferPacket(Unpooled.WrappedBuffer(packet.ReadAllBytesAsArray()));
         packet.Release();
     }
 

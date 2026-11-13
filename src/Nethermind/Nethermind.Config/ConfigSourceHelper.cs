@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Nethermind.Int256;
 using System.Text.Json;
@@ -43,8 +44,7 @@ namespace Nethermind.Config
                     }
                     else
                     {
-                        valueString = valueString.Trim().RemoveStart('[').RemoveEnd(']');
-                        string[] valueItems = valueString.Split(',').Select(static s => s.Trim()).ToArray();
+                        string[] valueItems = SplitArrayItems(valueString);
                         IList collection = (valueType.IsGenericType
                             ? (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(itemType))!
                             : (IList)Activator.CreateInstance(valueType, valueItems.Length)!)!;
@@ -52,13 +52,7 @@ namespace Nethermind.Config
                         int i = 0;
                         foreach (string valueItem in valueItems)
                         {
-                            string item = valueItem;
-                            if (valueItem.StartsWith('"') && valueItem.EndsWith('"'))
-                            {
-                                item = valueItem[1..^1];
-                            }
-
-                            object? itemValue = GetValue(itemType, item);
+                            object? itemValue = GetValue(itemType, valueItem);
                             if (valueType.IsGenericType)
                             {
                                 collection.Add(itemValue);
@@ -90,6 +84,38 @@ namespace Nethermind.Config
             catch (Exception e)
             {
                 throw new System.Configuration.ConfigurationErrorsException($"Could not load value {category}.{name}. See inner exception for details.", e);
+            }
+        }
+
+        private static string[] SplitArrayItems(string valueString)
+        {
+            valueString = valueString.Trim();
+            if (valueString.StartsWith('[') && TryParseJsonArray(valueString, out string[]? jsonItems))
+            {
+                return jsonItems;
+            }
+
+            return valueString.RemoveStart('[').RemoveEnd(']').Split(',').Select(static s =>
+            {
+                string item = s.Trim();
+                return item.StartsWith('"') && item.EndsWith('"') ? item[1..^1] : item;
+            }).ToArray();
+        }
+
+        private static bool TryParseJsonArray(string valueString, [NotNullWhen(true)] out string[]? items)
+        {
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(valueString);
+                items = document.RootElement.EnumerateArray()
+                    .Select(static e => e.ValueKind == JsonValueKind.String ? e.GetString()! : e.GetRawText())
+                    .ToArray();
+                return true;
+            }
+            catch (JsonException)
+            {
+                items = null;
+                return false;
             }
         }
 

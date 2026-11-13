@@ -10,6 +10,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -267,6 +268,47 @@ public class BlockDecoderTests
     }
 
     [Test]
+    public void Exclude_hashes_leaves_only_the_header_hash_unset()
+    {
+        Block block = Build.A.Block.WithNumber(1).WithUncles(Build.A.BlockHeader.TestObject)
+            .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject).TestObject;
+        BlockDecoder decoder = new();
+        RlpReader ctx = new(decoder.Encode(block).Bytes);
+
+        Block decoded = decoder.Decode(ref ctx, RlpBehaviors.ExcludeHashes)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.Header.Hash, Is.Null);
+            Assert.That(decoded.Uncles[0].Hash, Is.EqualTo(block.Uncles[0].Hash));
+            Assert.That(decoded.Transactions[0].Hash, Is.EqualTo(block.Transactions[0].Hash));
+        }
+    }
+
+    [Test]
+    public void Header_behaviors_reach_the_encoded_header()
+    {
+        // A zero base fee with no later header field is written only under Eip1559Header.
+        Block block = Build.A.Block.WithNumber(1).WithBaseFeePerGas(0)
+            .WithTransactions(Build.A.Transaction.WithNonce(1).Signed().TestObject, Build.A.Transaction.WithNonce(2).Signed().TestObject)
+            .TestObject;
+        BlockDecoder decoder = new();
+
+        byte[] encoded = decoder.Encode(block, RlpBehaviors.Eip1559Header).Bytes;
+        using ArrayPoolSpan<byte> pooled = decoder.EncodeToArrayPoolSpan(block, RlpBehaviors.Eip1559Header);
+        RlpReader ctx = new(encoded);
+        Block decoded = decoder.Decode(ref ctx)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encoded.Length, Is.EqualTo(decoder.GetLength(block, RlpBehaviors.Eip1559Header)));
+            Assert.That(((ReadOnlySpan<byte>)pooled).ToArray(), Is.EqualTo(encoded));
+            Assert.That(decoded.Header.Hash, Is.EqualTo(block.Header.CalculateHash(RlpBehaviors.Eip1559Header)));
+            Assert.That(decoded.Transactions, Has.Length.EqualTo(2));
+        }
+    }
+
+    [Test]
     public void Encode_with_pre_encoded_typed_transactions_produces_same_rlp()
     {
         Transaction[] transactions =
@@ -332,7 +374,7 @@ public class BlockDecoderTests
                 Assert.That(recovery.GetNextTransactionHash(), Is.EqualTo(transactions[i].Hash), $"transaction {i}");
             }
 
-            Assert.Throws<RlpException>(() => recovery.GetNextTransactionHash());
+            Assert.Throws<RlpReaderException>(() => recovery.GetNextTransactionHash());
         }
         finally
         {
@@ -363,7 +405,7 @@ public class BlockDecoderTests
                 Assert.That(recovery.GetNextTransactionValueHash(), Is.EqualTo(transactions[i].Hash!.ValueHash256), $"transaction {i}");
             }
 
-            Assert.Throws<RlpException>(() => recovery.GetNextTransactionValueHash(), "no transaction remains");
+            Assert.Throws<RlpReaderException>(() => recovery.GetNextTransactionValueHash(), "no transaction remains");
         }
         finally
         {
@@ -399,7 +441,7 @@ public class BlockDecoderTests
                 Assert.That(TxDecoder.Instance.Encode(decoded[i]).Bytes, Is.EqualTo(TxDecoder.Instance.Encode(transactions[i]).Bytes), $"transaction {i}");
             }
 
-            Assert.Throws<RlpException>(() => recovery.GetTransaction(transactions.Length));
+            Assert.Throws<RlpReaderException>(() => recovery.GetTransaction(transactions.Length));
         }
     }
 
@@ -448,7 +490,7 @@ public class BlockDecoderTests
             transactionData,
             transactionCount: 1);
 
-        Assert.Throws<RlpException>(() =>
+        Assert.Throws<RlpReaderException>(() =>
         {
             if (skip) recovery.SkipNextTransaction();
             else recovery.GetNextTransactionHash();
@@ -477,7 +519,7 @@ public class BlockDecoderTests
     public void Rejects_malformed_input(byte[] input)
     {
         BlockDecoder decoder = new();
-        Assert.Throws<RlpException>(() =>
+        Assert.Throws<RlpReaderException>(() =>
         {
             RlpReader ctx = new(input);
             decoder.Decode(ref ctx);
