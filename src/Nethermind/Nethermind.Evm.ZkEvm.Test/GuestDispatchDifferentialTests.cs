@@ -759,11 +759,13 @@ public class GuestDispatchDifferentialTests
 
     /// <remarks>
     /// Every immediate, valid or not, at stack heights on both sides of the depths they decode to and at the limit, with
-    /// too little gas and enough. The opcode alone, as the whole program, reads its immediate from the code's padding.
-    /// The outcome does not hold the stack, so a second program stores the word on top of the stack to memory.
+    /// too little gas and enough, on both sides of EIP-8024. The opcode alone, as the whole program, reads its immediate
+    /// from the code's padding. The outcome holds the stack's words but not the stack pointer the handler hands on, so a
+    /// second program pushes through it and stores the word on top of the stack to memory.
     /// </remarks>
     [Test]
     public void Eip8024_stack_ops_match_the_shared_handlers(
+        [ValueSource(nameof(StorageLoadForks))] IReleaseSpec spec,
         [Values(Instruction.DUPN, Instruction.SWAPN, Instruction.EXCHANGE)] Instruction op, [Values(2ul, 3ul, 100ul)] ulong gas)
     {
         int[] heads = [0, 1, 2, 15, 16, 17, 18, 29, 30, 31, 100, 234, 235, 236, 1023, 1024];
@@ -777,8 +779,8 @@ public class GuestDispatchDifferentialTests
             foreach (byte[] code in programs)
                 foreach (int head in heads)
                 {
-                    Outcome untraced = Run(gas, [], head, new CodeInfo(code), Table.Untraced, Amsterdam.Instance);
-                    Outcome traced = Run(gas, [], head, new CodeInfo(code), Table.Traced, Amsterdam.Instance);
+                    Outcome untraced = Run(gas, [], head, new CodeInfo(code), Table.Untraced, spec);
+                    Outcome traced = Run(gas, [], head, new CodeInfo(code), Table.Traced, spec);
                     if (!Matches(untraced, traced))
                         mismatches.Add($"code {Convert.ToHexString(code)} head {head}\n untraced {untraced}\n traced   {traced}");
                 }
