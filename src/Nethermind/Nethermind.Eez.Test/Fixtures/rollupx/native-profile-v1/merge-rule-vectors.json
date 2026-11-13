@@ -1,0 +1,14 @@
+[
+  {
+    "chainId": 1,
+    "activationBlock": 15537394,
+    "difficulty": "0xc70d808a128d7380000",
+    "configHash": "0xc86a836536f3ee341c69afff7863c9d07b428118efe784dfbed23d372a36651a"
+  },
+  {
+    "chainId": 11155111,
+    "activationBlock": 1450409,
+    "difficulty": "0x3c6568f12e8000",
+    "configHash": "0xb58a1acffa569e39c31b656f1ff5327b3276d687b085ae3444e4a87530a3ddcc"
+  }
+]

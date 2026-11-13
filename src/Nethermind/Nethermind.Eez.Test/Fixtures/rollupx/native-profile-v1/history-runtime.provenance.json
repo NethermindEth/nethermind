@@ -1,0 +1,9 @@
+{
+  "repository": "https://github.com/eez-association/eez-rollupX",
+  "revision": "c1dafa6113425fce74bdba8c32ae8b0d7a7ba5ae",
+  "path": "crates/eez-protocol/src/l1_history/runtime.bin",
+  "length": 1110,
+  "sha256": "0e8a8f4671d83bd3416500fb606b73b1208083b9c1eece16085bf52eddde4bb1",
+  "keccak256": "0x88192d264757958a6e14725aa40c875814def72c1f8710e5f72c768356f8afa0",
+  "changes": "Unchanged upstream runtime bytes. Runtime hash checked independently with cast 1.7.1."
+}

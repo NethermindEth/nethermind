@@ -1,0 +1,85 @@
+{
+  "sourceRevision": "9517ba3b3c139ed43d3e0814b60ec67b95e163d7",
+  "upstreamRevision": "c702f90da19cc149890d0a17a4ef6c200dcb6a21",
+  "genesisStateRoot": "0x9ec3eaf4e6188dfbdd6ade76eaa88289b57c63c9a2cde8d35291d5a29e143d31",
+  "genesisHash": "0xf438827f598b1b60a06d3b1be89a725646f7a1affe240039ab306c814e96500b",
+  "configHash": "0xe03c1c573dfbad55a6fa29a0ae90fa2411f18ff7b5ccf015adcbe5662d4d4242",
+  "effectiveRules": {
+    "domain": "EEZ_ROLLUPX_EFFECTIVE_L1_RULES_V1",
+    "chainId": 10200,
+    "genesisHash": "0xf438827f598b1b60a06d3b1be89a725646f7a1affe240039ab306c814e96500b",
+    "forks": {
+      "Homestead": {
+        "block": 0
+      },
+      "Tangerine": {
+        "block": 0
+      },
+      "SpuriousDragon": {
+        "block": 0
+      },
+      "Byzantium": {
+        "block": 0
+      },
+      "Constantinople": {
+        "block": 0
+      },
+      "Petersburg": {
+        "block": 0
+      },
+      "Istanbul": {
+        "block": 0
+      },
+      "Berlin": {
+        "block": 0
+      },
+      "London": {
+        "block": 0
+      },
+      "Paris": {
+        "activationBlock": 680930,
+        "advertisedForkBlock": null,
+        "totalDifficulty": "0xa63dfffffffffffffffffffffffffec1693f0"
+      },
+      "Shanghai": {
+        "timestamp": 1684934220
+      },
+      "Cancun": {
+        "timestamp": 1706724940
+      },
+      "Prague": {
+        "timestamp": 1741254220
+      },
+      "Osaka": {
+        "timestamp": 1773653580
+      }
+    },
+    "headerRules": {
+      "londonBlock": 0,
+      "shanghaiTime": 1684934220,
+      "cancunTime": 1706724940,
+      "pragueTime": 1741254220,
+      "unsupportedTime": null
+    },
+    "blobRules": {
+      "cancun": {
+        "target": 1,
+        "max": 2,
+        "baseFeeUpdateFraction": 1112826
+      },
+      "prague": {
+        "target": 1,
+        "max": 2,
+        "baseFeeUpdateFraction": 1112826
+      },
+      "osaka": {
+        "target": 1,
+        "max": 2,
+        "baseFeeUpdateFraction": 1112826
+      },
+      "scheduled": []
+    }
+  },
+  "networkProfileHash": "0x3705c8d325c375bcb6e51c11d0cf108f98a4648703820967f8408319da411174",
+  "verificationKey": "0x0f5bcf468422e934f006275f02b55943eef6af72dc7b4284b07d46a989353b09"
+}

@@ -19,7 +19,7 @@ public abstract class BaseTxDecoder(TxType txType, Func<Transaction>? transactio
 
     // 30MB should be good enough for 300MGas block just filled with call data
     private const int DataLimit = 30 * 1024 * 1024;
-    private static readonly RlpLimit _dataRlpLimit = RlpLimit.For<Transaction>(DataLimit, nameof(Transaction.Data));
+    protected static readonly RlpLimit DataRlpLimit = RlpLimit.For<Transaction>(DataLimit, nameof(Transaction.Data));
 
     public TxType Type => txType;
 
@@ -116,7 +116,7 @@ public abstract class BaseTxDecoder(TxType txType, Func<Transaction>? transactio
     private static ReadOnlyMemory<byte> DecodeData<TCanonicalChecks>(ref RlpReader reader, Memory<byte> source) where TCanonicalChecks : struct, IFlag
     {
         ReadOnlySpan<byte> data = reader.ReadBytes<TCanonicalChecks>();
-        if (data.Length > DataLimit) ThrowOverLimit(data.Length, reader.Remaining, _dataRlpLimit);
+        if (data.Length > DataLimit) ThrowOverLimit(data.Length, reader.Remaining, DataRlpLimit);
         if (data.IsEmpty) return ReadOnlyMemory<byte>.Empty;
         if (!source.IsEmpty) return source.SliceOf(data);
         return data.Length == 1 && data[0] < Rlp.EmptyByteArrayByte ? RlpReaderExtensions.SingleByteArrays[data[0]] : data.ToArray();

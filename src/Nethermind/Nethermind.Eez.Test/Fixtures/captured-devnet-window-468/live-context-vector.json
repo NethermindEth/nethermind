@@ -1,0 +1,9 @@
+{
+  "description": "Derived live-context unit vector over the unchanged historical window. Not a mined live proof. Original oracle.json remains unchanged.",
+  "source_commit": "bf80de50fff74a549f1c34e07dbf66a9d27a28d3",
+  "reference": "eez-protocol/src/public_inputs.rs and contracts/test/PublicInputsHashVectors.t.sol",
+  "l1_parent_hash": "0x9999999999999999999999999999999999999999999999999999999999999999",
+  "target_timestamp": 1791902560,
+  "public_inputs_hash": "0x8e1e504780188a1422dda631a27f51f7d1b7f7877d179318ae3ab477596846ad",
+  "expected_test_signature": "0xc0f846415cb0f01479c166698e350e99d0069940cf117113aea88bcd09b15c2b4ed0c566b9d7956b1f16937337fcf41c88d42cbcf71a570a304f7f6d43299a161c"
+}

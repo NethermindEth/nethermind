@@ -18,12 +18,19 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
+using Nethermind.Crypto;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Stateless.Execution;
+using Nethermind.Stateless.Execution.IO;
+using Nethermind.StatelessInputGen;
 using NUnit.Framework;
+using NSubstitute;
 
 namespace Nethermind.Consensus.Test.Stateless;
 
@@ -33,8 +40,61 @@ public class ExistingBlockWitnessTests
     // PUSH1 0 CALLDATALOAD DUP1 SLOAD PUSH1 1 ADD SWAP1 SSTORE PUSH1 0 PUSH1 32 CALLDATALOAD SSTORE STOP
     private static readonly byte[] IncrementAndClear = Bytes.FromHexString("6000358054600101905560006020355500");
 
+    [Test]
+    [NonParallelizable]
+    public async Task Stateless_executor_collects_recovery_inputs_from_actual_execution()
+    {
+        ValueHash256 message = ValueKeccak.Compute("stateless recovery"u8);
+        Signature signature = new EthereumEcdsa(BlockchainIds.Mainnet).Sign(TestItem.PrivateKeyA, in message);
+        byte[] call = new byte[128];
+        message.Bytes.CopyTo(call);
+        call[63] = (byte)(27 + signature.RecoveryId);
+        signature.Bytes.CopyTo(call.AsSpan(64));
+        Transaction transaction = Build.A.Transaction.WithTo(ECRecoverPrecompile.Address).WithData(call)
+            .WithValue(0).WithGasLimit(100000).WithGasPrice(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        (Block block, Witness witness, ISpecProvider specProvider) = StatelessInputGeneratorTests.CreateBlock(
+            amsterdam: true, currentChainActivation: true, requests: false, transaction: transaction);
+        using (witness)
+        {
+            byte[] stateless = (await InputGenerator.EncodeInput(block, witness, specProvider))!;
+            byte[] trusted = TrustedInput.FromStatelessInput(stateless);
+            StatelessValidationResult.Decode(StatelessExecutor.ExecuteTrusted(trusted), out StatelessValidationResult result);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.IsSuccess, Is.True, "The input must execute before recovery calls can be collected.");
+                Assert.That(StatelessExecutor.CollectRecoveryInputs(trusted), Is.EqualTo(new[] { call }));
+            }
+        }
+    }
+
     private const int Contracts = 24;
     private const int SlotsPerContract = 64;
+
+    [Test]
+    public void Stateless_environment_replays_valid_blocks_with_optional_tracing([Values] bool traced)
+    {
+        (Block block, Witness witness, ISpecProvider specProvider) = StatelessInputGeneratorTests.CreateBlock(
+            amsterdam: false, currentChainActivation: true);
+        using (witness)
+        {
+            StatelessBlockProcessingEnv stateless = new(witness, specProvider, Always.Valid, LimboLogs.Instance);
+            IBlockTracer tracer = Substitute.For<IBlockTracer>();
+            tracer.StartNewTxTrace(Arg.Any<Transaction>()).Returns(NullTxTracer.Instance);
+            StatelessBlockProcessingResult result = traced ? stateless.Process(block, true, tracer) : stateless.Process(block);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.IsValid, Is.True, result.Error);
+                Assert.That(result.ProcessedBlock?.Header.StateRoot, Is.EqualTo(block.Header.StateRoot));
+            }
+            if (traced)
+            {
+                tracer.Received(1).StartNewBlockTrace(Arg.Any<Block>());
+                tracer.Received(1).StartNewTxTrace(Arg.Any<Transaction>());
+                tracer.Received(1).EndBlockTrace();
+            }
+        }
+    }
 
     [Test]
     public async Task Witness_of_a_block_touching_many_storage_tries_replays_statelessly()

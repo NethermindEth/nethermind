@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Nethermind.Libp2p.Core" />
+    <PackageReference Include="Nethermind.Libp2p.Protocols.IpTcp" />
+    <PackageReference Include="Nethermind.Libp2p.Protocols.Multistream" />
+    <PackageReference Include="Nethermind.Libp2p.Protocols.Noise" />
+    <PackageReference Include="Nethermind.Libp2p.Protocols.Pubsub" />
+    <PackageReference Include="Nethermind.Libp2p.Protocols.Yamux" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Nethermind.Eez.Test" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
+    <ProjectReference Include="..\Nethermind.Eez.Execution\Nethermind.Eez.Execution.csproj" />
+    <ProjectReference Include="..\Nethermind.Eez.Prove\Nethermind.Eez.Prove.csproj" />
+    <ProjectReference Include="..\Nethermind.Init\Nethermind.Init.csproj" />
+    <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
+  </ItemGroup>
+
+</Project>
