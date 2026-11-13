@@ -66,7 +66,9 @@ public class WitnessGeneratingWorldState(
         ArrayPoolList<byte[]>? keys = null;
         try
         {
-            codes = [with(_bytecodes.Count), .. _bytecodes.Values];
+            codes = [with(_bytecodes.Count)];
+            foreach (byte[] code in _bytecodes.Values)
+                codes.Add(code);
             codes.AsSpan().Sort(Bytes.Comparer);
 
             state = [with(sink.Nodes.Count)];

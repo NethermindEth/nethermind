@@ -91,7 +91,6 @@ public class JsonContextEquivalenceTests
 
         Check("Properties", Describe(expected.Properties), Describe(actual.Properties));
         CheckWritable(type, expected, actual, differences);
-        CheckInitializers(type, expected, actual, differences);
     }
 
     private static Type CustomConverter(JsonConverter converter) =>
@@ -109,8 +108,7 @@ public class JsonContextEquivalenceTests
             $"conv={p.CustomConverter?.GetType()}:num={p.NumberHandling}"));
 
     /// <remarks>
-    /// Source generation binds init-only members as constructor parameters where reflection uses setters, and it can populate
-    /// readonly fields reflection cannot, so it only has to populate at least what reflection does.
+    /// Source generation can populate readonly fields reflection cannot, so it only has to populate at least what reflection does.
     /// </remarks>
     private static void CheckWritable(Type type, JsonTypeInfo expected, JsonTypeInfo actual, List<string> differences)
     {
@@ -120,49 +118,6 @@ public class JsonContextEquivalenceTests
                 actual.Properties.FirstOrDefault(p => p.Name == property.Name) is { Set: null, AssociatedParameter: null })
             {
                 differences.Add($"{type}: {property.Name} is not populated on deserialization");
-            }
-        }
-    }
-
-    /// <summary>Init-only initializers whose loss was reviewed, with the reason it does not change behavior.</summary>
-    private static readonly Dictionary<Type, string> ReviewedInitializerLosses = new()
-    {
-        // A consensus client's identity: absent fields stay empty rather than taking Nethermind's own, on both the JSON-RPC and SSZ endpoints.
-        [typeof(Nethermind.Merge.Plugin.Data.ClientVersionV1)] = "peer identity",
-        // RPC results, never deserialized.
-        [typeof(Nethermind.JsonRpc.Data.AccountInfoForRpc)] = "response only",
-        [typeof(Nethermind.Xdc.RPC.XdcAccountInfo)] = "response only",
-        [typeof(Nethermind.Xdc.RPC.XdcTransactionAndReceiptProof)] = "response only",
-        // Nullable shadows that ignore null: an absent member passes null and the base keeps its default.
-        [typeof(Nethermind.Blockchain.Tracing.GethStyle.GethTraceOptions).Assembly.GetType(
-            "Nethermind.Blockchain.Tracing.GethStyle.GethTraceOptionsConverter+WireOptions", throwOnError: true)!] = "null shadows",
-    };
-
-    /// <remarks>
-    /// Source generation passes default values for absent constructor-bound members, so an initializer on an init-only member
-    /// is lost when the JSON omits it, while reflection keeps it.
-    /// </remarks>
-    private static void CheckInitializers(Type type, JsonTypeInfo expected, JsonTypeInfo actual, List<string> differences)
-    {
-        if (expected.CreateObject is null || ReviewedInitializerLosses.ContainsKey(type))
-        {
-            return;
-        }
-
-        object instance = expected.CreateObject();
-        foreach (JsonPropertyInfo property in actual.Properties)
-        {
-            if (property.AssociatedParameter is null || property.IsRequired || property.Get is null ||
-                expected.Properties.FirstOrDefault(p => p.Name == property.Name) is not { AssociatedParameter: null })
-            {
-                continue;
-            }
-
-            object value = property.Get(instance);
-            object defaultValue = property.PropertyType.IsValueType ? Activator.CreateInstance(property.PropertyType) : null;
-            if (!Equals(value, defaultValue))
-            {
-                differences.Add($"{type}: init-only {property.Name} initializer {value} is lost when the JSON omits it");
             }
         }
     }

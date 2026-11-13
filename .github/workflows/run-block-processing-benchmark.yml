@@ -97,6 +97,11 @@ jobs:
         with:
           global-json-file: base/global.json
 
+      - name: Set up .NET for PR
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: pr/global.json
+
       - parallel:
           - name: Build base branch
             working-directory: base
