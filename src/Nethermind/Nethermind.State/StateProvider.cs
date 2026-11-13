@@ -46,6 +46,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     // code-hash update referencing it, so Restore can drop code whose deployment an ancestor frame reverted.
     private readonly List<(int Position, ValueHash256 CodeHash, int Length)> _codeInsertJournal = [];
     private readonly OptimizedDictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
+    private bool _blockChangesHaveRemovals;
     private Dictionary<AddressAsKey, ChangeTrace>? _commitTrace;
     private List<AddressAsKey> _removedWithStorage = [];
     // Handed back by a detached write-back once it is done with the list it took.
@@ -1216,7 +1217,10 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
         {
             if (accountChanges.HasStateChanges && _blockChanges.Remove(accountChanges.Address, out ChangeTrace change))
+            {
+                _blockChangesHaveRemovals = true;
                 scope.HintGet(accountChanges.Address, change.After);
+            }
         }
     }
 
@@ -1234,7 +1238,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         if (resetBlockChanges)
         {
             _blockCodeInsertFilter.Clear();
-            _blockChanges.Clear();
+            ClearBlockChanges();
             _removedWithStorage.Clear();
             _codeBatch?.Clear();
         }
@@ -1250,6 +1254,20 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void Trace() => _logger.Trace("Clearing state provider caches");
+    }
+
+    private void ClearBlockChanges()
+    {
+        if (!_blockChangesHaveRemovals && Core.Collections.CollectionExtensions.IsSparseForRemoval(_blockChanges.Count, _blockChanges.Capacity))
+        {
+            _blockChanges.ClearByRemoval();
+        }
+        else
+        {
+            _blockChanges.Clear();
+        }
+
+        _blockChangesHaveRemovals = false;
     }
 
     public void UpdateStateRootIfNeeded()

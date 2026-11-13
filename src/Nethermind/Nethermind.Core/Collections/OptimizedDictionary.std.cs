@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace Nethermind.Core.Collections;
@@ -31,4 +33,19 @@ public sealed class OptimizedDictionary<TKey, TValue> : Dictionary<TKey, TValue>
 
     /// <inheritdoc cref="CollectionsMarshal.GetValueRefOrAddDefault{TKey,TValue}(Dictionary{TKey,TValue},TKey,out bool)"/>
     public ref TValue? GetValueRefOrAddDefault(TKey key, out bool exists) => ref CollectionsMarshal.GetValueRefOrAddDefault(this, key, out exists);
+
+    public void ClearByRemoval()
+    {
+        int count = Count;
+        if (count == 0) return;
+
+        TKey[] keys = ArrayPool<TKey>.Shared.Rent(count);
+        Keys.CopyTo(keys, 0);
+        for (int i = count - 1; i >= 0; i--)
+        {
+            Remove(keys[i]);
+        }
+
+        ArrayPool<TKey>.Shared.Return(keys, RuntimeHelpers.IsReferenceOrContainsReferences<TKey>());
+    }
 }

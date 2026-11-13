@@ -252,6 +252,8 @@ public sealed class OptimizedDictionary<TKey, TValue> : IEnumerable<KeyValuePair
     /// The only way to shrink the guest map: trimming a non-empty one would compact it at different sizes than
     /// <see cref="Dictionary{TKey,TValue}.TrimExcess(int)"/>, after which host and guest would reuse different slots.
     /// </remarks>
+    public void ClearByRemoval() => Clear();
+
     public void ClearAndTrim(int trimAboveCapacity = CollectionExtensions.DefaultTrimAboveCapacity, int trimToCapacity = CollectionExtensions.DefaultTrimToCapacity)
     {
         Clear();

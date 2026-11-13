@@ -36,6 +36,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     internal const int PooledDictionaryCapacity = 512;
 
     private OptimizedDictionary<AddressAsKey, PerContractState> _storages = new(StoragesInitialCapacity);
+    private bool _storagesHaveRemovals;
     // Handed back by a detached write-back once it is done with the map it took.
     private OptimizedDictionary<AddressAsKey, PerContractState>? _spareStorages;
     private readonly OptimizedDictionary<AddressAsKey, bool> _toUpdateRoots = [];
@@ -102,10 +103,29 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         _destroyedThisRound.ClearAndTrim();
         if (resetBlockChanges)
         {
-            _storages.ResetAndClear();
+            ResetStorages();
             InvalidateStorageMemo();
             _toUpdateRoots.Clear();
         }
+    }
+
+    private void ResetStorages()
+    {
+        if (_storagesHaveRemovals || !Core.Collections.CollectionExtensions.IsSparseForRemoval(_storages.Count, _storages.Capacity))
+        {
+            _storages.ResetAndClear();
+        }
+        else
+        {
+            foreach (PerContractState state in _storages.Values)
+            {
+                state.Return();
+            }
+
+            _storages.ClearByRemoval();
+        }
+
+        _storagesHaveRemovals = false;
     }
 
     private IWorldStateScopeProvider.IScope CurrentScope =>
@@ -517,6 +537,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         {
             if (!accountChanges.HasStateChanges || !_storages.Remove(accountChanges.Address, out PerContractState? state)) continue;
 
+            _storagesHaveRemovals = true;
+
             if (state.TouchesSlotsOutside(accountChanges)) _stateProvider.ForgetCachedStorage(accountChanges.Address);
             state.Return();
         }
@@ -545,6 +567,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         OptimizedDictionary<AddressAsKey, PerContractState> storages = _storages;
         _storages = Interlocked.Exchange(ref _spareStorages, null) ?? new OptimizedDictionary<AddressAsKey, PerContractState>(StoragesInitialCapacity);
+        _storagesHaveRemovals = false;
         InvalidateStorageMemo();
         return new StorageChangeSnapshot(this, storages, _stateProvider.DetachRemovedAccountsWithStorage());
     }
