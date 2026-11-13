@@ -1832,17 +1832,17 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     {
         for (int k = 0; k < 256; k++)
         {
-            yield return new TestCaseData(UInt256.One << k).SetName($"Exp_matches_reference_for_base_bit_{k}");
+            yield return new TestCaseData(UInt256.One << k).SetName($"{{m}}_base_bit_{k}");
         }
 
-        yield return new TestCaseData(new UInt256(3)).SetName("Exp_matches_reference_for_base_3");
-        yield return new TestCaseData(new UInt256(6)).SetName("Exp_matches_reference_for_base_6");
-        yield return new TestCaseData(new UInt256(7)).SetName("Exp_matches_reference_for_base_7");
-        yield return new TestCaseData(new UInt256(257)).SetName("Exp_matches_reference_for_base_257");
-        yield return new TestCaseData((UInt256.One << 64) + UInt256.One).SetName("Exp_matches_reference_for_base_two_low_limbs");
-        yield return new TestCaseData((UInt256.One << 200) + (UInt256.One << 3)).SetName("Exp_matches_reference_for_base_two_far_bits");
-        yield return new TestCaseData(UInt256.MaxValue).SetName("Exp_matches_reference_for_base_max");
-        yield return new TestCaseData(UInt256.Parse("0x6F1D2C3B4A59687766554433221100FFEEDDCCBBAA99887766554433221100FF")).SetName("Exp_matches_reference_for_base_wide");
+        yield return new TestCaseData(new UInt256(3)).SetName("{m}_base_3");
+        yield return new TestCaseData(new UInt256(6)).SetName("{m}_base_6");
+        yield return new TestCaseData(new UInt256(7)).SetName("{m}_base_7");
+        yield return new TestCaseData(new UInt256(257)).SetName("{m}_base_257");
+        yield return new TestCaseData((UInt256.One << 64) + UInt256.One).SetName("{m}_base_two_low_limbs");
+        yield return new TestCaseData((UInt256.One << 200) + (UInt256.One << 3)).SetName("{m}_base_two_far_bits");
+        yield return new TestCaseData(UInt256.MaxValue).SetName("{m}_base_max");
+        yield return new TestCaseData(UInt256.Parse("0x6F1D2C3B4A59687766554433221100FFEEDDCCBBAA99887766554433221100FF")).SetName("{m}_base_wide");
     }
 
     private static List<UInt256> ExpExponentsFor(in UInt256 baseValue)
