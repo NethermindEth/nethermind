@@ -8,7 +8,7 @@ on:
   merge_group:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.run_id || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -31,7 +31,7 @@ jobs:
           submodules: ${{ matrix.solution == 'EthereumTests' }}
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        uses: ./.github/actions/setup-dotnet
 
       - name: Install dependencies
         run: dotnet restore src/Nethermind/${{ matrix.solution }}.slnx --locked-mode

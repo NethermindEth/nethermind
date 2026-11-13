@@ -51,6 +51,12 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             IEnumerable<UInt256> txGasPrices = GetGasPricesFromRecentBlocks(headBlock.Number);
             UInt256 gasPriceEstimate = GetGasPriceAtPercentile(txGasPrices.ToList()) ?? GetMinimumGasPrice(headBlock.BaseFeePerGas);
             gasPriceEstimate = UInt256.Min(gasPriceEstimate!, EthGasPriceConstants.MaxGasPrice);
+            // Samples from older blocks carry their lower base fees, so a rising base fee can leave the percentile below the head's.
+            if (SpecProvider.GetSpec(headBlock.Header).IsEip1559Enabled)
+            {
+                gasPriceEstimate = UInt256.Max(gasPriceEstimate, headBlock.BaseFeePerGas + _minGasPrice);
+            }
+
             _gasPriceEstimation.Set(headBlockHash, gasPriceEstimate);
             return ValueTask.FromResult(gasPriceEstimate!);
         }

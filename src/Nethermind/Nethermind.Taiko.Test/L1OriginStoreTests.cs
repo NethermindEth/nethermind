@@ -6,8 +6,10 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -46,8 +48,11 @@ public class L1OriginStoreTests
         L1Origin? retrieved = _store.ReadL1Origin(blockId);
 
         Assert.That(retrieved, Is.Not.Null);
-        Assert.That(retrieved!.BlockId, Is.EqualTo(blockId));
-        Assert.That(retrieved.L1BlockHeight, Is.EqualTo(456));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retrieved!.BlockId, Is.EqualTo(blockId));
+            Assert.That(retrieved.L1BlockHeight, Is.EqualTo(456));
+        }
     }
 
     [Test]
@@ -100,8 +105,11 @@ public class L1OriginStoreTests
         _store.WriteBatchToLastBlockID(1, 100);
         _store.WriteBatchToLastBlockID(2, 200);
 
-        Assert.That(_store.ReadBatchToLastBlockID(1), Is.EqualTo((UInt256)100));
-        Assert.That(_store.ReadBatchToLastBlockID(2), Is.EqualTo((UInt256)200));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_store.ReadBatchToLastBlockID(1), Is.EqualTo((UInt256)100));
+            Assert.That(_store.ReadBatchToLastBlockID(2), Is.EqualTo((UInt256)200));
+        }
     }
 
     [Test]
@@ -113,8 +121,11 @@ public class L1OriginStoreTests
         _store.WriteL1Origin(1, origin1);
         _store.WriteL1Origin(2, origin2);
 
-        Assert.That(_store.ReadL1Origin(1)!.L1BlockHeight, Is.EqualTo(100));
-        Assert.That(_store.ReadL1Origin(2)!.L1BlockHeight, Is.EqualTo(200));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_store.ReadL1Origin(1)!.L1BlockHeight, Is.EqualTo(100));
+            Assert.That(_store.ReadL1Origin(2)!.L1BlockHeight, Is.EqualTo(200));
+        }
     }
 
     [Test]
@@ -180,7 +191,9 @@ public class L1OriginStoreTests
         L1Origin? retrieved = _store.ReadL1Origin(blockId);
 
         Assert.That(retrieved, Is.Not.Null);
+#pragma warning disable NUnit2045 // The nullable value must be checked before accessing its contents.
         Assert.That(retrieved!.Signature, Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(retrieved.Signature!.Length, Is.EqualTo(65));
         Assert.That(retrieved.Signature, Is.EqualTo(signature));
     }
@@ -195,8 +208,11 @@ public class L1OriginStoreTests
         L1Origin? retrieved = _store.ReadL1Origin(blockId);
 
         Assert.That(retrieved, Is.Not.Null);
-        Assert.That(retrieved!.L1BlockHeight, Is.EqualTo(0));
-        Assert.That(retrieved.IsPreconfBlock, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retrieved!.L1BlockHeight, Is.EqualTo(0));
+            Assert.That(retrieved.IsPreconfBlock, Is.True);
+        }
     }
 
     [Test]
@@ -222,7 +238,7 @@ public class L1OriginStoreTests
         L1Origin origin = new(1, Hash256.Zero, 456, Hash256.Zero, null) { Signature = signature };
 
         Action act = () => _decoder.Encode(origin);
-        Assert.That(act, Throws.TypeOf<RlpException>()
+        Assert.That(act, Throws.TypeOf<RlpReaderException>()
             .With.Message.EqualTo($"Signature should be exactly {L1OriginDecoder.SignatureLength}"));
     }
 
@@ -237,10 +253,20 @@ public class L1OriginStoreTests
         L1Origin origin = new(123, Hash256.Zero, 456, Hash256.Zero, buildPayloadArgsId, withForcedInclusion, signature);
 
         Rlp encoded = _decoder.Encode(origin);
-        RlpReader ctx = new(encoded.Bytes);
-        (int prefixLength, int contentLength) = ctx.ReadPrefixAndContentLength();
+        (int prefixLength, int contentLength) = RlpTestHelper.PrefixAndContentLength(encoded.Bytes);
 
         Assert.That(contentLength, Is.EqualTo(encoded.Bytes.Length - prefixLength), "StartSequence must receive content length, not total length");
+    }
+
+    [Test]
+    public void Decodes_with_a_trailing_item()
+    {
+        L1Origin origin = new(123, Hash256.Zero, 456, Hash256.Zero, Enumerable.Range(0, 8).ToArray(), true, Enumerable.Range(0, 65).Select(i => (byte)i).ToArray());
+        byte[] canonical = _decoder.Encode(origin).Bytes;
+
+        L1Origin? decoded = _decoder.Decode(RlpTestHelper.WithTrailingItem(canonical));
+
+        Assert.That(_decoder.Encode(decoded).Bytes, Is.EqualTo(canonical));
     }
 
     [Test]
@@ -264,8 +290,11 @@ public class L1OriginStoreTests
         L1Origin? returned = _store.SetL1OriginSignature(blockId, signature);
 
         Assert.That(returned, Is.Not.Null);
-        Assert.That(returned!.Signature, Is.EqualTo(signature));
-        Assert.That(_store.ReadL1Origin(blockId)!.Signature, Is.EqualTo(signature));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(returned!.Signature, Is.EqualTo(signature));
+            Assert.That(_store.ReadL1Origin(blockId)!.Signature, Is.EqualTo(signature));
+        }
     }
 
     [Test]

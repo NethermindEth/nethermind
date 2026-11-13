@@ -34,8 +34,11 @@ internal class SubnetMasternodesCalculatorTests
 
         (Address[] masternodes, Address[] penalties) = calculator.CalculateNextEpochMasternodes(0, Hash256.Zero, spec);
 
-        Assert.That(masternodes, Is.EqualTo(new[] { a3, a4, a5 }));
-        Assert.That(penalties, Is.EqualTo(new[] { a1, a2 }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(masternodes, Is.EqualTo(new[] { a3, a4, a5 }));
+            Assert.That(penalties, Is.EqualTo(new[] { a1, a2 }));
+        }
     }
 
     [Test]
@@ -55,7 +58,10 @@ internal class SubnetMasternodesCalculatorTests
 
         (Address[] nextEpochCandidates, Address[] nextPenalties) = calculator.GetNextEpochCandidatesAndPenalties(parentHash);
 
-        Assert.That(nextEpochCandidates, Is.SameAs(snapshot.NextEpochCandidates));
-        Assert.That(nextPenalties, Is.SameAs(snapshot.NextEpochPenalties));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nextEpochCandidates, Is.SameAs(snapshot.NextEpochCandidates));
+            Assert.That(nextPenalties, Is.SameAs(snapshot.NextEpochPenalties));
+        }
     }
 }

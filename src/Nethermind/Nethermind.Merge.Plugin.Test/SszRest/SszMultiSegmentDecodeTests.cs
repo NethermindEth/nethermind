@@ -110,8 +110,11 @@ public class SszMultiSegmentDecodeTests
 
         (ulong start, ulong count) = SszCodec.DecodeGetPayloadBodiesByRangeRequest(Multi(encoded, segSize));
 
-        Assert.That(start, Is.EqualTo((long)startVal));
-        Assert.That(count, Is.EqualTo((long)countVal));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(start, Is.EqualTo((long)startVal));
+            Assert.That(count, Is.EqualTo((long)countVal));
+        }
     }
 
     [TestCaseSource(nameof(SegmentSizes))]
@@ -131,8 +134,11 @@ public class SszMultiSegmentDecodeTests
 
         Assert.That(decoded.ParentBeaconBlockRoot, Is.EqualTo(TestItem.KeccakC));
         ExecutionPayloadV3 payload = decoded.ExecutionPayload.AsExecutionPayload();
-        Assert.That(payload.BlockNumber, Is.EqualTo(100));
-        Assert.That(payload.BlockHash, Is.EqualTo(TestItem.KeccakE));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(payload.BlockNumber, Is.EqualTo(100));
+            Assert.That(payload.BlockHash, Is.EqualTo(TestItem.KeccakE));
+        }
     }
 
     private delegate void SequenceDecode<T>(ReadOnlySequence<byte> data, out T result);

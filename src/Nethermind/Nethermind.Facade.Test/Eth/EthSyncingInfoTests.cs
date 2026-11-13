@@ -37,11 +37,14 @@ namespace Nethermind.Facade.Test.Eth
             EthSyncingInfo ethSyncingInfo = new(blockTree, syncPointers, syncConfig,
                 new StaticSelector(SyncMode.All), syncProgressResolver, No.BeaconSync, LimboLogs.Instance);
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
-            Assert.That(syncingResult.IsSyncing, Is.EqualTo(false));
-            Assert.That(syncingResult.CurrentBlock, Is.EqualTo(0UL));
-            Assert.That(syncingResult.HighestBlock, Is.EqualTo(0UL));
-            Assert.That(syncingResult.StartingBlock, Is.EqualTo(0UL));
-            Assert.That(syncingResult.SyncMode, Is.EqualTo(SyncMode.None));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(syncingResult.IsSyncing, Is.EqualTo(false));
+                Assert.That(syncingResult.CurrentBlock, Is.EqualTo(0UL));
+                Assert.That(syncingResult.HighestBlock, Is.EqualTo(0UL));
+                Assert.That(syncingResult.StartingBlock, Is.EqualTo(0UL));
+                Assert.That(syncingResult.SyncMode, Is.EqualTo(SyncMode.None));
+            }
         }
 
         [Test]
@@ -58,11 +61,14 @@ namespace Nethermind.Facade.Test.Eth
             EthSyncingInfo ethSyncingInfo = new(blockTree, syncPointers, syncConfig,
                 new StaticSelector(SyncMode.All), syncProgressResolver, No.BeaconSync, LimboLogs.Instance);
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
-            Assert.That(syncingResult.IsSyncing, Is.EqualTo(true));
-            Assert.That(syncingResult.CurrentBlock, Is.EqualTo(6178000UL));
-            Assert.That(syncingResult.HighestBlock, Is.EqualTo(6178010UL));
-            Assert.That(syncingResult.StartingBlock, Is.EqualTo(6178000UL));
-            Assert.That(syncingResult.SyncMode, Is.EqualTo(SyncMode.All));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(syncingResult.IsSyncing, Is.EqualTo(true));
+                Assert.That(syncingResult.CurrentBlock, Is.EqualTo(6178000UL));
+                Assert.That(syncingResult.HighestBlock, Is.EqualTo(6178010UL));
+                Assert.That(syncingResult.StartingBlock, Is.EqualTo(6178000UL));
+                Assert.That(syncingResult.SyncMode, Is.EqualTo(SyncMode.All));
+            }
         }
 
         [TestCase(6178001UL, 6178000UL, false)]
@@ -96,9 +102,12 @@ namespace Nethermind.Facade.Test.Eth
 
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
 
-            Assert.That(syncingResult.IsSyncing, Is.True);
-            Assert.That(syncingResult.CurrentBlock, Is.EqualTo(80UL));
-            Assert.That(syncingResult.HighestBlock, Is.EqualTo(100UL));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(syncingResult.IsSyncing, Is.True);
+                Assert.That(syncingResult.CurrentBlock, Is.EqualTo(80UL));
+                Assert.That(syncingResult.HighestBlock, Is.EqualTo(100UL));
+            }
         }
 
         [TestCase(10005UL, 10000UL, 130000UL, true, 130000UL, TestName = "BeaconTargetFarAhead")]
@@ -125,8 +134,11 @@ namespace Nethermind.Facade.Test.Eth
 
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
 
-            Assert.That(syncingResult.IsSyncing, Is.EqualTo(expectedSyncing));
-            Assert.That(syncingResult.HighestBlock, Is.EqualTo(expectedHighest));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(syncingResult.IsSyncing, Is.EqualTo(expectedSyncing));
+                Assert.That(syncingResult.HighestBlock, Is.EqualTo(expectedHighest));
+            }
         }
 
         [TestCase(false, true, true)]
@@ -180,16 +192,22 @@ namespace Nethermind.Facade.Test.Eth
             EthSyncingInfo ethSyncingInfo = new(blockTree, syncPointers, syncConfig,
                 new StaticSelector(SyncMode.All), syncProgressResolver, No.BeaconSync, LimboLogs.Instance);
 
-            Assert.That(ethSyncingInfo.IsSyncing(), Is.EqualTo(false));
-            Assert.That(ethSyncingInfo.UpdateAndGetSyncTime().TotalMicroseconds, Is.EqualTo(0));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ethSyncingInfo.IsSyncing(), Is.EqualTo(false));
+                Assert.That(ethSyncingInfo.UpdateAndGetSyncTime().TotalMicroseconds, Is.EqualTo(0));
+            }
 
             blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(100UL).TestObject);
             blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(80UL).TestObject)
                 .TestObject);
 
             // First call starts the timer; at the metric's whole-second resolution this is still 0
-            Assert.That(ethSyncingInfo.IsSyncing(), Is.EqualTo(true));
-            Assert.That((long)ethSyncingInfo.UpdateAndGetSyncTime().TotalSeconds, Is.EqualTo(0));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ethSyncingInfo.IsSyncing(), Is.EqualTo(true));
+                Assert.That((long)ethSyncingInfo.UpdateAndGetSyncTime().TotalSeconds, Is.EqualTo(0));
+            }
 
             Thread.Sleep(100);
 
@@ -210,8 +228,11 @@ namespace Nethermind.Facade.Test.Eth
             // Falling behind again resumes (does not reset) the total — no false drop to zero
             blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(80UL).TestObject)
                 .TestObject);
-            Assert.That(ethSyncingInfo.IsSyncing(), Is.EqualTo(true));
-            Assert.That(ethSyncingInfo.UpdateAndGetSyncTime(), Is.GreaterThanOrEqualTo(afterSync));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ethSyncingInfo.IsSyncing(), Is.EqualTo(true));
+                Assert.That(ethSyncingInfo.UpdateAndGetSyncTime(), Is.GreaterThanOrEqualTo(afterSync));
+            }
         }
 
         [TestCase(6178001UL, 6178000UL)]

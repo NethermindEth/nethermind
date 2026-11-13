@@ -63,12 +63,15 @@ public class ProcessingStatsTests
 
         // Spot-check a few values that the schema can't express (presence + type only).
         Assert.That(entry, Is.Not.Null);
-        Assert.That(entry!.Level, Is.EqualTo("warn"));
-        Assert.That(entry.Msg, Is.EqualTo("Slow block"));
-        Assert.That(entry.Block.Number, Is.EqualTo(12345));
-        Assert.That(entry.Block.GasUsed, Is.EqualTo(21_000_000));
-        Assert.That(entry.Block.GasLimit, Is.EqualTo(30_000_000));
-        Assert.That(entry.Block.TxCount, Is.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entry!.Level, Is.EqualTo("warn"));
+            Assert.That(entry.Msg, Is.EqualTo("Slow block"));
+            Assert.That(entry.Block.Number, Is.EqualTo(12345));
+            Assert.That(entry.Block.GasUsed, Is.EqualTo(21_000_000));
+            Assert.That(entry.Block.GasLimit, Is.EqualTo(30_000_000));
+            Assert.That(entry.Block.TxCount, Is.EqualTo(2));
+        }
     }
 
     [TestCase(500_000, 1000, false, TestName = "Below_threshold_no_log")]
@@ -90,9 +93,12 @@ public class ProcessingStatsTests
         SlowBlockLogEntry? entry = EmitAndParse(stats, Build.A.Block.WithNumber(1).TestObject, 100_000);
 
         Assert.That(entry, Is.Not.Null);
-        Assert.That(entry!.Cache.Account.HitRate, Is.InRange(0, 100));
-        Assert.That(entry.Cache.Storage.HitRate, Is.InRange(0, 100));
-        Assert.That(entry.Cache.Code.HitRate, Is.InRange(0, 100));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entry!.Cache.Account.HitRate, Is.InRange(0, 100));
+            Assert.That(entry.Cache.Storage.HitRate, Is.InRange(0, 100));
+            Assert.That(entry.Cache.Code.HitRate, Is.InRange(0, 100));
+        }
     }
 
     [Test]
@@ -101,14 +107,17 @@ public class ProcessingStatsTests
         ProcessingStats stats = CreateStats();
         SlowBlockLogEntry? entry = EmitAndParse(stats, Build.A.Block.WithNumber(1).WithGasUsed(1_000_000).TestObject, 1_000_000);
 
-        Assert.That(entry!.Timing.TotalMs, Is.EqualTo(1000).Within(1));
-        Assert.That(entry.Timing.ExecutionMs, Is.GreaterThanOrEqualTo(0));
-        Assert.That(entry.Timing.StateHashMs, Is.GreaterThanOrEqualTo(0));
-        Assert.That(entry.Timing.CommitMs, Is.GreaterThanOrEqualTo(0));
-        Assert.That(entry.Timing.BloomsMs, Is.GreaterThanOrEqualTo(0));
-        Assert.That(entry.Timing.ReceiptsRootMs, Is.GreaterThanOrEqualTo(0));
-        Assert.That(entry.Timing.StorageMerkleMs, Is.GreaterThanOrEqualTo(0));
-        Assert.That(entry.Timing.StateRootMs, Is.GreaterThanOrEqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entry!.Timing.TotalMs, Is.EqualTo(1000).Within(1));
+            Assert.That(entry.Timing.ExecutionMs, Is.GreaterThanOrEqualTo(0));
+            Assert.That(entry.Timing.StateHashMs, Is.GreaterThanOrEqualTo(0));
+            Assert.That(entry.Timing.CommitMs, Is.GreaterThanOrEqualTo(0));
+            Assert.That(entry.Timing.BloomsMs, Is.GreaterThanOrEqualTo(0));
+            Assert.That(entry.Timing.ReceiptsRootMs, Is.GreaterThanOrEqualTo(0));
+            Assert.That(entry.Timing.StorageMerkleMs, Is.GreaterThanOrEqualTo(0));
+            Assert.That(entry.Timing.StateRootMs, Is.GreaterThanOrEqualTo(0));
+        }
     }
 
     // Declarative schema for the slow-block log JSON. Each entry asserts a dotted property path

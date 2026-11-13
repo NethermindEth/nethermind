@@ -12,7 +12,8 @@ internal readonly struct JsonRpcEnvelope(
     bool hasParams,
     JsonValueKind paramsKind,
     int paramsStart,
-    int paramsLength)
+    int paramsLength,
+    bool hasUnsupportedId = false)
 {
     public readonly string? JsonRpc = jsonRpc;
     public readonly JsonRpcId Id = id;
@@ -21,4 +22,7 @@ internal readonly struct JsonRpcEnvelope(
     public readonly JsonValueKind ParamsKind = paramsKind;
     public readonly int ParamsStart = paramsStart;
     public readonly int ParamsLength = paramsLength;
+
+    /// <summary>Whether the <c>id</c> member is valid JSON but not a String, Number or Null, which makes the object an Invalid Request.</summary>
+    public readonly bool HasUnsupportedId = hasUnsupportedId;
 }

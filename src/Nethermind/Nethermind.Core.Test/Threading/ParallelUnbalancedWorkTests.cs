@@ -80,9 +80,12 @@ public partial class ParallelUnbalancedWorkTests
             },
             @finally: _ => Interlocked.Increment(ref finallyCount));
 
-        Assert.That(act, Throws.TypeOf<InvalidOperationException>());
-        Assert.That(finallyCount, Is.EqualTo(initCount));
-        Assert.That(initCount, Is.GreaterThan(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(act, Throws.TypeOf<InvalidOperationException>());
+            Assert.That(finallyCount, Is.EqualTo(initCount));
+            Assert.That(initCount, Is.GreaterThan(0));
+        }
     }
 
     [Test]
@@ -110,8 +113,11 @@ public partial class ParallelUnbalancedWorkTests
             action: (_, l) => l,
             @finally: _ => Interlocked.Increment(ref finallyCalls));
 
-        Assert.That(act, Throws.TypeOf<InvalidOperationException>().With.Message.EqualTo("init failed"));
-        Assert.That(finallyCalls, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(act, Throws.TypeOf<InvalidOperationException>().With.Message.EqualTo("init failed"));
+            Assert.That(finallyCalls, Is.EqualTo(0));
+        }
     }
 
     [Test]
@@ -127,8 +133,11 @@ public partial class ParallelUnbalancedWorkTests
             if (i == 0) throw new InvalidOperationException();
         });
 
-        Assert.That(act, Throws.TypeOf<InvalidOperationException>());
-        Assert.That(actionCalls, Is.LessThan(range / 2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(act, Throws.TypeOf<InvalidOperationException>());
+            Assert.That(actionCalls, Is.LessThan(range / 2));
+        }
     }
 
     [Test]
@@ -181,8 +190,11 @@ public partial class ParallelUnbalancedWorkTests
             action: (_, local) => { cancellation.Cancel(); return local + 1; },
             @finally: local => finalValue = local);
 
-        Assert.That(act, Throws.InstanceOf<OperationCanceledException>());
-        Assert.That(finalValue, Is.EqualTo(4));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(act, Throws.InstanceOf<OperationCanceledException>());
+            Assert.That(finalValue, Is.EqualTo(4));
+        }
     }
 
     [Test]
@@ -399,8 +411,11 @@ public partial class ParallelUnbalancedWorkTests
             worker.Join();
             if (joiner.ThreadState != ThreadState.Unstarted) joiner.Join();
         }
-        Assert.That(joinError, Is.Null);
-        Assert.That(finalizer, Is.EqualTo(sleepingJoiner ? worker.ManagedThreadId : joiner.ManagedThreadId));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(joinError, Is.Null);
+            Assert.That(finalizer, Is.EqualTo(sleepingJoiner ? worker.ManagedThreadId : joiner.ManagedThreadId));
+        }
     }
 
     [Test]
@@ -427,10 +442,13 @@ public partial class ParallelUnbalancedWorkTests
         {
             Assert.That(entered.Wait(TimeSpan.FromSeconds(10)), Is.True);
             disposer.Start();
-            Assert.That(disposing.Wait(TimeSpan.FromSeconds(10)), Is.True);
-            Assert.That(SpinWait.SpinUntil(() => (disposer.ThreadState & ThreadState.WaitSleepJoin) != 0,
-                TimeSpan.FromSeconds(10)), Is.True);
-            Assert.That(returned.IsSet, Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(disposing.Wait(TimeSpan.FromSeconds(10)), Is.True);
+                Assert.That(SpinWait.SpinUntil(() => (disposer.ThreadState & ThreadState.WaitSleepJoin) != 0,
+                    TimeSpan.FromSeconds(10)), Is.True);
+                Assert.That(returned.IsSet, Is.False);
+            }
         }
         finally
         {
@@ -519,8 +537,11 @@ public partial class ParallelUnbalancedWorkTests
         {
             Assert.That(entered.Wait(TimeSpan.FromSeconds(10)), Is.True);
             waiter = Task.Run(() => { joining.Set(); work.WaitForCompletion(); returned.Set(); });
-            Assert.That(joining.Wait(TimeSpan.FromSeconds(10)), Is.True);
-            Assert.That(returned.Wait(20), Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(joining.Wait(TimeSpan.FromSeconds(10)), Is.True);
+                Assert.That(returned.Wait(20), Is.False);
+            }
         }
         finally
         {
@@ -599,8 +620,11 @@ public partial class ParallelUnbalancedWorkTests
             FourThreads, _ => Run(0));
         using ParallelUnbalancedWork.BackgroundWork second = first.ContinueWith(() => Run(1));
         using ParallelUnbalancedWork.BackgroundWork last = second.ContinueWith(() => Run(2));
-        Assert.That(Assert.Throws<InvalidOperationException>(last.WaitForCompletion), Is.SameAs(expected));
-        Assert.That(calls, Is.EqualTo(Enumerable.Range(0, 3).Select(i => i <= faultStage ? 1 : 0)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Assert.Throws<InvalidOperationException>(last.WaitForCompletion), Is.SameAs(expected));
+            Assert.That(calls, Is.EqualTo(Enumerable.Range(0, 3).Select(i => i <= faultStage ? 1 : 0)));
+        }
         Assert.DoesNotThrow(last.Dispose);
     }
 
@@ -630,8 +654,10 @@ public partial class ParallelUnbalancedWorkTests
         {
             Assert.That(entered.Wait(TimeSpan.FromSeconds(10)), Is.True);
             joiner.Start();
+#pragma warning disable NUnit2045 // Completion is required before checking the resulting state.
             Assert.That(SpinWait.SpinUntil(() => (joiner.ThreadState & ThreadState.WaitSleepJoin) != 0,
                 TimeSpan.FromSeconds(10)), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(Volatile.Read(ref calls), Is.EqualTo(1));
         }
         finally
@@ -691,9 +717,12 @@ public partial class ParallelUnbalancedWorkTests
         {
             Assert.That(entered.Wait(TimeSpan.FromSeconds(10)), Is.True);
             disposer.Start();
-            Assert.That(SpinWait.SpinUntil(() => (disposer.ThreadState & ThreadState.WaitSleepJoin) != 0,
-                TimeSpan.FromSeconds(10)), Is.True);
-            Assert.That(disposer.IsAlive, Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(SpinWait.SpinUntil(() => (disposer.ThreadState & ThreadState.WaitSleepJoin) != 0,
+                    TimeSpan.FromSeconds(10)), Is.True);
+                Assert.That(disposer.IsAlive, Is.True);
+            }
         }
         finally
         {

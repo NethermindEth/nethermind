@@ -69,11 +69,11 @@ public class XdcChainSpecRewardTests
         XdcChainSpecEngineParameters parameters = LoadEngineParameters(literal);
 
         UInt256 wei = UInt256.Parse(expectedWei);
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(parameters.MasternodeReward, Is.EqualTo(wei));
             Assert.That(parameters.V2Configs[0].MasternodeReward, Is.EqualTo(wei));
-        });
+        }
     }
 
     [TestCase("-1", TestName = "Negative")]
@@ -110,12 +110,12 @@ public class XdcChainSpecRewardTests
     {
         V2ConfigParams config = LoadShippedTestnetRewardConfig();
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(config.MasternodeReward, Is.EqualTo(UInt256.Parse("63420000000000001704")));
             Assert.That(config.ProtectorReward, Is.EqualTo(UInt256.Parse("50270000000000003128")));
             Assert.That(config.ObserverReward, Is.EqualTo(UInt256.Parse("25129999999999999006")));
-        });
+        }
     }
 
     /// <summary>
@@ -134,12 +134,12 @@ public class XdcChainSpecRewardTests
         string json = new EthereumJsonSerializer().Serialize(response);
 
         // The three rewards as the QUANTITY the endpoint has always emitted.
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(json, Does.Contain("0x3702119fc874606a8"));
             Assert.That(json, Does.Contain("0x2b9a2eaa87ae30c38"));
             Assert.That(json, Does.Contain("0x15cbfb1db0590fc1e"));
-        });
+        }
     }
 
     private static V2ConfigParams LoadShippedTestnetRewardConfig()

@@ -186,7 +186,7 @@ namespace Nethermind.TxPool
         /// <summary>An EIP-8141 frame transaction paying through an already fully-committed non-canonical paymaster.</summary>
         public static readonly AcceptTxResult NonCanonicalPaymasterLimitReached = new(TxPoolErrorMessages.NonCanonicalPaymasterLimitReached);
 
-        /// <summary>An EIP-8141 frame transaction whose prefix relies on EIP-8298 mutable code already relied on by the maximum number of pending transactions.</summary>
+        /// <summary>An EIP-8141 frame transaction whose prefix relies on an account whose code can change (EIP-8298), or that EIP-8151 ecRecover returned, already relied on by the maximum number of pending transactions, or by the pay frames of the maximum number of paymasters.</summary>
         public static readonly AcceptTxResult FrameTxCodeDependencyLimitReached = new(TxPoolErrorMessages.FrameTxCodeDependencyLimitReached);
 
         /// <summary>

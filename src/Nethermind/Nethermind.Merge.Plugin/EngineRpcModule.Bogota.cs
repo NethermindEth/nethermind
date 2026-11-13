@@ -110,7 +110,7 @@ public partial class EngineRpcModule : IEngineRpcModule
             ? Task.FromResult(ResultWrapper<ForkchoiceUpdatedV2Result>.Fail(error, ErrorCodes.InvalidParams))
             : ForkchoiceUpdatedWithInclusionList(forkchoiceState, payloadAttributes, EngineApiVersions.Fcu.V5);
 
-    /// <summary>Registers any inclusion list for the build, then runs <see cref="ForkchoiceUpdated"/> and maps
+    /// <summary>Registers any inclusion list for the build, then runs <see cref="ForkchoiceUpdatedV3"/> and maps
     /// its result onto the Bogota <see cref="ForkchoiceUpdatedV2Result"/> shape.</summary>
     protected async Task<ResultWrapper<ForkchoiceUpdatedV2Result>> ForkchoiceUpdatedWithInclusionList(
         ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
@@ -131,7 +131,7 @@ public partial class EngineRpcModule : IEngineRpcModule
             }
         }
 
-        ResultWrapper<ForkchoiceUpdatedV1Result> result = await ForkchoiceUpdated(forkchoiceState, payloadAttributes, version);
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await ForkchoiceUpdatedV3(forkchoiceState, payloadAttributes, version);
         if (result.Result.ResultType != ResultType.Success)
             return ResultWrapper<ForkchoiceUpdatedV2Result>.Fail(result.Result.Error!, result.ErrorCode, result.IsTemporary);
 

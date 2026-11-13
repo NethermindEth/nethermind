@@ -65,7 +65,7 @@ public sealed class DiscoveryPersistenceManager(
             }
             catch (Exception e)
             {
-                _logger.DebugError($"Peer could not be loaded for persisted node {networkNode}. {e}");
+                _logger.DebugError($"Peer could not be loaded for persisted node {networkNode:hide}. {e:hide}");
 
                 continue;
             }
@@ -86,13 +86,13 @@ public sealed class DiscoveryPersistenceManager(
             }
             catch (Exception e)
             {
-                if (_logger.IsDebug) _logger.Debug($"Error when pinging persisted node {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}. {e}");
+                if (_logger.IsDebug) _logger.Debug($"Error when pinging persisted node {networkNode.NodeId:hide}@{networkNode.Host:hide}:{networkNode.Port:hide}. {e:hide}");
 
                 continue;
             }
 
             if (_logger.IsTrace)
-                _logger.Trace($"Adding persisted node {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
+                _logger.Trace($"Adding persisted node {networkNode.NodeId:hide}@{networkNode.Host:hide}:{networkNode.Port:hide}");
         }
 
         if (_logger.IsDebug) _logger.Debug($"Added persisted discovery nodes: {nodes.Length}");

@@ -21,6 +21,8 @@ public class ConfigProvider : IConfigProvider
 
     private readonly Dictionary<Type, Type> _implementations = [];
 
+    private readonly List<string> _obsoleteSettingWarnings = [];
+
     public ConfigProvider()
     {
     }
@@ -193,12 +195,37 @@ public class ConfigProvider : IConfigProvider
                                 throw new InvalidOperationException($"Cannot set value of {category}.{name}", e);
                             }
 
+                            ObsoleteAttribute? obsolete = @interface.GetProperty(name)?.GetCustomAttribute<ObsoleteAttribute>()
+                                ?? propertyInfo.GetCustomAttribute<ObsoleteAttribute>();
+                            if (obsolete is not null)
+                            {
+                                string key = ConfigExtensions.GetCategoryName(@interface) is { } categoryName ? $"{categoryName}.{name}" : name;
+                                _obsoleteSettingWarnings.Add(string.IsNullOrEmpty(obsolete.Message)
+                                    ? $"{key} is deprecated."
+                                    : $"{key} is deprecated: {obsolete.Message}");
+                            }
+
                             break;
                         }
                     }
                 }
             }
         }
+    }
+
+    /// <summary>Gets a warning for each <see cref="ObsoleteAttribute"/> configuration item that a source sets.</summary>
+    /// <remarks>
+    /// The warning gives the <see cref="ObsoleteAttribute.Message"/> from the config interface, or else from the implementation.
+    /// An item counts only when a source has its key, so a value that differs from the default for another reason gives no warning.
+    /// </remarks>
+    public IReadOnlyList<string> GetObsoleteSettingWarnings()
+    {
+        if (_instances.IsEmpty)
+        {
+            Initialize();
+        }
+
+        return _obsoleteSettingWarnings;
     }
 
     public (string ErrorMsg, IList<(IConfigSource Source, string? Category, string Name)> Errors) FindIncorrectSettings()

@@ -89,13 +89,19 @@ new object[] {"multicall-transaction-too-low-nonce-38010", true, "{\"blockStateC
         Console.WriteLine();
         if (shouldSucceed)
         {
-            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-            Assert.That(result.Data, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+                Assert.That(result.Data, Is.Not.Null);
+            }
         }
         else
         {
-            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
-            Assert.That(result.Data, Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+                Assert.That(result.Data, Is.Null);
+            }
         }
 
     }
@@ -154,8 +160,11 @@ new object[] {"multicall-transaction-too-low-nonce-38010", true, "{\"blockStateC
             ?? throw new InvalidOperationException("Simulation returned null.");
         SimulateBlockResult<SimulateCallResult> simulated = results[0];
 
-        Assert.That(simulated.ParentHash, Is.EqualTo(parent.Hash!));
-        Assert.That((simulated.Number - parent.Number), Is.EqualTo(1));
-        Assert.That((simulated.Timestamp - parent.Timestamp), Is.EqualTo((UInt256)secondsPerSlot));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(simulated.ParentHash, Is.EqualTo(parent.Hash!));
+            Assert.That((simulated.Number - parent.Number), Is.EqualTo(1));
+            Assert.That((simulated.Timestamp - parent.Timestamp), Is.EqualTo((UInt256)secondsPerSlot));
+        }
     }
 }

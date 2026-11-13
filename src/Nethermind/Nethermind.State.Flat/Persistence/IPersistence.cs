@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -15,9 +16,10 @@ public enum ReaderFlags
     Sync = 1,
 
     /// <summary>
-    /// The reader serves long sequential scans (e.g. flat-trie verification): backing snapshots may enable
-    /// readahead iterators for <see cref="ReadFlags.HintReadAhead"/> reads, and the shared reader cache in
-    /// <see cref="CachedReaderPersistence"/> is bypassed so the hint reaches the storage layer.
+    /// The reader serves long sequential scans (e.g. flat-trie verification, snap range serving): backing
+    /// snapshots may enable readahead iterators for <see cref="ReadFlags.HintReadAhead"/> reads, which do not
+    /// fill the block cache, and the shared reader cache in <see cref="CachedReaderPersistence"/> is bypassed so
+    /// the hint reaches the storage layer.
     /// </summary>
     FullScan = 2,
 }
@@ -41,6 +43,14 @@ public interface IPersistence
         StateId CurrentState { get; }
         byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags);
         byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags);
+
+        /// <summary>Passes the RLP of the state trie node at <paramref name="path"/> to <paramref name="action"/>, which must not keep it.</summary>
+        /// <returns>Whether the node was found.</returns>
+        bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct;
+
+        /// <summary>Passes the RLP of the storage trie node at <paramref name="path"/> to <paramref name="action"/>, which must not keep it.</summary>
+        /// <returns>Whether the node was found.</returns>
+        bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct;
 
         // Raw operations are used in importer
         byte[]? GetAccountRaw(in ValueHash256 addrHash);

@@ -26,9 +26,12 @@ public class AsyncProcessorTests
             });
         }
 
-        Assert.That(counter, Is.EqualTo(taskCount));
-        Assert.That(t.Elapsed, Is.GreaterThan(TimeSpan.FromMilliseconds(90)));
-        Assert.That(t.Elapsed, Is.LessThan(TimeSpan.FromMilliseconds(110)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(counter, Is.EqualTo(taskCount));
+            Assert.That(t.Elapsed, Is.GreaterThan(TimeSpan.FromMilliseconds(90)));
+            Assert.That(t.Elapsed, Is.LessThan(TimeSpan.FromMilliseconds(110)));
+        }
     }
 
     [Test]
@@ -49,8 +52,11 @@ public class AsyncProcessorTests
             });
         }
 
-        Assert.That(counter, Is.EqualTo(taskCount));
-        Assert.That(t.Elapsed, Is.GreaterThan(TimeSpan.FromMilliseconds(90)));
-        Assert.That(t.Elapsed, Is.LessThan(TimeSpan.FromMilliseconds(110)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(counter, Is.EqualTo(taskCount));
+            Assert.That(t.Elapsed, Is.GreaterThan(TimeSpan.FromMilliseconds(90)));
+            Assert.That(t.Elapsed, Is.LessThan(TimeSpan.FromMilliseconds(110)));
+        }
     }
 }

@@ -130,6 +130,10 @@ public class OptimismTransactionProcessor(
         return TransactionResult.Ok;
     }
 
+    // Deposits skip the EIP-3860 init code size check: https://specs.optimism.io/protocol/deposits.html#execution
+    protected override bool IsAboveInitCode(Transaction tx, IReleaseSpec spec) =>
+        !tx.IsDeposit() && base.IsAboveInitCode(tx, spec);
+
     protected override TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
     {
         if (!tx.IsDeposit())

@@ -49,8 +49,11 @@ public class FrameQueueTests
         // throw "Unsupported compression algorithm 119" before the fresh payload is read.
         BatchV1[]? result = null;
         Action consume = () => result = queue.ConsumeFrame(freshFrame);
-        Assert.That(consume, Throws.Nothing);
-        Assert.That(result, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(consume, Throws.Nothing);
+            Assert.That(result, Is.Not.Null);
+        }
     }
 
     private static byte[] BrotliCompress(ReadOnlySpan<byte> data)

@@ -13,7 +13,7 @@ using Columns = Nethermind.State.Flat.History.Changesets.BulkFillScratchState.Co
 
 namespace Nethermind.State.Flat.History.Changesets;
 
-internal sealed class BulkFillStateWriter(IColumnsDb<Columns> db, IColumnsWriteBatch<Columns> batch, ulong block, bool rlpWrappedSlots)
+internal sealed class BulkFillStateWriter(IColumnsDb<Columns> db, IColumnsWriteBatch<Columns> batch, ulong block, bool rlpWrappedSlots, List<ValueHash256> clears)
     : IWorldStateScopeProvider.IWorldStateWriteBatch
 {
     public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated { add { } remove { } }
@@ -31,17 +31,17 @@ internal sealed class BulkFillStateWriter(IColumnsDb<Columns> db, IColumnsWriteB
             if (db.GetColumnDb(Columns.Accounts)[path.Bytes] is not { Length: > 0 }) return;
 
             accounts.Remove(path.Bytes);
-            new StorageWriter(batch, path, block, rlpWrappedSlots).Clear();
+            new StorageWriter(batch, path, block, rlpWrappedSlots, clears).Clear();
         }
         else accounts.Set(path.Bytes, AccountDecoder.Slim.EncodeAsBytes(account));
     }
 
     public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries) =>
-        new StorageWriter(batch, key.ToAccountPath, block, rlpWrappedSlots);
+        new StorageWriter(batch, key.ToAccountPath, block, rlpWrappedSlots, clears);
 
     public void Dispose() { }
 
-    private sealed class StorageWriter(IColumnsWriteBatch<Columns> batch, ValueHash256 address, ulong block, bool rlpWrapped)
+    private sealed class StorageWriter(IColumnsWriteBatch<Columns> batch, ValueHash256 address, ulong block, bool rlpWrapped, List<ValueHash256> clears)
         : IWorldStateScopeProvider.IStorageWriteBatch
     {
         public void Set(in UInt256 index, in UInt256 value)
@@ -66,6 +66,7 @@ internal sealed class BulkFillStateWriter(IColumnsDb<Columns> db, IColumnsWriteB
             Span<byte> height = stackalloc byte[sizeof(ulong)];
             BinaryPrimitives.WriteUInt64BigEndian(height, block);
             batch.GetColumnBatch(Columns.Clears).PutSpan(address.Bytes, height);
+            clears.Add(address);
         }
 
         public void Dispose() { }

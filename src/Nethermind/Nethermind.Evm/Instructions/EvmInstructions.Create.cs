@@ -116,6 +116,7 @@ public static partial class EvmInstructions
         IReleaseSpec spec = vm.Spec;
         if (vm.VmState.IsStatic)
         {
+            if (TTracingInst.IsActive) TraceCreateWriteProtection<TGasPolicy, TOpCreate>(vm, in stack, TEip8037.IsActive);
             goto StaticCallViolation;
         }
 
@@ -142,6 +143,8 @@ public static partial class EvmInstructions
         {
             if (initCodeLength > spec.MaxInitCodeSize)
             {
+                if (TTracingInst.IsActive)
+                    TraceCreateInitCodeSizeError<TGasPolicy, TOpCreate>(vm, in memoryPositionOfInitCode, in initCodeLength, TEip8037.IsActive);
                 goto OutOfGas;
             }
         }
@@ -149,6 +152,9 @@ public static partial class EvmInstructions
         ulong initCodeWords = EvmCalculations.Div32Ceiling(in initCodeLength, out bool outOfGas);
         if (outOfGas)
             goto OutOfGas;
+
+        if (TTracingInst.IsActive)
+            TraceCreateGasCost<TGasPolicy, TOpCreate>(vm, in gas, TEip8037.IsActive, in memoryPositionOfInitCode, in initCodeLength, initCodeWords);
 
         if (!TSpec.TryConsumeCreateGas<TGasPolicy, TEip8037, TOpCreate>(ref gas, spec, initCodeWords))
             goto OutOfGas;
@@ -162,7 +168,7 @@ public static partial class EvmInstructions
         if (env.CallDepth >= MaxCallDepth)
         {
             if (!TEip8037.IsActive && vm.IsTracingActions)
-                TraceRejectedCreate<TGasPolicy, TOpCreate, TSpec>(vm, gas, in value, in memoryPositionOfInitCode, in initCodeLength, EvmExceptionType.CallDepthExceeded);
+                TraceRejectedCreate<TGasPolicy, TOpCreate, TSpec>(vm, gas, in value, in memoryPositionOfInitCode, in initCodeLength, salt, EvmExceptionType.CallDepthExceeded);
 
             vm.ReturnDataBuffer = default;
             return stack.PushZero<TTracingInst, OnFlag>();
@@ -178,7 +184,7 @@ public static partial class EvmInstructions
         if (value > balance)
         {
             if (!TEip8037.IsActive && vm.IsTracingActions)
-                TraceRejectedCreate<TGasPolicy, TOpCreate, TSpec>(vm, gas, in value, in memoryPositionOfInitCode, in initCodeLength, EvmExceptionType.NotEnoughBalance);
+                TraceRejectedCreate<TGasPolicy, TOpCreate, TSpec>(vm, gas, in value, in memoryPositionOfInitCode, in initCodeLength, salt, EvmExceptionType.NotEnoughBalance);
 
             vm.ReturnDataBuffer = default;
             return stack.PushZero<TTracingInst, OnFlag>();
@@ -196,11 +202,7 @@ public static partial class EvmInstructions
         // - For CREATE: based on the executing account and its current nonce.
         // - For CREATE2: based on the executing account, the provided salt, and the init code.
         // - For TCREATE: as CREATE2 with the EIP-8360 0xfe prefix.
-        Address contractAddress = !TOpCreate.IsSalted
-            ? ContractAddress.From(env.ExecutingAccount, accountNonce)
-            : isTransientCreate
-                ? ContractAddress.FromTransientCreate(env.ExecutingAccount, salt, initCode.Span)
-                : ContractAddress.From(env.ExecutingAccount, salt, initCode.Span);
+        Address contractAddress = GetContractAddress<TOpCreate>(env.ExecutingAccount, accountNonce, salt, initCode.Span);
 
         if (isTransientCreate)
         {
@@ -320,6 +322,70 @@ public static partial class EvmInstructions
         return EvmExceptionType.BadInstruction;
     }
 
+    /// <summary>Reports the gas the creation is about to charge, before init-code memory is expanded.</summary>
+    /// <remarks>As in Geth, a creation that cannot pay the base charge reports that charge alone.</remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void TraceCreateGasCost<TGasPolicy, TOpCreate>(
+        VirtualMachine<TGasPolicy> vm,
+        in TGasPolicy gas,
+        bool eip8037,
+        in UInt256 initCodePosition,
+        in UInt256 initCodeLength,
+        ulong initCodeWords)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TOpCreate : struct, IOpCreate
+    {
+        IReleaseSpec spec = vm.Spec;
+        ulong baseCost = CreateGasCost.Base<TOpCreate>(spec.IsEip8038Enabled, eip8037);
+        if (TGasPolicy.GetRemainingGas(in gas) < baseCost)
+        {
+            vm.TraceOperationGasCost(baseCost);
+            return;
+        }
+
+        if (initCodeWords > (ulong.MaxValue - baseCost) / (GasCostOf.InitCodeWord + GasCostOf.Sha3Word))
+            return;
+
+        ulong initCodeWordCost = spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * initCodeWords : 0;
+        vm.TraceMemoryOperationGasCost(in initCodePosition, in initCodeLength,
+            baseCost + initCodeWordCost + CreateGasCost.InitCodeHashing<TOpCreate>(initCodeWords));
+    }
+
+    /// <summary>Reports a static creation's write protection from the step, as Geth's dynamic gas function raises it.</summary>
+    /// <remarks>
+    /// Geth sizes the init-code memory first, then fails the gas function on write protection before pricing that
+    /// memory, and reports the error as out of gas. The step carries the base charge alone.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void TraceCreateWriteProtection<TGasPolicy, TOpCreate>(VirtualMachine<TGasPolicy> vm, in EvmStack stack, bool eip8037)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TOpCreate : struct, IOpCreate
+    {
+        // Reads a copy, so the stack keeps its operands; an underflow was already reported when the step started.
+        EvmStack operands = stack;
+        if (!operands.PopUInt256(out _, out UInt256 initCodePosition, out UInt256 initCodeLength))
+            return;
+
+        vm.TraceOperationReady(CreateGasCost.Base<TOpCreate>(vm.Spec.IsEip8038Enabled, eip8037),
+            TryGetTraceMemorySize(in initCodePosition, in initCodeLength, out _) ? "out of gas: write protection" : "gas uint64 overflow");
+    }
+
+    /// <summary>Reports an init code over the EIP-3860 limit from the step, as Geth's dynamic gas function rejects it.</summary>
+    /// <remarks>
+    /// Geth sizes and prices the init-code memory before it checks the init-code size, and reports a gas function
+    /// error as out of gas. The step carries the base charge alone.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void TraceCreateInitCodeSizeError<TGasPolicy, TOpCreate>(VirtualMachine<TGasPolicy> vm, in UInt256 initCodePosition, in UInt256 initCodeLength, bool eip8037)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TOpCreate : struct, IOpCreate
+    {
+        string error = !TryGetTraceMemorySize(in initCodePosition, in initCodeLength, out ulong size) ? "gas uint64 overflow"
+            : size > 0x1FFFFFFFE0UL ? "out of gas: gas uint64 overflow"
+            : "out of gas: max initcode size exceeded";
+        vm.TraceOperationReady(CreateGasCost.Base<TOpCreate>(vm.Spec.IsEip8038Enabled, eip8037), error);
+    }
+
     /// <summary>
     /// Reports a creation that failed its depth or balance precheck as an action that entered no frame, with the
     /// gas it would have forwarded, which returns at once. Only used before EIP-8037, which moves the precheck into
@@ -337,6 +403,7 @@ public static partial class EvmInstructions
         in UInt256 value,
         in UInt256 initCodePosition,
         in UInt256 initCodeLength,
+        ReadOnlySpan<byte> salt,
         EvmExceptionType error)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCreate : struct, IOpCreate
@@ -345,6 +412,18 @@ public static partial class EvmInstructions
         TSpec.TryReserveChildGas<TGasPolicy>(ref gas, vm.Spec, out ulong callGas);
         // The creation already paid to expand memory over its init code.
         vm.VmState.Memory.TryLoad(in initCodePosition, in initCodeLength, out ReadOnlyMemory<byte> initCode);
-        vm.TxTracer.ReportRejectedAction(callGas, callGas, value, vm.VmState.Env.ExecutingAccount, null, initCode, TOpCreate.ExecutionType, error);
+        Address creator = vm.VmState.Env.ExecutingAccount;
+        // Like Geth, report the address the creation would have used; a failed precheck leaves the nonce unchanged.
+        ulong nonce = TOpCreate.IsSalted ? 0 : vm.WorldState.GetNonce(creator);
+        Address contractAddress = GetContractAddress<TOpCreate>(creator, nonce, salt, initCode.Span);
+        vm.TxTracer.ReportRejectedAction(callGas, callGas, value, creator, contractAddress, initCode, TOpCreate.ExecutionType, error);
     }
+
+    private static Address GetContractAddress<TOpCreate>(Address creator, ulong nonce, ReadOnlySpan<byte> salt, ReadOnlySpan<byte> initCode)
+        where TOpCreate : struct, IOpCreate =>
+        !TOpCreate.IsSalted
+            ? ContractAddress.From(creator, nonce)
+            : TOpCreate.IsTransient
+                ? ContractAddress.FromTransientCreate(creator, salt, initCode)
+                : ContractAddress.From(creator, salt, initCode);
 }

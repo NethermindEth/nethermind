@@ -173,8 +173,7 @@ public sealed class RemoteEraStoreDecorator : IEraStore
         // First is exact: era epochs are aligned to maxEraSize boundaries.
         // Last is upper-bound estimate: avoids downloading the last (potentially huge) epoch file just for validation.
         // The actual last block may be slightly lower for a non-full final epoch.
-        // FindBlockAndReceipts returns (null, null) when number > reader.LastBlock, so importers that
-        // rely on this value (to=0 / auto mode) will stop naturally at the real end.
+        // Importers that rely on this value (to=0 / auto mode) resolve the real end via NextEraStart.
         return (minEpoch * _maxEraSize, (maxEpoch + 1) * _maxEraSize - 1);
     }
 

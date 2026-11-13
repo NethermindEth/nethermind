@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 using System.Collections.Generic;
@@ -45,7 +46,7 @@ public class AuthorizationTupleDecoderTests
         {
             RlpReader decoderContext = new(tuple);
             sut.Decode(ref decoderContext, RlpBehaviors.None);
-        }, Throws.TypeOf<RlpException>());
+        }, Throws.TypeOf<RlpReaderException>());
     }
 
     public static IEnumerable<byte[]> WrongSizeFieldsEncodedCases()
@@ -130,7 +131,7 @@ public class AuthorizationTupleDecoderTests
         {
             RlpReader ctx = new(badEncoding);
             sut.Decode(ref ctx, RlpBehaviors.None);
-        }, Throws.InstanceOf<RlpException>());
+        }, Throws.InstanceOf<RlpReaderException>());
     }
 
     private static byte[] TupleRlpWithNull()
@@ -145,7 +146,7 @@ public class AuthorizationTupleDecoderTests
             + Rlp.LengthOf(sig.R)
             + Rlp.LengthOf(sig.S);
         byte[] rlp = new byte[Rlp.LengthOfSequence(length)];
-        RlpWriter writer = new(rlp);
+        RlpWriter writer = RlpWriter.ContentWriter(rlp);
         writer.StartSequence(length);
         writer.Encode(1);
         writer.Encode(codeAddress);
@@ -166,7 +167,7 @@ public class AuthorizationTupleDecoderTests
             + Rlp.LengthOf(r)
             + Rlp.LengthOf(s);
         byte[] rlp = new byte[Rlp.LengthOfSequence(length)];
-        RlpWriter writer = new(rlp);
+        RlpWriter writer = RlpWriter.ContentWriter(rlp);
         writer.StartSequence(length);
         writer.Encode(chainId);
         writer.Encode(address);

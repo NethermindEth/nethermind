@@ -38,7 +38,9 @@ public class AssociativeCacheTests : AssociativeCacheTestsBase
     {
         AddressAsKey key = _keys[0];
         Assert.That(_cache.Set(in key, _accounts[0]), Is.True);
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(_cache.Set(in key, _accounts[0]), Is.False);
+#pragma warning restore NUnit2045
         // Set with null triggers Delete
         Assert.That(_cache.Set(in key, null!), Is.True);
         Assert.That(_cache.Get(in key), Is.Null);

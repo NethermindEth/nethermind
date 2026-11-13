@@ -29,7 +29,6 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -215,8 +214,11 @@ public class Eip8360Tests : VirtualMachineTestsBase
             .STOP()
             .Done);
 
-        Assert.That(Run(spec: unmetered).StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(FactorySlot(1), Is.EqualTo((UInt256)7), "the legacy SSTORE handler writes the same transient slot SLOAD reads");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Run(spec: unmetered).StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(FactorySlot(1), Is.EqualTo((UInt256)7), "the legacy SSTORE handler writes the same transient slot SLOAD reads");
+        }
     }
 
     [Test]
@@ -319,8 +321,11 @@ public class Eip8360Tests : VirtualMachineTestsBase
 
         // Recreated, the account derives the same CREATE address and collides (EIP-684).
         ClearFactorySlot(0);
-        Assert.That(Run().StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(FactorySlot(0), Is.EqualTo(UInt256.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Run().StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(FactorySlot(0), Is.EqualTo(UInt256.Zero));
+        }
     }
 
     [Test]
@@ -1037,10 +1042,13 @@ public class Eip8360Tests : VirtualMachineTestsBase
 
     private void AssertFinalized(Address address, in UInt256 expectedBalance)
     {
-        Assert.That(TestState.AccountExists(address), Is.EqualTo(!expectedBalance.IsZero), "empty accounts are removed (EIP-161)");
-        Assert.That(TestState.GetBalance(address), Is.EqualTo(expectedBalance), "balance is preserved");
-        Assert.That(TestState.GetNonce(address), Is.EqualTo(0UL), "nonce is reset");
-        Assert.That(TestState.IsContract(address), Is.False, "code is removed");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(TestState.AccountExists(address), Is.EqualTo(!expectedBalance.IsZero), "empty accounts are removed (EIP-161)");
+            Assert.That(TestState.GetBalance(address), Is.EqualTo(expectedBalance), "balance is preserved");
+            Assert.That(TestState.GetNonce(address), Is.EqualTo(0UL), "nonce is reset");
+            Assert.That(TestState.IsContract(address), Is.False, "code is removed");
+        }
     }
 
     private sealed class ReceiptTracer : TxTracer

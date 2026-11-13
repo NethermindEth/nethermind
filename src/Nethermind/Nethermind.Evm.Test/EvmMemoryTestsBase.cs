@@ -75,8 +75,11 @@ public abstract class EvmMemoryTestsBase
         memory.CalculateMemoryCost(in dest, UInt256.One, out bool outOfGas);
         Assert.That(outOfGas, Is.EqualTo(false));
         ulong cost = memory.CalculateMemoryCost(in dest, UInt256.One, out outOfGas);
-        Assert.That(outOfGas, Is.EqualTo(false));
-        Assert.That(cost, Is.EqualTo(0UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(outOfGas, Is.EqualTo(false));
+            Assert.That(cost, Is.EqualTo(0UL));
+        }
     }
 
     [Test]
@@ -85,7 +88,10 @@ public abstract class EvmMemoryTestsBase
         EvmPooledMemory memory = new();
         UInt256 dest = long.MaxValue;
         ulong cost = memory.CalculateMemoryCost(in dest, UInt256.Zero, out bool outOfGas);
-        Assert.That(outOfGas, Is.EqualTo(false));
-        Assert.That(cost, Is.EqualTo(0UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(outOfGas, Is.EqualTo(false));
+            Assert.That(cost, Is.EqualTo(0UL));
+        }
     }
 }

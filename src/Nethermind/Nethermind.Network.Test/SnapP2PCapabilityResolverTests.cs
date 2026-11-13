@@ -167,18 +167,18 @@ public class SnapP2PCapabilityResolverTests
         resolver.Changed += () => fired++;
 
         PublishSyncProgress(syncModeSelector);
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(fired, Is.Zero);
             Assert.That(Resolve(resolver).Contains(Snap2), Is.False);
-        });
+        }
 
         PublishSyncProgress(syncModeSelector);
         PublishSyncProgress(syncModeSelector);
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(fired, Is.EqualTo(1));
             Assert.That(Resolve(resolver).Contains(Snap2), Is.True);
-        });
+        }
     }
 }

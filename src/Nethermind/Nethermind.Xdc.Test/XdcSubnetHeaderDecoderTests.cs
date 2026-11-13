@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 using Nethermind.Xdc.RLP;
@@ -64,8 +65,11 @@ namespace Nethermind.Xdc.Test
             RlpReader context = new(encodedBytes);
             XdcSubnetBlockHeader unencoded = (XdcSubnetBlockHeader)decoder.Decode(ref context, RlpBehaviors.ForSealing)!;
 
-            Assert.That(unencoded.Validator, Is.Null, "ForSealing encoding should not contain Validator field.");
-            Assert.That(unencoded.NextValidators, Is.Null, "ForSealing encoding should not contain NextValidators field.");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(unencoded.Validator, Is.Null, "ForSealing encoding should not contain Validator field.");
+                Assert.That(unencoded.NextValidators, Is.Null, "ForSealing encoding should not contain NextValidators field.");
+            }
         }
 
         [Test]

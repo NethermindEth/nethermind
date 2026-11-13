@@ -156,6 +156,11 @@ public sealed partial class KeccakHash
     /// it. See <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
     internal static partial ValueHash256 ComputeHash256(ReadOnlySpan<byte> input);
 
+    /// <summary>Copies <paramref name="source"/> to the front of <paramref name="destination"/>, which it may overlap, and
+    /// computes its Keccak-256 digest.</summary>
+    /// <remarks>See <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
+    internal static partial ValueHash256 CopyAndComputeHash256(ReadOnlySpan<byte> source, Span<byte> destination);
+
     /// <summary>Computes the Keccak-256 digest of each of the first <paramref name="count"/> of <paramref name="nodes"/>
     /// into the same index of <paramref name="hashes"/>.</summary>
     /// <remarks>The guest keeps <paramref name="nodes"/>, which must not change afterwards, with the sponge states the

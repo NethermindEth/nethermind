@@ -19,9 +19,11 @@ namespace Nethermind.Core.BlockAccessLists;
 /// record every state mutation a tx performs. Many of these are produced as the block runs;
 /// they are then merged into a <see cref="GeneratedBlockAccessList"/>.
 /// Supports <see cref="IJournal{TSnapshot}"/> for tx-level revert and <see cref="IResettable"/>
-/// for pooling via <see cref="Caching.StaticPool{T}"/>.
+/// for pooling.
 /// </summary>
-public class BlockAccessListAtIndex : IJournal<int>, IResettable
+/// <param name="initialChangeCapacity">Undo-journal entries preallocated for the slice.</param>
+/// <param name="maxPooledAccountChanges">Spare account entries <see cref="Clear"/> keeps for reuse.</param>
+public class BlockAccessListAtIndex(int initialChangeCapacity, int maxPooledAccountChanges) : IJournal<int>, IResettable
 {
     private const int InitialChangeCapacity = 64;
 
@@ -34,7 +36,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
     public ulong CoveredStorageReads { get; set; }
 
     private readonly Dictionary<AddressAsKey, AccountChangesAtIndex> _accountChanges = new(GenericEqualityComparer.GetOptimized<AddressAsKey>());
-    private readonly List<Change> _changes = new(InitialChangeCapacity);
+    private readonly List<Change> _changes = new(initialChangeCapacity);
     private ulong _storageJournalEpoch;
 
     private readonly List<CodeChange> _previousCodeChanges = [];
@@ -45,6 +47,11 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
     // safe as entries are never individually removed.
     private Address? _lastReadAddress;
     private AccountChangesAtIndex? _lastReadChanges;
+
+    public BlockAccessListAtIndex() : this(InitialChangeCapacity, MaxPooledAccountChanges) { }
+
+    /// <summary>Undo-journal entries the slice holds without growing; <see cref="Clear"/> keeps it.</summary>
+    public int ChangeCapacity => _changes.Capacity;
 
     public Dictionary<AddressAsKey, AccountChangesAtIndex>.ValueCollection AccountChanges => _accountChanges.Values;
     public int AccountCount => _accountChanges.Count;
@@ -69,7 +76,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         int spareCount = _accountChangesPool.Count;
         foreach (AccountChangesAtIndex value in _accountChanges.Values)
         {
-            if (spareCount >= MaxPooledAccountChanges) break;
+            if (spareCount >= maxPooledAccountChanges) break;
             value.Reset(value.Address);
             _accountChangesPool.Push(value);
             spareCount++;
@@ -166,7 +173,14 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
             : null;
     }
 
-    public void AddNonceChange(Address address, ulong newNonce)
+    /// <summary>Records a nonce change and captures <paramref name="before"/> as the pre-tx nonce on the first one.</summary>
+    public void AddNonceChange(Address address, ulong before, ulong after)
+    {
+        if (after != 0) GetOrAddAccountChanges(address).PreTxNonce ??= before;
+        AddNonceChange(address, after);
+    }
+
+    private void AddNonceChange(Address address, ulong newNonce)
     {
         if (newNonce == 0)
         {
@@ -214,30 +228,15 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         if (before == after) return;
 
         AccountChangesAtIndex accountChanges = RecordReadAndGet(address);
-
-        ref StorageChange slotChange = ref CollectionsMarshal.GetValueRefOrAddDefault(accountChanges.StorageChanges, key, out bool hasPrevious);
-        if (accountChanges.GetOrCapturePreTxStorage(in key, in before, _storageJournalEpoch, out UInt256 preTxStorage))
+        if (accountChanges.RecordStorageWrite(in key, in before, in after, Index, _storageJournalEpoch, out StorageChange previous, out bool hadChange))
         {
-            // One undo per slot between snapshot boundaries also covers interleaved writes to other slots.
-            _changes.Add(new Change(slot: key, previousValue: slotChange.Value)
+            _changes.Add(new Change(slot: key, previousValue: previous.Value)
             {
                 Account = accountChanges,
                 Type = ChangeType.StorageChange,
-                HasPrevious = hasPrevious,
-                PreviousIndex = slotChange.Index,
+                HasPrevious = hadChange,
+                PreviousIndex = previous.Index,
             });
-        }
-
-        if (preTxStorage != after)
-        {
-            slotChange = new StorageChange(Index, after);
-            // An existing change already excludes this slot from the read set, or the next StorageReads access will.
-            if (!hasPrevious) accountChanges.RemoveStorageRead(key);
-        }
-        else
-        {
-            accountChanges.RemoveStorageChange(key);
-            accountChanges.AddStorageRead(key);
         }
     }
 
@@ -287,7 +286,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         }
 
         // SELFDESTRUCT clears storage (changes become reads), nonce and code
-        accountChanges.StorageChanges.Clear();
+        accountChanges.ClearStorageChanges();
         accountChanges.NonceChange = null;
         accountChanges.CodeChange = null;
 
@@ -393,7 +392,8 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
     {
         if (_accountChangesPool.TryPop(out AccountChangesAtIndex? recycled))
         {
-            recycled.Reset(address);
+            // Clear reset the entry before pooling it.
+            recycled.Address = address;
             return recycled;
         }
         return new AccountChangesAtIndex(address);

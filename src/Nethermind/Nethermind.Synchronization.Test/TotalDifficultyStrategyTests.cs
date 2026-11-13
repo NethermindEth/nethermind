@@ -48,8 +48,11 @@ public class TotalDifficultyStrategyTests
         BlockHeader withNonZeroDiff = Build.A.BlockHeader.WithDifficulty(1126457).WithTotalDifficulty(0).TestObject;
         BlockHeader withZeroDiff = Build.A.BlockHeader.WithDifficulty(0).WithTotalDifficulty(100).TestObject;
 
-        Assert.That(strategy.ParentTotalDifficulty(withNonZeroDiff), Is.EqualTo(UInt256.Zero));
-        Assert.That(strategy.ParentTotalDifficulty(withZeroDiff), Is.EqualTo(UInt256.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(strategy.ParentTotalDifficulty(withNonZeroDiff), Is.EqualTo(UInt256.Zero));
+            Assert.That(strategy.ParentTotalDifficulty(withZeroDiff), Is.EqualTo(UInt256.Zero));
+        }
     }
 
     [Test]

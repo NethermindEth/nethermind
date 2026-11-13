@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -54,9 +55,36 @@ namespace Nethermind.Trie
         private ref object? DataItem(int i)
         {
             INodeData? nodeData = _nodeData;
-            if (nodeData is BranchData branch) return ref branch[i];
+            if (nodeData is BranchData branch)
+            {
+                MarkChildChanged(i);
+                return ref branch[i];
+            }
             return ref nodeData![i];
         }
+
+        /// <summary>A bit for each branch slot whose child may differ from the one the branch's RLP encodes.</summary>
+        /// <remarks>
+        /// Only where <see cref="FirstTouchMemoryFlag"/> is on. A slot is marked each time <see cref="DataItem"/> gives a
+        /// reference to it, which every child write does, and when a write below changes the child in place. Some reads,
+        /// such as <see cref="FindOnlyChild"/>, also take a reference and set a bit they do not need; the hot read path
+        /// resolves a child without a mark. A slot without its bit holds null or the child that the RLP
+        /// encodes, so a re-encode copies that slot from the RLP. A walk that tests the bits first skips the other slots:
+        /// SP1 charges for reading each of them the first time. A bit is never cleared, as a slot with its bit set is only
+        /// encoded again. Kept on the node rather than its <see cref="BranchData"/>, where it fits in the padding after
+        /// <c>_blockAndFlags</c>: a field on the branch data grows every branch the other guests allocate.
+        /// </remarks>
+        private ushort _takenChildren;
+
+        /// <summary>Records that the child in branch slot <paramref name="i"/> may differ from the one this node's RLP encodes.</summary>
+        /// <remarks>For a write that changes the child in place rather than through <see cref="SetChild"/>; see <see cref="_takenChildren"/>.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void MarkChildChanged(int i)
+        {
+            if (FirstTouchMemoryFlag.IsActive) _takenChildren |= (ushort)(1 << i);
+        }
+
+        partial void CopyTakenChildrenFrom(TrieNode node) => _takenChildren = node._takenChildren;
 
         /// <summary>Whether this node awaits its hash, dirty, with <paramref name="child"/>, also unhashed, in slot <paramref name="i"/>.</summary>
         /// <remarks>Such a node gains nothing from <see cref="SetChild"/> with that child: the slot and hash stay as they are.</remarks>
@@ -193,8 +221,46 @@ namespace Nethermind.Trie
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static Hash256 ComputeKeccak(ReadOnlySpan<byte> rlp, in PreviousRlp previous) =>
             KeccakHash.IsResumable(rlp.Length)
-                ? new Hash256(KeccakHash.ComputeHash256OfEdited(rlp, previous.Array, previous.Tag))
+                ? new Hash256(KeccakHash.ComputeHash256OfEdited(rlp, previous.Array, previous.Tag, TakeUnchangedLength(rlp)))
                 : Nethermind.Core.Crypto.Keccak.Compute(rlp);
+
+        /// <summary>The full branch <see cref="TrieNodeDecoder.TryPatchFullBranch"/> patched last, and how many of its
+        /// leading bytes the patch left unchanged.</summary>
+        /// <remarks>A class of its own, with no initializer, so each access is a plain load or store rather than a
+        /// class-initialization check.</remarks>
+        private static class PatchedBranch
+        {
+            public static unsafe byte* Rlp;
+            public static int Unchanged;
+        }
+
+        /// <summary>Records that <paramref name="rlp"/> holds a patched full branch whose first <paramref name="unchanged"/>
+        /// bytes are those of the encoding it was patched from, or with a negative <paramref name="unchanged"/>, forgets the
+        /// branch recorded.</summary>
+        /// <remarks>A patch forgets the branch before it writes and records its own only if it succeeds, so a recorded
+        /// buffer always holds what the patch that recorded it wrote. Only on Airbender, where a patch writes into scratch
+        /// of its own (see <see cref="RentPatchedBranchRlp"/>); elsewhere other encoders can write the same buffer.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static unsafe void NoteFullBranchPatched(Span<byte> rlp, int unchanged)
+        {
+            if (!AirbenderFlag.IsActive) return;
+
+            PatchedBranch.Rlp = unchanged < 0 ? null : (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(rlp));
+            PatchedBranch.Unchanged = unchanged;
+        }
+
+        /// <summary>How many leading bytes of <paramref name="rlp"/> are known to equal those of the encoding it was
+        /// re-encoded from, or -1 if none are; see <see cref="NoteFullBranchPatched"/>.</summary>
+        /// <remarks>Spares <see cref="KeccakHash.ComputeHash256OfEdited"/> comparing the leading rate blocks. The record
+        /// is taken: a branch is hashed once per encoding.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static unsafe int TakeUnchangedLength(ReadOnlySpan<byte> rlp)
+        {
+            if (!AirbenderFlag.IsActive || PatchedBranch.Rlp != Unsafe.AsPointer(ref MemoryMarshal.GetReference(rlp))) return -1;
+
+            PatchedBranch.Rlp = null;
+            return PatchedBranch.Unchanged;
+        }
 
         /// <summary>Loads, if it has none, and decodes the RLP of this node of unknown type.</summary>
         /// <remarks>
@@ -241,7 +307,15 @@ namespace Nethermind.Trie
         /// per encoded branch would first-touch. A branch short enough to be embedded is kept as before: its parent copies it.
         /// Only where <see cref="FirstTouchMemoryFlag"/> is on: the other guests pay more for the scratch bookkeeping than they save.
         /// </remarks>
-        private static bool KeepsRlpOfHashedBranch => FirstTouchMemoryFlag.IsActive;
+        private static bool KeepsRlpOfHashedBranch => FirstTouchMemoryFlag.IsActive || AirbenderFlag.IsActive;
+
+        /// <summary>Whether a walk over a branch's children skips the slots <see cref="_takenChildren"/> has no bit for.</summary>
+        /// <remarks>Only where <see cref="FirstTouchMemoryFlag"/> is on, as the bits are only kept there.</remarks>
+        private static bool TracksTakenChildren => FirstTouchMemoryFlag.IsActive;
+
+        /// <summary>The slots of <paramref name="item"/>, a branch, whose child may differ from its RLP; see <see cref="_takenChildren"/>.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ushort TakenChildren(TrieNode item) => item._takenChildren;
 
         /// <summary>The scratch branches are encoded into; see <see cref="KeepsRlpOfHashedBranch"/>.</summary>
         /// <remarks>A class of its own, with no initializer, so each access is a plain load rather than a class-initialization check.</remarks>
@@ -251,6 +325,45 @@ namespace Nethermind.Trie
             /// <remarks>A branch's children are all deeper, so one is hashed before any other branch at its depth is encoded.
             /// Sixty-four depths: a branch has a child one nibble deeper, and a path is at most sixty-four nibbles.</remarks>
             public static byte[]?[]? ByDepth;
+
+            /// <summary>Per depth and per offset modulo 32 of the encoding it is patched from, the scratch a full branch at
+            /// that depth is patched into; see <see cref="RentPatchedBranchRlp"/>.</summary>
+            public static byte[]?[]? ByDepthAndPhase;
+        }
+
+        /// <summary>Rents the buffer a full branch re-encoded from <paramref name="previousRlp"/> is patched into.</summary>
+        /// <remarks>On Airbender a copy runs on delegated 32-byte moves only between addresses equal modulo 32, so there each
+        /// depth keeps a scratch for each 8-byte offset modulo 32 that the previous encoding can start at.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static unsafe CappedArray<byte> RentPatchedBranchRlp(ICappedArrayPool? pool, ReadOnlySpan<byte> previousRlp, in TreePath path)
+        {
+            if (!AirbenderFlag.IsActive) return RentBranchRlp(pool, FullBranchRlpLength, path);
+
+            int phase = PhaseOf(ref MemoryMarshal.GetReference(previousRlp));
+            byte[]?[] byDepthAndPhase = BranchRlpScratch.ByDepthAndPhase ??= new byte[2 * Hash256.Size * Phases][];
+            int index = path.Length * Phases + phase;
+            byte[]? scratch = byDepthAndPhase[index];
+            if (scratch is null) byDepthAndPhase[index] = scratch = AllocateAtPhase(phase);
+            return new CappedArray<byte>(scratch, FullBranchRlpLength);
+        }
+
+        private const int Phases = 32 / sizeof(ulong);
+
+        private static unsafe int PhaseOf(ref byte data) => (int)((nuint)Unsafe.AsPointer(ref data) & 31) / sizeof(ulong);
+
+        /// <summary>Allocates a full branch's buffer whose data starts at <paramref name="phase"/> 8-byte offsets past a 32-byte boundary, if it can.</summary>
+        /// <remarks>Arrays are allocated one after another, and a filler array between two tries moves the next by 24 bytes,
+        /// so four tries reach every offset. Any other allocator only costs the copy its delegated moves.</remarks>
+        private static byte[] AllocateAtPhase(int phase)
+        {
+            byte[] candidate = new byte[FullBranchRlpLength];
+            for (int i = 0; i < Phases && PhaseOf(ref MemoryMarshal.GetArrayDataReference(candidate)) != phase; i++)
+            {
+                GC.KeepAlive(new byte[9]);
+                candidate = new byte[FullBranchRlpLength];
+            }
+
+            return candidate;
         }
 
         /// <summary>Rents the buffer the encoding of the branch at <paramref name="path"/> is written into: where
@@ -261,10 +374,12 @@ namespace Nethermind.Trie
 
         /// <summary>Rents the scratch for the depth of <paramref name="path"/>, holding at least <paramref name="length"/> bytes.</summary>
         /// <remarks>Valid until the next branch at that depth is encoded; <see cref="StorableBranchRlp"/> copies out what a node keeps.</remarks>
-        private static CappedArray<byte> RentBranchRlpScratch(int length, in TreePath path)
+        internal static CappedArray<byte> RentBranchRlpScratch(int length, in TreePath path)
         {
-            ref byte[]? scratch = ref (BranchRlpScratch.ByDepth ??= new byte[2 * Hash256.Size][])[path.Length];
-            if (scratch is null || scratch.Length < length) scratch = new byte[Math.Max(length, FullBranchRlpLength)];
+            // Read by value: a reference to an element of an array of references costs a covariance check call.
+            byte[]?[] byDepth = BranchRlpScratch.ByDepth ??= new byte[2 * Hash256.Size][];
+            byte[]? scratch = byDepth[path.Length];
+            if (scratch is null || scratch.Length < length) byDepth[path.Length] = scratch = new byte[Math.Max(length, FullBranchRlpLength)];
             return new CappedArray<byte>(scratch, length);
         }
 
@@ -356,6 +471,24 @@ namespace Nethermind.Trie
             return true;
         }
 
+        /// <summary>Loads and decodes this node, a witness node of a secured trie, and checks it <paramref name="depth"/> nibbles
+        /// below the root; see <see cref="SecuredTrieNodeValidator"/>.</summary>
+        /// <remarks>The check reads the node's shape, so the decode takes it from there rather than counting items again.</remarks>
+        internal void ResolveSecuredNode(ITrieNodeResolver tree, in TreePath path, int depth)
+        {
+            CappedArray<byte> rlp = ReadRlp();
+            if (rlp.IsNull)
+            {
+                WriteLoadedRlp(rlp = new CappedArray<byte>(tree.LoadRlp(path, Keccak ?? ThrowMissingKeccak()) ?? ThrowNullRlp()));
+                IsPersisted = true;
+            }
+
+            ReadOnlySpan<byte> span = rlp.AsSpan();
+            nint itemsStart = SecuredTrieNodeValidator.Validate(span, depth, isHashed: Keccak is not null);
+            if (itemsStart == 0) _nodeData = new BranchData();
+            else DecodeLeafOrExtension(span, (int)itemsStart, null);
+        }
+
         /// <summary>Resolves child <paramref name="i"/> from an RLP other than a full branch's, most often a branch with empty slots.</summary>
         /// <remarks>
         /// Skips the slots before the child knowing only the two item shapes such a branch holds, an empty slot and a hash,
@@ -413,5 +546,80 @@ namespace Nethermind.Trie
         /// <summary>Undoes <see cref="EnterChildPath"/>.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void LeaveChildPath(ref TreePath path) => path.TruncateDepth();
+
+        /// <summary>The child hash <paramref name="hash"/>, read from its parent's RLP.</summary>
+        /// <remarks>
+        /// A 32-bit guest writes the hash into the new object a word at a time, where the JIT reads an unaligned hash a byte
+        /// at a time and copies it once more. An unaligned hash is read as the nine aligned words that hold it, shifted and
+        /// merged. The last word can reach up to three bytes past the RLP when the hash ends it, but no further than the word
+        /// that holds the hash's last byte, so the read stays in the array's allocation; those bytes are shifted out.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static unsafe Hash256 ReadChildHash(ReadOnlySpan<byte> hash)
+        {
+            if (IntPtr.Size != sizeof(uint))
+                return new(MemoryMarshal.Read<ValueHash256>(hash));
+
+            nuint address = (nuint)Unsafe.AsPointer(ref MemoryMarshal.GetReference(hash));
+            int misalignment = (int)(address % sizeof(uint));
+            uint* words = (uint*)(address - (nuint)misalignment);
+            Hash256 keccak = new(default(ValueHash256));
+            // Written in place before anything else can read it: the new object is not yet shared.
+            ref uint merged = ref Unsafe.As<ValueHash256, uint>(ref Unsafe.AsRef(in keccak.ValueHash256));
+            if (misalignment == 0)
+            {
+                merged = words[0];
+                Unsafe.Add(ref merged, 1) = words[1];
+                Unsafe.Add(ref merged, 2) = words[2];
+                Unsafe.Add(ref merged, 3) = words[3];
+                Unsafe.Add(ref merged, 4) = words[4];
+                Unsafe.Add(ref merged, 5) = words[5];
+                Unsafe.Add(ref merged, 6) = words[6];
+                Unsafe.Add(ref merged, 7) = words[7];
+                return keccak;
+            }
+
+            int right = misalignment * 8;
+            int left = 32 - right;
+            merged = (words[0] >> right) | (words[1] << left);
+            Unsafe.Add(ref merged, 1) = (words[1] >> right) | (words[2] << left);
+            Unsafe.Add(ref merged, 2) = (words[2] >> right) | (words[3] << left);
+            Unsafe.Add(ref merged, 3) = (words[3] >> right) | (words[4] << left);
+            Unsafe.Add(ref merged, 4) = (words[4] >> right) | (words[5] << left);
+            Unsafe.Add(ref merged, 5) = (words[5] >> right) | (words[6] << left);
+            Unsafe.Add(ref merged, 6) = (words[6] >> right) | (words[7] << left);
+            Unsafe.Add(ref merged, 7) = (words[7] >> right) | (words[8] << left);
+            return keccak;
+        }
+
+        private partial class TrieNodeDecoder
+        {
+            /// <summary>Patches the hashes of the children from <paramref name="group"/> to <paramref name="end"/> into <paramref name="destination"/>, a full branch encoding.</summary>
+            /// <returns>Whether every slot is empty or patched; <see langword="false"/> if the branch is no longer a full one.</returns>
+            /// <remarks>Eight slots a step: most slots are empty, and an empty slot then costs one load and one branch.
+            /// Measured on ZisK only.</remarks>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            private static bool TryPatchFullBranchChildren(ITrieNodeResolver tree, ref TreePath path, ref object? group, ref object? end,
+                ushort taken, Span<byte> destination, ref int unchanged, ICappedArrayPool? bufferPool, bool canBeParallel)
+            {
+                const int slotsPerStep = 8;
+                for (; Unsafe.IsAddressLessThan(ref group, ref end) && (!TracksTakenChildren || taken != 0);
+                    group = ref Unsafe.Add(ref group, slotsPerStep), taken >>= slotsPerStep)
+                {
+                    if (!TryPatchFullBranchChild(tree, ref path, ref group, 0, ref end, taken, destination, ref unchanged, bufferPool, canBeParallel)
+                        || !TryPatchFullBranchChild(tree, ref path, ref group, 1, ref end, taken, destination, ref unchanged, bufferPool, canBeParallel)
+                        || !TryPatchFullBranchChild(tree, ref path, ref group, 2, ref end, taken, destination, ref unchanged, bufferPool, canBeParallel)
+                        || !TryPatchFullBranchChild(tree, ref path, ref group, 3, ref end, taken, destination, ref unchanged, bufferPool, canBeParallel)
+                        || !TryPatchFullBranchChild(tree, ref path, ref group, 4, ref end, taken, destination, ref unchanged, bufferPool, canBeParallel)
+                        || !TryPatchFullBranchChild(tree, ref path, ref group, 5, ref end, taken, destination, ref unchanged, bufferPool, canBeParallel)
+                        || !TryPatchFullBranchChild(tree, ref path, ref group, 6, ref end, taken, destination, ref unchanged, bufferPool, canBeParallel)
+                        || !TryPatchFullBranchChild(tree, ref path, ref group, 7, ref end, taken, destination, ref unchanged, bufferPool, canBeParallel))
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }
+        }
     }
 }

@@ -98,10 +98,13 @@ public class McpPriceIsolationTests
         CallToolResult call = await McpToolCalls.Call(client, "explain_transaction", [("hash", deposit.Hash!.ToString())]);
 
         JsonElement result = McpAssert.Success(call);
-        Assert.That(result.GetProperty("tokenTransfers")[0].TryGetProperty("symbol", out JsonElement symbol) ? symbol.GetString() : null,
-            Is.EqualTo("WETH"), "the receipt read exhausted the metadata budget, but the symbol is cached");
-        Assert.That(metadataCalls, Is.Zero);
-        Assert.That(result.GetProperty("notes").GetRawText(), Does.Not.Contain("Token metadata was not read"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("tokenTransfers")[0].TryGetProperty("symbol", out JsonElement symbol) ? symbol.GetString() : null,
+                Is.EqualTo("WETH"), "the receipt read exhausted the metadata budget, but the symbol is cached");
+            Assert.That(metadataCalls, Is.Zero);
+            Assert.That(result.GetProperty("notes").GetRawText(), Does.Not.Contain("Token metadata was not read"));
+        }
         await McpToolCalls.AssertConformsToOutputSchema(client, "explain_transaction", call);
     }
 
@@ -119,8 +122,11 @@ public class McpPriceIsolationTests
 
         CallToolResult call = await McpToolCalls.Call(client, "explain_transaction", [("hash", deposit.Hash!.ToString())]);
 
-        Assert.That(McpAssert.Success(call).GetProperty("fees").GetProperty("total").TryGetProperty("valueUsd", out _), Is.False);
-        Assert.That(priceCalls, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(McpAssert.Success(call).GetProperty("fees").GetProperty("total").TryGetProperty("valueUsd", out _), Is.False);
+            Assert.That(priceCalls, Is.Zero);
+        }
         await McpToolCalls.AssertConformsToOutputSchema(client, "explain_transaction", call);
     }
 
@@ -373,15 +379,17 @@ public class McpPriceIsolationTests
         public void Register<T>(IRpcModulePool<T> pool) where T : IRpcModule => inner.Register(pool);
         public ModuleResolution Check(string methodName, JsonRpcContext context, out string? module, out ResolvedMethodInfo? method) => inner.Check(methodName, context, out module, out method);
         public ResolvedMethodInfo? Resolve(string methodName) => inner.Resolve(methodName);
-        public async ValueTask<IRpcModule> Rent(string methodName, bool canBeShared)
+        public ValueTask<IRpcModule> Rent(string methodName, bool canBeShared) => Rent(methodName, canBeShared, default);
+        public async ValueTask<IRpcModule> Rent(string methodName, bool canBeShared, CancellationToken cancellationToken)
         {
             BeforeRent?.Invoke(methodName);
-            return Wrap(await inner.Rent(methodName, canBeShared));
+            return Wrap(await inner.Rent(methodName, canBeShared, cancellationToken));
         }
-        public async ValueTask<IRpcModule> Rent(ResolvedMethodInfo method)
+        public ValueTask<IRpcModule> Rent(ResolvedMethodInfo method) => Rent(method, default);
+        public async ValueTask<IRpcModule> Rent(ResolvedMethodInfo method, CancellationToken cancellationToken)
         {
             BeforeRent?.Invoke(method.MethodInfo.Name);
-            return Wrap(await inner.Rent(method));
+            return Wrap(await inner.Rent(method, cancellationToken));
         }
         private IRpcModule Wrap(IRpcModule module)
         {

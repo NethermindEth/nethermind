@@ -188,9 +188,12 @@ namespace Nethermind.Store.Test
                 {
                     for (int i = 0; i < 10000; i++)
                     {
-                        Assert.That(reader.TryGetAccount(baseBlock, _address1, out AccountStruct account), Is.True);
-                        Assert.That(account.Balance, Is.EqualTo(value));
-                        Assert.That(account.Nonce, Is.EqualTo(7UL));
+                        using (Assert.EnterMultipleScope())
+                        {
+                            Assert.That(reader.TryGetAccount(baseBlock, _address1, out AccountStruct account), Is.True);
+                            Assert.That(account.Balance, Is.EqualTo(value));
+                            Assert.That(account.Nonce, Is.EqualTo(7UL));
+                        }
                     }
                 });
 
@@ -282,7 +285,7 @@ namespace Nethermind.Store.Test
                 yield return new TestCaseData((Action<IStateReader, BlockHeader>)((r, h) =>
                     Assert.That(r.CollectStats(h, new MemDb(), Logger).AccountCount, Is.EqualTo(1)))).SetName("CollectStats");
                 yield return new TestCaseData((Action<IStateReader, BlockHeader>)((r, h) =>
-                    r.RunTreeVisitor(new TrieStatsCollector(new MemDb(), LimboLogs.Instance), h))).SetName("RunTreeVisitor");
+                    r.RunTreeVisitor(new TrieStatsCollector(new MemDb(), LimboLogs.Instance), h, visitingOptions: null, diagnostics: null))).SetName("RunTreeVisitor");
                 yield return new TestCaseData((Action<IStateReader, BlockHeader>)((r, h) =>
                     Assert.That(r.DumpState(h), Is.Not.Empty))).SetName("DumpState");
                 yield return new TestCaseData((Action<IStateReader, BlockHeader>)((r, h) =>
@@ -369,8 +372,11 @@ namespace Nethermind.Store.Test
         {
             using Context ctx = new(useFlat);
 
-            Assert.That(ctx.Reader.GetCode(Keccak.OfAnEmptyString), Is.Empty);
-            Assert.That(ctx.Reader.GetCode(Keccak.OfAnEmptyString.ValueHash256), Is.Empty);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ctx.Reader.GetCode(Keccak.OfAnEmptyString), Is.Empty);
+                Assert.That(ctx.Reader.GetCode(Keccak.OfAnEmptyString.ValueHash256), Is.Empty);
+            }
         }
 
         [Test]
@@ -385,8 +391,11 @@ namespace Nethermind.Store.Test
                 state.InsertCode(TestItem.AddressA, codeHash, code, MuirGlacier.Instance);
             });
 
-            Assert.That(ctx.Reader.GetCode((Hash256)codeHash), Is.EqualTo(code));
-            Assert.That(ctx.Reader.GetCode(codeHash), Is.EqualTo(code));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ctx.Reader.GetCode((Hash256)codeHash), Is.EqualTo(code));
+                Assert.That(ctx.Reader.GetCode(codeHash), Is.EqualTo(code));
+            }
         }
     }
 }

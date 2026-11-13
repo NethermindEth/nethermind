@@ -60,7 +60,7 @@ on:
         required: false
         default: ""
       collect_metrics:
-        description: Collect sync-stage timings for the master-validation dashboard.
+        description: Collect sync-stage timings for the sync-metrics history branch.
         type: boolean
         required: false
         default: false

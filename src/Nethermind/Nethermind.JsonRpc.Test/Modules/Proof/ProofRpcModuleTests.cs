@@ -108,8 +108,11 @@ public class ProofRpcModuleTests
     {
         Hash256 txHash = _blockTree.FindBlock(1)!.Transactions[txIndex].Hash!;
         TransactionForRpcWithProof txWithProof = _proofRpcModule.proof_getTransactionByHash(txHash, withHeader).Data!;
-        Assert.That(txWithProof.Transaction.Hash, Is.EqualTo(txHash));
-        Assert.That(txWithProof.TxProof.Length, Is.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(txWithProof.Transaction.Hash, Is.EqualTo(txHash));
+            Assert.That(txWithProof.TxProof.Length, Is.EqualTo(2));
+        }
         if (withHeader)
         {
             Assert.That(txWithProof.BlockHeader, Is.Not.Null);
@@ -599,10 +602,13 @@ public class ProofRpcModuleTests
     {
         Hash256 txHash = _blockTree.FindBlock(1)!.Transactions[0].Hash!;
         ReceiptWithProof receiptWithProof = _proofRpcModule.proof_getTransactionReceipt(txHash, withHeader).Data!;
-        Assert.That(receiptWithProof.Receipt, Is.Not.Null);
-        Assert.That(receiptWithProof.ReceiptProof.Length, Is.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receiptWithProof.Receipt, Is.Not.Null);
+            Assert.That(receiptWithProof.ReceiptProof.Length, Is.EqualTo(2));
 
-        Assert.That(receiptWithProof.BlockHeader, withHeader ? Is.Not.Null : Is.Null);
+            Assert.That(receiptWithProof.BlockHeader, withHeader ? Is.Not.Null : Is.Null);
+        }
 
         string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", txHash, withHeader);
         Assert.That(response, Is.EqualTo(expectedResult));

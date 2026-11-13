@@ -167,9 +167,12 @@ public class OptimizedCollectionsTests
             Assert.That(actual.Count, Is.EqualTo(expected.Count));
             if (step % 50 == 0)
             {
-                Assert.That(actual.ToArray(), Is.EqualTo(expected.ToArray()), "enumeration order");
-                Assert.That(actual.Keys.ToArray(), Is.EqualTo(expected.Keys.ToArray()));
-                Assert.That(actual.Values.ToArray(), Is.EqualTo(expected.Values.ToArray()));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(actual.ToArray(), Is.EqualTo(expected.ToArray()), "enumeration order");
+                    Assert.That(actual.Keys.ToArray(), Is.EqualTo(expected.Keys.ToArray()));
+                    Assert.That(actual.Values.ToArray(), Is.EqualTo(expected.Values.ToArray()));
+                }
             }
         }
     }

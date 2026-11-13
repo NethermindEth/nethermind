@@ -3,6 +3,7 @@
 
 using System.Buffers.Text;
 using Nethermind.Network.Enr;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Dns;
@@ -31,7 +32,7 @@ public class EnrRecordParser(INodeRecordSigner nodeRecordSigner) : IEnrRecordPar
         NodeRecord result = _nodeRecordSigner.Deserialize(ref ctx);
         if (!_nodeRecordSigner.Verify(result))
         {
-            throw new RlpException("Invalid ENR signature.");
+            throw new RlpReaderException("Invalid ENR signature.");
         }
 
         return result;

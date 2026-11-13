@@ -12,21 +12,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Remove="Contracts\ValidatorRegistryContract.json" />
-    <None Remove="Contracts\KeyBroadcastContract.json" />
-    <None Remove="Contracts\KeyperSetManagerContract.json" />
-    <None Remove="Contracts\SequencerContract.json" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <EmbeddedResource Include="Contracts\ValidatorRegistryContract.json" />
-    <EmbeddedResource Include="Contracts\KeyBroadcastContract.json" />
-    <EmbeddedResource Include="Contracts\KeyperSetManagerContract.json" />
-    <EmbeddedResource Include="Contracts\KeyperSetContract.json" />
-    <EmbeddedResource Include="Contracts\SequencerContract.json" />
-  </ItemGroup>
-
-  <ItemGroup>
 		<AdditionalFiles Include="Dto\gossip.proto" CopyToOutputDirectory="Never" />
 	</ItemGroup>
 

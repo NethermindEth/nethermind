@@ -42,7 +42,7 @@ namespace Nethermind.Facade.Proxy
                 {
                     if (currentRetry > 0)
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Retrying ({currentRetry}/{_retries}) sending HTTP {methodType} request to: {endpoint} [id: {requestId}].");
+                        if (_logger.IsTrace) _logger.Trace($"Retrying ({currentRetry}/{_retries}) sending HTTP {methodType} request to: {SensitiveLogMasking.SafeUrl(endpoint)} [id: {requestId}].");
                     }
 
                     currentRetry++;
@@ -56,13 +56,19 @@ namespace Nethermind.Facade.Proxy
                 }
                 catch (Exception ex)
                 {
-                    if (_logger.IsError) _logger.Error(ex.Message, ex);
+                    if (_logger.IsError)
+                    {
+                        if (SensitiveLogMasking.Enabled)
+                            _logger.Error($"HTTP {methodType} request to {SensitiveLogMasking.SafeUrl(endpoint)} failed: {ex.GetType().Name}");
+                        else
+                            _logger.Error(ex.Message, ex);
+                    }
                     if (currentRetry == _retries)
                     {
                         break;
                     }
 
-                    if (_logger.IsTrace) _logger.Trace($"HTTP {methodType} request to: {endpoint} [id: {requestId}] will be sent again in: {_retryDelayMilliseconds} ms.");
+                    if (_logger.IsTrace) _logger.Trace($"HTTP {methodType} request to: {SensitiveLogMasking.SafeUrl(endpoint)} [id: {requestId}] will be sent again in: {_retryDelayMilliseconds} ms.");
                     await Task.Delay(_retryDelayMilliseconds, cancellationToken);
                 }
             } while (currentRetry <= _retries);
@@ -74,7 +80,7 @@ namespace Nethermind.Facade.Proxy
         {
             string methodType = method.ToString();
             string json = payload is null ? "{}" : _jsonSerializer.Serialize(payload);
-            if (_logger.IsTrace) _logger.Trace($"Sending HTTP {methodType} request to: {endpoint} [id: {requestId}]{(method == Method.Get ? "." : $": {json}")}");
+            if (_logger.IsTrace) _logger.Trace($"Sending HTTP {methodType} request to: {SensitiveLogMasking.SafeUrl(endpoint)} [id: {requestId}]{(method == Method.Get ? "." : $": {json}")}");
             long startTime = Stopwatch.GetTimestamp();
             HttpResponseMessage? response = null;
             try
@@ -91,7 +97,7 @@ namespace Nethermind.Facade.Proxy
                         if (_logger.IsError) _logger.Error($"Unsupported HTTP method: {methodType}.");
                         return default;
                 }
-                if (_logger.IsTrace) _logger.Trace($"Received HTTP {methodType} response from: {endpoint} [id: {requestId}, elapsed: {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0} ms]: {response}");
+                if (_logger.IsTrace) _logger.Trace($"Received HTTP {methodType} response from: {SensitiveLogMasking.SafeUrl(endpoint)} [id: {requestId}, elapsed: {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0} ms]: {response}");
                 if (!response.IsSuccessStatusCode)
                 {
                     return default;

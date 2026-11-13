@@ -7,7 +7,6 @@ using System.IO.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
 using Multiformats.Address;
-using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -41,7 +40,6 @@ public class ShutterApi : IShutterApi
     protected readonly IReadOnlyBlockTree _readOnlyBlockTree;
     protected readonly IBlockTree _blockTree;
     private readonly IShareableTxProcessorSource _txProcessorSource;
-    private readonly IAbiEncoder _abiEncoder;
     private readonly ILogManager _logManager;
     private readonly IFileSystem _fileSystem;
     private readonly IKeyStoreConfig _keyStoreConfig;
@@ -49,7 +47,6 @@ public class ShutterApi : IShutterApi
     private readonly TimeSpan _blockWaitCutoff;
 
     public ShutterApi(
-        IAbiEncoder abiEncoder,
         IBlockTree blockTree,
         IEthereumEcdsa ecdsa,
         ILogFinder logFinder,
@@ -69,7 +66,6 @@ public class ShutterApi : IShutterApi
         _cfg = cfg;
         _blockTree = blockTree;
         _readOnlyBlockTree = blockTree.AsReadOnly();
-        _abiEncoder = abiEncoder;
         _logManager = logManager;
         _slotLength = slotLength;
         _fileSystem = fileSystem;
@@ -80,14 +76,13 @@ public class ShutterApi : IShutterApi
         _txProcessorSource = txProcessorSource;
 
         Time = InitTime(specProvider, timestamper);
-        TxLoader = new(logFinder, _cfg, Time, specProvider, ecdsa, abiEncoder, logManager);
+        TxLoader = new(logFinder, _cfg, Time, specProvider, ecdsa, logManager);
         Eon = InitEon();
         BlockHandler = new ShutterBlockHandler(
             specProvider.ChainId,
             _cfg,
             _txProcessorSource,
             blockTree,
-            abiEncoder,
             receiptFinder,
             validatorsInfo,
             Eon,
@@ -150,7 +145,7 @@ public class ShutterApi : IShutterApi
     protected virtual void InitP2P(IIPResolver ipResolver) => P2P = new ShutterP2P(_cfg, _logManager, _fileSystem, _keyStoreConfig, ipResolver);
 
     protected virtual IShutterEon InitEon()
-        => new ShutterEon(_readOnlyBlockTree, _txProcessorSource, _abiEncoder, _cfg, _logManager);
+        => new ShutterEon(_readOnlyBlockTree, _txProcessorSource, _cfg, _logManager);
 
     protected virtual SlotTime InitTime(ISpecProvider specProvider, ITimestamper timestamper)
         => new(specProvider.BeaconChainGenesisTimestamp!.Value * 1000, timestamper, _slotLength, _blockUpToDateCutoff);

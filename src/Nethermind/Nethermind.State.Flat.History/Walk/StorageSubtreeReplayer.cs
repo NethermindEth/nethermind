@@ -31,6 +31,7 @@ internal sealed class StorageSubtreeReplayer(
         long replayed = 0;
         Contract[] contracts = new Contract[rows.Identities.Count];
         List<StreamedSlot> streams = [];
+        ulong nextStreamBlock = ulong.MaxValue;
         Span<byte> flatKey = stackalloc byte[BaseFlatPersistence.StorageKeyLength];
         try
         {
@@ -57,6 +58,7 @@ internal sealed class StorageSubtreeReplayer(
                 }
 
                 stream.HasRow = cursor.MoveNext();
+                if (stream.HasRow && cursor.Block < nextStreamBlock) nextStreamBlock = cursor.Block;
             }
 
             foreach (StorageRowRef row in rows.Start)
@@ -90,13 +92,9 @@ internal sealed class StorageSubtreeReplayer(
             while (true)
             {
                 token.ThrowIfCancellationRequested();
-                ulong block = ulong.MaxValue;
-                if (nextDelta < rows.Deltas.Count) block = rows.Deltas[nextDelta].Block;
+                ulong block = nextStreamBlock;
+                if (nextDelta < rows.Deltas.Count && rows.Deltas[nextDelta].Block < block) block = rows.Deltas[nextDelta].Block;
                 if (nextClear < clearEvents.Count && clearEvents[nextClear].Block < block) block = clearEvents[nextClear].Block;
-                foreach (StreamedSlot stream in streams)
-                {
-                    if (stream.HasRow && stream.Rows.Block < block) block = stream.Rows.Block;
-                }
 
                 if (block == ulong.MaxValue) break;
 
@@ -130,13 +128,22 @@ internal sealed class StorageSubtreeReplayer(
                     touched.Add(row.Contract);
                 }
 
-                foreach (StreamedSlot stream in streams)
+                if (block == nextStreamBlock)
                 {
-                    if (!stream.HasRow || stream.Rows.Block != block) continue;
+                    nextStreamBlock = ulong.MaxValue;
+                    foreach (StreamedSlot stream in streams)
+                    {
+                        if (!stream.HasRow) continue;
 
-                    AccountRowRlp.SetSlot(contracts[stream.Contract].Tree!, stream.Slot, stream.Rows.Value, rlpWrapSlots);
-                    touched.Add(stream.Contract);
-                    stream.HasRow = stream.Rows.MoveNext();
+                        if (stream.Rows.Block == block)
+                        {
+                            AccountRowRlp.SetSlot(contracts[stream.Contract].Tree!, stream.Slot, stream.Rows.Value, rlpWrapSlots);
+                            touched.Add(stream.Contract);
+                            stream.HasRow = stream.Rows.MoveNext();
+                        }
+
+                        if (stream.HasRow && stream.Rows.Block < nextStreamBlock) nextStreamBlock = stream.Rows.Block;
+                    }
                 }
 
                 foreach (int index in touched)

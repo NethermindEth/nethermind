@@ -305,9 +305,12 @@ public class PeerPoolTests
         Node plainNode = new(TestItem.PublicKeyA, "1.2.3.4", 1234);
         Peer resolved = pool.GetOrAdd(plainNode);
 
-        Assert.That(resolved, Is.SameAs(pooled));
-        Assert.That(pooled.Node.IsStatic, Is.True,
-            "promotion is monotonic: a later plain arrival of the same node id must never demote the pooled peer");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resolved, Is.SameAs(pooled));
+            Assert.That(pooled.Node.IsStatic, Is.True,
+                "promotion is monotonic: a later plain arrival of the same node id must never demote the pooled peer");
+        }
     }
 
     [Test]
@@ -319,7 +322,9 @@ public class PeerPoolTests
         Node persistedNode = new(TestItem.PublicKeyA, IPAddress.Loopback.ToString(), 30303);
         Peer pooled = pool.GetOrAdd(persistedNode);
         NodeRecord dualStackRecord = CreateSignedEnr(enrSequence: 0, includeIpv6: true);
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(Node.TryFromEnr(dualStackRecord, out Node? discoveredNode), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(discoveredNode!.SetVerifiedEnr(dualStackRecord), Is.True);
 
         Peer resolved = pool.GetOrAdd(discoveredNode);
@@ -480,9 +485,12 @@ public class PeerPoolTests
         trustedNodesManager.IsTrusted(Arg.Any<Enode>()).Returns(true);
         Peer resolved = pool.GetOrAdd(new NetworkNode(enode));
 
-        Assert.That(resolved, Is.SameAs(pooled));
-        Assert.That(pooled.Node.IsTrusted, Is.True,
-            "a peer trusted after it was pooled must gain the flag, or admin_addTrustedPeer never takes effect for an already known peer");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resolved, Is.SameAs(pooled));
+            Assert.That(pooled.Node.IsTrusted, Is.True,
+                "a peer trusted after it was pooled must gain the flag, or admin_addTrustedPeer never takes effect for an already known peer");
+        }
     }
 
     [Test]

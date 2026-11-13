@@ -87,7 +87,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 .Returns(ci =>
                 {
                     PingMsg sent = (PingMsg)ci[0]!;
-                    using DisposableByteBuffer buffer = _receiverSerializationManager.ZeroSerialize(sent).AsDisposable();
+                    byte[] buffer = _receiverSerializationManager.SerializeToArray(sent);
                     PingMsg msg = _receiverSerializationManager.Deserialize<PingMsg>(buffer);
                     onWirePing?.Invoke(msg);
                     PongMsg pong = new(
@@ -239,7 +239,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
         private T AddReceiverFarAddress<T>(T msg) where T : DiscoveryMsg
         {
-            using DisposableByteBuffer buffer = _receiverSerializationManager.ZeroSerialize<T>(msg).AsDisposable();
+            byte[] buffer = _receiverSerializationManager.SerializeToArray<T>(msg);
             IPEndPoint? farAddress = msg.FarAddress;
             msg = _receiverSerializationManager.Deserialize<T>(buffer);
             msg.FarAddress = farAddress;
@@ -311,7 +311,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 .Returns(ci =>
                 {
                     PingMsg sent = (PingMsg)ci[0]!;
-                    using DisposableByteBuffer buffer = _receiverSerializationManager.ZeroSerialize(sent).AsDisposable();
+                    byte[] buffer = _receiverSerializationManager.SerializeToArray(sent);
                     PingMsg msg = _receiverSerializationManager.Deserialize<PingMsg>(buffer);
                     PongMsg pong = new(
                         msg.FarPublicKey!,
@@ -364,7 +364,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 _receiver.Address.Address, tcpPort: 30303, udpPort: 30303);
             ConfigureBondCallback();
 
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
             Assert.That(await _adapter.Ping(_receiver, token), Is.True);
+#pragma warning restore NUnit2045
             Assert.That((await ReadPeerCandidate(token)).Id, Is.EqualTo(_receiver.Id));
             ecdsa.Received().RecoverCompressedPublicKey(Arg.Any<Signature>(), Arg.Any<ValueHash256>());
             ecdsa.ClearReceivedCalls();
@@ -452,7 +454,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             ConfigureBondCallback(onWirePing: ping => sourceAddresses.Add(ping.SourceAddress!));
 
             Assert.That(await _adapter.Ping(_receiver, token), Is.True);
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
             Assert.That(await _adapter.Ping(_receiver, token), Is.True);
+#pragma warning restore NUnit2045
 
             Assert.That(sourceAddresses, Is.EqualTo(new[]
             {
@@ -719,7 +723,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             await AssertNoPeerCandidate(token);
 
             Node droppedNode = nodes[^1];
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
             Assert.That(await _adapter.Ping(droppedNode, token), Is.True);
+#pragma warning restore NUnit2045
             Assert.That((await ReadPeerCandidate(token)).Id, Is.EqualTo(droppedNode.Id));
         }
 
@@ -931,6 +937,115 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             {
                 _kademliaMessageReceiver.DidNotReceive().AddOrRefresh(Arg.Any<Node>());
             }
+        }
+
+        [TestCase("192.168.1.9", 30302)]
+        [TestCase("192.168.1.2", 30399)]
+        [CancelAfter(10000)]
+        public async Task Refreshed_record_keeps_the_bonded_endpoint(string enrAddress, int enrUdpPort, CancellationToken token)
+        {
+            // The bonded UDP port differs from the TCP port, so the checks below tell the two apart.
+            _receiver = new Node(TestItem.PublicKeyB, "192.168.1.2", 30303, 30302);
+            NodeRecord remoteRecord = ConfigureRemoteEnrRefresh(
+                2,
+                2,
+                tcpPort: 30304,
+                ipAddress: IPAddress.Parse(enrAddress),
+                configureExtras: record => record.SetEntry(new UdpEntry(enrUdpPort)),
+                responseEndpoint: _receiver.DiscoveryAddress);
+
+            Assert.That(await _adapter.Ping(_receiver, token), Is.True);
+
+            await _msgSender.Received(1).SendMsg(Arg.Any<EnrRequestMsg>());
+            _kademliaMessageReceiver.Received(1).AddOrRefresh(Arg.Is<Node>(n =>
+                HasNodeRecord(n, _receiver, remoteRecord) &&
+                n.IsVerifiedEnr(n.Enr!) &&
+                n.DiscoveryAddress.Equals(_receiver.DiscoveryAddress) &&
+                n.Address.Equals(_receiver.Address)));
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task Refreshed_record_for_the_bonded_endpoint_sets_its_tcp_port(CancellationToken token)
+        {
+            NodeRecord remoteRecord = ConfigureRemoteEnrRefresh(2, 2, tcpPort: 30304);
+
+            Assert.That(await _adapter.Ping(_receiver, token), Is.True);
+
+            _kademliaMessageReceiver.Received(1).AddOrRefresh(Arg.Is<Node>(n =>
+                HasNodeRecord(n, _receiver, remoteRecord) &&
+                n.DiscoveryAddress.Equals(_receiver.DiscoveryAddress) &&
+                n.Port == 30304));
+        }
+
+        [TestCase(30302, 30304)]
+        [TestCase(30399, 30303)]
+        [CancelAfter(10000)]
+        public async Task Refreshed_record_keeps_the_scope_of_a_link_local_bonded_endpoint(
+            int enrUdpPort,
+            int expectedTcpPort,
+            CancellationToken token)
+        {
+            await _adapter.DisposeAsync();
+            NetworkListenerState listenerState = new(new NetworkConfig(), _ipResolver, LimboLogs.Instance);
+            listenerState.SetRlpxAddress(IPAddress.IPv6Any);
+            listenerState.SetDiscoveryAddress(IPAddress.IPv6Any);
+            _adapter = CreateAdapter(FailsafeRequestTimeoutMs, listenerState);
+            // A link-local source carries the interface scope; the record lists only the address bytes.
+            _receiver = new Node(TestItem.PublicKeyB, new IPEndPoint(IPAddress.Parse("fe80::2%3"), 30303), 30302);
+            NodeRecord remoteRecord = ConfigureRemoteEnrRefresh(
+                2,
+                2,
+                tcpPort: 30304,
+                ipAddress: IPAddress.Parse("fe80::2"),
+                configureExtras: record => record.SetEntry(new Udp6Entry(enrUdpPort)),
+                responseEndpoint: _receiver.DiscoveryAddress);
+
+            Assert.That(await _adapter.Ping(_receiver, token), Is.True);
+
+            _kademliaMessageReceiver.Received(1).AddOrRefresh(Arg.Is<Node>(n =>
+                HasNodeRecord(n, _receiver, remoteRecord) &&
+                n.DiscoveryAddress.Equals(_receiver.DiscoveryAddress) &&
+                n.Address.Equals(new IPEndPoint(_receiver.Address.Address, expectedTcpPort))));
+        }
+
+        [TestCase("192.168.1.2", "2001:db8::2")]
+        [TestCase("2001:db8::2", "192.168.1.2")]
+        [CancelAfter(10000)]
+        public async Task Refreshed_record_in_the_other_address_family_keeps_the_bonded_endpoint(
+            string bondedAddress,
+            string enrAddress,
+            CancellationToken token)
+        {
+            if (!Socket.OSSupportsIPv6)
+            {
+                Assert.Ignore("IPv6 is not supported on this host.");
+            }
+
+            await _adapter.DisposeAsync();
+            NetworkListenerState listenerState = new(new NetworkConfig(), _ipResolver, LimboLogs.Instance);
+            listenerState.SetRlpxAddress(IPAddress.IPv6Any);
+            listenerState.SetDiscoveryAddress(IPAddress.IPv6Any);
+            _adapter = CreateAdapter(FailsafeRequestTimeoutMs, listenerState);
+            _receiver = new Node(TestItem.PublicKeyB, bondedAddress, 30303, 30302);
+            // The record lists only the other address family, with the bonded UDP port.
+            IPAddress enrIp = IPAddress.Parse(enrAddress);
+            NodeRecord remoteRecord = ConfigureRemoteEnrRefresh(
+                2,
+                2,
+                tcpPort: 30304,
+                ipAddress: enrIp,
+                configureExtras: record => record.SetEntry(enrIp.AddressFamily == AddressFamily.InterNetworkV6
+                    ? new Udp6Entry(30302)
+                    : new UdpEntry(30302)),
+                responseEndpoint: _receiver.DiscoveryAddress);
+
+            Assert.That(await _adapter.Ping(_receiver, token), Is.True);
+
+            _kademliaMessageReceiver.Received(1).AddOrRefresh(Arg.Is<Node>(n =>
+                HasNodeRecord(n, _receiver, remoteRecord) &&
+                n.DiscoveryAddress.Equals(_receiver.DiscoveryAddress) &&
+                n.Address.Equals(_receiver.Address)));
         }
 
         [Test]

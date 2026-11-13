@@ -18,6 +18,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
@@ -25,6 +26,7 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 using NUnit.Framework;
 using NSubstitute;
@@ -88,8 +90,11 @@ public partial class EngineModuleTests
         using MergeTestBlockchain disposeChain = chain;
 
         ResultWrapper<GetPayloadV4Result?> pragueResult = await rpc.engine_getPayloadV4(Bytes.FromHexString(payloadId!));
-        Assert.That(pragueResult.Result, Is.EqualTo(Result.Success));
-        Assert.That(pragueResult.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pragueResult.Result, Is.EqualTo(Result.Success));
+            Assert.That(pragueResult.Data, Is.Not.Null);
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(pragueResult.Data.ExecutionPayload.Transactions, Has.Length.EqualTo(1));
@@ -227,8 +232,11 @@ public partial class EngineModuleTests
             payloadAttributes.ParentBeaconBlockRoot,
             payloadResult.ExecutionRequests);
 
-        Assert.That(newPayloadResult.Result, Is.EqualTo(Result.Success));
-        Assert.That(newPayloadResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(newPayloadResult.Result, Is.EqualTo(Result.Success));
+            Assert.That(newPayloadResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        }
     }
 
     [Test]
@@ -276,13 +284,19 @@ public partial class EngineModuleTests
 
         if (requestSize > 128)
         {
-            Assert.That(result.Result, Is.EqualTo(Result.Fail($"The number of requested blobs must not exceed 128")));
-            Assert.That(result.ErrorCode, Is.EqualTo(MergeErrorCodes.TooLargeRequest));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.Result, Is.EqualTo(Result.Fail($"The number of requested blobs must not exceed 128")));
+                Assert.That(result.ErrorCode, Is.EqualTo(MergeErrorCodes.TooLargeRequest));
+            }
         }
         else
         {
-            Assert.That(result.Result, Is.EqualTo(Result.Success));
-            Assert.That(result.Data, Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.Result, Is.EqualTo(Result.Success));
+                Assert.That(result.Data, Is.Null);
+            }
         }
     }
 
@@ -295,6 +309,46 @@ public partial class EngineModuleTests
         string response = await RpcTest.TestSerializedRequest(rpcModule, $"engine_getBlobsV{version}", (object)Array.Empty<byte[]>());
 
         Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":[],\"id\":67}"));
+    }
+
+    private static IEnumerable<(SyncMode SyncMode, bool IsSyncing, bool Serves)> GetBlobsSyncStates()
+    {
+        yield return (SyncMode.StateNodes | SyncMode.FastHeaders, true, false);
+        yield return (SyncMode.Full, true, false);
+        yield return (SyncMode.WaitingForBlock | SyncMode.FastBodies | SyncMode.FastReceipts, true, true);
+        yield return (SyncMode.WaitingForBlock, false, true);
+    }
+
+    [Test]
+    public async Task GetBlobs_should_return_null_only_while_behind_head(
+        [Values(2, 3)] int version,
+        [ValueSource(nameof(GetBlobsSyncStates))] (SyncMode SyncMode, bool IsSyncing, bool Serves) state)
+    {
+        IEthSyncingInfo syncingInfo = Substitute.For<IEthSyncingInfo>();
+        syncingInfo.SyncMode.Returns(state.SyncMode);
+        syncingInfo.IsSyncing().Returns(state.IsSyncing);
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance, configurer: builder => builder.AddSingleton(syncingInfo));
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
+
+        Transaction blobTx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(1, spec: Osaka.Instance)
+            .WithMaxFeePerGas(1.GWei)
+            .WithMaxPriorityFeePerGas(1.GWei)
+            .WithMaxFeePerBlobGas(1000.Wei)
+            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
+        Assert.That(chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+        byte[][] blobVersionedHashes = blobTx.BlobVersionedHashes!.Select(static h => h!).ToArray();
+        ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> result = version == 2
+            ? await rpcModule.engine_getBlobsV2(blobVersionedHashes)
+            : await rpcModule.engine_getBlobsV3(blobVersionedHashes);
+
+        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data?.Select(static b => b!.Blob), state.Serves ? Is.EqualTo(wrapper.Blobs) : Is.Null);
+        }
     }
 
     [Test]
@@ -372,8 +426,11 @@ public partial class EngineModuleTests
         // requesting hashes that are not present in TxPool
         ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV2(blobTx.BlobVersionedHashes!);
 
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.Null);
+        }
     }
 
     [Test]
@@ -405,8 +462,11 @@ public partial class EngineModuleTests
         ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV2(blobVersionedHashesRequest.ToArray());
         if (multiplier > 1)
         {
-            Assert.That(result.Result, Is.EqualTo(Result.Success));
-            Assert.That(result.Data, Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.Result, Is.EqualTo(Result.Success));
+                Assert.That(result.Data, Is.Null);
+            }
         }
         else
         {
@@ -489,8 +549,11 @@ public partial class EngineModuleTests
 
         ResultWrapper<IReadOnlyList<BlobAndProofV1?>> result = await rpcModule.engine_getBlobsV1([]);
 
-        Assert.That(result.Result, Is.EqualTo(Result.Fail(MergeErrorMessages.UnsupportedFork)));
-        Assert.That(result.ErrorCode, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Fail(MergeErrorMessages.UnsupportedFork)));
+            Assert.That(result.ErrorCode, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
+        }
     }
 
     [Test]

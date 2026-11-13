@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Stateless;
@@ -38,11 +39,11 @@ public static class WitnessExtensions
     {
         public INodeStorage CreateNodeStorage() => WitnessNodeStorage.Create(witness.State);
 
-        /// <remarks>Codes that can also be read as memory are served as that memory, which code decoded into
-        /// executable code memory then runs from without another copy.</remarks>
+        /// <remarks>Codes that can also be read as memory with their hashes are served as that memory, which code
+        /// decoded into executable code memory then runs from without another copy.</remarks>
         public IKeyValueStoreWithBatching CreateCodeDb()
         {
-            if (witness.Codes is IReadOnlyList<ReadOnlyMemory<byte>> codes) return new WitnessCodeDb(codes);
+            if (witness.Codes is IReadOnlyList<(ValueHash256 Hash, ReadOnlyMemory<byte> Code)> codes) return new WitnessCodeDb(codes);
 
             IKeyValueStoreWithBatching db = MemDb.WithCapacity(witness.Codes.Count);
             foreach (byte[] code in witness.Codes)

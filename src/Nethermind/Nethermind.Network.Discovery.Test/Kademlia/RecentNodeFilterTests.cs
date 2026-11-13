@@ -33,7 +33,9 @@ public class RecentNodeFilterTests
     {
         RecentNodeFilter<string> filter = new(2);
 
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
         Assert.That(filter.TryReserve("a"), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(filter.TryReserve("b"), Is.True);
         Assert.That(filter.TryReserve("c"), Is.True);
 

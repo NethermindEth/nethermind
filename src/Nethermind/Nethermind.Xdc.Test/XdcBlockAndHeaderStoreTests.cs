@@ -82,7 +82,7 @@ internal class XdcBlockAndHeaderStoreTests
 
         Assert.That(child, Is.TypeOf<XdcBlockHeader>());
         XdcBlockHeader xdcChild = (XdcBlockHeader)child;
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(xdcChild.ParentHash, Is.EqualTo(parent.Hash!));
             Assert.That(xdcChild.Number, Is.EqualTo(parent.Number + 1));
@@ -95,7 +95,7 @@ internal class XdcBlockAndHeaderStoreTests
             Assert.That(xdcChild.Validator, Is.Null);
             Assert.That(xdcChild.Penalties, Is.Null);
             Assert.That(xdcChild.ExtraConsensusData, Is.Null);
-        });
+        }
     }
 
     // FromBlockHeader builds the genesis header, which carries a slot of its own once EIP-7843 is active.
@@ -104,8 +104,11 @@ internal class XdcBlockAndHeaderStoreTests
     {
         BlockHeader src = Build.A.BlockHeader.WithSlotNumber(3).TestObject;
 
-        Assert.That(XdcBlockHeader.FromBlockHeader(src).SlotNumber, Is.EqualTo(3));
-        Assert.That(XdcSubnetBlockHeader.FromBlockHeader(src).SlotNumber, Is.EqualTo(3));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(XdcBlockHeader.FromBlockHeader(src).SlotNumber, Is.EqualTo(3));
+            Assert.That(XdcSubnetBlockHeader.FromBlockHeader(src).SlotNumber, Is.EqualTo(3));
+        }
     }
 
     [Test]
@@ -120,7 +123,7 @@ internal class XdcBlockAndHeaderStoreTests
 
         Assert.That(child, Is.TypeOf<XdcSubnetBlockHeader>());
         XdcSubnetBlockHeader subnetChild = (XdcSubnetBlockHeader)child;
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(subnetChild.ParentHash, Is.EqualTo(parent.Hash));
             Assert.That(subnetChild.Number, Is.EqualTo(parent.Number + 1));
@@ -129,6 +132,6 @@ internal class XdcBlockAndHeaderStoreTests
             Assert.That(subnetChild.MixHash, Is.EqualTo(Hash256.Zero));
             Assert.That(subnetChild.SlotNumber, Is.EqualTo(parent.SlotNumber + 1));
             Assert.That(subnetChild.NextValidators, Is.Null);
-        });
+        }
     }
 }

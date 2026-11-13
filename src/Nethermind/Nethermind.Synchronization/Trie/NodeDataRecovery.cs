@@ -133,7 +133,7 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
                     }
                     catch (Exception ex)
                     {
-                        if (_logger.IsDebug) _logger.Debug($"Error recovering node from {peer} {ex}");
+                        if (_logger.IsDebug) _logger.Debug($"Error recovering node from {peer:hide} {ex:hide}");
                         peerPool.ReportWeakPeer(peer, AllocationContexts.State);
                     }
 
@@ -156,7 +156,7 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
     {
         if (syncPeer.ProtocolVersion < EthVersions.Eth67)
         {
-            if (_logger.IsTrace) _logger.Trace($"Fetching H {hash} P {treePath} from {syncPeer} via eth");
+            if (_logger.IsTrace) _logger.Trace($"Fetching H {hash} P {treePath} from {syncPeer:hide} via eth");
             IByteArrayList? data = await syncPeer.GetNodeData([hash], cancellationToken);
             if (data?.Count > 0 && Keccak.Compute(data[0]) == hash)
             {
@@ -165,7 +165,7 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
         }
         else if (syncPeer.TryGetSatelliteProtocol(Protocol.Snap, out ISnapSyncPeer snapSyncPeer) && snapSyncPeer.CanGetTrieNodes())
         {
-            if (_logger.IsTrace) _logger.Trace($"Fetching H {hash} P {treePath} from {syncPeer} via snap");
+            if (_logger.IsTrace) _logger.Trace($"Fetching H {hash} P {treePath} from {syncPeer:hide} via snap");
             PathGroup group;
             if (address is null)
             {

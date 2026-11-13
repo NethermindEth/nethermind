@@ -163,6 +163,8 @@ public class TaikoModule : Module
             // Rpc
             .RegisterSingletonJsonRpcModule<ITaikoExtendedEthRpcModule, TaikoExtendedEthModule>()
             .RegisterSingletonJsonRpcModule<ITaikoEngineRpcModule, TaikoEngineRpcModule>()
+                // One engine module instance, so SSZ-REST and witness requests share the JSON-RPC request lock.
+                .Bind<IEngineRpcModule, ITaikoEngineRpcModule>()
                 .AddSingleton<IForkchoiceUpdatedHandler, TaikoForkchoiceUpdatedHandler>()
 
             // TDX attestation (enabled with Surge.TdxEnabled) 

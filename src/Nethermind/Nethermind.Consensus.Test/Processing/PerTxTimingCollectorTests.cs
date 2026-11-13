@@ -70,8 +70,11 @@ public class PerTxTimingCollectorTests
         using ArrayPoolList<long>? snapshot = PerTxTimingCollector.Snapshot();
 
         Assert.That(snapshot, Is.Not.Null);
-        Assert.That(snapshot!.Count, Is.EqualTo(8));
-        Assert.That(snapshot.AsSpan().ToArray(), Is.All.EqualTo(0L));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshot!.Count, Is.EqualTo(8));
+            Assert.That(snapshot.AsSpan().ToArray(), Is.All.EqualTo(0L));
+        }
     }
 
     [Test]
@@ -100,12 +103,18 @@ public class PerTxTimingCollectorTests
         using ArrayPoolList<long>? second = PerTxTimingCollector.Snapshot();
 
         Assert.That(first, Is.Not.Null);
-        Assert.That(first![0], Is.EqualTo(100L));
-        Assert.That(first[1], Is.EqualTo(200L));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first![0], Is.EqualTo(100L));
+            Assert.That(first[1], Is.EqualTo(200L));
 
-        Assert.That(second, Is.Not.Null);
-        Assert.That(second![0], Is.EqualTo(999L));
-        Assert.That(second[1], Is.EqualTo(0L), "previous block's write must not leak into the new buffer");
+            Assert.That(second, Is.Not.Null);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(second![0], Is.EqualTo(999L));
+            Assert.That(second[1], Is.EqualTo(0L), "previous block's write must not leak into the new buffer");
+        }
     }
 
     [Test]

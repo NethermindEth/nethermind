@@ -1,6 +1,8 @@
 using System;
 using System.Net.Http;
+using System.Text;
 using System.Text.Json.Nodes;
+using System.Threading;
 using System.Threading.Tasks;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
@@ -18,12 +20,15 @@ public class NethermindNodeTests
 {
     private IContainer _nethermindContainer;
 
-    private async Task StartContainerAsync(string[] commandOverride = null, bool waitForInit = true, bool suppressStartFailures = false)
+    private async Task StartContainerAsync(string[] commandOverride = null, bool waitForInit = true, bool suppressStartFailures = false,
+        (string Path, string Contents)? resourceFile = null)
     {
         string[] defaultCommand = new[] { "--config", "sepolia", "--JsonRpc.Enabled", "true", "--JsonRpc.Host", "0.0.0.0", "--JsonRpc.Port", "8545", "--JsonRpc.EnginePort", "8551", "--JsonRpc.EngineHost", "0.0.0.0", "--JsonRpc.JwtSecretFile", "jwt.hex" };
         string[] command = commandOverride ?? defaultCommand;
 
         ContainerBuilder builder = await Utils.BuildNethermindContainerAsync(command, waitForInit);
+        if (resourceFile is { } file)
+            builder = builder.WithResourceMapping(Encoding.UTF8.GetBytes(file.Contents), file.Path);
 
         _nethermindContainer = builder.Build();
 
@@ -41,6 +46,7 @@ public class NethermindNodeTests
     {
         if (_nethermindContainer != null)
         {
+            await _nethermindContainer.WriteDiagnosticLogsAsync("Nethermind");
             await _nethermindContainer.DisposeAsync();
         }
     }
@@ -72,23 +78,72 @@ public class NethermindNodeTests
     }
 
     [Test]
-    public async Task Nethermind_ShouldFail_WhenNoConfigProvided()
+    public async Task Nethermind_ShouldFail_WhenNoConfigProvided([Values] bool maskSensitiveData)
     {
-        string[] commandWithoutConfig = new[] { "--config", "nonexistent.json" };
+        const string privatePath = "private-plugin-path-74031";
+        string[] commandWithoutConfig = maskSensitiveData
+            ? ["--config", "nonexistent.json", "--Init.MaskSensitiveData", "true", "--plugins-dir", privatePath]
+            : ["--config", "nonexistent.json"];
 
         await StartContainerAsync(commandWithoutConfig, waitForInit: false, suppressStartFailures: true);
 
-        DateTime deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
-        while (DateTime.UtcNow < deadline && _nethermindContainer.State != TestcontainersStates.Exited)
+        string combinedLogs = await GetExitedContainerLogsAsync();
+        using (Assert.EnterMultipleScope())
         {
-            await Task.Delay(200);
+            Assert.That(combinedLogs, Does.Contain("Configuration file not found.")
+                .And.Contain("Built-in configurations:")
+                .And.Not.Contain("nonexistent.json"));
+            if (maskSensitiveData)
+            {
+                Assert.That(combinedLogs, Does.Contain("Plugin assemblies folder [redacted] was not found."));
+                Assert.That(combinedLogs, Does.Not.Contain(privatePath));
+            }
         }
+    }
 
-        string cleanStdout = await _nethermindContainer.GetCleanStdoutAsync();
-        string cleanStderr = await _nethermindContainer.GetCleanStderrAsync();
+    [Test]
+    public async Task Nethermind_ShouldReportJsonPosition_WhenConfigIsMalformed([Values] bool maskSensitiveData)
+    {
+        const string path = "/private-config-test.json";
+        const string contents = "{\n  \"Init\": \"private-config-value\",\n  !\n}";
+        await StartContainerAsync(["--config", path, "--Init.MaskSensitiveData", maskSensitiveData.ToString()],
+            waitForInit: false, suppressStartFailures: true, resourceFile: (path, contents));
 
-        string combinedLogs = cleanStdout + cleanStderr;
-        Assert.That(combinedLogs, Does.Contain("Configuration 'nonexistent.json' not found"));
+        string combinedLogs = await GetExitedContainerLogsAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(combinedLogs, Does.Contain("Invalid JSON at line 3, byte position 3."));
+            Assert.That(combinedLogs, Does.Not.Contain(path).And.Not.Contain("private-config-value"));
+        }
+    }
+
+    [Test]
+    public async Task Plugin_failure_diagnostics_follow_loaded_masking_config([Values] bool maskSensitiveData)
+    {
+        const string pluginDirectory = "/private-plugin-directory-74031";
+        const string assemblyPath = pluginDirectory + "/brokenplugin.dll";
+        await StartContainerAsync(["--config", "sepolia", "--Init.MaskSensitiveData", maskSensitiveData.ToString(),
+                "--plugins-dir", pluginDirectory, "--Init.ChainSpecPath", "/private-chain-spec-74031/missing.json"],
+            waitForInit: false, suppressStartFailures: true, resourceFile: (assemblyPath, "invalid assembly"));
+
+        string combinedLogs = await GetExitedContainerLogsAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(combinedLogs, Does.Contain("Failed to load plugin brokenplugin: BadImageFormatException"));
+            Assert.That(combinedLogs, Does.Contain($"Loading 1 plugin assemblies from {(maskSensitiveData ? "[redacted]" : pluginDirectory)}"));
+            Assert.That(combinedLogs.Contains(assemblyPath), Is.EqualTo(!maskSensitiveData));
+            Assert.That(combinedLogs.Contains("/private-chain-spec-74031"), Is.EqualTo(!maskSensitiveData));
+        }
+    }
+
+    private async Task<string> GetExitedContainerLogsAsync()
+    {
+        using CancellationTokenSource exitTimeout = new(TimeSpan.FromSeconds(30));
+        long exitCode = await _nethermindContainer.GetExitCodeAsync(exitTimeout.Token).WaitAsync(exitTimeout.Token);
+        Assert.That(exitCode, Is.Not.Zero);
+        return await _nethermindContainer.GetCleanStdoutAsync() + await _nethermindContainer.GetCleanStderrAsync();
     }
 
     [Test]

@@ -5,33 +5,57 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
-using System.Text.Json.Nodes;
-
 using Nethermind.Abi;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Ethereum.Abi.Test
 {
     public class Tests
     {
-        [SetUp]
-        public void Setup()
+        /// <summary>Typed signature of each test in <c>basic_abi_tests.json</c>, with the conversion of its JSON arguments.</summary>
+        private static IEnumerable<TestCaseData> EncodingTests()
         {
+            yield return Case("GithubWikiTest",
+                new AbiSignature().With(AbiType.UInt256, AbiType.Array(AbiType.UInt32), AbiType.BytesM(10), AbiType.Bytes),
+                static args => (ToUInt256(args[0]), args[1].EnumerateArray().Select(static e => e.GetUInt32()).ToArray(), ToUtf8(args[2]), ToUtf8(args[3])));
+            yield return Case("SingleInteger",
+                new AbiSignature().With(AbiType.UInt256),
+                static args => ToUInt256(args[0]));
+            yield return Case("IntegerAndAddress",
+                new AbiSignature().With(AbiType.UInt256, AbiType.Address),
+                static args => (ToUInt256(args[0]), new Address(args[1].GetString()!)));
         }
 
-        private static Dictionary<string, AbiType> _abiTypes = new()
+        [TestCaseSource(nameof(EncodingTests))]
+        public void Test_abi_encoding(string testName, string types, Func<JsonElement[], byte[]> encode)
         {
-            { "uint256", AbiType.UInt256 },
-            { "uint32[]", new AbiArray(AbiType.UInt32) },
-            { "bytes10", new AbiBytes(10) },
-            { "bytes", AbiType.DynamicBytes },
-            { "address", AbiType.Address },
-        };
+            AbiTest abiTest = LoadTests()[testName];
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That($"({string.Join(',', abiTest.Types)})", Is.EqualTo(types));
+                Assert.That(encode(abiTest.Args), Is.EqualTo(Bytes.FromHexString(abiTest.Result)));
+            }
+        }
 
         [Test]
-        public void Test_abi_encoding()
+        public void Encoding_tests_cover_every_fixture_test() =>
+            Assert.That(EncodingTests().Select(static t => t.TestName), Is.EquivalentTo(LoadTests().Keys));
+
+        private static TestCaseData Case<T>(string testName, AbiSignature<T> signature, Func<JsonElement[], T> toArgs) =>
+            new TestCaseData(testName, signature.Abi.Name, (Func<JsonElement[], byte[]>)(args => AbiCodec.Encode(signature, toArgs(args))))
+                .SetName(testName);
+
+        private static UInt256 ToUInt256(JsonElement element) => element.GetUInt64();
+
+        private static byte[] ToUtf8(JsonElement element) => Encoding.UTF8.GetBytes(element.GetString()!);
+
+        private static Dictionary<string, AbiTest> LoadTests()
         {
             string text = string.Empty;
 
@@ -56,27 +80,7 @@ namespace Ethereum.Abi.Test
                 }
             }
 
-            Dictionary<string, AbiTest> tests = JsonSerializer.Deserialize<Dictionary<string, AbiTest>>(text);
-            foreach ((string testName, AbiTest abiTest) in tests)
-            {
-                AbiSignature signature = new(
-                    testName,
-                    abiTest.Types.Select(t => _abiTypes[t]).ToArray());
-
-                AbiEncoder encoder = new();
-                byte[] abi = encoder.Encode(AbiEncodingStyle.None, signature, abiTest.Args.Select(JsonToObject).ToArray());
-                Assert.That(abi, Is.EqualTo(Bytes.FromHexString(abiTest.Result)));
-            }
-        }
-
-        public object JsonToObject(object jsonObject)
-        {
-            if (jsonObject is JsonArray array)
-            {
-                return array.Select(t => t.GetValue<long>()).ToArray();
-            }
-
-            return jsonObject;
+            return JsonSerializer.Deserialize<Dictionary<string, AbiTest>>(text);
         }
     }
 }

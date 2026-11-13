@@ -16,8 +16,11 @@ public class StateBoundaryStoreTests
     public void Reads_null_when_keys_absent()
     {
         StateBoundaryStore store = CreateStore(new TestMemDb(), new TestMemDb());
-        Assert.That(store.OldestStateBlock, Is.Null);
-        Assert.That(store.BestPersistedState, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.OldestStateBlock, Is.Null);
+            Assert.That(store.BestPersistedState, Is.Null);
+        }
     }
 
     [Test]
@@ -43,8 +46,11 @@ public class StateBoundaryStoreTests
 
         store.OldestStateBlock = attempted;
 
-        Assert.That(store.OldestStateBlock, Is.EqualTo(expected));
-        Assert.That(CreateStore(stateDb, new TestMemDb()).OldestStateBlock, Is.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.OldestStateBlock, Is.EqualTo(expected));
+            Assert.That(CreateStore(stateDb, new TestMemDb()).OldestStateBlock, Is.EqualTo(expected));
+        }
     }
 
     [Test]
@@ -55,8 +61,11 @@ public class StateBoundaryStoreTests
         store.OldestStateBlock = 200UL;
 
         store.OldestStateBlock = null;
-        Assert.That(store.OldestStateBlock, Is.Null);
-        Assert.That(CreateStore(stateDb, new TestMemDb()).OldestStateBlock, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.OldestStateBlock, Is.Null);
+            Assert.That(CreateStore(stateDb, new TestMemDb()).OldestStateBlock, Is.Null);
+        }
 
         store.OldestStateBlock = 50UL;
         Assert.That(store.OldestStateBlock, Is.EqualTo(50UL), "after reset a smaller floor is acceptable");
@@ -72,8 +81,11 @@ public class StateBoundaryStoreTests
         // Unlike the OldestStateBlock floor, the latest pointer may rewind (deep reorg).
         store.BestPersistedState = 100UL;
 
-        Assert.That(store.BestPersistedState, Is.EqualTo(100UL));
-        Assert.That(CreateStore(new TestMemDb(), blockInfosDb).BestPersistedState, Is.EqualTo(100UL));
-        Assert.That(store.OldestStateBlock, Is.Null, "the two pointers are independent");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.BestPersistedState, Is.EqualTo(100UL));
+            Assert.That(CreateStore(new TestMemDb(), blockInfosDb).BestPersistedState, Is.EqualTo(100UL));
+            Assert.That(store.OldestStateBlock, Is.Null, "the two pointers are independent");
+        }
     }
 }

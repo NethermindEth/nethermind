@@ -2,29 +2,31 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 
-public class NewPooledTransactionHashesMessageSerializer72 : IZeroMessageSerializer<NewPooledTransactionHashesMessage72>
+public class NewPooledTransactionHashesMessageSerializer72 : IMessageSerializer<NewPooledTransactionHashesMessage72>
 {
     private static readonly RlpLimit TypesRlpLimit = RlpLimit.For<NewPooledTransactionHashesMessage72>(NewPooledTransactionHashesMessage72.MaxCount, nameof(NewPooledTransactionHashesMessage72.Types));
     private static readonly RlpLimit SizesRlpLimit = RlpLimit.For<NewPooledTransactionHashesMessage72>(NewPooledTransactionHashesMessage72.MaxCount, nameof(NewPooledTransactionHashesMessage72.Sizes));
     private static readonly RlpLimit HashesRlpLimit = RlpLimit.For<NewPooledTransactionHashesMessage72>(NewPooledTransactionHashesMessage72.MaxCount, nameof(NewPooledTransactionHashesMessage72.Hashes));
     private static readonly RlpLimit CellMaskRlpLimit = RlpLimit.For<NewPooledTransactionHashesMessage72>(BlobCellMask.FixedByteLength, nameof(NewPooledTransactionHashesMessage72.CellMask));
 
-    public NewPooledTransactionHashesMessage72 Deserialize(IByteBuffer byteBuffer) =>
-        byteBuffer.DeserializeRlp(Deserialize);
-
-    private static NewPooledTransactionHashesMessage72 Deserialize(ref RlpReader ctx)
+    public NewPooledTransactionHashesMessage72 Deserialize(ReadOnlySpan<byte> data)
     {
-        int sequenceLength = ctx.ReadSequenceLength();
-        int checkPosition = ctx.Position + sequenceLength;
+        RlpReader ctx = new(data);
+        return ctx.CheckEnd(Deserialize(ref ctx));
+    }
+
+    private static NewPooledTransactionHashesMessage72 Deserialize(ref RlpReader reader)
+    {
+        RlpReader ctx = reader.EnterSequence(out int itemLength);
         ArrayPoolList<byte>? types = null;
         ArrayPoolList<int>? sizes = null;
         ArrayPoolList<ValueHash256>? hashes = null;
@@ -34,21 +36,26 @@ public class NewPooledTransactionHashesMessageSerializer72 : IZeroMessageSeriali
             types = ctx.DecodeByteArraySpan(TypesRlpLimit).ToPooledList();
             sizes = ctx.DecodeNonNullArrayPoolList(static (ref RlpReader c) => DecodeTransactionSize(ref c), limit: SizesRlpLimit);
             hashes = ctx.DecodeNonNullArrayPoolList(static (ref RlpReader c) => DecodeTransactionHash(ref c), limit: HashesRlpLimit);
-            if (ctx.PeekNumberOfItemsRemaining(checkPosition, maxSearch: 2) != 1)
+            if (!ctx.HasNext)
             {
-                throw new RlpException($"Wrong format of {nameof(NewPooledTransactionHashesMessage72)} message. Expected exactly one cell mask field.");
+                throw new RlpReaderException($"Wrong format of {nameof(NewPooledTransactionHashesMessage72)} message. Expected exactly one cell mask field.");
             }
 
             ReadOnlySpan<byte> cellMaskSpan = ctx.DecodeByteArraySpan(CellMaskRlpLimit);
-            ctx.Check(checkPosition);
+            if (ctx.HasNext)
+            {
+                throw new RlpReaderException($"Wrong format of {nameof(NewPooledTransactionHashesMessage72)} message. Expected exactly one cell mask field.");
+            }
+
+            reader.ExitSequence(ctx, itemLength);
             if (cellMaskSpan.Length != BlobCellMask.FixedByteLength)
             {
-                throw new RlpException($"Invalid cell mask length in {nameof(NewPooledTransactionHashesMessage72)}: expected {BlobCellMask.FixedByteLength}, got {cellMaskSpan.Length}.");
+                throw new RlpReaderException($"Invalid cell mask length in {nameof(NewPooledTransactionHashesMessage72)}: expected {BlobCellMask.FixedByteLength}, got {cellMaskSpan.Length}.");
             }
 
             if (types.Count != sizes.Count || types.Count != hashes.Count)
             {
-                throw new RlpException(
+                throw new RlpReaderException(
                     $"Mismatched field counts in {nameof(NewPooledTransactionHashesMessage72)}: "
                     + $"{types.Count} types, {sizes.Count} sizes, {hashes.Count} hashes.");
             }
@@ -72,7 +79,7 @@ public class NewPooledTransactionHashesMessageSerializer72 : IZeroMessageSeriali
         int size = ctx.DecodePositiveInt();
         if (size == 0)
         {
-            throw new RlpException($"{nameof(NewPooledTransactionHashesMessage72)} transaction size must be positive.");
+            throw new RlpReaderException($"{nameof(NewPooledTransactionHashesMessage72)} transaction size must be positive.");
         }
 
         return size;
@@ -80,7 +87,44 @@ public class NewPooledTransactionHashesMessageSerializer72 : IZeroMessageSeriali
 
     private static ValueHash256 DecodeTransactionHash(ref RlpReader ctx) => ctx.DecodeValueKeccakNonNull();
 
-    public void Serialize(IByteBuffer byteBuffer, NewPooledTransactionHashesMessage72 message)
+    public int Serialize(Span<byte> destination, NewPooledTransactionHashesMessage72 message)
+    {
+        int sizesLength = GetSizesLength(message);
+        int hashesLength = GetHashesLength(message);
+
+        RlpWriter writer = RlpWriter.ContentWriter(destination);
+        RlpSequence sequence = writer.StartSequence(GetContentLength(message, sizesLength, hashesLength));
+        writer.Encode(message.Types.AsSpan());
+
+        RlpSequence sizes = writer.StartSequence(sizesLength);
+        foreach (int size in message.Sizes.AsSpan())
+        {
+            writer.Encode(size);
+        }
+
+        writer.EndSequence(sizes);
+        RlpSequence hashes = writer.StartSequence(hashesLength);
+        foreach (ValueHash256 hash in message.Hashes.AsSpan())
+        {
+            writer.Encode(hash);
+        }
+
+        writer.EndSequence(hashes);
+        writer.Encode(message.CellMask);
+        writer.EndSequence(sequence);
+        return writer.Length;
+    }
+
+    public int GetLength(NewPooledTransactionHashesMessage72 message) =>
+        Rlp.LengthOfSequence(GetContentLength(message, GetSizesLength(message), GetHashesLength(message)));
+
+    private static int GetContentLength(NewPooledTransactionHashesMessage72 message, int sizesLength, int hashesLength) =>
+        Rlp.LengthOf(message.Types.AsSpan())
+        + Rlp.LengthOfSequence(sizesLength)
+        + Rlp.LengthOfSequence(hashesLength)
+        + Rlp.LengthOf(message.CellMask);
+
+    private static int GetSizesLength(NewPooledTransactionHashesMessage72 message)
     {
         int sizesLength = 0;
         foreach (int size in message.Sizes.AsSpan())
@@ -88,31 +132,8 @@ public class NewPooledTransactionHashesMessageSerializer72 : IZeroMessageSeriali
             sizesLength += Rlp.LengthOf(size);
         }
 
-        int hashesLength = checked(message.Hashes.Count * Rlp.LengthOfKeccakRlp);
-
-        int contentLength = Rlp.LengthOf(message.Types.AsSpan())
-                            + Rlp.LengthOfSequence(sizesLength)
-                            + Rlp.LengthOfSequence(hashesLength)
-                            + Rlp.LengthOf(message.CellMask);
-
-        byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
-
-        ByteBufferRlpWriter writer = new(byteBuffer);
-        writer.StartSequence(contentLength);
-        writer.Encode(message.Types.AsSpan());
-
-        writer.StartSequence(sizesLength);
-        foreach (int size in message.Sizes.AsSpan())
-        {
-            writer.Encode(size);
-        }
-
-        writer.StartSequence(hashesLength);
-        foreach (ValueHash256 hash in message.Hashes.AsSpan())
-        {
-            writer.Encode(hash);
-        }
-
-        writer.Encode(message.CellMask);
+        return sizesLength;
     }
+
+    private static int GetHashesLength(NewPooledTransactionHashesMessage72 message) => checked(message.Hashes.Count * Rlp.LengthOfKeccakRlp);
 }

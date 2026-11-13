@@ -49,8 +49,11 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         Transaction transaction = Build.A.Transaction.WithNonce(nonce + (ulong)nonceDelta).WithValue(1)
             .WithCode(Prepare.EvmCode.STOP().Done).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         Block bad = new(canonical.Header.Clone(), [transaction], canonical.Uncles, canonical.Withdrawals);
-        Assert.That(canonical.Transactions, Is.Empty);
-        Assert.That(bad.Hash, Is.EqualTo(canonical.Hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(canonical.Transactions, Is.Empty);
+            Assert.That(bad.Hash, Is.EqualTo(canonical.Hash));
+        }
         chain.Container.Resolve<IBadBlockStore>().Insert(bad);
         IBlockValidationModule[] validation = chain.Container.Resolve<IBlockValidationModule[]>();
         IOverridableEnv env = chain.Container.Resolve<ITraceEnvFactory>().CreateForTracing();
@@ -66,7 +69,9 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
             if (nonceDelta == 0)
             {
                 string[] files = tracer.TraceBadBlockToFile(bad.Hash!, GethTraceOptions.Default, CancellationToken.None).ToArray();
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
                 Assert.That(files, Has.Length.EqualTo(1), "the empty canonical body must not replace the full bad-store body");
+#pragma warning restore NUnit2045
                 Assert.That(fileSystem.File.ReadAllText(files[0]), Does.Contain("\"opName\":\"STOP\""));
             }
             else
@@ -112,6 +117,46 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         string file = TraceFile(code);
         using JsonDocument summary = JsonDocument.Parse(file.Split('\n', StringSplitOptions.RemoveEmptyEntries)[^1]);
         Assert.That(summary.RootElement.GetProperty("gasUsed").GetString(), Is.EqualTo(gasUsed));
+    }
+
+    [TestCase(Instruction.REVERT, "execution reverted", "0x6")]
+    [TestCase(Instruction.RETURN, null, "0x6")]
+    [TestCase(Instruction.INVALID, "invalid opcode: INVALID", "0x13498")]
+    public void Top_level_fault_is_repeated_with_error_before_summary(Instruction exit, string? error, string gasUsed)
+    {
+        byte[] code = Prepare.EvmCode.PushData(0).PushData(0).Op(exit).Done;
+        string[] records = TraceFile(code).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        string step = records[2];
+        string errorField = error is null ? "" : $",\"error\":\"{error}\"";
+        string summary = $"{{\"output\":\"\",\"gasUsed\":\"{gasUsed}\"{errorField}}}";
+        string fault = exit == Instruction.REVERT ? step.Replace("\"stack\":[\"0x0\",\"0x0\"]", "\"stack\":[]") : step;
+        string[] expected = error is null ? [summary] : [fault[..^1] + errorField + "}", summary];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(step, Does.Contain($"\"gasCost\":\"0x0\",").And.Contain($"\"opName\":\"{exit}\"").And.Not.Contain("\"error\""));
+            Assert.That(records[3..], Is.EqualTo(expected));
+        }
+    }
+
+    [Test]
+    public void Revert_fault_record_shows_popped_operands_and_expanded_memory([Values] bool enableMemory)
+    {
+        byte[] code = Prepare.EvmCode.PushData(7).PushData(32).PushData(64).Op(Instruction.REVERT).Done;
+        string[] records = TraceFile(code, enableMemory: enableMemory).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        using JsonDocument step = JsonDocument.Parse(records[3]);
+        using JsonDocument fault = JsonDocument.Parse(records[4]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(step.RootElement.GetProperty("stack").EnumerateArray().Select(item => item.GetString()), Is.EqualTo(new[] { "0x7", "0x20", "0x40" }));
+            Assert.That(step.RootElement.GetProperty("memSize").GetInt32(), Is.Zero);
+            Assert.That(fault.RootElement.GetProperty("error").GetString(), Is.EqualTo("execution reverted"));
+            Assert.That(fault.RootElement.GetProperty("stack").EnumerateArray().Select(item => item.GetString()), Is.EqualTo(new[] { "0x7" }));
+            Assert.That(fault.RootElement.GetProperty("memSize").GetInt32(), Is.EqualTo(96));
+            if (enableMemory)
+                Assert.That(fault.RootElement.GetProperty("memory").GetString(), Is.EqualTo("0x" + new string('0', 192)));
+            else
+                Assert.That(fault.RootElement.TryGetProperty("memory", out _), Is.False);
+        }
     }
 
     [Test]
@@ -248,8 +293,11 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         JsonElement[] opcodes = trace.RootElement.EnumerateArray().Where(record => record.TryGetProperty("opName", out _)).ToArray();
         int firstReturnData = Array.FindIndex(opcodes, record => record.GetProperty("opName").GetString() == "RETURNDATASIZE");
         int lastReturnData = Array.FindLastIndex(opcodes, record => record.GetProperty("opName").GetString() == "CALL");
-        Assert.That(firstReturnData, Is.GreaterThan(0));
-        Assert.That(lastReturnData, Is.GreaterThan(firstReturnData));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstReturnData, Is.GreaterThan(0));
+            Assert.That(lastReturnData, Is.GreaterThan(firstReturnData));
+        }
 
         using (Assert.EnterMultipleScope())
         {
@@ -281,6 +329,7 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
     [TestCase("return", "0x12", null)]
     [TestCase("revert", "0x12", "execution reverted")]
     [TestCase("badJump", "0xc350", "invalid jump destination")]
+    [TestCase("invalid", "0xc350", "invalid opcode: INVALID")]
     [TestCase("empty", "0x0", null)]
     [TestCase("identity", "0xf", null)]
     [TestCase("identity", "0xe", "out of gas", 14)]
@@ -300,8 +349,10 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         string[] childOpcodes = scenario switch
         {
             "return" when gasLimit == 17 => ["PUSH1", "PUSH1", "MSTORE", "PUSH1", "PUSH1"],
-            "return" or "revert" => ["PUSH1", "PUSH1", "MSTORE", "PUSH1", "PUSH1", scenario.ToUpperInvariant()],
+            "return" => ["PUSH1", "PUSH1", "MSTORE", "PUSH1", "PUSH1", "RETURN"],
+            "revert" => ["PUSH1", "PUSH1", "MSTORE", "PUSH1", "PUSH1", "REVERT", "REVERT"],
             "badJump" => ["PUSH1", "JUMP"],
+            "invalid" => ["INVALID", "INVALID"],
             _ => []
         };
         string[] expectedOpcodes = ["PUSH1", "PUSH1", "PUSH1", "PUSH1", "PUSH1", "PUSH20", gasLimit > 255 ? "PUSH2" : "PUSH1", "CALL", .. childOpcodes, "POP", "STOP"];
@@ -309,6 +360,8 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         {
             Assert.That(opcodes, Is.EqualTo(expectedOpcodes), "each deferred opcode must be emitted exactly once");
             Assert.That(records[childExit], Is.EqualTo($"{{\"output\":\"{output}\",\"gasUsed\":\"{gasUsed}\"{errorField}}}"));
+            if (scenario is "revert" or "invalid")
+                Assert.That(records[childExit - 1], Does.Contain("\"depth\":2").And.Contain($"\"error\":\"{error}\""));
             Assert.That(resumed.RootElement.GetProperty("opName").GetString(), Is.EqualTo("POP"));
             Assert.That(resumed.RootElement.GetProperty("depth").GetInt32(), Is.EqualTo(1));
             Assert.That(records.Count(record => record.StartsWith("{\"output\"")), Is.EqualTo(2));
@@ -394,7 +447,7 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Should_have_file_names_matching_block_and_transactions()
+    public void Should_have_file_names_matching_block_and_transactions([Values] bool zeroTxHash)
     {
         MockFileSystem fileSystem = new();
         fileSystem.Initialize();
@@ -406,7 +459,8 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
             })
             .TestObject;
 
-        GethLikeBlockFileTracer tracer = new(block, GethTraceOptions.Default, fileSystem, Spec);
+        GethTraceOptions options = zeroTxHash ? GethTraceOptions.Default with { TxHash = Hash256.Zero } : GethTraceOptions.Default;
+        GethLikeBlockFileTracer tracer = new(block, options, fileSystem, Spec);
         IBlockTracer blockTracer = (IBlockTracer)tracer;
 
         for (int i = 0; i < block.Transactions.Length; i++)
@@ -421,6 +475,8 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
             Assert.That(fileName, Does.Contain($"block_{block.Hash.Bytes[..4].ToHexString(true)}-{i}-{tx.Hash.Bytes[..4].ToHexString(true)}-"));
             Assert.That(fileName, Does.EndWith(".jsonl"));
         }
+
+        Assert.That(tracer.FileNames, Has.Count.EqualTo(block.Transactions.Length));
     }
 
     [Test]
@@ -536,6 +592,7 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
             "return" or "revert" => Prepare.EvmCode.PushData(42).PushData(0).Op(Instruction.MSTORE)
                 .PushData(32).PushData(0).Op(scenario == "return" ? Instruction.RETURN : Instruction.REVERT).Done,
             "badJump" => Prepare.EvmCode.PushData(255).Op(Instruction.JUMP).Done,
+            "invalid" => Prepare.EvmCode.Op(Instruction.INVALID).Done,
             _ => []
         };
         TestState.CreateAccount(address, 1.Ether);
@@ -557,11 +614,11 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
             .Op(Instruction.POP).Call(TestItem.AddressE, 50_000).Op(Instruction.STOP).Done;
     }
 
-    private string TraceFile(byte[] code, long limit = 0, bool disableStack = false, bool enableReturnData = false)
+    private string TraceFile(byte[] code, long limit = 0, bool disableStack = false, bool enableReturnData = false, bool enableMemory = false)
     {
         MockFileSystem fileSystem = new();
         fileSystem.Initialize();
-        using GethLikeBlockFileTracer tracer = new(Build.A.Block.TestObject, GethTraceOptions.Default with { Limit = limit, DisableStack = disableStack, EnableReturnData = enableReturnData }, fileSystem, Spec);
+        using GethLikeBlockFileTracer tracer = new(Build.A.Block.TestObject, GethTraceOptions.Default with { Limit = limit, DisableStack = disableStack, EnableReturnData = enableReturnData, EnableMemory = enableMemory }, fileSystem, Spec);
         ExecuteBlock(tracer, code);
         return fileSystem.File.ReadAllText(tracer.FileNames.Single());
     }

@@ -29,7 +29,9 @@ namespace Nethermind.Blockchain.Test.Consensus
             ClefSigner sut = ClefSigner.Create(new ClefWallet(client));
 
             ValueHash256 hash = Keccak.Zero;
+#pragma warning disable NUnit2045 // The successful prerequisite is required before accessing its result.
             Assert.That(sut.TrySign(in hash, out Signature result), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(new Signature(returnValue).Bytes.SequenceEqual(result.Bytes), Is.True);
         }
 
@@ -63,7 +65,9 @@ namespace Nethermind.Blockchain.Test.Consensus
             BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
             ClefSigner sut = ClefSigner.Create(new ClefWallet(client));
 
+#pragma warning disable NUnit2045 // The successful prerequisite is required before accessing its result.
             Assert.That(sut.TrySign(blockHeader, out Signature result), Is.True);
+#pragma warning restore NUnit2045
 
             Assert.That(result.V, Is.EqualTo(expected));
         }

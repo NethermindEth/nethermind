@@ -11,4 +11,8 @@ namespace Nethermind.Facade.Eth.RpcTransaction;
 /// Geth rejects this inside the call rather than while decoding the argument, so the JSON-RPC layer reports its
 /// message without naming the argument.
 /// </remarks>
-public sealed class DataAndInputDifferException() : FormatException(RpcTransactionErrors.DataAndInputDiffer), IExceptionWithSafePublicMessage;
+public sealed class DataAndInputDifferException() : FormatException(RpcTransactionErrors.DataAndInputDiffer), IExceptionWithSafePublicMessage
+{
+    /// <inheritdoc/>
+    public bool OmitArgumentPosition => true;
+}

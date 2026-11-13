@@ -10,6 +10,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Era1.Exceptions;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 
@@ -78,6 +79,11 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
             {
                 EntryReadResult? result = await ReadBlockAndReceipts(blockNumber, true, cancellation);
                 EntryReadResult err = result.Value;
+
+                if (err.Block.Header.Number != blockNumber)
+                {
+                    throw new EraVerificationException($"Mismatched header number {err.Block.Header.Number}. Block number {blockNumber}.");
+                }
 
                 if (!blockValidator.ValidateBodyAgainstHeader(err.Block.Header, err.Block.Body, out string? error))
                 {

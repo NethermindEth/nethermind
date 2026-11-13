@@ -1,15 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
+    <InternalsVisibleTo Include="Nethermind.Abi.Test" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="MathNet.Numerics.FSharp" />
+    <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
   </ItemGroup>
 
 </Project>

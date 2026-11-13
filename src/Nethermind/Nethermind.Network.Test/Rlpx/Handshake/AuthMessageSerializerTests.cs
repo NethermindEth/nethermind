@@ -32,14 +32,17 @@ public class AuthMessageSerializerTests
         authMessage.PublicKey = _privateKey.PublicKey;
         _random.NextBytes(authMessage.Nonce);
         authMessage.IsTokenUsed = true;
-        byte[] bytes = _serializer.Serialize(authMessage);
+        byte[] bytes = _serializer.SerializeToArray(authMessage);
         AuthMessage after = _serializer.Deserialize(bytes);
 
-        Assert.That(after.Signature, Is.EqualTo(authMessage.Signature));
-        Assert.That(after.EphemeralPublicHash, Is.EqualTo(authMessage.EphemeralPublicHash));
-        Assert.That(after.PublicKey, Is.EqualTo(authMessage.PublicKey));
-        Assert.That(Bytes.AreEqual(authMessage.Nonce, after.Nonce), Is.True);
-        Assert.That(after.IsTokenUsed, Is.EqualTo(authMessage.IsTokenUsed));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(after.Signature, Is.EqualTo(authMessage.Signature));
+            Assert.That(after.EphemeralPublicHash, Is.EqualTo(authMessage.EphemeralPublicHash));
+            Assert.That(after.PublicKey, Is.EqualTo(authMessage.PublicKey));
+            Assert.That(Bytes.AreEqual(authMessage.Nonce, after.Nonce), Is.True);
+            Assert.That(after.IsTokenUsed, Is.EqualTo(authMessage.IsTokenUsed));
+        }
     }
 
     [TestCase(BlockchainIds.Mainnet)]
@@ -53,5 +56,19 @@ public class AuthMessageSerializerTests
     {
         EthereumEcdsa ecdsa = new(chainId);
         TestEncodeDecode(ecdsa);
+    }
+
+    [Test]
+    public void Rejects_nonce_of_wrong_length([Values(AuthMessageSerializer.NonceLength - 1, AuthMessageSerializer.NonceLength + 1)] int nonceLength)
+    {
+        AuthMessage authMessage = new()
+        {
+            EphemeralPublicHash = Keccak.Zero,
+            Nonce = new byte[nonceLength],
+            Signature = new EthereumEcdsa(BlockchainIds.Mainnet).Sign(_privateKey, Keccak.Compute("anything")),
+            PublicKey = _privateKey.PublicKey
+        };
+
+        Assert.Throws<ArgumentException>(() => _serializer.SerializeToArray(authMessage));
     }
 }

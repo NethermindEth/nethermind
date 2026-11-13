@@ -7,7 +7,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -26,8 +26,12 @@ namespace Nethermind.Consensus.Processing;
 public sealed class BlockAccessListRecoveryStep(IBlockAccessListStore balStore, IBlocksConfig blocksConfig, ILogManager logManager, ISyncConfig? syncConfig = null) : IBlockPreprocessorStep
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BlockAccessListRecoveryStep>();
-    private readonly bool _hasConsumer = (!ZkEvmFlag.IsActive && blocksConfig.ParallelExecution) || blocksConfig.ParallelExecutionBatchRead
-        || syncConfig?.ReconstructFinalizedStateFromBlockAccessLists == true;
+    private readonly bool _hasConsumer = ExecutionUsesAccessLists(blocksConfig) || syncConfig?.ReconstructFinalizedStateFromBlockAccessLists == true;
+
+    /// <summary>Whether block execution reads a block's access list, for parallel execution or read warming.</summary>
+    /// <remarks>The zkEVM build does not execute in parallel, so there only read warming reads the list.</remarks>
+    public static bool ExecutionUsesAccessLists(IBlocksConfig blocksConfig) =>
+        (!ZkEvmFlag.IsActive && blocksConfig.ParallelExecution) || blocksConfig.ParallelExecutionBatchRead;
 
     /// <inheritdoc/>
     /// <remarks>Only queued processing re-attaches the stored list; tracing and one-time processing run sequentially.</remarks>
@@ -44,7 +48,7 @@ public sealed class BlockAccessListRecoveryStep(IBlockAccessListStore balStore, 
         {
             stored = balStore.Get(block.Number, blockHash);
         }
-        catch (RlpException ex)
+        catch (RlpReaderException ex)
         {
             if (_logger.IsWarn) _logger.Warn($"Ignoring undecodable stored block access list of {block.ToString(Block.Format.Short)}: {ex.Message}");
             return;

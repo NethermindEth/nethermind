@@ -28,7 +28,9 @@ public class NativeMemoryListTests
         }
         empty.Add(1);
         Assert.That(empty.Count, Is.EqualTo(1));
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(empty.Remove(1), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(empty.Count, Is.EqualTo(0));
         empty.Add(2);
         Assert.That(empty[0], Is.EqualTo(2));
@@ -89,7 +91,9 @@ public class NativeMemoryListTests
             Assert.That(list.Contains(30), Is.True);
             Assert.That(list.Contains(99), Is.False);
         }
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(list.Remove(20), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(list, Is.EquivalentTo(new[] { 10, 30 }));
         Assert.That(list.Remove(99), Is.False);
     }
@@ -160,7 +164,9 @@ public class NativeMemoryListTests
     {
         using NativeMemoryList<int> list = new(4);
         IList ilist = list;
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(ilist.Add(1), Is.EqualTo(0));
+#pragma warning restore NUnit2045
         Assert.That(ilist.Add(2), Is.EqualTo(1));
         Assert.That(ilist.Contains(1), Is.True);
         Assert.That(ilist.IndexOf(2), Is.EqualTo(1));

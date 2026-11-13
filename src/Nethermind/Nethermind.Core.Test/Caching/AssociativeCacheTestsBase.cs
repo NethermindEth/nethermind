@@ -62,7 +62,9 @@ public abstract class AssociativeCacheTestsBase
     [Test]
     public void Can_reset()
     {
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(Set(in _keys[0], 0), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(Set(in _keys[0], 1), Is.False);
         AssertValue(in _keys[0], 1);
     }
@@ -120,7 +122,9 @@ public abstract class AssociativeCacheTestsBase
     public void Can_delete()
     {
         Set(in _keys[0], 0);
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(Delete(in _keys[0]), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(Get(in _keys[0]), Is.False);
         Assert.That(Delete(in _keys[0]), Is.False);
     }
@@ -179,7 +183,9 @@ public abstract class AssociativeCacheTestsBase
         });
 
         AssertValue(in _keys[0], 0);
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(GetCount(), Is.GreaterThan(0));
+#pragma warning restore NUnit2045
 
         Assert.That(Delete(in _keys[0]), Is.True);
         Assert.That(Get(in _keys[0]), Is.False);
@@ -206,7 +212,9 @@ public abstract class AssociativeCacheTestsBase
         Assert.That(GetCount(), Is.EqualTo(1));
 
         Clear();
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(GetCount(), Is.EqualTo(0));
+#pragma warning restore NUnit2045
 
         // Delete after Clear — entry is stale, delete should be a no-op
         Assert.That(Delete(in _keys[0]), Is.False);
@@ -239,7 +247,9 @@ public abstract class AssociativeCacheTestsBase
         Clear();
 
         // Epoch bump makes entry invisible, count resets
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(Get(in _keys[0]), Is.False);
+#pragma warning restore NUnit2045
         Assert.That(GetCount(), Is.EqualTo(0));
 
         // Capacity is free — Set returns true (new), value is retrievable

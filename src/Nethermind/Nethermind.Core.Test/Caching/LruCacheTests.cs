@@ -49,7 +49,9 @@ namespace Nethermind.Core.Test.Caching
         public void Can_reset()
         {
             ICache<Address, Account> cache = Create();
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
             Assert.That(cache.Set(_addresses[0], _accounts[0]), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(cache.Set(_addresses[0], _accounts[1]), Is.False);
             Assert.That(cache.Get(_addresses[0]), Is.EqualTo(_accounts[1]));
         }
@@ -67,7 +69,9 @@ namespace Nethermind.Core.Test.Caching
             ICache<Address, Account> cache = Create();
             Assert.That(cache.Set(_addresses[0], _accounts[0]), Is.True);
             cache.Clear();
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
             Assert.That(cache.Get(_addresses[0]), Is.Null);
+#pragma warning restore NUnit2045
             Assert.That(cache.Set(_addresses[0], _accounts[1]), Is.True);
             Assert.That(cache.Get(_addresses[0]), Is.EqualTo(_accounts[1]));
         }
@@ -110,7 +114,9 @@ namespace Nethermind.Core.Test.Caching
                     {
                         // Fuzz the order of the addresses
                         int index = random.Next(i - 1, i - 1 + Capacity);
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
                         Assert.That(cache.Delete(_addresses[index]), Is.True);
+#pragma warning restore NUnit2045
                         Assert.That(cache.Set(_addresses[index], _accounts[index]), Is.True);
                     }
                     for (int ii = i - 1; ii < i - 1 + Capacity; ii++)
@@ -146,7 +152,9 @@ namespace Nethermind.Core.Test.Caching
                 {
                     for (int ii = Capacity - 1; ii < Capacity * 2 - 1; ii++)
                     {
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
                         Assert.That(cache.Get(_addresses[ii]), Is.EqualTo(_accounts[ii]));
+#pragma warning restore NUnit2045
                         Assert.That(cache.Delete(_addresses[ii]), Is.True);
                     }
                 }
@@ -222,7 +230,9 @@ namespace Nethermind.Core.Test.Caching
         {
             ICache<Address, Account> cache = Create();
             Assert.That(cache.Set(_addresses[0], _accounts[0]), Is.True);
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
             Assert.That(cache.Set(_addresses[0], _accounts[0]), Is.False);
+#pragma warning restore NUnit2045
             Assert.That(cache.Set(_addresses[0], null!), Is.True);
             Assert.That(cache.Get(_addresses[0]), Is.EqualTo(null));
         }
@@ -232,7 +242,9 @@ namespace Nethermind.Core.Test.Caching
         {
             ICache<Address, Account> cache = Create();
             cache.Set(_addresses[0], _accounts[0]);
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
             Assert.That(cache.Delete(_addresses[0]), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(cache.Get(_addresses[0]), Is.EqualTo(null));
             Assert.That(cache.Delete(_addresses[0]), Is.False);
         }
@@ -243,7 +255,9 @@ namespace Nethermind.Core.Test.Caching
             LruCache<Address, Account> cache = new(Capacity, "test");
             cache.Set(_addresses[0], _accounts[0]);
 
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
             Assert.That(cache.TryRemove(_addresses[0], out Account? removed), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(removed, Is.EqualTo(_accounts[0]));
             Assert.That(cache.TryRemove(_addresses[0], out removed), Is.False);
             Assert.That(removed, Is.Null);
@@ -271,8 +285,11 @@ namespace Nethermind.Core.Test.Caching
             cache.Set(1, 10);
             cache.Set(1, 11);
 
-            Assert.That(evicted, Is.EqualTo(10));
-            Assert.That(cache.Get(1), Is.EqualTo(11));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(evicted, Is.EqualTo(10));
+                Assert.That(cache.Get(1), Is.EqualTo(11));
+            }
         }
 
         [Test]
@@ -282,7 +299,9 @@ namespace Nethermind.Core.Test.Caching
             LruCache<int, int> cache = new TestEvictingLruCache<int, int>(2, "test", value => evicted = value);
             cache.Set(1, 10);
 
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
             Assert.That(cache.TryRemove(1, out int removed), Is.True);
+#pragma warning restore NUnit2045
 
             Assert.That(removed, Is.EqualTo(10));
             Assert.That(evicted, Is.Zero);
@@ -307,7 +326,9 @@ namespace Nethermind.Core.Test.Caching
             DisposableValue removed = new();
             cache.Set(1, removed);
 
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
             Assert.That(cache.TryRemove(1, out DisposableValue? actual), Is.True);
+#pragma warning restore NUnit2045
 
             Assert.That(actual, Is.SameAs(removed));
             Assert.That(removed.IsDisposed, Is.False);
@@ -447,7 +468,9 @@ namespace Nethermind.Core.Test.Caching
                 }
                 else if (operation < 10)
                 {
+#pragma warning disable NUnit2045 // Later checks and actions require these output variables in the enclosing scope.
                     Assert.That(cache.TryGet(key, out int value), Is.EqualTo(exists));
+#pragma warning restore NUnit2045
                     Assert.That(keys.Get(key), Is.EqualTo(exists));
                     if (exists)
                     {

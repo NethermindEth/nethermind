@@ -3,7 +3,6 @@
 
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.Transactions
@@ -12,7 +11,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
     {
         private readonly ISigner _signer = signer;
 
-        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec spec)
+        public AcceptTxResult IsAllowed(Transaction tx, in TxFilterContext context)
         {
             if (tx.SenderAddress == _signer.Address)
             {

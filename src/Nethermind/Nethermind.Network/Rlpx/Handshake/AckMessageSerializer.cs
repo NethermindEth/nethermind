@@ -1,13 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
+using System;
 using Nethermind.Core.Crypto;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Rlpx.Handshake
 {
-    public class AckMessageSerializer : IZeroMessageSerializer<AckMessage>
+    public class AckMessageSerializer : IMessageSerializer<AckMessage>
     {
         public const int EphemeralPublicKeyLength = 64;
         public const int EphemeralPublicKeyOffset = 0;
@@ -17,25 +16,32 @@ namespace Nethermind.Network.Rlpx.Handshake
         public const int IsTokenUsedOffset = NonceOffset + NonceLength;
         public const int TotalLength = IsTokenUsedOffset + IsTokenUsedLength;
 
-        public void Serialize(IByteBuffer byteBuffer, AckMessage msg)
+        public int GetLength(AckMessage msg) => TotalLength;
+
+        public int Serialize(Span<byte> destination, AckMessage msg)
         {
-            byteBuffer.EnsureWritable(TotalLength);
-            byteBuffer.WriteBytes(msg.EphemeralPublicKey.Bytes);
-            byteBuffer.WriteBytes(msg.Nonce);
-            byteBuffer.WriteByte(msg.IsTokenUsed ? (byte)0x01 : (byte)0x00);
+            if (msg.Nonce.Length != NonceLength)
+            {
+                throw new ArgumentException($"{nameof(AckMessage)} nonce must be {NonceLength} bytes, not {msg.Nonce.Length}.", nameof(msg));
+            }
+
+            msg.EphemeralPublicKey.Bytes.CopyTo(destination[EphemeralPublicKeyOffset..]);
+            msg.Nonce.CopyTo(destination.Slice(NonceOffset, NonceLength));
+            destination[IsTokenUsedOffset] = msg.IsTokenUsed ? (byte)0x01 : (byte)0x00;
+            return TotalLength;
         }
 
-        public AckMessage Deserialize(IByteBuffer msgBytes)
+        public AckMessage Deserialize(ReadOnlySpan<byte> msgBytes)
         {
-            if (msgBytes.ReadableBytes != TotalLength)
+            if (msgBytes.Length != TotalLength)
             {
-                throw new NetworkingException($"Incorrect incoming {nameof(AckMessage)} length. Expected {TotalLength} but was {msgBytes.ReadableBytes}", NetworkExceptionType.Validation);
+                throw new NetworkingException($"Incorrect incoming {nameof(AckMessage)} length. Expected {TotalLength} but was {msgBytes.Length}", NetworkExceptionType.Validation);
             }
 
             AckMessage authMessage = new();
-            authMessage.EphemeralPublicKey = new PublicKey(msgBytes.Slice(EphemeralPublicKeyOffset, EphemeralPublicKeyLength).ReadAllBytesAsSpan());
-            authMessage.Nonce = msgBytes.Slice(NonceOffset, NonceLength).ReadAllBytesAsArray();
-            authMessage.IsTokenUsed = msgBytes.GetByte(IsTokenUsedOffset) == 0x01;
+            authMessage.EphemeralPublicKey = new PublicKey(msgBytes.Slice(EphemeralPublicKeyOffset, EphemeralPublicKeyLength));
+            authMessage.Nonce = msgBytes.Slice(NonceOffset, NonceLength).ToArray();
+            authMessage.IsTokenUsed = msgBytes[IsTokenUsedOffset] == 0x01;
             return authMessage;
         }
     }

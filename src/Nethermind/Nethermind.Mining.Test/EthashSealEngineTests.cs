@@ -36,8 +36,11 @@ public class EthashSealEngineTests
         using CancellationTokenSource cancellationTokenSource = new(TimeSpan.FromSeconds(600));
         await ethashSealer.MineAsync(cancellationTokenSource.Token, block, validNonce - 3);
 
-        Assert.That(block.Header.Nonce, Is.EqualTo(validNonce));
-        Assert.That(block.Header.MixHash, Is.EqualTo(new Hash256("0x52b96cf62447129c6bd81f835721ee145b948ae3b05ef6eae454cbf69a5bc05d")));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Header.Nonce, Is.EqualTo(validNonce));
+            Assert.That(block.Header.MixHash, Is.EqualTo(new Hash256("0x52b96cf62447129c6bd81f835721ee145b948ae3b05ef6eae454cbf69a5bc05d")));
+        }
     }
 
     [Test]

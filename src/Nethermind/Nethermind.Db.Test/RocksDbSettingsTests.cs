@@ -16,15 +16,18 @@ namespace Nethermind.Db.Test
             };
 
             DbSettings settings2 = settings.Clone("Name2", "Path2");
-            Assert.Multiple(() =>
+            using (Assert.EnterMultipleScope())
             {
                 Assert.That(settings2.DeleteOnStart, Is.EqualTo(settings.DeleteOnStart));
                 Assert.That(settings2.CanDeleteFolder, Is.EqualTo(settings.CanDeleteFolder));
                 Assert.That(settings2.MergeOperator, Is.EqualTo(settings.MergeOperator));
                 Assert.That(settings2.ColumnsMergeOperators, Is.EqualTo(settings.ColumnsMergeOperators));
-            });
-            Assert.That(settings2.DbName, Is.EqualTo("Name2"));
-            Assert.That(settings2.DbPath, Is.EqualTo("Path2"));
+            }
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(settings2.DbName, Is.EqualTo("Name2"));
+                Assert.That(settings2.DbPath, Is.EqualTo("Path2"));
+            }
         }
     }
 }

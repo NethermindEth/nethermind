@@ -87,6 +87,7 @@ public class ShutterEventQueue(int encryptedGasLimit, ILogManager logManager)
         if (eon != _eon)
         {
             if (_logger.IsError) _logger.Error($"Cannot load Shutter transactions for eon {eon}, expected {_eon}.");
+            Metrics.ShutterEncryptedGasUsed = 0;
             yield break;
         }
 
@@ -102,7 +103,7 @@ public class ShutterEventQueue(int encryptedGasLimit, ILogManager logManager)
             if (totalGas + e.GasLimit > encryptedGasLimit)
             {
                 if (_logger.IsDebug) _logger.Debug("Shutter gas limit reached.");
-                yield break;
+                break;
             }
 
             _events.Dequeue();

@@ -16,7 +16,9 @@ public class MpmcRingBufferTests
     {
         MpmcRingBuffer<int> jobQueue = new(4);
 
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
         Assert.That(jobQueue.HasReadyItem, Is.False);
+#pragma warning restore NUnit2045
 
         Assert.That(jobQueue.TryEnqueue(1), Is.True);
         Assert.That(jobQueue.HasReadyItem, Is.True);
@@ -27,13 +29,17 @@ public class MpmcRingBufferTests
 
         for (int i = 0; i < 4; i++)
         {
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
             Assert.That(jobQueue.TryEnqueue(i), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(jobQueue.TryDequeue(out item), Is.True);
             Assert.That(item, Is.EqualTo(i));
             Assert.That(jobQueue.HasReadyItem, Is.False);
         }
 
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
         Assert.That(jobQueue.TryEnqueue(42), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(jobQueue.HasReadyItem, Is.True);
     }
 
@@ -48,7 +54,9 @@ public class MpmcRingBufferTests
         jobQueue.TryEnqueue(4);
         jobQueue.TryEnqueue(5);
 
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(jobQueue.TryDequeue(out int j), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(j, Is.EqualTo(1));
         Assert.That(jobQueue.TryDequeue(out j), Is.True);
         Assert.That(j, Is.EqualTo(2));
@@ -74,7 +82,9 @@ public class MpmcRingBufferTests
         int j = 0;
         for (int i = 0; i < 100; i++)
         {
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
             Assert.That(jobQueue.TryDequeue(out j), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(j, Is.EqualTo(i + 1));
             Assert.That(jobQueue.TryEnqueue(i + 5 + 1), Is.True);
         }
@@ -116,7 +126,9 @@ public class MpmcRingBufferTests
         MpmcRingBuffer<ReferenceJob> jobQueue = new(4);
         ReferenceJob job = new(new object());
 
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
         Assert.That(jobQueue.TryEnqueue(job), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(jobQueue.TryDequeue(out ReferenceJob dequeued), Is.True);
         Assert.That(dequeued, Is.EqualTo(job));
 

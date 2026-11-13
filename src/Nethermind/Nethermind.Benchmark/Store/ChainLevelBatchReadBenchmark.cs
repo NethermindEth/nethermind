@@ -14,6 +14,7 @@ using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using Nethermind.State.Repositories;
+using Testably.Abstractions;
 
 namespace Nethermind.Benchmarks.Store;
 
@@ -41,8 +42,9 @@ public class ChainLevelBatchReadBenchmark
         _directory = TempPath.GetTempDirectory();
         using (IContainer configs = new ContainerBuilder().AddModule(new TestNethermindModule()).Build())
         {
-            _db = new DbOnTheRocks(_directory.Path, new DbSettings(DbNames.BlockInfos, "levels"),
-                configs.Resolve<IDbConfig>(), configs.Resolve<IRocksDbConfigFactory>(), LimboLogs.Instance);
+            _db = (DbOnTheRocks)new RocksDbFactory(configs.Resolve<IRocksDbConfigFactory>(), configs.Resolve<IDbConfig>(),
+                    new HyperClockCacheWrapper(), new RealFileSystem(), LimboLogs.Instance, _directory.Path)
+                .CreateDb(new DbSettings(DbNames.BlockInfos, "levels"));
         }
 
         _container = new ContainerBuilder()

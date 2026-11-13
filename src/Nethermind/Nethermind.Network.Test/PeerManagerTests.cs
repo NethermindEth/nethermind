@@ -111,6 +111,118 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
+        public async Task Static_only_candidates_are_ranked_by_reputation()
+        {
+            Node lowReputationNode = new(TestItem.PublicKeyB, "52.141.78.53", 30303, isStatic: true);
+            Node highReputationNode = new(TestItem.PublicKeyC, "52.141.78.54", 30303, isStatic: true);
+            INodeStats lowReputationStats = Substitute.For<INodeStats>();
+            lowReputationStats.CurrentNodeReputation(Arg.Any<DateTime>()).Returns(10);
+            INodeStats highReputationStats = Substitute.For<INodeStats>();
+            highReputationStats.CurrentNodeReputation(Arg.Any<DateTime>()).Returns(100);
+
+            Peer lowReputationPeer = new(lowReputationNode, lowReputationStats) { IsAwaitingConnection = true };
+            Peer highReputationPeer = new(highReputationNode, highReputationStats) { IsAwaitingConnection = true };
+
+            ConcurrentQueue<Node> dialed = new();
+            IRlpxHost rlpxHost = Substitute.For<IRlpxHost>();
+            rlpxHost.ShouldContact(Arg.Any<IPAddress>(), Arg.Any<bool>()).Returns(true);
+            rlpxHost.ConnectAsync(Arg.Any<Node>(), Arg.Any<CancellationToken>()).Returns(callInfo =>
+            {
+                dialed.Enqueue(callInfo.Arg<Node>());
+                return Task.FromResult(false);
+            });
+
+            PeerManager manager = CreatePeerManager(rlpxHost, maxActivePeers: 2,
+                peers: [lowReputationPeer, highReputationPeer], staticPeers: [lowReputationPeer, highReputationPeer]);
+
+            manager.Start();
+            try
+            {
+                Assert.That(() => dialed.Count, Is.GreaterThanOrEqualTo(2).After(5000, 10));
+            }
+            finally
+            {
+                await manager.StopAsync();
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(dialed.Take(2), Is.EqualTo(new[] { highReputationNode, lowReputationNode }));
+                Assert.That(highReputationNode.CurrentReputation, Is.EqualTo(100));
+                Assert.That(lowReputationNode.CurrentReputation, Is.EqualTo(10));
+            }
+        }
+
+        [Test]
+        public async Task Idle_static_peer_is_contacted_and_dialed_once_alongside_other_candidates([Values] bool staticPeerAcceptsDial)
+        {
+            Node staticNode = new(TestItem.PublicKeyB, "52.141.78.53", 30303, isStatic: true);
+            Node otherNode = new(TestItem.PublicKeyC, "52.141.78.54", 30303);
+            Peer staticPeer = new(staticNode, Substitute.For<INodeStats>());
+            Peer otherPeer = new(otherNode, Substitute.For<INodeStats>());
+
+            int staticContactChecks = 0;
+            int staticDials = 0;
+            TaskCompletionSource<(int ContactChecks, int Dials)> otherDialed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            IRlpxHost rlpxHost = Substitute.For<IRlpxHost>();
+            rlpxHost.ShouldContact(Arg.Any<IPAddress>(), Arg.Any<bool>()).Returns(callInfo =>
+            {
+                if (callInfo.Arg<IPAddress>().Equals(staticNode.Address.Address)) Interlocked.Increment(ref staticContactChecks);
+                return true;
+            });
+            rlpxHost.ConnectAsync(Arg.Any<Node>(), Arg.Any<CancellationToken>()).Returns(callInfo =>
+            {
+                Node dialed = callInfo.Arg<Node>();
+                if (dialed == staticNode)
+                {
+                    Interlocked.Increment(ref staticDials);
+                    return Task.FromResult(staticPeerAcceptsDial);
+                }
+
+                if (dialed == otherNode) otherDialed.TrySetResult((Volatile.Read(ref staticContactChecks), Volatile.Read(ref staticDials)));
+                return Task.FromResult(true);
+            });
+
+            PeerManager manager = CreatePeerManager(rlpxHost, maxActivePeers: 4,
+                peers: [staticPeer, otherPeer], staticPeers: [staticPeer]);
+
+            manager.Start();
+            (int ContactChecks, int Dials) staticBeforeOtherDial;
+            try
+            {
+                staticBeforeOtherDial = await otherDialed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            finally
+            {
+                await manager.StopAsync();
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(staticBeforeOtherDial.ContactChecks, Is.EqualTo(1));
+                Assert.That(staticBeforeOtherDial.Dials, Is.EqualTo(1));
+            }
+        }
+
+        private static PeerManager CreatePeerManager(IRlpxHost rlpxHost, int maxActivePeers, Peer[] peers, Peer[] staticPeers)
+        {
+            ConcurrentDictionary<PublicKeyAsKey, Peer> pooledPeers = new();
+            foreach (Peer peer in peers)
+            {
+                pooledPeers.TryAdd(peer.Node.Id, peer);
+            }
+
+            IPeerPool peerPool = Substitute.For<IPeerPool>();
+            peerPool.Peers.Returns(pooledPeers);
+            peerPool.ActivePeers.Returns(new ConcurrentDictionary<PublicKeyAsKey, Peer>());
+            peerPool.StaticPeers.Returns(staticPeers);
+
+            NetworkConfig config = new() { MaxActivePeers = maxActivePeers, NumConcurrentOutgoingConnects = 1, PeersUpdateInterval = 10 };
+            return new PeerManager(rlpxHost, peerPool, Substitute.For<INodeStatsManager>(), config,
+                new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance);
+        }
+
+        [Test]
         public async Task Start_rejects_non_positive_peer_update_interval([Values(0, -1)] int interval)
         {
             await using Context ctx = new();
@@ -388,9 +500,12 @@ namespace Nethermind.Network.Test
 
             ctx.PeerPool.GetOrAdd(refused);
 
-            Assert.That(filled, Is.True, "the candidate never reached the claim");
-            Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.Zero, "dialed with no slot left");
-            Assert.That(ctx.RlpxPeer.ContactedIps, Is.Empty, "a filter entry was spent on a dial that never happened");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(filled, Is.True, "the candidate never reached the claim");
+                Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.Zero, "dialed with no slot left");
+                Assert.That(ctx.RlpxPeer.ContactedIps, Is.Empty, "a filter entry was spent on a dial that never happened");
+            }
 
             // Capacity is back, so the retry has to get through - a spent entry would hold it off for the
             // next five minutes.
@@ -439,13 +554,19 @@ namespace Nethermind.Network.Test
 
             InitSession(freshSession);
 
-            Assert.That(freshSession.State, Is.EqualTo(SessionState.Initialized));
-            Assert.That(ctx.PeerManager.ActivePeers.Single().InSession, Is.SameAs(freshSession));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(freshSession.State, Is.EqualTo(SessionState.Initialized));
+                Assert.That(ctx.PeerManager.ActivePeers.Single().InSession, Is.SameAs(freshSession));
+            }
 
             staleSession.MarkDisconnected(DisconnectReason.ConnectionClosed, DisconnectType.Remote, "channel disconnected");
 
-            Assert.That(freshSession.State, Is.EqualTo(SessionState.Initialized));
-            Assert.That(ctx.PeerManager.ActivePeers.Single().InSession, Is.SameAs(freshSession));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(freshSession.State, Is.EqualTo(SessionState.Initialized));
+                Assert.That(ctx.PeerManager.ActivePeers.Single().InSession, Is.SameAs(freshSession));
+            }
         }
 
         private static Session CreateIncomingSessionTemplate(PublicKey remoteNodeId)
@@ -480,16 +601,22 @@ namespace Nethermind.Network.Test
         public void Will_parse_ports_correctly_when_there_are_two_different_ports()
         {
             Enode enode = new(enode6String);
-            Assert.That(enode.Port, Is.EqualTo(12345));
-            Assert.That(enode.DiscoveryPort, Is.EqualTo(12345));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(enode.Port, Is.EqualTo(12345));
+                Assert.That(enode.DiscoveryPort, Is.EqualTo(12345));
+            }
         }
 
         [Test]
         public void Will_parse_port_correctly_when_there_is_only_one()
         {
             Enode enode = new(enode7String);
-            Assert.That(enode.Port, Is.EqualTo(12345));
-            Assert.That(enode.DiscoveryPort, Is.EqualTo(6789));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(enode.Port, Is.EqualTo(12345));
+                Assert.That(enode.DiscoveryPort, Is.EqualTo(6789));
+            }
         }
 
         [Test]
@@ -651,8 +778,11 @@ namespace Nethermind.Network.Test
 
             Peer activePeer = ctx.PeerManager.ActivePeers.Single();
             InitializeSessions(activePeer);
-            Assert.That(HasAgreedOnSessionToDisconnect(activePeer, expectedOutSessionClosing: keepIn), Is.True);
-            Assert.That(ctx.PeerManager.ActivePeers.Count, Is.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(HasAgreedOnSessionToDisconnect(activePeer, expectedOutSessionClosing: keepIn), Is.True);
+                Assert.That(ctx.PeerManager.ActivePeers.Count, Is.EqualTo(1));
+            }
         }
 
         [Test]
@@ -1076,8 +1206,11 @@ namespace Nethermind.Network.Test
             ctx.StaticNodesManager.NodeRemoved += Raise.EventWith<NodeEventArgs>(new ExplicitNodeRemovalEventArgs(
                 new Node(staticNodes.First())));
 
-            Assert.That(ctx.PeerManager.ActivePeers.Count(p => p.Node.IsStatic), Is.EqualTo(nodesCount - 1));
-            Assert.That(disconnections, Is.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ctx.PeerManager.ActivePeers.Count(p => p.Node.IsStatic), Is.EqualTo(nodesCount - 1));
+                Assert.That(disconnections, Is.EqualTo(1));
+            }
         }
 
         [Test]
@@ -1096,7 +1229,9 @@ namespace Nethermind.Network.Test
 
             ctx.Sessions.ForEach(s => s.Disconnected += DisconnectHandler);
 
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
             Assert.That(ctx.PeerPool.TryRemove(node.NodeId, out _), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(ctx.PeerManager.ActivePeers, Is.Empty);
             Assert.That(disconnections, Is.EqualTo(1));
         }

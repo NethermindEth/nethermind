@@ -77,7 +77,7 @@ namespace Nethermind.Network.Benchmarks
             try
             {
                 IByteBuffer input = Unpooled.Buffer();
-                _newBlockMessageSerializer.Serialize(input, _newBlockMessage);
+                SerializeNewBlockMessage(input);
                 oracle.WriteOutbound(input);
                 IByteBuffer expected = oracle.ReadOutbound<IByteBuffer>();
                 try
@@ -107,8 +107,16 @@ namespace Nethermind.Network.Benchmarks
         {
             _snappyBuffer.Clear();
             _outputBuffer.Clear();
-            _newBlockMessageSerializer.Serialize(_snappyBuffer, _newBlockMessage);
+            SerializeNewBlockMessage(_snappyBuffer);
             _zeroSplitter.Encode(_snappyBuffer, _outputBuffer);
+        }
+
+        private void SerializeNewBlockMessage(IByteBuffer buffer)
+        {
+            int length = _newBlockMessageSerializer.GetLength(_newBlockMessage);
+            buffer.EnsureWritable(length);
+            _newBlockMessageSerializer.Serialize(buffer.Array.AsSpan(buffer.ArrayOffset + buffer.WriterIndex, length), _newBlockMessage);
+            buffer.SetWriterIndex(buffer.WriterIndex + length);
         }
 
         [GlobalCleanup]

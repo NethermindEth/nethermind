@@ -410,7 +410,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(manualResetEvent.WaitOne(AllDeliveriesTimeout), Is.True);
             manualResetEvent.Reset();
             blockTree.ForceMainChainForTest(new Block[] { block1B, block2B });
+#pragma warning disable NUnit2045 // Completion must be confirmed before inspecting or advancing the operation.
             Assert.That(manualResetEvent.WaitOne(AllDeliveriesTimeout), Is.True);
+#pragma warning restore NUnit2045
 
             Assert.That(jsonRpcResult.Count, Is.EqualTo(5));
             Assert.That(blockTree.Head, Is.EqualTo(block2B));
@@ -463,7 +465,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             // genesis without re-moving it, so move exactly the supplied blocks to fire all 21 events.
             blockTree.ForceMainChainForTest(blocks);
 
+#pragma warning disable NUnit2045 // Completion must be confirmed before inspecting or advancing the operation.
             Assert.That(manualResetEvent.WaitOne(AllDeliveriesTimeout), Is.True);
+#pragma warning restore NUnit2045
 
             Assert.That(jsonRpcResult.Count, Is.EqualTo(21));
             Assert.That(blockTree.Head, Is.EqualTo(blocks[20]));
@@ -515,12 +519,40 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(expectedResult, Is.EqualTo(serialized), "malformed eth_subscribe/logs args should map to InvalidParams, not InternalError");
         }
 
+        [TestCase("{\"address\":\"0xc2d77d118326c33bbe36ebeabf4f7ed6bc2dda\"}", "invalid address: hex has invalid length 19 after decoding; expected 20 for address")]
+        [TestCase("{\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b7\"]}", "hex has invalid length 31 after decoding; expected 32 for topic")]
+        public async Task LogsSubscription_with_malformed_args_returns_invalid_params_with_reason(string args, string reason)
+        {
+            string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs", args);
+            string expectedResult = $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32602,\"message\":\"invalid argument 1: {reason}\"}},\"id\":67}}";
+            Assert.That(serialized, Is.EqualTo(expectedResult));
+        }
+
+        [TestCase("0x12")]
+        [TestCase("0x")]
+        [TestCase("0x00000000000000000000000000000000000000000000000000000000000000")]
+        [TestCase("0x000000000000000000000000000000000000000000000000000000000000000000")]
+        public async Task TransactionReceiptsSubscription_with_hash_of_wrong_length_returns_invalid_params(string hash)
+        {
+            string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "transactionReceipts", $$"""{"transactionHashes":["{{hash}}"]}""");
+            Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":-32602,"message":"Invalid params"},"id":67}"""));
+        }
+
+        [Test]
+        public async Task TransactionReceiptsSubscription_with_too_many_hashes_returns_invalid_params_with_reason()
+        {
+            string hashes = string.Join(",", Enumerable.Repeat($"\"{TestItem.KeccakA}\"", 201));
+            string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "transactionReceipts", $$"""{"transactionHashes":[{{hashes}}]}""");
+
+            Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":-32602,"message":"Cannot subscribe to more than 200 transaction hashes at once."},"id":67}"""));
+        }
+
         [Test]
         public async Task LogsSubscription_with_too_long_string_arguments_returns_invalid_params()
         {
             string args = new('a', 1_000_001);
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs", args);
-            string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\",\"data\":\"subscription args string length 1000001 exceeds maximum allowed length of 1000000\"},\"id\":67}";
+            string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"subscription args string length 1000001 exceeds maximum allowed length of 1000000\"},\"id\":67}";
             Assert.That(expectedResult, Is.EqualTo(serialized), "oversized string args should be rejected before subscription creation");
         }
 
@@ -555,7 +587,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 MatchingLogEvent(Build.A.BlockHeader.WithNumber(22222).TestObject),
                 MatchingLogEvent(Build.A.BlockHeader.WithNumber(33333).TestObject));
 
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
             Assert.That(jsonRpcResults, Has.Count.EqualTo(1));
+#pragma warning restore NUnit2045
             Assert.That(RpcTest.SerializeResponse(jsonRpcResults[0].Response), Does.Contain("\"blockNumber\":\"0x8235\""));
         }
 
@@ -569,7 +603,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             List<JsonRpcResult> jsonRpcResults = PublishThroughLogsSubscription(null, expectedResults: 1,
                 MatchingLogEvent(Build.A.BlockHeader.WithNumber(99).TestObject));
 
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
             Assert.That(jsonRpcResults, Has.Count.EqualTo(1));
+#pragma warning restore NUnit2045
             Assert.That(RpcTest.SerializeResponse(jsonRpcResults[0].Response), Does.Contain("\"blockNumber\":\"0x63\"").And.Contain("\"removed\":false"));
         }
 
@@ -582,7 +618,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 MatchingLogEvent(Build.A.BlockHeader.WithNumber(99).WithExtraData([1]).TestObject, removed: true),
                 MatchingLogEvent(Build.A.BlockHeader.WithNumber(99).TestObject));
 
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
             Assert.That(jsonRpcResults, Has.Count.EqualTo(2));
+#pragma warning restore NUnit2045
             Assert.That(RpcTest.SerializeResponse(jsonRpcResults[0].Response), Does.Contain("\"removed\":true"));
             Assert.That(RpcTest.SerializeResponse(jsonRpcResults[1].Response), Does.Contain("\"removed\":false"));
         }
@@ -614,7 +652,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 MatchingLogEvent(sibling),
                 MatchingLogEvent(wanted));
 
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
             Assert.That(jsonRpcResults, Has.Count.EqualTo(1));
+#pragma warning restore NUnit2045
             Assert.That(RpcTest.SerializeResponse(jsonRpcResults[0].Response), Does.Contain($"\"blockHash\":\"{wanted.Hash}\""));
         }
 
@@ -629,7 +669,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 MatchingLogEvent(Build.A.BlockHeader.WithNumber(99).TestObject),
                 MatchingLogEvent(Build.A.BlockHeader.WithNumber(100).TestObject));
 
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
             Assert.That(jsonRpcResults, Has.Count.EqualTo(2));
+#pragma warning restore NUnit2045
             Assert.That(RpcTest.SerializeResponse(jsonRpcResults[0].Response), Does.Contain("\"blockNumber\":\"0x63\""));
             Assert.That(RpcTest.SerializeResponse(jsonRpcResults[1].Response), Does.Contain("\"blockNumber\":\"0x64\""));
         }
@@ -646,7 +688,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 MatchingLogEvent(Build.A.BlockHeader.WithNumber(100).WithExtraData([1]).TestObject),
                 MatchingLogEvent(Build.A.BlockHeader.WithNumber(101).TestObject));
 
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
             Assert.That(jsonRpcResults, Has.Count.EqualTo(2));
+#pragma warning restore NUnit2045
             Assert.That(RpcTest.SerializeResponse(jsonRpcResults[0].Response), Does.Contain("\"blockNumber\":\"0x64\""));
             Assert.That(RpcTest.SerializeResponse(jsonRpcResults[1].Response), Does.Contain("\"blockNumber\":\"0x65\""));
         }
@@ -687,6 +731,32 @@ namespace Nethermind.JsonRpc.Test.Modules
                 receiptMonitor.ReceiptsInserted += Raise.EventWith(new object(), receiptsEvent);
 
                 Assert.That(disposed.Wait(TimeSpan.FromMilliseconds(500)), Is.False);
+            }
+        }
+
+        [Test]
+        public void Subscription_does_not_queue_a_block_whose_receipt_blooms_match_no_accepted_log()
+        {
+            _jsonRpcDuplexClient.SendJsonRpcResult(Arg.Any<JsonRpcResult>())
+                .Returns(new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously).Task);
+            IReceiptMonitor receiptMonitor = Substitute.For<IReceiptMonitor>();
+            LogEntry fromA = Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject;
+            Bloom falsePositive = new(new[] { fromA, Build.A.LogEntry.WithAddress(TestItem.AddressC).TestObject });
+            BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithBloom(falsePositive).TestObject;
+            ReceiptsEventArgs receiptsEvent = new(header, [Build.A.Receipt.WithBlockNumber(header.Number).WithLogs(fromA).WithBloom(falsePositive).TestObject]);
+            Filter filter = new() { FromBlock = BlockParameter.Latest, ToBlock = BlockParameter.Latest, Address = [TestItem.AddressC] };
+            using ManualResetEventSlim disposed = new();
+            _jsonRpcDuplexClient.When(c => c.Dispose()).Do(_ => disposed.Set());
+
+            using (new LogsSubscription(_jsonRpcDuplexClient, receiptMonitor, _filterStore, _blockTree, _logManager, filter))
+            {
+                for (int i = 0; i < Subscription.MaxQueuedBlocks + 2; i++)
+                {
+                    receiptMonitor.ReceiptsInserted += Raise.EventWith(new object(), receiptsEvent);
+                }
+
+                Assert.That(disposed.Wait(TimeSpan.FromMilliseconds(500)), Is.False);
+                _jsonRpcDuplexClient.DidNotReceive().SendJsonRpcResult(Arg.Any<JsonRpcResult>());
             }
         }
 
@@ -1277,6 +1347,37 @@ namespace Nethermind.JsonRpc.Test.Modules
             // The substitute records the raise, event arguments included.
             _txPool.ClearReceivedCalls();
             return new WeakReference(transaction);
+        }
+
+        [Test]
+        public void New_head_subscriptions_do_not_retain_queued_previous_blocks()
+        {
+            IJsonRpcDuplexClient client = Substitute.For<IJsonRpcDuplexClient>();
+            client.SendJsonRpcResult(Arg.Any<JsonRpcResult>()).Returns(new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously).Task);
+            using NewHeadSubscription subscription = new(client, _blockTree, _logManager, _specProvider, new BlockForRpcFactory());
+
+            (WeakReference queuedBlock, WeakReference previousBlock) = RaiseBlockAddedToMainEvents();
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(queuedBlock.IsAlive, Is.True);
+                Assert.That(previousBlock.IsAlive, Is.False);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private (WeakReference QueuedBlock, WeakReference PreviousBlock) RaiseBlockAddedToMainEvents()
+        {
+            Block queuedBlock = Build.A.Block.WithNumber(2).TestObject;
+            Block previousBlock = Build.A.Block.WithNumber(1).TestObject;
+            // The first send never completes, so the second event stays queued.
+            _blockTree.BlockAddedToMain += Raise.EventWith(new object(), new BlockReplacementEventArgs(Build.A.Block.WithNumber(0).TestObject));
+            _blockTree.BlockAddedToMain += Raise.EventWith(new object(), new BlockReplacementEventArgs(queuedBlock, previousBlock));
+            // The substitute records the raise, event arguments included.
+            _blockTree.ClearReceivedCalls();
+            return (new WeakReference(queuedBlock), new WeakReference(previousBlock));
         }
 
         [Test]

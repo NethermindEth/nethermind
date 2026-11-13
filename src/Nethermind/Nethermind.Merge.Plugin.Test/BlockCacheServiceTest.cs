@@ -24,14 +24,19 @@ public class BlockCacheServiceTest
         Hash256 block2Hash = block2.GetOrCalculateHash();
         Hash256 block3Hash = block3.GetOrCalculateHash();
 
+#pragma warning disable NUnit2045 // The assertions advance or mutate the same state before checking it; preserve fail-fast ordering.
         Assert.That(blockCacheService.TryAddBlock(block1), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(blockCacheService.TryAddBlock(block2), Is.True);
         Assert.That(blockCacheService.TryAddBlock(block3), Is.False);
 
         Assert.That(blockCacheService.BlockCache, Has.Count.EqualTo(2));
-        Assert.That(blockCacheService.BlockCache.ContainsKey(block1Hash), Is.True);
-        Assert.That(blockCacheService.BlockCache.ContainsKey(block2Hash), Is.True);
-        Assert.That(blockCacheService.BlockCache.ContainsKey(block3Hash), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockCacheService.BlockCache.ContainsKey(block1Hash), Is.True);
+            Assert.That(blockCacheService.BlockCache.ContainsKey(block2Hash), Is.True);
+            Assert.That(blockCacheService.BlockCache.ContainsKey(block3Hash), Is.False);
+        }
     }
 
     [Test]
@@ -47,14 +52,19 @@ public class BlockCacheServiceTest
         blockCacheService.FinalizedHash = finalizedHash;
         blockCacheService.HeadBlockHash = headHash;
 
+#pragma warning disable NUnit2045 // The assertions advance or mutate the same state before checking it; preserve fail-fast ordering.
         Assert.That(blockCacheService.TryAddBlock(finalizedBlock), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(blockCacheService.TryAddBlock(block2), Is.True);
         Assert.That(blockCacheService.TryAddBlock(headBlock), Is.True);
 
         Assert.That(blockCacheService.BlockCache, Has.Count.EqualTo(2));
-        Assert.That(blockCacheService.BlockCache.ContainsKey(finalizedHash), Is.True);
-        Assert.That(blockCacheService.BlockCache.ContainsKey(block2Hash), Is.False);
-        Assert.That(blockCacheService.BlockCache.ContainsKey(headHash), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockCacheService.BlockCache.ContainsKey(finalizedHash), Is.True);
+            Assert.That(blockCacheService.BlockCache.ContainsKey(block2Hash), Is.False);
+            Assert.That(blockCacheService.BlockCache.ContainsKey(headHash), Is.True);
+        }
     }
 
     [Test]
@@ -68,11 +78,16 @@ public class BlockCacheServiceTest
         blockCacheService.FinalizedHash = finalizedHash;
         blockCacheService.HeadBlockHash = headHash;
 
+#pragma warning disable NUnit2045 // The assertions advance or mutate the same state before checking it; preserve fail-fast ordering.
         Assert.That(blockCacheService.TryAddBlock(finalizedBlock), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(blockCacheService.TryAddBlock(headBlock), Is.True);
 
         Assert.That(blockCacheService.BlockCache, Has.Count.EqualTo(2));
-        Assert.That(blockCacheService.BlockCache.ContainsKey(finalizedHash), Is.True);
-        Assert.That(blockCacheService.BlockCache.ContainsKey(headHash), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockCacheService.BlockCache.ContainsKey(finalizedHash), Is.True);
+            Assert.That(blockCacheService.BlockCache.ContainsKey(headHash), Is.True);
+        }
     }
 }

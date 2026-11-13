@@ -22,7 +22,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
 
             TrieNodesMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, message);
+            SerializerTester.Test(serializer, message);
         }
 
         [Test]
@@ -33,7 +33,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             TrieNodesMessage message = new(new ByteArrayListAdapter(data));
             message.RequestId = 1;
             TrieNodesMessageSerializer serializer = new();
-            Assert.That(serializer.Serialize(message).ToHexString(), Is.EqualTo("ca01c884deadc0de82feed"));
+            Assert.That(serializer.SerializeToArray(message).ToHexString(), Is.EqualTo("ca01c884deadc0de82feed"));
         }
 
         private static IEnumerable<TestCaseData> NodesLimitCases() =>

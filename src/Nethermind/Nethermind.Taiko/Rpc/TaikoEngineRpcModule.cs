@@ -28,6 +28,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 using Nethermind.Evm.State;
@@ -459,27 +460,29 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         {
             int contentLength = Transactions.Sum(GetTxLength);
             using ArrayPoolSpan<byte> data = new(Rlp.LengthOfSequence(contentLength));
-            RlpWriter writer = new(data);
+            RlpWriter writer = RlpWriter.ContentWriter(data);
 
-            writer.StartSequence(contentLength);
+            RlpSequence sequence = writer.StartSequence(contentLength);
             foreach (Transaction tx in Transactions.AsSpan())
             {
                 txDecoder.Encode(ref writer, tx);
             }
+            writer.EndSequence(sequence);
 
-            return GetCompressedLength(data.Slice(0, writer.Position));
+            return GetCompressedLength(data.Slice(0, writer.Length));
         }
 
         public static ulong EstimateTxLength(Transaction tx, IRlpDecoder<Transaction> txDecoder)
         {
             int contentLength = txDecoder.GetLength(tx, RlpBehaviors.None);
             using ArrayPoolSpan<byte> data = new(Rlp.LengthOfSequence(contentLength));
-            RlpWriter writer = new(data);
+            RlpWriter writer = RlpWriter.ContentWriter(data);
 
-            writer.StartSequence(contentLength);
+            RlpSequence sequence = writer.StartSequence(contentLength);
             txDecoder.Encode(ref writer, tx);
+            writer.EndSequence(sequence);
 
-            return GetCompressedLength(data.Slice(0, writer.Position));
+            return GetCompressedLength(data.Slice(0, writer.Length));
         }
 
         private static ulong GetCompressedLength(ReadOnlySpan<byte> data)
@@ -625,25 +628,27 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 return null;
             }
 
-            // Read L1Origin to check if this is a preconfirmation block
-            L1Origin? l1Origin = l1OriginStore.ReadL1Origin((UInt256)currentBlock.Number);
-
-            // Skip preconfirmation blocks
-            if (l1Origin is not null && l1Origin.IsPreconfBlock)
-            {
-                currentBlock = blockFinder.FindBlock(currentBlock.Number - 1);
-                continue;
-            }
-
             UInt256? proposalId = currentBlock.Header.DecodeShastaProposalID();
             if (proposalId is null)
             {
                 return null;
             }
 
+            // Proposal ids never decrease along the chain, so the batch cannot appear further back.
+            if (proposalId.Value < batchId)
+            {
+                return null;
+            }
+
             if (proposalId.Value == batchId)
             {
-                return (UInt256)currentBlock.Number;
+                L1Origin? l1Origin = l1OriginStore.ReadL1Origin((UInt256)currentBlock.Number);
+
+                // Skip preconfirmation blocks
+                if (l1Origin is null || !l1Origin.IsPreconfBlock)
+                {
+                    return (UInt256)currentBlock.Number;
+                }
             }
 
             currentBlock = blockFinder.FindBlock(currentBlock.Number - 1);

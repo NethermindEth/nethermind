@@ -100,7 +100,10 @@ public class ParityStyleTracerTests
         Assert.That((await _blockTree!.SuggestBlockAsync(block, BlockTreeSuggestOptions.None)), Is.EqualTo(AddBlockResult.Added));
 
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> rpcResult = _traceRpcModule.trace_block(new BlockParameter(block.Number));
-        Assert.That(rpcResult.Result, Is.EqualTo(Result.Success));
-        Assert.That(rpcResult.Data, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rpcResult.Result, Is.EqualTo(Result.Success));
+            Assert.That(rpcResult.Data, Is.Empty);
+        }
     }
 }

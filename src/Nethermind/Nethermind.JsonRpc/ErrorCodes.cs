@@ -197,7 +197,7 @@ namespace Nethermind.JsonRpc
         /// <see cref="InvalidParams"/>) and the application guard rails (<see cref="ResourceUnavailable"/>,
         /// <see cref="LimitExceeded"/>, <see cref="PrunedHistoryUnavailable"/>).
         /// <para>
-        /// The code alone is not always enough: <see cref="InvalidRequest"/> is also returned for a namespace that
+        /// The code alone is not always enough: <see cref="MethodNotFound"/> is also returned for a namespace that
         /// is disabled for the requested URL or endpoint, which is a condition of this node. Those errors set
         /// <c>Error.OperatorActionable</c> and callers of this helper must honour it.
         /// </para>

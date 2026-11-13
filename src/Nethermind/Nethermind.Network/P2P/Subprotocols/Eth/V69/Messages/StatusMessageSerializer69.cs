@@ -3,22 +3,20 @@
 
 using System;
 using System.Buffers.Binary;
-using DotNetty.Buffers;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 
 public class StatusMessageSerializer69 :
-    IZeroInnerMessageSerializer<StatusMessage69>
+    IMessageSerializer<StatusMessage69>
 {
     private const int ForkHashLength = 5;
 
-    public void Serialize(IByteBuffer byteBuffer, StatusMessage69 message)
+    public int Serialize(Span<byte> destination, StatusMessage69 message)
     {
-        int totalLength = GetLength(message, out int contentLength);
-        byteBuffer.EnsureWritable(totalLength);
-        ByteBufferRlpWriter writer = new(byteBuffer);
-        writer.StartSequence(contentLength);
+        RlpWriter writer = RlpWriter.ContentWriter(destination);
+        RlpSequence sequence = writer.StartSequence(GetContentLength(message));
 
         writer.Encode(message.ProtocolVersion);
         writer.Encode(message.NetworkId);
@@ -27,30 +25,34 @@ public class StatusMessageSerializer69 :
         writer.Encode(message.EarliestBlock);
         writer.Encode(message.LatestBlock);
         writer.Encode(message.LatestBlockHash);
+        writer.EndSequence(sequence);
+        return writer.Length;
     }
 
-    public int GetLength(StatusMessage69 message, out int contentLength)
-    {
-        contentLength =
-            Rlp.LengthOf(message.ProtocolVersion) +
-            Rlp.LengthOf(message.NetworkId) +
-            Rlp.LengthOf(message.GenesisHash) +
-            LengthOfForkId(message.ForkId) +
-            Rlp.LengthOf(message.EarliestBlock) +
-            Rlp.LengthOf(message.LatestBlock) +
-            Rlp.LengthOf(message.LatestBlockHash);
+    public int GetLength(StatusMessage69 message) => Rlp.LengthOfSequence(GetContentLength(message));
 
-        return Rlp.LengthOfSequence(contentLength);
+    private static int GetContentLength(StatusMessage69 message) =>
+        Rlp.LengthOf(message.ProtocolVersion) +
+        Rlp.LengthOf(message.NetworkId) +
+        Rlp.LengthOf(message.GenesisHash) +
+        LengthOfForkId(message.ForkId) +
+        Rlp.LengthOf(message.EarliestBlock) +
+        Rlp.LengthOf(message.LatestBlock) +
+        Rlp.LengthOf(message.LatestBlockHash);
+
+    public StatusMessage69 Deserialize(ReadOnlySpan<byte> data)
+    {
+        RlpReader ctx = new(data);
+        StatusMessage69 message = Deserialize(ref ctx);
+        ctx.CheckEnd();
+        return message;
     }
 
-    public StatusMessage69 Deserialize(IByteBuffer byteBuffer) =>
-        byteBuffer.DeserializeRlp(Deserialize);
-
-    private static StatusMessage69 Deserialize(ref RlpReader ctx)
+    private static StatusMessage69 Deserialize(ref RlpReader reader)
     {
-        ctx.ReadSequenceLength();
+        RlpReader ctx = reader.EnterSequence(out int itemLength);
 
-        return new StatusMessage69
+        StatusMessage69 message = new()
         {
             ProtocolVersion = ctx.DecodeByte(),
             NetworkId = ctx.DecodeULong(),
@@ -60,24 +62,27 @@ public class StatusMessageSerializer69 :
             LatestBlock = ctx.DecodeULong(),
             LatestBlockHash = ctx.DecodeKeccak()
         };
+        reader.ExitSequenceIgnoringRest(ctx, itemLength);
+        return message;
     }
 
-    private static void EncodeForkId<TWriter>(ref TWriter writer, ForkId forkId)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    private static void EncodeForkId(ref RlpWriter writer, ForkId forkId)
     {
         int forkIdContentLength = ForkHashLength + Rlp.LengthOf(forkId.Next);
-        writer.StartSequence(forkIdContentLength);
+        RlpSequence sequence = writer.StartSequence(forkIdContentLength);
         Span<byte> forkHash = stackalloc byte[sizeof(uint)];
         BinaryPrimitives.WriteUInt32BigEndian(forkHash, forkId.ForkHash);
         writer.Encode(forkHash);
         writer.Encode(forkId.Next);
+        writer.EndSequence(sequence);
     }
 
-    private static ForkId DecodeForkId(ref RlpReader ctx)
+    private static ForkId DecodeForkId(ref RlpReader reader)
     {
-        ctx.ReadSequenceLength();
+        RlpReader ctx = reader.EnterSequence(out int itemLength);
         uint forkHash = (uint)ctx.DecodeUInt256(ForkHashLength - 1);
         ulong next = ctx.DecodeULong();
+        reader.ExitSequenceIgnoringRest(ctx, itemLength);
         return new(forkHash, next);
     }
 

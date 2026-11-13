@@ -11,11 +11,11 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade.Proxy.Models.Simulate;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using System;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
@@ -101,19 +101,16 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
     {
         IBlockTree blockTree = env.BlockTree;
         IWorldState stateProvider = env.WorldState;
-        parent = GetParent(parent, payload, blockTree);
+        parent = GetParent(parent, blockTree);
 
         env.SimulateRequestState.TotalGasLeft = gasCapLimit;
 
         if (payload.BlockStateCalls is not null)
         {
-            Dictionary<Address, ulong> nonceCache = [];
             IBlockTracer cancellationBlockTracer = tracer.WithCancellation(cancellationToken);
 
             foreach (BlockStateCall<TransactionWithSourceDetails> blockCall in payload.BlockStateCalls)
             {
-                nonceCache.Clear();
-
                 (BlockHeader callHeader, IReleaseSpec spec) = GetCallHeader(env.SpecProvider, blockCall, parent, payload.Validation);
                 env.SimulateRequestState.BlockGasLeft = callHeader.GasLimit;
                 env.SimulateRequestState.BlockStateGasLeft = callHeader.GasLimit;
@@ -125,7 +122,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
                 PrepareState(blockCall, env.WorldState, env.CodeInfoRepository, callHeader.Number, spec);
 
-                BlockBody body = AssembleBody(calls, blockCall.BlockOverrides?.Withdrawals, stateProvider, nonceCache, spec);
+                BlockBody body = AssembleBody(calls, blockCall.BlockOverrides?.Withdrawals, spec);
                 Block callBlock = new(callHeader, body);
 
                 ProcessingOptions processingFlags = payload.Validation
@@ -141,6 +138,11 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                     cancellationBlockTracer,
                     spec,
                     cancellationToken);
+
+                if (spec.IsEip1559Enabled && processedBlock.Header.BaseFeePerGas.IsZero)
+                {
+                    EncodeZeroBaseFee(processedBlock);
+                }
 
                 stateProvider.CommitTree(processedBlock.Number);
                 blockTree.SuggestBlock(processedBlock, BlockTreeSuggestOptions.ForceSetAsMain);
@@ -162,17 +164,29 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         }
     }
 
+    /// <summary>
+    /// Hashes and sizes a block with the zero base fee in its header, as EIP-1559 requires from London.
+    /// </summary>
+    /// <remarks>
+    /// The block processor and the RPC block model use the default encoding, which drops a zero base fee when no later
+    /// field follows. This runs before the block joins the simulated chain, so BLOCKHASH and the parent hash of the next
+    /// simulated block see the same hash.
+    /// </remarks>
+    private static void EncodeZeroBaseFee(Block block)
+    {
+        block.Header.Hash = block.Header.CalculateHash(RlpBehaviors.Eip1559Header);
+        block.EncodedSize = (Rlp.GetDecoder<Block>() ?? new BlockDecoder()).GetLength(block, RlpBehaviors.Eip1559Header);
+    }
+
     private BlockBody AssembleBody(
         TransactionWithSourceDetails[] calls,
         Withdrawal[]? withdrawalOverrides,
-        IWorldState stateProvider,
-        Dictionary<Address, ulong> nonceCache,
         IReleaseSpec spec)
     {
         Transaction[] transactions = new Transaction[calls.Length];
         for (int i = 0; i < calls.Length; i++)
         {
-            transactions[i] = CreateTransaction(calls[i], stateProvider, nonceCache);
+            transactions[i] = CreateTransaction(calls[i]);
         }
 
         Withdrawal[]? withdrawals = spec.WithdrawalsEnabled ? withdrawalOverrides ?? [] : null;
@@ -181,7 +195,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         return body;
     }
 
-    private static BlockHeader GetParent(BlockHeader parent, SimulatePayload<TransactionWithSourceDetails> payload, IBlockTree blockTree)
+    private static BlockHeader GetParent(BlockHeader parent, IBlockTree blockTree)
     {
         Block? latestBlock = blockTree.FindLatestBlock();
         ulong latestBlockNumber = latestBlock?.Number ?? 0;
@@ -191,50 +205,13 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             parent = latestBlock?.Header ?? blockTree.Head!.Header;
         }
 
-        BlockStateCall<TransactionWithSourceDetails>? firstBlock =
-            payload.BlockStateCalls is { Count: > 0 } blockStateCalls
-                ? blockStateCalls[0]
-                : null;
-
-        ulong lastKnown = latestBlockNumber;
-        if (firstBlock?.BlockOverrides?.Number > 0 && firstBlock.BlockOverrides?.Number < lastKnown)
-        {
-            Block? searchResult = blockTree.FindBlock(firstBlock.BlockOverrides.Number.Value - 1);
-            if (searchResult is not null)
-            {
-                parent = searchResult.Header;
-            }
-        }
-
         return parent;
     }
 
-    private Transaction CreateTransaction(
-        TransactionWithSourceDetails transactionDetails,
-        IWorldState stateProvider,
-        Dictionary<Address, ulong> nonceCache)
+    private static Transaction CreateTransaction(TransactionWithSourceDetails transactionDetails)
     {
         Transaction? transaction = transactionDetails.Transaction;
         transaction.SenderAddress ??= Address.Zero;
-
-        if (!transactionDetails.HadNonceInRequest)
-        {
-            ref ulong cachedNonce = ref CollectionsMarshal.GetValueRefOrAddDefault(nonceCache, transaction.SenderAddress, out bool exist);
-            if (!exist)
-            {
-                if (stateProvider.TryGetAccount(transaction.SenderAddress, out AccountStruct test))
-                {
-                    cachedNonce = test.Nonce;
-                }
-                // else // Todo think if we shall create account here
-            }
-            else
-            {
-                cachedNonce++;
-            }
-
-            transaction.Nonce = cachedNonce;
-        }
 
         if (transaction.SupportsBlobs && transaction.BlobVersionedHashes is null) transaction.BlobVersionedHashes = [];
         if (transaction.AccessList is not null && transaction.AccessList.IsEmpty) transaction.AccessList = null;

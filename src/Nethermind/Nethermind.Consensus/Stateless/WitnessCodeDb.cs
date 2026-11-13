@@ -21,12 +21,12 @@ internal sealed class WitnessCodeDb : MemDb, IWorldStateScopeProvider.ICodeDb
     private readonly Dictionary<ValueHash256, ReadOnlyMemory<byte>> _codes;
     private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _deployed;
 
-    public WitnessCodeDb(IReadOnlyList<ReadOnlyMemory<byte>> codes)
+    public WitnessCodeDb(IReadOnlyList<(ValueHash256 Hash, ReadOnlyMemory<byte> Code)> codes)
     {
         _codes = new Dictionary<ValueHash256, ReadOnlyMemory<byte>>(codes.Count);
-        foreach (ReadOnlyMemory<byte> code in codes)
+        foreach ((ValueHash256 hash, ReadOnlyMemory<byte> code) in codes)
         {
-            _codes[ValueKeccak.Compute(code.Span)] = code;
+            _codes[hash] = code;
         }
 
         _deployed = new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(this);

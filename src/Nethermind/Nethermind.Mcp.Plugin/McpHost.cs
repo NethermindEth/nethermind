@@ -122,9 +122,9 @@ public sealed class McpHost(
             {
                 await app.DisposeAsync();
                 settings.Dispose();
-                string message = $"Failed to start the MCP server on {FormatAuthority(address, config.Port)}: {e.Message}";
+                string message = $"Failed to start the MCP server on {(SensitiveLogMasking.Enabled ? "[redacted]" : FormatAuthority(address, config.Port))}: {(SensitiveLogMasking.Enabled ? e.GetType().Name : e.Message)}";
                 if (_logger.IsError) _logger.Error(message);
-                throw new InvalidOperationException(message, e);
+                throw new InvalidOperationException(message, SensitiveLogMasking.Enabled ? null : e);
             }
 
             _app = app;
@@ -136,9 +136,9 @@ public sealed class McpHost(
                 if (_logger.IsWarn) _logger.Warn(warning);
             }
 
-            if (_logger.IsInfo) _logger.Info($"MCP server listening on {Endpoint} ({DescribeMode(settings)})");
+            if (_logger.IsInfo) _logger.Info($"MCP server listening on {Endpoint:hide} ({DescribeMode(settings)})");
             if (settings.IsRemote && _logger.IsWarn)
-                _logger.Warn($"MCP remote mode is on: read-only node data is served to the network at {Endpoint}. Keep Mcp.AuthTokenFile secret and firewall the port to trusted clients.");
+                _logger.Warn($"MCP remote mode is on: read-only node data is served to the network at {Endpoint:hide}. Keep Mcp.AuthTokenFile secret and firewall the port to trusted clients.");
         }
         finally
         {
@@ -342,7 +342,7 @@ public sealed class McpHost(
             }
         }
 
-        throw new InvalidOperationException($"The MCP server started but its bound address on {address} could not be determined.");
+        throw new InvalidOperationException($"The MCP server started but its bound address on {(SensitiveLogMasking.Enabled ? "[redacted]" : address.ToString())} could not be determined.");
     }
 
     private static string FormatAuthority(IPAddress address, int port) => new IPEndPoint(address, port).ToString();

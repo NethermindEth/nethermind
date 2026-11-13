@@ -2,27 +2,25 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using DotNetty.Buffers;
-using Nethermind.Core.Buffers;
+using System.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 {
-    public class AccountRangeMessageSerializer : IZeroMessageSerializer<AccountRangeMessage>
+    public class AccountRangeMessageSerializer : IOwningMessageSerializer<AccountRangeMessage>
     {
         private readonly AccountDecoder _decoder = new(true);
 
-        public void Serialize(IByteBuffer byteBuffer, AccountRangeMessage message)
+        public int Serialize(Span<byte> destination, AccountRangeMessage message)
         {
-            (int contentLength, int pwasLength) = GetLength(message);
+            (int contentLength, int pwasLength) = GetContentLength(message);
 
-            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
-
-            ByteBufferRlpWriter writer = new(byteBuffer);
-            writer.StartSequence(contentLength);
+            RlpWriter writer = RlpWriter.ContentWriter(destination);
+            RlpSequence sequence = writer.StartSequence(contentLength);
 
             writer.Encode(message.RequestId);
             if (message.PathsWithAccounts is null || message.PathsWithAccounts.Count == 0)
@@ -32,7 +30,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             else
             {
                 ReadOnlySpan<PathWithAccount> pathsWithAccounts = message.PathsWithAccounts.AsSpan();
-                writer.StartSequence(pwasLength);
+                RlpSequence pwas = writer.StartSequence(pwasLength);
                 for (int i = 0; i < pathsWithAccounts.Length; i++)
                 {
                     PathWithAccount pwa = pathsWithAccounts[i];
@@ -40,47 +38,56 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
                     int accountContentLength = _decoder.GetContentLength(pwa.Account);
                     int pwaLength = Rlp.LengthOf(pwa.Path) + Rlp.LengthOfSequence(accountContentLength);
 
-                    writer.StartSequence(pwaLength);
+                    RlpSequence pwaSequence = writer.StartSequence(pwaLength);
                     writer.Encode(pwa.Path);
                     _decoder.Encode(pwa.Account, ref writer, accountContentLength);
+                    writer.EndSequence(pwaSequence);
                 }
+
+                writer.EndSequence(pwas);
             }
 
             writer.WriteByteArrayList(message.Proofs);
+
+            writer.EndSequence(sequence);
+            return writer.Length;
         }
 
-        public AccountRangeMessage Deserialize(IByteBuffer byteBuffer)
+        /// <remarks>Copies <paramref name="data"/>, which the message would otherwise keep referencing.</remarks>
+        public AccountRangeMessage Deserialize(ReadOnlySpan<byte> data) => Deserialize(OwnedMemory.Copy(data, out Memory<byte> memory), memory);
+
+        public AccountRangeMessage Deserialize(IMemoryOwner<byte> owner, Memory<byte> data)
         {
-            NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
-            RlpReader ctx = new(memoryOwner.Memory.Span);
-            int startPos = ctx.Position;
+            IMemoryOwner<byte>? memoryOwner = owner;
             AccountRangeMessage message = new();
             ArrayPoolList<PathWithAccount>? pathsWithAccounts = null;
 
             try
             {
-                ctx.ReadSequenceLength();
+                RlpReader outer = new(data.Span);
+                RlpReader ctx = outer.EnterSequence(out int itemLength);
                 message.RequestId = ctx.DecodeLong();
 
-                int pwasCheck = ctx.ReadSequenceLength() + ctx.Position;
-                int count = ctx.PeekNumberOfItemsRemaining(pwasCheck);
-                ctx.GuardLimit(count, SnapMessageLimits.AccountRangeEntriesRlpLimit);
+                RlpReader pwasReader = ctx.EnterSequence(out int pwasLength);
+                int count = pwasReader.CountItems(SnapMessageLimits.AccountRangeEntriesRlpLimit);
                 pathsWithAccounts = new ArrayPoolList<PathWithAccount>(count);
                 for (int i = 0; i < count; i++)
                 {
-                    int length = ctx.ReadSequenceLength();
-                    int checkPosition = ctx.Position + length;
-                    ValueHash256 path = ctx.DecodeValueKeccakNonNull();
-                    pathsWithAccounts.Add(new PathWithAccount(path, _decoder.DecodeGuardNotNull(ref ctx)));
-                    ctx.Check(checkPosition);
+                    RlpReader pwaReader = pwasReader.EnterSequence(out int length);
+                    ValueHash256 path = pwaReader.DecodeValueKeccakNonNull();
+                    pathsWithAccounts.Add(new PathWithAccount(path, _decoder.DecodeGuardNotNull(ref pwaReader)));
+                    pwasReader.ExitSequence(pwaReader, length);
                 }
+
+                ctx.ExitSequence(pwasReader, pwasLength);
 
                 message.PathsWithAccounts = pathsWithAccounts;
                 pathsWithAccounts = null;
-                message.Proofs = RlpByteArrayList.DecodeList(ref ctx, memoryOwner, SnapMessageLimits.AccountRangeProofsRlpLimit);
+                message.Proofs = RlpByteArrayList.DecodeList(ref ctx, owner, data, SnapMessageLimits.AccountRangeProofsRlpLimit);
                 memoryOwner = null;
 
-                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPos));
+                outer.ExitSequence(ctx, itemLength);
+                outer.CheckEnd();
 
                 return message;
             }
@@ -93,7 +100,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             }
         }
 
-        private (int contentLength, int pwasLength) GetLength(AccountRangeMessage message)
+        public int GetLength(AccountRangeMessage message) => Rlp.LengthOfSequence(GetContentLength(message).contentLength);
+
+        private (int contentLength, int pwasLength) GetContentLength(AccountRangeMessage message)
         {
             int contentLength = Rlp.LengthOf(message.RequestId);
 

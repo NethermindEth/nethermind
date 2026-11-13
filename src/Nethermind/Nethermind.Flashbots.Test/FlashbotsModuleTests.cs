@@ -47,8 +47,11 @@ public partial class FlashbotsModuleTests
 
         ResultWrapper<FlashbotsResult> result = await rpc.flashbots_validateBuilderSubmissionV3(request);
         Assert.That(result, Is.Not.Null);
-        Assert.That(result.Result.Error, Is.EqualTo(expectedError));
-        Assert.That(result.Data.Status, Is.EqualTo(FlashbotsStatus.Invalid));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.Error, Is.EqualTo(expectedError));
+            Assert.That(result.Data.Status, Is.EqualTo(FlashbotsStatus.Invalid));
+        }
 
         string response = await RpcTest.TestSerializedRequest(rpc, "flashbots_validateBuilderSubmissionV3", request);
         JsonRpcSuccessResponse? jsonResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
@@ -66,11 +69,14 @@ public partial class FlashbotsModuleTests
 
         ResultWrapper<FlashbotsResult> result = await rpc.flashbots_validateBuilderSubmissionV3(request);
 
-        Assert.That(result.Data.Status, Is.EqualTo(FlashbotsStatus.Invalid));
-        Assert.That(result.Result.Error, Does.StartWith("HeaderGasUsedMismatch"),
-            "the default configuration must not report a block with a bogus header as valid");
-        Assert.That(chain.Container.Resolve<IInvalidChainTracker>().IsOnKnownInvalidChain(block.Hash!, out _), Is.False,
-            "a rejected submission must not be recorded as an invalid block for the Engine API");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(FlashbotsStatus.Invalid));
+            Assert.That(result.Result.Error, Does.StartWith("HeaderGasUsedMismatch"),
+                "the default configuration must not report a block with a bogus header as valid");
+            Assert.That(chain.Container.Resolve<IInvalidChainTracker>().IsOnKnownInvalidChain(block.Hash!, out _), Is.False,
+                "a rejected submission must not be recorded as an invalid block for the Engine API");
+        }
     }
 
     [Test]
@@ -96,8 +102,11 @@ public partial class FlashbotsModuleTests
 
         ResultWrapper<FlashbotsResult> result = await rpc.flashbots_validateBuilderSubmissionV3(request);
 
-        Assert.That(result.Result.Error, Is.Null);
-        Assert.That(result.Data.Status, Is.EqualTo(FlashbotsStatus.Valid));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.Error, Is.Null);
+            Assert.That(result.Data.Status, Is.EqualTo(FlashbotsStatus.Valid));
+        }
     }
 
     [Test]

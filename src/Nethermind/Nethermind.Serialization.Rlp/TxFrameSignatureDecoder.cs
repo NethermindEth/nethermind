@@ -4,13 +4,15 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
+using Nethermind.Serialization.FluentRlp;
 
 namespace Nethermind.Serialization.Rlp;
 
 /// <summary>Decodes the EIP-8141 signature tuple <c>[scheme, signer, msg, signature]</c>; an empty signer decodes to
-/// null. Encoding can elide the signature bytes of canonical-hash (empty msg) entries, as <c>compute_sig_hash</c> needs.</summary>
+/// null. Encoding can replace the signature bytes of canonical-hash (empty msg) entries with their length, as
+/// <c>compute_sig_hash</c> needs.</summary>
 public sealed class TxFrameSignatureDecoder : RlpDecoder<TxFrameSignature>
 {
     public static readonly TxFrameSignatureDecoder Instance = new();
@@ -28,20 +30,24 @@ public sealed class TxFrameSignatureDecoder : RlpDecoder<TxFrameSignature>
         Limit = (int)Math.Min(RlpLimit.MaxBlockGas / GasCostOf.TxDataZero + 1, int.MaxValue)
     };
 
-    protected override TxFrameSignature DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override TxFrameSignature DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        => rlpBehaviors.IsTrustedInput()
+            ? Decode<OffFlag>(ref reader, Memory<byte>.Empty, rlpBehaviors)
+            : Decode<OnFlag>(ref reader, Memory<byte>.Empty, rlpBehaviors);
+
+    /// <param name="source">The memory that holds the bytes of <paramref name="reader"/>, so that the values refer to it; empty to copy them.</param>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal static TxFrameSignature Decode<TCanonicalChecks>(ref RlpReader reader, Memory<byte> source, RlpBehaviors rlpBehaviors)
+        where TCanonicalChecks : struct, IFlag
     {
-        int length = decoderContext.ReadSequenceLength();
-        int check = length + decoderContext.Position;
+        RlpReader fields = reader.EnterSequence<TCanonicalChecks>(out int itemLength);
 
-        byte scheme = decoderContext.DecodeByte();
-        Address? signer = decoderContext.DecodeAddressOrNull();
-        ReadOnlyMemory<byte> msg = decoderContext.DecodeByteArrayMemory(_msgRlpLimit);
-        ReadOnlyMemory<byte> signature = decoderContext.DecodeByteArrayMemory(SignatureRlpLimit);
+        byte scheme = fields.DecodeByte<TCanonicalChecks>();
+        Address? signer = fields.DecodeAddressOrNull();
+        ReadOnlyMemory<byte> msg = fields.DecodeByteArrayMemory<TCanonicalChecks>(source, _msgRlpLimit);
+        ReadOnlyMemory<byte> signature = fields.DecodeByteArrayMemory<TCanonicalChecks>(source, SignatureRlpLimit);
 
-        if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
-        {
-            decoderContext.Check(check);
-        }
+        reader.ExitSequence(in fields, itemLength, rlpBehaviors);
 
         if (msg.Length != 0 && msg.Length != 32)
         {
@@ -51,41 +57,45 @@ public sealed class TxFrameSignatureDecoder : RlpDecoder<TxFrameSignature>
         return new TxFrameSignature(scheme, signer, msg, signature);
     }
 
-    public override void Encode<TWriter>(ref TWriter writer, TxFrameSignature item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+    public override void Encode(ref RlpWriter writer, TxFrameSignature item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
         Encode(ref writer, item, elideCanonicalSignatureBytes: false);
 
-    public void Encode<TWriter>(ref TWriter writer, TxFrameSignature item, bool elideCanonicalSignatureBytes)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    // A root of its own, so that the writes of each signature keep their inline budget.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public void Encode(ref RlpWriter writer, TxFrameSignature item, bool elideCanonicalSignatureBytes)
     {
         bool elide = elideCanonicalSignatureBytes && item.SignsCanonicalHash;
-        writer.StartSequence(GetContentLength(item, elide));
+        RlpSequence sequence = writer.StartSequence(GetContentLength(item, elide));
         writer.Encode((ulong)item.Scheme);
         writer.Encode(item.Signer);
         writer.Encode(item.Msg);
         if (elide)
         {
-            writer.Encode(Bytes.Empty);
+            writer.Encode((ulong)item.Signature.Length);
         }
         else
         {
             writer.Encode(item.Signature);
         }
+
+        writer.EndSequence(sequence);
     }
 
-    public void EncodeArray<TWriter>(ref TWriter writer, TxFrameSignature[]? items, bool elideCanonicalSignatureBytes)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    public void EncodeArray(ref RlpWriter writer, TxFrameSignature[]? items, bool elideCanonicalSignatureBytes)
     {
         if (items is null)
         {
-            writer.WriteByte(Rlp.EmptyListByte);
+            writer.EncodeNullObject();
             return;
         }
 
-        writer.StartSequence(GetArrayContentLength(items, elideCanonicalSignatureBytes));
+        RlpSequence sequence = writer.StartSequence(GetArrayContentLength(items, elideCanonicalSignatureBytes));
         for (int i = 0; i < items.Length; i++)
         {
             Encode(ref writer, items[i], elideCanonicalSignatureBytes);
         }
+
+        writer.EndSequence(sequence);
     }
 
     public override int GetLength(TxFrameSignature item, RlpBehaviors rlpBehaviors) =>
@@ -111,8 +121,8 @@ public sealed class TxFrameSignatureDecoder : RlpDecoder<TxFrameSignature>
         Rlp.LengthOf((ulong)item.Scheme)
         + Rlp.LengthOf(item.Signer)
         + Rlp.LengthOf(item.Msg)
-        + (elideCanonicalSignatureBytes ? 1 : Rlp.LengthOf(item.Signature));
+        + (elideCanonicalSignatureBytes ? Rlp.LengthOf((ulong)item.Signature.Length) : Rlp.LengthOf(item.Signature));
 
     [DoesNotReturn, StackTraceHidden]
-    private static void ThrowInvalidMsgLength() => throw new RlpException("frame signature msg must be empty or a 32-byte digest");
+    private static void ThrowInvalidMsgLength() => throw new RlpReaderException("frame signature msg must be empty or a 32-byte digest");
 }

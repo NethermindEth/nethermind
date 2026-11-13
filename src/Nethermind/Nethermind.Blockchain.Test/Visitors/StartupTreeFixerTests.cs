@@ -78,14 +78,17 @@ public class StartupTreeFixerTests
         using StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, Substitute.For<IStateReader>(), NoErrorLimboLogs.Instance);
         await tree.Accept(fixer, CancellationToken.None);
 
-        Assert.That(blockInfosDb.Get(3), Is.Null, "level 3");
-        Assert.That(blockInfosDb.Get(4), Is.Null, "level 4");
-        Assert.That(blockInfosDb.Get(5), Is.Null, "level 5");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockInfosDb.Get(3), Is.Null, "level 3");
+            Assert.That(blockInfosDb.Get(4), Is.Null, "level 4");
+            Assert.That(blockInfosDb.Get(5), Is.Null, "level 5");
 
-        Assert.That(tree.Head!.Header, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
-        Assert.That(tree.BestSuggestedHeader, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
-        Assert.That(tree.BestSuggestedBody?.Body, Is.EqualTo(block2.Body).UsingBlockBodyComparer());
-        Assert.That(tree.BestKnownNumber, Is.EqualTo(2));
+            Assert.That(tree.Head!.Header, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
+            Assert.That(tree.BestSuggestedHeader, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
+            Assert.That(tree.BestSuggestedBody?.Body, Is.EqualTo(block2.Body).UsingBlockBodyComparer());
+            Assert.That(tree.BestKnownNumber, Is.EqualTo(2));
+        }
     }
 
     // A flat DB keeps the state of its in-memory tail on a clean shutdown, so the blocks above the persisted state
@@ -241,12 +244,15 @@ public class StartupTreeFixerTests
         using StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, Substitute.For<IStateReader>(), NoErrorLimboLogs.Instance);
         await tree.Accept(fixer, CancellationToken.None);
 
-        Assert.That(blockInfosDb.Get(3), Is.Null, "level 3");
-        Assert.That(blockInfosDb.Get(4), Is.Null, "level 4");
-        Assert.That(blockInfosDb.Get(5), Is.Null, "level 5");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockInfosDb.Get(3), Is.Null, "level 3");
+            Assert.That(blockInfosDb.Get(4), Is.Null, "level 4");
+            Assert.That(blockInfosDb.Get(5), Is.Null, "level 5");
 
-        Assert.That(tree.BestKnownNumber, Is.EqualTo(2ul), "best known");
-        Assert.That(tree.Head?.Header, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
-        Assert.That(tree.BestSuggestedHeader, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
+            Assert.That(tree.BestKnownNumber, Is.EqualTo(2ul), "best known");
+            Assert.That(tree.Head?.Header, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
+            Assert.That(tree.BestSuggestedHeader, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
+        }
     }
 }

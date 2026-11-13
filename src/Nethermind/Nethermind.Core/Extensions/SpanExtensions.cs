@@ -80,6 +80,10 @@ namespace Nethermind.Core.Extensions
         private static Vector128<byte> PairRound4 => Vector128.Create(0xD6E8FEB86659FD93UL, 0xA0761D6478BD642FUL).AsByte();
         private static Vector128<byte> PairRound5 => Vector128.Create(0xE7037ED1A0B428DBUL, 0x8EBC6AF09C88C6E3UL).AsByte();
 
+        /// <summary>The index in <paramref name="array"/> at which <paramref name="span"/>, a slice of it, starts.</summary>
+        public static int OffsetIn<T>(this Span<T> span, T[] array) =>
+            (int)(Unsafe.ByteOffset(ref MemoryMarshal.GetArrayDataReference(array), ref MemoryMarshal.GetReference(span)) / Unsafe.SizeOf<T>());
+
         public static string ToHexString(this in Memory<byte> memory, bool withZeroX = false) =>
             memory.Span.ToHexString(withZeroX, false, false);
 

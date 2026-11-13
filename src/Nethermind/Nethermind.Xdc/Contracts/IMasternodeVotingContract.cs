@@ -16,7 +16,6 @@ public interface IMasternodeVotingContract
     UInt256 GetCandidateStake(BlockHeader blockHeader, Address candidate);
     UInt256 GetCandidateStake(ITransactionProcessor transactionProcessor, BlockHeader blockHeader, Address candidate);
     Address GetCandidateOwner(BlockHeader blockHeader, Address candidate);
-    Address GetCandidateOwner(ITransactionProcessor transactionProcessor, BlockHeader blockHeader, Address candidate);
     Address GetCandidateOwner(IWorldState worldState, Address candidate);
 
     /// <summary>Returns the addresses that have voted for <paramref name="candidate"/>.</summary>

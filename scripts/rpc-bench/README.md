@@ -879,6 +879,36 @@ dotnet run --file scripts/perf-report.cs -- top perf.folded 30
 dotnet run --file scripts/perf-report.cs -- compare before.folded after.folded 30
 ```
 
+Small optimized methods (a leaf, or a method with one call) can have no RBP
+frame, so frame-pointer stacks skip their caller. `DOTNET_JitFramed=1` does not
+change this on .NET 10: Tier1 code keeps its RSP-based frames.
+
+### Annotated assembly (manual)
+
+The CI flow gives stacks only. To find the hot instructions in a method, run
+the node on a Linux host outside Docker. The runtime then writes its jitdump to
+a path that host `perf inject` can open.
+
+```bash
+export DOTNET_PerfMapEnabled=1 DOTNET_EnableWriteXorExecute=0
+./nethermind <flags> &
+# Wait for the warm-up to complete, then record the steady state.
+perf record -k 1 -g -F 3999 -p "$!" -o perf.data -- sleep 30
+perf inject --input perf.data --jit --output perfjit.data
+perf report --input perfjit.data --no-children --percent-limit 1 --stdio > perf_report.txt
+perf annotate --stdio2 -i perfjit.data --percent-limit 1 -M intel > perf.asm
+```
+
+- `-k 1` sets the monotonic clock. `perf inject --jit` needs it to match the
+  samples with the jitdump records.
+- `-M intel` is for x64 only. Remove it on arm64.
+- If `perf inject` writes no `/tmp/jitted-<pid>-*.so`, the runtime wrote an
+  incomplete jitdump, and `perf annotate` has no JIT code. Runtime 10.0.12 has
+  this problem. Runtime 10.0.14 (the node image's runtime) works.
+- Samples often land one or two instructions after the instruction that stalls
+  (skid). Examine the instructions before the hot one, for example a slow load
+  or a division.
+
 ## dotnet-trace sidecar
 
 Set `dotnet_trace: true` (Nethermind `benchmark_tool=jsonbench` with no `reference_client`;

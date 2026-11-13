@@ -15,7 +15,6 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Container;
-using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
@@ -40,7 +39,6 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
     ILifetimeScope rootLifetimeScope,
     IWorldStateManager worldStateManager,
     IBlockValidationModule[] validationModules,
-    ISpecProvider specProvider,
     ILogManager logManager) : IWitnessGeneratingBlockProcessingEnvFactory, IDisposable
 {
     // LIFO so the warmest (most-recently-returned) entry is reused first.
@@ -81,10 +79,6 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
         WitnessGeneratingWorldState witnessWorldState = new(
             baseWorldState, worldStateManager.GlobalStateReader, trieStore, headerRecorder, headerStore);
 
-        // proof_call runs a single call through this env's tx processor, so an ASSERT frame must be able
-        // to start its own slice here exactly as it does under eth_call.
-        IReleaseSpec finalSpec = specProvider.GetFinalSpec();
-        bool recordsTransactionDiffs = finalSpec.IsEip7906Enabled && finalSpec.BlockLevelAccessListsEnabled;
 
         // Re-execution reads the node's index tables, but must not write or roll back the live tables.
         OverlayIndexTableStore indexTableStore = new(rootLifetimeScope.ResolveOptional<IIndexTableStore>());
@@ -108,11 +102,6 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
                     ctx.Resolve<BalTxProcessorFactory>(),
                     indexTableHandlerFactory: ctx.ResolveOptional<IIndexTableHandlerFactory>(),
                     zeroNonceStorageAccountsTransition: ctx.Resolve<ZeroNonceStorageAccountsTransition>()));
-            if (recordsTransactionDiffs)
-            {
-                // At scope level so the tx processor and the code repository share one slice.
-                builder.AddDecorator<IWorldState>(static (_, inner) => new TracedAccessWorldState(inner, parallel: false));
-            }
             builder
                 .AddModule(validationModules)
                 .AddScoped<IWitnessGeneratingBlockProcessingEnv, WitnessGeneratingBlockProcessingEnv>();

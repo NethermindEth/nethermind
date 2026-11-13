@@ -33,8 +33,11 @@ public class AuRaChainSpecLoaderTests
 
         Assert.That(chainSpec.Genesis.Header, Is.InstanceOf<AuRaBlockHeader>());
         AuRaBlockHeader header = (AuRaBlockHeader)chainSpec.Genesis.Header;
-        Assert.That(header.AuRaStep, Is.EqualTo(42L));
-        Assert.That(header.AuRaSignature, Is.EqualTo(signature));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(header.AuRaStep, Is.EqualTo(42L));
+            Assert.That(header.AuRaSignature, Is.EqualTo(signature));
+        }
     }
 
     [Test]

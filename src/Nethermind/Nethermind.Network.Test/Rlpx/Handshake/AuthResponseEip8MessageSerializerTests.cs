@@ -18,7 +18,7 @@ public class AuthResponseEip8MessageSerializerTests
 
     private readonly PrivateKey _privateKey = new(TestPrivateKeyHex);
 
-    private readonly AckEip8MessageSerializer _serializer = new(new Eip8MessagePad(new CryptoRandom()));
+    private readonly AckEip8MessageSerializer _serializer = new();
 
     private void TestEncodeDecode()
     {
@@ -26,12 +26,15 @@ public class AuthResponseEip8MessageSerializerTests
         before.EphemeralPublicKey = _privateKey.PublicKey;
         before.Nonce = new byte[AckEip8MessageSerializer.NonceLength];
         _random.NextBytes(before.Nonce);
-        byte[] data = _serializer.Serialize(before);
+        byte[] data = _serializer.SerializeToArray(before);
         AckEip8Message after = _serializer.Deserialize(data);
 
-        Assert.That(after.EphemeralPublicKey, Is.EqualTo(before.EphemeralPublicKey));
-        Assert.That(Bytes.AreEqual(before.Nonce, after.Nonce), Is.True);
-        Assert.That(after.Version, Is.EqualTo(0x04));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(after.EphemeralPublicKey, Is.EqualTo(before.EphemeralPublicKey));
+            Assert.That(Bytes.AreEqual(before.Nonce, after.Nonce), Is.True);
+            Assert.That(after.Version, Is.EqualTo(0x04));
+        }
     }
 
     [Test]

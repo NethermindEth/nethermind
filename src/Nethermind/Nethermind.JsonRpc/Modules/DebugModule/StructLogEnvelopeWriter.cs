@@ -9,6 +9,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core.Exceptions;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.JsonRpc.Exceptions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
@@ -23,14 +24,14 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 /// </summary>
 internal static class StructLogEnvelopeWriter
 {
-    public static void EmitTraceObject(
+    internal static void EmitTraceObject(
         Utf8JsonWriter writer,
         PipeWriter? pipeWriter,
         CancellationToken cancellationToken,
         Func<Utf8JsonWriter, PipeWriter?, CancellationToken, GethLikeTxTrace?> runTrace,
         ILogger logger,
         ulong fallbackGas = 0UL,
-        bool propagateDurationErrors = false)
+        bool isSingleResult = false)
     {
         GethLikeTxTrace? trace = null;
         Exception? failure = null;
@@ -43,7 +44,7 @@ internal static class StructLogEnvelopeWriter
         {
             trace = runTrace(writer, pipeWriter, cancellationToken);
         }
-        catch (Exception ex) when ((!propagateDurationErrors || ex is not TraceDurationFormatException) && !cancellationToken.IsCancellationRequested)
+        catch (Exception ex) when ((!isSingleResult || ex is not (TraceDurationFormatException or RpcErrorException)) && !cancellationToken.IsCancellationRequested)
         {
             failure = ex;
         }

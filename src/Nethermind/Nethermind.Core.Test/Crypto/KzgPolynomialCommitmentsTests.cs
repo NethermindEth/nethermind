@@ -24,8 +24,11 @@ public class KzgPolynomialCommitmentsTests
         Task load = StartLoad(kzg, setupFilePath: null);
         nint setup = ReadSetup(kzg);
 
-        Assert.That(setup, Is.Not.EqualTo(nint.Zero));
-        Assert.That(load.IsCompletedSuccessfully, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(setup, Is.Not.EqualTo(nint.Zero));
+            Assert.That(load.IsCompletedSuccessfully, Is.True);
+        }
     });
 
     [Test]

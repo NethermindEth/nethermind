@@ -11,7 +11,9 @@ using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.TxDecoders;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Encoding
@@ -90,7 +92,7 @@ namespace Nethermind.Core.Test.Encoding
         public void Roundtrip((Transaction Tx, string Description) testCase)
         {
             byte[] bytes = new byte[_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None)];
-            RlpWriter writer = new(bytes);
+            RlpWriter writer = RlpWriter.ContentWriter(bytes);
             _txDecoder.Encode(ref writer, testCase.Tx);
             RlpReader ctx = new(bytes);
             Transaction? decoded = _txDecoder.Decode(ref ctx);
@@ -104,7 +106,7 @@ namespace Nethermind.Core.Test.Encoding
         public void Roundtrip_RlpReader((Transaction Tx, string Description) testCase)
         {
             byte[] bytes = new byte[_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None)];
-            RlpWriter writer = new(bytes);
+            RlpWriter writer = RlpWriter.ContentWriter(bytes);
             _txDecoder.Encode(ref writer, testCase.Tx);
 
             RlpReader decoderContext = new(bytes);
@@ -119,7 +121,7 @@ namespace Nethermind.Core.Test.Encoding
         public void Roundtrip_RlpReader_WithOffsetSlice((Transaction Tx, string Description) testCase)
         {
             byte[] bytes = new byte[_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None)];
-            RlpWriter writer = new(bytes);
+            RlpWriter writer = RlpWriter.ContentWriter(bytes);
             _txDecoder.Encode(ref writer, testCase.Tx);
 
             byte[] envelope = new byte[bytes.Length + 2];
@@ -135,7 +137,7 @@ namespace Nethermind.Core.Test.Encoding
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(decoderContext.Position, Is.EqualTo(bytes.Length));
+                Assert.That(decoderContext.BytesRead, Is.EqualTo(bytes.Length));
                 Assert.That(decoded, Is.EqualTo(testCase.Tx).UsingTransactionComparer());
             }
         }
@@ -149,11 +151,12 @@ namespace Nethermind.Core.Test.Encoding
                 .TestObject;
 
             byte[] bytes = new byte[_txDecoder.GetLength(tx, RlpBehaviors.None)];
-            RlpWriter writer = new(bytes);
+            RlpWriter writer = RlpWriter.ContentWriter(bytes);
             _txDecoder.Encode(ref writer, tx);
 
-            RlpReader decoderContext = new(bytes.AsMemory());
-            Transaction decoded = _txDecoder.Decode(ref decoderContext)!;
+            RlpReader decoderContext = new(bytes);
+            Transaction? decoded = null;
+            _txDecoder.Decode(ref decoderContext, ref decoded, RlpBehaviors.None, bytes.AsMemory());
 
             int dataStart = bytes.AsSpan().IndexOf(tx.Data.Span);
             Assert.That(dataStart, Is.GreaterThanOrEqualTo(0));
@@ -165,8 +168,8 @@ namespace Nethermind.Core.Test.Encoding
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(decoded.Data, Is.SequenceEqualTo(expectedData));
-                Assert.That(decoded.PreHash.Span.SequenceEqual(bytes), Is.True);
+                Assert.That(decoded!.Data, Is.SequenceEqualTo(expectedData));
+                Assert.That(decoded!.PreHash.Span.SequenceEqual(bytes), Is.True);
             }
         }
 
@@ -181,12 +184,12 @@ namespace Nethermind.Core.Test.Encoding
             Assert.That(decoded.CalculateHash(), Is.EqualTo(testCase.Hash));
 
             byte[] ourRlpOutput = new byte[_txDecoder.GetLength(decoded, RlpBehaviors.None)];
-            RlpWriter writer = new(ourRlpOutput);
+            RlpWriter writer = RlpWriter.ContentWriter(ourRlpOutput);
             _txDecoder.Encode(ref writer, decoded);
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(writer.Position, Is.EqualTo(incomingTxRlpBytes.Length));
+                Assert.That(writer.Length, Is.EqualTo(incomingTxRlpBytes.Length));
                 Assert.That(ourRlpOutput.ToHexString(), Is.EqualTo(testCase.IncomingRlpHex));
             }
         }
@@ -305,10 +308,26 @@ namespace Nethermind.Core.Test.Encoding
             Assert.That(DecodeContext, Throws.InstanceOf(exceptionType).With.Message.Contains(error).IgnoreCase);
         }
 
+        [TestCase(true, true)]
+        [TestCase(true, false)]
+        [TestCase(false, true)]
+        public void Rejects_zero_r_or_s(bool zeroR, bool zeroS)
+        {
+            byte[] zero = new byte[32];
+            byte[] one = [0x01];
+            byte[] r = zeroR ? zero : one;
+            byte[] s = zeroS ? zero : one;
+
+            Assert.That(
+                () => SignatureBuilder.FromBytes(Signature.VOffset, r, s, RlpBehaviors.None),
+                Throws.TypeOf<RlpReaderException>().With.Message.EqualTo("VRS starting with 0"));
+            Assert.That(SignatureBuilder.FromBytes(Signature.VOffset, r, s, RlpBehaviors.AllowUnsigned), Is.Null);
+        }
+
         [Test]
         public void Rejects_transaction_nonce_too_wide_during_decoding([Values(9, 33)] int nonceLength)
         {
-            byte[] txBytes = BuildLegacyTxWithNonce([0x01, .. new byte[nonceLength - 1]]);
+            byte[] txBytes = BuildLegacyTx([0x01, .. new byte[nonceLength - 1]]);
 
             void Decode()
             {
@@ -318,13 +337,16 @@ namespace Nethermind.Core.Test.Encoding
 
             Assert.That(
                 Decode,
-                Throws.TypeOf<RlpException>().With.Message.Contains("NonceTooWide"));
+                Throws.TypeOf<RlpReaderException>().With.Message.Contains("NonceTooWide"));
         }
 
-        [TestCaseSource(nameof(NonCanonicalNonceTestCases))]
-        public void Rejects_non_canonical_transaction_nonce(byte[] nonceBytes)
+        [TestCase("0x020000000000000021", "InvalidTxChainId", TestName = "Chain id 2^64 - 1")]
+        [TestCase("0x020000000000000022", "InvalidTxChainId", TestName = "Chain id 2^64 - 1, odd parity")]
+        [TestCase("0x020000000000000023", "InvalidTxSignature", TestName = "Chain id 2^64")]
+        [TestCase("0x0100000000000000000000000000000000000000000000000000000000000000", "InvalidTxSignature", TestName = "32-byte v")]
+        public void Rejects_legacy_v_wider_than_uint64_by_its_chain_id(string v, string error)
         {
-            byte[] txBytes = BuildLegacyTxWithNonce(nonceBytes);
+            byte[] txBytes = BuildLegacyTx([], Bytes.FromHexString(v));
 
             void Decode()
             {
@@ -332,7 +354,35 @@ namespace Nethermind.Core.Test.Encoding
                 _txDecoder.DecodeGuardNotNull(ref decoderContext, RlpBehaviors.AllowUnsigned);
             }
 
-            Assert.That(Decode, Throws.TypeOf<RlpException>().With.Message.Contains("Non-canonical integer"));
+            Assert.That(Decode, Throws.TypeOf<RlpReaderException>().With.Message.Contains(error));
+        }
+
+        [Test]
+        public void Keeps_decoding_error_of_wide_v_without_r_and_s_that_end_the_transaction([Values(0, 1, 3)] int itemsAfterV)
+        {
+            byte[] txBytes = BuildLegacyTx([], Bytes.FromHexString("0x020000000000000021"), itemsAfterV);
+
+            void Decode()
+            {
+                RlpReader decoderContext = new(txBytes);
+                _txDecoder.DecodeGuardNotNull(ref decoderContext, RlpBehaviors.AllowUnsigned);
+            }
+
+            Assert.That(Decode, Throws.TypeOf<RlpReaderException>().With.Message.Not.Contains("Chain id"));
+        }
+
+        [TestCaseSource(nameof(NonCanonicalNonceTestCases))]
+        public void Rejects_non_canonical_transaction_nonce(byte[] nonceBytes)
+        {
+            byte[] txBytes = BuildLegacyTx(nonceBytes);
+
+            void Decode()
+            {
+                RlpReader decoderContext = new(txBytes);
+                _txDecoder.DecodeGuardNotNull(ref decoderContext, RlpBehaviors.AllowUnsigned);
+            }
+
+            Assert.That(Decode, Throws.TypeOf<RlpReaderException>().With.Message.Contains("Non-canonical integer"));
         }
 
         /// <summary>The signature's r and s decode as byte strings of at most 32 bytes: shorter ones pad, the rest fail.</summary>
@@ -364,7 +414,7 @@ namespace Nethermind.Core.Test.Encoding
             }
             else
             {
-                Assert.That(Decode, Throws.InstanceOf<RlpException>());
+                Assert.That(Decode, Throws.InstanceOf<RlpReaderException>());
             }
         }
 
@@ -380,7 +430,7 @@ namespace Nethermind.Core.Test.Encoding
                 _txDecoder.DecodeGuardNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
             }
 
-            Assert.That(Decode, Throws.InstanceOf<RlpException>());
+            Assert.That(Decode, Throws.InstanceOf<RlpReaderException>());
         }
 
         [Test]
@@ -395,7 +445,7 @@ namespace Nethermind.Core.Test.Encoding
                 _txDecoder.DecodeGuardNotNull(ref ctx, RlpBehaviors.InMempoolForm);
             }
 
-            Assert.That(Decode, Throws.InstanceOf<RlpException>());
+            Assert.That(Decode, Throws.InstanceOf<RlpReaderException>());
         }
 
         [Test]
@@ -418,7 +468,7 @@ namespace Nethermind.Core.Test.Encoding
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(transaction, Is.SameAs(marker.DecodedTransaction));
-                Assert.That(reader.Position, Is.EqualTo(encoded.Length));
+                Assert.That(reader.BytesRead, Is.EqualTo(encoded.Length));
             }
         }
 
@@ -436,7 +486,7 @@ namespace Nethermind.Core.Test.Encoding
             }
             else
             {
-                Assert.That(() => Decode(), Throws.InstanceOf<RlpException>());
+                Assert.That(() => Decode(), Throws.InstanceOf<RlpReaderException>());
             }
 
             Transaction Decode()
@@ -455,16 +505,15 @@ namespace Nethermind.Core.Test.Encoding
 
             public TxType Type => txType;
 
-            public void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence,
-                ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+            public void Decode(ref Transaction? transaction, ReadOnlySpan<byte> transactionSequence,
+                ref RlpReader reader, Memory<byte> source, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
             {
                 transaction = DecodedTransaction;
-                decoderContext.Position = txSequenceStart + transactionSequence.Length;
+                reader.SkipItem();
             }
 
-            public void Encode<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
-                bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
-                where TWriter : struct, IRlpWriteBackend, allows ref struct => writer.Write(Encoding);
+            public void Encode(Transaction transaction, ref RlpWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+                bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) => writer.WriteEncoded(Encoding);
 
             public int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false,
                 bool isEip155Enabled = false, ulong chainId = 0) => Encoding.Length;
@@ -583,7 +632,7 @@ namespace Nethermind.Core.Test.Encoding
                 string? error = null,
                 Type? exceptionType = null,
                 RlpBehaviors rlpBehaviors = RlpBehaviors.SkipTypedWrapping) =>
-                new(invalidTxBytes, error ?? "", exceptionType ?? typeof(RlpException), rlpBehaviors) { TestName = testName };
+                new(invalidTxBytes, error ?? "", exceptionType ?? typeof(RlpReaderException), rlpBehaviors) { TestName = testName };
 
             yield return TestCase("Missing storage keys array in access list",
                 Convert.FromHexString("01e3010101825208808080d6d5940000000000000000000000000000000000000001010101"),
@@ -655,15 +704,18 @@ namespace Nethermind.Core.Test.Encoding
             .SignedAndResolved(new EthereumEcdsa(TestBlockchainIds.ChainId), TestItem.PrivateKeyA)
             .TestObject;
 
-        private static byte[] BuildLegacyTxWithNonce(ReadOnlySpan<byte> nonceBytes)
+        private static byte[] BuildLegacyTx(ReadOnlySpan<byte> nonceBytes, ReadOnlySpan<byte> vBytes = default, int emptyItemsAfterV = 2)
         {
-            int nonceRlpLength = GetByteStringRlpLength(nonceBytes);
-            int payloadLength = nonceRlpLength + 8;
+            const int emptyItemsBetweenNonceAndV = 5;
+            int payloadLength = GetByteStringRlpLength(nonceBytes) + emptyItemsBetweenNonceAndV + GetByteStringRlpLength(vBytes) + emptyItemsAfterV;
             byte[] txBytes = new byte[1 + payloadLength];
             txBytes[0] = (byte)(Rlp.EmptyListByte + payloadLength);
 
             int position = 1;
             EncodeByteString(txBytes, ref position, nonceBytes);
+            txBytes.AsSpan(position, emptyItemsBetweenNonceAndV).Fill(Rlp.EmptyByteArrayByte);
+            position += emptyItemsBetweenNonceAndV;
+            EncodeByteString(txBytes, ref position, vBytes);
             txBytes.AsSpan(position).Fill(Rlp.EmptyByteArrayByte);
             return txBytes;
         }

@@ -8,7 +8,6 @@ using NUnit.Framework;
 using System.Threading.Tasks;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Abi;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Merge.Plugin.Test;
 using Nethermind.Blockchain;
@@ -19,7 +18,7 @@ namespace Nethermind.Shutter.Test;
 [Parallelizable(ParallelScope.All)]
 class ShutterTxLoaderTests : BaseEngineModuleTests
 {
-    private class ShutterEventSimulatorHalfInvalid(Random rnd, ulong chainId, ulong threshold, ulong slot, IAbiEncoder abiEncoder, Address sequencerContractAddress) : ShutterEventSimulator(rnd, chainId, threshold, slot, abiEncoder, sequencerContractAddress)
+    private class ShutterEventSimulatorHalfInvalid(Random rnd, ulong chainId, ulong threshold, ulong slot, Address sequencerContractAddress) : ShutterEventSimulator(rnd, chainId, threshold, slot, sequencerContractAddress)
     {
         private readonly Transaction _validTx = Build.A.Transaction.WithChainId(chainId).Signed().TestObject;
         private readonly Transaction _invalidTx = Build.A.Transaction.TestObject;
@@ -39,7 +38,7 @@ class ShutterTxLoaderTests : BaseEngineModuleTests
         }
     }
 
-    private class ShutterEventSimulatorHalfNextEon(Random rnd, ulong chainId, ulong threshold, ulong slot, IAbiEncoder abiEncoder, Address sequencerContractAddress) : ShutterEventSimulator(rnd, chainId, threshold, slot, abiEncoder, sequencerContractAddress)
+    private class ShutterEventSimulatorHalfNextEon(Random rnd, ulong chainId, ulong threshold, ulong slot, Address sequencerContractAddress) : ShutterEventSimulator(rnd, chainId, threshold, slot, sequencerContractAddress)
     {
         protected override IEnumerable<Event> EmitEvents()
         {
@@ -87,7 +86,6 @@ class ShutterTxLoaderTests : BaseEngineModuleTests
             ShutterTestsCommon.ChainId,
             ShutterTestsCommon.Threshold,
             ShutterTestsCommon.InitialSlot,
-            ShutterTestsCommon.AbiEncoder,
             new(ShutterTestsCommon.Cfg.SequencerContractAddress!)
         );
 
@@ -130,11 +128,11 @@ class ShutterTxLoaderTests : BaseEngineModuleTests
 
         chain.Api!.AdvanceSlot(40);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(chain.Api.LoadedTransactions!.Value.Slot, Is.EqualTo(ShutterTestsCommon.InitialSlot));
             Assert.That(chain.Api.LoadedTransactions.Value.Transactions, Has.Length.EqualTo(20));
-        });
+        }
 
 
         IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
@@ -142,11 +140,11 @@ class ShutterTxLoaderTests : BaseEngineModuleTests
 
         chain.Api.AdvanceSlot(0);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(chain.Api.LoadedTransactions!.Value.Slot, Is.EqualTo(ShutterTestsCommon.InitialSlot + 1));
             Assert.That(chain.Api.LoadedTransactions.Value.Transactions, Has.Length.EqualTo(20));
-        });
+        }
 
 
         payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
@@ -154,11 +152,11 @@ class ShutterTxLoaderTests : BaseEngineModuleTests
 
         chain.Api.AdvanceSlot(0);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(chain.Api.LoadedTransactions!.Value.Slot, Is.EqualTo(ShutterTestsCommon.InitialSlot + 2));
             Assert.That(chain.Api.LoadedTransactions.Value.Transactions, Has.Length.EqualTo(0));
-        });
+        }
 
     }
 
@@ -174,11 +172,11 @@ class ShutterTxLoaderTests : BaseEngineModuleTests
 
         chain.Api!.AdvanceSlot(5);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(chain.Api.LoadedTransactions!.Value.Slot, Is.EqualTo(ShutterTestsCommon.InitialSlot));
             Assert.That(chain.Api.LoadedTransactions.Value.Transactions, Has.Length.EqualTo(5));
-        });
+        }
 
 
         IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
@@ -187,11 +185,11 @@ class ShutterTxLoaderTests : BaseEngineModuleTests
         chain.Api.NextEon();
         chain.Api.AdvanceSlot(5);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(chain.Api.LoadedTransactions!.Value.Slot, Is.EqualTo(ShutterTestsCommon.InitialSlot + 1));
             Assert.That(chain.Api.LoadedTransactions.Value.Transactions, Has.Length.EqualTo(5));
-        });
+        }
     }
 
     [Test]
@@ -216,7 +214,6 @@ class ShutterTxLoaderTests : BaseEngineModuleTests
             ShutterTestsCommon.ChainId,
             ShutterTestsCommon.Threshold,
             ShutterTestsCommon.InitialSlot,
-            ShutterTestsCommon.AbiEncoder,
             new(ShutterTestsCommon.Cfg.SequencerContractAddress!)
         );
 
@@ -227,11 +224,11 @@ class ShutterTxLoaderTests : BaseEngineModuleTests
 
         chain.Api!.AdvanceSlot(20);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(chain.Api.LoadedTransactions!.Value.Slot, Is.EqualTo(ShutterTestsCommon.InitialSlot));
             Assert.That(chain.Api.LoadedTransactions.Value.Transactions, Has.Length.EqualTo(10));
-        });
+        }
 
         IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
         lastPayload = payloads[0];
@@ -239,10 +236,10 @@ class ShutterTxLoaderTests : BaseEngineModuleTests
         chain.Api.NextEon();
         chain.Api.AdvanceSlot(0);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(chain.Api.LoadedTransactions!.Value.Slot, Is.EqualTo(ShutterTestsCommon.InitialSlot + 1));
             Assert.That(chain.Api.LoadedTransactions.Value.Transactions, Has.Length.EqualTo(10));
-        });
+        }
     }
 }

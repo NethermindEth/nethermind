@@ -56,8 +56,11 @@ public class StandardDbInitializerTests
         Type receiptsType = GetReceiptsType(useReceipts);
         AssertStandardDbs(dbProvider, typeof(DbOnTheRocks), receiptsType);
         AssertStandardDbs(readonlyDbProvider, typeof(ReadOnlyDb), GetReceiptsType(false));
-        Assert.That(dbProvider.StateDb, Is.TypeOf<FullPruningDb>());
-        Assert.That(((IDbProvider)readonlyDbProvider).StateDb, Is.TypeOf<ReadOnlyDb>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(dbProvider.StateDb, Is.TypeOf<FullPruningDb>());
+            Assert.That(((IDbProvider)readonlyDbProvider).StateDb, Is.TypeOf<ReadOnlyDb>());
+        }
     }
 
     [Test]
@@ -100,11 +103,14 @@ public class StandardDbInitializerTests
 
     private void AssertStandardDbs(IDbProvider dbProvider, Type dbType, Type receiptsDb)
     {
-        Assert.That(dbProvider.BlockInfosDb, Is.TypeOf(dbType));
-        Assert.That(dbProvider.BlocksDb, Is.TypeOf(dbType));
-        Assert.That(dbProvider.HeadersDb, Is.TypeOf(dbType));
-        Assert.That(dbProvider.ReceiptsDb, Is.TypeOf(receiptsDb));
-        Assert.That(dbProvider.CodeDb, Is.TypeOf(dbType));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(dbProvider.BlockInfosDb, Is.TypeOf(dbType));
+            Assert.That(dbProvider.BlocksDb, Is.TypeOf(dbType));
+            Assert.That(dbProvider.HeadersDb, Is.TypeOf(dbType));
+            Assert.That(dbProvider.ReceiptsDb, Is.TypeOf(receiptsDb));
+            Assert.That(dbProvider.CodeDb, Is.TypeOf(dbType));
+        }
     }
 
     [OneTimeTearDown]

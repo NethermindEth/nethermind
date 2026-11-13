@@ -464,6 +464,7 @@ namespace Nethermind.Synchronization.SnapSync
         public void AddCodes(IReadOnlyList<ValueHash256> requestedHashes, IByteArrayList codes)
         {
             HashSet<ValueHash256> set = requestedHashes.ToHashSet();
+            int storedCodes = 0;
 
             using (IWriteBatch writeBatch = _codeDb.StartWriteBatch())
             {
@@ -474,14 +475,15 @@ namespace Nethermind.Synchronization.SnapSync
 
                     if (set.Remove(codeHash))
                     {
-                        byte[] code = codeSpan.ToArray();
-                        Interlocked.Add(ref Metrics.SnapStateSynced, code.Length);
-                        writeBatch[codeHash.Bytes] = code;
+                        Interlocked.Add(ref Metrics.SnapStateSynced, codeSpan.Length);
+                        writeBatch.PutSpan(codeHash.Bytes, codeSpan);
+                        storedCodes++;
                     }
                 }
             }
 
-            Interlocked.Add(ref Metrics.SnapSyncedCodes, codes.Count);
+            // Not codes.Count: a response can carry unrequested or duplicate items, which are not stored and are not progress.
+            Interlocked.Add(ref Metrics.SnapSyncedCodes, storedCodes);
 
             foreach (ValueHash256 unserved in set)
             {

@@ -399,8 +399,11 @@ public class NodeRecordProviderTests
         AssertEndpointEntries(beforeBind, null, null);
         AssertEndpointEntries(afterBind, "192.0.2.1", null);
         AssertEndpointEntries(afterDiscoveryClose, "192.0.2.1", null, expectTcp: true, expectUdp: false);
-        Assert.That(afterBind.EnrSequence, Is.GreaterThan(beforeBind.EnrSequence));
-        Assert.That(afterDiscoveryClose.EnrSequence, Is.GreaterThan(afterBind.EnrSequence));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(afterBind.EnrSequence, Is.GreaterThan(beforeBind.EnrSequence));
+            Assert.That(afterDiscoveryClose.EnrSequence, Is.GreaterThan(afterBind.EnrSequence));
+        }
     }
 
     [Test]

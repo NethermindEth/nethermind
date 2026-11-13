@@ -13,7 +13,9 @@ public class DoubleEndedLruTests
     {
         DoubleEndedLru<string, string> lru = new(2);
 
+#pragma warning disable NUnit2045 // These assertions sequence mutations and observations of the same LRU.
         Assert.That(lru.AddOrRefresh("a", "1"), Is.EqualTo(BucketAddResult.Added));
+#pragma warning restore NUnit2045
         Assert.That(lru.AddOrRefresh("b", "2"), Is.EqualTo(BucketAddResult.Added));
         Assert.That(lru.AddOrRefresh("c", "3"), Is.EqualTo(BucketAddResult.Full));
         Assert.That(lru.Count, Is.EqualTo(2));
@@ -28,7 +30,9 @@ public class DoubleEndedLruTests
         lru.AddOrRefresh("b", "2");
         lru.AddOrRefresh("c", "3");
 
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
         Assert.That(lru.AddOrRefresh("a", "1b", out string? previous), Is.EqualTo(BucketAddResult.Refreshed));
+#pragma warning restore NUnit2045
 
         Assert.That(previous, Is.EqualTo("1"));
         Assert.That(lru.GetByKey("a"), Is.EqualTo("1b"));
@@ -43,7 +47,9 @@ public class DoubleEndedLruTests
         lru.AddOrRefresh("a", "1");
         lru.AddOrRefresh("b", "2");
 
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
         Assert.That(lru.TryPopHead(out string key, out string? value), Is.True);
+#pragma warning restore NUnit2045
         Assert.That((key, value), Is.EqualTo(("b", "2")));
         Assert.That(lru.GetAll(), Is.EqualTo(new[] { "1" }));
 
@@ -61,8 +67,11 @@ public class DoubleEndedLruTests
         lru.AddOrRefresh("b", "2");
         lru.AddOrRefresh("a", "1");
 
-        Assert.That(lru.TryGetLast(out string? last), Is.True);
-        Assert.That(last, Is.EqualTo("2"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(lru.TryGetLast(out string? last), Is.True);
+            Assert.That(last, Is.EqualTo("2"));
+        }
     }
 
     [Test]
@@ -73,7 +82,9 @@ public class DoubleEndedLruTests
         lru.AddOrRefresh("b", "2");
 
         Assert.That(lru.Remove("a"), Is.True);
+#pragma warning disable NUnit2045 // The assertions advance or mutate the same state before checking it; preserve fail-fast ordering.
         Assert.That(lru.Remove("a"), Is.False);
+#pragma warning restore NUnit2045
         Assert.That(lru.AddOrRefresh("c", "3"), Is.EqualTo(BucketAddResult.Added));
         Assert.That(lru.GetAll(), Is.EqualTo(new[] { "3", "2" }));
     }
@@ -88,7 +99,9 @@ public class DoubleEndedLruTests
         lru.Clear();
 
         Assert.That(lru.Count, Is.Zero);
+#pragma warning disable NUnit2045 // These assertions sequence mutations and observations of the same LRU.
         Assert.That(lru.GetAll(), Is.Empty);
+#pragma warning restore NUnit2045
         Assert.That(lru.AddOrRefresh("c", "3"), Is.EqualTo(BucketAddResult.Added));
         Assert.That(lru.GetAll(), Is.EqualTo(new[] { "3" }));
     }

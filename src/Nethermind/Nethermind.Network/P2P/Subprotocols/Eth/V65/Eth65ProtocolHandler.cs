@@ -67,7 +67,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
         protected override bool HandleMessageCore(ZeroPacket message)
         {
-            int size = message.Content.ReadableBytes;
+            int size = message.Content.Length;
             switch (message.PacketType)
             {
                 case Eth65MessageCode.NewPooledTransactionHashes:
@@ -75,7 +75,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                     {
                         if (IsTransactionGossipAllowed())
                         {
-                            using NewPooledTransactionHashesMessage newPooledTxMsg = Deserialize<NewPooledTransactionHashesMessage>(message.Content);
+                            using NewPooledTransactionHashesMessage newPooledTxMsg = Deserialize<NewPooledTransactionHashesMessage>(message);
                             ReportIn(newPooledTxMsg, size);
                             Handle(newPooledTxMsg);
                         }
@@ -132,7 +132,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             long startTime = Stopwatch.GetTimestamp();
             Send(await FulfillPooledTransactionsRequest(message, cancellationToken));
             if (Logger.IsTrace)
-                Logger.Trace($"OUT {Counter:D5} {nameof(GetPooledTransactionsMessage)} to {Node:c} " +
+                Logger.Trace($"OUT {Counter:D5} {nameof(GetPooledTransactionsMessage)} to {Node?.ToString("c"):hide} " +
                              $"in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
         }
 
@@ -288,7 +288,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                 }
             }
 
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage)} to {Node:c} " +
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage)} to {Node?.ToString("c"):hide} " +
                                              $"in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
         }
 

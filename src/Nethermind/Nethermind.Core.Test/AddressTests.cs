@@ -17,6 +17,28 @@ namespace Nethermind.Core.Test;
 
 public class AddressTests
 {
+    [Test]
+    public void AddressAsKeyComparer_span_overloads_match_the_key_overloads()
+    {
+        AddressAsKeyComparer comparer = AddressAsKeyComparer.Instance;
+        AddressAsKey keyA = TestItem.AddressA;
+        byte[] bytesA = TestItem.AddressA.Bytes.ToArray();
+        byte[] bytesALastByteChanged = TestItem.AddressA.Bytes.ToArray();
+        bytesALastByteChanged[^1] ^= 1;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(comparer.GetHashCode(bytesA), Is.EqualTo(comparer.GetHashCode(keyA)));
+            Assert.That(comparer.Equals(bytesA, keyA), Is.True);
+            Assert.That(comparer.Equals(bytesALastByteChanged, keyA), Is.False);
+            Assert.That(comparer.Equals(TestItem.AddressB.Bytes, keyA), Is.False);
+            Assert.That(comparer.Equals(bytesA.AsSpan(0, Address.Size - 1), keyA), Is.False);
+            Assert.That(comparer.Equals(bytesA, default), Is.False);
+            Assert.That(comparer.Equals(keyA, new AddressAsKey(new Address(bytesA))), Is.True);
+            Assert.That(comparer.Create(bytesA).Value, Is.EqualTo(TestItem.AddressA));
+        }
+    }
+
     [TestCase("0x5A4EAB120fB44eb6684E5e32785702FF45ea344D", "0x5a4eab120fb44eb6684e5e32785702ff45ea344d")]
     [TestCase("0x5a4eab120fb44eb6684e5e32785702ff45ea344d", "0x5a4eab120fb44eb6684e5e32785702ff45ea344d")]
     public void String_representation_is_correct(string init, string expected)

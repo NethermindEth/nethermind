@@ -27,14 +27,25 @@ public class AuthResponseMessageSerializerTests
         before.Nonce = new byte[AckMessageSerializer.NonceLength];
         _random.NextBytes(before.Nonce);
         before.IsTokenUsed = true;
-        byte[] data = _serializer.Serialize(before);
+        byte[] data = _serializer.SerializeToArray(before);
         AckMessage after = _serializer.Deserialize(data);
 
-        Assert.That(after.EphemeralPublicKey, Is.EqualTo(before.EphemeralPublicKey));
-        Assert.That(Bytes.AreEqual(before.Nonce, after.Nonce), Is.True);
-        Assert.That(after.IsTokenUsed, Is.EqualTo(before.IsTokenUsed));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(after.EphemeralPublicKey, Is.EqualTo(before.EphemeralPublicKey));
+            Assert.That(Bytes.AreEqual(before.Nonce, after.Nonce), Is.True);
+            Assert.That(after.IsTokenUsed, Is.EqualTo(before.IsTokenUsed));
+        }
     }
 
     [Test]
     public void Test() => TestEncodeDecode();
+
+    [Test]
+    public void Rejects_nonce_of_wrong_length([Values(AckMessageSerializer.NonceLength - 1, AckMessageSerializer.NonceLength + 1)] int nonceLength)
+    {
+        AckMessage message = new() { EphemeralPublicKey = _privateKey.PublicKey, Nonce = new byte[nonceLength] };
+
+        Assert.Throws<ArgumentException>(() => _serializer.SerializeToArray(message));
+    }
 }

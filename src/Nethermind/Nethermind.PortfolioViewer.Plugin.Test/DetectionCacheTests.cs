@@ -41,9 +41,12 @@ public class DetectionCacheTests
 
         DetectionEntry? read = cache.Get(1, "0xabcdef");
         Assert.That(read, Is.Not.Null);
-        Assert.That(read!.Complete, Is.True);
-        Assert.That(read.Contracts, Is.EquivalentTo(new[] { "0xToKeN" }));
-        Assert.That(read.NftContracts, Is.EquivalentTo(new[] { "0xNfT" }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(read!.Complete, Is.True);
+            Assert.That(read.Contracts, Is.EquivalentTo(new[] { "0xToKeN" }));
+            Assert.That(read.NftContracts, Is.EquivalentTo(new[] { "0xNfT" }));
+        }
     }
 
     [Test]
@@ -54,9 +57,12 @@ public class DetectionCacheTests
         cache.Put(1, "0xb", new DetectionEntry([], [], 0, 1, true, UpdatedMs: 2));
         cache.Put(1, "0xc", new DetectionEntry([], [], 0, 1, true, UpdatedMs: 3)); // pushes out 0xa
 
-        Assert.That(cache.Get(1, "0xa"), Is.Null, "least-recently-updated entry evicted");
-        Assert.That(cache.Get(1, "0xb"), Is.Not.Null);
-        Assert.That(cache.Get(1, "0xc"), Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.Get(1, "0xa"), Is.Null, "least-recently-updated entry evicted");
+            Assert.That(cache.Get(1, "0xb"), Is.Not.Null);
+            Assert.That(cache.Get(1, "0xc"), Is.Not.Null);
+        }
     }
 
     [Test]
@@ -78,7 +84,10 @@ public class DetectionCacheTests
         DetectionCache reopened = new(_dir, LimboLogs.Instance);
         DetectionEntry? read = reopened.Get(100, "0xDEAD");
         Assert.That(read, Is.Not.Null);
-        Assert.That(read!.ScannedFrom, Is.EqualTo(5));
-        Assert.That(read.Contracts[0], Is.EqualTo("0xtoken"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(read!.ScannedFrom, Is.EqualTo(5));
+            Assert.That(read.Contracts[0], Is.EqualTo("0xtoken"));
+        }
     }
 }

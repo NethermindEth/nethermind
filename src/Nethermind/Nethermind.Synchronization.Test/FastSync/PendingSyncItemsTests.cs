@@ -33,8 +33,11 @@ namespace Nethermind.Synchronization.Test.FastSync
         public void Max_levels_should_be_zero_at_start()
         {
             IPendingSyncItems items = Init();
-            Assert.That(items.MaxStateLevel, Is.EqualTo(0));
-            Assert.That(items.MaxStorageLevel, Is.EqualTo(0));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(items.MaxStateLevel, Is.EqualTo(0));
+                Assert.That(items.MaxStorageLevel, Is.EqualTo(0));
+            }
         }
 
         [Test]
@@ -90,10 +93,13 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             items.RecalculatePriorities();
             List<StateSyncItem> batch = items.TakeBatch(256);
-            Assert.That(items.Count, Is.EqualTo(0));
-            Assert.That(batch[0].Level, Is.EqualTo(64));
-            Assert.That(batch[1].Level, Is.EqualTo(32));
-            Assert.That(batch[2].Level, Is.EqualTo(0));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(items.Count, Is.EqualTo(0));
+                Assert.That(batch[0].Level, Is.EqualTo(64));
+                Assert.That(batch[1].Level, Is.EqualTo(32));
+                Assert.That(batch[2].Level, Is.EqualTo(0));
+            }
         }
 
         [Test]
@@ -143,13 +149,19 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             items.RecalculatePriorities();
             List<StateSyncItem> batch = items.TakeBatch(256);
-            Assert.That(items.Count, Is.EqualTo(2));
-            Assert.That(batch[0].NodeDataType, Is.EqualTo(NodeDataType.Code));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(items.Count, Is.EqualTo(2));
+                Assert.That(batch[0].NodeDataType, Is.EqualTo(NodeDataType.Code));
+            }
 
             batch = items.TakeBatch(256);
-            Assert.That(items.Count, Is.EqualTo(0));
-            Assert.That(batch[0].NodeDataType, Is.EqualTo(NodeDataType.Storage));
-            Assert.That(batch[1].NodeDataType, Is.EqualTo(NodeDataType.State));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(items.Count, Is.EqualTo(0));
+                Assert.That(batch[0].NodeDataType, Is.EqualTo(NodeDataType.Storage));
+                Assert.That(batch[1].NodeDataType, Is.EqualTo(NodeDataType.State));
+            }
         }
 
         [Test]
@@ -164,9 +176,12 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             items.RecalculatePriorities();
             List<StateSyncItem> batch = items.TakeBatch(256);
-            Assert.That(batch[0].Rightness, Is.EqualTo(0));
-            Assert.That(batch[1].Rightness, Is.EqualTo(15));
-            Assert.That(batch[2].Rightness, Is.EqualTo(10000));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(batch[0].Rightness, Is.EqualTo(0));
+                Assert.That(batch[1].Rightness, Is.EqualTo(15));
+                Assert.That(batch[2].Rightness, Is.EqualTo(10000));
+            }
         }
 
         [Test]
@@ -181,9 +196,12 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             items.RecalculatePriorities();
             List<StateSyncItem> batch = items.TakeBatch(256);
-            Assert.That(batch[0].Rightness, Is.EqualTo(0));
-            Assert.That(batch[1].Rightness, Is.EqualTo(1));
-            Assert.That(batch[2].Rightness, Is.EqualTo(15));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(batch[0].Rightness, Is.EqualTo(0));
+                Assert.That(batch[1].Rightness, Is.EqualTo(1));
+                Assert.That(batch[2].Rightness, Is.EqualTo(15));
+            }
         }
 
         private static StateSyncItem PushCode(IPendingSyncItems items, int progress = 0) =>

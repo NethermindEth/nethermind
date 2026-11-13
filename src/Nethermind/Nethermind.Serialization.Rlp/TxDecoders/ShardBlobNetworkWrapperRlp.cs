@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using CkzgLib;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Serialization.FluentRlp;
 
 namespace Nethermind.Serialization.Rlp.TxDecoders;
 
@@ -28,48 +29,50 @@ internal static class ShardBlobNetworkWrapperRlp
     private static readonly RlpLimit ProofsCountLimit = RlpLimit.For<ShardBlobNetworkWrapper>(BlobCountLimit, $"{nameof(ShardBlobNetworkWrapper.Proofs)} {ProofVersion.V0}");
     private static readonly RlpLimit CellProofsCountLimit = RlpLimit.For<ShardBlobNetworkWrapper>(BlobCellProofsCountLimit, $"{nameof(ShardBlobNetworkWrapper.Proofs)} {ProofVersion.V1}");
 
-    /// <param name="wrapperEnd">End position of the enclosing transaction's wrapper sequence. The reader may span a
-    /// whole multi-transaction buffer, so the optional storage-only trailer is detected within this bound; counting to
-    /// the end of the buffer instead would read a following transaction as this one's cell mask.</param>
-    public static ShardBlobNetworkWrapper Decode(ref RlpReader decoderContext, int wrapperEnd, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    /// <param name="reader">A reader over the items of the enclosing wrapper sequence, after the transaction payload.
+    /// The optional storage-only trailer is detected within it.</param>
+    public static ShardBlobNetworkWrapper Decode<TCanonicalChecks>(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        where TCanonicalChecks : struct, IFlag
     {
         ProofVersion version = ProofVersion.V0;
-        if (!decoderContext.IsSequenceNext() && !decoderContext.IsNextItemEmptyByteArray())
+        if (!reader.IsNextSequence && !reader.IsNextItemEmptyByteArray())
         {
-            version = (ProofVersion)decoderContext.ReadByte();
+            // The version was read as a raw byte, so the non-canonical 0x00 for V0 stays accepted.
+            version = reader.PeekByte() == 0
+                ? (ProofVersion)reader.ReadRaw(1)[0]
+                : (ProofVersion)reader.DecodeByte<TCanonicalChecks>();
             if (version > ProofVersion.V1)
             {
-                throw new RlpException($"Unknown version of {nameof(ShardBlobNetworkWrapper)}. Expected no more than {(int)ProofVersion.V1} and is {version}");
+                throw new RlpReaderException($"Unknown version of {nameof(ShardBlobNetworkWrapper)}. Expected no more than {(int)ProofVersion.V1} and is {version}");
             }
         }
 
         byte[][] blobs;
-        if (decoderContext.IsNextItemEmptyByteArray())
+        if (reader.TryReadEmptyBytes())
         {
-            decoderContext.DecodeByteArraySpan();
             blobs = [];
         }
         else
         {
             blobs = (rlpBehaviors & RlpBehaviors.PoolBlobBuffers) != 0
-                ? DecodePooledBlobs(ref decoderContext)
-                : decoderContext.DecodeByteArrays(BlobsCountLimit);
+                ? DecodePooledBlobs<TCanonicalChecks>(ref reader)
+                : reader.DecodeByteArrays<TCanonicalChecks>(BlobsCountLimit);
         }
 
         PooledBlobBuffers? pooledBuffers = blobs.Length != 0 && (rlpBehaviors & RlpBehaviors.PoolBlobBuffers) != 0
             ? new(blobs) : null;
         try
         {
-            byte[][] commitments = decoderContext.DecodeByteArrays(CommitmentsCountLimit);
+            byte[][] commitments = reader.DecodeByteArrays<TCanonicalChecks>(CommitmentsCountLimit);
             RlpLimit proofsCountLimit = version is ProofVersion.V1 ? CellProofsCountLimit : ProofsCountLimit;
-            byte[][] proofs = decoderContext.DecodeByteArrays(proofsCountLimit);
+            byte[][] proofs = reader.DecodeByteArrays<TCanonicalChecks>(proofsCountLimit);
             BlobCellMask cellMask = default;
             byte[][]? cells = null;
 
-            if (rlpBehaviors.HasFlag(RlpBehaviors.Storage) && decoderContext.PeekNumberOfItemsRemaining(wrapperEnd, maxSearch: 2) == 2)
+            if ((rlpBehaviors & RlpBehaviors.Storage) != 0 && HasTwoItems<TCanonicalChecks>(in reader))
             {
-                cellMask = BlobCellMask.FromBytes(decoderContext.DecodeByteArraySpan());
-                byte[][] decodedCells = decoderContext.DecodeByteArrays(CellProofsCountLimit);
+                cellMask = BlobCellMask.FromBytes(reader.DecodeByteArraySpan<TCanonicalChecks>());
+                byte[][] decodedCells = reader.DecodeByteArrays<TCanonicalChecks>(CellProofsCountLimit);
                 cells = cellMask.IsEmpty && decodedCells.Length == 0 ? null : decodedCells;
             }
 
@@ -85,14 +88,21 @@ internal static class ShardBlobNetworkWrapperRlp
         }
     }
 
-    private static byte[][] DecodePooledBlobs(ref RlpReader reader)
+    private static bool HasTwoItems<TCanonicalChecks>(scoped in RlpReader reader) where TCanonicalChecks : struct, IFlag
     {
-        int end = reader.ReadSequenceLength() + reader.Position;
-        int count = reader.PeekNumberOfItemsRemaining(end, maxSearch: BlobCountLimit + 1);
-        reader.GuardLimit(count, BlobsCountLimit);
+        if (!reader.HasNext) return false;
+        RlpReader copy = reader;
+        copy.SkipItem<TCanonicalChecks>();
+        return copy.HasNext;
+    }
+
+    private static byte[][] DecodePooledBlobs<TCanonicalChecks>(ref RlpReader reader) where TCanonicalChecks : struct, IFlag
+    {
+        RlpReader items = reader.EnterSequence<TCanonicalChecks>(out int itemLength);
+        int count = items.CountItems<TCanonicalChecks>(BlobsCountLimit);
         if (count == 0)
         {
-            reader.Check(end);
+            reader.ExitSequence(in items, itemLength);
             return [];
         }
 
@@ -100,8 +110,8 @@ internal static class ShardBlobNetworkWrapperRlp
         try
         {
             for (int i = 0; i < count; i++)
-                blobs[i] = PooledBlobBuffers.Copy(reader.DecodeByteArraySpan());
-            reader.Check(end);
+                blobs[i] = PooledBlobBuffers.Copy(items.DecodeByteArraySpan<TCanonicalChecks>());
+            reader.ExitSequence(in items, itemLength);
             return blobs;
         }
         catch
@@ -112,8 +122,7 @@ internal static class ShardBlobNetworkWrapperRlp
     }
 
     [SkipLocalsInit]
-    public static void Encode<TWriter>(ref TWriter writer, ShardBlobNetworkWrapper wrapper, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    public static void Encode(ref RlpWriter writer, ShardBlobNetworkWrapper wrapper, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (wrapper.Version > ProofVersion.V0)
         {
@@ -134,7 +143,7 @@ internal static class ShardBlobNetworkWrapperRlp
     }
 
     public static int GetFieldsLength(ShardBlobNetworkWrapper wrapper, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
-        wrapper.Version switch { ProofVersion.V0 => 0, ProofVersion.V1 => 1, _ => throw new RlpException($"Unknown version of {nameof(ShardBlobNetworkWrapper)}: {wrapper.Version}") }
+        wrapper.Version switch { ProofVersion.V0 => 0, ProofVersion.V1 => 1, _ => throw new RlpReaderException($"Unknown version of {nameof(ShardBlobNetworkWrapper)}: {wrapper.Version}") }
         + Rlp.LengthOf(wrapper.Blobs)
         + Rlp.LengthOf(wrapper.Commitments)
         + Rlp.LengthOf(wrapper.Proofs)

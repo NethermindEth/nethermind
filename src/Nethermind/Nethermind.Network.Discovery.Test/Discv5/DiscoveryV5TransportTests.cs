@@ -16,7 +16,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test.Discv5;
 
-[Parallelizable(ParallelScope.Self)]
+[NonParallelizable]
 [TestFixture]
 public class DiscoveryV5TransportTests
 {
@@ -43,7 +43,9 @@ public class DiscoveryV5TransportTests
 
         await _transport.SendAsync(data, to, CancellationToken.None);
 
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
         Assert.That(_sent.TryDequeue(out (byte[] Data, IPEndPoint Destination) sent), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(sent.Data, Is.EqualTo(data));
         Assert.That(sent.Destination, Is.EqualTo(to));
     }
@@ -101,8 +103,11 @@ public class DiscoveryV5TransportTests
 
         try
         {
-            Assert.That(forwardedPacket.Buffer, Is.SequenceEqualTo(data));
-            Assert.That(forwardedPacket.RemoteEndPoint, Is.EqualTo(from));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(forwardedPacket.Buffer, Is.SequenceEqualTo(data));
+                Assert.That(forwardedPacket.RemoteEndPoint, Is.EqualTo(from));
+            }
         }
         finally
         {
@@ -111,7 +116,34 @@ public class DiscoveryV5TransportTests
     }
 
     [Test]
-    [NonParallelizable]
+    public async Task Packet_traces_mask_both_endpoints([Values] bool maskSensitiveData)
+    {
+        bool previous = SensitiveLogMasking.Enabled;
+        SensitiveLogMasking.Enabled = maskSensitiveData;
+        TestLogger logger = new();
+        DiscoveryV5Transport transport = new(new OneLoggerLogManager(new ILogger(logger)));
+        transport.BindSocket(new RecordingDatagramSocket());
+        IPEndPoint endpoint = IPEndPoint.Parse("192.0.2.31:31417");
+        try
+        {
+            transport.Receive(PooledUdpReceiveResult.Copy([1, 2, 3], endpoint));
+            await transport.SendAsync([1, 2, 3], endpoint, CancellationToken.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(logger.LogList, Has.Count.EqualTo(2));
+                Assert.That(logger.LogList, Has.All.Contains(maskSensitiveData ? "[redacted]" : endpoint.ToString()));
+                if (maskSensitiveData) Assert.That(logger.LogList, Has.None.Contains(endpoint.ToString()));
+            }
+        }
+        finally
+        {
+            transport.Close();
+            SensitiveLogMasking.Enabled = previous;
+        }
+    }
+
+    [Test]
     public async Task UpdatesDiscoveryBytesSentMetric()
     {
         byte[] sentData = [1, 2, 3, 4];
@@ -120,8 +152,11 @@ public class DiscoveryV5TransportTests
 
         await _transport.SendAsync(sentData, to, CancellationToken.None);
 
-        Assert.That(_sent, Has.Count.EqualTo(1));
-        Assert.That(Interlocked.Read(ref Metrics.DiscoveryBytesSent) - bytesSentBefore, Is.EqualTo(sentData.Length));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_sent, Has.Count.EqualTo(1));
+            Assert.That(Interlocked.Read(ref Metrics.DiscoveryBytesSent) - bytesSentBefore, Is.EqualTo(sentData.Length));
+        }
     }
 
     [Test]

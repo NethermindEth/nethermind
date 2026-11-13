@@ -5,6 +5,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.FastSync;
@@ -66,7 +67,7 @@ public class SnapMessageLimitsTests
             Proofs = EmptyByteArrayList.Instance,
         };
 
-        byte[] serialized = serializer.Serialize(msg);
+        byte[] serialized = serializer.SerializeToArray(msg);
         using AccountRangeMessage deserialized = serializer.Deserialize(serialized);
 
         Assert.That(deserialized.PathsWithAccounts.Count, Is.EqualTo(count));
@@ -91,7 +92,7 @@ public class SnapMessageLimitsTests
             Proofs = new ByteArrayListAdapter(ArrayPoolList<byte[]>.Empty()),
         };
 
-        byte[] serialized = serializer.Serialize(msg);
+        byte[] serialized = serializer.SerializeToArray(msg);
         using StorageRangeMessage deserialized = serializer.Deserialize(serialized);
 
         Assert.That(deserialized.Slots[0].Count, Is.EqualTo(slotCount));

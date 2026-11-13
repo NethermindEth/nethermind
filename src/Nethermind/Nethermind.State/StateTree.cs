@@ -11,6 +11,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -49,7 +50,7 @@ namespace Nethermind.State
             }
 
             RlpReader context = new(bytes);
-            return _decoder.Decode(ref context);
+            return _decoder.Decode(ref context, RlpBehaviors.TrustedInput);
         }
 
         [DebuggerStepThrough]
@@ -62,7 +63,7 @@ namespace Nethermind.State
                 return false;
             }
 
-            return _decoder.TryDecodeStruct(bytes, out account);
+            return _decoder.TryDecodeStruct<OffFlag>(bytes, out account);
         }
 
         [DebuggerStepThrough]
@@ -75,7 +76,7 @@ namespace Nethermind.State
             }
 
             RlpReader context = new(bytes);
-            return _decoder.Decode(ref context);
+            return _decoder.Decode(ref context, RlpBehaviors.TrustedInput);
         }
 
         public void Set(Address address, Account? account)
@@ -85,10 +86,17 @@ namespace Nethermind.State
                 : new CappedArray<byte>(account.IsTotallyEmpty ? EmptyAccountRlp.Bytes : _decoder.EncodeAsBytes(account)));
         }
 
-        [SkipLocalsInit]
         internal void SetAccounts(Dictionary<AddressAsKey, Account?> accounts)
         {
-            using ArrayPoolListRef<BulkSetEntry> entries = new(accounts.Count);
+            using ArrayPoolListRef<BulkSetEntry> entries = CreateAccountEntries(accounts);
+            BulkSet(entries);
+        }
+
+        /// <summary>The bulk-set entries writing <paramref name="accounts"/>, a null account deleting its key.</summary>
+        [SkipLocalsInit]
+        internal static ArrayPoolListRef<BulkSetEntry> CreateAccountEntries(Dictionary<AddressAsKey, Account?> accounts)
+        {
+            ArrayPoolListRef<BulkSetEntry> entries = new(accounts.Count);
             Unsafe.SkipInit(out KeyHashBatch batch);
             batch.Initialize(Address.Size);
             foreach (KeyValuePair<AddressAsKey, Account?> entry in accounts)
@@ -100,7 +108,7 @@ namespace Nethermind.State
                 if (batch.IsFull) batch.Flush(entries.AsSpan());
             }
             batch.Flush(entries.AsSpan());
-            BulkSet(entries);
+            return entries;
         }
 
         /// <summary>Writes the changed accounts into the tree.</summary>

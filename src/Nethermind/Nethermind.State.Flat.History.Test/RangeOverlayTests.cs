@@ -147,6 +147,28 @@ public class RangeOverlayTests
     }
 
     [Test]
+    public void ABlockMostlyRefused_ReservesCapacityOnlyForTheWritesItKeeps()
+    {
+        const int refusedCount = 100;
+        HashSet<AddressAsKey> refused = [];
+        for (int i = 0; i < refusedCount; i++) refused.Add(TestItem.Addresses[i]);
+
+        RangeOverlay chain = Chain(null, 7, c =>
+        {
+            for (int i = 0; i < refusedCount; i++) c.Storage(new StorageCell(TestItem.Addresses[i], 1), [0x11]);
+            c.Storage(new StorageCell(TestItem.Addresses[refusedCount], 1), [0x22]);
+        }, refused);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.Entries, Is.EqualTo(refusedCount + 1), "the refusal and the one kept slot");
+            Assert.That(chain.Capacity, Is.LessThan(refusedCount), "a refused write reserves no slot or storage account");
+            Assert.That(chain.TryGetStorage(TestItem.Addresses[refusedCount], 1, out UInt256 kept), Is.True);
+            Assert.That(kept, Is.EqualTo((UInt256)0x22));
+        }
+    }
+
+    [Test]
     public void AChainThatHoldsTooManyEntries_IsNotExtended()
     {
         ConsecutiveBlockOverlays overlays = new(maxEntries: 1);

@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Db;
@@ -71,9 +72,25 @@ public class OverlayTrieStoreTests
             overlaidTree.RootHash = newRoot;
             Assert.That(overlaidTree.Get(TestItem.Keccaks[0].Bytes), Is.SequenceEqualTo(TestItem.Keccaks[0].BytesToArray()));
         };
-        Assert.That(act, Throws.TypeOf<MissingTrieNodeException>()); // The root is now missing.
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(act, Throws.TypeOf<MissingTrieNodeException>()); // The root is now missing.
 
-        // After all this, the original should not change.
-        Assert.That(dbProvider.StateDb.GetAllKeys().Count(), Is.EqualTo(originalKeyCount));
+            // After all this, the original should not change.
+            Assert.That(dbProvider.StateDb.GetAllKeys().Count(), Is.EqualTo(originalKeyCount));
+        }
+    }
+
+    [Test]
+    public void TryLoadRlp_DecompressesEoaNodePersistedByMainNodeStorage()
+    {
+        MemDb stateDb = new();
+        byte[] eoaNode = Bytes.FromHexString(NodeStorageFactoryTests.EoaNodeHex);
+        new NodeStorageFactory(INodeStorage.KeyScheme.HalfPath, LimboLogs.Instance).WrapKeyValueStore(stateDb)
+            .Set(null, TreePath.Empty, TestItem.KeccakA, eoaNode);
+
+        OverlayTrieStore overlayStore = new(stateDb, new TestRawTrieStore(new MemDb()).AsReadOnly());
+
+        Assert.That(overlayStore.TryLoadRlp(null, TreePath.Empty, TestItem.KeccakA), Is.EqualTo(eoaNode));
     }
 }

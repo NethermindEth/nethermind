@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.Crypto;
 
@@ -65,7 +66,9 @@ public static partial class KeccakCache
     [SkipLocalsInit]
     public static void ComputeTo(ReadOnlySpan<byte> input, out ValueHash256 keccak256)
     {
-        ulong[]? memo = _memo;
+        // Airbender skips the fixed-length probes, which hold the key in registers on a 64-bit guest but take a frame on
+        // its 32-bit one; ComputeToAnyLength memoizes these lengths too.
+        ulong[]? memo = AirbenderFlag.IsActive ? null : _memo;
         if (memo is not null)
         {
             ref ulong memoRef = ref MemoryMarshal.GetArrayDataReference(memo);
@@ -185,13 +188,13 @@ public static partial class KeccakCache
     private static void ComputeToAnyLength(ReadOnlySpan<byte> input, out ValueHash256 keccak256)
     {
         nuint length = (nuint)(uint)input.Length;
-        if (length - MinMemoLength > MaxMemoLength - MinMemoLength)
+        ref byte inputRef = ref MemoryMarshal.GetReference(input);
+        if (!IsMemoizable(ref inputRef, length))
         {
             keccak256 = length == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(input);
             return;
         }
 
-        ref byte inputRef = ref MemoryMarshal.GetReference(input);
         nuint words = length >> 3;
         nuint partial = length & 7;
         ulong lastWord = MemoLastKeyWord(ref inputRef, length, partial);
@@ -207,7 +210,7 @@ public static partial class KeccakCache
 
     internal static bool TryGet(ReadOnlySpan<byte> input, out ValueHash256 keccak256)
     {
-        if ((nuint)(uint)input.Length - MinMemoLength > MaxMemoLength - MinMemoLength)
+        if (!IsMemoizable(ref MemoryMarshal.GetReference(input), (nuint)(uint)input.Length))
         {
             Unsafe.SkipInit(out keccak256);
             return false;
@@ -217,7 +220,7 @@ public static partial class KeccakCache
 
     internal static void Store(ReadOnlySpan<byte> input, in ValueHash256 keccak256)
     {
-        if ((nuint)(uint)input.Length - MinMemoLength > MaxMemoLength - MinMemoLength) return;
+        if (!IsMemoizable(ref MemoryMarshal.GetReference(input), (nuint)(uint)input.Length)) return;
         WriteMemo(input, keccak256);
     }
 
@@ -285,7 +288,7 @@ public static partial class KeccakCache
         {
             for (nuint i = 0; i < words; i++)
             {
-                if (Unsafe.Add(ref slot, i) != Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inputRef, i << 3)))
+                if (Unsafe.Add(ref slot, i) != ReadKeyWord(ref Unsafe.Add(ref inputRef, i << 3)))
                 {
                     goto Miss;
                 }
@@ -311,7 +314,7 @@ public static partial class KeccakCache
     {
         for (nuint i = 0; i < words; i++)
         {
-            Unsafe.Add(ref slot, i) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inputRef, i << 3));
+            Unsafe.Add(ref slot, i) = ReadKeyWord(ref Unsafe.Add(ref inputRef, i << 3));
         }
 
         if (partial != 0)
@@ -372,12 +375,32 @@ public static partial class KeccakCache
     /// little-endian target, so shifting them down zero-pads them and the stored key never needs a
     /// byte-granular compare. A big-endian target would derive a different word - harmless for
     /// correctness, since key and probe stay consistent, but it would scatter the slot index. riscv64
-    /// and every host this runs on are little-endian.
+    /// and every host this runs on are little-endian. Where <see cref="StrictAlignmentFlag"/> is on, the word ending an
+    /// input that starts on a word boundary is not on one, and reading it is a byte-by-byte gather: the bytes are read
+    /// in pieces from where they start instead, which gives the same word.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong MemoLastKeyWord(ref byte inputRef, nuint length, nuint partial) => partial == 0
         ? 0
+        : StrictAlignmentFlag.IsActive
+        ? KeccakHash.PartialLane(ref Unsafe.Add(ref inputRef, length - partial), partial)
         : Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inputRef, length - sizeof(ulong))) >> (int)((sizeof(ulong) - partial) << 3);
+
+    /// <summary>A whole word of a key's input.</summary>
+    /// <remarks>
+    /// Airbender reads it with plain loads: an unaligned read there tests the alignment of each half. Its callers take
+    /// only inputs <see cref="IsMemoizable"/> found aligned to four bytes, which every whole word then is.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong ReadKeyWord(ref byte word) =>
+        AirbenderFlag.IsActive ? Unsafe.As<byte, ulong>(ref word) : Unsafe.ReadUnaligned<ulong>(ref word);
+
+    /// <summary>Whether an input of <paramref name="length"/> bytes at <paramref name="inputRef"/> goes through the memo.</summary>
+    /// <remarks>On Airbender an input must also be aligned to four bytes, as <see cref="ReadKeyWord"/> reads it.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe bool IsMemoizable(ref byte inputRef, nuint length) =>
+        length - MinMemoLength <= MaxMemoLength - MinMemoLength &&
+        (!AirbenderFlag.IsActive || ((nuint)Unsafe.AsPointer(ref inputRef) & (sizeof(uint) - 1)) == 0);
 
     /// <summary>The input's slot in <see cref="Memo"/>.</summary>
     /// <remarks>
@@ -392,7 +415,7 @@ public static partial class KeccakCache
         ulong mixed = lastWord ^ length;
         for (nuint i = 0; i < words; i++)
         {
-            mixed ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inputRef, i << 3));
+            mixed ^= ReadKeyWord(ref Unsafe.Add(ref inputRef, i << 3));
         }
 
         return ref SlotOf(ref MemoryMarshal.GetArrayDataReference(Memo), mixed);

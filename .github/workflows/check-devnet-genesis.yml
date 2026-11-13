@@ -33,7 +33,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v6
+        uses: ./.github/actions/setup-dotnet
 
       - name: Fetch genesis files
         env:

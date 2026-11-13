@@ -4,20 +4,21 @@
 using System;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
 using Nethermind.Int256;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
     public sealed class TransactionPermissionContractV1(
-        IAbiEncoder abiEncoder,
         Address contractAddress,
-        IReadOnlyTxProcessorSource readOnlyTxProcessorSource) : TransactionPermissionContract(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)), readOnlyTxProcessorSource)
+        IReadOnlyTxProcessorSource readOnlyTxProcessorSource) : TransactionPermissionContract(contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)), readOnlyTxProcessorSource)
     {
-        protected override object[] GetAllowedTxTypesParameters(Transaction tx, BlockHeader parentHeader) => new object[] { tx.SenderAddress };
+        internal static readonly ContractFunction<Address, uint> AllowedTxTypesFunction =
+            new AbiSignature("allowedTxTypes").With(AbiType.Address).Returns(AbiType.UInt32);
 
-        protected override (ITransactionPermissionContract.TxPermissions, bool) CallAllowedTxTypes(PermissionConstantContract.PermissionCallInfo callInfo) =>
-            (Constant.Call<ITransactionPermissionContract.TxPermissions>(callInfo), true);
+        protected override (ITransactionPermissionContract.TxPermissions, bool) CallAllowedTxTypes(BlockHeader parentHeader, Transaction tx, out bool toIsContract) =>
+            ((ITransactionPermissionContract.TxPermissions)Constant.Call(parentHeader, AllowedTxTypesFunction, tx.SenderAddress, tx.To ?? Address.Zero, out toIsContract), true);
 
         public override UInt256 Version => UInt256.One;
     }

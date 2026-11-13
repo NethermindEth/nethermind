@@ -16,7 +16,7 @@ namespace Nethermind.TxPool.Filters;
 /// the same sender, so that no two pending transactions of one sender share a <c>(sender, nonce_key)</c>.
 /// </summary>
 /// <remarks>
-/// EIP-8250 admits several pending frame transactions from one sender only on disjoint non-zero key sets, and
+/// EIP-8250 admits several pending frame transactions from one sender only on disjoint key sets, and
 /// MATCHA is that policy. An overlap, not only an equal set, correlates invalidation: one on-chain change to a
 /// shared key invalidates every pending transaction naming it. A transaction that replaces the same competing
 /// slot is not an overlap and is left to the replacement rules.
@@ -68,11 +68,6 @@ internal sealed class KeyedNonceDisjointnessFilter(
     {
         foreach (UInt256 key in incoming)
         {
-            if (key.IsZero)
-            {
-                continue;
-            }
-
             foreach (UInt256 other in pending)
             {
                 if (key == other)

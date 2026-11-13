@@ -4,6 +4,8 @@
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.State.Flat.NodeBuffer;
+using Nethermind.Trie;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -53,6 +55,35 @@ public class TransientResourceTests
         resource.Reset();
 
         Assert.That(resource.ShouldPrewarm(TestItem.AddressA, null), Is.True, "a reset resource must forget earlier hints");
+    }
+
+    [Test]
+    public void Reset_ClearsTheWarmedNodeBufferAndGrowsItsSizeOnlyPastItsCapacity([Values] bool pastCapacity)
+    {
+        const int capacity = 4;
+        using TransientResource resource = new(new TransientResource.Size(1024, capacity));
+        WarmedNodeBuffer warmedNodeLog = resource.WarmedNodeBuffer;
+        int nodeCount = pastCapacity ? capacity + 1 : capacity;
+        ulong originalPointer = 0;
+        for (byte value = 0; value < nodeCount; value++)
+        {
+            byte[] rlp = FlatTestHelpers.LeafRlp(value);
+            ulong pointer = FlatTestHelpers.Warm(warmedNodeLog, null, TreePath.Empty.Append(value), rlp);
+            if (value == 0) originalPointer = pointer;
+        }
+
+        resource.Reset();
+
+        bool foundAfterReset = warmedNodeLog.TryGet(null, TreePath.Empty.Append(0), out _, out _);
+        ulong newPointer = FlatTestHelpers.Warm(warmedNodeLog, null, TreePath.Empty.Append(0), FlatTestHelpers.LeafRlp(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resource.WarmedNodeBuffer, Is.SameAs(warmedNodeLog));
+            Assert.That(foundAfterReset, Is.False);
+            Assert.That(resource.GetSize().NodesCacheSize, Is.EqualTo(nodeCount));
+            Assert.That(newPointer, Is.Not.EqualTo(originalPointer), "a reset never reuses a pointer");
+            Assert.That(warmedNodeLog.TryGet(null, TreePath.Empty.Append(0), out _, out ulong indexedPointer) && indexedPointer == newPointer, Is.True);
+        }
     }
 
     [Test]

@@ -8,13 +8,13 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Logging;
 using Nethermind.Shutter.Contracts;
 using Nethermind.Shutter.Config;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
-using Nethermind.Abi;
 using Nethermind.Facade.Find;
 using System.Runtime.CompilerServices;
 
@@ -28,7 +28,6 @@ public class ShutterTxLoader(
     SlotTime time,
     ISpecProvider specProvider,
     IEthereumEcdsa ecdsa,
-    IAbiEncoder abiEncoder,
     ILogManager logManager)
 {
     private static readonly TxDecoder TxRlpDecoder = TxDecoder.Instance;
@@ -36,8 +35,7 @@ public class ShutterTxLoader(
     private readonly ShutterLogScanner _logScanner = new(
                 new(new Address(cfg.SequencerContractAddress!)),
                 logFinder,
-                logManager,
-                abiEncoder);
+                logManager);
 
     private readonly ShutterEventQueue _events = new(cfg.EncryptedGasLimit, logManager);
     private ulong _txPointer = ulong.MaxValue;
@@ -173,7 +171,7 @@ public class ShutterTxLoader(
         {
             _logger.DebugError("Could not decrypt Shutter transaction with invalid key", e);
         }
-        catch (RlpException e)
+        catch (RlpReaderException e)
         {
             _logger.DebugError("Could not decode decrypted Shutter transaction", e);
         }

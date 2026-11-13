@@ -16,7 +16,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.ParallelSync;
 
-[Parallelizable(ParallelScope.All)]
+[NonParallelizable]
 public class SyncDispatcherTests
 {
     private class TestBatch(int start, int length)
@@ -186,7 +186,7 @@ public class SyncDispatcherTests
         }
     }
 
-    [Test, NonParallelizable, MaxTime(30_000)]
+    [Test, MaxTime(30_000)]
     public async Task Simple_test_sync()
     {
         TestSyncFeed syncFeed = new();
@@ -209,37 +209,44 @@ public class SyncDispatcherTests
     }
 
     [Test, CancelAfter(30_000)]
-    public async Task Failed_dispatch_is_retried_and_warns_only_for_non_peer_faults([Values] bool peerFault, CancellationToken cancellationToken)
+    public async Task Failed_dispatch_is_retried_and_warns_only_for_non_peer_faults(
+        [Values] bool peerFault, [Values] bool maskSensitiveData, CancellationToken cancellationToken)
     {
-        Exception failure = peerFault
-            ? new SubprotocolException("Receipt count mismatch with block transactions count")
-            : new InvalidOperationException("node fault");
-        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
-        logger.IsDebug.Returns(true);
-        logger.IsWarn.Returns(true);
-        TestSyncFeed syncFeed = new(max: 8);
-        await using TestSyncPeerPool peerPool = new();
-        await using SyncDispatcher<TestBatch> dispatcher = new(
-            new TestSyncConfig(),
-            syncFeed,
-            new FailFirstDispatchDownloader(failure),
-            peerPool,
-            new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
-            new OneLoggerLogManager(new ILogger(logger)));
+        bool previous = SensitiveLogMasking.Enabled;
+        SensitiveLogMasking.Enabled = maskSensitiveData;
+        try
+        {
+            Exception failure = peerFault
+                ? new SubprotocolException("Receipt count mismatch with block transactions count")
+                : new InvalidOperationException("node fault");
+            InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+            logger.IsDebug.Returns(true);
+            logger.IsWarn.Returns(true);
+            TestSyncFeed syncFeed = new(max: 8);
+            await using TestSyncPeerPool peerPool = new();
+            await using SyncDispatcher<TestBatch> dispatcher = new(
+                new TestSyncConfig(),
+                syncFeed,
+                new FailFirstDispatchDownloader(failure),
+                peerPool,
+                new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
+                new OneLoggerLogManager(new ILogger(logger)));
 
-        syncFeed.Activate();
-        await dispatcher.Start(cancellationToken).WaitAsync(cancellationToken);
+            syncFeed.Activate();
+            await dispatcher.Start(cancellationToken).WaitAsync(cancellationToken);
 
-        Assert.That(syncFeed._results, Has.Count.EqualTo(syncFeed.Max), "the failed request must be retried");
-        logger.Received(peerFault ? 1 : 0).Debug(Arg.Is<string>(s => s.Contains(failure.Message) && !s.Contains("   at ")));
-        logger.Received(peerFault ? 0 : 1).Warn(Arg.Is<string>(s => s.Contains(failure.Message)));
+            string detail = maskSensitiveData ? "[redacted]" : failure.Message;
+            Assert.That(syncFeed._results, Has.Count.EqualTo(syncFeed.Max), "the failed request must be retried");
+            logger.Received(peerFault ? 1 : 0).Debug(Arg.Is<string>(s => s.Contains(detail) && !s.Contains("   at ")));
+            logger.Received(peerFault ? 0 : 1).Warn(Arg.Is<string>(s => s.Contains(failure.GetType().Name) && s.Contains(detail)));
+        }
+        finally
+        {
+            SensitiveLogMasking.Enabled = previous;
+        }
     }
 
-    // [NonParallelizable]: this test relies on the dispatcher's Task.Run reaching HandleResponse
-    // promptly. Under the class-level [Parallelizable(ParallelScope.All)] it competes with the rest
-    // of the suite for thread-pool capacity, and on slow CI the 1st HandleResponse can take >15s
-    // to fire — exhausting the budget before we even reach the assertion window.
-    [Test, NonParallelizable, CancelAfter(30_000)]
+    [Test, CancelAfter(30_000)]
     public async Task When_ConcurrentHandleResponseIsRunning_Then_BlockDispose(CancellationToken cancellationToken)
     {
         TestSyncFeed syncFeed = new(isMultiFeed: true);
@@ -400,7 +407,6 @@ public class SyncDispatcherTests
     [TestCase(true, 1, 1, 24)]
     [TestCase(true, 2, 1, 32)]
     [TestCase(true, 1, 2, 32)]
-    [NonParallelizable]
     public async Task Test_release_before_processing_complete(bool isMultiSync, int processingThread, int peerCount, int expectedHighestRequest)
     {
         TestSyncFeed syncFeed = new(isMultiSync, 999999);

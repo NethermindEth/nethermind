@@ -51,7 +51,9 @@ public class RewardsStoreTests
             Rewards = new() { [Address.FromNumber(1).ToString()] = new() { [Address.FromNumber(2).ToString()] = "1000" } },
         });
 
+#pragma warning disable NUnit2045 // Rewards must be loaded before their dictionary is read.
         Assert.That(store.TryGetEpochRewards(epochBlockHash, out XdcEpochRewards? loaded), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(loaded!.Rewards[Address.FromNumber(1).ToString()][Address.FromNumber(2).ToString()], Is.EqualTo("1000"));
     }
 
@@ -70,8 +72,11 @@ public class RewardsStoreTests
             RewardsProtector = new() { [signer.ToString()] = new() { [account.ToString()] = "50" } },
         });
 
-        Assert.That(store.TryGetAccountReward(account, epochBlockHash, out UInt256 savedReward), Is.True);
-        Assert.That(savedReward, Is.EqualTo((UInt256)150));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.TryGetAccountReward(account, epochBlockHash, out UInt256 savedReward), Is.True);
+            Assert.That(savedReward, Is.EqualTo((UInt256)150));
+        }
     }
 
     [Test]
@@ -94,8 +99,11 @@ public class RewardsStoreTests
             },
         });
 
-        Assert.That(store.TryGetAccountReward(foundation, epochBlockHash, out UInt256 foundationReward), Is.True);
-        Assert.That(foundationReward, Is.EqualTo((UInt256)30));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.TryGetAccountReward(foundation, epochBlockHash, out UInt256 foundationReward), Is.True);
+            Assert.That(foundationReward, Is.EqualTo((UInt256)30));
+        }
     }
 
     [Test]
@@ -108,7 +116,9 @@ public class RewardsStoreTests
 
         store.SaveEpochRewards(epochBlockHash, new XdcEpochRewards());
 
+#pragma warning disable NUnit2045 // Rewards must be loaded before their fields are read.
         Assert.That(store.HasEpochRewards(epochBlockHash), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(store.TryGetEpochRewards(epochBlockHash, out XdcEpochRewards? loaded), Is.True);
         Assert.That(loaded!.Rewards, Is.Empty);
         Assert.That(store.TryGetAccountReward(account, epochBlockHash, out _), Is.False);
@@ -237,7 +247,9 @@ public class RewardsStoreTests
             Rewards = new() { [Address.FromNumber(1).ToString()] = new() { [Address.FromNumber(2).ToString()] = "200" } },
         });
 
+#pragma warning disable NUnit2045 // Rewards must be loaded before their dictionary is read.
         Assert.That(store.TryGetEpochRewards(epochBlockHash, out XdcEpochRewards? loaded), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(loaded!.Rewards[Address.FromNumber(1).ToString()][Address.FromNumber(2).ToString()], Is.EqualTo("200"));
     }
 
@@ -260,9 +272,12 @@ public class RewardsStoreTests
 
         store.SaveEpochRewards(TestItem.KeccakA, rewards);
 
-        Assert.That(db.Values.Single(), Is.EqualTo(reflectionBytes));
-        Assert.That(store.TryGetEpochRewards(TestItem.KeccakA, out XdcEpochRewards? read), Is.True);
-        Assert.That(JsonSerializer.SerializeToUtf8Bytes(read), Is.EqualTo(reflectionBytes));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db.Values.Single(), Is.EqualTo(reflectionBytes));
+            Assert.That(store.TryGetEpochRewards(TestItem.KeccakA, out XdcEpochRewards? read), Is.True);
+            Assert.That(JsonSerializer.SerializeToUtf8Bytes(read), Is.EqualTo(reflectionBytes));
+        }
     }
 
     private static RewardsStore CreateStore(

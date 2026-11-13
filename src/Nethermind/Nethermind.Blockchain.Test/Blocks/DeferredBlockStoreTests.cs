@@ -48,9 +48,12 @@ public class DeferredBlockStoreTests
         // Served from the pending snapshot (a distinct instance from the live block), so assert hash + shape.
         Block? served = _store.Get(block.Number, block.Hash!);
         Assert.That(served, Is.Not.Null);
-        Assert.That(served!.Hash, Is.EqualTo(block.Hash));
-        Assert.That(served.Transactions.Length, Is.EqualTo(1));
-        Assert.That(_store.GetRlp(block.Number, block.Hash!), Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(served!.Hash, Is.EqualTo(block.Hash));
+            Assert.That(served.Transactions.Length, Is.EqualTo(1));
+            Assert.That(_store.GetRlp(block.Number, block.Hash!), Is.Not.Null);
+        }
 
         ReceiptRecoveryBlock? recovery = _store.GetReceiptRecoveryBlock(block.Number, block.Hash!);
         Assert.That(recovery, Is.Not.Null);
@@ -105,8 +108,11 @@ public class DeferredBlockStoreTests
 
         _writer.Pump();
 
-        Assert.That(Reopen().Get(block.Number, block.Hash!), Is.EqualTo(block).UsingBlockComparer());
-        Assert.That(Reopen().GetRlp(block.Number, block.Hash!), Is.EqualTo(pendingRlp));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Reopen().Get(block.Number, block.Hash!), Is.EqualTo(block).UsingBlockComparer());
+            Assert.That(Reopen().GetRlp(block.Number, block.Hash!), Is.EqualTo(pendingRlp));
+        }
     }
 
     [Test]
@@ -120,8 +126,11 @@ public class DeferredBlockStoreTests
 
         _writer.Pump();
 
-        Assert.That(_store.Get(block.Number, block.Hash!), Is.Null, "a queued insert must not resurrect a deleted block");
-        Assert.That(_store.HasBlock(block.Number, block.Hash!), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_store.Get(block.Number, block.Hash!), Is.Null, "a queued insert must not resurrect a deleted block");
+            Assert.That(_store.HasBlock(block.Number, block.Hash!), Is.False);
+        }
     }
 
     [Test]
@@ -137,9 +146,12 @@ public class DeferredBlockStoreTests
 
         _barrier.FlushDeferred();
 
-        Assert.That(Reopen().Get(a.Number, a.Hash!), Is.EqualTo(a).UsingBlockComparer());
-        Assert.That(Reopen().Get(b.Number, b.Hash!), Is.EqualTo(b).UsingBlockComparer());
-        Assert.That(_db.FlushCount, Is.GreaterThan(0), "blocks WAL was fsynced before state persist");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Reopen().Get(a.Number, a.Hash!), Is.EqualTo(a).UsingBlockComparer());
+            Assert.That(Reopen().Get(b.Number, b.Hash!), Is.EqualTo(b).UsingBlockComparer());
+            Assert.That(_db.FlushCount, Is.GreaterThan(0), "blocks WAL was fsynced before state persist");
+        }
     }
 
     [Test]

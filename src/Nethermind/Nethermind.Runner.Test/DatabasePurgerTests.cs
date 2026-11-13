@@ -130,8 +130,11 @@ public class DatabasePurgerTests
 
         DatabasePurger.DeleteOrphan(_tempDir, "bloom", _logger);
 
-        Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.State)), Is.True);
-        Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.PeersDb)), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.State)), Is.True);
+            Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.PeersDb)), Is.True);
+        }
     }
 
     private static void CreateTestDbLayout(string basePath)

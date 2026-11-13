@@ -166,11 +166,7 @@ internal static class ArrayPoolListCore<T>
     public static bool Contains(T[] array, T item, int count) => IndexOf(array, count, item) >= 0;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int IndexOf(T[] array, int count, T item)
-    {
-        int indexOf = Array.IndexOf(array, item);
-        return indexOf < count ? indexOf : -1;
-    }
+    public static int IndexOf(T[] array, int count, T item) => Array.IndexOf(array, item, 0, count);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void CopyTo(T[] array, int count, T[] destination, int index) => array.AsMemory(0, count).CopyTo(destination.AsMemory(index));

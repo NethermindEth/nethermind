@@ -56,8 +56,11 @@ namespace Nethermind.Blockchain.Test.Consensus
         {
             Signer signer = new(1, (PrivateKey?)null, LimboLogs.Instance);
             ValueHash256 hash = Keccak.Zero;
-            Assert.That(signer.TrySign(in hash, out Signature signature), Is.False, "signer with no key cannot sign");
-            Assert.That(signature, Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(signer.TrySign(in hash, out Signature signature), Is.False, "signer with no key cannot sign");
+                Assert.That(signature, Is.Null);
+            }
         }
 
         [Test, MaxTime(Timeout.MaxTestTime)]
@@ -66,7 +69,9 @@ namespace Nethermind.Blockchain.Test.Consensus
             Signer signer = new(1, TestItem.PrivateKeyA, LimboLogs.Instance);
             Assert.That(signer.TrySign(Build.A.Transaction.TestObject), Is.True, "signer with key signs a transaction");
             ValueHash256 hash = Keccak.Zero;
+#pragma warning disable NUnit2045 // The successful prerequisite is required before accessing its result.
             Assert.That(signer.TrySign(in hash, out Signature signature), Is.True, "signer with key signs a hash");
+#pragma warning restore NUnit2045
             Assert.That(signature.Bytes.Length, Is.EqualTo(64));
         }
 

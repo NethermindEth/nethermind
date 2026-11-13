@@ -115,9 +115,12 @@ public class TaikoExtendedEthModuleTests
         string? l1BlockHashString = jsonDoc.RootElement.GetProperty("l1BlockHash").GetString();
 
         Assert.That(l2BlockHashString, Is.Not.Null);
-        Assert.That(l2BlockHashString!.Length, Is.EqualTo(expectedLengthInChars));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(l2BlockHashString!.Length, Is.EqualTo(expectedLengthInChars));
 
-        Assert.That(l1BlockHashString, Is.Not.Null);
+            Assert.That(l1BlockHashString, Is.Not.Null);
+        }
         Assert.That(l1BlockHashString!.Length, Is.EqualTo(expectedLengthInChars));
     }
 }

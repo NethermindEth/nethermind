@@ -367,10 +367,13 @@ public class DeletionRangeCalculationTests
         Assert.That(ranges.Count, Is.EqualTo(expectedRanges.Length));
         for (int i = 0; i < expectedRanges.Length; i++)
         {
-            Assert.That(expectedRanges[i].From.Length, Is.EqualTo(66)); // 64 hex chars + "0x" prefix
-            Assert.That(expectedRanges[i].To.Length, Is.EqualTo(66));
-            Assert.That(ranges[i].From, Is.EqualTo(new ValueHash256(expectedRanges[i].From)), $"Range[{i}].From mismatch");
-            Assert.That(ranges[i].To, Is.EqualTo(new ValueHash256(expectedRanges[i].To)), $"Range[{i}].To mismatch");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(expectedRanges[i].From.Length, Is.EqualTo(66)); // 64 hex chars + "0x" prefix
+                Assert.That(expectedRanges[i].To.Length, Is.EqualTo(66));
+                Assert.That(ranges[i].From, Is.EqualTo(new ValueHash256(expectedRanges[i].From)), $"Range[{i}].From mismatch");
+                Assert.That(ranges[i].To, Is.EqualTo(new ValueHash256(expectedRanges[i].To)), $"Range[{i}].To mismatch");
+            }
         }
     }
 

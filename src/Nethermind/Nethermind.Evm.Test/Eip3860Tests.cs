@@ -40,8 +40,11 @@ namespace Nethermind.Evm.Test
             byte[] callCode = Prepare.EvmCode.Call(TestItem.AddressC, 100000).Done;
 
             TestAllTracerWithOutput tracer = Execute((BlockNumber, eip3860Enabled ? Timestamp : Timestamp - 1), callCode);
-            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
-            Assert.That(tracer.GasSpent - _transactionCallCost, Is.EqualTo(expectedGasUsage));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+                Assert.That(tracer.GasSpent - _transactionCallCost, Is.EqualTo(expectedGasUsage));
+            }
         }
 
         [Test]
@@ -62,11 +65,17 @@ namespace Nethermind.Evm.Test
             byte[] callCode = Prepare.EvmCode.Call(TestItem.AddressC, contractCreationGasLimit).Done;
 
             TestAllTracerWithOutput tracer = Execute(callCode);
-            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
-            Assert.That(tracer.ReportedActionErrors.Count, Is.EqualTo(1));
-            Assert.That(tracer.ReportedActionErrors[0], Is.EqualTo(EvmExceptionType.OutOfGas));
-            Assert.That(TestState.GetNonce(TestItem.AddressC), Is.EqualTo(0));
-            Assert.That(tracer.GasSpent, Is.EqualTo(_transactionCallCost + contractCreationGasLimit));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+                Assert.That(tracer.ReportedActionErrors.Count, Is.EqualTo(1));
+            }
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.ReportedActionErrors[0], Is.EqualTo(EvmExceptionType.OutOfGas));
+                Assert.That(TestState.GetNonce(TestItem.AddressC), Is.EqualTo(0));
+                Assert.That(tracer.GasSpent, Is.EqualTo(_transactionCallCost + contractCreationGasLimit));
+            }
         }
 
         [Test]

@@ -95,7 +95,7 @@ public class BlockAccessListBenchmarks
 
             slice.AddBalanceChange(addresses[senderIdx], 100, 90);
             slice.AddBalanceChange(addresses[recipientIdx], 100, 110);
-            slice.AddNonceChange(addresses[senderIdx], (ulong)(tx + 1));
+            slice.AddNonceChange(addresses[senderIdx], (ulong)tx, (ulong)(tx + 1));
 
             // Storage churn on a third account — the "contract" being called.
             int contractIdx = (tx * 3 + 7) % addresses.Length;

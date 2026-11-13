@@ -173,6 +173,9 @@ public partial class ParityLikeTxTracer : TxTracer
 
     protected virtual void ReturnInputBytes(in CappedArray<byte> input) { }
 
+    /// <summary>Takes back an action that left its frame without joining the trace, which nothing references any more.</summary>
+    protected virtual void ReturnExcludedAction(ParityTraceAction action) { }
+
     // Only the action tree reads the input, and BuildResult drops it unless Trace was requested.
     private CappedArray<byte> CopyActionInput(ReadOnlyMemory<byte> input) =>
         (_parityTraceTypes & ParityTraceTypes.Trace) != 0 ? CopyInput(input) : CappedArray<byte>.Empty;
@@ -260,6 +263,11 @@ public partial class ParityLikeTxTracer : TxTracer
 
         _actionStack.Pop();
         _currentAction = _actionStack.Count == 0 ? null : _actionStack.Peek();
+
+        if (!popped.IncludeInTrace && popped != _trace.Action)
+        {
+            ReturnExcludedAction(popped);
+        }
     }
 
     protected virtual void OnLeaveVmFrame(ParityTraceAction action)
@@ -512,7 +520,7 @@ public partial class ParityLikeTxTracer : TxTracer
     /// As for a creation that entered its frame, the operation's cost includes the gas made available to the creation,
     /// which a failed precheck returns at once and a collision consumes.
     /// </remarks>
-    public override void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address? to,
+    public override void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address to,
         ReadOnlyMemory<byte> input, ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
     {
         if (_currentOperation is not null && callType.IsAnyCreate())
@@ -523,7 +531,9 @@ public partial class ParityLikeTxTracer : TxTracer
         // Like one that entered its frame, a nested zero-value precompile call is left out of the trace.
         if (isPrecompileCall && value.IsZero) return;
 
-        ParityTraceAction action = CreateAction(gas, value, from, to, input, callType, isPrecompileCall);
+        // A creation that failed its precheck has no destination, so stored traces and OTS do not list or index it.
+        Address? actionTo = callType.IsAnyCreate() && error != EvmExceptionType.TransactionCollision ? null : to;
+        ParityTraceAction action = CreateAction(gas, value, from, actionTo, input, callType, isPrecompileCall);
         action.Result = null;
         action.Error = GetErrorDescription(error);
         AttachAction(action);

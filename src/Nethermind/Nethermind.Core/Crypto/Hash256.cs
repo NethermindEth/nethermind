@@ -40,10 +40,15 @@ namespace Nethermind.Core.Crypto
             _bytes = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetArrayDataReference(bytes));
         }
 
+        /// <exception cref="FormatException"><paramref name="hex"/> is not valid hex or does not decode to exactly 32 bytes.</exception>
         public ValueHash256(string hex)
         {
             byte[] bytes = Extensions.Bytes.FromHexString(hex);
-            Debug.Assert(bytes.Length == ValueHash256.MemorySize);
+            if (bytes.Length != MemorySize)
+            {
+                ThrowInvalidHexLength(bytes.Length);
+            }
+
             _bytes = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetArrayDataReference(bytes));
         }
 
@@ -53,8 +58,12 @@ namespace Nethermind.Core.Crypto
         public ValueHash256(ReadOnlySpan<byte> bytes)
         {
             Debug.Assert(bytes.Length == MemorySize);
-            _bytes = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(bytes));
+            _bytes = Unsafe.ReadUnaligned<Vector256<byte>>(ref MemoryMarshal.GetReference(bytes));
         }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowInvalidHexLength(int length) =>
+            throw new FormatException($"{nameof(ValueHash256)} must be {MemorySize} bytes and was {length} bytes");
 
         public override bool Equals(object? obj) => obj is ValueHash256 keccak && Equals(keccak);
 

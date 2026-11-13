@@ -5,7 +5,7 @@ extern alias BouncyCastle;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using Nethermind.Abi;
+using Nethermind.Blockchain.Contracts;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
@@ -125,7 +125,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             {
                 if (_logger.IsError) _logger.Error($"RANDAO Failed on block {parent.ToString(BlockHeader.Format.FullHashAndNumber)} {new StackTrace()}", e);
             }
-            catch (AbiException e)
+            catch (ContractException e)
             {
                 if (_logger.IsError) _logger.Error($"RANDAO Failed on block {parent.ToString(BlockHeader.Format.FullHashAndNumber)} {new StackTrace()}", e);
             }

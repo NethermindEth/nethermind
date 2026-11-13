@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
+using System;
 using Nethermind.Core.Specs;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 
@@ -13,17 +13,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 /// </remarks>
 public class ReceiptsMessageInnerSerializer69(ISpecProvider specProvider) :
     ReceiptsMessageSerializer(specProvider, new ReceiptMessageDecoder69()),
-    IZeroInnerMessageSerializer<ReceiptsInnerMessage69>
+    IMessageSerializer<ReceiptsInnerMessage69>
 {
-    int IZeroInnerMessageSerializer<ReceiptsInnerMessage69>.GetLength(ReceiptsInnerMessage69 message, out int contentLength) =>
-        GetLength(message, out contentLength);
+    int IMessageSerializer<ReceiptsInnerMessage69>.GetLength(ReceiptsInnerMessage69 message) =>
+        GetLength(message);
 
-    void IZeroMessageSerializer<ReceiptsInnerMessage69>.Serialize(IByteBuffer byteBuffer, ReceiptsInnerMessage69 message) =>
-        Serialize(byteBuffer, message);
+    int IMessageSerializer<ReceiptsInnerMessage69>.Serialize(Span<byte> destination, ReceiptsInnerMessage69 message) =>
+        Serialize(destination, message);
 
-    ReceiptsInnerMessage69 IZeroMessageSerializer<ReceiptsInnerMessage69>.Deserialize(IByteBuffer byteBuffer)
+    ReceiptsInnerMessage69 IMessageSerializer<ReceiptsInnerMessage69>.Deserialize(ReadOnlySpan<byte> data)
     {
-        ReceiptsMessage baseMessage = base.Deserialize(byteBuffer);
+        ReceiptsMessage baseMessage = base.Deserialize(data);
         return new(baseMessage.TxReceipts);
     }
 }

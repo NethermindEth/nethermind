@@ -27,8 +27,8 @@ namespace Nethermind.Mining.Test
             IReleaseSpec spec = new ReleaseSpec { IsEip1559Enabled = false };
 
             AcceptTxResult result = customFloor
-                ? filter.IsAllowed(tx, null, 3, spec)
-                : filter.IsAllowed(tx, null!, spec);
+                ? filter.IsAllowed(tx, new TxFilterContext(null!, spec), 3)
+                : filter.IsAllowed(tx, new TxFilterContext(null!, spec));
 
             using (Assert.EnterMultipleScope())
             {
@@ -49,14 +49,14 @@ namespace Nethermind.Mining.Test
 
             for (int i = 0; i < 100; i++)
             {
-                pipeline.Execute(tx, null!, spec);
+                pipeline.Execute(tx, new TxFilterContext(null!, spec));
             }
 
             bool accepted = true;
             long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
             for (int i = 0; i < 1000; i++)
             {
-                accepted &= pipeline.Execute(tx, null!, spec);
+                accepted &= pipeline.Execute(tx, new TxFilterContext(null!, spec));
             }
             long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
 
@@ -86,7 +86,7 @@ namespace Nethermind.Mining.Test
 
             MinGasPriceTxFilter filter = new(blocksConfig);
             Transaction tx = Build.A.Transaction.WithGasPrice((UInt256)actual).TestObject;
-            Assert.That(filter.IsAllowed(tx, null!, releaseSpec).Equals(expectedResult ? AcceptTxResult.Accepted : AcceptTxResult.FeeTooLow), Is.True);
+            Assert.That(filter.IsAllowed(tx, new TxFilterContext(null!, releaseSpec)).Equals(expectedResult ? AcceptTxResult.Accepted : AcceptTxResult.FeeTooLow), Is.True);
         }
 
         [TestCase(0L, 0L, 0L, true)]
@@ -118,7 +118,7 @@ namespace Nethermind.Mining.Test
                 .WithMaxPriorityFeePerGas((UInt256)maxPriorityFeePerGas)
                 .WithType(TxType.EIP1559).TestObject;
             BlockBuilder blockBuilder = Core.Test.Builders.Build.A.Block.Genesis.WithGasLimit(10000).WithBaseFeePerGas((UInt256)1000);
-            Assert.That(_filter.IsAllowed(tx, blockBuilder.TestObject.Header, specProvider.GetSpec(blockBuilder.TestObject.Header)).Equals(expectedResult ? AcceptTxResult.Accepted : AcceptTxResult.FeeTooLow), Is.True);
+            Assert.That(_filter.IsAllowed(tx, new TxFilterContext(blockBuilder.TestObject.Header, specProvider.GetSpec(blockBuilder.TestObject.Header))).Equals(expectedResult ? AcceptTxResult.Accepted : AcceptTxResult.FeeTooLow), Is.True);
         }
     }
 }

@@ -20,7 +20,9 @@ public class HttpRemoteEraClientTests
         IReadOnlyDictionary<uint, RemoteEraEntry> manifest =
             await FetchManifest($"{ValidHash}  sepolia-00000-deadbeef.erae");
 
+#pragma warning disable NUnit2045 // The key must exist before indexing the result.
         Assert.That(manifest.ContainsKey(0u), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(manifest[0u].Filename, Is.EqualTo("sepolia-00000-deadbeef.erae"));
     }
 

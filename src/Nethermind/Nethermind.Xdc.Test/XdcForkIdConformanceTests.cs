@@ -58,8 +58,11 @@ public class XdcForkIdConformanceTests
     {
         ForkId forkId = ForkInfo(chainSpecFile, genesisHash).GetForkId(head, 0);
 
-        Assert.That(forkId.ForkHash, Is.EqualTo(expectedChecksum));
-        Assert.That(forkId.Next, Is.EqualTo(expectedNext));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forkId.ForkHash, Is.EqualTo(expectedChecksum));
+            Assert.That(forkId.Next, Is.EqualTo(expectedNext));
+        }
     }
 
     private static XdcForkInfo ForkInfo(string chainSpecFile, Hash256 genesisHash)

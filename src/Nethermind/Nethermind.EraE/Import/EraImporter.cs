@@ -62,7 +62,7 @@ public sealed class EraImporter(
 
         (ulong firstBlockInStore, ulong lastBlockInStore) = eraStore.BlockRange;
         if (to is 0 or ulong.MaxValue)
-            to = lastBlockInStore;
+            to = eraStore.NextEraStart(lastBlockInStore) - 1;
         else if (to > lastBlockInStore)
             throw new EraImportException($"Store highest block {lastBlockInStore} is lower than requested end {to}.");
 

@@ -50,8 +50,11 @@ public class XdcSubnetSealValidatorTests
 
         bool ok = validator.ValidateParams(parent, header, out string? error);
 
-        Assert.That(ok, Is.False);
-        Assert.That(error, Does.Contain("NextValidators"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ok, Is.False);
+            Assert.That(error, Does.Contain("NextValidators"));
+        }
     }
 
     [Test]
@@ -66,8 +69,11 @@ public class XdcSubnetSealValidatorTests
 
         bool ok = validator.ValidateParams(parent, header, out string? error);
 
-        Assert.That(ok, Is.False);
-        Assert.That(error, Does.Contain("Penalties"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ok, Is.False);
+            Assert.That(error, Does.Contain("Penalties"));
+        }
     }
 
     [Test]
@@ -87,8 +93,11 @@ public class XdcSubnetSealValidatorTests
 
         bool ok = validator.ValidateParams(parent, header, out string? error);
 
-        Assert.That(ok, Is.False);
-        Assert.That(error, Does.Contain("NextValidators"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ok, Is.False);
+            Assert.That(error, Does.Contain("NextValidators"));
+        }
     }
 
     [Test]
@@ -110,8 +119,11 @@ public class XdcSubnetSealValidatorTests
 
         bool ok = validator.ValidateParams(parent, header, out string? error);
 
-        Assert.That(ok, Is.False);
-        Assert.That(error, Does.Contain("Penalties"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ok, Is.False);
+            Assert.That(error, Does.Contain("Penalties"));
+        }
     }
 
     [Test]

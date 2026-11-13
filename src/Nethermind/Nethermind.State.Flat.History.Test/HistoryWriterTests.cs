@@ -951,6 +951,43 @@ public class HistoryWriterTests
     }
 
     [Test]
+    public void Since_block_below_floor_persist_voids_the_matched_root_of_the_removed_marker()
+    {
+        (HistoryWriter writer, HistoryReader reader) = CreateSinceBlockPair(sinceBlock: 5);
+        writer.SeedGenesis([], StateAt(0).StateRoot);
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 10))]);
+        writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
+        Assert.That(reader.IsCoveredAndRootMatches(StateAt(1)), Is.True, "precondition: the match at block 1 is remembered");
+
+        CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 20))]);
+        writer.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(HasMarker(1), Is.False, "precondition: the marker at block 1 is removed");
+            Assert.That(reader.IsCoveredAndRootMatches(StateAt(1)), Is.False, "a remembered match must not outlive its marker");
+        }
+    }
+
+    [Test]
+    public void Seed_pivot_at_the_watermark_voids_the_matched_root_it_overwrites()
+    {
+        (HistoryWriter writer, HistoryReader reader) = CreateSinceBlockPair(sinceBlock: 5);
+        ValueHash256 replacedRoot = TestItem.KeccakA;
+        ValueHash256 pivotRoot = TestItem.KeccakB;
+        writer.SeedPivot(3, replacedRoot);
+        Assert.That(reader.IsCoveredAndRootMatches(new StateId(3, replacedRoot)), Is.True, "precondition: the match at block 3 is remembered");
+
+        writer.SeedPivot(3, pivotRoot);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.IsCoveredAndRootMatches(new StateId(3, replacedRoot)), Is.False, "the overwritten root");
+            Assert.That(reader.IsCoveredAndRootMatches(new StateId(3, pivotRoot)), Is.True);
+        }
+    }
+
+    [Test]
     public void Since_block_seed_pivot_above_captured_history_moves_the_floor_to_the_pivot()
     {
         (HistoryWriter writer, HistoryReader reader) = CreateSinceBlockPair(sinceBlock: 1);
@@ -983,9 +1020,12 @@ public class HistoryWriterTests
 
         writer.SeedPivot(10, StateAt(10).StateRoot);
 
-        Assert.That(scopes.TryGetScopeFloor(HistoryColumnsWriter.ScopeKeyOf(AddrA), out ulong sliceFloor), Is.True);
-        Assert.That(sliceFloor, Is.EqualTo(10UL),
-            "a restricted read below the pivot would resolve through the live state the sync replaced, so the slice must fail closed there too");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scopes.TryGetScopeFloor(HistoryColumnsWriter.ScopeKeyOf(AddrA), out ulong sliceFloor), Is.True);
+            Assert.That(sliceFloor, Is.EqualTo(10UL),
+                "a restricted read below the pivot would resolve through the live state the sync replaced, so the slice must fail closed there too");
+        }
     }
 
     [Test]
@@ -2048,7 +2088,7 @@ public class HistoryWriterTests
     {
         AssembledSnapshotResult assembled = _repository.AssembleSnapshots(StateAt(tip), StateAt(0), estimatedSize);
         assembled.Persisted.Dispose(); // in-memory tip bundle: no persisted tier
-        return new ReadOnlySnapshotBundle(assembled.InMemory, new NoopPersistenceReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
+        return new ReadOnlySnapshotBundle(assembled.InMemory, new NoopPersistenceReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), bufferPin: null);
     }
 
     private void AssertStorageAt(ulong readBlock, UInt256 slot, string? expectedHex)
@@ -2061,9 +2101,12 @@ public class HistoryWriterTests
         }
         else
         {
-            Assert.That(found, Is.True, $"slot {slot} must be present at block {readBlock}");
-            Assert.That(value.ToMinimalBigEndian(), Is.EqualTo(Convert.FromHexString(expectedHex)),
-                $"slot {slot} resolved to the wrong value at block {readBlock}");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(found, Is.True, $"slot {slot} must be present at block {readBlock}");
+                Assert.That(value.ToMinimalBigEndian(), Is.EqualTo(Convert.FromHexString(expectedHex)),
+                    $"slot {slot} resolved to the wrong value at block {readBlock}");
+            }
         }
     }
 

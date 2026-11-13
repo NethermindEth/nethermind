@@ -116,8 +116,11 @@ public class OptimismPayloadAttributesTests
         OptimismPayloadAttributes payloadAttributes = new EthereumJsonSerializer().Deserialize<OptimismPayloadAttributes>(json)!;
 
         AssertValidation(payloadAttributes, Spec.JovianTimeStamp, Valid.Since(Spec.JovianTimeStamp));
-        Assert.That(payloadAttributes.TryDecodeEIP1559Parameters(out EIP1559Parameters parameters, out _), Is.True);
-        Assert.That(parameters, Is.EqualTo(new EIP1559Parameters(1, 250, 6, 1_000_000)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(payloadAttributes.TryDecodeEIP1559Parameters(out EIP1559Parameters parameters, out _), Is.True);
+            Assert.That(parameters, Is.EqualTo(new EIP1559Parameters(1, 250, 6, 1_000_000)));
+        }
     }
 
     private static OptimismPayloadAttributes BuildAttributes(ulong timestamp, byte[]? eip1559Params, ulong? minBaseFee) => new()
@@ -152,9 +155,12 @@ public class OptimismPayloadAttributesTests
     {
         OptimismPayloadAttributes payloadAttributes = BuildAttributes(timestamp, Bytes.FromHexString("0x0000000800000000"), minBaseFee);
 
-        Assert.That(
-            payloadAttributes.Validate(Spec.BuildFor(timestamp), EngineApiVersions.Fcu.V3, out string? error),
-            Is.EqualTo(PayloadAttributesValidationResult.InvalidPayloadAttributes));
-        Assert.That(error, Does.Contain("elasticity cannot be 0"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(
+                payloadAttributes.Validate(Spec.BuildFor(timestamp), EngineApiVersions.Fcu.V3, out string? error),
+                Is.EqualTo(PayloadAttributesValidationResult.InvalidPayloadAttributes));
+            Assert.That(error, Does.Contain("elasticity cannot be 0"));
+        }
     }
 }

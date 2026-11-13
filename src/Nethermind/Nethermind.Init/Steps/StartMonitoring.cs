@@ -28,7 +28,7 @@ public class StartMonitoring(
             logManager.SetGlobalVariable("nodeName", metricsConfig.NodeName);
         }
 
-        if (metricsConfig.Enabled)
+        if (metricsConfig.IsMonitoringEnabled())
         {
             try
             {
@@ -43,7 +43,8 @@ public class StartMonitoring(
                 if (_logger.IsError) _logger.Error("Error during starting a monitoring.", e);
             }
         }
-        else
+
+        if (!metricsConfig.Enabled)
         {
             if (_logger.IsInfo)
                 _logger.Info("Grafana / Prometheus metrics are disabled in configuration");

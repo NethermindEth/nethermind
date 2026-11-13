@@ -21,14 +21,20 @@ public class ConsolePasswordProviderTests
         BasePasswordProvider consolePasswordProvider1 = emptyPasswordProvider
                                         .OrReadFromConsole("Test1");
 
-        Assert.That(consolePasswordProvider1 is FilePasswordProvider, Is.True);
-        Assert.That(((ConsolePasswordProvider)consolePasswordProvider1.AlternativeProvider).Message, Is.EqualTo("Test1"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(consolePasswordProvider1 is FilePasswordProvider, Is.True);
+            Assert.That(((ConsolePasswordProvider)consolePasswordProvider1.AlternativeProvider).Message, Is.EqualTo("Test1"));
+        }
 
         BasePasswordProvider consolePasswordProvider2 = consolePasswordProvider1
                                         .OrReadFromConsole("Test2");
 
-        Assert.That(consolePasswordProvider2 is FilePasswordProvider, Is.True);
-        Assert.That(((ConsolePasswordProvider)consolePasswordProvider2.AlternativeProvider).Message, Is.EqualTo("Test2"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(consolePasswordProvider2 is FilePasswordProvider, Is.True);
+            Assert.That(((ConsolePasswordProvider)consolePasswordProvider2.AlternativeProvider).Message, Is.EqualTo("Test2"));
+        }
     }
 
     [Test]
@@ -45,8 +51,11 @@ public class ConsolePasswordProviderTests
         });
         ConsolePasswordProvider passwordProvider = new(new ConsoleUtils(consoleWrapper));
         SecureString password = passwordProvider.GetPassword(Address.Zero);
-        Assert.That(password.IsReadOnly(), Is.True);
-        Assert.That(password.Unsecure(), Is.EqualTo(test.ExpectedPassword));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(password.IsReadOnly(), Is.True);
+            Assert.That(password.Unsecure(), Is.EqualTo(test.ExpectedPassword));
+        }
     }
 
     public static IEnumerable<ConsolePasswordProviderTest> PasswordProviderTestCases

@@ -311,37 +311,47 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         /// <summary><c>true</c> when this was the last copy, so the entry is to be removed and its waiters are released.</summary>
         /// <remarks>
-        /// Removals are raised once per copy and in sequence today; the clamps keep a second removal of the last copy,
-        /// should one ever overlap, from stranding the entry at a count nothing can bring back to zero - which would
-        /// leave every waiter on the hash to its full bound and spin the next enqueue of it forever.
+        /// Each tracked copy owns one removal; enqueue, recovery and processing removals can overlap. The last
+        /// removal atomically makes the count terminal, preventing new copies from joining this entry. Removals at
+        /// zero or a terminal count do nothing; this does not make duplicate removal events safe after a re-enqueue.
         /// </remarks>
         /// <param name="processed">Whether the processing loop took this copy, so it is the one that can have had its verdict.</param>
         public bool RemoveCopy(bool processed)
         {
             // Copies are processed in order, so once the processed copy is gone none of the ones left has had its
             // verdict. The next one sets the flag again when its own lands; until then an executed-only wait must not
-            // take the entry for a block that is committing. The flag is cleared before the source is taken, which is
-            // the order ExecutedCopyRemoved relies on.
-            if (processed && _executed)
+            // take the entry for a block that is committing. If copies remain, the flag is cleared before the source
+            // is taken, which is the order ExecutedCopyRemoved relies on.
+            bool executed = processed && _executed;
+
+            int copies;
+            while (true)
             {
-                _executed = false;
-                Interlocked.Exchange(ref _executedCopyRemoved, null)?.TrySetResult();
+                int previous = Volatile.Read(ref _copies);
+                if (previous <= 0) return false;
+                copies = previous == 1 ? -1 : previous - 1;
+                if (Interlocked.CompareExchange(ref _copies, copies, previous) == previous) break;
             }
 
-            int copies = Interlocked.Decrement(ref _copies);
-            if (copies > 0) return false;
-            // Taken below zero by a removal that overlapped the last one: that one owns the release either way.
-            if (copies < 0) return false;
-            // A copy queued between the decrement and here keeps the entry alive, and the waiters wait for it too.
-            if (Interlocked.CompareExchange(ref _copies, -1, 0) != 0) return false;
-            Release();
-            return true;
+            if (copies == -1)
+            {
+                Release();
+                return true;
+            }
+
+            if (executed)
+            {
+                _executed = false;
+                if (copies > 0) Interlocked.Exchange(ref _executedCopyRemoved, null)?.TrySetResult();
+            }
+            return false;
         }
 
         public void Release()
         {
-            Interlocked.Exchange(ref _executedCopyRemoved, Done)?.TrySetResult();
+            // An executed-copy waiter can recheck all-copy removal as soon as it resumes.
             Interlocked.Exchange(ref _removed, Done)?.TrySetResult();
+            Interlocked.Exchange(ref _executedCopyRemoved, Done)?.TrySetResult();
         }
     }
 

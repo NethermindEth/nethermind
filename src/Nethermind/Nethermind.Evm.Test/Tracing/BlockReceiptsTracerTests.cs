@@ -300,10 +300,16 @@ namespace Nethermind.Evm.Test.Tracing
 
             tracer.SetReceipt(2, receipt);
 
-            Assert.That(tracer.TxReceipts.Length, Is.EqualTo(3));
-            Assert.That(wrappedTracer.TxReceipts.Length, Is.EqualTo(3));
-            Assert.That(tracer.TxReceipts[2], Is.SameAs(receipt));
-            Assert.That(wrappedTracer.TxReceipts[2], Is.SameAs(receipt));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.TxReceipts.Length, Is.EqualTo(3));
+                Assert.That(wrappedTracer.TxReceipts.Length, Is.EqualTo(3));
+            }
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.TxReceipts[2], Is.SameAs(receipt));
+                Assert.That(wrappedTracer.TxReceipts[2], Is.SameAs(receipt));
+            }
         }
 
         [Test]
@@ -340,8 +346,11 @@ namespace Nethermind.Evm.Test.Tracing
 
             tracer.ResetForParallelTx(nextBlock, nextOtherTracer);
 
-            Assert.That(tracer.TxReceipts.Length, Is.EqualTo(0));
-            Assert.That(tracer.InnerTracer, Is.SameAs(NullTxTracer.Instance));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.TxReceipts.Length, Is.EqualTo(0));
+                Assert.That(tracer.InnerTracer, Is.SameAs(NullTxTracer.Instance));
+            }
             previousOtherTracer.Received(1).StartNewBlockTrace(previousBlock);
             previousOtherTracer.DidNotReceive().StartNewBlockTrace(nextBlock);
             nextOtherTracer.DidNotReceive().StartNewBlockTrace(nextBlock);

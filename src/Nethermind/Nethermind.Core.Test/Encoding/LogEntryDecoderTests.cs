@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Caching;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -111,7 +113,7 @@ public class LogEntryDecoderTests
             Assert.That(Bytes.AreEqual(data, destination[..data.Length]), "the caller's buffer must contain the complete data");
             Assert.That(destination[data.Length..].IndexOfAnyExcept((byte)0xcc), Is.EqualTo(-1), "copying must leave excess destination bytes untouched");
             Assert.That(allocated, Is.Zero, "copying compact data must not allocate an intermediate array");
-            Assert.That(reader.Position, Is.EqualTo(encoded.Length), "the iterator must advance past the complete entry");
+            Assert.That(reader.BytesRead, Is.EqualTo(encoded.Length), "the iterator must advance past the complete entry");
             Assert.That(CompactLogEntryDecoder.DecodeTopics(new RlpReader(decoded.TopicsRlp)), Is.EqualTo(logEntry.Topics));
         }
     }
@@ -132,7 +134,7 @@ public class LogEntryDecoderTests
         {
             Assert.That(decoded.DataLength, Is.Zero);
             Assert.That(destination[0], Is.EqualTo(0xcc), "empty data must not modify the destination");
-            Assert.That(reader.Position, Is.EqualTo(encoded.Length));
+            Assert.That(reader.BytesRead, Is.EqualTo(encoded.Length));
         }
     }
 
@@ -249,6 +251,91 @@ public class LogEntryDecoderTests
         return CompactLogEntryDecoder.DecodeTopics(new RlpReader(structRef.TopicsRlp));
     }
 
+    private const string Topic = "a01111111111111111111111111111111111111111111111111111111111111111";
+
+    /// <summary>Valid and malformed topic lists; each decoder accepts some and rejects others.</summary>
+    public static readonly string[] TopicsRlpCases =
+    [
+        "c0",
+        "e1" + Topic,
+        "f884" + Topic + Topic + Topic + Topic,
+        "c3000102",
+        "e09f" + "22222222222222222222222222222222222222222222222222222222222222",
+        "c180",
+        "c20180",
+        "e2" + Topic + "80",
+        "c1c0",
+        "e2" + Topic + "c0",
+        "c2c180",
+        "c28100",
+        "e2a1" + "333333333333333333333333333333333333333333333333333333333333333333",
+        "c4a0010203",
+        "c1" + Topic,
+        "c201",
+        "01",
+    ];
+
+    [Test]
+    public void Topics_decoded_one_at_a_time_match_DecodeTopics([Values] bool compact, [ValueSource(nameof(TopicsRlpCases))] string topicsRlp) =>
+        AssertTopicsDecodedOneAtATimeMatchDecodeTopics(
+            compact ? CompactReceiptStorageDecoder.Instance : new ReceiptStorageDecoder(),
+            Bytes.FromHexString(topicsRlp));
+
+    [Test]
+    public void Topics_decoded_one_at_a_time_reject_more_topics_than_DecodeTopics()
+    {
+        int count = RlpLimit.DefaultLimit.Limit + 1;
+        byte[] rlp = new byte[Rlp.LengthOfSequence(count)];
+        int position = Rlp.StartSequence(rlp, 0, count);
+        rlp.AsSpan(position).Fill(Rlp.EmptyByteArrayByte);
+
+        AssertTopicsDecodedOneAtATimeMatchDecodeTopics(new ReceiptStorageDecoder(), rlp);
+    }
+
+    public static void AssertTopicsDecodedOneAtATimeMatchDecodeTopics(IReceiptRefTopicDecoder decoder, byte[] rlp)
+    {
+        Hash256[]? expected = null;
+        Exception? expectedError = null;
+        try
+        {
+            expected = decoder.DecodeTopics(new RlpReader(rlp));
+        }
+        catch (Exception e)
+        {
+            expectedError = e;
+        }
+
+        List<Hash256> actual = [];
+        Exception? actualError = null;
+        try
+        {
+            Span<byte> topic = stackalloc byte[Hash256.Size];
+            LogTopicsIterator topics = new(rlp, decoder);
+            while (true)
+            {
+                topic.Fill(0xff);
+                if (!topics.TryGetNext(topic)) break;
+                actual.Add(new Hash256(topic));
+            }
+        }
+        catch (Exception e)
+        {
+            actualError = e;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expectedError, Is.Null.Or.InstanceOf<RlpReaderException>().Or.InstanceOf<IndexOutOfRangeException>());
+            Assert.That(actualError?.GetType(), Is.EqualTo(expectedError?.GetType()));
+            Assert.That(actualError?.Message, Is.EqualTo(expectedError?.Message));
+            Assert.That(actualError?.InnerException?.GetType(), Is.EqualTo(expectedError?.InnerException?.GetType()));
+            if (expectedError is null)
+            {
+                Assert.That(actual, Is.EqualTo(expected));
+            }
+        }
+    }
+
     [Test]
     public void Can_handle_nulls()
     {
@@ -300,7 +387,7 @@ public class LogEntryDecoderTests
             ? Rlp.Encode(Rlp.OfEmptyByteArray, Rlp.OfEmptyList, Rlp.Encode(0), Rlp.OfEmptyByteArray)
             : Rlp.Encode(Rlp.OfEmptyByteArray, Rlp.OfEmptyList, Rlp.OfEmptyByteArray);
 
-        Assert.That(Decode, Throws.TypeOf<RlpException>());
+        Assert.That(Decode, Throws.TypeOf<RlpReaderException>());
 
         void Decode()
         {
@@ -324,7 +411,7 @@ public class LogEntryDecoderTests
             Rlp.Encode(Rlp.Encode(TestItem.KeccakA.Bytes), Rlp.OfEmptyByteArray),
             Rlp.OfEmptyByteArray);
 
-        Assert.Throws<RlpException>(() =>
+        Assert.Throws<RlpReaderException>(() =>
         {
             RlpReader ctx = new(malformed.Bytes);
             LogEntryDecoder.Instance.Decode(ref ctx);
@@ -339,7 +426,7 @@ public class LogEntryDecoderTests
     {
         byte[] malformed = Bytes.FromHexString(entry + sibling);
 
-        Assert.Throws<RlpLimitException>(() =>
+        Assert.Throws<RlpReaderException>(() =>
         {
             RlpReader ctx = new(malformed);
             LogEntryDecoder.Instance.Decode(ref ctx, RlpBehaviors.AllowExtraBytes);
@@ -370,7 +457,7 @@ public class LogEntryDecoderTests
     {
         byte[] malformed = CreateCompactLogEntryWithTooLargeDeclaredLength();
 
-        Assert.Throws<RlpLimitException>(() =>
+        Assert.Throws<RlpReaderException>(() =>
         {
             RlpReader ctx = new(malformed);
             CompactLogEntryDecoder.DecodeLogEntryStructRef(ref ctx, RlpBehaviors.None, out _);

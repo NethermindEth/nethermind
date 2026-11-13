@@ -3,33 +3,37 @@
 
 using System;
 using System.Threading;
-using DotNetty.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
 {
     public class NewPooledTransactionHashesMessageSerializer
-        : IZeroMessageSerializer<NewPooledTransactionHashesMessage68>
+        : IMessageSerializer<NewPooledTransactionHashesMessage68>
     {
         private static readonly RlpLimit TypesRlpLimit = RlpLimit.For<NewPooledTransactionHashesMessage68>(NethermindSyncLimits.MaxHashesFetch, nameof(NewPooledTransactionHashesMessage68.Types));
         private static readonly RlpLimit SizesRlpLimit = RlpLimit.For<NewPooledTransactionHashesMessage68>(NethermindSyncLimits.MaxHashesFetch, nameof(NewPooledTransactionHashesMessage68.Sizes));
         private static readonly RlpLimit HashesRlpLimit = RlpLimit.For<NewPooledTransactionHashesMessage68>(NethermindSyncLimits.MaxHashesFetch, nameof(NewPooledTransactionHashesMessage68.Hashes));
 
-        public NewPooledTransactionHashesMessage68 Deserialize(IByteBuffer byteBuffer) =>
-            byteBuffer.DeserializeRlp(Deserialize);
-
-        private static NewPooledTransactionHashesMessage68 Deserialize(ref RlpReader ctx)
+        public NewPooledTransactionHashesMessage68 Deserialize(ReadOnlySpan<byte> data)
         {
-            ctx.ReadSequenceLength();
+            RlpReader ctx = new(data);
+            return ctx.CheckEnd(Deserialize(ref ctx));
+        }
+
+        private static NewPooledTransactionHashesMessage68 Deserialize(ref RlpReader reader)
+        {
+            RlpReader ctx = reader.EnterSequence(out int itemLength);
             PooledMessage message = PooledMessage.Rent();
             try
             {
                 message.TypeList.AddRange(ctx.DecodeByteArraySpan(TypesRlpLimit));
                 DecodeList(ref ctx, message.SizeList, static (ref RlpReader c) => c.DecodeInt(), SizesRlpLimit);
                 DecodeList(ref ctx, message.HashList, static (ref RlpReader c) => c.DecodeValueKeccakNonNull(), HashesRlpLimit);
+                reader.ExitSequenceIgnoringRest(ctx, itemLength);
                 return message;
             }
             catch
@@ -39,22 +43,21 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
             }
         }
 
-        private static void DecodeList<T>(ref RlpReader reader, ArrayPoolList<T> destination, DecodeRlpValue<T> decode, RlpLimit limit) where T : struct
+        private static void DecodeList<T>(ref RlpReader reader, ArrayPoolList<T> destination, RefRlpReaderFunc<T> decode, RlpLimit limit) where T : struct
         {
-            int end = reader.ReadSequenceLength() + reader.Position;
-            int count = reader.PeekNumberOfItemsRemaining(end, limit.Limit + 1);
-            reader.GuardLimit(count, limit);
+            RlpReader items = reader.EnterSequence(out int itemLength);
+            int count = items.CountItems(limit);
             try
             {
                 for (int i = 0; i < count; i++)
                 {
-                    destination.Add(decode(ref reader));
+                    destination.Add(decode(ref items));
                 }
-                reader.Check(end);
+                reader.ExitSequence(items, itemLength);
             }
-            catch (Exception exception) when (exception is not RlpException)
+            catch (Exception exception) when (exception is not RlpReaderException)
             {
-                throw new RlpException($"Error decoding array of {typeof(T).Name}.", exception);
+                throw new RlpReaderException($"Error decoding array of {typeof(T).Name}.", exception);
             }
         }
 
@@ -108,7 +111,41 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
 
         }
 
-        public void Serialize(IByteBuffer byteBuffer, NewPooledTransactionHashesMessage68 message)
+        public int Serialize(Span<byte> destination, NewPooledTransactionHashesMessage68 message)
+        {
+            int sizesLength = GetSizesLength(message);
+            int hashesLength = GetHashesLength(message);
+
+            RlpWriter writer = RlpWriter.ContentWriter(destination);
+
+            RlpSequence sequence = writer.StartSequence(GetContentLength(message, sizesLength, hashesLength));
+            writer.Encode(message.Types.AsSpan());
+
+            RlpSequence sizes = writer.StartSequence(sizesLength);
+            foreach (int size in message.Sizes.AsSpan())
+            {
+                writer.Encode(size);
+            }
+
+            writer.EndSequence(sizes);
+            RlpSequence hashes = writer.StartSequence(hashesLength);
+            foreach (ref readonly ValueHash256 hash in message.Hashes.AsSpan())
+            {
+                writer.Encode(in hash);
+            }
+
+            writer.EndSequence(hashes);
+            writer.EndSequence(sequence);
+            return writer.Length;
+        }
+
+        public int GetLength(NewPooledTransactionHashesMessage68 message) =>
+            Rlp.LengthOfSequence(GetContentLength(message, GetSizesLength(message), GetHashesLength(message)));
+
+        private static int GetContentLength(NewPooledTransactionHashesMessage68 message, int sizesLength, int hashesLength) =>
+            Rlp.LengthOf(message.Types) + Rlp.LengthOfSequence(sizesLength) + Rlp.LengthOfSequence(hashesLength);
+
+        private static int GetSizesLength(NewPooledTransactionHashesMessage68 message)
         {
             int sizesLength = 0;
             foreach (int size in message.Sizes.AsSpan())
@@ -116,28 +153,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
                 sizesLength += Rlp.LengthOf(size);
             }
 
-            int hashesLength = checked(message.Hashes.Count * Rlp.LengthOfKeccakRlp);
-
-            int totalSize = Rlp.LengthOf(message.Types) + Rlp.LengthOfSequence(sizesLength) + Rlp.LengthOfSequence(hashesLength);
-
-            byteBuffer.EnsureWritable(totalSize);
-
-            ByteBufferRlpWriter writer = new(byteBuffer);
-
-            writer.StartSequence(totalSize);
-            writer.Encode(message.Types.AsSpan());
-
-            writer.StartSequence(sizesLength);
-            foreach (int size in message.Sizes.AsSpan())
-            {
-                writer.Encode(size);
-            }
-
-            writer.StartSequence(hashesLength);
-            foreach (ref readonly ValueHash256 hash in message.Hashes.AsSpan())
-            {
-                writer.Encode(in hash);
-            }
+            return sizesLength;
         }
+
+        private static int GetHashesLength(NewPooledTransactionHashesMessage68 message) => checked(message.Hashes.Count * Rlp.LengthOfKeccakRlp);
     }
 }

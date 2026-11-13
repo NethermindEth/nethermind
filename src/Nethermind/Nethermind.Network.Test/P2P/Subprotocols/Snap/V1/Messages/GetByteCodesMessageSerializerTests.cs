@@ -9,6 +9,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -29,7 +30,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
 
             GetByteCodesMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, msg);
+            SerializerTester.Test(serializer, msg);
         }
 
         [Test]
@@ -45,7 +46,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             GetByteCodesMessageSerializer serializer = new();
 
             // The message encodes as [requestId, hashes, bytes].
-            SerializerTester.TestZero(serializer, msg, "c5" + SnapSerializerGoldens.RequestId1111Rlp + "c0" + "0a");
+            SerializerTester.Test(serializer, msg, "c5" + SnapSerializerGoldens.RequestId1111Rlp + "c0" + "0a");
         }
 
         [Test]
@@ -54,7 +55,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             byte[] serialized = EncodeMessageWithNullHash();
             GetByteCodesMessageSerializer serializer = new();
 
-            Assert.That(() => serializer.Deserialize(serialized), Throws.TypeOf<RlpException>());
+            Assert.That(() => serializer.Deserialize(serialized), Throws.InstanceOf<RlpReaderException>());
         }
 
         [Test]
@@ -68,7 +69,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             };
 
             GetByteCodesMessageSerializer serializer = new();
-            byte[] serialized = serializer.Serialize(msg);
+            byte[] serialized = serializer.SerializeToArray(msg);
 
             Assert.Throws<RlpLimitException>(() => serializer.Deserialize(serialized));
         }
@@ -80,7 +81,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
                 + Rlp.LengthOfSequence(hashesLength)
                 + Rlp.LengthOf(10L);
             byte[] serialized = new byte[Rlp.LengthOfSequence(contentLength)];
-            RlpWriter writer = new(serialized);
+            RlpWriter writer = RlpWriter.ContentWriter(serialized);
             writer.StartSequence(contentLength);
             writer.Encode(1L);
             writer.StartSequence(hashesLength);

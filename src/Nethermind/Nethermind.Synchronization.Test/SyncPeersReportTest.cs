@@ -151,9 +151,12 @@ namespace Nethermind.Synchronization.Test
 
             SyncPeersReport report = new(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
             string reportStr = report.MakeReportForPeers(peers, "== Header ==");
-            Assert.That(reportStr, Is.EqualTo(expectedResult));
-            Assert.That(report.MakeSummaryReportForPeers(peers, "== Header =="),
-                Does.Match(@"Active: .*1 Block Access Lists \| Sleeping: .*1 Block Access Lists$"));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reportStr, Is.EqualTo(expectedResult));
+                Assert.That(report.MakeSummaryReportForPeers(peers, "== Header =="),
+                    Does.Match(@"Active: .*1 Block Access Lists \| Sleeping: .*1 Block Access Lists$"));
+            }
         }
 
         private class StubSyncPeer : SyncPeerProtocolHandlerBase

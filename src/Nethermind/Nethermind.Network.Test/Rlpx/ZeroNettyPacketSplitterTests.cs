@@ -77,7 +77,7 @@ namespace Nethermind.Network.Test.Rlpx
             newBlockMessage.Block = block;
 
             NewBlockMessageSerializer newBlockMessageSerializer = new();
-            Packet packet = new("eth", 7, newBlockMessageSerializer.Serialize(newBlockMessage));
+            Packet packet = new("eth", 7, newBlockMessageSerializer.SerializeToArray(newBlockMessage));
 
             _input.WriteByte(packet.PacketType);
             _input.WriteBytes(packet.Data);
@@ -100,7 +100,7 @@ namespace Nethermind.Network.Test.Rlpx
             newBlockMessage.Block = block;
 
             NewBlockMessageSerializer newBlockMessageSerializer = new();
-            Packet packet = new("eth", 7, newBlockMessageSerializer.Serialize(newBlockMessage));
+            Packet packet = new("eth", 7, newBlockMessageSerializer.SerializeToArray(newBlockMessage));
 
             _input.WriteByte(packet.PacketType);
             _input.WriteBytes(packet.Data);
@@ -124,7 +124,7 @@ namespace Nethermind.Network.Test.Rlpx
             newBlockMessage.Block = block;
 
             NewBlockMessageSerializer newBlockMessageSerializer = new();
-            Packet packet = new("eth", 7, newBlockMessageSerializer.Serialize(newBlockMessage));
+            Packet packet = new("eth", 7, newBlockMessageSerializer.SerializeToArray(newBlockMessage));
 
             _input.WriteByte(packet.PacketType);
             _input.WriteBytes(packet.Data);

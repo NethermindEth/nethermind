@@ -173,8 +173,7 @@ public enum Instruction : byte
 
     // EIP-7906 transaction outcome assertions
     TXTRACE = 0xb6,
-    TXDIFF = 0xb7,
-    EVENTDATACOPY = 0xb8,
+    EVENTDATACOPY = 0xb7,
 
     // EIP-7979, draft: the spec's placeholder 0xb0-0xb2 collides with EIP-8141, so these use provisional values until the EIP assigns them.
     CALLSUB = 0xba,

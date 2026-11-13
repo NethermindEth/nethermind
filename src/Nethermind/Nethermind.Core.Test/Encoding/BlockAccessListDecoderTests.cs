@@ -12,6 +12,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.Eip7928;
 using NUnit.Framework;
@@ -54,7 +55,7 @@ public class BlockAccessListDecoderTests
         {
             decoded = Rlp.Decode<ReadOnlyBlockAccessList>(bytes);
         }
-        catch (RlpException)
+        catch (RlpReaderException)
         {
             return false;
         }
@@ -84,33 +85,33 @@ public class BlockAccessListDecoderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(decoded.WireHash, Is.EqualTo(new Hash256(ValueKeccak.Compute(balRlp))));
-            Assert.That(ctx.Position, Is.EqualTo(balRlp.Length));
+            Assert.That(ctx.BytesRead, Is.EqualTo(balRlp.Length));
         }
     }
 
     // Truncated RLP causes an out-of-bounds primitive read; the Rlp.Decode entry-point
-    // wrap converts that to RlpException so callers see a consistent failure mode
+    // wrap converts that to RlpReaderException so callers see a consistent failure mode
     // (engine_newPayloadV5 returns a clean error instead of crashing the RPC).
     [Test]
     public void Decode_empty_bytes_throws_RlpException() =>
-        Assert.That(() => Rlp.Decode<ReadOnlyBlockAccessList>([]), Throws.TypeOf<RlpException>());
+        Assert.That(() => Rlp.Decode<ReadOnlyBlockAccessList>([]), Throws.TypeOf<RlpReaderException>());
 
     // 0xf8 announces a long-form list with a 1-byte length follower, but the byte is missing.
     [Test]
     public void Decode_truncated_outer_list_throws_RlpException() =>
-        Assert.That(() => Rlp.Decode<ReadOnlyBlockAccessList>(new byte[] { 0xf8 }), Throws.TypeOf<RlpException>());
+        Assert.That(() => Rlp.Decode<ReadOnlyBlockAccessList>(new byte[] { 0xf8 }), Throws.TypeOf<RlpReaderException>());
 
     // 0x80 is an empty byte string, not an EIP-7928 BAL list. The public Decode<T>
-    // entry point must fail with a typed RlpException rather than returning null.
+    // entry point must fail with a typed RlpReaderException rather than returning null.
     [Test]
     public void Decode_empty_string_throws_RlpException() =>
-        Assert.That(() => Rlp.Decode<ReadOnlyBlockAccessList>(new byte[] { 0x80 }), Throws.TypeOf<RlpException>());
+        Assert.That(() => Rlp.Decode<ReadOnlyBlockAccessList>(new byte[] { 0x80 }), Throws.TypeOf<RlpReaderException>());
 
     // 0xc1 0xc0 = outer list of 1 containing an empty inner list. EIP-7928 requires each
     // AccountChanges to be a 6-field sequence; an empty list is structurally invalid.
     [Test]
     public void Decode_inner_empty_list_in_account_changes_throws_RlpException() =>
-        Assert.That(() => Rlp.Decode<ReadOnlyBlockAccessList>(new byte[] { 0xc1, 0xc0 }), Throws.TypeOf<RlpException>());
+        Assert.That(() => Rlp.Decode<ReadOnlyBlockAccessList>(new byte[] { 0xc1, 0xc0 }), Throws.TypeOf<RlpReaderException>());
 
     [Test]
     public void Decode_empty_slot_changes_entry_in_account_changes_throws_RlpException()
@@ -119,7 +120,7 @@ public class BlockAccessListDecoderTests
 
         Assert.That(
             () => Rlp.Decode<ReadOnlyAccountChanges>(encoded),
-            Throws.TypeOf<RlpException>());
+            Throws.TypeOf<RlpReaderException>());
     }
 
     [Test]
@@ -146,12 +147,12 @@ public class BlockAccessListDecoderTests
         {
             RlpReader ctx = new(new byte[] { 0xc2, 0x01, 0x02 });
 
-            RlpException? exception = null;
+            RlpReaderException? exception = null;
             try
             {
                 Rlp.DecodeArrayPool(ref ctx, new ThrowingByteDecoder());
             }
-            catch (RlpException e)
+            catch (RlpReaderException e)
             {
                 exception = e;
             }
@@ -175,12 +176,12 @@ public class BlockAccessListDecoderTests
         DisposableElement.DisposedCount = 0;
         RlpReader ctx = new(new byte[] { 0xc2, 0x01, 0x02 });
 
-        RlpException? exception = null;
+        RlpReaderException? exception = null;
         try
         {
             Rlp.DecodeArrayPool(ref ctx, new ThrowingDisposableDecoder());
         }
-        catch (RlpException e)
+        catch (RlpReaderException e)
         {
             exception = e;
         }
@@ -198,12 +199,12 @@ public class BlockAccessListDecoderTests
         DisposableElement.DisposedCount = 0;
         RlpReader ctx = new(new byte[] { 0xc2, 0x01, 0x02 });
 
-        RlpException? exception = null;
+        RlpReaderException? exception = null;
         try
         {
             Rlp.DecodeArrayPool<object>(ref ctx, new ThrowingObjectDecoder());
         }
-        catch (RlpException e)
+        catch (RlpReaderException e)
         {
             exception = e;
         }
@@ -218,7 +219,7 @@ public class BlockAccessListDecoderTests
     [Test]
     public void DecodeArrayPool_wraps_non_rlp_decoder_exceptions() => Assert.That(
         () => { RlpReader c = new(new byte[] { 0xc1, 0x01 }); Rlp.DecodeArrayPool(ref c, new ThrowingArgumentDecoder()); },
-        Throws.TypeOf<RlpException>().With.InnerException.TypeOf<ArgumentException>());
+        Throws.TypeOf<RlpReaderException>().With.InnerException.TypeOf<ArgumentException>());
 
     [Test]
     public void Decode_slot_changes_with_empty_accesses_throws_RlpException()
@@ -229,13 +230,13 @@ public class BlockAccessListDecoderTests
         ReadOnlySlotChanges withEmptyChanges = new(123u, []);
         byte[] rlp = Rlp.Encode(withEmptyChanges).Bytes;
 
-        RlpException? thrown = null;
+        RlpReaderException? thrown = null;
         try
         {
             RlpReader ctx = new(rlp);
             SlotChangesDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
         }
-        catch (RlpException e)
+        catch (RlpReaderException e)
         {
             thrown = e;
         }
@@ -244,27 +245,74 @@ public class BlockAccessListDecoderTests
         Assert.That(thrown!.Message, Does.Contain("Empty storage_changes"));
     }
 
+    /// <summary>A change at the pre-execution index, at every transaction index and at the post-execution one.</summary>
+    private static int MaxChangesPerList => BlockBodyDecoder.TransactionsCountLimit.Limit + 2;
+
     [Test]
-    public void Decode_slot_changes_rejects_storage_change_count_above_max_txs()
+    public void Decode_slot_changes_rejects_storage_change_count_above_limit()
     {
-        byte[] encoded = EncodeSlotChangesWithEmptyStorageChangeEntries(Eip7928Constants.MaxTxs + 1);
+        byte[] encoded = EncodeSlotChangesWithEmptyStorageChangeEntries(MaxChangesPerList + 1);
 
         Assert.That(
             () => Rlp.Decode<ReadOnlySlotChanges>(encoded, RlpBehaviors.None),
             Throws.TypeOf<RlpLimitException>()
-                .With.Message.Contains($"over limit {Eip7928Constants.MaxTxs}"));
+                .With.Message.Contains($"over limit {MaxChangesPerList}"));
+    }
+
+    [Test]
+    public void Decode_account_changes_rejects_change_count_above_limit([Range(2, 4)] int balanceNonceOrCodeField)
+    {
+        byte[] encoded = EncodeAccountChangesWithEmptyListElements(TestItem.AddressA, balanceNonceOrCodeField, MaxChangesPerList + 1);
+
+        Assert.That(
+            () => Rlp.Decode<ReadOnlyAccountChanges>(encoded, RlpBehaviors.None),
+            Throws.TypeOf<RlpLimitException>()
+                .With.Message.Contains($"over limit {MaxChangesPerList}"));
+    }
+
+    /// <summary>
+    /// One sender of 65,536 transactions has a balance, nonce, storage and code change at every index up to the post-execution one,
+    /// beyond the uint16 range of the old index.
+    /// </summary>
+    [Test]
+    public void Account_changes_with_more_changes_than_uint16_range_roundtrip()
+    {
+        const int changeCount = ushort.MaxValue + 2;
+        BalanceChange[] balanceChanges = new BalanceChange[changeCount];
+        NonceChange[] nonceChanges = new NonceChange[changeCount];
+        StorageChange[] storageChanges = new StorageChange[changeCount];
+        CodeChange[] codeChanges = new CodeChange[changeCount];
+        for (int i = 0; i < changeCount; i++)
+        {
+            uint index = (uint)i + 1;
+            balanceChanges[i] = new BalanceChange(index, index);
+            nonceChanges[i] = new NonceChange(index, index);
+            storageChanges[i] = new StorageChange(index, index);
+            codeChanges[i] = new CodeChange(index, [0xab]);
+        }
+
+        ReadOnlyAccountChanges accountChanges = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressA)
+            .WithStorageChanges(1, storageChanges)
+            .WithBalanceChanges(balanceChanges)
+            .WithNonceChanges(nonceChanges)
+            .WithCodeChanges(codeChanges)
+            .TestObject;
+
+        byte[] encoded = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
+        Assert.That(Rlp.Decode<ReadOnlyAccountChanges>(encoded, RlpBehaviors.None), Is.EqualTo(accountChanges));
     }
 
     [Test]
     public void DecodeArray_with_decoder_stays_constrained_to_reference_types()
     {
-        MethodInfo decodeArray = typeof(RlpReader)
+        MethodInfo decodeArray = typeof(RlpReaderExtensions)
             .GetMethods()
-            .Single(m => m.Name == nameof(RlpReader.DecodeArray)
+            .Single(m => m.Name == nameof(RlpReaderExtensions.DecodeArray)
                 && m.IsGenericMethodDefinition
                 && m.GetParameters().Length == 5
-                && m.GetParameters()[0].ParameterType.IsGenericType
-                && m.GetParameters()[0].ParameterType.GetGenericTypeDefinition() == typeof(IRlpDecoder<>));
+                && m.GetParameters()[1].ParameterType.IsGenericType
+                && m.GetParameters()[1].ParameterType.GetGenericTypeDefinition() == typeof(IRlpDecoder<>));
 
         GenericParameterAttributes constraints = decodeArray.GetGenericArguments()[0].GenericParameterAttributes;
 
@@ -284,7 +332,7 @@ public class BlockAccessListDecoderTests
 
         Assert.That(
             () => Rlp.Decode<ReadOnlySlotChanges>(encoded, RlpBehaviors.None),
-            Throws.TypeOf<RlpException>());
+            Throws.TypeOf<RlpReaderException>());
     }
 
     [TestCase(0, TestName = "storage_changes")]
@@ -294,11 +342,11 @@ public class BlockAccessListDecoderTests
     [TestCase(4, TestName = "code_changes")]
     public void Decode_account_changes_with_empty_list_element_in_field_throws_RlpException(int malformedFieldIndex)
     {
-        byte[] encoded = EncodeAccountChangesWithEmptyListElement(TestItem.AddressA, malformedFieldIndex);
+        byte[] encoded = EncodeAccountChangesWithEmptyListElements(TestItem.AddressA, malformedFieldIndex);
 
         Assert.That(
             () => Rlp.Decode<ReadOnlyAccountChanges>(encoded, RlpBehaviors.None),
-            Throws.TypeOf<RlpException>());
+            Throws.TypeOf<RlpReaderException>());
     }
 
     [Test]
@@ -380,7 +428,7 @@ public class BlockAccessListDecoderTests
         {
             RlpReader ctx = new(encoded);
             CodeChangeDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
-        }, Throws.InstanceOf<RlpException>());
+        }, Throws.InstanceOf<RlpReaderException>());
     }
 
     [Test]
@@ -512,7 +560,7 @@ public class BlockAccessListDecoderTests
 
         Assert.That(
             () => Rlp.Decode<ReadOnlyAccountChanges>(encoded, RlpBehaviors.None),
-            Throws.TypeOf<RlpException>().With.Message.EqualTo("Storage reads were in incorrect order."));
+            Throws.TypeOf<RlpReaderException>().With.Message.EqualTo("Storage reads were in incorrect order."));
     }
 
     [Test]
@@ -530,7 +578,7 @@ public class BlockAccessListDecoderTests
 
         Assert.That(
             () => Rlp.Decode<ReadOnlyBlockAccessList>(encoded, RlpBehaviors.None),
-            Throws.TypeOf<RlpException>().With.Message.EqualTo("Invalid storage read, already in storage changes."));
+            Throws.TypeOf<RlpReaderException>().With.Message.EqualTo("Invalid storage read, already in storage changes."));
     }
 
     // Verify-only validation compares the decoded BAL with execution instead of hashing the generated BAL,
@@ -539,22 +587,22 @@ public class BlockAccessListDecoderTests
     public void Decoding_block_access_list_with_unsorted_or_duplicate_entry_throws(byte[] encoded, string expectedMessage) =>
         Assert.That(
             () => Rlp.Decode<ReadOnlyBlockAccessList>(encoded, RlpBehaviors.None),
-            Throws.TypeOf<RlpException>().With.Message.EqualTo(expectedMessage));
+            Throws.TypeOf<RlpReaderException>().With.Message.EqualTo(expectedMessage));
 
     private const string CanonicalBlockAccessListRlp = "0xe2e1940000000000000000000000000000000000000001c0c0c4c3808180c3c20105c0";
 
     // The wire hash is the header commitment, so every accepted encoding must be the one the BAL re-encodes to.
     // Each case is a single-field mutation of CanonicalBlockAccessListRlp.
-    [TestCase("0xe2e1940000000000000000000000000000000000000001c0c0c4c3008180c3c20105c0", "Non-canonical integer at position 27", TestName = "zero_index_as_0x00")]
-    [TestCase("0xe3e2940000000000000000000000000000000000000001c0c0c5c480820080c3c20105c0", "Non-canonical integer at position 28", TestName = "value_with_leading_zero")]
-    [TestCase("0xe3e2940000000000000000000000000000000000000001c0c0c4c3808180c4c3810105c0", "Non-canonical integer at position 32", TestName = "single_byte_index_as_string")]
-    [TestCase("0xe3e2940000000000000000000000000000000000000001c0c0c4c3808180c4c3018105c0", "Non-canonical integer at position 33", TestName = "single_byte_value_as_string")]
+    [TestCase("0xe2e1940000000000000000000000000000000000000001c0c0c4c3008180c3c20105c0", "Non-canonical integer at position 0", TestName = "zero_index_as_0x00")]
+    [TestCase("0xe3e2940000000000000000000000000000000000000001c0c0c5c480820080c3c20105c0", "Non-canonical integer at position 1", TestName = "value_with_leading_zero")]
+    [TestCase("0xe3e2940000000000000000000000000000000000000001c0c0c4c3808180c4c3810105c0", "Non-canonical integer at position 0", TestName = "single_byte_index_as_string")]
+    [TestCase("0xe3e2940000000000000000000000000000000000000001c0c0c4c3808180c4c3018105c0", "Non-canonical integer at position 1", TestName = "single_byte_value_as_string")]
     [TestCase("0xf822e1940000000000000000000000000000000000000001c0c0c4c3808180c3c20105c0", "Expected length greater than or equal to 56 and was 34", TestName = "short_list_with_long_header")]
-    [TestCase("0xe3e2b8140000000000000000000000000000000000000001c0c0c4c3808180c3c20105c0", "Unexpected RLP prefix of 184 when decoding Address at position 3 in the message of length 36.", TestName = "short_address_with_long_header")]
+    [TestCase("0xe3e2b8140000000000000000000000000000000000000001c0c0c4c3808180c3c20105c0", "Unexpected RLP prefix of 184 when decoding Address at position 1 in the message of length 34.", TestName = "short_address_with_long_header")]
     public void Decoding_non_canonical_encoding_of_valid_block_access_list_throws(string nonCanonicalRlp, string expectedMessage) =>
         Assert.That(
             () => Rlp.Decode<ReadOnlyBlockAccessList>(Bytes.FromHexString(nonCanonicalRlp)),
-            Throws.TypeOf<RlpException>().With.Message.EqualTo(expectedMessage));
+            Throws.TypeOf<RlpReaderException>().With.Message.EqualTo(expectedMessage));
 
     private static IEnumerable<TestCaseData> BlockAccessListTestSource
     {
@@ -749,7 +797,7 @@ public class BlockAccessListDecoderTests
             + Rlp.OfEmptyList.Length;
 
         byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
         writer.StartSequence(contentLength);
         writer.Encode(address);
         writer.StartSequence(Rlp.OfEmptyList.Length);
@@ -761,10 +809,11 @@ public class BlockAccessListDecoderTests
         return bytes;
     }
 
-    private static byte[] EncodeAccountChangesWithEmptyListElement(Address address, int malformedFieldIndex)
+    private static byte[] EncodeAccountChangesWithEmptyListElements(Address address, int malformedFieldIndex, int elementCount = 1)
     {
         const int fieldCount = 5;
-        int malformedFieldLength = Rlp.LengthOfSequence(Rlp.OfEmptyList.Length);
+        int malformedFieldContentLength = elementCount * Rlp.OfEmptyList.Length;
+        int malformedFieldLength = Rlp.LengthOfSequence(malformedFieldContentLength);
 
         int contentLength = Rlp.LengthOfAddressRlp;
         for (int i = 0; i < fieldCount; i++)
@@ -773,15 +822,18 @@ public class BlockAccessListDecoderTests
         }
 
         byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
         writer.StartSequence(contentLength);
         writer.Encode(address);
         for (int i = 0; i < fieldCount; i++)
         {
             if (i == malformedFieldIndex)
             {
-                writer.StartSequence(Rlp.OfEmptyList.Length);
-                writer.Encode(Rlp.OfEmptyList);
+                writer.StartSequence(malformedFieldContentLength);
+                for (int j = 0; j < elementCount; j++)
+                {
+                    writer.Encode(Rlp.OfEmptyList);
+                }
             }
             else
             {
@@ -797,7 +849,7 @@ public class BlockAccessListDecoderTests
         int changesContentLength = count * Rlp.OfEmptyList.Length;
         int contentLength = Rlp.LengthOf(UInt256.Zero) + Rlp.LengthOfSequence(changesContentLength);
         byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
         writer.StartSequence(contentLength);
         writer.Encode(UInt256.Zero);
         writer.StartSequence(changesContentLength);
@@ -820,7 +872,7 @@ public class BlockAccessListDecoderTests
             _calls++;
             if (_calls == 2)
             {
-                throw new RlpException(Error);
+                throw new RlpReaderException(Error);
             }
 
             return value;
@@ -828,7 +880,7 @@ public class BlockAccessListDecoderTests
 
         public override int GetLength(byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
 
-        public override void Encode<TWriter>(ref TWriter writer, byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        public override void Encode(ref RlpWriter writer, byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
             throw new NotSupportedException();
     }
 
@@ -850,7 +902,7 @@ public class BlockAccessListDecoderTests
             _calls++;
             if (_calls == 2)
             {
-                throw new RlpException(Error);
+                throw new RlpReaderException(Error);
             }
 
             return new DisposableElement();
@@ -858,7 +910,7 @@ public class BlockAccessListDecoderTests
 
         public override int GetLength(DisposableElement? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
 
-        public override void Encode<TWriter>(ref TWriter writer, DisposableElement item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        public override void Encode(ref RlpWriter writer, DisposableElement item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
             throw new NotSupportedException();
     }
 
@@ -873,7 +925,7 @@ public class BlockAccessListDecoderTests
             _calls++;
             if (_calls == 2)
             {
-                throw new RlpException(Error);
+                throw new RlpReaderException(Error);
             }
 
             return new DisposableElement();
@@ -881,7 +933,7 @@ public class BlockAccessListDecoderTests
 
         public override int GetLength(object? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
 
-        public override void Encode<TWriter>(ref TWriter writer, object item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        public override void Encode(ref RlpWriter writer, object item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
             throw new NotSupportedException();
     }
 
@@ -895,7 +947,7 @@ public class BlockAccessListDecoderTests
 
         public override int GetLength(byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
 
-        public override void Encode<TWriter>(ref TWriter writer, byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        public override void Encode(ref RlpWriter writer, byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
             throw new NotSupportedException();
     }
 }

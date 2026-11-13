@@ -8,6 +8,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 using NUnit.Framework;
@@ -30,7 +31,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             };
             StorageRangesMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, msg, "c302c0c0");
+            SerializerTester.Test(serializer, msg, "c302c0c0");
         }
 
         [Test]
@@ -45,10 +46,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
 
             StorageRangesMessageSerializer serializer = new();
 
-            byte[] serialized = serializer.Serialize(msg);
+            byte[] serialized = serializer.SerializeToArray(msg);
             using StorageRangeMessage deserialized = serializer.Deserialize(serialized);
 
-            SerializerTester.TestZero(serializer, msg);
+            SerializerTester.Test(serializer, msg);
         }
 
         [Test]
@@ -69,7 +70,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
 
             StorageRangesMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, msg);
+            SerializerTester.Test(serializer, msg);
         }
 
         [Test]
@@ -87,7 +88,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
 
             StorageRangesMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, msg);
+            SerializerTester.Test(serializer, msg);
         }
 
         [Test]
@@ -95,7 +96,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
         {
             using StorageRangeMessage msg = new()
             {
-                RequestId = MessageConstants.Random.NextLong(),
+                RequestId = 1,
                 Slots = new ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(2) {
                     new ArrayPoolList<PathWithStorageSlot>(2) {
                         new(new Hash256("0x10d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), Rlp.Encode(TestItem.RandomDataA).Bytes) ,
@@ -111,7 +112,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
 
             StorageRangesMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, msg);
+            SerializerTester.Test(serializer, msg,
+                "f8b101f8a4f84fe6a010d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a4708483010203e7a012d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470858404050607" +
+                "f851e7a021d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470858404050607e8a022d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a4708685010208090ac9830102038404050607");
         }
 
         [Test]
@@ -120,7 +123,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             using StorageRangeMessage msg = CreateMessageWithSingleSlotValue(CreateStorageSlotValue(MaxStorageSlotValueLength));
             StorageRangesMessageSerializer serializer = new();
 
-            byte[] serialized = serializer.Serialize(msg);
+            byte[] serialized = serializer.SerializeToArray(msg);
             using StorageRangeMessage deserialized = serializer.Deserialize(serialized);
 
             Assert.That(deserialized.Slots[0][0].SlotRlpValue.Length, Is.EqualTo(MaxStorageSlotValueLength));
@@ -132,7 +135,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             using StorageRangeMessage msg = CreateMessageWithSingleSlotValue(CreateStorageSlotValue(MaxStorageSlotValueLength + 1));
             StorageRangesMessageSerializer serializer = new();
 
-            byte[] serialized = serializer.Serialize(msg);
+            byte[] serialized = serializer.SerializeToArray(msg);
 
             Assert.Throws<RlpLimitException>(() => serializer.Deserialize(serialized));
         }
@@ -144,7 +147,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
 
             Assert.That(
                 () => serializer.Deserialize([0xc7, 0x01, 0xc4, 0xc3, 0xc2, 0x80, 0x80, 0xc0]),
-                Throws.InstanceOf<RlpException>());
+                Throws.InstanceOf<RlpReaderException>());
         }
 
         [TestCase(SnapMessageLimits.MaxProofs, false)]
@@ -160,7 +163,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             };
 
             StorageRangesMessageSerializer serializer = new();
-            byte[] serialized = serializer.Serialize(msg);
+            byte[] serialized = serializer.SerializeToArray(msg);
 
             if (shouldThrow)
             {

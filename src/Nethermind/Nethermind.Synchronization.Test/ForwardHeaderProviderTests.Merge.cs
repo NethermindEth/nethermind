@@ -54,8 +54,11 @@ public partial class ForwardHeaderProviderTests
         SyncPeerMock syncPeer = new(syncedTree, false, Response.AllCorrect, 16000000);
         ctx.ConfigureBestPeer(syncPeer);
         using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
-        Assert.That(headers?[0]?.Number, Is.EqualTo(expectedFirstBlock));
-        Assert.That(headers?[^1]?.Number, Is.EqualTo(expectedLastBlock));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(headers?[0]?.Number, Is.EqualTo(expectedFirstBlock));
+            Assert.That(headers?[^1]?.Number, Is.EqualTo(expectedLastBlock));
+        }
     }
 
     [TestCase(32UL, DownloaderOptions.Insert, 16, false, 16L)]

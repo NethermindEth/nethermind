@@ -26,22 +26,31 @@ public class TxTraceFilterTests
         ParityTraceAction reward = new() { Type = "reward", Author = TestItem.AddressC };
 
         TxTraceFilter filterForFrom = new(new[] { TestItem.AddressA }, null, 0, null, TraceFilterMode.Intersection);
-        Assert.That(filterForFrom.ShouldUseTxTrace(action1), Is.EqualTo(true));
-        Assert.That(filterForFrom.ShouldUseTxTrace(action2), Is.EqualTo(false));
-        Assert.That(filterForFrom.ShouldUseTxTrace(action3), Is.EqualTo(true));
-        Assert.That(filterForFrom.ShouldUseTxTrace(reward), Is.EqualTo(false));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filterForFrom.ShouldUseTxTrace(action1), Is.EqualTo(true));
+            Assert.That(filterForFrom.ShouldUseTxTrace(action2), Is.EqualTo(false));
+            Assert.That(filterForFrom.ShouldUseTxTrace(action3), Is.EqualTo(true));
+            Assert.That(filterForFrom.ShouldUseTxTrace(reward), Is.EqualTo(false));
+        }
 
         TxTraceFilter filterForTo = new(null, new[] { TestItem.AddressC }, 0, null, TraceFilterMode.Intersection);
-        Assert.That(filterForTo.ShouldUseTxTrace(action1), Is.EqualTo(false));
-        Assert.That(filterForTo.ShouldUseTxTrace(action2), Is.EqualTo(true));
-        Assert.That(filterForTo.ShouldUseTxTrace(action3), Is.EqualTo(true));
-        Assert.That(filterForTo.ShouldUseTxTrace(reward), Is.EqualTo(true));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filterForTo.ShouldUseTxTrace(action1), Is.EqualTo(false));
+            Assert.That(filterForTo.ShouldUseTxTrace(action2), Is.EqualTo(true));
+            Assert.That(filterForTo.ShouldUseTxTrace(action3), Is.EqualTo(true));
+            Assert.That(filterForTo.ShouldUseTxTrace(reward), Is.EqualTo(true));
+        }
 
         TxTraceFilter filterForFromAndTo = new(new[] { TestItem.AddressA }, new[] { TestItem.AddressC }, 0, null, TraceFilterMode.Intersection);
-        Assert.That(filterForFromAndTo.ShouldUseTxTrace(action1), Is.EqualTo(false));
-        Assert.That(filterForFromAndTo.ShouldUseTxTrace(action2), Is.EqualTo(false));
-        Assert.That(filterForFromAndTo.ShouldUseTxTrace(action3), Is.EqualTo(true));
-        Assert.That(filterForFromAndTo.ShouldUseTxTrace(reward), Is.EqualTo(false));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filterForFromAndTo.ShouldUseTxTrace(action1), Is.EqualTo(false));
+            Assert.That(filterForFromAndTo.ShouldUseTxTrace(action2), Is.EqualTo(false));
+            Assert.That(filterForFromAndTo.ShouldUseTxTrace(action3), Is.EqualTo(true));
+            Assert.That(filterForFromAndTo.ShouldUseTxTrace(reward), Is.EqualTo(false));
+        }
     }
 
     private static readonly ParityTraceAction AToB = new() { From = TestItem.AddressA, To = TestItem.AddressB };
@@ -50,7 +59,23 @@ public class TxTraceFilterTests
     private static readonly ParityTraceAction BToB = new() { From = TestItem.AddressB, To = TestItem.AddressB };
     private static readonly ParityTraceAction RewardToC = new() { Type = "reward", Author = TestItem.AddressC };
 
+    private static readonly Address[] UnrelatedAddresses =
+        [.. TestItem.Addresses.Except([TestItem.AddressA, TestItem.AddressB, TestItem.AddressC, TestItem.AddressD]).Take(64)];
+
+    // Each case runs again with unrelated addresses put first, so lists cross the length where the filter switches to a hash set.
     private static IEnumerable<TestCaseData> ModeCases()
+    {
+        foreach (int padding in new[] { 0, 7, 8, 64 })
+        {
+            foreach (TestCaseData data in ModeRows())
+            {
+                yield return new TestCaseData([.. data.Arguments, padding])
+                    .SetName(padding == 0 ? data.TestName : $"{data.TestName} after {padding} unrelated addresses");
+            }
+        }
+    }
+
+    private static IEnumerable<TestCaseData> ModeRows()
     {
         Address[] a = [TestItem.AddressA];
         Address[] c = [TestItem.AddressC];
@@ -78,11 +103,24 @@ public class TxTraceFilterTests
     }
 
     [TestCaseSource(nameof(ModeCases))]
-    public void Trace_filter_combines_address_lists_by_mode(TraceFilterMode mode, Address[]? from, Address[]? to, bool[] expected)
+    public void Trace_filter_combines_address_lists_by_mode(TraceFilterMode mode, Address[]? from, Address[]? to, bool[] expected, int padding)
     {
-        TxTraceFilter filter = new(from, to, 0, null, mode);
+        TxTraceFilter filter = new(Pad(from, padding), Pad(to, padding), 0, null, mode);
         bool[] actual = [.. new[] { AToB, BToC, AToC, BToB, RewardToC }.Select(filter.ShouldUseTxTrace)];
         Assert.That(actual, Is.EqualTo(expected));
+    }
+
+    private static Address[]? Pad(Address[]? addresses, int padding) =>
+        addresses is { Length: > 0 } ? [.. UnrelatedAddresses[..padding], .. addresses] : addresses;
+
+    [TestCase(2, TestName = "Null sender entry in a short list")]
+    [TestCase(64, TestName = "Null sender entry in a long list")]
+    public void Trace_filter_matches_missing_sender_against_null_list_entry(int unrelatedCount)
+    {
+        Address[] from = [.. UnrelatedAddresses.Take(unrelatedCount), null!];
+        TxTraceFilter filter = new(from, null, 0, null, TraceFilterMode.Intersection);
+        bool[] actual = [.. new[] { AToB, RewardToC }.Select(filter.ShouldUseTxTrace)];
+        Assert.That(actual, Is.EqualTo(new[] { false, true }));
     }
 
     // A creation by A of B that succeeded, reverted or halted, and a reverted call from A to B. A failed creation's
@@ -138,7 +176,9 @@ public class TxTraceFilterTests
         ParityTraceAction action1 = new() { From = TestItem.AddressA };
         ParityTraceAction action2 = new() { From = TestItem.AddressB };
 
+#pragma warning disable NUnit2045 // Each call advances the pagination state used by the next check.
         Assert.That(traceFilter.ShouldUseTxTrace(action1), Is.EqualTo(false));
+#pragma warning restore NUnit2045
         Assert.That(traceFilter.ShouldUseTxTrace(action2), Is.EqualTo(false));
         Assert.That(traceFilter.ShouldUseTxTrace(action1), Is.EqualTo(false));
         Assert.That(traceFilter.ShouldUseTxTrace(action2), Is.EqualTo(false));

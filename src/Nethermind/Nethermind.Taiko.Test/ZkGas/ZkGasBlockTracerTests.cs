@@ -62,8 +62,11 @@ public class ZkGasBlockTracerTests
         blockTracer.StartNewBlockTrace(MakeBlock());
 
         Assert.That(holder.Meter, Is.Not.Null);
-        Assert.That(holder.Meter, Is.SameAs(blockTracer.Meter));
-        Assert.That(blockTracer.Meter.BlockZkGasUsed, Is.EqualTo(0UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(holder.Meter, Is.SameAs(blockTracer.Meter));
+            Assert.That(blockTracer.Meter.BlockZkGasUsed, Is.EqualTo(0UL));
+        }
     }
 
     /// <summary>
@@ -87,10 +90,16 @@ public class ZkGasBlockTracerTests
 
         blockTracer.StartNewBlockTrace(MakeBlock());
 
-        Assert.That(blockTracer.Meter, Is.SameAs(firstMeter), "meter instance must be reused across blocks");
-        Assert.That(holder.Meter, Is.SameAs(blockTracer.Meter));
-        Assert.That(blockTracer.Meter.BlockZkGasUsed, Is.EqualTo(0UL), "ResetBlock must clear accrued block ZK gas");
-        Assert.That(blockTracer.Meter.IsLimitExceeded, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTracer.Meter, Is.SameAs(firstMeter), "meter instance must be reused across blocks");
+            Assert.That(holder.Meter, Is.SameAs(blockTracer.Meter));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTracer.Meter.BlockZkGasUsed, Is.EqualTo(0UL), "ResetBlock must clear accrued block ZK gas");
+            Assert.That(blockTracer.Meter.IsLimitExceeded, Is.False);
+        }
     }
 
     // ── tx-level commit / reset ───────────────────────────────────────────────
@@ -134,8 +143,11 @@ public class ZkGasBlockTracerTests
 
         blockTracer.EndTxTrace();
 
-        Assert.That(blockTracer.Meter.TxZkGasUsed, Is.EqualTo(0UL));
-        Assert.That(blockTracer.Meter.BlockZkGasUsed, Is.EqualTo(inFlight));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTracer.Meter.TxZkGasUsed, Is.EqualTo(0UL));
+            Assert.That(blockTracer.Meter.BlockZkGasUsed, Is.EqualTo(inFlight));
+        }
     }
 
     /// <summary>
@@ -161,10 +173,13 @@ public class ZkGasBlockTracerTests
         // Tx 2: starts — this calls ResetTransaction, discarding the in-flight gas
         blockTracer.StartNewTxTrace(MakeTx());
 
-        Assert.That(blockTracer.Meter.TxZkGasUsed, Is.EqualTo(0UL),
-            "In-flight gas from the invalid tx must be discarded");
-        Assert.That(blockTracer.Meter.BlockZkGasUsed, Is.EqualTo(afterInvalidTx),
-            "Block total must not include gas from the invalid tx");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTracer.Meter.TxZkGasUsed, Is.EqualTo(0UL),
+                "In-flight gas from the invalid tx must be discarded");
+            Assert.That(blockTracer.Meter.BlockZkGasUsed, Is.EqualTo(afterInvalidTx),
+                "Block total must not include gas from the invalid tx");
+        }
     }
 
     /// <summary>
@@ -298,8 +313,11 @@ public class ZkGasBlockTracerTests
         // EndTxTrace must not commit the partial 800-unit total and clear the flag.
         blockTracer.EndTxTrace();
 
-        Assert.That(blockTracer.Meter.IsLimitExceeded, Is.True);
-        Assert.That(blockTracer.Meter.BlockZkGasUsed, Is.EqualTo(0UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTracer.Meter.IsLimitExceeded, Is.True);
+            Assert.That(blockTracer.Meter.BlockZkGasUsed, Is.EqualTo(0UL));
+        }
     }
 
     [Test]
@@ -322,7 +340,10 @@ public class ZkGasBlockTracerTests
 
         blockTracer.EndTxTrace();
 
-        Assert.That(blockTracer.Meter.IsLimitExceeded, Is.True);
-        Assert.That(blockTracer.Meter.BlockZkGasUsed, Is.EqualTo(600UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTracer.Meter.IsLimitExceeded, Is.True);
+            Assert.That(blockTracer.Meter.BlockZkGasUsed, Is.EqualTo(600UL));
+        }
     }
 }

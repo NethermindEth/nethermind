@@ -13,7 +13,6 @@ using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Specs.Forks;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -37,7 +36,6 @@ namespace Nethermind.AuRa.Test.Validators;
 public class ContractBasedValidatorTests
 {
     private IWorldState _stateProvider;
-    private IAbiEncoder _abiEncoder;
     private ILogManager _logManager;
     private AuRaParameters.Validator _validator;
     private Block _block;
@@ -45,8 +43,8 @@ public class ContractBasedValidatorTests
     private ITransactionProcessor _transactionProcessor;
     private IAuRaBlockFinalizationManager _blockFinalizationManager;
     private static readonly Address _contractAddress = Address.FromNumber(1000);
-    private (Address Sender, byte[] TransactionData) _getValidatorsData = (Address.Zero, new byte[] { 0, 1, 2 });
-    private (Address Sender, byte[] TransactionData) _finalizeChangeData = (Address.SystemUser, new byte[] { 3, 4, 5 });
+    private readonly (Address Sender, byte[] TransactionData) _getValidatorsData = (Address.Zero, AbiCodec.Encode(new AbiSignature("getValidators").With(), default));
+    private readonly (Address Sender, byte[] TransactionData) _finalizeChangeData = (Address.SystemUser, AbiCodec.Encode(new AbiSignature("finalizeChange").With(), default));
     private Address[] _initialValidators;
     private IBlockTree _blockTree;
     private IReceiptStorage _receiptsStorage;
@@ -61,7 +59,6 @@ public class ContractBasedValidatorTests
         _validatorStore = new ValidatorStore(new MemDb());
         _validSealerStrategy = new ValidSealerStrategy();
         _stateProvider = Substitute.For<IWorldState>();
-        _abiEncoder = Substitute.For<IAbiEncoder>();
         _logManager = LimboLogs.Instance;
         _blockTree = Substitute.For<IBlockTree>();
         _blockFinalizationManager = Substitute.For<IAuRaBlockFinalizationManager>();
@@ -84,15 +81,7 @@ public class ContractBasedValidatorTests
             _stateProvider)));
         _blockTree.Head.Returns(_block);
 
-        _abiEncoder
-            .Encode(AbiEncodingStyle.IncludeSignature, Arg.Is<AbiSignature>(static s => s.Name == "getValidators"), Arg.Any<object[]>())
-            .Returns(_getValidatorsData.TransactionData);
-
-        _abiEncoder
-            .Encode(AbiEncodingStyle.IncludeSignature, Arg.Is<AbiSignature>(static s => s.Name == "finalizeChange"), Arg.Any<object[]>())
-            .Returns(_finalizeChangeData.TransactionData);
-
-        _validatorContract = new ValidatorContract(_transactionProcessor, _abiEncoder, _contractAddress, _stateProvider, _readOnlyTxProcessorSource, new Signer(0, TestItem.PrivateKeyD, LimboLogs.Instance));
+        _validatorContract = new ValidatorContract(_transactionProcessor, _contractAddress, _stateProvider, _readOnlyTxProcessorSource, new Signer(0, TestItem.PrivateKeyD, LimboLogs.Instance));
     }
 
     [TearDown]
@@ -196,8 +185,11 @@ public class ContractBasedValidatorTests
 
         // initial validator should be true
         Address[] expectedValidators = { initialValidator };
-        Assert.That(validator.Validators, Is.EqualTo(expectedValidators));
-        Assert.That(_validatorStore.GetValidators(), Is.EqualTo(expectedValidators.AsEnumerable()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(validator.Validators, Is.EqualTo(expectedValidators));
+            Assert.That(_validatorStore.GetValidators(), Is.EqualTo(expectedValidators.AsEnumerable()));
+        }
     }
 
     public static IEnumerable<TestCaseData> ConsecutiveInitiateChangeData
@@ -513,7 +505,7 @@ public class ContractBasedValidatorTests
                 ? Keccak.Zero
                 : Keccak.Compute(((blockNumber - 1UL) + hashSeeds[blockNumber - 1UL]).ToString());
 
-            TxReceipt[] txReceipts = test.GetReceipts(_validatorContract, _block, _contractAddress, _abiEncoder, SetupAbiAddresses);
+            TxReceipt[] txReceipts = test.GetReceipts(_block, _contractAddress, EncodeAddresses);
 
             Hash256? blockHashForClosure = _block.Hash;
             _receiptsStorage.Get(Arg.Is<Block>(b => b.Hash == blockHashForClosure)).Returns(txReceipts);
@@ -568,8 +560,8 @@ public class ContractBasedValidatorTests
                     return new[]
                     {
                             Build.A.LogEntry.WithAddress(_contractAddress)
-                                .WithData([(byte) (block.Number * 10 + i++)])
-                                .WithTopics(_validatorContract.AbiDefinition.Events[ValidatorContract.InitiateChange].GetHash(), block.ParentHash)
+                                .WithData(EncodeAddresses([TestItem.Addresses[block.Number * 10 + i++]]))
+                                .WithTopics(ValidatorContract.InitiateChangeEvent.Hash, block.ParentHash)
                                 .TestObject
                     };
                 })
@@ -578,13 +570,6 @@ public class ContractBasedValidatorTests
         BlockTree blockTree = blockTreeBuilder.TestObject;
         SetupInitialValidators(blockTree.Head?.Header, blockTree.FindHeader(blockTree.Head?.ParentHash, BlockTreeLookupOptions.None), validators);
         IAuRaValidator validator = new ContractBasedValidator(_validatorContract, blockTree, inMemoryReceiptStorage, _validatorStore, _validSealerStrategy, _blockFinalizationManager, _parentHeader, _logManager, 1);
-
-        _abiEncoder.Decode(_validatorContract.AbiDefinition.Functions[ValidatorContract.GetValidatorsFunction].GetReturnInfo(), Arg.Any<byte[]>())
-            .Returns(c =>
-            {
-                byte addressIndex = c.Arg<byte[]>()[0];
-                return new object[] { new Address[] { TestItem.Addresses[addressIndex] } };
-            });
 
         _blockFinalizationManager.GetLastLevelFinalizedBy(blockTree.Head.ParentHash).Returns((ulong)lastLevelFinalized);
 
@@ -638,24 +623,14 @@ public class ContractBasedValidatorTests
                 args.Arg<ITxTracer>().MarkAsSuccess(
                     args.Arg<Transaction>().To,
                     0,
-                    SetupAbiAddresses(_initialValidators),
+                    EncodeAddresses(_initialValidators),
                     []));
     }
 
-    private byte[] SetupAbiAddresses(Address[] addresses)
-    {
-        byte[] data = addresses.SelectMany(static a => a.Bytes.ToArray()).ToArray();
-
-        _abiEncoder.Decode(
-            AbiEncodingStyle.None,
-            Arg.Is<AbiSignature>(static s => s.Types.Length == 1 && s.Types[0].CSharpType == typeof(Address[])),
-            data).Returns(new object[] { addresses });
-
-        return data;
-    }
+    private static byte[] EncodeAddresses(Address[] addresses) => AbiCodec.Encode(ValidatorContract.InitiateChangeData, addresses);
 
     private bool CheckTransaction(Transaction t, (Address Sender, byte[] TransactionData) transactionInfo) =>
-        t.SenderAddress == transactionInfo.Sender && t.To == _contractAddress && t.Data.AsArray() == transactionInfo.TransactionData;
+        t.SenderAddress == transactionInfo.Sender && t.To == _contractAddress && t.Data.Span.SequenceEqual(transactionInfo.TransactionData);
 
     public class ConsecutiveInitiateChangeTestParameters
     {
@@ -685,7 +660,7 @@ public class ContractBasedValidatorTests
             return false;
         }
 
-        public TxReceipt[] GetReceipts(ValidatorContract validatorContract, Block block, Address contractAddress, IAbiEncoder encoder, Func<Address[], byte[]> dataFunc)
+        public TxReceipt[] GetReceipts(Block block, Address contractAddress, Func<Address[], byte[]> dataFunc)
         {
             Address[] validators = Current.Validators?.FirstOrDefault(v => v.InitializeBlock == (int)block.Number)?.Addresses;
             if (validators is null)
@@ -698,7 +673,7 @@ public class ContractBasedValidatorTests
                 {
                     new LogEntry(contractAddress,
                         dataFunc(validators),
-                        new[] {validatorContract.AbiDefinition.Events[ValidatorContract.InitiateChange].GetHash(), block.ParentHash})
+                        new[] {ValidatorContract.InitiateChangeEvent.Hash, block.ParentHash})
                 };
 
                 return new TxReceipt[]

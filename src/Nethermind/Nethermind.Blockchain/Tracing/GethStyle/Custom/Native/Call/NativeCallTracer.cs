@@ -43,11 +43,13 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     private readonly Address? _sender;
     private readonly TxFrame[]? _frames;
     private readonly Transaction? _frameTx;
+    private readonly Transaction? _creationTx;
     private readonly IReleaseSpec? _frameTxSpec;
     private readonly NativeCallTracerConfig _config;
     private readonly BlockLogIndex? _blockLogIndex;
     private readonly ArrayPoolList<NativeCallTracerCallFrame> _callStack;
     private readonly ArrayPoolList<ulong>? _logIndexAtEntry;
+    private NativeCallTracerBuffer _buffer;
 
     private EvmExceptionType? _error;
     private ulong _logIndexStart;
@@ -75,6 +77,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         _sender = tx.SenderAddress;
         _frames = _isFrameTx ? tx.Frames : null;
         _frameTx = _isFrameTx ? tx : null;
+        _creationTx = tx.IsContractCreation ? tx : null;
         _frameTxSpec = _isFrameTx ? spec : null;
 
         _config = NativeCallTracerConfig.FromJson(options.TracerConfig, EthereumJsonSerializer.JsonOptions);
@@ -105,10 +108,11 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         {
             NativeCallTracerCallFrame firstCallFrame = _callStack[0];
             _callStack.RemoveAt(0);
-            result.Disposable = firstCallFrame;
+            NativeCallTracerResult callTrace = new(firstCallFrame, ref _buffer);
+            result.Disposable = callTrace;
 
             result.TxHash = _txHash;
-            result.CustomTracerResult = new GethLikeCustomTrace { Value = firstCallFrame };
+            result.CustomTracerResult = callTrace;
         }
 
         result.TxHash = _txHash;
@@ -123,6 +127,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         // BuildResult already removed the frame it handed to the trace, so everything still here is ours.
         _callStack.DisposeRecursive();
         _logIndexAtEntry?.Dispose();
+        _buffer.Release();
     }
 
     public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
@@ -147,7 +152,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         };
         // A top-level input is the transaction's own data; a nested one is a view into the caller's pooled memory.
         if (Depth == 0) callFrame.Input = input;
-        else callFrame.CopyInput(input.Span);
+        else callFrame.Input = _buffer.Copy(input.Span);
         _callStack.Add(callFrame);
     }
 
@@ -204,10 +209,10 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     /// Like Geth, records a call or creation that failed its precheck or collided as a frame that failed with that
     /// error; a failed creation drops its <c>to</c>.
     /// </summary>
-    public override void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address? to,
+    public override void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address to,
         ReadOnlyMemory<byte> input, ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
     {
-        ReportAction(gas, value, from, to!, input, callType, isPrecompileCall);
+        ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
         OnError(gasLeft, error);
     }
 
@@ -265,6 +270,20 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         _blockLogIndex?.Next = (int)_logIndexStart + KeptFrameLogCount();
 
         CollapseFrameRoots();
+        if (_callStack.Count == 0 && _creationTx is not null && error == nameof(EvmExceptionType.TransactionCollision))
+        {
+            // A creation colliding with an existing account fails before its frame starts; Geth still reports the frame.
+            _error = EvmExceptionType.TransactionCollision;
+            _callStack.Add(new NativeCallTracerCallFrame
+            {
+                Type = Instruction.CREATE,
+                From = _sender,
+                Gas = _gasLimit,
+                Value = _creationTx.Value,
+                Input = _creationTx.Data
+            });
+        }
+
         if (_callStack.Count == 0) return;
         NativeCallTracerCallFrame firstCallFrame = _callStack[0];
         firstCallFrame.GasUsed = gasSpent.SpentGas;
@@ -401,8 +420,8 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
 
                 // Uniform across dispatched and undispatched frames, where the VM's own figures would be the
                 // execution dimension net of the pre-dispatch charges.
-                frameCallFrame.Gas = _frames[i].GasLimit;
-                frameCallFrame.GasUsed = frameReceipt.GasUsed;
+                frameCallFrame.Gas = _frames[i].ExecutionGasLimit;
+                frameCallFrame.GasUsed = frameReceipt.ExecutionGasUsed;
 
                 if (_config.WithLog && frameReceipt.Logs.Length == 0)
                 {
@@ -526,7 +545,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         }
     }
 
-    private static void ProcessOutput(NativeCallTracerCallFrame callFrame, ReadOnlyMemory<byte>? output, EvmExceptionType? error)
+    private void ProcessOutput(NativeCallTracerCallFrame callFrame, ReadOnlyMemory<byte>? output, EvmExceptionType? error)
     {
         if (error is not null)
         {
@@ -534,7 +553,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
 
             if (error == EvmExceptionType.Revert && output is { IsEmpty: false } revertOutput)
             {
-                callFrame.CopyOutput(revertOutput.Span);
+                callFrame.Output = _buffer.Copy(revertOutput.Span);
 
                 if (revertOutput.Length >= 4)
                 {
@@ -544,7 +563,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         }
         else
         {
-            callFrame.CopyOutput(output.GetValueOrDefault().Span);
+            callFrame.Output = _buffer.Copy(output.GetValueOrDefault().Span);
         }
     }
 

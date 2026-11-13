@@ -24,16 +24,14 @@ public class DiscoveryContainerTests
     public void ConfigureNetworkBuffers_uses_single_small_shared_arena()
     {
         IByteBufferAllocator originalDefault = NethermindBuffers.Default;
-        IByteBufferAllocator originalDiscovery = NethermindBuffers.DiscoveryAllocator;
 
         try
         {
             DiscoveryContainer.ConfigureNetworkBuffers();
 
-            PooledByteBufferAllocator allocator = (PooledByteBufferAllocator)NethermindBuffers.DiscoveryAllocator;
+            PooledByteBufferAllocator allocator = (PooledByteBufferAllocator)NethermindBuffers.Default;
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(NethermindBuffers.Default, Is.SameAs(allocator));
                 Assert.That(allocator.Metric.HeapArenas(), Has.Count.EqualTo(1));
                 Assert.That(allocator.Metric.DirectArenas(), Has.Count.EqualTo(1));
                 Assert.That(allocator.Metric.ChunkSize, Is.EqualTo(2 * 1024 * 1024));
@@ -42,7 +40,6 @@ public class DiscoveryContainerTests
         finally
         {
             NethermindBuffers.Default = originalDefault;
-            NethermindBuffers.DiscoveryAllocator = originalDiscovery;
         }
     }
 

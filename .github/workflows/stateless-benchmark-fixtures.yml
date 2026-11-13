@@ -77,7 +77,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v6
+        uses: ./.github/actions/setup-dotnet
 
       - name: Check Docker Hub OIDC availability
         id: dockerhub
@@ -124,7 +124,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v6
+        uses: ./.github/actions/setup-dotnet
 
       - name: Build nethtest
         working-directory: src/Nethermind
@@ -176,7 +176,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v6
+        uses: ./.github/actions/setup-dotnet
 
       - name: Download guest binary
         uses: actions/download-artifact@v8
@@ -205,29 +205,6 @@ jobs:
             --root "$fixtures/fixtures" --out "$GUEST_DIR/bin" --manifest "$RUNNER_TEMP/manifest.json"
           rm -rf "$fixtures"
           chmod +x "$GUEST_DIR/bin/nethermind"
-
-          # Blocks that knowingly fail are not run, so the scheduled run stays green on everything else;
-          # the report still lists them. Each entry is a test case as the fixture names it.
-          KNOWN_FAILURES=(
-            # At 200M these never finish: ~80% through the block the guest stops making progress and
-            # spins until the emulator's step limit. Each scales linearly up to 150M.
-            'test_modexp[fork_Amsterdam-blockchain_test-mod_256_exp_2-benchmark-gas-value_200M]'
-            'test_modexp[fork_Amsterdam-blockchain_test-mod_264_exp_2-benchmark-gas-value_200M]'
-            'test_modexp[fork_Amsterdam-blockchain_test-mod_408_gas_base_heavy-benchmark-gas-value_200M]'
-            'test_modexp[fork_Amsterdam-blockchain_test-mod_min_gas_balanced-benchmark-gas-value_200M]'
-            'test_modexp[fork_Amsterdam-blockchain_test-mod_min_gas_base_heavy-benchmark-gas-value_200M]'
-            'test_modexp[fork_Amsterdam-blockchain_test-mod_vul_nagydani_2_qube-benchmark-gas-value_200M]'
-            'test_modexp[fork_Amsterdam-blockchain_test-mod_vul_nagydani_2_square-benchmark-gas-value_200M]'
-          )
-          known='.id | split("::")[1] as $case | $ARGS.positional | index($case) != null'
-          mkdir -p "$RUNNER_TEMP/results"
-          jq --arg gas "$GAS" "[.[] | select($known) | {gas: \$gas, id}]" "$RUNNER_TEMP/manifest.json" \
-            --args "${KNOWN_FAILURES[@]}" > "$RUNNER_TEMP/results/$GAS-$SHARD.skipped.json"
-          jq -r ".[] | select($known) | .input" "$RUNNER_TEMP/manifest.json" --args "${KNOWN_FAILURES[@]}" \
-            | while read -r input; do rm -f "$GUEST_DIR/bin/$input"; done
-          jq "[.[] | select($known | not)]" "$RUNNER_TEMP/manifest.json" --args "${KNOWN_FAILURES[@]}" \
-            > "$RUNNER_TEMP/manifest.run.json"
-          mv "$RUNNER_TEMP/manifest.run.json" "$RUNNER_TEMP/manifest.json"
 
       - name: Check Docker Hub OIDC availability
         id: dockerhub
@@ -340,7 +317,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v6
+        uses: ./.github/actions/setup-dotnet
 
       - name: Download results
         uses: actions/download-artifact@v8

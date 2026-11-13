@@ -362,6 +362,28 @@ public class EthereumRunnerTests
     private static string WarmupToken(JwtAuthentication authentication) =>
         (string)typeof(JwtAuthentication).GetMethod("CreateWarmupToken", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(authentication, null)!;
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Startup_screen_masks_sensitive_values_when_enabled(bool maskSensitiveData)
+    {
+        using (new NodeInfoScope())
+        {
+            bool previous = SensitiveLogMasking.Enabled;
+            try
+            {
+                SensitiveLogMasking.Enabled = maskSensitiveData;
+                ThisNodeInfo.AddInfo("JSON RPC     :", "http://private.example:8545", sensitive: true);
+                string screen = ThisNodeInfo.BuildNodeInfoScreen();
+                Assert.That(screen, Does.Contain(maskSensitiveData ? "JSON RPC     : [redacted]" : "JSON RPC     : http://private.example:8545"));
+                if (maskSensitiveData) Assert.That(screen, Does.Not.Contain("private.example"));
+            }
+            finally
+            {
+                SensitiveLogMasking.Enabled = previous;
+            }
+        }
+    }
+
     private sealed class NodeInfoScope : IDisposable
     {
         private const string Key = "JSON RPC     :";
@@ -453,7 +475,9 @@ public class EthereumRunnerTests
 
         Assert.Throws<InvalidOperationException>(() => stats.UpdateStats(blocks, null, 1_000));
 
+#pragma warning disable NUnit2045 // Check pending reports before starting the drain operation.
         Assert.That(warmMetrics.PendingReports, Is.Zero);
+#pragma warning restore NUnit2045
         Assert.That(warmMetrics.DrainAsync().IsCompletedSuccessfully, Is.True);
     }
 
@@ -655,23 +679,33 @@ public class EthereumRunnerTests
     public async Task Startup_pipeline_warmup_cleanup_failure_preserves_cancellation()
     {
         using TempPath dataDirectory = TempPath.GetTempDirectory();
-        using CancellationTokenSource cancellation = new(RunnerTimeout);
+        using CancellationTokenSource cancellation = new();
+        OperationCanceledException expectedCancellation = new(cancellation.Token);
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
         logger.IsWarn.Returns(true);
         FileStream? lockedFile = null;
         try
         {
-            await Assert.CatchAsync<OperationCanceledException>(() => StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(),
+            // Inject before node initialization so cleanup does not depend on startup speed.
+            OperationCanceledException? actualCancellation = await Assert.CatchAsync<OperationCanceledException>(() => StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(),
                 WarmupConfig(dataDirectory.Path), false, cancellation.Token, logger: new ILogger(logger),
-                configureContainer: CancelWhenRpcStarts(cancellation, () =>
+                configureContainer: _ =>
                 {
                     string directory = Directory.GetDirectories(Path.Combine(dataDirectory.Path, "startup-warmup"))[0];
                     lockedFile = new FileStream(Path.Combine(directory, "locked"), FileMode.Create, FileAccess.Write, FileShare.None);
-                })));
-            logger.Received(1).Warn(Arg.Is<string>(message => message.Contains("Could not delete startup warmup directory")));
+                    cancellation.Cancel();
+                    throw expectedCancellation;
+                }).WaitAsync(RunnerTimeout));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(lockedFile, Is.Not.Null, "the locked file must make cleanup fail");
+                Assert.That(actualCancellation, Is.SameAs(expectedCancellation), "cleanup must preserve the original cancellation");
+                logger.Received(1).Warn(Arg.Is<string>(message => message.Contains("Could not delete startup warmup directory")));
+            }
         }
         finally
         {
+            cancellation.Cancel();
             lockedFile?.Dispose();
         }
     }
@@ -731,7 +765,7 @@ public class EthereumRunnerTests
             resultQueue.Enqueue(($"{name}.json", configProvider));
         });
 
-        // Sort so that is is consistent so that its easy to run via Rider.
+        // Sort so that it is consistent so that its easy to run via Rider.
         List<(string, ConfigProvider)> result = [.. resultQueue];
         result.Sort();
 

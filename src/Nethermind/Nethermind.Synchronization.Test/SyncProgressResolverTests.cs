@@ -127,9 +127,12 @@ namespace Nethermind.Synchronization.Test
         public void Is_fast_block_finished_returns_true_when_no_fast_sync_is_used()
         {
             SyncProgressResolver syncProgressResolver = CreateProgressResolver(false, new SyncConfig { FastSync = false, PivotNumber = 1 });
-            Assert.That(syncProgressResolver.IsFastBlocksHeadersFinished(), Is.True);
-            Assert.That(syncProgressResolver.IsFastBlocksBodiesFinished(), Is.True);
-            Assert.That(syncProgressResolver.IsFastBlocksReceiptsFinished(), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(syncProgressResolver.IsFastBlocksHeadersFinished(), Is.True);
+                Assert.That(syncProgressResolver.IsFastBlocksBodiesFinished(), Is.True);
+                Assert.That(syncProgressResolver.IsFastBlocksReceiptsFinished(), Is.True);
+            }
         }
 
         [Test]

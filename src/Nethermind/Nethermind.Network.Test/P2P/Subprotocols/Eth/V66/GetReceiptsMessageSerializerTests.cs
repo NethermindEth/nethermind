@@ -6,7 +6,7 @@ using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
@@ -28,7 +28,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             GetReceiptsMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, message, "f847820457f842a000000000000000000000000000000000000000000000000000000000deadc0dea000000000000000000000000000000000000000000000000000000000feedbeef");
+            SerializerTester.Test(serializer, message, "f847820457f842a000000000000000000000000000000000000000000000000000000000deadc0dea000000000000000000000000000000000000000000000000000000000feedbeef");
         }
 
         [Test]
@@ -39,7 +39,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             GetReceiptsMessageSerializer serializer = new();
 
             // The request id -1 encodes as eight 0xff bytes behind the 0x88 length prefix.
-            SerializerTester.TestZero(serializer, message,
+            SerializerTester.Test(serializer, message,
                 "eb88ffffffffffffffffe1a00000000000000000000000000000000000000000000000000000000000000000");
         }
 
@@ -49,7 +49,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             GetReceiptsMessageSerializer serializer = new();
             IByteBuffer payload = Unpooled.WrappedBuffer(bytes);
 
-            Assert.Throws<RlpException>(() => serializer.Deserialize(payload));
+            Assert.Throws<RlpReaderException>(() => serializer.Deserialize(payload));
         }
 
         private static IEnumerable<TestCaseData> InvalidPayloads()

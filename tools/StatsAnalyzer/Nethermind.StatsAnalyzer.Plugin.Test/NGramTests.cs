@@ -140,13 +140,19 @@ public class NGramTests
         Instruction[] _instructions = ngram.ToInstructions();
         if (instructions.Length < 7)
         {
-            Assert.That(_instructions[0] == instructions[0]);
-            Assert.That(_instructions.Length == instructions.Length + 1);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_instructions[0] == instructions[0]);
+                Assert.That(_instructions.Length == instructions.Length + 1);
+            }
         }
         else
         {
-            Assert.That(_instructions[0] == instructions[1]);
-            Assert.That(_instructions.Length == instructions.Length);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_instructions[0] == instructions[1]);
+                Assert.That(_instructions.Length == instructions.Length);
+            }
         }
     }
 

@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm;
@@ -15,6 +16,14 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
 {
     // Keeping this call boundary reduces guest execution cost.
     private const MethodImplOptions ExecutionHandlersInlining = MethodImplOptions.NoInlining;
+
+    /// <remarks>
+    /// Calls the body directly: a generic virtual call resolves through reflection metadata, which a guest built
+    /// without reflection data does not have. An override of <see cref="ExecuteTransaction{TTracingInst}"/> is therefore
+    /// not reached here.
+    /// </remarks>
+    public TransactionSubstate ExecuteTransaction(VmState<TGasPolicy> vmState, IWorldState worldState, ITxTracer txTracer) =>
+        ExecuteTransactionCore<OffFlag>(vmState, worldState, txTracer);
 
     // Cache the dispatch tables in plain per-TGasPolicy statics: the guest executes a single fork, and
     // ConditionalWeakTable (used by the std build) relies on GC dependent-handles the zkEVM guest can't map.
@@ -42,6 +51,59 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         nint handler = (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)Instruction.SLOAD];
         return handler == (nint)AsTableEntry(&RawCalliHelper.ExecuteSLoad<OffFlag>)
             || handler == (nint)AsTableEntry(&RawCalliHelper.ExecuteSLoad<OnFlag>);
+    }
+
+    /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs BLOBHASH on the guest handler.</summary>
+    internal static bool ReadsBlobHashesThroughGuestHandlerForTests(IReleaseSpec spec) =>
+        (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)Instruction.BLOBHASH] == (nint)AsTableEntry(&RawCalliHelper.ExecuteBlobHash);
+
+    /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs SSTORE on the guest handler.</summary>
+    internal static bool StoresStorageThroughGuestHandlerForTests(IReleaseSpec spec) =>
+        (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)Instruction.SSTORE] == (nint)AsTableEntry(&RawCalliHelper.ExecuteSStore);
+
+    /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs SELFBALANCE on the guest handler.</summary>
+    internal static bool ReadsSelfBalanceThroughGuestHandlerForTests(IReleaseSpec spec) =>
+        (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)Instruction.SELFBALANCE] == (nint)AsTableEntry(&RawCalliHelper.ExecuteSelfBalance);
+
+    /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs <paramref name="opcode"/>, a context word, on the guest handler.</summary>
+    /// <remarks>The guest handler falls back to the shared one, so only the table shows that it is installed.</remarks>
+    internal static bool PushesContextWordThroughGuestHandlerForTests(IReleaseSpec spec, Instruction opcode) =>
+        (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)opcode] == opcode switch
+        {
+            Instruction.COINBASE => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.CoinbaseWord>),
+            Instruction.TIMESTAMP => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.TimestampWord>),
+            Instruction.NUMBER => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.NumberWord>),
+            Instruction.PREVRANDAO => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.PrevRandaoWord>),
+            Instruction.GASLIMIT => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.GasLimitWord>),
+            Instruction.CHAINID => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.ChainIdWord>),
+            Instruction.BASEFEE => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.BaseFeeWord>),
+            Instruction.BLOBBASEFEE => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.BlobBaseFeeWord>),
+            Instruction.SLOTNUM => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.SlotNumWord>),
+            Instruction.ADDRESS => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.AddressWord>),
+            Instruction.ORIGIN => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.OriginWord>),
+            Instruction.CALLER => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.CallerWord>),
+            Instruction.CALLVALUE => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.CallValueWord>),
+            Instruction.GASPRICE => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.GasPriceWord>),
+            _ => throw new ArgumentOutOfRangeException(nameof(opcode))
+        };
+
+    /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs CALL, STATICCALL and DELEGATECALL on the guest handler.</summary>
+    /// <remarks>Built apart from the shared table, which keeps the handlers of the first fork it prepares.</remarks>
+    internal static bool CallsThroughGuestHandlerForTests(IReleaseSpec spec)
+    {
+        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] handlers = GenerateOpcodeHandlers<OffFlag, OffFlag>(spec);
+        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] guest = new delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[handlers.Length];
+        if (SpecFlags.Eip8038(spec))
+            SetCallHandlers<OnFlag, Eip8038On>(guest);
+        else
+            SetCallHandlers<OffFlag, Eip8038Off>(guest);
+
+        foreach (Instruction opcode in (ReadOnlySpan<Instruction>)[Instruction.CALL, Instruction.STATICCALL, Instruction.DELEGATECALL])
+        {
+            if ((nint)handlers[(int)opcode] != (nint)guest[(int)opcode]) return false;
+        }
+
+        return true;
     }
 
     public object? ReturnData;
@@ -98,6 +160,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     {
         VmState<TGasPolicy> parent = _currentState;
         VmState<TGasPolicy> child = VmState<TGasPolicy>.RentFrame(
+            FrameCache,
             gas: childGas,
             outputDestination: outputDestination,
             outputLength: outputLength,
@@ -176,6 +239,58 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         }
         child.Dispose();
         return push;
+    }
+
+    /// <summary>The deepest frame <see cref="TryRunStagedFrameNested"/> runs; a deeper one goes through the frame loop.</summary>
+    /// <remarks>Each nested frame holds a few native frames of its caller, so the depth bounds the native stack.</remarks>
+    private const int MaxNestedCallDepth = 16;
+
+    /// <summary>
+    /// Runs the frame a CALL or CREATE staged to completion inside its caller's dispatch chain, then resumes the caller
+    /// as <see cref="ExecuteCall{TTracingInst}"/> would: the result pushed and the output copied.
+    /// </summary>
+    /// <param name="stack">The caller's stack, its head current.</param>
+    /// <param name="resumeResult">What resuming the caller came to; anything but <c>None</c> halts it.</param>
+    /// <returns>Whether the child ran here; if not, the caller's chain leaves with the child staged, as without nesting.</returns>
+    /// <remarks>
+    /// The frame loop would otherwise take the caller off its chain, enter the child, and on its return restore the
+    /// caller's stack and enter its chain again. Only an untraced run nests: tracers observe the loop's order of events.
+    /// </remarks>
+    internal bool TryRunStagedFrameNested(ref EvmStack stack, out EvmExceptionType resumeResult)
+    {
+        VmState<TGasPolicy> child = Unsafe.As<VmState<TGasPolicy>>(ReturnData!);
+        if (IsTracingActions || child.Env.CallDepth > MaxNestedCallDepth)
+        {
+            resumeResult = EvmExceptionType.Suspend;
+            return false;
+        }
+
+        ReturnData = null;
+        _stateStack.Push(_currentState);
+        _currentState = child;
+        _previousCallResult = default;
+        nuint previousCallOutputLength = 0;
+        RunFrames<OffFlag>(_stateStack.Count, ref previousCallOutputLength, out _);
+
+        // As RunByteCode starts the caller again: nothing staged yet.
+        ReturnData = null;
+        _returnDataScratch.ResetStaged();
+
+        resumeResult = EvmExceptionType.None;
+        if (_previousCallResult.Success.HasValue)
+        {
+            resumeResult = _previousCallResult.CreatedAddress is { } createdAddress
+                ? stack.PushAddress<OffFlag>(createdAddress)
+                : stack.PushUInt32<OffFlag, OnFlag>(_previousCallResult.Success.GetValueOrDefault() ? 1u : 0u);
+            if (resumeResult != EvmExceptionType.None)
+                return true;
+        }
+
+        // CALL already expanded this range; returned output is clipped to the requested length.
+        if (previousCallOutputLength > 0)
+            _currentState.Memory.SaveAfterGas(in _previousCallOutputDestination, ReturnDataBuffer.Span[..(int)previousCallOutputLength]);
+
+        return true;
     }
 
     private static partial delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, bool> SelectInitializeFrame(IReleaseSpec spec) =>

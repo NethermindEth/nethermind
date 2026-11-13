@@ -115,8 +115,11 @@ public class CliqueSealEngineTests
         Block signed = await _clique.SealBlock(block6, CancellationToken.None);
         bool validHeader = _sealValidator.ValidateParams(_blockTree.FindHeader(signed.ParentHash, BlockTreeLookupOptions.None), signed.Header);
         bool validSeal = _sealValidator.ValidateSeal(signed.Header, true);
-        Assert.That(validHeader, Is.True);
-        Assert.That(validSeal, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(validHeader, Is.True);
+            Assert.That(validSeal, Is.True);
+        }
     }
 
     private Block GetGenesis()

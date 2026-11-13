@@ -42,12 +42,12 @@ public sealed class EraStoreFactory(
         }
         catch (Exception e) when (remoteClient is not null && e is EraException or FileNotFoundException or DirectoryNotFoundException)
         {
-            if (_logger.IsDebug) _logger.Debug($"No local EraE files found in '{src}': {e.Message}. Remote will supply them on demand.");
+            if (_logger.IsDebug) _logger.Debug($"No local EraE files found in '{src:hide}': {(SensitiveLogMasking.Enabled ? e.GetType().Name : e.Message)}. Remote will supply them on demand.");
         }
 
         if (remoteClient is null)
         {
-            return localStore ?? throw new EraException($"No eraE files found in '{src}' and no remote URL is configured.");
+            return localStore ?? throw new EraException($"No eraE files found in '{(SensitiveLogMasking.Enabled ? "[redacted]" : src)}' and no remote URL is configured.");
         }
 
         string downloadDir = !string.IsNullOrWhiteSpace(eraConfig.RemoteDownloadDirectory)

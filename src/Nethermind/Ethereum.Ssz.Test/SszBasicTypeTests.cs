@@ -84,9 +84,12 @@ public class SszBasicTypeTests
         byte[] reencoded = TContainer.Encode(decoded);
         TContainer.Merkleize(decoded, out UInt256 root);
 
-        Assert.That(getValue(decoded), Is.EqualTo(expected));
-        Assert.That(reencoded, Is.EqualTo(ssz));
-        Assert.That(root, Is.EqualTo(expectedRoot));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(getValue(decoded), Is.EqualTo(expected));
+            Assert.That(reencoded, Is.EqualTo(ssz));
+            Assert.That(root, Is.EqualTo(expectedRoot));
+        }
     }
 
     private static void AssertBasicInvalid<TContainer>(string casePath)

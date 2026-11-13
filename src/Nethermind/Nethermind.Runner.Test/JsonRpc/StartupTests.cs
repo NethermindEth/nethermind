@@ -46,6 +46,7 @@ using NSubstitute;
 using NUnit.Framework;
 using Testably.Abstractions;
 using JsonRpcMetrics = Nethermind.JsonRpc.Metrics;
+using QueuedRentalFixture = Nethermind.JsonRpc.Test.QueuedRentalFixture;
 
 namespace Nethermind.Runner.Test.JsonRpc;
 
@@ -157,6 +158,28 @@ public class StartupTests
         AssertErrorCodeResponse(response, ErrorCodes.ParseError);
     }
 
+    [TestCase("true", "null", TestName = "Boolean id is an Invalid Request with null id")]
+    [TestCase("{\"a\":1}", "null", TestName = "Object id is an Invalid Request with null id")]
+    [TestCase("[1]", "null", TestName = "Array id is an Invalid Request with null id")]
+    [TestCase("1.5", "1.5", TestName = "Fractional id is echoed verbatim")]
+    [TestCase("1.0", "1.0", TestName = "Integral id with a fraction part is echoed verbatim")]
+    [TestCase("1e40", "1e40", TestName = "Id beyond decimal range is echoed verbatim")]
+    public async Task ProcessJsonRpcRequest_AnswersAnyJsonIdWithStatus200(string idJson, string expectedIdJson)
+    {
+        (string response, int statusCode) = await ProcessJsonRpcRequestWithStatus(CreateJsonRpcRequest(idJson: idJson));
+
+        Assert.That(statusCode, Is.EqualTo(StatusCodes.Status200OK));
+        AssertJsonResponse(response, root =>
+        {
+            int? errorCode = root.TryGetProperty("error", out JsonElement error) ? error.GetProperty("code").GetInt32() : null;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(root.GetProperty("id").GetRawText(), Is.EqualTo(expectedIdJson));
+                Assert.That(errorCode, Is.EqualTo(expectedIdJson == "null" ? ErrorCodes.InvalidRequest : null));
+            }
+        });
+    }
+
     [TestCase("", TestName = "Empty input")]
     [TestCase(" \r\n\t", TestName = "Whitespace-only input")]
     public async Task ProcessJsonRpcRequest_EmptyInput_ReturnsParseErrorBadRequest(string request)
@@ -175,6 +198,22 @@ public class StartupTests
         string response = await ProcessJsonRpcRequest(request);
 
         AssertArrayResultResponse(response, expectedId: 1);
+    }
+
+    [TestCase(false, TestName = "Single notification")]
+    [TestCase(true, TestName = "Batch of notifications")]
+    public async Task ProcessJsonRpcRequest_Notifications_AreAnsweredWithEmptyBody(bool batch)
+    {
+        string notification = $$"""{"jsonrpc":"2.0","method":"{{GetBlobsV1Method}}","params":[[]]}""";
+        string request = batch ? $"[{notification},{notification}]" : notification;
+
+        (string response, int statusCode) = await ProcessJsonRpcRequestWithStatus(request);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(statusCode, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(response, Is.Empty);
+        }
     }
 
     [Test]
@@ -196,8 +235,11 @@ public class StartupTests
 
         AssertJsonResponse(response, static root =>
         {
-            Assert.That(root.ValueKind, Is.EqualTo(JsonValueKind.Array));
-            Assert.That(root.GetArrayLength(), Is.EqualTo(3));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(root.ValueKind, Is.EqualTo(JsonValueKind.Array));
+                Assert.That(root.GetArrayLength(), Is.EqualTo(3));
+            }
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(root[0].GetProperty("id").GetInt32(), Is.EqualTo(1));
@@ -315,8 +357,11 @@ public class StartupTests
 
         (int statusCode, string body) = await host.SendRawAsync(request);
 
-        Assert.That(statusCode, Is.EqualTo(expectedStatusCode));
-        Assert.That(body, Is.Not.Empty, "Expected a framed JSON-RPC error body");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(statusCode, Is.EqualTo(expectedStatusCode));
+            Assert.That(body, Is.Not.Empty, "Expected a framed JSON-RPC error body");
+        }
         AssertErrorCodeResponse(body, ErrorCodes.InvalidRequest);
         // Kestrel authors its own text for these - "Bad chunk size data." for "zzz", a MinRequestBodyDataRate
         // message for the 408. This endpoint serves unauthenticated callers, so what reaches them has to be a
@@ -371,8 +416,11 @@ public class StartupTests
         AssertJsonResponse(response, static root =>
         {
             JsonElement error = root.GetProperty("error");
-            Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidInput));
-            Assert.That(error.GetProperty("data").ValueKind, Is.EqualTo(JsonValueKind.Array));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidInput));
+                Assert.That(error.GetProperty("data").ValueKind, Is.EqualTo(JsonValueKind.Array));
+            }
         });
     }
 
@@ -392,11 +440,17 @@ public class StartupTests
         AssertJsonResponse(response, static root =>
         {
             JsonElement result = root.GetProperty("result");
-            Assert.That(result.GetArrayLength(), Is.EqualTo(1));
-            Assert.That(result[0].ValueKind, Is.EqualTo(JsonValueKind.Null));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.GetArrayLength(), Is.EqualTo(1));
+                Assert.That(result[0].ValueKind, Is.EqualTo(JsonValueKind.Null));
+            }
         });
-        Assert.That(streamableResult.WriteCount, Is.EqualTo(1));
-        Assert.That(streamableResult.DisposeCount, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(streamableResult.WriteCount, Is.EqualTo(1));
+            Assert.That(streamableResult.DisposeCount, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -767,8 +821,11 @@ public class StartupTests
     {
         Startup.TrustedCidr[] networks = Startup.ParseTrustedNetworks(["100.64.0.0/10"], LimboLogs.Instance.GetClassLogger<StartupTests>());
 
-        Assert.That(Startup.IsTrustedSource(IPAddress.Parse("100.64.1.2"), networks), Is.True);
-        Assert.That(Startup.IsTrustedSource(IPAddress.Parse("100.128.1.2"), networks), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Startup.IsTrustedSource(IPAddress.Parse("100.64.1.2"), networks), Is.True);
+            Assert.That(Startup.IsTrustedSource(IPAddress.Parse("100.128.1.2"), networks), Is.False);
+        }
     }
 
     [Test]
@@ -791,8 +848,11 @@ public class StartupTests
 
         bool usesFastLane = Startup.TryGetTrustedHttpJsonRpcUrl(ctx, new TestJsonRpcUrlCollection(engineUrl), [], out JsonRpcUrl? resolvedUrl);
 
-        Assert.That(usesFastLane, Is.True);
-        Assert.That(resolvedUrl, Is.SameAs(engineUrl));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(usesFastLane, Is.True);
+            Assert.That(resolvedUrl, Is.SameAs(engineUrl));
+        }
         Assert.That(resolvedUrl!.IsAuthenticated, Is.True);
     }
 
@@ -837,8 +897,11 @@ public class StartupTests
             return Task.CompletedTask;
         }, new TestJsonRpcUrlCollection(jsonRpcUrl));
 
-        Assert.That(nextCalled, Is.True);
-        Assert.That(ctx.Response.HasStarted, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nextCalled, Is.True);
+            Assert.That(ctx.Response.HasStarted, Is.False);
+        }
     }
 
     [TestCase(null, false)]
@@ -907,9 +970,12 @@ public class StartupTests
         Assert.That(logger.LogList, Is.Empty);
 
         WebSocketException? refused = await Assert.ThrowsAsync<WebSocketException>(() => ConnectWebSocketAsync(uri, OtherOrigin, deadline.Token));
-        Assert.That(refused!.Message, Does.Contain("403"));
-        // The node logs the refused origin before it answers, so the line is there once the client sees 403.
-        Assert.That(logger.LogList, Has.Exactly(1).Items);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refused!.Message, Does.Contain("403"));
+            // The node logs the refused origin before it answers, so the line is there once the client sees 403.
+            Assert.That(logger.LogList, Has.Exactly(1).Items);
+        }
         Assert.That(logger.LogList[0], Does.Contain(OtherOrigin).And.Contain("JsonRpc.CorsOrigins"));
     }
 
@@ -994,7 +1060,8 @@ public class StartupTests
         long? maxRequestBodySize = null,
         Startup? startup = null,
         bool isAuthenticated = false,
-        Action<DefaultHttpContext>? configureContext = null)
+        Action<DefaultHttpContext>? configureContext = null,
+        string[]? enabledModules = null)
     {
         DefaultHttpContext ctx = new()
         {
@@ -1012,10 +1079,36 @@ public class StartupTests
         MemoryStream responseBody = new();
         ctx.Features.Set<IHttpResponseBodyFeature>(new StreamResponseBodyFeature(responseBody));
 
-        JsonRpcUrl url = new("http", "127.0.0.1", 0, RpcEndpoint.Http, isAuthenticated, [ModuleType.Engine], maxRequestBodySize);
+        JsonRpcUrl url = new("http", "127.0.0.1", 0, RpcEndpoint.Http, isAuthenticated, enabledModules ?? [ModuleType.Engine], maxRequestBodySize);
         await (startup ?? Startup).ProcessJsonRpcRequestCoreAsync(ctx, url);
 
         return (Encoding.UTF8.GetString(responseBody.ToArray()), ctx.Response.StatusCode);
+    }
+
+    [Test]
+    public async Task Aborted_queued_request_is_neither_executed_nor_answered([Values] bool batch, [Values] bool bufferResponses, [Values] bool isAuthenticated)
+    {
+        using QueuedRentalFixture fixture = new(new JsonRpcConfig { BufferResponses = bufferResponses });
+        Startup startup = new(fixture.CreateProcessor(), fixture.Service, Substitute.For<IJsonRpcLocalStats>(), new EthereumJsonSerializer(), fixture.Config, NoAuthentication.Instance);
+        // In the batch an earlier item is answered first, so there is a started response that must not be finished.
+        byte[] request = Encoding.UTF8.GetBytes(batch
+            ? $"[{CreateJsonRpcRequest("unknown_method")},{QueuedRentalFixture.Request("2")}]"
+            : QueuedRentalFixture.Request());
+        QueuedRentalFixture.IProbeRpcModule held = fixture.Hold();
+        using CancellationTokenSource abort = new();
+
+        Task<(string Response, int StatusCode)> processing = ProcessJsonRpcRequestWithStatus(new MemoryStream(request), request.Length,
+            startup: startup, isAuthenticated: isAuthenticated, configureContext: ctx => ctx.RequestAborted = abort.Token, enabledModules: [ModuleType.Eth]);
+        await fixture.WaitUntilQueued(1);
+        await abort.CancelAsync();
+        (string response, _) = await processing.WaitAsync(QueuedRentalFixture.Watchdog);
+        await fixture.ReleaseAndAssertUsable(held);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response, Is.Empty);
+            Assert.That(fixture.Invocations, Is.Zero);
+        }
     }
 
     private static string CreateJsonRpcRequest(string method = GetBlobsV1Method, string idJson = "1", string paramsJson = "[[]]") =>
@@ -1048,8 +1141,11 @@ public class StartupTests
     private static void AssertBatchArrayResultResponse(string response, int expectedCount, bool assertItemResults = true) =>
         AssertJsonResponse(response, root =>
         {
-            Assert.That(root.ValueKind, Is.EqualTo(JsonValueKind.Array));
-            Assert.That(root.GetArrayLength(), Is.EqualTo(expectedCount));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(root.ValueKind, Is.EqualTo(JsonValueKind.Array));
+                Assert.That(root.GetArrayLength(), Is.EqualTo(expectedCount));
+            }
             for (int i = 0; assertItemResults && i < expectedCount; i++)
             {
                 AssertArrayResult(root[i], i + 1);

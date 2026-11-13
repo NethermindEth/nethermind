@@ -63,9 +63,12 @@ public class ZkGasScheduleTests
         Dictionary<long, long> entries = new() { [0x20] = 85, [0xf1] = 25 };
         ReadOnlyMemory<ushort> resolved = ZkGasSchedule.BuildOpcodeTable(entries);
 
-        Assert.That(resolved.Span[0x20], Is.EqualTo((ushort)85), "listed entry is applied");
-        Assert.That(resolved.Span[0xf1], Is.EqualTo((ushort)25), "listed entry is applied");
-        Assert.That(resolved.Span[0x01], Is.EqualTo(ZkGasSchedule.FailsafeMultiplier), "unlisted entry is fail-safe");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resolved.Span[0x20], Is.EqualTo((ushort)85), "listed entry is applied");
+            Assert.That(resolved.Span[0xf1], Is.EqualTo((ushort)25), "listed entry is applied");
+            Assert.That(resolved.Span[0x01], Is.EqualTo(ZkGasSchedule.FailsafeMultiplier), "unlisted entry is fail-safe");
+        }
     }
 
     [TestCase(-1L, TestName = "negative opcode index")]
@@ -113,8 +116,11 @@ public class ZkGasScheduleTests
 
         FrozenDictionary<AddressAsKey, ushort> resolved = ZkGasSchedule.BuildPrecompileTable(entries);
 
-        Assert.That(resolved[Address.FromNumber(0x01)], Is.EqualTo((ushort)47));
-        Assert.That(resolved[Address.FromNumber(0x10001)], Is.EqualTo((ushort)200));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resolved[Address.FromNumber(0x01)], Is.EqualTo((ushort)47));
+            Assert.That(resolved[Address.FromNumber(0x10001)], Is.EqualTo((ushort)200));
+        }
     }
 
     [Test]
@@ -148,8 +154,11 @@ public class ZkGasScheduleTests
 
         FrozenDictionary<AddressAsKey, ushort> resolved = ZkGasSchedule.BuildPrecompileTable(entries);
 
-        Assert.That(resolved[Address.FromNumber(0x01)], Is.EqualTo(ZkGasTestSchedules.PrecompileMultiplier(0x01)));
-        Assert.That(resolved[Address.FromNumber(0x05)], Is.EqualTo(ZkGasTestSchedules.PrecompileMultiplier(0x05)));
-        Assert.That(resolved[Address.FromNumber(0x11)], Is.EqualTo(ZkGasTestSchedules.PrecompileMultiplier(0x11)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resolved[Address.FromNumber(0x01)], Is.EqualTo(ZkGasTestSchedules.PrecompileMultiplier(0x01)));
+            Assert.That(resolved[Address.FromNumber(0x05)], Is.EqualTo(ZkGasTestSchedules.PrecompileMultiplier(0x05)));
+            Assert.That(resolved[Address.FromNumber(0x11)], Is.EqualTo(ZkGasTestSchedules.PrecompileMultiplier(0x11)));
+        }
     }
 }

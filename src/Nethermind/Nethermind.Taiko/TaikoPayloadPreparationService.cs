@@ -16,6 +16,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Taiko.TaikoSpec;
 
@@ -79,6 +80,9 @@ public class TaikoPayloadPreparationService(
 
                 // Write L1Origin and HeadL1Origin even if the payload is already in the cache.
                 L1Origin l1Origin = attrs.L1Origin ?? throw new InvalidOperationException("L1Origin is required");
+
+                // The resent attributes carry the driver's zero block hash, so keep the hash of the block already built.
+                l1Origin.L2BlockHash = existing.CurrentBestBlock?.Hash ?? l1Origin.L2BlockHash;
                 l1OriginStore.WriteL1Origin(l1Origin.BlockId, l1Origin);
 
                 if (!l1Origin.IsPreconfBlock)
@@ -159,23 +163,16 @@ public class TaikoPayloadPreparationService(
 
     private Transaction[] BuildTransactions(TaikoPayloadAttributes payloadAttributes)
     {
-        RlpReader ctx = new(payloadAttributes.BlockMetadata!.TxList!);
+        RlpReader reader = new(payloadAttributes.BlockMetadata!.TxList!);
+        RlpReader ctx = reader.EnterSequence(out int transactionsLength);
 
-        int transactionsSequenceLength = ctx.ReadSequenceLength();
-        int transactionsCheck = ctx.Position + transactionsSequenceLength;
-
-        int txCount = ctx.PeekNumberOfItemsRemaining(transactionsCheck);
-        ctx.GuardLimit(txCount);
-
-        Transaction[] transactions = new Transaction[txCount];
-        int txIndex = 0;
-
-        while (ctx.Position < transactionsCheck)
+        Transaction[] transactions = new Transaction[ctx.CountItems(RlpLimit.DefaultLimit)];
+        for (int txIndex = 0; txIndex < transactions.Length; txIndex++)
         {
-            transactions[txIndex++] = txDecoder.DecodeGuardNotNull(ref ctx);
+            transactions[txIndex] = txDecoder.DecodeGuardNotNull(ref ctx);
         }
 
-        ctx.Check(transactionsCheck);
+        reader.ExitSequence(in ctx, transactionsLength);
 
         return transactions;
     }

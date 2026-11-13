@@ -173,8 +173,11 @@ internal class SubnetPenaltyTests
         Address eip55First = new("0xECf1aC276D2D3333483cF394d2F73BaB6915feCb");
         Address eip55Second = new("0xe3eE640071486df6A007021c34D52b5DE7be94e3");
 
-        Assert.That(string.CompareOrdinal(eip55First.ToString(), eip55Second.ToString()), Is.GreaterThan(0));
-        Assert.That(string.CompareOrdinal(eip55First.ToString(withEip55Checksum: true), eip55Second.ToString(withEip55Checksum: true)), Is.LessThan(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(string.CompareOrdinal(eip55First.ToString(), eip55Second.ToString()), Is.GreaterThan(0));
+            Assert.That(string.CompareOrdinal(eip55First.ToString(withEip55Checksum: true), eip55Second.ToString(withEip55Checksum: true)), Is.LessThan(0));
+        }
 
         Address[] injectedPenalties = [eip55Second, eip55First];
         byte[] penaltyBytes = new byte[injectedPenalties.Length * Address.Size];

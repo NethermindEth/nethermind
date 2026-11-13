@@ -20,7 +20,7 @@ jobs:
           ref: master
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v6
+        uses: ./.github/actions/setup-dotnet
 
       - name: Bump up the version
         id: version

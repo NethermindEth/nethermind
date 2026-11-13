@@ -55,8 +55,11 @@ public class TransactionJsonTest : GeneralStateTestBase
         txJson.GasLimit = new ulong[1];
         txJson.Data = new byte[1][];
         Assert.That(txJson.AccessLists, Is.Not.Null);
-        Assert.That(txJson.AccessLists[0][0].Address, Is.EqualTo(new Address("0x0001020304050607080900010203040506070809")));
-        Assert.That(txJson.AccessLists[0][0].StorageKeys[1][0], Is.EqualTo((byte)1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(txJson.AccessLists[0][0].Address, Is.EqualTo(new Address("0x0001020304050607080900010203040506070809")));
+            Assert.That(txJson.AccessLists[0][0].StorageKeys[1][0], Is.EqualTo((byte)1));
+        }
 
         Nethermind.Core.Transaction tx = JsonToEthereumTest.Convert(new PostStateJson { Indexes = new IndexesJson() }, txJson);
         Assert.That(tx.AccessList, Is.Not.Null);
@@ -123,8 +126,11 @@ public class TransactionJsonTest : GeneralStateTestBase
 
         EthereumTestResult result = await RunTest(test);
 
-        Assert.That(result.Pass, Is.True);
-        Assert.That(result.StateRoot, Is.EqualTo(test.PostHash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Pass, Is.True);
+            Assert.That(result.StateRoot, Is.EqualTo(test.PostHash));
+        }
     }
 
     /// <summary>
@@ -189,8 +195,11 @@ public class TransactionJsonTest : GeneralStateTestBase
 
         EthereumTestResult result = await RunTest(test);
 
-        Assert.That(result.StateRoot, Is.EqualTo(test.PostHash), "invalid AccessList tx on pre-Berlin fork should not mutate state");
-        Assert.That(result.Pass, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StateRoot, Is.EqualTo(test.PostHash), "invalid AccessList tx on pre-Berlin fork should not mutate state");
+            Assert.That(result.Pass, Is.True);
+        }
     }
 
     /// <summary>

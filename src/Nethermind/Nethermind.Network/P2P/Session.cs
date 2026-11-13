@@ -89,6 +89,7 @@ namespace Nethermind.Network.P2P
         public bool IsClosing => State > SessionState.Initialized;
         private bool IsClosed => State > SessionState.DisconnectingProtocols;
         public bool IsChannelClosed => _isChannelClosed;
+        public bool IsOutboundBufferFull => _context?.Channel is { IsWritable: false };
         public bool IsNetworkIdMatched { get; set; }
         public int LocalPort { get; set; }
         public PublicKey? RemoteNodeId { get; set; }
@@ -148,7 +149,7 @@ namespace Nethermind.Network.P2P
             splitter.EnableSnappy(_logManager);
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void TraceEnablingSnappy() => _logger.Trace($"Enabling Snappy compression and disabling framing in {this}");
+            void TraceEnablingSnappy() => _logger.Trace($"Enabling Snappy compression and disabling framing in {this:hide}");
         }
 
         public void AddSupportedCapability(Capability capability)
@@ -182,8 +183,8 @@ namespace Nethermind.Network.P2P
 
         public void ReceiveMessage(ZeroPacket zeroPacket)
         {
-            Interlocked.Add(ref Metrics.P2PBytesReceived, zeroPacket.Content.ReadableBytes);
-            Interlocked.Add(ref _bytesReceived, zeroPacket.Content.ReadableBytes);
+            Interlocked.Add(ref Metrics.P2PBytesReceived, zeroPacket.Content.Length);
+            Interlocked.Add(ref _bytesReceived, zeroPacket.Content.Length);
 
             lock (_sessionStateLock)
             {
@@ -203,11 +204,11 @@ namespace Nethermind.Network.P2P
             zeroPacket.Protocol = protocol;
 
             _activityObserver?.OnSessionActivity(this);
-            MsgReceived?.Invoke(this, new PeerEventArgs(_node, zeroPacket.Protocol, zeroPacket.PacketType, zeroPacket.Content.ReadableBytes));
+            MsgReceived?.Invoke(this, new PeerEventArgs(_node, zeroPacket.Protocol, zeroPacket.PacketType, zeroPacket.Content.Length));
 
-            RecordIncomingMessageMetric(zeroPacket.Protocol, messageId, zeroPacket.Content.ReadableBytes);
+            RecordIncomingMessageMetric(zeroPacket.Protocol, messageId, zeroPacket.Content.Length);
 
-            if (_logger.IsTrace) TraceMessageReceived(dynamicMessageCode, protocol, messageId, zeroPacket.Content.ReadableBytes);
+            if (_logger.IsTrace) TraceMessageReceived(dynamicMessageCode, protocol, messageId, zeroPacket.Content.Length);
 
             if (protocol is null)
             {
@@ -228,11 +229,11 @@ namespace Nethermind.Network.P2P
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceMessageReceived(int dynamicCode, string? proto, int msgId, int readableBytes)
-                => _logger.Trace($"{this} received a message of length {readableBytes} ({dynamicCode} => {proto}.{msgId})");
+                => _logger.Trace($"{this:hide} received a message of length {readableBytes} ({dynamicCode} => {proto}.{msgId})");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void WarnUnknownProtocol(int dynamicCode, int msgId)
-                => _logger.Warn($"Received a message from node: {RemoteNodeId}, " +
+                => _logger.Warn($"Received a message from node: {RemoteNodeId:hide}, " +
                         $"({dynamicCode} => {msgId}), known protocols ({_protocols.Count}): " +
                         $"{string.Join(", ", _protocols.Select(static x => $"{x.Value.Name} {x.Value.MessageIdSpaceSize}"))}");
         }
@@ -276,7 +277,7 @@ namespace Nethermind.Network.P2P
             }
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void TraceDeliverMessage(T msg) => _logger.Trace($"P2P to deliver {msg.Protocol}.{msg.PacketType} on {this}");
+            void TraceDeliverMessage(T msg) => _logger.Trace($"P2P to deliver {msg.Protocol}.{msg.PacketType} on {this:hide}");
         }
 
         public bool TryGetProtocolHandler(string protocolCode, out IProtocolHandler handler) => _protocols.TryGetValue(protocolCode, out handler);
@@ -318,7 +319,7 @@ namespace Nethermind.Network.P2P
             }
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void TraceSessionOperation() => _logger.Trace($"{nameof(Init)} called on {this}");
+            void TraceSessionOperation() => _logger.Trace($"{nameof(Init)} called on {this:hide}");
         }
 
         public void Handshake(PublicKey? handshakeRemoteNodeId)
@@ -367,13 +368,13 @@ namespace Nethermind.Network.P2P
             HandshakeComplete?.Invoke(this, EventArgs.Empty);
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void TraceHandshakeCalled() => _logger.Trace($"{nameof(Handshake)} called on {this}");
+            void TraceHandshakeCalled() => _logger.Trace($"{nameof(Handshake)} called on {this:hide}");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void DebugUnexpectedNodeId(PublicKey remoteNodeId) => _logger.Debug($"Unexpected remote node id in handshake: expected {RemoteNodeId}, received {remoteNodeId}");
+            void DebugUnexpectedNodeId(PublicKey remoteNodeId) => _logger.Debug($"Unexpected remote node id in handshake: expected {RemoteNodeId:hide}, received {remoteNodeId:hide}");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void TraceDifferentNodeId(PublicKey remoteNodeId) => _logger.Trace($"Different NodeId received in handshake: old: {RemoteNodeId}, new: {remoteNodeId}");
+            void TraceDifferentNodeId(PublicKey remoteNodeId) => _logger.Trace($"Different NodeId received in handshake: old: {RemoteNodeId:hide}, new: {remoteNodeId:hide}");
         }
 
         public void InitiateDisconnect(DisconnectReason disconnectReason, string? details = null)
@@ -435,15 +436,15 @@ namespace Nethermind.Network.P2P
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TracePrivilegedPeerNotDisconnecting(DisconnectReason reason, string? det)
-                => _logger.Trace($"{this} not disconnecting for static/trusted peer on {reason} ({det})");
+                => _logger.Trace($"{this:hide} not disconnecting for static/trusted peer on {reason} ({det:hide})");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceInitiatingDisconnect(DisconnectReason reason, string? det) =>
-                _logger.Trace($"{this} initiating disconnect because {reason}, details: {det}");
+                _logger.Trace($"{this:hide} initiating disconnect because {reason}, details: {det:hide}");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceDisconnectingProtocol(IProtocolHandler handler, DisconnectReason reason, string? det)
-                => _logger.Trace($"{this} disconnecting {handler.Name} {reason} ({det})");
+                => _logger.Trace($"{this:hide} disconnecting {handler.Name} {reason} ({det:hide})");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void DebugDisconnectProtocolFailed(IProtocolHandler handler, Exception e)
@@ -526,27 +527,27 @@ namespace Nethermind.Network.P2P
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceAlreadyDisconnected(DisconnectReason reason, DisconnectType type)
-                => _logger.Trace($"{this} already disconnected {reason} {type}");
+                => _logger.Trace($"{this:hide} already disconnected {reason} {type}");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void WarnTrackedDisconnect(DisconnectReason reason, DisconnectType type, string det)
-                => _logger.Warn($"Tracked {this} -> disconnected {type} {reason} {det}");
+                => _logger.Warn($"Tracked {this:hide} -> disconnected {type} {reason} {det:hide}");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void ErrorDisconnectingEvent(DisconnectReason reason, DisconnectType type, string det)
-                => _logger.Error($"{this} invoking 'Disconnecting' event {reason} {type} {det}");
+                => _logger.Error($"{this:hide} invoking 'Disconnecting' event {reason} {type} {det:hide}");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceDisconnectingEvent(DisconnectReason reason, DisconnectType type, string det)
-                => _logger.Trace($"{this} invoking 'Disconnecting' event {reason} {type} {det}");
+                => _logger.Trace($"{this:hide} invoking 'Disconnecting' event {reason} {type} {det:hide}");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceDisconnectedEvent(DisconnectReason reason, DisconnectType type)
-                => _logger.Trace($"|NetworkTrace| {this} disconnected event {reason} {type}");
+                => _logger.Trace($"|NetworkTrace| {this:hide} disconnected event {reason} {type}");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void DebugNoDisconnectedSubscriptions()
-                => _logger.DebugError($"No subscriptions for session disconnected event on {this}");
+                => _logger.DebugError($"No subscriptions for session disconnected event on {this:hide}");
         }
 
         internal void MarkChannelClosed() => _isChannelClosed = true;
@@ -584,7 +585,7 @@ namespace Nethermind.Network.P2P
             }
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void TraceDisconnectError(Exception e) => _logger.Trace($"Error while disconnecting on context on {this} : {e}");
+            void TraceDisconnectError(Exception e) => _logger.Trace($"Error while disconnecting on context on {this:hide} : {e:hide}");
         }
 
         public event EventHandler<DisconnectEventArgs> Disconnecting;

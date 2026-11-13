@@ -63,13 +63,18 @@ public class ChangesetPrefixStateSeedSourceTests
     public void CoveredBlocks_KeepReadCachesExclusiveAndClearThemBeforeReuse([Values] bool disposeWhileArmed)
     {
         ChangesetPrefixStateSeedSource source = new(_index);
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(source.TryOpenBlock(_block, out ICoveredBlock? first), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(source.TryOpenBlock(_block, out ICoveredBlock? second), Is.True);
         using ICoveredBlock secondLease = second!;
         StateReadOverlaySlot firstSlot = new();
         StateReadOverlaySlot secondSlot = new();
-        Assert.That(first!.CreateWorkerSeeds().TrySeed(_block, 1, firstSlot), Is.True);
-        Assert.That(second!.CreateWorkerSeeds().TrySeed(_block, 1, secondSlot), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first!.CreateWorkerSeeds().TrySeed(_block, 1, firstSlot), Is.True);
+            Assert.That(second!.CreateWorkerSeeds().TrySeed(_block, 1, secondSlot), Is.True);
+        }
         BlockReadCache firstCache = firstSlot.Cache!;
         firstCache.SetAccount(TestItem.AddressC, new Account(1, 42));
         firstCache.SetSlot(TestItem.AddressC, UInt256.One, (UInt256)42);

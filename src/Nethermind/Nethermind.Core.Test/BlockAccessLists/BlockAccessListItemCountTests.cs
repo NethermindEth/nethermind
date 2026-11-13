@@ -42,7 +42,7 @@ public class BlockAccessListItemCountTests
             (Action<BlockAccessListAtIndex>)(static s => s.AddBalanceChange(TestItem.AddressA, before: UInt256.Zero, after: (UInt256)100)),
             1).SetName("ItemCount_balance_change_counts_only_account");
         yield return new TestCaseData(
-            (Action<BlockAccessListAtIndex>)(static s => s.AddNonceChange(TestItem.AddressA, 1)),
+            (Action<BlockAccessListAtIndex>)(static s => s.AddNonceChange(TestItem.AddressA, 0, 1)),
             1).SetName("ItemCount_nonce_change_counts_only_account");
         yield return new TestCaseData(
             (Action<BlockAccessListAtIndex>)(static s => s.AddCodeChange(TestItem.AddressA, before: Array.Empty<byte>(), after: new byte[] { 0x60 })),

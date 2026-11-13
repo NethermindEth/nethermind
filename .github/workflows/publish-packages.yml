@@ -166,7 +166,7 @@ jobs:
           ref: ${{ env.TAG_NAME }}
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v6
+        uses: ./.github/actions/setup-dotnet
 
       - name: Download Nethermind reference assemblies
         env:

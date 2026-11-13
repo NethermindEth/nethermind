@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Numerics;
 using DotNetty.Transport.Channels;
@@ -47,7 +48,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test;
 
-[Parallelizable(ParallelScope.Self)]
+[NonParallelizable]
 public class ProtocolsManagerTests
 {
     [SetUp]
@@ -84,10 +85,13 @@ public class ProtocolsManagerTests
             session,
             new DisconnectEventArgs(DisconnectReason.Other, DisconnectType.Remote, "test"));
 
-        Assert.That(initializedHandler, Is.Not.Null);
-        Assert.That(session.AddedDisconnectedHandler, Is.Null);
-        Assert.That(session.RemovedInitializedHandler, Is.SameAs(initializedHandler));
-        Assert.That(session.RemovedDisconnectedHandler, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(initializedHandler, Is.Not.Null);
+            Assert.That(session.AddedDisconnectedHandler, Is.Null);
+            Assert.That(session.RemovedInitializedHandler, Is.SameAs(initializedHandler));
+            Assert.That(session.RemovedDisconnectedHandler, Is.Null);
+        }
     }
 
     [TestCase(DisconnectReason.TooManyPeers, DisconnectType.Remote)]
@@ -146,13 +150,19 @@ public class ProtocolsManagerTests
         ProtocolsManager manager = BuildManagerWithResolvers(resolver);
 
         Assert.That(manager.GetHighestProtocolVersion(Protocol.Snap), Is.EqualTo(1));
-        Assert.That(manager.GetHighestProtocolVersion(Protocol.Snap), Is.EqualTo(1));
-        Assert.That(resolver.ResolveCount, Is.EqualTo(1), "advertised capabilities should be cached across calls");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(manager.GetHighestProtocolVersion(Protocol.Snap), Is.EqualTo(1));
+            Assert.That(resolver.ResolveCount, Is.EqualTo(1), "advertised capabilities should be cached across calls");
+        }
 
         resolver.RaiseChanged();
 
-        Assert.That(manager.GetHighestProtocolVersion(Protocol.Snap), Is.EqualTo(1));
-        Assert.That(resolver.ResolveCount, Is.EqualTo(2), "cache should rebuild after a resolver signals a change");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(manager.GetHighestProtocolVersion(Protocol.Snap), Is.EqualTo(1));
+            Assert.That(resolver.ResolveCount, Is.EqualTo(2), "cache should rebuild after a resolver signals a change");
+        }
     }
 
     private static ProtocolsManager BuildManagerWithResolvers(params IP2PCapabilityResolver[] resolvers) =>
@@ -212,7 +222,7 @@ public class ProtocolsManagerTests
         private readonly IChainHeadSpecProvider _specProvider;
         private readonly IForkInfo _forkInfo;
 
-        public Context()
+        public Context(ILogManager? logManager = null)
         {
             _channel = Substitute.For<IChannel>();
             _channelHandlerContext = Substitute.For<IChannelHandlerContext>();
@@ -262,7 +272,7 @@ public class ProtocolsManagerTests
                 _peerStorage,
                 BuildProtocolHandlerFactories(),
                 [new DefaultP2PCapabilityResolver()],
-                LimboLogs.Instance);
+                logManager ?? LimboLogs.Instance);
         }
 
         private IProtocolHandlerFactory[] BuildProtocolHandlerFactories() => [
@@ -354,7 +364,7 @@ public class ProtocolsManagerTests
 
             // to account for AdaptivePacketType byte
             disconnectPacket.ReadByte();
-            _currentSession.ReceiveMessage(new ZeroPacket(disconnectPacket) { PacketType = P2PMessageCode.Disconnect });
+            _currentSession.ReceiveMessage(new NettyBufferPacket(disconnectPacket) { PacketType = P2PMessageCode.Disconnect });
             return this;
         }
 
@@ -404,17 +414,20 @@ public class ProtocolsManagerTests
             using DisposableByteBuffer statusPacket = _serializer.ZeroSerialize(msg).AsDisposable();
             statusPacket.ReadByte();
 
-            _currentSession.ReceiveMessage(new ZeroPacket(statusPacket) { PacketType = Eth62MessageCode.Status + 16 });
+            _currentSession.ReceiveMessage(new NettyBufferPacket(statusPacket) { PacketType = Eth62MessageCode.Status + 16 });
             return this;
         }
 
         public Context VerifyEthInitialized()
         {
             INodeStats stats = _nodeStatsManager.GetOrAdd(_currentSession.Node);
-            Assert.That(stats.EthNodeDetails.NetworkId, Is.EqualTo(TestBlockchainIds.NetworkId));
-            Assert.That(stats.EthNodeDetails.GenesisHash, Is.EqualTo(_blockTree.Genesis.Hash));
-            Assert.That(stats.EthNodeDetails.ProtocolVersion, Is.EqualTo(68));
-            Assert.That(stats.EthNodeDetails.TotalDifficulty, Is.EqualTo(BigInteger.One));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(stats.EthNodeDetails.NetworkId, Is.EqualTo(TestBlockchainIds.NetworkId));
+                Assert.That(stats.EthNodeDetails.GenesisHash, Is.EqualTo(_blockTree.Genesis.Hash));
+                Assert.That(stats.EthNodeDetails.ProtocolVersion, Is.EqualTo(68));
+                Assert.That(stats.EthNodeDetails.TotalDifficulty, Is.EqualTo(BigInteger.One));
+            }
             return this;
         }
 
@@ -444,7 +457,7 @@ public class ProtocolsManagerTests
             // to account for AdaptivePacketType byte
             helloPacket.ReadByte();
 
-            _currentSession.ReceiveMessage(new ZeroPacket(helloPacket) { PacketType = P2PMessageCode.Hello });
+            _currentSession.ReceiveMessage(new NettyBufferPacket(helloPacket) { PacketType = P2PMessageCode.Hello });
             return this;
         }
 
@@ -557,21 +570,39 @@ public class ProtocolsManagerTests
             .VerifyInitialized();
 
     [Test]
-    public void Can_initialize_eth_protocol() => When
-            .CreateIncomingSession()
-            .ActivateChannel()
-            .Handshake()
-            .Init()
-            .VerifyInitialized()
-            .ReceiveHello()
-            .ReceiveStatus()
-            .VerifyEthInitialized();
+    public void Can_initialize_eth_protocol([Values] bool maskSensitiveData, [Values] bool outbound)
+    {
+        bool previous = SensitiveLogMasking.Enabled;
+        SensitiveLogMasking.Enabled = maskSensitiveData;
+        try
+        {
+            TestLogger logger = new();
+            Context context = new(new OneLoggerLogManager(new(logger)));
+            if (outbound) context.CreateOutgoingSession();
+            else context.CreateIncomingSession();
+            context.ActivateChannel().Handshake().Init().VerifyInitialized()
+                .ReceiveHello().ReceiveStatus().VerifyEthInitialized();
+
+            string diagnostic = logger.LogList.Single(line => line.Contains(" sync peer ") && line.EndsWith(" created."));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(diagnostic, Does.Contain(maskSensitiveData ? "[redacted]" : "other client v1"));
+                if (maskSensitiveData) Assert.That(diagnostic, Does.Not.Contain("other client v1"));
+            }
+        }
+        finally
+        {
+            SensitiveLogMasking.Enabled = previous;
+        }
+    }
 
     [Test]
     public void Persists_verified_enr_after_protocol_initialization()
     {
         NodeRecord record = CreateSignedRecord("35.0.0.1", includeIpv6: true);
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(Node.TryFromEnr(record, out Node? node), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(node!.SetVerifiedEnr(record), Is.True);
 
         When.CreateOutgoingSession(node)

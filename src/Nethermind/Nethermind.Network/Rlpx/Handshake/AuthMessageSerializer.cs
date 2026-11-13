@@ -2,13 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Rlpx.Handshake
 {
-    public class AuthMessageSerializer : IZeroMessageSerializer<AuthMessage>
+    public class AuthMessageSerializer : IMessageSerializer<AuthMessage>
     {
         public const int SigOffset = 0;
         public const int SigLength = 65;
@@ -35,26 +33,32 @@ namespace Nethermind.Network.Rlpx.Handshake
         // =============
         // 307 (total)
 
-        public void Serialize(IByteBuffer byteBuffer, AuthMessage msg)
+        public int GetLength(AuthMessage msg) => Length;
+
+        public int Serialize(Span<byte> destination, AuthMessage msg)
         {
-            byteBuffer.EnsureWritable(Length);
-            byteBuffer.WriteBytes(msg.Signature.Bytes);
-            byteBuffer.WriteByte(msg.Signature.RecoveryId);
-            byteBuffer.WriteBytes(msg.EphemeralPublicHash.Bytes);
-            byteBuffer.WriteBytes(msg.PublicKey.Bytes);
-            byteBuffer.WriteBytes(msg.Nonce);
-            byteBuffer.WriteByte(msg.IsTokenUsed ? 0x01 : 0x00);
+            if (msg.Nonce.Length != NonceLength)
+            {
+                throw new ArgumentException($"{nameof(AuthMessage)} nonce must be {NonceLength} bytes, not {msg.Nonce.Length}.", nameof(msg));
+            }
+
+            msg.Signature.Bytes.CopyTo(destination[SigOffset..]);
+            destination[SigOffset + SigLength - 1] = msg.Signature.RecoveryId;
+            msg.EphemeralPublicHash.Bytes.CopyTo(destination[EphemeralHashOffset..]);
+            msg.PublicKey.Bytes.CopyTo(destination[PublicKeyOffset..]);
+            msg.Nonce.CopyTo(destination.Slice(NonceOffset, NonceLength));
+            destination[IsTokenUsedOffset] = msg.IsTokenUsed ? (byte)0x01 : (byte)0x00;
+            return Length;
         }
 
-        public AuthMessage Deserialize(IByteBuffer msgBytes)
+        public AuthMessage Deserialize(ReadOnlySpan<byte> msg)
         {
-            if (msgBytes.ReadableBytes != Length)
+            if (msg.Length != Length)
             {
-                throw new NetworkingException($"Incorrect incoming {nameof(AuthMessage)} length. Expected {Length} but was {msgBytes.ReadableBytes}", NetworkExceptionType.Validation);
+                throw new NetworkingException($"Incorrect incoming {nameof(AuthMessage)} length. Expected {Length} but was {msg.Length}", NetworkExceptionType.Validation);
             }
 
             AuthMessage authMessage = new();
-            Span<byte> msg = msgBytes.ReadAllBytesAsSpan();
             authMessage.Signature = new Signature(msg[..(SigLength - 1)], msg[64]);
             authMessage.EphemeralPublicHash = new Hash256(msg.Slice(EphemeralHashOffset, EphemeralHashLength));
             authMessage.PublicKey = new PublicKey(msg.Slice(PublicKeyOffset, PublicKeyLength));

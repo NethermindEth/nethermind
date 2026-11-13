@@ -16,27 +16,36 @@ namespace Nethermind.AuRa.Test.Contract
         public void IncrementalChanges()
         {
             DataContract<int> dataContract = new(GetAll, GetFromReceipts);
-            Assert.That(dataContract.IncrementalChanges, Is.True);
-            Assert.That(dataContract.TryGetItemsChangedFromBlock(Build.A.BlockHeader.TestObject, [], out IEnumerable<int> items), Is.True);
-            Assert.That(items, Is.EquivalentTo(new[] { 1, 5 }));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(dataContract.IncrementalChanges, Is.True);
+                Assert.That(dataContract.TryGetItemsChangedFromBlock(Build.A.BlockHeader.TestObject, [], out IEnumerable<int> items), Is.True);
+                Assert.That(items, Is.EquivalentTo(new[] { 1, 5 }));
+            }
         }
 
         [Test]
         public void NonIncrementalChanges_check_found()
         {
             DataContract<int> dataContract = new(GetAll, TryGetFromReceiptsTrue);
-            Assert.That(dataContract.IncrementalChanges, Is.False);
-            Assert.That(dataContract.TryGetItemsChangedFromBlock(Build.A.BlockHeader.TestObject, [], out IEnumerable<int> items), Is.True);
-            Assert.That(items, Is.EquivalentTo(new[] { 1, 5 }));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(dataContract.IncrementalChanges, Is.False);
+                Assert.That(dataContract.TryGetItemsChangedFromBlock(Build.A.BlockHeader.TestObject, [], out IEnumerable<int> items), Is.True);
+                Assert.That(items, Is.EquivalentTo(new[] { 1, 5 }));
+            }
         }
 
         [Test]
         public void NonIncrementalChanges_check_non_found()
         {
             DataContract<int> dataContract = new(GetAll, TryGetFromReceiptsFalse);
-            Assert.That(dataContract.IncrementalChanges, Is.False);
-            Assert.That(dataContract.TryGetItemsChangedFromBlock(Build.A.BlockHeader.TestObject, [], out IEnumerable<int> items), Is.False);
-            Assert.That(items, Is.Empty);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(dataContract.IncrementalChanges, Is.False);
+                Assert.That(dataContract.TryGetItemsChangedFromBlock(Build.A.BlockHeader.TestObject, [], out IEnumerable<int> items), Is.False);
+                Assert.That(items, Is.Empty);
+            }
         }
 
         private static IEnumerable<int> GetAll(BlockHeader header) => new[] { 1, 5 };

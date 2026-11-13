@@ -252,7 +252,7 @@ jobs:
 
       - name: Set up .NET
         if: always()
-        uses: actions/setup-dotnet@v5
+        uses: ./.github/actions/setup-dotnet
         with:
           cache: false
 

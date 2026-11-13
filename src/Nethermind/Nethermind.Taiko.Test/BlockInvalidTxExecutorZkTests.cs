@@ -196,8 +196,11 @@ public class BlockInvalidTxExecutorZkTests
         executor.ProcessTransactions(block, ProcessingOptions.ProducingBlock, receiptsTracer, CancellationToken.None);
 
         Assert.That(block.Transactions, Has.Length.EqualTo(1));
-        Assert.That(block.Transactions[0], Is.SameAs(anchor));
-        Assert.That(meter.IsLimitExceeded, Is.False, "IsLimitExceeded must not leak after rollback");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Transactions[0], Is.SameAs(anchor));
+            Assert.That(meter.IsLimitExceeded, Is.False, "IsLimitExceeded must not leak after rollback");
+        }
         worldState.Received().Restore(Arg.Any<Snapshot>());
     }
 

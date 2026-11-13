@@ -42,8 +42,11 @@ public class MetricsIntegrationTests
             .WithGasLimit(21_000).SignedAndResolved(_harness.Ecdsa, sender, true).TestObject;
         _harness.ExecuteTx(tx, _harness.CreateBlock(tx));
 
-        Assert.That(DbMetrics.MainThreadStateTreeReads - startReads, Is.GreaterThanOrEqualTo(2));
-        Assert.That(Metrics.MainThreadAccountWrites - startWrites, Is.GreaterThanOrEqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(DbMetrics.MainThreadStateTreeReads - startReads, Is.GreaterThanOrEqualTo(2));
+            Assert.That(Metrics.MainThreadAccountWrites - startWrites, Is.GreaterThanOrEqualTo(2));
+        }
     }
 
     [Test]
@@ -138,8 +141,11 @@ public class MetricsIntegrationTests
             .SignedAndResolved(_harness.Ecdsa, sender, true).TestObject;
         _harness.ExecuteTx(tx, _harness.CreateBlock(tx));
 
-        Assert.That(Metrics.MainThreadCodeWrites - startCodeWrites, Is.Zero);
-        Assert.That(Metrics.MainThreadCodeBytesWritten - startCodeBytesWritten, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.MainThreadCodeWrites - startCodeWrites, Is.Zero);
+            Assert.That(Metrics.MainThreadCodeBytesWritten - startCodeBytesWritten, Is.Zero);
+        }
     }
 
     [Test]
@@ -156,8 +162,11 @@ public class MetricsIntegrationTests
             harness.DeployCode(TestItem.AddressC, code);
         }
 
-        Assert.That(Metrics.MainThreadCodeWrites - startCodeWrites, Is.Zero);
-        Assert.That(Metrics.MainThreadCodeBytesWritten - startCodeBytesWritten, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.MainThreadCodeWrites - startCodeWrites, Is.Zero);
+            Assert.That(Metrics.MainThreadCodeBytesWritten - startCodeBytesWritten, Is.Zero);
+        }
     }
 
     [Test]

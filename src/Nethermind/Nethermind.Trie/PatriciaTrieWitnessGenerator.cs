@@ -4,9 +4,8 @@
 using System;
 using System.Buffers;
 using System.Numerics;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 using Nethermind.Trie.Pruning;
 
@@ -316,7 +315,7 @@ public static class PatriciaTrieWitnessGenerator
             TrieNode? child = childIterator.GetChildWithChildPath(resolver, ref childPath, nib);
             // Only an absent child needs a bucket scan; a walked child folds any upsert into its own result (below).
             bool hasUpsert = child is null && BucketHasUpsert(jobEntries);
-            jobs[nib] = new Job(GetSpanOffset(originalEntries, jobEntries), jobEntries.Length, childPath, child, hasUpsert);
+            jobs[nib] = new Job(jobEntries.OffsetIn(originalEntries), jobEntries.Length, childPath, child, hasUpsert);
         }
 
         Context closureCtx = ctx;
@@ -404,12 +403,5 @@ public static class PatriciaTrieWitnessGenerator
             path.TruncateOne();
         }
         return false;
-    }
-
-    private static int GetSpanOffset<T>(T[] array, Span<T> span)
-    {
-        ref T spanRef = ref MemoryMarshal.GetReference(span);
-        ref T arrRef = ref MemoryMarshal.GetArrayDataReference(array);
-        return (int)(Unsafe.ByteOffset(ref arrRef, ref spanRef) / Unsafe.SizeOf<T>());
     }
 }

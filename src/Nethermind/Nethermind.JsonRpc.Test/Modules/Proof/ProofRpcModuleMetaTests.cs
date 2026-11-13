@@ -98,9 +98,12 @@ public class ProofRpcModuleMetaTests
 
         Assert.That(payload, Is.Not.Null);
         Assert.That(payload.Proof, Is.Not.Null);
-        Assert.That(payload.Proof.Address, Is.EqualTo(TestItem.AddressA));
-        Assert.That(payload.Proof.Balance, Is.EqualTo((UInt256)100_000));
-        Assert.That(payload.Proof.Proof, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(payload.Proof.Address, Is.EqualTo(TestItem.AddressA));
+            Assert.That(payload.Proof.Balance, Is.EqualTo((UInt256)100_000));
+            Assert.That(payload.Proof.Proof, Is.Not.Null);
+        }
         Assert.That(payload.Proof.Proof.Length, Is.GreaterThan(0));
     }
 
@@ -111,10 +114,13 @@ public class ProofRpcModuleMetaTests
             TestItem.AddressA, [], BlockParameter.Earliest).Data;
 
         Assert.That(payload.Meta, Is.Not.Null);
-        Assert.That(payload.Meta.NodeLookups, Is.GreaterThan(0),
-            "every proof generation must perform at least one node lookup");
-        Assert.That(payload.Meta.CacheHits, Is.LessThanOrEqualTo(payload.Meta.NodeLookups),
-            "cache hits cannot exceed total lookups");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(payload.Meta.NodeLookups, Is.GreaterThan(0),
+                "every proof generation must perform at least one node lookup");
+            Assert.That(payload.Meta.CacheHits, Is.LessThanOrEqualTo(payload.Meta.NodeLookups),
+                "cache hits cannot exceed total lookups");
+        }
     }
 
     [Test]
@@ -125,9 +131,12 @@ public class ProofRpcModuleMetaTests
         AccountProofWithMeta second = _proofRpcModule.proof_getProofWithMeta(
             TestItem.AddressA, [], BlockParameter.Earliest).Data;
 
-        Assert.That(second.Meta.NodeLookups, Is.EqualTo(first.Meta.NodeLookups));
-        Assert.That(second.Meta.CacheHits, Is.EqualTo(first.Meta.CacheHits));
-        Assert.That(second.Meta.MaxDepth, Is.EqualTo(first.Meta.MaxDepth));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(second.Meta.NodeLookups, Is.EqualTo(first.Meta.NodeLookups));
+            Assert.That(second.Meta.CacheHits, Is.EqualTo(first.Meta.CacheHits));
+            Assert.That(second.Meta.MaxDepth, Is.EqualTo(first.Meta.MaxDepth));
+        }
     }
 
     [Test]
@@ -144,10 +153,13 @@ public class ProofRpcModuleMetaTests
         AccountProofWithMeta withStorage = _proofRpcModule.proof_getProofWithMeta(
             TestItem.AddressB, storageKeys, BlockParameter.Earliest).Data;
 
-        Assert.That(withStorage.Meta.MaxDepth, Is.GreaterThan(withoutStorage.Meta.MaxDepth),
-            "descending into the storage trie reaches deeper than the account trie alone");
-        Assert.That(withStorage.Meta.NodeLookups, Is.GreaterThan(withoutStorage.Meta.NodeLookups),
-            "storage-trie traversal triggers additional node lookups");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(withStorage.Meta.MaxDepth, Is.GreaterThan(withoutStorage.Meta.MaxDepth),
+                "descending into the storage trie reaches deeper than the account trie alone");
+            Assert.That(withStorage.Meta.NodeLookups, Is.GreaterThan(withoutStorage.Meta.NodeLookups),
+                "storage-trie traversal triggers additional node lookups");
+        }
     }
 
     [Test]
@@ -173,7 +185,10 @@ public class ProofRpcModuleMetaTests
         ResultWrapper<AccountProofWithMeta> result = _proofRpcModule.proof_getProofWithMeta(
             TestItem.AddressA, storageKeys, BlockParameter.Earliest);
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        }
     }
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using Nethermind.Core.Metric;
 
 namespace Nethermind.Core.Attributes;
@@ -80,4 +81,22 @@ public sealed class StringLabel(string label) : IMetricLabels, IEquatable<String
     public override bool Equals(object? obj) => Equals(obj as StringLabel);
 
     public override int GetHashCode() => _label.GetHashCode();
+}
+
+/// <summary>
+/// A single-value label held for the lifetime of the process, so the observer resolves its labelled child once.
+/// </summary>
+/// <remarks>
+/// <see cref="Get"/> returns one instance per value, so the observer cache stays bounded by the number of distinct
+/// values. Hold the result in a static field on hot paths to skip the lookup.
+/// </remarks>
+public sealed class StableStringLabel : IStableMetricLabels
+{
+    private static readonly ConcurrentDictionary<string, StableStringLabel> _cache = new(StringComparer.Ordinal);
+
+    private StableStringLabel(string label) => Labels = [label];
+
+    public string[] Labels { get; }
+
+    public static StableStringLabel Get(string label) => _cache.GetOrAdd(label, static l => new StableStringLabel(l));
 }

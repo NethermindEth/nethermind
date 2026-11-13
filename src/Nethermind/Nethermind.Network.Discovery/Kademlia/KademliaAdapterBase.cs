@@ -3,6 +3,7 @@
 
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Enr;
@@ -31,6 +32,20 @@ public abstract class KademliaAdapterBase(
 
     internal static bool HasExpectedNodeId(NodeRecord record, ValueHash256 expectedNodeId)
         => record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress().Hash == expectedNodeId;
+
+    /// <remarks>
+    /// <see cref="IPAddress.Equals(object)"/> also compares the IPv6 scope, which the socket sets for a link-local
+    /// source but a record never carries.
+    /// </remarks>
+    [SkipLocalsInit]
+    internal static bool HasSameAddressBytes(IPAddress left, IPAddress right)
+    {
+        Span<byte> leftBytes = stackalloc byte[16];
+        Span<byte> rightBytes = stackalloc byte[16];
+        return left.TryWriteBytes(leftBytes, out int leftLength) &&
+               right.TryWriteBytes(rightBytes, out int rightLength) &&
+               leftBytes[..leftLength].SequenceEqual(rightBytes[..rightLength]);
+    }
 
     protected virtual bool TryCreateNodeFromEnr(Node currentNode, NodeRecord record, [NotNullWhen(true)] out Node? refreshedNode)
         => CompositeDiscoveryApp.TryCreateReachableDiscoveryNode(record, LocalIp, currentNode.DiscoveryAddress, out refreshedNode);
@@ -82,7 +97,7 @@ public abstract class KademliaAdapterBase(
                 NodeRecord? record = await RequestRemoteRecord(node, requestedSequence, token);
                 if (record is null)
                 {
-                    if (Logger.IsTrace) Logger.Trace($"No usable {protocolName} ENR available from {node} after advertised sequence {requestedSequence}.");
+                    if (Logger.IsTrace) Logger.Trace($"No usable {protocolName} ENR available from {node:hide} after advertised sequence {requestedSequence}.");
                     if (node.TryClearEnrRequest(requestedSequence))
                     {
                         return;
@@ -93,7 +108,7 @@ public abstract class KademliaAdapterBase(
 
                 if (record.EnrSequence < node.RequestingEnrSequence)
                 {
-                    if (Logger.IsTrace) Logger.Trace($"Ignoring stale {protocolName} ENR from {node}; requested sequence {node.RequestingEnrSequence}, received {record.EnrSequence}.");
+                    if (Logger.IsTrace) Logger.Trace($"Ignoring stale {protocolName} ENR from {node:hide}; requested sequence {node.RequestingEnrSequence}, received {record.EnrSequence}.");
                     if (node.TryClearEnrRequest(requestedSequence))
                     {
                         return;
@@ -106,7 +121,7 @@ public abstract class KademliaAdapterBase(
                 {
                     // Do not observe a sequence from a record that is not authenticated for this node;
                     // doing so could suppress a later valid refresh.
-                    if (Logger.IsTrace) Logger.Trace($"Ignoring {protocolName} ENR from {node}; record is not valid for the node.");
+                    if (Logger.IsTrace) Logger.Trace($"Ignoring {protocolName} ENR from {node:hide}; record is not valid for the node.");
                     if (node.TryClearEnrRequest(requestedSequence))
                     {
                         return;
@@ -117,7 +132,7 @@ public abstract class KademliaAdapterBase(
 
                 if (!TryCreateNodeFromEnr(node, record, out Node? refreshedNode))
                 {
-                    if (Logger.IsTrace) Logger.Trace($"Retaining the reachable {protocolName} endpoint for {node}; the newer ENR has no usable discovery endpoint reachable from this listener.");
+                    if (Logger.IsTrace) Logger.Trace($"Retaining the reachable {protocolName} endpoint for {node:hide}; the newer ENR has no acceptable discovery endpoint.");
                     if (node.ObserveEnrSequence(record.EnrSequence))
                     {
                         return;
@@ -148,7 +163,7 @@ public abstract class KademliaAdapterBase(
         catch (Exception e)
         {
             node.TryClearEnrRequest(node.RequestingEnrSequence);
-            if (Logger.IsTrace) Logger.Trace($"Failed to refresh {protocolName} ENR for {node}: {e}");
+            if (Logger.IsTrace) Logger.Trace($"Failed to refresh {protocolName} ENR for {node:hide}: {e:hide}");
         }
     }
 }

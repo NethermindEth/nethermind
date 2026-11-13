@@ -120,7 +120,8 @@ public class FlatStateActivationPolicyTests
 
         string[] expectedEvents = expectedOutcome switch
         {
-            RepairOutcome.Wiped => [SpyFlatColumnsDb.WriteEvent, SpyFlatColumnsDb.FlushEvent, SpyFlatColumnsDb.AcknowledgeEvent],
+            // The wipe commits its marker, then drops the columns, then resets the state pointer.
+            RepairOutcome.Wiped => [SpyFlatColumnsDb.WriteEvent, SpyFlatColumnsDb.WriteEvent, SpyFlatColumnsDb.FlushEvent, SpyFlatColumnsDb.AcknowledgeEvent],
             RepairOutcome.Acknowledged => [SpyFlatColumnsDb.AcknowledgeEvent],
             _ => []
         };
@@ -254,8 +255,11 @@ public class FlatStateActivationPolicyTests
             fastSync: true,
             snapSync: false);
 
-        Assert.That(policy.ShouldTurnOnFlatDb(), Is.True);
-        Assert.That(testLogger.LogList.Any(static l => l.Contains("SnapSync=false") && l.Contains("already has flat state")), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(policy.ShouldTurnOnFlatDb(), Is.True);
+            Assert.That(testLogger.LogList.Any(static l => l.Contains("SnapSync=false") && l.Contains("already has flat state")), Is.True);
+        }
     }
 
     private static FlatStateActivationPolicy CreatePolicy(

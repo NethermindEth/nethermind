@@ -36,8 +36,11 @@ public partial class StorageProviderTests
             buffer ??= currentBuffer;
             Assert.That(currentBuffer, Is.SameAs(buffer));
             provider.Commit(Frontier.Instance);
-            Assert.That(GetPrivateField(provider._persistentStorageProvider, "_pendingOriginalValues"), Is.SameAs(buffer));
-            Assert.That(((System.Collections.ICollection)buffer).Count, Is.Zero);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(GetPrivateField(provider._persistentStorageProvider, "_pendingOriginalValues"), Is.SameAs(buffer));
+                Assert.That(((System.Collections.ICollection)buffer).Count, Is.Zero);
+            }
         }
     }
 

@@ -1,0 +1,125 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using DotNetty.Buffers;
+using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
+using NUnit.Framework;
+
+namespace Nethermind.Network.Test.P2P;
+
+/// <summary>
+/// Checks which payloads the protocol handlers accept, as decoded through an <see cref="IMessageSerializationService"/>.
+/// </summary>
+/// <remarks>
+/// <see cref="MessageSerializationService"/> cannot tell how much of a payload an <see cref="IMessageSerializer{T}"/> read, so
+/// each such serializer must reject bytes left after its message itself. Every one a module registers needs a sample.
+/// </remarks>
+public static class MessageDecodingCompatibility
+{
+    /// <param name="AcceptsTrailingByte">Whether the handlers accept the message with a byte after it, as they always have.</param>
+    public sealed record Sample(
+        Type MessageType,
+        Func<IMessageSerializationService, byte[]> Payload,
+        Func<IMessageSerializationService, IByteBuffer, P2PMessage> Deserialize,
+        bool AcceptsTrailingByte)
+    {
+        public static Sample Of<T>(Func<T> create, bool acceptsTrailingByte = false) where T : P2PMessage =>
+            new(typeof(T), service => Serialize(service, create()), Deserializer<T>(), acceptsTrailingByte);
+
+        public override string ToString() => $"{MessageType.Namespace!.Split('.')[^2]}.{MessageType.Name}";
+
+        private static byte[] Serialize<T>(IMessageSerializationService service, T message) where T : P2PMessage
+        {
+            using (message)
+            {
+                using DisposableByteBuffer packet = service.ZeroSerialize(message).AsDisposable();
+                packet.SkipBytes(Rlp.LengthOf(message.AdaptivePacketType));
+                return packet.ReadAllBytesAsArray();
+            }
+        }
+    }
+
+    public static Func<IMessageSerializationService, IByteBuffer, P2PMessage> Deserializer<T>() where T : P2PMessage =>
+        static (service, buffer) => service.Deserialize<T>(new NettyBufferPacket(buffer));
+
+    /// <summary>
+    /// Asserts every <see cref="P2PMessage"/> with a registered <see cref="IMessageSerializer{T}"/> has one of <paramref name="samples"/>.
+    /// </summary>
+    public static void AssertSampled(IEnumerable<SerializerInfo> registered, IEnumerable<Sample> samples)
+    {
+        Type[] spanSerialized = registered
+            .Where(static info => typeof(P2PMessage).IsAssignableFrom(info.MessageType)
+                && typeof(IMessageSerializer<>).MakeGenericType(info.MessageType).IsInstanceOfType(info.Serializer))
+            .Select(static info => info.MessageType)
+            .ToArray();
+
+        Assert.That(spanSerialized, Is.SubsetOf(samples.Select(static sample => sample.MessageType)));
+    }
+
+    public static void AssertTrailingByteHandling(IMessageSerializationService service, Sample sample, bool trailingByte)
+    {
+        byte[] payload = sample.Payload(service);
+        if (trailingByte) payload = [.. payload, 0];
+
+        Assert.That(IsAccepted(service, sample.Deserialize, payload), Is.EqualTo(!trailingByte || sample.AcceptsTrailingByte));
+    }
+
+    /// <summary>
+    /// Asserts that decoding every truncation of the sample's payload, the payload itself and the payload with a trailing byte
+    /// leaves the received buffer as it was once the message, if any, is disposed.
+    /// </summary>
+    /// <remarks>
+    /// An <see cref="IOwningMessageSerializer{T}"/> takes a reference to the buffer, which it must give back on every path.
+    /// The payload follows a byte in the buffer, as a message follows its packet type.
+    /// </remarks>
+    public static void AssertReleasesBuffer(IMessageSerializationService service, Sample sample)
+    {
+        byte[] payload = sample.Payload(service);
+        for (int length = 0; length <= payload.Length + 1; length++)
+        {
+            IByteBuffer buffer = Unpooled.Buffer(length + 1);
+            buffer.WriteByte(0);
+            buffer.WriteBytes(payload.AsSpan(0, Math.Min(length, payload.Length)));
+            if (length > payload.Length) buffer.WriteByte(0);
+            buffer.SkipBytes(1);
+            try
+            {
+                using P2PMessage message = sample.Deserialize(service, buffer);
+            }
+            catch (Exception exception) when (exception is not AssertionException)
+            {
+            }
+
+            Assert.That(buffer.ReferenceCount, Is.EqualTo(1), $"{length} of {payload.Length} bytes");
+            buffer.Release();
+        }
+    }
+
+    /// <summary>
+    /// Reports whether the payload decodes. Each serializer rejects a payload it does not read in full where the
+    /// handlers require that.
+    /// </summary>
+    public static bool IsAccepted(IMessageSerializationService service, Func<IMessageSerializationService, IByteBuffer, P2PMessage> deserialize, byte[] payload)
+    {
+        IByteBuffer buffer = Unpooled.Buffer(payload.Length);
+        buffer.WriteBytes(payload);
+        try
+        {
+            using P2PMessage message = deserialize(service, buffer);
+            return true;
+        }
+        catch (Exception exception) when (exception is not AssertionException)
+        {
+            return false;
+        }
+        finally
+        {
+            buffer.Release();
+        }
+    }
+}

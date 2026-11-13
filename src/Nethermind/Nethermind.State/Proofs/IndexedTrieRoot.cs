@@ -13,6 +13,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 using MemoryMarshal = System.Runtime.InteropServices.MemoryMarshal;
@@ -54,7 +55,7 @@ internal static class IndexedTrieRoot
         LeafBatching Batching { get; }
         ReadOnlySpan<byte> GetEncodedValue(T item);
         int GetLength(T item);
-        void Encode<TWriter>(ref TWriter writer, T item) where TWriter : struct, IRlpWriteBackend, allows ref struct;
+        void Encode(ref RlpWriter writer, T item);
     }
 
     /// <summary>Holds eight padded rate blocks, hashes, indices, lengths, and an encoded path.</summary>
@@ -326,8 +327,8 @@ internal static class IndexedTrieRoot
                     int valueLength = valueLengths[slot];
                     int contentLength = Rlp.LengthOf(path) + Rlp.LengthOfByteString(valueLength, 128);
                     Span<byte> block = buffer.AsSpan(pending * paddedLength, paddedLength);
-                    RlpWriter writer = new(block);
-                    writer.StartSequence(contentLength);
+                    RlpWriter writer = RlpWriter.ContentWriter(block);
+                    RlpSequence sequence = writer.StartSequence(contentLength);
                     writer.Encode(path);
                     if (value.IsEmpty)
                     {
@@ -335,7 +336,8 @@ internal static class IndexedTrieRoot
                         encoder.Encode(ref writer, item);
                     }
                     else writer.Encode(value);
-                    int totalLength = writer.Position;
+                    writer.EndSequence(sequence);
+                    int totalLength = writer.Length;
                     Debug.Assert(totalLength == Rlp.LengthOfSequence(contentLength));
                     Debug.Assert(paddedLength == (totalLength / KeccakRate + 1) * KeccakRate);
                     block[totalLength..].Clear();
@@ -387,8 +389,8 @@ internal static class IndexedTrieRoot
                 int pathLength = EncodePath(key, depth + 1, key.Length - depth - 1, isLeaf: true, path);
                 Span<byte> block = blocks.Slice(pending * rate, rate);
                 block.Clear();
-                RlpWriter writer = new(block);
-                writer.StartSequence(Rlp.LengthOf(path[..pathLength]) + Rlp.LengthOfByteString(valueLength, 128));
+                RlpWriter writer = RlpWriter.ContentWriter(block);
+                RlpSequence sequence = writer.StartSequence(Rlp.LengthOf(path[..pathLength]) + Rlp.LengthOfByteString(valueLength, 128));
                 writer.Encode(path[..pathLength]);
                 if (value.IsEmpty)
                 {
@@ -396,15 +398,16 @@ internal static class IndexedTrieRoot
                     encoder.Encode(ref writer, item);
                 }
                 else writer.Encode(value);
-                Debug.Assert(writer.Position == Rlp.LengthOfSequence(Rlp.LengthOf(path[..pathLength]) + Rlp.LengthOfByteString(valueLength, 128)));
-                if (writer.Position < Keccak.Size)
+                writer.EndSequence(sequence);
+                Debug.Assert(writer.Length == Rlp.LengthOfSequence(Rlp.LengthOf(path[..pathLength]) + Rlp.LengthOfByteString(valueLength, 128)));
+                if (writer.Length < Keccak.Size)
                 {
-                    references[position] = NodeReference.FromRlp(block[..writer.Position]);
+                    references[position] = NodeReference.FromRlp(block[..writer.Length]);
                     continue;
                 }
-                block[writer.Position] = 0x01;
+                block[writer.Length] = 0x01;
                 block[rate - 1] |= 0x80;
-                lengths[pending] = writer.Position;
+                lengths[pending] = writer.Length;
                 positions[pending++] = position;
                 if (pending == batchSize)
                 {
@@ -538,7 +541,7 @@ internal static class IndexedTrieRoot
             Span<byte> shortValue = stackalloc byte[1];
             if (valueLength == 1)
             {
-                RlpWriter shortWriter = new(shortValue);
+                RlpWriter shortWriter = RlpWriter.ContentWriter(shortValue);
                 if (encodedValue.IsEmpty) encoder.Encode(ref shortWriter, item);
                 else shortValue[0] = encodedValue[0];
             }
@@ -551,8 +554,8 @@ internal static class IndexedTrieRoot
             Span<byte> buffer = totalLength <= StackLeafLength
                 ? stackalloc byte[StackLeafLength]
                 : rented = SafeArrayPool<byte>.Shared.Rent(totalLength);
-            RlpWriter writer = new(buffer[..totalLength]);
-            writer.StartSequence(contentLength);
+            RlpWriter writer = RlpWriter.ContentWriter(buffer[..totalLength]);
+            RlpSequence sequence = writer.StartSequence(contentLength);
             writer.Encode(path[..pathLength]);
             if (valueLength <= 1)
             {
@@ -567,8 +570,9 @@ internal static class IndexedTrieRoot
                 }
                 else writer.Encode(encodedValue);
             }
-            Debug.Assert(writer.Position == totalLength);
-            NodeReference reference = NodeReference.FromRlp(buffer[..writer.Position]);
+            writer.EndSequence(sequence);
+            Debug.Assert(writer.Length == totalLength);
+            NodeReference reference = NodeReference.FromRlp(buffer[..writer.Length]);
 
             if (rented is not null) SafeArrayPool<byte>.Shared.Return(rented);
 

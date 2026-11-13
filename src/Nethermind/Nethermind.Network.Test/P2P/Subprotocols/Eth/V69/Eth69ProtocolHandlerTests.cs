@@ -105,14 +105,17 @@ public class Eth69ProtocolHandlerTests
     [Test]
     public void Metadata_correct()
     {
-        Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
-        Assert.That(_handler.Name, Is.EqualTo("eth69"));
-        Assert.That(_handler.ProtocolVersion, Is.EqualTo(69));
-        Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(18));
-        Assert.That(_handler.IncludeInTxPool, Is.True);
-        Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
-        Assert.That(_handler.HeadHash, Is.Null);
-        Assert.That(_handler.HeadNumber, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
+            Assert.That(_handler.Name, Is.EqualTo("eth69"));
+            Assert.That(_handler.ProtocolVersion, Is.EqualTo(69));
+            Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(18));
+            Assert.That(_handler.IncludeInTxPool, Is.True);
+            Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
+            Assert.That(_handler.HeadHash, Is.Null);
+            Assert.That(_handler.HeadNumber, Is.EqualTo(0));
+        }
     }
 
     [Test]
@@ -381,14 +384,14 @@ public class Eth69ProtocolHandlerTests
 
         using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
         statusPacket.ReadByte();
-        _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
+        _handler.HandleMessage(new NettyBufferPacket(statusPacket) { PacketType = 0 });
     }
 
     private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
     {
         using DisposableByteBuffer uOpsPacket = _svc!.ZeroSerialize(msg).AsDisposable();
         uOpsPacket.ReadByte();
-        _handler!.HandleMessage(new ZeroPacket(uOpsPacket) { PacketType = (byte)messageCode });
+        _handler!.HandleMessage(new NettyBufferPacket(uOpsPacket) { PacketType = (byte)messageCode });
     }
 
     private IOwnedReadOnlyList<TxReceipt[]?> RequestReceipts(params Hash256[] hashes)

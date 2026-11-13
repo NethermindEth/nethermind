@@ -38,7 +38,7 @@ internal class BlockProductionMinGasPriceTests
             .WithTo(TestItem.AddressC)
             .TestObject;
 
-        AcceptTxResult result = filter.IsAllowed(tx, Build.A.BlockHeader.TestObject, spec);
+        AcceptTxResult result = filter.IsAllowed(tx, new TxFilterContext(Build.A.BlockHeader.TestObject, spec));
 
         Assert.That((bool)result, Is.EqualTo(expectedAllowed), result.ToString());
     }

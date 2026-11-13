@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -23,7 +22,6 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
         ISpecProvider specProvider,
         IBlocksConfig blocksConfig,
         IAuraConfig auraConfig,
-        IAbiEncoder abiEncoder,
         IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
         IBlockTree blockTree,
         IReceiptFinder receiptFinder,
@@ -61,8 +59,8 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             Address? registrar = chainSpec?.Parameters.Registrar;
             if (registrar is not null)
             {
-                RegisterContract registerContract = new(abiEncoder, registrar, readOnlyTxProcessingEnvFactory.Create());
-                CertifierContract certifierContract = new(abiEncoder, registerContract, readOnlyTxProcessingEnvFactory.Create());
+                RegisterContract registerContract = new(registrar, readOnlyTxProcessingEnvFactory.Create());
+                CertifierContract certifierContract = new(registerContract, readOnlyTxProcessingEnvFactory.Create());
                 return CreateFilter(new TxCertifierFilter(certifierContract, gasPriceTxFilter, logManager), gasPriceTxFilter);
             }
 
@@ -74,8 +72,8 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             Address? registrar = chainSpec?.Parameters.Registrar;
             if (registrar is not null)
             {
-                RegisterContract registerContract = new(abiEncoder, registrar, readOnlyTxProcessingEnvFactory.Create());
-                CertifierContract certifierContract = new(abiEncoder, registerContract, readOnlyTxProcessingEnvFactory.Create());
+                RegisterContract registerContract = new(registrar, readOnlyTxProcessingEnvFactory.Create());
+                CertifierContract certifierContract = new(registerContract, readOnlyTxProcessingEnvFactory.Create());
                 return CreateFilter(new TxCertifierFilter(certifierContract, baseTxFilter, logManager));
             }
 
@@ -88,7 +86,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             if (chainSpec.Parameters.TransactionPermissionContract is not null)
             {
                 ITxFilter txPermissionFilter = CreateFilter(new PermissionBasedTxFilter(
-                    new VersionedTransactionPermissionContract(abiEncoder,
+                    new VersionedTransactionPermissionContract(
                         chainSpec.Parameters.TransactionPermissionContract,
                         chainSpec.Parameters.TransactionPermissionContractTransition ?? 0,
                         readOnlyTxProcessingEnvFactory.Create(),
@@ -130,7 +128,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             TxPriorityContract? txPriorityContract = null;
             if (usesTxPriorityContract)
             {
-                txPriorityContract = new TxPriorityContract(abiEncoder, txPriorityContractAddress, readOnlyTxProcessingEnvFactory.Create());
+                txPriorityContract = new TxPriorityContract(txPriorityContractAddress, readOnlyTxProcessingEnvFactory.Create());
             }
 
             return txPriorityContract;

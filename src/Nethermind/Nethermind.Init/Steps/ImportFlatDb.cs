@@ -19,7 +19,7 @@ using Nethermind.Trie;
 namespace Nethermind.Init.Steps;
 
 [StepCommand("import-flat-db", "Copy the pruning-trie state database into the flat state database.")]
-[RunnerStepDependencies(typeof(InitializeBlockTree))]
+[RunnerStepDependencies(typeof(InitializeBlockTree), typeof(StartMonitoring))]
 public class ImportFlatDb(
     IBlockTree blockTree,
     IPersistence persistence,

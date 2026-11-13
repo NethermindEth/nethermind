@@ -22,9 +22,11 @@ using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
+using Testably.Abstractions;
 
 namespace Nethermind.TxPool.Test;
 
@@ -351,7 +353,7 @@ public class BlobTxStorageTests
     }
 
     [Test]
-    public void Processed_row_reads_do_not_wait_for_a_block_being_saved([Values] bool batched)
+    public async Task Processed_row_reads_do_not_wait_for_a_block_being_saved([Values] bool batched)
     {
         using TrackingColumnsDb db = new();
         BlobTxStorage storage = new(db);
@@ -359,27 +361,44 @@ public class BlobTxStorageTests
         SaveProcessed(storage, 358, stored);
         using ManualResetEventSlim writeStarted = new();
         using ManualResetEventSlim releaseWrite = new();
+        using ManualResetEventSlim lockedReadStarted = new();
         db.ProcessedWriteGate = (writeStarted, releaseWrite);
-        Task writer = Task.Run(() => SaveProcessed(storage, 359, CreateV1BlobTransactions(1)));
+        Task writer = Task.Factory.StartNew(() => SaveProcessed(storage, 359, stored),
+            CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        Task<bool> lockedRead = Task.FromResult(false);
+        Task<bool> read = Task.FromResult(false);
         try
         {
             Assert.That(writeStarted.Wait(TimeSpan.FromSeconds(10)), Is.True, "writer reached the processed column write");
             // Control: the locked whole-block read is held back by the same write, so the gate really holds the lock.
-            Task<bool> lockedRead = Task.Run(() => storage.TryGetBlobTransactionsFromBlock(358, out _));
-            Assert.That(lockedRead.Wait(TimeSpan.FromMilliseconds(200)), Is.False);
+            lockedRead = Task.Factory.StartNew(() =>
+            {
+                lockedReadStarted.Set();
+                return storage.TryGetBlobTransactionsFromBlock(358, out _);
+            },
+                CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+#pragma warning disable NUnit2045 // The control wait is meaningful only once the locked read has started.
+            Assert.That(lockedReadStarted.Wait(TimeSpan.FromSeconds(10)), Is.True);
+            Assert.That(lockedRead.Wait(TimeSpan.FromMilliseconds(200)), Is.False, "the whole-block read waits for the lock");
+#pragma warning restore NUnit2045
 
             Transaction[] results = new Transaction[1];
-            Task<bool> read = Task.Run(() => batched
+            read = Task.Factory.StartNew(() => batched
                 ? ((IProcessedBlobTxStorage)storage).TryGetProcessedTransactions([new(358, 0)], results) == 1
-                : ((IProcessedBlobTxStorage)storage).TryGetProcessedTransaction(358, 0, out _));
+                : ((IProcessedBlobTxStorage)storage).TryGetProcessedTransaction(358, 0, out _),
+                CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
 
-            Assert.That(read.Wait(TimeSpan.FromSeconds(10)), Is.True, "read completed while the save held the lock");
-            Assert.That(read.Result, Is.True);
+            bool found = await read.WaitAsync(TimeSpan.FromSeconds(10));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(found, Is.True, "read completed while the save held the lock");
+                Assert.That(lockedRead.IsCompleted, Is.False);
+            }
         }
         finally
         {
             releaseWrite.Set();
-            writer.Wait(TimeSpan.FromSeconds(10));
+            await Task.WhenAll(writer, lockedRead, read).WaitAsync(TimeSpan.FromSeconds(10));
         }
     }
 
@@ -519,8 +538,8 @@ public class BlobTxStorageTests
             SenderAddress = TestItem.AddressA,
             GasLimit = 1_000_000,
             GasPrice = 1,
+            MaxFee = 100_000_000,
             DecodedMaxFeePerGas = 100,
-            MaxFeePerBlobGas = 1,
             Frames =
             [
                 new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default),
@@ -547,8 +566,9 @@ public class BlobTxStorageTests
         Transaction[] expected = new Transaction[count + 1];
         expected[^1] = stored[0];
         using IContainer configs = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
-        using (ColumnsDb<BlobTxsColumns> db = new(directory.Path, new DbSettings(DbNames.BlobTransactions, "blobs"),
-            configs.Resolve<IDbConfig>(), configs.Resolve<IRocksDbConfigFactory>(), LimboLogs.Instance, Enum.GetValues<BlobTxsColumns>()))
+        using (IColumnsDb<BlobTxsColumns> db = new RocksDbFactory(configs.Resolve<IRocksDbConfigFactory>(), configs.Resolve<IDbConfig>(),
+                   new HyperClockCacheWrapper(), new RealFileSystem(), LimboLogs.Instance, directory.Path)
+               .CreateColumnsDb<BlobTxsColumns>(new DbSettings(DbNames.BlobTransactions, "blobs")))
         {
             using IContainer container = new ContainerBuilder()
                 .AddModule(new TestNethermindModule())
@@ -665,10 +685,13 @@ public class BlobTxStorageTests
         Transaction[] results = new Transaction[3];
         int found = blobTxStorage.TryGetMany(keys, 3, results);
 
-        Assert.That(found, Is.EqualTo(2));
-        Assert.That(results[0], Is.Not.Null);
-        Assert.That(results[1], Is.Not.Null);
-        Assert.That(results[2], Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.EqualTo(2));
+            Assert.That(results[0], Is.Not.Null);
+            Assert.That(results[1], Is.Not.Null);
+            Assert.That(results[2], Is.Null);
+        }
     }
 
     [Test]
@@ -702,8 +725,11 @@ public class BlobTxStorageTests
     {
         BlobTxStorage blobTxStorage = new();
 
-        Assert.That(blobTxStorage.TryGetWithoutBlobs(TestItem.KeccakA, TestItem.AddressA, out Transaction tx), Is.False);
-        Assert.That(tx, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blobTxStorage.TryGetWithoutBlobs(TestItem.KeccakA, TestItem.AddressA, out Transaction tx), Is.False);
+            Assert.That(tx, Is.Null);
+        }
     }
 
     [Test]
@@ -959,29 +985,29 @@ public class BlobTxStorageTests
         Transaction[] results = new Transaction[2];
         int found = blobTxStorage.TryGetMany(keys, 2, results);
 
-        Assert.That(found, Is.EqualTo(0));
-        Assert.That(results[0], Is.Null);
-        Assert.That(results[1], Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.EqualTo(0));
+            Assert.That(results[0], Is.Null);
+            Assert.That(results[1], Is.Null);
+        }
     }
 
     /// <remarks>
-    /// A corrupt light record surfaces as one of three unrelated exception roots, so each case pins the one it
-    /// exercises: <see cref="RlpReader"/> slices without bounds checks, which turns truncation into
-    /// <see cref="ArgumentOutOfRangeException"/> or <see cref="IndexOutOfRangeException"/> rather than <see cref="RlpException"/>.
+    /// Each case pins the exception of the decode failure mode it exercises. Light records are read without the checks
+    /// of the canonical form, so a non-canonical scalar is not one of them.
     /// </remarks>
     private static IEnumerable<TestCaseData> CorruptLightTxRecords()
     {
-        yield return new TestCaseData((Func<byte[], byte[]>)(valid => valid[..2]), typeof(ArgumentOutOfRangeException))
+        yield return new TestCaseData((Func<byte[], byte[]>)(valid => valid[..2]), typeof(RlpReaderException))
             .SetName("GetAll_skips_unreadable_record(truncated)");
-        yield return new TestCaseData((Func<byte[], byte[]>)(_ => []), typeof(IndexOutOfRangeException))
+        yield return new TestCaseData((Func<byte[], byte[]>)(_ => []), typeof(RlpReaderException))
             .SetName("GetAll_skips_unreadable_record(empty)");
-        yield return new TestCaseData((Func<byte[], byte[]>)(valid => [0x82, 0x00, 0x01, .. valid[1..]]), typeof(RlpException))
-            .SetName("GetAll_skips_unreadable_record(non_canonical_scalar)");
-        yield return new TestCaseData((Func<byte[], byte[]>)(_ => [0xff, 0xff, 0xff, 0xff]), typeof(RlpException))
+        yield return new TestCaseData((Func<byte[], byte[]>)(_ => [0xff, 0xff, 0xff, 0xff]), typeof(RlpReaderException))
             .SetName("GetAll_skips_unreadable_record(garbage)");
         // A record written by a newer version carrying one optional field beyond this build's set: every record
         // fails after a downgrade. Two elements, since EIP-8141 records already read one more than a blob record.
-        yield return new TestCaseData((Func<byte[], byte[]>)(valid => [.. valid, 0x01, 0x01]), typeof(RlpException))
+        yield return new TestCaseData((Func<byte[], byte[]>)(valid => [.. valid, 0x01, 0x01]), typeof(RlpReaderException))
             .SetName("GetAll_skips_unreadable_record(extra_optional_field)");
     }
 
@@ -1146,7 +1172,7 @@ public class BlobTxStorageTests
         public void Set(ReadOnlySpan<byte> key, byte[] value, WriteFlags flags = WriteFlags.None)
         {
             started.Set();
-            release.Wait(TimeSpan.FromSeconds(30));
+            release.Wait();
             inner.Set(key, value, flags);
         }
 

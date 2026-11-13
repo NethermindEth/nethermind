@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Db;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -24,8 +25,11 @@ public class SyncPointersTests
         pointers.LowestInsertedBodyNumber = 11;
         pointers.LowestInsertedBlockAccessListBlockNumber = 22;
 
-        Assert.That(DecodePointer(metadataDb.Get(MetadataDbKeys.LowestInsertedBodyNumber)!), Is.EqualTo(11));
-        Assert.That(DecodePointer(metadataDb.Get(MetadataDbKeys.LowestInsertedBlockAccessListBlockNumber)!), Is.EqualTo(22));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(DecodePointer(metadataDb.Get(MetadataDbKeys.LowestInsertedBodyNumber)!), Is.EqualTo(11));
+            Assert.That(DecodePointer(metadataDb.Get(MetadataDbKeys.LowestInsertedBlockAccessListBlockNumber)!), Is.EqualTo(22));
+        }
     }
 
     [Test]
@@ -37,8 +41,11 @@ public class SyncPointersTests
 
         SyncPointers pointers = CreateSyncPointers(metadataDb);
 
-        Assert.That(pointers.LowestInsertedBodyNumber, Is.EqualTo(33));
-        Assert.That(pointers.LowestInsertedBlockAccessListBlockNumber, Is.EqualTo(44));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pointers.LowestInsertedBodyNumber, Is.EqualTo(33));
+            Assert.That(pointers.LowestInsertedBlockAccessListBlockNumber, Is.EqualTo(44));
+        }
     }
 
     [Test]
@@ -50,9 +57,12 @@ public class SyncPointersTests
 
         SyncPointers pointers = CreateSyncPointers(metadataDb, blocksDb: blocksDb);
 
-        Assert.That(pointers.LowestInsertedBodyNumber, Is.EqualTo(55));
-        Assert.That(DecodePointer(metadataDb.Get(MetadataDbKeys.LowestInsertedBodyNumber)!), Is.EqualTo(55));
-        Assert.That(blocksDb.Get(LegacyLowestInsertedBodyNumberDbEntryAddress), Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pointers.LowestInsertedBodyNumber, Is.EqualTo(55));
+            Assert.That(DecodePointer(metadataDb.Get(MetadataDbKeys.LowestInsertedBodyNumber)!), Is.EqualTo(55));
+            Assert.That(blocksDb.Get(LegacyLowestInsertedBodyNumberDbEntryAddress), Is.Null);
+        }
     }
 
     [Test]
@@ -65,9 +75,12 @@ public class SyncPointersTests
 
         SyncPointers pointers = CreateSyncPointers(metadataDb, blocksDb: blocksDb);
 
-        Assert.That(pointers.LowestInsertedBodyNumber, Is.EqualTo(66));
-        Assert.That(DecodePointer(metadataDb.Get(MetadataDbKeys.LowestInsertedBodyNumber)!), Is.EqualTo(66));
-        Assert.That(DecodePointer(blocksDb.Get(LegacyLowestInsertedBodyNumberDbEntryAddress)!), Is.EqualTo(77));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pointers.LowestInsertedBodyNumber, Is.EqualTo(66));
+            Assert.That(DecodePointer(metadataDb.Get(MetadataDbKeys.LowestInsertedBodyNumber)!), Is.EqualTo(66));
+            Assert.That(DecodePointer(blocksDb.Get(LegacyLowestInsertedBodyNumberDbEntryAddress)!), Is.EqualTo(77));
+        }
     }
 
     [Test]
@@ -85,5 +98,5 @@ public class SyncPointersTests
         new(blocksDb ?? new TestMemDb(), new TestMemColumnsDb<ReceiptsColumns>(), metadataDb, receiptConfig ?? new ReceiptConfig());
 
     private static long DecodePointer(byte[] pointerBytes) =>
-        new RlpReader(pointerBytes).DecodeLong();
+        RlpCodec.Read(pointerBytes, static (ref RlpReader r) => r.DecodeLong());
 }

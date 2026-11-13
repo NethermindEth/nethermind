@@ -55,8 +55,11 @@ public partial class DebugRpcModuleTests
 
         ResultWrapper<GethLikeTxTrace> result = ctx.DebugRpcModule.debug_traceCall(call, BlockParameter.Latest, options);
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success), () => result.Result.Error ?? string.Empty);
-        Assert.That(result.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success), () => result.Result.Error ?? string.Empty);
+            Assert.That(result.Data, Is.Not.Null);
+        }
         Assert.That(result.Data!.Failed, Is.False, "the contract-sender call must trace under skipped validation");
     }
 }

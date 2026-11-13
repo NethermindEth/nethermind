@@ -151,8 +151,11 @@ public partial class ParallelUnbalancedWorkTests
             work = ParallelUnbalancedWork.BackgroundFor(0, 64,
                 new ParallelOptions { CancellationToken = cancellation.Token }, _ =>
                 {
-                    Assert.That(ParallelUnbalancedWork.GetCurrentGroup(), Is.SameAs(group));
-                    Assert.That(ParallelUnbalancedWork.WorkerScheduler.Current!.Concurrency, Is.EqualTo(1));
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(ParallelUnbalancedWork.GetCurrentGroup(), Is.SameAs(group));
+                        Assert.That(ParallelUnbalancedWork.WorkerScheduler.Current!.Concurrency, Is.EqualTo(1));
+                    }
                     Interlocked.Increment(ref calls);
                 });
         }
@@ -270,9 +273,12 @@ public partial class ParallelUnbalancedWorkTests
                     Thread.Yield();
                 }
             });
-        Assert.That(Task.WaitAll(publishers, TimeSpan.FromSeconds(10)), Is.True);
-        Assert.That(completed.Wait(TimeSpan.FromSeconds(10)), Is.True, "Published work must survive the last runner retiring.");
-        Assert.That(budgetExceeded, Is.Zero, "Background runners must leave the caller's slot reserved.");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Task.WaitAll(publishers, TimeSpan.FromSeconds(10)), Is.True);
+            Assert.That(completed.Wait(TimeSpan.FromSeconds(10)), Is.True, "Published work must survive the last runner retiring.");
+            Assert.That(budgetExceeded, Is.Zero, "Background runners must leave the caller's slot reserved.");
+        }
     }
 
     [Test]
@@ -392,7 +398,9 @@ public partial class ParallelUnbalancedWorkTests
             new ParallelOptions { MaxDegreeOfParallelism = 2 }, i => Interlocked.Increment(ref calls[i]));
         if (scoped)
         {
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
             Assert.That(work.TryHelp(), Is.True, "An owner waiting on other work must be able to run its own queued part.");
+#pragma warning restore NUnit2045
             Assert.That(calls, Is.All.EqualTo(1));
         }
         Assert.That(work.TryHelp(), Is.False, scoped ? "Nothing is left to help." : "Thread-pool callbacks cannot be taken back.");
@@ -505,7 +513,9 @@ public partial class ParallelUnbalancedWorkTests
             if (withdraw) Assert.That(scope.Scheduler.Withdraw(grandchild!), Is.EqualTo(2));
             else
             {
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
                 Assert.That(scope.Scheduler.TryExecute(parent, includeDescendants: true), Is.True);
+#pragma warning restore NUnit2045
                 Assert.That(parent.ReadyDescendants, Is.EqualTo(1));
                 Assert.That(scope.Scheduler.TryExecute(parent, includeDescendants: true), Is.True);
             }
@@ -643,7 +653,9 @@ public partial class ParallelUnbalancedWorkTests
             ThreadPool.GetMaxThreads(out _, out int completionPortThreads);
             Assert.That(ThreadPool.SetMinThreads(1, 1), Is.True);
             int workers = variant == "pipeline-2" ? 2 : BoundedPoolWorkerCount;
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
             Assert.That(ThreadPool.SetMaxThreads(workers, completionPortThreads), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(ThreadPool.SetMinThreads(workers, 1), Is.True);
             if (variant.StartsWith("pipeline-", StringComparison.Ordinal))
                 Task.Run(() => RunSharedPipeline(workers)).WaitAsync(TimeSpan.FromSeconds(25)).GetAwaiter().GetResult();

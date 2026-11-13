@@ -208,8 +208,11 @@ public class RpcModuleProviderTests
         object? asyncResultObject = asyncMethod.DirectNoParameterInvoker!(module);
         Assert.That(asyncResultObject, Is.AssignableTo<Task<ResultWrapper<long>>>());
         Task<ResultWrapper<long>> asyncResult = (Task<ResultWrapper<long>>)asyncResultObject!;
-        Assert.That((await asyncResult).Data, Is.EqualTo(5));
-        Assert.That(asyncMethod.ReadTaskResult(asyncResult)!.Data, Is.EqualTo(5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((await asyncResult).Data, Is.EqualTo(5));
+            Assert.That(asyncMethod.ReadTaskResult(asyncResult)!.Data, Is.EqualTo(5));
+        }
 
         object? parameterResultObject = parameterMethod.DirectParameterInvoker!(module, ["param"]);
         Assert.That(parameterResultObject, Is.AssignableTo<IResultWrapper>());
@@ -321,9 +324,12 @@ public class RpcModuleProviderTests
     {
         JsonTypeInfo<StorageValuesResult> firstGeneratedLookup = RpcPayloadTypeInfo<StorageValuesResult>.Get(EthereumJsonSerializer.JsonOptions);
         JsonTypeInfo<StorageValuesResult> secondGeneratedLookup = RpcPayloadTypeInfo<StorageValuesResult>.Get(EthereumJsonSerializer.JsonOptions);
-        Assert.That(RpcPayloadTypeInfo<FallbackPayload>.Get(EthereumJsonSerializer.JsonOptions), Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RpcPayloadTypeInfo<FallbackPayload>.Get(EthereumJsonSerializer.JsonOptions), Is.Not.Null);
 
-        Assert.That(firstGeneratedLookup, Is.SameAs(secondGeneratedLookup));
+            Assert.That(firstGeneratedLookup, Is.SameAs(secondGeneratedLookup));
+        }
     }
 
     [Test]
@@ -382,8 +388,11 @@ public class RpcModuleProviderTests
 
         moduleProvider.RegisterBounded<IAdminRpcModule>(new SingletonFactory<IAdminRpcModule>(Substitute.For<IAdminRpcModule>()), 1, Int32.MaxValue);
 
-        Assert.That(moduleProvider.Check("admin_exportHistory", _context), Is.EqualTo(ModuleResolution.Enabled));
-        Assert.That(moduleProvider.Check("admin_addPeer", _context), Is.EqualTo(ModuleResolution.Enabled));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(moduleProvider.Check("admin_exportHistory", _context), Is.EqualTo(ModuleResolution.Enabled));
+            Assert.That(moduleProvider.Check("admin_addPeer", _context), Is.EqualTo(ModuleResolution.Enabled));
+        }
 
         IRpcModule adminClass = await moduleProvider.Rent("admin_addPeer", true);
         Assert.That((adminClass is IAdminRpcModule), Is.True);

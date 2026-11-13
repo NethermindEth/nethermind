@@ -28,11 +28,17 @@ public class XdcConsensusContextTests
 
         ctx.SetNewRound(5);
 
-        Assert.That(ctx.CurrentRound, Is.EqualTo(5));
-        Assert.That(ctx.TimeoutCounter, Is.EqualTo(0));
-        Assert.That(receivedArgs, Is.Not.Null);
-        Assert.That(receivedArgs!.NewRound, Is.EqualTo(5));
-        Assert.That(receivedArgs.PreviousRound, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.CurrentRound, Is.EqualTo(5));
+            Assert.That(ctx.TimeoutCounter, Is.EqualTo(0));
+            Assert.That(receivedArgs, Is.Not.Null);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receivedArgs!.NewRound, Is.EqualTo(5));
+            Assert.That(receivedArgs.PreviousRound, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -44,7 +50,10 @@ public class XdcConsensusContextTests
 
         Parallel.For(0, 10, _ => ctx.SetNewRound(1));
 
-        Assert.That(ctx.CurrentRound, Is.EqualTo(1));
-        Assert.That(eventCount, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.CurrentRound, Is.EqualTo(1));
+            Assert.That(eventCount, Is.EqualTo(1));
+        }
     }
 }

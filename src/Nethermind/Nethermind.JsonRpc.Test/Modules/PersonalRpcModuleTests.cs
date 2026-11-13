@@ -87,8 +87,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             IPersonalRpcModule rpcModule = new PersonalRpcModule(_ecdsa, _wallet, _keyStore);
             string serialized = await RpcTest.TestSerializedRequest(rpcModule, "personal_newAccount", passphrase);
             Address[] accountsNow = _wallet.GetAccounts();
-            Assert.That(accountsNow.Length, Is.EqualTo(accountsBefore + 1), "length");
-            Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{accountsNow.Last()}\",\"id\":67}}"));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(accountsNow.Length, Is.EqualTo(accountsBefore + 1), "length");
+                Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{accountsNow.Last()}\",\"id\":67}}"));
+            }
         }
 
         [Test]
@@ -102,8 +105,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             IPersonalRpcModule rpcModule = new PersonalRpcModule(_ecdsa, _wallet, _keyStore);
 
             string signed = await RpcTest.TestSerializedRequest(rpcModule, "personal_sign", "0xdeadbeef", address.ToString(), passphrase);
-            Assert.That(signed, Does.Contain("\"result\""));
-            Assert.That(_wallet.IsUnlocked(address), Is.False, "passphrase sign must not persistently unlock the account");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(signed, Does.Contain("\"result\""));
+                Assert.That(_wallet.IsUnlocked(address), Is.False, "passphrase sign must not persistently unlock the account");
+            }
 
             string withoutPassphrase = await RpcTest.TestSerializedRequest(rpcModule, "personal_sign", "0xdeadbeef", address.ToString());
             Assert.That(withoutPassphrase, Does.Contain("\"error\""));
@@ -126,8 +132,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             IPersonalRpcModule rpcModule = new PersonalRpcModule(_ecdsa, wallet, keyStore);
 
             string signed = await RpcTest.TestSerializedRequest(rpcModule, "personal_sign", "0xdeadbeef", address.ToString(), correctPassphrase);
-            Assert.That(signed, Does.Contain("\"result\""));
-            Assert.That(wallet.IsUnlocked(address), Is.False, "passphrase sign must not unlock the keystore account");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(signed, Does.Contain("\"result\""));
+                Assert.That(wallet.IsUnlocked(address), Is.False, "passphrase sign must not unlock the keystore account");
+            }
 
             string wrongPassphrase = await RpcTest.TestSerializedRequest(rpcModule, "personal_sign", "0xdeadbeef", address.ToString(), "wrong");
             Assert.That(wrongPassphrase, Does.Contain("\"error\""));

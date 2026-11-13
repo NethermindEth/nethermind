@@ -5,7 +5,6 @@
     "GenesisHash": "0x7ca38a1916c42007829c55e69d3e9a73265554b586a499015373241b8a3fa48b",
     "BaseDbPath": "nethermind_db/op-mainnet_archive",
     "LogFileName": "op-mainnet_archive.log",
-    "MemoryHint": 2048000000,
     "DisableGcOnNewPayload": false
   },
   "TxPool": {
@@ -23,6 +22,10 @@
   },
   "Pruning": {
     "Mode": "None"
+  },
+  "Db": {
+    "SharedBlockCacheSize": 1073741824,
+    "StateDbRowCacheSize": 268435456
   },
   "JsonRpc": {
     "Enabled": true,

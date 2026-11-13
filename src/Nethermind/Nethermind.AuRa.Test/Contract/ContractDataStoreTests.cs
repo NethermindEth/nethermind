@@ -5,7 +5,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Abi;
+using Nethermind.Blockchain.Contracts;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.AuRa.Contracts;
@@ -67,7 +67,7 @@ public abstract class ContractDataStoreTests
         Address[] expected = { TestItem.AddressA };
         testCase.DataContract.GetAllItemsFromBlock(blockHeader).Returns(expected);
         BlockHeader secondBlockHeader = Build.A.BlockHeader.WithNumber(3).WithHash(TestItem.KeccakB).WithParentHash(TestItem.KeccakC).TestObject;
-        testCase.DataContract.GetAllItemsFromBlock(secondBlockHeader).Throws(new AbiException(string.Empty));
+        testCase.DataContract.GetAllItemsFromBlock(secondBlockHeader).Throws(new ContractException(string.Empty));
 
         testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader);
         Assert.That(testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlockHeader), Is.EquivalentTo(expected.Cast<object>()));

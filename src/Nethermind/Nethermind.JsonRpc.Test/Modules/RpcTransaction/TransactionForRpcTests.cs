@@ -49,8 +49,11 @@ public class TransactionForRpcTests
         string serialized = serializer.Serialize(txForRpc);
         JToken json = JToken.Parse(serialized);
 
-        Assert.That(json.Value<string>("s"), Is.EqualTo("0x20000000000000000000000000000000000000000000000000000000000"));
-        Assert.That(json.Value<string>("r"), Is.EqualTo("0x1000000000000000000000000000000000000000000000000000000000000"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json.Value<string>("s"), Is.EqualTo("0x20000000000000000000000000000000000000000000000000000000000"));
+            Assert.That(json.Value<string>("r"), Is.EqualTo("0x1000000000000000000000000000000000000000000000000000000000000"));
+        }
     }
 
     [TestCase("""{"type":"0x0","gasPrice":"0x1"}""", typeof(LegacyTransactionForRpc))]
@@ -89,9 +92,12 @@ public class TransactionForRpcTests
         Transaction tx = ToTransaction(
             """{"gasPrice":"0x7","accessList":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x1"]}]}""");
 
-        Assert.That(tx.Type, Is.EqualTo(TxType.AccessList));
-        Assert.That(tx.AccessList?.Count, Is.EqualTo((1, 1)));
-        Assert.That(tx.GasPrice, Is.EqualTo((UInt256)7));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.Type, Is.EqualTo(TxType.AccessList));
+            Assert.That(tx.AccessList?.Count, Is.EqualTo((1, 1)));
+            Assert.That(tx.GasPrice, Is.EqualTo((UInt256)7));
+        }
     }
 
     [Test]
@@ -100,10 +106,13 @@ public class TransactionForRpcTests
         Transaction tx = ToTransaction(
             """{"gasPrice":"0x7","authorizationList":[{"chainId":"0x1","address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","nonce":"0x0","yParity":"0x0","r":"0x1","s":"0x1"}]}""");
 
-        Assert.That(tx.Type, Is.EqualTo(TxType.SetCode));
-        Assert.That(tx.AuthorizationList?.Length, Is.EqualTo(1));
-        Assert.That(tx.MaxFeePerGas, Is.EqualTo((UInt256)7));
-        Assert.That(tx.MaxPriorityFeePerGas, Is.EqualTo((UInt256)7));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.Type, Is.EqualTo(TxType.SetCode));
+            Assert.That(tx.AuthorizationList?.Length, Is.EqualTo(1));
+            Assert.That(tx.MaxFeePerGas, Is.EqualTo((UInt256)7));
+            Assert.That(tx.MaxPriorityFeePerGas, Is.EqualTo((UInt256)7));
+        }
     }
 
     [Test]
@@ -112,9 +121,12 @@ public class TransactionForRpcTests
         Transaction tx = ToTransaction(
             """{"gasPrice":"0x7","to":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","blobVersionedHashes":["0x0100000000000000000000000000000000000000000000000000000000000001"]}""");
 
-        Assert.That(tx.Type, Is.EqualTo(TxType.Blob));
-        Assert.That(tx.BlobVersionedHashes?.Length, Is.EqualTo(1));
-        Assert.That(tx.MaxFeePerGas, Is.EqualTo((UInt256)7));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.Type, Is.EqualTo(TxType.Blob));
+            Assert.That(tx.BlobVersionedHashes?.Length, Is.EqualTo(1));
+            Assert.That(tx.MaxFeePerGas, Is.EqualTo((UInt256)7));
+        }
     }
 
     [Test]
@@ -230,10 +242,13 @@ public class TransactionForRpcTests
 
         Transaction tx = rpcTx.ToTransaction().Data!;
 
-        Assert.That(tx.Type, Is.EqualTo(TxType.EIP1559));
-        Assert.That(tx.MaxFeePerGas, Is.EqualTo((UInt256)2));
-        Assert.That(tx.MaxPriorityFeePerGas, Is.EqualTo((UInt256)1));
-        Assert.That(rpcTx.ToTransaction(validateUserInput: true).Error, Is.EqualTo(RpcTransactionErrors.GasPriceInEip1559));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.Type, Is.EqualTo(TxType.EIP1559));
+            Assert.That(tx.MaxFeePerGas, Is.EqualTo((UInt256)2));
+            Assert.That(tx.MaxPriorityFeePerGas, Is.EqualTo((UInt256)1));
+            Assert.That(rpcTx.ToTransaction(validateUserInput: true).Error, Is.EqualTo(RpcTransactionErrors.GasPriceInEip1559));
+        }
     }
 
     [TestCase("""{"type":"0x2","to":"0x0000000000000000000000000000000000000001","maxFeePerGas":"0xa","maxPriorityFeePerGas":"0x14"}""", "maxFeePerGas (10) < maxPriorityFeePerGas (20)", TestName = "Fee cap below the priority fee")]
@@ -242,6 +257,36 @@ public class TransactionForRpcTests
     [TestCase("""{"type":"0x2","maxFeePerGas":"0x14","maxPriorityFeePerGas":"0xa"}""", RpcTransactionErrors.ContractCreationWithoutData, TestName = "Ordered fees reach the missing contract data check")]
     public void ToValidatedTransaction_rejects_a_fee_cap_below_the_priority_fee_where_it_always_did(string json, string expected) =>
         Assert.That(DeserializeTransactionForRpc(json).ToValidatedTransaction().Error, Is.EqualTo(expected), "first failing check");
+
+    [Test]
+    public void Empty_creation_is_allowed_only_for_calls(
+        [Values("{}", """{"gasPrice":"0x1"}""", """{"accessList":[]}""", """{"maxFeePerGas":"0x2","maxPriorityFeePerGas":"0x1"}""")] string fields,
+        [Values] bool emptyInput)
+    {
+        TransactionForRpc rpc = DeserializeTransactionForRpc(fields);
+        LegacyTransactionForRpc legacy = (LegacyTransactionForRpc)rpc;
+        if (emptyInput) legacy.Input = [];
+        Result<Transaction> call = rpc.ToCallTransaction(Prague.Instance);
+        Assert.That(call.IsError, Is.False, call.Error);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(call.Data!.IsContractCreation, Is.True);
+            Assert.That(call.Data.Data.IsEmpty, Is.True);
+            Assert.That(rpc.ToValidatedTransaction().Error, Is.EqualTo(RpcTransactionErrors.ContractCreationWithoutData));
+            Assert.That(legacy.To, Is.Null);
+            Assert.That(legacy.Input, emptyInput ? Is.Empty : Is.Null);
+        }
+    }
+
+    [Test]
+    public void ToCallTransaction_preserves_recipient_checks_before_fork_and_fee_order(
+        [Values("0x", "0x00")] string input)
+    {
+        TransactionForRpc rpc = DeserializeTransactionForRpc(
+            $$"""{"authorizationList":[],"input":"{{input}}","maxFeePerGas":"0x1","maxPriorityFeePerGas":"0x2"}""");
+        Assert.That(rpc.ToCallTransaction(Istanbul.Instance).Error,
+            Is.EqualTo(Nethermind.Core.Messages.TxErrorMessages.NotAllowedCreateTransaction));
+    }
 
     [Test]
     public void ToTransaction_with_input_validation_leaves_the_fee_cap_order_to_the_caller()
@@ -306,10 +351,13 @@ public class TransactionForRpcTests
         using JsonDocument jsonDocument = JsonDocument.Parse(serialized);
         JsonElement json = jsonDocument.RootElement;
 
-        Assert.That(json.GetProperty("hash").GetString(), Is.Null.Or.Matches("^0x[0-9a-fA-F]{64}$"));
-        Assert.That(json.GetProperty("transactionIndex").GetString(), Is.Null.Or.Matches("^0x([1-9a-f]+[0-9a-f]*|0)$"));
-        Assert.That(json.GetProperty("blockHash").GetString(), Is.Null.Or.Matches("^0x[0-9a-fA-F]{64}$"));
-        Assert.That(json.GetProperty("blockNumber").GetString(), Is.Null.Or.Matches("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json.GetProperty("hash").GetString(), Is.Null.Or.Matches("^0x[0-9a-fA-F]{64}$"));
+            Assert.That(json.GetProperty("transactionIndex").GetString(), Is.Null.Or.Matches("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+            Assert.That(json.GetProperty("blockHash").GetString(), Is.Null.Or.Matches("^0x[0-9a-fA-F]{64}$"));
+            Assert.That(json.GetProperty("blockNumber").GetString(), Is.Null.Or.Matches("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+        }
     }
 
     [Test]
@@ -338,8 +386,11 @@ public class TransactionForRpcTests
         LegacyTransactionForRpc legacyRpcTx = (LegacyTransactionForRpc)rpcTx;
 
         ulong? expectedChainId = tx.Signature.ChainId;
-        Assert.That(expectedChainId, Is.EqualTo(0xc72dd9d5e883eul));
-        Assert.That(legacyRpcTx.ChainId, Is.EqualTo(expectedChainId));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expectedChainId, Is.EqualTo(0xc72dd9d5e883eul));
+            Assert.That(legacyRpcTx.ChainId, Is.EqualTo(expectedChainId));
+        }
     }
 
     [Test]

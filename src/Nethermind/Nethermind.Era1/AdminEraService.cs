@@ -27,7 +27,9 @@ public class AdminEraService(
 
         try
         {
-            _ = StartExportTask(destination, from, to);
+            Task export = _eraExporter.Export(destination, from, to, cancellation: _processExit.Token);
+            if (export.IsFaulted) export.GetAwaiter().GetResult();
+            _ = StartExportTask(export, destination);
         }
         catch (Exception)
         {
@@ -57,15 +59,8 @@ public class AdminEraService(
 
     }
 
-    private async Task StartExportTask(string destination, ulong from, ulong to)
+    private async Task StartExportTask(Task task, string destination)
     {
-        // Creating the task is outside the try block so that argument exceptions can be caught
-        Task task = _eraExporter.Export(
-            destination,
-            from,
-            to,
-            cancellation: _processExit.Token);
-
         try
         {
             await task;

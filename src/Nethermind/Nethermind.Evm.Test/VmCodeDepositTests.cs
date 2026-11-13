@@ -61,8 +61,11 @@ namespace Nethermind.Evm.Test
             TestAllTracerWithOutput receipt = Execute(code);
             TestState.Get(storageCell, out UInt256 storageValue1);
             byte[] result = storageValue1.ToMinimalBigEndian();
-            Assert.That(result, Is.EqualTo(new byte[] { 0 }), "storage reverted");
-            Assert.That(receipt.GasSpent, Is.EqualTo(98777), "no refund");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(new byte[] { 0 }), "storage reverted");
+                Assert.That(receipt.GasSpent, Is.EqualTo(98777), "no refund");
+            }
 
             TestState.Get(new StorageCell(TestItem.AddressC, 0), out UInt256 storageValue2);
             byte[] returnData = storageValue2.ToMinimalBigEndian();
@@ -103,8 +106,11 @@ namespace Nethermind.Evm.Test
             TestAllTracerWithOutput receipt = Execute(code);
             TestState.Get(storageCell, out UInt256 storageValue3);
             byte[] result = storageValue3.ToMinimalBigEndian();
-            Assert.That(result, Is.EqualTo(new byte[] { 0 }), "storage reverted");
-            Assert.That(receipt.GasSpent, Is.EqualTo(83199), "with refund");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(new byte[] { 0 }), "storage reverted");
+                Assert.That(receipt.GasSpent, Is.EqualTo(83199), "with refund");
+            }
 
             TestState.Get(new StorageCell(TestItem.AddressC, 0), out UInt256 storageValue4);
             byte[] returnData = storageValue4.ToMinimalBigEndian();

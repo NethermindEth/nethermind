@@ -112,7 +112,7 @@ public class ShutterP2P : IShutterP2P
             _peerStore.Discover([address]);
         }
 
-        if (_logger.IsInfo) _logger.Info($"Started Shutter P2P: {listenAddress}");
+        if (_logger.IsInfo) _logger.Info($"Started Shutter P2P: {listenAddress:hide}");
 
         long lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
         bool hasTimedOut = false;

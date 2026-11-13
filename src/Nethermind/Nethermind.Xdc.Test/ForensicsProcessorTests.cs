@@ -34,9 +34,12 @@ public class ForensicsProcessorTests
             out QuorumCertificate? first,
             out QuorumCertificate? second);
 
-        Assert.That(found, Is.True);
-        Assert.That(first, Is.EqualTo(qc2));
-        Assert.That(second, Is.EqualTo(qc4));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(first, Is.EqualTo(qc2));
+            Assert.That(second, Is.EqualTo(qc4));
+        }
     }
 
     [Test]
@@ -87,9 +90,12 @@ public class ForensicsProcessorTests
             new BlockRoundInfo(secondChildHash, round: 20, number: 102),
             new BlockRoundInfo(thirdChildHash, round: 21, number: 101));
 
-        Assert.That(foundAncestor, Is.EqualTo(ancestorHash));
-        Assert.That(firstPath, Is.EqualTo(new[] { ancestorHash.ToString(), firstChildHash.ToString(), secondChildHash.ToString() }));
-        Assert.That(secondPath, Is.EqualTo(new[] { ancestorHash.ToString(), thirdChildHash.ToString() }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(foundAncestor, Is.EqualTo(ancestorHash));
+            Assert.That(firstPath, Is.EqualTo(new[] { ancestorHash.ToString(), firstChildHash.ToString(), secondChildHash.ToString() }));
+            Assert.That(secondPath, Is.EqualTo(new[] { ancestorHash.ToString(), thirdChildHash.ToString() }));
+        }
     }
 
     [Test]
@@ -117,16 +123,22 @@ public class ForensicsProcessorTests
 
         QuorumCertificate incomingQc = new(new BlockRoundInfo(header2.Hash!, 13, 102), [], 450);
 
-        Assert.That(header2.ExtraConsensusData!.QuorumCert.ProposedBlockInfo.Hash, Is.EqualTo(header1.Hash));
-        Assert.That(incomingQc.ProposedBlockInfo.Hash, Is.EqualTo(header2.Hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(header2.ExtraConsensusData!.QuorumCert.ProposedBlockInfo.Hash, Is.EqualTo(header1.Hash));
+            Assert.That(incomingQc.ProposedBlockInfo.Hash, Is.EqualTo(header2.Hash));
+        }
 
         await processor.SetCommittedQCs([header1, header2], incomingQc);
 
         QuorumCertificate[] highestCommittedQcs = processor.GetHighestCommittedQcsSnapshot();
         Assert.That(highestCommittedQcs.Length, Is.EqualTo(3));
-        Assert.That(highestCommittedQcs[0], Is.EqualTo(qc1));
-        Assert.That(highestCommittedQcs[1], Is.EqualTo(qc2));
-        Assert.That(highestCommittedQcs[2], Is.EqualTo(incomingQc));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(highestCommittedQcs[0], Is.EqualTo(qc1));
+            Assert.That(highestCommittedQcs[1], Is.EqualTo(qc2));
+            Assert.That(highestCommittedQcs[2], Is.EqualTo(incomingQc));
+        }
     }
 
     private static ForensicsProcessor BuildForensicsProcessor(IBlockTree blockTree) => new(

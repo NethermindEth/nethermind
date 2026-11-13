@@ -30,7 +30,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             GetBlockHeadersMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, message, "ca820457c682270f050580");
+            SerializerTester.Test(serializer, message, "ca820457c682270f050580");
         }
 
         //test from https://github.com/ethereum/EIPs/blob/master/EIPS/eip-2481.md
@@ -50,9 +50,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             GetBlockHeadersMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, message, "e8820457e4a000000000000000000000000000000000000000000000000000000000deadc0de050580");
+            SerializerTester.Test(serializer, message, "e8820457e4a000000000000000000000000000000000000000000000000000000000deadc0de050580");
 
-            byte[] bytes = serializer.Serialize(message);
+            byte[] bytes = serializer.SerializeToArray(message);
             using DisposableByteBuffer buffer = Unpooled.WrappedBuffer(bytes).AsDisposable();
             using GetBlockHeadersMessage decoded = serializer.Deserialize(buffer);
             Array.Clear(bytes);

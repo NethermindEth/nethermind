@@ -23,8 +23,11 @@ public class OptimismPrecompileProviderTests
     {
         Result<byte[]> result = precompile.Run(new byte[inputLength], spec);
 
-        Assert.That(result.IsSuccess, Is.EqualTo(expectedError is null));
-        Assert.That(result.Error, Is.EqualTo(expectedError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsSuccess, Is.EqualTo(expectedError is null));
+            Assert.That(result.Error, Is.EqualTo(expectedError));
+        }
     }
 
     private static IEnumerable<TestCaseData> OpInputSizeLimitCases()

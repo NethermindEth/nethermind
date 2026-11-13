@@ -238,8 +238,11 @@ public class JsonWriterGeneratorTests
             """, out Compilation compilation);
 
         // Types sharing a simple name in different namespaces must not collide on their generated file names.
-        Assert.That(result.Diagnostics, Is.Empty, string.Join(Environment.NewLine, result.Diagnostics));
-        Assert.That(compilation.GetDiagnostics().Where(static d => d.Severity == DiagnosticSeverity.Error), Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Diagnostics, Is.Empty, string.Join(Environment.NewLine, result.Diagnostics));
+            Assert.That(compilation.GetDiagnostics().Where(static d => d.Severity == DiagnosticSeverity.Error), Is.Empty);
+        }
 
         string registration = result.GeneratedTrees.Single(static t => Path.GetFileName(t.FilePath) == "GeneratedJsonWriterRegistration.g.cs").GetText().ToString();
         using (Assert.EnterMultipleScope())

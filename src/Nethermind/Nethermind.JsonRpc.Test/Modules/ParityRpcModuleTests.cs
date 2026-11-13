@@ -320,7 +320,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             using JsonDocument document = JsonDocument.Parse(serialized);
             JsonElement frame = document.RootElement.GetProperty("result")[1];
-            Assert.Multiple(() =>
+            using (Assert.EnterMultipleScope())
             {
                 // The explicit chain id of the signed payload, which is the only place it survives.
                 Assert.That(frame.GetProperty("chainId").GetString(), Is.EqualTo("0x1"));
@@ -331,7 +331,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Assert.That(frame.GetProperty("standardV").GetString(), Is.EqualTo("0x0"));
                 Assert.That(frame.TryGetProperty("publicKey", out _), Is.False, "no envelope key to recover");
                 Assert.That(frame.GetProperty("creates").ValueKind, Is.EqualTo(JsonValueKind.Null));
-            });
+            }
         }
 
         [Test]
@@ -340,6 +340,16 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_getBlockReceipts", "latest");
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":[{\"transactionHash\":\"0x026217c3c4eb1f0e9e899553759b6e909b965a789c6136d256674718617c8142\",\"transactionIndex\":\"0x0\",\"blockHash\":\"0xf7b57f94244d8d0527bbfa456fa58cf1809829ce40f50c4179429f87e7660cad\",\"blockNumber\":\"0x1\",\"cumulativeGasUsed\":\"0x7d0\",\"gasUsed\":\"0x3e8\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x0\",\"transactionIndex\":\"0x0\",\"transactionHash\":\"0x026217c3c4eb1f0e9e899553759b6e909b965a789c6136d256674718617c8142\",\"blockHash\":\"0xf7b57f94244d8d0527bbfa456fa58cf1809829ce40f50c4179429f87e7660cad\",\"blockNumber\":\"0x1\",\"blockTimestamp\":\"0xf4241\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x0\",\"type\":\"0x0\"},{\"transactionHash\":\"0xd0183bfd42ccd8fccb7722b108e052d12d2cf5a32a144b6a6f3a975c4d7d14a1\",\"transactionIndex\":\"0x1\",\"blockHash\":\"0xf7b57f94244d8d0527bbfa456fa58cf1809829ce40f50c4179429f87e7660cad\",\"blockNumber\":\"0x1\",\"cumulativeGasUsed\":\"0x7d0\",\"gasUsed\":\"0x3e8\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x1\",\"transactionIndex\":\"0x1\",\"transactionHash\":\"0xd0183bfd42ccd8fccb7722b108e052d12d2cf5a32a144b6a6f3a975c4d7d14a1\",\"blockHash\":\"0xf7b57f94244d8d0527bbfa456fa58cf1809829ce40f50c4179429f87e7660cad\",\"blockNumber\":\"0x1\",\"blockTimestamp\":\"0xf4241\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x0\",\"type\":\"0x0\"},{\"transactionHash\":\"0xf8ab484b10dc0398f03957d1062bbe3526048b74d429f8a8c9c57fa7ac5fa436\",\"transactionIndex\":\"0x2\",\"blockHash\":\"0xf7b57f94244d8d0527bbfa456fa58cf1809829ce40f50c4179429f87e7660cad\",\"blockNumber\":\"0x1\",\"cumulativeGasUsed\":\"0x7d0\",\"gasUsed\":\"0x3e8\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x2\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0xf8ab484b10dc0398f03957d1062bbe3526048b74d429f8a8c9c57fa7ac5fa436\",\"blockHash\":\"0xf7b57f94244d8d0527bbfa456fa58cf1809829ce40f50c4179429f87e7660cad\",\"blockNumber\":\"0x1\",\"blockTimestamp\":\"0xf4241\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x0\",\"type\":\"0x0\"}],\"id\":67}";
             Assert.That(serialized, Is.EqualTo(expectedResult));
+        }
+
+        [Test]
+        public async Task parity_getBlockReceipts_fails_when_the_receipts_of_a_block_with_transactions_are_missing()
+        {
+            _receiptStorage.RemoveReceipts(_blockTree.Head!);
+
+            string serialized = await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_getBlockReceipts", "latest");
+
+            Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":4444,"message":"Pruned history unavailable"},"id":67}"""));
         }
 
         [Test]
@@ -355,9 +365,12 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             string serialized = await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_setEngineSigner", TestItem.AddressA, "password");
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}";
-            Assert.That(serialized, Is.EqualTo(expectedResult));
-            Assert.That(_signerStore.Address, Is.EqualTo(TestItem.AddressA));
-            Assert.That(_signerStore.CanSign, Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(serialized, Is.EqualTo(expectedResult));
+                Assert.That(_signerStore.Address, Is.EqualTo(TestItem.AddressA));
+                Assert.That(_signerStore.CanSign, Is.True);
+            }
         }
 
         [Test]
@@ -365,9 +378,12 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             string serialized = await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_setEngineSignerSecret", TestItem.PrivateKeyA.ToString());
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}";
-            Assert.That(serialized, Is.EqualTo(expectedResult));
-            Assert.That(_signerStore.Address, Is.EqualTo(TestItem.AddressA));
-            Assert.That(_signerStore.CanSign, Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(serialized, Is.EqualTo(expectedResult));
+                Assert.That(_signerStore.Address, Is.EqualTo(TestItem.AddressA));
+                Assert.That(_signerStore.CanSign, Is.True);
+            }
         }
 
         [Test]
@@ -376,9 +392,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_setEngineSigner", TestItem.AddressA, "password");
             string serialized = await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_clearEngineSigner");
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}";
-            Assert.That(serialized, Is.EqualTo(expectedResult));
-            Assert.That(_signerStore.Address, Is.EqualTo(Address.Zero));
-            Assert.That(_signerStore.CanSign, Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(serialized, Is.EqualTo(expectedResult));
+                Assert.That(_signerStore.Address, Is.EqualTo(Address.Zero));
+                Assert.That(_signerStore.CanSign, Is.False);
+            }
         }
 
         [Test]

@@ -35,12 +35,18 @@ namespace Nethermind.Flashbots.Test
 
             BidTrace trace = _serializer.Deserialize<BidTrace>(fullKeyJson);
 
-            Assert.That(trace.BuilderPublicKey, Is.Not.Null);
-            Assert.That(trace.ProposerPublicKey, Is.Not.Null);
-            Assert.That(trace.BuilderPublicKey.Bytes.Length, Is.EqualTo(64));
-            Assert.That(trace.ProposerPublicKey.Bytes.Length, Is.EqualTo(64));
-            Assert.That(trace.BuilderPublicKey.Bytes, Is.EqualTo(builderKeyBytes));
-            Assert.That(trace.ProposerPublicKey.Bytes, Is.EqualTo(proposerKeyBytes));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(trace.BuilderPublicKey, Is.Not.Null);
+                Assert.That(trace.ProposerPublicKey, Is.Not.Null);
+            }
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(trace.BuilderPublicKey.Bytes.Length, Is.EqualTo(64));
+                Assert.That(trace.ProposerPublicKey.Bytes.Length, Is.EqualTo(64));
+                Assert.That(trace.BuilderPublicKey.Bytes, Is.EqualTo(builderKeyBytes));
+                Assert.That(trace.ProposerPublicKey.Bytes, Is.EqualTo(proposerKeyBytes));
+            }
         }
 
         [Test]

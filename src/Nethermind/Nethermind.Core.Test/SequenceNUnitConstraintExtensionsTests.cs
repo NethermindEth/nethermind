@@ -82,7 +82,9 @@ public class SequenceNUnitConstraintExtensionsTests
     [Test]
     public void Lazy_sequence_mismatch_reports_the_differing_index_from_what_was_read()
     {
+#pragma warning disable NUnit2045 // These checks require the helper to throw assertion failures immediately.
         Assert.That(AssertFails(new byte[] { 1, 9, 3 }, Is.SequenceEqualTo(Expected.Select(static b => b))), Does.Contain("Values differ at index [1]"));
+#pragma warning restore NUnit2045
         Assert.That(AssertFails(new byte[] { 1, 9, 3 }.Select(static b => b), Is.SequenceEqualTo(Expected)), Does.Contain("Values differ at index [1]"));
     }
 
@@ -93,10 +95,15 @@ public class SequenceNUnitConstraintExtensionsTests
         using ArrayPoolList<byte> pooled = new(Expected);
         using ArrayPoolListRef<byte> pooledRef = new(Expected);
 
-        Assert.That(capped, Is.SequenceEqualTo(Expected));
-        Assert.That(pooled, Is.SequenceEqualTo(Expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(capped, Is.SequenceEqualTo(Expected));
+            Assert.That(pooled, Is.SequenceEqualTo(Expected));
+        }
         Assert.That(pooledRef, Is.SequenceEqualTo(Expected));
+#pragma warning disable NUnit2045 // These checks require the helper to throw assertion failures immediately.
         Assert.That(Expected, Is.SequenceEqualTo(pooled));
+#pragma warning restore NUnit2045
         Assert.That(AssertFails(new CappedArray<byte>([1, 9, 3]), Is.SequenceEqualTo(Expected)), Does.Contain("Values differ at index [1]"));
         Exception? refFailure = Assert.Throws<AssertionException>(static () =>
         {

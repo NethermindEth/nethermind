@@ -23,6 +23,7 @@ public sealed class HistoryScopeGate
     {
         long scopeId = Interlocked.Increment(ref _nextScopeId);
         _activeScopes[scopeId] = Volatile.Read(ref _floorGeneration);
+        Interlocked.MemoryBarrier();
         return scopeId;
     }
 

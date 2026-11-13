@@ -159,9 +159,12 @@ public class SendPolicyRuleFileTests
             lock (reloadLock)
             {
                 reader.Start();
-                Assert.That(SpinWait.SpinUntil(() => !reader.IsAlive ||
-                    (reader.ThreadState & ThreadState.WaitSleepJoin) != 0, ThreadTimeout), Is.True);
-                Assert.That(reader.IsAlive, Is.True, "the delayed reader must wait at the reload lock");
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(SpinWait.SpinUntil(() => !reader.IsAlive ||
+                        (reader.ThreadState & ThreadState.WaitSleepJoin) != 0, ThreadTimeout), Is.True);
+                    Assert.That(reader.IsAlive, Is.True, "the delayed reader must wait at the reload lock");
+                }
 
                 ReplaceRules(path, [$"from {NewDestination}", $"to {PreviousDestination} 3"], timestamp.AddSeconds(2));
                 SendPolicyRules latestRules = file.Current;
@@ -173,8 +176,11 @@ public class SendPolicyRuleFileTests
             Assert.That(reader.Join(ThreadTimeout), Is.True, "the delayed reader must finish after the lock is released");
         }
 
-        Assert.That(readerError, Is.Null);
-        Assert.That(delayedRules, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(readerError, Is.Null);
+            Assert.That(delayedRules, Is.Not.Null);
+        }
 
         ReplaceRules(path, [$"from {NewDestination}", $"zz {PreviousDestination} 3"], timestamp.AddSeconds(3));
         SendPolicyRules unusable = file.Current;

@@ -29,8 +29,11 @@ public class TraceStackTests
         Assert.That(stack.ToRawBytes(), Is.EqualTo(bigEndian));
         for (int i = 0; i < Words.Length; i++)
         {
-            Assert.That(stack[i], Is.SequenceEqualTo(bigEndian.AsSpan(i * EvmStack.WordSize, EvmStack.WordSize)));
-            Assert.That(stack.PeekUInt256(Words.Length - 1 - i), Is.EqualTo(Words[i]));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(stack[i], Is.SequenceEqualTo(bigEndian.AsSpan(i * EvmStack.WordSize, EvmStack.WordSize)));
+                Assert.That(stack.PeekUInt256(Words.Length - 1 - i), Is.EqualTo(Words[i]));
+            }
         }
     }
 

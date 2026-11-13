@@ -67,8 +67,11 @@ public class JsonRpcSocketsClientTests
             Assert.That(response[0], Is.EqualTo((byte)'['));
         }
 
-        Assert.That(response.AsSpan().Count((byte)'\n'), Is.EqualTo(1));
-        Assert.That(fixture.Sink.BytesWritten, Is.EqualTo(response.Length));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.AsSpan().Count((byte)'\n'), Is.EqualTo(1));
+            Assert.That(fixture.Sink.BytesWritten, Is.EqualTo(response.Length));
+        }
     }
 
     [TestCase(RpcEndpoint.Ws, true)]
@@ -416,7 +419,9 @@ public class JsonRpcSocketsClientTests
         InvalidOperationException failure = new("serialization failed");
         using JsonRpcResult failed = JsonRpcResult.Single(new JsonRpcSuccessResponse { Result = new FlushingStreamable(chunks: 0, failure) }, default);
 
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That(await Assert.CatchAsync(async () => await server.Client.SendJsonRpcResult(failed)), Is.SameAs(failure));
+#pragma warning restore NUnit2045
         Assert.That(stream.ToArray(), Is.Empty, "the failure must precede any stream write");
 
         using JsonRpcResult next = JsonRpcResult.Single(new JsonRpcSuccessResponse { Result = "next" }, default);
@@ -1192,8 +1197,11 @@ public class JsonRpcSocketsClientTests
             int sent = sendMessages.Result;
             int received = receiveMessages.Result;
 
-            Assert.That(received, Is.EqualTo(sent));
-            Assert.That(sentMessages, Is.EqualTo(receivedMessages).AsCollection);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(received, Is.EqualTo(sent));
+                Assert.That(sentMessages, Is.EqualTo(receivedMessages).AsCollection);
+            }
         }
 
         private static async Task SendAndAssertPayloads(string wireData, IReadOnlyList<string> expectedPayloads, int timeout = 5000, int chunkSize = 0)
@@ -1230,6 +1238,24 @@ public class JsonRpcSocketsClientTests
             Assert.That(processedPayloads, Is.EqualTo(expectedPayloads));
 
             await ShutdownAndWait(pair.SendSocket, receiver);
+        }
+
+        /// <remarks>The token is cancelled explicitly: noticing that the peer went away is not what this covers.</remarks>
+        [Test]
+        public async Task Cancelled_connection_abandons_its_queued_request()
+        {
+            using QueuedRentalFixture fixture = new();
+            using UnixSocketPair pair = await UnixSocketPair.CreateAsync();
+            QueuedRentalFixture.IProbeRpcModule held = fixture.Hold();
+            Task receiver = StartReceiver(pair.Listener, fixture.CreateProcessor(), pair.Cts.Token);
+            await using IpcSocketMessageStream client = new(pair.SendSocket);
+            await client.WriteAsync(Encoding.UTF8.GetBytes(QueuedRentalFixture.Request()));
+
+            await fixture.WaitUntilQueued(1);
+            await pair.Cts.CancelAsync();
+            await Assert.CatchAsync<OperationCanceledException>(() => receiver.WaitAsync(QueuedRentalFixture.Watchdog));
+            await fixture.ReleaseAndAssertUsable(held);
+            Assert.That(fixture.Invocations, Is.Zero);
         }
 
         private static Task StartReceiver(Socket listener, IJsonRpcProcessor processor, CancellationToken token, int concurrency = 1) =>

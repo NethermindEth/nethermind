@@ -39,7 +39,7 @@ public partial class EngineRpcModule : IEngineRpcModule
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV4(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null, BitArray? custodyColumns = null)
         => ValidateAndApplyCustodyColumns(custodyColumns) is { } error
             ? Task.FromResult(ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error, ErrorCodes.InvalidParams))
-            : ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Fcu.V4);
+            : ForkchoiceUpdatedV3(forkchoiceState, payloadAttributes, EngineApiVersions.Fcu.V4);
 
     public Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>>> engine_getPayloadBodiesByHashV2(
         IReadOnlyList<Hash256> blockHashes)

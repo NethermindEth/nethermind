@@ -17,8 +17,11 @@ namespace Nethermind.Evm.Test
         {
             using VmStateScope scope = CreateEvmStateScope();
             StorageCell storageCell = new(TestItem.AddressA, 1);
-            Assert.That(scope.VmState.AccessTracker.IsCold(TestItem.AddressA), Is.True);
-            Assert.That(scope.VmState.AccessTracker.IsCold(storageCell), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(scope.VmState.AccessTracker.IsCold(TestItem.AddressA), Is.True);
+                Assert.That(scope.VmState.AccessTracker.IsCold(storageCell), Is.True);
+            }
         }
 
         [Test]
@@ -43,8 +46,11 @@ namespace Nethermind.Evm.Test
 
             for (int i = 0; i < TestItem.Addresses.Length; i++)
             {
-                Assert.That(scope.VmState.AccessTracker.IsCold(TestItem.Addresses[i]), Is.False);
-                Assert.That(scope.VmState.AccessTracker.IsCold(new StorageCell(TestItem.Addresses[i], 1)), Is.False);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(scope.VmState.AccessTracker.IsCold(TestItem.Addresses[i]), Is.False);
+                    Assert.That(scope.VmState.AccessTracker.IsCold(new StorageCell(TestItem.Addresses[i], 1)), Is.False);
+                }
             }
         }
 

@@ -5,6 +5,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using System;
@@ -125,9 +126,10 @@ namespace Nethermind.Benchmarks.Core
 
             static AuthorizationTuple CreateAuthorizationTuple(PrivateKey signer, ulong chainId, Address codeAddress, ulong nonce)
             {
-                KeccakRlpWriter writer = new();
+                byte[] payload = new byte[AuthorizationTupleDecoder.GetSignaturePayloadLength(chainId, codeAddress, nonce)];
+                RlpWriter writer = RlpWriter.ContentWriter(payload);
                 AuthorizationTupleDecoder.EncodeSignaturePayload(ref writer, chainId, codeAddress, nonce);
-                Signature sig = _ethereumEcdsa.Sign(signer, writer.GetValueHash());
+                Signature sig = _ethereumEcdsa.Sign(signer, ValueKeccak.Compute(payload));
 
                 return new AuthorizationTuple(chainId, codeAddress, nonce, sig);
             }
@@ -142,6 +144,8 @@ namespace Nethermind.Benchmarks.Core
             ResetSigs(_block10TxWith10AuthSigs);
             ResetSigs(_block10TxWith0AuthSigs);
             ResetSigs(_block3TxWith1AuthSigs);
+            // Every iteration recovers again rather than reading the senders the previous one cached.
+            EthereumEcdsaExtensions.ClearSenderCache();
 
             static void ResetSigs(Block block) => Parallel.ForEach(block.Transactions, (t) =>
             {

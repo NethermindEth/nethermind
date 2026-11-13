@@ -152,6 +152,29 @@ public class TracedAccessWorldStateTests(bool parallel)
         }
     }
 
+    [Test]
+    public void Zero_credit_lists_the_account_without_a_balance_change([Values] bool initiallyExists, [Values] bool twice)
+    {
+        (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
+        {
+            if (initiallyExists) ws.CreateAccount(TestItem.AddressA, 5);
+        });
+        using (scope)
+        {
+            tws.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, UInt256.Zero, Spec, out _);
+            if (twice) tws.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, UInt256.Zero, Spec, out _);
+
+            AccountChangesAtIndex? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ac, Is.Not.Null);
+                Assert.That(ac!.AccountExists, Is.True);
+                Assert.That(ac.BalanceChange, Is.Null);
+                Assert.That(tws.GetBalance(TestItem.AddressA), Is.EqualTo(initiallyExists ? (UInt256)5 : UInt256.Zero));
+            }
+        }
+    }
+
     [TestCase(true, 50u, 100u, 150u, TestName = "AddToBalance")]
     [TestCase(false, 30u, 100u, 70u, TestName = "SubtractFromBalance")]
     public void BalanceOp_RecordsBalanceChange(
@@ -244,7 +267,9 @@ public class TracedAccessWorldStateTests(bool parallel)
             if (expectRecorded)
             {
                 Assert.That(ac, Is.Not.Null);
+#pragma warning disable NUnit2045 // The nullable value must be checked before accessing its contents.
                 Assert.That(ac!.NonceChange, Is.Not.Null);
+#pragma warning restore NUnit2045
                 Assert.That(ac.NonceChange!.Value.Value, Is.EqualTo(newNonce));
             }
             else
@@ -347,7 +372,7 @@ public class TracedAccessWorldStateTests(bool parallel)
             {
                 Assert.That(ac, Is.Not.Null);
                 Assert.That(ac!.StorageChangeCount, Is.EqualTo(1));
-                Assert.That(ac.StorageChanges.ContainsKey((UInt256)1), Is.True);
+                Assert.That(ac.HasStorageChange((UInt256)1), Is.True);
                 Assert.That(decorator.Writes, Is.EqualTo(1));
                 Assert.That(decorator.Reads - reads, Is.EqualTo(expectedReads));
             }
@@ -388,8 +413,11 @@ public class TracedAccessWorldStateTests(bool parallel)
             tws.Get(in cell, out actual);
             Assert.That(actual, Is.EqualTo(UInt256.One));
             tws.Get(in cell, out actual);
-            Assert.That(actual, Is.EqualTo(UInt256.One));
-            Assert.That(tws.GetGeneratingBlockAccessList()!.GetAccountChanges(cell.Address)!.StorageChangeCount, Is.Zero);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual, Is.EqualTo(UInt256.One));
+                Assert.That(tws.GetGeneratingBlockAccessList()!.GetAccountChanges(cell.Address)!.StorageChangeCount, Is.Zero);
+            }
         }
     }
 
@@ -410,7 +438,9 @@ public class TracedAccessWorldStateTests(bool parallel)
 
             AccountChangesAtIndex? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
             Assert.That(ac, Is.Not.Null);
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
             Assert.That(ac!.StorageReads, Has.Count.EqualTo(1));
+#pragma warning restore NUnit2045
             Assert.That(ac.StorageReads.First(), Is.EqualTo((UInt256)2));
         }
     }
@@ -451,7 +481,7 @@ public class TracedAccessWorldStateTests(bool parallel)
             AccountChangesAtIndex ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA)!;
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(ac.StorageChanges.Keys, Is.EquivalentTo(changedSlots.Select(static s => (UInt256)s)));
+                Assert.That(ac.StorageChanges.Select(static change => change.Key), Is.EquivalentTo(changedSlots.Select(static s => (UInt256)s)));
                 Assert.That(ac.StorageReads, Is.EquivalentTo(readSlots.Select(static s => (UInt256)s)));
             }
         }
@@ -558,7 +588,9 @@ public class TracedAccessWorldStateTests(bool parallel)
             (Action<TracedAccessWorldState>)(tws =>
             {
                 bool found = tws.TryGetAccount(TestItem.AddressA, out AccountStruct account);
+#pragma warning disable NUnit2045 // The lookup must succeed before dereferencing the returned value.
                 Assert.That(found, Is.True);
+#pragma warning restore NUnit2045
                 Assert.That(account.Balance, Is.EqualTo((UInt256)77));
             }))
             .SetName("TryGetAccount_RecordsAccountRead");

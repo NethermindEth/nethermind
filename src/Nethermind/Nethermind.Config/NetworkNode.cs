@@ -71,7 +71,7 @@ public class NetworkNode
             }
             catch (Exception e)
             {
-                if (logger.IsError) logger.Error($"Could not parse enode data from {nodeString}", e);
+                if (logger.IsError) logger.Error($"Could not parse enode data from {nodeString:hide}", SensitiveLogMasking.Enabled ? null : e);
             }
         }
 

@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO.Pipelines;
 using System.Text.Json;
 using System.Threading;
 using Nethermind.Blockchain.Tracing.ParityStyle;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -23,10 +25,10 @@ public enum ParityTraceStreamMode
     Store,
 }
 
-public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDisposable
+public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IParallelTraceStream<ParityLikeTxTrace>, IDisposable
 {
     /// <summary>Bytes buffered before they go to the wire: a flush per transaction blocks on the socket for traces of
-    /// a few hundred bytes, and in a parallel trace it does so while holding the emitter that every worker waits on.
+    /// a few hundred bytes, and in a parallel trace it does so while the transactions after it wait to be written.
     /// Small enough that a sparse <c>trace_filter</c> still sends progress.</summary>
     internal const int FlushThresholdBytes = StreamableResultWriter.FlushThresholdBytes;
 
@@ -40,12 +42,12 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
     private readonly TxTraceFilter? _storeFilter;
     private readonly JsonSerializerOptions _jsonOptions;
     private readonly ISpecProvider? _specProvider;
+    private TraceStreamOutput _output;
 
     private ParityLikeTxTrace? _pendingRewardTrace;
     private Block? _block;
     private StreamingParityLikeTxTracer? _reusableTxTracer;
     private ParityTraceTypes _reusableTxTracerTypes;
-    private long _flushedBytes;
 
     public StreamingParityLikeBlockTracer(
         ParityTraceTypes types,
@@ -68,7 +70,7 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
         _cancellationToken = cancellationToken;
         _storeFilter = storeFilter;
         _jsonOptions = EthereumJsonSerializer.JsonOptions;
-        _flushedBytes = writer.BytesCommitted;
+        _output = new TraceStreamOutput(writer, pipeWriter, cancellationToken, FlushThresholdBytes);
     }
 
     public StreamingParityLikeBlockTracer(
@@ -91,7 +93,7 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
         _pipeWriter = pipeWriter;
         _cancellationToken = cancellationToken;
         _jsonOptions = EthereumJsonSerializer.JsonOptions;
-        _flushedBytes = writer.BytesCommitted;
+        _output = new TraceStreamOutput(writer, pipeWriter, cancellationToken, FlushThresholdBytes);
     }
 
     public StreamingParityLikeBlockTracer(
@@ -116,7 +118,7 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
         _pipeWriter = pipeWriter;
         _cancellationToken = cancellationToken;
         _jsonOptions = EthereumJsonSerializer.JsonOptions;
-        _flushedBytes = writer.BytesCommitted;
+        _output = new TraceStreamOutput(writer, pipeWriter, cancellationToken, FlushThresholdBytes);
     }
 
     public override void StartNewBlockTrace(Block block)
@@ -191,32 +193,52 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
         FlushPipe();
     }
 
-    /// <summary>Writes traces produced elsewhere, in the order given, exactly as they would have been streamed while
-    /// being produced here. Called once per transaction as the parallel tracer finishes it, so the response leaves
-    /// while the rest of the block is still being traced.</summary>
-    public void WriteTraces(IReadOnlyCollection<ParityLikeTxTrace> traces)
+    /// <summary>A filter counts what it has written, so its traces are serialized in block order; any other trace is
+    /// serialized on its own by the worker that traced it.</summary>
+    public JsonWriterOptions? SerializeAheadOptions => _storeFilter is null ? ParallelTraceStream.SerializeAheadOptions(_writer) : null;
+
+    /// <summary>Writes traces produced elsewhere exactly as they would have been streamed while being produced here.
+    /// Called in block order when the traces cannot be serialized ahead, as when a store filter counts what it writes.</summary>
+    public void Write(IReadOnlyCollection<ParityLikeTxTrace> traces)
+    {
+        Serialize(traces, _writer);
+        FlushPipe();
+    }
+
+    /// <inheritdoc />
+    public void Serialize(IReadOnlyCollection<ParityLikeTxTrace> traces, Utf8JsonWriter writer)
     {
         try
         {
-            foreach (ParityLikeTxTrace trace in traces)
+            if (traces is IReadOnlyList<ParityLikeTxTrace> list)
             {
-                _cancellationToken.ThrowIfCancellationRequested();
-                if (_mode == ParityTraceStreamMode.Replay)
-                    ParityReplayEnvelopeWriter.WriteFromTrace(_writer, trace, _includeTxHash, _jsonOptions);
-                else
-                    EmitStoreItems(trace);
+                for (int i = 0; i < list.Count; i++) SerializeOne(writer, list[i]);
+            }
+            else
+            {
+                foreach (ParityLikeTxTrace trace in traces) SerializeOne(writer, trace);
             }
         }
         finally
         {
             traces.TryDispose();
         }
-
-        FlushPipe();
     }
 
+    private void SerializeOne(Utf8JsonWriter writer, ParityLikeTxTrace trace)
+    {
+        _cancellationToken.ThrowIfCancellationRequested();
+        if (_mode == ParityTraceStreamMode.Replay)
+            ParityReplayEnvelopeWriter.WriteFromTrace(writer, trace, _includeTxHash, _jsonOptions);
+        else
+            EmitStoreItems(writer, trace);
+    }
+
+    /// <inheritdoc />
+    public void WriteSerialized(in ReadOnlySequence<byte> elements) => _output.WriteSerialized(elements);
+
     /// <summary>Tracers for the transactions of <paramref name="block"/> when it is traced in parallel; their traces are
-    /// recycled once <see cref="WriteTraces"/> has written them.</summary>
+    /// recycled once they are serialized.</summary>
     internal ParallelParityTxTracerPool CreateParallelTxTracers(Block block, ParityTraceTypes types) =>
         new(_writer, _cancellationToken, types, _specProvider?.GetSpec(block.Header));
 
@@ -246,21 +268,15 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
         }
         else
         {
-            EmitStoreItems(trace);
+            EmitStoreItems(_writer, trace);
         }
     }
 
     private void EmitReplayEnvelopeTail(ParityLikeTxTrace trace) =>
         ParityReplayEnvelopeWriter.WriteTail(_writer, trace, _includeTxHash, _jsonOptions);
 
-    private void EmitStoreItems(ParityLikeTxTrace trace) =>
-        ParityTxTraceFromStore.Write(_writer, trace, _storeFilter, _jsonOptions);
+    private void EmitStoreItems(Utf8JsonWriter writer, ParityLikeTxTrace trace) =>
+        ParityTxTraceFromStore.Write(writer, trace, _storeFilter, _jsonOptions);
 
-    private void FlushPipe()
-    {
-        if (_pipeWriter is null || _writer.BytesCommitted + _writer.BytesPending - _flushedBytes < FlushThresholdBytes) return;
-        _writer.Flush();
-        _pipeWriter.FlushAsync(_cancellationToken).SafeWait();
-        _flushedBytes = _writer.BytesCommitted;
-    }
+    private void FlushPipe() => _output.FlushIfDue();
 }

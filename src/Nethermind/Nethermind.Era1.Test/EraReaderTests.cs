@@ -9,6 +9,8 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Encoding;
 using Nethermind.Core.Test.IO;
+using Nethermind.Era1.Exceptions;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using NSubstitute;
@@ -23,7 +25,7 @@ internal class EraReaderTests
         public string FilePath => _tmpFile.Path;
         public List<(Block, TxReceipt[])> AddedContents { get; }
 
-        public static async Task<PopulatedTestFile> Create(Transaction? transaction = null)
+        public static async Task<PopulatedTestFile> Create(Transaction? transaction = null, ulong secondBlockNumber = 1)
         {
             TempPath tmpFile = TempPath.GetTempFile();
             using EraWriter builder = new(tmpFile.Path, Substitute.For<ISpecProvider>());
@@ -47,7 +49,7 @@ internal class EraReaderTests
                 [Build.A.Receipt.WithTxType(TxType.EIP1559).TestObject]);
 
             await AddBlock(
-                Build.A.Block.WithNumber(1)
+                Build.A.Block.WithNumber(secondBlockNumber)
                     .WithDifficulty(0)
                     .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject,
                 [Build.A.Receipt.WithTxType(TxType.EIP1559).TestObject]);
@@ -136,6 +138,15 @@ internal class EraReaderTests
     }
 
     [Test]
+    public async Task VerifyContent_HeaderNumberDiffersFromSlot_ThrowsEraVerificationException([Values(0UL, 2UL, 3UL)] ulong secondBlockNumber)
+    {
+        using PopulatedTestFile tmpFile = await PopulatedTestFile.Create(secondBlockNumber: secondBlockNumber);
+
+        using EraReader sut = new(tmpFile.FilePath);
+        Assert.That(() => sut.VerifyContent(Substitute.For<ISpecProvider>(), Always.Valid), Throws.TypeOf<EraVerificationException>());
+    }
+
+    [Test]
     public async Task CalculateAccumulator_MainnetFile_MatchesStoredAccumulator(
         [Values("mainnet-00000-5ec1ffb8.era1", "mainnet-00001-a5364e9a.era1", "mainnet-00002-98cbd8a9.era1")] string fileName)
     {
@@ -150,7 +161,7 @@ internal class EraReaderTests
 
         Assert.That(
             () => DecodeReceipts(receiptsWithEmptyListItem),
-            Throws.TypeOf<RlpException>());
+            Throws.TypeOf<RlpReaderException>());
     }
 
     private static TxReceipt[] DecodeReceipts(byte[] bytes)

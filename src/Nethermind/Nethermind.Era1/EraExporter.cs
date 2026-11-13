@@ -75,6 +75,39 @@ public class EraExporter(
         using ArrayPoolList<ValueHash256> checksums = new((int)epochCount, (int)epochCount);
         using ArrayPoolList<string> fileNames = new((int)epochCount, (int)epochCount);
 
+        string accumulatorPath = Path.Combine(destinationPath, AccumulatorFileName);
+        string checksumPath = Path.Combine(destinationPath, ChecksumsFileName);
+        Dictionary<long, List<string>> earlierFiles = [];
+        long firstEarlierEpoch = 0;
+        foreach (string file in EraPathUtils.GetAllEraFiles(destinationPath, _networkName, fileSystem))
+        {
+            if (!EraPathUtils.TryGetEpoch(file, out long epoch)) continue;
+            if (earlierFiles.Count == 0 || epoch < firstEarlierEpoch) firstEarlierEpoch = epoch;
+            if (!earlierFiles.TryGetValue(epoch, out List<string>? files))
+                earlierFiles[epoch] = files = [];
+            files.Add(file);
+        }
+        Dictionary<ulong, List<(string Path, bool IsPlaceholder)>> earlierEpochFiles = [];
+        foreach (string file in fileSystem.Directory.EnumerateFiles(destinationPath).Order(StringComparer.Ordinal))
+        {
+            if (!EraPathUtils.TryParseEpochFile(file, _networkName, out ulong epoch, out bool isPlaceholder) || epoch < startEpoch || epoch >= startEpoch + epochCount)
+                continue;
+
+            if (!earlierEpochFiles.TryGetValue(epoch, out List<(string Path, bool IsPlaceholder)>? files))
+                earlierEpochFiles[epoch] = files = [];
+            files.Add((file, isPlaceholder));
+        }
+        Dictionary<long, string> keptFiles = ResolveEarlierFiles();
+        SortedDictionary<long, (ValueHash256 Hash, string FileName)> accumulatorEntries = ReadEarlierEntries(accumulatorPath);
+        SortedDictionary<long, (ValueHash256 Hash, string FileName)> checksumEntries = ReadEarlierEntries(checksumPath);
+
+        // Check every epoch before writing any, so a rejected epoch leaves the directory as it was.
+        for (ulong epochIdx = 0; epochIdx < epochCount; epochIdx++)
+        {
+            (ulong startingIndex, ulong endingIndex) = GetWriteRange(epochIdx);
+            EnsureNoBlocksLost(earlierEpochFiles.GetValueOrDefault(startEpoch + epochIdx), startEpoch + epochIdx, startingIndex, endingIndex, from, to, era1Size);
+        }
+
         await Parallel.ForEachAsync(epochIdxs, new ParallelOptions
         {
             MaxDegreeOfParallelism = eraConfig.Concurrency == 0 ? Environment.ProcessorCount : eraConfig.Concurrency,
@@ -86,22 +119,79 @@ public class EraExporter(
             await WriteEpoch(epochIdx);
         });
 
-        string accumulatorPath = Path.Combine(destinationPath, AccumulatorFileName);
-        fileSystem.File.Delete(accumulatorPath);
-        await WriteFileAsync(accumulatorPath, accumulators, fileNames, cancellation);
+        for (int i = 0; i < fileNames.Count; i++)
+        {
+            long epoch = (long)startEpoch + i;
+            accumulatorEntries[epoch] = (accumulators[i], fileNames[i]);
+            checksumEntries[epoch] = (checksums[i], fileNames[i]);
+        }
 
-        string checksumPath = Path.Combine(destinationPath, ChecksumsFileName);
+        fileSystem.File.Delete(accumulatorPath);
+        await WriteFileAsync(accumulatorPath, accumulatorEntries, cancellation);
+
         fileSystem.File.Delete(checksumPath);
-        await WriteFileAsync(checksumPath, checksums, fileNames, cancellation);
+        await WriteFileAsync(checksumPath, checksumEntries, cancellation);
+
+        // Only now, with every epoch exported and the manifests naming the new files, delete the files they replace.
+        for (int i = 0; i < fileNames.Count; i++)
+        {
+            if (earlierEpochFiles.TryGetValue(startEpoch + (ulong)i, out List<(string Path, bool IsPlaceholder)>? files))
+                DeleteSupersededFiles(files.Select(static f => f.Path), Path.Combine(destinationPath, fileNames[i]));
+        }
 
         if (_logger.IsInfo) _logger.Info($"Finished history export from {from} to {to}");
 
+        // Picks, for each epoch this export leaves alone, the file its earlier entries belong to, as the store does, so a
+        // hash stays with its own file when an epoch has two. This export replaces the entries of its own epochs.
+        Dictionary<long, string> ResolveEarlierFiles()
+        {
+            Dictionary<long, string> listed = [];
+            Dictionary<long, ValueHash256> checksums = fileSystem.File.Exists(checksumPath)
+                ? EraPathUtils.ParseManifest(fileSystem.File.ReadAllLines(checksumPath), firstEarlierEpoch, listed)
+                : [];
+            Dictionary<long, string> kept = [];
+            foreach ((long epoch, List<string> files) in earlierFiles)
+            {
+                if (epoch >= (long)startEpoch && epoch < (long)(startEpoch + epochCount)) continue;
+
+                string? file = EraPathUtils.ResolveEpochFile(files, listed.GetValueOrDefault(epoch), checksums, epoch);
+                if (file is not null)
+                    kept[epoch] = Path.GetFileName(file);
+                else if (checksums.ContainsKey(epoch))
+                    throw new EraException(EraPathUtils.DuplicateEpochMessage(epoch, files));
+            }
+
+            return kept;
+        }
+
+        // Keeps the entries of an earlier export into this directory whose epochs still have an era file,
+        // so the rewritten manifest covers every epoch in the directory.
+        SortedDictionary<long, (ValueHash256 Hash, string FileName)> ReadEarlierEntries(string path)
+        {
+            SortedDictionary<long, (ValueHash256 Hash, string FileName)> entries = [];
+            if (!fileSystem.File.Exists(path)) return entries;
+
+            foreach ((long epoch, ValueHash256 hash) in EraPathUtils.ParseManifest(fileSystem.File.ReadAllLines(path), firstEarlierEpoch))
+            {
+                if (keptFiles.TryGetValue(epoch, out string? fileName))
+                    entries[epoch] = (hash, fileName);
+            }
+
+            return entries;
+        }
+
+        // Yes, it offset a bit so a block that is at the end of an epoch would be at the start of another epoch
+        // if the start is not a multiple of _era1Size. This seems to match geth's behaviour.
+        (ulong StartingIndex, ulong EndingIndex) GetWriteRange(ulong epochIdx)
+        {
+            ulong startingIndex = from + epochIdx * era1Size;
+            return (startingIndex, Math.Min(startingIndex + era1Size - 1, to));
+        }
+
         async Task WriteEpoch(ulong epochIdx)
         {
-            // Yes, it offset a bit so a block that is at the end of an epoch would be at the start of another epoch
-            // if the start is not a multiple of _era1Size. This seems to match geth's behaviour.
             ulong epoch = startEpoch + epochIdx;
-            ulong startingIndex = from + epochIdx * era1Size;
+            (ulong startingIndex, ulong endingIndex) = GetWriteRange(epochIdx);
 
             string filePath = Path.Combine(
                 destinationPath,
@@ -113,7 +203,7 @@ public class EraExporter(
             // Scoped using so the writer is disposed before File.Move — Windows locks open files.
             using (EraWriter eraWriter = new(fileSystem.File.Create(filePath), specProvider))
             {
-                for (ulong y = startingIndex; y < startingIndex + era1Size && y <= to; y++)
+                for (ulong y = startingIndex; y <= endingIndex; y++)
                 {
                     Block? block = blockTree.FindBlock(y, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)
                         ?? throw new EraException($"Could not find a block with number {y}.");
@@ -158,17 +248,74 @@ public class EraExporter(
         }
     }
 
-    private async Task WriteFileAsync(string path, ArrayPoolList<ValueHash256> hashes, ArrayPoolList<string> fileNames, CancellationToken cancellationToken)
+    /// <summary>
+    /// A new file replaces the earlier files of the epoch, so it must hold every block they hold.
+    /// </summary>
+    private static void EnsureNoBlocksLost(List<(string Path, bool IsPlaceholder)>? earlierFiles, ulong epoch, ulong startingIndex, ulong endingIndex, ulong from, ulong to, ulong era1Size)
+    {
+        foreach ((string earlierPath, bool isPlaceholder) in earlierFiles ?? [])
+        {
+            if (isPlaceholder) continue;
+
+            ulong first, last;
+            try
+            {
+                using E2StoreReader reader = new(earlierPath);
+                (first, last) = (reader.First, reader.LastBlock);
+            }
+            catch (Exception e) when (e is EraException or ArgumentException)
+            {
+                throw new EraException($"Cannot read the block range of {Path.GetFileName(earlierPath)}: {e.Message} Remove or repair it before exporting this epoch.", e);
+            }
+
+            // The request holds the file, but this export's epochs start at another offset within an era.
+            if ((first < startingIndex || last > endingIndex) && first >= from && last <= to)
+                throw new EraException(
+                    $"Cannot export blocks {startingIndex}-{endingIndex} as epoch {epoch}: era1 epochs start at the export's first block, " +
+                    $"and {Path.GetFileName(earlierPath)} (blocks {first}-{last}) does not fit in that window. " +
+                    $"Start the export at a block with the same offset within an era ({first % era1Size}), for example {first}, or export into another directory.");
+
+            if (first < startingIndex || last > endingIndex)
+                throw new EraException(
+                    $"Cannot export blocks {startingIndex}-{endingIndex} as epoch {epoch}: replacing {Path.GetFileName(earlierPath)} (blocks {first}-{last}) would lose blocks. " +
+                    "Export a range that contains them, or export into another directory.");
+        }
+    }
+
+    /// <summary>
+    /// Deletes the earlier files of an epoch except the one that now holds it. A name that differs from the survivor's
+    /// only in case is a separate file only when the directory lists both names, as on a case-sensitive file system;
+    /// elsewhere it is the survivor itself.
+    /// </summary>
+    private void DeleteSupersededFiles(IEnumerable<string> earlierFiles, string survivor)
+    {
+        string survivorName = Path.GetFileName(survivor);
+        HashSet<string>? listed = null;
+        foreach (string earlier in earlierFiles)
+        {
+            string name = Path.GetFileName(earlier);
+            if (name == survivorName) continue;
+            if (string.Equals(name, survivorName, StringComparison.OrdinalIgnoreCase))
+            {
+                listed ??= fileSystem.Directory.EnumerateFiles(Path.GetDirectoryName(survivor)!).Select(static f => Path.GetFileName(f)).ToHashSet(StringComparer.Ordinal);
+                if (!listed.Contains(name) || !listed.Contains(survivorName)) continue;
+            }
+
+            fileSystem.File.Delete(earlier);
+        }
+    }
+
+    private async Task WriteFileAsync(string path, SortedDictionary<long, (ValueHash256 Hash, string FileName)> entries, CancellationToken cancellationToken)
     {
         await using FileSystemStream stream = fileSystem.FileStream.New(path, FileMode.Create, FileAccess.Write, FileShare.None);
         await using StreamWriter writer = new(stream);
 
-        for (int i = 0; i < hashes.Count; i++)
+        foreach ((ValueHash256 hash, string fileName) in entries.Values)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            await writer.WriteAsync(hashes[i].ToString());
+            await writer.WriteAsync(hash.ToString());
             await writer.WriteAsync(' ');
-            await writer.WriteLineAsync(fileNames[i]);
+            await writer.WriteLineAsync(fileName);
         }
     }
 }

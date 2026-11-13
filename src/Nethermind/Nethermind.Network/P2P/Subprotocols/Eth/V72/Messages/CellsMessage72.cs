@@ -23,9 +23,8 @@ public class CellsMessage72(
     public ValueHash256[] Hashes { get; } = hashes;
 
     /// <summary>
-    /// Gets cell groups by transaction, flattened in blob-major order for internal consumers.
+    /// Gets cell groups by transaction, each flattened in blob-major order as on the eth/72 wire.
     /// </summary>
-    /// <remarks>The serializer transposes each group to the cell-index-major eth/72 wire order.</remarks>
     public byte[][][] Cells { get; } = cells;
     public byte[] CellMask { get; } = cellMask;
 

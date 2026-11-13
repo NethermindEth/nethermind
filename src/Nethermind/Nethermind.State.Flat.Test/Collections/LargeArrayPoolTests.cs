@@ -25,8 +25,11 @@ public class LargeArrayPoolTests
         long[] array = pool.Rent(10_000);
         pool.Return(array);
 
-        Assert.That(array, Has.Length.EqualTo(10_000));
-        Assert.That(pool.Rent(10_000), Is.Not.SameAs(array));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(array, Has.Length.EqualTo(10_000));
+            Assert.That(pool.Rent(10_000), Is.Not.SameAs(array));
+        }
     }
 
     [Test]

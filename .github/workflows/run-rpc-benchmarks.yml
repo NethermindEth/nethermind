@@ -838,7 +838,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up .NET for CI scripts
-        uses: actions/setup-dotnet@v5
+        uses: ./rpc-bench-workspace/.github/actions/setup-dotnet
         with:
           dotnet-version: 10.0.x
 
@@ -1872,7 +1872,7 @@ jobs:
           path: reports/
 
       - name: Set up .NET for CI scripts
-        uses: actions/setup-dotnet@v5
+        uses: ./.github/actions/setup-dotnet
         with:
           dotnet-version: 10.0.x
 

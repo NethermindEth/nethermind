@@ -597,25 +597,13 @@ public class EraImporterTests
         const ulong lowestLocalHeader = 9;
         await using IContainer sourceCtx = await EraETestModule.CreateExportedPostMergeEraEnv(chainLength);
         IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
-        string eraFile = EraPathUtils.GetAllEraFiles(sourceCtx.ResolveTempDirPath(), EraETestModule.TestNetwork).Single();
-        byte[] eraBytes = await File.ReadAllBytesAsync(eraFile);
-        string manifest = $"{Convert.ToHexStringLower(SHA256.HashData(eraBytes))}  {Path.GetFileName(eraFile)}\n";
-        HttpClient httpClient = new(new FakeEraServerHandler(Path.GetFileName(eraFile), eraBytes, manifest));
-        await using IContainer targetCtx = CreateHeaderSyncTarget(sourceTree, configure: builder => builder
-            .AddSingleton(httpClient)
-            .AddSingleton<IEraEConfig>(new EraEConfig
-            {
-                MaxEraSize = 16,
-                NetworkName = EraETestModule.TestNetwork,
-                RemoteBaseUrl = "http://era.test/"
-            }));
+        await using IContainer targetCtx = await CreateRemoteHeaderSyncTarget(sourceCtx);
         IBlockTree targetTree = targetCtx.Resolve<IBlockTree>();
         if (localHeadersMatchArchive)
             InsertArchiveHeaders(targetTree, sourceTree, lowestLocalHeader, chainLength, MainChainHeader);
         else
             InsertForeignHeaders(targetTree, sourceTree, lowestLocalHeader, chainLength, MainChainHeader);
 
-        Directory.CreateDirectory(targetCtx.ResolveTempDirPath());
         Func<Task> import = () => targetCtx.Resolve<IEraImporter>().Import(targetCtx.ResolveTempDirPath(), 1, ulong.MaxValue, null);
 
         if (localHeadersMatchArchive)
@@ -634,6 +622,27 @@ public class EraImporterTests
                 Assert.That(() => import(), Throws.TypeOf<EraVerificationException>());
                 AssertNoLevels(targetTree, 1, lowestLocalHeader);
             }
+        }
+    }
+
+    [Test]
+    public async Task Import_ThroughRemoteStoreWithPartialLastEpoch_FailsOnlyForExplicitEndPastArchive([Values(0UL, 12UL)] ulong to)
+    {
+        const ulong chainLength = 12;
+        await using IContainer sourceCtx = await EraETestModule.CreateExportedPostMergeEraEnv(chainLength);
+        await using IContainer targetCtx = await CreateRemoteHeaderSyncTarget(sourceCtx);
+        Func<Task> import = () => targetCtx.Resolve<IEraImporter>().Import(targetCtx.ResolveTempDirPath(), 1, to, null);
+
+        if (to == 0)
+        {
+            await import();
+            Assert.That(
+                targetCtx.Resolve<IBlockTree>().FindBlock(chainLength - 1, BlockTreeLookupOptions.None)?.Hash,
+                Is.EqualTo(sourceCtx.Resolve<IBlockTree>().FindHeader(chainLength - 1, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!.Hash));
+        }
+        else
+        {
+            Assert.That(import, Throws.TypeOf<EraImportException>().With.Message.Contains($"Block {chainLength} not found"));
         }
     }
 
@@ -668,6 +677,24 @@ public class EraImporterTests
 
         IContainer targetCtx = builder.Build();
         targetCtx.Resolve<IBlockTree>().SuggestBlock(sourceTree.FindBlock(0, BlockTreeLookupOptions.None)!);
+        return targetCtx;
+    }
+
+    private static async Task<IContainer> CreateRemoteHeaderSyncTarget(IContainer sourceCtx)
+    {
+        string eraFile = EraPathUtils.GetAllEraFiles(sourceCtx.ResolveTempDirPath(), EraETestModule.TestNetwork).Single();
+        byte[] eraBytes = await File.ReadAllBytesAsync(eraFile);
+        string manifest = $"{Convert.ToHexStringLower(SHA256.HashData(eraBytes))}  {Path.GetFileName(eraFile)}\n";
+        HttpClient httpClient = new(new FakeEraServerHandler(Path.GetFileName(eraFile), eraBytes, manifest));
+        IContainer targetCtx = CreateHeaderSyncTarget(sourceCtx.Resolve<IBlockTree>(), configure: builder => builder
+            .AddSingleton(httpClient)
+            .AddSingleton<IEraEConfig>(new EraEConfig
+            {
+                MaxEraSize = 16,
+                NetworkName = EraETestModule.TestNetwork,
+                RemoteBaseUrl = "http://era.test/"
+            }));
+        Directory.CreateDirectory(targetCtx.ResolveTempDirPath());
         return targetCtx;
     }
 

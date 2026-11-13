@@ -296,11 +296,11 @@ internal sealed class SnapshotHttpStream : Stream
                 else if (++noProgressRetries >= _settings.MaxNoProgressRetries)
                 {
                     throw new IOException(
-                        $"Snapshot chunk at {offset} received no bytes across {_settings.MaxNoProgressRetries} consecutive attempts.", e);
+                        $"Snapshot chunk at {offset} received no bytes across {_settings.MaxNoProgressRetries} consecutive attempts.", SensitiveLogMasking.Enabled ? null : e);
                 }
 
                 if (_logger.IsWarn)
-                    _logger.Warn($"Snapshot chunk at {offset} failed after {received} bytes. Retrying in {retryDelay.TotalSeconds}s. Error: {e.Message}");
+                    _logger.Warn($"Snapshot chunk at {offset} failed after {received} bytes. Retrying in {retryDelay.TotalSeconds}s. Error: {(SensitiveLogMasking.Enabled ? e.GetType().Name : e.Message)}");
                 await Task.Delay(retryDelay, _cts.Token).ConfigureAwait(false);
                 retryDelay = Min(retryDelay * 2, _settings.MaxRetryDelay);
             }
@@ -366,11 +366,11 @@ internal sealed class SnapshotHttpStream : Stream
                     else if (++noProgressRetries >= _settings.MaxNoProgressRetries)
                     {
                         throw new IOException(
-                            $"The snapshot stream received no bytes across {_settings.MaxNoProgressRetries} consecutive attempts.", e);
+                            $"The snapshot stream received no bytes across {_settings.MaxNoProgressRetries} consecutive attempts.", SensitiveLogMasking.Enabled ? null : e);
                     }
 
                     if (_logger.IsWarn)
-                        _logger.Warn($"Snapshot stream interrupted after {produced + filled} bytes. Retrying in {retryDelay.TotalSeconds}s. Error: {e.Message}");
+                        _logger.Warn($"Snapshot stream interrupted after {produced + filled} bytes. Retrying in {retryDelay.TotalSeconds}s. Error: {(SensitiveLogMasking.Enabled ? e.GetType().Name : e.Message)}");
                     await Task.Delay(retryDelay, _cts.Token).ConfigureAwait(false);
                     retryDelay = Min(retryDelay * 2, _settings.MaxRetryDelay);
                 }

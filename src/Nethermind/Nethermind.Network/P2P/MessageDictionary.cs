@@ -7,7 +7,6 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Buffers;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
@@ -188,7 +187,7 @@ public class MessageDictionary<T66Msg, TData>(ProtocolHandlerBase handler, TimeS
     /// <remarks>
     /// A known expired response consumes its one-use tombstone and can be discarded without deserializing the payload.
     /// </remarks>
-    internal ResponseScope BeginResponse(IByteBuffer content)
+    internal ResponseScope BeginResponse(ReadOnlySpan<byte> content)
     {
         using (Lock.Scope scope = _lock.EnterScope())
         {
@@ -222,7 +221,7 @@ public class MessageDictionary<T66Msg, TData>(ProtocolHandlerBase handler, TimeS
     /// The request stays pending; <see cref="Handle"/> still claims it once the response is decoded.
     /// </remarks>
     /// <exception cref="SubprotocolException">The request id is unreadable or not pending.</exception>
-    public void ThrowIfNotRequested(IByteBuffer content) => GetPendingRequest(content);
+    public void ThrowIfNotRequested(ReadOnlySpan<byte> content) => GetPendingRequest(content);
 
     /// <summary>
     /// Returns the pending request that the response in <paramref name="content"/> answers.
@@ -232,7 +231,7 @@ public class MessageDictionary<T66Msg, TData>(ProtocolHandlerBase handler, TimeS
     /// response can be checked against it before <see cref="Handle"/> claims it.
     /// </remarks>
     /// <exception cref="SubprotocolException">The request id is unreadable or not pending.</exception>
-    public T66Msg GetPendingRequest(IByteBuffer content)
+    public T66Msg GetPendingRequest(ReadOnlySpan<byte> content)
     {
         using Lock.Scope scope = _lock.EnterScope();
         Request<T66Msg, TData>? request = null;

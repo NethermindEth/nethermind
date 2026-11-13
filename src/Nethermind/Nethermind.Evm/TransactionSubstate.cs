@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Text;
+using System.Text.Unicode;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -103,7 +105,7 @@ public readonly ref struct TransactionSubstate
         if (TryGetErrorMessage(span) is { } decoded) Error = decoded;
     }
 
-    public bool DestroyListContains(Address? address) => address is not null && _destroyList?.Contains(address) == true;
+    public bool DestroyListContains(Address? address) => address is not null && _destroyList is { Count: > 0 } destroyList && destroyList.Contains(address);
 
     public LogEntry[] LogsToArray() => _logs is null ? [] : _logs.ToArray();
 
@@ -113,6 +115,26 @@ public readonly ref struct TransactionSubstate
             return span.ToHexString(true);
 
         return Encoding.ASCII.GetString(span);
+    }
+
+    /// <summary>Decodes an <c>Error(string)</c> reason as UTF-8, replacing each invalid byte with U+FFFD.</summary>
+    /// <remarks>
+    /// Matches Geth, which keeps the raw string and lets <c>encoding/json</c> replace every invalid byte, rather
+    /// than .NET's replacement of each maximal invalid subsequence.
+    /// </remarks>
+    private static string DecodeErrorString(ReadOnlySpan<byte> span)
+    {
+        if (Utf8.IsValid(span)) return Encoding.UTF8.GetString(span);
+
+        StringBuilder decoded = new(span.Length);
+        while (!span.IsEmpty)
+        {
+            if (Rune.DecodeFromUtf8(span, out Rune rune, out int consumed) != OperationStatus.Done) consumed = 1;
+            decoded.Append(rune.ToString());
+            span = span[consumed..];
+        }
+
+        return decoded.ToString();
     }
 
     public static string? GetErrorMessage(ReadOnlySpan<byte> span)
@@ -127,7 +149,7 @@ public readonly ref struct TransactionSubstate
             UInt256 panicCode = new(span.TakeAndMove(WordSize), isBigEndian: true);
             if (!panicCode.IsUint64 || !PanicReasons.TryGetValue(panicCode.u0, out string? panicReason))
             {
-                return $"unknown panic code ({panicCode.ToHexString(skipLeadingZeros: true)})";
+                return $"unknown panic code: {panicCode.ToHexString(skipLeadingZeros: true)}";
             }
 
             return panicReason;
@@ -137,14 +159,16 @@ public readonly ref struct TransactionSubstate
         {
             if (span.Length < WordSize * 2) return null;
 
-            UInt256 start = new(span.TakeAndMove(WordSize), isBigEndian: true);
-            if (start != WordSize) return null;
+            // Like Geth's ABI decoder, accept the string at any in-bounds offset, not only right after the head.
+            UInt256 start = new(span[..WordSize], isBigEndian: true);
+            if (start > (ulong)(span.Length - WordSize)) return null;
+            span = span[(int)start..];
 
             UInt256 length = new(span.TakeAndMove(WordSize), isBigEndian: true);
             if (length > span.Length) return null;
 
             ReadOnlySpan<byte> binaryMessage = span.TakeAndMove((int)length);
-            return EncodeErrorMessage(binaryMessage);
+            return DecodeErrorString(binaryMessage);
         }
 
         // Unknown selector — not Error(string) or Panic(uint256). Return null so the caller

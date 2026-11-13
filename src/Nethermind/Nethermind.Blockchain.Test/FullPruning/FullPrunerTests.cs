@@ -106,8 +106,11 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         Nethermind.Db.Metrics.FullPruningLastDurationSeconds = -1;
         TestContext test = CreateTest();
         await test.RunFullPruning();
-        Assert.That(Nethermind.Db.Metrics.FullPruningCount, Is.EqualTo(countBefore + 1));
-        Assert.That(Nethermind.Db.Metrics.FullPruningLastDurationSeconds, Is.GreaterThanOrEqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Nethermind.Db.Metrics.FullPruningCount, Is.EqualTo(countBefore + 1));
+            Assert.That(Nethermind.Db.Metrics.FullPruningLastDurationSeconds, Is.GreaterThanOrEqualTo(0));
+        }
     }
 
     [Test, NonParallelizable, MaxTime(Timeout.MaxTestTime)]
@@ -219,7 +222,9 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         byte[] key = { 1, 2, 3 };
         test.FullPruningDb[key] = key;
 
+#pragma warning disable NUnit2045 // Completion is required before checking the resulting state.
         Assert.That(await test.WaitForPruningEnd(ctx), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(test.FullPruningDb[key], Is.EqualTo(key));
     }
 
@@ -255,6 +260,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
     {
         private readonly bool _clearPrunedDb;
         private readonly Hash256 _stateRoot;
+        private readonly INodeStorage _trieDbNodeStorage;
         private ulong _head;
         public TestFullPruningDb FullPruningDb { get; }
         public IPruningTrigger PruningTrigger { get; } = Substitute.For<IPruningTrigger>();
@@ -289,8 +295,8 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
             IDbFactory dbFactory = Substitute.For<IDbFactory>();
             dbFactory.CreateDb(Arg.Any<DbSettings>()).Returns(TrieDb, CopyDb);
 
-            NodeStorage storageForWrite = new(TrieDb, currentKeyScheme);
-            PatriciaTree trie = Build.A.Trie(storageForWrite).WithAccountsByIndex(0, 100).TestObject;
+            _trieDbNodeStorage = new NodeStorageFactory(currentKeyScheme, LimboLogs.Instance).WrapKeyValueStore(TrieDb);
+            PatriciaTree trie = Build.A.Trie(_trieDbNodeStorage).WithAccountsByIndex(0, 100).TestObject;
             _stateRoot = trie.RootHash;
             FullPruningDb = new TestFullPruningDb(new DbSettings("test", "test"), dbFactory, successfulPruning, clearPrunedDb);
             NodeStorageFactory nodeStorageFactory = new(preferredKeyScheme, LimboLogs.Instance);
@@ -384,7 +390,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
 
         public void ShouldCopyAllValuesWhenVisitingTrie()
         {
-            PatriciaTree trie = new(new RawScopedTrieStore(new NodeStorage(TrieDb)), LimboLogs.Instance);
+            PatriciaTree trie = new(new RawScopedTrieStore(_trieDbNodeStorage), LimboLogs.Instance);
             TrieCopiedNodeVisitor visitor = new(new NodeStorage(CopyDb));
             trie.Accept(visitor, BlockTree.Head!.StateRoot!);
         }
@@ -484,9 +490,8 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         {
         }
 
-        public void VisitMissingNode(in TreePathContextWithStorage ctx, in ValueHash256 nodeHash)
-        {
-        }
+        public void VisitMissingNode(in TreePathContextWithStorage ctx, in ValueHash256 nodeHash) =>
+            Assert.Fail($"Missing trie node {nodeHash} at {ctx.Path}.");
 
         public void VisitBranch(in TreePathContextWithStorage ctx, TrieNode node) =>
             CheckNode(ctx.Storage, ctx.Path, node);

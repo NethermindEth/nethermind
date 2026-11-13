@@ -15,6 +15,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NSubstitute;
@@ -99,6 +100,14 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
         private static string?[] GetTransactionHashes(string? serialized) =>
             [.. GetReceipts(serialized).Select(static r => r.GetProperty("transactionHash").GetString())];
 
+        private static TransactionHashesFilter ParseFilter(string filterJson)
+        {
+            using JsonDocument filterDocument = JsonDocument.Parse(filterJson);
+            TransactionHashesFilter filter = new();
+            filter.ReadJson(filterDocument.RootElement, EthereumJsonSerializer.JsonOptions);
+            return filter;
+        }
+
         [TestCase(200, false, TestName = "Exactly 200 hashes succeeds")]
         [TestCase(201, true, TestName = "More than 200 hashes fails")]
         public void TransactionReceiptsSubscription_hash_count_limit(int hashCount, bool shouldThrow)
@@ -106,6 +115,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             HashSet<ValueHash256> hashes = Enumerable.Range(0, hashCount)
                 .Select(_ => (ValueHash256)Keccak.Compute("test" + Guid.NewGuid()))
                 .ToHashSet();
+            string filterJson = $$"""{"transactionHashes":[{{string.Join(',', hashes.Select(static h => $"\"{h}\""))}}]}""";
 
             TransactionHashesFilter filter = new() { TransactionHashes = hashes };
 
@@ -114,10 +124,16 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
                 Action act = () => new TransactionReceiptsSubscription(
                     _jsonRpcDuplexClient, _receiptCanonicalityMonitor, _blockTree, _specProvider, _logManager, filter);
 
-                Assert.That(act, Throws.TypeOf<ArgumentException>().With.Message.Contains("Cannot subscribe to more than 200 transaction hashes"));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(act, Throws.TypeOf<ArgumentException>().With.Message.Contains("Cannot subscribe to more than 200 transaction hashes"));
+                    Assert.That(() => ParseFilter(filterJson), Throws.TypeOf<ArgumentException>().With.Message.Contains("Cannot subscribe to more than 200 transaction hashes"));
+                }
             }
             else
             {
+                Assert.That(ParseFilter(filterJson).TransactionHashes, Is.EquivalentTo(hashes));
+
                 using TransactionReceiptsSubscription subscription = new(
                     _jsonRpcDuplexClient, _receiptCanonicalityMonitor, _blockTree, _specProvider, _logManager, filter);
 
@@ -126,9 +142,23 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             }
         }
 
-        [Test]
-        public void TransactionReceiptsSubscription_on_receipts_inserted_no_filter_returns_all_receipts()
+        [TestCase("0x12")]
+        [TestCase("0x")]
+        [TestCase("0x00000000000000000000000000000000000000000000000000000000000000")]
+        [TestCase("0x000000000000000000000000000000000000000000000000000000000000000000")]
+        public void TransactionHashesFilter_rejects_hash_of_wrong_length(string hash)
         {
+            using JsonDocument document = JsonDocument.Parse($$"""{"transactionHashes":["{{hash}}"]}""");
+            TransactionHashesFilter filter = new();
+
+            Assert.That(() => filter.ReadJson(document.RootElement, EthereumJsonSerializer.JsonOptions), Throws.TypeOf<FormatException>());
+        }
+
+        [Test]
+        public void TransactionReceiptsSubscription_on_receipts_inserted_no_filter_returns_all_receipts([Values(null, "{}", """{"transactionHashes":[]}""")] string? filterJson)
+        {
+            TransactionHashesFilter? filter = filterJson is null ? null : ParseFilter(filterJson);
+
             ulong blockNumber = 55555;
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
 
@@ -138,7 +168,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             TxReceipt[] receipts = [receipt1, receipt2];
             ReceiptsEventArgs eventArgs = CreateReceiptsEventArgs(blockHeader, receipts);
 
-            string? serialized = GetTransactionReceiptsSubscriptionResult(null, eventArgs, out string subscriptionId);
+            string? serialized = GetTransactionReceiptsSubscriptionResult(filter, eventArgs, out string subscriptionId);
 
             using (Assert.EnterMultipleScope())
             {
@@ -153,10 +183,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             ulong blockNumber = 55555;
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
 
-            TransactionHashesFilter filter = new()
-            {
-                TransactionHashes = [TestItem.KeccakA]
-            };
+            TransactionHashesFilter filter = ParseFilter($$"""{"transactionHashes":["{{TestItem.KeccakA}}"]}""");
 
             TxReceipt receipt1 = Build.A.Receipt.WithBlockNumber(blockNumber).WithTransactionHash(TestItem.KeccakA).WithIndex(0).TestObject;
             TxReceipt receipt2 = Build.A.Receipt.WithBlockNumber(blockNumber).WithTransactionHash(TestItem.KeccakB).WithIndex(1).TestObject;
@@ -196,15 +223,14 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
         }
 
         [Test]
-        public void TransactionReceiptsSubscription_on_receipts_inserted_non_matching_hashes()
+        public void TransactionReceiptsSubscription_on_receipts_inserted_non_matching_hashes([Values] bool nonStringHash)
         {
             ulong blockNumber = 55555;
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
 
-            TransactionHashesFilter filter = new()
-            {
-                TransactionHashes = [TestItem.KeccakD, TestItem.KeccakE]
-            };
+            TransactionHashesFilter filter = ParseFilter(nonStringHash
+                ? """{"transactionHashes":[1]}"""
+                : $$"""{"transactionHashes":["{{TestItem.KeccakD}}","{{TestItem.KeccakE}}"]}""");
 
             TxReceipt receipt1 = Build.A.Receipt.WithBlockNumber(blockNumber).WithTransactionHash(TestItem.KeccakA).WithIndex(0).TestObject;
             TxReceipt receipt2 = Build.A.Receipt.WithBlockNumber(blockNumber).WithTransactionHash(TestItem.KeccakB).WithIndex(1).TestObject;

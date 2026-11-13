@@ -12,7 +12,6 @@ using Nethermind.Logging;
 using Autofac;
 using Autofac.Core;
 using Nethermind.Config;
-using Nethermind.Abi;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -68,7 +67,6 @@ public class ShutterPluginModule : Module
         }
 
         return new ShutterApi(
-            ctx.Resolve<IAbiEncoder>(),
             ctx.Resolve<IBlockTree>(),
             ctx.Resolve<IEthereumEcdsa>(),
             ctx.Resolve<ILogFinder>(),

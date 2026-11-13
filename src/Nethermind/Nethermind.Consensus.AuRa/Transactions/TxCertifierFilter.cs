@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using Nethermind.Abi;
+using Nethermind.Blockchain.Contracts;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -20,8 +20,8 @@ public class TxCertifierFilter(ICertifierContract certifierContract, ITxFilter n
     private readonly ILogger _logger = logManager.GetClassLogger<TxCertifierFilter>();
     private Hash256 _cachedBlock;
 
-    public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec currentSpec) =>
-        IsCertified(tx, parentHeader, currentSpec) ? AcceptTxResult.Accepted : notCertifiedFilter.IsAllowed(tx, parentHeader, currentSpec);
+    public AcceptTxResult IsAllowed(Transaction tx, in TxFilterContext context) =>
+        IsCertified(tx, context.Parent, context.Spec) ? AcceptTxResult.Accepted : notCertifiedFilter.IsAllowed(tx, in context);
 
     private bool IsCertified(Transaction tx, BlockHeader parentHeader, IReleaseSpec currentSpec)
     {
@@ -43,7 +43,7 @@ public class TxCertifierFilter(ICertifierContract certifierContract, ITxFilter n
                 tx.IsServiceTransaction = isCertifiedByContract;
                 return cache[sender] = isCertifiedByContract;
             }
-            catch (AbiException e)
+            catch (ContractException e)
             {
                 if (_logger.IsError) _logger.Error($"Call to certifier contract failed on block {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)}.", e);
                 return false;

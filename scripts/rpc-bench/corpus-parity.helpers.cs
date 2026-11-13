@@ -546,7 +546,7 @@ internal sealed class CorpusGzipStream : Stream
     private static void ValidateMembers(string path)
     {
         using var source = File.OpenRead(path);
-        using var singleByte = new GzipMemberInput(source);
+        using var input = new GzipMemberInput(source);
         var table = new uint[256];
         for (var index = 0; index < table.Length; index++)
         {
@@ -568,9 +568,11 @@ internal sealed class CorpusGzipStream : Stream
             if ((flags & 8) != 0) while (Byte() != 0) { }
             if ((flags & 16) != 0) while (Byte() != 0) { }
             if ((flags & 2) != 0) { Byte(); Byte(); }
+            var start = source.Position;
             var crc = uint.MaxValue;
             uint size = 0;
-            using (var deflate = new DeflateStream(singleByte, CompressionMode.Decompress, leaveOpen: true))
+            input.SingleBytesFrom = long.MaxValue;
+            using (var deflate = new DeflateStream(input, CompressionMode.Decompress, leaveOpen: true))
             {
                 int read;
                 while ((read = deflate.Read(buffer)) != 0)
@@ -579,6 +581,12 @@ internal sealed class CorpusGzipStream : Stream
                     for (var index = 0; index < read; index++) crc = table[(crc ^ buffer[index]) & 255] ^ (crc >> 8);
                 }
             }
+            // Inflation stops at the final bit, so the member ends inside the last chunk read; replaying that chunk
+            // one byte at a time leaves the source exactly at the trailer.
+            input.SingleBytesFrom = input.ChunkStart;
+            source.Position = start;
+            using (var replay = new DeflateStream(input, CompressionMode.Decompress, leaveOpen: true))
+                while (replay.Read(buffer) != 0) { }
             source.ReadExactly(footer);
             if (System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(footer) != ~crc ||
                 System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(footer[4..]) != size)
@@ -599,8 +607,14 @@ internal sealed class CorpusGzipStream : Stream
 
 internal sealed class GzipMemberInput(Stream source) : Stream
 {
-    // One byte prevents DeflateStream from reading into the next member's header or trailer.
-    public override int Read(byte[] buffer, int offset, int count) => source.Read(buffer, offset, Math.Min(count, 1));
+    internal long ChunkStart { get; private set; }
+    // One byte at a time from here prevents DeflateStream from reading into the next member's header or trailer.
+    internal long SingleBytesFrom { get; set; } = long.MaxValue;
+    public override int Read(byte[] buffer, int offset, int count)
+    {
+        ChunkStart = source.Position;
+        return source.Read(buffer, offset, (int)Math.Min(count, Math.Max(1, SingleBytesFrom - ChunkStart)));
+    }
     public override bool CanRead => true;
     public override bool CanSeek => false;
     public override bool CanWrite => false;

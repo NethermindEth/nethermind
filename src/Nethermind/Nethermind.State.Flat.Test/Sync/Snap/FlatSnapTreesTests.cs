@@ -59,8 +59,11 @@ public class FlatSnapTreesTests
 
         using FlatSnapStorageTree tree = NewStorageTree(reader, addressHash);
 
-        Assert.That(tree.IsPersisted(TreePath.FromHexString("ab"), ValueKeccak.Compute(rlp)), Is.True);
-        Assert.That(tree.IsPersisted(TreePath.FromHexString("ab"), default), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.IsPersisted(TreePath.FromHexString("ab"), ValueKeccak.Compute(rlp)), Is.True);
+            Assert.That(tree.IsPersisted(TreePath.FromHexString("ab"), default), Is.False);
+        }
     }
 
     private static IEnumerable<TestCaseData> DisposeCases()

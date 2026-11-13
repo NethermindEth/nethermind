@@ -18,6 +18,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.Specs.Forks;
@@ -154,7 +155,7 @@ public class ExecutionPayloadTests
         {
             foreach (byte[] input in inputs)
             {
-                if (reader.Data.Overlaps(input)) return own.Decode(ref reader, behaviors);
+                if (reader.PeekNextItem().Overlaps(input)) return own.Decode(ref reader, behaviors);
             }
             return fallback.Decode(ref reader, behaviors);
         }
@@ -192,8 +193,11 @@ public class ExecutionPayloadTests
 
         Result<Transaction[]> result = new ExecutionPayload { Transactions = encoded }.TryGetTransactions();
 
-        Assert.That(result.Error, Is.Null);
-        Assert.That(result.Data!.Select(tx => tx.Nonce), Is.EqualTo(Enumerable.Range(1000, count).Select(i => (ulong)i)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.Null);
+            Assert.That(result.Data!.Select(tx => tx.Nonce), Is.EqualTo(Enumerable.Range(1000, count).Select(i => (ulong)i)));
+        }
     }
 
     private sealed class PayloadTestDecoder : TxDecoder<Transaction>
@@ -212,6 +216,8 @@ public class ExecutionPayloadTests
         [Values(68, 8192, 65536)] int dataLength,
         [Values(1, 64)] int count)
     {
+        // Only the plain transaction decoder borrows the buffer, so no other test may swap it meanwhile.
+        using Lock.Scope _ = DecoderSwapLock.EnterScope();
         byte[] data = new byte[dataLength];
         data.AsSpan().Fill(0x42);
         byte[][] encoded = Enumerable.Range(0, count).Select(i => EncodeTx(type, nonce: (ulong)i, data: data)).ToArray();
@@ -297,8 +303,11 @@ public class ExecutionPayloadTests
         ExecutionPayload payload = new() { Transactions = rlps };
         Result<Transaction[]> result = payload.TryGetTransactions();
 
-        Assert.That(result.Error, Is.Null);
-        Assert.That(result.Data, Has.Length.EqualTo(count));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.Null);
+            Assert.That(result.Data, Has.Length.EqualTo(count));
+        }
         for (int i = 0; i < count; i++)
         {
             Assert.That(result.Data[i].Nonce, Is.EqualTo((ulong)i));

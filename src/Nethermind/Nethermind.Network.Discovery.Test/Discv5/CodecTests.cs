@@ -11,6 +11,7 @@ using Nethermind.Network.Discovery.Discv5;
 using Nethermind.Network.Discovery.Discv5.Messages;
 using Nethermind.Network.Discovery.Discv5.Packets;
 using Nethermind.Network.Enr;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 using Org.BouncyCastle.Crypto;
@@ -67,8 +68,11 @@ public class CodecTests
 
         (byte[] initiatorKey, byte[] recipientKey) = PacketCodec.DeriveKeysForTest(secret, NodeAId, NodeBId, challengeData);
 
-        Assert.That(initiatorKey.ToHexString(true), Is.EqualTo("0xdccc82d81bd610f4f76d3ebe97a40571"));
-        Assert.That(recipientKey.ToHexString(true), Is.EqualTo("0xac74bb8773749920b0d3a8881c173ec5"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(initiatorKey.ToHexString(true), Is.EqualTo("0xdccc82d81bd610f4f76d3ebe97a40571"));
+            Assert.That(recipientKey.ToHexString(true), Is.EqualTo("0xac74bb8773749920b0d3a8881c173ec5"));
+        }
     }
 
     [Test]
@@ -94,11 +98,14 @@ public class CodecTests
         {
             bool decrypted = PacketCodec.TryDecryptMessage(in packet, new byte[16], out Discv5Message message);
 
-            Assert.That(decoded, Is.True);
-            Assert.That(packet.Flag, Is.EqualTo(PacketFlag.Ordinary));
-            Assert.That(packet.AuthData, Is.SequenceEqualTo(NodeAId));
-            Assert.That(decrypted, Is.True);
-            Assert.That(message, Is.InstanceOf<PingMsg>());
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(decoded, Is.True);
+                Assert.That(packet.Flag, Is.EqualTo(PacketFlag.Ordinary));
+                Assert.That(packet.AuthData, Is.SequenceEqualTo(NodeAId));
+                Assert.That(decrypted, Is.True);
+                Assert.That(message, Is.InstanceOf<PingMsg>());
+            }
             PingMsg ping = (PingMsg)message;
             AssertRequestId(ping.RequestId, Devp2pPingRequestId);
             Assert.That(ping.EnrSequence, Is.EqualTo(2));
@@ -158,9 +165,12 @@ public class CodecTests
             bool decoded = codec.TryDecode(packetBytes, out Packet packet);
             using (packet)
             {
-                Assert.That(decoded, Is.True);
-                Assert.That(packet.Flag, Is.EqualTo(PacketFlag.Ordinary));
-                Assert.That(packet.AuthData, Is.SequenceEqualTo(NodeAId));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(decoded, Is.True);
+                    Assert.That(packet.Flag, Is.EqualTo(PacketFlag.Ordinary));
+                    Assert.That(packet.AuthData, Is.SequenceEqualTo(NodeAId));
+                }
             }
         });
     }
@@ -179,12 +189,15 @@ public class CodecTests
             using PacketCodec codec = CreateCodec(new PrivateKey(GethNodeBPrivateKey));
             using Challenge challenge = codec.DecodeWhoAreYou(in packet);
 
-            Assert.That(decoded, Is.True);
-            Assert.That(packet.Flag, Is.EqualTo(PacketFlag.WhoAreYou));
-            Assert.That(packet.Nonce.Span.SequenceEqual(Bytes.FromHexString("0x0102030405060708090a0b0c")), Is.True);
-            Assert.That(packet.AuthData.Span[..16].SequenceEqual(Bytes.FromHexString("0x0102030405060708090a0b0c0d0e0f10")), Is.True);
-            Assert.That(challenge.EnrSequence, Is.Zero);
-            Assert.That(challenge.ChallengeData.SequenceEqual(challengeData), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(decoded, Is.True);
+                Assert.That(packet.Flag, Is.EqualTo(PacketFlag.WhoAreYou));
+                Assert.That(packet.Nonce.Span.SequenceEqual(Bytes.FromHexString("0x0102030405060708090a0b0c")), Is.True);
+                Assert.That(packet.AuthData.Span[..16].SequenceEqual(Bytes.FromHexString("0x0102030405060708090a0b0c0d0e0f10")), Is.True);
+                Assert.That(challenge.EnrSequence, Is.Zero);
+                Assert.That(challenge.ChallengeData.SequenceEqual(challengeData), Is.True);
+            }
         }
     }
 
@@ -233,15 +246,21 @@ public class CodecTests
         {
             bool decrypted = codec.TryDecryptHandshake(in packet, challenge, knownRecord, out Session session, out Discv5Message message, out NodeRecord? nodeRecord);
 
-            Assert.That(decoded, Is.True);
-            Assert.That(packet.Flag, Is.EqualTo(PacketFlag.Handshake));
-            Assert.That(decrypted, Is.True);
-            Assert.That(session.ReadKey.ToHexString(true), Is.EqualTo(expectedReadKeyHex));
-            Assert.That(message, Is.InstanceOf<PingMsg>());
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(decoded, Is.True);
+                Assert.That(packet.Flag, Is.EqualTo(PacketFlag.Handshake));
+                Assert.That(decrypted, Is.True);
+                Assert.That(session.ReadKey.ToHexString(true), Is.EqualTo(expectedReadKeyHex));
+                Assert.That(message, Is.InstanceOf<PingMsg>());
+            }
             PingMsg ping = (PingMsg)message;
             AssertRequestId(ping.RequestId, Devp2pPingRequestId);
-            Assert.That(ping.EnrSequence, Is.EqualTo(1));
-            Assert.That(nodeRecord is not null, Is.EqualTo(includesRecord));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ping.EnrSequence, Is.EqualTo(1));
+                Assert.That(nodeRecord is not null, Is.EqualTo(includesRecord));
+            }
             message.Dispose();
         }
     }
@@ -256,8 +275,11 @@ public class CodecTests
 
         Assert.That(decoded, Is.InstanceOf<FindNodeMsg>());
         FindNodeMsg decodedFindNode = (FindNodeMsg)decoded;
-        Assert.That(decodedFindNode.RequestId, Is.EqualTo(message.RequestId));
-        Assert.That(decodedFindNode.Distances, Is.EqualTo(message.Distances));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decodedFindNode.RequestId, Is.EqualTo(message.RequestId));
+            Assert.That(decodedFindNode.Distances, Is.EqualTo(message.Distances));
+        }
     }
 
     [TestCase(new byte[] { }, 1)]
@@ -302,7 +324,7 @@ public class CodecTests
             Rlp.Encode(new byte[17]),
             Rlp.Encode(30303)));
 
-        Assert.That(() => MessageCodec.Decode(message), Throws.InstanceOf<RlpException>());
+        Assert.That(() => MessageCodec.Decode(message), Throws.InstanceOf<RlpReaderException>());
     }
 
     [Test]
@@ -340,7 +362,7 @@ public class CodecTests
         using TalkRespMsg message = new([0, 0, 0, 4], new byte[] { 5, 6, 7, 8 });
         using ArrayPoolSpan<byte> encoded = MessageCodec.Encode(message);
 
-        Assert.That(() => MessageCodec.Decode(encoded), Throws.TypeOf<RlpException>());
+        Assert.That(() => MessageCodec.Decode(encoded), Throws.TypeOf<RlpReaderException>());
     }
 
     [Test]
@@ -356,14 +378,19 @@ public class CodecTests
 
         Assert.That(decoded, Is.InstanceOf<NodesMsg>());
         NodesMsg decodedNodes = (NodesMsg)decoded;
-        Assert.That(decodedNodes.RequestId, Is.EqualTo(message.RequestId));
-        Assert.That(decodedNodes.Total, Is.EqualTo(message.Total));
-        Assert.That(decodedNodes.Records.Count, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decodedNodes.RequestId, Is.EqualTo(message.RequestId));
+            Assert.That(decodedNodes.Total, Is.EqualTo(message.Total));
+            Assert.That(decodedNodes.Records.Count, Is.EqualTo(1));
+        }
         Assert.That(decodedNodes.Records[0].ToString(), Is.EqualTo(expectedRecord.ToString()));
     }
 
     private static string[] InvalidEnrKinds =>
-        ["oversized", "scalar", "empty-record", "missing-sequence", "missing-value", "eth-scalar", "eth-flat", "eth-empty", "signature"];
+        ["oversized", "scalar", "empty-record", "missing-sequence", "missing-value", "eth-scalar", "eth-flat", "eth-empty", "signature",
+            "truncated-sequence", "truncated-port", "truncated-fork-id", "truncated-long-prefix", "truncated-long-value", "truncated-large-length",
+            "truncated-five-byte-length"];
 
     [Test]
     public void MessageCodec_Skips_Invalid_Enrs_In_Nodes([ValueSource(nameof(InvalidEnrKinds))] string invalidKind)
@@ -393,6 +420,21 @@ public class CodecTests
             invalidRecord = (byte[])expectedRecord.ToRlpBytes().Clone();
             invalidRecord[5] ^= 1;
         }
+        if (invalidKind.StartsWith("truncated-", StringComparison.Ordinal))
+        {
+            // The last value declares more bytes than the record holds.
+            byte[] tail = invalidKind switch
+            {
+                "truncated-sequence" => [0x84, 0x75, 0x69],
+                "truncated-port" => [0x01, .. Rlp.Encode("udp"u8).Bytes, 0x83, 0x23, 0x28],
+                "truncated-long-prefix" => [0xb9, 0x01],
+                "truncated-long-value" => [0xb8, 0x38, 0x01],
+                "truncated-large-length" => [0xbb, 0xff, 0xff, 0xff, 0xff],
+                "truncated-five-byte-length" => [0xbc, 0x01, 0x00, 0x00, 0x00, 0x00],
+                _ => [0x01, .. Rlp.Encode("eth"u8).Bytes, 0xc6, 0xc5, .. Rlp.Encode(new byte[] { 1, 2, 3, 4 }).Bytes]
+            };
+            invalidRecord = Rlp.Encode(Rlp.Encode(new byte[64]), new Rlp(tail)).Bytes;
+        }
 
         Rlp data = Rlp.Encode(
             Rlp.Encode(new byte[] { 1 }),
@@ -420,8 +462,11 @@ public class CodecTests
             AppDomain.CurrentDomain.FirstChanceException -= OnException;
         }
         using Discv5Message ownedDecoded = decoded;
-        Assert.That(exceptions, Is.Zero);
-        Assert.That(decoded, Is.InstanceOf<NodesMsg>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exceptions, Is.Zero);
+            Assert.That(decoded, Is.InstanceOf<NodesMsg>());
+        }
         NodesMsg nodes = (NodesMsg)decoded;
         Assert.That(nodes.Records.Count, Is.EqualTo(1));
         Assert.That(nodes.Records[0].ToString(), Is.EqualTo(expectedRecord.ToString()));
@@ -434,7 +479,7 @@ public class CodecTests
         Array.Fill(distances, Rlp.Encode(1));
         byte[] message = CreateMessage(MessageType.FindNode, Rlp.Encode(Rlp.Encode(new byte[] { 1 }), Rlp.Encode(distances)));
 
-        Assert.That(() => MessageCodec.Decode(message), Throws.TypeOf<RlpException>());
+        Assert.That(() => MessageCodec.Decode(message), Throws.TypeOf<RlpReaderException>());
     }
 
     [Test]
@@ -444,7 +489,7 @@ public class CodecTests
         Array.Fill(records, Rlp.Encode(Array.Empty<byte>()));
         byte[] message = CreateMessage(MessageType.Nodes, Rlp.Encode(Rlp.Encode(new byte[] { 1 }), Rlp.Encode(1), Rlp.Encode(records)));
 
-        Assert.That(() => MessageCodec.Decode(message), Throws.TypeOf<RlpException>());
+        Assert.That(() => MessageCodec.Decode(message), Throws.TypeOf<RlpReaderException>());
     }
 
     private static PacketCodec CreateCodec(PrivateKey privateKey)

@@ -186,11 +186,17 @@ public class MergePluginTests
         INethermindApi api = container.Resolve<INethermindApi>();
         await container.Resolve<InitializeMergePlugin>().Execute(default);
         ISyncConfig syncConfig = api.Config<ISyncConfig>();
-        Assert.That(syncConfig.NetworkingEnabled, Is.True);
-        Assert.That(container.Resolve<IGossipPolicy>().CanGossipBlocks, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(syncConfig.NetworkingEnabled, Is.True);
+            Assert.That(container.Resolve<IGossipPolicy>().CanGossipBlocks, Is.True);
+        }
         IBlockProducer blockProducer = container.Resolve<IBlockProducerFactory>().InitBlockProducer();
-        Assert.That(blockProducer, Is.InstanceOf<MergeBlockProducer>());
-        Assert.That(container.Resolve<IBlockProductionPolicy>(), Is.InstanceOf<MergeBlockProductionPolicy>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockProducer, Is.InstanceOf<MergeBlockProducer>());
+            Assert.That(container.Resolve<IBlockProductionPolicy>(), Is.InstanceOf<MergeBlockProductionPolicy>());
+        }
     }
 
     [Test]
@@ -301,8 +307,11 @@ public class MergePluginTests
         await using IContainer container = BuildContainer(new ConfigProvider(_mergeConfig, jsonRpcConfig));
         await container.Resolve<InitializeMergePlugin>().Execute(default);
 
-        Assert.That(jsonRpcConfig.Enabled, Is.True);
-        Assert.That(jsonRpcConfig.EnabledModules, Is.Empty);
-        Assert.That(jsonRpcConfig.AdditionalRpcUrls, Is.EqualTo(new[] { "http://localhost:8551|http;ws|net;eth;subscribe;web3;engine;client" }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(jsonRpcConfig.Enabled, Is.True);
+            Assert.That(jsonRpcConfig.EnabledModules, Is.Empty);
+            Assert.That(jsonRpcConfig.AdditionalRpcUrls, Is.EqualTo(new[] { "http://localhost:8551|http;ws|net;eth;subscribe;web3;engine;client" }));
+        }
     }
 }
