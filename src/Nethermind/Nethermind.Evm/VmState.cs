@@ -339,11 +339,15 @@ public partial class VmState<TGasPolicy> : IDisposable
             _accessTracker.Restore();
         }
         _memory.Dispose();
-        if (!_isCached || !ExecutionEnvironment.KeepsCachedReferences) _accessTracker = default;
         if (!IsTopLevel) _env?.Dispose();
         _snapshot = default;
         StateGasRefundAdvanced = 0;
-        if (!_isCached || !ExecutionEnvironment.KeepsCachedReferences) _env = null;
+        if (!_isCached || !ExecutionEnvironment.KeepsCachedReferences)
+        {
+            _accessTracker = default;
+            _env = null;
+        }
+
         // Last, after everything that can throw: this is what releases a cached frame for reuse (IsReleased).
         IsReleased = true;
 
