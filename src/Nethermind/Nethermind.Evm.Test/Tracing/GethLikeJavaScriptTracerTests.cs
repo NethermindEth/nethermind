@@ -62,6 +62,18 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         Assert.That(JsonSerializer.Serialize(result, EthereumJsonSerializer.JsonOptions), Is.EqualTo(expected));
     }
 
+    [TestCase(false, 0)]
+    [TestCase(true, 0)]
+    [TestCase(true, 1)]
+    public void Javascript_db_exists_includes_empty_accounts(bool exists, int balance)
+    {
+        Address address = new("0x00000000000000000000000000000000deadbeef");
+        if (exists)
+            TestState.CreateAccount(address, (UInt256)balance);
+        Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript.Db db = new(TestState);
+        Assert.That(db.exists(address.Bytes.ToArray()), Is.EqualTo(exists));
+    }
+
     [Test]
     public void Concurrent_custom_tracer_compilation_keeps_cached_script_alive()
     {

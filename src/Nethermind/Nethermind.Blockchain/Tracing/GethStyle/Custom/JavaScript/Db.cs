@@ -28,5 +28,5 @@ public class Db(IWorldState worldState)
         return array.ToTypedScriptArray();
     }
 
-    public bool exists(object address) => WorldState.TryGetAccount(address.ToAddress(), out AccountStruct account) && !account.IsTotallyEmpty;
+    public bool exists(object address) => WorldState.AccountExists(address.ToAddress());
 }
