@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -70,7 +71,7 @@ internal sealed class TransactionDiffView
             if (hasBalance) balanceCount++;
             if (hasCode) codeCount++;
             if (hasNonce) nonceCount++;
-            // Exact sizing holds because StorageChangeCount counts the same dictionary the fill pass enumerates.
+            // Exact sizing holds because StorageChangeCount is kept equal to the number of slots the fill pass enumerates.
             slotCount += accountSlots;
         }
         CollectionsMarshal.AsSpan(accounts).Sort(default(AddressOrder));
@@ -90,7 +91,8 @@ internal sealed class TransactionDiffView
             if (accountSlots > 0)
             {
                 int start = slotAt;
-                foreach (UInt256 key in account.StorageChanges.Keys) slots[slotAt++] = new SlotRef(account.Address, key);
+                foreach (KeyValuePair<UInt256, StorageChange> change in account.StorageChanges) slots[slotAt++] = new SlotRef(account.Address, change.Key);
+                Debug.Assert(slotAt - start == accountSlots);
                 // One address per run, so ordering the run by key alone yields the spec's (address, key) order.
                 slots.AsSpan(start, accountSlots).Sort(default(SlotKeyOrder));
             }
