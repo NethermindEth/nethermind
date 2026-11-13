@@ -149,9 +149,9 @@ public class SnapshotCompactor(
             using ArrayPoolListRef<Task> compactTask = new(2);
             try
             {
-                compactTask.Add(Task.Run(() => MergeInto(
+                compactTask.Add(StartMerge(() => MergeInto(
                     content.SortedAccounts, snapshots, default(AddressKeyComparer), static m => m.SortedAccounts, static c => c.Accounts)));
-                compactTask.Add(Task.Run(() => MergeInto(
+                compactTask.Add(StartMerge(() => MergeInto(
                     content.SortedStorages, snapshots, default(StorageKeyComparer), static m => m.SortedStorages, static c => c.Storages,
                     new StorageBoundaryKeep<Address, UInt256>(slotClearBoundary))));
                 MergeRoots(content, snapshots);
@@ -196,6 +196,23 @@ public class SnapshotCompactor(
         }
 
         return oldest;
+    }
+
+    /// <summary>Starts a merge on the thread pool, or runs it inline on a single processor.</summary>
+    /// <remarks>
+    /// On one processor the pool hop gains nothing (<c>StateProvider</c> does the same for its code batch). Running
+    /// inline also keeps the whole merge on the compacting thread; otherwise <c>Task.WaitAll</c> would inline whichever
+    /// merges the pool had not started.
+    /// </remarks>
+    internal static Task StartMerge(Action merge)
+    {
+        if (Core.Cpu.RuntimeInformation.IsSingleProcessor)
+        {
+            merge();
+            return Task.CompletedTask;
+        }
+
+        return Task.Run(merge);
     }
 
     private static void MergeInto<TKey, TValue, TComparer>(
