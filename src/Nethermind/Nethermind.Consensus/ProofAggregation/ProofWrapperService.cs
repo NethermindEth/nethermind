@@ -319,7 +319,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             lock (_commitLock)
             {
                 if (RefreshVerifier() != verifier) return ProofWrapperAcceptance.LocalFailure(VerifierChangedDuringAdmission);
-                if (!TryBeginAdmission(decoded, handling, out scope))
+                if (!TryBeginAdmission(decoded, handling, source, out scope))
                     return ProofWrapperAcceptance.LocalFailure("Proof witness capacity is full; retry later.");
             }
             using (scope)
@@ -398,7 +398,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// That check is best-effort: it judges each transaction alone, without its wrapper's earlier ones from the same sender, and
     /// admission can still defer a peer's transaction once the head's simulation budget is spent, partly by the check itself.
     /// Either way at most <see cref="MaxEvictedPerAdmission"/> transactions the next blocks could not include are lost.</remarks>
-    private bool TryBeginAdmission(MempoolWrapper decoded, TxHandlingOptions handling, out IDisposable? scope)
+    private bool TryBeginAdmission(MempoolWrapper decoded, TxHandlingOptions handling, object? source, out IDisposable? scope)
     {
         if (leanProofStore.TryBeginAdmission(decoded.Deps, decoded.Proofs, decoded.RecursiveStark?.StarkProof, out scope)) return true;
         FeeFloors floors = ExecutableFeeFloors();
@@ -418,16 +418,16 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         // Eviction cannot be undone: the incoming transactions must first pass admission, their witnesses aside. Checked last, as
         // it may simulate and recover signatures, once nothing cheaper has ruled eviction out. A transaction the pool already knows,
         // or that used up its checks on the head, fails it before any other is simulated, so repeating a wrapper costs little.
-        Dictionary<(ValueHash256, TxHandlingOptions), int> rejected = DryRunRejected();
+        Dictionary<(object?, ValueHash256, TxHandlingOptions), int> rejected = DryRunRejected();
         foreach (Transaction transaction in decoded.Transactions)
             if (!txPool.TryGetPendingTransaction(transaction.Hash!.ValueHash256, out _)
-                && (rejected.GetValueOrDefault((transaction.Hash.ValueHash256, handling)) >= MaxDryRunsPerHead || txPool.IsKnown(transaction.Hash))) return false;
+                && (rejected.GetValueOrDefault((source, transaction.Hash.ValueHash256, handling)) >= MaxDryRunsPerHead || txPool.IsKnown(transaction.Hash))) return false;
         foreach (Transaction transaction in decoded.Transactions)
         {
             if (txPool.TryGetPendingTransaction(transaction.Hash!.ValueHash256, out _)) continue;
             AcceptTxResult result = txPool.ValidateTxBeforeProofAdmission(transaction, handling);
             if (result) continue;
-            (ValueHash256, TxHandlingOptions) key = (transaction.Hash.ValueHash256, handling);
+            (object?, ValueHash256, TxHandlingOptions) key = (source, transaction.Hash.ValueHash256, handling);
             if (rejected.Count < MaxDryRunRejected || rejected.ContainsKey(key))
                 // A sidecar is not covered by the hash and may be a peer's corruption, so a blob-carrying rejection only counts.
                 rejected[key] = ContentBoundRejections.Contains(result) && !transaction.CarriesBlobs ? MaxDryRunsPerHead : rejected.GetValueOrDefault(key) + 1;
@@ -478,13 +478,14 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// <remarks>Transactions removed or made executable since remain listed until an admission rechecks and drops them.</remarks>
     private (Hash256 Head, List<Transaction> Candidates)? _evictionCandidates;
 
-    /// <summary>How many times each transaction failed <see cref="TryBeginAdmission"/>'s admission check on the head, by handling,
-    /// read and replaced under the commit lock.</summary>
+    /// <summary>How many times each transaction failed <see cref="TryBeginAdmission"/>'s admission check on the head, by source
+    /// (local ones as <see langword="null"/>) and handling, read and replaced under the commit lock.</summary>
     /// <remarks>Kept here rather than in the pool's known set: the check runs out of the context a submission sees (witnesses,
     /// predecessors and evicted reservations aside), so its rejection must not refuse the transaction elsewhere. A rejection the
     /// transaction's content decided uses up its checks at once; any other, a deferral included, uses one, so a rejection the
-    /// pool's contents decided can clear within the head while a replay simulates at most <see cref="MaxDryRunsPerHead"/> times.</remarks>
-    private (Hash256? Head, Dictionary<(ValueHash256, TxHandlingOptions), int> Attempts) _dryRunRejected = (null, []);
+    /// pool's contents decided can clear within the head while a replay simulates at most <see cref="MaxDryRunsPerHead"/> times per
+    /// source. Counted per source because the hash does not cover a sidecar, so one source's corrupt copy must not use up another's.</remarks>
+    private (Hash256? Head, Dictionary<(object?, ValueHash256, TxHandlingOptions), int> Attempts) _dryRunRejected = (null, []);
 
     /// <summary>Failed admission checks a transaction may take per head before its wrappers stop evicting until the next.</summary>
     private const int MaxDryRunsPerHead = 2;
@@ -502,7 +503,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         AcceptTxResult.FrameTxMisplacedExpiryFrame, AcceptTxResult.FrameTxMisplacedRecentRootFrame, AcceptTxResult.FrameSimulationFailed,
     ];
 
-    private Dictionary<(ValueHash256, TxHandlingOptions), int> DryRunRejected()
+    private Dictionary<(object?, ValueHash256, TxHandlingOptions), int> DryRunRejected()
     {
         Hash256? head = blockFinder.Head?.Hash;
         if (_dryRunRejected.Head != head) _dryRunRejected = (head, []);
