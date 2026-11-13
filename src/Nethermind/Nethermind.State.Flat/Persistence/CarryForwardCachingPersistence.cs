@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
-using System.Collections.Concurrent;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Trie;
@@ -18,7 +18,7 @@ namespace Nethermind.State.Flat.Persistence;
 /// </summary>
 public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposable
 {
-    private const int DefaultMaxEntriesPerKind = 262144;
+    internal const int DefaultMaxEntriesPerKind = 262144;
 
     // With 4 ways, sets fill up and replace entries well before the table does. At twice the account cap, a hot working
     // set with a cold tail hits at least as often as in the 262,144-entry map this replaced, which was wiped at its cap.
@@ -27,9 +27,11 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     private readonly IPersistence _inner;
     private readonly int _maxEntriesPerKind;
 
-    private ConcurrentDictionary<Address, Account?> _accounts;
+    // AssociativeCache treats a null value as a removal, so a read that found no account is cached as this instance.
+    private static readonly Account MissingAccount = new(0);
+
+    private readonly AssociativeCache<AddressAsKey, Account> _accounts;
     private readonly CarryForwardSlotTable _slots;
-    private int _accountCount;
     private int _disposed;
 
     private readonly Lock _lock = new();
@@ -66,7 +68,10 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     internal bool HasSpareWrittenSlots => Volatile.Read(ref _spareWrittenSlots) is not null;
 
     /// <param name="inner">The persistence to cache reads of.</param>
-    /// <param name="maxEntriesPerKind">The cached-account cap and the per-kind cap on tracked account and slot writes.</param>
+    /// <param name="maxEntriesPerKind">
+    /// The cached-account capacity, rounded up to a power-of-two count of 8-way sets, and the per-kind cap on tracked
+    /// account and slot writes.
+    /// </param>
     /// <param name="slotCapacity">
     /// The slot table's capacity, rounded up to a power of two of at least <see cref="CarryForwardSlotTable.Ways"/>.
     /// </param>
@@ -74,7 +79,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     {
         _inner = inner;
         _maxEntriesPerKind = maxEntriesPerKind;
-        _accounts = NewAccountCache();
+        _accounts = new AssociativeCache<AddressAsKey, Account>(maxEntriesPerKind);
         using IPersistence.IPersistenceReader reader = inner.CreateReader();
         _basis = reader.CurrentState;
         _slots = new CarryForwardSlotTable(slotCapacity);
@@ -124,32 +129,26 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
     internal Lock CacheLock => _lock;
 
-    // Sized for the cap up front: a ConcurrentDictionary grows by re-creating every entry, which from the default
-    // capacity takes a dozen rounds on the way to the cap, the last ones tens of megabytes on whichever reader adds
-    // the entry that crosses a threshold. Clear() would shrink it back to the default, so a wipe swaps in a new one.
-    // One lock: every write already runs under _lock, and a dictionary grows once any one lock passes its share of
-    // the buckets, so with more locks the fullest one would still trigger a growth just short of the cap.
-    private ConcurrentDictionary<Address, Account?> NewAccountCache() => new(concurrencyLevel: 1, _maxEntriesPerKind);
-
     private bool IsCurrent(long readerGeneration) => Volatile.Read(ref _generation) == readerGeneration;
 
-    private void TryCacheAccount(Address address, Account? account, long readerGeneration)
+    private void TryCacheAccount(AddressAsKey address, Account? account, long readerGeneration)
     {
         // Another reader can fill the same base miss while this reader is doing I/O.
-        // The cache is best-effort, so a racing removal only loses a hint.
-        if (_accounts.ContainsKey(address)) return;
-        using (_lock.EnterScope())
+        if (_accounts.Contains(address)) return;
+        // Best effort, as for slots: a skipped insert only costs a later miss.
+        if (!_lock.TryEnter()) return;
+        try
         {
             if (_generation != readerGeneration) return;
-            if (_accounts.ContainsKey(address)) return;
-            if (_accountCount >= _maxEntriesPerKind)
-            {
-                _accounts = NewAccountCache();
-                _accountCount = 0;
-                Metrics.IncrementCarryForwardAccountWipes();
-            }
-            if (_accounts.TryAdd(address, account)) _accountCount++;
-            Metrics.PublishCarryForwardAccountCount(_accountCount);
+            // Every insert and removal runs under _lock, so an insert that leaves the count unchanged replaced an entry.
+            int count = _accounts.Count;
+            if (!_accounts.TryAdd(address, account ?? MissingAccount)) return;
+            if (_accounts.Count == count) Metrics.IncrementCarryForwardAccountEvictions();
+            else Metrics.PublishCarryForwardAccountCount(_accounts.Count);
+        }
+        finally
+        {
+            _lock.Exit();
         }
     }
 
@@ -195,9 +194,9 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             {
                 foreach (Address address in writtenAccounts)
                 {
-                    if (_accounts.TryRemove(address, out _)) _accountCount--;
+                    _accounts.Delete(address);
                 }
-                Metrics.PublishCarryForwardAccountCount(_accountCount);
+                Metrics.PublishCarryForwardAccountCount(_accounts.Count);
             }
 
             if (writtenSlots is not null && _slots.TryLease())
@@ -220,10 +219,9 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
     private void ClearAllNoLock()
     {
-        // An empty cache keeps its table: raw and range writes clear everything on every batch, and snap sync and
+        // An empty cache is not walked: raw and range writes clear everything on every batch, and snap sync and
         // healing write such a batch for every account while nothing is cached. The count is exact under _lock.
-        if (_accountCount != 0) _accounts = NewAccountCache();
-        _accountCount = 0;
+        if (_accounts.Count != 0) _accounts.Clear();
         if (_slots.TryLease())
         {
             try
@@ -251,13 +249,13 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         public Account? GetAccount(Address address)
         {
             bool current = parent.IsCurrent(generation);
-            if (current && parent._accounts.TryGetValue(address, out Account? cached))
+            if (current && parent._accounts.TryGet(address, out Account? cached))
             {
                 // Checked again after the lookup: the cache can hold an entry filled after this reader's generation ended.
                 if (parent.IsCurrent(generation))
                 {
                     if (_recordDetailedMetrics) Metrics.IncrementCarryForwardAccountHits();
-                    return cached;
+                    return ReferenceEquals(cached, MissingAccount) ? null : cached;
                 }
 
                 current = false;
@@ -329,7 +327,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             int keptAccounts = 0;
             foreach (Address address in accounts)
             {
-                if (!parent._accounts.ContainsKey(address)) accounts[keptAccounts++] = address;
+                if (!parent._accounts.Contains(address)) accounts[keptAccounts++] = address;
             }
 
             int keptSlots = 0;

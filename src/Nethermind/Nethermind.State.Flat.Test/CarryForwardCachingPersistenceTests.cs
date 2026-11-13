@@ -137,17 +137,38 @@ public class CarryForwardCachingPersistenceTests
     }
 
     [Test]
-    public async Task GetAccount_WhenCapacityExceeded_EvictsAllThenReCaches()
+    public async Task GetAccount_FloodOfMissingAccountReads_KeepsTheHotAccountsCached()
     {
+        const int hotAccounts = 1024;
+        const int coldReadsPerRound = 1024;
+        const int coldReads = 4 * CarryForwardCachingPersistence.DefaultMaxEntriesPerKind;
+        Random random = new(42);
+        Address[] hot = new Address[hotAccounts];
+        for (int i = 0; i < hot.Length; i++) hot[i] = TestItem.GetRandomAddress(random);
         FakePersistence inner = new();
-        await using CarryForwardCachingPersistence cache = new(inner, maxEntriesPerKind: 1);
+        await using CarryForwardCachingPersistence cache = new(inner);
+        using IPersistence.IPersistenceReader reader = cache.CreateReader();
+        long evictionsBefore = Metrics.CarryForwardAccountEvictions;
 
-        ReadAccount(cache, TestItem.AddressA);
-        ReadAccount(cache, TestItem.AddressA);
-        ReadAccount(cache, TestItem.AddressB);
-        ReadAccount(cache, TestItem.AddressA);
+        int hotMisses = 0;
+        for (int round = 0; round < coldReads / coldReadsPerRound; round++)
+        {
+            int readsBefore = inner.AccountReads;
+            foreach (Address address in hot) reader.GetAccount(address);
+            if (round > 0) hotMisses += inner.AccountReads - readsBefore;
 
-        Assert.That(inner.AccountReads, Is.EqualTo(3), "second distinct address overflows capacity 1, clearing the first");
+            inner.AccountExists = false;
+            for (int i = 0; i < coldReadsPerRound; i++) reader.GetAccount(TestItem.GetRandomAddress(random));
+            inner.AccountExists = true;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            // Wiping at the capacity would re-read every hot account after each of the four wipes.
+            Assert.That(hotMisses, Is.LessThan(hotAccounts / 10));
+            Assert.That(Metrics.CarryForwardAccountEvictions - evictionsBefore, Is.GreaterThan(0), "the cold reads overflow the cache");
+            Assert.That(Metrics.CarryForwardAccountCount, Is.EqualTo(CarryForwardCachingPersistence.DefaultMaxEntriesPerKind), "a full cache stays full");
+        }
     }
 
     [TestCase(false, 1, 1, TestName = "GetAccount_WriteSetWithinCap_UnwrittenAccountCarriedForward")]
@@ -363,30 +384,28 @@ public class CarryForwardCachingPersistenceTests
         }
     }
 
-    // Slots replace within a set instead; see SlotCapacity_ReplacesWithinASetInsteadOfWiping.
-    [TestCase(CacheKind.Account, TestName = "account")]
-    public async Task CapacityWipe_PublishesPostRefillCount(CacheKind kind)
+    [Test]
+    public async Task AccountCapacity_ReplacesWithinASetInsteadOfWiping()
     {
+        // A single 8-way set.
+        const int capacity = 8;
         FakePersistence inner = new();
         await using IContainer container = CreateCacheContainer();
-        CarryForwardCachingPersistence cache = ResolveCache(container, inner, maxEntriesPerKind: 1);
+        CarryForwardCachingPersistence cache = ResolveCache(container, inner, maxEntriesPerKind: capacity);
         try
         {
             cache.Clear();
-            long wipesBefore = Metrics.CarryForwardAccountWipes;
-            long slotEvictionsBefore = Metrics.CarryForwardSlotEvictions;
+            long evictionsBefore = Metrics.CarryForwardAccountEvictions;
 
-            Read(kind, cache, 1);
-            Read(kind, cache, 2);
+            for (int i = 0; i <= capacity; i++) ReadAccount(cache, TestItem.Addresses[i]);
+            int innerReadsAfterFill = inner.AccountReads;
+            ReadAccount(cache, TestItem.Addresses[capacity]);
 
-            long wipesDelta = Metrics.CarryForwardAccountWipes - wipesBefore;
-            long slotEvictionsDelta = Metrics.CarryForwardSlotEvictions - slotEvictionsBefore;
-            long countAfterRefill = GetCount(kind);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(wipesDelta, Is.EqualTo(1));
-                Assert.That(slotEvictionsDelta, Is.Zero);
-                Assert.That(countAfterRefill, Is.EqualTo(1), "the gauge is published after the overflowing fill");
+                Assert.That(Metrics.CarryForwardAccountEvictions - evictionsBefore, Is.EqualTo(1));
+                Assert.That(Metrics.CarryForwardAccountCount, Is.EqualTo(capacity), "a full cache stays full");
+                Assert.That(inner.AccountReads, Is.EqualTo(innerReadsAfterFill), "the newest account is served from the cache");
             }
         }
         finally
