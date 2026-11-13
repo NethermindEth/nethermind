@@ -87,6 +87,29 @@ public class TransactionForRpcTests
     }
 
     [Test]
+    public void Nested_transactions_are_read_in_sequence()
+    {
+        Utf8JsonReader reader = new(
+            """[{"gasPrice":"0x1","nonce":"0x7"},null,{"type":"0x2","maxFeePerGas":"0x2","maxPriorityFeePerGas":"0x1"}]"""u8);
+        reader.Read();
+        SignableTransactionForRpc?[] txs = new SignableTransactionForRpc?[3];
+        for (int i = 0; i < txs.Length; i++)
+        {
+            reader.Read();
+            txs[i] = TypeInfoJsonSerializer.Deserialize<SignableTransactionForRpc>(ref reader, EthereumJsonSerializer.JsonOptions);
+        }
+
+        reader.Read();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.TokenType, Is.EqualTo(JsonTokenType.EndArray));
+            Assert.That(txs[0], Is.TypeOf<LegacyTransactionForRpc>().With.Property(nameof(LegacyTransactionForRpc.Nonce)).EqualTo(7UL));
+            Assert.That(txs[1], Is.Null);
+            Assert.That(txs[2], Is.TypeOf<EIP1559TransactionForRpc>());
+        }
+    }
+
+    [Test]
     public void GasPrice_does_not_drop_the_access_list()
     {
         Transaction tx = ToTransaction(
