@@ -176,8 +176,8 @@ public class PersistedSnapshotCompactor(
     /// </summary>
     /// <param name="readHot">The outputs are read at once (a start), so the sub-<c>CompactSize</c> ones above the last
     /// boundary of the batch, where the head reads, keep a sized filter and their pages.</param>
-    /// <param name="largeBoundaries">Receives the large boundaries, whose wider merge is left to the caller; <c>null</c>
-    /// skips them.</param>
+    /// <param name="largeBoundaries">Receives the large boundaries whose CompactSized step did not fail; their wider merge
+    /// is left to the caller. <c>null</c> skips them.</param>
     /// <returns>The number of compacted snapshots written.</returns>
     private int CompactWindows(ArrayPoolList<StateId> batch, ulong persistedBlockNumber, bool readHot,
         ArrayPoolList<StateId>? largeBoundaries, CancellationToken cancellationToken)
@@ -192,15 +192,9 @@ public class PersistedSnapshotCompactor(
             ulong b = s.BlockNumber;
             if (b == 0) continue;
 
-            if (_schedule.IsLargeCompactionBoundary(b))
+            if (_schedule.IsCompactSizeBoundary(b) || _schedule.IsLargeCompactionBoundary(b))
             {
-                // Large boundary: needs the CompactSized snapshot AND the >CompactSize merge.
-                largeBoundaries?.Add(s);
-                compactSizeBoundaries.Add(s);
-            }
-            else if (_schedule.IsCompactSizeBoundary(b))
-            {
-                // Plain CompactSize boundary: only the CompactSized.
+                // Boundary: needs the CompactSized snapshot; a large one also the >CompactSize merge (handed over below).
                 compactSizeBoundaries.Add(s);
             }
             else
@@ -237,10 +231,24 @@ public class PersistedSnapshotCompactor(
 
         // Every boundary — CompactSize and large alike — lands on a CompactSize multiple, so each
         // needs its CompactSized snapshot for RocksDB (persistence advances one CompactSize
-        // per step); both kinds are collected in compactSizeBoundaries above.
+        // per step); both kinds are collected in compactSizeBoundaries above. Each is guarded like a
+        // bucket item, so one boundary's failure does not skip the later ones.
         foreach (StateId boundary in compactSizeBoundaries)
         {
-            if (TryCompactCompactSized(boundary)) compacted++;
+            // The merge does not observe the token, so a stop is seen here, outside the guard that would swallow it.
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                if (TryCompactCompactSized(boundary)) compacted++;
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"Error compacting CompactSized persisted snapshot {boundary}. {ex}");
+                continue;
+            }
+
+            // On to the >CompactSize merge only once its CompactSized step has not failed, as RunBoundaryCompactor expects.
+            if (_schedule.IsLargeCompactionBoundary(boundary.BlockNumber)) largeBoundaries?.Add(boundary);
         }
 
         return compacted;

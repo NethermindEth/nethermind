@@ -524,6 +524,38 @@ public class PersistInMemoryTailForShutdownTests
         using (window) Assert.That(window!.Bloom.Capacity, Is.EqualTo(1));
     }
 
+    // One batch of blocks 1 to 16 at CompactSize 4: boundaries 4 and 12 are plain, 8 and 16 large. Only the CompactSized row
+    // of 8 fails to be written, so a wider merge at 8 would succeed if it ran; or the process stops once the first
+    // CompactSized row is written.
+    [Test]
+    public async Task Runtime_compaction_goes_past_a_failed_boundary_and_stops_between_boundaries([Values] bool processExit)
+    {
+        using CancellationTokenSource exit = new();
+        TestErrorLogManager errors = new();
+        using FlatTestContainer tier = SmallTier(configure: builder => builder
+            .AddSingleton<IProcessExitSource>(new ProcessExitSource(exit.Token))
+            .AddSingleton<ILogManager>(errors)
+            .AddDecorator<ISnapshotCatalog>((_, inner) => processExit
+                ? new ObservedCatalog(inner, after: entry => { if (entry.Tier == SnapshotTier.PersistedCompactSized) exit.Cancel(); })
+                : new ObservedCatalog(inner, before: entry => { if (entry.Tier == SnapshotTier.PersistedCompactSized && entry.To == State(8)) throw new IOException("injected"); })));
+        ConvertBases(tier, 1, 16);
+        ArrayPoolList<StateId> batch = new(16);
+        for (ulong i = 1; i <= 16; i++) batch.Add(State(i));
+        await tier.Compactor.EnqueueAsync(batch, 0, CancellationToken.None);
+        await tier.Compactor.DisposeAsync(); // drains the queue
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Ends(SnapshotTier.PersistedCompactSized), Is.EquivalentTo(processExit ? new ulong[] { 4 } : [4, 12, 16]), "CompactSize-wide snapshots");
+            Assert.That(Ends(SnapshotTier.PersistedLargeCompacted), Is.EquivalentTo(processExit ? Array.Empty<ulong>() : [16]), "wider merges");
+            Assert.That(errors.Errors, Has.Count.EqualTo(processExit ? 0 : 1), "Errors logged");
+            Assert.That(errors.Errors.Select(static e => e.Text), Has.All.Contains($"{State(8)}"), "the Error names the failed boundary");
+        }
+
+        ulong[] Ends(SnapshotTier compacted) =>
+            [.. tier.Repository.PersistedSnapshots.Where(s => s.Tier == compacted).Select(static s => s.To.BlockNumber)];
+    }
+
     // Each small window's first page enters the residency tracker when its catalog row is written; the pass then demotes
     // the windows under a boundary, as at runtime, and keeps the pages of those above the last boundary. The covered window
     // is checked when the CompactSize-wide row is written: the merge that reads it drops its pages once it ends.
@@ -555,38 +587,67 @@ public class PersistInMemoryTailForShutdownTests
         static uint FirstPage(SnapshotLocation location) => (uint)(location.Offset / Environment.SystemPageSize);
     }
 
-    // The pass stops at the second CompactSize-wide snapshot, whose catalog row fails to be written, or when the process
-    // stops after the fifth small one.
+    public enum StartInterruption { FailedBoundary, ExitAmongSmallWindows, ExitAmongBoundaries }
+
+    // The catalog row of the second CompactSize-wide snapshot fails to be written, and the pass goes on with the next
+    // boundary; or the process stops after the fifth small snapshot or the first CompactSize-wide one, and the pass ends.
     [Test]
-    public async Task An_interrupted_start_pass_leaves_a_consistent_catalog_and_the_next_start_finishes([Values] bool processExit)
+    public async Task An_interrupted_start_pass_leaves_a_consistent_catalog_and_the_next_start_finishes([Values] StartInterruption interruption)
     {
         const int TailLength = 150;
+        StateId[] boundaries = [TailBlock(32), TailBlock(64), TailBlock(96), TailBlock(128)];
         using TempPath dir = TempPath.GetTempDirectory();
         MemDb catalog = new();
         IPersistence persistence = PersistenceAt(Persisted);
         await RunAndShutDown(dir.Path, catalog, persistence, TailLength, WriteBlock);
         using CancellationTokenSource exit = new();
+        TestErrorLogManager errors = new();
         int published = 0;
-        ObservedCatalog Interrupt(ISnapshotCatalog inner) => processExit
-            ? new(inner, after: entry => { if (entry.Tier == SnapshotTier.PersistedSmallCompacted && Interlocked.Increment(ref published) == 5) exit.Cancel(); })
-            : new(inner, before: entry => { if (entry.Tier == SnapshotTier.PersistedCompactSized && Interlocked.Increment(ref published) == 2) throw new IOException("injected"); });
+        StateId? failed = null;
+        (SnapshotTier tier, int at) = interruption switch
+        {
+            StartInterruption.FailedBoundary => (SnapshotTier.PersistedCompactSized, 2),
+            StartInterruption.ExitAmongSmallWindows => (SnapshotTier.PersistedSmallCompacted, 5),
+            _ => (SnapshotTier.PersistedCompactSized, 1),
+        };
+        bool Reached(CatalogEntry entry) => entry.Tier == tier && Interlocked.Increment(ref published) == at;
+        ObservedCatalog Interrupt(ISnapshotCatalog inner) => interruption == StartInterruption.FailedBoundary
+            ? new(inner, before: entry => { if (Reached(entry)) { failed = entry.To; throw new IOException("injected"); } })
+            : new(inner, after: entry => { if (Reached(entry)) exit.Cancel(); });
 
         for (int start = 0; start < 2; start++)
         {
             using FlatTestContainer restarted = Open(dir.Path, catalog, persistence, configure: start == 0
-                ? builder => builder.AddSingleton<IProcessExitSource>(new ProcessExitSource(exit.Token)).AddDecorator<ISnapshotCatalog>((_, inner) => Interrupt(inner))
+                ? builder => builder.AddSingleton<IProcessExitSource>(new ProcessExitSource(exit.Token)).AddSingleton<ILogManager>(errors)
+                    .AddDecorator<ISnapshotCatalog>((_, inner) => Interrupt(inner))
                 : null);
             await using FlatDbManager manager = (FlatDbManager)restarted.Resolve<IFlatDbManager>();
             CatalogEntry[] rows = [.. new SnapshotCatalog(catalog).Load()];
+            StateId[] compactSized = [.. rows.Where(static r => r.Tier == SnapshotTier.PersistedCompactSized).Select(static r => r.To)];
             using ReadOnlySnapshotBundle head = manager.GatherReadOnlySnapshotBundle(TailBlock(TailLength));
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(published, Is.GreaterThanOrEqualTo(processExit ? 5 : 2), "the pass was interrupted");
+                Assert.That(published, Is.GreaterThanOrEqualTo(at), "the pass was interrupted");
                 Assert.That(rows.Where(row => !IsLive(restarted, row)), Is.Empty, "a catalog row points at a released snapshot");
                 Assert.That(rows, Has.Length.EqualTo(restarted.Repository.PersistedSnapshotCount), "a catalog row for every snapshot");
                 Assert.That(Enumerable.Range(1, TailLength).Where(i => ReadBalance(manager, TailBlock(i)) != (UInt256)i), Is.Empty, "states read wrong");
-                if (start == 0) Assert.That(head.SnapshotCount, Is.GreaterThan(7), "the interrupted start left work");
-                else Assert.That(head.SnapshotCount, Is.EqualTo(7), "the next start finishes it");
+                if (start == 0)
+                {
+                    Assert.That(head.SnapshotCount, Is.GreaterThan(7), "the interrupted start left work");
+                    Assert.That(compactSized, interruption switch
+                    {
+                        StartInterruption.FailedBoundary => Is.EquivalentTo(boundaries.Where(b => b != failed)),
+                        StartInterruption.ExitAmongSmallWindows => Is.Empty,
+                        _ => Has.Length.EqualTo(1), // the stop is seen before the next boundary
+                    }, "CompactSize-wide snapshots the interrupted start wrote");
+                    Assert.That(errors.Errors, Has.Count.EqualTo(interruption == StartInterruption.FailedBoundary ? 1 : 0), "Errors logged");
+                    Assert.That(errors.Errors.Select(static e => e.Text), Has.All.Contains($"{failed}"), "the Error names the failed boundary");
+                }
+                else
+                {
+                    Assert.That(head.SnapshotCount, Is.EqualTo(7), "the next start finishes it");
+                    Assert.That(compactSized, Is.EquivalentTo(boundaries), "CompactSize-wide snapshots after the next start");
+                }
             }
         }
 
