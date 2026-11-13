@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
@@ -162,6 +163,69 @@ namespace Nethermind.Evm.Test.Tracing
             {
                 Assert.That(result, Is.GreaterThan(0ul), "Gas estimation should succeed when inner call reverts but transaction succeeds overall");
                 Assert.That(err, Is.Null, "No error should occur - inner reverts should not be treated as top-level failures");
+            }
+        }
+
+        private static IEnumerable<TestCaseData> NestedOutOfGasCases()
+        {
+            // The caller forwards all its gas, so the callee runs out of gas on its new slot just above the gas used.
+            yield return new TestCaseData(MainnetSpecProvider.ByzantiumBlockNumber + 1, 0ul, 30_000_000L, false, false)
+                .SetArgDisplayNames("forwards all gas");
+            // EIP-8037: the fixed budget pays the new slot only when a state-gas reservoir above the cap pays its state-gas.
+            yield return new TestCaseData(MainnetSpecProvider.AmsterdamActivation.BlockNumber, MainnetSpecProvider.AmsterdamBlockTimestamp, 50_000L, false, true)
+                .SetArgDisplayNames("fixed budget with EIP-8037");
+            yield return new TestCaseData(MainnetSpecProvider.ByzantiumBlockNumber + 1, 0ul, 30_000_000L, true, false)
+                .SetArgDisplayNames("callee uses all its gas");
+        }
+
+        [TestCaseSource(nameof(NestedOutOfGasCases))]
+        public void Estimate_avoiding_nested_out_of_gas_returns_a_gas_limit_at_which_the_nested_call_succeeds(
+            ulong blockNumber, ulong timestamp, long callGas, bool calleeUsesAllGas, bool needsReservoir)
+        {
+            using TestEnvironment testEnvironment = new();
+            Address callee = TestItem.AddressB;
+            Address caller = TestItem.AddressC;
+            testEnvironment.InsertContract(callee, calleeUsesAllGas
+                ? Prepare.EvmCode.Op(Instruction.JUMPDEST).PushData(0).Op(Instruction.JUMP).Done
+                : Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+            // Returns the success flag of the call, which the caller does not check.
+            testEnvironment.InsertContract(caller, Prepare.EvmCode
+                .Call(callee, callGas)
+                .PushData(0).Op(Instruction.MSTORE)
+                .PushData(32).PushData(0).Op(Instruction.RETURN)
+                .Done);
+
+            const ulong gasLimit = 30_000_000;
+            Transaction tx = Build.A.Transaction
+                .WithGasLimit(gasLimit)
+                .WithTo(caller)
+                .WithSenderAddress(TestItem.AddressA)
+                .TestObject;
+            Block block = Build.A.Block
+                .WithNumber(blockNumber)
+                .WithTimestamp(timestamp)
+                .WithGasLimit(2 * gasLimit)
+                .WithTransactions(tx)
+                .TestObject;
+
+            ulong plain = testEnvironment.Estimate(tx, block.Header, out string? plainError, errorMargin: 0);
+            ulong avoiding = testEnvironment.Estimate(tx, block.Header, out string? avoidingError, errorMargin: 0, avoidNestedOutOfGas: true);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(plainError, Is.Null);
+                Assert.That(avoidingError, Is.Null);
+                Assert.That(testEnvironment.CallSucceeds(tx, block.Header, plain), Is.False, "the plain estimate lands where the nested call fails");
+                if (calleeUsesAllGas)
+                {
+                    Assert.That(avoiding, Is.EqualTo(plain), "more gas does not remove the nested out-of-gas");
+                }
+                else
+                {
+                    Assert.That(testEnvironment.CallSucceeds(tx, block.Header, avoiding), Is.True);
+                    Assert.That(testEnvironment.CallSucceeds(tx, block.Header, avoiding - 1), Is.False, "no lower gas limit lets the nested call succeed");
+                    Assert.That(avoiding > Eip7825Constants.DefaultTxGasLimitCap, Is.EqualTo(needsReservoir));
+                }
             }
         }
 
@@ -842,11 +906,22 @@ namespace Nethermind.Evm.Test.Tracing
                 estimator = new(_transactionProcessor, _stateProvider);
             }
 
-            public ulong Estimate(Transaction tx, BlockHeader header, out string? err, ulong errorMargin = GasEstimator.DefaultErrorMargin)
+            public ulong Estimate(Transaction tx, BlockHeader header, out string? err, ulong errorMargin = GasEstimator.DefaultErrorMargin, bool avoidNestedOutOfGas = false)
             {
-                GasEstimation estimation = estimator.Estimate(tx, new BlockExecutionContext(header, _specProvider.GetSpec(header)), errorMargin);
+                GasEstimation estimation = estimator.Estimate(tx, new BlockExecutionContext(header, _specProvider.GetSpec(header)), errorMargin, avoidNestedOutOfGas: avoidNestedOutOfGas);
                 err = estimation.Error;
                 return estimation.Gas;
+            }
+
+            /// <summary>Whether <paramref name="tx"/> at <paramref name="gasLimit"/> succeeds and returns a non-zero word.</summary>
+            public bool CallSucceeds(Transaction tx, BlockHeader header, ulong gasLimit)
+            {
+                Transaction run = new();
+                tx.CopyTo(run, copyHash: false);
+                run.GasLimit = gasLimit;
+                CallOutputTracer tracer = new();
+                _transactionProcessor.CallAndRestore(run, new BlockExecutionContext(header, _specProvider.GetSpec(header)), tracer);
+                return tracer.StatusCode == StatusCode.Success && tracer.ReturnValue is { Length: 32 } output && output[31] != 0;
             }
 
             public void InsertContract(Address contractAddress, byte[] code)
