@@ -41,6 +41,9 @@ public static class Eip8288Constants
     public const int MaxInnerProofsPerStep = 16;
 
     /// <summary>Maximum instructions of a leanSTARK program the pinned generic verifier accepts.</summary>
+    /// <remarks>An EIP-8288 verifier resource bound counting the compiled program padded to a power of two, support code
+    /// included. Like every leanSTARK resource bound, it applies to each leaf at direct admission and in aggregation, even
+    /// when all its claims are discarded.</remarks>
     public const int MaxLeanStarkInstructions = 2048;
 
     /// <summary>Maximum log2 committed-polynomial size of a leanSTARK proof the pinned generic verifier accepts.</summary>
@@ -120,5 +123,5 @@ public static class Eip8288Constants
     /// <summary>Fiat-Shamir key of the recursive guest pinned by tools/lean-ffi.</summary>
     public static ReadOnlySpan<byte> AggregatedVk => _aggregatedVk;
 
-    private static readonly byte[] _aggregatedVk = Convert.FromHexString("41eca9c18620995298adb2fb8df0bb8f3be9b182aa8135038348049bef9d2d55");
+    private static readonly byte[] _aggregatedVk = Convert.FromHexString("11a02524eee37c856d80150f4c48a1636c5615f840e163968194b5cd1b49cc97");
 }

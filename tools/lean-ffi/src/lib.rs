@@ -571,12 +571,10 @@ fn decode_stark(
         return Err(());
     }
     let mut r = Reader { bytes: witness };
-    let code = r.blob()?;
-    instruction_count(code)?;
-    if keccak(&[&eip8288_mixed::GENERIC_VK_DOMAIN[..], code].concat()) != *vk {
+    let program = stark_program(r.blob()?)?;
+    if eip8288_mixed::generic_verification_key(&program).map_err(|_| ())? != *vk {
         return Err(());
     }
-    let program = stark_program(code)?;
     let mut preflight = Preflight::new(r.bytes);
     preflight.cpu()?;
     preflight.end()?;
@@ -1289,18 +1287,26 @@ mod tests {
             assert!(!verify_stark(&input, &bare_key, &bare));
             let mut encoded = Reader { bytes: &proof };
             let code = encoded.blob().unwrap();
-            // EIP-8288: vk_hash = keccak256(domain_tag || canonical_vk), domain_tag = "ethereum/8288/leanSTARK/vk/v1" || 0x00.
+            // EIP-8288: vk_hash binds the program commitment, not a hash of the serialized code.
             assert_eq!(
                 &eip8288_mixed::GENERIC_VK_DOMAIN[..],
-                b"ethereum/8288/leanSTARK/vk/v1\0"
+                b"ethereum/8288/leanSTARK/vk/v2\0"
             );
+            let program = stark_program(code).unwrap();
             assert_eq!(
                 key,
-                keccak(&[b"ethereum/8288/leanSTARK/vk/v1\0".as_slice(), code].concat())
+                eip8288_mixed::generic_verification_key(&program).unwrap()
             );
-            let former_key =
-                keccak(&[b"eip8288/leanstark-vk/leanvm-cpu\0".as_slice(), code].concat());
-            assert!(!verify_stark(&input, &former_key, &proof));
+            let code_key = keccak(&[b"ethereum/8288/leanSTARK/vk/v1\0".as_slice(), code].concat());
+            assert!(!verify_stark(&input, &code_key, &proof));
+            // Another program's code cannot stand in for the committed one.
+            let (other, other_key) = singleton(&[0x42; 32]);
+            let other_code = Reader { bytes: &other }.blob().unwrap();
+            let mut substituted = Vec::new();
+            put_blob(&mut substituted, other_code);
+            substituted.extend_from_slice(encoded.bytes);
+            assert!(!verify_stark(&input, &key, &substituted));
+            assert!(!verify_stark(&input, &other_key, &substituted));
             for index in [7, 15, 23, 31] {
                 let mut wrong = input;
                 wrong[index] ^= 1;
@@ -1531,6 +1537,68 @@ mod tests {
         }
         assert!(prove_aggregate(&commitment(&deps), &input).is_err());
     }
+    /// A statement program padded to exactly `size` compiled instructions, support code included.
+    fn sized_source(hash: &[u8; 32], size: usize) -> String {
+        let base = statement_source(hash);
+        for padding in (0..size).step_by(16) {
+            let source = base.replace(
+                "def main():\n",
+                &format!("def main():\n    h = StackBuf({})\n    for i in unroll(0, {padding}):\n        h[i] = i + 1\n", padding.max(1)),
+            );
+            let length = lean_compiler::compile(&lean_compiler::parse(&source).unwrap())
+                .prog
+                .len();
+            if length == size {
+                return source;
+            }
+            assert!(length < size, "no padding compiles to {size} instructions");
+        }
+        panic!("no padding compiles to {size} instructions");
+    }
+
+    /// EIP-8288 Test Case 12: every leaf meets the verifier resource bounds, at direct admission and in aggregation, even
+    /// when all its claims are discarded. Program size is the compiled, padded program, and the code's byte count is
+    /// checked against it without truncation.
+    #[test]
+    fn resource_bounds_apply_to_discarded_leaves() {
+        let claim = [0x31; 32];
+        let statement = batch_hash(&[claim]);
+        let (witness, key) =
+            prove_stark(&sized_source(&statement, MAX_INSTRUCTIONS), &statement).unwrap();
+        let mut reader = Reader { bytes: &witness };
+        let code = reader.blob().unwrap();
+        let proof = reader.bytes;
+        assert_eq!(instruction_count(code), Ok(MAX_INSTRUCTIONS));
+        assert!(verify_stark(&claim, &key, &witness));
+        let dep = leanstark_dependency(&claim, &key);
+        let empty = commitment(&[]);
+        let discarded = |witness: &[u8]| {
+            let as_leaf = aggregation_input(&[], &[], &[dep], &[(key, &[claim], witness)]);
+            let as_direct = aggregation_input(&[(dep, witness)], &[], &[dep], &[]);
+            [as_leaf, as_direct].map(|input| prove_aggregate(&empty, &input))
+        };
+        assert_eq!(discarded(&witness), [Ok(vec![]), Ok(vec![])]);
+        let with_code = |count: usize, bytes: usize| {
+            let mut code = Vec::new();
+            put_number(&mut code, count);
+            code.resize(4 + bytes, 0);
+            let mut forged = Vec::new();
+            put_blob(&mut forged, &code);
+            forged.extend_from_slice(proof);
+            forged
+        };
+        for (count, bytes) in [
+            (2 * MAX_INSTRUCTIONS, 45 * 2 * MAX_INSTRUCTIONS),
+            (MAX_INSTRUCTIONS, 45 * MAX_INSTRUCTIONS - 1),
+            (MAX_INSTRUCTIONS, 45 * MAX_INSTRUCTIONS + 1),
+            (1 << 31, 45 * MAX_INSTRUCTIONS),
+        ] {
+            let forged = with_code(count, bytes);
+            assert!(!verify_stark(&claim, &key, &forged));
+            assert!(discarded(&forged).iter().all(Result::is_err));
+        }
+    }
+
     #[test]
     fn bytecode_offsets_are_bounded_before_upstream_assembly() {
         let mut code = 1u32.to_le_bytes().to_vec();
@@ -1548,7 +1616,7 @@ mod tests {
             key.iter()
                 .map(|byte| format!("{byte:02x}"))
                 .collect::<String>(),
-            "41eca9c18620995298adb2fb8df0bb8f3be9b182aa8135038348049bef9d2d55"
+            "11a02524eee37c856d80150f4c48a1636c5615f840e163968194b5cd1b49cc97"
         );
         let mut limits = [0u32; LIMITS];
         assert_eq!(unsafe { nlean_limits(limits.as_mut_ptr(), LIMITS) }, 1);

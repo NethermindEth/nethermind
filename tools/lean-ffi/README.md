@@ -1,6 +1,6 @@
 # EIP-8288 native Lean integration
 
-This adapter uses a temporary [leanVM mixed-recursion fork](https://github.com/Marchhill/leanVM/tree/0025a71b77bfdfd10aef96900c436f45d8d21d10),
+This adapter uses a temporary [leanVM mixed-recursion fork](https://github.com/Marchhill/leanVM/tree/f94dc8c5b184dc33d5deb178585d55a6aee97072),
 based on the Daisugi-compatible `f33f31bf7c1191667e29a68a3acae63b9164c1c6` revision.
 The fork adds one recursive guest for Keccak SPHINCS claims, generic leanVM programs and its own child proofs;
 `Cargo.lock` pins the exact dependency revision. Upstream replacement belongs behind the
@@ -105,11 +105,15 @@ resolved dependency.
   signature over `data_hash` are checked.
 * **leanSTARK witness (`0x11`, a deviation, see below):** bytecode blob length, canonical
   bytecode, then fixed-integer bincode serialization of the upstream CPU proof (no trailing
-  bytes). The dependency key is Keccak-256 of the 30-byte tag `ethereum/8288/leanSTARK/vk/v1`
-  plus one zero byte, followed by the canonical program encoding. As EIP-8288 batch leaves
-  (EIPs#12654) specify, the VM's 32-byte public commitment is the singleton statement
-  `get_batch_hash([data_hash])`, packed into two 128-bit field cells. At most 2048 instructions and operand
-  offsets through 65535 are accepted. Each instruction is a 45-byte record: opcode byte, four
+  bytes). As EIP-8288 batch leaves (EIPs#12654) specify, the dependency key binds the proof
+  system's program commitment: Keccak-256 of the 30-byte tag `ethereum/8288/leanSTARK/vk/v2`
+  plus one zero byte, followed by the 32-byte digest of the program's bytecode table that
+  leanVM's Fiat-Shamir seed absorbs. The profile fixes every other verification parameter. The
+  VM's 32-byte public commitment is the singleton statement `get_batch_hash([data_hash])`,
+  packed into two 128-bit field cells. At most 2048 instructions, counting the compiled program
+  padded to a power of two, and operand offsets through 65535 are accepted; these and the trace
+  and bus bounds apply to every leaf, at direct admission and in aggregation, even when all its
+  claims are discarded. Each instruction is a 45-byte record: opcode byte, four
   u32 operands, three u64 immediate limbs, then a u32 BLAKE2s metadata operand; opcodes 0–6 are
   XOR, MUL, SET, DEREF, JUMP, BLAKE2s, SHA3, and unused fields are zero.
 * **aggregation input:** direct count then `(96-byte dependency, witness blob)` pairs;
