@@ -73,6 +73,10 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         return expected != 0 && (nint)handlers[(int)opcode] == expected;
     }
 
+    /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs MCOPY on the guest handler.</summary>
+    internal static bool CopiesMemoryThroughGuestHandlerForTests(IReleaseSpec spec) =>
+        (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)Instruction.MCOPY] == (nint)AsTableEntry(&RawCalliHelper.ExecuteMCopyInsideMemory);
+
     /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs SELFBALANCE on the guest handler.</summary>
     internal static bool ReadsSelfBalanceThroughGuestHandlerForTests(IReleaseSpec spec) =>
         (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)Instruction.SELFBALANCE] == (nint)AsTableEntry(&RawCalliHelper.ExecuteSelfBalance);
