@@ -3257,11 +3257,15 @@ namespace Nethermind.TxPool.Test
                 .WithChainId(TestBlockchainIds.ChainId)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
-            AcceptTxResult result = _txPool.SubmitTx(tx, isLocal ? TxHandlingOptions.PersistentBroadcast : TxHandlingOptions.None);
+            TxHandlingOptions handling = isLocal ? TxHandlingOptions.PersistentBroadcast : TxHandlingOptions.None;
+            // The dry run before proof-capacity eviction must not pass what admission refuses while syncing.
+            AcceptTxResult dryRun = _txPool.ValidateTxBeforeProofAdmission(tx, handling);
+            AcceptTxResult result = _txPool.SubmitTx(tx, handling);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo((isSynced || isLocal) ? 1 : 0));
                 Assert.That(result, Is.EqualTo((isSynced || isLocal) ? AcceptTxResult.Accepted : AcceptTxResult.Syncing));
+                Assert.That(dryRun, Is.EqualTo(result));
             }
         }
 
