@@ -125,9 +125,14 @@ public static partial class EvmInstructions
         IWorldState state = vm.WorldState;
 
         // Pop parameters off the stack: value to transfer, memory position for the initialization code,
-        // and the length of the initialization code.
-        if (!stack.PopUInt256(out UInt256 value, out UInt256 memoryPositionOfInitCode, out UInt256 initCodeLength))
+        // and the length of the initialization code. They are read in their popped slots, which stay intact until the next push.
+        const int Operands = 3;
+        if (!stack.EnsureDepth(Operands))
             goto StackUnderflow;
+        ref byte deepest = ref stack.PopBytesByRefUnchecked(Operands);
+        ref readonly UInt256 value = ref Operand(ref deepest, Operands, 0);
+        ref readonly UInt256 memoryPositionOfInitCode = ref Operand(ref deepest, Operands, 1);
+        ref readonly UInt256 initCodeLength = ref Operand(ref deepest, Operands, 2);
 
         Span<byte> salt = default;
         // For CREATE2 and TCREATE, an extra salt value is required. Use type check to differentiate.
@@ -179,9 +184,9 @@ public static partial class EvmInstructions
             goto OutOfGas;
 
         // Check that the executing account has sufficient balance to transfer the specified value.
-        UInt256 balance = state.GetBalance(env.ExecutingAccount);
-        if (value <= balance) state.NoteMinimumBalance(env.ExecutingAccount, in value);
-        if (value > balance)
+        bool covered = value <= state.GetBalance(env.ExecutingAccount);
+        if (covered) state.NoteMinimumBalance(env.ExecutingAccount, in value);
+        else
         {
             if (!TEip8037.IsActive && vm.IsTracingActions)
                 TraceRejectedCreate<TGasPolicy, TOpCreate, TSpec>(vm, gas, in value, in memoryPositionOfInitCode, in initCodeLength, salt, EvmExceptionType.NotEnoughBalance);
