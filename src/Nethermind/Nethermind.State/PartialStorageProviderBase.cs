@@ -178,6 +178,7 @@ namespace Nethermind.State
             }
 
             Debug.Assert(_intraBlockCache.Count == 0, "Every cached cell has an update without a previous one.");
+            if (_intraBlockCache.Count != 0) _intraBlockCache.ClearAndTrim();
         }
 
         /// <summary>

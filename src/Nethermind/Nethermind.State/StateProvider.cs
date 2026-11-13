@@ -780,6 +780,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         }
 
         Debug.Assert(_intraTxCache.Count == 0, "Every cached address has a change without a previous one.");
+        if (_intraTxCache.Count != 0) _intraTxCache.ClearAndTrim();
     }
 
     private void CommitChanges<TStateTracing>(
