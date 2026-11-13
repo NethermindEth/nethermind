@@ -3,6 +3,7 @@
 
 #nullable enable
 using System;
+using System.Buffers.Binary;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -413,6 +414,7 @@ public class EthereumRunnerTests
             }
 
             await StartupPipelineWarmer.WarmupAsync(spec, config, false, cancellation.Token, liveBlockTree: tree);
+            Assert.That(EthereumJsonSerializer.JsonOptions, Is.SameAs(options), "The disposable warm node must not invalidate the live position sidecar's serializer contract.");
 
             Block second = AddBlock(first);
             await secondIndexed.Task.WaitAsync(cancellation.Token);
@@ -420,9 +422,8 @@ public class EthereumRunnerTests
             byte[] proofKey = [.. "ots-pos-p1/"u8, 2, .. second.Hash!.Bytes];
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(meta.Get(progressKey)!), Is.EqualTo(3));
+                Assert.That(BinaryPrimitives.ReadUInt64LittleEndian(meta.Get(progressKey)!), Is.EqualTo(3));
                 Assert.That(meta.Get(proofKey), Is.Not.Null, "A transaction-bearing block after warmup must have a persisted position proof.");
-                Assert.That(EthereumJsonSerializer.JsonOptions, Is.SameAs(options), "The disposable warm node must not invalidate the live position sidecar's serializer contract.");
                 Assert.That(meta.Get(schemaKey), Is.EqualTo(originalSchema));
                 Assert.That(meta.Get(firstProofKey), Is.EqualTo(originalProof));
                 Assert.That(traces.Get(first.Hash!), Is.EqualTo(originalTrace));

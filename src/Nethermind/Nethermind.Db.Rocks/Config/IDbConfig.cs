@@ -128,6 +128,11 @@ public interface IDbConfig : IConfig
     string LogIndexStorageTopics3DbRocksDbOptions { get; set; }
     string LogIndexStorageTopics3DbAdditionalRocksDbOptions { get; set; }
 
+    /// <summary>RocksDB options for stored execution traces. Empty by default.</summary>
+    string TraceStoreDbRocksDbOptions { get; set; }
+    /// <summary>Options appended after the stored execution trace options. Empty by default.</summary>
+    string TraceStoreDbAdditionalRocksDbOptions { get; set; }
+
     /// <summary>RocksDB options for the trace address index. Empty by default.</summary>
     string TraceAddressIndexDbRocksDbOptions { get; set; }
     /// <summary>Options appended after the trace address index options. Empty by default.</summary>

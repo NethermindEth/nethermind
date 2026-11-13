@@ -112,21 +112,26 @@ public class PerTableDbConfigTests
         Assert.That(config.RowCacheSize ?? 0, Is.Zero);
     }
 
-    [Test]
-    public void Trace_address_index_options_are_declared_and_resolved_for_every_column(
-        [Values(null, nameof(LogIndexColumns.Meta), nameof(LogIndexColumns.Addresses), nameof(LogIndexColumns.Topics0),
-            nameof(LogIndexColumns.Topics1), nameof(LogIndexColumns.Topics2), nameof(LogIndexColumns.Topics3))] string? column)
+    [TestCase("TraceStore", null)]
+    [TestCase("TraceAddressIndex", null)]
+    [TestCase("TraceAddressIndex", nameof(LogIndexColumns.Meta))]
+    [TestCase("TraceAddressIndex", nameof(LogIndexColumns.Addresses))]
+    [TestCase("TraceAddressIndex", nameof(LogIndexColumns.Topics0))]
+    [TestCase("TraceAddressIndex", nameof(LogIndexColumns.Topics1))]
+    [TestCase("TraceAddressIndex", nameof(LogIndexColumns.Topics2))]
+    [TestCase("TraceAddressIndex", nameof(LogIndexColumns.Topics3))]
+    public void Trace_database_options_are_declared_and_resolved(string database, string? column)
     {
         DbConfig dbConfig = new();
         foreach (string propertyName in new[] { nameof(IRocksDbConfig.RocksDbOptions), nameof(IRocksDbConfig.AdditionalRocksDbOptions) })
         {
-            string name = $"TraceAddressIndex{column}Db{propertyName}";
+            string name = $"{database}{column}Db{propertyName}";
             PropertyInfo? property = typeof(IDbConfig).GetProperty(name);
             Assert.That(property, Is.Not.Null, $"{name} is missing in {nameof(IDbConfig)}");
             property!.SetValue(dbConfig, "some_option=1;");
         }
 
-        PerTableDbConfig config = new(dbConfig, "TraceAddressIndex", column);
+        PerTableDbConfig config = new(dbConfig, database, column);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(config.RocksDbOptions, Is.EqualTo(dbConfig.RocksDbOptions + "some_option=1;"));
