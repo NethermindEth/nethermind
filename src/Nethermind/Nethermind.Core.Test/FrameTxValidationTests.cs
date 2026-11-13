@@ -670,11 +670,12 @@ public class FrameTxValidationTests
         byte[] repeatedSchemes = [Eip8288Constants.LeanSphincsScheme, Eip8288Constants.LeanSphincsScheme, Eip8288Constants.LeanStarkScheme];
         Transaction tx = CreateValidFrameTx(t =>
         {
-            t.Frames = [SelfVerifyFrame(), Frame(data: floorBinds ? new byte[100_000] : [])];
+            // Enough calldata for the floor to bind over a leanSTARK declaration's frame charge.
+            t.Frames = [SelfVerifyFrame(), Frame(data: floorBinds ? new byte[200_000] : [])];
             if (declarations > 0) t.Frames = [.. t.Frames, DepFrame(repeatedSchemes[..declarations])];
         });
 
-        ulong recursiveStarkGas = (ulong)declarations * Eip8288Constants.LeanStarkVerificationGas;
+        ulong recursiveStarkGas = (ulong)declarations * Eip8288Constants.RecursiveProofShareGas;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, disabled, out ulong baseIntrinsic, out ulong baseFloor, out ulong baseMax), Is.True);
