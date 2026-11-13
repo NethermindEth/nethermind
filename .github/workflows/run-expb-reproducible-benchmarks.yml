@@ -1268,6 +1268,8 @@ jobs:
               echo "::error::Snapshot fixture '${FLAT_SNAPSHOT_BLOCK_DIR}' has no numeric block suffix."
               exit 1
             fi
+          elif [[ "${CLIENT}" == "nethermind" && "${STATE_LAYOUT}" == "flat" && ( "${PAYLOAD_SET}" == "realblocks" || "${PAYLOAD_SET}" == "superblocks" ) ]]; then
+            startup_block="22360000"
           fi
           echo "startup_block=${startup_block}" >> "${GITHUB_OUTPUT}"
           echo "expected_amount=${expected_amount}" >> "${GITHUB_OUTPUT}"
