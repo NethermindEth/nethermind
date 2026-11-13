@@ -452,6 +452,36 @@ namespace Nethermind.Serialization.Rlp
             return bytes;
         }
 
+        /// <inheritdoc cref="EncodeAsBytes(Account)"/>
+        [SkipLocalsInit]
+        public byte[] EncodeAsBytes(in AccountStruct account)
+        {
+            bool omitStorageRoot = _slimFormat && !account.HasStorage;
+            bool omitCodeHash = _slimFormat && !account.HasCode;
+            int contentLength = Rlp.LengthOf(account.Nonce) + Rlp.LengthOf(account.Balance)
+                + (omitStorageRoot ? 1 : Rlp.LengthOfKeccakRlp)
+                + (omitCodeHash ? 1 : Rlp.LengthOfKeccakRlp);
+            byte[] bytes = GC.AllocateUninitializedArray<byte>(Rlp.LengthOfSequence(contentLength));
+            Span<byte> destination = bytes;
+            int position = Rlp.StartSequence(destination, 0, contentLength);
+            position = EncodeWord(destination, position, account.Nonce);
+            position = EncodeWord(destination, position, account.Balance);
+            ValueHash256 storageRoot = account.StorageRoot;
+            position = omitStorageRoot
+                ? EncodeEmptyByteArray(destination, position)
+                : Rlp.Encode(destination, position, storageRoot.Bytes);
+            if (omitCodeHash)
+            {
+                EncodeEmptyByteArray(destination, position);
+            }
+            else
+            {
+                Rlp.Encode(destination, position, account.CodeHash.Bytes);
+            }
+
+            return bytes;
+        }
+
         private static int EncodeEmptyByteArray(Span<byte> destination, int position)
         {
             destination[position] = Rlp.EmptyByteArrayByte;

@@ -75,7 +75,7 @@ public class SnapProviderTests
                 0,
                 Keccak.Zero,
                 Keccak.Zero,
-                Array.Empty<PathWithAccount>(),
+                EmptyPathWithAccountList.Instance,
                 EmptyByteArrayList.Instance), Throws.ArgumentException);
     }
 
@@ -1110,7 +1110,7 @@ public class SnapProviderTests
                 new ValueHash256(asReq.Root),
                 new ValueHash256(asReq.StartingHash),
                 new ValueHash256(asReq.LimitHash),
-                pathWithAccounts,
+                pathWithAccounts.ToPathWithAccountList(),
                 new ByteArrayListAdapter(proofs.ToPooledList())).result, Is.EqualTo(AddRangeResult.OK));
     }
 

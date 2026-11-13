@@ -223,14 +223,14 @@ public class FlatSnapTrieFactory(
         return false;
     }
 
-    public ISnapTree<PathWithAccount> CreateStateTree()
+    public ISnapTree<IPathWithAccountList> CreateStateTree()
     {
         IPersistence.IPersistenceReader reader = new LazyReader(persistence, ReaderFlags.Sync);
         IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
         return new FlatSnapStateTree(reader, writeBatch, syncConfig.EnableSnapDoubleWriteCheck, logManager);
     }
 
-    public ISnapTree<PathWithStorageSlot> CreateStorageTree(in ValueHash256 accountPath)
+    public ISnapTree<IReadOnlyList<PathWithStorageSlot>> CreateStorageTree(in ValueHash256 accountPath)
     {
         IPersistence.IPersistenceReader reader = new LazyReader(persistence, ReaderFlags.Sync);
         IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);

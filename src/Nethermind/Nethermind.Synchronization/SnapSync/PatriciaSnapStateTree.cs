@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.State;
@@ -10,7 +9,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.SnapSync;
 
-public class PatriciaSnapStateTree(StateTree tree, SnapUpperBoundAdapter adapter, INodeStorage nodeStorage) : ISnapTree<PathWithAccount>
+public class PatriciaSnapStateTree(StateTree tree, SnapUpperBoundAdapter adapter, INodeStorage nodeStorage) : ISnapTree<IPathWithAccountList>
 {
     public Hash256 RootHash => tree.RootHash;
 
@@ -19,8 +18,8 @@ public class PatriciaSnapStateTree(StateTree tree, SnapUpperBoundAdapter adapter
     public bool IsPersisted(in TreePath path, in ValueHash256 keccak) =>
         nodeStorage.KeyExists(null, path, keccak);
 
-    public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithAccount> entries) =>
-        ISnapTree<PathWithAccount>.DoBulkSetAndUpdateRootHash(tree, entries);
+    public void BulkSetAndUpdateRootHash(IPathWithAccountList entries) =>
+        ISnapTree<IPathWithAccountList>.DoBulkSetAndUpdateRootHash(tree, entries);
 
     public void Commit(ValueHash256 upperBound)
     {

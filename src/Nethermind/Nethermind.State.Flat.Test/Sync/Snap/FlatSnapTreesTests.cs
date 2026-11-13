@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Sync.Snap;
@@ -98,7 +99,7 @@ public class FlatSnapTreesTests
         ValueHash256 lowPath = PathHash("11");
         ValueHash256 highPath = PathHash("99");
 
-        tree.BulkSetAndUpdateRootHash([new PathWithAccount(lowPath, account), new PathWithAccount(highPath, account)]);
+        tree.BulkSetAndUpdateRootHash(new PathWithAccount[] { new(lowPath, account), new(highPath, account) }.ToPathWithAccountList());
         tree.Commit(PathHash("55"));
 
         Assert.That(writer.SetAccountRawCalls, Has.One.EqualTo((lowPath, account)));
@@ -111,7 +112,7 @@ public class FlatSnapTreesTests
         reader.GetAccountRaw(Arg.Any<ValueHash256>()).Returns([0x01]);
         using FlatSnapStateTree tree = NewStateTree(reader, enableDoubleWriteCheck: true);
 
-        tree.BulkSetAndUpdateRootHash([new PathWithAccount(PathHash("11"), new Account(1, 100))]);
+        tree.BulkSetAndUpdateRootHash(new PathWithAccount[] { new(PathHash("11"), new Account(1, 100)) }.ToPathWithAccountList());
 
         Assert.That(() => tree.Commit(new ValueHash256(Bytes.FromHexString("ff" + new string('f', 62)))),
             Throws.Exception.With.Message.Contain("Double account flat write"));

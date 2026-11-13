@@ -16,7 +16,7 @@ namespace Nethermind.State.Flat.Sync.Snap;
 /// ISnapTree adapter for flat snap sync (storage).
 /// Owns reader (for IsPersisted) and writeBatch (for commits), disposing them on Dispose.
 /// </summary>
-public class FlatSnapStorageTree : ISnapTree<PathWithStorageSlot>
+public class FlatSnapStorageTree : ISnapTree<IReadOnlyList<PathWithStorageSlot>>
 {
     private readonly IPersistence.IPersistenceReader _reader;
     private readonly IPersistence.IWriteBatch _writeBatch;
@@ -49,7 +49,7 @@ public class FlatSnapStorageTree : ISnapTree<PathWithStorageSlot>
     public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithStorageSlot> entries)
     {
         _pendingEntries = entries;
-        ISnapTree<PathWithStorageSlot>.DoBulkSetAndUpdateRootHash(_tree, entries);
+        ISnapTree<IReadOnlyList<PathWithStorageSlot>>.DoBulkSetAndUpdateRootHash(_tree, entries);
     }
 
     public void Commit(ValueHash256 upperBound)

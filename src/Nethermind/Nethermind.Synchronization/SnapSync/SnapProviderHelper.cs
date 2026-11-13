@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.State.Snap;
@@ -22,14 +23,14 @@ namespace Nethermind.Synchronization.SnapSync
             in ValueHash256 expectedRootHash,
             in ValueHash256 startingHash,
             in ValueHash256 limitHash,
-            IReadOnlyList<PathWithAccount> accounts,
+            IPathWithAccountList accounts,
             IByteArrayList proofs = null
         )
         {
-            using ISnapTree<PathWithAccount> tree = factory.CreateStateTree();
+            using ISnapTree<IPathWithAccountList> tree = factory.CreateStateTree();
 
             (AddRangeResult result, bool moreChildrenToRight, _) = CommitRange(
-                tree, accounts, startingHash, limitHash, expectedRootHash, proofs);
+                tree, accounts, new AccountPaths(accounts), startingHash, limitHash, expectedRootHash, proofs);
             if (result != AddRangeResult.OK)
                 return (result, true, null, null, tree.RootHash);
 
@@ -37,13 +38,14 @@ namespace Nethermind.Synchronization.SnapSync
             List<ValueHash256> codeHashes = [];
             for (int index = 0; index < accounts.Count; index++)
             {
-                PathWithAccount account = accounts[index];
+                RefPathWithAccount entry = accounts[index];
+                AccountStruct account = entry.Account.ToStruct();
 
-                if (account.Account.HasStorage && account.Path <= limitHash)
-                    accountsWithStorage.Add(account);
+                if (account.HasStorage && entry.Path <= limitHash)
+                    accountsWithStorage.Add(new PathWithAccount(entry.Path, account.ToAccount()));
 
-                if (account.Account.HasCode)
-                    codeHashes.Add(account.Account.CodeHash);
+                if (account.HasCode)
+                    codeHashes.Add(account.CodeHash);
             }
 
             return (AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes, tree.RootHash);
@@ -58,13 +60,13 @@ namespace Nethermind.Synchronization.SnapSync
             IByteArrayList? proofs = null
         )
         {
-            using ISnapTree<PathWithStorageSlot> tree = factory.CreateStorageTree(account.Path);
+            using ISnapTree<IReadOnlyList<PathWithStorageSlot>> tree = factory.CreateStorageTree(account.Path);
 
             ValueHash256 effectiveLimitHash = limitHash ?? Keccak.MaxValue;
             ValueHash256 effectiveStartingHash = startingHash ?? ValueKeccak.Zero;
 
             (AddRangeResult result, bool moreChildrenToRight, bool isRootPersisted) = CommitRange(
-                tree, slots, effectiveStartingHash, effectiveLimitHash, account.Account.StorageRoot, proofs);
+                tree, slots, new SlotPaths(slots), effectiveStartingHash, effectiveLimitHash, account.Account.StorageRoot, proofs);
             if (result != AddRangeResult.OK)
                 return (result, true, tree.RootHash, false);
             return (AddRangeResult.OK, moreChildrenToRight, tree.RootHash, isRootPersisted);
@@ -82,23 +84,24 @@ namespace Nethermind.Synchronization.SnapSync
             in ValueHash256 expectedRootHash,
             in ValueHash256 startingHash,
             in ValueHash256 limitHash,
-            IReadOnlyList<PathWithAccount> accounts,
+            IPathWithAccountList accounts,
             IByteArrayList? proofs)
         {
-            using ISnapTree<PathWithAccount> tree = factory.CreateStateTree();
-            return BuildAndVerifyRoot(tree, accounts, startingHash, limitHash, expectedRootHash, proofs).result;
+            using ISnapTree<IPathWithAccountList> tree = factory.CreateStateTree();
+            return BuildAndVerifyRoot(tree, accounts, new AccountPaths(accounts), startingHash, limitHash, expectedRootHash, proofs).result;
         }
 
-        private static (AddRangeResult result, bool moreChildrenToRight, bool isRootPersisted) CommitRange<TEntry>(
-            ISnapTree<TEntry> tree,
-            IReadOnlyList<TEntry> entries,
+        private static (AddRangeResult result, bool moreChildrenToRight, bool isRootPersisted) CommitRange<TEntries, TPaths>(
+            ISnapTree<TEntries> tree,
+            TEntries entries,
+            TPaths paths,
             in ValueHash256 startingHash,
             in ValueHash256 limitHash,
             in ValueHash256 expectedRootHash,
-            IByteArrayList? proofs) where TEntry : ISnapEntry
+            IByteArrayList? proofs) where TPaths : struct, IEntryPaths
         {
             (AddRangeResult result, List<(TrieNode, TreePath)>? sortedBoundaryList, bool moreChildrenToRight) =
-                BuildAndVerifyRoot(tree, entries, startingHash, limitHash, expectedRootHash, proofs);
+                BuildAndVerifyRoot(tree, entries, paths, startingHash, limitHash, expectedRootHash, proofs);
 
             if (result != AddRangeResult.OK)
                 return (result, true, false);
@@ -106,7 +109,7 @@ namespace Nethermind.Synchronization.SnapSync
             // The upper bound is used to prevent proof nodes that covers next range from being persisted, except if
             // this is the last range. This prevent double node writes per path which break flat. It also prevent leaf o
             // that is after the range from being persisted, which prevent double write again.
-            ValueHash256 lastPath = entries.Count == 0 ? limitHash : entries[entries.Count - 1].Path;
+            ValueHash256 lastPath = paths.Count == 0 ? limitHash : paths[paths.Count - 1];
             ValueHash256 upperBound = lastPath;
             if (upperBound > limitHash)
             {
@@ -129,31 +132,32 @@ namespace Nethermind.Synchronization.SnapSync
         /// Fills the boundary proof nodes and bulk-sets the range entries into <paramref name="tree"/> in memory,
         /// then checks that the recomputed root equals <paramref name="expectedRootHash"/>. Nothing is committed.
         /// </summary>
-        private static (AddRangeResult result, List<(TrieNode, TreePath)>? sortedBoundaryList, bool moreChildrenToRight) BuildAndVerifyRoot<TEntry>(
-            ISnapTree<TEntry> tree,
-            IReadOnlyList<TEntry> entries,
+        private static (AddRangeResult result, List<(TrieNode, TreePath)>? sortedBoundaryList, bool moreChildrenToRight) BuildAndVerifyRoot<TEntries, TPaths>(
+            ISnapTree<TEntries> tree,
+            TEntries entries,
+            TPaths paths,
             in ValueHash256 startingHash,
             in ValueHash256 limitHash,
             in ValueHash256 expectedRootHash,
-            IByteArrayList? proofs) where TEntry : ISnapEntry
+            IByteArrayList? proofs) where TPaths : struct, IEntryPaths
         {
             // Without entries a proof is a proof of absence: on its own it has to rebuild the root with all of
             // [startingHash, limitHash] cleared, which leaves nothing more to fetch in the range.
-            bool isProofOfAbsence = entries.Count == 0;
+            bool isProofOfAbsence = paths.Count == 0;
             if (isProofOfAbsence && proofs is not { Count: > 0 })
                 return (AddRangeResult.EmptyRange, null, false);
 
             // Validate sorting order
-            for (int i = 1; i < entries.Count; i++)
+            for (int i = 1; i < paths.Count; i++)
             {
-                if (entries[i - 1].Path.CompareTo(entries[i].Path) >= 0)
+                if (paths[i - 1].CompareTo(paths[i]) >= 0)
                     return (AddRangeResult.InvalidOrder, null, false);
             }
 
-            if (!isProofOfAbsence && entries[0].Path < startingHash)
+            if (!isProofOfAbsence && paths[0] < startingHash)
                 return (AddRangeResult.InvalidOrder, null, false);
 
-            ValueHash256 lastPath = isProofOfAbsence ? limitHash : entries[entries.Count - 1].Path;
+            ValueHash256 lastPath = isProofOfAbsence ? limitHash : paths[paths.Count - 1];
 
             AddRangeResult result;
             List<(TrieNode, TreePath)> sortedBoundaryList;
@@ -190,14 +194,14 @@ namespace Nethermind.Synchronization.SnapSync
         }
 
         [SkipLocalsInit]
-        private static (AddRangeResult result, List<(TrieNode, TreePath)> sortedBoundaryList, bool moreChildrenToRight) FillBoundaryTree<TEntry>(
-            ISnapTree<TEntry> tree,
+        private static (AddRangeResult result, List<(TrieNode, TreePath)> sortedBoundaryList, bool moreChildrenToRight) FillBoundaryTree<TEntries>(
+            ISnapTree<TEntries> tree,
             in ValueHash256? startingHash,
             in ValueHash256 endHash,
             in ValueHash256 limitHash,
             in ValueHash256 expectedRootHash,
             IByteArrayList? proofs = null
-        ) where TEntry : ISnapEntry
+        )
         {
             if (proofs is null || proofs.Count == 0)
             {
@@ -391,7 +395,7 @@ namespace Nethermind.Synchronization.SnapSync
             return dict;
         }
 
-        private static void StitchBoundaries<TEntry>(List<(TrieNode, TreePath)>? sortedBoundaryList, ISnapTree<TEntry> tree, ValueHash256 startPath) where TEntry : ISnapEntry
+        private static void StitchBoundaries<TEntries>(List<(TrieNode, TreePath)>? sortedBoundaryList, ISnapTree<TEntries> tree, ValueHash256 startPath)
         {
             if (sortedBoundaryList is null || sortedBoundaryList.Count == 0)
             {
@@ -442,7 +446,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        private static bool IsChildPersisted<TEntry>(TrieNode node, ref TreePath nodePath, object? child, int childIndex, ISnapTree<TEntry> tree, ValueHash256 startPath) where TEntry : ISnapEntry
+        private static bool IsChildPersisted<TEntries>(TrieNode node, ref TreePath nodePath, object? child, int childIndex, ISnapTree<TEntries> tree, ValueHash256 startPath)
         {
             if (child is TrieNode childNode)
             {
@@ -468,6 +472,25 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 nodePath.TruncateMut(previousPathLength);
             }
+        }
+
+        /// <summary>The paths of a range's entries, read from whichever list holds them.</summary>
+        private interface IEntryPaths
+        {
+            int Count { get; }
+            ValueHash256 this[int index] { get; }
+        }
+
+        private readonly struct AccountPaths(IPathWithAccountList accounts) : IEntryPaths
+        {
+            public int Count => accounts.Count;
+            public ValueHash256 this[int index] => accounts[index].Path;
+        }
+
+        private readonly struct SlotPaths(IReadOnlyList<PathWithStorageSlot> slots) : IEntryPaths
+        {
+            public int Count => slots.Count;
+            public ValueHash256 this[int index] => slots[index].Path;
         }
     }
 }

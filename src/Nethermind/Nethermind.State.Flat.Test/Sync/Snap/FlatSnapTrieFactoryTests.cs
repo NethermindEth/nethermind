@@ -132,9 +132,9 @@ public class FlatSnapTrieFactoryTests
     {
         (FlatSnapTrieFactory factory, IPersistence persistence, _) = Build();
 
-        using (ISnapTree<PathWithAccount> stateTree = factory.CreateStateTree())
-        using (ISnapTree<PathWithStorageSlot> storageTree = factory.CreateStorageTree(default))
-        using (ISnapTree<PathWithStorageSlot> nonDefaultStorageTree = factory.CreateStorageTree(new ValueHash256(Bytes.FromHexString("11" + new string('0', 62)))))
+        using (ISnapTree<IPathWithAccountList> stateTree = factory.CreateStateTree())
+        using (ISnapTree<IReadOnlyList<PathWithStorageSlot>> storageTree = factory.CreateStorageTree(default))
+        using (ISnapTree<IReadOnlyList<PathWithStorageSlot>> nonDefaultStorageTree = factory.CreateStorageTree(new ValueHash256(Bytes.FromHexString("11" + new string('0', 62)))))
         {
             using (Assert.EnterMultipleScope())
             {
@@ -164,8 +164,8 @@ public class FlatSnapTrieFactoryTests
     {
         (FlatSnapTrieFactory factory, _, _) = Build(doubleWriteCheck);
 
-        using ISnapTree<PathWithAccount> stateTree = factory.CreateStateTree();
-        using ISnapTree<PathWithStorageSlot> storageTree = factory.CreateStorageTree(default);
+        using ISnapTree<IPathWithAccountList> stateTree = factory.CreateStateTree();
+        using ISnapTree<IReadOnlyList<PathWithStorageSlot>> storageTree = factory.CreateStorageTree(default);
 
         using (Assert.EnterMultipleScope())
         {
@@ -179,14 +179,14 @@ public class FlatSnapTrieFactoryTests
     {
         (FlatSnapTrieFactory factory, IPersistence persistence, _) = Build();
 
-        using (ISnapTree<PathWithStorageSlot> storageTree = factory.CreateStorageTree(default))
+        using (ISnapTree<IReadOnlyList<PathWithStorageSlot>> storageTree = factory.CreateStorageTree(default))
         {
             // Proofless flow: no boundary stitching, no IsPersisted, double-write check off.
             storageTree.BulkSetAndUpdateRootHash([new PathWithStorageSlot(new ValueHash256("0x1000000000000000000000000000000000000000000000000000000000000000"), [1])]);
             storageTree.Commit(Keccak.MaxValue);
         }
 
-        using (ISnapTree<PathWithAccount> stateTree = factory.CreateStateTree())
+        using (ISnapTree<IPathWithAccountList> stateTree = factory.CreateStateTree())
         {
         }
 
@@ -200,7 +200,7 @@ public class FlatSnapTrieFactoryTests
     {
         (FlatSnapTrieFactory factory, IPersistence persistence, IPersistence.IPersistenceReader reader) = Build();
 
-        ISnapTree<PathWithStorageSlot> storageTree = factory.CreateStorageTree(default);
+        ISnapTree<IReadOnlyList<PathWithStorageSlot>> storageTree = factory.CreateStorageTree(default);
         TreePath path = TreePath.Empty;
         if (readBeforeDisposal)
         {

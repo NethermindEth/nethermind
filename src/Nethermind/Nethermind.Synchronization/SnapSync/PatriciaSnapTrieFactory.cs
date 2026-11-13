@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -33,13 +34,13 @@ public class PatriciaSnapTrieFactory(
         stateDb.Flush();
     }
 
-    public ISnapTree<PathWithAccount> CreateStateTree()
+    public ISnapTree<IPathWithAccountList> CreateStateTree()
     {
         SnapUpperBoundAdapter adapter = new(_stateTrieStore);
         return new PatriciaSnapStateTree(new StateTree(adapter, logManager), adapter, nodeStorage);
     }
 
-    public ISnapTree<PathWithStorageSlot> CreateStorageTree(in ValueHash256 accountPath)
+    public ISnapTree<IReadOnlyList<PathWithStorageSlot>> CreateStorageTree(in ValueHash256 accountPath)
     {
         Hash256 address = accountPath.ToCommitment();
         RawScopedTrieStore storageTrieStore = new(nodeStorage, address);

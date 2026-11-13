@@ -15,14 +15,14 @@ namespace Nethermind.State.Flat.Sync.Snap;
 /// ISnapTree adapter for flat snap sync (state).
 /// Owns reader (for IsPersisted) and writeBatch (for commits), disposing them on Dispose.
 /// </summary>
-public class FlatSnapStateTree : ISnapTree<PathWithAccount>
+public class FlatSnapStateTree : ISnapTree<IPathWithAccountList>
 {
     private readonly IPersistence.IPersistenceReader _reader;
     private readonly IPersistence.IWriteBatch _writeBatch;
     private readonly bool _enableDoubleWriteCheck;
     private readonly SnapUpperBoundAdapter _adapter;
     private readonly StateTree _tree;
-    private IReadOnlyList<PathWithAccount>? _pendingEntries;
+    private IPathWithAccountList? _pendingEntries;
 
     public FlatSnapStateTree(IPersistence.IPersistenceReader reader, IPersistence.IWriteBatch writeBatch, bool enableDoubleWriteCheck, ILogManager logManager)
     {
@@ -43,10 +43,10 @@ public class FlatSnapStateTree : ISnapTree<PathWithAccount>
         return rlp is not null && ValueKeccak.Compute(rlp) == keccak;
     }
 
-    public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithAccount> entries)
+    public void BulkSetAndUpdateRootHash(IPathWithAccountList entries)
     {
         _pendingEntries = entries;
-        ISnapTree<PathWithAccount>.DoBulkSetAndUpdateRootHash(_tree, entries);
+        ISnapTree<IPathWithAccountList>.DoBulkSetAndUpdateRootHash(_tree, entries);
     }
 
     public void Commit(ValueHash256 upperBound)
@@ -57,14 +57,13 @@ public class FlatSnapStateTree : ISnapTree<PathWithAccount>
         {
             for (int i = 0; i < _pendingEntries.Count; i++)
             {
-                PathWithAccount account = _pendingEntries[i];
-                if (account.Path <= upperBound)
+                RefPathWithAccount account = _pendingEntries[i];
+                ValueHash256 path = account.Path;
+                if (path <= upperBound)
                 {
-                    if (_enableDoubleWriteCheck && _reader.GetAccountRaw(account.Path) is not null)
-                        throw new Exception($"Double account flat write. {account.Path}");
-                    Account accountValue = account.Account
-                        ?? throw new InvalidOperationException("A SNAP account entry must contain an account value.");
-                    _writeBatch.SetAccountRaw(account.Path, accountValue);
+                    if (_enableDoubleWriteCheck && _reader.GetAccountRaw(path) is not null)
+                        throw new Exception($"Double account flat write. {path}");
+                    _writeBatch.SetAccountRaw(path, account.Account.ToAccount());
                 }
             }
         }

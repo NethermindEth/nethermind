@@ -69,7 +69,7 @@ public class SnapRangeProofBoundaryTests
         // The keys B and C, at and after the origin, are left out together with the extension's child.
         (AddRangeResult result, _, _, _, _) = SnapProviderHelper.AddAccountRange(
             CreatePatriciaFactory(), 0, source.StateRoot, KeyB, ValueKeccak.MaxValue,
-            [source.AccountEntry(KeyD)], Proofs(WithoutExtensionChild(source.AccountProof(KeyB))));
+            new PathWithAccount[] { source.AccountEntry(KeyD) }.ToPathWithAccountList(), Proofs(WithoutExtensionChild(source.AccountProof(KeyB))));
 
         Assert.That(result, Is.EqualTo(AddRangeResult.InvalidProof));
     }
@@ -86,7 +86,7 @@ public class SnapRangeProofBoundaryTests
             Assert.That(accounts.ToArray().Select(static a => a.Path), Is.EqualTo(new[] { KeyB, KeyC, KeyD }), "guards the premise");
 
             (AddRangeResult result, _, _, _, _) = SnapProviderHelper.AddAccountRange(
-                CreatePatriciaFactory(), 0, source.StateRoot, KeyB, ValueKeccak.MaxValue, accounts.ToArray(), proofs);
+                CreatePatriciaFactory(), 0, source.StateRoot, KeyB, ValueKeccak.MaxValue, accounts, proofs);
 
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
         }
@@ -111,7 +111,7 @@ public class SnapRangeProofBoundaryTests
             }
 
             (AddRangeResult result, _, _, _, _) = SnapProviderHelper.AddAccountRange(
-                CreatePatriciaFactory(), 0, source.StateRoot, origin, ValueKeccak.MaxValue, accounts.ToArray(), proofs);
+                CreatePatriciaFactory(), 0, source.StateRoot, origin, ValueKeccak.MaxValue, accounts, proofs);
 
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
         }
@@ -126,7 +126,7 @@ public class SnapRangeProofBoundaryTests
 
         (AddRangeResult result, _, _, _, _) = SnapProviderHelper.AddAccountRange(
             scope.Factory, 0, source.StateRoot, ValueKeccak.Zero, ValueKeccak.MaxValue,
-            [source.AccountEntry(KeyA), source.AccountEntry(KeyB)],
+            new PathWithAccount[] { source.AccountEntry(KeyA), source.AccountEntry(KeyB) }.ToPathWithAccountList(),
             Proofs([.. source.AccountProof(ValueKeccak.Zero), .. WithoutExtensionChild(source.AccountProof(KeyB))]));
 
         Assert.That(result, Is.EqualTo(AddRangeResult.InvalidProof));
@@ -284,7 +284,7 @@ public class SnapRangeProofBoundaryTests
 
         (AddRangeResult result, _, _, _, _) = SnapProviderHelper.AddAccountRange(
             scope.Factory, 0, source.StateRoot, ValueKeccak.Zero, ValueKeccak.MaxValue,
-            [MadeUpAccountBeforeD()], Proofs(source.AccountProof(KeyBeforeD)));
+            new PathWithAccount[] { MadeUpAccountBeforeD() }.ToPathWithAccountList(), Proofs(source.AccountProof(KeyBeforeD)));
 
         Assert.That(result, Is.EqualTo(AddRangeResult.InvalidProof));
     }
@@ -313,7 +313,7 @@ public class SnapRangeProofBoundaryTests
 
         (AddRangeResult result, _, _, _, _) = SnapProviderHelper.AddAccountRange(
             scope.Factory, 0, source.StateRoot, ValueKeccak.Zero, ValueKeccak.MaxValue,
-            accounts, Proofs(source.AccountProof(KeyBeforeD)));
+            accounts.ToPathWithAccountList(), Proofs(source.AccountProof(KeyBeforeD)));
 
         Assert.That(result, Is.EqualTo(AddRangeResult.InvalidProof));
     }
@@ -324,13 +324,13 @@ public class SnapRangeProofBoundaryTests
     public void VerifyAccountRange_BulkSetFailingForAnotherReason_ThrowsThatFailure(Func<Exception> createFailure)
     {
         Exception failure = createFailure();
-        ISnapTree<PathWithAccount> tree = Substitute.For<ISnapTree<PathWithAccount>>();
-        tree.When(static t => t.BulkSetAndUpdateRootHash(Arg.Any<IReadOnlyList<PathWithAccount>>())).Do(_ => throw failure);
+        ISnapTree<IPathWithAccountList> tree = Substitute.For<ISnapTree<IPathWithAccountList>>();
+        tree.When(static t => t.BulkSetAndUpdateRootHash(Arg.Any<IPathWithAccountList>())).Do(_ => throw failure);
         ISnapTrieFactory factory = Substitute.For<ISnapTrieFactory>();
         factory.CreateStateTree().Returns(tree);
 
         Assert.That(() => SnapProviderHelper.VerifyAccountRange(
-                factory, TestItem.KeccakA, ValueKeccak.Zero, ValueKeccak.MaxValue, [MadeUpAccountBeforeD()], null),
+                factory, TestItem.KeccakA, ValueKeccak.Zero, ValueKeccak.MaxValue, new PathWithAccount[] { MadeUpAccountBeforeD() }.ToPathWithAccountList(), null),
             Throws.Exception.SameAs(failure));
     }
 

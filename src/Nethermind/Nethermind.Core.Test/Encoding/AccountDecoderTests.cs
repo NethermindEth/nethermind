@@ -46,7 +46,11 @@ namespace Nethermind.Core.Test.Encoding
             RlpWriter writer = RlpWriter.ContentWriter(expected);
             decoder.Encode(account, ref writer);
 
-            Assert.That(decoder.EncodeAsBytes(account), Is.EqualTo(expected));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(decoder.EncodeAsBytes(account), Is.EqualTo(expected));
+                Assert.That(decoder.EncodeAsBytes(account.ToStruct()), Is.EqualTo(expected));
+            }
         }
 
         [Test]

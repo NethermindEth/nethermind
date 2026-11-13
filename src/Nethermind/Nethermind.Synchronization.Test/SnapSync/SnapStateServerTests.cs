@@ -181,7 +181,7 @@ public class SnapStateServerTests
             context.Server.GetAccountRanges(context.RootHash, Keccak.Zero, Keccak.MaxValue, 4000, CancellationToken.None);
 
         AddRangeResult result = context.SnapProvider.AddAccountRange(1, context.RootHash, Keccak.Zero,
-            accounts.ToArray(), proofs);
+            accounts, proofs);
 
         using (Assert.EnterMultipleScope())
         {
@@ -533,7 +533,7 @@ public class SnapStateServerTests
             try
             {
                 AddRangeResult result = context.SnapProvider.AddAccountRange(1, context.RootHash, startRange,
-                    accounts.ToArray(), proofs);
+                    accounts, proofs);
 
                 Assert.That(result, Is.EqualTo(AddRangeResult.OK));
                 startRange = accounts[^1].Path.ToCommitment();
@@ -569,7 +569,7 @@ public class SnapStateServerTests
             try
             {
                 AddRangeResult result = context.SnapProvider.AddAccountRange(1, context.RootHash, startRange,
-                    accounts.ToArray(), proofs);
+                    accounts, proofs);
 
                 Assert.That(result, Is.EqualTo(AddRangeResult.OK));
                 if (startRange == accounts[^1].Path.ToCommitment())
@@ -606,7 +606,7 @@ public class SnapStateServerTests
             try
             {
                 AddRangeResult result = context.SnapProvider.AddAccountRange(1, context.RootHash, startRange,
-                    accounts.ToArray(), proofs);
+                    accounts, proofs);
 
                 Assert.That(result, Is.EqualTo(AddRangeResult.OK));
                 if (startRange == accounts[^1].Path.ToCommitment())

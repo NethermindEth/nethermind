@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Core.Collections;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 using Nethermind.State.SnapServer;
@@ -23,7 +22,12 @@ public static class PathWithAccountTestExtensions
 
     public static PathWithAccount[] ToArray(this IPathWithAccountList list)
     {
-        using ArrayPoolList<PathWithAccount> accounts = list.ToPathWithAccounts();
-        return accounts.AsSpan().ToArray();
+        PathWithAccount[] accounts = new PathWithAccount[list.Count];
+        for (int i = 0; i < accounts.Length; i++)
+        {
+            RefPathWithAccount entry = list[i];
+            accounts[i] = new PathWithAccount(entry.Path, entry.Account.ToAccount());
+        }
+        return accounts;
     }
 }

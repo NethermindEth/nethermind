@@ -58,18 +58,17 @@ namespace Nethermind.Synchronization.SnapSync
             }
             else
             {
-                using ArrayPoolList<PathWithAccount> accounts = response.PathAndAccounts.ToPathWithAccounts();
                 result = AddAccountRange(
                     request.BlockNumber.Value,
                     request.RootHash,
                     request.StartingHash,
-                    accounts,
+                    response.PathAndAccounts,
                     response.Proofs,
                     hashLimit: request.LimitHash);
 
                 if (result == AddRangeResult.OK)
                 {
-                    Interlocked.Add(ref Metrics.SnapSyncedAccounts, accounts.Count);
+                    Interlocked.Add(ref Metrics.SnapSyncedAccounts, response.PathAndAccounts.Count);
                 }
             }
 
@@ -81,7 +80,7 @@ namespace Nethermind.Synchronization.SnapSync
             ulong blockNumber,
             in ValueHash256 expectedRootHash,
             in ValueHash256 startingHash,
-            IReadOnlyList<PathWithAccount> accounts,
+            IPathWithAccountList accounts,
             IByteArrayList proofs = null,
             in ValueHash256? hashLimit = null!)
         {
@@ -428,7 +427,7 @@ namespace Nethermind.Synchronization.SnapSync
             if (response.PathAndAccounts.Count == 0)
                 return RefreshVerifyResult.Expired;
 
-            using ArrayPoolList<PathWithAccount> accounts = response.PathAndAccounts.ToPathWithAccounts();
+            IPathWithAccountList accounts = response.PathAndAccounts;
 
             AddRangeResult result;
             try
@@ -452,9 +451,10 @@ namespace Nethermind.Synchronization.SnapSync
             // Its absence here is therefore a proven non-existence (deleted account), not an unverified guess.
             for (int i = 0; i < accounts.Count; i++)
             {
-                if (accounts[i].Path == path)
+                RefPathWithAccount entry = accounts[i];
+                if (entry.Path == path)
                 {
-                    account = accounts[i].Account;
+                    account = entry.Account.ToAccount();
                     return RefreshVerifyResult.Verified;
                 }
             }
