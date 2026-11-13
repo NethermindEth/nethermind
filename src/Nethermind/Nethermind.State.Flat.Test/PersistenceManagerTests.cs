@@ -135,6 +135,36 @@ public class PersistenceManagerTests
     }
 
     [Test]
+    public void TryWriteOnPersistedState_writes_only_on_the_expected_state_and_never_waits_for_the_lock()
+    {
+        IPersistence.IPersistenceReader syncReader = Substitute.For<IPersistence.IPersistenceReader>();
+        syncReader.CurrentState.Returns(Block0);
+        _persistence.CreateReader(ReaderFlags.Sync).Returns(syncReader);
+        FakeWriteBatch batch = new();
+        _persistence.CreateWriteBatch(Block0, Block0).Returns(batch);
+
+        IPersistence.IWriteBatch? written = null;
+        bool writtenWhileLocked = true;
+        bool wrote = _persistenceManager.TryWriteOnPersistedState(Block0, b =>
+        {
+            written = b;
+            writtenWhileLocked = _persistenceManager.TryWriteOnPersistedState(Block0, static _ => Assert.Fail("written while locked"));
+        });
+        bool wroteOnMovedState = _persistenceManager.TryWriteOnPersistedState(CreateStateId(1, 1), static _ => Assert.Fail("written on a moved state"));
+        bool wroteAfterRelease = _persistenceManager.TryWriteOnPersistedState(Block0, static _ => { });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wrote, Is.True);
+            Assert.That(written, Is.SameAs(batch));
+            Assert.That(writtenWhileLocked, Is.False, "the lock is held until the batch is disposed");
+            Assert.That(wroteOnMovedState, Is.False);
+            Assert.That(wroteAfterRelease, Is.True, "the lock is released");
+            Assert.That(batch.DisposeCount, Is.EqualTo(2));
+        }
+    }
+
+    [Test]
     public async Task AddToPersistence_PinnedHead_RetainsUnfinalizedPersistedForks()
     {
         const int ForkCount = 400;

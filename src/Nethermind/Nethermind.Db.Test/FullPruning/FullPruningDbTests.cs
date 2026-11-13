@@ -77,7 +77,9 @@ namespace Nethermind.Db.Test.FullPruning
             TestContext test = new();
             byte[] key = { 1, 2 };
             byte[] value = { 5, 6 };
+            byte[] emptyValueKey = { 3, 4 };
             test.FullPruningDb[key] = value;
+            test.FullPruningDb[emptyValueKey] = [];
 
             test.FullPruningDb.TryStartPruning(out IPruningContext _);
 
@@ -85,6 +87,8 @@ namespace Nethermind.Db.Test.FullPruning
             {
                 Assert.That(KeyValueStoreReads.Read(test.FullPruningDb, key, ReadFlags.None, spanAction), Is.EqualTo(value));
                 Assert.That(test.CurrentMirrorDb[key], Is.EqualTo(value));
+                Assert.That(KeyValueStoreReads.Read(test.FullPruningDb, emptyValueKey, ReadFlags.None, spanAction), Is.Empty, "an empty value is not a miss");
+                Assert.That(KeyValueStoreReads.Read(test.FullPruningDb, [7, 8], ReadFlags.None, spanAction), Is.Null);
             }
         }
 

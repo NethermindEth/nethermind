@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.Migration;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Persistence;
@@ -42,6 +43,8 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
     public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) =>
         _innerReader.TryGetSlot(address, in slot, ref outValue);
 
+    public MigrationCursor? GetMigrationCursor() => _innerReader.GetMigrationCursor();
+
     public StateId CurrentState => _innerReader.CurrentState;
 
     public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) =>
@@ -50,11 +53,17 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
     public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) =>
         _innerReader.TryLoadStorageRlp(address, in path, flags);
 
-    public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
-        _innerReader.TryLoadStateRlp(in path, flags, action, arg);
+    public byte[]? TryLoadStateRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags) =>
+        _innerReader.TryLoadStateRlp(in path, in hash, flags);
 
-    public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
-        _innerReader.TryLoadStorageRlp(address, in path, flags, action, arg);
+    public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags) =>
+        _innerReader.TryLoadStorageRlp(address, in path, in hash, flags);
+
+    public bool TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+        _innerReader.TryLoadStateRlp(in path, in hash, flags, action, arg);
+
+    public bool TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+        _innerReader.TryLoadStorageRlp(address, in path, in hash, flags, action, arg);
 
     public byte[]? GetAccountRaw(in ValueHash256 addrHash) =>
         _innerReader.GetAccountRaw(addrHash);

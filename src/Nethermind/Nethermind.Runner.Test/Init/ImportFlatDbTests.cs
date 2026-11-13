@@ -2,18 +2,28 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 #nullable enable
+using System;
+using System.IO.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Init;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.Migration;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.Trie;
@@ -119,6 +129,48 @@ public class ImportFlatDbTests
         Assert.That(async () => await CreateStep(head).Execute(CancellationToken.None),
             Throws.TypeOf<InvalidConfigurationException>()
                 .With.Property(nameof(InvalidConfigurationException.ExitCode)).EqualTo(ExitCodes.ForbiddenOptionValue));
+    }
+
+    [Test]
+    public async Task Start_migration_points_flat_at_the_head_and_starts_copying_only_when_migrating([Values] bool migrate)
+    {
+        Account account = TestItem.GenerateIndexedAccount(42);
+        _stateTree.Set(TestItem.AddressA, account);
+        _stateTree.Commit();
+        BlockHeader head = Build.A.BlockHeader.WithNumber(1).WithStateRoot(_stateTree.RootHash).TestObject;
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(Build.A.Block.WithHeader(head).TestObject);
+
+        // The real policy records the start of the migration, as it does on a node start.
+        FlatStateActivationPolicy policy = new(new FlatDbConfig { MigrateFromPruningTrieState = migrate }, new TestHardwareInfo(32.GiB),
+            new Lazy<IColumnsDb<FlatDbColumns>>(() => _columnsDb), new Lazy<IDb>(() => _trieDb), Substitute.For<ISyncConfig>(),
+            Substitute.For<IInitConfig>(), Substitute.For<IFileSystem>(), LimboLogs.Instance);
+        Lazy<HalfPathMigrationCursor> migrationCursor = new(() => new HalfPathMigrationCursor(_columnsDb));
+        Lazy<IPersistence> persistence = new(() => new HalfPathFallbackPersistence(_persistence, _nodeStorage, migrationCursor.Value));
+        IPersistenceManager persistenceManager = Substitute.For<IPersistenceManager>();
+        IBackgroundTaskScheduler scheduler = Substitute.For<IBackgroundTaskScheduler>();
+        Lazy<HalfPathMigrator> migrator = new(() => new HalfPathMigrator(persistence.Value, persistenceManager, migrationCursor.Value, _nodeStorage, blockTree,
+            new FlatDbConfig(), scheduler, Substitute.For<IProcessExitSource>(), LimboLogs.Instance));
+        StartPruningTrieStateMigration step = new(policy, migrationCursor, migrator);
+
+        await step.Execute(CancellationToken.None);
+
+        if (!migrate)
+        {
+            Assert.That(migrationCursor.IsValueCreated || persistence.IsValueCreated, Is.False, "a patricia node does not open the flat DB");
+            return;
+        }
+
+        using IPersistence.IPersistenceReader reader = persistence.Value.CreateReader();
+        using ReadOnlySnapshotBundle bundle = new(new SnapshotPooledList(0), persistence.Value.CreateReader(), recordDetailedMetrics: false,
+            PersistedSnapshotStack.Empty(), bufferPin: null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.CurrentState, Is.EqualTo(new StateId(head)));
+            Assert.That(bundle.GetAccount(TestItem.AddressA), Is.EqualTo(account), "served from the patricia trie state");
+            persistenceManager.Received(1).ResetPersistedStateId();
+            Assert.That(scheduler.ReceivedCalls(), Is.Not.Empty, "the copy is started");
+        }
     }
 
     [Test]

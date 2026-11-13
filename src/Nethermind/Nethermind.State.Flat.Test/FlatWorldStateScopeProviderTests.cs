@@ -26,6 +26,7 @@ using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
@@ -1604,7 +1605,7 @@ public class FlatWorldStateScopeProviderTests
             FlatTestHelpers.SnapshotList(SnapshotWithNode(ownSnapshotPath, ownSnapshotRlp)));
 
         byte[]? Load(TreePath path, byte[] rlp) =>
-            FlatTestHelpers.LoadRlp((action, nodes) => bundle.TryLoadTrieNodeRecord(address, path, action, nodes)) is { } loaded && ValueKeccak.Compute(loaded) == ValueKeccak.Compute(rlp) ? loaded : null;
+            FlatTestHelpers.LoadRlp((action, nodes) => bundle.TryLoadTrieNodeRecord(address, path, ValueKeccak.Compute(rlp), action, nodes)) is { } loaded && ValueKeccak.Compute(loaded) == ValueKeccak.Compute(rlp) ? loaded : null;
 
         using (Assert.EnterMultipleScope())
         {
@@ -2632,12 +2633,15 @@ public class FlatWorldStateScopeProviderTests
         public Account? GetAccount(Address address) => _empty.GetAccount(address);
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => _empty.TryGetSlot(address, slot, ref outValue);
         public StateId CurrentState => _empty.CurrentState;
+        public MigrationCursor? GetMigrationCursor() => null;
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => _empty.TryLoadStateRlp(path, flags);
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => _empty.TryLoadStorageRlp(address, path, flags);
-        public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
-            _empty.TryLoadStateRlp(path, flags, action, arg);
-        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
-            _empty.TryLoadStorageRlp(address, path, flags, action, arg);
+        public bool TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+            _empty.TryLoadStateRlp(path, hash, flags, action, arg);
+        public bool TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+            _empty.TryLoadStorageRlp(address, path, hash, flags, action, arg);
+        public byte[]? TryLoadStateRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags) => TryLoadStateRlp(path, flags);
+        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags) => TryLoadStorageRlp(address, path, flags);
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) => _empty.GetAccountRaw(addrHash);
         public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => _empty.TryGetStorageRaw(addrHash, slotHash, ref value);
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => _empty.CreateAccountIterator(startKey, endKey);
@@ -3060,7 +3064,7 @@ public class FlatWorldStateScopeProviderTests
 
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath nodePath, ReadFlags flags) => TryLoadStateRlp(nodePath, flags);
 
-        public bool TryLoadStateRlp<TArg>(in TreePath nodePath, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        public bool TryLoadStateRlp<TArg>(in TreePath nodePath, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
         {
             Loads++;
             if (nodePath != path) return false;
@@ -3068,12 +3072,16 @@ public class FlatWorldStateScopeProviderTests
             return true;
         }
 
-        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath nodePath, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
-            TryLoadStateRlp(nodePath, flags, action, arg);
+        public bool TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath nodePath, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+            TryLoadStateRlp(nodePath, hash, flags, action, arg);
+
+        public byte[]? TryLoadStateRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags) => TryLoadStateRlp(path, flags);
+        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags) => TryLoadStorageRlp(address, path, flags);
 
         public Account? GetAccount(Address address) => null;
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => false;
         public StateId CurrentState => new(0, Keccak.EmptyTreeHash);
+        public MigrationCursor? GetMigrationCursor() => null;
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
         public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => false;
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
@@ -3108,13 +3116,16 @@ public class FlatWorldStateScopeProviderTests
             }
         }
 
-        public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        public bool TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
         {
             TryLoadStateRlp(path, flags);
             return false;
         }
 
-        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => false;
+        public bool TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => false;
+
+        public byte[]? TryLoadStateRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags) => TryLoadStateRlp(path, flags);
+        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags) => TryLoadStorageRlp(address, path, flags);
 
         public void Dispose()
         {
@@ -3127,6 +3138,7 @@ public class FlatWorldStateScopeProviderTests
         public Account? GetAccount(Address address) => null;
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => false;
         public StateId CurrentState => new(0, Keccak.EmptyTreeHash);
+        public MigrationCursor? GetMigrationCursor() => null;
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => null;
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
         public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => false;

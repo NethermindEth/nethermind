@@ -18,6 +18,7 @@ using Nethermind.Core.Test.Encoding;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
@@ -296,6 +297,7 @@ public abstract class SubstitutablePersistenceReader : IPersistence.IPersistence
     public abstract Account? GetAccount(Address address);
     public abstract bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue);
     public abstract StateId CurrentState { get; }
+    public abstract MigrationCursor? GetMigrationCursor();
     public abstract byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags);
     public abstract byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags);
     public abstract byte[]? GetAccountRaw(in ValueHash256 addrHash);
@@ -305,11 +307,17 @@ public abstract class SubstitutablePersistenceReader : IPersistence.IPersistence
     public abstract bool IsPreimageMode { get; }
     public abstract void Dispose();
 
-    bool IPersistence.IPersistenceReader.TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) =>
+    byte[]? IPersistence.IPersistenceReader.TryLoadStateRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags) =>
+        TryLoadStateRlp(path, flags);
+
+    byte[]? IPersistence.IPersistenceReader.TryLoadStorageRlp(Hash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags) =>
+        TryLoadStorageRlp(address, path, flags);
+
+    bool IPersistence.IPersistenceReader.TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) =>
         Pass(TryLoadStateRlp(path, flags), action, arg);
 
-    bool IPersistence.IPersistenceReader.TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) =>
-        Pass(TryLoadStorageRlp(address, path, flags), action, arg);
+    bool IPersistence.IPersistenceReader.TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) =>
+        Pass(TryLoadStorageRlp(new Hash256(address), path, flags), action, arg);
 
     private static bool Pass<TArg>(byte[]? rlp, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
     {
@@ -339,6 +347,7 @@ internal sealed class FakeWriteBatch : IPersistence.IWriteBatch
     public List<(ValueHash256 FromPath, ValueHash256 ToPath)> SelfDestructRangeCalls { get; } = [];
     public List<(ValueHash256 From, ValueHash256 To)> DeleteStateTrieNodeRangeCalls { get; } = [];
     public List<(ValueHash256 AddressHash, ValueHash256 From, ValueHash256 To)> DeleteStorageTrieNodeRangeCalls { get; } = [];
+    public List<MigrationCursor?> SetMigrationCursorCalls { get; } = [];
     public int DisposeCount { get; private set; }
 
     public void SelfDestruct(Address addr) => SelfDestructCalls.Add(addr);
@@ -370,6 +379,8 @@ internal sealed class FakeWriteBatch : IPersistence.IWriteBatch
 
     public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) =>
         DeleteStorageTrieNodeRangeCalls.Add((addressHash, from, to));
+
+    public void SetMigrationCursor(in MigrationCursor? cursor) => SetMigrationCursorCalls.Add(cursor);
 
     public void Dispose() => DisposeCount++;
 }

@@ -12,6 +12,7 @@ using Nethermind.Db;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using NSubstitute;
@@ -32,7 +33,8 @@ public class PruningTrieStoreModuleTests
         FlatHasData = 4,
         ImportFromPruningTrieState = 8,
         Repaired = 16,
-        WipedForSync = 32
+        WipedForSync = 32,
+        Migrating = 64
     }
 
     [TestCase(Flags.None, false, Description = "Flag off -> keep")]
@@ -43,6 +45,7 @@ public class PruningTrieStoreModuleTests
     [TestCase(Flags.Drop | Flags.Enabled | Flags.FlatHasData | Flags.ImportFromPruningTrieState, true, Description = "Import finished and left configured -> drop; the fallback boundary stops reading the trie once flat is populated")]
     [TestCase(Flags.Drop | Flags.Enabled | Flags.FlatHasData | Flags.Repaired, false, Description = "Repaired flat may be wiped on this start -> keep")]
     [TestCase(Flags.Drop | Flags.Enabled | Flags.FlatHasData | Flags.WipedForSync, false, Description = "Interrupted wipe is redone on this start -> keep")]
+    [TestCase(Flags.Drop | Flags.Enabled | Flags.FlatHasData | Flags.Migrating, false, Description = "Flat still reads what its migration has not copied -> keep")]
     public void Drops_only_when_flat_owns_a_populated_store(Flags flags, bool expected)
     {
         bool dropped = PruningTrieStoreModule.ShouldDropPruningTrieState(
@@ -213,6 +216,8 @@ public class PruningTrieStoreModuleTests
         FlatStateActivationPolicyTests.SpyFlatColumnsDb flatDb = new() { WasRepairedOnOpen = flags.HasFlag(Flags.Repaired) };
         if (flags.HasFlag(Flags.FlatHasData))
             new RocksDbPersistence(flatDb, LimboLogs.Instance, NullTrieNodeLog.Instance).CreateWriteBatch(StateId.PreGenesis, new StateId(1, Keccak.Zero), WriteFlags.None).Dispose();
+        if (flags.HasFlag(Flags.Migrating))
+            BasePersistence.WriteMigrationCursor(flatDb.GetColumnDb(FlatDbColumns.Metadata), MigrationCursor.Start);
         if (flags.HasFlag(Flags.WipedForSync))
             FlatStateActivationPolicyTests.MarkWipedForSync(flatDb);
         return flatDb;

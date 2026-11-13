@@ -14,6 +14,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.Sync.Snap;
@@ -60,6 +61,7 @@ public class FlatSnapTrieFactoryTests
         public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath) { }
         public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) { }
         public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) { }
+        public void SetMigrationCursor(in MigrationCursor? cursor) { }
         public void Dispose() { }
     }
 

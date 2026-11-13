@@ -93,7 +93,7 @@ public class TrieNodeLogTests
         if (!spanAction) return reader.TryLoadStateRlp(path, ReadFlags.None);
 
         byte[]? rlp = null;
-        reader.TryLoadStateRlp(path, ReadFlags.None, static (span, result) => result[0] = span.ToArray(), new Span<byte[]?>(ref rlp));
+        reader.TryLoadStateRlp(path, default, ReadFlags.None, static (span, result) => result[0] = span.ToArray(), new Span<byte[]?>(ref rlp));
         return rlp;
     }
 

@@ -5,6 +5,7 @@ using System.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 
@@ -56,6 +57,8 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
     }
 
     public StateId CurrentState => _block;
+
+    public MigrationCursor? GetMigrationCursor() => null;
 
     public Account? GetAccount(Address address)
     {
@@ -114,8 +117,10 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
     public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => throw Unsupported();
 
     public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => throw Unsupported();
-    public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => throw Unsupported();
-    public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => throw Unsupported();
+    public byte[]? TryLoadStateRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags) => throw Unsupported();
+    public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags) => throw Unsupported();
+    public bool TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => throw Unsupported();
+    public bool TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => throw Unsupported();
 
     public byte[]? GetAccountRaw(in ValueHash256 addrHash) => throw Unsupported();
 

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -92,7 +93,16 @@ public class NodeStorageFactoryTests
             Assert.That(nodeStorage.Get(null, TreePath.Empty, TestItem.KeccakA), Is.EqualTo(node));
             Assert.That(nodeStorage.Get(null, TreePath.Empty, TestItem.KeccakB), Is.EqualTo(node));
             Assert.That(nodeStorage.Get(null, TreePath.Empty, TestItem.KeccakC), Is.EqualTo(node));
+            Assert.That(ReadWithSpanAction(nodeStorage, TestItem.KeccakA), Is.EqualTo(node));
+            Assert.That(ReadWithSpanAction(nodeStorage, TestItem.KeccakC), Is.EqualTo(node));
         }
+    }
+
+    private static byte[]? ReadWithSpanAction(INodeStorage nodeStorage, Hash256 hash)
+    {
+        byte[]? rlp = null;
+        nodeStorage.TryGet(null, TreePath.Empty, hash, ReadFlags.None, static (span, result) => result[0] = span.ToArray(), new Span<byte[]?>(ref rlp));
+        return rlp;
     }
 
     private MemDb PrepareMemDbWithKeyScheme(INodeStorage.KeyScheme? scheme)

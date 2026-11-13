@@ -66,7 +66,7 @@ public class FlatReadOnlyTrieStoreTests
         Hash256 storageAddress = TestItem.KeccakA;
         using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
 
-        _flatDbManager.GatherReadOnlySnapshotBundle(Arg.Any<StateId>()).Returns(FlatTestHelpers.MakeBundle(_pool, buffer, c =>
+        _flatDbManager.GatherReadOnlySnapshotBundle(Arg.Any<StateId>()).Returns(_ => FlatTestHelpers.MakeBundle(_pool, buffer, c =>
         {
             c.SetStateNodeRlp(buffer, path, FlatTestHelpers.LeafRlpA);
             c.SetStorageNodeRlp(buffer, storageAddress, path, FlatTestHelpers.LeafRlpB);
@@ -84,7 +84,7 @@ public class FlatReadOnlyTrieStoreTests
     [Test]
     public void Scope_DisposesBundle_AndPreventsResolve()
     {
-        _flatDbManager.GatherReadOnlySnapshotBundle(Arg.Any<StateId>()).Returns(FlatTestHelpers.MakeBundle(_pool));
+        _flatDbManager.GatherReadOnlySnapshotBundle(Arg.Any<StateId>()).Returns(_ => FlatTestHelpers.MakeBundle(_pool));
 
         IDisposable scope = _store.BeginScope(Build.A.BlockHeader.TestObject);
         scope.Dispose();

@@ -16,6 +16,7 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
@@ -235,21 +236,25 @@ public class FlatStorageTreeDeleteWarmupTests
             return inner.TryLoadStorageRlp(address, path, flags);
         }
 
-        public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        public bool TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
         {
             Interlocked.Increment(ref _loads);
-            return inner.TryLoadStateRlp(path, flags, action, arg);
+            return inner.TryLoadStateRlp(path, hash, flags, action, arg);
         }
 
-        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        public bool TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
         {
             Interlocked.Increment(ref _loads);
-            return inner.TryLoadStorageRlp(address, path, flags, action, arg);
+            return inner.TryLoadStorageRlp(address, path, hash, flags, action, arg);
         }
+
+        public byte[]? TryLoadStateRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags) => TryLoadStateRlp(path, flags);
+        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags) => TryLoadStorageRlp(address, path, flags);
 
         public Account? GetAccount(Address address) => inner.GetAccount(address);
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => inner.TryGetSlot(address, slot, ref outValue);
         public StateId CurrentState => inner.CurrentState;
+        public MigrationCursor? GetMigrationCursor() => inner.GetMigrationCursor();
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) => inner.GetAccountRaw(addrHash);
         public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => inner.TryGetStorageRaw(addrHash, slotHash, ref value);
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => inner.CreateAccountIterator(startKey, endKey);

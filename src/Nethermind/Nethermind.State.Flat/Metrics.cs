@@ -78,6 +78,16 @@ public static class Metrics
     [Description("Importer entries count flat")]
     public static long ImporterEntriesCountFlat { get; set; }
 
+    [CounterMetric]
+    [Description("Trie nodes the online migration from the pruning trie state has copied into the flat DB")]
+    public static long HalfPathMigratedNodes { get; set; }
+
+    [CounterMetric]
+    [Description("Account and slot reads that walked the trie because the online migration from the pruning trie state has not copied them yet")]
+    public static long HalfPathFallbackWalks => _halfPathFallbackWalks.Sum;
+    private static readonly StripedLong _halfPathFallbackWalks = new();
+    internal static void IncrementHalfPathFallbackWalks() => _halfPathFallbackWalks.Increment();
+
     [GaugeMetric]
     [Description("Active snapshot bundles")]
     public static long ActiveSnapshotBundle { get; set; }

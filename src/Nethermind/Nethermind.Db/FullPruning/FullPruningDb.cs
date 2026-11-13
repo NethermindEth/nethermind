@@ -87,6 +87,23 @@ namespace Nethermind.Db.FullPruning
             return memoryManager;
         }
 
+        public bool TryGet<TArg>(scoped ReadOnlySpan<byte> key, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        {
+            PruningContext? pruningContext = _pruningContext;
+            if (pruningContext?.DuplicateReads != true || (flags & ReadFlags.SkipDuplicateRead) != 0)
+            {
+                return _currentDb.TryGet(key, flags, action, arg); // we are reading from the main DB
+            }
+
+            // Copies rather than wrapping the callback: passing a TArg-wrapping type to the interface's TryGet is generic recursion
+            // through a Nethermind.Core parameter, which bflat's ILC fails to compile in the zkVM guests.
+            byte[]? value = Get(key, flags);
+            if (value is null) return false;
+
+            action(value, arg);
+            return true;
+        }
+
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
         {
             _currentDb.Set(key, value, flags); // we are writing to the main DB

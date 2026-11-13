@@ -15,6 +15,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.Migration;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Persistence;
@@ -72,6 +73,7 @@ public static class BasePersistence
     private static readonly byte[] SlotEncodingKey = Keccak.Compute("SlotEncoding").BytesToArray();
     private static readonly byte[] WipedForSyncKey = Keccak.Compute("WipedForSync").BytesToArray();
     private static readonly byte[] SnapCheckpointKey = Keccak.Compute("SnapCheckpoint").BytesToArray();
+    private static readonly byte[] MigrationCursorKey = Keccak.Compute("HalfPathMigrationCursor").BytesToArray();
 
     /// <summary>Key of the sentinel saved in the account column with a snap sync checkpoint, see <see cref="HasSnapCheckpointSentinel"/>.</summary>
     /// <remarks>
@@ -275,6 +277,43 @@ public static class BasePersistence
         metadata.FlushOrThrow();
     }
 
+    /// <summary>Reads the cursor of the HalfPath to flat migration in progress, or <c>null</c> when there is none.</summary>
+    public static MigrationCursor? ReadMigrationCursor(IReadOnlyKeyValueStore metadata) => metadata.Get(MigrationCursorKey) switch
+    {
+        null => null,
+        { Length: 2 * ValueHash256.MemorySize } bytes => new MigrationCursor(new ValueHash256(bytes.AsSpan(0, ValueHash256.MemorySize)), new ValueHash256(bytes.AsSpan(ValueHash256.MemorySize))),
+        { Length: ValueHash256.MemorySize } bytes => new MigrationCursor(new ValueHash256(bytes), null),
+        _ => MigrationCursor.Start,
+    };
+
+    /// <summary>Saves the cursor of the HalfPath to flat migration, or deletes it when <paramref name="cursor"/> is <c>null</c>. A wipe deletes it too.</summary>
+    [SkipLocalsInit]
+    public static void WriteMigrationCursor(IWriteOnlyKeyValueStore metadata, in MigrationCursor? cursor)
+    {
+        if (cursor is not { } position)
+        {
+            metadata.Remove(MigrationCursorKey);
+            return;
+        }
+
+        // Start, with no account copied yet, is a single byte, a length no copied position has.
+        Span<byte> bytes = stackalloc byte[2 * ValueHash256.MemorySize];
+        bytes[0] = 0;
+        int length = 1;
+        if (position.Account is { } account)
+        {
+            account.Bytes.CopyTo(bytes);
+            length = ValueHash256.MemorySize;
+            if (position.Slot is { } slot)
+            {
+                slot.Bytes.CopyTo(bytes[ValueHash256.MemorySize..]);
+                length = 2 * ValueHash256.MemorySize;
+            }
+        }
+
+        metadata.PutSpan(MigrationCursorKey, bytes[..length]);
+    }
+
     /// <summary>Wipes every data column and the state pointer, keeping the format markers, and marks the DB as wiped for a state sync.</summary>
     /// <remarks>
     /// A column that can remove a key range is first dropped with a single range deletion and the files it held are given
@@ -294,6 +333,7 @@ public static class BasePersistence
             // midway reads back as "pointer and marker both present" and the next start redoes it.
             batch.GetColumnBatch(FlatDbColumns.Metadata).PutSpan(WipedForSyncKey, [1]);
             batch.GetColumnBatch(FlatDbColumns.Metadata).Remove(SnapCheckpointKey);
+            batch.GetColumnBatch(FlatDbColumns.Metadata).Remove(MigrationCursorKey);
             // Range deletions bypass the batch.
             batch = CommitAndStartNext(db, batch);
             RemoveRangeRemovableColumns(db);
@@ -569,7 +609,7 @@ public static class BasePersistence
 
         /// <summary>Passes the RLP of the node at <paramref name="path"/> in the storage trie of <paramref name="address"/> to <paramref name="action"/>, borrowed for the duration of the call.</summary>
         /// <inheritdoc cref="TryLoadStateRlp{TArg}(in TreePath, ReadFlags, ReadOnlySpanAction{byte, TArg}, TArg)"/>
-        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct;
+        public bool TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct;
     }
 
     public interface ITrieWriteBatch
@@ -905,16 +945,24 @@ public static class BasePersistence
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) =>
             _flatReader.TryGetSlot(address, in slot, ref outValue);
 
+        public MigrationCursor? GetMigrationCursor() => null;
+
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) =>
             _trieReader.TryLoadStateRlp(path, flags);
 
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) =>
             _trieReader.TryLoadStorageRlp(address, path, flags);
 
-        public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+        public byte[]? TryLoadStateRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags) =>
+            _trieReader.TryLoadStateRlp(path, flags);
+
+        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags) =>
+            _trieReader.TryLoadStorageRlp(address, path, flags);
+
+        public bool TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
             _trieReader.TryLoadStateRlp(path, flags, action, arg);
 
-        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+        public bool TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
             _trieReader.TryLoadStorageRlp(address, path, flags, action, arg);
 
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) =>
@@ -943,6 +991,7 @@ public static class BasePersistence
     public class WriteBatch<TFlatWriteBatch, TTrieWriteBatch>(
         in TFlatWriteBatch flatWriteBatch,
         TTrieWriteBatch trieWriteBatch,
+        IWriteOnlyKeyValueStore metadata,
         IDisposable disposer)
         : IPersistence.IWriteBatch
         where TFlatWriteBatch : struct, IFlatWriteBatch
@@ -994,5 +1043,7 @@ public static class BasePersistence
 
         public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) =>
             _trieWriteBatch.DeleteStorageTrieNodeRange(addressHash, from, to);
+
+        public void SetMigrationCursor(in MigrationCursor? cursor) => WriteMigrationCursor(metadata, cursor);
     }
 }
