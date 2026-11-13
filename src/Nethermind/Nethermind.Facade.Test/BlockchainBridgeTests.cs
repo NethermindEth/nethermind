@@ -171,7 +171,8 @@ public class BlockchainBridgeTests
             blockTimestamp: block.Timestamp,
             baseFee: UInt256.Zero,
             receipt: receipts[index],
-            spec: _specProvider.GetSpec(block.Header))));
+            spec: _specProvider.GetSpec(block.Header),
+            excessBlobGas: block.Header.ExcessBlobGas)));
     }
 
     private static IEnumerable<TestCaseData> StoredTransactionCases()

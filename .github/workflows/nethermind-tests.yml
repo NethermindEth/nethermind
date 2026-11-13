@@ -109,6 +109,7 @@ jobs:
               Nethermind.Serialization.JsonGenerator.Test
               Nethermind.Shutter.Test
               Nethermind.State.Flat.Test
+              Nethermind.TrustedInput.Test
           - name: Nethermind tests 6
             list: >-
               Nethermind.Api.Test

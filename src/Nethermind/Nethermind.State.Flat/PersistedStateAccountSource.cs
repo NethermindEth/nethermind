@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
@@ -66,7 +67,7 @@ public sealed class PersistedStateAccountSource(IPersistence persistence, ILogMa
             if (path.Path.Bytes[0] != partition) return;
 
             RlpReader accountReader = new(node.Value.AsSpan());
-            sink(path.Path, _decoder.Decode(ref accountReader)!);
+            sink(path.Path, _decoder.Decode(ref accountReader, RlpBehaviors.TrustedInput)!);
         }
 
         public void VisitAccount(in TreePathContextWithStorage nodeContext, TrieNode node, in AccountStruct account) { }

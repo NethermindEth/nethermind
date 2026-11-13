@@ -11,6 +11,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.NodeBuffer;
@@ -86,7 +87,7 @@ public sealed class ReadOnlySnapshotBundle(
 
     private static readonly ReadOnlySpanAction<byte, Span<Account?>> DecodeAccount = static (value, account) => account[0] = AccountDecoder.Instance.Decode(value);
     private static readonly ReadOnlySpanAction<byte, Span<UInt256>> DecodeSlot = static (value, slot) =>
-        slot[0] = new UInt256(new RlpReader(value).DecodeByteArraySpan(), isBigEndian: true);
+        slot[0] = new UInt256(new RlpReader(value).ReadBytes(), isBigEndian: true);
 
     /// <summary>Starts reading persisted accounts and slots ahead of use. Keys held by the in-memory snapshots are read from there later, so a prefetch of them only warms a cache.</summary>
     public void Prefetch(IPersistence.PrefetchColumns columns, Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)

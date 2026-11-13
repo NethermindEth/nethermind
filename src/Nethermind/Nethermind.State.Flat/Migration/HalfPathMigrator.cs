@@ -12,6 +12,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
@@ -244,10 +245,10 @@ public sealed class HalfPathMigrator(
         /// <summary>Collects the node whose RLP is at <paramref name="node"/> in the buffer, then walks what is below it in path order.</summary>
         private void Visit(in ValueHash256? address, in TreePath path, Range node)
         {
-            int start = node.Start.Value;
-            RlpReader reader = new(Rlp[node]);
-            reader.ReadSequenceLength();
-            if (reader.PeekNumberOfItemsRemaining(maxSearch: 3) > 2)
+            RlpReader reader = new RlpReader(Rlp[node]).EnterSequence(out int length);
+            // The reader only sees the node's payload, which starts after the sequence prefix.
+            int start = node.Start.Value + length - reader.Remaining;
+            if (reader.CountItems() > 2)
             {
                 Collect(address, path, node, null, default);
 
@@ -255,9 +256,9 @@ public sealed class HalfPathMigrator(
                 Span<Range> children = stackalloc Range[TrieNode.BranchesCount];
                 foreach (ref Range child in children)
                 {
-                    int childStart = start + reader.Position;
+                    int childStart = start + reader.BytesRead;
                     reader.SkipItem();
-                    child = childStart..(start + reader.Position);
+                    child = childStart..(start + reader.BytesRead);
                 }
 
                 for (int i = 0; i < children.Length; i++) VisitChild(address, path.Append(i), children[i]);
@@ -271,14 +272,14 @@ public sealed class HalfPathMigrator(
             if (!NodeRlp.IsLeafHexPrefix(hexPrefix))
             {
                 Collect(address, path, node, null, default);
-                int childStart = start + reader.Position;
+                int childStart = start + reader.BytesRead;
                 reader.SkipItem();
-                VisitChild(address, childPath, childStart..(start + reader.Position));
+                VisitChild(address, childPath, childStart..(start + reader.BytesRead));
                 return;
             }
 
             ReadOnlySpan<byte> value = reader.DecodeByteArraySpan();
-            int valueEnd = start + reader.Position;
+            int valueEnd = start + reader.BytesRead;
             if (Collect(address, path, node, childPath.Path, (valueEnd - value.Length)..valueEnd))
             {
                 Next = address is { } storage ? new MigrationCursor(storage, childPath.Path) : new MigrationCursor(childPath.Path, null);
@@ -294,7 +295,7 @@ public sealed class HalfPathMigrator(
         private void VisitChild(in ValueHash256? address, in TreePath path, Range reference)
         {
             RlpReader reader = new(Rlp[reference]);
-            if (reader.IsSequenceNext())
+            if (reader.IsNextSequence)
             {
                 // A child whose RLP is shorter than a hash is embedded in its parent (Yellow Paper, Appendix D), so it is walked in place.
                 if (ShouldVisit(address, path)) Visit(address, path, reference);

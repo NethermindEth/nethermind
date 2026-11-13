@@ -56,12 +56,15 @@ public interface ISnapshotRepository
     /// <c>false</c> (leaving <paramref name="replacement"/> unregistered) when no entry is present.</summary>
     bool ReplacePersistedSnapshot(in StateId to, PersistedSnapshot replacement, SnapshotTier tier);
 
-    /// <summary>Adopt <paramref name="sharedBloom"/> (a correct superset pre-filter) across every persisted
-    /// snapshot fully contained in <c>(from, to]</c>, freeing each one's own bloom. Walks the base parent
-    /// chain from <paramref name="to"/> back to <paramref name="from"/>; at each block re-registers a twin
-    /// over the same reservation carrying a lease on the shared bloom. Best-effort and lock-free across
-    /// buckets — a racing prune just leaves a snapshot with its own bloom. Pure live-memory optimization:
-    /// blooms are not persisted, so reload rebuilds independent blooms.</summary>
+    /// <summary>Adopt <paramref name="sharedBloom"/> across every persisted snapshot fully contained in
+    /// <c>(from, to]</c>, freeing each one's own bloom. The caller guarantees that the bloom covers every key
+    /// of every such snapshot; containment alone does not prove it, since a merge drops the slots written
+    /// before a storage-clearing self-destruct, so share only the bloom of a range with no such clear. Walks
+    /// the base parent chain from <paramref name="to"/> back to <paramref name="from"/>; at each block
+    /// re-registers a twin over the same reservation carrying a lease on the shared bloom. Best-effort and
+    /// lock-free across buckets — a racing prune just leaves a snapshot with its own bloom. Pure live-memory
+    /// optimization: blooms are not persisted, so a reload rebuilds them for the widest snapshots and shares
+    /// them under the same rule.</summary>
     void ShareBloomAcrossRange(StateId from, StateId to, RefCountedBloomFilter sharedBloom, BlobArenaManager blobs);
 
     /// <summary>Lease every persisted base snapshot tiling <c>(from, to]</c>. Caller disposes the list.</summary>
