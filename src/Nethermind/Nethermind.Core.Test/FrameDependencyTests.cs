@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -26,6 +27,25 @@ public class FrameDependencyTests
             Assert.DoesNotThrow(() => NativeLeanProofVerifier.SerializeInput(input));
         else
             Assert.Throws<ArgumentException>(() => NativeLeanProofVerifier.SerializeInput(input));
+    }
+
+    // The size pre-check must count the encoding exactly, the 192-byte child and discard records and batch leaves included.
+    [Test]
+    public void Aggregation_input_size_matches_its_encoding([Values] bool withBatchLeaf)
+    {
+        FrameDependency sphincs = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256);
+        FrameDependency stark = new(Eip8288Constants.LeanStarkScheme, TestItem.KeccakC.ValueHash256, TestItem.KeccakD.ValueHash256);
+        FrameDependency claim = new(Eip8288Constants.BatchedLeanStarkScheme, TestItem.KeccakE.ValueHash256, TestItem.KeccakF.ValueHash256);
+        AggregationInput input = new()
+        {
+            Deps = [sphincs],
+            Witnesses = [new byte[7]],
+            RecursiveProofs = [new([sphincs, stark], new byte[11])],
+            Discards = [stark],
+            BatchLeaves = withBatchLeaf ? [new(TestItem.KeccakF.ValueHash256, [TestItem.KeccakE.ValueHash256], [claim], new byte[13])] : [],
+        };
+
+        Assert.That(RecursiveStarkAggregator.InputSize(input), Is.EqualTo(NativeLeanProofVerifier.SerializeInput(input).Length));
     }
 
     [Test]
@@ -336,6 +356,20 @@ public class FrameDependencyTests
         Assert.That(Eip8288Dependencies.Canonicalize(reversed), Is.EqualTo(expected));
         byte[] entries = [.. expected.SelectMany(static dep => dep.DataHash.ToByteArray().Concat(dep.VerificationKey.ToByteArray()))];
         Assert.That(Eip8288Dependencies.ComputeDepsHash(reversed), Is.EqualTo(ValueKeccak.Compute(entries)));
+    }
+
+    // A malformed frame's trailing partial triple is not a declaration, with batch pricing enabled or not.
+    [Test]
+    public void Recursive_stark_gas_counts_whole_triples_only([Values(50, 96, 127, 191, 192)] int length, [Values] bool batchedEnabled)
+    {
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            Frames = [new TxFrame(FrameMode.DepVerify, FrameFlags.None, null, 0, UInt256.Zero, new byte[length])]
+        };
+
+        Assert.That(Eip8288Dependencies.RecursiveStarkGas(tx, batchedEnabled),
+            Is.EqualTo((ulong)(length / Eip8288Constants.DependencyTripleLength) * Eip8288Constants.RecursiveProofShareGas));
     }
 
     [Test]

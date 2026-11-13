@@ -153,7 +153,8 @@ public static class Eip8288Dependencies
         {
             if (!IsDependencyFrame(frame)) continue;
             ReadOnlySpan<byte> data = frame.Data.Span;
-            for (int i = 31; i < data.Length; i += Eip8288Constants.DependencyTripleLength)
+            // Whole triples only, as Length / 96 counts them; i is each one's scheme byte.
+            for (int i = 31; i + 64 < data.Length; i += Eip8288Constants.DependencyTripleLength)
             {
                 if (!batchedEnabled || data[i] is not (Eip8288Constants.BatchedLeanStarkScheme or Eip8288Constants.LeanStarkLeafPaymentScheme)) count++;
             }

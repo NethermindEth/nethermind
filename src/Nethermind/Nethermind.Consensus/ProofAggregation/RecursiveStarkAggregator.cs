@@ -70,14 +70,23 @@ public static class RecursiveStarkAggregator
     }
 
     /// <summary>Measures the native aggregation-input encoding, including nested witnesses.</summary>
+    /// <remarks>A child's dependencies and the discards are 192-byte records, each a dependency and its batch-claim source.</remarks>
     public static long InputSize(AggregationInput input)
     {
-        long size = 12 + (long)input.Discards.Count * Eip8288Constants.DependencyTripleLength;
+        const int recordLength = 2 * Eip8288Constants.DependencyTripleLength;
+        long size = 12 + (long)input.Discards.Count * recordLength;
         foreach (ReadOnlyMemory<byte> witness in input.Witnesses) size += Eip8288Constants.DependencyTripleLength + 4 + witness.Length;
         foreach (RecursiveProofInput proof in input.RecursiveProofs)
         {
             if (proof.InnerDeps is null) throw new ArgumentException("Uninitialized recursive proof input", nameof(input));
-            size += 8 + (long)proof.InnerDeps.Count * Eip8288Constants.DependencyTripleLength + proof.Proof.Length;
+            size += 8 + (long)proof.InnerDeps.Count * recordLength + proof.Proof.Length;
+        }
+        if (input.BatchLeaves.Count != 0)
+        {
+            size += 4;
+            foreach (BatchLeafInput leaf in input.BatchLeaves)
+                size += 32 + 4 + (long)leaf.Claims.Count * 32 + 4 + (long)leaf.Dependencies.Count * Eip8288Constants.DependencyTripleLength
+                    + 4 + leaf.Proof.Length;
         }
         return size;
     }
