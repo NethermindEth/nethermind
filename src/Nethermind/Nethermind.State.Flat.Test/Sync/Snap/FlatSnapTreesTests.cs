@@ -102,7 +102,7 @@ public class FlatSnapTreesTests
         tree.BulkSetAndUpdateRootHash(new PathWithAccount[] { new(lowPath, account), new(highPath, account) }.ToPathWithAccountList());
         tree.Commit(PathHash("55"));
 
-        Assert.That(writer.SetAccountRawCalls, Has.One.EqualTo((lowPath, account)));
+        Assert.That(writer.SetAccountRawCalls, Has.One.EqualTo((lowPath, account.ToStruct())));
     }
 
     [Test]

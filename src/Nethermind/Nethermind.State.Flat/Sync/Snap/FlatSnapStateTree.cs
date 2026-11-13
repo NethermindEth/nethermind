@@ -63,7 +63,7 @@ public class FlatSnapStateTree : ISnapTree<IPathWithAccountList>
                 {
                     if (_enableDoubleWriteCheck && _reader.GetAccountRaw(path) is not null)
                         throw new Exception($"Double account flat write. {path}");
-                    _writeBatch.SetAccountRaw(path, account.Account.ToAccount());
+                    _writeBatch.SetAccountRaw(path, account.Account.ToStruct());
                 }
             }
         }

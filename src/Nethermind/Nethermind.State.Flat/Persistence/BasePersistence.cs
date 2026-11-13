@@ -551,7 +551,7 @@ public static class BasePersistence
         /// <summary>Writes a slot whose value is already the trie-leaf RLP byte string (<c>RLP(stripped)</c>).</summary>
         public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue);
 
-        public void SetAccountRaw(in ValueHash256 addrHash, Account account);
+        public void SetAccountRaw(in ValueHash256 addrHash, in AccountStruct account);
 
         public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath);
 
@@ -592,6 +592,7 @@ public static class BasePersistence
         where TWriteBatch : struct, IHashedFlatWriteBatch
     {
         private readonly AccountDecoder _accountDecoder = useFlatAccount ? AccountDecoder.Slim : AccountDecoder.Instance;
+        private const int AccountSpanBufferSize = 256;
         private TWriteBatch _flatWriteBatch = flatWriteBatch;
 
         public void SelfDestruct(Address addr) => _flatWriteBatch.SelfDestruct(addr.ToAccountPath);
@@ -621,10 +622,11 @@ public static class BasePersistence
         public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) =>
             _flatWriteBatch.SetStorageEncoded(addrHash, slotHash, rlpValue);
 
-        public void SetAccountRaw(in ValueHash256 addrHash, Account account)
+        [SkipLocalsInit]
+        public void SetAccountRaw(in ValueHash256 addrHash, in AccountStruct account)
         {
-            using ArrayPoolSpan<byte> rlp = _accountDecoder.EncodeToArrayPoolSpan(account);
-            _flatWriteBatch.SetAccount(addrHash, rlp);
+            Span<byte> rlp = stackalloc byte[AccountSpanBufferSize];
+            _flatWriteBatch.SetAccount(addrHash, rlp[.._accountDecoder.Encode(rlp, account)]);
         }
 
         public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) =>
@@ -980,7 +982,7 @@ public static class BasePersistence
         public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) =>
             _flatWriter.SetStorageRawEncoded(addrHash, slotHash, rlpValue);
 
-        public void SetAccountRaw(in ValueHash256 addrHash, Account account) =>
+        public void SetAccountRaw(in ValueHash256 addrHash, in AccountStruct account) =>
             _flatWriter.SetAccountRaw(addrHash, account);
 
         public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) =>

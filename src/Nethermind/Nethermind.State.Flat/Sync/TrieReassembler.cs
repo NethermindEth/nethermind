@@ -225,7 +225,7 @@ public sealed class TrieReassembler(IPersistence persistence, ILogManager logMan
             return node;
 
         Account newAccount = oldAccount.WithChangedStorageRoot(newStorageRoot);
-        batch.SetAccountRaw(fullPath.Path, newAccount);
+        batch.SetAccountRaw(fullPath.Path, newAccount.ToStruct());
 
         return TrieNodeFactory.CreateLeaf(node.Key!, _accountDecoder.EncodeAsBytes(newAccount));
     }

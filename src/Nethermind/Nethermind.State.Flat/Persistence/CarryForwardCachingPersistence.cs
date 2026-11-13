@@ -406,7 +406,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             inner.SetStorageRawEncoded(addrHash, slotHash, rlpValue);
         }
 
-        public void SetAccountRaw(in ValueHash256 addrHash, Account account)
+        public void SetAccountRaw(in ValueHash256 addrHash, in AccountStruct account)
         {
             _clearAll = true;
             inner.SetAccountRaw(addrHash, account);

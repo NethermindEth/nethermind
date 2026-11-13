@@ -34,7 +34,7 @@ internal static class FlatEntryWriter
                 path.AppendMut(node.Key);
                 RlpReader context = new(node.Value.AsSpan());
                 Account account = AccountDecoder.Instance.Decode(ref context)!;
-                writeBatch.SetAccountRaw(path.Path, account);
+                writeBatch.SetAccountRaw(path.Path, account.ToStruct());
             }
             finally
             {
@@ -50,7 +50,7 @@ internal static class FlatEntryWriter
             {
                 RlpReader context = new(enumerator.CurrentValue);
                 Account account = AccountDecoder.Instance.Decode(ref context)!;
-                writeBatch.SetAccountRaw(enumerator.CurrentPath, account);
+                writeBatch.SetAccountRaw(enumerator.CurrentPath, account.ToStruct());
             }
         }
         else if (node.IsExtension)

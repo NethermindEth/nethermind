@@ -159,7 +159,7 @@ public class Importer(
             {
                 RlpReader accountReader = new(leafValue);
                 Account acc = _accountDecoder.Decode(ref accountReader, RlpBehaviors.TrustedInput)!;
-                writeBatch.SetAccountRaw(fullPath, acc);
+                writeBatch.SetAccountRaw(fullPath, acc.ToStruct());
             }
             else
             {
