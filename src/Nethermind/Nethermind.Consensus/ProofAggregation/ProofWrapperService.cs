@@ -430,8 +430,11 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// <summary>Returns the store within capacity after an admission beyond it: sheds what no pending transaction pins, then evicts
     /// the fewest <paramref name="victims"/> still not executable that make room, or else rolls back the <paramref name="admitted"/>
     /// transactions.</summary>
-    /// <remarks>Victims are rechecked, as gossip or the admission itself may since have filled a nonce gap. Nothing is evicted
-    /// when the admitted transactions pinned none of the wrapper's new witnesses, as shedding alone then restores capacity.</remarks>
+    /// <remarks>Victims are rechecked, as gossip or the admission itself may since have filled a nonce gap. Nothing is evicted or
+    /// rolled back when nothing was admitted, nor when the admitted transactions' witnesses fit once unpinned records are shed. The
+    /// admitted transactions' coverage is published before this runs, so another transaction may pin those witnesses meanwhile and
+    /// keep the store over capacity after a rollback; the excess is then at most this wrapper's witnesses, and the store refuses
+    /// any further admission beyond capacity until it clears.</remarks>
     /// <returns>Whether the admitted transactions were rolled back.</returns>
     private bool RestoreCapacity(List<Transaction> victims, List<Transaction> admitted)
     {
@@ -439,7 +442,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         {
             HashSet<Transaction> planned = [.. victims];
             _evictionCandidates?.Candidates.RemoveAll(planned.Contains);
-            if (leanProofStore.ShedExcess()) return false;
+            if (leanProofStore.ShedExcess() || admitted.Count == 0) return false;
             FeeFloors floors = ExecutableFeeFloors();
             List<ValueHash256> evictable = [];
             foreach (Transaction victim in victims)

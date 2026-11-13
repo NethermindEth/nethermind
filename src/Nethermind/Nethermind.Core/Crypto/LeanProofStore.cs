@@ -97,8 +97,8 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
     }
 
     /// <summary>Reserves immutable verified witnesses before transactions enter the pool.</summary>
-    /// <param name="overCapacity">Stores the witnesses even beyond capacity. The caller bounds the excess and, once the admission
-    /// ends, restores capacity through <see cref="ShedExcess"/> and <see cref="ReleasesToFit"/>.</param>
+    /// <param name="overCapacity">Stores the witnesses even beyond capacity, unless the store is already over it. The caller bounds
+    /// the excess and, once the admission ends, restores capacity through <see cref="ShedExcess"/> and <see cref="ReleasesToFit"/>.</param>
     public bool TryBeginAdmission(IReadOnlyList<FrameDependency> dependencies, IReadOnlyList<byte[]>? witnesses,
         byte[]? recursiveProof, out IDisposable? admission, bool overCapacity = false)
     {
@@ -114,7 +114,8 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
             foreach (ProofRecord record in incoming) incomingBytes += record.Size;
             if (incoming.Count != 0)
             {
-                if (!MakeRoom(incomingBytes, incoming.Count) && !overCapacity)
+                // Only one admission at a time may exceed capacity: none may while the store is over it.
+                if (!MakeRoom(incomingBytes, incoming.Count) && (!overCapacity || !MakeRoom(0, 0)))
                 {
                     foreach (ProofRecord record in selected) record.Pins--;
                     return false;

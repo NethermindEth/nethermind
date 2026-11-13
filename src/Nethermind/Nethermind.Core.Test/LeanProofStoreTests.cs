@@ -55,7 +55,7 @@ public class LeanProofStoreTests
     }
 
     // An admission beyond capacity holds its witnesses only while it runs: a rejected one leaves nothing to shed, and an admitted
-    // one fits again once the fewest pending transactions that make room are released.
+    // one fits again once the fewest pending transactions that make room are released. None may exceed capacity meanwhile.
     [Test]
     public void Admission_beyond_capacity_fits_again_once_room_is_released([Values] bool admitted)
     {
@@ -77,12 +77,15 @@ public class LeanProofStoreTests
         if (admitted) Assert.That(store.PinPending(incomingTransaction), Is.True);
         admission!.Dispose();
         ValueHash256 first = pinned[0].Hash!.ValueHash256, second = pinned[1].Hash!.ValueHash256;
+        bool overdrawnAgain = store.TryBeginAdmission([Dependency(1001)], witness, null, out IDisposable? again, overCapacity: true);
+        again?.Dispose();
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(fitted, Is.False);
             Assert.That(overdrawn, Is.True);
             Assert.That(store.ShedExcess(), Is.EqualTo(!admitted));
+            Assert.That(overdrawnAgain, Is.EqualTo(!admitted), "no admission exceeds capacity while the store is over it");
             Assert.That(store.ReleasesToFit([first]), admitted ? Is.Null : Is.Empty);
             Assert.That(store.ReleasesToFit([first, second, pinned[2].Hash!.ValueHash256]), admitted ? Is.EqualTo(new[] { first, second }) : Is.Empty);
         }

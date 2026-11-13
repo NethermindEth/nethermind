@@ -1008,6 +1008,7 @@ public class ProofWrapperServiceTests
     [TestCase(64, false, false, 0UL, 3, false, true, true, TestName = "A candidate whose nonce gap was filled since the scan is kept")]
     [TestCase(64, false, false, 0UL, 1, false, false, false, "gap", TestName = "A candidate whose nonce gap admission filled is kept and the admission rolled back")]
     [TestCase(64, false, false, 0UL, 0, false, false, false, "unpinned", TestName = "Admitting only transactions whose witnesses fit evicts nothing")]
+    [TestCase(64, false, false, 0UL, 0, false, false, false, "foreign", TestName = "A rejected wrapper whose witness another transaction pinned evicts nothing")]
     [TestCase(64, false, false, 0UL, 0, false, false, false, "simulation", TestName = "An incoming transaction admission rejects evicts nothing")]
     [TestCase(64, false, false, 0UL, 0, false, false, false, "known", TestName = "An incoming transaction the pool already knows evicts nothing")]
     [TestCase(64, false, false, 0UL, 0, false, false, false, "quota", TestName = "An incoming transaction over its sender's witness quota evicts nothing")]
@@ -1072,9 +1073,18 @@ public class ProofWrapperServiceTests
         {
             if (incoming == "gap") filled.Add(oldest.SenderAddress!);
             Transaction submitted = call.Arg<Transaction>();
+            if (incoming == "foreign")
+            {
+                // Another admission of the same witness reuses its record and pins it for its own transaction.
+                List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(submitted, FrameTxSigHash.ComputeValue);
+                bool reused = store.TryBeginAdmission(dependencies, [new byte[LeanProofStore.MaxWrapperBytes * 3 / 4]], null, out IDisposable? other);
+                bool foreignPinned = reused && store.PinPending(Transaction(dependencies[0], TestItem.AddressF), new object());
+                other?.Dispose();
+                Assert.That(foreignPinned, Is.True);
+            }
             return incoming switch
             {
-                "simulation" => AcceptTxResult.FrameSimulationFailed,
+                "simulation" or "foreign" => AcceptTxResult.FrameSimulationFailed,
                 "unpinned" when submitted.SenderAddress == Address.Zero => AcceptTxResult.FrameSimulationFailed,
                 "known" => AcceptTxResult.AlreadyKnown,
                 _ => store.PinPending(submitted, poolOwner) ? AcceptTxResult.Accepted : AcceptTxResult.MissingDependencyProof
@@ -1125,7 +1135,7 @@ public class ProofWrapperServiceTests
             Assert.That((await service.AcceptOwnedDetailedAsync(Wrapper(Incoming("second", Address.SystemUser)))).Status,
                 Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted));
 
-        ProofWrapperAcceptanceStatus expected = incoming is "simulation" or "known" or "quota" or "unpinned" ? ProofWrapperAcceptanceStatus.PoolRejected
+        ProofWrapperAcceptanceStatus expected = incoming is "simulation" or "known" or "quota" or "unpinned" or "foreign" ? ProofWrapperAcceptanceStatus.PoolRejected
             : removed != 0 && incoming != "gap" ? ProofWrapperAcceptanceStatus.Accepted : ProofWrapperAcceptanceStatus.LocalFailure;
         using (Assert.EnterMultipleScope())
         {
@@ -1138,9 +1148,13 @@ public class ProofWrapperServiceTests
                 .SubmitTx(Arg.Is<Transaction>(tx => tx.Hash == first.Hash), Arg.Any<TxHandlingOptions>());
             pool.Received(incoming == "gap" ? 1 : 0).RemoveTransaction(first.Hash);
             blobAdmission.DidNotReceive().Admit(Arg.Any<Transaction>(), Arg.Any<object?>(), Arg.Any<IDisposable>());
-            Assert.That(store.Covers(first), Is.EqualTo(expected == ProofWrapperAcceptanceStatus.Accepted));
+            Assert.That(store.Covers(first), Is.EqualTo(expected == ProofWrapperAcceptanceStatus.Accepted || incoming == "foreign"));
             if (incoming == "unpinned") Assert.That(store.Covers(existing), Is.True);
-            Assert.That(store.ShedExcess(), Is.True, "the store ends within capacity");
+            // The other transaction's pin keeps that witness over capacity, so no further admission may exceed it.
+            Assert.That(store.ShedExcess(), Is.EqualTo(incoming != "foreign"), "the store ends within capacity");
+            if (incoming == "foreign")
+                Assert.That(store.TryBeginAdmission([new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("third"), default)],
+                    [new byte[LeanProofStore.MaxWrapperBytes * 3 / 4]], null, out _, overCapacity: true), Is.False);
         }
     }
 
