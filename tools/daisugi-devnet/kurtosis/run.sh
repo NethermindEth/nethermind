@@ -13,7 +13,7 @@ docker image inspect "$NETHERMIND_IMAGE" >/dev/null
 docker build -q --build-arg LIGHTHOUSE_IMAGE="$LIGHTHOUSE_IMAGE" -f lighthouse.Dockerfile -t daisugi-kurtosis/lighthouse:eip8288-lean .
 docker build -q -f genesis.Dockerfile -t daisugi-kurtosis/genesis-generator:287f596b .
 mkdir -p run
-sed -e "s|el_image: .*|el_image: $NETHERMIND_IMAGE|" -e "s|count: .*|count: ${NODES:-1}|" network_params.yaml > "$ARGS"
+sed -e "s|el_image: .*|el_image: $NETHERMIND_IMAGE|" -e "s|^\( *\)count: .*|\1count: ${NODES:-1}|" network_params.yaml > "$ARGS"
 kurtosis enclave rm -f "$ENCLAVE" >/dev/null 2>&1 || true
 trap 'kurtosis enclave rm -f "$ENCLAVE"' EXIT
 kurtosis run --enclave "$ENCLAVE" "$PACKAGE" --args-file "$ARGS"
