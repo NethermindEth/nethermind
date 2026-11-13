@@ -524,12 +524,17 @@ public class PersistInMemoryTailForShutdownTests
         using (window) Assert.That(window!.Bloom.Capacity, Is.EqualTo(1));
     }
 
-    // One batch of blocks 1 to 16 at CompactSize 4: boundaries 4 and 12 are plain, 8 and 16 large. Only the CompactSized row
-    // of 8 fails to be written, so a wider merge at 8 would succeed if it ran; or the process stops once the first
+    public enum RuntimeInterruption { FailedBoundary, CancellationFromMerge, ExitAmongBoundaries }
+
+    // One batch of blocks 1 to 16 at CompactSize 4: boundaries 4 and 12 are plain, 8 and 16 large. Only the CompactSized
+    // row of 8 fails to be written, so a wider merge at 8 would succeed if it ran: with an IO error, or with a
+    // cancellation that is not a stop, which the guard takes the same way; or the process stops once the first
     // CompactSized row is written.
     [Test]
-    public async Task Runtime_compaction_goes_past_a_failed_boundary_and_stops_between_boundaries([Values] bool processExit)
+    public async Task Runtime_compaction_goes_past_a_failed_boundary_and_stops_between_boundaries([Values] RuntimeInterruption interruption)
     {
+        bool processExit = interruption == RuntimeInterruption.ExitAmongBoundaries;
+        Exception fault = interruption == RuntimeInterruption.CancellationFromMerge ? new OperationCanceledException() : new IOException("injected");
         using CancellationTokenSource exit = new();
         TestErrorLogManager errors = new();
         using FlatTestContainer tier = SmallTier(configure: builder => builder
@@ -537,7 +542,7 @@ public class PersistInMemoryTailForShutdownTests
             .AddSingleton<ILogManager>(errors)
             .AddDecorator<ISnapshotCatalog>((_, inner) => processExit
                 ? new ObservedCatalog(inner, after: entry => { if (entry.Tier == SnapshotTier.PersistedCompactSized) exit.Cancel(); })
-                : new ObservedCatalog(inner, before: entry => { if (entry.Tier == SnapshotTier.PersistedCompactSized && entry.To == State(8)) throw new IOException("injected"); })));
+                : new ObservedCatalog(inner, before: entry => { if (entry.Tier == SnapshotTier.PersistedCompactSized && entry.To == State(8)) throw fault; })));
         ConvertBases(tier, 1, 16);
         ArrayPoolList<StateId> batch = new(16);
         for (ulong i = 1; i <= 16; i++) batch.Add(State(i));
@@ -554,6 +559,25 @@ public class PersistInMemoryTailForShutdownTests
 
         ulong[] Ends(SnapshotTier compacted) =>
             [.. tier.Repository.PersistedSnapshots.Where(s => s.Tier == compacted).Select(static s => s.To.BlockNumber)];
+    }
+
+    // The CompactSized snapshot of 8 exists before the batch, so its step returns false and 8 still gets its wider merge.
+    [Test]
+    public async Task Runtime_compaction_hands_over_a_large_boundary_whose_CompactSized_snapshot_exists()
+    {
+        using FlatTestContainer tier = SmallTier();
+        ConvertBases(tier, 1, 8);
+        tier.Compactor.DoCompactCompactSized(State(8));
+        Assert.That(At8(SnapshotTier.PersistedCompactSized), Is.True, "the CompactSized snapshot made before the batch");
+
+        ArrayPoolList<StateId> batch = new(8);
+        for (ulong i = 1; i <= 8; i++) batch.Add(State(i));
+        await tier.Compactor.EnqueueAsync(batch, 0, CancellationToken.None);
+        await tier.Compactor.DisposeAsync(); // drains the queue
+
+        Assert.That(At8(SnapshotTier.PersistedLargeCompacted), Is.True, "the wider merge at 8");
+
+        bool At8(SnapshotTier compacted) => tier.Repository.PersistedSnapshots.Any(s => s.Tier == compacted && s.To == State(8));
     }
 
     // Each small window's first page enters the residency tracker when its catalog row is written; the pass then demotes
