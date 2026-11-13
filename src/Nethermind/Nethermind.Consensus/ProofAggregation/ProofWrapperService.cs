@@ -416,7 +416,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         if (leanProofStore.ReleasesForAdmission(decoded.Deps, decoded.Proofs, decoded.RecursiveStark?.StarkProof, hashes)
             is not { Count: > 0 } releases) return false;
         // Eviction cannot be undone: the incoming transactions must first pass admission, their witnesses aside. Checked last, as
-        // it may simulate and recover signatures, once nothing cheaper has ruled eviction out.
+        // it may simulate and recover signatures, once nothing cheaper has ruled eviction out; a transaction the pool already
+        // rejected this block fails it before any of the others is simulated, so repeating a wrapper costs no validation.
+        foreach (Transaction transaction in decoded.Transactions)
+            if (!txPool.TryGetPendingTransaction(transaction.Hash!.ValueHash256, out _) && txPool.IsKnown(transaction.Hash)) return false;
         foreach (Transaction transaction in decoded.Transactions)
             if (!txPool.TryGetPendingTransaction(transaction.Hash!.ValueHash256, out _) && !txPool.ValidateTxBeforeProofAdmission(transaction, handling)) return false;
         foreach (ValueHash256 hash in releases)

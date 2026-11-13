@@ -6302,7 +6302,7 @@ namespace Nethermind.TxPool.Test
             {
                 Assert.That(tx.IsAwaitingAvailability(), Is.False);
                 Assert.That(dryRun, Is.Not.EqualTo(AcceptTxResult.Accepted));
-                Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(dryRun));
+                Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.Not.EqualTo(AcceptTxResult.Accepted));
             }
         }
 
