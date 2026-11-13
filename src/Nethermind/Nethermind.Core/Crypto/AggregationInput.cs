@@ -31,10 +31,14 @@ public readonly struct RecursiveProofInput
     public ValueHash256 ProofHash { get; }
 }
 
-/// <summary>An EIP-8288 batch leaf: one leanSTARK proof of <c>get_batch_hash(Claims)</c> under one verification key.</summary>
-/// <remarks>Each claim yields the dependency <c>(LEANSTARK_SCHEME, claim, VerificationKeyHash)</c>. Claims are nonempty, strictly
-/// increasing and at most <see cref="Eip8288Constants.MaxClaimsPerBatchLeaf"/>; the backend rejects any other list.</remarks>
-public sealed record BatchLeafInput(ValueHash256 VerificationKeyHash, IReadOnlyList<ValueHash256> Claims, ReadOnlyMemory<byte> Proof);
+/// <summary>A batch leaf (ethereum/EIPs#12664): one leanSTARK proof of <c>get_batch_hash(Claims)</c> under one verification key,
+/// establishing <see cref="Dependencies"/>.</summary>
+/// <remarks>Claims are nonempty, strictly increasing and at most <see cref="Eip8288Constants.MaxClaimsPerBatchLeaf"/>, one under
+/// EIP-8288's guest. Each dependency is <c>(LEANSTARK_SCHEME, claim, VerificationKeyHash)</c> or, under the batch-pricing guest,
+/// <c>(BATCHED_LEANSTARK_SCHEME, claim, VerificationKeyHash)</c> with <c>min_batch</c> at most the claim count; the backend rejects
+/// anything else.</remarks>
+public sealed record BatchLeafInput(ValueHash256 VerificationKeyHash, IReadOnlyList<ValueHash256> Claims, IReadOnlyList<FrameDependency> Dependencies,
+    ReadOnlyMemory<byte> Proof);
 
 /// <summary>Inputs to a recursive aggregation step (spec "private inputs").</summary>
 /// <remarks>Direct leanSTARK witnesses, <see cref="BatchLeaves"/> and <see cref="RecursiveProofs"/> together are at most

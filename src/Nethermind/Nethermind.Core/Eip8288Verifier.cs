@@ -23,6 +23,9 @@ public readonly record struct Eip8288Verifier(ValueHash256 AggregatedVk)
 
     public static Eip8288Verifier Pinned { get; } = new(PinnedAggregatedVk);
 
+    /// <summary>The key of the package's batch-pricing guest (ethereum/EIPs#12664), the default where that EIP is enabled.</summary>
+    public static readonly ValueHash256 BatchedAggregatedVk = new(Eip8288Constants.BatchedAggregatedVk);
+
     /// <summary>The verifier fixed by <paramref name="spec"/>.</summary>
     public static Eip8288Verifier For(IReleaseSpec spec) => new(spec.Eip8288AggregatedVk);
 

@@ -391,7 +391,7 @@ public class RecursiveStarkAggregatorTests
     {
         FakeLeanProofVerifier verifier = new(true);
         ValueHash256 claim = ValueKeccak.Compute("claim");
-        AggregationInput input = new() { BatchLeaves = [new(default, [claim], new byte[] { 1 })] };
+        AggregationInput input = new() { BatchLeaves = [new(default, [claim], [new(Eip8288Constants.LeanStarkScheme, claim, default)], new byte[] { 1 })] };
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([new(Eip8288Constants.LeanStarkScheme, claim, default)]);
 
         Assert.That(() => RecursiveStarkAggregator.Prove(input, verifier, Eip8288Verifier.Pinned, hash), Throws.ArgumentException);

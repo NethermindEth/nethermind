@@ -203,6 +203,25 @@ public class InclusionListProofsTests
         }
     }
 
+    // ethereum/EIPs#12664 Test Case: batch claim and leaf payment entries impose no obligation even under a covering proof; the
+    // list's other entries bind as before.
+    [Test]
+    public void Batch_claim_and_payment_entries_never_bind()
+    {
+        IReleaseSpec spec = new OverridableReleaseSpec(Eip8288Prototype.Instance) { IsEipBatchedDependencyPricingEnabled = true };
+        Transaction ordinary = new();
+        Transaction covered = ValidDependencyFrame(ValueKeccak.Compute("covered"));
+        Transaction claim = ValidDependencyFrame(ValueKeccak.Compute("claim"), Eip8288Constants.BatchedLeanStarkScheme);
+        Transaction payment = ValidDependencyFrame(ValueKeccak.Compute("payment"), Eip8288Constants.LeanStarkLeafPaymentScheme);
+        Transaction[] entries = [claim, covered, payment, ordinary];
+        Assert.That(entries.All(tx => InclusionListProofValidator.IsStaticallyValid(tx, spec)), Is.True);
+        CommitteeInclusionList list = new(entries)
+        {
+            VerifiedProofDeps = entries.SelectMany(static tx => Eip8288Dependencies.ForTransaction(tx, FrameTxSigHash.ComputeValue)).ToHashSet()
+        };
+        Assert.That(InclusionListProofValidator.SelectEligible([], [list], spec), Is.EqualTo(new[] { covered, ordinary }));
+    }
+
     [Test]
     public void Without_per_list_input_only_dependency_free_entries_bind()
     {

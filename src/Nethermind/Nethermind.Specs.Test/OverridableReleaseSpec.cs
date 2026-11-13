@@ -103,6 +103,7 @@ namespace Nethermind.Specs.Test
         public bool IsEip8141Enabled { get; set; } = spec.IsEip8141Enabled;
         public bool IsEip8288Enabled { get; set; } = spec.IsEip8288Enabled;
         public ValueHash256 Eip8288AggregatedVk { get; set; } = spec.Eip8288AggregatedVk;
+        public bool IsEipBatchedDependencyPricingEnabled { get; set; } = spec.IsEipBatchedDependencyPricingEnabled;
         public bool IsEip8250Enabled { get; set; } = spec.IsEip8250Enabled;
         public bool IsEip8272Enabled { get; set; } = spec.IsEip8272Enabled;
 

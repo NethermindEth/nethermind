@@ -971,6 +971,32 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(timestamp)).IsEip8288Enabled, Is.EqualTo(enabled));
     }
 
+    // Batch pricing (ethereum/EIPs#12664) takes effect only with EIP-8288 and switches AGGREGATED_VK to the batch-pricing guest's
+    // key; before it, and without it, the pinned EIP-8288 key stays.
+    [TestCase(10UL, 20UL, 15UL, false)]
+    [TestCase(10UL, 20UL, 20UL, true)]
+    [TestCase(30UL, 20UL, 25UL, false)]
+    [TestCase(10UL, null, 100UL, false)]
+    public void Batched_dependency_pricing_follows_eip8288_and_selects_its_key(ulong? proofTime, ulong? batchTime, ulong timestamp, bool enabled)
+    {
+        ChainSpec chainSpec = new()
+        {
+            Parameters = new ChainParameters
+            {
+                Eip8141TransitionTimestamp = 0,
+                Eip8288TransitionTimestamp = proofTime,
+                EipBatchedDependencyPricingTransitionTimestamp = batchTime
+            },
+            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
+        };
+        IReleaseSpec spec = new ChainSpecBasedSpecProvider(chainSpec).GetSpec(ForkActivation.TimestampOnly(timestamp));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.IsEipBatchedDependencyPricingEnabled, Is.EqualTo(enabled));
+            Assert.That(spec.Eip8288AggregatedVk, Is.EqualTo(enabled ? Eip8288Verifier.BatchedAggregatedVk : Eip8288Verifier.PinnedAggregatedVk));
+        }
+    }
+
     private static IEnumerable<TestCaseData> FloorEipTransitions()
     {
         yield return new TestCaseData(new ChainParameters { Eip8131TransitionTimestamp = 20 }, (Func<IReleaseSpec, bool>)(static s => s.IsEip8131Enabled))

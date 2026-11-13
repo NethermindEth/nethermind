@@ -98,6 +98,7 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsEip8141Enabled { get; set; }
     public bool IsEip8288Enabled { get; set; }
     public ValueHash256 Eip8288AggregatedVk { get; set; } = Eip8288Verifier.PinnedAggregatedVk;
+    public bool IsEipBatchedDependencyPricingEnabled { get; set; }
     public bool IsEip8250Enabled { get; set; }
     public bool IsEip8272Enabled { get; set; }
     public bool IsEip7906Enabled { get; set; }

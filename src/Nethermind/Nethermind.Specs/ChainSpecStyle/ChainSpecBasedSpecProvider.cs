@@ -349,9 +349,12 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsEip8288Enabled = releaseSpec.IsEip8141Enabled && (chainSpec.Parameters.Eip8288TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             if ((chainSpec.Parameters.Eip8288AggregatedVk is null) != (chainSpec.Parameters.Eip8288AggregatedVkTransitionTimestamp is null))
                 throw new InvalidOperationException("'Eip8288AggregatedVk' and 'Eip8288AggregatedVkTransitionTimestamp' must be set together.");
+            releaseSpec.IsEipBatchedDependencyPricingEnabled = releaseSpec.IsEip8288Enabled
+                && (chainSpec.Parameters.EipBatchedDependencyPricingTransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.Eip8288AggregatedVk = chainSpec.Parameters.Eip8288AggregatedVk is { } upgradedVk
                 && (chainSpec.Parameters.Eip8288AggregatedVkTransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp
-                ? upgradedVk.ValueHash256 : Eip8288Verifier.PinnedAggregatedVk;
+                ? upgradedVk.ValueHash256
+                : releaseSpec.IsEipBatchedDependencyPricingEnabled ? Eip8288Verifier.BatchedAggregatedVk : Eip8288Verifier.PinnedAggregatedVk;
             releaseSpec.IsEip8250Enabled = (chainSpec.Parameters.Eip8250TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip8272Enabled = (chainSpec.Parameters.Eip8272TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip7906Enabled = (chainSpec.Parameters.Eip7906TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;

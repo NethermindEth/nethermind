@@ -28,10 +28,12 @@ public static class Eip8288Constants
     /// capacity of at least <c>MAX_RLP_BLOCK_SIZE // 96</c>, which this prototype guest does not reach.</remarks>
     public const int MaxProofDependencies = 256;
 
-    /// <summary>EIP-8288 <c>MAX_CLAIMS_PER_BATCH_LEAF</c> (TBD in the EIP): claims one leanSTARK batch leaf may prove.</summary>
-    /// <remarks>A parameter of the pinned guest, so changing it changes <see cref="AggregatedVk"/>. It bounds a single leaf only;
-    /// recursive aggregation combines leaves into larger dependency lists.</remarks>
-    public const int MaxClaimsPerBatchLeaf = 16;
+    /// <summary>Batch-pricing EIP (ethereum/EIPs#12664) <c>MAX_CLAIMS_PER_BATCH_LEAF</c> (provisional): claims one leanSTARK leaf
+    /// may prove.</summary>
+    /// <remarks>A parameter of the guest behind <see cref="BatchedAggregatedVk"/>, so changing it changes that key; EIP-8288's guest
+    /// takes one-claim leaves only. It bounds a single leaf only; recursive aggregation combines leaves into larger dependency
+    /// lists.</remarks>
+    public const int MaxClaimsPerBatchLeaf = 256;
 
     /// <summary>EIP-8288 <c>MAX_INNER_PROOFS_PER_STEP</c> (provisional): direct leanSTARK proofs, batch leaves and recursive
     /// proofs verified by one aggregation step together.</summary>
@@ -83,8 +85,25 @@ public static class Eip8288Constants
     /// every leanSPHINCS-only list at the spec digest.</remarks>
     public const byte LeanStarkScheme = 0x11;
 
+    /// <summary>Batch-pricing EIP (ethereum/EIPs#12664) <c>BATCHED_LEANSTARK_SCHEME</c> (provisional): a claim of a sponsored
+    /// leaf, <c>data_hash</c> the claim and <c>verification_key_hash</c> the leaf's key.</summary>
+    public const byte BatchedLeanStarkScheme = 0x12;
+
+    /// <summary>Batch-pricing EIP <c>LEANSTARK_LEAF_PAYMENT_SCHEME</c> (provisional): a leaf's payment, <c>data_hash</c> its nonzero
+    /// <c>get_batch_hash(claims)</c> and <c>verification_key_hash</c> its key. Effective only in the block of the claims it
+    /// sources.</summary>
+    public const byte LeanStarkLeafPaymentScheme = 0x13;
+
     public const ulong LeanSphincsVerificationGas = 3_000;
     public const ulong LeanStarkVerificationGas = 30_000;
+
+    /// <summary>Batch-pricing EIP <c>LEANSTARK_LEAF_GAS</c> (provisional): a leaf payment's frame charge, in place of EIP-8288's
+    /// proof share.</summary>
+    public const ulong LeanStarkLeafGas = 430_000;
+
+    /// <summary>Batch-pricing EIP <c>LEANSTARK_CLAIM_GAS</c> (provisional): a batch claim's frame charge, in place of EIP-8288's
+    /// proof share.</summary>
+    public const ulong LeanStarkClaimGas = 300;
 
     public const int MaxSigsPerTx = 16;
     public const int MaxStarksPerTx = 1;
@@ -107,8 +126,16 @@ public static class Eip8288Constants
     /// mode. Equal to the <c>eth</c> soft response limit, so EIP-8437 retrieves each wrapper whole.</summary>
     public const int MaxWrapperBytes = 2 * 1024 * 1024;
 
-    /// <summary>Fiat-Shamir key of the recursive guest in the pinned Nethermind.Crypto.Lean package.</summary>
+    /// <summary>Fiat-Shamir key of EIP-8288's recursive guest in the pinned Nethermind.Crypto.Lean package.</summary>
     public static ReadOnlySpan<byte> AggregatedVk => _aggregatedVk;
 
-    private static readonly byte[] _aggregatedVk = Convert.FromHexString("1fd3e66e9f052c194d53c6a7137dec08a3707edf8296a4406a15b42f7980340e");
+    /// <summary>Fiat-Shamir key of the package's recursive guest with batch pricing (ethereum/EIPs#12664), which forks enabling
+    /// <see cref="Specs.IReleaseSpec.IsEipBatchedDependencyPricingEnabled"/> verify with.</summary>
+    /// <remarks>Built from the same source as <see cref="AggregatedVk"/>'s guest, it also takes leaves of up to
+    /// <see cref="MaxClaimsPerBatchLeaf"/> claims, establishing <see cref="BatchedLeanStarkScheme"/> claims bound to their
+    /// <see cref="LeanStarkLeafPaymentScheme"/> payment, and finalizes them.</remarks>
+    public static ReadOnlySpan<byte> BatchedAggregatedVk => _batchedAggregatedVk;
+
+    private static readonly byte[] _aggregatedVk = Convert.FromHexString("3b6e9d979f13287c356ac1196c867272a5122246ad0edcb95b6f3cf3fd8c285e");
+    private static readonly byte[] _batchedAggregatedVk = Convert.FromHexString("04f0bf838fc0e274268d110e63d527f5f586a387dfc17c1e9ab6dd54e1b5c4f0");
 }

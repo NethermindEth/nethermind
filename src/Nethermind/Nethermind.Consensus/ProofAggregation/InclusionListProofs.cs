@@ -204,7 +204,8 @@ public static class InclusionListProofValidator
     }
 
     /// <summary>One list's binding transactions: its statically valid entries that are dependency-free, those without a
-    /// <c>DEP_VERIFY_FRAME_MODE</c> frame, or whose dependencies <paramref name="proofDeps"/> covers.</summary>
+    /// <c>DEP_VERIFY_FRAME_MODE</c> frame, or whose dependencies <paramref name="proofDeps"/> covers, except those declaring a
+    /// batch claim or leaf payment, which impose no obligation even when covered (ethereum/EIPs#12664).</summary>
     /// <remarks>An entry with a dependency verification frame is dependency-bearing even when the frame carries no triples or
     /// fails static validity, and EIP-7805 excuses its omission as an invalid transaction. An entry that does not decode never
     /// reaches a list.</remarks>
@@ -213,7 +214,8 @@ public static class InclusionListProofValidator
     {
         List<Transaction> eligible = new(transactions.Count);
         foreach (Transaction tx in transactions)
-            if (IsStaticallyValid(tx, spec) && (!Eip8288Dependencies.IsDependencyBearing(tx) || proofDeps is not null && Covers(proofDeps, tx)))
+            if (IsStaticallyValid(tx, spec) && (!Eip8288Dependencies.IsDependencyBearing(tx)
+                    || proofDeps is not null && !Eip8288Dependencies.DeclaresBatched(tx) && Covers(proofDeps, tx)))
                 eligible.Add(tx);
         return [.. eligible];
     }

@@ -138,6 +138,58 @@ public class FrameDependencyTests
         Assert.That(Eip8288Dependencies.ComputeDepsHash([VectorB, second, VectorA]), Is.EqualTo(ValueKeccak.Compute(expected)));
     }
 
+    // ethereum/EIPs#12664: batch claims and leaf payments join the leanSTARK list keyed keccak256(scheme word || key), sorted by
+    // entry; a list with a batch claim closes under "eip8288/batched-deps", the digest only a finalized proof carries.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Batch_pricing_schemes_hash_under_their_scheme_keys(bool withClaim)
+    {
+        FrameDependency ordinary = VectorDependency(Eip8288Constants.LeanStarkScheme, 0x05, 7);
+        FrameDependency claim = VectorDependency(Eip8288Constants.BatchedLeanStarkScheme, 0x05, 7);
+        FrameDependency payment = VectorDependency(Eip8288Constants.LeanStarkLeafPaymentScheme, 0x01, 7);
+        static ValueHash256 Key(FrameDependency d)
+        {
+            byte[] word = new byte[32];
+            word[31] = d.Scheme;
+            return ValueKeccak.Compute([.. word, .. d.VerificationKey.ToByteArray()]);
+        }
+        FrameDependency[] deps = withClaim ? [VectorA, ordinary, claim, payment] : [VectorA, ordinary, payment];
+        (ValueHash256 Data, ValueHash256 Key)[] entries = [.. deps.Skip(1)
+            .Select(d => (d.DataHash, d.Scheme == Eip8288Constants.LeanStarkScheme ? d.VerificationKey : Key(d)))
+            .OrderBy(static e => e.Item1).ThenBy(static e => e.Item2)];
+        byte[] list = ValueKeccak.Compute([.. entries.SelectMany(static e => e.Data.ToByteArray().Concat(e.Key.ToByteArray()))]).ToByteArray();
+        byte[] domain = new byte[32];
+        (withClaim ? "eip8288/batched-deps"u8 : "eip8288/leanstark-deps"u8).CopyTo(domain);
+        byte[] sphincs = ValueKeccak.Compute([.. VectorA.DataHash.ToByteArray(), .. VectorA.VerificationKey.ToByteArray()]).ToByteArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Eip8288Dependencies.ComputeDepsHash(deps), Is.EqualTo(ValueKeccak.Compute([.. sphincs, .. list, .. domain])));
+            Assert.That(Eip8288Dependencies.ComputeDepsHash([claim]), Is.Not.EqualTo(Eip8288Dependencies.ComputeDepsHash([ordinary])));
+            Assert.That(Eip8288Dependencies.RecursiveStarkGas(new Transaction
+            {
+                Frames = [new TxFrame(FrameMode.DepVerify, 0, null, 0, UInt256.Zero, Eip8288Dependencies.Serialize(deps))]
+            }, batchedEnabled: true), Is.EqualTo(2 * Eip8288Constants.LeanStarkVerificationGas), "the ordinary dependencies alone");
+        }
+    }
+
+    // ethereum/EIPs#12664 Test Case: two sponsors paying for one leaf are each charged in full; the block holds the payment once.
+    [Test]
+    public void Two_sponsors_of_one_leaf_both_pay_for_one_dependency()
+    {
+        FrameDependency payment = VectorDependency(Eip8288Constants.LeanStarkLeafPaymentScheme, 0x01, 7);
+        Transaction Sponsor() => new()
+        {
+            Type = TxType.FrameTx,
+            Frames = [new TxFrame(FrameMode.DepVerify, 0, null, payment.VerificationGas, UInt256.Zero, Eip8288Dependencies.Serialize([payment]))]
+        };
+        Block block = Build.A.Block.WithTransactions(Sponsor(), Sponsor()).TestObject;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Transactions.Sum(static tx => (long)tx.Frames![0].ExecutionGasLimit), Is.EqualTo(2 * 430_000));
+            Assert.That(Eip8288Dependencies.ForBlock(block, static _ => default), Is.EqualTo(new[] { payment }));
+        }
+    }
+
     // The scheme is part of a dependency: the same data and key under the other scheme is another digest.
     [Test]
     public void Same_data_and_key_under_the_other_scheme_is_another_digest() =>
@@ -179,6 +231,8 @@ public class FrameDependencyTests
 
     [TestCase(Eip8288Constants.LeanSphincsScheme, Eip8288Constants.LeanSphincsVerificationGas)]
     [TestCase(Eip8288Constants.LeanStarkScheme, Eip8288Constants.LeanStarkVerificationGas)]
+    [TestCase(Eip8288Constants.BatchedLeanStarkScheme, Eip8288Constants.LeanStarkClaimGas)]
+    [TestCase(Eip8288Constants.LeanStarkLeafPaymentScheme, Eip8288Constants.LeanStarkLeafGas)]
     public void VerificationGas_is_per_scheme(byte scheme, ulong expected)
     {
         FrameDependency dep = new(scheme, default, default);

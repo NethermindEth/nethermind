@@ -79,6 +79,7 @@ public class GethGenesisParityTests
         [nameof(ChainSpecParamsJson.Eip8131TransitionTimestamp)] = StandaloneEip,
         [nameof(ChainSpecParamsJson.Eip8279TransitionTimestamp)] = StandaloneEip,
         [nameof(ChainSpecParamsJson.Eip8360TransitionTimestamp)] = StandaloneEip,
+        [nameof(ChainSpecParamsJson.EipBatchedDependencyPricingTransitionTimestamp)] = "draft EIP without a number (ethereum/EIPs#12664) extending EIP-8288",
     };
 
     private const string StandaloneEip = "standalone EIP, not in a named fork";
