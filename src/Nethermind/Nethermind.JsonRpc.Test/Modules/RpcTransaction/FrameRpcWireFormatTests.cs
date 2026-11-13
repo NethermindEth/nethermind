@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.TxPool;
@@ -93,7 +94,7 @@ public class FrameRpcWireFormatTests
             },
             queued: []);
 
-        Assert.That(Serializer.Serialize(new TxPoolContent(info, 1)), Is.EqualTo(TxPoolContentJson));
+        Assert.That(Serializer.Serialize(new TxPoolContent(info, new TransactionForRpcContext(1))), Is.EqualTo(TxPoolContentJson));
     }
 
     [Test]

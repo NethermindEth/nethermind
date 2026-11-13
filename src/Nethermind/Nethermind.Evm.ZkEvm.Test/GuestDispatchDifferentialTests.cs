@@ -957,6 +957,37 @@ public class GuestDispatchDifferentialTests
     }
 
     /// <remarks>
+    /// Every immediate, valid or not, at stack heights on both sides of the depths they decode to and at the limit, with
+    /// too little gas and enough, on both sides of EIP-8024. The opcode alone, as the whole program, reads its immediate
+    /// from the code's padding. The outcome holds the stack's words but not the stack pointer the handler hands on, so a
+    /// second program pushes through it and stores the word on top of the stack to memory.
+    /// </remarks>
+    [Test]
+    public void Eip8024_stack_ops_match_the_shared_handlers(
+        [ValueSource(nameof(StorageLoadForks))] IReleaseSpec spec,
+        [Values(Instruction.DUPN, Instruction.SWAPN, Instruction.EXCHANGE)] Instruction op, [Values(2ul, 3ul, 100ul)] ulong gas)
+    {
+        int[] heads = [0, 1, 2, 15, 16, 17, 18, 29, 30, 31, 100, 234, 235, 236, 1023, 1024];
+        List<string> mismatches = [];
+        for (int immediate = -1; immediate < 256 && mismatches.Count < 5; immediate++)
+        {
+            byte[][] programs = immediate < 0
+                ? [[(byte)op]]
+                : [[(byte)op, (byte)immediate, (byte)Instruction.STOP],
+                    [(byte)op, (byte)immediate, (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE, (byte)Instruction.STOP]];
+            foreach (byte[] code in programs)
+                foreach (int head in heads)
+                {
+                    Outcome untraced = Run(gas, [], head, new CodeInfo(code), Table.Untraced, spec);
+                    Outcome traced = Run(gas, [], head, new CodeInfo(code), Table.Traced, spec);
+                    if (!Matches(untraced, traced))
+                        mismatches.Add($"code {Convert.ToHexString(code)} head {head}\n untraced {untraced}\n traced   {traced}");
+                }
+        }
+
+        Assert.That(mismatches, Is.Empty);
+    }
+
     /// Indices inside the list, at its end, past it and past a native word, with no list, an empty one, several hashes
     /// and a hash shorter than a word, and every amount of gas up to the program's need, against the shared handler;
     /// the hash is stored to memory. On an empty stack BLOBHASH underflows.
@@ -1180,6 +1211,11 @@ public class GuestDispatchDifferentialTests
     [Test]
     public void Guest_call_handlers_are_installed([ValueSource(nameof(StorageLoadForks))] IReleaseSpec spec) =>
         Assert.That(VirtualMachine<EthereumGasPolicy>.CallsThroughGuestHandlerForTests(spec), Is.True);
+
+    /// <remarks>The guest handlers fall back to the shared ones, so only the table shows that they are installed.</remarks>
+    [Test]
+    public void Guest_eip8024_stack_handlers_are_installed_from_eip8024([ValueSource(nameof(StorageLoadForks))] IReleaseSpec spec) =>
+        Assert.That(VirtualMachine<EthereumGasPolicy>.RunsEip8024StackOpsThroughGuestHandlersForTests(spec), Is.EqualTo(spec.IsEip8024Enabled));
 
     /// <remarks>
     /// Every amount of gas up to the program's need puts the end of the gas inside each charge. In a static frame the
@@ -1658,7 +1694,7 @@ public class GuestDispatchDifferentialTests
                 case 1: stackBytes[at + 8] = 1; break;
                 case 2: break;
                 default:
-                    stackBytes[at] = (byte)values.Next(256);
+                    stackBytes[at] = stackBytes[at + 16] = (byte)values.Next(256);
                     stackBytes[at + 1] = (byte)(values.Next(3) == 0 ? values.Next(0, 5) : 0);
                     break;
             }

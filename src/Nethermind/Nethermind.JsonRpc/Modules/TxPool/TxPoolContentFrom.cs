@@ -11,20 +11,13 @@ namespace Nethermind.JsonRpc.Modules.TxPool;
 
 /// <summary>Response model for <c>txpool_contentFrom</c>: the pending and queued transactions of a single address.</summary>
 /// <remarks>Keyed by decimal nonce, except EIP-8250 keyed transactions, which use the tx hash because several share one sequence.</remarks>
-public class TxPoolContentFrom
+public class TxPoolContentFrom(TxPoolSenderInfo info, TransactionForRpcContext extraData)
 {
-    public TxPoolContentFrom(TxPoolSenderInfo info, ulong chainId)
-    {
-        TransactionForRpcContext extraData = new(chainId);
-        Pending = MapTransactions(info.Pending, extraData);
-        Queued = MapTransactions(info.Queued, extraData);
-    }
-
     /// <summary>Transactions ready for inclusion in the next block.</summary>
-    public Dictionary<TxPoolTxKey, TransactionForRpc> Pending { get; }
+    public Dictionary<TxPoolTxKey, TransactionForRpc> Pending { get; } = MapTransactions(info.Pending, extraData);
 
     /// <summary>Transactions with nonce gaps awaiting preceding transactions.</summary>
-    public Dictionary<TxPoolTxKey, TransactionForRpc> Queued { get; }
+    public Dictionary<TxPoolTxKey, TransactionForRpc> Queued { get; } = MapTransactions(info.Queued, extraData);
 
     private static Dictionary<TxPoolTxKey, TransactionForRpc> MapTransactions(
         IDictionary<TxPoolTxKey, Transaction> source,

@@ -158,6 +158,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         lookup[(int)Instruction.CALLVALUE] = AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.CallValueWord>);
         lookup[(int)Instruction.GASPRICE] = AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.GasPriceWord>);
         lookup[(int)Instruction.KECCAK256] = AsTableEntry(&RawCalliHelper.ExecuteKeccak256OfActiveMemory);
+        if (spec.IsEip8024Enabled)
+        {
+            lookup[(int)Instruction.DUPN] = AsTableEntry(&RawCalliHelper.ExecuteDupN);
+            lookup[(int)Instruction.SWAPN] = AsTableEntry(&RawCalliHelper.ExecuteSwapN);
+            lookup[(int)Instruction.EXCHANGE] = AsTableEntry(&RawCalliHelper.ExecuteExchange);
+        }
         if (spec.IsEip4844Enabled)
             lookup[(int)Instruction.BLOBHASH] = AsTableEntry(&RawCalliHelper.ExecuteBlobHash);
         lookup[(int)Instruction.ADD] = AsTableEntry(&RawCalliHelper.ExecuteBinary<RawCalliHelper.AddOperation>);
@@ -1807,6 +1813,114 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
             nint shared = Entry(&ExecuteOpcode<SwapOpcode<TOpCount, OffFlag>, OffFlag, OffFlag, OnFlag>);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
+        }
+
+        /// <summary>DUPN (EIP-8024), with the depth decoded from its immediate.</summary>
+        /// <remarks>
+        /// The immediate past the end of the code reads the padding's zero, as EIP-8024 has it. An invalid immediate, a
+        /// short stack or a full one runs the shared DUPN handler instead, which faults on it.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteDupN(
+            ref EvmStack stack,
+            nuint gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte sp)
+        {
+            byte immediate = Unsafe.Add(ref ip, 1);
+            nint depth = (immediate + 145) & 0xFF;
+            if (EvmInstructions.IsValidEip8024SingleImmediate(immediate) && head >= depth && head < EvmStack.MaxStackSize - 1
+                && ChargeUntested(ref gas, VeryLowGasCost.GasCost))
+            {
+                CopyWord(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, depth)), ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)));
+                head++;
+                sp = ref Moved(ref sp, 1);
+                ip = ref Unsafe.Add(ref ip, 2);
+                nint next = NextHandler(handlers, ref ip);
+                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+            }
+
+            nint shared = Entry(&ExecuteOpcode<DupNOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
+        }
+
+        /// <summary>SWAPN (EIP-8024), with the depth decoded from its immediate.</summary>
+        /// <remarks>An invalid immediate or a short stack runs the shared SWAPN handler instead, which faults on it.</remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteSwapN(
+            ref EvmStack stack,
+            nuint gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte sp)
+        {
+            byte immediate = Unsafe.Add(ref ip, 1);
+            // The top word swaps with the one the decoded depth names below it.
+            nint depth = ((immediate + 145) & 0xFF) + 1;
+            if (EvmInstructions.IsValidEip8024SingleImmediate(immediate) && head >= depth && ChargeUntested(ref gas, VeryLowGasCost.GasCost))
+            {
+                SwapWords(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), 1, depth);
+                ip = ref Unsafe.Add(ref ip, 2);
+                nint next = NextHandler(handlers, ref ip);
+                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+            }
+
+            nint shared = Entry(&ExecuteOpcode<SwapNOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
+        }
+
+        /// <summary>EXCHANGE (EIP-8024), with the pair of depths decoded from its immediate.</summary>
+        /// <remarks>An invalid immediate or a short stack runs the shared EXCHANGE handler instead, which faults on it.</remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteExchange(
+            ref EvmStack stack,
+            nuint gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte sp)
+        {
+            byte immediate = Unsafe.Add(ref ip, 1);
+            // As EvmInstructions decodes it, both depths counted from 1 at the top.
+            int k = immediate ^ 0x8F;
+            int q = k >> 4;
+            int r = k & 0x0F;
+            nint first = q < r ? q + 2 : r + 2;
+            nint second = q < r ? r + 2 : 30 - q;
+            if (EvmInstructions.IsValidEip8024PairImmediate(immediate) && head >= second && ChargeUntested(ref gas, VeryLowGasCost.GasCost))
+            {
+                SwapWords(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), first, second);
+                ip = ref Unsafe.Add(ref ip, 2);
+                nint next = NextHandler(handlers, ref ip);
+                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+            }
+
+            nint shared = Entry(&ExecuteOpcode<ExchangeOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
+        }
+
+        /// <summary>Exchanges the words <paramref name="first"/> and <paramref name="second"/> below <paramref name="end"/>, the slot above the top word.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void SwapWords(ref ulong end, nint first, nint second)
+        {
+            nint top = -first * LimbsPerWord;
+            nint bottom = -second * LimbsPerWord;
+            SwapLimbs(ref end, top, bottom);
+            SwapLimbs(ref end, top + 1, bottom + 1);
+            SwapLimbs(ref end, top + 2, bottom + 2);
+            SwapLimbs(ref end, top + 3, bottom + 3);
         }
 
         /// <summary>Exchanges the limbs at <paramref name="top"/> and <paramref name="bottom"/> limbs from <paramref name="end"/>.</summary>

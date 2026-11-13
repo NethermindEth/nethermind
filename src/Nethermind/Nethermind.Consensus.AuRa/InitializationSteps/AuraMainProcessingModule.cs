@@ -11,6 +11,7 @@ using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
@@ -37,7 +38,8 @@ public class AuraMainProcessingModule(
                 receiptStorage,
                 api.ValidatorStore,
                 finalizationManager,
-                new TxPoolSender(api.TxPool, new TxSealer(api.EngineSigner, api.Timestamper), api.NonceManager, api.EthereumEcdsa),
+                new TxPoolSender(api.TxPool, new TxSealer(api.EngineSigner, api.Timestamper), api.NonceManager, api.EthereumEcdsa,
+                    api.Context.Resolve<IChainHeadSpecProvider>()),
                 api.TxPool,
                 api.Config<IBlocksConfig>(),
                 api.LogManager,

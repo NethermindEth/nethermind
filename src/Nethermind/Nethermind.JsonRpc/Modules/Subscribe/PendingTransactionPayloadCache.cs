@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Json;
 
@@ -22,13 +24,13 @@ namespace Nethermind.JsonRpc.Modules.Subscribe;
 /// a subscriber that reads it exists, and is replaced by an empty one when the last one leaves, so a send loop that
 /// read the old one before that and stores into it after does not keep its entry.
 /// </remarks>
-internal sealed class PendingTransactionPayloadCache(ISpecProvider specProvider)
+internal sealed class PendingTransactionPayloadCache(ISpecProvider specProvider, IBlockFinder blockFinder, ulong secondsPerSlot)
 {
     private const int Size = 256;
-    private AssociativeCache<ValueHash256, byte[]> _payloads = new(Size);
+    private AssociativeCache<ValueHash256, Entry> _payloads = new(Size);
     private int _subscribers;
 
-    internal AssociativeCache<ValueHash256, byte[]> Generation => Volatile.Read(ref _payloads);
+    internal AssociativeCache<ValueHash256, Entry> Generation => Volatile.Read(ref _payloads);
 
     public void AddSubscriber() => Interlocked.Increment(ref _subscribers);
 
@@ -39,19 +41,22 @@ internal sealed class PendingTransactionPayloadCache(ISpecProvider specProvider)
 
     public SerializedJson Get(Transaction transaction)
     {
+        TransactionForRpcContext context = TransactionForRpcContext.ForPending(specProvider, blockFinder.Head?.Header, secondsPerSlot);
         Hash256? hash = transaction.Hash;
-        if (hash is null) return Serialize(transaction);
+        if (hash is null) return Serialize(transaction, context);
 
         // Read before the subscriber count: a last unsubscribe after this replaces it, so a late store is dropped with it.
-        AssociativeCache<ValueHash256, byte[]> payloads = Generation;
-        if (payloads.TryGet(hash.ValueHash256, out byte[]? cached) && cached is not null) return new SerializedJson(cached);
+        AssociativeCache<ValueHash256, Entry> payloads = Generation;
+        if (payloads.TryGet(hash.ValueHash256, out Entry? cached) && cached is not null && ReferenceEquals(cached.Spec, context.Spec)) return new SerializedJson(cached.Utf8Json);
 
-        SerializedJson json = Serialize(transaction);
+        SerializedJson json = Serialize(transaction, context);
         // A queue still draining after its subscriber left must not refill a cache nobody clears.
-        if (Volatile.Read(ref _subscribers) > 0) payloads.Set(hash.ValueHash256, json.Utf8Json);
+        if (Volatile.Read(ref _subscribers) > 0) payloads.Set(hash.ValueHash256, new Entry(context.Spec, json.Utf8Json));
         return json;
     }
 
-    private SerializedJson Serialize(Transaction transaction) =>
-        new(JsonRpcResponseWriter.SerializePayload(TransactionForRpc.FromTransaction(transaction, new(specProvider.ChainId)), EthereumJsonSerializer.JsonOptions));
+    private static SerializedJson Serialize(Transaction transaction, TransactionForRpcContext context) =>
+        new(JsonRpcResponseWriter.SerializePayload(TransactionForRpc.FromTransaction(transaction, context), EthereumJsonSerializer.JsonOptions));
+
+    internal sealed record Entry(IReleaseSpec? Spec, byte[] Utf8Json);
 }
