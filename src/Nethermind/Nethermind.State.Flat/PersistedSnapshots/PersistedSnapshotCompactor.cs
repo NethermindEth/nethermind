@@ -299,8 +299,9 @@ public class PersistedSnapshotCompactor(
     /// Compact the persisted snapshots ending at <paramref name="snapshotTo"/> over the block's
     /// natural power-of-2 window. Produces sub-<c>CompactSize</c> intermediates and the
     /// <c>&gt;CompactSize</c> merges; the <c>CompactSize</c>-wide window is
-    /// reserved for <see cref="DoCompactCompactSized"/>. Invoked by the background batch worker
-    /// (see <see cref="EnqueueAsync"/>); not part of <see cref="IPersistedSnapshotCompactor"/>.
+    /// reserved for <see cref="DoCompactCompactSized"/>. The boundary workers invoke it for the
+    /// <c>&gt;CompactSize</c> merges (see <see cref="EnqueueAsync"/>); <see cref="CompactWindows"/> runs the
+    /// sub-<c>CompactSize</c> windows through the same path. Not part of <see cref="IPersistedSnapshotCompactor"/>.
     /// </summary>
     /// <remarks>
     /// Does nothing when the block's window is a single snapshot (nothing to merge). The
@@ -337,7 +338,8 @@ public class PersistedSnapshotCompactor(
     /// <summary>
     /// Produce the <c>CompactSize</c>-wide snapshot ending at the boundary
     /// block <paramref name="snapshotTo"/> — the snapshot <c>PersistenceManager</c> writes to
-    /// RocksDB. Invoked by the background batch worker (see <see cref="EnqueueAsync"/>); not part of
+    /// RocksDB. <see cref="CompactWindows"/> makes it through the same path for the batch worker
+    /// (see <see cref="EnqueueAsync"/>) and the start pass; this entry point is not part of
     /// <see cref="IPersistedSnapshotCompactor"/>.
     /// </summary>
     public void DoCompactCompactSized(StateId snapshotTo) => TryCompactCompactSized(snapshotTo);
