@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Benchmark;
 
-// UInt256.Exp as the EXP handler calls it: the handler answers a zero exponent and bases 0 and 1 itself, so no shape
+// UInt256.Exp as the EXP handler calls it, with the result copied to its slot as one 32-byte word: the handler answers a zero exponent and bases 0 and 1 itself, so no shape
 // holds them. Base and head differ only by the referenced Int256 package.
 [MemoryDiagnoser]
 public unsafe class Int256ExpAbBenchmarks
@@ -17,6 +18,7 @@ public unsafe class Int256ExpAbBenchmarks
 
     private UInt256* _b;
     private UInt256* _e;
+    private UInt256* _out;
 
     // MainnetMix: bases and exponents drawn with the weights seen on mainnet blocks (powers of two, ten, rare others).
     // Pow2Mixed / Pow2Fixed: bases 2^8 and 2^1 with mixed exponents, or 2^8 with exponent 20 only.
@@ -33,6 +35,7 @@ public unsafe class Int256ExpAbBenchmarks
         Random random = new(0xE7E7);
         _b = (UInt256*)NativeMemory.AlignedAlloc((nuint)(Count * sizeof(UInt256)), 64);
         _e = (UInt256*)NativeMemory.AlignedAlloc((nuint)(Count * sizeof(UInt256)), 64);
+        _out = (UInt256*)NativeMemory.AlignedAlloc((nuint)(Count * sizeof(UInt256)), 64);
         for (int i = 0; i < Count; i++)
         {
             (UInt256 b, UInt256 e) = Shape switch
@@ -64,18 +67,20 @@ public unsafe class Int256ExpAbBenchmarks
     {
         NativeMemory.AlignedFree(_b);
         NativeMemory.AlignedFree(_e);
+        NativeMemory.AlignedFree(_out);
     }
 
     [Benchmark(OperationsPerInvoke = Count)]
-    public ulong Exp()
+    public void Exp()
     {
-        ulong acc = 0;
-        for (int i = 0; i < Count; i++)
-        {
-            UInt256.Exp(in _b[i], in _e[i], out UInt256 r);
-            acc ^= r.u0 ^ r.u3;
-        }
-        return acc;
+        for (int i = 0; i < Count; i++) Exp(in _b[i], in _e[i], ref _out[i]);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void Exp(in UInt256 b, in UInt256 e, ref UInt256 slot)
+    {
+        UInt256.Exp(in b, in e, out UInt256 result);
+        Unsafe.WriteUnaligned(ref Unsafe.As<UInt256, byte>(ref slot), result);
     }
 
     private static (UInt256, UInt256) Mainnet(Random random)
