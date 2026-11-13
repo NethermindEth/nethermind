@@ -46,7 +46,7 @@ public class NativeLeanProofVerifierTests
         NativeLeanProofVerifier.Instance.EnsureAvailable();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(14u));
+            Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(15u));
             Assert.That(NativeLeanProofVerifier.AggregatedVerificationKey, Is.EqualTo(Eip8288Constants.AggregatedVk.ToArray()));
         }
     }
@@ -143,14 +143,14 @@ public class NativeLeanProofVerifierTests
     public void Two_maximum_child_proofs_fit_the_aggregation_input_budget()
     {
         RecursiveProofInput child = new([Dependency("sphincs")], new byte[Eip8288Constants.MaxAggregateProofBytes]);
-        byte[] encoded = NativeLeanProofVerifier.SerializeInput(new() { RecursiveProofs = [child, child] });
+        byte[] encoded = NativeLeanProofVerifier.SerializeInput(new() { RecursiveProofs = [child, child] }, batchedGuest: false);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(encoded.Length, Is.GreaterThan(2 * Eip8288Constants.MaxAggregateProofBytes));
             Assert.That(encoded.Length, Is.LessThanOrEqualTo(Eip8288Constants.MaxAggregationInputBytes));
         }
         // Fifteen maximum-sized children, still below the native child count, pass the input byte budget.
-        Assert.Throws<ArgumentException>(() => NativeLeanProofVerifier.SerializeInput(new() { RecursiveProofs = [.. Enumerable.Repeat(child, 15)] }));
+        Assert.Throws<ArgumentException>(() => NativeLeanProofVerifier.SerializeInput(new() { RecursiveProofs = [.. Enumerable.Repeat(child, 15)] }, batchedGuest: false));
     }
 
     [Test]

@@ -150,7 +150,7 @@ namespace Nethermind.Consensus.Processing
                     if (missing.Count != 0 && !budget.TryUseInclusionList(producing?.InclusionListProofInput, missing, out candidateInput)
                         && (leanProofStore is null || !leanProofStore.TryGetInput(missing, out candidateInput)))
                         return args.Set(TxAction.Skip, "Missing verified dependency witnesses");
-                    if (!budget.TryPrepare(candidateInput, required, out AggregationInput contribution, out string? proofError))
+                    if (!budget.TryPrepare(candidateInput, required, spec.IsEipBatchedDependencyPricingEnabled, out AggregationInput contribution, out string? proofError))
                         return args.Set(TxAction.Skip, proofError!);
                     args.LeanProofInput = contribution;
                     args.LeanDependencies = required;

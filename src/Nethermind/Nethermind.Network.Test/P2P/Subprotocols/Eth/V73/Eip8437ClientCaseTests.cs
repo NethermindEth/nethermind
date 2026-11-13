@@ -123,9 +123,11 @@ public class Eip8437ClientCaseTests
     }
 
     // Discard a wrapper failing proof or dependency validation without penalizing its sender; malformed transport or
-    // mismatched announced hashes remain penalizable (see ProofWrapperTransportTests for the verifier change).
+    // mismatched announced hashes remain penalizable (see ProofWrapperTransportTests for the verifier change). A mode-1 wrapper
+    // over more leanSTARK dependencies than the pinned guest's lists hold is refused locally, also without penalty.
     [TestCase("proof", false)]
     [TestCase("dependency union", false)]
+    [TestCase("leanSTARK over the local bound", false)]
     [TestCase("announced hash", true)]
     public async Task Proof_and_dependency_failures_are_discarded_without_penalty(string scenario, bool penalized)
     {
@@ -133,6 +135,8 @@ public class Eip8437ClientCaseTests
         byte[] wrapper = scenario switch
         {
             "dependency union" => MismatchedUnion(a, b),
+            "leanSTARK over the local bound" => Wrapper(64, [.. Enumerable.Range(1, Eip8288Constants.MaxGenericStarkProofs + 1)
+                .Select(static i => FrameTransaction(i, Eip8288Constants.LeanStarkScheme))]),
             _ => Wrapper(64, a, b)
         };
         using WrapperTestNode node = new();

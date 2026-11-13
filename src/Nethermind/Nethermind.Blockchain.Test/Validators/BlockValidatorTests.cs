@@ -340,10 +340,11 @@ public class BlockValidatorTests
         return depTx;
     }
 
-    private static BlockValidator CreateEip8288Validator(ILeanProofVerifier verifier, bool enabled = true)
+    private static BlockValidator CreateEip8288Validator(ILeanProofVerifier verifier, bool enabled = true, bool batchPricing = false)
     {
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
         spec.IsEip8288Enabled.Returns(enabled);
+        spec.IsEipBatchedDependencyPricingEnabled.Returns(batchPricing);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
         return new BlockValidator(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance, verifier);
@@ -351,13 +352,16 @@ public class BlockValidatorTests
 
     // ethereum/EIPs#12664 Test Case: a block with a batch claim or leaf payment is verified against get_batch_final_hash of its
     // block_deps_hash, which stays the plain digest; a plain proof is rejected there, and other blocks keep the plain statement.
-    [TestCase(Eip8288Constants.LeanStarkScheme, false, true)]
-    [TestCase(Eip8288Constants.LeanStarkScheme, true, false)]
-    [TestCase(Eip8288Constants.BatchedLeanStarkScheme, true, true)]
-    [TestCase(Eip8288Constants.BatchedLeanStarkScheme, false, false)]
-    [TestCase(Eip8288Constants.LeanStarkLeafPaymentScheme, true, true)]
-    [TestCase(Eip8288Constants.LeanStarkLeafPaymentScheme, false, false)]
-    public void Eip8288_batch_blocks_verify_the_finalized_statement(byte scheme, bool finalizedProof, bool valid)
+    // Without batch pricing every block keeps EIP-8288's plain statement.
+    [TestCase(Eip8288Constants.LeanStarkScheme, false, true, true)]
+    [TestCase(Eip8288Constants.LeanStarkScheme, true, true, false)]
+    [TestCase(Eip8288Constants.BatchedLeanStarkScheme, true, true, true)]
+    [TestCase(Eip8288Constants.BatchedLeanStarkScheme, false, true, false)]
+    [TestCase(Eip8288Constants.LeanStarkLeafPaymentScheme, true, true, true)]
+    [TestCase(Eip8288Constants.LeanStarkLeafPaymentScheme, false, true, false)]
+    [TestCase(Eip8288Constants.BatchedLeanStarkScheme, false, false, true)]
+    [TestCase(Eip8288Constants.BatchedLeanStarkScheme, true, false, false)]
+    public void Eip8288_batch_blocks_verify_the_finalized_statement(byte scheme, bool finalizedProof, bool batchPricing, bool valid)
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         FrameDependency dependency = new(scheme, ValueKeccak.Compute("claim"), ValueKeccak.Compute("key"));
@@ -375,7 +379,7 @@ public class BlockValidatorTests
         block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), new Hash256(depsHash));
         StatementLeanProofVerifier verifier = new(finalizedProof ? Eip8288Dependencies.BatchFinalHash(depsHash) : depsHash);
 
-        bool result = CreateEip8288Validator(verifier).ValidateSuggestedBlock(block, parent, out string? error);
+        bool result = CreateEip8288Validator(verifier, batchPricing: batchPricing).ValidateSuggestedBlock(block, parent, out string? error);
 
         Assert.That(result, Is.EqualTo(valid), error);
     }

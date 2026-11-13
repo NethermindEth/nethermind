@@ -158,7 +158,7 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
         foreach (RecursiveProofInput parent in input.RecursiveProofs)
             if (parent.InnerDeps is null || parent.InnerDeps.Count > Eip8288Constants.MaxProofDependencies)
                 throw new ArgumentException("Invalid recursive aggregation input.", nameof(input));
-        if (RecursiveStarkAggregator.InputSize(input) > Eip8288Constants.MaxAggregationInputBytes)
+        if (RecursiveStarkAggregator.InputSize(input, aggregatedVk.SequenceEqual(Eip8288Constants.BatchedAggregatedVk)) > Eip8288Constants.MaxAggregationInputBytes)
             throw new ArgumentException("Aggregation input exceeds the proving bound.", nameof(input));
         input = Snapshot(input);
         byte[] keyBytes = aggregatedVk.ToArray();

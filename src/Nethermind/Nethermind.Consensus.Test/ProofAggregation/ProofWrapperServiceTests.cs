@@ -257,7 +257,8 @@ public class ProofWrapperServiceTests
     [TestCase("transaction limit", ProofWrapperAcceptanceStatus.Invalid)]
     [TestCase("wide", ProofWrapperAcceptanceStatus.Accepted)]
     [TestCase("wider than the circuit bound", ProofWrapperAcceptanceStatus.Invalid)]
-    [TestCase("leanstark across transactions", ProofWrapperAcceptanceStatus.Accepted)]
+    [TestCase("leanstark within the circuit bound", ProofWrapperAcceptanceStatus.Accepted)]
+    [TestCase("leanstark wider than the circuit bound", ProofWrapperAcceptanceStatus.Invalid)]
     [TestCase("reference", ProofWrapperAcceptanceStatus.Malformed)]
     [TestCase("order", ProofWrapperAcceptanceStatus.Malformed)]
     public async Task Proof_and_dependency_failures_are_invalid_and_encoding_failures_malformed(string scenario, ProofWrapperAcceptanceStatus expected)
@@ -270,8 +271,9 @@ public class ProofWrapperServiceTests
             "transaction limit" => (1, static _ => Eip8288Constants.MaxSigsPerTx + 1),
             "wider than the circuit bound" => (Eip8288Constants.MaxProofDependencies / Eip8288Constants.MaxSigsPerTx + 1,
                 static _ => Eip8288Constants.MaxSigsPerTx),
-            // EIP-8288 Test Case 12: mode 1 may cover leanSTARK claims from more transactions than one step has inner proofs.
-            "leanstark across transactions" => (Eip8288Constants.MaxInnerProofsPerStep + 1, static _ => Eip8288Constants.MaxStarksPerTx),
+            // The pinned guest holds at most MaxGenericStarkProofs leanSTARK dependencies per list.
+            "leanstark within the circuit bound" => (Eip8288Constants.MaxGenericStarkProofs, static _ => Eip8288Constants.MaxStarksPerTx),
+            "leanstark wider than the circuit bound" => (Eip8288Constants.MaxGenericStarkProofs + 1, static _ => Eip8288Constants.MaxStarksPerTx),
             "unsorted" => (1, static _ => 2),
             _ => (1, (Func<int, int>)(static _ => 1))
         };
@@ -890,8 +892,8 @@ public class ProofWrapperServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(store.TryGetInput(dependencies, out AggregationInput input), Is.True);
-            Assert.That(RecursiveStarkAggregator.InputSize(input), Is.GreaterThan(proof.Length));
-            Assert.That(RecursiveStarkAggregator.InputSize(input), Is.LessThan(Eip8288Constants.MaxAggregationInputBytes));
+            Assert.That(RecursiveStarkAggregator.InputSize(input, batchedGuest: false), Is.GreaterThan(proof.Length));
+            Assert.That(RecursiveStarkAggregator.InputSize(input, batchedGuest: false), Is.LessThan(Eip8288Constants.MaxAggregationInputBytes));
         }
 
         Result<byte[]> result = service.BuildWrapper();

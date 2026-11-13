@@ -17,21 +17,48 @@ namespace Nethermind.Core.Test;
 public class FrameDependencyTests
 {
     [Test]
-    public void Child_serialization_requires_empty_proof_exactly_for_empty_dependencies([Values] bool emptyDependencies, [Values] bool emptyProof)
+    public void Child_serialization_requires_empty_proof_exactly_for_empty_dependencies([Values] bool emptyDependencies, [Values] bool emptyProof,
+        [Values] bool batchedGuest)
     {
         RecursiveProofInput child = new(emptyDependencies ? [] : [new FrameDependency(Eip8288Constants.LeanSphincsScheme, default, default)],
             emptyProof ? [] : [1]);
         AggregationInput input = new() { RecursiveProofs = [child] };
 
         if (emptyDependencies == emptyProof)
-            Assert.DoesNotThrow(() => NativeLeanProofVerifier.SerializeInput(input));
+            Assert.DoesNotThrow(() => NativeLeanProofVerifier.SerializeInput(input, batchedGuest));
         else
-            Assert.Throws<ArgumentException>(() => NativeLeanProofVerifier.SerializeInput(input));
+            Assert.Throws<ArgumentException>(() => NativeLeanProofVerifier.SerializeInput(input, batchedGuest));
     }
 
-    // The size pre-check must count the encoding exactly, the 192-byte child and discard records and batch leaves included.
-    [Test]
-    public void Aggregation_input_size_matches_its_encoding([Values] bool withBatchLeaf)
+    // EIP-8288's guest keeps the ABI 12 input: 96-byte child and discard dependencies, up to 16 children and no batch leaves.
+    [TestCase(Eip8288Constants.BaseMaxRecursiveInputs, false, true)]
+    [TestCase(Eip8288Constants.BaseMaxRecursiveInputs + 1, false, false)]
+    [TestCase(Eip8288Constants.BaseMaxRecursiveInputs, true, false)]
+    public void Base_guest_input_keeps_its_bounds_and_encoding(int children, bool withBatchLeaf, bool accepted)
+    {
+        FrameDependency stark = new(Eip8288Constants.LeanStarkScheme, TestItem.KeccakC.ValueHash256, TestItem.KeccakD.ValueHash256);
+        AggregationInput input = new()
+        {
+            RecursiveProofs = [.. Enumerable.Repeat(new RecursiveProofInput([stark], new byte[3]), children)],
+            Discards = [stark],
+            BatchLeaves = withBatchLeaf ? [new(stark.VerificationKey, [stark.DataHash], [stark], new byte[5])] : [],
+        };
+
+        if (!accepted)
+        {
+            Assert.Throws<ArgumentException>(() => NativeLeanProofVerifier.SerializeInput(input, batchedGuest: false));
+            return;
+        }
+        // Counts, then per child its dependency, proof length and proof, then the discards.
+        const int triple = Eip8288Constants.DependencyTripleLength;
+        Assert.That(NativeLeanProofVerifier.SerializeInput(input, batchedGuest: false), Has.Length.EqualTo(12 + children * (8 + triple + 3) + triple));
+    }
+
+    // The size pre-check must count the encoding exactly, the batch-pricing guest's 192-byte records and batch leaves included.
+    [TestCase(false, false)]
+    [TestCase(true, false)]
+    [TestCase(true, true)]
+    public void Aggregation_input_size_matches_its_encoding(bool batchedGuest, bool withBatchLeaf)
     {
         FrameDependency sphincs = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256);
         FrameDependency stark = new(Eip8288Constants.LeanStarkScheme, TestItem.KeccakC.ValueHash256, TestItem.KeccakD.ValueHash256);
@@ -45,7 +72,7 @@ public class FrameDependencyTests
             BatchLeaves = withBatchLeaf ? [new(TestItem.KeccakF.ValueHash256, [TestItem.KeccakE.ValueHash256], [claim], new byte[13])] : [],
         };
 
-        Assert.That(RecursiveStarkAggregator.InputSize(input), Is.EqualTo(NativeLeanProofVerifier.SerializeInput(input).Length));
+        Assert.That(RecursiveStarkAggregator.InputSize(input, batchedGuest), Is.EqualTo(NativeLeanProofVerifier.SerializeInput(input, batchedGuest).Length));
     }
 
     [Test]

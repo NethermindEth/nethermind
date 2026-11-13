@@ -141,8 +141,8 @@ public class NativeBatchLeafTests
             BatchLeaves = [leaf],
             RecursiveProofs = [.. Enumerable.Repeat(child, Eip8288Constants.MaxInnerProofsPerStep - 2 + extra)]
         };
-        if (accepted) Assert.That(NativeLeanProofVerifier.SerializeInput(input), Is.Not.Empty);
-        else Assert.Throws<ArgumentException>(() => NativeLeanProofVerifier.SerializeInput(input));
+        if (accepted) Assert.That(NativeLeanProofVerifier.SerializeInput(input, batchedGuest: true), Is.Not.Empty);
+        else Assert.Throws<ArgumentException>(() => NativeLeanProofVerifier.SerializeInput(input, batchedGuest: true));
     }
 
     private static Transaction DependentTransaction(int nonce, FrameDependency dependency)

@@ -144,7 +144,9 @@ public class BlockValidator(
             return false;
         }
 
-        ValueHash256 statement = Eip8288Dependencies.ProofStatement(dependencies, computed.ValueHash256);
+        ValueHash256 statement = spec.IsEipBatchedDependencyPricingEnabled
+            ? Eip8288Dependencies.ProofStatement(dependencies, computed.ValueHash256)
+            : computed.ValueHash256;
         if (!RecursiveStarkAggregator.VerifyStarkCheck(_leanProofVerifier, Eip8288Verifier.For(spec), dependencies.Count, in statement,
                 block.StarkProof))
         {

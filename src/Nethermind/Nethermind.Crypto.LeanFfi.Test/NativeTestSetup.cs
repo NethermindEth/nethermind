@@ -11,7 +11,7 @@ public sealed class NativeTestSetup
     [OneTimeSetUp]
     public void RequireNativeTestOptIn()
 #if NATIVE_LEAN_TESTS
-        => Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(14u));
+        => Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(15u));
 #else
         => Assert.Ignore("The native Lean packages ship Linux libraries only; this suite compiles elsewhere but does not run.");
 #endif

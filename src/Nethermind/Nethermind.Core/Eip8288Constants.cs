@@ -42,6 +42,16 @@ public static class Eip8288Constants
     /// fit a step's 2^30 committed-witness bound and 14 do not; 12 leaves room for the leanSPHINCS signatures a step may add.</remarks>
     public const int MaxInnerProofsPerStep = 12;
 
+    /// <summary>EIP-8288's guest (<see cref="AggregatedVk"/>): recursive proofs one aggregation step verifies.</summary>
+    public const int BaseMaxRecursiveInputs = 16;
+
+    /// <summary>Maximum leanSTARK dependencies in one dependency list of EIP-8288's guest (<see cref="AggregatedVk"/>), selected,
+    /// child and discard lists alike.</summary>
+    /// <remarks>Part of that circuit's limit like <see cref="MaxProofDependencies"/>: a statement over more is split or deferred by
+    /// the builder, a mode-1 wrapper proof over it is invalid, an inclusion-list proof over it imposes no obligation, and a block
+    /// over it is invalid here. The batch-pricing guest has no such per-list bound.</remarks>
+    public const int MaxGenericStarkProofs = 16;
+
     /// <summary>Maximum instructions of a leanSTARK program the pinned generic verifier accepts.</summary>
     /// <remarks>An EIP-8288 verifier resource bound counting the compiled program padded to a power of two, support code
     /// included. Like every leanSTARK resource bound, it applies to each leaf at direct admission and in aggregation, even
@@ -146,6 +156,6 @@ public static class Eip8288Constants
     /// <see cref="LeanStarkLeafPaymentScheme"/> payment, and finalizes them.</remarks>
     public static ReadOnlySpan<byte> BatchedAggregatedVk => _batchedAggregatedVk;
 
-    private static readonly byte[] _aggregatedVk = Convert.FromHexString("86110d71079c44fbae0561223e7201108097b80f34aea13a23e9b96be9b7adaa");
+    private static readonly byte[] _aggregatedVk = Convert.FromHexString("f7cf74585d02043051f0575c23c6b441b0b08ac9e273f5e989c5984b8a4ac0e5");
     private static readonly byte[] _batchedAggregatedVk = Convert.FromHexString("df3a802307fe9831311df1288864e5ab0e672b19a224f6b23a374fc873a69828");
 }

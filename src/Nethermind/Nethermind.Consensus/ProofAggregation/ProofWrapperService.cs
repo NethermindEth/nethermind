@@ -271,7 +271,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 return ProofWrapperAcceptance.Malformed($"Invalid proof wrapper RLP: {exception.Message}");
             }
             // EIP-8288: mode 1 is limited by the dependency list the AGGREGATED_VK circuit accepts, here the pinned guest's.
-            if (decoded.Mode == MempoolWrapper.ModeRecursive && !Eip8288Dependencies.FitsProofList(decoded.Deps))
+            if (decoded.Mode == MempoolWrapper.ModeRecursive && !Eip8288Dependencies.FitsProofList(decoded.Deps, admissionSpec.IsEipBatchedDependencyPricingEnabled))
                 return ProofWrapperAcceptance.Invalid(WiderThanCircuitBound, verifier);
             // EIP-8437 carries blob-carrying transactions with their blob data elided, so a wrapper submitted with full blobs is
             // relayed in that form; its blobs reach peers as EIP-8070 cells once the pool holds them.
@@ -909,7 +909,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             List<FrameDependency> union = [];
             for (int i = start; i < end; i++) union.AddRange(candidates[i].Deps);
             union = Eip8288Dependencies.Canonicalize(union);
-            if (!Eip8288Dependencies.FitsProofList(union) || !leanProofStore.TryGetInput(union, out AggregationInput input)
+            if (!Eip8288Dependencies.FitsProofList(union, floors.Spec?.IsEipBatchedDependencyPricingEnabled == true) || !leanProofStore.TryGetInput(union, out AggregationInput input)
                 || union.Count + input.Discards.Count > Eip8288Constants.MaxProofDependencies) return null;
             fits = end - start == 1 || ProvingCost(input, union, previousProof) <= MaxWrapperProvingCost;
             List<Transaction> transactions = new(end - start);

@@ -70,10 +70,12 @@ public static class RecursiveStarkAggregator
     }
 
     /// <summary>Measures the native aggregation-input encoding, including nested witnesses.</summary>
-    /// <remarks>A child's dependencies and the discards are 192-byte records, each a dependency and its batch-claim source.</remarks>
-    public static long InputSize(AggregationInput input)
+    /// <param name="input">The input.</param>
+    /// <param name="batchedGuest">Whether the batch-pricing guest takes it, whose children's dependencies and discards are 192-byte
+    /// records, each a dependency and its batch-claim source; EIP-8288's guest takes the 96-byte dependencies alone.</param>
+    public static long InputSize(AggregationInput input, bool batchedGuest)
     {
-        const int recordLength = 2 * Eip8288Constants.DependencyTripleLength;
+        int recordLength = batchedGuest ? 2 * Eip8288Constants.DependencyTripleLength : Eip8288Constants.DependencyTripleLength;
         long size = 12 + (long)input.Discards.Count * recordLength;
         foreach (ReadOnlyMemory<byte> witness in input.Witnesses) size += Eip8288Constants.DependencyTripleLength + 4 + witness.Length;
         foreach (RecursiveProofInput proof in input.RecursiveProofs)
@@ -176,6 +178,7 @@ public static class RecursiveStarkAggregator
         CancellationToken cancellationToken = default)
     {
         byte[] aggregatedVk = forkVerifier.AggregatedVk.ToByteArray();
+        bool batchedGuest = forkVerifier.AggregatedVk == Eip8288Verifier.BatchedAggregatedVk;
         cancellationToken.ThrowIfCancellationRequested();
         if (input.Deps.Count != input.Witnesses.Count) throw new ArgumentException("Witness count mismatch", nameof(input));
         // Batch leaves are private to their owner, who aggregates them through the verifier directly; this node-side fold never
@@ -201,7 +204,7 @@ public static class RecursiveStarkAggregator
         if (input.RecursiveProofs.Count <= MaxRecursiveChildren && input.Deps.Count <= DirectBatchSize
             && input.Discards.Count <= Eip8288Constants.MaxProofDependencies
             && (input.Deps.Count <= 1 || DirectInputSize(input.Witnesses) <= MaxProductionWitnessBytes)
-            && InputSize(input) <= Eip8288Constants.MaxAggregationInputBytes)
+            && InputSize(input, batchedGuest) <= Eip8288Constants.MaxAggregationInputBytes)
         {
             byte[] result = ProductionProofCache.Prove(verifier, in depsHash, aggregatedVk, input, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
@@ -256,7 +259,7 @@ public static class RecursiveStarkAggregator
             if (deps.Count != 0) children.Add(ProveChild(new() { Deps = deps, Witnesses = witnesses }, deps));
         }
         while (children.Count > MaxRecursiveChildren
-            || InputSize(new() { RecursiveProofs = children }) > Eip8288Constants.MaxAggregationInputBytes)
+            || InputSize(new() { RecursiveProofs = children }, batchedGuest) > Eip8288Constants.MaxAggregationInputBytes)
         {
             List<RecursiveProofInput> next = [];
             for (int offset = 0; offset < children.Count;)
