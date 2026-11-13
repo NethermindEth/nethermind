@@ -171,6 +171,20 @@ public class InclusionListValidatorTests
         }
     }
 
+    // EIP-8037: without the block's dimensions, a GasUsed at the limit may be state gas alone, so it does not prove the block full;
+    // the engine API's unknown-dimension evaluation then decides instead of an early "satisfied".
+    [TestCase(true, null, null, false, TestName = "Unknown dimensions never make an EIP-8037 block full")]
+    [TestCase(true, 30_000_000UL, 0UL, true, TestName = "Execution at the limit makes an EIP-8037 block full")]
+    [TestCase(true, 0UL, 30_000_000UL, false, TestName = "State at the limit leaves an EIP-8037 block appendable")]
+    [TestCase(false, null, null, true, TestName = "GasUsed at the limit makes a pre-EIP-8037 block full")]
+    public void Block_fullness_needs_the_execution_dimension(bool eip8037, ulong? execution, ulong? state, bool full)
+    {
+        Block block = Build.A.Block.WithGasLimit(30_000_000).WithGasUsed(30_000_000).TestObject;
+        block.Header.GasUsedPerDimension = execution is { } e ? (e, state!.Value) : null;
+        OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8037Enabled = eip8037 };
+        Assert.That(InclusionListValidator.IsBlockFull(block, spec), Is.EqualTo(full));
+    }
+
     // Judging a frame transaction by the Profile 1 rules would read the account nonce it does not use. The
     // well-formedness assertion keeps the case honest: without it the entry could pass for being malformed.
     [Test]
