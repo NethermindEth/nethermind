@@ -42,7 +42,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
         Block block,
         GethTraceOptions options,
         IFileSystem fileSystem,
-        IReleaseSpec spec) : base(options?.TxHash)
+        IReleaseSpec spec) : base(options?.TxHash == Hash256.Zero ? null : options?.TxHash) // As in Geth, a zero hash traces every transaction
     {
         _block = block ?? throw new ArgumentNullException(nameof(block));
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
@@ -71,7 +71,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
     {
         GethLikeTxTrace trace = txTracer.BuildResult();
 
-        DumpActionEnd(trace.ReturnValue, trace.Gas, null);
+        DumpActionEnd(trace.ReturnValue, trace.Gas, txTracer.TopLevelError);
 
         DisposeFileStreamIfAny();
 

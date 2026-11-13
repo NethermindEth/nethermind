@@ -3,6 +3,8 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Encoding;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Types;
@@ -25,12 +27,16 @@ public class SubnetSnapshotDecoderTests
     public void RoundTrip(SubnetSnapshot original) =>
         Assert.That(Decoder.Decode(Decoder.Encode(original).Bytes), Is.EqualTo(original).UsingXdcComparer());
 
+    [Test, TestCaseSource(nameof(Snapshots))]
+    public void Decodes_with_a_trailing_item(SubnetSnapshot original) =>
+        Assert.That(Decoder.Decode(RlpTestHelper.WithTrailingItem(Decoder.Encode(original).Bytes)), Is.EqualTo(original).UsingXdcComparer());
+
     [Test]
     public void Decode_throws_on_null_penalty()
     {
-        SubnetSnapshot snapshot = new(1, Keccak.EmptyTreeHash, [], [null!]);
-        Rlp rlp = Decoder.Encode(snapshot);
+        // The encoder refuses a null address, so the empty string is written by hand.
+        Rlp rlp = Rlp.Encode(Rlp.Encode(1UL), Rlp.Encode(Keccak.EmptyTreeHash), Rlp.OfEmptyList, Rlp.Encode(new[] { Rlp.OfEmptyByteArray }));
 
-        Assert.That(() => Decoder.Decode(rlp.Bytes), Throws.TypeOf<RlpException>());
+        Assert.That(() => Decoder.Decode(rlp.Bytes), Throws.TypeOf<RlpReaderException>());
     }
 }

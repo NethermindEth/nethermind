@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -99,7 +100,7 @@ public partial class ShardBlobTxDecoderTests
     public void Roundtrip_ExecutionPayloadForm_for_shard_blobs((Transaction Tx, string Description) testCase)
     {
         byte[] bytes = new byte[_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None)];
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
         _txDecoder.Encode(ref writer, testCase.Tx);
         RlpReader ctx = new(bytes);
         Transaction? decoded = _txDecoder.Decode(ref ctx);
@@ -120,14 +121,14 @@ public partial class ShardBlobTxDecoderTests
             RlpReader ctx = new(bytes);
             _txDecoder.Decode(ref ctx);
         };
-        Assert.That(tryDecode, Throws.TypeOf<RlpException>());
+        Assert.That(tryDecode, Throws.TypeOf<RlpReaderException>());
     }
 
     [TestCaseSource(nameof(TestCaseSource))]
     public void Roundtrip_RlpReader_ExecutionPayloadForm_for_shard_blobs((Transaction Tx, string Description) testCase)
     {
         byte[] bytes = new byte[_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None)];
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
         _txDecoder.Encode(ref writer, testCase.Tx);
 
         Span<byte> spanIncomingTxRlp = bytes.AsSpan();
@@ -158,7 +159,7 @@ public partial class ShardBlobTxDecoderTests
     public void Tampered_Roundtrip_ExecutionPayloadForm_for_shard_blobs(Transaction tx)
     {
         byte[] bytes = new byte[_txDecoder.GetLength(tx, RlpBehaviors.None)];
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
         _txDecoder.Encode(ref writer, tx);
         // Tamper with sequence length
         {
@@ -169,7 +170,7 @@ public partial class ShardBlobTxDecoderTests
             }
 
             // Position where it starts encoding `BlobVersionedHashes`
-            RlpWriter tamperingWriter = new(bytes.AsSpan(37));
+            RlpWriter tamperingWriter = RlpWriter.ContentWriter(bytes.AsSpan(37));
             // Accepts `itemsLength - 10` all the way to `itemsLength - 1`
             tamperingWriter.StartSequence(itemsLength - 1);
         }
@@ -180,7 +181,7 @@ public partial class ShardBlobTxDecoderTests
             RlpReader ctx = new(bytes);
             _txDecoder.Decode(ref ctx);
         };
-        Assert.That(tryDecode, Throws.TypeOf<RlpException>());
+        Assert.That(tryDecode, Throws.TypeOf<RlpReaderException>());
     }
 
     [TestCaseSource(nameof(OverLimitCollectionDecodeCases))]
@@ -194,7 +195,7 @@ public partial class ShardBlobTxDecoderTests
             _txDecoder.Decode(ref decoderContext, rlpBehaviors);
         }
 
-        Assert.That(DecodeByRlpReader, Throws.InstanceOf<RlpException>());
+        Assert.That(DecodeByRlpReader, Throws.InstanceOf<RlpReaderException>());
     }
 
     [Test]
@@ -239,7 +240,7 @@ public partial class ShardBlobTxDecoderTests
 
         Assert.That(
             () => _txDecoder.Encode(tx, rlpBehaviors),
-            Throws.TypeOf<RlpException>().With.Message.Contains(missingField));
+            Throws.TypeOf<RlpReaderException>().With.Message.Contains(missingField));
     }
 
     [Test]
@@ -256,7 +257,7 @@ public partial class ShardBlobTxDecoderTests
 
         Assert.That(
             () => _txDecoder.Encode(tx),
-            Throws.TypeOf<RlpException>().With.Message.Contains(nameof(Transaction.BlobVersionedHashes)));
+            Throws.TypeOf<RlpReaderException>().With.Message.Contains(nameof(Transaction.BlobVersionedHashes)));
     }
 
     [Test]
@@ -265,17 +266,17 @@ public partial class ShardBlobTxDecoderTests
         Transaction tx = BuildMempoolTransactionWithWrapperCounts(0, 1, 1, version);
         Rlp encoded = _txDecoder.Encode(tx, RlpBehaviors.InMempoolForm);
 
-        RlpReader wireReader = new(encoded.Bytes);
-        wireReader.ReadPrefixAndContentLength();
-        Assert.That(wireReader.ReadByte(), Is.EqualTo((byte)TxType.Blob));
-        wireReader.ReadSequenceLength();
+        RlpReader outer = new(encoded.Bytes);
+        ReadOnlySpan<byte> envelope = outer.ReadBytes();
+        Assert.That(envelope[0], Is.EqualTo((byte)TxType.Blob));
+        RlpReader wireReader = new RlpReader(envelope[1..]).EnterSequence(out _);
         wireReader.SkipItem();
         if (version is ProofVersion.V1)
         {
-            Assert.That(wireReader.ReadByte(), Is.EqualTo((byte)ProofVersion.V1));
+            Assert.That(wireReader.ReadRaw(1)[0], Is.EqualTo((byte)ProofVersion.V1));
         }
 
-        Assert.That(wireReader.ReadByte(), Is.EqualTo(Rlp.EmptyListByte));
+        Assert.That(wireReader.ReadRaw(1)[0], Is.EqualTo(Rlp.EmptyListByte));
 
         RlpReader decoderContext = new(encoded.Bytes);
         Transaction? decoded = _txDecoder.Decode(ref decoderContext, RlpBehaviors.InMempoolForm);
@@ -306,7 +307,7 @@ public partial class ShardBlobTxDecoderTests
         {
             RlpReader ctx = new(rlp);
             _txDecoder.Decode(ref ctx);
-        }, Throws.InstanceOf<RlpException>());
+        }, Throws.InstanceOf<RlpReaderException>());
     }
 
     [TestCaseSource(nameof(ShardBlobTxTests))]

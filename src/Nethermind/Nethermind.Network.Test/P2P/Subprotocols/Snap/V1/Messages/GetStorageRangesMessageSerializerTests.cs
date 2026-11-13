@@ -9,6 +9,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 using Nethermind.State.Snap;
@@ -116,7 +117,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             byte[] serialized = EncodeMessageWithNullHash(fieldName);
             GetStorageRangesMessageSerializer serializer = new();
 
-            Assert.That(() => serializer.Deserialize(serialized), Throws.InstanceOf<RlpException>());
+            Assert.That(() => serializer.Deserialize(serialized), Throws.InstanceOf<RlpReaderException>());
         }
 
         [Test]
@@ -158,7 +159,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
                 + Rlp.LengthOf(limitHash)
                 + Rlp.LengthOf(1000L);
             byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
-            RlpWriter writer = new(bytes);
+            RlpWriter writer = RlpWriter.ContentWriter(bytes);
             writer.StartSequence(contentLength);
             writer.Encode(1L);
             writer.Encode(rootHash);

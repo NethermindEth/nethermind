@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.EraE.Archive;
@@ -17,14 +18,11 @@ internal sealed class EraSlimReceiptDecoder
 
     public TxReceipt[] Decode(Memory<byte> buffer)
     {
-        RlpReader ctx = new(buffer.Span);
+        RlpReader ctx = new RlpReader(buffer.Span).EnterSequence(out _);
 
-        int outerLength = ctx.ReadSequenceLength();
-        int outerEnd = ctx.Position + outerLength;
         // The entry is decompressed without a size cap, so the count must be bounded by its own bytes.
-        int maxReceipts = Math.Min(ReceiptsRlpLimit.Limit, (outerEnd - ctx.Position) / MinSlimReceiptLength);
-        int count = ctx.PeekNumberOfItemsRemaining(outerEnd, maxReceipts + 1);
-        Rlp.GuardLimit(count, maxReceipts, ReceiptsRlpLimit);
+        int maxReceipts = Math.Min(ReceiptsRlpLimit.Limit, ctx.Remaining / MinSlimReceiptLength);
+        int count = ctx.CountItems(maxReceipts);
 
         TxReceipt[] receipts = new TxReceipt[count];
         for (int i = 0; i < count; i++)
@@ -32,22 +30,21 @@ internal sealed class EraSlimReceiptDecoder
             receipts[i] = DecodeSlimReceipt(ref ctx);
         }
 
-        if (ctx.Position != outerEnd)
-            throw new RlpException("Receipt list was not fully consumed.");
+        if (ctx.HasNext)
+            throw new RlpReaderException("Receipt list was not fully consumed.");
 
         return receipts;
     }
 
-    private static TxReceipt DecodeSlimReceipt(ref RlpReader ctx)
+    private static TxReceipt DecodeSlimReceipt(ref RlpReader reader)
     {
-        int sequenceLength = ctx.ReadSequenceLength();
-        int receiptEnd = ctx.Position + sequenceLength;
+        RlpReader ctx = reader.EnterSequence(out int receiptLength);
 
         TxReceipt receipt = new();
 
         byte[] txTypeBytes = ctx.DecodeByteArray();
         if (txTypeBytes.Length > 1)
-            throw new RlpException($"Invalid slim receipt tx_type length: {txTypeBytes.Length}");
+            throw new RlpReaderException($"Invalid slim receipt tx_type length: {txTypeBytes.Length}");
 
         receipt.TxType = txTypeBytes.Length == 0
             ? TxType.Legacy
@@ -69,24 +66,25 @@ internal sealed class EraSlimReceiptDecoder
                 break;
 
             default:
-                throw new RlpException(
+                throw new RlpReaderException(
                     $"Invalid slim receipt status encoding length: {statusBytes.Length}");
         }
 
         receipt.GasUsedTotal = ctx.DecodeULong();
 
-        int logsLength = ctx.ReadSequenceLength();
-        int logsEnd = ctx.Position + logsLength;
-        LogEntry[] logs = LogEntryDecoder.DecodeLogs(ref ctx, logsEnd);
+        RlpReader logsReader = ctx.EnterSequence(out int logsLength);
+        LogEntry[] logs = LogEntryDecoder.DecodeLogs(ref logsReader);
 
-        if (ctx.Position != logsEnd)
-            throw new RlpException("Slim receipt logs list was not fully consumed.");
+        if (logsReader.HasNext)
+            throw new RlpReaderException("Slim receipt logs list was not fully consumed.");
 
+        ctx.ExitSequence(logsReader, logsLength);
         receipt.Logs = logs;
 
-        if (ctx.Position != receiptEnd)
-            throw new RlpException("Slim receipt sequence was not fully consumed.");
+        if (ctx.HasNext)
+            throw new RlpReaderException("Slim receipt sequence was not fully consumed.");
 
+        reader.ExitSequence(ctx, receiptLength);
         return receipt;
     }
 }

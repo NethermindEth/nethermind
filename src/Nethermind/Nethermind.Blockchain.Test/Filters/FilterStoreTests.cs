@@ -233,4 +233,22 @@ public class FilterStoreTests
             Assert.That(removedFilterIds, Is.EquivalentTo(new[] { 0, 1, 2, 3 }));
         }
     }
+
+    [Test]
+    public void Cleanup_failure_restarts_timer()
+    {
+        ITimer timer = Substitute.For<ITimer>();
+        ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+        timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(timer);
+        using FilterStore store = new(timerFactory);
+        store.FilterRemoved += (_, _) => throw new InvalidOperationException();
+        BlockFilter filter = store.CreateBlockFilter();
+        store.SaveFilter(filter);
+        filter.LastUsed = DateTimeOffset.UtcNow.AddDays(-1);
+        timer.ClearReceivedCalls();
+
+        Assert.Throws<InvalidOperationException>(() => timer.Elapsed += Raise.Event());
+
+        timer.Received(1).Enabled = true;
+    }
 }
