@@ -209,8 +209,8 @@ public class PersistedSnapshotCompactor(
 
         // Ascending bucket order: each sub-CompactSize layer's inputs (the previous layer's
         // outputs) exist before it runs. Each item is guarded (like RunBoundaryCompactor) so one
-        // snapshot's failure does not abort the whole Parallel.ForEach and skip the CompactSized
-        // boundary production + enqueue below, which would silently stall the persisted tier.
+        // snapshot's failure does not abort the whole Parallel.ForEach: the rest of its layer, the
+        // later layers and the CompactSized boundaries below still run.
         int compacted = 0;
         // A read takes the CompactSized edge of every boundary, so the head reads only the windows above the last one.
         ulong lastBoundary = 0;
@@ -232,7 +232,8 @@ public class PersistedSnapshotCompactor(
         // Every boundary — CompactSize and large alike — lands on a CompactSize multiple, so each
         // needs its CompactSized snapshot for RocksDB (persistence advances one CompactSize
         // per step); both kinds are collected in compactSizeBoundaries above. Each is guarded like a
-        // bucket item, so one boundary's failure does not skip the later ones.
+        // bucket item, so one boundary's failure does not skip the later ones; that boundary's chunk is then
+        // read and persisted through the narrower windows, which make reads slower (more of them, one-line filters).
         foreach (StateId boundary in compactSizeBoundaries)
         {
             // The merge does not observe the token, so a stop is seen here, outside the guard that would swallow it.
@@ -247,7 +248,8 @@ public class PersistedSnapshotCompactor(
                 continue;
             }
 
-            // On to the >CompactSize merge only once its CompactSized step has not failed, as RunBoundaryCompactor expects.
+            // Only now on to the >CompactSize merge: that much larger write is not started right after this window's
+            // write failed, and it adds only a skip-pointer and a shared filter that reads and persistence do without.
             if (_schedule.IsLargeCompactionBoundary(boundary.BlockNumber)) largeBoundaries?.Add(boundary);
         }
 
@@ -262,9 +264,8 @@ public class PersistedSnapshotCompactor(
             {
                 try
                 {
-                    // Only large boundaries reach this channel; their CompactSized was already
-                    // produced in ProcessCompactBatch, so DoCompactSnapshot here does the
-                    // >CompactSize merge.
+                    // Only large boundaries reach this channel, handed over by CompactWindows once their
+                    // CompactSized step ran without throwing; DoCompactSnapshot here does the >CompactSize merge.
                     DoCompactSnapshot(state, persistedBlockNumber);
                 }
                 catch (Exception ex)
@@ -299,12 +300,12 @@ public class PersistedSnapshotCompactor(
     /// natural power-of-2 window. Produces sub-<c>CompactSize</c> intermediates and the
     /// <c>&gt;CompactSize</c> merges; the <c>CompactSize</c>-wide window is
     /// reserved for <see cref="DoCompactCompactSized"/>. Invoked by the background batch worker
-    /// (see <see cref="Enqueue"/>); not part of <see cref="IPersistedSnapshotCompactor"/>.
+    /// (see <see cref="EnqueueAsync"/>); not part of <see cref="IPersistedSnapshotCompactor"/>.
     /// </summary>
     /// <remarks>
     /// Does nothing when the block's window is a single snapshot (nothing to merge). The
     /// <c>CompactSize</c>-wide window is produced by <see cref="DoCompactCompactSized"/>;
-    /// <see cref="ProcessCompactBatch"/> routes those boundaries away from here, so this method
+    /// <see cref="CompactWindows"/> routes those boundaries away from here, so this method
     /// only ever sees sub-<c>CompactSize</c> intermediates and <c>&gt;CompactSize</c> merges.
     /// </remarks>
     public void DoCompactSnapshot(StateId snapshotTo, ulong persistedBlockNumber = 0) =>
@@ -336,7 +337,7 @@ public class PersistedSnapshotCompactor(
     /// <summary>
     /// Produce the <c>CompactSize</c>-wide snapshot ending at the boundary
     /// block <paramref name="snapshotTo"/> — the snapshot <c>PersistenceManager</c> writes to
-    /// RocksDB. Invoked by the background batch worker (see <see cref="Enqueue"/>); not part of
+    /// RocksDB. Invoked by the background batch worker (see <see cref="EnqueueAsync"/>); not part of
     /// <see cref="IPersistedSnapshotCompactor"/>.
     /// </summary>
     public void DoCompactCompactSized(StateId snapshotTo) => TryCompactCompactSized(snapshotTo);
