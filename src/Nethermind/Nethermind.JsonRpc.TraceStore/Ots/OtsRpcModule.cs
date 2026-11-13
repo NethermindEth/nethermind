@@ -12,27 +12,43 @@ using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.State;
 
 namespace Nethermind.JsonRpc.TraceStore.Ots;
 
-/// <summary>Serves the account-history OTS subset without requiring historical state.</summary>
+/// <summary>Serves partial Otterscan queries using stored history and the selected block's state.</summary>
 /// <remarks>
 /// Searches scan stored traces one block at a time outside certified address-index coverage.
 /// Sparse searches outside coverage can time out. Missing history never
 /// becomes an empty page or a claim that the end of an address's history has been reached.
 /// </remarks>
-public sealed class OtsRpcModule(
+public sealed partial class OtsRpcModule(
     [KeyFilter(TraceStorePlugin.DbName)] IDb traceStore,
     ITraceSerializer<ParityLikeTxTrace> serializer,
     IBlockFinder blockFinder,
     IReceiptFinder receiptFinder,
     ISpecProvider specProvider,
+    IStateReader stateReader,
     ITraceStoreConfig traceStoreConfig,
     IJsonRpcConfig rpcConfig,
     TraceAddressIndex? addressIndex = null) : IOtsRpcModule
 {
     private const int MaxPageSize = 25;
     private const string ChainChanged = "Canonical chain changed during OTS search; retry the request.";
+
+    private static string? ValidateReceipts(Block block, TxReceipt[] receipts, CancellationToken ct)
+    {
+        if (receipts.Length != block.Transactions.Length)
+            return $"Receipts for block {block.Number} are unavailable or incomplete.";
+        for (int i = 0; i < receipts.Length; i++)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (receipts[i].Index != i || receipts[i].TxHash != block.Transactions[i].Hash
+                || receipts[i].BlockHash != block.Hash || receipts[i].BlockNumber != block.Number)
+                return $"Receipts for block {block.Number} are inconsistent.";
+        }
+        return null;
+    }
 
     /// <inheritdoc />
     public ResultWrapper<int> ots_getApiLevel() => ResultWrapper<int>.Success(0);
