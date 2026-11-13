@@ -712,7 +712,9 @@ public class GuestDispatchDifferentialTests
         Assert.That(mismatches, Is.Empty);
     }
 
-    /// <remarks>POP, CALLDATALOAD and CLZ run checked in every table, so the random programs cannot cover them.</remarks>
+    /// <remarks>
+    /// POP, CALLDATALOAD and CLZ run checked in the traced and cancelable tables; this pins the head they carry in every table.
+    /// </remarks>
     [Test]
     public void Always_checked_bodies_keep_the_carried_head([Values] Table table)
     {
@@ -802,6 +804,8 @@ public class GuestDispatchDifferentialTests
     [TestCase("60016002015A00", TestName = "GAS")]
     [TestCase("600160020160006000F3", TestName = "RETURN")]
     [TestCase("60018090505000", TestName = "DUP1 SWAP1 POP POP")]
+    [TestCase("60011E60005200", TestName = "CLZ")]
+    [TestCase("1E00", TestName = "CLZ on an empty stack")]
     public void Gas_shortfalls_of_untested_charges_halt_at_the_next_test(string hex)
     {
         byte[] code = Convert.FromHexString(hex);
@@ -827,7 +831,7 @@ public class GuestDispatchDifferentialTests
     [Test]
     public void Arithmetic_matches_the_shared_handlers(
         [Values(Instruction.MUL, Instruction.DIV, Instruction.SDIV, Instruction.MOD, Instruction.SMOD, Instruction.ADDMOD, Instruction.MULMOD,
-            Instruction.SIGNEXTEND, Instruction.NOT, Instruction.BYTE, Instruction.SHL, Instruction.SHR, Instruction.SAR)] Instruction op,
+            Instruction.SIGNEXTEND, Instruction.NOT, Instruction.CLZ, Instruction.BYTE, Instruction.SHL, Instruction.SHR, Instruction.SAR)] Instruction op,
         [Range(0, 3)] int seed)
     {
         List<string> mismatches = [];

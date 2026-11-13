@@ -169,6 +169,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         lookup[(int)Instruction.MULMOD] = AsTableEntry(&RawCalliHelper.ExecuteModular<EvmInstructions.OpMulMod>);
         lookup[(int)Instruction.SIGNEXTEND] = AsTableEntry(&RawCalliHelper.ExecuteBinary<RawCalliHelper.SignExtendOperation>);
         lookup[(int)Instruction.NOT] = AsTableEntry(&RawCalliHelper.ExecuteNot);
+        if (spec.CLZEnabled)
+            lookup[(int)Instruction.CLZ] = AsTableEntry(&RawCalliHelper.ExecuteClz);
         lookup[(int)Instruction.BYTE] = AsTableEntry(&RawCalliHelper.ExecuteBinary<RawCalliHelper.ByteOperation>);
         lookup[(int)Instruction.DUP2] = AsTableEntry(&RawCalliHelper.ExecuteDup<EvmInstructions.Op2>);
         lookup[(int)Instruction.DUP3] = AsTableEntry(&RawCalliHelper.ExecuteDup<EvmInstructions.Op3>);
@@ -1238,6 +1240,36 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 if (limb < 2) Unsafe.Add(ref end, -6) = fill;
                 if (limb < 3) Unsafe.Add(ref end, -5) = fill;
             }
+        }
+
+        /// <summary>CLZ (EIP-7939) of the top word, in place.</summary>
+        /// <remarks>
+        /// An empty stack runs the shared CLZ handler instead, which faults on it. A short gas takes the fast path and leaves
+        /// the gas negative, and the next test halts the frame (see <see cref="ChargeUntested"/>).
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteClz(
+            ref EvmStack stack,
+            nuint gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte sp)
+        {
+            if (head > 0 && ChargeUntested(ref gas, LowGasCost.GasCost))
+            {
+                ref byte top = ref SlotBelow(ref sp, 1);
+                SetWord(ref Unsafe.As<byte, ulong>(ref top), (ulong)EvmInstructions.CountLeadingZeroBitsOfLimbs(ref top));
+                ip = ref Unsafe.Add(ref ip, 1);
+                nint next = NextHandler(handlers, ref ip);
+                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+            }
+
+            nint shared = Entry(&ExecuteOpcode<CountLeadingZerosOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
         }
 
         /// <summary>NOT of the top word, in place.</summary>
