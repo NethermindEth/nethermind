@@ -224,20 +224,20 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         }
     }
 
+    /// <remarks>As in Geth, the stack is checked before the constant gas, so the underflow outranks running out of gas.</remarks>
     [Test]
-    public void Can_trace_stack_underflow_failure()
+    public void Can_trace_stack_underflow_failure([ValueSource(nameof(StackUnderflowGasAfterIntrinsic))] ulong gasAfterIntrinsic)
     {
-        byte[] code = Prepare.EvmCode
-            .Op(Instruction.ADD)
-            .Done;
-
-        GethLikeTxTrace trace = ExecuteAndTrace(code);
+        using GethLikeTxTrace trace = ExecuteAndTrace(GasCostOf.Transaction + gasAfterIntrinsic, Prepare.EvmCode.Op(Instruction.ADD).Done);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(trace.Failed, Is.EqualTo(true));
             Assert.That(trace.Entries[0].Error, Is.EqualTo("stack underflow (0 <=> 2)"));
+            Assert.That(trace.Entries[0].GasCost, Is.EqualTo(GasCostOf.VeryLow));
         }
     }
+
+    internal static readonly ulong[] StackUnderflowGasAfterIntrinsic = [GasCostOf.VeryLow - 1, 100000UL];
 
     [Test]
     [Todo("Verify the exact error string in Geth")]
