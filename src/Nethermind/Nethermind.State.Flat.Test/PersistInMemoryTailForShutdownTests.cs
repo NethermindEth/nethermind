@@ -525,15 +525,18 @@ public class PersistInMemoryTailForShutdownTests
     }
 
     // Each small window's first page enters the residency tracker when its catalog row is written; the pass then demotes
-    // the windows under a boundary, as at runtime, and keeps the pages of those above the last boundary.
+    // the windows under a boundary, as at runtime, and keeps the pages of those above the last boundary. The covered window
+    // is checked when the CompactSize-wide row is written: the merge that reads it drops its pages once it ends.
     [Test]
     public void A_start_keeps_the_pages_of_the_windows_above_the_last_boundary_only()
     {
         ConcurrentDictionary<StateId, SnapshotLocation> published = [];
+        bool? coveredKept = null;
         IArenaManager? arena = null;
         using FlatTestContainer tier = SmallTier(arenaPageCacheBytes: 4 * 1024 * 1024, configure: builder =>
             builder.AddDecorator<ISnapshotCatalog>((context, inner) => new ObservedCatalog(inner, after: entry =>
             {
+                if (entry.Tier == SnapshotTier.PersistedCompactSized) coveredKept = IsTracked(State(2));
                 if (entry.Tier != SnapshotTier.PersistedSmallCompacted) return;
                 published[entry.To] = entry.Location;
                 arena!.PageTracker.TryTouch(entry.Location.ArenaId, FirstPage(entry.Location), out _, out _);
@@ -545,10 +548,10 @@ public class PersistInMemoryTailForShutdownTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(IsTracked(State(6)), Is.True, "(4, 6] lies above the last boundary: kept");
-            Assert.That(IsTracked(State(2)), Is.False, "(0, 2] lies under the CompactSize-wide (0, 4]: demoted");
+            Assert.That(coveredKept, Is.False, "(0, 2] lies under the CompactSize-wide (0, 4]: demoted");
         }
 
-        bool IsTracked(StateId to) => arena.PageTracker.ContainsPage(published[to].ArenaId, FirstPage(published[to]));
+        bool IsTracked(StateId to) => arena!.PageTracker.ContainsPage(published[to].ArenaId, FirstPage(published[to]));
         static uint FirstPage(SnapshotLocation location) => (uint)(location.Offset / Environment.SystemPageSize);
     }
 
