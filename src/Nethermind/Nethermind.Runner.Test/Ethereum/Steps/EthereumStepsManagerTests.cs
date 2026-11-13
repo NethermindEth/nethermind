@@ -510,7 +510,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 .Bind<INethermindApi, NethermindApi>();
 
             if (target is not null) builder.SelectStepTarget(target);
-            if (command is not null) builder.AddSingleton(new StepCommandSelection(command));
+            if (command is not null) builder.AddSingleton(new StepCommandSelection(command, []));
 
             return builder.Build();
         }
@@ -529,7 +529,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 .Bind<INethermindApi, AuRaNethermindApi>();
 
             if (target is not null) builder.SelectStepTarget(target);
-            if (command is not null) builder.AddSingleton(new StepCommandSelection(command));
+            if (command is not null) builder.AddSingleton(new StepCommandSelection(command, []));
 
             return builder.Build();
         }
