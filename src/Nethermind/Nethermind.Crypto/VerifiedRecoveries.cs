@@ -24,7 +24,7 @@ internal sealed class VerifiedRecoveries
         _keys = keys;
         if (recoveryIds.Length <= 64) return;
 
-        _indices = new Dictionary<RecoveryKey, int>(recoveryIds.Length);
+        _indices = [with(recoveryIds.Length)];
         for (int i = 0; i < recoveryIds.Length; i++)
             _indices.TryAdd(Key(signatures.AsSpan(i * 64, 64), recoveryIds[i], messages.AsSpan(i * 32, 32)), i);
     }
