@@ -477,7 +477,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
     /// proof where existing coverage cannot. Only held wrappers can be compared, since an announcement alone does not reveal
     /// what a wrapper covers. The cover is chosen greedily, preferring wrappers that cover more of the remaining transactions
     /// and then cheaper ones; verification work prices direct dependencies at their EIP-8288 verification gas and a recursive
-    /// STARK at a local estimate of ten leanSPHINCS verifications. A mode-1 wrapper is a single proof within the wrapper dependency limits, which an
+    /// STARK at one leanSTARK verification. A mode-1 wrapper is a single proof within the wrapper dependency limits, which an
     /// inclusion list can reuse whole; it is only redundant when one held mode-1 wrapper already covers all its transactions.
     /// </remarks>
     private bool IsRedundantFor(WrapperPeer peer, WrapperStore.Entry entry, long now)
