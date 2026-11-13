@@ -308,6 +308,19 @@ public class BodiesSyncFeedTests
         }
     }
 
+    [TestCase(10UL, false)]
+    [TestCase(50UL, true)]
+    public void Required_history_below_pivot_overrides_a_higher_barrier(ulong blocksBelowPivot, bool finished)
+    {
+        _syncConfig.AncientBodiesBarrier = _pivotBlock.Number - 10;
+        _syncConfig.RequiredHistoryBelowPivot = 50;
+        _syncPointers.LowestInsertedBodyNumber = _pivotBlock.Number - blocksBelowPivot;
+
+        _feed.InitializeFeed();
+
+        Assert.That(_feed.IsFinished, Is.EqualTo(finished));
+    }
+
     [Test]
     public async Task Progress_reaches_exactly_the_total_when_finished([Values(1UL, 60UL, 99UL)] ulong barrier)
     {

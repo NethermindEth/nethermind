@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Consensus.IndexTables;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -89,4 +90,32 @@ public partial class BlockAccessListManager
         TxProcessorWithWorldState postExecution = _txProcessorWithWorldStateManager.GetPostExecution();
         postExecution.ExecutionRequests.ProcessExecutionRequests(block, postExecution.WorldState, txReceipts, spec);
     }
+
+    private IIndexTableHandler? _indexTableHandler;
+
+    /// <inheritdoc />
+    public void CommitIndexTableRoots(Block block, TxReceipt[] receipts, IReleaseSpec spec, ITxTracer tracer)
+    {
+        CheckInitialized();
+
+        if (!spec.IsEip8304Enabled)
+        {
+            return;
+        }
+
+        if (indexTableHandlerFactory is null)
+        {
+            throw new InvalidOperationException("EIP-8304 is enabled but no IIndexTableHandlerFactory was provided to BlockAccessListManager.");
+        }
+
+        TxProcessorWithWorldState postExecution = _txProcessorWithWorldStateManager.GetPostExecution();
+        _indexTableHandler = indexTableHandlerFactory.Create(postExecution.TxProcessor, postExecution.WorldState);
+        _indexTableHandler.CommitIndexTableRoots(block, receipts, spec, tracer);
+    }
+
+    /// <inheritdoc />
+    public void RollbackBlock(Block block) => _indexTableHandler?.RollbackBlock(block);
+
+    /// <inheritdoc />
+    public void UpdateFinalBlockHash(Block block) => _indexTableHandler?.UpdateFinalBlockHash(block);
 }

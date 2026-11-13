@@ -337,6 +337,23 @@ public class ReceiptsSyncFeedTests
         Assert.That(_feed.IsFinished, Is.False);
     }
 
+    [TestCase(10UL, false)]
+    [TestCase(319UL, true)]
+    public void Required_history_below_resolved_pivot_overrides_a_higher_barrier(ulong blocksBelowPivot, bool finished)
+    {
+        _syncConfig.PivotNumber = 0;
+        _syncConfig.AncientBodiesBarrier = _pivotNumber - 10;
+        _syncConfig.AncientReceiptsBarrier = _pivotNumber - 10;
+        _syncConfig.RequiredHistoryBelowPivot = 319;
+        _receiptStorage.HasBlock(Arg.Is(_pivotNumber), Arg.Any<Hash256>()).Returns(true);
+        _syncPointers.LowestInsertedReceiptBlockNumber = _pivotNumber - blocksBelowPivot;
+
+        _feed = CreateFeed();
+        _feed.InitializeFeed();
+
+        Assert.That(_feed.IsFinished, Is.EqualTo(finished));
+    }
+
     private void LoadScenario(Scenario scenario) =>
         LoadScenario(scenario, _syncConfig);
 

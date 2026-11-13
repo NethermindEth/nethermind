@@ -218,6 +218,14 @@ public class ChainSpecParamsJson : IHasNamedForks
     public ulong? Eip8131TransitionTimestamp { get; set; }
     public ulong? Eip8279TransitionTimestamp { get; set; }
 
+    /// <summary>Activation timestamp of EIP-8304 index tables, in Unix seconds. <c>null</c> leaves EIP-8304 unscheduled.</summary>
+    public ulong? Eip8304TransitionTimestamp { get; set; }
+
+    /// <summary>Address of the EIP-8304 index contract that receives the table roots.</summary>
+    /// <remarks>Has no default because the EIP leaves the deployment address open: <c>null</c> is allowed only while
+    /// <see cref="Eip8304TransitionTimestamp"/> is unset, and block processing fails once EIP-8304 is active without it.</remarks>
+    public Address? Eip8304ContractAddress { get; set; }
+
     public ulong? Eip7805TransitionTimestamp { get; set; }
 
     public ulong? Eip8298TransitionTimestamp { get; set; }

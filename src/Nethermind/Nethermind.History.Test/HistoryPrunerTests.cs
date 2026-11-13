@@ -466,6 +466,63 @@ public class HistoryPrunerTests
     }
 
     [Test]
+    public async Task Cutoff_keeps_required_history_below_sync_pivot([Values(PruningModes.UseAncientBarriers, PruningModes.Rolling)] PruningModes pruning)
+    {
+        SyncConfig syncConfig = new()
+        {
+            AncientBodiesBarrier = BeaconGenesisBlockNumber,
+            AncientReceiptsBarrier = BeaconGenesisBlockNumber,
+            PivotNumber = 100,
+            SnapSync = true,
+            RequiredHistoryBelowPivot = 70
+        };
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(
+            new HistoryConfig { Pruning = pruning, RetentionEpochs = 1, PruningInterval = 0 }, blocks: 100, syncPivot: 100, syncConfig: syncConfig);
+
+        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+
+        Assert.That(historyPruner.CutoffBlockNumber, Is.EqualTo(30UL));
+    }
+
+    [Test]
+    public async Task Blob_compaction_runs_once_the_head_lifts_the_required_history_clamp_to_the_barrier()
+    {
+        const int blocks = 100;
+        SyncConfig syncConfig = new()
+        {
+            AncientBodiesBarrier = BeaconGenesisBlockNumber,
+            AncientReceiptsBarrier = BeaconGenesisBlockNumber,
+            PivotNumber = blocks,
+            SnapSync = true,
+            RequiredHistoryBelowPivot = 70
+        };
+        HistoryConfig historyConfig = new() { Pruning = PruningModes.UseAncientBarriers, PruningInterval = 0, CompactBlocksOnPrune = true };
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks, syncConfig: syncConfig);
+
+        HistoryPruner pruner = CreatePrunerWithSpyBlocksDb(testBlockchain, historyConfig, out IDb blocksDb, syncConfig: syncConfig);
+        blocksDb.CompactReclaimingBlobFiles().Returns(true);
+        pruner.TryPruneHistory(CancellationToken.None);
+        await pruner.BlobCompactionTask;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pruner.CutoffBlockNumber, Is.EqualTo(30UL));
+            blocksDb.DidNotReceive().CompactReclaimingBlobFiles();
+        }
+
+        // The clamp follows the head, so once the head is the required history above the barrier the reclaim reaches it.
+        for (int i = 0; i < 20; i++) await testBlockchain.AddBlock();
+        pruner.TryPruneHistory(CancellationToken.None);
+        await pruner.BlobCompactionTask;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pruner.CutoffBlockNumber, Is.EqualTo(BeaconGenesisBlockNumber));
+            blocksDb.Received(1).CompactReclaimingBlobFiles();
+        }
+    }
+
+    [Test]
     public async Task Blob_compaction_runs_once_when_enabled_and_a_pass_reclaimed([Values] bool compactBlocksOnPrune)
     {
         const int blocks = 100;
@@ -1951,9 +2008,10 @@ public class HistoryPrunerTests
         int blocks,
         ulong? syncPivot = null,
         List<Hash256> blockHashes = null,
-        IBackgroundTaskScheduler scheduler = null)
+        IBackgroundTaskScheduler scheduler = null,
+        ISyncConfig syncConfig = null)
     {
-        BasicTestBlockchain bc = await BasicTestBlockchain.Create(BuildContainer(historyConfig, scheduler));
+        BasicTestBlockchain bc = await BasicTestBlockchain.Create(BuildContainer(historyConfig, scheduler, syncConfig));
         bc.Container.Resolve<IDbProvider>().MetadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(1UL).Bytes);
         blockHashes?.Add(bc.BlockTree.Head!.Hash!);
         for (int i = 0; i < blocks; i++)
@@ -1979,7 +2037,7 @@ public class HistoryPrunerTests
             }, timeout);
     }
 
-    private static Action<ContainerBuilder> BuildContainer(IHistoryConfig historyConfig, IBackgroundTaskScheduler scheduler = null)
+    private static Action<ContainerBuilder> BuildContainer(IHistoryConfig historyConfig, IBackgroundTaskScheduler scheduler = null, ISyncConfig syncConfig = null)
     {
         // n.b. in prod MinHistoryRetentionEpochs should be 33024, however not feasible to test this
         ISpecProvider specProvider = new TestSpecProvider(new ReleaseSpec() { MinHistoryRetentionEpochs = 0 });
@@ -1994,7 +2052,7 @@ public class HistoryPrunerTests
             .AddSingleton(blockProcessingQueue)
             .AddSingleton(historyConfig)
             .AddSingleton(BlocksConfig)
-            .AddSingleton(SyncConfig);
+            .AddSingleton(syncConfig ?? SyncConfig);
 
             if (scheduler is not null)
                 containerBuilder.AddSingleton(scheduler);

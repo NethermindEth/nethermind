@@ -4,6 +4,7 @@
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus.ExecutionRequests;
+using Nethermind.Consensus.IndexTables;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -15,6 +16,7 @@ namespace Nethermind.Consensus.Processing;
 public partial class BlockProcessor
 {
     public interface ISystemContractHandler
+        : IIndexTableHandler
     {
         void StoreBeaconRoot(Block block, IReleaseSpec spec, ITxTracer tracer);
         void ApplyBlockhashStateChanges(BlockHeader blockHeader, IReleaseSpec spec);
@@ -26,7 +28,8 @@ public partial class BlockProcessor
         IBeaconBlockRootHandler beaconBlockRootHandler,
         IBlockhashStore blockHashStore,
         IWithdrawalProcessor withdrawalProcessor,
-        IExecutionRequestsProcessor executionRequestsProcessor) : ISystemContractHandler
+        IExecutionRequestsProcessor executionRequestsProcessor,
+        IIndexTableHandler indexTableHandler) : ISystemContractHandler
     {
         public void StoreBeaconRoot(Block block, IReleaseSpec spec, ITxTracer tracer)
             => beaconBlockRootHandler.StoreBeaconRoot(block, spec, tracer);
@@ -39,5 +42,17 @@ public partial class BlockProcessor
 
         public void ProcessWithdrawals(Block block, IReleaseSpec spec)
             => withdrawalProcessor.ProcessWithdrawals(block, spec);
+
+        /// <inheritdoc />
+        public void CommitIndexTableRoots(Block block, TxReceipt[] receipts, IReleaseSpec spec, ITxTracer tracer)
+            => indexTableHandler.CommitIndexTableRoots(block, receipts, spec, tracer);
+
+        /// <inheritdoc />
+        public void RollbackBlock(Block block)
+            => indexTableHandler.RollbackBlock(block);
+
+        /// <inheritdoc />
+        public void UpdateFinalBlockHash(Block block)
+            => indexTableHandler.UpdateFinalBlockHash(block);
     }
 }

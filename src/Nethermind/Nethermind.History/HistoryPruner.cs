@@ -215,10 +215,27 @@ public class HistoryPruner : IHistoryPruner, IAsyncDisposable
             }
 
             return _historyConfig.Pruning == PruningModes.UseAncientBarriers
-                ? AncientBodiesBarrier
-                // One extra epoch: the CL serves from the start of the epoch N back, up to 31 slots below head - N*32.
-                : CalculateRollingCutoff(RetentionEpochs + 1);
+                ? AncientBarrierCutoff()
+                : RollingCutoff();
         }
+    }
+
+    private ulong? RollingCutoff()
+    {
+        // One extra epoch: the CL serves from the start of the epoch N back, up to 31 slots below head - N*32.
+        ulong? cutoff = CalculateRollingCutoff(RetentionEpochs + 1);
+        return cutoff is { } value && _blockTree.Head is { } head
+            ? ulong.Min(value, head.Number.SaturatingSub(_syncConfig.RequiredHistoryBelowPivot))
+            : cutoff;
+    }
+
+    // The configured barrier is fixed before the sync pivot resolves, so it can sit inside the history the node still needs.
+    private ulong AncientBarrierCutoff()
+    {
+        if (_syncConfig.RequiredHistoryBelowPivot == 0) return AncientBodiesBarrier;
+
+        ulong anchor = ulong.Max(_blockTree.SyncPivot.BlockNumber, _blockTree.Head?.Number ?? 0);
+        return ulong.Min(AncientBodiesBarrier, anchor.SaturatingSub(_syncConfig.RequiredHistoryBelowPivot));
     }
 
     /// <summary>The lowest block the bodies download keeps, and so the cutoff of ancient-barrier pruning.</summary>

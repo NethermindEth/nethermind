@@ -44,6 +44,7 @@ public class ReceiptFinderKeyingTests
         "Nethermind.Shutter.ShutterApi",
         "Nethermind.Shutter.ShutterBlockHandler",
         "Nethermind.Merge.Plugin.FrameTxWidthFinalizer",
+        "Nethermind.Consensus.IndexTables.IndexTableHandlerFactory",
         // OTS requires retained receipts and must not re-execute blocks against historical state.
         "Nethermind.JsonRpc.TraceStore.Ots.OtsRpcModule",
     ];
@@ -55,6 +56,7 @@ public class ReceiptFinderKeyingTests
     private static readonly HashSet<string> NotContainerResolved =
     [
         "Nethermind.Consensus.Receipts.RegeneratingReceiptFinder",
+        "Nethermind.Consensus.IndexTables.IndexTableHandler",
         // Hand-built by StartRpc with NethermindApi.ReceiptFinder; its web-host registration feeds only DataFeed
         // (monitoring), which must stay stored-only.
         "Nethermind.Runner.Ethereum.JsonRpcRunner",

@@ -450,6 +450,11 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
                 if (ctx.ResolveOptional<ChainSpec>()?.SealEngineType == SealEngineType.Clique)
                     syncConfig.NeedToWaitForHeader = true; // Should this be in chainspec itself?
 
+                // EIP-8304 tables published after the pivot are merged from the bodies and receipts of blocks before it.
+                // Kept also before activation: the pivot is not known here, and a node synced before activation crosses it without a restart.
+                if (ctx.ResolveOptional<ChainSpec>()?.Parameters.Eip8304TransitionTimestamp is not null)
+                    syncConfig.RequiredHistoryBelowPivot = ulong.Max(syncConfig.RequiredHistoryBelowPivot, (ulong)Eip8304Constants.SyncRecoveryBlocks);
+
                 ILogManager logManager = ctx.Resolve<ILogManager>();
                 ILogger logger = logManager.GetClassLogger<SynchronizerModule>();
 

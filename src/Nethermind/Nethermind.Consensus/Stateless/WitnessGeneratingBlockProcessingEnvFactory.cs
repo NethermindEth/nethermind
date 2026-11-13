@@ -9,9 +9,11 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
+using Nethermind.Consensus.IndexTables;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Container;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -77,6 +79,10 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
         WitnessGeneratingWorldState witnessWorldState = new(
             baseWorldState, worldStateManager.GlobalStateReader, trieStore, headerRecorder, headerStore);
 
+
+        // Re-execution reads the node's index tables, but must not write or roll back the live tables.
+        OverlayIndexTableStore indexTableStore = new(rootLifetimeScope.ResolveOptional<IIndexTableStore>());
+
         ILifetimeScope envLifetimeScope = rootLifetimeScope.BeginLifetimeScope(builder =>
         {
             builder
@@ -85,6 +91,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
                 .AddScoped<IHeaderFinder>(capturingHeaderFinder)
                 .AddScoped<IBlockhashCache, BlockhashCache>()
                 .AddScoped<IReceiptStorage>(NullReceiptStorage.Instance)
+                .AddScoped<IIndexTableStore>(indexTableStore)
                 .AddScoped<ICodeCache>(NoopCodeCache.Instance)
                 // Block witness generation brings its own recorder, so it takes the undecorated state.
                 .AddScoped<IBlockAccessListManager>(ctx => new BlockAccessListManager(
@@ -93,6 +100,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
                     ctx.Resolve<IBlocksConfig>(),
                     ctx.Resolve<IWithdrawalProcessorFactory>(),
                     ctx.Resolve<BalTxProcessorFactory>(),
+                    indexTableHandlerFactory: ctx.ResolveOptional<IIndexTableHandlerFactory>(),
                     zeroNonceStorageAccountsTransition: ctx.Resolve<ZeroNonceStorageAccountsTransition>()));
             builder
                 .AddModule(validationModules)
@@ -101,7 +109,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
 
         IWitnessGeneratingBlockProcessingEnv env = envLifetimeScope.Resolve<IWitnessGeneratingBlockProcessingEnv>();
         IBlockhashCache blockhashCache = envLifetimeScope.Resolve<IBlockhashCache>();
-        return new PooledEntry(envLifetimeScope, scopeProvider, trieStore, headerRecorder, witnessWorldState, blockhashCache, env);
+        return new PooledEntry(envLifetimeScope, scopeProvider, trieStore, headerRecorder, witnessWorldState, blockhashCache, indexTableStore, env);
     }
 
     private void Return(PooledEntry entry)
@@ -155,6 +163,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
         WitnessHeaderRecorder headerRecorder,
         WitnessGeneratingWorldState worldState,
         IBlockhashCache blockhashCache,
+        IClearableCache indexTableStore,
         IWitnessGeneratingBlockProcessingEnv env) : IDisposable
     {
         public ILifetimeScope Scope { get; } = scope;
@@ -169,12 +178,13 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
         }
 
         /// <summary>Wipes per-call accumulators so the entry is safe for the next rent.</summary>
-        /// <remarks>The inner WorldState's caches are already cleared by <c>WorldState.BeginScope</c>'s scope-exit reset; only the witness-specific accumulators (and the per-entry-growing blockhash cache) are cleared here.</remarks>
+        /// <remarks>The inner WorldState's caches are already cleared by <c>WorldState.BeginScope</c>'s scope-exit reset; only the witness-specific accumulators (and the per-entry-growing blockhash cache and index tables) are cleared here.</remarks>
         public void Reset()
         {
             headerRecorder.Reset();
             worldState.Reset();
             blockhashCache.Clear();
+            indexTableStore.ClearCache();
         }
     }
 

@@ -37,7 +37,8 @@ namespace Nethermind.Synchronization.ParallelSync
         ISyncConfig syncConfig,
         IBeaconSyncStrategy beaconSyncStrategy,
         IBetterPeerStrategy betterPeerStrategy,
-        ILogManager logManager) : ISyncModeSelector
+        ILogManager logManager,
+        ISyncPointers? syncPointers = null) : ISyncModeSelector
     {
         /// <summary>
         /// How many blocks can fast sync stay behind while state nodes is still syncing
@@ -65,6 +66,9 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool FastBlocksReceiptsFinished => !FastReceiptsEnabled || _syncProgressResolver.IsFastBlocksReceiptsFinished();
         private bool FastBlockAccessListsFinished => !FastBlockAccessListsEnabled || _syncProgressResolver.IsFastBlockAccessListsFinished();
         private bool NotNeedToWaitForHeaders => !_needToWaitForHeaders || FastBlocksHeadersFinished;
+        private bool NotNeedToWaitForReceipts => _syncConfig.RequiredHistoryBelowPivot == 0 || FastBlocksReceiptsFinished || RequiredReceiptsDownloaded;
+        private bool RequiredReceiptsDownloaded =>
+            syncPointers?.LowestInsertedReceiptBlockNumber <= ulong.Max(1, _syncProgressResolver.SyncPivot.BlockNumber.SaturatingSub(_syncConfig.RequiredHistoryBelowPivot));
         private ulong TotalSyncLag => _syncConfig.StateMinDistanceFromHead + _syncConfig.HeaderStateDistance;
 
         private CancellationTokenSource? _cancellation = new();
@@ -364,6 +368,7 @@ namespace Nethermind.Synchronization.ParallelSync
             bool notInFastSync = !best.IsInFastSync;
             bool notInStateSync = !best.IsInStateSync;
             bool notNeedToWaitForHeaders = NotNeedToWaitForHeaders;
+            bool notNeedToWaitForReceipts = NotNeedToWaitForReceipts;
 
             bool result = notInBeaconModes &&
                           desiredPeerKnown &&
@@ -371,7 +376,8 @@ namespace Nethermind.Synchronization.ParallelSync
                           hasFastSyncBeenActive &&
                           notInFastSync &&
                           notInStateSync &&
-                          notNeedToWaitForHeaders;
+                          notNeedToWaitForHeaders &&
+                          notNeedToWaitForReceipts;
 
             if (_logger.IsTrace)
             {
@@ -382,7 +388,8 @@ namespace Nethermind.Synchronization.ParallelSync
                     (nameof(hasFastSyncBeenActive), hasFastSyncBeenActive),
                     (nameof(notInFastSync), notInFastSync),
                     (nameof(notInStateSync), notInStateSync),
-                    (nameof(notNeedToWaitForHeaders), notNeedToWaitForHeaders));
+                    (nameof(notNeedToWaitForHeaders), notNeedToWaitForHeaders),
+                    (nameof(notNeedToWaitForReceipts), notNeedToWaitForReceipts));
             }
 
             return result;

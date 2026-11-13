@@ -157,6 +157,8 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
                 public IBeaconSyncStrategy BeaconSyncStrategy { get; set; } = No.BeaconSync;
 
+                public ISyncPointers SyncPointers { get; } = new MemorySyncPointers();
+
                 private void SetDefaults()
                 {
                     SyncPeerPool = Substitute.For<ISyncPeerPool>();
@@ -861,7 +863,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                         }
 
                         TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
-                        MultiSyncModeSelector selector = new(SyncProgressResolver, SyncPeerPool, SyncConfig, BeaconSyncStrategy, bestPeerStrategy, LimboLogs.Instance);
+                        MultiSyncModeSelector selector = new(SyncProgressResolver, SyncPeerPool, SyncConfig, BeaconSyncStrategy, bestPeerStrategy, LimboLogs.Instance, SyncPointers);
                         selector.StopAsync().Wait();
                         selector.Update();
                         Assert.That(selector.Current, Is.EqualTo(syncMode));
@@ -897,6 +899,13 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 public ScenarioBuilder WhenConsensusRequiresToWaitForHeaders(bool needToWaitForHeaders)
                 {
                     SyncConfig.NeedToWaitForHeader = needToWaitForHeaders;
+                    return this;
+                }
+
+                public ScenarioBuilder WhenConsensusRequiresToWaitForReceipts(ulong? receiptsDownloadedBelowPivot = null)
+                {
+                    SyncConfig.RequiredHistoryBelowPivot = 319;
+                    SyncPointers.LowestInsertedReceiptBlockNumber = Pivot.Number - receiptsDownloadedBelowPivot;
                     return this;
                 }
 

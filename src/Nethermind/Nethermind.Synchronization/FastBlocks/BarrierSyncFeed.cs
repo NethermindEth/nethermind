@@ -26,6 +26,12 @@ public abstract class BarrierSyncFeed<T>(IDb metadataDb, ISpecProvider specProvi
 
     protected readonly IDb _metadataDb = metadataDb ?? throw new ArgumentNullException(nameof(metadataDb));
 
+    /// <summary>
+    /// Lowers <paramref name="barrier"/> so that at least <paramref name="requiredHistory"/> blocks below <paramref name="pivotNumber"/> are downloaded.
+    /// </summary>
+    protected static ulong KeepRequiredHistory(ulong barrier, ulong pivotNumber, ulong requiredHistory) =>
+        requiredHistory == 0 ? barrier : ulong.Min(barrier, ulong.Max(1, pivotNumber - ulong.Min(pivotNumber, requiredHistory)));
+
     public void InitializeMetadataDb()
     {
         if (!HasPivot())

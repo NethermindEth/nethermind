@@ -13,6 +13,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Synchronization.Blocks;
@@ -67,6 +68,23 @@ public class SynchronizerModuleTests
         ISyncFeed<BlockAccessListsSyncBatch> feed = container.Resolve<ISyncFeed<BlockAccessListsSyncBatch>>();
 
         Assert.That(feed, Is.TypeOf<BlockAccessListsSyncFeed>());
+    }
+
+    [TestCase(null, 0UL, 0UL)]
+    [TestCase(0UL, 0UL, 319UL)]
+    [TestCase(0UL, 1000UL, 1000UL)]
+    public void Eip8304_schedule_keeps_the_index_history_below_the_pivot(ulong? transitionTimestamp, ulong configured, ulong expected)
+    {
+        SyncConfig syncConfig = new() { RequiredHistoryBelowPivot = configured };
+
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new ConfigProvider(syncConfig)))
+            .AddModule(new SynchronizerModule(syncConfig))
+            .AddSingleton(new ChainSpec { Parameters = new ChainParameters { Eip8304TransitionTimestamp = transitionTimestamp } })
+            .AddSingleton(Substitute.For<IWorldStateManager>())
+            .Build();
+
+        Assert.That(container.Resolve<ISyncConfig>().RequiredHistoryBelowPivot, Is.EqualTo(expected));
     }
 
     [Test]

@@ -207,6 +207,12 @@ public class ChainParameters
     public ulong? Eip5920TransitionTimestamp { get; set; }
     public ulong? Eip8116TransitionTimestamp { get; set; }
     public ulong? Eip8360TransitionTimestamp { get; set; }
+    /// <summary>Activation timestamp of EIP-8304 index tables, in Unix seconds. <c>null</c> leaves EIP-8304 unscheduled.</summary>
+    public ulong? Eip8304TransitionTimestamp { get; set; }
+
+    /// <summary>Address of the EIP-8304 index contract that receives the table roots.</summary>
+    public Address? Eip8304ContractAddress { get; set; }
+
     public ulong? Eip3298TransitionTimestamp { get; set; }
     public ulong? Eip8131TransitionTimestamp { get; set; }
     public ulong? Eip8279TransitionTimestamp { get; set; }

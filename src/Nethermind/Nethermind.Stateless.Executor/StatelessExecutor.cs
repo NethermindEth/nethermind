@@ -97,6 +97,13 @@ public static partial class StatelessExecutor
     private static bool Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider, bool validateHashes,
         IBlockTracer? blockTracer = null)
     {
+        // EIP-8304 merges need the authenticated level-0 index history, which the witness does not carry.
+        if (specProvider.GetSpec(suggestedBlock.Header).IsEip8304Enabled)
+        {
+            Debug.WriteLine("EIP-8304 blocks are not supported by stateless execution");
+            return false;
+        }
+
         using ArrayPoolList<BlockHeader> headers = witness.DecodeHeaders();
         BlockHeader parentHeader;
 

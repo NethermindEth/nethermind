@@ -542,6 +542,16 @@ namespace Nethermind.Core.Specs
         bool IsEip8360Enabled { get; }
 
         /// <summary>
+        /// EIP-8304: Trustless log and transaction index
+        /// </summary>
+        bool IsEip8304Enabled => false;
+
+        /// <summary>
+        /// System contract address for EIP-8304 index tables.
+        /// </summary>
+        Address? Eip8304ContractAddress => null;
+
+        /// <summary>
         /// EIP-3298: Remove the SSTORE storage-clear refund and the EIP-3529 transaction refund cap.
         /// </summary>
         /// <remarks>
