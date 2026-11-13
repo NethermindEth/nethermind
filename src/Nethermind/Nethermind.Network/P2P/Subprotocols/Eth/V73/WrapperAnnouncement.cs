@@ -81,8 +81,8 @@ public sealed class WrapperAnnouncement
 
 /// <summary>What announcement suppression compares between wrappers: mode, proof bytes and verification work.</summary>
 /// <param name="ProofBytes">The witness or proof bytes a verifier decodes.</param>
-/// <param name="VerificationWork">Direct verifications priced at their EIP-8288 verification gas, or one recursive STARK
-/// verification for mode 1.</param>
+/// <param name="VerificationWork">Direct verifications priced at their EIP-8288 verification gas, or for mode 1 a local
+/// estimate of one recursive STARK verification, ten leanSPHINCS verifications.</param>
 public readonly record struct WrapperShape(int Mode, int ProofBytes, long VerificationWork);
 
 /// <summary>The canonical EIP-8288 wrapper encoding, checked on receipt before validation.</summary>
