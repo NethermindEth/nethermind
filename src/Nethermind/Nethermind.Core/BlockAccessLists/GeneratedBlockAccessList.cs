@@ -68,9 +68,9 @@ public class GeneratedBlockAccessList
             _accountChanges.TryGetValue(sourceAccount.Address, out GeneratedAccountChanges? target);
             if (target is null) count++;
 
-            foreach (UInt256 key in sourceAccount.StorageChanges.Keys)
+            foreach (KeyValuePair<UInt256, StorageChange> change in sourceAccount.StorageChanges)
             {
-                if (target is null || !target.HasStorageKey(key)) count++;
+                if (target is null || !target.HasStorageKey(change.Key)) count++;
             }
 
             foreach (UInt256 key in sourceAccount.StorageReads)
