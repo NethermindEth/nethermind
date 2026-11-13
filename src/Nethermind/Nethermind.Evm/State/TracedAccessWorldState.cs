@@ -5,7 +5,6 @@ using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -77,7 +76,8 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         {
             // Skip the GetOrAddAccountChanges probe when physical existence is already recorded.
             if (accountChanges?.AccountExists is not true) _generatingBlockAccessList.RecordAccountExistence(address, true);
-            _generatingBlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
+            // A zero credit records only the account's entry, which the line above or an earlier access already made.
+            if (!balanceChange.IsZero) _generatingBlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
         }
 
         return wasCreated;
@@ -113,8 +113,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
 
         if (parallel)
         {
-            ref StorageChange change = ref CollectionsMarshal.GetValueRefOrNullRef(accountChanges.StorageChanges, storageCell.Index);
-            if (!Unsafe.IsNullRef(ref change))
+            if (accountChanges.StorageChanges.TryGetValue(in storageCell.Index, out StorageChange change))
             {
                 value = change.Value;
                 return;
@@ -484,8 +483,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     {
         if (parallel && accountChanges is not null)
         {
-            ref StorageChange change = ref CollectionsMarshal.GetValueRefOrNullRef(accountChanges.StorageChanges, storageCell.Index);
-            if (!Unsafe.IsNullRef(ref change))
+            if (accountChanges.StorageChanges.TryGetValue(in storageCell.Index, out StorageChange change))
             {
                 value = change.Value;
                 return;
