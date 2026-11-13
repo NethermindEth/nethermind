@@ -400,9 +400,6 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         if (leanProofStore.TryBeginAdmission(decoded.Deps, decoded.Proofs, decoded.RecursiveStark?.StarkProof, out scope)) return true;
         FeeFloors floors = ExecutableFeeFloors();
         if (!AddsOnlyExecutable(decoded.Transactions, floors)) return false;
-        // Eviction cannot be undone: the incoming transactions must first pass admission, their witnesses aside.
-        foreach (Transaction transaction in decoded.Transactions)
-            if (!txPool.TryGetPendingTransaction(transaction.Hash!.ValueHash256, out _) && !txPool.ValidateTxBeforeProofAdmission(transaction, handling)) return false;
         List<ValueHash256> hashes = [];
         HashSet<Transaction> stale = [];
         foreach (Transaction candidate in NotExecutable(decoded.Transactions, floors))
@@ -415,6 +412,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         if (hashes.Count == 0) return false;
         if (leanProofStore.ReleasesForAdmission(decoded.Deps, decoded.Proofs, decoded.RecursiveStark?.StarkProof, hashes)
             is not { Count: > 0 } releases) return false;
+        // Eviction cannot be undone: the incoming transactions must first pass admission, their witnesses aside. Checked last, as
+        // it may simulate and recover signatures, once nothing cheaper has ruled eviction out.
+        foreach (Transaction transaction in decoded.Transactions)
+            if (!txPool.TryGetPendingTransaction(transaction.Hash!.ValueHash256, out _) && !txPool.ValidateTxBeforeProofAdmission(transaction, handling)) return false;
         foreach (ValueHash256 hash in releases)
             if (txPool.RemoveTransaction(new Hash256(hash))) TxPool.Metrics.Eip8288CapacityEvictedTransactions++;
         HashSet<ValueHash256> released = [.. releases];
@@ -616,7 +617,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             }
             // Admission is per transaction: a pool rejection, including EIP-8272 recent-root mempool rules, leaves the proof and
             // the other transactions intact.
-            AcceptTxResult result = IsAwaitingAvailability(transaction)
+            AcceptTxResult result = transaction.IsAwaitingAvailability()
                 ? AdmitAwaitingAvailability(transaction, source)
                 : txPool.SubmitTx(transaction, handling);
             if (result != AcceptTxResult.Accepted) firstError ??= result.ToString();
@@ -629,11 +630,6 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             }
         }
     }
-
-    /// <summary>Whether a wrapped transaction carries blobs without their data, as EIP-8437 transports it, so its availability
-    /// is established through EIP-8070 cell retrieval rather than from the wrapper.</summary>
-    private static bool IsAwaitingAvailability(Transaction transaction) =>
-        transaction.CarriesBlobs && transaction.NetworkWrapper is ShardBlobNetworkWrapper { Blobs.Length: 0, Cells: null };
 
     /// <summary>Pins the transaction's coverage, still inside this wrapper's admission, and hands it to cell retrieval.</summary>
     private AcceptTxResult AdmitAwaitingAvailability(Transaction transaction, object? source)

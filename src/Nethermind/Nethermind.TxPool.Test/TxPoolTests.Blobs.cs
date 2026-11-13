@@ -6284,6 +6284,28 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        // Only a wrapper that IsAwaitingAvailability sends to cell sampling may skip blob proofs before proof admission;
+        // any other incomplete sidecar goes to SubmitTx, so the dry run must reject it as SubmitTx does, or it evicts for nothing.
+        [Test]
+        public void Validation_before_proof_admission_judges_an_incomplete_sidecar_as_submission_does([Values] bool emptyCells)
+        {
+            _txPool = CreatePool(new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory }, GetBogotaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true);
+            ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
+            tx.NetworkWrapper = emptyCells ? wrapper with { Blobs = [], Cells = [] } : wrapper with { Blobs = [[]] };
+            tx.ClearLengthCache();
+
+            AcceptTxResult dryRun = _txPool.ValidateTxBeforeProofAdmission(tx, TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tx.IsAwaitingAvailability(), Is.False);
+                Assert.That(dryRun, Is.Not.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(dryRun));
+            }
+        }
+
         // EIP-8141 "Revalidation". The persistent pool swaps the transaction for a frameless light record, but
         // the prefix it was admitted with is still in blob storage, so the sweep reloads it in every blob mode.
         [Test]

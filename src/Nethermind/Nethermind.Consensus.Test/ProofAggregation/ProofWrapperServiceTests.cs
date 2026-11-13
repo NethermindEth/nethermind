@@ -1088,6 +1088,8 @@ public class ProofWrapperServiceTests
             if (secondWrapper) pool.Received(1).GetPendingTransactionsBySender();
             if (secondWrapper) pool.Received(gapFilled ? 0 : 1).RemoveTransaction(pinned[2].Hash);
             pool.Received(removed != 0 && !oldestSharedWithExecutable && !localVictims ? 1 : 0).RemoveTransaction(oldest.Hash);
+            // The admission dry run simulates, so it runs only once eviction could free enough.
+            if (removed == 0 && !incomingUnfunded) pool.DidNotReceive().ValidateTxBeforeProofAdmission(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
         }
     }
 
