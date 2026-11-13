@@ -326,6 +326,192 @@ public class GuestDispatchDifferentialTests
         }
     }
 
+    /// <remarks>
+    /// The guest's handlers charge these opcodes untested, so with too little gas they would run on to the end of the
+    /// code. A frame with less gas than its code has bytes must stop where the shared handlers stop; with at least that
+    /// much it may run on, and pays for every opcode it runs past the shortfall.
+    /// </remarks>
+    [Test]
+    public void Frame_with_less_gas_than_code_stops_where_the_shared_handlers_stop(
+        [Values(0UL, 1UL, 100UL, UntestedRunLength - 1UL, (ulong)UntestedRunLength)] ulong gas)
+    {
+        byte[] code = UntestedTail();
+        (EvmExceptionType exception, nint pc, _) = RunFrame(code, gas);
+        Outcome shared = Run(gas, [], 0, new CodeInfo(code), Table.Cancelable);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception, Is.EqualTo(EvmExceptionType.OutOfGas));
+            Assert.That(pc, gas < UntestedRunLength ? Is.EqualTo(shared.Pc) : Is.EqualTo((nint)UntestedRunLength));
+        }
+    }
+
+    /// <remarks>
+    /// The caller's chain chose its handlers before the call. Under EIP-150 the caller keeps only a 64th of its gas,
+    /// so after a nested call it must continue on the handlers that gas allows, as the frame loop would choose them.
+    /// </remarks>
+    [Test]
+    public void Caller_continues_a_nested_call_on_the_handlers_its_gas_allows(
+        [Values(Instruction.CALL, Instruction.CALLCODE, Instruction.STATICCALL, Instruction.DELEGATECALL)] Instruction op,
+        [Values(0, 7, 15, 16)] int callDepth,
+        [Values] bool retainsGas)
+    {
+        byte[] call = NestedCall(op);
+        byte[] code = [.. call, .. UntestedTail()];
+        ulong retainedGas = (ulong)code.Length - (retainsGas ? 0UL : 1UL);
+        // EIP-150 retains floor(available / 64): test exactly the code length and one gas below it.
+        ulong gas = retainedGas * 64 + CallCost(call, callDepth);
+        bool nests = callDepth < 16;
+
+        (EvmExceptionType exception, nint pc, ulong remainingGas) = RunFrame(code, gas, callDepth, InvalidCallee());
+
+        if (nests)
+        {
+            Outcome shared = Run(retainedGas, [], 0, new CodeInfo(UntestedTail()), Table.Cancelable);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(exception, Is.EqualTo(EvmExceptionType.OutOfGas));
+                Assert.That(pc, Is.EqualTo(retainsGas ? code.Length : call.Length + shared.Pc));
+                Assert.That(remainingGas, Is.Zero);
+            }
+        }
+        else
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(exception, Is.EqualTo(EvmExceptionType.Suspend));
+                Assert.That(pc, Is.EqualTo((nint)call.Length));
+                Assert.That(remainingGas, Is.EqualTo(retainedGas));
+            }
+        }
+    }
+
+    /// <remarks>
+    /// A frame with less gas than its code has bytes runs on the shared handlers, and a nested call leaves it no more gas
+    /// than it had, so it continues on them.
+    /// </remarks>
+    [Test]
+    public void Caller_on_the_shared_handlers_continues_a_nested_call_on_them(
+        [Values(Instruction.CALL, Instruction.CALLCODE, Instruction.STATICCALL, Instruction.DELEGATECALL)] Instruction op)
+    {
+        const ulong retainedGas = 10;
+        byte[] call = NestedCall(op);
+        ulong gas = retainedGas * 64 + CallCost(call, 0);
+        byte[] tail = UntestedTail((int)(gas + 1) & ~1);
+
+        (EvmExceptionType exception, nint pc, ulong remainingGas) = RunFrame([.. call, .. tail], gas, 0, InvalidCallee());
+
+        Outcome shared = Run(retainedGas, [], 0, new CodeInfo(tail), Table.Cancelable);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception, Is.EqualTo(EvmExceptionType.OutOfGas));
+            Assert.That(pc, Is.EqualTo(call.Length + shared.Pc));
+            Assert.That(remainingGas, Is.Zero);
+        }
+    }
+
+    /// <remarks>
+    /// The caller stays on the guest's handlers through a first call whose callee runs on the shared handlers. After a
+    /// second call it has less gas than its code has bytes, so it must leave them, which it decides only if the first
+    /// call restored that its chain does not run on the shared handlers.
+    /// </remarks>
+    [Test]
+    public void Caller_tests_its_gas_after_a_callee_on_the_shared_handlers(
+        [Values(Instruction.CALL, Instruction.CALLCODE, Instruction.STATICCALL, Instruction.DELEGATECALL)] Instruction op)
+    {
+        const ushort forwardedGas = 10;
+        byte[] call = NestedCall(op, forwardedGas);
+        byte[] tail = UntestedTail();
+        byte[] code = [.. call, .. call, .. tail];
+        ulong firstCallCost = CallCost(call, 0);
+        ulong secondCallCost = CallCost([.. call, .. call], 0) - firstCallCost;
+        // The callee runs out of the gas it gets, so the caller keeps exactly its code length after the first call.
+        ulong gas = firstCallCost + forwardedGas + (ulong)code.Length;
+        ulong retainedGas = (ulong)code.Length - secondCallCost - forwardedGas;
+
+        (EvmExceptionType exception, nint pc, ulong remainingGas) = RunFrame(code, gas, 0, Repository(new CodeInfo(UntestedTail())));
+
+        Outcome shared = Run(retainedGas, [], 0, new CodeInfo(tail), Table.Cancelable);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception, Is.EqualTo(EvmExceptionType.OutOfGas));
+            Assert.That(pc, Is.EqualTo(2 * call.Length + shared.Pc));
+            Assert.That(remainingGas, Is.Zero);
+        }
+    }
+
+    private static byte[] NestedCall(Instruction op, ushort gas = ushort.MaxValue) =>
+    [
+        (byte)Instruction.PUSH0, (byte)Instruction.PUSH0,
+        (byte)Instruction.PUSH0, (byte)Instruction.PUSH0,
+        .. op is Instruction.CALL or Instruction.CALLCODE ? new byte[] { (byte)Instruction.PUSH0 } : [],
+        (byte)Instruction.PUSH20, .. new Address("0x00000000000000000000000000000000000000bb").Bytes,
+        (byte)Instruction.PUSH2, (byte)(gas >> 8), (byte)gas, (byte)op
+    ];
+
+    /// <summary>What <paramref name="call"/> charges, as a call to empty code forwards no gas that is not returned.</summary>
+    private static ulong CallCost(byte[] call, int callDepth)
+    {
+        const ulong ample = 100_000;
+        return ample - RunFrame(call, ample, callDepth, Repository(CodeInfo.Empty)).Gas;
+    }
+
+    /// <summary>A callee that consumes all the gas it is given.</summary>
+    private static ICodeInfoRepository InvalidCallee() => Repository(new CodeInfo(new byte[] { (byte)Instruction.INVALID }));
+
+    private static ICodeInfoRepository Repository(CodeInfo code)
+    {
+        ICodeInfoRepository repository = Substitute.For<ICodeInfoRepository>();
+        repository.GetCachedCodeInfo(Arg.Any<Address>(), Arg.Any<bool>(), Arg.Any<IReleaseSpec>(), out Arg.Any<Address?>())
+            .Returns(code);
+        return repository;
+    }
+
+    private static byte[] UntestedTail(int length = UntestedRunLength)
+    {
+        byte[] code = new byte[length];
+        code[0] = (byte)Instruction.PUSH1;
+        code[1] = 1;
+        for (int i = 2; i < code.Length; i += 2)
+        {
+            code[i] = (byte)Instruction.DUP1;
+            code[i + 1] = (byte)Instruction.POP;
+        }
+        return code;
+    }
+
+    private static unsafe (EvmExceptionType Exception, nint Pc, ulong Gas) RunFrame(
+        byte[] code, ulong gas, int callDepth = 0, ICodeInfoRepository? repository = null)
+    {
+        DispatchingVirtualMachine vm = new(ReleaseSpec);
+        if (repository is not null)
+        {
+            vm.UseCodeInfoRepository(repository);
+        }
+        vm.PrepareFrameHandlersForTests();
+        Type type = typeof(VirtualMachine<EthereumGasPolicy>);
+        RunFrameCode run = type.GetMethod("RunFrameCode", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .MakeGenericMethod(typeof(OffFlag), typeof(OffFlag)).CreateDelegate<RunFrameCode>(vm);
+
+        CodeInfo codeInfo = new(code);
+        using ExecutionEnvironment env = ExecutionEnvironment.Rent(codeInfo, Address.Zero, Address.Zero, null, callDepth, UInt256.Zero, Array.Empty<byte>());
+        using VmState<EthereumGasPolicy> frame = VmState<EthereumGasPolicy>.RentTopLevel(
+            EthereumGasPolicy.FromULong(gas), ExecutionType.TRANSACTION, env, new StackAccessTracker(), default, false);
+        vm.Enter(frame);
+        // Pin the buffer before deriving its aligned stack base; the extra words cover alignment and the top slot.
+        byte[] stackBytes = GC.AllocateArray<byte>((EvmStack.MaxStackSize + 2) * EvmStack.WordSize, pinned: true);
+        int alignment = (int)((nuint)Unsafe.AsPointer(ref stackBytes[0]) & (EvmStack.WordSize - 1));
+        EvmStack stack = new(0, vm.Tracer, ref stackBytes[alignment == 0 ? 0 : EvmStack.WordSize - alignment], codeInfo.ExecutionCodeSpan, codeInfo);
+        nint pc = 0;
+        EvmExceptionType exception = run(ref stack, ref frame.Gas, ref pc);
+
+        if (vm.ReturnData is VmState<EthereumGasPolicy> child) child.Dispose();
+        return (exception, pc, EthereumGasPolicy.GetRemainingGas(in frame.Gas));
+    }
+
+    private const int UntestedRunLength = 400;
+
+    private delegate EvmExceptionType RunFrameCode(ref EvmStack stack, ref EthereumGasPolicy gas, ref nint programCounter);
+
     /// <remarks>Without the fused entry, the pair tests below would only compare the shared handlers with themselves.</remarks>
     [Test]
     public void Pairing_installs_fused_handlers_only_for_guest_handlers([Values] Table table)

@@ -267,6 +267,10 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     /// <remarks>
     /// The frame loop would otherwise take the caller off its chain, enter the child, and on its return restore the
     /// caller's stack and enter its chain again. Only an untraced run nests: tracers observe the loop's order of events.
+    /// The caller's chain chose its handlers for the gas it had before the call. If they skip gas tests and it now has
+    /// too little for them (<see cref="TestsEveryCharge"/>), the chain leaves with <c>Suspend</c> and nothing staged, and
+    /// <see cref="RunFrameCode{TTracingInst, TCancelable}"/> enters it again on the handlers that gas allows. A chain on
+    /// the shared handlers continues on them: the call leaves it no more gas than it had.
     /// </remarks>
     internal bool TryRunStagedFrameNested(ref EvmStack stack, out EvmExceptionType resumeResult)
     {
@@ -277,6 +281,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
             return false;
         }
 
+        bool callerTestsEveryCharge = _chainTestsEveryCharge;
         ReturnData = null;
         _stateStack.Push(_currentState);
         _currentState = child;
@@ -301,6 +306,10 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         // CALL already expanded this range; returned output is clipped to the requested length.
         if (previousCallOutputLength > 0)
             _currentState.Memory.SaveAfterGas(in _previousCallOutputDestination, ReturnDataBuffer.Span[..(int)previousCallOutputLength]);
+
+        _chainTestsEveryCharge = callerTestsEveryCharge;
+        if (!callerTestsEveryCharge && TestsEveryCharge(GetExecutionGas(ref _currentState.Gas), stack.CodeLength))
+            resumeResult = EvmExceptionType.Suspend;
 
         return true;
     }

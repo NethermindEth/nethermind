@@ -50,6 +50,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     {
         if (TTracingInst.IsActive || TCancelable.IsActive || typeof(TGasPolicy) != typeof(EthereumGasPolicy)) return;
 
+        // The build of the untraced table is the last one before the table is set, so its entries are the ones kept.
+        if (_opcodeTable is { NoTrace: null })
+            _sharedHandlers = (delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[])lookup.Clone();
+
         if (AirbenderFlag.IsActive)
             AirbenderArithmetic.Initialize();
 
@@ -268,7 +272,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// code ends at a shared handler: at the latest the STOP that pads the code. A frame that halts on an exception
         /// consumes all its gas and drops its effects whichever opcode raised it, so halting a few opcodes later gives
         /// the same result. The shortfall stays far below 2^31: a code holds fewer than 2^20 opcodes, and every fixed
-        /// cost charged this way is below 2^6.
+        /// cost charged this way is below 2^6. A frame runs on these handlers only with at least as much gas as its code
+        /// has bytes (see <see cref="RunDispatchLoop{TTracingInst, TCancelable}"/>), so the opcodes a shortfall runs past
+        /// never outnumber the gas that the frame consumes.
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ChargeUntested(ref nuint gas, ulong cost)
