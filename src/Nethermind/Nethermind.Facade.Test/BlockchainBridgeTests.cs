@@ -249,7 +249,7 @@ public class BlockchainBridgeTests
     public void Pending_frame_transaction_lookup_reports_the_gas_it_has_once_included_in_the_next_block()
     {
         Transaction tx = FrameTxTestFrames.FrameTx(TestItem.AddressA, [], FrameTxTestFrames.SelfVerify(100_000), new TxFrame(FrameMode.Default, FrameFlags.None, TestItem.AddressD, 100_000, 1, default));
-        tx.GasLimit = 400_000;
+        tx.GasLimit = 200_000;
         tx.Hash = TestItem.KeccakA;
         OverridableReleaseSpec headSpec = new(Eip8141Prototype.Instance) { IsEip2780Enabled = false };
         ISpecProvider specProvider = new TestSpecProvider(headSpec) { NextForkSpec = Eip8141Prototype.Instance, ForkOnBlockNumber = 1 };
@@ -284,7 +284,7 @@ public class BlockchainBridgeTests
         {
             Assert.That(includedGas, Is.Not.EqualTo(tx.GasLimit), "the included gas must differ from the summed limits for the check to tell them apart");
             Assert.That(includedGas, Is.Not.EqualTo(headSpecGas), "the head spec and the next block spec must price the transaction differently for the check to tell them apart");
-            Assert.That(pendingGas, Is.EqualTo(includedGas), "a pending frame tx reports the gas the next block, which enables EIP-8141, will include it with");
+            Assert.That(pendingGas, Is.EqualTo(includedGas), "a pending frame tx reports the gas the next block, which enables EIP-2780, will include it with");
         }
     }
 
