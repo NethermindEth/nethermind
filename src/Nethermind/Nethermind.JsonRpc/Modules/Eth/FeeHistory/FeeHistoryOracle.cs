@@ -114,8 +114,10 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 return SaveHistorySearchInfo(head, withRewards: false);
             }
 
-            // An unknown hash is reported as not found rather than taking a slot, as an unknown block number is.
-            if (hashUnchecked && _blockTree.FindHeader(hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded) is null)
+            // An unknown hash, or one that is not canonical when that is required, is reported without taking a slot, as an
+            // unknown block number is.
+            if (blockParameter.Type is BlockParameterType.BlockHash
+                && (hash is null || hashUnchecked && _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded) is null))
             {
                 headerFound = false;
                 return null;
@@ -133,11 +135,13 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             }
 
             Block block = _blockTree.FindBlock(blockParameter);
+            // A block reached by its hash alone can be stored but not processed yet, so its rewards would fall back to the tx
+            // gas limits and stay cached once it is canonical; it is cached only while canonical.
             return block is null
                 ? null
                 : _feeHistoryCache.TryGetValue(block.Hash!, out BlockFeeHistorySearchInfo info)
                     ? info
-                    : SaveHistorySearchInfo(block, withRewards);
+                    : SaveHistorySearchInfo(block, withRewards, cache: !hashUnchecked || _blockTree.IsMainChain(block.Header));
         }
 
         private BlockFeeHistorySearchInfo? GetHistorySearchInfo(Hash256 blockHash, ulong blockNumber, bool withRewards, ref UncachedRequestSlot uncachedRequestSlot)
@@ -154,7 +158,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
         // only saves block younger than the Oldest Block From the Head Allowed In Cache.
         // As time passes and the head progresses only older least used blocks are auto removed from the cache
-        private BlockFeeHistorySearchInfo? SaveHistorySearchInfo(Block block, bool withRewards)
+        private BlockFeeHistorySearchInfo? SaveHistorySearchInfo(Block block, bool withRewards, bool cache = true)
         {
             BlockFeeHistorySearchInfo BlockFeeHistorySearchInfoFromBlock(Block b)
             {
@@ -188,7 +192,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             BlockFeeHistorySearchInfo historyInfo = BlockFeeHistorySearchInfoFromBlock(block);
 
             // Keeps an entry already cached for the hash, so its filled rewards are not dropped.
-            return ShouldCache(block) ? _feeHistoryCache.GetOrAdd(block.Hash!, historyInfo) : historyInfo;
+            return cache && ShouldCache(block) ? _feeHistoryCache.GetOrAdd(block.Hash!, historyInfo) : historyInfo;
         }
 
         private bool ShouldCache(Block block) =>

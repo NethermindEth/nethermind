@@ -58,7 +58,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             blockTree.SuggestBlock(sideBlock);
             Block block = canonical ? mainBlock : sideBlock;
             IFeeHistoryOracle feeHistoryOracle = container.Resolve<IFeeHistoryOracle>();
-            // Caches the block, so the request below also checks that a cached block is not taken as canonical.
+            // Reads the block first, so the request below is answered from the cache for the canonical block and checks that a
+            // side-chain block read by its hash is not cached.
             feeHistoryOracle.GetFeeHistory(1, new BlockParameter(block.Hash!), []).Dispose();
 
             using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, new BlockParameter(block.Hash!, requireCanonical), []);
@@ -78,16 +79,42 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
         }
 
+        private static readonly BlockParameter[] UnknownNewestBlocks =
+            [new(0UL), new(TestItem.KeccakA), new(TestItem.KeccakA, requireCanonical: true)];
+
+        /// <remarks>The message is compared too: a known block that is not canonical fails with the same error code.</remarks>
         [Test]
-        public void GetFeeHistory_NewestBlockIsNull_ReturnsFailingWrapper([Values] bool byHash)
+        public void GetFeeHistory_NewestBlockIsNull_ReturnsFailingWrapper([ValueSource(nameof(UnknownNewestBlocks))] BlockParameter newestBlock)
         {
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             blockTree.FindBlock(Arg.Any<ulong>()).Returns((Block?)null);
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree);
             ResultWrapper<FeeHistoryResults> expected = ResultWrapper<FeeHistoryResults>.Fail("request beyond head block", ErrorCodes.ResourceNotFound);
 
-            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, byHash ? new BlockParameter(TestItem.KeccakA) : new BlockParameter(0UL), []);
+            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, newestBlock, []);
             Assert.That(resultWrapper, Is.EqualTo(expected).UsingPropertiesComparer());
+        }
+
+        [Test]
+        public async Task GetFeeHistory_BlockReadByHashBeforeProcessing_ReadsItsReceiptsOnceCanonical()
+        {
+            using BasicTestBlockchain chain = await BasicTestBlockchain.Create();
+            Transaction[] transactions = GetTestTransactions();
+            // Read back from the block store, which does not decode an empty signature.
+            foreach (Transaction transaction in transactions) transaction.Signature = new Signature(1, 1, 27);
+            Block block = Build.A.Block.WithParent(chain.BlockTree.Head!).WithBaseFeePerGas(3).WithGasUsed(100).WithTransactions(transactions).TestObject;
+            InMemoryReceiptStorage receiptStorage = new();
+            using FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: chain.BlockTree, receiptStorage: receiptStorage);
+            // Stored before it is processed, as newPayload does, so it has no receipts yet.
+            chain.BlockTree.SuggestBlock(block, BlockTreeSuggestOptions.ForceDontSetAsMain);
+            feeHistoryOracle.GetFeeHistory(1, new BlockParameter(block.Hash!), [20, 40, 60, 80.5]).Dispose();
+
+            receiptStorage.Insert(block, BuildReceiptsWithGasUsed([10, 20, 30, 40], eip8116Receipts: false), ensureCanonical: false);
+            chain.BlockTree.TryUpdateMainChain(block.Header, true, preloadedBlocks: block);
+            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, new BlockParameter(block.Number), [20, 40, 60, 80.5]);
+
+            // Rewards from the tx gas limits would be 4, 10, 13, 22.
+            Assert.That(resultWrapper.Data.Reward![0], Is.EqualTo((UInt256[])[4, 10, 10, 22]));
         }
 
 
