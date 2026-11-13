@@ -12,7 +12,10 @@ using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Columns;
 using BenchmarkDotNet.Configs;
+using BenchmarkDotNet.Environments;
 using BenchmarkDotNet.Jobs;
+using BenchmarkDotNet.Toolchains.CsProj;
+using BenchmarkDotNet.Toolchains.DotNetCli;
 using Perfolizer.Mathematics.OutlierDetection;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -1062,6 +1065,10 @@ public unsafe class EvmOpcodesBenchmark
             // Without an explicit job, BDN falls back to Job.Default (1 launch, auto-pilot)
             // because the runner's DashboardConfig.AddJob is commented out.
             AddJob(Job.Default
+                // BenchmarkDotNet 0.15.8 doesn't recognize .NET 11 and fails validating such a job, so it claims .NET 10
+                // and the toolchain builds for net11.0. TODO: use the host runtime once BenchmarkDotNet 0.16.0 is released.
+                .WithRuntime(CoreRuntime.Core10_0)
+                .WithToolchain(CsProjCoreToolchain.From(new NetCoreAppSettings("net11.0", null, ".NET 11.0")))
                 .WithGcForce(true)
                 .WithEnvironmentVariable("DOTNET_GCServer", "1")
                 .WithEnvironmentVariable("DOTNET_gcConcurrent", "0")
