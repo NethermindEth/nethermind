@@ -278,6 +278,10 @@ public partial class BlockProcessor(
             bool latest = _productionProofCache.ObserveProduction(block.Timestamp, block.Number);
             List<FrameDependency> deps = Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue);
             ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(deps);
+            // Production proves the plain statement only. Batch claims and payments never reach it, since the pool refuses them,
+            // and a block holding either would need the finalized one (ethereum/EIPs#12664), so building it would be a bug.
+            if (Eip8288Dependencies.ProofStatement(deps, depsHash) != depsHash)
+                throw new InvalidOperationException("Producing a block with batch claims or leaf payments is not supported.");
             Eip8288Verifier verifier = Eip8288Verifier.For(spec);
             (ValueHash256, ValueHash256) key = (depsHash, verifier.AggregatedVk);
             byte[] proof;
