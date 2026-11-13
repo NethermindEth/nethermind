@@ -41,7 +41,7 @@ public class GuestDispatchDifferentialTests
 
     private static readonly ConcurrentDictionary<(Table, IReleaseSpec), nint[]> SharedTables = new();
 
-    private static readonly ConcurrentDictionary<(Table, IReleaseSpec, bool, bool, bool, bool), nint[]> PairedTables = new();
+    private static readonly ConcurrentDictionary<(Table, IReleaseSpec, bool, bool, bool, bool, bool), nint[]> PairedTables = new();
 
     private static readonly IReleaseSpec ReleaseSpec = Osaka.Instance;
 
@@ -51,6 +51,7 @@ public class GuestDispatchDifferentialTests
     private static readonly IReleaseSpec[] StorageLoadForks = [ReleaseSpec, Amsterdam.Instance];
     // Both sides of EIP-3529, which changed the refunds the guest SSTORE handler grants.
     private static readonly IReleaseSpec[] StorageWriteForks = [Berlin.Instance, ReleaseSpec];
+    private static readonly IReleaseSpec[] BlobHashForks = [Shanghai.Instance, ReleaseSpec];
     private static readonly BlockHeader Header = new(Hash256.Zero, Hash256.Zero, Address.Zero, UInt256.Zero, 1, 30_000_000, 1, []);
     // Differs from the caller and the beneficiary, so a read of the wrong account fails.
     private static readonly Address BalanceOwner = new("0x00000000000000000000000000000000000000aa");
@@ -664,6 +665,63 @@ public class GuestDispatchDifferentialTests
     }
 
     /// <remarks>
+    /// Indices inside the list, at its end, past it and past a native word, with no list, an empty one, several hashes
+    /// and a hash shorter than a word, and every amount of gas up to the program's need, against the shared handler;
+    /// the hash is stored to memory. On an empty stack BLOBHASH underflows.
+    /// </remarks>
+    [Test]
+    public void Blob_hashes_match_the_shared_handlers([ValueSource(nameof(BlobHashLists))] byte[]?[]? hashes, [Values(0ul, 1ul, 2ul, 3ul, 1ul << 40)] ulong index, [Values] bool wide)
+    {
+        TxExecutionContext txContext = new(Address.Zero, Substitute.For<ICodeInfoRepository>(), hashes, UInt256.Zero);
+        UInt256 word = wide ? new UInt256(index, 0, 1, 0) : (UInt256)index;
+        byte[] reads = [(byte)Instruction.PUSH32, .. word.ToBigEndian(), (byte)Instruction.BLOBHASH, (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE, (byte)Instruction.STOP];
+        byte[] fromEmptyStack = [(byte)Instruction.BLOBHASH, (byte)Instruction.STOP];
+        const ulong ample = 100_000;
+        ulong needed = ample - Run(ample, [], 0, new CodeInfo(reads), Table.Traced, txContext: txContext).GasLeft;
+
+        List<string> mismatches = [];
+        foreach (byte[] code in (byte[][])[reads, fromEmptyStack])
+        {
+            for (ulong gas = 0; gas <= needed && mismatches.Count < 5; gas++)
+            {
+                Outcome untraced = Run(gas, [], 0, new CodeInfo(code), Table.Untraced, txContext: txContext);
+                Outcome traced = Run(gas, [], 0, new CodeInfo(code), Table.Traced, txContext: txContext);
+                if (!Matches(untraced, traced))
+                    mismatches.Add($"{code.Length}-byte code, gas {gas}\n untraced {untraced}\n traced   {traced}");
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(mismatches, Is.Empty);
+            Assert.That(Run(ample, [], 0, new CodeInfo(fromEmptyStack), Table.Untraced, txContext: txContext).Exception, Is.EqualTo(EvmExceptionType.StackUnderflow));
+        }
+    }
+
+    private static IEnumerable<byte[]?[]?> BlobHashLists()
+    {
+        yield return null;
+        yield return [];
+        yield return [BlobHash(1)];
+        yield return [BlobHash(1), BlobHash(2), BlobHash(3)];
+        // Not a versioned hash; the shared handler left-pads it to a word.
+        yield return [BlobHash(1, Address.Size), BlobHash(2)];
+    }
+
+    private static byte[] BlobHash(byte tag, int length = EvmStack.WordSize)
+    {
+        byte[] hash = new byte[length];
+        hash[0] = 0x01;
+        hash[^1] = tag;
+        return hash;
+    }
+
+    /// <remarks>The guest handler falls back to the shared one, so only the table shows that it is installed.</remarks>
+    [Test]
+    public void Guest_blob_hash_handler_is_installed_from_eip4844([ValueSource(nameof(BlobHashForks))] IReleaseSpec spec) =>
+        Assert.That(VirtualMachine<EthereumGasPolicy>.ReadsBlobHashesThroughGuestHandlerForTests(spec), Is.EqualTo(spec.IsEip4844Enabled));
+
+    /// <remarks>
     /// The second load of a key finds it warm, and every amount of gas up to the program's need puts the end of the
     /// gas inside each cold and warm charge, up to what the traced table charges for the loads on each fork. The guest
     /// builds one table for the first fork it prepares, so on EIP-8038 this checks that whichever SLOAD handler the
@@ -1168,15 +1226,18 @@ public class GuestDispatchDifferentialTests
 
     /// <param name="initial">The frame's full policy, whose execution gas must be <paramref name="gas"/>; by default one holding only it.</param>
     /// <param name="codeInfoRepository">The code the calls read; without it CALL, STATICCALL and DELEGATECALL run as INVALID.</param>
+    /// <param name="txContext">The transaction's context, which holds the versioned blob hashes; without it BLOBHASH runs as INVALID.</param>
     private static unsafe Outcome Run(ulong gas, byte[] inputData, int head, CodeInfo codeInfo, Table table, IReleaseSpec? spec = null,
         bool loadsStorage = false, byte[]? returnData = null, bool isStatic = false, EthereumGasPolicy? initial = null,
-        ICodeInfoRepository? codeInfoRepository = null, BlockExecutionContext? context = null, UInt256? balance = null)
+        ICodeInfoRepository? codeInfoRepository = null, BlockExecutionContext? context = null, TxExecutionContext? txContext = null,
+        UInt256? balance = null)
     {
         DispatchingVirtualMachine vm = new(spec ?? ReleaseSpec);
         if (context is { } blockContext) vm.SetBlockExecutionContext(blockContext);
         IWorldState stateSubstitute = vm.WorldState;
         BalanceWorldState? balanceState = balance is { } value ? vm.UseBalance(value) : null;
         if (returnData is not null) vm.ReturnDataBuffer = returnData;
+        if (txContext is not null) vm.SetTxExecutionContext(txContext.Value);
         if (codeInfoRepository is not null)
         {
             vm.UseCodeInfoRepository(codeInfoRepository);
@@ -1215,7 +1276,8 @@ public class GuestDispatchDifferentialTests
                 !(balance is not null && (Instruction)opcode == Instruction.SELFBALANCE) &&
                 !(loadsStorage && (Instruction)opcode is Instruction.SLOAD or Instruction.SSTORE or Instruction.TLOAD or Instruction.TSTORE) &&
                 !(returnData is not null && (Instruction)opcode is Instruction.RETURNDATASIZE or Instruction.RETURNDATACOPY) &&
-                !(codeInfoRepository is not null && (Instruction)opcode is Instruction.CALL or Instruction.STATICCALL or Instruction.DELEGATECALL))
+                !(codeInfoRepository is not null && (Instruction)opcode is Instruction.CALL or Instruction.STATICCALL or Instruction.DELEGATECALL) &&
+                !(txContext is not null && (Instruction)opcode is Instruction.BLOBHASH))
                 handlers[opcode] = handlers[(int)Instruction.INVALID];
         }
 
@@ -1225,7 +1287,7 @@ public class GuestDispatchDifferentialTests
         nint pc;
         nint finalHead;
         // Paired once per table, fork and replaced set, as the dispatch loop pairs each table once.
-        nint[] paired = PairedTables.GetOrAdd((table, spec ?? ReleaseSpec, loadsStorage, returnData is not null, codeInfoRepository is not null, balance is not null), _ => VirtualMachine<EthereumGasPolicy>.PairHandlers(handlers));
+        nint[] paired = PairedTables.GetOrAdd((table, spec ?? ReleaseSpec, loadsStorage, returnData is not null, codeInfoRepository is not null, balance is not null, txContext is not null), _ => VirtualMachine<EthereumGasPolicy>.PairHandlers(handlers));
         fixed (nint* pairedStart = paired)
         {
             nint* entries = pairedStart + VirtualMachine<EthereumGasPolicy>.FollowerHandlersLength;
