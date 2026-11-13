@@ -91,6 +91,10 @@ public static class WrapperBodies
     /// <summary>EIP-7594 cell proofs per blob in a blob network wrapper.</summary>
     private const int CellProofsPerBlob = 128;
 
+    // A local estimate of verifying one aggregate proof, kept at ten leanSPHINCS signatures: EIP-8288's leanSTARK declaration gas
+    // prices a generic proof's recursive child slot, not a mempool node's single verification.
+    private const long AggregateVerificationWork = 10 * (long)Eip8288Constants.LeanSphincsVerificationGas;
+
     /// <summary>Checks the canonical wrapper encoding and returns its consensus transaction hashes, in order.</summary>
     /// <remarks>Checks the encoding rules: <c>MAX_WRAPPER_BYTES</c>, full transaction encodings in strictly ascending
     /// transaction-hash order and well-formed dependency triples. Dependency and proof rules, such as the dependency list's order,
@@ -143,7 +147,7 @@ public static class WrapperBodies
             // The local pinned-prover bound applies to every aggregate proof before decoding or verification.
             if (proof.Length is 0 or > Eip8288Constants.MaxAggregateProofBytes) throw new RlpException("Aggregate proof is empty or exceeds the local proof size bound");
             verificationBytes = proof.Length;
-            work = (long)Eip8288Constants.LeanStarkVerificationGas;
+            work = AggregateVerificationWork;
         }
         content.End();
         shape = new((int)mode, verificationBytes, work);
