@@ -6,7 +6,9 @@ using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core;
 using Nethermind.Serialization.FluentRlp;
@@ -95,24 +97,7 @@ public readonly ref struct NodeRecordRef
         int position = 0;
         if (Kind == NodeRecordKind.HashedBranch)
         {
-            // Every child is either 0x80 or a 33-byte hash, so its offset needs no parsing.
-            ReadOnlySpan<byte> payload = Payload;
-            ushort hashMask = HashMask;
-            int offset = 0;
-            for (int i = 0; i < children.Length; i++)
-            {
-                if ((hashMask & (1 << i)) == 0)
-                {
-                    children[i] = default;
-                    offset++;
-                }
-                else
-                {
-                    children[i] = ChildRef.ForHash(new ValueHash256(payload.Slice(offset + 1, ValueHash256.MemorySize)), Pointer(position++));
-                    offset += ValueHash256.MemorySize + 1;
-                }
-            }
-
+            CopyHashedBranchChildren(children);
             return;
         }
 
@@ -123,6 +108,49 @@ public readonly ref struct NodeRecordRef
             children[i] = ReadChild(reader, ref cursor, position);
             if (children[i].Kind == ChildRefKind.Hash) position++;
         }
+    }
+
+    private void CopyHashedBranchChildren(Span<ChildRef> children)
+    {
+        Debug.Assert(children.Length == TrieNode.BranchesCount);
+        ref byte recordRef = ref MemoryMarshal.GetReference(_record);
+        uint hashMask = Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref recordRef, NodeRecordCodec.HashMaskOffset));
+        uint rlpLength = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref recordRef, NodeRecordCodec.RlpLengthOffset));
+        ref byte pointer = ref Unsafe.Add(ref recordRef, NodeRecordCodec.HeaderLength);
+        int sequenceHeader = 1 + (rlpLength > 56 ? 1 : 0) + (rlpLength > 257 ? 1 : 0);
+        ref byte item = ref Unsafe.Add(ref pointer, NodeRecordCodec.PointerLength * BitOperations.PopCount(hashMask) + sequenceHeader);
+        ref ChildRef child = ref MemoryMarshal.GetReference(children);
+
+        if (hashMask == 0xFFFF)
+        {
+            for (int i = 0; i < TrieNode.BranchesCount; i++)
+                WriteHashChild(ref Unsafe.Add(ref child, i), ref Unsafe.Add(ref pointer, i * NodeRecordCodec.PointerLength), ref Unsafe.Add(ref item, i * Serialization.Rlp.Rlp.LengthOfKeccakRlp + 1));
+            return;
+        }
+
+        for (int i = 0; i < TrieNode.BranchesCount; i++)
+        {
+            if ((hashMask & (1u << i)) == 0)
+            {
+                child = default;
+                item = ref Unsafe.Add(ref item, 1);
+            }
+            else
+            {
+                WriteHashChild(ref child, ref pointer, ref Unsafe.Add(ref item, 1));
+                pointer = ref Unsafe.Add(ref pointer, NodeRecordCodec.PointerLength);
+                item = ref Unsafe.Add(ref item, Serialization.Rlp.Rlp.LengthOfKeccakRlp);
+            }
+
+            child = ref Unsafe.Add(ref child, 1);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void WriteHashChild(ref ChildRef child, ref byte pointer, ref byte hash)
+    {
+        Unsafe.As<ChildRef, Vector128<ulong>>(ref child) = Vector128.Create((ulong)ChildRefKind.Hash, Unsafe.ReadUnaligned<ulong>(ref pointer));
+        Unsafe.As<ValueHash256, Vector256<byte>>(ref child.Data) = Unsafe.ReadUnaligned<Vector256<byte>>(ref hash);
     }
 
     /// <summary>Number of key nibbles past the first <paramref name="skip"/>; a branch has no key.</summary>
