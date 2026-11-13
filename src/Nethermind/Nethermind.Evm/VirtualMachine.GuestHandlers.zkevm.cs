@@ -524,7 +524,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         /// <summary>
         /// A comparison, fused with the branch after it - <c>PUSH2</c> <c>JUMPI</c>, <c>ISZERO</c> <c>PUSH2</c> <c>JUMPI</c>, or <c>PUSH1</c> <c>JUMPI</c> -
-        /// whenever that branch falls through or lands on a destination the incremental bitmap already holds.
+        /// whenever that branch falls through or lands on a destination the incremental bitmap already holds, or with a
+        /// lone <c>ISZERO</c> after it that only inverts the result.
         /// </summary>
         /// <remarks>
         /// Compilers branch on nearly every comparison they emit, so fusing saves the comparison its result slot and
@@ -647,8 +648,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                 }
                             }
                         }
-                        // No branch follows: the ISZERO only inverts the result, so both run in one step.
-                        else if (TryCharge(ref gas, 2 * VeryLowGasCost.GasCost))
+                        // No branch follows: the ISZERO only inverts the result, so both run in one step. A PUSH1 JUMPI
+                        // after the ISZERO is left to the ISZERO's own branch fusion.
+                        else if (!(CodeByte(ref opcode, inverted, 2, 2) == (byte)Instruction.PUSH1 && CodeByte(ref opcode, inverted, 2, 4) == (byte)Instruction.JUMPI) &&
+                            TryCharge(ref gas, 2 * VeryLowGasCost.GasCost))
                         {
                             nint inverse = -TCondition.Inputs * LimbsPerWord;
                             Unsafe.Add(ref end, inverse) = condition ^ 1;

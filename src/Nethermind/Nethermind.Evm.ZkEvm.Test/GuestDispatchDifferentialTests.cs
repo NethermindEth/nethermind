@@ -405,7 +405,11 @@ public class GuestDispatchDifferentialTests
             "6001600114151900",
             "600015151900",
             "6000151515151900",
-            "60011515")] string sequence)
+            "60011515",
+            "600160021015600a57005b00",
+            "600160011415600a57005b00",
+            "7f0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f2060011015",
+            "7f0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f2060011115")] string sequence)
     {
         byte[] code = Convert.FromHexString(sequence);
         List<string> mismatches = [];
