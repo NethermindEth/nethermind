@@ -493,11 +493,10 @@ public class McpLimitsTests
         await Assert.CatchAsync<OperationCanceledException>(async () =>
             await tools.ResolveEns(name, cancellationToken: cancellation.Token));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(calls, Is.EqualTo(1), "no registry or ancestor lookup may start after cancellation");
-            Assert.That(provider.Returned, Is.EqualTo(1), "the cancelled ENS lookup must return its module");
-        }
+        // The call stops waiting as soon as the token fires, while the body may still be inside the cancelling eth_call;
+        // once the module is back the body has unwound, so the call count is final.
+        await WaitUntil(() => provider.Returned == 1, "the cancelled ENS lookup must return its module");
+        Assert.That(calls, Is.EqualTo(1), "no registry or ancestor lookup may start after cancellation");
     }
 
     [Test]
