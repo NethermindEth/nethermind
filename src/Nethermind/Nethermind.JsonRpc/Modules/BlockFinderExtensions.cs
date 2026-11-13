@@ -70,8 +70,8 @@ namespace Nethermind.JsonRpc.Modules
         /// </para>
         /// <para>
         /// A hash without an index entry costs one index read. Neither an entry that is not canonical nor a block at or
-        /// above the floor that is not settled reads a body. Only the number of receipts is used, so they are read
-        /// without recovery.
+        /// above the floor that is not settled reads a body. Only the number of receipts is used, so the read asks for
+        /// no recovery.
         /// </para>
         /// </remarks>
         internal static bool IsTransactionPruned(this IBlockFinder blockFinder, IReceiptFinder receiptFinder, Hash256 txHash)
@@ -92,7 +92,8 @@ namespace Nethermind.JsonRpc.Modules
         /// <remarks>
         /// Reads no index entry, header, body or receipts again, so it decides on that block even if the index entry has
         /// moved since, and cannot start a second regeneration. The head race needs no second read here: the caller found
-        /// the index entry itself, and a new block's entries are published only after its receipts are stored.
+        /// the index entry itself, and the entries of a newly processed block are published only after its receipts are
+        /// stored or held for the deferred write.
         /// </remarks>
         internal static bool IsTransactionPruned(this IBlockFinder blockFinder, Block block, TxReceipt[] receipts, Hash256 txHash) =>
             blockFinder.IsMainChain(block.Header)

@@ -106,9 +106,9 @@ public class BlockFinderExtensionsTests
         bool pruned = blockFinder.IsTransactionPruned(receiptFinder, txHash);
 
         Assert.That(pruned, Is.EqualTo(expected));
-        // A read is made only once the checks before it pass. A hash without an entry, which is every poll for a pending
-        // transaction, reads nothing past the index; neither an entry that is not canonical nor a block at or above the
-        // floor that is not settled reads a body; a block below the floor reads no receipts.
+        // A read is made only once the checks before it pass. A hash without an entry reads nothing past the index;
+        // neither an entry that is not canonical nor a block at or above the floor that is not settled reads a body; a
+        // block below the floor reads no receipts.
         if (lastRead < LastRead.Header) blockFinder.DidNotReceiveWithAnyArgs().FindHeader(null!, default, default);
         if (lastRead < LastRead.Body) blockFinder.DidNotReceiveWithAnyArgs().FindBlock(null!, default, default);
         if (lastRead < LastRead.Receipts)
@@ -117,7 +117,7 @@ public class BlockFinderExtensionsTests
         }
         else
         {
-            // Only their number is used: one read, without recovery.
+            // Only their number is used: one read, asking for no recovery.
             receiptFinder.ReceivedWithAnyArgs(1).Get(null!, default, default);
             receiptFinder.Received(1).Get(block, recover: false, recoverSender: false);
         }
