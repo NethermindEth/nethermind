@@ -230,7 +230,8 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         }
     }
 
-    public override async Task<IOwnedReadOnlyList<TxReceipt[]>> GetReceipts(IReadOnlyList<Hash256> blockHashes, ReadOnlyMemory<int> expectedReceiptCounts, CancellationToken token)
+    public override async Task<IOwnedReadOnlyList<TxReceipt[]>> GetReceipts(IReadOnlyList<Hash256> blockHashes, ReadOnlyMemory<int> expectedReceiptCounts, CancellationToken token,
+        ReadOnlyMemory<int>? receiptCountLimits = null)
     {
         if (blockHashes.Count == 0)
         {
@@ -243,7 +244,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
             async clampedHashes =>
             {
                 using ArrayPoolList<Hash256> ownedHashes = clampedHashes.ToPooledList();
-                return await SendGetReceiptsWithPaging(ownedHashes, expectedReceiptCounts, token);
+                return await SendGetReceiptsWithPaging(ownedHashes, expectedReceiptCounts, token, receiptCountLimits);
             });
     }
 
@@ -253,7 +254,9 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
     /// are bounded by the transactions of the local block body when there is one.
     /// </param>
     /// <param name="token">Cancels the requests.</param>
-    private async Task<(IOwnedReadOnlyList<TxReceipt[]>, long)> SendGetReceiptsWithPaging(IOwnedReadOnlyList<Hash256> blockHashes, ReadOnlyMemory<int> expectedReceiptCounts, CancellationToken token)
+    /// <param name="receiptCountLimits">Optional decode ceilings; they do not establish that a receipt list is complete.</param>
+    private async Task<(IOwnedReadOnlyList<TxReceipt[]>, long)> SendGetReceiptsWithPaging(IOwnedReadOnlyList<Hash256> blockHashes, ReadOnlyMemory<int> expectedReceiptCounts, CancellationToken token,
+        ReadOnlyMemory<int>? receiptCountLimits)
     {
         ArrayPoolList<TxReceipt[]> aggregated = new(blockHashes.Count);
         ArrayPoolList<TxReceipt>? partialReceipts = null;
@@ -317,6 +320,8 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
             int expected = i < expectedCounts.Length ? expectedCounts[i] : -1;
             maxReceiptsPerBlock[i] = expected >= 0 ? expected : blockTransactions[i]?.Length ?? -1;
         }
+        if (receiptCountLimits is { } limits)
+            maxReceiptsPerBlock = ReceiptsResponseBudget.GetReceiptCountLimits(maxReceiptsPerBlock, limits.Span, blockHashes.Count);
 
         try
         {

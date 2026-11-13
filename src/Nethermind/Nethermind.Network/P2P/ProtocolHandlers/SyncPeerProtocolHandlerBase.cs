@@ -205,8 +205,9 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         public virtual Task<IOwnedReadOnlyList<TxReceipt[]>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token) => throw new NotSupportedException("Fast sync not supported by eth62 protocol");
 
-        public virtual Task<IOwnedReadOnlyList<TxReceipt[]>> GetReceipts(IReadOnlyList<Hash256> blockHashes, ReadOnlyMemory<int> expectedReceiptCounts, CancellationToken token) =>
-            GetReceipts(blockHashes, token);
+        public virtual Task<IOwnedReadOnlyList<TxReceipt[]>> GetReceipts(IReadOnlyList<Hash256> blockHashes, ReadOnlyMemory<int> expectedReceiptCounts, CancellationToken token,
+            ReadOnlyMemory<int>? receiptCountLimits = null) =>
+            receiptCountLimits is null ? GetReceipts(blockHashes, token) : throw new NotSupportedException("Bounded receipt decoding is not supported.");
 
         public virtual Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token) => throw new NotSupportedException("Fast sync not supported by eth62 protocol");
 

@@ -178,15 +178,32 @@ public partial class GossipRouterTests
         PeerId peer = new Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId;
         List<Rpc> sent = [];
         TaskCompletionSource dial = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Func<ReadOnlyMemory<byte>, CancellationToken, ValueTask<IOResult>> write = (bytes, _) =>
+        {
+            int offset = 0;
+            while ((bytes.Span[offset++] & 0x80) != 0) { }
+            sent.Add(Rpc.Parser.ParseFrom(bytes.Span[offset..]));
+            return ValueTask.FromResult(IOResult.Ok);
+        };
         typeof(PubsubRouter).GetMethod("OutboundConnection", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(pubsub,
-            [Multiaddress.Decode($"/ip4/127.0.0.1/tcp/9000/p2p/{peer}"), protocol, dial.Task, (Action<Rpc>)sent.Add]);
-        MethodInfo onRpc = typeof(PubsubRouter).GetMethod("OnRpc", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        void Receive(Rpc rpc) => onRpc.Invoke(pubsub, [peer, rpc, null, true]);
+            [Multiaddress.Decode($"/ip4/127.0.0.1/tcp/9000/p2p/{peer}"), protocol, dial.Task, write,
+                (Func<ValueTask>)(static () => ValueTask.CompletedTask), (Func<Task>)(static () => Task.CompletedTask)]);
+        FlushOutbound(pubsub);
+        MethodInfo onRpc = typeof(PubsubRouter).GetMethod("OnRpcAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        void Receive(Rpc rpc)
+        {
+            ((Task)onRpc.Invoke(pubsub, [peer, rpc, null, true, CancellationToken.None])!).GetAwaiter().GetResult();
+            FlushOutbound(pubsub);
+        }
         Rpc subscribe = new();
         subscribe.Subscriptions.Add(new Rpc.Types.SubOpts { Topicid = topicId, Subscribe = true });
         Receive(subscribe);
         return (peer, sent, Receive);
     }
+
+    private static void FlushOutbound(PubsubRouter pubsub) =>
+        ((Task)typeof(PubsubRouter).GetMethod("FlushOutboundAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(pubsub, null)!).GetAwaiter().GetResult();
 
     [Test]
     public void Retiring_a_topic_waits_for_the_router_monitor()

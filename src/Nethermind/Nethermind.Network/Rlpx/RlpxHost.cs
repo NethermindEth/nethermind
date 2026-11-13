@@ -250,6 +250,7 @@ namespace Nethermind.Network.Rlpx
             bool primaryAccepted = IsDialAddressAcceptable(node.Address.Address, allowNonRoutable);
             if (!primaryAccepted)
             {
+                if (_logger.IsDebug) _logger.Debug($"RLPx dial endpoint rejected for {node:s}: {node.Address}");
                 if (_logger.IsTrace) TraceRejectedDialEndpoint(node, node.Address);
             }
             else if (await TryConnect(node, cancellationToken))
@@ -266,6 +267,7 @@ namespace Nethermind.Network.Rlpx
             bool privileged = _privilegedIpProvider.IsPrivileged(alternate.Address.Address);
             if (!privileged && !_nodeFilter.WouldAccept(alternate.Address.Address, exactOnly))
             {
+                if (_logger.IsDebug) _logger.Debug($"RLPx alternate dial endpoint filtered for {alternate:s}: {alternate.Address}");
                 if (_logger.IsTrace) TraceFilteredDialEndpoint(alternate);
                 return false;
             }
@@ -316,6 +318,8 @@ namespace Nethermind.Network.Rlpx
             if (firstTask != connectTask)
             {
                 bool abandoned = attempt.TryAbandon();
+                if (_logger.IsDebug)
+                    _logger.Debug($"RLPx dial wait ended for {node:s} at {node.Address}: caller canceled {cancellationToken.IsCancellationRequested}, abandoned {abandoned}");
                 if (_logger.IsTrace) TraceConnectionTimedOut(node);
                 if (!abandoned)
                 {
@@ -337,6 +341,7 @@ namespace Nethermind.Network.Rlpx
             delayCancellation.Cancel();
             if (connectTask.IsCanceled)
             {
+                if (_logger.IsDebug) _logger.Debug($"RLPx TCP connect task canceled for {node:s} at {node.Address}");
                 if (!attempt.TryAbandon())
                 {
                     return true;
@@ -353,10 +358,16 @@ namespace Nethermind.Network.Rlpx
                     return true;
                 }
 
+                if (_logger.IsDebug)
+                {
+                    Exception failure = connectTask.Exception!.GetBaseException();
+                    _logger.Debug($"RLPx TCP connect failed for {node:s} at {node.Address}: {failure.GetType().Name}, socket error {(failure as SocketException)?.SocketErrorCode}");
+                }
                 if (_logger.IsTrace) TraceConnectionFailure(node, connectTask.Exception!);
                 return false;
             }
 
+            if (_logger.IsDebug) _logger.Debug($"RLPx TCP connected to {node:s} at {node.Address}");
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {node:s} OUT connected");
             return true;
         }

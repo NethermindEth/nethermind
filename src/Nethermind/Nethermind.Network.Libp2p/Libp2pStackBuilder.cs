@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Collections.Specialized;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.Sockets;
@@ -19,29 +18,51 @@ using Nethermind.Libp2p.Protocols.Pubsub;
 
 namespace Nethermind.Network.Libp2p;
 
-/// <summary>The libp2p stack the node's libp2p hosts run on: TCP, Noise, yamux, identify, ping and optionally gossipsub.</summary>
-/// <remarks>Built from the component packages, so the node ships none of the transports the meta package adds (WebRTC, WebSockets, relay, QUIC, TLS) or their dependencies.</remarks>
+/// <summary>The libp2p stack the node's hosts run on: TCP/Noise with Yamux, optional Mplex and QUIC, identify, ping and optional gossipsub.</summary>
+/// <remarks>Uses component packages without the meta package's WebRTC, WebSocket and circuit-relay dependencies.</remarks>
 public sealed class Libp2pStackBuilder(IServiceProvider? serviceProvider = null)
     : PeerFactoryBuilderBase<Libp2pStackBuilder, Libp2pStackPeerFactory>(serviceProvider)
 {
     private bool _pubsub;
+    private bool _quic;
+    private bool _mplex;
+
+    /// <summary>Adds the authenticated QUIC v1 transport, with its native stream multiplexing.</summary>
+    public Libp2pStackBuilder WithQuic()
+    {
+        EnsureConfigurable();
+        _quic = true;
+        return this;
+    }
 
     /// <summary>Adds gossipsub (v1.0 to v1.3) and floodsub to the protocols every session offers.</summary>
     public Libp2pStackBuilder WithPubsub()
     {
+        EnsureConfigurable();
         _pubsub = true;
+        return this;
+    }
+
+    /// <summary>Adds Mplex for legacy TCP peers while retaining Yamux as the preferred multiplexer.</summary>
+    public Libp2pStackBuilder WithMplex()
+    {
+        EnsureConfigurable();
+        _mplex = true;
         return this;
     }
 
     [DynamicDependency(DynamicallyAccessedMemberTypes.PublicMethods, typeof(IpTcpProtocol))]
     [DynamicDependency(DynamicallyAccessedMemberTypes.PublicMethods, typeof(NoiseProtocol))]
     [DynamicDependency(DynamicallyAccessedMemberTypes.PublicMethods, typeof(YamuxProtocol))]
+    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicMethods, typeof(MplexProtocol))]
     [DynamicDependency(DynamicallyAccessedMemberTypes.PublicMethods, typeof(MultistreamProtocol))]
+    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicMethods, typeof(QuicProtocol))]
     protected override ProtocolRef[] BuildStack(IEnumerable<ProtocolRef> additionalProtocols)
     {
         ProtocolRef tcp = Get<IpTcpProtocol>();
         ProtocolRef[] appSelector = [Get<MultistreamProtocol>()];
-        Connect([tcp], [Get<MultistreamProtocol>()], [Get<NoiseProtocol>()], [Get<MultistreamProtocol>()], [Get<YamuxProtocol>()], appSelector);
+        ProtocolRef[] multiplexers = _mplex ? [Get<YamuxProtocol>(), Get<MplexProtocol>()] : [Get<YamuxProtocol>()];
+        Connect([tcp], [Get<MultistreamProtocol>()], [Get<NoiseProtocol>()], [Get<MultistreamProtocol>()], multiplexers, appSelector);
 
         List<ProtocolRef> apps = [Get<IdentifyProtocol>(), Get<IdentifyPushProtocol>(), Get<PingProtocol>(), .. additionalProtocols];
         if (_pubsub)
@@ -52,6 +73,12 @@ public sealed class Libp2pStackBuilder(IServiceProvider? serviceProvider = null)
         // A typed array is one choice of protocols; a collection expression would bind to the params array and chain them instead.
         ProtocolRef[] choices = [.. apps];
         Connect(appSelector, choices);
+        if (_quic)
+        {
+            ProtocolRef quic = Get<QuicProtocol>();
+            Connect([quic], appSelector);
+            return [tcp, quic];
+        }
         return [tcp];
     }
 }
@@ -85,17 +112,12 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
         public async Task<IEnumerable<IPAddress>> QueryAaaaAsync(string name, CancellationToken token) => await Dns.GetHostAddressesAsync(name, AddressFamily.InterNetworkV6, token);
     }
 
-    private sealed class IdentifyingPeer : LocalPeer, ILocalPeer
+    private sealed class IdentifyingPeer : LocalPeer
     {
-        private int _disposed;
-
         public IdentifyingPeer(Identity identity, PeerStore peerStore, IProtocolStackSettings settings, IdentifyNotifier notifier, ILoggerFactory? loggerFactory,
             IDnsLookup dnsLookup)
             : base(identity, peerStore, settings, loggerFactory: loggerFactory, multiaddrResolver: new MultiaddrResolver(dnsLookup))
-        {
-            notifier.TrackChanges(this);
-            Sessions.CollectionChanged += CloseAfterDisposal;
-        }
+            => notifier.TrackChanges(this);
 
         protected override async Task ConnectedTo(ISession session, bool isDialer)
         {
@@ -110,29 +132,6 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
                 throw;
             }
         }
-        ValueTask IAsyncDisposable.DisposeAsync()
-        {
-            // Under the Sessions lock: a session added before this is in the library's disposal snapshot, one added after sees the flag.
-            lock (Sessions)
-            {
-                Volatile.Write(ref _disposed, 1);
-            }
-
-            return DisposeAsync();
-        }
-
-        // Disposal closes only the sessions it sees, so one a dial completes afterwards is closed here, off the library's lock.
-        private void CloseAfterDisposal(object? sender, NotifyCollectionChangedEventArgs e)
-        {
-            if (e.Action == NotifyCollectionChangedAction.Add && e.NewItems is not null && Volatile.Read(ref _disposed) == 1)
-            {
-                foreach (ISession session in e.NewItems)
-                {
-                    _ = Task.Run(session.DisconnectAsync);
-                }
-            }
-        }
-
     }
 }
 

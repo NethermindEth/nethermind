@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -118,21 +119,24 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         }
 
         [Test]
-        public async Task Receipts_response_is_checked_against_expected_receipt_counts([Values] bool exceedsCount)
+        public async Task Receipts_response_is_checked_against_expected_receipt_counts(
+            [Values] bool exceedsCount, [Values] bool countKnown, [Values] bool bounded)
         {
             const int count = 3;
-            Task<IOwnedReadOnlyList<TxReceipt[]>> task = _ctx.ProtocolHandler.GetReceipts([Keccak.Zero], new[] { count }, CancellationToken.None);
+            ReadOnlyMemory<int>? limits = bounded ? new ReadOnlyMemory<int>(new[] { count + (countKnown ? 1 : 0) }) : null;
+            Task<IOwnedReadOnlyList<TxReceipt[]>> task = _ctx.ProtocolHandler.GetReceipts([Keccak.Zero], new[] { countKnown ? count : -1 }, CancellationToken.None, limits);
 
-            if (exceedsCount)
+            if (exceedsCount && (countKnown || bounded))
             {
                 UndecodableResponse.AssertReceiptsRejectedBeforeDecoding(_ctx.ProtocolHandler.HandleMessage, UndecodableResponse.CreateReceipts(null, count + 1), Eth63MessageCode.Receipts);
                 return;
             }
 
-            _ctx.ProtocolHandler.HandleMessage(ReceiptsPacket(1, count));
+            int delivered = count + (exceedsCount ? 1 : 0);
+            _ctx.ProtocolHandler.HandleMessage(ReceiptsPacket(1, delivered));
 
             using IOwnedReadOnlyList<TxReceipt[]> result = await task;
-            Assert.That(result[0], Has.Length.EqualTo(count));
+            Assert.That(result[0], Has.Length.EqualTo(delivered));
         }
 
         private ArrayPoolList<T> RepeatPooled<T>(T txReceipts, int count) =>

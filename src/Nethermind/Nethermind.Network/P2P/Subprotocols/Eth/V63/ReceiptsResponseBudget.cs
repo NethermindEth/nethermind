@@ -19,6 +19,20 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63;
 /// </remarks>
 internal static class ReceiptsResponseBudget
 {
+    internal static int[] GetReceiptCountLimits(ReadOnlySpan<int> expectedCounts, ReadOnlySpan<int> limits, int requestedBlocks)
+    {
+        int[] result = new int[requestedBlocks];
+        int globalLimit = BlockBodyDecoder.TransactionsCountLimit.Limit;
+        for (int i = 0; i < result.Length; i++)
+        {
+            int limit = globalLimit;
+            if (i < expectedCounts.Length && expectedCounts[i] >= 0) limit = Math.Min(limit, expectedCounts[i]);
+            if (i < limits.Length && limits[i] >= 0) limit = Math.Min(limit, limits[i]);
+            result[i] = limit;
+        }
+        return result;
+    }
+
     /// <summary>
     /// Throws when the receipts in <paramref name="content"/> exceed what the request allows.
     /// </summary>

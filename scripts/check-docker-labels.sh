@@ -181,6 +181,13 @@ for dockerfile in "${dockerfiles[@]}"; do
       # release-bootnode.yml versions the Bootnode from its own project file, not the client's.
       version_file=tools/Bootnode/Nethermind.Bootnode/Nethermind.Bootnode.csproj
       ;;
+    tools/LightClient/Dockerfile)
+      title='Nethermind Light Client'
+      description='Ethereum light client with verified P2P state and local JSON-RPC.'
+      url='https://github.com/NethermindEth/nethermind/tree/master/tools/LightClient'
+      documentation='https://github.com/NethermindEth/nethermind/blob/master/tools/LightClient/README.md'
+      version_file=src/Nethermind/Nethermind.LightClient/Nethermind.LightClient.csproj
+      ;;
     Dockerfile | Dockerfile.chiseled)
       title='Nethermind'
       description='A robust execution client for Ethereum node operators.'
@@ -230,6 +237,13 @@ for dockerfile in "${dockerfiles[@]}"; do
   check_label org.opencontainers.image.created "$build_timestamp"
 
   case "$dockerfile" in
+    tools/LightClient/Dockerfile)
+      if ! docker image inspect --format '{{json .Config.ExposedPorts}}' "$tag" |
+        jq -e 'has("8545/tcp") and has("30303/tcp") and has("30303/udp") and has("9050/tcp") and has("9050/udp") and has("9051/udp")' > /dev/null; then
+        echo "FAIL: $dockerfile must expose TCP ports 8545, 30303 and 9050, and UDP ports 30303, 9050 and 9051" >&2
+        failures=$((failures + 1))
+      fi
+      ;;
     Dockerfile | Dockerfile.chiseled)
       if ! docker image inspect --format '{{json .Config.ExposedPorts}}' "$tag" |
         jq -e 'has("30303/tcp") and has("30303/udp")' > /dev/null; then

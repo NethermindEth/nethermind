@@ -25,7 +25,7 @@ public class PeerDialPolicyTests
 
     [Test]
     [CancelAfter(60_000)]
-    public async Task Caller_cancellation_does_not_penalise_an_endpoint_when_admission_ends_with_an_error(CancellationToken token)
+    public async Task Caller_cancellation_does_not_penalise_an_endpoint_when_admission_ends_with_an_error([Values] bool allowAboveTarget, CancellationToken token)
     {
         Node local = CreateNode();
         Node remote = CreateNode();
@@ -47,7 +47,7 @@ public class PeerDialPolicyTests
         int quality = discovery.DialHistory.Quality(address);
         try
         {
-            await manager.TryAddPeerAsync(address, caller.Token);
+            await manager.TryAddPeerAsync(address, caller.Token, allowAboveTarget: allowAboveTarget);
         }
         catch (OperationCanceledException) when (caller.IsCancellationRequested)
         {
@@ -168,7 +168,7 @@ public class PeerDialPolicyTests
 
     [Test]
     [CancelAfter(60_000)]
-    public async Task A_dial_to_an_address_that_drops_every_connection_is_made_once_then_backs_off(CancellationToken token)
+    public async Task A_dial_to_an_address_that_drops_every_connection_is_made_once_then_backs_off([Values] bool allowAboveTarget, CancellationToken token)
     {
         Node local = CreateNode();
         using TcpListener dead = new(IPAddress.Loopback, 0);
@@ -196,8 +196,8 @@ public class PeerDialPolicyTests
             while (string.CompareOrdinal(local.P2P.LocalPeerId!.ToString(), remote.ToString()) >= 0);
 
             string address = $"/ip4/127.0.0.1/tcp/{((IPEndPoint)dead.LocalEndpoint).Port}/p2p/{remote}";
-            bool first = await manager.TryAddPeerAsync(address, token);
-            bool second = await manager.TryAddPeerAsync(address, token);
+            bool first = await manager.TryAddPeerAsync(address, token, allowAboveTarget: allowAboveTarget);
+            bool second = await manager.TryAddPeerAsync(address, token, allowAboveTarget: allowAboveTarget);
             await Task.Delay(TimeSpan.FromSeconds(1), token);
 
             using (Assert.EnterMultipleScope())

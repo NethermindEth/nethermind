@@ -143,6 +143,24 @@ public class PeerFailureLimitFallbackTests
     }
 
     [Test]
+    public async Task Protocol_eligibility_is_applied_before_failure_limit_fallback([Values] bool underLimit)
+    {
+        Node node = Create();
+        await using PeerHostScope hosts = new(node.P2P);
+        PeerManager manager = node.CreatePeerManager();
+        IBeaconSyncPeer[] unsuitable = [.. Enumerable.Range(0, 2).Select(i => AddPeer(manager, $"Unsupported{i}",
+            PeerFailureReason.RequestFailed, underLimit ? 0 : Limit))];
+        IBeaconSyncPeer eligible = AddPeer(manager, "Eligible", PeerFailureReason.RequestFailed, Limit + 3);
+        IBeaconSyncPeer violator = AddPeer(manager, "Violator", PeerFailureReason.ProtocolViolation, Limit / 2);
+
+        Assert.That(manager.GetBestPeers(0), Is.EquivalentTo(unsuitable), "fixture: ordinary selection hides the eligible peer");
+
+        IReadOnlyList<IBeaconSyncPeer> selected = manager.GetBestPeers(0, peer => peer == eligible || peer == violator);
+
+        Assert.That(selected, Is.EqualTo(new[] { eligible }), "protocol eligibility must preserve the invalid-data exclusion");
+    }
+
+    [Test]
     [CancelAfter(30_000)]
     public async Task Range_sync_advances_when_every_peer_is_at_the_limit_and_never_asks_the_one_that_sent_invalid_data(CancellationToken token)
     {

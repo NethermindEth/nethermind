@@ -1,0 +1,14 @@
+{
+  "source": "https://raw.githubusercontent.com/ethereum/consensus-spec-tests/bc5c1a7fb2a8871aaffd4b16ee4dd9c72bb81908/tests/mainnet/electra/light_client/single_merkle_proof/BeaconState/finality_root_merkle_proof/proof.yaml",
+  "leaf": "0x0000000000000000000000000000000000000000000000000000000000000000",
+  "generalizedIndex": 169,
+  "branch": [
+    "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "0x504e8dfadf27180c21c80f1886b202de4c1c89ee2977562433abbbc92ea194e6",
+    "0x3480b77afea34b1971e252dff50c3b9702f90488ddbb3d1f6268bcd8c4bf1071",
+    "0xfeb3abafe78c2a78ed08962a29cb063c00ba6b3ae84ea7ec84bd8700182197dd",
+    "0xeb433e92375a9e6007d9e862294d92e4acd85fd98e81dcacfde8d1905101b921",
+    "0x612d154bc698dda651c4b83de4c0e458d99fad99b7b56ab9a909fc2429f21eae",
+    "0xa1381fdc64967103fe79c0705727851ce61e7f91bee7e3e7759f9283c91ff7ff"
+  ]
+}

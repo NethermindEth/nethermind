@@ -7,14 +7,15 @@ namespace Nethermind.Network.Discovery;
 
 internal sealed class AddressBurstLimiter
 {
-    private readonly NodeFilter[] _filters;
+    private readonly Lazy<NodeFilter>[] _filters;
 
     public AddressBurstLimiter(int burstPerAddress, int filterSize, TimeSpan window)
     {
-        _filters = new NodeFilter[Math.Max(1, burstPerAddress)];
+        _filters = new Lazy<NodeFilter>[Math.Max(1, burstPerAddress)];
+        Func<NodeFilter> createFilter = () => NodeFilter.CreateExact(Math.Max(1, filterSize), window);
         for (int i = 0; i < _filters.Length; i++)
         {
-            _filters[i] = NodeFilter.CreateExact(Math.Max(1, filterSize), window);
+            _filters[i] = new Lazy<NodeFilter>(createFilter);
         }
     }
 
@@ -22,15 +23,15 @@ internal sealed class AddressBurstLimiter
     {
         ArgumentNullException.ThrowIfNull(filter);
 
-        _filters = [filter];
+        _filters = [new Lazy<NodeFilter>(() => filter)];
     }
 
     public bool TryAccept(IPAddress address)
     {
-        NodeFilter[] filters = _filters;
+        Lazy<NodeFilter>[] filters = _filters;
         for (int i = 0; i < filters.Length; i++)
         {
-            if (filters[i].TryAccept(address, exactOnly: true))
+            if (filters[i].Value.TryAccept(address, exactOnly: true))
             {
                 return true;
             }

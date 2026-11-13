@@ -25,7 +25,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
-using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
@@ -63,17 +62,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddLast<IBlockPreprocessorStep, BlockAccessListRecoveryStep>()
 
             // Block processing components common between rpc, validation and production
-            .AddScoped<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeCalculator>()
-            .AddScoped<EthereumTransactionProcessor>()
-            .AddSingleton<ITransactionProcessorFactory, TransactionProcessorFactory<EthereumGasPolicy>>()
-            .AddScoped<ICodeInfoRepository, CacheCodeInfoRepository>()
-                .AddSingleton<IPrecompileProvider, EthereumPrecompileProvider>()
-                .AddSingleton<ICodeCache>(StaticCodeCache.Instance)
-            .AddScoped<IWorldState, WorldState>()
-            .AddScoped<IVirtualMachine, EthereumVirtualMachine>()
-            .AddScoped<IBlockhashProvider, BlockhashProvider>()
-            .AddSingleton<IUnresolvedBlockhashPolicy>(ThrowingUnresolvedBlockhashPolicy.Instance)
-            .AddSingleton<IBlockhashCache, BlockhashCache>()
+            .AddModule(new TransactionProcessingModule())
             .AddScoped<IBeaconBlockRootHandler, BeaconBlockRootHandler>()
             .AddScoped<IBlockhashStore, BlockhashStore>()
             .AddScoped<IBranchProcessor, BranchProcessor>()
@@ -176,14 +165,6 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<IGenesisBuilder, GenesisBuilder>()
             .AddScoped<IGenesisLoader, GenesisLoader>()
             ;
-
-        // Marked for the pre-warm handoff, which mirrors this processor's execution. A chain that registers its own
-        // processor replaces the registration, and with it the mark.
-        builder.Register(static ctx => ctx.Resolve<EthereumTransactionProcessor>())
-            .As<ITransactionProcessor>()
-            .InstancePerLifetimeScope()
-            .ExternallyOwned()
-            .WithMetadata(PrewarmerEnvFactory.HandoffMetadata, true);
 
         builder.AddSingleton<IMainStateBlockProducerEnvFactory, GlobalWorldStateBlockProducerEnvFactory>();
 

@@ -25,17 +25,18 @@ namespace Nethermind.State;
 /// Manages persistent storage allowing for snapshotting and restoring
 /// Persists data to ITrieStore
 /// </summary>
-internal sealed partial class PersistentStorageProvider(StateProvider stateProvider, ILogManager logManager, LocalMetrics metrics)
+internal sealed partial class PersistentStorageProvider(StateProvider stateProvider, ILogManager logManager, LocalMetrics metrics,
+    int initialAccountCapacity = WorldState.DefaultInitialAccountCapacity)
     : PartialStorageProviderBase(logManager)
 {
     private IWorldStateScopeProvider.IScope? _currentScope;
     private readonly StateProvider _stateProvider = stateProvider;
     private readonly LocalMetrics _metrics = metrics;
-    private const int StoragesInitialCapacity = 4_096;
+    private readonly int _initialAccountCapacity = initialAccountCapacity;
     /// <summary>The change-map capacity a per-contract state is trimmed to when it goes back to the pool.</summary>
     internal const int PooledDictionaryCapacity = 512;
 
-    private OptimizedDictionary<AddressAsKey, PerContractState> _storages = new(StoragesInitialCapacity);
+    private OptimizedDictionary<AddressAsKey, PerContractState> _storages = new(initialAccountCapacity);
     // Handed back by a detached write-back once it is done with the map it took.
     private OptimizedDictionary<AddressAsKey, PerContractState>? _spareStorages;
     private readonly OptimizedDictionary<AddressAsKey, bool> _toUpdateRoots = [];
@@ -544,7 +545,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
 
         OptimizedDictionary<AddressAsKey, PerContractState> storages = _storages;
-        _storages = Interlocked.Exchange(ref _spareStorages, null) ?? new OptimizedDictionary<AddressAsKey, PerContractState>(StoragesInitialCapacity);
+        _storages = Interlocked.Exchange(ref _spareStorages, null) ?? new OptimizedDictionary<AddressAsKey, PerContractState>(_initialAccountCapacity);
         InvalidateStorageMemo();
         return new StorageChangeSnapshot(this, storages, _stateProvider.DetachRemovedAccountsWithStorage());
     }
