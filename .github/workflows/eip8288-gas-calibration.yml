@@ -53,6 +53,7 @@ jobs:
         run: |
           SCRATCH=$RUNNER_TEMP/$RUN_DIR
           mkdir -p "$SCRATCH/out"
+          df -h "$RUNNER_TEMP" /var/lib/docker 2>/dev/null || true
           git clone -q --branch "$REF" https://github.com/NethermindEth/lean-bindings.git "$SCRATCH/lean-bindings"
           "$SCRATCH/lean-bindings/src/ffi/calibration/ci/run-calibration.sh" --arch "${{ matrix.arch }}" \
             --lean-bindings-ref "$REF@$(git -C "$SCRATCH/lean-bindings" rev-parse HEAD)" \
@@ -74,9 +75,5 @@ jobs:
       - name: Clean up
         if: always()
         run: |
-          SCRATCH=$RUNNER_TEMP/$RUN_DIR
           docker ps -aq --filter label=lean-calibration=1 | xargs -r docker rm -f
-          if [ -d "$SCRATCH" ]; then
-            docker run --rm -v "$SCRATCH":/s rust:1.99.0-bookworm sh -c 'rm -rf /s/* /s/.[!.]*' || true
-            rm -rf "$SCRATCH"
-          fi
+          rm -rf "${RUNNER_TEMP:?}/${RUN_DIR:?}"
