@@ -436,8 +436,8 @@ namespace Nethermind.TxPool.Test
         }
 
         // Admission checks run before witnesses exist, so a caller can learn of an unfunded transaction before evicting pending ones
-        // for its witnesses; the transaction is not added, and only a rejection is remembered, as SubmitTx remembers one, so
-        // repeating it costs no further validation this block.
+        // for its witnesses. The checks run out of a submission's context, so nothing is recorded: a later submission is judged
+        // on its own rather than refused as already known.
         [TestCase(false, TestName = "Validation before proof admission rejects an unfunded transaction")]
         [TestCase(true, TestName = "Validation before proof admission accepts a funded transaction without adding it")]
         public void should_validate_before_proof_admission_without_adding(bool funded)
@@ -450,8 +450,8 @@ namespace Nethermind.TxPool.Test
             {
                 Assert.That(result, Is.EqualTo(funded ? AcceptTxResult.Accepted : AcceptTxResult.InsufficientFunds));
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
-                Assert.That(_txPool.IsKnown(tx.Hash!), Is.EqualTo(!funded));
-                Assert.That(_txPool.ValidateTxBeforeProofAdmission(tx, TxHandlingOptions.None), Is.EqualTo(funded ? AcceptTxResult.Accepted : AcceptTxResult.AlreadyKnown));
+                Assert.That(_txPool.IsKnown(tx.Hash!), Is.False);
+                Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(result));
             }
         }
 

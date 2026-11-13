@@ -154,28 +154,19 @@ namespace Nethermind.TxPool
             // SubmitTx would reject a transaction already rejected on this block too, and the filters may simulate.
             if (IsKnown(tx.Hash)) return AcceptTxResult.AlreadyKnown;
 
-            AcceptTxResult result;
             TxFilteringState state = default;
             _newHeadLock.EnterReadLock();
             try
             {
                 state = new(tx, _accounts, _specProvider.GetCurrentHeadSpec());
                 bool canRecycle = false;
-                result = FilterTransactions(tx, handlingOptions, ref state, ref canRecycle, skipSamplingDeferredFilters: tx.IsAwaitingAvailability(), skipDependencyProofFilters: true);
+                return FilterTransactions(tx, handlingOptions, ref state, ref canRecycle, skipSamplingDeferredFilters: tx.IsAwaitingAvailability(), skipDependencyProofFilters: true);
             }
             finally
             {
                 ReleaseFilterReservations(tx, ref state);
                 _newHeadLock.ExitReadLock();
             }
-
-            // Remembered as SubmitTx remembers a rejection, so repeating the transaction costs no validation until the next block.
-            if (!result && result != AcceptTxResult.FrameSimulationDeferred && result != AcceptTxResult.IncompleteBlobData)
-            {
-                _hashCache.SetForCurrentBlock(tx.Hash!);
-            }
-
-            return result;
         }
 
         // only for tests - to test sorting
