@@ -157,7 +157,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
         ResultWrapper<Signature> eth_sign(Address addressData, byte[] message);
 
         [JsonRpcMethod(IsImplemented = true,
-            Description = "Send a transaction to the tx pool and broadcasting",
+            Description = "Send a transaction to the tx pool and broadcasting."
+                + " Conflicting non-null `input` and `data` are rejected before transaction-field validation; Geth may report a fee, signing-field or sidecar error first."
+                + " Blob versioned hashes use shared byte-array decoding rather than Geth's fixed-size JSON binding; malformed lengths or overwritten duplicate values can therefore produce different errors.",
             IsSharable = true,
             ExampleResponse = "0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760")]
         Task<ResultWrapper<Hash256>> eth_sendTransaction([JsonRpcParameter(ExampleValue = "[{\"From\": \"0xc2208fe87805279b03c1a8a78d7ee4bfdb0e48ee\", \"Gas\":\"21000\",\"GasPrice\":\"20000000000\", \"Nonce\":\"23794\", \"To\":\"0x2d44c0e097f6cd0f514edac633d82e01280b4a5c\"}]")] SignableTransactionForRpc rpcTx);
@@ -170,14 +172,18 @@ namespace Nethermind.JsonRpc.Modules.Eth
         Task<ResultWrapper<Hash256>> eth_sendRawTransaction([JsonRpcParameter(ExampleValue = "[\"0xf86380843b9aca0082520894b943b13292086848d8180d75c73361107920bb1a80802ea0385656b91b8f1f5139e9ba3449b946a446c9cfe7adb91b180ddc22c33b17ac4da01fe821879d386b140fd8080dcaaa98b8c709c5025c8c4dea1334609ebac41b6c\"]")] byte[] transaction);
 
         [JsonRpcMethod(IsImplemented = true,
-            Description = "Signs the transaction using the unlocked sender account and returns the RLP-encoded signed transaction together with the parsed object.",
+            Description = "Signs the transaction using the unlocked sender account and returns the RLP-encoded signed transaction together with the parsed object."
+                + " Conflicting non-null `input` and `data` are rejected before transaction-field validation; Geth may report a fee, signing-field or sidecar error first."
+                + " Blob versioned hashes use shared byte-array decoding rather than Geth's fixed-size JSON binding; malformed lengths or overwritten duplicate values can therefore produce different errors.",
             IsSharable = true,
             ExampleResponse = "{\"raw\":\"0x02f86c0182520894b943b13292086848d8180d75c73361107920bb1a80...\",\"tx\":{\"type\":\"0x2\",\"nonce\":\"0x0\",\"gas\":\"0x5208\",\"to\":\"0x...\"}}")]
         ResultWrapper<SignTransactionResult> eth_signTransaction(
             [JsonRpcParameter(ExampleValue = "[{\"from\":\"0xc2208fe87805279b03c1a8a78d7ee4bfdb0e48ee\",\"to\":\"0x2d44c0e097f6cd0f514edac633d82e01280b4a5c\",\"value\":\"0x9184e72a\",\"gas\":\"0x76c0\",\"gasPrice\":\"0x9184e72a000\",\"nonce\":\"0x0\"}]")] SignableTransactionForRpc rpcTx);
 
         [JsonRpcMethod(IsImplemented = true,
-            Description = "Fills in the missing fields of a transaction (nonce, gas, fees and chain id) and returns the unsigned transaction, ready to be signed and submitted.",
+            Description = "Fills in the missing fields of a transaction (nonce, gas, fees and chain id) and returns the unsigned transaction, ready to be signed and submitted."
+                + " Conflicting non-null `input` and `data` are rejected before transaction-field validation; Geth may report a fee, signing-field or sidecar error first."
+                + " Blob versioned hashes use shared byte-array decoding rather than Geth's fixed-size JSON binding; malformed lengths or overwritten duplicate values can therefore produce different errors.",
             IsSharable = true,
             ExampleResponse = "{\"tx\":{\"type\":\"0x2\",\"nonce\":\"0x0\",\"to\":\"0x2d44c0e097f6cd0f514edac633d82e01280b4a5c\",\"gas\":\"0x5208\",\"value\":\"0x9184e72a\",\"input\":\"0x\",\"maxPriorityFeePerGas\":\"0x3b9aca00\",\"maxFeePerGas\":\"0x77359400\",\"chainId\":\"0x1\"}}")]
         Task<ResultWrapper<FillTransactionResult>> eth_fillTransaction(
@@ -191,7 +197,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
             ulong? timeoutMs = null);
 
         [JsonRpcMethod(IsImplemented = true,
-            Description = "Executes a tx call (does not create a transaction)",
+            Description = "Executes a tx call (does not create a transaction)."
+                + " A non-null `input` takes precedence over `data`."
+                + " Blob versioned hashes use shared byte-array decoding rather than Geth's fixed-size JSON binding; malformed lengths or overwritten duplicate values can therefore produce different errors.",
             IsSharable = true,
             ExampleResponse = "0x")]
         ResultWrapper<HexBytes> eth_call([JsonRpcParameter(ExampleValue = "[{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}]")] SignableTransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null);
@@ -204,13 +212,17 @@ namespace Nethermind.JsonRpc.Modules.Eth
             BlockParameter? blockParameter = null);
 
         [JsonRpcMethod(IsImplemented = true,
-            Description = "Executes a tx call and returns gas used (does not create a transaction)",
+            Description = "Executes a tx call and returns gas used (does not create a transaction)."
+                + " A non-null `input` takes precedence over `data`."
+                + " Blob versioned hashes use shared byte-array decoding rather than Geth's fixed-size JSON binding; malformed lengths or overwritten duplicate values can therefore produce different errors.",
             IsSharable = true,
             ExampleResponse = "0x")]
         ResultWrapper<UInt256?> eth_estimateGas([JsonRpcParameter(ExampleValue = "[\"{\"from\": \"0x0001020304050607080910111213141516171819\", \"gasPrice\": \"1048576\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}\"]")] SignableTransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null);
 
         [JsonRpcMethod(IsImplemented = true,
-            Description = "Creates an [EIP2930](https://eips.ethereum.org/EIPS/eip-2930) type AccessList for the given transaction",
+            Description = "Creates an [EIP2930](https://eips.ethereum.org/EIPS/eip-2930) type AccessList for the given transaction."
+                + " A non-null `input` takes precedence over `data`."
+                + " Blob versioned hashes use shared byte-array decoding rather than Geth's fixed-size JSON binding; malformed lengths or overwritten duplicate values can therefore produce different errors.",
             EdgeCaseHint = "If your transaction has code executed, then you can generate transaction access list with eth_createAccessList. If you send it with your transaction then it will lower your gas cost on Ethereum",
             IsSharable = true,
             ExampleResponse = "{\"accessList\":[{\"address\":\"0xfffffffffffffffffffffffffffffffffffffffe\",\"storageKeys\":[\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"0x0000000000000000000000000000000000000000000000000000000000000002\"]},{\"address\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"storageKeys\":[]}],\"gasUsed\":\"0xf71b\"}")]
