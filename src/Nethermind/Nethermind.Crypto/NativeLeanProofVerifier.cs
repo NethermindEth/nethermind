@@ -39,7 +39,7 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
             // every proof.
             if (!ProverThread.Run(static () => AggregatedVerificationKey).AsSpan().SequenceEqual(Eip8288Constants.AggregatedVk)
                 || !ProverThread.Run(static () => GuestKey(BatchedGuest)).AsSpan().SequenceEqual(Eip8288Constants.BatchedAggregatedVk))
-                throw new InvalidOperationException("The native Lean recursive guest keys do not match this node.");
+                throw new InvalidOperationException("The native Lean recursive guest key does not match this node.");
             Span<uint> limits = stackalloc uint[7];
             ReadOnlySpan<uint> expectedLimits = [MaxProofBytes, Eip8288Constants.MaxProofDependencies,
                 Eip8288Constants.MaxInnerProofsPerStep, Eip8288Constants.LeanSphincsWitnessBytes, Eip8288Constants.MaxAggregationInputBytes,
