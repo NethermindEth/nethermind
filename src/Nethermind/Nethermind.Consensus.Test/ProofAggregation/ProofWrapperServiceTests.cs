@@ -1078,7 +1078,7 @@ public class ProofWrapperServiceTests
             bool over = store.TryBeginAdmission([extra], [new byte[LeanProofStore.MaxWrapperBytes * 3 / 4]], null, out IDisposable? excess, overCapacity: true)
                 && store.PinPending(Transaction(extra, TestItem.AddressE), new object());
             excess?.Dispose();
-            store.EndStaging(commit: true);
+            if (excess is not null) store.EndStaging(excess, commit: true);
             Assert.That(over && !store.ShedExcess(), Is.True);
         }
         ITxPool pool = Substitute.For<ITxPool>();
@@ -1169,7 +1169,7 @@ public class ProofWrapperServiceTests
         bool later = store.TryBeginAdmission([new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("later"), default)],
             [new byte[LeanProofStore.MaxWrapperBytes * 3 / 4]], null, out IDisposable? laterAdmission, overCapacity: true);
         laterAdmission?.Dispose();
-        store.EndStaging(commit: false);
+        if (laterAdmission is not null) store.EndStaging(laterAdmission, commit: false);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(later, Is.True);

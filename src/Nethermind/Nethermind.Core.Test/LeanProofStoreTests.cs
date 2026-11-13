@@ -96,13 +96,55 @@ public class LeanProofStoreTests
             store.UnpinPending(first);
             store.UnpinPending(second);
         }
-        store.EndStaging(commit: admitted);
+        store.EndStaging(admission, commit: admitted);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(store.ShedExcess(), Is.True);
             Assert.That(store.Covers(incomingTransaction), Is.EqualTo(admitted));
             Assert.That(store.Covers(pinned[0]), Is.EqualTo(!admitted));
             Assert.That(pinned.Skip(2).All(store.Covers), Is.True);
+        }
+    }
+
+    // Ending one admission's staging commits or drops its records only, leaving another's staged.
+    [Test]
+    public void Interleaved_admissions_beyond_capacity_end_their_own_staging()
+    {
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        List<Transaction> pinned = [];
+        for (int i = 0; i < 64; i++)
+        {
+            FrameDependency dependency = Dependency(i);
+            store.AddVerified([dependency], [new byte[LeanProofStore.MaxWrapperBytes / 2 - 1024]], null);
+            Transaction transaction = Transaction([dependency], Sender(i + 1), 0);
+            Assert.That(store.PinPending(transaction), Is.True);
+            pinned.Add(transaction);
+        }
+        byte[][] witness = [new byte[LeanProofStore.MaxWrapperBytes * 3 / 4]];
+        Transaction committed = Transaction([Dependency(1000)], Sender(100), 0), rolledBack = Transaction([Dependency(1001)], Sender(101), 0);
+        bool first = store.TryBeginAdmission([Dependency(1000)], witness, null, out IDisposable? committing, overCapacity: true)
+            && store.PinPending(committed);
+        committing!.Dispose();
+        // Evicting two lets the store fit again before the first admission's staging ends, so a second may exceed it.
+        store.UnpinPending(pinned[0].Hash!.ValueHash256);
+        store.UnpinPending(pinned[1].Hash!.ValueHash256);
+        bool fitsAgain = store.ShedExcess();
+        bool second = store.TryBeginAdmission([Dependency(1001)], witness, null, out IDisposable? rollingBack, overCapacity: true)
+            && fitsAgain && store.PinPending(rolledBack);
+        Assert.That(first && second, Is.True);
+        rollingBack!.Dispose();
+
+        store.EndStaging(committing, commit: true);
+        bool secondStillStaged = !store.Covers(rolledBack);
+        store.UnpinPending(rolledBack.Hash!.ValueHash256);
+        store.EndStaging(rollingBack, commit: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.Covers(committed), Is.True);
+            Assert.That(secondStillStaged, Is.True);
+            Assert.That(store.PinPending(rolledBack), Is.False, "the rolled-back admission's record is gone");
+            Assert.That(store.ShedExcess(), Is.True);
         }
     }
 

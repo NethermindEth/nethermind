@@ -36,8 +36,9 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
     private readonly AsyncLocal<AdmissionScope?> _admission = new();
     private long _storedBytes;
     private long _cachedBytes;
-    // Records an admission stored beyond capacity, with the coverage they would have published, held back until EndStaging.
-    private readonly Dictionary<ProofRecord, List<FrameDependency>> _staged = [];
+    // Records stored beyond capacity, by the admission that staged them, with the coverage they would have published, held back
+    // until that admission's EndStaging.
+    private readonly Dictionary<ProofRecord, (object Admission, List<FrameDependency> Deferred)> _staged = [];
 
     private sealed record PendingProof(Address Sender, ProofRecord[] Records, KeyValuePair<FrameDependency, ProofRecord>[] Coverage);
 
@@ -100,8 +101,9 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
 
     /// <summary>Reserves immutable verified witnesses before transactions enter the pool.</summary>
     /// <param name="overCapacity">Stores the witnesses even beyond capacity, unless the store is already over it. Records stored
-    /// so are staged: no other admission may use them and their coverage is published only by <see cref="EndStaging"/>, which the
-    /// caller must call once it has restored capacity through <see cref="ShedExcess"/> and <see cref="ReleasesToFit"/>.</param>
+    /// so are staged: no other admission may use them and their coverage is published only by <see cref="EndStaging"/> with this
+    /// admission, which the caller must call once it has restored capacity through <see cref="ShedExcess"/> and
+    /// <see cref="ReleasesToFit"/>.</param>
     public bool TryBeginAdmission(IReadOnlyList<FrameDependency> dependencies, IReadOnlyList<byte[]>? witnesses,
         byte[]? recursiveProof, out IDisposable? admission, bool overCapacity = false)
     {
@@ -116,22 +118,21 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
             foreach (ProofRecord record in selected) record.Pins++;
             long incomingBytes = 0;
             foreach (ProofRecord record in incoming) incomingBytes += record.Size;
+            bool fits = true;
             if (incoming.Count != 0)
             {
-                bool fits = MakeRoom(incomingBytes, incoming.Count);
+                fits = MakeRoom(incomingBytes, incoming.Count);
                 // Only one admission at a time may exceed capacity: none may while the store is over it.
                 if (!fits && (!overCapacity || !MakeRoom(0, 0)))
                 {
                     foreach (ProofRecord record in selected) record.Pins--;
                     return false;
                 }
-                foreach (ProofRecord record in incoming)
-                {
-                    Insert(record);
-                    if (!fits) _staged.Add(record, []);
-                }
+                foreach (ProofRecord record in incoming) Insert(record);
             }
             AdmissionScope scope = new(this, _admission.Value, records, new RecordLease(this, [.. selected]));
+            if (incoming.Count != 0 && !fits)
+                foreach (ProofRecord record in incoming) _staged.Add(record, (scope, []));
             _admission.Value = scope;
             admission = scope;
             return true;
@@ -190,16 +191,19 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
         lock (_lock) return MakeRoom(0, 0);
     }
 
-    /// <summary>Ends the staging of an admission beyond capacity: publishes the coverage its records held back, or, unless
-    /// <paramref name="commit"/>, removes those no pending transaction pins.</summary>
-    public void EndStaging(bool commit)
+    /// <summary>Ends the staging of <paramref name="admission"/>, begun beyond capacity: publishes the coverage its records held
+    /// back, or, unless <paramref name="commit"/>, removes those no pending transaction pins.</summary>
+    /// <remarks>Records other admissions staged are left as they are.</remarks>
+    public void EndStaging(IDisposable admission, bool commit)
     {
         lock (_lock)
         {
-            KeyValuePair<ProofRecord, List<FrameDependency>>[] staged = [.. _staged];
-            _staged.Clear();
+            List<(ProofRecord Record, List<FrameDependency> Deferred)> staged = [];
+            foreach ((ProofRecord record, (object owner, List<FrameDependency> deferred)) in _staged)
+                if (ReferenceEquals(owner, admission)) staged.Add((record, deferred));
             foreach ((ProofRecord record, List<FrameDependency> deferred) in staged)
             {
+                _staged.Remove(record);
                 if (!commit && record.Pins == 0) Remove(record);
                 else
                     foreach (FrameDependency dependency in deferred) Publish(dependency, record);
@@ -484,9 +488,9 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
     {
         // A record the verifier-change rule removed never covers a dependency again.
         if (record.Node is null) return;
-        if (_staged.TryGetValue(record, out List<FrameDependency>? deferred))
+        if (_staged.TryGetValue(record, out (object, List<FrameDependency> Deferred) staged))
         {
-            deferred.Add(dependency);
+            staged.Deferred.Add(dependency);
             return;
         }
         if (_coverage.TryGetValue(dependency, out ProofRecord? previous))

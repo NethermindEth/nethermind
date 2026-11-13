@@ -436,7 +436,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// rolled back when nothing was admitted, nor when the admitted transactions' witnesses fit once unpinned records are shed.
     /// Until this decides, the store stages those witnesses, so no other transaction can pin them and keep it over capacity.</remarks>
     /// <returns>Whether the admitted transactions were rolled back.</returns>
-    private bool RestoreCapacity(List<Transaction> victims, List<Transaction> admitted)
+    private bool RestoreCapacity(IDisposable admission, List<Transaction> victims, List<Transaction> admitted)
     {
         lock (_commitLock)
         {
@@ -457,7 +457,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                     foreach (ValueHash256 hash in releases!)
                         if (txPool.RemoveTransaction(new Hash256(hash))) TxPool.Metrics.Eip8288CapacityEvictedTransactions++;
             }
-            leanProofStore.EndStaging(commit: admitted.Count != 0 && !rolledBack);
+            leanProofStore.EndStaging(admission, commit: admitted.Count != 0 && !rolledBack);
             DrainExcess();
             return rolledBack;
         }
@@ -494,7 +494,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
             admission.Dispose();
-            RolledBack = service.RestoreCapacity(victims, admitted);
+            RolledBack = service.RestoreCapacity(admission, victims, admitted);
         }
     }
 
