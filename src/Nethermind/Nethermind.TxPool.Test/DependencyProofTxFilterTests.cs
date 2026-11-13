@@ -33,7 +33,7 @@ public class DependencyProofTxFilterTests
             SenderAddress = Address.Zero,
             Hash = new Hash256(dependency.DataHash),
             NonceKeys = [UInt256.Zero],
-            Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, dependency.VerificationGas, UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
+            Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, dependency.FrameCharge(batchedEnabled), UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
         };
         IReleaseSpec spec = new OverridableReleaseSpec(Eip8288Prototype.Instance) { IsEipBatchedDependencyPricingEnabled = batchedEnabled };
         TxFilteringState filtering = new(tx, Substitute.For<IAccountStateProvider>(), spec);
