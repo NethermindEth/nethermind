@@ -787,6 +787,15 @@ jobs:
       # Mirrors CorpusResults.BaselineSchema (bump both together; test-workflow-contracts.cs pins them equal).
       CORPUS_BASELINE_SCHEMA: "1"
     steps:
+      - name: Free up disk space
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+          # The reclaim step prunes images selectively; pruning all would drop the parked baseline and reference images.
+          docker-images: false
+
       - name: Set up run paths
         id: paths
         working-directory: .
