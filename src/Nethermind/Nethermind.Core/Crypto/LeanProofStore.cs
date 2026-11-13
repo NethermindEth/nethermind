@@ -100,7 +100,8 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
     }
 
     /// <summary>Reserves immutable verified witnesses before transactions enter the pool.</summary>
-    /// <param name="overCapacity">Stores the witnesses even beyond capacity, unless the store is already over it. Records stored
+    /// <param name="overCapacity">Stores the witnesses even beyond capacity, unless the store is already over it or another
+    /// admission's records are staged. Until its staging ends, any other admission needing room is refused. Records stored
     /// so are staged: no other admission may use them and their coverage is published only by <see cref="EndStaging"/> with this
     /// admission, which the caller must call once it has restored capacity through <see cref="ShedExcess"/> and
     /// <see cref="ReleasesToFit"/>.</param>
@@ -122,8 +123,8 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
             if (incoming.Count != 0)
             {
                 fits = MakeRoom(incomingBytes, incoming.Count);
-                // Only one admission at a time may exceed capacity: none may while the store is over it.
-                if (!fits && (!overCapacity || !MakeRoom(0, 0)))
+                // Only one admission at a time may exceed capacity: none may while another's records are staged or the store is over it.
+                if (!fits && (!overCapacity || _staged.Count != 0 || !MakeRoom(0, 0)))
                 {
                     foreach (ProofRecord record in selected) record.Pins--;
                     return false;

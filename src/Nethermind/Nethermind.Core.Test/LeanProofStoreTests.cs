@@ -106,9 +106,10 @@ public class LeanProofStoreTests
         }
     }
 
-    // Ending one admission's staging commits or drops its records only, leaving another's staged.
+    // Only one admission stages at a time: another is refused until the first's staging ends, even once the store fits again, so
+    // neither can settle on the other's excess. Ending a staging commits or drops that admission's records only.
     [Test]
-    public void Interleaved_admissions_beyond_capacity_end_their_own_staging()
+    public void Admissions_beyond_capacity_stage_one_at_a_time()
     {
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         List<Transaction> pinned = [];
@@ -125,24 +126,26 @@ public class LeanProofStoreTests
         bool first = store.TryBeginAdmission([Dependency(1000)], witness, null, out IDisposable? committing, overCapacity: true)
             && store.PinPending(committed);
         committing!.Dispose();
-        // Evicting two lets the store fit again before the first admission's staging ends, so a second may exceed it.
+        // Evicting two lets the store fit again before the first admission's staging ends.
         store.UnpinPending(pinned[0].Hash!.ValueHash256);
         store.UnpinPending(pinned[1].Hash!.ValueHash256);
         bool fitsAgain = store.ShedExcess();
-        bool second = store.TryBeginAdmission([Dependency(1001)], witness, null, out IDisposable? rollingBack, overCapacity: true)
-            && fitsAgain && store.PinPending(rolledBack);
-        Assert.That(first && second, Is.True);
-        rollingBack!.Dispose();
-
+        bool overlapping = store.TryBeginAdmission([Dependency(1001)], witness, null, out IDisposable? refused, overCapacity: true);
+        refused?.Dispose();
         store.EndStaging(committing, commit: true);
-        bool secondStillStaged = !store.Covers(rolledBack);
+        bool second = store.TryBeginAdmission([Dependency(1001)], witness, null, out IDisposable? rollingBack, overCapacity: true)
+            && store.PinPending(rolledBack);
+        rollingBack!.Dispose();
+        bool secondStaged = !store.Covers(rolledBack);
         store.UnpinPending(rolledBack.Hash!.ValueHash256);
         store.EndStaging(rollingBack, commit: false);
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(first && fitsAgain, Is.True);
+            Assert.That(overlapping, Is.False, "no second staging while the first's is open");
+            Assert.That(second && secondStaged, Is.True);
             Assert.That(store.Covers(committed), Is.True);
-            Assert.That(secondStillStaged, Is.True);
             Assert.That(store.PinPending(rolledBack), Is.False, "the rolled-back admission's record is gone");
             Assert.That(store.ShedExcess(), Is.True);
         }

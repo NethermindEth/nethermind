@@ -452,7 +452,11 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 List<ValueHash256>? releases = leanProofStore.ReleasesToFit(evictable);
                 rolledBack = releases is null;
                 if (rolledBack)
-                    foreach (Transaction transaction in admitted) txPool.RemoveTransaction(transaction.Hash);
+                    foreach (Transaction transaction in admitted)
+                    {
+                        txPool.RemoveTransaction(transaction.Hash);
+                        lock (_localTransactions) _localTransactions.Remove(transaction.Hash!.ValueHash256);
+                    }
                 else
                     foreach (ValueHash256 hash in releases!)
                         if (txPool.RemoveTransaction(new Hash256(hash))) TxPool.Metrics.Eip8288CapacityEvictedTransactions++;
