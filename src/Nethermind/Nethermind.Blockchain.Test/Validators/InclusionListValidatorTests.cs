@@ -150,6 +150,27 @@ public class InclusionListValidatorTests
         return IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), _specProvider.GetSpec(block.Header), _txValidator);
     }
 
+    // EIP-8037: the header's GasUsed is max(execution, state). A block whose state gas reached the limit still has execution room
+    // for a frame entry that reserves no state gas, so it is not full for it and the omission is not excused.
+    [TestCase(0UL, 30_000_000UL, false, TestName = "State-full block still obliges a frame entry reserving no state gas")]
+    [TestCase(30_000_000UL, 30_000_000UL, true, TestName = "Execution-full block excuses the frame entry")]
+    public void Block_fullness_is_judged_per_gas_dimension(ulong execution, ulong state, bool satisfied)
+    {
+        Transaction entry = BuildFrameTx();
+        entry.Hash = entry.CalculateHash();
+        Block block = Build.A.Block.WithGasLimit(30_000_000).WithGasUsed(System.Math.Max(execution, state)).WithTransactions([])
+            .WithInclusionListTransactions([entry]).TestObject;
+        block.Header.GasUsedPerDimension = (execution, state);
+        OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.IsEip8037Enabled, Is.True);
+            Assert.That(InclusionListValidator.IsSatisfied(block, [entry], StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator,
+                null, frameCanInclude: static _ => true), Is.EqualTo(satisfied));
+        }
+    }
+
     // Judging a frame transaction by the Profile 1 rules would read the account nonce it does not use. The
     // well-formedness assertion keeps the case honest: without it the entry could pass for being malformed.
     [Test]
