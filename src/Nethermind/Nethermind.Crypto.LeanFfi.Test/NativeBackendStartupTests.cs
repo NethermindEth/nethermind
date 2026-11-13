@@ -27,9 +27,7 @@ internal static class NativeStartupProbe
         {
             if (name != "nethermind_lean") return IntPtr.Zero;
             if (mode == "missing") return NativeLibrary.Load(Path.Combine(AppContext.BaseDirectory, "absent-lean-startup-backend"));
-            string library = OperatingSystem.IsWindows() ? "lean_startup_stub.dll"
-                : OperatingSystem.IsMacOS() ? "liblean_startup_stub.dylib" : "liblean_startup_stub.so";
-            return NativeLibrary.Load(Path.Combine(AppContext.BaseDirectory, "lean-vectors", library));
+            return NativeLibrary.Load(Path.Combine(AppContext.BaseDirectory, "lean-vectors", "liblean_startup_stub.so"));
         });
         try
         {

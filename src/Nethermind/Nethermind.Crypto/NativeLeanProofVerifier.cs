@@ -20,7 +20,7 @@ namespace Nethermind.Crypto;
 public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
 {
     private const string Library = "nethermind_lean";
-    private const uint ExpectedAbiVersion = 10;
+    private const uint ExpectedAbiVersion = 12;
     private const int MaxRecursiveInputs = 16;
     private static readonly Lazy<bool> BackendAvailable = new(CheckBackend);
     public const int MaxProofBytes = Eip8288Constants.MaxProofBytes;
@@ -33,14 +33,14 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
     {
         try
         {
-            // The first native call starts leanVM's worker pool and permanently raises its caller's macOS QoS;
-            // keep that on the prover thread, which dispatches every proof.
+            // The first native call starts leanVM's worker pool on its caller; keep that on the prover thread, which dispatches
+            // every proof.
             if (!ProverThread.Run(static () => AggregatedVerificationKey).AsSpan().SequenceEqual(Eip8288Constants.AggregatedVk))
                 throw new InvalidOperationException("The native Lean recursive guest key does not match this node.");
-            Span<uint> limits = stackalloc uint[9];
+            Span<uint> limits = stackalloc uint[7];
             ReadOnlySpan<uint> expectedLimits = [MaxProofBytes, Eip8288Constants.MaxProofDependencies,
-                MaxRecursiveInputs, Eip8288Constants.LeanSphincsWitnessBytes,
-                Eip8288Constants.MaxGenericStarkProofs, Eip8288Constants.MaxLeanStarkInstructions, 65535, Eip8288Constants.MaxAggregationInputBytes, Eip8288Constants.MaxMixedGuestProofBytes];
+                MaxRecursiveInputs, Eip8288Constants.LeanSphincsWitnessBytes, Eip8288Constants.MaxAggregationInputBytes,
+                Eip8288Constants.MaxGenericStarkProofs, Eip8288Constants.MaxLeanStarkInstructions];
             fixed (uint* p = limits)
                 if (nlean_limits(p, (nuint)limits.Length) != 1 ||
                     !limits.SequenceEqual(expectedLimits))
@@ -49,7 +49,7 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
         }
         catch (Exception exception) when (IsUnavailable(exception) || exception is InvalidOperationException)
         {
-            throw new InvalidOperationException("EIP-8288 requires the pinned native Lean backend. Build with BuildLeanFfi=true and install the host library beside Nethermind.", exception);
+            throw new InvalidOperationException("EIP-8288 requires the pinned native Lean backend from the Nethermind.Crypto.Lean package, for linux-x64 or linux-arm64.", exception);
         }
     }
 
@@ -161,9 +161,7 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
     }
 
     /// <summary>Runs every native proof on one long-lived thread.</summary>
-    /// <remarks>leanVM's proving arena gives each thread that allocates during a proof its own slab and never returns a slab's
-    /// touched pages, so proofs called from changing thread-pool threads each leave another proof's peak resident (about
-    /// 1.5 GB for four witnesses) until the process runs out of memory. The native prover lock serializes proofs anyway.
+    /// <remarks>The first native call starts leanVM's worker pool on its caller, and the native prover lock serializes proofs anyway.
     /// The queue is bounded, so callers that bypass the managed proving gate are refused with
     /// <see cref="LeanProverBusyException"/> rather than pile up behind the prover,
     /// and it is completed at process exit. A caller that must stop waiting runs the call on a task of its own, as
