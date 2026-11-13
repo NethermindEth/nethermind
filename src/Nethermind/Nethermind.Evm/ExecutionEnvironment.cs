@@ -93,7 +93,7 @@ namespace Nethermind.Evm
             in UInt256 value,
             in ReadOnlyMemory<byte> inputData)
         {
-            Debug.Assert(executingAccount is not null, "A free cached environment is recognised by its cleared account.");
+            Debug.Assert(executingAccount is not null, "Every frame executes in an account.");
             ExecutionEnvironment env = (uint)callDepth < (uint)cache.Length && cache[callDepth] is { IsInUse: false } cached
                 ? cached
                 : RentUncached(cache, callDepth);
@@ -126,8 +126,9 @@ namespace Nethermind.Evm
             }
         }
 
-        /// <summary>Rented and not yet disposed; <see cref="Dispose"/> clears the account.</summary>
-        private bool IsInUse => ExecutingAccount is not null;
+        private bool _isInUse;
+
+        internal bool IsInUse => _isInUse;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void Initialize(
@@ -140,13 +141,14 @@ namespace Nethermind.Evm
             in ReadOnlyMemory<byte> inputData)
         {
             PooledObjectLeakDetector.OnRent(this, nameof(ExecutionEnvironment));
-            CodeInfo = codeInfo;
-            ExecutingAccount = executingAccount;
-            Caller = caller;
-            CodeSource = codeSource;
+            if (!ReferenceEquals(CodeInfo, codeInfo)) CodeInfo = codeInfo;
+            if (!ReferenceEquals(ExecutingAccount, executingAccount)) ExecutingAccount = executingAccount;
+            if (!ReferenceEquals(Caller, caller)) Caller = caller;
+            if (!ReferenceEquals(CodeSource, codeSource)) CodeSource = codeSource;
             CallDepth = callDepth;
             _value = value;
-            InputData = inputData;
+            if (!InputData.Equals(inputData)) InputData = inputData;
+            _isInUse = true;
         }
 
         /// <summary>
@@ -157,14 +159,18 @@ namespace Nethermind.Evm
             PooledObjectLeakDetector.OnReturn(this);
             if (IsInUse)
             {
-                CodeInfo = null!;
-                ExecutingAccount = null!;
-                Caller = null!;
-                CodeSource = null;
+                _isInUse = false;
                 CallDepth = 0;
                 _value = default;
-                InputData = default;
-                if (!_isCached) _pool.Enqueue(this);
+                if (!_isCached)
+                {
+                    CodeInfo = null!;
+                    ExecutingAccount = null!;
+                    Caller = null!;
+                    CodeSource = null;
+                    InputData = default;
+                    _pool.Enqueue(this);
+                }
             }
         }
     }
