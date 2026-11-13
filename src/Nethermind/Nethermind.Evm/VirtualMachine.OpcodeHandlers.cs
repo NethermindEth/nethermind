@@ -786,8 +786,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
     private readonly struct BadInstructionOpcode : IOpcodeBody
     {
-        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionBadInstruction(ref stack, ref gas, vm);
+        public static bool UsesVm => true;
+
+        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
+        {
+            EvmExceptionType result = EvmInstructions.InstructionBadInstruction(ref stack, ref gas, vm);
+            // Dispatch consumed the opcode byte; this handler never consumes an immediate operand.
+            if (result == EvmExceptionType.BadInstruction)
+                vm.TraceInvalidOpcode((Instruction)Unsafe.Add(ref stack.Code, programCounter - 1));
+            return result;
+        }
     }
 
     private readonly struct StopOpcode : IOpcodeBody
@@ -2028,8 +2036,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     [SkipLocalsInit]
     private readonly struct InvalidOpcode : IOpcodeBody
     {
-        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionInvalid(ref stack, ref gas, vm);
+        public static bool UsesVm => true;
+
+        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
+        {
+            EvmExceptionType result = EvmInstructions.InstructionInvalid(ref stack, ref gas, vm);
+            if (result == EvmExceptionType.BadInstruction)
+                vm.TraceInvalidOpcode(Instruction.INVALID);
+            return result;
+        }
     }
 
     [SkipLocalsInit]
