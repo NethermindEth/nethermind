@@ -46,12 +46,8 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
 
     /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs SLOAD on the guest handler.</summary>
     /// <remarks>Built apart from the shared table, which keeps the handlers of the first fork it prepares.</remarks>
-    internal static bool LoadsStorageThroughGuestHandlerForTests(IReleaseSpec spec)
-    {
-        nint handler = (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)Instruction.SLOAD];
-        return handler == (nint)AsTableEntry(&RawCalliHelper.ExecuteSLoad<OffFlag>)
-            || handler == (nint)AsTableEntry(&RawCalliHelper.ExecuteSLoad<OnFlag>);
-    }
+    internal static bool LoadsStorageThroughGuestHandlerForTests(IReleaseSpec spec) =>
+        UsesGuestStorageHandlerForTests(spec, Instruction.SLOAD);
 
     /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs BLOBHASH on the guest handler.</summary>
     internal static bool ReadsBlobHashesThroughGuestHandlerForTests(IReleaseSpec spec) =>
@@ -59,7 +55,23 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
 
     /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs SSTORE on the guest handler.</summary>
     internal static bool StoresStorageThroughGuestHandlerForTests(IReleaseSpec spec) =>
-        (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)Instruction.SSTORE] == (nint)AsTableEntry(&RawCalliHelper.ExecuteSStore);
+        UsesGuestStorageHandlerForTests(spec, Instruction.SSTORE);
+
+    private static bool UsesGuestStorageHandlerForTests(IReleaseSpec spec, Instruction opcode)
+    {
+        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] handlers = GenerateOpcodeHandlers<OffFlag, OffFlag>(spec);
+        nint expected = (opcode, spec.IsEip8038Enabled, spec.IsEip8360Enabled) switch
+        {
+            (Instruction.SSTORE, true, _) => (nint)AsTableEntry(&RawCalliHelper.ExecuteSStore<Eip8038On>),
+            (Instruction.SSTORE, false, _) => (nint)AsTableEntry(&RawCalliHelper.ExecuteSStore<Eip8038Off>),
+            (Instruction.SLOAD, true, true) => (nint)AsTableEntry(&RawCalliHelper.ExecuteSLoad<Eip8038On, OnFlag>),
+            (Instruction.SLOAD, true, false) => (nint)AsTableEntry(&RawCalliHelper.ExecuteSLoad<Eip8038On, OffFlag>),
+            (Instruction.SLOAD, false, true) => (nint)AsTableEntry(&RawCalliHelper.ExecuteSLoad<Eip8038Off, OnFlag>),
+            (Instruction.SLOAD, false, false) => (nint)AsTableEntry(&RawCalliHelper.ExecuteSLoad<Eip8038Off, OffFlag>),
+            _ => 0
+        };
+        return expected != 0 && (nint)handlers[(int)opcode] == expected;
+    }
 
     /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs SELFBALANCE on the guest handler.</summary>
     internal static bool ReadsSelfBalanceThroughGuestHandlerForTests(IReleaseSpec spec) =>
