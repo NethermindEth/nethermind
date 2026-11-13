@@ -1115,6 +1115,26 @@ public partial class EthRpcModuleTests
         Assert.That(JToken.Parse(serialized)["error"]?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput), serialized);
     }
 
+    // Geth checks accounts in ascending address order and the move of an account before its storage.
+    [TestCase("""{"0xc300000000000000000000000000000000000000":{"state":{},"stateDiff":{}},"0xc100000000000000000000000000000000000000":{"movePrecompileToAddress":"0xc200000000000000000000000000000000000000"}}""",
+        TestName = "Call methods report the invalid entry with the lowest address")]
+    [TestCase("""{"0xc100000000000000000000000000000000000000":{"state":{},"stateDiff":{},"movePrecompileToAddress":"0xc200000000000000000000000000000000000000"}}""",
+        TestName = "Call methods report an invalid move before a storage conflict")]
+    public async Task Call_methods_report_the_first_invalid_state_override(string stateOverrideJson)
+    {
+        object? transaction = JsonSerializer.Deserialize<object>("""{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xc200000000000000000000000000000000000000"}""");
+        using Context ctx = await Context.Create();
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", JsonSerializer.Deserialize<object>(stateOverrideJson));
+
+        JToken? error = JToken.Parse(serialized)["error"];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput), serialized);
+            Assert.That(error?["message"]?.Value<string>(), Is.EqualTo($"account {new Address("0xc100000000000000000000000000000000000000").ToString(withEip55Checksum: true)} is not a precompile"), serialized);
+        }
+    }
+
     [Test]
     public async Task Call_methods_check_a_precompile_move_against_the_fork_of_the_block_override(
         [Values("eth_call", "eth_estimateGas")] string method,

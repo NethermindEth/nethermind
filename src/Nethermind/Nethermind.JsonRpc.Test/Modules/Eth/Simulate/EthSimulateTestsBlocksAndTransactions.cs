@@ -69,6 +69,22 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     [Test]
+    public async Task Simulate_puts_the_higher_of_two_moved_precompiles_at_their_destination([Values] bool higherListedFirst)
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        const string ecMul = "\"0x0000000000000000000000000000000000000007\":{\"movePrecompileToAddress\":\"0xc200000000000000000000000000000000000000\"}";
+        const string identity = "\"0x0000000000000000000000000000000000000004\":{\"movePrecompileToAddress\":\"0xc200000000000000000000000000000000000000\"}";
+        string stateOverrides = higherListedFirst ? ecMul + "," + identity : identity + "," + ecMul;
+        // On 96 zero bytes, ecMul returns the 64-byte point at infinity and identity returns the 96 bytes.
+        string call = "{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc200000000000000000000000000000000000000\",\"input\":\"0x" + new string('0', 192) + "\"}";
+
+        string response = await chain.TestEthRpc("eth_simulateV1", SimulatePayloadJson("{\"stateOverrides\":{" + stateOverrides + "},\"calls\":[" + call + "]}"), "latest");
+
+        using JsonDocument document = JsonDocument.Parse(response);
+        Assert.That(document.RootElement.GetProperty("result")[0].GetProperty("calls")[0].GetProperty("returnData").GetString(), Is.EqualTo("0x" + new string('0', 128)), response);
+    }
+
+    [Test]
     public async Task Simulate_processes_withdrawal_overrides()
     {
         using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(Osaka.Instance);
