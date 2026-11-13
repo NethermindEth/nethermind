@@ -240,6 +240,8 @@ public sealed class GCScheduler
         return new ForcedGCExclusionScope(this);
     }
 
+    internal bool IsForcedGCExcluded => Volatile.Read(ref _forcedGCExclusions) > 0;
+
     public readonly struct ForcedGCExclusionScope(GCScheduler scheduler) : IDisposable
     {
         public void Dispose() => Interlocked.Decrement(ref scheduler._forcedGCExclusions);
@@ -249,6 +251,9 @@ public sealed class GCScheduler
     // preventing the runtime's multi-second blocking gen2 escalation.
     internal void SweepIfAllocationBudgetExceeded()
     {
+        // An induced collection ends an active no-GC region.
+        if (GCSettings.LatencyMode == GCLatencyMode.NoGCRegion) return;
+
         long allocated = GC.GetTotalAllocatedBytes(precise: false);
         if (allocated - Volatile.Read(ref _sweepBaselineAllocatedBytes) < SustainedSweepAllocationBytes) return;
 

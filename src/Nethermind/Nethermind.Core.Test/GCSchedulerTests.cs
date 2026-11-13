@@ -102,6 +102,26 @@ public class GCSchedulerTests
     }
 
     [Test]
+    public void Sweep_skips_while_no_gc_region_is_active()
+    {
+        long armed = ArmBudget();
+        Assert.That(GC.TryStartNoGCRegion(64 * 1024 * 1024), Is.True);
+        try
+        {
+            _scheduler.SweepIfAllocationBudgetExceeded();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(GCSettings.LatencyMode, Is.EqualTo(GCLatencyMode.NoGCRegion));
+                Assert.That(_scheduler.SweepBaselineAllocatedBytes, Is.EqualTo(armed));
+            }
+        }
+        finally
+        {
+            if (GCSettings.LatencyMode == GCLatencyMode.NoGCRegion) GC.EndNoGCRegion();
+        }
+    }
+
+    [Test]
     public void Sweep_WhenAllocationBudgetExceeded_DoesNotTrimNativeHeap()
     {
         MallocHelper mallocHelper = Substitute.For<MallocHelper>();
