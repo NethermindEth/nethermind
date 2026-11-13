@@ -1009,10 +1009,11 @@ public class ProofWrapperServiceTests
     [TestCase(64, false, false, 0UL, 2, false, false, false, false, false, true, TestName = "An incoming transaction deferred once is validated again on the same head")]
     [TestCase(64, false, false, 0UL, 0, false, false, false, false, false, false, true, TestName = "Replays of an incoming transaction stop being validated after the per-head limit")]
     [TestCase(64, false, false, 0UL, 0, false, false, false, false, false, false, true, true, TestName = "A new head resets the per-head validation limit")]
+    [TestCase(64, false, false, 0UL, 2, false, false, false, false, false, false, true, false, true, TestName = "One source using up the per-head limit leaves another source's wrapper validated")]
     public async Task Full_proof_capacity_evicts_non_executable_transactions(int nonExecutable, bool sharedPins,
         bool oldestSharedWithExecutable, ulong incomingNonce, int removed, bool localVictims = false, bool secondWrapper = false,
         bool gapFilled = false, bool incomingRejected = false, bool incomingKnown = false, bool incomingDeferredOnce = false,
-        bool incomingAlwaysDeferred = false, bool newHead = false)
+        bool incomingAlwaysDeferred = false, bool newHead = false, bool otherSource = false)
     {
         const int pinnedCount = 64;
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
@@ -1056,9 +1057,13 @@ public class ProofWrapperServiceTests
             .Returns(call => incomingRejected ? AcceptTxResult.FrameSimulationFailed
                 : store.PinPending(call.Arg<Transaction>(), poolOwner) ? AcceptTxResult.Accepted : AcceptTxResult.MissingDependencyProof);
         pool.IsKnown(Arg.Any<Hash256>()).Returns(incomingKnown);
+        // The first source's copy keeps failing, as one with a corrupt sidecar the hash does not cover would.
+        bool firstSourceFails = true;
+        int dryRuns = 0;
         pool.ValidateTxBeforeProofAdmission(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
-            .Returns(incomingRejected ? AcceptTxResult.FrameSimulationFailed : incomingDeferredOnce || incomingAlwaysDeferred ? AcceptTxResult.FrameSimulationDeferred : AcceptTxResult.Accepted,
-                incomingAlwaysDeferred ? AcceptTxResult.FrameSimulationDeferred : AcceptTxResult.Accepted);
+            .Returns(_ => incomingRejected ? AcceptTxResult.FrameSimulationFailed
+                : incomingAlwaysDeferred && firstSourceFails || incomingDeferredOnce && dryRuns++ == 0 ? AcceptTxResult.FrameSimulationDeferred
+                : AcceptTxResult.Accepted);
         pool.GetPendingTransactionsBySender().Returns(BySender([.. pinned]));
         pool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>());
         pool.GetPendingTransactionsBySender(Arg.Any<Address>()).Returns(call => [.. pinned.Where(tx => tx.SenderAddress == call.Arg<Address>())]);
@@ -1092,6 +1097,11 @@ public class ProofWrapperServiceTests
         if (incomingAlwaysDeferred)
         {
             for (int i = 0; i < 2; i++) result = await service.AcceptOwnedDetailedAsync(Incoming("incoming", Address.Zero));
+            if (otherSource)
+            {
+                firstSourceFails = false;
+                result = await service.AcceptOwnedDetailedAsync(Incoming("incoming", Address.Zero), default, new object());
+            }
             if (newHead)
             {
                 finder.Head.Returns(Build.A.Block.WithNumber(1).TestObject);
@@ -1112,7 +1122,7 @@ public class ProofWrapperServiceTests
             pool.Received(removed != 0 && !oldestSharedWithExecutable && !localVictims ? 1 : 0).RemoveTransaction(oldest.Hash);
             // The admission dry run simulates, so it runs only once eviction could free enough.
             if (incomingRejected || incomingDeferredOnce || incomingAlwaysDeferred)
-                pool.Received(incomingRejected ? 1 : newHead ? 3 : 2).ValidateTxBeforeProofAdmission(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+                pool.Received(incomingRejected ? 1 : newHead || otherSource ? 3 : 2).ValidateTxBeforeProofAdmission(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
             if (removed == 0 && !incomingRejected && !incomingAlwaysDeferred) pool.DidNotReceive().ValidateTxBeforeProofAdmission(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
         }
     }
