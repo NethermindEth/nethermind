@@ -312,13 +312,14 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             }
             cancellationToken.ThrowIfCancellationRequested();
             List<FrameDependency> admittedDependencies = [];
+            TxHandlingOptions handling = copyInput ? TxHandlingOptions.PersistentBroadcast : TxHandlingOptions.None;
             Result<Hash256[]> admission;
             IDisposable? scope;
             int pooled = 0, admitted = 0;
             lock (_commitLock)
             {
                 if (RefreshVerifier() != verifier) return ProofWrapperAcceptance.LocalFailure(VerifierChangedDuringAdmission);
-                if (!TryBeginAdmission(decoded, out scope))
+                if (!TryBeginAdmission(decoded, handling, out scope))
                     return ProofWrapperAcceptance.LocalFailure("Proof witness capacity is full; retry later.");
             }
             using (scope)
@@ -348,7 +349,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                         }
                         SubmitProofTransactions(transactions, start, Math.Min(start + AdmissionChunk, transactions.Count), hashes,
                             ref firstError, ref pooled, ref admitted, cancellationToken, admittedDependencies, source,
-                            copyInput ? TxHandlingOptions.PersistentBroadcast : TxHandlingOptions.None);
+                            handling);
                     }
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested && pooled != 0)
@@ -394,14 +395,14 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// Transactions the next blocks could not include give way, oldest first, to a wrapper whose new transactions the next blocks
     /// could, but only when evicting at most <see cref="MaxEvictedPerAdmission"/> of them frees enough, only those whose
     /// eviction frees witness capacity, and only once every new incoming transaction passes admission but for its witnesses.</remarks>
-    private bool TryBeginAdmission(MempoolWrapper decoded, out IDisposable? scope)
+    private bool TryBeginAdmission(MempoolWrapper decoded, TxHandlingOptions handling, out IDisposable? scope)
     {
         if (leanProofStore.TryBeginAdmission(decoded.Deps, decoded.Proofs, decoded.RecursiveStark?.StarkProof, out scope)) return true;
         FeeFloors floors = ExecutableFeeFloors();
         if (!AddsOnlyExecutable(decoded.Transactions, floors)) return false;
         // Eviction cannot be undone: the incoming transactions must first pass admission, their witnesses aside.
         foreach (Transaction transaction in decoded.Transactions)
-            if (!txPool.TryGetPendingTransaction(transaction.Hash!.ValueHash256, out _) && !txPool.ValidateTxBeforeProofAdmission(transaction)) return false;
+            if (!txPool.TryGetPendingTransaction(transaction.Hash!.ValueHash256, out _) && !txPool.ValidateTxBeforeProofAdmission(transaction, handling)) return false;
         List<ValueHash256> hashes = [];
         HashSet<Transaction> stale = [];
         foreach (Transaction candidate in NotExecutable(decoded.Transactions, floors))

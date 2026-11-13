@@ -444,7 +444,7 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool();
             if (funded) EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            AcceptTxResult result = _txPool.ValidateTxBeforeProofAdmission(tx);
+            AcceptTxResult result = _txPool.ValidateTxBeforeProofAdmission(tx, TxHandlingOptions.None);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(result, Is.EqualTo(funded ? AcceptTxResult.Accepted : AcceptTxResult.InsufficientFunds));
@@ -466,7 +466,23 @@ namespace Nethermind.TxPool.Test
 
             Transaction next = Build.A.Transaction.WithNonce(1).WithGasPrice(10).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
-            Assert.That(_txPool.ValidateTxBeforeProofAdmission(next), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.ValidateTxBeforeProofAdmission(next, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+        }
+
+        // A full pool refuses a peer's underpriced transaction but not a local one, so the dry run must judge as admission will.
+        [Test]
+        public void Validation_before_proof_admission_uses_the_admission_handling([Values] bool local)
+        {
+            _txPool = CreatePool(new TxPoolConfig { Size = 1 });
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
+            Assert.That(_txPool.SubmitTx(Build.A.Transaction.WithGasPrice(10).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject, TxHandlingOptions.None),
+                Is.EqualTo(AcceptTxResult.Accepted));
+
+            Transaction underpriced = Build.A.Transaction.WithGasPrice(1).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            Assert.That(_txPool.ValidateTxBeforeProofAdmission(underpriced, local ? TxHandlingOptions.PersistentBroadcast : TxHandlingOptions.None),
+                Is.EqualTo(local ? AcceptTxResult.Accepted : AcceptTxResult.FeeTooLow));
         }
 
         // A dry run that kept its paymaster, code-dependency or payer-exposure reservation would let repeated validation
@@ -497,7 +513,7 @@ namespace Nethermind.TxPool.Test
             }
 
             AcceptTxResult[] dryRuns = new AcceptTxResult[3];
-            for (int i = 0; i < dryRuns.Length; i++) dryRuns[i] = _txPool.ValidateTxBeforeProofAdmission(SponsoredFrameTx(TestItem.PrivateKeyA, sponsor));
+            for (int i = 0; i < dryRuns.Length; i++) dryRuns[i] = _txPool.ValidateTxBeforeProofAdmission(SponsoredFrameTx(TestItem.PrivateKeyA, sponsor), TxHandlingOptions.None);
 
             using (Assert.EnterMultipleScope())
             {
