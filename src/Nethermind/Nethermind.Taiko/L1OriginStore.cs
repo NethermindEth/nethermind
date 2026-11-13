@@ -7,6 +7,7 @@ using Autofac.Features.AttributeFilters;
 using Nethermind.Core.Collections;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Taiko;
@@ -58,7 +59,7 @@ public class L1OriginStore([KeyFilter(L1OriginStore.L1OriginDbName)] IDb db, Rlp
         byte[]? data = db.Get(keyBytes);
         if (data is null) return null;
         RlpReader ctx = new(data);
-        return decoder.Decode(ref ctx);
+        return decoder.Decode(ref ctx, RlpBehaviors.TrustedInput);
     }
 
     public void WriteL1Origin(UInt256 blockId, L1Origin l1Origin)
@@ -79,7 +80,7 @@ public class L1OriginStore([KeyFilter(L1OriginStore.L1OriginDbName)] IDb db, Rlp
 
         int encodedL1OriginLength = decoder.GetLength(l1Origin, RlpBehaviors.None);
         using ArrayPoolSpan<byte> buffer = new(encodedL1OriginLength);
-        RlpWriter writer = new(buffer);
+        RlpWriter writer = RlpWriter.ContentWriter(buffer);
         decoder.Encode(ref writer, l1Origin);
         db.PutSpan(key, buffer);
     }

@@ -9,6 +9,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -34,6 +35,9 @@ public partial class FrameTxProcessorTests
     private static readonly Address ParitySponsor = TestItem.AddressD;
     private static readonly Address ParityReverter = TestItem.AddressF;
     private static readonly Address ParityTailCaller = TestItem.Addresses[10];
+    private static readonly Address ParityCodeless = new("0x000000000000000000000000000000000000beef");
+    private static readonly Address ParityDelegator = new("0x000000000000000000000000000000000000d313");
+    private static readonly Address ParityHalter = new("0x000000000000000000000000000000000000fe01");
     private const string RevertOutput = "0x00";
 
     /// <summary>Reverts with one byte of untouched memory, so its output is not empty.</summary>
@@ -103,6 +107,20 @@ public partial class FrameTxProcessorTests
                 DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
                 frames = [SelfVerifyFrame(), UndispatchedFrame(PreDispatchExit.EntryAccessCharge, out _), Frame(FrameMode.Default, target: Observer)];
                 break;
+            case "codelessTarget":
+                DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+                frames = [SelfVerifyFrame(), Frame(FrameMode.Sender, target: ParityCodeless, value: 7), Frame(FrameMode.Default, target: Observer)];
+                break;
+            case "delegatedCodeless":
+                DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+                DeployContract(ParityDelegator, [0xef, 0x01, 0x00, .. ParityCodeless.Bytes]);
+                frames = [SelfVerifyFrame(), Frame(FrameMode.Sender, target: ParityDelegator), Frame(FrameMode.Default, target: Observer)];
+                break;
+            case "firstInstructionHalt":
+                DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+                DeployContract(ParityHalter, [(byte)Instruction.ADD]);
+                frames = [SelfVerifyFrame(), Frame(FrameMode.Sender, target: ParityHalter), Frame(FrameMode.Default, target: Observer)];
+                break;
             default:
                 DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
                 frames = [SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.Default, target: Recipient)];
@@ -130,6 +148,9 @@ public partial class FrameTxProcessorTests
     [TestCase("nested", new[] { 0, 1, 2 }, new[] { 1, 0 })]
     [TestCase("skipped", new[] { 0, 1, 3 }, new[] { 3, 0 })]
     [TestCase("undispatched", new[] { 0, 2 }, new[] { 2, 0 })]
+    [TestCase("codelessTarget", new[] { 0, 2 }, new[] { 2, 0 })]
+    [TestCase("delegatedCodeless", new[] { 0, 1, 2 }, new[] { 2, 0 })]
+    [TestCase("firstInstructionHalt", new[] { 0, 1, 2 }, new[] { 2, 0 })]
     [TestCase("sponsored", new[] { 0, 1, 2 }, new[] { 2, 0 })]
     [TestCase("tailCall", new[] { 0, 1, 2 }, new[] { 1, 0 })]
     [TestCase("assertReverted", new[] { 0, 1, 2 }, new[] { 1, 0 })]
@@ -168,12 +189,12 @@ public partial class FrameTxProcessorTests
                 Assert.That(frame.CallType, Is.EqualTo(isStatic ? "staticcall" : "call"), $"frame {i} call type");
                 Assert.That(frame.From, Is.EqualTo(frames[i].Mode == FrameMode.Sender ? Sender : Eip8141Constants.EntryPointAddress), $"frame {i} from");
                 Assert.That(frame.To, Is.EqualTo(frames[i].Target ?? Sender), $"frame {i} to");
-                Assert.That(frame.Gas, Is.EqualTo(frames[i].GasLimit), $"frame {i} gas");
+                Assert.That(frame.Gas, Is.EqualTo(frames[i].ExecutionGasLimit), $"frame {i} gas");
                 switch (frameReceipts[i].Status)
                 {
                     case TxFrameReceipt.StatusSuccess:
                         Assert.That(frame.Error, Is.Null, $"frame {i} error");
-                        Assert.That(frame.Result?.GasUsed, Is.EqualTo(frameReceipts[i].GasUsed), $"frame {i} gasUsed");
+                        Assert.That(frame.Result?.GasUsed, Is.EqualTo(frameReceipts[i].ExecutionGasUsed), $"frame {i} gasUsed");
                         break;
                     case TxFrameReceipt.StatusSkipped:
                         Assert.That(frame.Error, Is.EqualTo("frame skipped"), $"frame {i} error");
@@ -182,7 +203,7 @@ public partial class FrameTxProcessorTests
                         Assert.That(frame.Error, Is.Not.Null, $"frame {i} error");
                         if (frame.Error == "Reverted")
                         {
-                            Assert.That(frame.Result?.GasUsed, Is.EqualTo(frameReceipts[i].GasUsed), $"frame {i} reverted gasUsed");
+                            Assert.That(frame.Result?.GasUsed, Is.EqualTo(frameReceipts[i].ExecutionGasUsed), $"frame {i} reverted gasUsed");
                             Assert.That(frame.Result?.Output?.ToHexString(true), Is.EqualTo(RevertOutput), $"frame {i} revert output");
                         }
                         else
@@ -200,14 +221,15 @@ public partial class FrameTxProcessorTests
             Assert.That(flat.Count(t => t.TraceAddress.ToArray().SequenceEqual(nestedCall) && t.Action.To == Recipient), Is.EqualTo(1), "nested call");
             Assert.That(trace.VmTrace!.Code ?? [], Is.Empty, "root code");
             Assert.That(trace.VmTrace.Operations.Select(static o => o.Pc), Is.EqualTo(framesInVm), "one root operation per frame that entered the VM");
-            // Per the execution-apis frame transaction trace profile: the frame's gas limit, less its receipt's gasUsed.
-            Assert.That(trace.VmTrace.Operations.Select(o => o.Cost), Is.EqualTo(framesInVm.Select(i => frames[i].GasLimit)), "root operation cost");
+            Assert.That(trace.VmTrace.Operations.Select(o => o.Cost), Is.EqualTo(framesInVm.Select(i => frames[i].ExecutionGasLimit)), "root operation cost");
             Assert.That(trace.VmTrace.Operations.Select(static o => o.Used),
-                Is.EqualTo(framesInVm.Select(i => frames[i].GasLimit - frameReceipts[i].GasUsed)), "root operation ex.used");
+                Is.EqualTo(framesInVm.Select(i => frames[i].ExecutionGasLimit - frameReceipts[i].ExecutionGasUsed)), "root operation ex.used");
             Assert.That(trace.VmTrace.Operations.All(static o => o.Sub is not null), Is.True, "every root operation carries its frame");
             using JsonDocument vmTrace = JsonDocument.Parse(JsonSerializer.Serialize(trace.VmTrace, EthereumJsonSerializer.JsonOptions));
             JsonElement[] rootOperations = [.. vmTrace.RootElement.GetProperty("ops").EnumerateArray()];
-            Assert.That(rootOperations.Select(static o => o.TryGetProperty("op", out _)), Is.All.False, "a root operation runs no opcode");
+            Assert.That(rootOperations.Select(static o => o.GetProperty("op").GetString()),
+                Is.EqualTo(framesInVm.Select(i => frames[i].Mode is FrameMode.Verify or FrameMode.Assert ? "STATICCALL" : "CALL")), "a root operation names its frame's call");
+            Assert.That(rootOperations.Select(static o => o.GetProperty("ex").GetProperty("push").GetRawText()), Is.All.EqualTo("[]"), "a root operation pushes nothing");
             Assert.That(rootOperations.SelectMany(static o => o.GetProperty("sub").GetProperty("ops").EnumerateArray()).Select(static o => o.TryGetProperty("op", out _)),
                 Is.All.True, "a frame operation names its opcode");
             // Every frame's code opens with a PUSH, which a gas carry-over from the previous frame would misprice.
@@ -218,7 +240,7 @@ public partial class FrameTxProcessorTests
 
     [Test]
     public void ParityTrace_FrameTx_StreamedMatchesBuffered(
-        [Values("nested", "skipped", "undispatched", "sponsored", "tailCall", "assertReverted", "precompileFrame", "keyedNonces")] string scenario, [Values] ParityTraceStreamMode mode)
+        [Values("nested", "skipped", "undispatched", "codelessTarget", "delegatedCodeless", "firstInstructionHalt", "sponsored", "tailCall", "assertReverted", "precompileFrame", "keyedNonces")] string scenario, [Values] ParityTraceStreamMode mode)
     {
         string buffered = BufferedParityJson(mode, ParityScenarioTx(scenario));
         TearDown();
@@ -282,6 +304,42 @@ public partial class FrameTxProcessorTests
             Assert.That(trace.StateChanges.TryGetValue(Beneficiary, out ParityAccountStateChange? beneficiary), Is.True, "beneficiary");
             Assert.That((beneficiary?.Balance?.After ?? 0) - (beneficiary?.Balance?.Before ?? 0), Is.EqualTo(fee), "beneficiary credit");
             Assert.That(trace.StateChanges[Sender].Nonce?.After, Is.EqualTo((UInt256?)1), "sender nonce");
+        }
+    }
+
+    /// <summary>A SENDER frame whose target has no code runs no instruction: callTracer renders it from the
+    /// transaction with no <c>output</c> and no <c>calls</c>, and structLogs has no step of it.</summary>
+    [Test]
+    public void GethTraces_FrameTx_CodelessTargetFrameRunsNoCode()
+    {
+        Transaction tx = ParityScenarioTx("codelessTarget");
+        (JsonDocument trace, _) = TraceCall(tx);
+        using (trace)
+        {
+            JsonElement frame = trace.RootElement.GetProperty("calls")[1];
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(frame.GetProperty("to").GetString(), Is.EqualTo(ParityCodeless.ToString()), "frame target");
+                Assert.That(frame.TryGetProperty("error", out _), Is.False, "frame error");
+                Assert.That(frame.TryGetProperty("output", out _), Is.False, "frame output");
+                Assert.That(frame.TryGetProperty("calls", out _), Is.False, "frame calls");
+            }
+        }
+    }
+
+    [Test]
+    public void StructLogs_FrameTx_CodelessTargetFrameAddsNoSteps()
+    {
+        Transaction tx = ParityScenarioTx("codelessTarget");
+        GethLikeBlockMemoryTracer blockTracer = new(GethTraceOptions.Default);
+        TxReceipt receipt = ProcessThroughReceiptsTracer(tx, _ => blockTracer);
+        using GethLikeTxTrace trace = blockTracer.BuildResult().Single();
+        GethTxTraceEntry[] frameStarts = [.. trace.Entries.Where(static e => e.Depth == 1 && e.ProgramCounter == 0)];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.FrameReceipts!.Select(static r => r.Status), Is.All.EqualTo(TxFrameReceipt.StatusSuccess), "frame statuses");
+            Assert.That(frameStarts, Has.Length.EqualTo(2), "only the VERIFY and DEFAULT frames add steps");
         }
     }
 
@@ -415,7 +473,7 @@ public partial class FrameTxProcessorTests
     public void ParityVmTrace_FrameTxWithoutReceipts_KeepsTheFrameLimitAndTheGasTheVmLeft()
     {
         DeploySmartSender(RevertingWithOutput);
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        Transaction tx = FrameTx(nonce: 0, KeyedSelfVerifyFrame(freshKeyCount: 1));
         Block block = Build.A.Block.WithNumber(1).WithBaseFeePerGas(0).WithBeneficiary(Beneficiary)
             .WithTransactions(tx).WithGasLimit(30_000_000).TestObject;
         ParityLikeTxTracer tracer = new(block, tx, ParityTraceTypes.Trace | ParityTraceTypes.VmTrace, Spec);
@@ -429,7 +487,7 @@ public partial class FrameTxProcessorTests
         {
             Assert.That(result.TransactionExecuted, Is.False, "a reverted VERIFY frame invalidates the transaction");
             Assert.That(frame.Error, Is.EqualTo("Reverted"));
-            Assert.That(operation.Cost, Is.EqualTo(tx.Frames![0].GasLimit), "cost");
+            Assert.That(operation.Cost, Is.EqualTo(tx.Frames![0].ExecutionGasLimit), "cost");
             Assert.That(operation.Used, Is.EqualTo(frame.Gas - frame.Result!.GasUsed).And.GreaterThan(0UL), "ex.used");
         }
     }

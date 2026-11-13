@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
@@ -14,25 +15,25 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
     {
         public int Serialize(Span<byte> destination, TMessage message)
         {
-            RlpWriter writer = new(destination);
-            writer.StartSequence(GetContentLength(message));
+            RlpWriter writer = RlpWriter.ContentWriter(destination);
+            RlpSequence sequence = writer.StartSequence(GetContentLength(message));
             writer.Encode(message.RequestId);
             SerializeInternal(ref writer, message);
-            return writer.Position;
+            writer.EndSequence(sequence);
+            return writer.Length;
         }
 
         public TMessage Deserialize(ReadOnlySpan<byte> data)
         {
-            RlpReader ctx = new(data);
-            int sequenceLength = ctx.ReadSequenceLength();
-            int checkPosition = ctx.Position + sequenceLength;
+            RlpReader reader = new(data);
+            RlpReader ctx = reader.EnterSequence(out int itemLength);
             long requestId = ctx.DecodeLong();
 
             TMessage message = DeserializeInternal(ref ctx, requestId);
             try
             {
-                ctx.Check(checkPosition);
-                ctx.CheckEnd();
+                reader.ExitSequence(in ctx, itemLength);
+                reader.CheckEnd();
                 return message;
             }
             catch

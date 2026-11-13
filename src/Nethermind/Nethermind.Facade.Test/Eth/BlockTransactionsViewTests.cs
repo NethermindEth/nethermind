@@ -15,6 +15,7 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 using static Nethermind.Core.Test.Builders.FrameTxTestFrames;
 
@@ -27,7 +28,7 @@ namespace Nethermind.Facade.Test.Eth;
 public class BlockTransactionsViewTests
 {
     private static readonly TransactionForRpcContext Pending = new(BlockchainIds.Mainnet);
-    private static readonly TransactionForRpcContext Mined = new(BlockchainIds.Mainnet, TestItem.KeccakB, 25_000_000, 7, 1_700_000_000, 10);
+    private static readonly TransactionForRpcContext Mined = new(BlockchainIds.Mainnet, TestItem.KeccakB, 25_000_000, 7, 1_700_000_000, 10, Eip8141Prototype.Instance);
 
     [Test]
     public void Registered_transaction_types_have_distinct_reuse_slots()

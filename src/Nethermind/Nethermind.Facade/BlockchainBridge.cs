@@ -204,7 +204,9 @@ namespace Nethermind.Facade
                     txIndex: txReceipt!.Index,
                     blockTimestamp: header.Timestamp,
                     baseFee: header.BaseFeePerGas,
-                    receipt: txReceipt);
+                    receipt: txReceipt,
+                    spec: specProvider.GetSpec(header),
+                    excessBlobGas: header.ExcessBlobGas);
 
 
                 result = new TransactionLookupResult(tx, extraData);
@@ -952,12 +954,15 @@ namespace Nethermind.Facade
         public void DeleteBlockAccessList(ulong blockNumber, Hash256 blockHash)
             => balStore.Delete(blockNumber, blockHash);
 
-        public Witness GenerateExecutionWitness(BlockHeader parent, Block block)
+        public Witness GenerateExecutionWitness(BlockHeader parent, Block block) =>
+            GenerateExecutionWitness(parent, block, NullBlockTracer.Instance);
+
+        public Witness GenerateExecutionWitness(BlockHeader parent, Block block, IBlockTracer tracer)
         {
             RecoverTxSenders(block);
             using IWitnessGeneratingBlockProcessingEnvScope scope = witnessGeneratingBlockProcessingEnvFactory.Value.CreateScope();
             IExistingBlockWitnessCollector witnessCollector = scope.Env.CreateExistingBlockWitnessCollector();
-            return witnessCollector.GetWitnessForExistingBlock(parent, block);
+            return witnessCollector.GetWitnessForExistingBlock(parent, block, tracer);
         }
 
         public SingleCallWitnessResult GenerateExecutionWitness(BlockHeader header, Transaction tx, CancellationToken cancellationToken = default)

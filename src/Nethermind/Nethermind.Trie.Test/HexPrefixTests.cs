@@ -68,6 +68,9 @@ public class HexPrefixTests
 
     [TestCase(false, (byte)3, (byte)19)]
     [TestCase(true, (byte)3, (byte)51)]
+    // Flags beyond the two low bits are ignored, as the execution specs' compact_to_nibbles does.
+    [TestCase(false, (byte)3, (byte)0x53)]
+    [TestCase(true, (byte)3, (byte)0x73)]
     public void Decode_gives_correct_output_when_one(bool expectedFlag, byte nibble1, byte byte1)
     {
         (byte[] key, bool isLeaf) = HexPrefix.FromBytes(new[] { byte1 });

@@ -9,6 +9,7 @@ using Nethermind.Core.Test;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.State.Flat.History.Proofs;
 using Nethermind.State.Flat.History.Walk;
 using Nethermind.Trie;
@@ -124,7 +125,7 @@ public class NodeViewsTests
         for (int i = 0; i < 8; i++) children[i] = new byte[532];
         try
         {
-            Assert.That(() => NodeViews.FromChildrenRlp(children, views), Throws.InstanceOf<Serialization.Rlp.RlpException>());
+            Assert.That(() => NodeViews.FromChildrenRlp(children, views), Throws.InstanceOf<RlpReaderException>());
         }
         finally
         {

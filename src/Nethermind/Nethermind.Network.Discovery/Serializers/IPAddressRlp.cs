@@ -4,6 +4,7 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Serializers;
@@ -19,8 +20,7 @@ internal static class IPAddressRlp
         };
 
     [SkipLocalsInit]
-    public static void Encode<TWriter>(ref TWriter writer, IPAddress ip)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    public static void Encode(ref RlpWriter writer, IPAddress ip)
     {
         Span<byte> bytes = stackalloc byte[16];
         if (ip.TryWriteBytes(bytes, out int bytesWritten))

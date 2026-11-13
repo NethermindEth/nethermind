@@ -22,7 +22,7 @@ namespace Nethermind.Network.Test.Rlpx.TestWrappers
         public ZeroFrameMergerTestWrapper(IByteBufferAllocator? allocator = null)
             : base(LimboLogs.Instance) => _context.Allocator.Returns(allocator ?? UnpooledByteBufferAllocator.Default);
 
-        public ZeroPacket Decode(IByteBuffer input)
+        public NettyBufferPacket Decode(IByteBuffer input)
         {
             List<object> result = [];
             while (input.IsReadable())
@@ -46,7 +46,7 @@ namespace Nethermind.Network.Test.Rlpx.TestWrappers
                 return null;
             }
 
-            return (ZeroPacket)result[0];
+            return (NettyBufferPacket)result[0];
         }
     }
 }

@@ -38,7 +38,7 @@ public class RawTrieStore(INodeStorage nodeStorage) : IReadOnlyTrieStore
 
     public IDisposable BeginScope(BlockHeader? baseBlock) => new Reactive.AnonymousDisposable(static () => { });
 
-    public IScopedTrieStore GetTrieStore(Hash256? address) => new RawScopedTrieStore(nodeStorage, address);
+    public virtual IScopedTrieStore GetTrieStore(Hash256? address) => new RawScopedTrieStore(nodeStorage, address);
 
     public IBlockCommitter BeginBlockCommit(ulong blockNumber) => NullCommitter.Instance;
 }

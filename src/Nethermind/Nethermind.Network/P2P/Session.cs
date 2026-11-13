@@ -183,8 +183,8 @@ namespace Nethermind.Network.P2P
 
         public void ReceiveMessage(ZeroPacket zeroPacket)
         {
-            Interlocked.Add(ref Metrics.P2PBytesReceived, zeroPacket.Content.ReadableBytes);
-            Interlocked.Add(ref _bytesReceived, zeroPacket.Content.ReadableBytes);
+            Interlocked.Add(ref Metrics.P2PBytesReceived, zeroPacket.Content.Length);
+            Interlocked.Add(ref _bytesReceived, zeroPacket.Content.Length);
 
             lock (_sessionStateLock)
             {
@@ -204,11 +204,11 @@ namespace Nethermind.Network.P2P
             zeroPacket.Protocol = protocol;
 
             _activityObserver?.OnSessionActivity(this);
-            MsgReceived?.Invoke(this, new PeerEventArgs(_node, zeroPacket.Protocol, zeroPacket.PacketType, zeroPacket.Content.ReadableBytes));
+            MsgReceived?.Invoke(this, new PeerEventArgs(_node, zeroPacket.Protocol, zeroPacket.PacketType, zeroPacket.Content.Length));
 
-            RecordIncomingMessageMetric(zeroPacket.Protocol, messageId, zeroPacket.Content.ReadableBytes);
+            RecordIncomingMessageMetric(zeroPacket.Protocol, messageId, zeroPacket.Content.Length);
 
-            if (_logger.IsTrace) TraceMessageReceived(dynamicMessageCode, protocol, messageId, zeroPacket.Content.ReadableBytes);
+            if (_logger.IsTrace) TraceMessageReceived(dynamicMessageCode, protocol, messageId, zeroPacket.Content.Length);
 
             if (protocol is null)
             {

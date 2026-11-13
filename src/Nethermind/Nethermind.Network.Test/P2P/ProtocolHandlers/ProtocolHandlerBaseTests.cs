@@ -20,7 +20,7 @@ using Nethermind.Network.P2P.Utils;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.Test.P2P.Subprotocols;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NSubstitute;
@@ -70,7 +70,7 @@ public class ProtocolHandlerBaseTests
         public void HandleProjectionFailure(MessageDictionary<ProjectionRequestMessage, int> requests, IByteBuffer content) =>
             HandleCorrelatedResponse<ProjectionRequestMessage, ProjectionResponseMessage, int>(
                 requests,
-                content,
+                new NettyBufferPacket(content),
                 content.ReadableBytes,
                 static (_, _) => throw new InvalidOperationException("projection failed"));
         public override void Init() { }
@@ -419,12 +419,7 @@ public class ProtocolHandlerBaseTests
     {
         IMessageSerializationService serializationService = Substitute.For<IMessageSerializationService>();
         ProjectionResponseMessage response = new(111);
-        serializationService.Deserialize<ProjectionResponseMessage>(Arg.Any<IByteBuffer>()).Returns(callInfo =>
-        {
-            IByteBuffer content = (IByteBuffer)callInfo[0];
-            content.SkipBytes(content.ReadableBytes);
-            return response;
-        });
+        serializationService.Deserialize<ProjectionResponseMessage>(Arg.Any<ZeroPacket>()).Returns(response);
         TestProtocolHandler handler = new(
             Substitute.For<ISession>(),
             TimeSpan.FromMilliseconds(50),
@@ -447,7 +442,7 @@ public class ProtocolHandlerBaseTests
     [Test]
     public void Rlp_deserialization_exceptions_are_not_logged_at_debug([Values] bool limitExceeded)
     {
-        Exception exception = limitExceeded ? new RlpLimitException("limit") : new RlpException("invalid");
+        Exception exception = limitExceeded ? new RlpLimitException("limit") : new RlpReaderException("invalid");
         IMessageSerializationService serializationService = Substitute.For<IMessageSerializationService>();
         serializationService.Deserialize<TestRequestMessage>(Arg.Any<ArraySegment<byte>>()).Returns(_ => throw exception);
         TestLogger logger = new() { IsTrace = false };

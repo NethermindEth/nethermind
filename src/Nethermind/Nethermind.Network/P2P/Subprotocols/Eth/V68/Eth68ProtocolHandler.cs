@@ -85,7 +85,7 @@ public class Eth68ProtocolHandler(ISession session,
 
     protected override bool HandleMessageCore(ZeroPacket message)
     {
-        int size = message.Content.ReadableBytes;
+        int size = message.Content.Length;
         switch (message.PacketType)
         {
             case Eth68MessageCode.NewPooledTransactionHashes:
@@ -94,7 +94,7 @@ public class Eth68ProtocolHandler(ISession session,
                     if (IsTransactionGossipAllowed())
                     {
                         NewPooledTransactionHashesMessage68 newPooledTxHashesMsg =
-                            Deserialize<NewPooledTransactionHashesMessage68>(message.Content);
+                            Deserialize<NewPooledTransactionHashesMessage68>(message);
                         ReportIn(newPooledTxHashesMsg, size);
                         Handle(newPooledTxHashesMsg);
                     }

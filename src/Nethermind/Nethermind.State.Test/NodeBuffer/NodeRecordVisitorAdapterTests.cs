@@ -44,6 +44,7 @@ internal class NodeRecordVisitorAdapterTests
     {
         public List<(ValueHash256 Hash, byte[] Rlp)> Leaves { get; } = [];
         public bool IsFullDbScan => false;
+        public bool IsRangeScan => false;
         public bool ShouldVisit(in EmptyContext nodeContext, in ValueHash256 nextNode) => true;
         public void VisitTree(in EmptyContext nodeContext, in ValueHash256 rootHash) { }
         public void VisitMissingNode(in EmptyContext nodeContext, in ValueHash256 nodeHash) { }

@@ -12,6 +12,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Serialization.Ssz;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -54,6 +55,45 @@ public abstract class ZkEvmBlockchainTestFixture : PyspecLinuxX64BlockchainFixtu
 
         Assert.That(actualOutput, Is.EqualTo(expectedOutput),
             $"Expected {expectedOutput.ToHexString(true)}, got {actualOutput.ToHexString(true)}");
+    }
+
+    /// <remarks>
+    /// The trusted input carries the stateless input's block and witness but not its engine API envelope, the claimed
+    /// block hash and the versioned hashes, so it must reach the same verdict unless the envelope alone decided it.
+    /// </remarks>
+    [NonParallelizable]
+    [TestCaseSource(nameof(LoadStatelessTests))]
+    public void TrustedInputVerdictMatchesFixture(PyspecStatelessRef testRef)
+    {
+        (string inputBytes, string expectedOutputBytes) = PyspecLoader.LoadZkEvmStatelessBytes(testRef);
+        byte[] statelessInput = Convert.FromHexString(inputBytes[2..]);
+        StatelessValidationResult.Decode(Convert.FromHexString(expectedOutputBytes[2..]), out StatelessValidationResult expected);
+
+        byte[] trustedInput;
+        Block block;
+        StatelessPayload payload;
+        try
+        {
+            payload = InputDecoder.Decode(statelessInput);
+            block = payload.GetBlock();
+            trustedInput = TrustedInput.FromStatelessInput(statelessInput);
+        }
+        catch (Exception) when (!expected.IsSuccess)
+        {
+            // A block that does not decode has no trusted input.
+            return;
+        }
+
+        StatelessValidationResult.Decode(StatelessExecutor.ExecuteTrusted(trustedInput), out StatelessValidationResult actual);
+        Hash256 headerHash = block.Header.CalculateHash();
+        bool decidedByEnvelope = headerHash != block.Hash
+            || !StatelessExecutor.BlobVersionedHashesMatch(block.Transactions, payload.VersionedHashes.Span);
+
+        using (Assert.EnterMultipleScope())
+        {
+            if (expected.IsSuccess || !decidedByEnvelope) Assert.That(actual.IsSuccess, Is.EqualTo(expected.IsSuccess));
+            Assert.That(actual.NewPayloadRequestRoot, Is.EqualTo(headerHash));
+        }
     }
 
     private static IEnumerable<TestCaseData> LoadWitnessTests() =>
@@ -219,6 +259,33 @@ public class StatelessSchemaTests
             Assert.That(provider.ChainId, Is.EqualTo(chainId));
             Assert.That(provider.GetSpec(activation).Name, Is.EqualTo(baseProvider.GetSpec(activation).Name));
         }
+    }
+
+    /// <remarks>The list is grown past the cap in the encoding itself, as the encoder refuses to write it.</remarks>
+    [Test]
+    public void Versioned_hashes_are_capped_at_the_blob_commitment_limit([Values(4096, 4097)] int count)
+    {
+        const int Cap = 4096;
+        NewPayloadRequest<SszExecutionPayload> request = new()
+        {
+            ExecutionPayload = new SszExecutionPayload(),
+            VersionedHashes = new Hash256[Cap],
+            ParentBeaconBlockRoot = Hash256.Zero,
+            ExecutionRequests = new() { Deposits = [], Withdrawals = [], Consolidations = [], BuilderDeposits = [], BuilderExits = [] }
+        };
+        Array.Fill(request.VersionedHashes, Hash256.Zero);
+        byte[] encoded = NewPayloadRequest<SszExecutionPayload>.Encode(request);
+
+        // The fixed part holds the payload's and the hashes' offsets, the parent beacon block root, then the requests' offset,
+        // which is where the hashes end.
+        const int RequestsOffsetPosition = 2 * sizeof(uint) + Hash256.Size;
+        int hashesEnd = (int)BinaryPrimitives.ReadUInt32LittleEndian(encoded.AsSpan(RequestsOffsetPosition));
+        int extraBytes = (count - Cap) * Hash256.Size;
+        byte[] grown = [.. encoded.AsSpan(0, hashesEnd), .. new byte[extraBytes], .. encoded.AsSpan(hashesEnd)];
+        BinaryPrimitives.WriteUInt32LittleEndian(grown.AsSpan(RequestsOffsetPosition), (uint)(hashesEnd + extraBytes));
+
+        Assert.That(() => NewPayloadRequest<SszExecutionPayload>.Decode(grown, out NewPayloadRequest<SszExecutionPayload> _),
+            count > Cap ? Throws.TypeOf<InvalidDataException>() : Throws.Nothing);
     }
 
     [TestCaseSource(nameof(BlobVersionedHashCases))]

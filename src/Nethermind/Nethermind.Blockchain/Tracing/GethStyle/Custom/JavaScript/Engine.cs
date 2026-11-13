@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using System.Numerics;
+using System.Text.RegularExpressions;
 using System.Threading;
 using Microsoft.ClearScript;
 using Microsoft.ClearScript.JavaScript;
@@ -14,7 +16,7 @@ using Nethermind.Evm;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 
-public class Engine : IDisposable
+public partial class Engine : IDisposable
 {
     private const bool IsDebugging = false;
 
@@ -269,7 +271,36 @@ public class Engine : IDisposable
     /// <summary>
     /// Creates a JavaScript tracer object from JavaScript code or name
     /// </summary>
-    public dynamic CreateTracer(string tracer) => V8Engine.Evaluate(_runtime.GetTracerScript(tracer));
+    public dynamic CreateTracer(string tracer)
+    {
+        try
+        {
+            return V8Engine.Evaluate(_runtime.GetTracerScript(tracer));
+        }
+        catch (ScriptEngineException ex) when (IdentifierRegex().IsMatch(tracer.Trim())
+            && ex.Message == $"ReferenceError: {tracer.Trim()} is not defined")
+        {
+            // Pack adds a leading '(', so the selector starts in column 2.
+            int line = 1, column = 2;
+            foreach (char character in tracer.AsSpan(0, tracer.Length - tracer.TrimStart().Length))
+            {
+                if (character == '\n')
+                {
+                    line++;
+                    column = 1;
+                }
+                else column++;
+            }
+            throw new InvalidDataException($"{ex.Message} at <eval>:{line}:{column}(0)", ex);
+        }
+        catch (ScriptEngineException ex) when (JavaScriptTraceFailure.IsRecoverable(ex))
+        {
+            throw new InvalidDataException(ex.Message, ex);
+        }
+    }
+
+    [GeneratedRegex(@"\A[A-Za-z_$][A-Za-z0-9_$]*\z")]
+    private static partial Regex IdentifierRegex();
 
     // Capture the intrinsic before user code runs; strict frames hide the per-call marker from caller introspection.
     internal void PrepareNullThrowCapture() => _nullThrowInvoker ??= (ScriptObject)V8Engine.Evaluate("""

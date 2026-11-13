@@ -45,10 +45,6 @@ public static partial class Accelerators
 
     [LibraryImport("__Internal")]
     [SuppressGCTransition]
-    private static unsafe partial void div_rem256_c(ulong* a, ulong* b, ulong* quotient, ulong* remainder);
-
-    [LibraryImport("__Internal")]
-    [SuppressGCTransition]
     private static unsafe partial void mul_mod256_c(ulong* a, ulong* b, ulong* modulus, ulong* result);
 
     [LibraryImport("__Internal")]
@@ -78,7 +74,35 @@ public static partial class Accelerators
 
     [LibraryImport("__Internal")]
     [SuppressGCTransition]
+    private static unsafe partial Status zkvm_u256_le_sdiv(ulong* a, ulong* b, ulong* q);
+
+    [LibraryImport("__Internal")]
+    [SuppressGCTransition]
+    private static unsafe partial Status zkvm_u256_le_smod(ulong* a, ulong* b, ulong* r);
+
+    [LibraryImport("__Internal")]
+    [SuppressGCTransition]
     private static unsafe partial Status zisklib_keccak256(byte* data, nuint len, byte* output);
+
+    [LibraryImport("__Internal")]
+    [SuppressGCTransition]
+    private static partial Status zisklib_sha256(ReadOnlySpan<byte> data, nuint len, Span<byte> output);
+
+    [LibraryImport("__Internal")]
+    [SuppressGCTransition]
+    private static partial Status zisklib_modexp(
+        ReadOnlySpan<byte> @base,
+        nuint base_len,
+        ReadOnlySpan<byte> exp,
+        nuint exp_len,
+        ReadOnlySpan<byte> modulus,
+        nuint mod_len,
+        Span<byte> output
+    );
+
+    [LibraryImport("__Internal")]
+    [SuppressGCTransition]
+    private static partial Status zisklib_ripemd160(ReadOnlySpan<byte> data, nuint len, Span<byte> output);
 
     [LibraryImport("__Internal")]
     [SuppressGCTransition]

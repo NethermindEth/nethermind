@@ -5,7 +5,6 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Buffers;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -15,7 +14,7 @@ using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Utils;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.Rlpx;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
@@ -66,14 +65,14 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 HandleRlpLimitException<T>(size, e);
                 throw;
             }
-            catch (RlpException e)
+            catch (RlpReaderException e)
             {
                 HandleRlpException<T>(size, e);
                 throw;
             }
         }
 
-        private void HandleRlpException<T>(int dataLength, RlpException e) where T : P2PMessage
+        private void HandleRlpException<T>(int dataLength, RlpReaderException e) where T : P2PMessage
         {
             if (Logger.IsTrace) TraceRlpException(typeof(T).Name, e);
             ReportIn($"{typeof(T).Name} - Deserialization exception", dataLength);
@@ -87,19 +86,19 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private void TraceRlpException(string messageType, RlpException exception) =>
+        private void TraceRlpException(string messageType, RlpReaderException exception) =>
             Logger.Trace($"Failed to deserialize message {messageType} on session {Session:hide}, with exception {exception:hide}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void TraceRlpLimitException(string messageType, RlpLimitException exception) =>
             Logger.Trace($"Failed to deserialize message {messageType} on session {Session:hide} due to rlp limits, with exception {exception:hide}");
 
-        protected T Deserialize<T>(IByteBuffer data) where T : P2PMessage
+        protected T Deserialize<T>(ZeroPacket message) where T : P2PMessage
         {
-            int size = data.ReadableBytes;
+            int size = message.Content.Length;
             try
             {
-                T result = _serializer.Deserialize<T>(data);
+                T result = _serializer.Deserialize<T>(message);
                 if (Logger.IsTrace) Logger.Trace($"{Counter} Got {typeof(T).Name}");
 
                 return result;
@@ -109,7 +108,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 HandleRlpLimitException<T>(size, e);
                 throw;
             }
-            catch (RlpException e)
+            catch (RlpReaderException e)
             {
                 HandleRlpException<T>(size, e);
                 throw;
@@ -183,16 +182,16 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         private protected void HandleCorrelatedResponse<TRequest, TResponse, TData>(
             MessageDictionary<TRequest, TData> requests,
-            IByteBuffer content,
+            ZeroPacket message,
             int size,
             Func<TResponse, int, TData> selectData,
-            Action<IByteBuffer, TRequest>? validate = null)
+            Action<ReadOnlySpan<byte>, TRequest>? validate = null)
             where TRequest : P2PMessage, IEth66Message
             where TResponse : P2PMessage, IEth66Message
         {
             bool lateResponse = false;
             long lateResponseId = 0;
-            using (MessageDictionary<TRequest, TData>.ResponseScope response = requests.BeginResponse(content))
+            using (MessageDictionary<TRequest, TData>.ResponseScope response = requests.BeginResponse(message.Content.Span))
             {
                 if (response.IsExpired)
                 {
@@ -201,8 +200,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 }
                 else
                 {
-                    validate?.Invoke(content, response.Message);
-                    TResponse responseMessage = Deserialize<TResponse>(content);
+                    validate?.Invoke(message.Content.Span, response.Message);
+                    TResponse responseMessage = Deserialize<TResponse>(message);
                     bool dataSelected = false;
                     try
                     {
@@ -257,8 +256,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         private TReq DeserializeAndReport<TReq>(ZeroPacket message) where TReq : P2PMessage
         {
-            TReq messageObject = Deserialize<TReq>(message.Content);
-            ReportIn(messageObject, message.Content.ReadableBytes);
+            TReq messageObject = Deserialize<TReq>(message);
+            ReportIn(messageObject, message.Content.Length);
             return messageObject;
         }
 

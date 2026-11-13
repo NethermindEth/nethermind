@@ -16,7 +16,7 @@ namespace Nethermind.Benchmarks.Rlp
         private Account[] _scenarios =
         {
             Account.TotallyEmpty,
-            Build.An.Account.WithBalance(UInt256.Parse("0x1000000000000000000000", NumberStyles.HexNumber)).WithNonce(123).TestObject,
+            Build.An.Account.WithBalance(UInt256.Parse("1000000000000000000000", NumberStyles.HexNumber)).WithNonce(123).TestObject,
         };
 
         [Params(0, 1)]
@@ -24,9 +24,6 @@ namespace Nethermind.Benchmarks.Rlp
 
         [GlobalSetup]
         public void Setup() => _account = _scenarios[ScenarioIndex];
-
-        [Benchmark]
-        public byte[] Improved() => Serialization.Rlp.Rlp.Encode(_account).Bytes;
 
         [Benchmark]
         public byte[] Current() => Serialization.Rlp.Rlp.Encode(_account).Bytes;

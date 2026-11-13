@@ -116,6 +116,29 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task Debug_traceCallMany_executes_empty_contract_creation([Values] bool streaming, [Values] bool blockOverride)
+    {
+        using Context ctx = await CreateContext();
+        ctx.Blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        object bundle = new
+        {
+            transactions = new[] { new { from = TestItem.AddressD, gas = "0x186a0", input = "0x" } },
+            blockOverride = blockOverride ? new { number = "0x100" } : null
+        };
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCallMany", new[] { bundle }, "latest");
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That((JArray?)json["result"], Has.Count.EqualTo(1), response);
+            Assert.That((JArray?)json["result"]?[0], Has.Count.EqualTo(1), response);
+            Assert.That((bool?)json["result"]?[0]?[0]?["failed"], Is.False, response);
+            Assert.That((long?)json["result"]?[0]?[0]?["gas"], Is.EqualTo(53_000), response);
+            Assert.That(json["result"]?[0]?[0]?["structLogs"], Is.Empty, response);
+        }
+    }
+
+    [Test]
     public async Task Debug_traceCallMany_iterator_uses_generated_interface_metadata()
     {
         using Context ctx = await CreateContext();
@@ -184,6 +207,21 @@ public partial class DebugRpcModuleTests
             Assert.That((string)trace["error"]!, Does.Contain("insufficient funds"), "Nethermind wording is translated to Geth's wording for compat");
             Assert.That((int)trace["errorCode"]!, Is.EqualTo(ErrorCodes.InvalidInput), "tracing-failure errorCode mirrors the buffered ErrorCodes.InvalidInput");
         }
+    }
+
+    /// <summary>A call with the fields and signature of a signed transaction runs as its <c>from</c>, the zero address when omitted.</summary>
+    [Test]
+    public async Task Debug_traceCallMany_runs_a_signed_call_as_its_from([Values] bool fromOmitted, [Values] bool streaming)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        ctx.Blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        Address from = fromOmitted ? Address.Zero : TestItem.AddressF;
+        EIP1559TransactionForRpc call = SignedCallScenario.BuildCall(ctx.Blockchain.EthereumEcdsa, ctx.Blockchain.SpecProvider.ChainId, fromOmitted ? null : from, unpriced: true);
+
+        JArray result = await RunTraceCallManyAsJson(ctx, [CreateBundle(call)], new GethTraceOptions { Tracer = "callTracer" });
+
+        string? caller = (string?)result[0][0]?["from"];
+        Assert.That(caller is null ? null : new Address(caller), Is.EqualTo(from), result.ToString());
     }
 
     [Test]

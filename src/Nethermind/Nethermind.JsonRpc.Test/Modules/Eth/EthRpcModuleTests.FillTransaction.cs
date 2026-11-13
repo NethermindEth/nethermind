@@ -159,7 +159,7 @@ public partial class EthRpcModuleTests
 
         yield return new TestCaseData(
             (TransactionForRpc)new EIP1559TransactionForRpc { From = TestItem.AddressC, To = null, Value = 1 },
-            null).SetName("ContractCreationWithoutData");
+            RpcTransactionErrors.ContractCreationWithoutData).SetName("ContractCreationWithoutData");
 
         // With gas omitted, the fill first estimates the gas on the same request, which estimates a zero blob fee cap as a call does.
         foreach (bool gasOmitted in new[] { true, false })

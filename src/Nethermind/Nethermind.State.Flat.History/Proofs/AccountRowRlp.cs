@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.State.Flat.History.Proofs;
@@ -15,7 +16,7 @@ internal static class AccountRowRlp
     public static byte[] Encode(ReadOnlySpan<byte> slimRow)
     {
         RlpReader reader = new(slimRow);
-        if (!AccountDecoder.Slim.TryDecodeStruct(ref reader, out AccountStruct account))
+        if (!AccountDecoder.Slim.TryDecodeStruct<OffFlag>(ref reader, out AccountStruct account))
         {
             throw new InvalidDataException("An account history row failed to decode; the history column is corrupt.");
         }

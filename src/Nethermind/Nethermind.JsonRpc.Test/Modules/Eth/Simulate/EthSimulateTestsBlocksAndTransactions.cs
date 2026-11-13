@@ -498,8 +498,8 @@ public class EthSimulateTestsBlocksAndTransactions
     public async Task Simulated_header_matches_the_canonical_encoding(IReleaseSpec spec)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new GenesisOnlyRpcBlockchain()).Build(new TestSpecProvider(spec));
-        // NUMBER PUSH1 2 SWAP1 SUB BLOCKHASH PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN: returns the hash of the block two back.
-        const string GrandparentHashReader = "{\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"code\":\"0x43600290034060005260206000f3\"}}," + Calls + "}";
+        // NUMBER PUSH1 2 SWAP1 SUB BLOCKHASH PUSH1 0 MSTORE PUSH1 32 PUSH1 0 LOG0 PUSH1 32 PUSH1 0 RETURN: logs and returns the hash of the block two back.
+        const string GrandparentHashReader = "{\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"code\":\"0x43600290034060005260206000a060206000f3\"}}," + Calls + "}";
         string response = await chain.TestEthRpc("eth_simulateV1", SimulatePayloadJson("{\"calls\":[]},{\"calls\":[]}," + GrandparentHashReader), "latest");
         Assert.That(ErrorCode(response), Is.Null, response);
         using JsonDocument document = JsonDocument.Parse(response);
@@ -537,6 +537,7 @@ public class EthSimulateTestsBlocksAndTransactions
             Assert.That(Quantity("size"), Is.EqualTo((ulong)Rlp.LengthOfSequence(header.Length + 2)));
             Assert.That(child.GetProperty("parentHash").GetString(), Is.EqualTo(block.GetProperty("hash").GetString()));
             Assert.That(grandchild.GetProperty("calls")[0].GetProperty("returnData").GetString(), Is.EqualTo(block.GetProperty("hash").GetString()));
+            Assert.That(grandchild.GetProperty("calls")[0].GetProperty("logs")[0].GetProperty("blockHash").GetString(), Is.EqualTo(grandchild.GetProperty("hash").GetString()));
         }
 
         ulong Quantity(string name) => Convert.ToUInt64(block.GetProperty(name).GetString(), 16);
@@ -1668,6 +1669,19 @@ public class EthSimulateTestsBlocksAndTransactions
 
     private static IEnumerable<TestCaseData> SpecErrorCases()
     {
+        foreach (bool validation in new[] { false, true })
+        {
+            yield return new TestCaseData(
+                (Func<SimulatePayload<TransactionForRpc>>)(() => new()
+                {
+                    BlockStateCalls = [new() { Calls = [new SetCodeTransactionForRpc { From = TestItem.AddressA, Input = [0], AuthorizationList = [] }] }],
+                    Validation = validation
+                }),
+                ErrorCodes.InvalidInput,
+                Nethermind.Core.Messages.TxErrorMessages.NotAllowedCreateTransaction)
+                .SetName($"AuthorizationCreation_validation_{validation}_32000");
+        }
+
         yield return new TestCaseData(
             (Func<SimulatePayload<TransactionForRpc>>)BlockNumberNotIncreasingPayload,
             ErrorCodes.InvalidInputBlocksOutOfOrder,
@@ -2089,6 +2103,50 @@ public class EthSimulateTestsBlocksAndTransactions
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+    }
+
+    /// <summary>
+    /// An omitted nonce is read when the call runs, so a call after one with an explicit nonce from the same sender
+    /// takes the next nonce, as in geth's <c>sanitizeCall</c>.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_fills_an_omitted_nonce_after_an_explicit_one([Values] bool validation, [Values] bool balPath)
+    {
+        const ulong accountNonce = 4;
+        using TestRpcBlockchain chain = balPath ? await BuildAmsterdamBalChain() : await EthRpcSimulateTestsBase.CreateChain(Osaka.Instance);
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether, Nonce = accountNonce } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Gas = 100_000, GasPrice = UInt256.Zero, Nonce = accountNonce },
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Gas = 100_000, GasPrice = UInt256.Zero }
+                    ]
+                }
+            ],
+            ReturnFullTransactionObjects = true,
+            Validation = validation
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.Error);
+        TransactionForRpc[] transactions = result.Data![0].Transactions!.Full!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data[0].Calls.Select(static c => c.Error), Is.All.Null);
+            Assert.That(transactions.Select(static t => ((LegacyTransactionForRpc)t).Nonce), Is.EqualTo(new ulong?[] { accountNonce, accountNonce + 1 }));
+            Assert.That(transactions.Select(static t => t.Hash), Is.EqualTo(transactions.Select(static t => t.ToTransaction().Data!.CalculateHash())));
+        }
     }
 
     /// <summary>
@@ -3193,8 +3251,7 @@ public class EthSimulateTestsBlocksAndTransactions
         [
             CreateAuthorizationCall(chain, TestItem.AddressB, 400_000),
             laterCallSentByAuthority
-                // The authorization bumped the authority's nonce to 1.
-                ? new LegacyTransactionForRpc { From = FreshAuthorityKey.Address, To = TestItem.AddressB, Gas = 100_000, GasPrice = UInt256.Zero, Nonce = 1 }
+                ? new LegacyTransactionForRpc { From = FreshAuthorityKey.Address, To = TestItem.AddressB, Gas = 100_000, GasPrice = UInt256.Zero }
                 : new LegacyTransactionForRpc { From = FreshAccountSender, To = FreshAuthorityKey.Address, Gas = 100_000, GasPrice = UInt256.Zero }
         ])[0].Calls.ToArray();
 

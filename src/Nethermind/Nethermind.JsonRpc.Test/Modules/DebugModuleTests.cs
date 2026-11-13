@@ -43,6 +43,7 @@ using Nethermind.Logging;
 using Nethermind.History;
 using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
@@ -821,6 +822,45 @@ public class DebugModuleTests
     }
 
     [Test]
+    public void DebugStandardTraceBlockToFile_RejectsGenesisBeforeReplay(
+        [Values] bool isBadBlock, [Values("none", "zero", "missing", "present")] string filter)
+    {
+        Transaction transaction = Build.A.Transaction.TestObject;
+        Block block = Build.A.Block.WithNumber(0).WithTransactions(transaction).TestObject;
+        if (isBadBlock)
+            _debugBridge.GetBadBlocks().Returns([block]);
+        else
+        {
+            _blockFinder.FindHeader(block.Hash!).Returns(block.Header);
+            _blockFinder.HasBlock(0, block.Hash!).Returns(true);
+            _blockFinder.FindBlock(block.Hash!, block.Number).Returns(block);
+        }
+        GethTraceOptions? options = filter == "none" ? null : new()
+        {
+            TxHash = filter switch
+            {
+                "zero" => Hash256.Zero,
+                "present" => transaction.Hash,
+                _ => TestItem.KeccakA
+            }
+        };
+        DebugRpcModule module = CreateModule();
+        using ResultWrapper<IEnumerable<string>> result = options is null
+            ? StandardTraceToFile(module, isBadBlock, block.Hash!)
+            : isBadBlock ? module.debug_standardTraceBadBlockToFile(block.Hash!, options)
+                : module.debug_standardTraceBlockToFile(block.Hash!, options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidInput));
+            Assert.That(result.Result.Error, Is.EqualTo(filter == "missing"
+                ? $"transaction {TestItem.KeccakA} not found in block" : "genesis is not traceable"));
+        }
+        _debugBridge.DidNotReceive().TraceBlockToFile(Arg.Any<Hash256>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>());
+        _debugBridge.DidNotReceive().TraceBadBlockToFile(Arg.Any<Hash256>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>());
+    }
+
+    [Test]
     public void DebugStandardTraceBlockToFile_WhenBlockMissing_ReturnsResourceNotFound([Values] bool isBadBlock)
     {
         Hash256 blockHash = TestItem.KeccakA;
@@ -864,13 +904,7 @@ public class DebugModuleTests
     public void DebugIntermediateRoots_WhenStateAvailable_ReturnsRoots([Values] bool poststateAvailable, [Values] bool bodyStored)
     {
         Hash256 blockHash = TestItem.KeccakA;
-        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
-        BlockHeader header = Build.A.BlockHeader.WithParent(parent).TestObject;
-        _blockFinder.FindHeader(blockHash).Returns(header);
-        _blockFinder.HasBlock(header.Number, blockHash).Returns(bodyStored);
-        if (!bodyStored) _blockFinder.FindBlock(blockHash, header.Number).Returns(new Block(header));
-        _blockFinder.FindHeader(parent.Hash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
-        _blockchainBridge.HasStateForBlock(parent).Returns(true);
+        BlockHeader header = SetUpIntermediateRootsBlock(blockHash, bodyStored);
         _blockchainBridge.HasStateForBlock(header).Returns(poststateAvailable);
 
         Hash256[] expected = [TestItem.KeccakB, TestItem.KeccakC];
@@ -885,6 +919,37 @@ public class DebugModuleTests
             Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Success));
             Assert.That(actual.Data, Is.EqualTo(expected));
         }
+    }
+
+    [Test]
+    public async Task DebugIntermediateRoots_WhenStateIsTrieLess_ReturnsStateUnavailable()
+    {
+        Hash256 blockHash = TestItem.KeccakA;
+        SetUpIntermediateRootsBlock(blockHash, bodyStored: true);
+        StateNotRetainedException refusal = new("trie-less");
+        _debugBridge
+            .GetBlockIntermediateRoots(Arg.Is(blockHash), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions?>())
+            .Returns(_ => throw refusal);
+
+        JsonRpcErrorResponse actual = (JsonRpcErrorResponse)await Request("debug_intermediateRoots", blockHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.Error!.Code, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+            Assert.That(actual.Error.Message, Is.EqualTo(refusal.Message));
+        }
+    }
+
+    private BlockHeader SetUpIntermediateRootsBlock(Hash256 blockHash, bool bodyStored)
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithParent(parent).TestObject;
+        _blockFinder.FindHeader(blockHash).Returns(header);
+        _blockFinder.HasBlock(header.Number, blockHash).Returns(bodyStored);
+        if (!bodyStored) _blockFinder.FindBlock(blockHash, header.Number).Returns(new Block(header));
+        _blockFinder.FindHeader(parent.Hash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
+        _blockchainBridge.HasStateForBlock(parent).Returns(true);
+        return header;
     }
 
     [TestCaseSource(nameof(IntermediateRootsErrorCases))]
@@ -1255,6 +1320,39 @@ public class DebugModuleTests
         _debugBridge.DidNotReceive().TraceBadBlockToFile(Arg.Any<Hash256>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>());
         _debugBridge.DidNotReceive().GetBlockTrace(Arg.Any<Block>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>(),
             Arg.Any<Utf8JsonWriter?>(), Arg.Any<PipeWriter?>());
+    }
+
+    [Test]
+    public void DebugStandardTraceBlockToFile_WhenTxHashNotInBlock_FailsBeforeStateCheck([Values] bool isBadBlock, [Values("inBlock", "zero", "missing")] string filter)
+    {
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(Build.A.Transaction.TestObject).TestObject;
+        if (isBadBlock)
+        {
+            _debugBridge.GetBadBlocks().Returns([block]);
+        }
+        else
+        {
+            _blockFinder.FindHeader(block.Hash!).Returns(block.Header);
+            _blockFinder.HasBlock(block.Number, block.Hash!).Returns(true);
+            _blockFinder.FindBlock(block.Hash!, block.Number).Returns(block);
+        }
+        Hash256 txHash = filter switch { "inBlock" => block.Transactions[0].Hash!, "zero" => Hash256.Zero, _ => TestItem.KeccakA };
+        bool missing = filter == "missing";
+        GethTraceOptions options = new() { TxHash = txHash };
+        DebugRpcModule module = CreateModule();
+
+        using ResultWrapper<IEnumerable<string>> actual = isBadBlock
+            ? module.debug_standardTraceBadBlockToFile(block.Hash!, options)
+            : module.debug_standardTraceBlockToFile(block.Hash!, options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.ErrorCode, Is.EqualTo(missing ? ErrorCodes.InvalidInput : ErrorCodes.ResourceUnavailable));
+            if (missing)
+                Assert.That(actual.Result.Error, Is.EqualTo($"transaction {txHash} not found in block"));
+        }
+        _debugBridge.DidNotReceive().TraceBlockToFile(Arg.Any<Hash256>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>());
+        _debugBridge.DidNotReceive().TraceBadBlockToFile(Arg.Any<Hash256>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>());
     }
 
     [Test]

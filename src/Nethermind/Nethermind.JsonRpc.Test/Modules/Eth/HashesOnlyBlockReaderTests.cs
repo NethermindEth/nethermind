@@ -20,6 +20,7 @@ using Nethermind.Db;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Test.Data;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Blockchain.Headers;
@@ -29,6 +30,7 @@ using Nethermind.Int256;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State.Repositories;
+using Newtonsoft.Json.Linq;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -211,6 +213,7 @@ public class HashesOnlyBlockReaderTests
         Assert.That(reader.Find(blockTree, new BlockParameter(2UL)), Is.Not.Null, "precondition: block 2 is cached");
 
         blockTree.NewOldestBlock(3);
+        Assert.That(reader.Find(blockTree, new BlockParameter(2UL)), Is.Not.Null, "a body the store keeps is served below the lowest served block");
         blockDb.Delete(block.Number, block.Hash!);
 
         Assert.That(reader.Find(blockTree, new BlockParameter(2UL)), Is.Null, "a pruned body must not be served from the cache");
@@ -459,6 +462,51 @@ public class HashesOnlyBlockReaderTests
         }
     }
 
+    [Test]
+    public async Task HashesOnlyMethods_BlockBelowTheLowestServedBlock_ServeTheStoreUntilTheBodyIsPruned([Values] bool byHash)
+    {
+        using TestRpcBlockchain chain = await BuildRpcChainWithoutHeadWindow();
+        HashesOnlyBlockReader reader = chain.Container.Resolve<HashesOnlyBlockReader>();
+        Block block = chain.BlockFinder.FindBlock(chain.BlockTree.Head!.Number - 1)!;
+        BlockParameter parameter = byHash ? new BlockParameter(block.Hash!) : new BlockParameter(block.Number);
+        object selector = byHash ? block.Hash! : $"0x{block.Number:x}";
+        (string Method, object[] Arguments)[] reads = byHash
+            ? [("eth_getBlockByHash", [false]), ("eth_getBlockTransactionCountByHash", []), ("eth_getUncleCountByBlockHash", [])]
+            : [("eth_getBlockByNumber", [false]), ("eth_getBlockTransactionCountByNumber", []), ("eth_getUncleCountByBlockNumber", [])];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Transactions, Is.Not.Empty, "precondition: the block has transactions");
+            Assert.That(reader.Find(chain.BlockFinder, parameter), Is.Not.Null, "precondition: the block is cached");
+        }
+
+        chain.BlockTree.UpdateLowestServedBlock(block.Number + 1);
+
+        string[] kept = new string[reads.Length];
+        for (int i = 0; i < reads.Length; i++)
+        {
+            kept[i] = await chain.TestEthRpc(reads[i].Method, [selector, .. reads[i].Arguments]);
+        }
+
+        bool readThroughTheReader = reader.Find(chain.BlockFinder, parameter) is not null;
+        chain.DbProvider.BlocksDb.Delete(block.Number, block.Hash!);
+        ((IClearableCache)chain.Container.Resolve<IBlockStore>()).ClearCache();
+        string[] pruned = new string[reads.Length];
+        for (int i = 0; i < reads.Length; i++)
+        {
+            pruned[i] = await chain.TestEthRpc(reads[i].Method, [selector, .. reads[i].Arguments]);
+        }
+
+        string prunedHistory = $$"""{"jsonrpc":"2.0","error":{"code":4444,"message":"Pruned history unavailable for block {{(byHash ? block.Hash : block.Number)}}"},"id":67}""";
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(readThroughTheReader, Is.True, "a body the store keeps is read through the reader below the lowest served block");
+            Assert.That((string?)JObject.Parse(kept[0]).SelectToken("result.hash"), Is.EqualTo(block.Hash!.ToString()), "the block");
+            Assert.That(kept[1], Is.EqualTo($$"""{"jsonrpc":"2.0","result":"0x{{block.Transactions.Length:x}}","id":67}"""), "the transaction count");
+            Assert.That(kept[2], Is.EqualTo("""{"jsonrpc":"2.0","result":"0x0","id":67}"""), "the uncle count");
+            Assert.That(pruned, Is.All.EqualTo(prunedHistory), "a pruned body below the lowest served block");
+        }
+    }
+
     private static async Task<TestRpcBlockchain> BuildRpcChainWithoutHeadWindow()
     {
         TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(static builder =>
@@ -520,14 +568,11 @@ public class HashesOnlyBlockReaderTests
     // A later fork's body field: one more item after the withdrawals.
     private static byte[] WithTrailingBodyField(byte[] storedBlock)
     {
-        RlpReader reader = new(storedBlock);
-        int end = reader.ReadSequenceLength() + reader.Position;
+        RlpReader reader = new RlpReader(storedBlock).EnterSequence(out _);
         List<Rlp> items = [];
-        while (reader.Position < end)
+        while (reader.HasNext)
         {
-            int length = reader.PeekNextRlpLength();
-            items.Add(new Rlp(reader.Peek(length).ToArray()));
-            reader.SkipBytes(length);
+            items.Add(new Rlp(reader.ReadEncodedItem().ToArray()));
         }
 
         items.Add(Rlp.OfEmptyList);

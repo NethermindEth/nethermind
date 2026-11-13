@@ -1101,7 +1101,7 @@ public class Eth68ProtocolHandlerTests
 
         using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
         statusPacket.ReadByte();
-        _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
+        _handler.HandleMessage(new NettyBufferPacket(statusPacket) { PacketType = 0 });
     }
 
     private Eth68ProtocolHandler CreateHandler(ITxPoolConfig txPoolConfig, IChainHeadSpecProvider? specProvider = null) =>
@@ -1201,7 +1201,7 @@ public class Eth68ProtocolHandlerTests
     {
         using DisposableByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg).AsDisposable();
         getBlockHeadersPacket.ReadByte();
-        _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = messageCode });
+        _handler.HandleMessage(new NettyBufferPacket(getBlockHeadersPacket) { PacketType = messageCode });
     }
 
     private void RecreateHandlerWithBlobSupport()
