@@ -51,16 +51,17 @@ namespace Nethermind.JsonRpc.Test.Modules
             await using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
             IBlockTree blockTree = container.Resolve<IBlockTree>();
             Block genesis = Build.A.Block.Genesis.TestObject;
+            Block staleParent = Build.A.Block.WithParent(genesis).WithGasLimit(100).WithGasUsed(25).TestObject;
+            Block staleBlock = Build.A.Block.WithParent(staleParent).WithGasLimit(100).WithGasUsed(20).TestObject;
             Block mainBlock = Build.A.Block.WithParent(genesis).WithGasLimit(100).WithGasUsed(50).TestObject;
-            Block sideBlock = Build.A.Block.WithParent(genesis).WithGasLimit(100).WithGasUsed(25).TestObject;
             AddToMainChain(blockTree, genesis);
-            AddToMainChain(blockTree, mainBlock);
-            blockTree.SuggestBlock(sideBlock);
-            Block block = canonical ? mainBlock : sideBlock;
+            AddToMainChain(blockTree, staleParent);
+            AddToMainChain(blockTree, staleBlock);
             IFeeHistoryOracle feeHistoryOracle = container.Resolve<IFeeHistoryOracle>();
-            // Reads the block first, so the request below is answered from the cache for the canonical block and checks that a
-            // side-chain block read by its hash is not cached.
-            feeHistoryOracle.GetFeeHistory(1, new BlockParameter(block.Hash!), []).Dispose();
+            // Cached while canonical, then left behind by a reorg to a shorter chain, so a hash lookup must not trust the cache.
+            feeHistoryOracle.GetFeeHistory(1, new BlockParameter(staleBlock.Number), []).Dispose();
+            AddToMainChain(blockTree, mainBlock);
+            Block block = canonical ? mainBlock : staleBlock;
 
             using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, new BlockParameter(block.Hash!, requireCanonical), []);
 
@@ -96,25 +97,33 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public async Task GetFeeHistory_BlockReadByHashBeforeProcessing_ReadsItsReceiptsOnceCanonical()
+        public async Task GetFeeHistory_BlocksReadByHashBeforeProcessing_ReadTheirReceiptsOnceCanonical()
         {
             using BasicTestBlockchain chain = await BasicTestBlockchain.Create();
+            Block parent = BuildBlockWithSignedTestTransactions(chain.BlockTree.Head!);
+            Block child = BuildBlockWithSignedTestTransactions(parent);
+            InMemoryReceiptStorage receiptStorage = new();
+            using FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: chain.BlockTree, receiptStorage: receiptStorage);
+            // Stored before they are processed, as newPayload does, so they have no receipts yet.
+            chain.BlockTree.SuggestBlock(parent, BlockTreeSuggestOptions.ForceDontSetAsMain);
+            chain.BlockTree.SuggestBlock(child, BlockTreeSuggestOptions.ForceDontSetAsMain);
+            feeHistoryOracle.GetFeeHistory(2, new BlockParameter(child.Hash!), [20, 40, 60, 80.5]).Dispose();
+
+            receiptStorage.Insert(parent, BuildReceiptsWithGasUsed([10, 20, 30, 40], eip8116Receipts: false), ensureCanonical: false);
+            receiptStorage.Insert(child, BuildReceiptsWithGasUsed([10, 20, 30, 40], eip8116Receipts: false), ensureCanonical: false);
+            chain.BlockTree.TryUpdateMainChain(child.Header, true, preloadedBlocks: [parent, child]);
+            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(2, new BlockParameter(child.Number), [20, 40, 60, 80.5]);
+
+            // Rewards from the tx gas limits would be 4, 10, 13, 22.
+            Assert.That(resultWrapper.Data.Reward, Is.EqualTo((UInt256[][])[[4, 10, 10, 22], [4, 10, 10, 22]]));
+        }
+
+        private static Block BuildBlockWithSignedTestTransactions(Block parent)
+        {
             Transaction[] transactions = GetTestTransactions();
             // Read back from the block store, which does not decode an empty signature.
             foreach (Transaction transaction in transactions) transaction.Signature = new Signature(1, 1, 27);
-            Block block = Build.A.Block.WithParent(chain.BlockTree.Head!).WithBaseFeePerGas(3).WithGasUsed(100).WithTransactions(transactions).TestObject;
-            InMemoryReceiptStorage receiptStorage = new();
-            using FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: chain.BlockTree, receiptStorage: receiptStorage);
-            // Stored before it is processed, as newPayload does, so it has no receipts yet.
-            chain.BlockTree.SuggestBlock(block, BlockTreeSuggestOptions.ForceDontSetAsMain);
-            feeHistoryOracle.GetFeeHistory(1, new BlockParameter(block.Hash!), [20, 40, 60, 80.5]).Dispose();
-
-            receiptStorage.Insert(block, BuildReceiptsWithGasUsed([10, 20, 30, 40], eip8116Receipts: false), ensureCanonical: false);
-            chain.BlockTree.TryUpdateMainChain(block.Header, true, preloadedBlocks: block);
-            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, new BlockParameter(block.Number), [20, 40, 60, 80.5]);
-
-            // Rewards from the tx gas limits would be 4, 10, 13, 22.
-            Assert.That(resultWrapper.Data.Reward![0], Is.EqualTo((UInt256[])[4, 10, 10, 22]));
+            return Build.A.Block.WithParent(parent).WithBaseFeePerGas(3).WithGasUsed(100).WithTransactions(transactions).TestObject;
         }
 
 

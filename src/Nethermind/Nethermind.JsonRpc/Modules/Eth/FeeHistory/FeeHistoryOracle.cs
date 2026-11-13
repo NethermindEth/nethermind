@@ -95,9 +95,8 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                                                                      BlockTreeLookupOptions.TotalDifficultyNotNeeded |
                                                                      BlockTreeLookupOptions.DoNotCreateLevelIfMissing;
 
-        private BlockFeeHistorySearchInfo? GetHistorySearchInfo(BlockParameter blockParameter, bool withRewards, ref UncachedRequestSlot uncachedRequestSlot, out bool headerFound)
+        private BlockFeeHistorySearchInfo? GetHistorySearchInfo(BlockParameter blockParameter, bool hashUnchecked, bool withRewards, ref UncachedRequestSlot uncachedRequestSlot, out bool headerFound)
         {
-            bool hashUnchecked = blockParameter is { Type: BlockParameterType.BlockHash, RequireCanonical: false };
             Hash256? hash = hashUnchecked
                 ? blockParameter.BlockHash
                 : _blockTree.FindHeader(blockParameter)?.Hash;
@@ -135,26 +134,30 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             }
 
             Block block = _blockTree.FindBlock(blockParameter);
-            // A block reached by its hash alone can be stored but not processed yet, so its rewards would fall back to the tx
-            // gas limits and stay cached once it is canonical; it is cached only while canonical.
             return block is null
                 ? null
                 : _feeHistoryCache.TryGetValue(block.Hash!, out BlockFeeHistorySearchInfo info)
                     ? info
-                    : SaveHistorySearchInfo(block, withRewards, cache: !hashUnchecked || _blockTree.IsMainChain(block.Header));
+                    : SaveHistorySearchInfo(block, withRewards, CanCache(block, hashUnchecked));
         }
 
-        private BlockFeeHistorySearchInfo? GetHistorySearchInfo(Hash256 blockHash, ulong blockNumber, bool withRewards, ref UncachedRequestSlot uncachedRequestSlot)
+        private BlockFeeHistorySearchInfo? GetHistorySearchInfo(Hash256 blockHash, ulong blockNumber, bool hashUnchecked, bool withRewards, ref UncachedRequestSlot uncachedRequestSlot)
         {
             if (!_feeHistoryCache.TryGetValue(blockHash, out BlockFeeHistorySearchInfo info))
             {
                 uncachedRequestSlot.EnsureAcquired();
                 Block? block = _blockTree.FindBlock(blockHash, AncestorLookupOptions, blockNumber);
-                return block is null ? null : SaveHistorySearchInfo(block, withRewards);
+                return block is null ? null : SaveHistorySearchInfo(block, withRewards, CanCache(block, hashUnchecked));
             }
 
             return info;
         }
+
+        /// <remarks>
+        /// A block reached through an unchecked hash, directly or as an ancestor, can be stored but not processed yet, so its
+        /// rewards would fall back to the tx gas limits and stay cached once it is canonical; it is cached only while canonical.
+        /// </remarks>
+        private bool CanCache(Block block, bool hashUnchecked) => !hashUnchecked || _blockTree.IsMainChain(block.Header);
 
         // only saves block younger than the Oldest Block From the Head Allowed In Cache.
         // As time passes and the head progresses only older least used blocks are auto removed from the cache
@@ -231,7 +234,8 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             ref UncachedRequestSlot uncachedRequestSlot)
         {
             bool withRewards = rewardPercentiles.Length > 0;
-            BlockFeeHistorySearchInfo? historyInfo = GetHistorySearchInfo(newestBlock, withRewards, ref uncachedRequestSlot, out bool headerFound);
+            bool hashUnchecked = newestBlock is { Type: BlockParameterType.BlockHash, RequireCanonical: false };
+            BlockFeeHistorySearchInfo? historyInfo = GetHistorySearchInfo(newestBlock, hashUnchecked, withRewards, ref uncachedRequestSlot, out bool headerFound);
 
             if (historyInfo is null)
             {
@@ -287,7 +291,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                     gasUsedRatio[effectiveBlockCount] = info.GasUsedRatio;
                     blobGasUsedRatio[effectiveBlockCount] = info.BlobGasUsedRatio;
                     // The oldest requested block needs no parent.
-                    historyInfo = effectiveBlockCount == 0 || info.ParentHash is null ? null : GetHistorySearchInfo(info.ParentHash, info.BlockNumber - 1, withRewards, ref uncachedRequestSlot);
+                    historyInfo = effectiveBlockCount == 0 || info.ParentHash is null ? null : GetHistorySearchInfo(info.ParentHash, info.BlockNumber - 1, hashUnchecked, withRewards, ref uncachedRequestSlot);
                 }
             }
             catch
