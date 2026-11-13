@@ -79,7 +79,7 @@ public class HandCompiledHotPathBenchmark
         Bytes.FromHexString("a9059cbb").CopyTo(data, 0);
         TestItem.AddressB.Bytes.CopyTo(data.AsSpan(16));
         data[67] = 1;
-        _transferTx = Build.A.Transaction.WithTo(Weth).WithData(data).WithGasLimit(200_000).WithGasPrice(20.GWei)
+        _transferTx = Build.A.Transaction.WithTo(Weth).WithValue(0).WithData(data).WithGasLimit(200_000).WithGasPrice(20.GWei)
             .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
         HandCompiledPaths.WethCodeHash = new ValueHash256(Keccak.Compute(WethCode).Bytes);
