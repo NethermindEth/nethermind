@@ -47,12 +47,15 @@ namespace Nethermind.JsonRpc.Modules
         }
 
         /// <summary>
-        /// Whether a lookup by transaction hash that found no receipt misses pruned history: the transaction index names
-        /// a canonical block, and either its body is not stored and the block is below
-        /// <see cref="IBlockFinder.LowestServedBlock"/>, or its stored body holds the transaction and the block is below
-        /// that floor or <c>eth_getBlockReceipts</c> fails it as pruned history.
+        /// Whether a lookup by transaction hash that found no receipt has hit pruned history (error 4444) rather than an
+        /// unknown, pending or reorganised-out transaction.
         /// </summary>
         /// <remarks>
+        /// <para>
+        /// This holds when the transaction index names a canonical block, and either its body is not stored and the
+        /// block is below <see cref="IBlockFinder.LowestServedBlock"/>, or its stored body holds the transaction and the
+        /// block is below that floor or <c>eth_getBlockReceipts</c> fails it as pruned history.
+        /// </para>
         /// <para>
         /// The floor can come from the configured ancient bodies barrier or the download frontiers as well as from
         /// history pruning, so a block below it may still be stored. A compact index entry names a height, so for a
@@ -67,7 +70,7 @@ namespace Nethermind.JsonRpc.Modules
         /// </para>
         /// <para>A hash without an index entry costs one index read, and an entry that is not canonical reads no body.</para>
         /// </remarks>
-        public static bool IsTransactionPruned(this IBlockFinder blockFinder, IReceiptFinder receiptFinder, Hash256 txHash)
+        internal static bool IsTransactionPruned(this IBlockFinder blockFinder, IReceiptFinder receiptFinder, Hash256 txHash)
         {
             if (receiptFinder.FindBlockHash(txHash) is not { } blockHash
                 || blockFinder.FindHeader(blockHash, BlockTreeLookupOptions.RequireCanonical) is not { } header)
