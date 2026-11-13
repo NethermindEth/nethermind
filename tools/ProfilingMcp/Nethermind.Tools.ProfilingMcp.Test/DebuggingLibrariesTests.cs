@@ -57,6 +57,25 @@ public class DebuggingLibrariesTests
     public string? Reads_the_sidecars_own_runtime_version(string runtimeConfig) => DebuggingLibraries.IncludedRuntimeVersion(runtimeConfig);
 
     [Test]
+    public void Picks_its_own_dac_for_a_preview_by_the_version_the_host_compares()
+    {
+        string runtimeConfig = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.runtimeconfig.json");
+        File.WriteAllText(runtimeConfig, """{"runtimeOptions":{"includedFrameworks":[{"name":"Microsoft.NETCore.App","version":"11.0.0-rc.2.26502.107"}]}}""");
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(DebuggingLibraries.OwnVersion(runtimeConfig), Is.EqualTo("11.0.0-rc.2.26502.107"));
+                Assert.That(DebuggingLibraries.OwnVersion(runtimeConfig + ".missing"), Is.EqualTo(Environment.Version.ToString(3)));
+            }
+        }
+        finally
+        {
+            File.Delete(runtimeConfig);
+        }
+    }
+
+    [Test]
     public void Refuses_only_a_target_that_loaded_musl()
     {
         using (Assert.EnterMultipleScope())

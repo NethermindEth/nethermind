@@ -176,11 +176,17 @@ internal static partial class DebuggingLibraries
     {
         string version = Path.GetFileName(Path.GetDirectoryName(coreclrPath)) ?? "";
         string own = Path.Combine(AppContext.BaseDirectory, Dac);
-        return Choose(version, Environment.Version.ToString(3), own, Directory.Exists(SidecarFolder) ? Directory.GetFiles(SidecarFolder, Dac, SearchOption.AllDirectories) : [])
+        string ownVersion = OwnVersion(Path.Combine(AppContext.BaseDirectory, $"{Path.GetFileName(ContainerSidecar.ServerPath)}.runtimeconfig.json"));
+        return Choose(version, ownVersion, own, Directory.Exists(SidecarFolder) ? Directory.GetFiles(SidecarFolder, Dac, SearchOption.AllDirectories) : [])
             ?? throw new InvalidOperationException(
                 $"There is no trusted debugging library (DAC) for the target's .NET {(version.Length > 0 ? version : "runtime")} in the sidecar. The server supplies one from " +
                 "Microsoft's runtime pack for a runtime installed as a shared framework; a self-contained app's runtime gets none, so ClrMD analysis is not available for it.");
     }
+
+    /// <summary>The sidecar's own .NET version as its <c>runtimeconfig.json</c> names it, the version the host skips supplying a DAC for.</summary>
+    /// <remarks><see cref="Environment.Version"/> drops a preview's suffix, so it is used only when the file does not name a version.</remarks>
+    internal static string OwnVersion(string runtimeConfigPath) =>
+        (File.Exists(runtimeConfigPath) ? IncludedRuntimeVersion(File.ReadAllText(runtimeConfigPath)) : null) ?? Environment.Version.ToString(3);
 
     /// <summary>Picks the DAC for <paramref name="version"/>: the sidecar's own when it runs that version, else a supplied one; never the target's.</summary>
     internal static string? Choose(string version, string ownVersion, string ownDac, IEnumerable<string> supplied)
