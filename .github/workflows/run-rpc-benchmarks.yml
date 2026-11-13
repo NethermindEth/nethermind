@@ -977,7 +977,6 @@ jobs:
           echo "Snapshot sets: ${db_sources[*]}${REFERENCE_DB_SOURCE:+ (reference: ${REFERENCE_DB_SOURCE})}; outputs under ${BENCH_TEMP} and ${DIAG_DIR}"
 
       - name: Reclaim root disk before pulling
-        if: needs.resolve.outputs.runner_label == 'reproducible-benchmarks-arm'
         shell: bash
         # Filling the disk docker writes to kills the daemon and takes the runner with it. Docker and containerd may
         # live on /data: check their filesystems for image space while reserving headroom on / for the runner;
@@ -1774,7 +1773,7 @@ jobs:
         run: dotnet run --file scripts/rpc-bench/cleanup.cs -- || true
 
       - name: Reclaim root disk after the run
-        if: always() && needs.resolve.outputs.runner_label == 'reproducible-benchmarks-arm'
+        if: always()
         shell: bash
         run: |
           set -uo pipefail
