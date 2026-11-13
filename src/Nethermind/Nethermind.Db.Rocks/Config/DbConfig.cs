@@ -301,6 +301,11 @@ public class DbConfig : IDbConfig
     public string LogIndexStorageTopics3DbAdditionalRocksDbOptions { get; set; } = "";
 
     /// <inheritdoc />
+    public string TraceStoreDbRocksDbOptions { get; set; } = "";
+    /// <inheritdoc />
+    public string TraceStoreDbAdditionalRocksDbOptions { get; set; } = "";
+
+    /// <inheritdoc />
     public string TraceAddressIndexDbRocksDbOptions { get; set; } = "";
     /// <inheritdoc />
     public string TraceAddressIndexDbAdditionalRocksDbOptions { get; set; } = "";
