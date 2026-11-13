@@ -1790,11 +1790,13 @@ public partial class VirtualMachine<TGasPolicy>(
         CodeInfo probeCode = VmState.Env.CodeInfo;
         int probeOps = OpCodeCount;
         long probeStart = probe ? Stopwatch.GetTimestamp() : 0;
+        long frameStart = HandCompiledPaths.TimeFrames ? Stopwatch.GetTimestamp() : 0;
         EvmExceptionType exceptionType;
         if (HandCompiledPaths.Enabled && !TTracingInst.IsActive && HandCompiledPaths.TryRun(this, ref stack, ref gas, out EvmExceptionType handCompiledResult))
             exceptionType = handCompiledResult;
         else
             exceptionType = RunFrameCode<TTracingInst, TCancelable>(ref stack, ref gas, ref programCounter);
+        if (HandCompiledPaths.TimeFrames) HandCompiledPaths.AddFrame(Stopwatch.GetTimestamp() - frameStart);
         if (probe) OpCoverageProbe.Add(probeCode, OpCodeCount - probeOps, Stopwatch.GetTimestamp() - probeStart);
 
         if (TTracingInst.IsActive

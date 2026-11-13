@@ -16,6 +16,15 @@ public static class HandCompiledPaths
     public static ValueHash256 WethCodeHash;
     public static ulong WethTransferStaticGas;
     public static long Hits;
+    public static bool TimeFrames;
+    public static long FrameTicks;
+    public static long FrameCount;
+
+    public static void AddFrame(long ticks)
+    {
+        FrameTicks += ticks;
+        FrameCount++;
+    }
 
     private const uint TransferSelector = 0xa9059cbb;
     private const byte WethBalanceSlot = 3;
