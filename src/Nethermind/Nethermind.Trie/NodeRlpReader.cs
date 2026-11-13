@@ -21,7 +21,7 @@ namespace Nethermind.Trie;
 /// offset instead of keeping a cursor. The instance methods forward to static ones that take the data and the offset
 /// by value, so the offset of the caller can stay in a register.
 /// </remarks>
-internal readonly ref struct NodeRlpReader(ReadOnlySpan<byte> data)
+public readonly ref struct NodeRlpReader(ReadOnlySpan<byte> data)
 {
     /// <summary>The prefix of a 32-byte string, such as a child hash.</summary>
     public const byte KeccakRlpPrefix = 0xa0;

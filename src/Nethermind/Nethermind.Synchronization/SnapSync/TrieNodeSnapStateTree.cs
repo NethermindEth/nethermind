@@ -11,7 +11,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.SnapSync;
 
-public class PatriciaSnapStorageTree(StorageTree tree, SnapUpperBoundAdapter adapter, INodeStorage nodeStorage, Hash256 address) : ISnapTree<PathWithStorageSlot>
+public class TrieNodeSnapStateTree(StateTree tree, SnapUpperBoundAdapter adapter, INodeStorage nodeStorage) : ISnapTree<PathWithAccount>
 {
     private List<(TrieNode, TreePath)>? _proofNodes;
 
@@ -21,16 +21,16 @@ public class PatriciaSnapStorageTree(StorageTree tree, SnapUpperBoundAdapter ada
         _proofNodes = PatriciaSnapProof.SetRoot(tree, proofs, nodes);
 
     public bool IsPersisted(in TreePath path, in ValueHash256 keccak) =>
-        nodeStorage.KeyExists(address, path, keccak);
+        nodeStorage.KeyExists(null, path, keccak);
 
-    public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithStorageSlot> entries) =>
-        ISnapTree<PathWithStorageSlot>.DoBulkSetAndUpdateRootHash(tree, entries);
+    public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithAccount> entries) =>
+        ISnapTree<PathWithAccount>.DoBulkSetAndUpdateRootHash(tree, entries);
 
     public bool Commit(ValueHash256 upperBound)
     {
         PatriciaSnapProof.StitchBoundaries(_proofNodes, this);
         adapter.UpperBound = upperBound;
-        tree.Commit(writeFlags: WriteFlags.DisableWAL);
+        tree.Commit(skipRoot: true, WriteFlags.DisableWAL);
         return _proofNodes is not { Count: > 0 } || _proofNodes[0].Item1.IsPersisted;
     }
 

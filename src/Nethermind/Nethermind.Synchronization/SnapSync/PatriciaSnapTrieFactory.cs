@@ -36,7 +36,7 @@ public class PatriciaSnapTrieFactory(
     public ISnapTree<PathWithAccount> CreateStateTree()
     {
         SnapUpperBoundAdapter adapter = new(_stateTrieStore);
-        return new PatriciaSnapStateTree(new StateTree(adapter, logManager), adapter, nodeStorage);
+        return new TrieNodeSnapStateTree(new StateTree(adapter, logManager), adapter, nodeStorage);
     }
 
     public ISnapTree<PathWithStorageSlot> CreateStorageTree(in ValueHash256 accountPath)
@@ -44,7 +44,7 @@ public class PatriciaSnapTrieFactory(
         Hash256 address = accountPath.ToCommitment();
         RawScopedTrieStore storageTrieStore = new(nodeStorage, address);
         SnapUpperBoundAdapter adapter = new(storageTrieStore);
-        return new PatriciaSnapStorageTree(new StorageTree(adapter, logManager), adapter, nodeStorage, address);
+        return new TrieNodeSnapStorageTree(new StorageTree(adapter, logManager), adapter, nodeStorage, address);
     }
 
 }
