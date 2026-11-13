@@ -17,6 +17,7 @@ let
     if builtins.length matches < 2 then null else builtins.head (builtins.elemAt matches 1);
   versionPrefix = getXmlValue "VersionPrefix";
   versionSuffix = getXmlValue "VersionSuffix";
+  dotnet = dotnetCorePackages.buildDotnetSdk ./dotnet-11.0.nix;
 in
 assert lib.assertMsg (
   versionPrefix != null
@@ -41,8 +42,8 @@ buildDotnetModule {
 
   nugetDeps = ./nuget-deps.json;
 
-  dotnet-sdk = dotnetCorePackages.sdk_11_0-bin;
-  dotnet-runtime = dotnetCorePackages.aspnetcore_11_0-bin;
+  dotnet-sdk = dotnet.sdk_11_0;
+  dotnet-runtime = dotnet.aspnetcore_11_0;
 
   dotnetFlags = lib.optionals (sourceRevision != null) [ "-p:SourceRevisionId=${sourceRevision}" ];
 

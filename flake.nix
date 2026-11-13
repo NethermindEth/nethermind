@@ -32,7 +32,7 @@
 
       devShells = forAllSystems (pkgs: {
         default = pkgs.mkShell {
-          packages = [ pkgs.dotnetCorePackages.sdk_11_0-bin ];
+          packages = [ (pkgs.dotnetCorePackages.buildDotnetSdk ./nix/dotnet-11.0.nix).sdk_11_0 ];
         };
       });
 
