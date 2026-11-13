@@ -14,9 +14,9 @@ GUEST_ARCH := riscv32
 # libairbender of a bflat-airbender release. bflat does not check a local
 # manifest, so the download is checked against AIRBENDER_SHA256 instead.
 # AIRBENDER_LIB_DIR names another libairbender build.
-BFLAT_IMAGE := nethermindeth/bflat-riscv64-11-riscv32:c8f6294cca505f5118590e7fd23fdb408264f8dc@sha256:7af7b20e333de60d3e80ff371970a79164f8598ca5e02ecbb67ecbb1416eb6c7
-AIRBENDER_VERSION := v1.0.3
-AIRBENDER_SHA256 := 9b6bce0271fca9d4f2f0c55a1c5a28530f99f5cefab8087e33b858bf369483ec
+BFLAT_IMAGE := ghcr.io/nethermindeth/bflat-riscv64-11-riscv32:pr-77@sha256:254edad2fc33997cef1bc767141b37039f245a4714eb33a0a2935d9827aa2491
+AIRBENDER_VERSION := v1.0.4
+AIRBENDER_SHA256 := 5a5d1db4f75b08461acdde0e6a798b0b96862ff084950bfbefac0f20b96e8752
 AIRBENDER_LIB_DIR ?= $(GUEST_DIR)/obj/libairbender-$(AIRBENDER_VERSION)
 BFLAT_DOCKER_ARGS = --mount type=bind,source="$(AIRBENDER_LIB_DIR)",target=/airbender,readonly
 GUEST_EXTLIB := /airbender/libairbender.bflat.manifest

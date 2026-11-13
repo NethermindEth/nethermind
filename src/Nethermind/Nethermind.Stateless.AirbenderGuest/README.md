@@ -47,10 +47,10 @@ make verify INPUT=11962427.ssz
 
 ## Notes
 
-- The image has no unwind tables. An exception goes to the shared `ZkvmThrow`
-  handler, which publishes the failure result.
-- The image has no reflection data, so the exception handler prints the message
-  without the type name.
+- The image keeps its unwind tables, so an exception is caught by the
+  executor's own handlers, which publish the failure result. The runtime has no
+  GC info in its EH tables (`IlcZkNoGcInfo`), which keeps the image in the
+  4 MiB ROM.
 - The guest carries a frame's gas in 32 bits. A transaction with a gas limit of
   2^31 or more, possible only before EIP-7825 on a chain whose block gas limit
   is that high, stops the guest, which then publishes the failure result for a
