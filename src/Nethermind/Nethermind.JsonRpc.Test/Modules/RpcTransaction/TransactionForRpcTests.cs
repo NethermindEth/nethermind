@@ -151,10 +151,11 @@ public class TransactionForRpcTests
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithConfig(new JsonRpcConfig { EnableEthSignTransaction = true }).Build();
+        Address sender = chain.TestWallet.GetAccounts()[0];
         string hash = "0x" + new string('0', hashLength * 2);
         string sidecar = suppliedBlobs ? "\"blobs\":[]," : "";
         using JsonDocument call = JsonDocument.Parse($$"""
-            { {{sidecar}}"from":"{{TestItem.AddressA}}","to":"{{TestItem.AddressD}}","gas":"0x186a0","nonce":"0x0",
+            { {{sidecar}}"from":"{{sender}}","to":"{{TestItem.AddressD}}","gas":"0x186a0","nonce":"0x0",
               "gasPrice":"{{(invalidFee ? "0x0" : "0x1")}}","maxFeePerBlobGas":"0x1",
               "blobVersionedHashes":["{{hash}}"],"input":"0x01","data":"0x2a" }
             """);
