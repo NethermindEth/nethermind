@@ -1828,6 +1828,60 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         }
     }
 
+    private static IEnumerable<TestCaseData> ExpBaseCases()
+    {
+        for (int k = 0; k < 256; k++)
+        {
+            yield return new TestCaseData(UInt256.One << k).SetName($"Exp_matches_reference_for_base_bit_{k}");
+        }
+
+        yield return new TestCaseData(new UInt256(3)).SetName("Exp_matches_reference_for_base_3");
+        yield return new TestCaseData(new UInt256(6)).SetName("Exp_matches_reference_for_base_6");
+        yield return new TestCaseData(new UInt256(7)).SetName("Exp_matches_reference_for_base_7");
+        yield return new TestCaseData(new UInt256(257)).SetName("Exp_matches_reference_for_base_257");
+        yield return new TestCaseData((UInt256.One << 64) + UInt256.One).SetName("Exp_matches_reference_for_base_two_low_limbs");
+        yield return new TestCaseData((UInt256.One << 200) + (UInt256.One << 3)).SetName("Exp_matches_reference_for_base_two_far_bits");
+        yield return new TestCaseData(UInt256.MaxValue).SetName("Exp_matches_reference_for_base_max");
+        yield return new TestCaseData(UInt256.Parse("0x6F1D2C3B4A59687766554433221100FFEEDDCCBBAA99887766554433221100FF")).SetName("Exp_matches_reference_for_base_wide");
+    }
+
+    [TestCaseSource(nameof(ExpBaseCases))]
+    public void Exp_result_matches_reference(UInt256 baseValue)
+    {
+        int bitIndex = 255 - baseValue.CountLeadingZeros();
+        List<UInt256> exponents = [UInt256.Zero, UInt256.One, new UInt256(2), new UInt256(3), new UInt256(255), new UInt256(256), UInt256.One << 64, UInt256.One << 255, UInt256.MaxValue];
+        if (bitIndex > 0)
+        {
+            ulong boundary = 255UL / (ulong)bitIndex;
+            exponents.Add(new UInt256(boundary - 1));
+            exponents.Add(new UInt256(boundary));
+            exponents.Add(new UInt256(boundary + 1));
+        }
+
+        Prepare code = Prepare.EvmCode;
+        foreach (UInt256 exponent in exponents)
+        {
+            code = code
+                .PushData(exponent)
+                .PushData(baseValue)
+                .Op(Instruction.EXP)
+                .Op(Instruction.POP);
+        }
+
+        StackPushTracer tracer = Execute(new StackPushTracer(), code.Done);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Error, Is.Null);
+            Assert.That(tracer.Pushes, Has.Count.EqualTo(exponents.Count * 3));
+            for (int i = 0; i < exponents.Count; i++)
+            {
+                UInt256.Exp(in baseValue, exponents[i], out UInt256 expected);
+                Assert.That(new UInt256(tracer.Pushes[i * 3 + 2], isBigEndian: true), Is.EqualTo(expected), $"exponent {exponents[i]}");
+            }
+        }
+    }
+
     [Test]
     public void Sub_0_0()
     {
