@@ -79,11 +79,11 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
 
     void IJsonOnDeserialized.OnDeserialized() => _isDeserializing = false;
 
-    internal override string? GetSubmissionDataError(string? conversionError = null, ulong? gasCap = null, IReleaseSpec? spec = null)
+    internal override string? GetSubmissionDataError(string? conversionError = null)
     {
-        if (conversionError is not null) return conversionError;
         if (_data is not null && _input is not null && !_input.AsSpan().SequenceEqual(_data))
             return RpcTransactionErrors.DataAndInputDiffer;
+        if (conversionError is not null) return conversionError;
         if (Type?.SupportsFrames() != true && To is null && Input is null or { Length: 0 })
             return RpcTransactionErrors.ContractCreationWithoutData;
         return null;

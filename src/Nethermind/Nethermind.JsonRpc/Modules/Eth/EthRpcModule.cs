@@ -400,6 +400,9 @@ public partial class EthRpcModule(
 
     private async Task<ResultWrapper<Hash256>> SignAndSendTransaction(SignableTransactionForRpc rpcTx)
     {
+        if (rpcTx.GetSubmissionDataError() == RpcTransactionErrors.DataAndInputDiffer)
+            return ResultWrapper<Hash256>.Fail(RpcTransactionErrors.DataAndInputDiffer, ErrorCodes.InvalidInput);
+
         if (await CheckAndFillSendTransaction(rpcTx) is { } sendError)
             return sendError;
 
@@ -437,6 +440,9 @@ public partial class EthRpcModule(
     {
         if (!_rpcConfig.EnableEthSignTransaction)
             return ResultWrapper<SignTransactionResult>.Fail("eth_signTransaction is disabled", ErrorCodes.MethodNotFound);
+
+        if (rpcTx.GetSubmissionDataError() == RpcTransactionErrors.DataAndInputDiffer)
+            return ResultWrapper<SignTransactionResult>.Fail(RpcTransactionErrors.DataAndInputDiffer, ErrorCodes.InvalidInput);
 
         // With the signing fields present, fees are checked before the rest of the request; a request carrying
         // blobs has its sidecar checked first.
@@ -534,6 +540,9 @@ public partial class EthRpcModule(
         BlockHeader? head = _blockFinder.Head?.Header;
         if (head is null)
             return ResultWrapper<FillTransactionResult>.Fail("No head block available", ErrorCodes.ResourceUnavailable);
+
+        if (rpcTx.GetSubmissionDataError() == RpcTransactionErrors.DataAndInputDiffer)
+            return ResultWrapper<FillTransactionResult>.Fail(RpcTransactionErrors.DataAndInputDiffer, ErrorCodes.InvalidInput);
 
         IReleaseSpec spec = _specProvider.GetSpec(head);
         ulong chainId = _blockchainBridge.GetChainId();

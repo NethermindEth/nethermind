@@ -100,23 +100,6 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
         return tx;
     }
 
-    internal override string? GetSubmissionDataError(string? conversionError = null, ulong? gasCap = null, IReleaseSpec? spec = null)
-    {
-        if (conversionError is null) return base.GetSubmissionDataError();
-        if (Blobs is not null || conversionError is not (RpcTransactionErrors.BlobFeeCapWithoutBlobHashes
-            or RpcTransactionErrors.AtLeastOneBlobInBlobTransaction or RpcTransactionErrors.MissingToInBlobTx
-            or RpcTransactionErrors.InvalidBlobVersionedHashVersion))
-            return conversionError;
-
-        string? dataError = base.GetSubmissionDataError();
-        // Geth's setDefaults checks aliases after sidecars and fees, but before semantic blob errors.
-        if (dataError != RpcTransactionErrors.DataAndInputDiffer) return conversionError;
-        if (MaxFeePerBlobGas?.IsZero == true) return RpcTransactionErrors.ZeroMaxFeePerBlobGas;
-
-        Result<Transaction> preceding = CheckFeeCapOrder(base.ToTransaction(validateUserInput: true, gasCap, spec));
-        return preceding.IsError ? preceding.Error : dataError;
-    }
-
     public override Result FillDefaults(in TxFillContext context)
     {
         Result baseResult = base.FillDefaults(context);

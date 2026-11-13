@@ -94,22 +94,20 @@ public abstract class TransactionForRpc
     /// leaves that pair to execution, where it fails before any gas is bought, validates with <see cref="ToTransaction"/>.
     /// </summary>
     /// <remarks>
-    /// The pair is checked after the type-specific and gas price checks and before the missing contract data check,
-    /// so the first failing check still names the request. Differing non-null input and data are then rejected,
-    /// as in Geth's setDefaults, before a missing contract data error or semantic blob hash / recipient errors
-    /// when no sidecar was supplied; calls instead prefer input over data.
+    /// Differing non-null input and data take precedence over conversion errors; calls instead prefer input over data.
+    /// Otherwise the fee pair is checked after type-specific and gas price checks and before missing contract data.
     /// </remarks>
     public Result<Transaction> ToValidatedTransaction(ulong? gasCap = null, IReleaseSpec? spec = null)
     {
         Result<Transaction> result = CheckFeeCapOrder(ToTransaction(validateUserInput: true, gasCap, spec));
-        return GetSubmissionDataError(result.Error, gasCap, spec) is { } error && error != result.Error
+        return GetSubmissionDataError(result.Error) is { } error && error != result.Error
             ? Result<Transaction>.Fail(error)
             : result;
     }
 
-    internal virtual string? GetSubmissionDataError(string? conversionError = null, ulong? gasCap = null, IReleaseSpec? spec = null) => conversionError;
+    internal virtual string? GetSubmissionDataError(string? conversionError = null) => conversionError;
 
-    private protected Result<Transaction> CheckFeeCapOrder(Result<Transaction> result) =>
+    private Result<Transaction> CheckFeeCapOrder(Result<Transaction> result) =>
         this is EIP1559TransactionForRpc { MaxFeePerGas: { } maxFeePerGas, MaxPriorityFeePerGas: { } maxPriorityFeePerGas }
         && maxFeePerGas < maxPriorityFeePerGas
         && !result.IsError

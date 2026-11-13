@@ -8,6 +8,7 @@ using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
@@ -169,10 +170,10 @@ public class TransactionForRpcTests
                 "trace_call" => await RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, call.RootElement, new[] { "trace" }, "latest"),
                 _ => await chain.TestEthRpc(method, call.RootElement)
             };
-            bool rejectsFeeFirst = invalidFee && (method == "eth_createAccessList"
-                || !suppliedBlobs && method is "eth_sendTransaction" or "eth_signTransaction" or "eth_fillTransaction");
-            string expectedError = rejectsFeeFirst ? "gasPrice must be non-zero after london fork"
-                : method == "eth_fillTransaction" ? RpcTransactionErrors.DataAndInputDiffer
+            bool rejectsFeeFirst = invalidFee && method == "eth_createAccessList";
+            string expectedError = method is "eth_sendTransaction" or "eth_signTransaction" or "eth_fillTransaction"
+                ? RpcTransactionErrors.DataAndInputDiffer
+                : rejectsFeeFirst ? "gasPrice must be non-zero after london fork"
                 : RpcTransactionErrors.InvalidBlobVersionedHashSize;
             JToken json = JToken.Parse(response);
             using (Assert.EnterMultipleScope())
@@ -186,8 +187,8 @@ public class TransactionForRpcTests
     }
 
     [Test]
-    public void Blob_submission_alias_checks_preserve_fee_sidecar_and_call_precedence(
-        [Values] bool suppliedBlobs, [Values] bool invalidFee, [Values("missing", "empty", "size", "version")] string hashKind)
+    public void Blob_submission_alias_checks_precede_validation_without_affecting_calls(
+        [Values] bool suppliedBlobs, [Values] bool invalidFee, [Values("missing", "empty", "size", "version", "count", "zero-cap")] string hashKind)
     {
         string sidecar = suppliedBlobs ? "\"blobs\":[]," : "";
         string hashes = hashKind switch
@@ -195,6 +196,7 @@ public class TransactionForRpcTests
             "missing" => "null",
             "size" => "[\"0x0100000000000000000000000000000000000000000000000000000000000000\"]",
             "version" => "[\"0x0200000000000000000000000000000000000000000000000000000000000000\"]",
+            "zero-cap" => "[\"0x0100000000000000000000000000000000000000000000000000000000000000\"]",
             _ => "[]"
         };
         string blobError = hashKind switch
@@ -202,6 +204,8 @@ public class TransactionForRpcTests
             "missing" => RpcTransactionErrors.BlobFeeCapWithoutBlobHashes,
             "size" => RpcTransactionErrors.InvalidBlobVersionedHashSize,
             "version" => RpcTransactionErrors.InvalidBlobVersionedHashVersion,
+            "count" => BlockErrorMessages.BlobGasUsedAboveBlockLimit(Cancun.Instance.GasCosts.MaxBlobGasPerBlock, 7, 7 * Eip4844Constants.GasPerBlob),
+            "zero-cap" => RpcTransactionErrors.ZeroMaxFeePerBlobGas,
             _ => RpcTransactionErrors.AtLeastOneBlobInBlobTransaction
         };
         TransactionForRpc request = DeserializeTransactionForRpc($$"""
@@ -210,13 +214,18 @@ public class TransactionForRpcTests
               "input":"0x01","data":"0x2a" }
             """);
         if (hashKind == "size") ((BlobTransactionForRpc)request).BlobVersionedHashes = [[0x01, 0x00]];
-        string expected = suppliedBlobs || hashKind == "size" ? blobError
-            : invalidFee ? RpcTransactionErrors.MaxFeePerGasSmallerThanMaxPriorityFeePerGas(1, 2)
-            : RpcTransactionErrors.DataAndInputDiffer;
+        if (hashKind == "count")
+        {
+            byte[] hash = new byte[Eip4844Constants.BytesPerBlobVersionedHash];
+            hash[0] = 1;
+            ((BlobTransactionForRpc)request).BlobVersionedHashes = new byte[7][];
+            Array.Fill(((BlobTransactionForRpc)request).BlobVersionedHashes!, hash);
+        }
+        if (hashKind == "zero-cap") ((BlobTransactionForRpc)request).MaxFeePerBlobGas = 0;
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(request.ToValidatedTransaction().Error, Is.EqualTo(expected));
+            Assert.That(request.ToValidatedTransaction(spec: Cancun.Instance).Error, Is.EqualTo(RpcTransactionErrors.DataAndInputDiffer));
             Assert.That(request.ToCallTransaction(Cancun.Instance).Error, Is.EqualTo(blobError));
         }
     }
