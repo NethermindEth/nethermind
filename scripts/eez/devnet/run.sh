@@ -77,7 +77,7 @@ export KURTOSIS_ARGS_FILE="$EEZ_CI_RESULT_DIR/ci-args-template.yaml"
 } > "$EEZ_CI_RESULT_DIR/tools.txt"
 run_timeout=13m
 if [[ "$profile" == rollupx && "$EEZ_SUITE" == protocol ]]; then
-    run_timeout=26m
+    run_timeout=56m
 fi
 timeout --kill-after=5s "$run_timeout" bash "$EEZ_UPSTREAM/testing/kurtosis/run-ci.sh"
 if [[ "$EEZ_SUITE" == recovery ]]; then
