@@ -416,8 +416,6 @@ public partial class EthRpcModule(
             return (ResultWrapper<Hash256>.Fail(error, ErrorCodes.InvalidInput), false);
         }
 
-        tx.ChainId = _blockchainBridge.GetChainId();
-
         UInt256? nonce = rpcTx is LegacyTransactionForRpc legacy ? legacy.Nonce : null;
 
         // A frame transaction has no r/s signature: its sender is part of its payload, and r/s it carries are not used.
@@ -427,6 +425,12 @@ public partial class EthRpcModule(
             tx.Signature = null;
 
         bool signatureKept = signed && nonce is not null;
+        // A typed transaction signs the chain id it carries, so one that keeps its signature keeps the chain id its request
+        // gives: its signer is recovered over the payload it signed, and the pool answers a chain id that is not this node's.
+        // A legacy transaction's recovery and validation take the chain id from its v, not from this field.
+        if (!signatureKept || tx.Type == TxType.Legacy || tx.ChainId is null)
+            tx.ChainId = _blockchainBridge.GetChainId();
+
         if (signatureKept && SendAsSigner(tx, (rpcTx as LegacyTransactionForRpc)?.From) is { } signerError)
             return (signerError, true);
 
@@ -439,10 +443,13 @@ public partial class EthRpcModule(
     /// recovers its sender from the signature.
     /// </summary>
     /// <param name="from">The request's <c>from</c>, or null when it leaves it out.</param>
-    /// <returns>The error that stops the send, or null when the signer is recovered and is <paramref name="from"/>, if given.</returns>
+    /// <returns>The error that stops the send, or null when the signer is recovered and <paramref name="from"/>, if given, names it.</returns>
     /// <remarks>
     /// Where the spec does not validate chain ids, a legacy signature for another chain is accepted, and block processing
-    /// recovers it over the chain id it carries; so does this.
+    /// recovers it over the chain id it carries; so does this. Where the spec validates them, the pool refuses such a
+    /// signature, and block processing would recover another account from it. The transaction is still sent as that
+    /// account, and <paramref name="from"/> may name either it or the account that made the signature over its own chain
+    /// id, so the request gets the pool's answer, as the same transaction sent raw does.
     /// </remarks>
     private ResultWrapper<Hash256>? SendAsSigner(Transaction tx, Address? from)
     {
@@ -450,7 +457,7 @@ public partial class EthRpcModule(
         if (_blockchainBridge.RecoverTxSender(tx, useSignatureChainId: !spec.ValidateChainId) is not { } signer)
             return ResultWrapper<Hash256>.Fail(TxPoolErrorMessages.FailedToRecoverSender, ErrorCodes.TransactionRejected);
 
-        if (from is not null && from != signer)
+        if (from is not null && from != signer && from != _blockchainBridge.RecoverTxSender(tx, useSignatureChainId: true))
             return ResultWrapper<Hash256>.Fail(FromIsNotSigner, ErrorCodes.InvalidInput);
 
         tx.SenderAddress = signer;

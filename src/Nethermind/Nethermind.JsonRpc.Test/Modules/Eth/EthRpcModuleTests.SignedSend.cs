@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -129,6 +130,31 @@ public partial class EthRpcModuleTests
                 ? $$"""{"jsonrpc":"2.0","result":"{{signed.Hash}}","id":67}"""
                 : $$"""{"jsonrpc":"2.0","error":{"code":{{ErrorCodes.InvalidInput}},"message":"from does not match the signer"},"id":67}"""));
             Assert.That(pooledSenders, Is.EqualTo(accepted ? new[] { TestItem.AddressB } : Array.Empty<Address>()), "the senders in the pool");
+        }
+    }
+
+    /// <remarks>
+    /// Where chain ids are validated, the pool refuses a signature made for another chain: a typed one for the chain id it
+    /// signs, a legacy one for its v. The request keeps both, so it gets that answer, as the same transaction sent raw
+    /// does, whether from is left out or names the signer.
+    /// </remarks>
+    [TestCase(TxType.EIP1559, false)]
+    [TestCase(TxType.EIP1559, true)]
+    [TestCase(TxType.Legacy, false)]
+    [TestCase(TxType.Legacy, true)]
+    public async Task Signed_request_for_another_chain_gets_the_pool_answer_where_chain_ids_are_validated(TxType type, bool fromGiven)
+    {
+        using TestRpcBlockchain test = await SignedSendChain(NullWallet.Instance);
+        ulong chainId = test.SpecProvider.ChainId;
+        Transaction signed = SignedTransfer(test, type, signatureChainId: chainId + 1);
+
+        string response = await test.TestEthRpc("eth_sendTransaction", SignedRequest(signed, fromGiven ? TestItem.AddressB : null));
+
+        string refusal = type == TxType.Legacy ? TxErrorMessages.InvalidTxSignature : TxErrorMessages.InvalidTxChainId(chainId, chainId + 1);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":{{ErrorCodes.TransactionRejected}},"message":"transaction invalid, {{refusal}}"},"id":67}"""));
+            Assert.That(test.TxPool.GetPendingTransactionsCount(), Is.Zero, "nothing is pooled under any sender");
         }
     }
 
@@ -316,7 +342,7 @@ public partial class EthRpcModuleTests
     }
 
     /// <summary>A transfer of 1 wei to D, signed by <paramref name="signer"/> (B by default).</summary>
-    /// <param name="signatureChainId">The chain id a legacy signature is made for, the node's by default.</param>
+    /// <param name="signatureChainId">The chain id the signature is made for, the node's by default.</param>
     private static Transaction SignedTransfer(TestRpcBlockchain test, TxType type, PrivateKey? signer = null, ulong nonce = 0, ulong? signatureChainId = null)
     {
         TransactionBuilder<Transaction> builder = Build.A.Transaction
