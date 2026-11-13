@@ -150,7 +150,12 @@ internal static class NodeRecordCodec
     /// </remarks>
     internal static bool IsInlineLeaf(ReadOnlySpan<byte> rlp)
     {
-        Decode(rlp, out NodeRecordKind kind, out _);
-        return kind == NodeRecordKind.Leaf;
+        NodeRlpReader reader = new(rlp);
+        int position = 0;
+        reader.ReadSequenceLength(ref position, out _);
+        // A branch starts with a child, an empty string or an embedded node, while a leaf or an extension starts with its key, which is never empty.
+        if (reader.IsSequenceNext(position)) return false;
+        reader.DecodeByteArraySpan(ref position, out ReadOnlySpan<byte> key);
+        return !key.IsEmpty && NodeRlp.IsLeafHexPrefix(key);
     }
 }

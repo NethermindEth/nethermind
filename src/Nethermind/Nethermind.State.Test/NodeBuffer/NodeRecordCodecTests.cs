@@ -97,6 +97,14 @@ internal class NodeRecordCodecTests
         }
     }
 
+    [TestCase(ShortLeaf, ExpectedResult = true, TestName = "leaf, even key")]
+    [TestCase("c23101", ExpectedResult = true, TestName = "leaf, single-byte key")]
+    [TestCase("c8820001" + ShortLeaf, ExpectedResult = false, TestName = "extension")]
+    [TestCase("d710" + EmbeddedBranch, ExpectedResult = false, TestName = "extension, single-byte key")]
+    [TestCase(EmbeddedBranch, ExpectedResult = false, TestName = "branch, embedded first child")]
+    [TestCase("d5" + "80" + "c23101" + "c23201" + "8080808080808080808080808080", ExpectedResult = false, TestName = "branch, empty first child")]
+    public bool Is_inline_leaf(string rlpHex) => NodeRecordCodec.IsInlineLeaf(Bytes.FromHexString(rlpHex));
+
     [Test]
     public void ChildRef_is_48_bytes() => Assert.That(Unsafe.SizeOf<ChildRef>(), Is.EqualTo(48));
 
