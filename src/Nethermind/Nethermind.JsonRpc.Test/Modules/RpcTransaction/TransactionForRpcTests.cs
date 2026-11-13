@@ -169,8 +169,9 @@ public class TransactionForRpcTests
                 "trace_call" => await RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, call.RootElement, new[] { "trace" }, "latest"),
                 _ => await chain.TestEthRpc(method, call.RootElement)
             };
-            string expectedError = method is "eth_sendTransaction" or "eth_signTransaction" or "eth_fillTransaction"
-                && invalidFee && !suppliedBlobs ? "gasPrice must be non-zero after london fork"
+            bool rejectsFeeFirst = invalidFee && (method == "eth_createAccessList"
+                || !suppliedBlobs && method is "eth_sendTransaction" or "eth_signTransaction" or "eth_fillTransaction");
+            string expectedError = rejectsFeeFirst ? "gasPrice must be non-zero after london fork"
                 : method == "eth_fillTransaction" ? RpcTransactionErrors.DataAndInputDiffer
                 : RpcTransactionErrors.InvalidBlobVersionedHashSize;
             JToken json = JToken.Parse(response);
