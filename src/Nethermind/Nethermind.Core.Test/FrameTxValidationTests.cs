@@ -670,11 +670,12 @@ public class FrameTxValidationTests
         byte[] repeatedSchemes = [Eip8288Constants.LeanSphincsScheme, Eip8288Constants.LeanSphincsScheme, Eip8288Constants.LeanStarkScheme];
         Transaction tx = CreateValidFrameTx(t =>
         {
-            t.Frames = [SelfVerifyFrame(), Frame(data: floorBinds ? new byte[100_000] : [])];
+            // Enough calldata for the floor to bind over a leanSTARK declaration's frame charge.
+            t.Frames = [SelfVerifyFrame(), Frame(data: floorBinds ? new byte[200_000] : [])];
             if (declarations > 0) t.Frames = [.. t.Frames, DepFrame(repeatedSchemes[..declarations])];
         });
 
-        ulong recursiveStarkGas = (ulong)declarations * Eip8288Constants.LeanStarkVerificationGas;
+        ulong recursiveStarkGas = (ulong)declarations * Eip8288Constants.RecursiveProofShareGas;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, disabled, out ulong baseIntrinsic, out ulong baseFloor, out ulong baseMax), Is.True);
@@ -868,7 +869,7 @@ public class FrameTxValidationTests
     private static TestCaseData BatchCase(string name, bool enabled, Action<Transaction> mutate, string? expectedError) =>
         new TestCaseData(mutate, enabled, expectedError).SetName($"IsWellFormed_BatchPricing_{name}_{(enabled ? "Enabled" : "Disabled")}");
 
-    // ethereum/EIPs#12664 Test Case: 64 included claims and one payment cost 64 x 300 plus 430,000 = 449,200, neither scheme
+    // ethereum/EIPs#12664 Test Case: 64 included claims and one payment cost 64 x 2,100 plus 576,200 = 710,600, neither scheme
     // paying EIP-8288's proof share.
     [Test]
     public void BatchPricing_charges_claims_and_payments_without_the_proof_share()
@@ -880,7 +881,7 @@ public class FrameTxValidationTests
         ulong proofShare = Eip8288Dependencies.RecursiveStarkGas(tx, batchedEnabled: true);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(frameGas, Is.EqualTo(449_200UL));
+            Assert.That(frameGas, Is.EqualTo(710_600UL));
             Assert.That(proofShare, Is.Zero);
         }
     }

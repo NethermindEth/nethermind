@@ -95,16 +95,20 @@ public static class Eip8288Constants
     /// sources.</summary>
     public const byte LeanStarkLeafPaymentScheme = 0x13;
 
-    public const ulong LeanSphincsVerificationGas = 3_000;
-    public const ulong LeanStarkVerificationGas = 30_000;
+    /// <summary>EIP-8288 <c>LEANSPHINCS_VERIFICATION_GAS</c> (provisional): a leanSPHINCS declaration's frame charge.</summary>
+    public const ulong LeanSphincsVerificationGas = 15_400;
 
-    /// <summary>Batch-pricing EIP <c>LEANSTARK_LEAF_GAS</c> (provisional): a leaf payment's frame charge, in place of EIP-8288's
-    /// proof share.</summary>
-    public const ulong LeanStarkLeafGas = 430_000;
+    /// <summary>EIP-8288 <c>LEANSTARK_VERIFICATION_GAS</c> (provisional): a leanSTARK declaration's frame charge, its recursive
+    /// child slot included.</summary>
+    public const ulong LeanStarkVerificationGas = 572_000;
+
+    /// <summary>EIP-8288 <c>RECURSIVE_PROOF_SHARE_GAS</c> (provisional): each declared dependency's intrinsic share of the block's
+    /// recursive proof (<see cref="Eip8288Dependencies.RecursiveStarkGas"/>).</summary>
+    public const ulong RecursiveProofShareGas = 4_200;
 
     /// <summary>Batch-pricing EIP <c>LEANSTARK_CLAIM_GAS</c> (provisional): a batch claim's frame charge, in place of EIP-8288's
     /// proof share.</summary>
-    public const ulong LeanStarkClaimGas = 300;
+    public const ulong LeanStarkClaimGas = 2_100;
 
     public const int MaxSigsPerTx = 16;
     public const int MaxStarksPerTx = 1;

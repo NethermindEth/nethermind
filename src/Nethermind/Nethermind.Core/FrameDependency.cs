@@ -21,12 +21,13 @@ public readonly struct FrameDependency(byte scheme, ValueHash256 dataHash, Value
     public ValueHash256 VerificationKey { get; } = verificationKey;
 
     /// <summary>Per-scheme verification gas (spec <c>LEANSPHINCS/LEANSTARK_VERIFICATION_GAS</c>, and the batch-pricing EIP's
-    /// <c>LEANSTARK_CLAIM_GAS</c> and <c>LEANSTARK_LEAF_GAS</c>).</summary>
+    /// <c>LEANSTARK_CLAIM_GAS</c> and leaf payment charge).</summary>
     public ulong VerificationGas => Scheme switch
     {
         Eip8288Constants.LeanStarkScheme => Eip8288Constants.LeanStarkVerificationGas,
         Eip8288Constants.BatchedLeanStarkScheme => Eip8288Constants.LeanStarkClaimGas,
-        Eip8288Constants.LeanStarkLeafPaymentScheme => Eip8288Constants.LeanStarkLeafGas,
+        // The batch-pricing EIP charges a leaf's verification and its proof share once, to its payment.
+        Eip8288Constants.LeanStarkLeafPaymentScheme => Eip8288Constants.LeanStarkVerificationGas + Eip8288Constants.RecursiveProofShareGas,
         _ => Eip8288Constants.LeanSphincsVerificationGas
     };
 
@@ -158,7 +159,7 @@ public static class Eip8288Dependencies
             }
         }
 
-        return count * Eip8288Constants.LeanStarkVerificationGas;
+        return count * Eip8288Constants.RecursiveProofShareGas;
     }
 
     /// <summary>Concatenates dependencies into their <c>96·k</c>-byte wire form.</summary>
