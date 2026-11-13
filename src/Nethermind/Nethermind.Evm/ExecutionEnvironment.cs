@@ -17,7 +17,7 @@ namespace Nethermind.Evm
     {
         private UInt256 _value;
 
-        /// <summary>Owned by a call-frame cache slot, so disposal clears it but never hands it to the pool.</summary>
+        /// <summary>Owned by a call-frame cache slot, so disposal keeps its references for the next call and never hands it to the pool.</summary>
         private bool _isCached;
 
         /// <summary>
@@ -93,7 +93,7 @@ namespace Nethermind.Evm
             in UInt256 value,
             in ReadOnlyMemory<byte> inputData)
         {
-            Debug.Assert(executingAccount is not null, "A free cached environment is recognised by its cleared account.");
+            Debug.Assert(executingAccount is not null, "Every frame executes in an account.");
             ExecutionEnvironment env = (uint)callDepth < (uint)cache.Length && cache[callDepth] is { IsInUse: false } cached
                 ? cached
                 : RentUncached(cache, callDepth);
@@ -126,8 +126,7 @@ namespace Nethermind.Evm
             }
         }
 
-        /// <summary>Rented and not yet disposed; <see cref="Dispose"/> clears the account.</summary>
-        private bool IsInUse => ExecutingAccount is not null;
+        internal bool IsInUse { get; private set; }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void Initialize(
@@ -140,13 +139,14 @@ namespace Nethermind.Evm
             in ReadOnlyMemory<byte> inputData)
         {
             PooledObjectLeakDetector.OnRent(this, nameof(ExecutionEnvironment));
-            CodeInfo = codeInfo;
-            ExecutingAccount = executingAccount;
-            Caller = caller;
-            CodeSource = codeSource;
+            if (!KeepsCachedReferences || !ReferenceEquals(CodeInfo, codeInfo)) CodeInfo = codeInfo;
+            if (!KeepsCachedReferences || !ReferenceEquals(ExecutingAccount, executingAccount)) ExecutingAccount = executingAccount;
+            if (!KeepsCachedReferences || !ReferenceEquals(Caller, caller)) Caller = caller;
+            if (!KeepsCachedReferences || !ReferenceEquals(CodeSource, codeSource)) CodeSource = codeSource;
             CallDepth = callDepth;
             _value = value;
-            InputData = inputData;
+            if (!KeepsCachedReferences || !InputData.Equals(inputData)) InputData = inputData;
+            IsInUse = true;
         }
 
         /// <summary>
@@ -157,13 +157,18 @@ namespace Nethermind.Evm
             PooledObjectLeakDetector.OnReturn(this);
             if (IsInUse)
             {
-                CodeInfo = null!;
-                ExecutingAccount = null!;
-                Caller = null!;
-                CodeSource = null;
-                CallDepth = 0;
-                _value = default;
-                InputData = default;
+                IsInUse = false;
+                if (!_isCached || !KeepsCachedReferences)
+                {
+                    CallDepth = 0;
+                    _value = default;
+                    CodeInfo = null!;
+                    ExecutingAccount = null!;
+                    Caller = null!;
+                    CodeSource = null;
+                    InputData = default;
+                }
+
                 if (!_isCached) _pool.Enqueue(this);
             }
         }

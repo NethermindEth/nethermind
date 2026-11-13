@@ -8,4 +8,6 @@ namespace Nethermind.Evm;
 public sealed partial class ExecutionEnvironment
 {
     private static readonly Queue _pool = new();
+
+    internal const bool KeepsCachedReferences = true;
 }
