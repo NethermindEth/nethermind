@@ -284,7 +284,7 @@ public static partial class EvmInstructions
     /// ILC expanding a <see cref="Vector256{T}"/> comparison a byte at a time.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int CountLeadingZeroBitsOfLimbs(ref byte slot)
+    internal static int CountLeadingZeroBitsOfLimbs(ref byte slot)
     {
         ref ulong limbs = ref As<byte, ulong>(ref slot);
         // CLZ's usual operand fits limb 0, so one test for the limbs above it replaces three rungs.

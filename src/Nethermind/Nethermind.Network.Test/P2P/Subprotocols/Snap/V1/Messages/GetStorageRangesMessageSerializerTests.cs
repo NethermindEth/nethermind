@@ -6,6 +6,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
@@ -150,7 +151,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             ValueHash256 limitHash = ValueKeccak.MaxValue;
 
             int accountsContentLength = fieldName == "account-list"
-                ? Rlp.OfEmptyList.Length
+                ? RlpTestHelper.OfEmptyList.Length
                 : Rlp.LengthOf(accountPath);
             int contentLength = Rlp.LengthOf(1L)
                 + Rlp.LengthOf(rootHash)
@@ -166,7 +167,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             writer.StartSequence(accountsContentLength);
             if (fieldName == "account-list")
             {
-                writer.Encode(Rlp.OfEmptyList);
+                writer.EncodeNullObject();
             }
             else
             {

@@ -22,37 +22,35 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     [return: MaybeNull]
     protected abstract T DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
-    public virtual Rlp Encode(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        => default(T) is null && item is null ? Rlp.OfEmptyList : new Rlp(EncodeAsBytes(item!, rlpBehaviors));
-
-    /// <summary>
-    /// Encodes <paramref name="item"/> into a freshly allocated <see cref="byte"/> array.
-    /// </summary>
+    /// <summary>Encodes <paramref name="item"/> into a new array; <see langword="null"/> encodes as the empty list.</summary>
     /// <remarks>
-    /// Equivalent to <see cref="Encode(T, RlpBehaviors)"/> without wrapping the result in a
-    /// throwaway <see cref="Rlp"/>; prefer this when only the raw bytes are needed. The buffer is
-    /// allocated uninitialized because <see cref="Encode(ref RlpWriter, T, RlpBehaviors)"/>
+    /// The buffer is allocated uninitialized because <see cref="Encode(ref RlpWriter, T, RlpBehaviors)"/>
     /// fills exactly <see cref="GetLength(T, RlpBehaviors)"/> bytes, which is checked.
     /// </remarks>
-    public byte[] EncodeAsBytes(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public virtual byte[] Encode(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        byte[] bytes = GC.AllocateUninitializedArray<byte>(GetLength(item, rlpBehaviors));
-        this.EncodeExact(bytes, item, rlpBehaviors);
+        if (default(T) is null && item is null)
+        {
+            return [Rlp.EmptyListByte];
+        }
+
+        byte[] bytes = GC.AllocateUninitializedArray<byte>(GetLength(item!, rlpBehaviors));
+        this.EncodeExact(bytes, item!, rlpBehaviors);
         return bytes;
     }
 
-    public virtual Rlp Encode(T?[]? items, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public virtual byte[] Encode(T?[]? items, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (items is null or [])
         {
-            return Rlp.OfEmptyList;
+            return [Rlp.EmptyListByte];
         }
 
         byte[] bytes = GC.AllocateUninitializedArray<byte>(GetLength(items, rlpBehaviors));
         RlpWriter writer = RlpWriter.ContentWriter(bytes);
         Encode(ref writer, items, rlpBehaviors);
         Rlp.CheckLength(in writer, bytes.Length);
-        return new Rlp(bytes);
+        return bytes;
     }
 
     [DoesNotReturn]
@@ -269,7 +267,7 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     {
         if (items is null)
         {
-            return Rlp.OfEmptyList.Length;
+            return Rlp.LengthOfNull;
         }
 
         return Rlp.LengthOfSequence(GetContentLength(items, behaviors));
@@ -286,5 +284,5 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
         => throw new RlpReaderException($"Unexpected null array element at index {index}");
 
     private int GetNullableLength(T? item, RlpBehaviors behaviors)
-        => default(T) is null && item is null ? Rlp.OfEmptyList.Length : GetLength(item!, behaviors);
+        => default(T) is null && item is null ? Rlp.LengthOfNull : GetLength(item!, behaviors);
 }

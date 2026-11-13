@@ -59,6 +59,27 @@ public class BlockAccessListValidationIndexTests
     }
 
     [Test]
+    public void ChangesEqual_sorts_generated_scalar_row_added_out_of_account_order()
+    {
+        ReadOnlyBlockAccessList suggested = Bal(
+            Account(TestItem.AddressA, balance: new BalanceChange(1, 1)),
+            Account(TestItem.AddressB, balance: new BalanceChange(1, 2)),
+            Account(TestItem.AddressC, balance: new BalanceChange(1, 3)));
+        using BlockAccessListValidationIndex suggestedIndex = BlockAccessListValidationIndex.Build(suggested, Header, txCount: 1, _addressIndex);
+        using BlockAccessListValidationIndex generatedIndex = new(1, _addressIndex, suggestedIndex, suggested.TotalStorageReads, suggested.TotalStorageChangeEvents);
+        BlockAccessListAtIndex slice = new() { Index = 1 };
+        foreach (int i in (ReadOnlySpan<int>)[0, 2, 1])
+        {
+            ReadOnlyAccountChanges account = suggested.AccountChanges.AsSpan()[i];
+            UInt256 value = account.BalanceChanges[0].Value;
+            slice.AddBalanceChange(account.Address, before: value + UInt256.One, after: value);
+        }
+        generatedIndex.Add(slice);
+
+        Assert.That(generatedIndex.ChangesEqual(suggestedIndex, 1), Is.True);
+    }
+
+    [Test]
     public void ChangesEqual_matches_storage_by_account_and_slot_when_insertion_order_differs()
     {
         ReadOnlyBlockAccessList suggested = Bal(

@@ -139,7 +139,7 @@ internal static class BufferWarmUp
     /// <remarks>Read RLP is trusted to be the node of the hash its parent holds: the pre-block path reaches the reader only below a subtree unchanged since persistence.</remarks>
     /// <param name="records">The scratch records, rented here on the first node read from <paramref name="reader"/>.</param>
     /// <param name="recordsLength">The bytes of <paramref name="records"/> in use, advanced past a written record and its alignment padding.</param>
-    /// <returns>False when the reader misses, the RLP is not a valid trie node, or its record does not fit <paramref name="records"/>.</returns>
+    /// <returns>False when the reader misses, or its record does not fit <paramref name="records"/>.</returns>
     private static bool TryRead(INodeRecordBuffer buffer, WarmedNodeBuffer warmed, ReadOnlySnapshotBundle reader, Hash256? address,
         in TreePath path, in ChildRef child, ArrayPoolList<byte> scratch, ref byte[]? records, ref int recordsLength, out Frame frame)
     {
@@ -153,9 +153,9 @@ internal static class BufferWarmUp
         }
 
         scratch.Clear();
-        if (!reader.TryLoadPersistedRlp(address, path, child.Data, ReadFlags.None, CopyRlp, scratch)
-            || !NodeRecordCodec.TryDecode(scratch.AsSpan(), out NodeRecordKind kind, out ushort hashMask)) return false;
+        if (!reader.TryLoadPersistedRlp(address, path, child.Data, ReadFlags.None, CopyRlp, scratch)) return false;
 
+        NodeRecordCodec.Decode(scratch.AsSpan(), out NodeRecordKind kind, out ushort hashMask);
         int length = NodeRecordCodec.AlignedLength(NodeRecordCodec.Length(BitOperations.PopCount(hashMask), scratch.Count));
         if (length > RecordsLength - recordsLength) return false;
         records ??= SafeArrayPool<byte>.Shared.Rent(RecordsLength);

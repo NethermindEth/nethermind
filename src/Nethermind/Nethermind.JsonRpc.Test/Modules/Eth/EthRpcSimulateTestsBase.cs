@@ -107,7 +107,8 @@ public class EthRpcSimulateTestsBase
         TxPoolSender txSender = new(chain.TxPool,
             new TxSealer(new Signer(chain.SpecProvider.ChainId, privateKey, LimboLogs.Instance), chain.Timestamper),
             chain.NonceManager,
-            chain.EthereumEcdsa);
+            chain.EthereumEcdsa,
+            chain.ChainHeadInfoProvider.SpecProvider);
 
         (Hash256? hash, AcceptTxResult? code) = await txSender.SendTransaction(tx, TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);
         Assert.That(code, Is.EqualTo(AcceptTxResult.Accepted));

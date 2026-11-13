@@ -2456,6 +2456,8 @@ public class FlatWorldStateScopeProviderTests
         using TestContext ctx = new(trieWarmer: warmer);
         // The slot hints warm only an account whose storage trie is not empty.
         ctx.PersistenceReader.GetAccount(TestItem.AddressA).Returns(new Account(1, 1, TestItem.KeccakA, Keccak.OfAnEmptyString));
+        // Unconfigured, the substitute returns an empty array, which is not a node.
+        ctx.PersistenceReader.TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns((byte[]?)null);
         FlatWorldStateScope scope = ctx.Scope;
         warmer.Scope = scope;
 

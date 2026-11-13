@@ -42,8 +42,8 @@ namespace Nethermind.Benchmarks.Rlp
         public void Setup()
         {
             TxReceipt receipt = _scenarios[ScenarioIndex];
-            _message = MessageDecoder.EncodeAsBytes(receipt);
-            _storage = StorageDecoder.EncodeAsBytes(receipt, RlpBehaviors.Storage);
+            _message = MessageDecoder.Encode(receipt);
+            _storage = StorageDecoder.Encode(receipt, RlpBehaviors.Storage);
         }
 
         [Benchmark(OperationsPerInvoke = Batch)]

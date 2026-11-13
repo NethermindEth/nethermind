@@ -69,7 +69,7 @@ internal class HeaderVerificationTests
         QuorumCertificate quorumCert = new(proposedBlockInfo, signatures.ToArray(), 1);
 
         ExtraFieldsV2 extra = new(proposedBlockInfo.Round, quorumCert);
-        byte[] extraInBytes = extraConsensusDataDecoder.Encode(extra).Bytes;
+        byte[] extraInBytes = extraConsensusDataDecoder.Encode(extra);
 
         invalidRoundBlock.ExtraData = extraInBytes;
         bool result = xdcHeaderValidator.Validate(invalidRoundBlock, invalidRoundBlockParent);
@@ -275,7 +275,7 @@ internal class HeaderVerificationTests
 
         QuorumCertificate quorumCert = new(proposedBlockInfo, signatures.ToArray(), 1);
         ExtraFieldsV2 extra = new(proposedBlockInfo.Round, quorumCert);
-        byte[] extraInBytes = extraConsensusDataDecoder.Encode(extra).Bytes;
+        byte[] extraInBytes = extraConsensusDataDecoder.Encode(extra);
         invalidQcSignatureBlock.ExtraData = extraInBytes;
         bool result = xdcHeaderValidator.Validate(invalidQcSignatureBlock, invalidQcSignatureBlockParent);
         Assert.That(result, Is.False);

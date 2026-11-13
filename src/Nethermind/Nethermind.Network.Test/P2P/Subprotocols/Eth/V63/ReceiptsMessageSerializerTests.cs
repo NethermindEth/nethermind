@@ -159,7 +159,7 @@ public class ReceiptsMessageSerializerTests
     private static IEnumerable<TestCaseData> EmptyResponses()
     {
         yield return new TestCaseData(Array.Empty<byte>()).SetArgDisplayNames("no bytes");
-        yield return new TestCaseData(Rlp.OfEmptyList.Bytes).SetArgDisplayNames("empty list");
+        yield return new TestCaseData(RlpTestHelper.OfEmptyList).SetArgDisplayNames("empty list");
     }
 
     [TestCaseSource(nameof(EmptyResponses))]
@@ -185,7 +185,7 @@ public class ReceiptsMessageSerializerTests
         ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
 
         using DisposableByteBuffer buffer = Unpooled.Buffer(serializer.GetLength(message) + 1).AsDisposable();
-        buffer.WriteByte(Rlp.OfEmptyList[0]);
+        buffer.WriteByte(RlpTestHelper.OfEmptyList[0]);
         buffer.ReadByte();
 
         serializer.Serialize(buffer, message);

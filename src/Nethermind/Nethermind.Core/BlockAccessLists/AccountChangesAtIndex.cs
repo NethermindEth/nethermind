@@ -18,7 +18,7 @@ namespace Nethermind.Core.BlockAccessLists;
 /// </summary>
 public class AccountChangesAtIndex(Address address)
 {
-    public Address Address { get; private set; } = address;
+    public Address Address { get; internal set; } = address;
 
     public BalanceChange? BalanceChange { get; internal set; }
     public NonceChange? NonceChange { get; internal set; }

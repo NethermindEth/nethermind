@@ -95,9 +95,9 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                                                                      BlockTreeLookupOptions.TotalDifficultyNotNeeded |
                                                                      BlockTreeLookupOptions.DoNotCreateLevelIfMissing;
 
-        private BlockFeeHistorySearchInfo? GetHistorySearchInfo(BlockParameter blockParameter, bool withRewards, ref UncachedRequestSlot uncachedRequestSlot, out bool headerFound)
+        private BlockFeeHistorySearchInfo? GetHistorySearchInfo(BlockParameter blockParameter, bool hashUnchecked, bool withRewards, ref UncachedRequestSlot uncachedRequestSlot, out bool headerFound)
         {
-            Hash256? hash = blockParameter.Type == BlockParameterType.BlockHash
+            Hash256? hash = hashUnchecked
                 ? blockParameter.BlockHash
                 : _blockTree.FindHeader(blockParameter)?.Hash;
             headerFound = hash is not null;
@@ -111,6 +111,15 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             if (_blockTree.Head is { } head && head.Hash == hash)
             {
                 return SaveHistorySearchInfo(head, withRewards: false);
+            }
+
+            // An unknown hash, or one that is not canonical when that is required, is reported without taking a slot, as an
+            // unknown block number is.
+            if (blockParameter.Type is BlockParameterType.BlockHash
+                && (hash is null || hashUnchecked && _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded) is null))
+            {
+                headerFound = false;
+                return null;
             }
 
             if (hash is not null)
@@ -129,24 +138,30 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 ? null
                 : _feeHistoryCache.TryGetValue(block.Hash!, out BlockFeeHistorySearchInfo info)
                     ? info
-                    : SaveHistorySearchInfo(block, withRewards);
+                    : SaveHistorySearchInfo(block, withRewards, CanCache(block, hashUnchecked));
         }
 
-        private BlockFeeHistorySearchInfo? GetHistorySearchInfo(Hash256 blockHash, ulong blockNumber, bool withRewards, ref UncachedRequestSlot uncachedRequestSlot)
+        private BlockFeeHistorySearchInfo? GetHistorySearchInfo(Hash256 blockHash, ulong blockNumber, bool hashUnchecked, bool withRewards, ref UncachedRequestSlot uncachedRequestSlot)
         {
             if (!_feeHistoryCache.TryGetValue(blockHash, out BlockFeeHistorySearchInfo info))
             {
                 uncachedRequestSlot.EnsureAcquired();
                 Block? block = _blockTree.FindBlock(blockHash, AncestorLookupOptions, blockNumber);
-                return block is null ? null : SaveHistorySearchInfo(block, withRewards);
+                return block is null ? null : SaveHistorySearchInfo(block, withRewards, CanCache(block, hashUnchecked));
             }
 
             return info;
         }
 
+        /// <remarks>
+        /// A block reached through an unchecked hash, directly or as an ancestor, can be stored but not processed yet, so its
+        /// rewards would fall back to the tx gas limits and stay cached once it is canonical; it is cached only while canonical.
+        /// </remarks>
+        private bool CanCache(Block block, bool hashUnchecked) => !hashUnchecked || _blockTree.IsMainChain(block.Header);
+
         // only saves block younger than the Oldest Block From the Head Allowed In Cache.
         // As time passes and the head progresses only older least used blocks are auto removed from the cache
-        private BlockFeeHistorySearchInfo? SaveHistorySearchInfo(Block block, bool withRewards)
+        private BlockFeeHistorySearchInfo? SaveHistorySearchInfo(Block block, bool withRewards, bool cache = true)
         {
             BlockFeeHistorySearchInfo BlockFeeHistorySearchInfoFromBlock(Block b)
             {
@@ -180,7 +195,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             BlockFeeHistorySearchInfo historyInfo = BlockFeeHistorySearchInfoFromBlock(block);
 
             // Keeps an entry already cached for the hash, so its filled rewards are not dropped.
-            return ShouldCache(block) ? _feeHistoryCache.GetOrAdd(block.Hash!, historyInfo) : historyInfo;
+            return cache && ShouldCache(block) ? _feeHistoryCache.GetOrAdd(block.Hash!, historyInfo) : historyInfo;
         }
 
         private bool ShouldCache(Block block) =>
@@ -195,7 +210,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             if (blockCount > _maxBlockCount)
                 blockCount = _maxBlockCount;
 
-            ResultWrapper<FeeHistoryResults> initialCheckResult = Validate(blockCount, newestBlock, rewardPercentiles);
+            ResultWrapper<FeeHistoryResults> initialCheckResult = Validate(blockCount, rewardPercentiles);
             if (initialCheckResult.Result.ResultType == ResultType.Failure)
             {
                 return initialCheckResult;
@@ -219,12 +234,20 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             ref UncachedRequestSlot uncachedRequestSlot)
         {
             bool withRewards = rewardPercentiles.Length > 0;
-            BlockFeeHistorySearchInfo? historyInfo = GetHistorySearchInfo(newestBlock, withRewards, ref uncachedRequestSlot, out bool headerFound);
+            bool hashUnchecked = newestBlock is { Type: BlockParameterType.BlockHash, RequireCanonical: false };
+            BlockFeeHistorySearchInfo? historyInfo = GetHistorySearchInfo(newestBlock, hashUnchecked, withRewards, ref uncachedRequestSlot, out bool headerFound);
 
             if (historyInfo is null)
             {
-                return headerFound && _blockTree.FindHeader(newestBlock) is not null
-                    ? ResultWrapper<FeeHistoryResults>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable)
+                if (headerFound && _blockTree.FindHeader(newestBlock) is not null)
+                {
+                    return ResultWrapper<FeeHistoryResults>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable);
+                }
+
+                // EIP-1898: a known block that is not canonical is reported apart from an unknown one.
+                return newestBlock is { Type: BlockParameterType.BlockHash, RequireCanonical: true, BlockHash: { } hash }
+                       && _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded) is not null
+                    ? ResultWrapper<FeeHistoryResults>.Fail($"{hash} block is not canonical", ErrorCodes.InvalidInput)
                     : ResultWrapper<FeeHistoryResults>.Fail("request beyond head block", ErrorCodes.ResourceNotFound);
             }
 
@@ -268,7 +291,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                     gasUsedRatio[effectiveBlockCount] = info.GasUsedRatio;
                     blobGasUsedRatio[effectiveBlockCount] = info.BlobGasUsedRatio;
                     // The oldest requested block needs no parent.
-                    historyInfo = effectiveBlockCount == 0 || info.ParentHash is null ? null : GetHistorySearchInfo(info.ParentHash, info.BlockNumber - 1, withRewards, ref uncachedRequestSlot);
+                    historyInfo = effectiveBlockCount == 0 || info.ParentHash is null ? null : GetHistorySearchInfo(info.ParentHash, info.BlockNumber - 1, hashUnchecked, withRewards, ref uncachedRequestSlot);
                 }
             }
             catch
@@ -496,13 +519,8 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             return percentileValues;
         }
 
-        private static ResultWrapper<FeeHistoryResults> Validate(ulong blockCount, BlockParameter newestBlock, double[] rewardPercentiles)
+        private static ResultWrapper<FeeHistoryResults> Validate(ulong blockCount, double[] rewardPercentiles)
         {
-            if (newestBlock.Type == BlockParameterType.BlockHash)
-            {
-                return ResultWrapper<FeeHistoryResults>.Fail("newestBlock: Is not correct block number", ErrorCodes.InvalidParams);
-            }
-
             if (blockCount < 1)
             {
                 return ResultWrapper<FeeHistoryResults>.Fail($"blockCount: Value {blockCount} is less than 1", ErrorCodes.InvalidParams);

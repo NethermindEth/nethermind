@@ -17,22 +17,10 @@ namespace Nethermind.Serialization.Rlp;
 
 public partial class Rlp
 {
-    public static readonly Rlp OfEmptyByteArray = new(EmptyByteArrayByte);
-
-    public static readonly Rlp OfZero = OfEmptyByteArray;
-
-    public static readonly Rlp OfEmptyList = new(EmptyListByte);
-
-    internal static readonly Rlp OfEmptyTreeHash = Encode(Keccak.EmptyTreeHash.Bytes); // use bytes to avoid stack overflow
-
-    internal static readonly Rlp OfEmptyStringHash = Encode(Keccak.OfAnEmptyString.Bytes); // use bytes to avoid stack overflow
-
-    internal static readonly Rlp EmptyBloom = Encode(Bloom.Empty.Bytes);
-
     private static readonly Dictionary<RlpDecoderKey, IRlpDecoder> _decoderBuilder = [];
     private static readonly Lock _decoderLock = new();
 
-    private static ILogger _logger = Static.LogManager.GetClassLogger<Rlp>();
+    private static ILogger _logger = Static.LogManager.GetClassLogger(typeof(Rlp));
 
     // A field initializer rather than a static constructor keeps the type beforefieldinit, so static methods
     // that read no static field (e.g. LengthOf) need no type initialization check on every call. Declared after

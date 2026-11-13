@@ -571,7 +571,8 @@ public class PersistenceManager(
     /// <remarks>
     /// Requires stopped block processing and persistence workers. Keeps the tail reorgable in the
     /// persisted-snapshot tier without advancing RocksDB; blocks become durable oldest first.
-    /// Without long finality there is no persisted tier. Restarted snapshots remain uncompacted until finality.
+    /// Without long finality there is no persisted tier. The next start compacts what this converts
+    /// (<see cref="CompactReloadedSnapshots"/>).
     /// </remarks>
     public int PersistInMemoryTailForShutdown(CancellationToken cancellationToken)
     {
@@ -612,6 +613,14 @@ public class PersistenceManager(
             foreach (Snapshot snapshot in tail.AsSpan()) snapshot.Dispose();
         }
     }
+
+    /// <inheritdoc/>
+    /// <remarks>Takes no lock: it runs before the workers start, so nothing else uses the tier yet.</remarks>
+    public int CompactReloadedSnapshots(CancellationToken cancellationToken) =>
+        // An empty tier is the steady state, a crash and a new node: nothing is read and nothing is written.
+        snapshotRepository.PersistedSnapshotCount == 0
+            ? 0
+            : compactor.CompactReloaded(GetCurrentPersistedStateId().BlockNumber, cancellationToken);
 
     public void ResetPersistedStateId()
     {

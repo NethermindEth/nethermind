@@ -153,7 +153,7 @@ namespace Nethermind.Core.Test.Crypto
             Transaction tx = BuildSigned(txType, key, eip155, dataLength);
             EthereumEcdsa ecdsa = new(useSignatureChainId ? BlockchainIds.Sepolia : TestBlockchainIds.ChainId);
 
-            byte[] encoded = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
+            byte[] encoded = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping);
             Span<byte> recovered = stackalloc byte[PublicKey.PrefixedLengthInBytes];
 
             bool result = ecdsa.TryRecoverPublicKey(tx, encoded, recovered, useSignatureChainId);
@@ -184,7 +184,7 @@ namespace Nethermind.Core.Test.Crypto
 
             byte[] encoded = malformation switch
             {
-                Malformation.WrongTypeByte => [(byte)TxType.AccessList, .. TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes[1..]],
+                Malformation.WrongTypeByte => [(byte)TxType.AccessList, .. TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping)[1..]],
                 Malformation.Empty => [],
                 _ => [.. typePrefix, Rlp.EmptyByteArrayByte],
             };
@@ -206,7 +206,7 @@ namespace Nethermind.Core.Test.Crypto
             Transaction other = Build.A.Transaction.WithNonce(2).SignedAndResolved().TestObject;
             Span<byte> recovered = stackalloc byte[PublicKey.PrefixedLengthInBytes];
 
-            byte[] otherEncoded = TxDecoder.Instance.Encode(other, RlpBehaviors.SkipTypedWrapping).Bytes;
+            byte[] otherEncoded = TxDecoder.Instance.Encode(other, RlpBehaviors.SkipTypedWrapping);
 
             using (Assert.EnterMultipleScope())
             {
@@ -432,7 +432,7 @@ namespace Nethermind.Core.Test.Crypto
             .SignedAndResolved(ecdsa, TestItem.PrivateKeyA)
             .TestObject;
 
-        private static byte[] Encode(Transaction tx) => TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
+        private static byte[] Encode(Transaction tx) => TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping);
 
         public enum SignedField { Nonce, Signature, RecoveryId }
 

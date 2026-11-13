@@ -5,6 +5,7 @@ using System;
 using System.Linq;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Rlp;
@@ -22,7 +23,7 @@ internal static class UndecodableResponse
 
     public static IByteBuffer Create(long requestId = RequestId)
     {
-        byte[] id = Rlp.Encode(requestId).Bytes;
+        byte[] id = Rlp.Encode(requestId);
         // A list header promising 5 bytes that never follow.
         const byte truncatedList = 0xc5;
 
@@ -41,12 +42,12 @@ internal static class UndecodableResponse
     /// items that are not receipts, so decoding it would fail with an RLP error.
     /// </summary>
     /// <param name="requestId">The request id, or <see langword="null"/> for an eth/63 response, which is the block list alone.</param>
-    public static IByteBuffer CreateReceipts(long? requestId, int receipts, params Rlp[] fieldsBeforeReceipts)
+    public static IByteBuffer CreateReceipts(long? requestId, int receipts, params byte[][] fieldsBeforeReceipts)
     {
-        Rlp block = Rlp.Encode(Enumerable.Repeat(new Rlp([0x01]), receipts).ToArray());
-        Rlp blocks = Rlp.Encode(new[] { block });
-        Rlp response = requestId is long id ? Rlp.Encode([Rlp.Encode(id), .. fieldsBeforeReceipts, blocks]) : blocks;
-        return Unpooled.WrappedBuffer(response.Bytes);
+        byte[] block = RlpTestHelper.EncodeSequence(Enumerable.Repeat(new byte[] { 0x01 }, receipts).ToArray());
+        byte[] blocks = RlpTestHelper.EncodeSequence(new[] { block });
+        byte[] response = requestId is long id ? RlpTestHelper.EncodeSequence([Rlp.Encode(id), .. fieldsBeforeReceipts, blocks]) : blocks;
+        return Unpooled.WrappedBuffer(response);
     }
 
     /// <summary>

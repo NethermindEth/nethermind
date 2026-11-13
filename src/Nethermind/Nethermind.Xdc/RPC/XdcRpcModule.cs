@@ -579,8 +579,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         byte[] encodedBytes;
         try
         {
-            Rlp encoded = headerDecoder.Encode(xdcHeader);
-            encodedBytes = encoded.Bytes;
+            encodedBytes = headerDecoder.Encode(xdcHeader);
         }
         catch (Exception ex)
         {

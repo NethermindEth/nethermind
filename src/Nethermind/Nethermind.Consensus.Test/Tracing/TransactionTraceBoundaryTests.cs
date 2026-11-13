@@ -112,7 +112,7 @@ public class TransactionTraceBoundaryTests
         for (int i = 0; i < count; i++)
         {
             Transaction transaction = Build.A.Transaction.WithNonce((ulong)i).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            encoded[i] = Rlp.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes;
+            encoded[i] = Rlp.Encode(transaction, RlpBehaviors.SkipTypedWrapping);
         }
 
         return encoded;

@@ -62,7 +62,7 @@ public class BlockStoreTests
         BlockStore store = new(db);
 
         Block block = Build.A.Block.WithNumber(1).TestObject;
-        db[block.Hash!.Bytes] = new BlockDecoder().Encode(block).Bytes;
+        db[block.Hash!.Bytes] = new BlockDecoder().Encode(block);
 
         // Probe before the read so the cached case cannot be satisfied by an entry Get itself populated.
         Assert.That(store.HasBlock(block.Number, block.Hash!), Is.True);
@@ -163,7 +163,7 @@ public class BlockStoreTests
             .WithTransactions(3, MainnetSpecProvider.Instance)
             .TestObject;
 
-        if (legacy) db[block.Hash!.Bytes] = new BlockDecoder().Encode(block).Bytes;
+        if (legacy) db[block.Hash!.Bytes] = new BlockDecoder().Encode(block);
         else store.Insert(block);
 
         ReceiptRecoveryBlock retrieved = store.GetReceiptRecoveryBlock(block.Number, block.Hash!)!.Value;
@@ -231,7 +231,7 @@ public class BlockStoreTests
         BlockStore store = new(db);
         Block block = Build.A.Block.WithNumber(1).TestObject;
         db[NumberedKey(block)] = [];
-        db[block.Hash!.Bytes] = new BlockDecoder().Encode(block).Bytes;
+        db[block.Hash!.Bytes] = new BlockDecoder().Encode(block);
         ReceiptRecoveryBlock recovery = store.GetReceiptRecoveryBlock(block.Number, block.Hash)!.Value;
         try
         {
@@ -256,7 +256,7 @@ public class BlockStoreTests
         BlockStore store = new(db);
         Transaction tx = Build.A.Transaction.WithData([1, 2, 3]).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
-        byte[] expected = TxDecoder.Instance.Encode(tx).Bytes;
+        byte[] expected = TxDecoder.Instance.Encode(tx);
         store.Insert(block);
         ReceiptRecoveryBlock recovery = store.GetReceiptRecoveryBlock(block.Number, block.Hash!)!.Value;
         Transaction escaped;
@@ -271,7 +271,7 @@ public class BlockStoreTests
             recovery.Dispose();
             recovery.Dispose();
         }
-        Assert.That(TxDecoder.Instance.Encode(escaped).Bytes, Is.EqualTo(expected));
+        Assert.That(TxDecoder.Instance.Encode(escaped), Is.EqualTo(expected));
         if (db is PinnedTestDb pinned)
         {
             Assert.That(() => recovery.GetTransaction(0), Throws.InstanceOf<ObjectDisposedException>());

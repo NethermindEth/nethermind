@@ -126,7 +126,7 @@ public class WorldStateDbDeciderModuleTests
             container.ResolveKeyed<IDb>(DbNames.State).Set(Bytes.FromHexString("0000000000000001"), [1]);
         if (seed.HasFlag(PointerSeed.BlockInfosEntry))
             // The block tree's long-standing best-persisted-state key: 16 zero bytes.
-            container.ResolveKeyed<IDb>(DbNames.BlockInfos).Set(new byte[16], Rlp.Encode(936UL).Bytes);
+            container.ResolveKeyed<IDb>(DbNames.BlockInfos).Set(new byte[16], Rlp.Encode(936UL));
 
         Assert.That(container.Resolve<IStateBoundary>().BestPersistedState, Is.EqualTo(expected));
         // IStateBoundary is injected into BlockTree's constructor; resolving the tree proves the

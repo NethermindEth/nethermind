@@ -249,11 +249,11 @@ public class NodeRecordSignerTests
         Assert.Throws<Exception>(() => _ = signer.Verify(nodeRecord));
     }
 
-    private static byte[] CreateRecord(params (string Key, Rlp Value)[] entries)
+    private static byte[] CreateRecord(params (string Key, byte[] Value)[] entries)
     {
         byte[] signature = new byte[64];
         int contentLength = Rlp.LengthOf(signature) + Rlp.LengthOf(1UL);
-        foreach ((string key, Rlp value) in entries)
+        foreach ((string key, byte[] value) in entries)
         {
             contentLength += Rlp.LengthOf(key) + value.Length;
         }
@@ -263,10 +263,10 @@ public class NodeRecordSignerTests
         writer.StartSequence(contentLength);
         writer.Encode(signature);
         writer.Encode(1UL);
-        foreach ((string key, Rlp value) in entries)
+        foreach ((string key, byte[] value) in entries)
         {
             writer.Encode(key);
-            writer.Encode(value);
+            writer.WriteEncoded(value);
         }
 
         return record;
@@ -356,23 +356,23 @@ public class NodeRecordSignerTests
             .SetName("{m}(sequence)");
 
         // The key declares 3 bytes and the record ends after 2.
-        yield return new TestCaseData((Func<byte[]>)(static () => CreateRecordEndingWith([0x01, .. Rlp.Encode("udp"u8).Bytes[..^1]])))
+        yield return new TestCaseData((Func<byte[]>)(static () => CreateRecordEndingWith([0x01, .. Rlp.Encode("udp"u8)[..^1]])))
             .SetName("{m}(key)");
 
         // The udp port declares 3 bytes and the record ends after 2.
-        yield return new TestCaseData((Func<byte[]>)(static () => CreateRecordEndingWith([0x01, .. Rlp.Encode("udp"u8).Bytes, 0x83, 0x23, 0x28])))
+        yield return new TestCaseData((Func<byte[]>)(static () => CreateRecordEndingWith([0x01, .. Rlp.Encode("udp"u8), 0x83, 0x23, 0x28])))
             .SetName("{m}(udp port)");
 
         // The tcp port declares 2 bytes and the record ends after 1.
-        yield return new TestCaseData((Func<byte[]>)(static () => CreateRecordEndingWith([0x01, .. Rlp.Encode("tcp"u8).Bytes, 0x82, 0x76])))
+        yield return new TestCaseData((Func<byte[]>)(static () => CreateRecordEndingWith([0x01, .. Rlp.Encode("tcp"u8), 0x82, 0x76])))
             .SetName("{m}(tcp port)");
 
         // The fork id is empty and ends the record, so the fork hash is missing.
-        yield return new TestCaseData((Func<byte[]>)(static () => CreateRecordEndingWith([0x01, .. Rlp.Encode("eth"u8).Bytes, 0xc1, 0xc0])))
+        yield return new TestCaseData((Func<byte[]>)(static () => CreateRecordEndingWith([0x01, .. Rlp.Encode("eth"u8), 0xc1, 0xc0])))
             .SetName("{m}(eth empty fork id)");
 
         // The fork id ends after its fork hash, at the end of the record, so the next fork is missing.
-        yield return new TestCaseData((Func<byte[]>)(static () => CreateRecordEndingWith([0x01, .. Rlp.Encode("eth"u8).Bytes, 0xc6, 0xc5, .. Rlp.Encode(new byte[] { 1, 2, 3, 4 }).Bytes])))
+        yield return new TestCaseData((Func<byte[]>)(static () => CreateRecordEndingWith([0x01, .. Rlp.Encode("eth"u8), 0xc6, 0xc5, .. Rlp.Encode(new byte[] { 1, 2, 3, 4 })])))
             .SetName("{m}(eth fork id)");
     }
 
@@ -402,9 +402,13 @@ public class NodeRecordSignerTests
 
     /// <summary>Creates a record holding a 64-byte signature followed by <paramref name="tail"/>.</summary>
     private static byte[] CreateRecordEndingWith(params byte[] tail)
-        => Rlp.Encode(Rlp.Encode(new byte[64]), new Rlp(tail)).Bytes;
+        => RlpCodec.Write(tail, static (ref RlpWriter writer, byte[] tail) => writer.WriteSequence(tail, static (ref RlpWriter writer, byte[] tail) =>
+        {
+            writer.Write(new byte[64]);
+            writer.WriteEncoded(tail);
+        }));
 
-    private static byte[] CreateNonSequenceRecord() => EncodeString(EnrContentKey.Id).Bytes;
+    private static byte[] CreateNonSequenceRecord() => EncodeString(EnrContentKey.Id);
 
     private static byte[] CreateRecordWithDeclaredLengthOverLimit()
     {
@@ -430,11 +434,11 @@ public class NodeRecordSignerTests
 
     private static byte[] CreateRecordWithSignatureLength(
         int signatureLength,
-        params (string Key, Rlp Value)[] entries)
+        params (string Key, byte[] Value)[] entries)
     {
         byte[] signature = new byte[signatureLength];
         int contentLength = Rlp.LengthOf(signature) + Rlp.LengthOf(1UL);
-        foreach ((string key, Rlp value) in entries)
+        foreach ((string key, byte[] value) in entries)
         {
             contentLength += Rlp.LengthOf(key) + value.Length;
         }
@@ -444,10 +448,10 @@ public class NodeRecordSignerTests
         writer.StartSequence(contentLength);
         writer.Encode(signature);
         writer.Encode(1UL);
-        foreach ((string key, Rlp value) in entries)
+        foreach ((string key, byte[] value) in entries)
         {
             writer.Encode(key);
-            writer.Encode(value);
+            writer.WriteEncoded(value);
         }
 
         return record;
@@ -487,12 +491,12 @@ public class NodeRecordSignerTests
     private static TestCaseData InvalidRecordCase(Func<byte[]> createRecord, Type exceptionType, string name)
         => new TestCaseData(createRecord, exceptionType).SetName(name);
 
-    private static Rlp EncodeString(string value)
+    private static byte[] EncodeString(string value)
     {
         byte[] bytes = new byte[Rlp.LengthOf(value)];
         RlpWriter writer = RlpWriter.ContentWriter(bytes);
         writer.Encode(value);
-        return new Rlp(bytes);
+        return bytes;
     }
 
     private static byte[] FindFillerForOversizedEncodedRecord()

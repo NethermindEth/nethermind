@@ -61,7 +61,7 @@ public class HeaderStoreTests
         HeaderStore store = new(headerDb, new MemDb());
 
         BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
-        headerDb.Set(header.Hash!, new HeaderDecoder().Encode(header).Bytes);
+        headerDb.Set(header.Hash!, new HeaderDecoder().Encode(header));
 
         Assert.That(store.Get(header.Hash!)!.Hash, Is.EqualTo(header.Hash!));
     }
@@ -94,7 +94,7 @@ public class HeaderStoreTests
         HeaderStore store = new(headerDb, new MemDb());
 
         BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
-        headerDb.Set(header.Hash!, new HeaderDecoder().Encode(header).Bytes);
+        headerDb.Set(header.Hash!, new HeaderDecoder().Encode(header));
 
         store.Delete(header.Hash!);
         Assert.That(store.Get(header.Hash!)!, Is.Null);
@@ -132,7 +132,7 @@ public class HeaderStoreTests
         [Values] bool legacyKey, [Values] bool shouldCache)
     {
         using HeaderStoreFixture context = new(persisted: !legacyKey);
-        if (legacyKey) context.HeaderDb.Set(context.Header.Hash!, new HeaderDecoder().Encode(context.Header).Bytes);
+        if (legacyKey) context.HeaderDb.Set(context.Header.Hash!, new HeaderDecoder().Encode(context.Header));
 
         for (int i = 0; i < 2; i++)
         {
@@ -178,7 +178,7 @@ public class HeaderStoreTests
         Bloom bloom = new();
         bloom.Set(TestItem.AddressA.Bytes);
         BlockHeader header = Build.A.BlockHeader.WithNumber(100).WithBloom(bloom).TestObject;
-        if (legacyKey) headerDb.Set(header.Hash!, decoder.Encode(header).Bytes);
+        if (legacyKey) headerDb.Set(header.Hash!, decoder.Encode(header));
         else store.Insert(header);
         if (cached) store.Cache(header);
         Address address = matches ? TestItem.AddressA : TestItem.AddressB;
@@ -355,7 +355,7 @@ public class HeaderStoreTests
         HeaderStore store = new(headerDb, new MemDb());
 
         BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
-        headerDb.Set(header.Hash!, new HeaderDecoder().Encode(header).Bytes);
+        headerDb.Set(header.Hash!, new HeaderDecoder().Encode(header));
 
         using (Assert.EnterMultipleScope())
         {

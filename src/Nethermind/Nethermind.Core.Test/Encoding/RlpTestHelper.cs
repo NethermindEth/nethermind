@@ -10,6 +10,31 @@ namespace Nethermind.Core.Test.Encoding;
 
 public static class RlpTestHelper
 {
+    public static readonly byte[] OfEmptyByteArray = [Rlp.EmptyByteArrayByte];
+
+    public static readonly byte[] OfEmptyList = [Rlp.EmptyListByte];
+
+    /// <summary>Wraps items that are already RLP in a sequence.</summary>
+    public static byte[] EncodeSequence(params ReadOnlySpan<byte[]> encodedItems)
+    {
+        int contentLength = 0;
+        foreach (byte[] item in encodedItems)
+        {
+            contentLength += item.Length;
+        }
+
+        byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
+        RlpSequence sequence = writer.StartSequence(contentLength);
+        foreach (byte[] item in encodedItems)
+        {
+            writer.WriteEncoded(item);
+        }
+
+        writer.EndSequence(sequence);
+        return bytes;
+    }
+
     /// <summary>Gets the prefix and payload lengths of the first item, without the checks of the canonical form.</summary>
     public static (int PrefixLength, int ContentLength) PrefixAndContentLength(ReadOnlySpan<byte> data)
     {
@@ -32,14 +57,14 @@ public static class RlpTestHelper
     {
         RlpReader reader = new(encoded);
         RlpReader items = reader.EnterSequence(out _);
-        List<Rlp> result = [];
+        List<byte[]> result = [];
         for (int index = 0; items.HasNext; index++)
         {
             ReadOnlySpan<byte> item = items.ReadEncodedItem();
-            result.Add(new Rlp(path.Length > 0 && path[0] == index ? WithTrailingItem(item, path[1..]) : item.ToArray()));
+            result.Add(path.Length > 0 && path[0] == index ? WithTrailingItem(item, path[1..]) : item.ToArray());
         }
 
-        if (path.Length == 0) result.Add(Rlp.OfEmptyByteArray);
-        return Rlp.Encode(result.ToArray()).Bytes;
+        if (path.Length == 0) result.Add(RlpTestHelper.OfEmptyByteArray);
+        return RlpTestHelper.EncodeSequence(result.ToArray());
     }
 }

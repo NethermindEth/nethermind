@@ -36,7 +36,7 @@ internal class EraReaderTests
             {
                 Hash256 root = ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, MainnetSpecProvider.Instance.GetSpec(block.Header), block.ReceiptsRoot);
                 block.Header.ReceiptsRoot = root;
-                block.Header.Hash = Keccak.Compute(headerDecoder.Encode(block.Header).Bytes);
+                block.Header.Hash = Keccak.Compute(headerDecoder.Encode(block.Header));
                 addedContents.Add((block, receipts));
                 await builder.Add(block, receipts);
             }

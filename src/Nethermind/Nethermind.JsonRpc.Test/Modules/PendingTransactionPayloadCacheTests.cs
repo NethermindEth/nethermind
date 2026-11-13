@@ -2,14 +2,20 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules;
@@ -21,7 +27,7 @@ public class PendingTransactionPayloadCacheTests
     [TestCase(false, TestName = "WithoutHash")]
     public void Get_ForTheSameTransaction_SerializesItOnceWhenItHasAHash(bool withHash)
     {
-        PendingTransactionPayloadCache payloads = new(MainnetSpecProvider.Instance);
+        PendingTransactionPayloadCache payloads = new(MainnetSpecProvider.Instance, Substitute.For<IBlockFinder>(), 12);
         payloads.AddSubscriber();
         Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
         if (!withHash) transaction.Hash = null;
@@ -39,9 +45,57 @@ public class PendingTransactionPayloadCacheTests
     }
 
     [Test]
+    public void Get_ForAFrameTransactionBeforeEip8141_ReportsTheGasItHasOnceIncluded()
+    {
+        Transaction tx = FrameTxTestFrames.FrameTx(TestItem.AddressA, [], FrameTxTestFrames.SelfVerify(100_000), FrameTxTestFrames.Pay(100_000));
+        tx.GasLimit = 200_000;
+        tx.Hash = TestItem.KeccakA;
+        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Prague.Instance), (new ForkActivation(0, 12), Eip8141Prototype.Instance));
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.Head.Returns(Build.A.Block.WithNumber(0).WithTimestamp(0).TestObject);
+        PendingTransactionPayloadCache payloads = new(specProvider, blockFinder, 12);
+
+        ulong includedGas = TransactionForRpc.FromTransaction(tx, new TransactionForRpcContext(
+            specProvider.ChainId, TestItem.KeccakB, 1, 0, 12, 1, specProvider.GetSpec(1, 12))).Gas!.Value;
+        string json = Encoding.UTF8.GetString(payloads.Get(tx).Utf8Json);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(includedGas, Is.Not.EqualTo(tx.GasLimit), "the included gas must differ from the summed limits for the check to tell them apart");
+            Assert.That(json, Does.Contain($"\"gas\":\"0x{includedGas:x}\""), "a pending frame tx reports the gas the next block, which enables EIP-8141, will include it with");
+        }
+    }
+
+    [Test]
+    public void Get_AfterThePendingSpecChanges_ReportsTheGasOfTheNewSpec()
+    {
+        Transaction tx = FrameTxTestFrames.FrameTx(TestItem.AddressA, [], FrameTxTestFrames.SelfVerify(100_000), new TxFrame(FrameMode.Default, FrameFlags.None, TestItem.AddressD, 100_000, 1, default));
+        tx.GasLimit = 400_000;
+        tx.Hash = TestItem.KeccakA;
+        OverridableReleaseSpec beforeSpec = new(Eip8141Prototype.Instance) { IsEip2780Enabled = false };
+        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Prague.Instance), (new ForkActivation(0, 6), beforeSpec), (new ForkActivation(0, 12), Eip8141Prototype.Instance));
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.Head.Returns(Build.A.Block.WithNumber(0).WithTimestamp(0).TestObject);
+        PendingTransactionPayloadCache payloads = new(specProvider, blockFinder, 6);
+        payloads.AddSubscriber();
+
+        string beforeChange = Encoding.UTF8.GetString(payloads.Get(tx).Utf8Json);
+        Block nextHead = Build.A.Block.WithNumber(1).WithTimestamp(6).TestObject;
+        blockFinder.Head.Returns(nextHead);
+        string afterChange = Encoding.UTF8.GetString(payloads.Get(tx).Utf8Json);
+
+        ulong gasUnderNewSpec = TransactionForRpc.FromTransaction(tx, TransactionForRpcContext.ForPending(specProvider, nextHead.Header, 6)).Gas!.Value;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(beforeChange, Is.Not.EqualTo(afterChange), "the two specs must price the transaction differently for the check to tell them apart");
+            Assert.That(afterChange, Does.Contain($"\"gas\":\"0x{gasUnderNewSpec:x}\""), "a payload stored under the earlier pending spec must not be reused");
+        }
+    }
+
+    [Test]
     public void Get_ForAnotherTransaction_SerializesItsOwnPayload()
     {
-        PendingTransactionPayloadCache payloads = new(MainnetSpecProvider.Instance);
+        PendingTransactionPayloadCache payloads = new(MainnetSpecProvider.Instance, Substitute.For<IBlockFinder>(), 12);
         payloads.AddSubscriber();
         Transaction first = Build.A.Transaction.WithNonce(0).SignedAndResolved().TestObject;
         Transaction second = Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject;
@@ -54,7 +108,7 @@ public class PendingTransactionPayloadCacheTests
     [Test]
     public void RemoveSubscriber_ForTheLastSubscriber_DropsTheKeptTransactions()
     {
-        PendingTransactionPayloadCache payloads = new(MainnetSpecProvider.Instance);
+        PendingTransactionPayloadCache payloads = new(MainnetSpecProvider.Instance, Substitute.For<IBlockFinder>(), 12);
         Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
         payloads.AddSubscriber();
         payloads.AddSubscriber();
@@ -71,14 +125,14 @@ public class PendingTransactionPayloadCacheTests
     [Test]
     public void RemoveSubscriber_ForTheLastSubscriber_DropsAStoreThatReadTheTableBefore()
     {
-        PendingTransactionPayloadCache payloads = new(MainnetSpecProvider.Instance);
+        PendingTransactionPayloadCache payloads = new(MainnetSpecProvider.Instance, Substitute.For<IBlockFinder>(), 12);
         Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
         payloads.AddSubscriber();
-        AssociativeCache<ValueHash256, byte[]> readBeforeUnsubscribe = payloads.Generation;
+        AssociativeCache<ValueHash256, PendingTransactionPayloadCache.Entry> readBeforeUnsubscribe = payloads.Generation;
         byte[] late = payloads.Get(transaction).Utf8Json;
         payloads.RemoveSubscriber();
 
-        readBeforeUnsubscribe.Set(transaction.Hash!.ValueHash256, late);
+        readBeforeUnsubscribe.Set(transaction.Hash!.ValueHash256, new PendingTransactionPayloadCache.Entry(null, late));
         payloads.AddSubscriber();
 
         Assert.That(payloads.Get(transaction).Utf8Json, Is.Not.SameAs(late), "a send loop storing after the last subscriber left must not refill the table");
@@ -87,7 +141,7 @@ public class PendingTransactionPayloadCacheTests
     [Test]
     public void Get_WithoutSubscribers_DoesNotKeepThePayload()
     {
-        PendingTransactionPayloadCache payloads = new(MainnetSpecProvider.Instance);
+        PendingTransactionPayloadCache payloads = new(MainnetSpecProvider.Instance, Substitute.For<IBlockFinder>(), 12);
         Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
 
         SerializedJson first = payloads.Get(transaction);

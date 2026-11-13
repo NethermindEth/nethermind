@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
@@ -28,9 +29,11 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             IJsonRpcDuplexClient jsonRpcDuplexClient,
             ITxPool? txPool,
             ISpecProvider? specProvider,
+            IBlockFinder blockFinder,
+            ulong secondsPerSlot,
             ILogManager? logManager,
             TransactionsOption? options = null)
-            : this(jsonRpcDuplexClient, txPool, new PendingTransactionPayloadCache(specProvider ?? throw new ArgumentNullException(nameof(specProvider))), logManager, options)
+            : this(jsonRpcDuplexClient, txPool, new PendingTransactionPayloadCache(specProvider ?? throw new ArgumentNullException(nameof(specProvider)), blockFinder, secondsPerSlot), logManager, options)
         {
         }
 

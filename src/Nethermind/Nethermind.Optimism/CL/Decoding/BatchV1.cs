@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -63,9 +62,7 @@ public sealed class BatchV1
                 IsFirstBlockInEpoch = isNewOrigin,
                 EpochNumber = currentL1OriginNum,
                 Timestamp = currentTimestamp,
-                Transactions = userTransactions
-                    .Select(static t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping).Bytes)
-                    .ToArray()
+                Transactions = Array.ConvertAll(userTransactions, static t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping))
             };
             txIdx += BlockTxCounts[i];
             currentTimestamp += blockTime;

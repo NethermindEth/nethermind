@@ -238,7 +238,7 @@ public class ExecutionPayloadTests
                 Assert.That(tx.Nonce, Is.EqualTo((ulong)i));
                 Assert.That(tx.Data, Is.SequenceEqualTo(data));
                 Assert.That(tx.Hash, Is.EqualTo(expectedHashes[i]));
-                Assert.That(TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes, Is.EqualTo(encoded[i]));
+                Assert.That(TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping), Is.EqualTo(encoded[i]));
             }
         }
     }
@@ -431,7 +431,7 @@ public class ExecutionPayloadTests
         };
 
         Transaction tx = builder.SignedAndResolved().TestObject;
-        return TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
+        return TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping);
     }
 
     private static byte[][] BuildDiverseBatch(int size)
@@ -455,7 +455,7 @@ public class ExecutionPayloadTests
             };
 
             Transaction tx = builder.SignedAndResolved(TestItem.PrivateKeys[i % TestItem.PrivateKeys.Length]).TestObject;
-            bytes.Add(TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes);
+            bytes.Add(TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping));
         }
         return [.. bytes];
     }
@@ -484,7 +484,7 @@ public class ExecutionPayloadTests
         // Re-encoding catches any field-mixup a thread-unsafe decoder could produce.
         for (int i = 0; i < size; i++)
         {
-            byte[] roundTripped = TxDecoder.Instance.Encode(result.Data![i], RlpBehaviors.SkipTypedWrapping).Bytes;
+            byte[] roundTripped = TxDecoder.Instance.Encode(result.Data![i], RlpBehaviors.SkipTypedWrapping);
             Assert.That(roundTripped, Is.EqualTo(encoded[i]), $"Mismatch at index {i}");
         }
     }

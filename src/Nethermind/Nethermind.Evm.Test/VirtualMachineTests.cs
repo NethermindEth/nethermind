@@ -2402,7 +2402,7 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
             Assert.That(depth1Stack, Is.Not.Null);
             Assert.That(Machine.FrameCache[1]!.DataStack, Is.SameAs(depth1Stack));
             Assert.That(IsDisposed(depth1), Is.True, "a cached frame is disposed between uses");
-            Assert.That(Machine.EnvironmentCache[1]!.ExecutingAccount, Is.Null, "a cached environment is cleared between uses");
+            Assert.That(Machine.EnvironmentCache[1]!.IsInUse, Is.False, "a cached environment is released between uses");
         }
     }
 
@@ -2824,7 +2824,7 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
             {
                 Assert.That(Machine.FrameCache[depth], Is.SameAs(before[depth - 1]), $"depth {depth} kept");
                 Assert.That(IsDisposed(before[depth - 1]), Is.True, $"depth {depth} disposed by the unwind");
-                Assert.That(Machine.EnvironmentCache[depth]!.ExecutingAccount, Is.Null, $"env at depth {depth} released");
+                Assert.That(Machine.EnvironmentCache[depth]!.IsInUse, Is.False, $"env at depth {depth} released");
             }
         }
 
@@ -2873,7 +2873,7 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
             {
                 Assert.That(Machine.FrameCache[depth], Is.SameAs(before[depth - 1]), $"depth {depth} kept");
                 Assert.That(IsDisposed(before[depth - 1]), Is.True, $"depth {depth} released");
-                Assert.That(Machine.EnvironmentCache[depth]!.ExecutingAccount, Is.Null, $"env at depth {depth} released");
+                Assert.That(Machine.EnvironmentCache[depth]!.IsInUse, Is.False, $"env at depth {depth} released");
             }
         }
 

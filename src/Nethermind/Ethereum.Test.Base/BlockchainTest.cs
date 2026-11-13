@@ -26,7 +26,7 @@ namespace Ethereum.Test.Base
         /// </summary>
         public UInt256? TransitionTerminalTotalDifficulty { get; set; }
         public Hash256? LastBlockHash { get; set; }
-        public Rlp? GenesisRlp { get; set; }
+        public byte[]? GenesisRlp { get; set; }
 
         public TestBlockJson[]? Blocks { get; set; }
         public TestBlockHeaderJson? GenesisBlockHeader { get; set; }

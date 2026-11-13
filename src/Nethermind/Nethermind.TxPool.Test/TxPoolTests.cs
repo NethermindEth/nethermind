@@ -367,8 +367,8 @@ namespace Nethermind.TxPool.Test
         {
             _txPool = CreatePool();
             Transaction tx = Build.A.Transaction.WithGasLimit(1).SignedAndResolved().TestObject;
-            Rlp encoded = TxDecoder.Instance.Encode(tx);
-            RlpReader reader = new(encoded.Bytes);
+            byte[] encoded = TxDecoder.Instance.Encode(tx);
+            RlpReader reader = new(encoded);
             Transaction duplicate = TxDecoder.Instance.Decode(ref reader);
 
             AcceptTxResult invalid = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, peer: null, out bool canRecycleInvalid);
@@ -392,7 +392,7 @@ namespace Nethermind.TxPool.Test
                 .WithMaxFeePerBlobGas(1).WithBlobVersionedHashes(1).TestObject;
             source.Signature = new Signature(1, 2, 27);
             source.NetworkWrapper = new ShardBlobNetworkWrapper([blob], [], [], ProofVersion.V0);
-            RlpReader reader = new(TxDecoder.Instance.Encode(source, RlpBehaviors.InMempoolForm).Bytes);
+            RlpReader reader = new(TxDecoder.Instance.Encode(source, RlpBehaviors.InMempoolForm));
             return TxDecoder.Instance.Decode(ref reader, RlpBehaviors.InMempoolForm
                 | (pooled ? RlpBehaviors.PoolBlobBuffers : RlpBehaviors.None));
         }
@@ -953,6 +953,35 @@ namespace Nethermind.TxPool.Test
             {
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
                 Assert.That(_txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True);
+            }
+        }
+
+        /// <remarks>
+        /// Where the spec does not validate chain ids, the pool accepts a legacy signature made for another chain, and block
+        /// processing recovers its signer over the chain id the signature carries.
+        /// </remarks>
+        [Test]
+        public void Legacy_signature_for_another_chain_is_pooled_as_its_signer_where_chain_ids_are_not_validated()
+        {
+            TestSpecProvider provider = new(new OverridableReleaseSpec(SpuriousDragon.Instance) { ValidateChainId = false });
+            Transaction transaction = Build.A.Transaction
+                .WithTo(TestItem.AddressB)
+                .WithValue(0)
+                .Signed(new EthereumEcdsa(_specProvider.ChainId + 1), TestItem.PrivateKeyA)
+                .TestObject;
+            // The address the signature gives when recovered without its own chain id; funded, so only the sender decides.
+            Address otherAddress = _ethereumEcdsa.RecoverAddress(transaction);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            EnsureSenderBalance(otherAddress, UInt256.MaxValue);
+            _txPool = CreatePool(specProvider: provider);
+
+            AcceptTxResult result = _txPool.SubmitTx(transaction, TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(otherAddress, Is.Not.EqualTo(TestItem.AddressA), "precondition: without its chain id the signature recovers another address");
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(transaction.SenderAddress, Is.EqualTo(TestItem.AddressA));
             }
         }
 
