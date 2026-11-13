@@ -661,7 +661,7 @@ public class JsonRpcServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            await pool.DidNotReceive().GetModule(Arg.Any<bool>());
+            await pool.DidNotReceive().GetModule(Arg.Any<bool>(), Arg.Any<CancellationToken>());
             pool.DidNotReceive().ReturnModule(Arg.Any<IEthRpcModule>());
             Assert.That(rpcModule.ReceivedCalls(), Is.Empty);
             logger.Received(1).Error(Arg.Any<string>(), Arg.Any<ArgumentException>());
@@ -1534,14 +1534,14 @@ public class JsonRpcServiceTests
     public async Task Non_array_params_are_rejected_before_module_rental([Values("{\"a\":1}", "\"bar\"", "1", "true")] string rawParams)
     {
         IRpcModulePool<INetRpcModule> pool = Substitute.For<IRpcModulePool<INetRpcModule>>();
-        pool.GetModule(Arg.Any<bool>()).Throws(new LimitExceededException("Too many requests"));
+        pool.GetModule(Arg.Any<bool>(), Arg.Any<CancellationToken>()).Throws(new LimitExceededException("Too many requests"));
         using JsonDocument parameters = JsonDocument.Parse(rawParams);
         JsonRpcRequest request = new() { JsonRpc = "2.0", Method = "net_version", Params = parameters.RootElement, Id = 67 };
 
         using JsonRpcResponse response = SendRequestWithPool(pool, request);
 
         AssertInvalidParamsWithoutData(response, "non-array args");
-        await pool.DidNotReceive().GetModule(Arg.Any<bool>());
+        await pool.DidNotReceive().GetModule(Arg.Any<bool>(), Arg.Any<CancellationToken>());
         pool.DidNotReceive().ReturnModule(Arg.Any<INetRpcModule>());
     }
 
