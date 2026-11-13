@@ -99,6 +99,11 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
             _ => throw new ArgumentOutOfRangeException(nameof(opcode))
         };
 
+    /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs BLOCKHASH on the guest handler.</summary>
+    /// <remarks>The guest handler falls back to the shared one, so only the table shows that it is installed.</remarks>
+    internal static bool HashesBlockThroughGuestHandlerForTests(IReleaseSpec spec) =>
+        (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)Instruction.BLOCKHASH] == (nint)AsTableEntry(&RawCalliHelper.ExecuteBlockHash);
+
     /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs CALL, STATICCALL and DELEGATECALL on the guest handler.</summary>
     /// <remarks>Built apart from the shared table, which keeps the handlers of the first fork it prepares.</remarks>
     internal static bool CallsThroughGuestHandlerForTests(IReleaseSpec spec)
