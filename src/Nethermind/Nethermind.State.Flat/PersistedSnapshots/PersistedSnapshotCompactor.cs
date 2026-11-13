@@ -229,9 +229,8 @@ public class PersistedSnapshotCompactor(
                 }
             });
 
-        // Every boundary — CompactSize and large alike — lands on a CompactSize multiple, so each
-        // needs its CompactSized snapshot for RocksDB (persistence advances one CompactSize
-        // per step); both kinds are collected in compactSizeBoundaries above. Each is guarded like a
+        // At each boundary, CompactSize and large alike (both kinds are collected in compactSizeBoundaries above),
+        // try to build a CompactSize-wide snapshot for persistence and reads. Each is guarded like a
         // bucket item, so one boundary's failure does not skip the later ones; that boundary's chunk is then
         // read and persisted through the narrower windows, which make reads slower (more of them, one-line filters).
         foreach (StateId boundary in compactSizeBoundaries)
@@ -248,8 +247,9 @@ public class PersistedSnapshotCompactor(
                 continue;
             }
 
-            // Only now on to the >CompactSize merge: that much larger write is not started right after this window's
-            // write failed, and it adds only a skip-pointer and a shared filter that reads and persistence do without.
+            // Only now on to the >CompactSize merge: that potentially much larger write is not started right
+            // after this window's step failed, and it adds only a skip-pointer and a shared filter that reads and
+            // persistence do without.
             if (_schedule.IsLargeCompactionBoundary(boundary.BlockNumber)) largeBoundaries?.Add(boundary);
         }
 
