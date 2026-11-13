@@ -378,9 +378,10 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test]
-        public void BlockProductionTransactionPicker_counts_generic_stark_claims_only_against_the_list_bound([Values(16, 17)] int count)
+        public void BlockProductionTransactionPicker_takes_more_generic_stark_claims_than_one_batch_leaf_holds()
         {
             // EIP-8288 batch leaves: leanSTARK claims have no cap of their own beyond the proof's dependency list.
+            const int count = Eip8288Constants.MaxClaimsPerBatchLeaf + 1;
             FrameDependency[] dependencies = Enumerable.Range(0, count).Select(index =>
                 new FrameDependency(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute(index.ToString()), default)).ToArray();
             Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
