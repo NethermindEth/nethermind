@@ -203,10 +203,10 @@ public class InclusionListProofsTests
         }
     }
 
-    // ethereum/EIPs#12664 Test Case: batch claim and leaf payment entries impose no obligation even under a covering proof; the
-    // list's other entries bind as before.
+    // ethereum/EIPs#12664 Test Cases: batch claim and leaf payment entries impose no obligation. Under an ordinary proof the
+    // covered and dependency-free entries bind; a proof naming either new scheme covers no entry, and only dependency-free ones bind.
     [Test]
-    public void Batch_claim_and_payment_entries_never_bind()
+    public void Batch_claim_and_payment_entries_never_bind([Values] bool proofNamesNewSchemes)
     {
         IReleaseSpec spec = new OverridableReleaseSpec(Eip8288Prototype.Instance) { IsEipBatchedDependencyPricingEnabled = true };
         Transaction ordinary = new();
@@ -215,11 +215,19 @@ public class InclusionListProofsTests
         Transaction payment = ValidDependencyFrame(ValueKeccak.Compute("payment"), Eip8288Constants.LeanStarkLeafPaymentScheme);
         Transaction[] entries = [claim, covered, payment, ordinary];
         Assert.That(entries.All(tx => InclusionListProofValidator.IsStaticallyValid(tx, spec)), Is.True);
-        CommitteeInclusionList list = new(entries)
+        Transaction[] proven = proofNamesNewSchemes ? entries : [covered];
+        List<FrameDependency> proofDeps = Eip8288Dependencies.Canonicalize(
+            proven.SelectMany(static tx => Eip8288Dependencies.ForTransaction(tx, FrameTxSigHash.ComputeValue)));
+        CommitteeInclusionList[] lists = [new(entries, [1], Encode(proofDeps))];
+
+        new InclusionListProofService(new FakeLeanProofVerifier(true)).ResolveObligations(lists, spec);
+
+        using (Assert.EnterMultipleScope())
         {
-            VerifiedProofDeps = entries.SelectMany(static tx => Eip8288Dependencies.ForTransaction(tx, FrameTxSigHash.ComputeValue)).ToHashSet()
-        };
-        Assert.That(InclusionListProofValidator.SelectEligible([], [list], spec), Is.EqualTo(new[] { covered, ordinary }));
+            Assert.That(lists[0].VerifiedProofDeps, proofNamesNewSchemes ? Is.Null : Is.Not.Null);
+            Assert.That(InclusionListProofValidator.SelectEligible([], lists, spec),
+                Is.EqualTo(proofNamesNewSchemes ? new[] { ordinary } : new[] { covered, ordinary }));
+        }
     }
 
     [Test]
