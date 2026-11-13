@@ -144,7 +144,8 @@ public class BlockValidator(
             return false;
         }
 
-        if (!RecursiveStarkAggregator.VerifyStarkCheck(_leanProofVerifier, Eip8288Verifier.For(spec), dependencies.Count, in computed.ValueHash256,
+        ValueHash256 statement = Eip8288Dependencies.ProofStatement(dependencies, computed.ValueHash256);
+        if (!RecursiveStarkAggregator.VerifyStarkCheck(_leanProofVerifier, Eip8288Verifier.For(spec), dependencies.Count, in statement,
                 block.StarkProof))
         {
             error = BlockErrorMessages.InvalidRecursiveStark;

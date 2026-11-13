@@ -190,8 +190,7 @@ public static class Eip8288Dependencies
     // Closes the digest of a list holding leanSTARK dependencies: a 96-byte preimage, which no list of 64-byte entries shares.
     private static ReadOnlySpan<byte> LeanStarkDepsDomain => "eip8288/leanstark-deps\0\0\0\0\0\0\0\0\0\0"u8;
 
-    // Closes a finalized digest of a list holding batch claims (ethereum/EIPs#12664), which no intermediate statement uses.
-    private static ReadOnlySpan<byte> BatchedDepsDomain => "eip8288/batched-deps\0\0\0\0\0\0\0\0\0\0\0\0"u8;
+    private static ReadOnlySpan<byte> BatchFinalTag => "EIP8288:batch-final:v1"u8;
 
     /// <summary>Spec <c>get_deps_hash</c>, the <c>block_deps_hash</c> and <c>deps_hash</c> a recursive STARK is verified against:
     /// <c>DEPS_HASH</c> over the canonical dependencies' 64-byte <c>data_hash || key</c> entries, where a leanSPHINCS key is the raw
@@ -203,8 +202,8 @@ public static class Eip8288Dependencies
     /// <c>DEPS_HASH(get_deps_hash(leanSPHINCS) || get_deps_hash(leanSTARK) || "eip8288/leanstark-deps")</c>, the domain
     /// zero-padded to 32 bytes, as the pinned recursive guest does. That 96-byte preimage is never a list of 64-byte entries,
     /// and the position of an entry's list binds its scheme. The batch-pricing EIP's schemes (ethereum/EIPs#12664) join the
-    /// leanSTARK list keyed by <see cref="SchemeKey"/>, sorted by entry, and a list holding a batch claim closes with
-    /// <c>"eip8288/batched-deps"</c>: the digest of a finalized proof, whose batch claims the guest checks are paid.</remarks>
+    /// leanSTARK list keyed by <see cref="SchemeKey"/>, sorted by entry; a block holding either is proved against
+    /// <see cref="ProofStatement"/>.</remarks>
     public static ValueHash256 ComputeDepsHash(IReadOnlyList<FrameDependency> dependencies)
     {
         dependencies = Canonicalize(dependencies);
@@ -217,7 +216,7 @@ public static class Eip8288Dependencies
         Span<byte> joined = stackalloc byte[96];
         sphincs.Bytes.CopyTo(joined);
         ListDepsHash(dependencies, sphincs: false).Bytes.CopyTo(joined[32..]);
-        (HasBatchClaim(dependencies) ? BatchedDepsDomain : LeanStarkDepsDomain).CopyTo(joined[64..]);
+        LeanStarkDepsDomain.CopyTo(joined[64..]);
         return ValueKeccak.Compute(joined);
     }
 
@@ -267,11 +266,21 @@ public static class Eip8288Dependencies
         return ValueKeccak.Compute(preimage);
     }
 
-    private static bool HasBatchClaim(IReadOnlyList<FrameDependency> dependencies)
+    /// <summary>The statement a block proof over <paramref name="dependencies"/>, of digest <paramref name="depsHash"/>, verifies
+    /// against: ethereum/EIPs#12664 <c>get_batch_final_hash(depsHash)</c> when they hold a batch claim or leaf payment, else
+    /// <paramref name="depsHash"/> itself.</summary>
+    /// <remarks>Only a finalized proof, whose batch claims the guest checks are paid, has the former; a plain proof never
+    /// satisfies a block with either scheme.</remarks>
+    public static ValueHash256 ProofStatement(IReadOnlyList<FrameDependency> dependencies, in ValueHash256 depsHash) =>
+        HasBatchScheme(dependencies) ? BatchFinalHash(depsHash) : depsHash;
+
+    /// <summary>ethereum/EIPs#12664 <c>get_batch_final_hash(deps_hash) = DEPS_HASH("EIP8288:batch-final:v1" || deps_hash)</c>.</summary>
+    public static ValueHash256 BatchFinalHash(in ValueHash256 depsHash)
     {
-        foreach (FrameDependency dependency in dependencies)
-            if (dependency.Scheme == Eip8288Constants.BatchedLeanStarkScheme) return true;
-        return false;
+        Span<byte> preimage = stackalloc byte[BatchFinalTag.Length + 32];
+        BatchFinalTag.CopyTo(preimage);
+        depsHash.Bytes.CopyTo(preimage[BatchFinalTag.Length..]);
+        return ValueKeccak.Compute(preimage);
     }
 
     private static bool HasBatchScheme(IReadOnlyList<FrameDependency> dependencies)

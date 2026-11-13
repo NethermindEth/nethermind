@@ -35,11 +35,12 @@ public static class Eip8288Constants
     /// lists.</remarks>
     public const int MaxClaimsPerBatchLeaf = 256;
 
-    /// <summary>EIP-8288 <c>MAX_INNER_PROOFS_PER_STEP</c> (provisional): direct leanSTARK proofs, batch leaves and recursive
-    /// proofs verified by one aggregation step together.</summary>
+    /// <summary>EIP-8288 <c>MAX_INNER_PROOFS_PER_STEP</c> (provisional, 16 in the EIP): direct leanSTARK proofs, batch leaves and
+    /// recursive proofs verified by one aggregation step together.</summary>
     /// <remarks>Raw leanSPHINCS witnesses do not count. Discarded and redundant inputs do; the pinned guest verifies up to this
-    /// many in one execution.</remarks>
-    public const int MaxInnerProofsPerStep = 16;
+    /// many in one execution. Chosen with the leaf bounds, as EIPs#12654 requires: in the pinned guest 13 maximum-resource leaves
+    /// fit a step's 2^30 committed-witness bound and 14 do not; 12 leaves room for the leanSPHINCS signatures a step may add.</remarks>
+    public const int MaxInnerProofsPerStep = 12;
 
     /// <summary>Maximum instructions of a leanSTARK program the pinned generic verifier accepts.</summary>
     /// <remarks>An EIP-8288 verifier resource bound counting the compiled program padded to a power of two, support code
@@ -136,6 +137,6 @@ public static class Eip8288Constants
     /// <see cref="LeanStarkLeafPaymentScheme"/> payment, and finalizes them.</remarks>
     public static ReadOnlySpan<byte> BatchedAggregatedVk => _batchedAggregatedVk;
 
-    private static readonly byte[] _aggregatedVk = Convert.FromHexString("3b6e9d979f13287c356ac1196c867272a5122246ad0edcb95b6f3cf3fd8c285e");
-    private static readonly byte[] _batchedAggregatedVk = Convert.FromHexString("04f0bf838fc0e274268d110e63d527f5f586a387dfc17c1e9ab6dd54e1b5c4f0");
+    private static readonly byte[] _aggregatedVk = Convert.FromHexString("86110d71079c44fbae0561223e7201108097b80f34aea13a23e9b96be9b7adaa");
+    private static readonly byte[] _batchedAggregatedVk = Convert.FromHexString("df3a802307fe9831311df1288864e5ab0e672b19a224f6b23a374fc873a69828");
 }

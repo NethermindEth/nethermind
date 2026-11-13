@@ -139,7 +139,7 @@ public class FrameDependencyTests
     }
 
     // ethereum/EIPs#12664: batch claims and leaf payments join the leanSTARK list keyed keccak256(scheme word || key), sorted by
-    // entry; a list with a batch claim closes under "eip8288/batched-deps", the digest only a finalized proof carries.
+    // entry; a block holding either is proved against get_batch_final_hash of that digest, others against the digest.
     [TestCase(true)]
     [TestCase(false)]
     public void Batch_pricing_schemes_hash_under_their_scheme_keys(bool withClaim)
@@ -159,11 +159,15 @@ public class FrameDependencyTests
             .OrderBy(static e => e.Item1).ThenBy(static e => e.Item2)];
         byte[] list = ValueKeccak.Compute([.. entries.SelectMany(static e => e.Data.ToByteArray().Concat(e.Key.ToByteArray()))]).ToByteArray();
         byte[] domain = new byte[32];
-        (withClaim ? "eip8288/batched-deps"u8 : "eip8288/leanstark-deps"u8).CopyTo(domain);
+        "eip8288/leanstark-deps"u8.CopyTo(domain);
         byte[] sphincs = ValueKeccak.Compute([.. VectorA.DataHash.ToByteArray(), .. VectorA.VerificationKey.ToByteArray()]).ToByteArray();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Eip8288Dependencies.ComputeDepsHash(deps), Is.EqualTo(ValueKeccak.Compute([.. sphincs, .. list, .. domain])));
+            ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(deps);
+            Assert.That(depsHash, Is.EqualTo(ValueKeccak.Compute([.. sphincs, .. list, .. domain])));
+            Assert.That(Eip8288Dependencies.ProofStatement(deps, depsHash),
+                Is.EqualTo(ValueKeccak.Compute([.. "EIP8288:batch-final:v1"u8, .. depsHash.ToByteArray()])));
+            Assert.That(Eip8288Dependencies.ProofStatement([VectorA, ordinary], depsHash), Is.EqualTo(depsHash));
             Assert.That(Eip8288Dependencies.ComputeDepsHash([claim]), Is.Not.EqualTo(Eip8288Dependencies.ComputeDepsHash([ordinary])));
             Assert.That(Eip8288Dependencies.RecursiveStarkGas(new Transaction
             {

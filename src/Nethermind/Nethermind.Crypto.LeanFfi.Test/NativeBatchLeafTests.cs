@@ -81,7 +81,7 @@ public class NativeBatchLeafTests
         void Proves(IReadOnlyList<Transaction> block, bool valid)
         {
             List<FrameDependency> deps = Dependencies(block);
-            ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(deps);
+            ValueHash256 depsHash = Eip8288Dependencies.ProofStatement(deps, Eip8288Dependencies.ComputeDepsHash(deps));
             BatchLeafInput leaf = new(key, claims, deps, leafProof);
             if (!valid)
             {
@@ -90,9 +90,14 @@ public class NativeBatchLeafTests
                 return;
             }
             byte[] proof = Native.ProveRecursiveStark(depsHash, Eip8288Constants.BatchedAggregatedVk, new() { BatchLeaves = [leaf] });
-            Assert.That(Native.VerifyRecursiveStark(depsHash, Eip8288Constants.BatchedAggregatedVk, proof), Is.True);
-            Assert.That(() => Native.ProveRecursiveStark(depsHash, Eip8288Constants.AggregatedVk, new() { BatchLeaves = [leaf] }),
-                Throws.InvalidOperationException);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Native.VerifyRecursiveStark(depsHash, Eip8288Constants.BatchedAggregatedVk, proof), Is.True);
+                Assert.That(Native.VerifyRecursiveStark(Eip8288Dependencies.ComputeDepsHash(deps), Eip8288Constants.BatchedAggregatedVk, proof),
+                    Is.False, "a finalized proof is no plain one");
+                Assert.That(() => Native.ProveRecursiveStark(depsHash, Eip8288Constants.AggregatedVk, new() { BatchLeaves = [leaf] }),
+                    Throws.InvalidOperationException);
+            }
         }
 
         Proves([members[0], members[1], sponsor], true);

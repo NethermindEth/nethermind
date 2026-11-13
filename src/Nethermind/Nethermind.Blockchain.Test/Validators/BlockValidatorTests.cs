@@ -349,6 +349,46 @@ public class BlockValidatorTests
         return new BlockValidator(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance, verifier);
     }
 
+    // ethereum/EIPs#12664 Test Case: a block with a batch claim or leaf payment is verified against get_batch_final_hash of its
+    // block_deps_hash, which stays the plain digest; a plain proof is rejected there, and other blocks keep the plain statement.
+    [TestCase(Eip8288Constants.LeanStarkScheme, false, true)]
+    [TestCase(Eip8288Constants.LeanStarkScheme, true, false)]
+    [TestCase(Eip8288Constants.BatchedLeanStarkScheme, true, true)]
+    [TestCase(Eip8288Constants.BatchedLeanStarkScheme, false, false)]
+    [TestCase(Eip8288Constants.LeanStarkLeafPaymentScheme, true, true)]
+    [TestCase(Eip8288Constants.LeanStarkLeafPaymentScheme, false, false)]
+    public void Eip8288_batch_blocks_verify_the_finalized_statement(byte scheme, bool finalizedProof, bool valid)
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        FrameDependency dependency = new(scheme, ValueKeccak.Compute("claim"), ValueKeccak.Compute("key"));
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            SenderAddress = TestItem.AddressA,
+            Frames = [new TxFrame(FrameMode.DepVerify, 0, null, dependency.VerificationGas, UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))],
+            FrameSignatures = [],
+        };
+        tx.Hash = tx.CalculateHash();
+        Block block = Build.A.Block.WithParent(parent).WithEncodedSize(Eip7934Constants.DefaultMaxRlpBlockSize).WithTransactions(tx).TestObject;
+        ValueHash256 depsHash = Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue);
+        block.StarkProof = [1];
+        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), new Hash256(depsHash));
+        StatementLeanProofVerifier verifier = new(finalizedProof ? Eip8288Dependencies.BatchFinalHash(depsHash) : depsHash);
+
+        bool result = CreateEip8288Validator(verifier).ValidateSuggestedBlock(block, parent, out string? error);
+
+        Assert.That(result, Is.EqualTo(valid), error);
+    }
+
+    private sealed class StatementLeanProofVerifier(ValueHash256 accepted) : ILeanProofVerifier
+    {
+        public void EnsureAvailable() { }
+        public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => false;
+        public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => false;
+        public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof) => depsHash == accepted;
+        public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input) => [];
+    }
+
     private sealed class FixedLeanProofVerifier(bool result) : ILeanProofVerifier
     {
         public int RecursiveCalls { get; private set; }
