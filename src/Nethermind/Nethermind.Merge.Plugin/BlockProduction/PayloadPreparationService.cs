@@ -305,7 +305,6 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                 // If we reach here, we still have time for an improvement build (which still responds to cancellation)
                 if (txPoolBehindParent)
                 {
-                    txPoolBehindParent = false;
                     if (await WaitForTxPoolHead(parentHeader.Hash, dynamicDelay, token)) break;
                 }
                 else
@@ -426,14 +425,14 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
     /// <returns><see langword="true"/> if it did; <see langword="false"/> on timeout or cancellation.</returns>
     private async Task<bool> WaitForTxPoolHead(Hash256? hash, TimeSpan timeout, CancellationToken token)
     {
-        using CancellationTokenSource timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(token);
-        timeoutCts.CancelAfter(timeout);
+        using CancellationTokenSource waitCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+        waitCts.CancelAfter(timeout);
         TxPoolHead head = Volatile.Read(ref _txPoolHead);
         while (head.Hash != hash)
         {
             try
             {
-                await head.Replaced.Task.WaitAsync(timeoutCts.Token);
+                await head.Replaced.Task.WaitAsync(waitCts.Token);
             }
             catch (OperationCanceledException)
             {

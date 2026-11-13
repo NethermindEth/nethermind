@@ -265,18 +265,20 @@ public class PayloadPreparationServiceTests
         }
     }
 
-    [Test]
+    [TestCase(5000, 0)]
+    [TestCase(200, 1000)]
     [CancelAfter(30000)]
-    public void Improvement_rebuilds_without_new_transactions_once_the_tx_pool_has_processed_the_parent()
+    public void Improvement_rebuilds_without_new_transactions_once_the_tx_pool_has_processed_the_parent(int improvementDelayMs, int catchUpAfterMs)
     {
         RecordingBlockImprovementContextFactory factory = new();
         // No transaction arrives, so the improvement loop would otherwise wait out its delay and skip the rebuild.
         ITxPool txPool = Substitute.For<ITxPool>();
         using TestPayloadPreparationService service = new(Substitute.For<IBlockProducer>(), txPool, factory,
-            Substitute.For<ITimerFactory>(), LimboLogs.Instance, TimePerSlot, TimeSpan.FromSeconds(5));
+            Substitute.For<ITimerFactory>(), LimboLogs.Instance, TimePerSlot, TimeSpan.FromMilliseconds(improvementDelayMs));
 
         service.StartPreparingPayload(ParentHeader, Attributes);
         Assert.That(() => factory.Contexts.Count, Is.EqualTo(1).After(5000, 10));
+        Thread.Sleep(catchUpAfterMs);
 
         txPool.TxPoolHeadChanged += Raise.Event<EventHandler<Block>>(txPool, Build.A.Block.WithNumber(5).TestObject);
         txPool.TxPoolHeadChanged += Raise.Event<EventHandler<Block>>(txPool, Build.A.Block.WithHeader(ParentHeader).TestObject);
