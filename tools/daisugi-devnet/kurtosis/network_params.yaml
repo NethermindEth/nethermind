@@ -1,6 +1,6 @@
 participants:
   - el_type: nethermind
-    el_image: daisugi/nethermind:215f799b13
+    el_image: daisugi/nethermind:3dc22c2550
     el_extra_params:
       - --TxPool.FrameTxMaxVerifyGas=500000
     cl_type: lighthouse

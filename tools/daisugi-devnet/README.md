@@ -11,9 +11,9 @@ Local fresh-genesis devnet in the Daisugi topology: one Nethermind, one Lighthou
 
 | Component | Source | Revision |
 | --- | --- | --- |
-| Nethermind | `NethermindEth/nethermind` #15829 `feature/eip8288-upstream-leanvm`, native Lean backend from `Nethermind.Crypto.Lean` 0.12.0.21 (nugettest) | `215f799b136347109a55f962748068ec0d2fee54` (interim pin) |
+| Nethermind | `NethermindEth/nethermind` `feature/eip8288-lean` (#15829 merged), native Lean backend from `Nethermind.Crypto.Lean` 0.12.0.21 (nugettest) | `3dc22c25502774fcf3d8c4ea7a773092caf34a95` |
 | Lighthouse | `sigp/lighthouse` v8.2.2 | `e423a66763bb1bd780492d635123f208d80c3538`, archive sha256 `3f3193218d8f7228889505eb508c6176ea60a964fcfb072eb248787c1e242d4c` |
-| Lighthouse patch series | `asanso/AA-PQ` PR #10, `aggregation/frames/consensus/eip8288-lean` | `bf371db2b674597d584fd2825b6a1109609e2ead` |
+| Lighthouse patch series | `asanso/AA-PQ` PR #10, `aggregation/frames/consensus/eip8288-lean` | `0ba239eeb277fdfb8bae29bcfa16081977c91d72` |
 | Genesis generator | `ethpandaops/ethereum-genesis-generator` | `sha256:287f596b9a4ee72ae2aff194682f854650a8861542e489259adf0975cc0c9a54` |
 
 ## Prerequisites
@@ -29,8 +29,8 @@ From the repository root.
 Nethermind, from a checkout of the pinned revision with its stock `Dockerfile`; it restores the native Lean library from `Nethermind.Crypto.Lean` and builds no Rust:
 
 ```bash
-git worktree add ../nethermind-el 215f799b136347109a55f962748068ec0d2fee54
-docker build --build-arg COMMIT_HASH=215f799b136347109a55f962748068ec0d2fee54 -t daisugi/nethermind:215f799b13 ../nethermind-el
+git worktree add ../nethermind-el 3dc22c25502774fcf3d8c4ea7a773092caf34a95
+docker build --build-arg COMMIT_HASH=3dc22c25502774fcf3d8c4ea7a773092caf34a95 -t daisugi/nethermind:3dc22c2550 ../nethermind-el
 ```
 
 Lighthouse, from the pinned archive plus the AA-PQ patch series:
@@ -40,7 +40,7 @@ B=tools/daisugi-devnet/build; LH=e423a66763bb1bd780492d635123f208d80c3538; mkdir
 curl -fsSL -o $B/lighthouse.tar.gz https://github.com/sigp/lighthouse/archive/$LH.tar.gz
 echo "3f3193218d8f7228889505eb508c6176ea60a964fcfb072eb248787c1e242d4c  $B/lighthouse.tar.gz" | sha256sum -c
 git clone -q https://github.com/asanso/AA-PQ $B/AA-PQ
-git -C $B/AA-PQ fetch -q origin bf371db2b674597d584fd2825b6a1109609e2ead && git -C $B/AA-PQ checkout -q FETCH_HEAD
+git -C $B/AA-PQ fetch -q origin 0ba239eeb277fdfb8bae29bcfa16081977c91d72 && git -C $B/AA-PQ checkout -q FETCH_HEAD
 # apply.py checks the archive, each patch and the resulting tree against sources.lock.json.
 python3 $B/AA-PQ/aggregation/frames/consensus/eip8288-lean/apply.py lighthouse $B/lighthouse.tar.gz $B/lighthouse
 docker build -f $B/lighthouse/Dockerfile.reproducible --platform linux/amd64 \
@@ -55,7 +55,7 @@ Set this in every shell that runs the scripts:
 ```bash
 cd tools/daisugi-devnet
 export COMPOSE_FILE=docker-compose.yml:lighthouse-distroless.override.yml
-NM=daisugi/nethermind:215f799b13 LH=daisugi/lighthouse:eip8288-lean
+NM=daisugi/nethermind:3dc22c2550 LH=daisugi/lighthouse:eip8288-lean
 ```
 
 ## 2. Genesis and fork schedule
@@ -163,7 +163,7 @@ until curl -s -X POST -H 'content-type: application/json' --data "{\"jsonrpc\":\
 tools/daisugi-devnet/kurtosis/run.sh daisugi
 ```
 
-- Needs Kurtosis, the two images from step 1 (`daisugi/nethermind:215f799b13`, `daisugi/lighthouse:eip8288-lean`), plus .NET SDK as for `pq.sh`. The Docker host must be no Swarm node: Kurtosis matches its network by the name `bridge` and fails on `docker_gwbridge`. Its engine binds host port 8081.
+- Needs Kurtosis, the two images from step 1 (`daisugi/nethermind:3dc22c2550`, `daisugi/lighthouse:eip8288-lean`), plus .NET SDK as for `pq.sh`. The Docker host must be no Swarm node: Kurtosis matches its network by the name `bridge` and fails on `docker_gwbridge`. Its engine binds host port 8081.
 - `network_params.yaml`: Nethermind and Lighthouse images, 64 validators, 2 s slots, chain ID 1337, Electra at genesis, the 8141 verifier and 8250 nonce manager predeploys, and `DAISUGI_FORK_EPOCH` 3.
 - `genesis.Dockerfile` wraps the pinned genesis generator. After it runs, the wrapper sets `eip8141PrototypeTime` to genesis, sets `eip8288PrototypeTime` to the Daisugi fork slot, drops the Osaka/Amsterdam/Bogota times, appends `DAISUGI_FORK_VERSION` `0xd0000038`, and removes `SECONDS_PER_SLOT`. Lighthouse rejects `SECONDS_PER_SLOT` together with `SLOT_DURATION_MS`.
 - `lighthouse.Dockerfile` adds `/bin/sh` to the distroless Lighthouse image and clears its `ENTRYPOINT`. ethereum-package starts the beacon node with `sh -c` itself, and the validator client runs `lighthouse vc ...` with the image entrypoint.
@@ -210,5 +210,4 @@ rm -rf run/devnet-1
 - Not configured: Osaka/Fulu (PeerDAS), Amsterdam, Gloas, Bogota, adaptive aggregation.
 - Single host, Docker network only. No bootnodes, discovery, public ENRs or multi-host topology yet.
 - arm64: no runtime-validated Lighthouse image (lock `binarySha256` for arm64 is `null`); Nethermind arm64 not run here.
-- Nethermind pin is interim; the Lean library is built locally until the NuGet package exists.
 - `proof.sh`, `sync.sh` and `sync-check.sh` default to fixed container names and host ports, so without `EL_CONTAINER`/`BN_CONTAINER` or `EL_RPC_PORTS`/`CL_HTTP_PORTS` they run only against the default `DEVNET_PREFIX`.
