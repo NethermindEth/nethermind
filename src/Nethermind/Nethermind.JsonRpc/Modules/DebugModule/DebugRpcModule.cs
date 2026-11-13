@@ -157,17 +157,6 @@ public class DebugRpcModule(
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
     }
 
-    private Result<Transaction> ToTraceCallTransaction(TransactionForRpc call, IReleaseSpec spec)
-    {
-        if (call is not BlobTransactionForRpc { MaxFeePerBlobGas.IsZero: true })
-            return call.ToCallTransaction(spec, jsonRpcConfig.GasCap);
-
-        // Geth permits a zero blob fee cap for simulated calls; retain all other RPC validation.
-        Result<Transaction> result = BlobTransactionForRpc.WithZeroBlobFeeCapOmitted(call).ToCallTransaction(spec, jsonRpcConfig.GasCap);
-        if (result) result.Data.MaxFeePerBlobGas = UInt256.Zero;
-        return result;
-    }
-
     private bool IsTransactionIndexingInProgress()
     {
         if (receiptConfig.TxLookupLimit == ulong.MaxValue || syncProgressResolver.IsFastBlocksReceiptsFinished()) return false;
@@ -221,7 +210,8 @@ public class DebugRpcModule(
             return ResultWrapper<GethLikeTxTrace>.Fail(overrideError, ErrorCodes.InvalidInput);
 
         // The call converts against the fork it runs in, which a block override can change.
-        IReleaseSpec spec = specProvider.GetSpec(options?.BlockOverrides?.ApplyTo(header) ?? header);
+        BlockHeader callHeader = options?.BlockOverrides?.ApplyTo(header) ?? header;
+        IReleaseSpec spec = specProvider.GetSpec(callHeader);
         if (options?.StateOverrides is { } stateOverrides)
         {
             Address[] addresses = new Address[stateOverrides.Count];
@@ -245,7 +235,7 @@ public class DebugRpcModule(
         if (call is LegacyTransactionForRpc { ChainId: { } requestedChainId } && requestedChainId != specProvider.ChainId)
             return ResultWrapper<GethLikeTxTrace>.Fail($"chainId does not match node's (have={requestedChainId}, want={specProvider.ChainId})", ErrorCodes.InvalidInput);
 
-        Result<Transaction> txResult = ToTraceCallTransaction(call, spec);
+        Result<Transaction> txResult = call.ToTraceCallTransaction(spec, jsonRpcConfig.GasCap, callHeader.BaseFeePerGas);
         if (!txResult.Success(out Transaction? tx, out string? error))
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(error, ErrorCodes.InvalidInput);
