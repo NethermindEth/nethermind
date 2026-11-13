@@ -3,7 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 ENCLAVE=${1:-daisugi}
 PACKAGE=${PACKAGE:-github.com/ethpandaops/ethereum-package@5795b77e65235ad223d4d3b413b2739190bf60cc}
-NETHERMIND_IMAGE=${NETHERMIND_IMAGE:-daisugi/nethermind:1e5d1fa8a0}
+NETHERMIND_IMAGE=${NETHERMIND_IMAGE:-daisugi/nethermind:215f799b13}
 LIGHTHOUSE_IMAGE=${LIGHTHOUSE_IMAGE:-daisugi/lighthouse:eip8288-lean}
 PQ_KEY=${PQ_KEY:-bcdf20249abf0ed6d944c0288fad489e33f66b3960d9e6229c1cd214ed3bbe31}
 G=$PWD/run/$ENCLAVE
@@ -13,7 +13,7 @@ docker image inspect "$NETHERMIND_IMAGE" >/dev/null
 docker build -q --build-arg LIGHTHOUSE_IMAGE="$LIGHTHOUSE_IMAGE" -f lighthouse.Dockerfile -t daisugi-kurtosis/lighthouse:eip8288-lean .
 docker build -q -f genesis.Dockerfile -t daisugi-kurtosis/genesis-generator:287f596b .
 mkdir -p run
-sed "s|el_image: .*|el_image: $NETHERMIND_IMAGE|" network_params.yaml > "$ARGS"
+sed -e "s|el_image: .*|el_image: $NETHERMIND_IMAGE|" -e "s|^\( *\)count: .*|\1count: ${NODES:-1}|" network_params.yaml > "$ARGS"
 kurtosis enclave rm -f "$ENCLAVE" >/dev/null 2>&1 || true
 trap 'kurtosis enclave rm -f "$ENCLAVE"' EXIT
 kurtosis run --enclave "$ENCLAVE" "$PACKAGE" --args-file "$ARGS"
@@ -36,7 +36,7 @@ for v in EL_RPC_PORT CL_HTTP_PORT EL_CONTAINER BN_CONTAINER VC_CONTAINER; do
   [[ ${!v} =~ ^[^[:space:]]+$ ]] || { echo "FAIL: $v='${!v}' in enclave $ENCLAVE"; exit 1; }
   echo "$v=${!v}"
 done
-export EL_RPC_PORT CL_HTTP_PORT EL_CONTAINER BN_CONTAINER VC_CONTAINER
+export KURTOSIS_ENCLAVE=$ENCLAVE EL_RPC_PORT CL_HTTP_PORT EL_CONTAINER BN_CONTAINER VC_CONTAINER
 for _ in $(seq 60); do
   curl -sf "http://127.0.0.1:$CL_HTTP_PORT/eth/v1/beacon/genesis" >/dev/null && break
   sleep 2

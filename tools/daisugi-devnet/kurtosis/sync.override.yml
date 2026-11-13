@@ -1,0 +1,5 @@
+# Joins the sync pairs to a Kurtosis enclave's network instead of the Compose devnet's.
+networks:
+  daisugi-devnet:
+    name: ${SYNC_NETWORK:?}
+    external: true

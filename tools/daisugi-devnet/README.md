@@ -11,26 +11,26 @@ Local fresh-genesis devnet in the Daisugi topology: one Nethermind, one Lighthou
 
 | Component | Source | Revision |
 | --- | --- | --- |
-| Nethermind | `NethermindEth/nethermind` `feature/eip8288-lean` (this branch's base) | `1e5d1fa8a071b0b329a243437d00026e1d4a72df` (interim pin) |
+| Nethermind | `NethermindEth/nethermind` #15829 `feature/eip8288-upstream-leanvm`, native Lean backend from `Nethermind.Crypto.Lean` 0.12.0.21 (nugettest) | `215f799b136347109a55f962748068ec0d2fee54` (interim pin) |
 | Lighthouse | `sigp/lighthouse` v8.2.2 | `e423a66763bb1bd780492d635123f208d80c3538`, archive sha256 `3f3193218d8f7228889505eb508c6176ea60a964fcfb072eb248787c1e242d4c` |
-| Lighthouse patch series | `asanso/AA-PQ` PR #10, `aggregation/frames/consensus/eip8288-lean` | `f41267e01565bf39ea0c08b27cfeffed18c1822c` |
+| Lighthouse patch series | `asanso/AA-PQ` PR #10, `aggregation/frames/consensus/eip8288-lean` | `bf371db2b674597d584fd2825b6a1109609e2ead` |
 | Genesis generator | `ethpandaops/ethereum-genesis-generator` | `sha256:287f596b9a4ee72ae2aff194682f854650a8861542e489259adf0975cc0c9a54` |
 
 ## Prerequisites
 
 - Linux x86_64 (the only validated platform), Docker with Compose 2.24 or later (`!reset`/`!override` tags).
 - `jq`, `curl`, `openssl`, `python3`, `git`.
-- For `proof.sh`: .NET SDK from `global.json` (10.0.300+) and Rust via `rustup` (`tools/lean-ffi/rust-toolchain.toml` selects the toolchain).
+- For `proof.sh` and `pq.sh`: .NET SDK from `global.json` (10.0.300+). `pq.sh` takes the package's prebuilt signer through `FX`; without it, Rust via `rustup` builds one from `tools/lean-ffi`.
 
 ## 1. Build the images
 
 From the repository root.
 
-Nethermind, with the native Lean library built from `tools/lean-ffi`:
+Nethermind, from a checkout of the pinned revision with its stock `Dockerfile`; it restores the native Lean library from `Nethermind.Crypto.Lean` and builds no Rust:
 
 ```bash
-docker build -f tools/daisugi-devnet/images/nethermind.Dockerfile \
-  --build-arg COMMIT_HASH=1e5d1fa8a071b0b329a243437d00026e1d4a72df -t daisugi/nethermind:1e5d1fa8a0 .
+git worktree add ../nethermind-el 215f799b136347109a55f962748068ec0d2fee54
+docker build --build-arg COMMIT_HASH=215f799b136347109a55f962748068ec0d2fee54 -t daisugi/nethermind:215f799b13 ../nethermind-el
 ```
 
 Lighthouse, from the pinned archive plus the AA-PQ patch series:
@@ -40,14 +40,14 @@ B=tools/daisugi-devnet/build; LH=e423a66763bb1bd780492d635123f208d80c3538; mkdir
 curl -fsSL -o $B/lighthouse.tar.gz https://github.com/sigp/lighthouse/archive/$LH.tar.gz
 echo "3f3193218d8f7228889505eb508c6176ea60a964fcfb072eb248787c1e242d4c  $B/lighthouse.tar.gz" | sha256sum -c
 git clone -q https://github.com/asanso/AA-PQ $B/AA-PQ
-git -C $B/AA-PQ fetch -q origin f41267e01565bf39ea0c08b27cfeffed18c1822c && git -C $B/AA-PQ checkout -q FETCH_HEAD
+git -C $B/AA-PQ fetch -q origin bf371db2b674597d584fd2825b6a1109609e2ead && git -C $B/AA-PQ checkout -q FETCH_HEAD
 # apply.py checks the archive, each patch and the resulting tree against sources.lock.json.
 python3 $B/AA-PQ/aggregation/frames/consensus/eip8288-lean/apply.py lighthouse $B/lighthouse.tar.gz $B/lighthouse
 docker build -f $B/lighthouse/Dockerfile.reproducible --platform linux/amd64 \
   --build-arg RUST_TARGET=x86_64-unknown-linux-gnu -t daisugi/lighthouse:eip8288-lean $B/lighthouse
 ```
 
-- Expected Lighthouse binary sha256 (`/lighthouse` in the image): `b249885cf90b06d772ce1eb94757e816c0910f514d200610f328991961d88eb2`.
+- Expected Lighthouse binary sha256 (`/lighthouse` in the image): `109c9a91e128db8cb17be6939c5f614b1ae494a68da53814e9300bc5299ccd3d`.
 - The reproducible image is distroless with `ENTRYPOINT /lighthouse`. The compose commands start with `lighthouse`, so every compose call needs the override below.
 
 Set this in every shell that runs the scripts:
@@ -55,14 +55,8 @@ Set this in every shell that runs the scripts:
 ```bash
 cd tools/daisugi-devnet
 export COMPOSE_FILE=docker-compose.yml:lighthouse-distroless.override.yml
-NM=daisugi/nethermind:1e5d1fa8a0 LH=daisugi/lighthouse:eip8288-lean
+NM=daisugi/nethermind:215f799b13 LH=daisugi/lighthouse:eip8288-lean
 ```
-
-### Native Lean fallback
-
-- Nethermind at this pin has no NuGet package for `libnethermind_lean.so`, and the stock `Dockerfile` omits it. A node without it stops at `InitializeLeanBackend`.
-- Until the `Nethermind.Crypto.Lean` package is pinned upstream: `images/nethermind.Dockerfile` builds the library with `cargo` in its `lean` stage, and test builds use `-p:BuildLeanFfi=true`.
-- Once the package lands, build the stock `Dockerfile` instead and drop `images/nethermind.Dockerfile`. Rerun every step below against the new image.
 
 ## 2. Genesis and fork schedule
 
@@ -163,30 +157,31 @@ until curl -s -X POST -H 'content-type: application/json' --data "{\"jsonrpc\":\
 
 ## Kurtosis
 
-`kurtosis/run.sh` starts the same single-node devnet as a Kurtosis enclave with [ethereum-package](https://github.com/ethpandaops/ethereum-package). It runs `check.sh` against the enclave, then sends `PQ_SERIES` PQ transaction series with `pq.sh`. The enclave is removed on exit, also when `kurtosis run` fails. `KEEP=1` keeps it after a successful `kurtosis run`.
+`kurtosis/run.sh` starts the same devnet as a Kurtosis enclave, with `NODES` Nethermind + Lighthouse + validator nodes, with [ethereum-package](https://github.com/ethpandaops/ethereum-package). It runs `check.sh` against the enclave, then sends `PQ_SERIES` PQ transaction series with `pq.sh`. The enclave is removed on exit, also when `kurtosis run` fails. `KEEP=1` keeps it after a successful `kurtosis run`.
 
 ```bash
 tools/daisugi-devnet/kurtosis/run.sh daisugi
 ```
 
-- Needs Kurtosis, the two images from step 1 (`daisugi/nethermind:1e5d1fa8a0`, `daisugi/lighthouse:eip8288-lean`), plus .NET SDK and Rust as for `proof.sh`.
+- Needs Kurtosis, the two images from step 1 (`daisugi/nethermind:215f799b13`, `daisugi/lighthouse:eip8288-lean`), plus .NET SDK as for `pq.sh`. The Docker host must be no Swarm node: Kurtosis matches its network by the name `bridge` and fails on `docker_gwbridge`. Its engine binds host port 8081.
 - `network_params.yaml`: Nethermind and Lighthouse images, 64 validators, 2 s slots, chain ID 1337, Electra at genesis, the 8141 verifier and 8250 nonce manager predeploys, and `DAISUGI_FORK_EPOCH` 3.
 - `genesis.Dockerfile` wraps the pinned genesis generator. After it runs, the wrapper sets `eip8141PrototypeTime` to genesis, sets `eip8288PrototypeTime` to the Daisugi fork slot, drops the Osaka/Amsterdam/Bogota times, appends `DAISUGI_FORK_VERSION` `0xd0000038`, and removes `SECONDS_PER_SLOT`. Lighthouse rejects `SECONDS_PER_SLOT` together with `SLOT_DURATION_MS`.
 - `lighthouse.Dockerfile` adds `/bin/sh` to the distroless Lighthouse image and clears its `ENTRYPOINT`. ethereum-package starts the beacon node with `sh -c` itself, and the validator client runs `lighthouse vc ...` with the image entrypoint.
 - `run.sh` writes `NETHERMIND_IMAGE` into a copy of `network_params.yaml` under `kurtosis/run/`. It finds ports and containers by the enclave's UUID and stops when any of them is missing or the beacon API is not up within 120 s.
 - The PQ key defaults to the first account ethereum-package prefunds from its default mnemonic.
-- Env: `PACKAGE` (pinned ethereum-package commit), `NETHERMIND_IMAGE`, `LIGHTHOUSE_IMAGE`, `PQ_SERIES` (`3`), `PQ_KEY`, `KEEP`.
+- Env: `PACKAGE` (pinned ethereum-package commit), `NETHERMIND_IMAGE`, `LIGHTHOUSE_IMAGE`, `NODES` (`1`), `PQ_SERIES` (`3`), `PQ_KEY`, `KEEP`.
+- `kurtosis/sync.sh <enclave>` (after `KEEP=1`, with `NODES` 2 or more: a single-node enclave's beacon runs `--target-peers=0`): a late-joining Nethermind + Lighthouse pair on the enclave's network, the Compose `genesis` sync pair of step 6, peered only with node 1. Then compare it with the enclave nodes: `EL_RPC_PORTS="<node ELs> 28547" CL_HTTP_PORTS="<node beacon APIs> 25053" ./sync-check.sh <proof block>...` (the enclave's dynamic ports, node 1 first).
 
 ### PQ transaction series
 
-`pq.sh` builds the leanSig signer (`tools/lean-ffi` example `fixtures`, key from seed `[42; 32]`, test-only) and `pq-tx.cs`, which encodes frame transactions against this tree. One series, all through `eth_sendProofWrapper`:
+`pq.sh` uses the leanSig signer `FX` (the `testing/runtimes/linux-x64/native/fixtures` binary of the `Nethermind.Crypto.Lean` package, or else the `tools/lean-ffi` example `fixtures` it builds; key from seed `[42; 32]`, test-only) and `pq-tx.cs`, which encodes frame transactions against this tree. One series, all through `eth_sendProofWrapper`:
 
 1. A frame transaction with a leanSig dependency on nonce key 0. Its corrupted wrapper is rejected, the valid one is included.
 2. The same on a random nonce key, sequence 0. Before it is sent, a sequence 1 transaction is rejected as `keyed nonce sequence not current`. After sequence 0 is included, sequence 1 is sent and included.
 3. A byte-identical resend of sequence 0 is rejected as `already known`; a new transaction on sequence 0 as `keyed nonce sequence not current`.
 
 - Every included receipt must have status `0x1`. Expected last line: `PASS pq: blocks <b0> <b1> <b2>`.
-- Env: `PQ_KEY`, `CHAIN_ID`, `OUT` (fresh directory) are required; `PORT` (`8545`), `FX`, `TO`, `NONCE`, `NONCE_KEY`, `RECEIPT_TRIES` (`60`).
+- Env: `PQ_KEY`, `CHAIN_ID`, `OUT` (fresh directory) are required; `PORT` (`8545`), `FX`, `PQ_SCHEME` (`sphincs`; `stark` or `mixed` need the package signer in `FX`), `TO`, `NONCE`, `NONCE_KEY`, `RECEIPT_TRIES` (`60`).
 
 ## Environment variables
 
@@ -211,9 +206,9 @@ rm -rf run/devnet-1
 
 ## Known gaps
 
-- Wallet, RPC gateway and explorer in AA-PQ still use the live chain's formats: wrapper `[dep, [witness]]` instead of `[[deps], [witnesses]]`, a 24-field header with the proof in it instead of 25 fields with the proof in the body, keccak instead of BLAKE2s dependency hash. The gateway also accepts only 7-field frame transactions while the wallet sends 8. None of them works against this devnet yet. This devnet tests clients only.
+- AA-PQ's wallet, RPC gateway and explorer run against this devnet only with their `eip8288-lean` profile (asanso/AA-PQ #12, guide in #13); its default `daisugi-v1` profile keeps the live chain's formats.
 - Not configured: Osaka/Fulu (PeerDAS), Amsterdam, Gloas, Bogota, adaptive aggregation.
 - Single host, Docker network only. No bootnodes, discovery, public ENRs or multi-host topology yet.
 - arm64: no runtime-validated Lighthouse image (lock `binarySha256` for arm64 is `null`); Nethermind arm64 not run here.
 - Nethermind pin is interim; the Lean library is built locally until the NuGet package exists.
-- `proof.sh`, `sync.sh` and `sync-check.sh` read fixed container names and host ports, so they run only against the default `DEVNET_PREFIX`.
+- `proof.sh`, `sync.sh` and `sync-check.sh` default to fixed container names and host ports, so without `EL_CONTAINER`/`BN_CONTAINER` or `EL_RPC_PORTS`/`CL_HTTP_PORTS` they run only against the default `DEVNET_PREFIX`.

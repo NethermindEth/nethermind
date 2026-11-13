@@ -7,7 +7,6 @@ ROOT="$(cd "$KIT/../.." && pwd)"
 : "${CHAIN_ID:?set CHAIN_ID}"
 : "${OUT:?set OUT to a fresh output dir}"
 PORT="${PORT:-8545}"
-FX="${FX:-$ROOT/tools/lean-ffi/target/release/examples/fixtures}"
 TO="${TO:-0x000000000000000000000000000000000000dEaD}"
 NONCE="${NONCE:-}"
 NONCE_KEY="${NONCE_KEY:-$(( $(od -An -tu4 -N4 /dev/urandom) % 4000000000 + 1000 ))}"
@@ -18,16 +17,22 @@ die() { echo "FAIL: $*" >&2; exit 1; }
 [ ! -e "$OUT" ] || die "$OUT exists; use a fresh OUT"
 mkdir -p "$OUT"
 
-(cd "$ROOT/tools/lean-ffi" && cargo build -q --release --locked --example fixtures) > "$OUT/fixtures.build.log" 2>&1 \
-  || die "fixtures build failed: $(tail -20 "$OUT/fixtures.build.log")"
+# FX can be the signer the Nethermind.Crypto.Lean package ships in testing/runtimes/<rid>/native; otherwise build it.
+if [ -z "${FX:-}" ]; then
+  [ "${PQ_SCHEME:-sphincs}" = sphincs ] || die "PQ_SCHEME=$PQ_SCHEME needs FX: only the package signer proves leanSTARK"
+  FX=$ROOT/tools/lean-ffi/target/release/examples/fixtures
+  (cd "$ROOT/tools/lean-ffi" && cargo build -q --release --locked --example fixtures) > "$OUT/fixtures.build.log" 2>&1 \
+    || die "fixtures build failed: $(tail -20 "$OUT/fixtures.build.log")"
+fi
 dotnet build --disable-build-servers -c release "$KIT/pq-tx.cs" > "$OUT/pq-tx.build.log" 2>&1 \
   || die "pq-tx build failed: $(tail -20 "$OUT/pq-tx.build.log")"
 [ -x "$FX" ] || die "$FX is not an executable fixtures signer"
 PQTX=(dotnet run -c release --no-build --file "$KIT/pq-tx.cs" --)
 
 call() {
-  curl -sf -XPOST -H 'content-type: application/json' "http://127.0.0.1:$PORT" \
-    -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"$1\",\"params\":[\"$2\"${3:+,\"$3\"}]}" || die "$1 to port $PORT failed"
+  # The body goes through stdin: a leanSTARK wrapper exceeds the argument size limit.
+  printf '{"jsonrpc":"2.0","id":1,"method":"%s","params":["%s"%s]}' "$1" "$2" "${3:+,\"$3\"}" \
+    | curl -sf -XPOST -H 'content-type: application/json' "http://127.0.0.1:$PORT" --data-binary @- || die "$1 to port $PORT failed"
 }
 
 build() {

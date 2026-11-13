@@ -28,13 +28,15 @@ p = b[0]; i = 1 if p < 0xf8 else 1 + p - 0xf7; n = 0
 while i < len(b): i = item(i); n += 1
 print(n)' "$1"; }
 fail() { echo "FAIL: $*"; exit 1; }
+# A Kurtosis container (<service>--<uuid>) logs to the enclave's aggregator; `docker logs` shows only its first lines.
+logs() { if [[ -n ${KURTOSIS_ENCLAVE:-} ]]; then kurtosis service logs -a "$KURTOSIS_ENCLAVE" "${1%%--*}"; else docker logs "$1"; fi 2>&1; }
 
 echo "== genesis"
 until curl -sf -o /dev/null -X POST -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}' $EL; do sleep 2; done
 EL_GENESIS=$(curl -sf -X POST -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"eth_getBlockByNumber","params":["0x0",false]}' $EL | jq -r .result.hash)
 [[ "$EL_GENESIS" == "$(jq -r .elGenesisHash "$P")" ]] || fail "EL genesis $EL_GENESIS differs from CL genesis state"
 echo "EL genesis hash $EL_GENESIS matches the CL genesis state"
-docker logs $EL_CONTAINER 2>&1 | grep -q "InitializeLeanBackend.*failed" && fail "Lean backend failed to start"
+logs $EL_CONTAINER | grep -q "InitializeLeanBackend.*failed" && fail "Lean backend failed to start"
 echo "Lean backend: InitializeLeanBackend did not fail"
 
 echo "== waiting for finality past epoch $EPOCH"
@@ -60,7 +62,7 @@ fork_number=$(curl -sf $CL/eth/v2/beacon/blocks/$FORK_SLOT | jq -r .data.message
 echo "slots $FORK_SLOT..$head_slot, EL blocks $fork_number..$head_number, missed $(( head_slot - FORK_SLOT - (head_number - fork_number) ))"
 
 echo "== errors"
-echo "nethermind: $(docker logs $EL_CONTAINER 2>&1 | grep -ciE 'invalid block|rejected|exception') invalid/rejected/exception lines"
-echo "beacon: $(docker logs $BN_CONTAINER 2>&1 | grep -cE ' (ERROR|CRIT) ') ERROR/CRIT lines"
-echo "validator: $(docker logs $VC_CONTAINER 2>&1 | grep -cE ' (ERROR|CRIT) ') ERROR/CRIT lines, $(docker logs $VC_CONTAINER 2>&1 | grep -c 'Successfully published block') blocks published"
+echo "nethermind: $(logs $EL_CONTAINER | grep -ciE 'invalid block|rejected|exception') invalid/rejected/exception lines"
+echo "beacon: $(logs $BN_CONTAINER | grep -cE ' (ERROR|CRIT) ') ERROR/CRIT lines"
+echo "validator: $(logs $VC_CONTAINER | grep -cE ' (ERROR|CRIT) ') ERROR/CRIT lines, $(logs $VC_CONTAINER | grep -c 'Successfully published block') blocks published"
 echo "PASS"
