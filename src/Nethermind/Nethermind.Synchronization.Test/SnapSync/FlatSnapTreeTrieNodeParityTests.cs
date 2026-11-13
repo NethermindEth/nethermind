@@ -76,7 +76,7 @@ public class FlatSnapTreeTrieNodeParityTests
         if (storage)
         {
             StorageTree storageTree = new(store.GetTrieStore(owner.Path.ToCommitment()), LimboLogs.Instance);
-            foreach (ValueHash256 key in keys) storageTree.Set(key, Rlp.Encode(key.Bytes[..4]).Bytes, false);
+            foreach (ValueHash256 key in keys) storageTree.Set(key, Rlp.Encode(key.Bytes[..4]), false);
             storageTree.Commit();
             owner = new(owner.Path, owner.Account!.WithChangedStorageRoot(storageTree.RootHash));
             state.Set(owner.Path.ToCommitment(), owner.Account);

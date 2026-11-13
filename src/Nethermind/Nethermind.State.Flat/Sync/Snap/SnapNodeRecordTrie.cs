@@ -58,7 +58,6 @@ internal sealed class SnapNodeRecordTrie(IPersistence.IPersistenceReader reader,
 
     /// <summary>Sets the entries over the proof's nodes and computes the root hash.</summary>
     /// <exception cref="MissingTrieNodeException">An entry reaches a node that is neither in the proof nor persisted.</exception>
-    /// <exception cref="TrieNodeException">A proof node is not a valid node.</exception>
     public void BulkSet<TEntry>(IReadOnlyList<TEntry> entries) where TEntry : ISnapEntry
     {
         _category = 0;
@@ -131,7 +130,7 @@ internal sealed class SnapNodeRecordTrie(IPersistence.IPersistenceReader reader,
     {
         SnapProofNode node = nodes[index];
         ReadOnlySpan<byte> rlp = proofs[node.ProofIndex];
-        if (!NodeRecordCodec.TryDecode(rlp, out NodeRecordKind kind, out ushort hashMask)) throw new TrieNodeException("Invalid proof node.", node.Path, new Hash256(ValueKeccak.Compute(rlp)));
+        NodeRecordCodec.Decode(rlp, out NodeRecordKind kind, out ushort hashMask);
 
         bool isTrimmed = node.ClearedChildren != 0;
         for (int i = index + 1; !isTrimmed && i < nodes.Count; i++)
@@ -165,7 +164,7 @@ internal sealed class SnapNodeRecordTrie(IPersistence.IPersistenceReader reader,
         if (isBranch) NodeRlp.WriteBranch(children, trimmed);
         else NodeRlp.WriteExtension(key, children[0], trimmed);
 
-        NodeRecordCodec.TryDecode(trimmed, out NodeRecordKind trimmedKind, out ushort trimmedHashMask);
+        NodeRecordCodec.Decode(trimmed, out NodeRecordKind trimmedKind, out ushort trimmedHashMask);
         return WriteRecord(trimmed, trimmedKind, trimmedHashMask, children);
     }
 
