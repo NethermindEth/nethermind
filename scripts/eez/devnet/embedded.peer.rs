@@ -1,6 +1,7 @@
 use std::{
     collections::BTreeMap,
     fs,
+    ops::AsyncFnMut,
     path::Path,
     time::{Duration, Instant},
 };
@@ -378,29 +379,65 @@ impl Probe {
     }
 
     async fn code(&mut self, hash: B256) -> Result<usize> {
-        let request_id = self.next_id();
-        let response: ByteCodesMessage = self
-            .exchange(
-                &self.snap.clone(),
-                4,
-                5,
-                GetByteCodesMessage {
-                    request_id,
-                    hashes: vec![hash],
-                    response_bytes: 1024 * 1024,
-                },
-            )
-            .await?;
-        ensure!(
-            response.request_id == request_id && response.codes.len() == 1,
-            "code response identity/count"
-        );
-        ensure!(
-            !response.codes[0].is_empty() && keccak256(&response.codes[0]) == hash,
-            "wire bytecode hash differs"
-        );
-        Ok(response.codes[0].len())
+        receive_code(hash, async || {
+            let request_id = self.next_id();
+            let response: ByteCodesMessage = self
+                .exchange(
+                    &self.snap.clone(),
+                    4,
+                    5,
+                    GetByteCodesMessage {
+                        request_id,
+                        hashes: vec![hash],
+                        response_bytes: 1024 * 1024,
+                    },
+                )
+                .await?;
+            Ok((request_id, response))
+        })
+        .await
     }
+}
+
+async fn receive_code(
+    hash: B256,
+    mut request: impl AsyncFnMut() -> Result<(u64, ByteCodesMessage)>,
+) -> Result<usize> {
+    for attempt in 1..=4 {
+        let (request_id, response) = request().await?;
+        if let Some(length) = validated_code_size(&response, request_id, hash)? {
+            return Ok(length);
+        }
+        eprintln!(
+            "SNAP bytecode unavailable: hash={hash}, request_id={request_id}, count=0, attempt={attempt}/4"
+        );
+    }
+    bail!("SNAP peer did not provide bytecode {hash} after four empty responses")
+}
+
+fn validated_code_size(
+    response: &ByteCodesMessage,
+    request_id: u64,
+    hash: B256,
+) -> Result<Option<usize>> {
+    ensure!(
+        response.request_id == request_id,
+        "code response ID mismatch: expected {request_id}, actual {}, hash={hash}",
+        response.request_id
+    );
+    if response.codes.is_empty() {
+        return Ok(None);
+    }
+    ensure!(
+        response.codes.len() == 1,
+        "code response count: expected 1, actual {}, request_id={request_id}, hash={hash}",
+        response.codes.len()
+    );
+    ensure!(
+        !response.codes[0].is_empty() && keccak256(&response.codes[0]) == hash,
+        "wire bytecode hash differs: request_id={request_id}, expected={hash}"
+    );
+    Ok(Some(response.codes[0].len()))
 }
 
 pub(super) async fn rpc(
@@ -600,7 +637,7 @@ async fn verified_tip(client: &reqwest::Client, url: &str, observation: &Value) 
 
 #[cfg(test)]
 mod tests {
-    use super::verified_tip;
+    use super::{ByteCodesMessage, receive_code, verified_tip};
     use alloy_primitives::B256;
     use http_body_util::{BodyExt, Full};
     use hyper::{
@@ -613,6 +650,67 @@ mod tests {
     use serde_json::{Value, json};
     use std::{convert::Infallible, time::Duration};
     use tokio::net::TcpListener;
+
+    #[tokio::test]
+    async fn bytecode_fetch_retries_empty_replies_and_enforces_its_attempt_bound() {
+        let bytes = vec![1_u8, 2, 3];
+        let hash = alloy_primitives::keccak256(&bytes);
+        for available_on in [1_u64, 2, 4, 5] {
+            let mut calls = 0_u64;
+            let result = receive_code(hash, async || {
+                calls += 1;
+                Ok((
+                    calls,
+                    ByteCodesMessage {
+                        request_id: calls,
+                        codes: if calls == available_on {
+                            vec![bytes.clone().into()]
+                        } else {
+                            vec![]
+                        },
+                    },
+                ))
+            })
+            .await;
+            assert_eq!(calls, available_on.min(4));
+            if available_on <= 4 {
+                assert_eq!(result.unwrap(), bytes.len());
+            } else {
+                assert!(result.is_err(), "unavailable code must never be accepted");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn bytecode_fetch_rejects_invalid_replies_without_retrying() {
+        let bytes = vec![1_u8, 2, 3];
+        let hash = alloy_primitives::keccak256(&bytes);
+        for failure in ["id", "empty-id", "count", "empty-code", "hash"] {
+            let mut calls = 0;
+            let result = receive_code(hash, async || {
+                calls += 1;
+                let mut response = ByteCodesMessage {
+                    request_id: 7,
+                    codes: vec![bytes.clone().into()],
+                };
+                match failure {
+                    "id" => response.request_id = 8,
+                    "empty-id" => {
+                        response.request_id = 8;
+                        response.codes.clear();
+                    }
+                    "count" => response.codes.push(bytes.clone().into()),
+                    "empty-code" => response.codes[0] = Vec::<u8>::new().into(),
+                    "hash" => response.codes[0] = vec![0xff].into(),
+                    _ => unreachable!(),
+                }
+                Ok((7, response))
+            })
+            .await;
+            assert!(result.is_err(), "invalid bytecode reply: {failure}");
+            assert_eq!(calls, 1, "invalid replies must not be retried");
+        }
+    }
 
     #[tokio::test]
     async fn peer_probe_uses_the_verified_endpoint_when_latest_has_advanced() {

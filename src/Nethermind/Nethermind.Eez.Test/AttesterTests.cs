@@ -10,6 +10,7 @@ using System.Net;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
+using System.Threading;
 using Google.Protobuf;
 using Grpc.Core;
 using Microsoft.Extensions.Logging;
@@ -156,18 +157,26 @@ public class AttesterTests
     public async Task Prove_WhileAnotherRequestIsActive_IsUnavailable()
     {
         await using AttesterServer server = await AttesterServer.Start(EffectWindow);
-        List<ProveChunk> window = LiveWindow(EffectWindow, 463, 468);
-        using AsyncClientStreamingCall<ProveChunk, ProveResponse> first = server.Client.Prove();
-        await first.RequestStream.WriteAsync(window[0]);
-
-        RpcException e = (await Assert.ThrowsAsync<RpcException>(async () =>
+        using CancellationTokenSource cancellation = new();
+        PendingProveReader reader = new();
+        Task<ProveResponse> first = server.Service.Prove(reader, new AttesterCallContext(cancellation.Token));
+        try
         {
-            using AsyncClientStreamingCall<ProveChunk, ProveResponse> second = server.Client.Prove();
-            await second.RequestStream.CompleteAsync();
-            await second.ResponseAsync;
-        }))!;
-
-        Assert.That((e.StatusCode, e.Status.Detail), Is.EqualTo((StatusCode.Unavailable, "another Prove request is already active")));
+            await reader.Started.Task.WaitAsync(TimeSpan.FromSeconds(20));
+            RpcException exception = (await Assert.ThrowsAsync<RpcException>(async () =>
+            {
+                using AsyncClientStreamingCall<ProveChunk, ProveResponse> second = server.Client.Prove();
+                await second.RequestStream.CompleteAsync();
+                await second.ResponseAsync;
+            }))!;
+            Assert.That((exception.StatusCode, exception.Status.Detail),
+                Is.EqualTo((StatusCode.Unavailable, "another Prove request is already active")));
+        }
+        finally
+        {
+            await cancellation.CancelAsync();
+            await Assert.CatchAsync<OperationCanceledException>(() => first);
+        }
     }
 
     [Test]
@@ -531,6 +540,19 @@ public class AttesterTests
 
     private static IEnumerable<ByteString> Items(JsonElement witness, string property) =>
         witness.GetProperty(property).EnumerateArray().Select(static item => ByteString.CopyFrom(Bytes.FromHexString(item.GetString()!)));
+
+    private sealed class PendingProveReader : IAsyncStreamReader<ProveChunk>
+    {
+        private readonly TaskCompletionSource<bool> _pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public ProveChunk Current => throw new NotSupportedException();
+
+        public Task<bool> MoveNext(CancellationToken cancellationToken)
+        {
+            Started.TrySetResult();
+            return _pending.Task.WaitAsync(cancellationToken);
+        }
+    }
 
     private sealed class RecordingLogger : ILogger<ProverService>
     {

@@ -43,6 +43,8 @@ internal sealed class AttesterServer : IAsyncDisposable
 
     public GrpcChannel Channel => _channel;
 
+    internal ProverService Service => _app.Services.GetRequiredService<ProverService>();
+
     internal BackendAdmission Admission => _app.Services.GetRequiredService<BackendAdmission>();
 
     public static async Task<AttesterServer> Start(string fixture, TimeSpan? idleTimeout = null, ILogger<ProverService>? logger = null, bool skipConsensusLayerCalls = false)
