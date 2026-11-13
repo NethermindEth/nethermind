@@ -620,7 +620,7 @@ public class JsonRpcServiceTests
     {
         IRpcModulePool<IEthRpcModule> pool = Substitute.For<IRpcModulePool<IEthRpcModule>>();
         IEthRpcModule rpcModule = Substitute.For<IEthRpcModule>();
-        pool.GetModule(false).Returns(rpcModule);
+        pool.GetModule(false, Arg.Any<CancellationToken>()).Returns(rpcModule);
         JsonRpcRequest request = new()
         {
             JsonRpc = "2.0",
