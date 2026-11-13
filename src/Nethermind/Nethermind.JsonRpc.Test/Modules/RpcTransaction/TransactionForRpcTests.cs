@@ -188,7 +188,8 @@ public class TransactionForRpcTests
 
     [Test]
     public void Blob_submission_alias_checks_precede_validation_without_affecting_calls(
-        [Values] bool suppliedBlobs, [Values] bool invalidFee, [Values("missing", "empty", "size", "version", "count", "zero-cap")] string hashKind)
+        [Values] bool suppliedBlobs, [Values] bool invalidFee, [Values("missing", "empty", "size", "version", "count", "zero-cap")] string hashKind,
+        [Values] bool conflictingAliases)
     {
         string sidecar = suppliedBlobs ? "\"blobs\":[]," : "";
         string hashes = hashKind switch
@@ -211,7 +212,7 @@ public class TransactionForRpcTests
         TransactionForRpc request = DeserializeTransactionForRpc($$"""
             { {{sidecar}}"to":"{{TestItem.AddressD}}","blobVersionedHashes":{{hashes}},"maxFeePerBlobGas":"0x1",
               "maxFeePerGas":"0x1","maxPriorityFeePerGas":"{{(invalidFee ? "0x2" : "0x1")}}",
-              "input":"0x01","data":"0x2a" }
+              "input":"0x01","data":"{{(conflictingAliases ? "0x2a" : "0x01")}}" }
             """);
         if (hashKind == "size") ((BlobTransactionForRpc)request).BlobVersionedHashes = [[0x01, 0x00]];
         if (hashKind == "count")
@@ -225,7 +226,7 @@ public class TransactionForRpcTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(request.ToValidatedTransaction(spec: Cancun.Instance).Error, Is.EqualTo(RpcTransactionErrors.DataAndInputDiffer));
+            Assert.That(request.ToValidatedTransaction(spec: Cancun.Instance).Error, Is.EqualTo(conflictingAliases ? RpcTransactionErrors.DataAndInputDiffer : blobError));
             Assert.That(request.ToCallTransaction(Cancun.Instance).Error, Is.EqualTo(blobError));
         }
     }
