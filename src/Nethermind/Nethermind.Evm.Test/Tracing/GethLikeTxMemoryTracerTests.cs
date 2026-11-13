@@ -224,18 +224,19 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         }
     }
 
-    [Test]
-    public void Can_trace_stack_underflow_failure()
+    [TestCase(Instruction.ADD, "", "stack underflow (0 <=> 2)")]
+    [TestCase(Instruction.KECCAK256, "", "stack underflow (0 <=> 2)")]
+    [TestCase(Instruction.SELFDESTRUCT, "", "stack underflow (0 <=> 1)")]
+    [TestCase(Instruction.LOG4, "600060006000", "stack underflow (3 <=> 6)")]
+    public void Can_trace_stack_underflow_failure(Instruction opcode, string pushes, string error)
     {
-        byte[] code = Prepare.EvmCode
-            .Op(Instruction.ADD)
-            .Done;
+        byte[] code = [.. Bytes.FromHexString(pushes), (byte)opcode];
 
         GethLikeTxTrace trace = ExecuteAndTrace(code);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(trace.Failed, Is.EqualTo(true));
-            Assert.That(trace.Entries[0].Error, Is.EqualTo("stack underflow (0 <=> 2)"));
+            Assert.That(trace.Entries[^1].Error, Is.EqualTo(error));
         }
     }
 
