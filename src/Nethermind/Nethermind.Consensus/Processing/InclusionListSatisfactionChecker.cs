@@ -49,7 +49,8 @@ public sealed class InclusionListSatisfactionChecker(ISpecProvider specProvider,
                 processor.SetBlockExecutionContext(processedBlock.Header.Clone());
                 try
                 {
-                    return processor.Process(tx, tracer, ExecutionOptions.FrameValidationPrefixOnly)
+                    // The including block's fee budget, not max_fee: a payer this block's execution charges less still appends.
+                    return processor.Process(tx, tracer, ExecutionOptions.FrameValidationPrefixOnly | ExecutionOptions.FrameValidationPrefixAtBlockFees)
                         && !tracer.Violated && tracer.Payer is not null;
                 }
                 catch (OperationCanceledException) when (tracer.Violated)

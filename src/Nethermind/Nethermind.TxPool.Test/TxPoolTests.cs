@@ -435,6 +435,61 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        // Admission checks run before witnesses exist, so a caller can learn of an unfunded transaction before evicting pending ones
+        // for its witnesses; the transaction is neither added nor remembered as known.
+        [TestCase(false, TestName = "Validation before proof admission rejects an unfunded transaction")]
+        [TestCase(true, TestName = "Validation before proof admission accepts a funded transaction without adding it")]
+        public void should_validate_before_proof_admission_without_adding(bool funded)
+        {
+            _txPool = CreatePool();
+            if (funded) EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            AcceptTxResult result = _txPool.ValidateTxBeforeProofAdmission(tx);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(funded ? AcceptTxResult.Accepted : AcceptTxResult.InsufficientFunds));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
+                Assert.That(_txPool.IsKnown(tx.Hash!), Is.False);
+            }
+        }
+
+        // A dry run that kept its paymaster, code-dependency or payer-exposure reservation would let repeated validation
+        // exhaust them; with every cap at one transaction, a leak fails the next validation or the final submission.
+        [Test]
+        public void Validation_before_proof_admission_holds_no_reservations([Values] bool paymasterWithCode)
+        {
+            PrivateKey sponsor;
+            if (paymasterWithCode)
+            {
+                CreatePoolPaidByPayFrameTargets(maxPendingPerCode: 1, PayFrameCodeDependency);
+                sponsor = Paymasters[0];
+            }
+            else
+            {
+                CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD, DelegatingCodeDependency),
+                    config: new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxMaxPendingPerDelegatingCode = 1 });
+                sponsor = TestItem.PrivateKeyD;
+            }
+
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
+            Transaction submitted = SponsoredFrameTx(TestItem.PrivateKeyB, sponsor);
+            if (!paymasterWithCode)
+            {
+                Assert.That(FrameTxValidation.TryCalculateMaxCost(submitted, Eip8141Prototype.Instance, out UInt256 oneTx), Is.True);
+                EnsureSenderBalance(TestItem.AddressD, oneTx);
+            }
+
+            AcceptTxResult[] dryRuns = new AcceptTxResult[3];
+            for (int i = 0; i < dryRuns.Length; i++) dryRuns[i] = _txPool.ValidateTxBeforeProofAdmission(SponsoredFrameTx(TestItem.PrivateKeyA, sponsor));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(dryRuns, Is.All.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.SubmitTx(submitted, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            }
+        }
+
         [Test]
         public void should_ignore_transactions_with_different_chain_id()
         {

@@ -106,7 +106,7 @@ jobs:
       - name: Test live Lean integration
         if: steps.lean-paths.outputs.run == 'true'
         run: |
-          dotnet build "src/Nethermind/$NATIVE_TEST_PROJECT/$NATIVE_TEST_PROJECT.csproj" -c release --disable-build-servers -m:1
+          dotnet build "src/Nethermind/$NATIVE_TEST_PROJECT/$NATIVE_TEST_PROJECT.csproj" -c release --disable-build-servers -m:1 -p:RunNativeLeanTests=true
           dotnet run --project "src/Nethermind/$NATIVE_TEST_PROJECT/$NATIVE_TEST_PROJECT.csproj" -c release --no-build
 
   tests:

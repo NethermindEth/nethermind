@@ -76,6 +76,11 @@ namespace Nethermind.TxPool
         /// </summary>
         AcceptTxResult ValidateTxForBlobSampling(Transaction tx);
         /// <summary>
+        /// Runs a transaction's admission checks without inserting it or reserving its EIP-8288 witnesses, which have not been
+        /// stored yet: what a caller must know before evicting pending transactions to make room for those witnesses.
+        /// </summary>
+        AcceptTxResult ValidateTxBeforeProofAdmission(Transaction tx) => AcceptTxResult.Accepted;
+        /// <summary>
         /// Allows a rejected sparse blob transaction to be retried with a different sidecar proof tuple.
         /// </summary>
         void ForgetRejectedBlobTransaction(Hash256 hash);

@@ -1002,9 +1002,10 @@ public class ProofWrapperServiceTests
     [TestCase(64, false, false, 0UL, 2, true, TestName = "Locally submitted transactions are evicted last")]
     [TestCase(64, false, false, 0UL, 3, false, true, TestName = "A second wrapper at the same head reuses the pool scan")]
     [TestCase(64, false, false, 0UL, 3, false, true, true, TestName = "A candidate whose nonce gap was filled since the scan is kept")]
+    [TestCase(64, false, false, 0UL, 0, false, false, false, true, TestName = "An incoming transaction admission would reject evicts nothing")]
     public async Task Full_proof_capacity_evicts_non_executable_transactions(int nonExecutable, bool sharedPins,
         bool oldestSharedWithExecutable, ulong incomingNonce, int removed, bool localVictims = false, bool secondWrapper = false,
-        bool gapFilled = false)
+        bool gapFilled = false, bool incomingUnfunded = false)
     {
         const int pinnedCount = 64;
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
@@ -1045,7 +1046,10 @@ public class ProofWrapperServiceTests
         Transaction oldest = pinned[0];
         ITxPool pool = Substitute.For<ITxPool>();
         pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
-            .Returns(call => store.PinPending(call.Arg<Transaction>(), poolOwner) ? AcceptTxResult.Accepted : AcceptTxResult.MissingDependencyProof);
+            .Returns(call => incomingUnfunded ? AcceptTxResult.InsufficientFunds
+                : store.PinPending(call.Arg<Transaction>(), poolOwner) ? AcceptTxResult.Accepted : AcceptTxResult.MissingDependencyProof);
+        pool.ValidateTxBeforeProofAdmission(Arg.Any<Transaction>())
+            .Returns(incomingUnfunded ? AcceptTxResult.InsufficientFunds : AcceptTxResult.Accepted);
         pool.GetPendingTransactionsBySender().Returns(BySender([.. pinned]));
         pool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>());
         pool.GetPendingTransactionsBySender(Arg.Any<Address>()).Returns(call => [.. pinned.Where(tx => tx.SenderAddress == call.Arg<Address>())]);

@@ -169,6 +169,8 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
 
     /// <summary>Runs every native proof on one long-lived thread.</summary>
     /// <remarks>The first native call starts leanVM's worker pool on its caller, and the native prover lock serializes proofs anyway.
+    /// The library's allocator keeps a proof's peak mapped for the thread that allocated it, so proving on changing thread-pool
+    /// threads would leave one peak resident per thread.
     /// The queue is bounded, so callers that bypass the managed proving gate are refused with
     /// <see cref="LeanProverBusyException"/> rather than pile up behind the prover,
     /// and it is completed at process exit. A caller that must stop waiting runs the call on a task of its own, as

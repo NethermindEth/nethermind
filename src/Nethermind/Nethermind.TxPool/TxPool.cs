@@ -1888,29 +1888,7 @@ namespace Nethermind.TxPool
             }
             finally
             {
-                // The cap counts ahead of the filters that follow it, so anything leaving the transaction
-                // unpooled — a later rejection or a throw — hands the slot back; AddCore clears the flag
-                // once the pool owns it or has released it itself.
-                if (state.PaymasterReserved && PendingPaymasterCache.KeyFor(tx) is Address paymaster)
-                {
-                    _pendingPaymasters.Decrement(paymaster);
-                }
-
-                state.ProofReservation?.Dispose();
-                state.SenderProofReservation?.Dispose();
-                if (state.CodeDependenciesReserved) _codeDependencies.Release(tx.Hash!.ValueHash256);
-
-                if (state.PayerExposureReserved)
-                {
-                    _payerExposure.Subtract(tx.Hash!);
-                }
-
-                if (state.PaymasterWidthReserved && PendingPaymasterCache.KeyFor(tx) is Address sponsor)
-                {
-                    _paymasterWidth.Release(sponsor, state.PaymasterWidthHeld);
-                }
-
-                state.SenderAdmissionGate?.Exit();
+                ReleaseFilterReservations(tx, ref state);
                 _newHeadLock.ExitReadLock();
             }
 
@@ -1968,11 +1946,14 @@ namespace Nethermind.TxPool
             TxHandlingOptions handlingOptions,
             ref TxFilteringState state,
             ref bool canRecycle,
-            bool skipSamplingDeferredFilters = false)
+            bool skipSamplingDeferredFilters = false,
+            bool skipDependencyProofFilters = false)
         {
             IIncomingTxFilter[] filters = _preHashFilters;
             for (int i = 0; i < filters.Length; i++)
             {
+                // Witnesses not stored yet: the checks a caller runs before making room for them.
+                if (skipDependencyProofFilters && filters[i] is DependencyProofTxFilter or DependencyProofSenderQuotaTxFilter) continue;
                 AcceptTxResult accepted = filters[i].Accept(tx, ref state, handlingOptions);
 
                 if (!accepted)
@@ -1984,7 +1965,7 @@ namespace Nethermind.TxPool
 
             foreach (IIncomingTxFilter filter in _hashFilters)
             {
-                if (skipSamplingDeferredFilters && filter is AlreadyKnownTxFilter) continue;
+                if ((skipSamplingDeferredFilters || skipDependencyProofFilters) && filter is AlreadyKnownTxFilter) continue;
                 AcceptTxResult accepted = filter.Accept(tx, ref state, handlingOptions);
                 if (!accepted) return accepted;
             }
@@ -1996,7 +1977,8 @@ namespace Nethermind.TxPool
             for (int i = 0; i < filters.Length; i++)
             {
                 if (skipSamplingDeferredFilters
-                    && filters[i] is BlobProofsTxFilter)
+                    && filters[i] is BlobProofsTxFilter
+                    || skipDependencyProofFilters && filters[i] is DependencyProofTxFilter or DependencyProofSenderQuotaTxFilter)
                 {
                     continue;
                 }
@@ -2135,6 +2117,34 @@ namespace Nethermind.TxPool
                 state.CodeDependenciesReserved = false;
                 state.PayerExposureReserved = false;
             }
+        }
+
+        /// <summary>Releases what the incoming filters reserved for <paramref name="tx"/> and the pool does not now own.</summary>
+        /// <remarks>The paymaster cap counts ahead of the filters that follow it, so anything leaving the transaction
+        /// unpooled — a later rejection, a throw or a validation-only run — hands the slot back; AddCore clears the
+        /// flags once the pool owns the reservations or has released them itself.</remarks>
+        private void ReleaseFilterReservations(Transaction tx, ref TxFilteringState state)
+        {
+            if (state.PaymasterReserved && PendingPaymasterCache.KeyFor(tx) is Address paymaster)
+            {
+                _pendingPaymasters.Decrement(paymaster);
+            }
+
+            state.ProofReservation?.Dispose();
+            state.SenderProofReservation?.Dispose();
+            if (state.CodeDependenciesReserved) _codeDependencies.Release(tx.Hash!.ValueHash256);
+
+            if (state.PayerExposureReserved)
+            {
+                _payerExposure.Subtract(tx.Hash!);
+            }
+
+            if (state.PaymasterWidthReserved && PendingPaymasterCache.KeyFor(tx) is Address sponsor)
+            {
+                _paymasterWidth.Release(sponsor, state.PaymasterWidthHeld);
+            }
+
+            state.SenderAdmissionGate?.Exit();
         }
 
         private void AddPendingDelegations(Transaction tx)

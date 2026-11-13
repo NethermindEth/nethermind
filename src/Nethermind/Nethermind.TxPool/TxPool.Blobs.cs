@@ -144,9 +144,24 @@ namespace Nethermind.TxPool
             }
             finally
             {
-                state.ProofReservation?.Dispose();
-                state.SenderProofReservation?.Dispose();
-                state.SenderAdmissionGate?.Exit();
+                ReleaseFilterReservations(tx, ref state);
+                _newHeadLock.ExitReadLock();
+            }
+        }
+
+        public AcceptTxResult ValidateTxBeforeProofAdmission(Transaction tx)
+        {
+            TxFilteringState state = default;
+            _newHeadLock.EnterReadLock();
+            try
+            {
+                state = new(tx, _accounts, _specProvider.GetCurrentHeadSpec());
+                bool canRecycle = false;
+                return FilterTransactions(tx, TxHandlingOptions.None, ref state, ref canRecycle, skipDependencyProofFilters: true);
+            }
+            finally
+            {
+                ReleaseFilterReservations(tx, ref state);
                 _newHeadLock.ExitReadLock();
             }
         }
