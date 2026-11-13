@@ -117,7 +117,7 @@ public class GethStyleTracer(
         try
         {
             // Prefix execution uses canonical state and block context. Overrides belong only to the synthetic call.
-            CallAtIndexBlockTracer callTracer = new(tracer.WithCancellation(cancellationToken), callHeader, call,
+            CallAtIndexBlockTracer callTracer = new(tracer.WithCancellation(cancellationToken), callHeader, (int)index,
                 tracedBlock => PrepareIndexedCall(tracedBlock, call, options, state, callSpec));
             IBlockTracer boundary = TransactionTraceBoundary.WrapAt(callTracer, call.Hash, (int)index);
             scope.Component.BlockchainProcessor.Process(replay, TraceProcessingOptions.ReadOnlyReplay, boundary, cancellationToken);
@@ -214,7 +214,10 @@ public class GethStyleTracer(
         }
     }
 
-    private sealed class CallAtIndexBlockTracer(IBlockTracer inner, BlockHeader callHeader, Transaction call, Action<Block> prepareCall) : IBlockTracer
+    /// <summary>Prepares the call when the transaction at <paramref name="callIndex"/> of the traced block starts.</summary>
+    /// <remarks>The replay runs copies of the block's transactions, the call included, so the call is recognised by its
+    /// position in the block the processor traces rather than by the instance the caller built.</remarks>
+    private sealed class CallAtIndexBlockTracer(IBlockTracer inner, BlockHeader callHeader, int callIndex, Action<Block> prepareCall) : IBlockTracer
     {
         private Block _block = null!;
         public bool IsPrepared { get; private set; }
@@ -227,7 +230,8 @@ public class GethStyleTracer(
         }
         public ITxTracer StartNewTxTrace(Transaction? transaction)
         {
-            if (ReferenceEquals(transaction, call))
+            Transaction[] transactions = _block.Transactions;
+            if (transaction is not null && (uint)callIndex < (uint)transactions.Length && ReferenceEquals(transaction, transactions[callIndex]))
             {
                 prepareCall(_block);
                 IsPrepared = true;
@@ -320,7 +324,9 @@ public class GethStyleTracer(
         IntermediateRootsBlockTracer tracer = new(scope.Component.WorldState, specProvider.GetSpec(block.Header));
         try
         {
-            scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlySigned, tracer.WithCancellation(cancellationToken), cancellationToken);
+            // The replay keeps the signed nonces, so the processor facade does not copy the transactions for it. It
+            // still writes the senders it recovers and the gas it spends, so it runs on copies of its own.
+            scope.Component.BlockchainProcessor.Process(block.WithOwnTransactions(), TraceProcessingOptions.ReadOnlySigned, tracer.WithCancellation(cancellationToken), cancellationToken);
         }
         catch (InvalidTransactionException e)
         {
@@ -444,7 +450,7 @@ public class GethStyleTracer(
             if (useBlockAsBase && options.StateOverrides is { } stateOverrides)
             {
                 IWorldState state = scope.Component.WorldState;
-                traced = overridesTracer = new CallAtIndexBlockTracer(traced, block.Header, block.Transactions[0],
+                traced = overridesTracer = new CallAtIndexBlockTracer(traced, block.Header, 0,
                     _ => state.ApplyStateOverrides(codeInfoRepository, stateOverrides, spec, block.Number, merkleize: false));
             }
 
