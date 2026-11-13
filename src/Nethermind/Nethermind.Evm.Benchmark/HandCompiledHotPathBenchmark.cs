@@ -7,6 +7,7 @@ using BenchmarkDotNet.Columns;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Toolchains.InProcess.NoEmit;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -76,7 +77,7 @@ public class HandCompiledHotPathBenchmark
 
         byte[] data = new byte[68];
         Bytes.FromHexString("a9059cbb").CopyTo(data, 0);
-        TestItem.AddressB.Bytes.CopyTo(data, 16);
+        TestItem.AddressB.Bytes.CopyTo(data.AsSpan(16));
         data[67] = 1;
         _transferTx = Build.A.Transaction.WithTo(Weth).WithData(data).WithGasLimit(200_000).WithGasPrice(20.GWei)
             .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
@@ -107,7 +108,7 @@ public class HandCompiledHotPathBenchmark
     private static UInt256 BalanceSlot(Address owner)
     {
         byte[] buffer = new byte[64];
-        owner.Bytes.CopyTo(buffer, 12);
+        owner.Bytes.CopyTo(buffer.AsSpan(12));
         buffer[63] = 3;
         return new UInt256(Keccak.Compute(buffer).Bytes, isBigEndian: true);
     }
