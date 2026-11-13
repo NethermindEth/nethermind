@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie.NodeBuffer;
 
@@ -19,7 +18,7 @@ internal sealed class PrivateNodeRecordBuffer(int generationBytes) : INodeRecord
     private const int InitialGenerationSlots = 16;
 
     private readonly Lock _lock = new();
-    private readonly ConcurrentDictionary<(Hash256? Address, ValueHash256 Root), ulong> _roots = new();
+    private readonly Dictionary<(Hash256? Address, ValueHash256 Root), ulong> _roots = [];
     private Generation?[] _generations = new Generation?[InitialGenerationSlots];
     private ulong _firstGeneration = 1;
     private Generation? _active;
@@ -89,12 +88,16 @@ internal sealed class PrivateNodeRecordBuffer(int generationBytes) : INodeRecord
     /// <remarks>Only the newest pointer of a root is kept, so one indexed at or past <paramref name="boundary"/> hides any older one.</remarks>
     public ulong FindRoot(Hash256? address, in ValueHash256 root, ulong boundary)
     {
-        ulong pointer = _roots.GetValueOrDefault((address, root));
+        ulong pointer;
+        lock (_lock) pointer = _roots.GetValueOrDefault((address, root));
         return pointer < boundary ? pointer : 0;
     }
 
     /// <inheritdoc/>
-    public void SetRoot(Hash256? address, in ValueHash256 root, ulong rootPointer) => _roots[(address, root)] = rootPointer;
+    public void SetRoot(Hash256? address, in ValueHash256 root, ulong rootPointer)
+    {
+        lock (_lock) _roots[(address, root)] = rootPointer;
+    }
 
     /// <summary>Frees every record and root; later records get pointers past the freed ones.</summary>
     /// <remarks>No pin may be held, and no record or pointer handed out before may be used after.</remarks>
