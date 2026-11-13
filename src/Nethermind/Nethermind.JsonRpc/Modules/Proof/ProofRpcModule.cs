@@ -88,8 +88,10 @@ namespace Nethermind.JsonRpc.Modules.Proof
             TxReceipt? receipt = storedReceipts.ForTransaction(txHash);
             if (receipt is null)
             {
-                // The same answer as eth_getTransactionReceipt for the same miss.
-                return blockFinder.IsTransactionPruned(receiptFinder, txHash)
+                // The rule eth_getTransactionReceipt applies to a stored receipt set, decided from this block and these
+                // receipts. With receipt regeneration on, the read above has already served the receipt, or failed with
+                // 4444, for a block whose receipts are not stored.
+                return blockFinder.IsTransactionPruned(block, storedReceipts, txHash)
                     ? ResultWrapper<ReceiptWithProof>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable)
                     : ResultWrapper<ReceiptWithProof>.Success(null);
             }

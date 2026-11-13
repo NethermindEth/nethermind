@@ -1388,7 +1388,7 @@ public partial class EthRpcModule(
     /// <summary>
     /// Answers a receipt lookup by transaction hash that has no receipt to return: the
     /// <see cref="ErrorCodes.PrunedHistoryUnavailable"/> error when the miss is pruned history as
-    /// <see cref="BlockFinderExtensions.IsTransactionPruned"/> decides it, otherwise a <c>null</c> result.
+    /// <see cref="BlockFinderExtensions.IsTransactionPruned(IBlockFinder, IReceiptFinder, Hash256)"/> decides it, otherwise a <c>null</c> result.
     /// </summary>
     /// <remarks>
     /// <para>
