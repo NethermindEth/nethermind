@@ -218,13 +218,43 @@ public class GuestDispatchDifferentialTests
         }
     }
 
-    private static byte[] NestedCall(Instruction op) =>
+    /// <remarks>
+    /// The caller stays on the guest's handlers through a first call whose callee runs on the shared handlers. After a
+    /// second call it has less gas than its code has bytes, so it must leave them, which it decides only if the first
+    /// call restored that its chain does not run on the shared handlers.
+    /// </remarks>
+    [Test]
+    public void Caller_tests_its_gas_after_a_callee_on_the_shared_handlers(
+        [Values(Instruction.CALL, Instruction.CALLCODE, Instruction.STATICCALL, Instruction.DELEGATECALL)] Instruction op)
+    {
+        const ushort forwardedGas = 10;
+        byte[] call = NestedCall(op, forwardedGas);
+        byte[] tail = UntestedTail();
+        byte[] code = [.. call, .. call, .. tail];
+        ulong firstCallCost = CallCost(call, 0);
+        ulong secondCallCost = CallCost([.. call, .. call], 0) - firstCallCost;
+        // The callee runs out of the gas it gets, so the caller keeps exactly its code length after the first call.
+        ulong gas = firstCallCost + forwardedGas + (ulong)code.Length;
+        ulong retainedGas = (ulong)code.Length - secondCallCost - forwardedGas;
+
+        (EvmExceptionType exception, nint pc, ulong remainingGas) = RunFrame(code, gas, 0, Repository(new CodeInfo(UntestedTail())));
+
+        Outcome shared = Run(retainedGas, [], 0, new CodeInfo(tail), Table.Cancelable);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception, Is.EqualTo(EvmExceptionType.OutOfGas));
+            Assert.That(pc, Is.EqualTo(2 * call.Length + shared.Pc));
+            Assert.That(remainingGas, Is.Zero);
+        }
+    }
+
+    private static byte[] NestedCall(Instruction op, ushort gas = ushort.MaxValue) =>
     [
         (byte)Instruction.PUSH0, (byte)Instruction.PUSH0,
         (byte)Instruction.PUSH0, (byte)Instruction.PUSH0,
         .. op is Instruction.CALL or Instruction.CALLCODE ? new byte[] { (byte)Instruction.PUSH0 } : [],
         (byte)Instruction.PUSH20, .. new Address("0x00000000000000000000000000000000000000bb").Bytes,
-        (byte)Instruction.PUSH2, 0xff, 0xff, (byte)op
+        (byte)Instruction.PUSH2, (byte)(gas >> 8), (byte)gas, (byte)op
     ];
 
     /// <summary>What <paramref name="call"/> charges, as a call to empty code forwards no gas that is not returned.</summary>

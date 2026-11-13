@@ -50,7 +50,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     {
         if (TTracingInst.IsActive || TCancelable.IsActive || typeof(TGasPolicy) != typeof(EthereumGasPolicy)) return;
 
-        _sharedHandlerTables.AddOrUpdate(lookup, new SharedHandlerTable(lookup));
+        // The build of the untraced table is the last one before the table is set, so its entries are the ones kept.
+        if (_opcodeTable is { NoTrace: null })
+            _sharedHandlers = (delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[])lookup.Clone();
 
         if (AirbenderFlag.IsActive)
             AirbenderArithmetic.Initialize();

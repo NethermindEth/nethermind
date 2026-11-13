@@ -7,7 +7,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Threading;
 using InlineIL;
 using Nethermind.Core;
 using Nethermind.Evm.CodeAnalysis;
@@ -112,26 +111,19 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// <summary>Whether the chain <see cref="RunDispatchLoop{TTracingInst, TCancelable}"/> entered last runs on <see cref="GetCheckedPairedHandlers"/>.</summary>
     private bool _chainTestsEveryCharge;
 
-    /// <summary>Each table that the guest's handlers replaced entries of, mapped to its entries from before.</summary>
-    private static readonly ConditionalWeakTable<object, SharedHandlerTable> _sharedHandlerTables = [];
-
-    /// <summary>A copy of a table's entries as the shared handlers filled it.</summary>
-    private sealed class SharedHandlerTable(delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] handlers)
-    {
-        public readonly delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] Handlers =
-            (delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[])handlers.Clone();
-    }
+    /// <summary>The entries of the untraced table (<see cref="OpcodeTable.NoTrace"/>) before the guest's handlers replaced them.</summary>
+    /// <remarks>Null when the guest's handlers replace none, as under a gas policy other than <see cref="EthereumGasPolicy"/>.</remarks>
+    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[]? _sharedHandlers;
 
     /// <summary>The paired table of the shared handlers only, which test the gas before every charge.</summary>
     /// <remarks>
-    /// The entries are those the current table had before the guest's handlers replaced them, so the shared handlers are
-    /// the instantiations the guest table falls back to: a table of other instantiations would add a copy of every
-    /// handler to the guest image.
+    /// The entries are those the untraced table had before the guest's handlers replaced them, so the shared handlers
+    /// are the instantiations the guest table falls back to: a table of other instantiations would add a copy of every
+    /// handler to the guest image. Only the untraced table runs a frame here, as the traced and cancelable ones hold
+    /// only the shared handlers already.
     /// </remarks>
     private nint[] GetCheckedPairedHandlers() =>
-        PairHandlersOnce<OffFlag>(
-            _sharedHandlerTables.TryGetValue(_opcodeHandlers, out SharedHandlerTable? shared) ? shared.Handlers : _opcodeHandlers,
-            ref _checkedPairedHandlers);
+        PairHandlersOnce<OffFlag>(_sharedHandlers ?? _opcodeHandlers, ref _checkedPairedHandlers);
 
     /// <summary>Whether a frame with <paramref name="executionGas"/> left must run on <see cref="GetCheckedPairedHandlers"/>.</summary>
     /// <remarks>
