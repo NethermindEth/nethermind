@@ -4,6 +4,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Int256;
 
@@ -28,6 +29,7 @@ public unsafe class Int256ReductionAbBenchmarks
     private UInt256* _x;
     private UInt256* _y;
     private UInt256* _m;
+    private UInt256* _slot;
 
     [Params("Bn254R", "Bn254P", "Prime251", "Prime251Unreduced", "Bn254RUnreduced", "Secp256k1P", "Secp256k1N",
         "P256P", "P256N", "Bls12381R", "RandomFullWidth", "RandomShifted")]
@@ -40,6 +42,7 @@ public unsafe class Int256ReductionAbBenchmarks
         _x = Int256LibraryAbBenchmarks.Allocate();
         _y = Int256LibraryAbBenchmarks.Allocate();
         _m = Int256LibraryAbBenchmarks.Allocate();
+        _slot = Int256LibraryAbBenchmarks.Allocate();
         for (int i = 0; i < Count; i++)
         {
             UInt256 x = Random256(random);
@@ -80,6 +83,7 @@ public unsafe class Int256ReductionAbBenchmarks
         NativeMemory.AlignedFree(_x);
         NativeMemory.AlignedFree(_y);
         NativeMemory.AlignedFree(_m);
+        NativeMemory.AlignedFree(_slot);
     }
 
     [Benchmark(OperationsPerInvoke = Count)]
@@ -92,6 +96,20 @@ public unsafe class Int256ReductionAbBenchmarks
             acc ^= r.u0 ^ r.u3;
         }
         return acc;
+    }
+
+    // As the opcode handler: the result goes straight into the stack slot, and the next instruction reads the slot
+    // as one 32-byte word.
+    [Benchmark(OperationsPerInvoke = Count)]
+    public ulong MultiplyModToSlot()
+    {
+        Vector256<ulong> acc = default;
+        for (int i = 0; i < Count; i++)
+        {
+            MultiplyMod(in _x[i], in _y[i], in _m[i], out _slot[i]);
+            acc ^= Vector256.Load((ulong*)(_slot + i));
+        }
+        return acc.GetElement(0) ^ acc.GetElement(3);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

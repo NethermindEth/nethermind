@@ -4,6 +4,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Int256;
 
@@ -22,6 +23,7 @@ public unsafe class Int256ModReductionAbBenchmarks
 
     private UInt256* _x;
     private UInt256* _y;
+    private UInt256* _slot;
 
     // Full256: a 256-bit dividend. By64Wide: 33..64-bit divisor, 129..256-bit dividend. Wad192: 10^18 into 129..192
     // bits. By128Wide: 65..128-bit divisor, 129..256-bit dividend. Full256By256: 193..255-bit divisor of another top.
@@ -34,6 +36,7 @@ public unsafe class Int256ModReductionAbBenchmarks
         Random random = new(0x3D0D);
         _x = Int256LibraryAbBenchmarks.Allocate();
         _y = Int256LibraryAbBenchmarks.Allocate();
+        _slot = Int256LibraryAbBenchmarks.Allocate();
         for (int i = 0; i < Count; i++)
         {
             UInt256 x;
@@ -80,6 +83,7 @@ public unsafe class Int256ModReductionAbBenchmarks
     {
         NativeMemory.AlignedFree(_x);
         NativeMemory.AlignedFree(_y);
+        NativeMemory.AlignedFree(_slot);
     }
 
     [Benchmark(OperationsPerInvoke = Count)]
@@ -104,6 +108,19 @@ public unsafe class Int256ModReductionAbBenchmarks
             acc ^= r.u0 ^ r.u3;
         }
         return acc;
+    }
+
+    // As the opcode handler: the result goes straight into the stack slot, read next as one 32-byte word.
+    [Benchmark(OperationsPerInvoke = Count)]
+    public ulong ModToSlot()
+    {
+        Vector256<ulong> acc = default;
+        for (int i = 0; i < Count; i++)
+        {
+            Mod(in _x[i], in _y[i], out _slot[i]);
+            acc ^= Vector256.Load((ulong*)(_slot + i));
+        }
+        return acc.GetElement(0) ^ acc.GetElement(3);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
