@@ -150,7 +150,7 @@ jobs:
           # proven value untested, so the OpenVM leg checks both.
           - vm: zisk
             project: Nethermind.Stateless.ZiskGuest
-            minutes: 5
+            minutes: 8
           - vm: sp1
             project: Nethermind.Stateless.Sp1Guest
             # SP1 is the slowest of the three guests, a GitHub runner is slower

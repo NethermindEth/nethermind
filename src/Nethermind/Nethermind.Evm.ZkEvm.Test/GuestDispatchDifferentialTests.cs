@@ -957,6 +957,115 @@ public class GuestDispatchDifferentialTests
     }
 
     /// <remarks>
+    /// Memory of four words is written first, then copied forward and backward over itself, by whole words and by odd
+    /// lengths at odd offsets, empty, and past the memory's end, which expands it; every amount of gas up to the program's
+    /// need puts the end of the gas inside each charge. The memory is compared after the copy.
+    /// An MLOAD at <paramref name="loaded"/> first grows the memory through the shared handler, which initializes past
+    /// its new size, so a source that ends past the size but inside the initialized prefix must still pay for its expansion.
+    /// </remarks>
+    [Test]
+    public void Memory_copies_match_the_shared_handlers(
+        [Values(0, 1, 5, 31, 32, 33, 64, 96)] int destination, [Values(0, 3, 32, 64, 0x110, 0x1e0, 0x480)] int source, [Values(0, 1, 17, 32, 63, 100)] int length,
+        [Values(0, 0x100, 0x400)] int loaded)
+    {
+        List<byte> program = [];
+        for (int word = 0; word < 4; word++)
+            program.AddRange([(byte)Instruction.PUSH32, .. Enumerable.Range(word * 32 + 1, 32).Select(static b => (byte)b), (byte)Instruction.PUSH1, (byte)(word * 32), (byte)Instruction.MSTORE]);
+        if (loaded != 0)
+            program.AddRange([(byte)Instruction.PUSH2, (byte)(loaded >> 8), (byte)loaded, (byte)Instruction.MLOAD, (byte)Instruction.POP]);
+        program.AddRange([(byte)Instruction.PUSH1, (byte)length, (byte)Instruction.PUSH2, (byte)(source >> 8), (byte)source, (byte)Instruction.PUSH1, (byte)destination, (byte)Instruction.MCOPY, (byte)Instruction.STOP]);
+        byte[] code = [.. program];
+        const ulong ample = 100_000;
+        ulong needed = ample - Run(ample, [], 0, new CodeInfo(code), Table.Traced).GasLeft;
+
+        List<string> mismatches = [];
+        for (ulong gas = needed > 40 ? needed - 40 : 0; gas <= needed && mismatches.Count < 5; gas++)
+        {
+            Outcome untraced = Run(gas, [], 0, new CodeInfo(code), Table.Untraced);
+            Outcome traced = Run(gas, [], 0, new CodeInfo(code), Table.Traced);
+            if (!Matches(untraced, traced))
+                mismatches.Add($"gas {gas}\n untraced {untraced}\n traced   {traced}");
+        }
+
+        Assert.That(mismatches, Is.Empty);
+    }
+
+    /// <remarks>
+    /// Every immediate, valid or not, at stack heights on both sides of the depths they decode to and at the limit, with
+    /// too little gas and enough, on both sides of EIP-8024. The opcode alone, as the whole program, reads its immediate
+    /// from the code's padding. The outcome holds the stack's words but not the stack pointer the handler hands on, so a
+    /// second program pushes through it and stores the word on top of the stack to memory.
+    /// </remarks>
+    [Test]
+    public void Eip8024_stack_ops_match_the_shared_handlers(
+        [ValueSource(nameof(StorageLoadForks))] IReleaseSpec spec,
+        [Values(Instruction.DUPN, Instruction.SWAPN, Instruction.EXCHANGE)] Instruction op, [Values(2ul, 3ul, 100ul)] ulong gas)
+    {
+        int[] heads = [0, 1, 2, 15, 16, 17, 18, 29, 30, 31, 100, 234, 235, 236, 1023, 1024];
+        List<string> mismatches = [];
+        for (int immediate = -1; immediate < 256 && mismatches.Count < 5; immediate++)
+        {
+            byte[][] programs = immediate < 0
+                ? [[(byte)op]]
+                : [[(byte)op, (byte)immediate, (byte)Instruction.STOP],
+                    [(byte)op, (byte)immediate, (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE, (byte)Instruction.STOP]];
+            foreach (byte[] code in programs)
+                foreach (int head in heads)
+                {
+                    Outcome untraced = Run(gas, [], head, new CodeInfo(code), Table.Untraced, spec);
+                    Outcome traced = Run(gas, [], head, new CodeInfo(code), Table.Traced, spec);
+                    if (!Matches(untraced, traced))
+                        mismatches.Add($"code {Convert.ToHexString(code)} head {head}\n untraced {untraced}\n traced   {traced}");
+                }
+        }
+
+        Assert.That(mismatches, Is.Empty);
+    }
+
+    /// <remarks>
+    /// Memory holds words up to 0x80. Operands of 2^32 or more, a destination past the initialized memory and the gap it
+    /// clears, and a stack of two words make the guest handler run the shared one. Each copy also runs one and three gas
+    /// short of its need.
+    /// </remarks>
+    [Test]
+    public void Memory_copy_fallbacks_match_the_shared_handlers()
+    {
+        byte[] prefix = [(byte)Instruction.PUSH1, 0xaa, (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE, (byte)Instruction.PUSH1, 0xbb, (byte)Instruction.PUSH1, 0x60, (byte)Instruction.MSTORE];
+        UInt256[] destinations = [0, 0xa0, 0xc1, 0x400, 0x441, 0x800, UInt256.One << 32, UInt256.One << 64];
+        UInt256[] sources = [0, 0x10, 0x800, UInt256.One << 32, UInt256.One << 64];
+        UInt256[] lengths = [0, 1, 32, 0x100, UInt256.One << 32, UInt256.One << 64];
+        List<byte[]> programs = [[.. prefix, (byte)Instruction.PUSH1, 0x20, (byte)Instruction.PUSH1, 0, (byte)Instruction.MCOPY, (byte)Instruction.MSIZE, (byte)Instruction.STOP]];
+        foreach (UInt256 destination in destinations)
+            foreach (UInt256 source in sources)
+                foreach (UInt256 length in lengths)
+                    programs.Add(
+                    [
+                        .. prefix, (byte)Instruction.PUSH32, .. length.ToBigEndian(), (byte)Instruction.PUSH32, .. source.ToBigEndian(),
+                        (byte)Instruction.PUSH32, .. destination.ToBigEndian(), (byte)Instruction.MCOPY, (byte)Instruction.MSIZE, (byte)Instruction.STOP
+                    ]);
+
+        List<string> mismatches = [];
+        foreach (byte[] code in programs)
+        {
+            ulong needed = 100_000 - Run(100_000, [], 0, new CodeInfo(code), Table.Traced).GasLeft;
+            foreach (ulong gas in (ulong[])[100_000, needed, needed - 1, needed - 3])
+            {
+                Outcome untraced = Run(gas, [], 0, new CodeInfo(code), Table.Untraced);
+                Outcome traced = Run(gas, [], 0, new CodeInfo(code), Table.Traced);
+                if (!Matches(untraced, traced) && mismatches.Count < 5)
+                    mismatches.Add($"gas {gas} code {Convert.ToHexString(code)}\n untraced {untraced}\n traced   {traced}");
+            }
+        }
+
+        Assert.That(mismatches, Is.Empty);
+    }
+
+    /// <remarks>MCOPY falls back to the shared handler, so only the table shows that the guest handler is installed.</remarks>
+    [Test]
+    public void Guest_memory_copy_handler_is_installed_from_eip5656([ValueSource(nameof(Forks))] IReleaseSpec spec) =>
+        Assert.That(VirtualMachine<EthereumGasPolicy>.CopiesMemoryThroughGuestHandlerForTests(spec), Is.EqualTo(spec.MCopyIncluded));
+
+    /// <remarks>
     /// Indices inside the list, at its end, past it and past a native word, with no list, an empty one, several hashes
     /// and a hash shorter than a word, and every amount of gas up to the program's need, against the shared handler;
     /// the hash is stored to memory. On an empty stack BLOBHASH underflows.
@@ -1181,6 +1290,11 @@ public class GuestDispatchDifferentialTests
     public void Guest_call_handlers_are_installed([ValueSource(nameof(StorageLoadForks))] IReleaseSpec spec) =>
         Assert.That(VirtualMachine<EthereumGasPolicy>.CallsThroughGuestHandlerForTests(spec), Is.True);
 
+    /// <remarks>The guest handlers fall back to the shared ones, so only the table shows that they are installed.</remarks>
+    [Test]
+    public void Guest_eip8024_stack_handlers_are_installed_from_eip8024([ValueSource(nameof(StorageLoadForks))] IReleaseSpec spec) =>
+        Assert.That(VirtualMachine<EthereumGasPolicy>.RunsEip8024StackOpsThroughGuestHandlersForTests(spec), Is.EqualTo(spec.IsEip8024Enabled));
+
     /// <remarks>
     /// Every amount of gas up to the program's need puts the end of the gas inside each charge. In a static frame the
     /// TSTORE faults instead.
@@ -1225,10 +1339,11 @@ public class GuestDispatchDifferentialTests
     /// <remarks>
     /// Memory starts empty, holds one word at 0, or holds words up to 0x120, so a copy lands inside the initialized
     /// memory, past it with a gap, or at the end of the inline backing. Each copy also runs one and three gas short of
-    /// its need, which puts the end of the gas inside its word and expansion charges.
+    /// its need, which puts the end of the gas inside its word and expansion charges. An MLOAD at 0x100 or 0x400 grows
+    /// the memory and initializes it past its new size, so a destination there still owes its expansion.
     /// </remarks>
     [Test]
-    public void Data_copies_match_the_shared_handlers([Values(Instruction.CALLDATACOPY, Instruction.CODECOPY, Instruction.RETURNDATACOPY)] Instruction op, [Values(0, 1, 2)] int memory)
+    public void Data_copies_match_the_shared_handlers([Values(Instruction.CALLDATACOPY, Instruction.CODECOPY, Instruction.RETURNDATACOPY)] Instruction op, [Values(0, 1, 2, 3, 4)] int memory)
     {
         byte[] data = new byte[40];
         for (int i = 0; i < data.Length; i++) data[i] = (byte)(i + 1);
@@ -1236,7 +1351,9 @@ public class GuestDispatchDifferentialTests
         {
             0 => [],
             1 => [(byte)Instruction.PUSH1, 0xaa, (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE],
-            _ => [(byte)Instruction.PUSH1, 0xbb, (byte)Instruction.PUSH2, 0x01, 0x00, (byte)Instruction.MSTORE],
+            2 => [(byte)Instruction.PUSH1, 0xbb, (byte)Instruction.PUSH2, 0x01, 0x00, (byte)Instruction.MSTORE],
+            3 => [(byte)Instruction.PUSH2, 0x01, 0x00, (byte)Instruction.MLOAD, (byte)Instruction.POP],
+            _ => [(byte)Instruction.PUSH2, 0x04, 0x00, (byte)Instruction.MLOAD, (byte)Instruction.POP],
         };
         UInt256[] destinations = [0, 7, 0x20, 0x40, 0x61, 0x120, 0x3f0, 0x400, UInt256.One << 32, UInt256.One << 64];
         UInt256[] sources = [0, 5, 39, 40, 41, 0x100, UInt256.One << 32, UInt256.One << 64];
@@ -1658,7 +1775,7 @@ public class GuestDispatchDifferentialTests
                 case 1: stackBytes[at + 8] = 1; break;
                 case 2: break;
                 default:
-                    stackBytes[at] = (byte)values.Next(256);
+                    stackBytes[at] = stackBytes[at + 16] = (byte)values.Next(256);
                     stackBytes[at + 1] = (byte)(values.Next(3) == 0 ? values.Next(0, 5) : 0);
                     break;
             }

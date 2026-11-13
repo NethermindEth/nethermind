@@ -73,6 +73,10 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         return expected != 0 && (nint)handlers[(int)opcode] == expected;
     }
 
+    /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs MCOPY on the guest handler.</summary>
+    internal static bool CopiesMemoryThroughGuestHandlerForTests(IReleaseSpec spec) =>
+        (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)Instruction.MCOPY] == (nint)AsTableEntry(&RawCalliHelper.ExecuteMCopyInsideMemory);
+
     /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs SELFBALANCE on the guest handler.</summary>
     internal static bool ReadsSelfBalanceThroughGuestHandlerForTests(IReleaseSpec spec) =>
         (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)Instruction.SELFBALANCE] == (nint)AsTableEntry(&RawCalliHelper.ExecuteSelfBalance);
@@ -121,6 +125,15 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         }
 
         return true;
+    }
+
+    /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs DUPN, SWAPN and EXCHANGE on the guest handlers.</summary>
+    internal static bool RunsEip8024StackOpsThroughGuestHandlersForTests(IReleaseSpec spec)
+    {
+        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] handlers = GenerateOpcodeHandlers<OffFlag, OffFlag>(spec);
+        return (nint)handlers[(int)Instruction.DUPN] == (nint)AsTableEntry(&RawCalliHelper.ExecuteDupN)
+            && (nint)handlers[(int)Instruction.SWAPN] == (nint)AsTableEntry(&RawCalliHelper.ExecuteSwapN)
+            && (nint)handlers[(int)Instruction.EXCHANGE] == (nint)AsTableEntry(&RawCalliHelper.ExecuteExchange);
     }
 
     public object? ReturnData;
