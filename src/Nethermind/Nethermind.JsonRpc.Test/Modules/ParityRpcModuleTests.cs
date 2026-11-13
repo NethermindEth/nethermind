@@ -187,7 +187,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [TearDown]
         public void TearDown() => (_txPool as IDisposable)?.Dispose();
 
-        private static Peer SetUpPeerA()
+        private static Peer SetUpPeerA(bool statusReceived = true)
         {
             Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303, true);
             node.ClientId = "Geth/v1.9.21-stable/linux-amd64/go1.15.2";
@@ -210,7 +210,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 UInt256 difficulty = 0x5ea4ed;
                 syncPeer.TotalDifficulty.Returns(difficulty);
-                syncPeer.HeadHash.Returns(TestItem.KeccakA);
+                syncPeer.HeadHash.Returns(statusReceived ? TestItem.KeccakA : null);
             }
 
             IProtocolHandler p2PProtocolHandler = Substitute.For<IProtocolHandler, IP2PProtocolHandler>();
@@ -404,7 +404,22 @@ namespace Nethermind.JsonRpc.Test.Modules
         public async Task parity_netPeers_standard_case()
         {
             string serialized = await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_netPeers");
-            string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":{\"active\":3,\"connected\":5,\"max\":15,\"peers\":[{\"id\":\"", TestItem.PublicKeyA, "\",\"name\":\"Geth/v1.9.21-stable/linux-amd64/go1.15.2\",\"caps\":[\"eth/65\",\"eth/64\"],\"network\":{\"localAddress\":\"127.0.0.1\",\"remoteAddress\":\"Handshake\"},\"protocols\":{\"eth\":{\"version\":65,\"difficulty\":\"0x5ea4ed\",\"head\":\"", TestItem.KeccakA, "\"}}},{\"name\":\"Geth/v1.9.26-unstable/linux-amd64/go1.15.6\",\"caps\":[],\"network\":{\"localAddress\":\"95.217.106.25\"},\"protocols\":{\"eth\":{\"version\":0,\"difficulty\":\"0x0\"}}},{\"id\":\"", TestItem.PublicKeyB, "\",\"caps\":[],\"network\":{\"remoteAddress\":\"Handshake\"},\"protocols\":{\"eth\":{\"version\":0,\"difficulty\":\"0x0\"}}}]},\"id\":67}");
+            string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":{\"active\":3,\"connected\":5,\"max\":15,\"peers\":[{\"id\":\"", TestItem.PublicKeyA, "\",\"name\":\"Geth/v1.9.21-stable/linux-amd64/go1.15.2\",\"caps\":[\"eth/65\",\"eth/64\"],\"network\":{\"localAddress\":\"127.0.0.1\",\"remoteAddress\":\"Handshake\"},\"protocols\":{\"eth\":{\"version\":65,\"difficulty\":\"0x5ea4ed\",\"head\":\"", TestItem.KeccakA, "\"}}},{\"name\":\"Geth/v1.9.26-unstable/linux-amd64/go1.15.6\",\"caps\":[],\"network\":{\"localAddress\":\"95.217.106.25\"},\"protocols\":{}},{\"id\":\"", TestItem.PublicKeyB, "\",\"caps\":[],\"network\":{\"remoteAddress\":\"Handshake\"},\"protocols\":{}}]},\"id\":67}");
+            Assert.That(serialized, Is.EqualTo(expectedResult));
+        }
+
+        [Test]
+        public async Task parity_netPeers_eth_status_not_received()
+        {
+            Peer peer = SetUpPeerA(statusReceived: false);
+            IPeerManager peerManager = Substitute.For<IPeerManager>();
+            peerManager.ActivePeers.Returns(new List<Peer> { peer });
+            peerManager.ActivePeersCount.Returns(1);
+
+            IParityRpcModule parityRpcModule = CreateParityRpcModule(peerManager);
+
+            string serialized = await RpcTest.TestSerializedRequest(parityRpcModule, "parity_netPeers");
+            string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":{\"active\":1,\"connected\":0,\"max\":0,\"peers\":[{\"id\":\"", TestItem.PublicKeyA, "\",\"name\":\"Geth/v1.9.21-stable/linux-amd64/go1.15.2\",\"caps\":[\"eth/65\",\"eth/64\"],\"network\":{\"localAddress\":\"127.0.0.1\",\"remoteAddress\":\"Handshake\"},\"protocols\":{}}]},\"id\":67}");
             Assert.That(serialized, Is.EqualTo(expectedResult));
         }
 
