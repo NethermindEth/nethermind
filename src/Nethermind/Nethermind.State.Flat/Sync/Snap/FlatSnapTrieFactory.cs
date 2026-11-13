@@ -241,14 +241,14 @@ public class FlatSnapTrieFactory(
     {
         IPersistence.IPersistenceReader reader = new LazyReader(persistence, ReaderFlags.Sync);
         IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
-        return new FlatSnapStateTree(reader, writeBatch, syncConfig.EnableSnapDoubleWriteCheck, logManager);
+        return new FlatSnapStateTree(reader, writeBatch, syncConfig.EnableSnapDoubleWriteCheck);
     }
 
     public ISnapTree<PathWithStorageSlot> CreateStorageTree(in ValueHash256 accountPath)
     {
         IPersistence.IPersistenceReader reader = new LazyReader(persistence, ReaderFlags.Sync);
         IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
-        return new FlatSnapStorageTree(reader, writeBatch, accountPath.ToCommitment(), syncConfig.EnableSnapDoubleWriteCheck, logManager);
+        return new FlatSnapStorageTree(reader, writeBatch, accountPath.ToCommitment(), syncConfig.EnableSnapDoubleWriteCheck);
     }
 
     /// <summary>

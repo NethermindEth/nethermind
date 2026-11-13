@@ -29,7 +29,15 @@ public interface ISnapTree<in TEntry> : IDisposable where TEntry : ISnapEntry
     /// </summary>
     static void DoBulkSetAndUpdateRootHash<T>(PatriciaTree tree, IReadOnlyList<T> entries) where T : ISnapEntry
     {
-        using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkEntries = new(entries.Count);
+        using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkEntries = ToBulkSetEntries(entries);
+        tree.BulkSet(bulkEntries, PatriciaTree.Flags.WasSorted);
+        tree.UpdateRootHash(canBeParallel: true);
+    }
+
+    /// <summary>Converts entries to <see cref="PatriciaTree.BulkSetEntry"/>, tracking metrics.</summary>
+    static ArrayPoolListRef<PatriciaTree.BulkSetEntry> ToBulkSetEntries<T>(IReadOnlyList<T> entries) where T : ISnapEntry
+    {
+        ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkEntries = new(entries.Count);
         long totalBytes = 0;
         for (int i = 0; i < entries.Count; i++)
         {
@@ -39,8 +47,6 @@ public interface ISnapTree<in TEntry> : IDisposable where TEntry : ISnapEntry
             totalBytes += rlpValue.Length;
         }
         Interlocked.Add(ref Metrics.SnapStateSynced, totalBytes);
-
-        tree.BulkSet(bulkEntries, PatriciaTree.Flags.WasSorted);
-        tree.UpdateRootHash(canBeParallel: true);
+        return bulkEntries;
     }
 }
