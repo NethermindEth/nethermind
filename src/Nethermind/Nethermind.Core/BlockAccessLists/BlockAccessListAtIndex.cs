@@ -392,7 +392,8 @@ public class BlockAccessListAtIndex(int initialChangeCapacity, int maxPooledAcco
     {
         if (_accountChangesPool.TryPop(out AccountChangesAtIndex? recycled))
         {
-            recycled.Reset(address);
+            // Clear reset the entry before pooling it.
+            recycled.Address = address;
             return recycled;
         }
         return new AccountChangesAtIndex(address);
