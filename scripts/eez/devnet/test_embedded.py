@@ -3,6 +3,7 @@ import copy
 import io
 import json
 import os
+import subprocess
 from pathlib import Path
 import tempfile
 import unittest
@@ -14,6 +15,49 @@ from test_canonical_snapshot import Node
 
 
 class EmbeddedCoverageTests(unittest.TestCase):
+    def test_rollup0_launcher_uses_explicit_runtime_paths_for_both_cargo_layouts(self):
+        for layout in ("target/ci-e2e/deps", "target/ci-e2e/build/eez-node-e2e/161b2421e2796da0/out"):
+            with self.subTest(layout=layout), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                upstream = root / "upstream"
+                binary = upstream / layout / "native_system-fixture"
+                binary.parent.mkdir(parents=True)
+                binary.write_text('''#!/usr/bin/env python3
+import json, os, sys
+from pathlib import Path
+keys = ("EEZ_TEST_PROOF_SIGNER_BIN", "CARGO_BIN_EXE_eez-composer", "CARGO_BIN_EXE_eez-follower")
+Path(os.environ["TRACE"]).write_text(json.dumps({key: os.environ.get(key) for key in keys}))
+sys.exit(42)
+''')
+                binary.chmod(0o755)
+                docker = root / "docker"
+                docker.write_text('''#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$1" == image && "$2" == inspect ]]; then
+    echo "sha256:fixture"
+elif [[ "$1" != ps ]]; then
+    exit 99
+fi
+''')
+                docker.chmod(0o755)
+                results = root / "results"
+                (results / "embedded").mkdir(parents=True)
+                (results / "embedded/inventory.json").write_text("{}")
+                (results / "upstream.json").write_text(json.dumps({"streaming": {"skip_consensus_layer_calls": True}}))
+                (results / "test-binaries.json").write_text(json.dumps({"native_system": str(binary.relative_to(upstream))}))
+                runtime = root / "runtime"
+                trace = root / "trace.json"
+                environment = dict(os.environ, PATH=str(root) + os.pathsep + os.environ["PATH"],
+                    EEZ_UPSTREAM=str(upstream), EEZ_RUNTIME_DIR=str(runtime), EEZ_CI_RESULT_DIR=str(results),
+                    EEZ_NETHERMIND_BASE_IMAGE="fixture", EEZ_PROFILE="rollup0", EEZ_SUITE="embedded-native_system",
+                    GITHUB_RUN_ID="1", GITHUB_RUN_ATTEMPT="1", TRACE=str(trace))
+                result = subprocess.run(["bash", str(Path(__file__).with_name("embedded.sh"))],
+                    env=environment, capture_output=True, text=True, timeout=10)
+                self.assertEqual(42, result.returncode, result.stderr)
+                self.assertEqual({"EEZ_TEST_PROOF_SIGNER_BIN": str(runtime / "eez-proof-signer"),
+                                  "CARGO_BIN_EXE_eez-composer": str(runtime / "eez-composer"),
+                                  "CARGO_BIN_EXE_eez-follower": str(runtime / "eez-follower")}, json.loads(trace.read_text()))
+
     def test_candidate_helper_only_references_the_selected_upstream_testkit_api(self):
         rollup0, native = [embedded.candidate_helper(profile) for profile in ("rollup0", "rollupx")]
         self.assertIn("world.follower_env()", rollup0)

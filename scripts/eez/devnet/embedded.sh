@@ -3,6 +3,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 : "${EEZ_UPSTREAM:?}"
 : "${EEZ_CI_RESULT_DIR:?}"
+: "${EEZ_RUNTIME_DIR:?}"
 : "${EEZ_NETHERMIND_BASE_IMAGE:?}"
 export EEZ_EMBEDDED_RESULTS="$EEZ_CI_RESULT_DIR/embedded"
 export EEZ_EMBEDDED_SCRIPT="$HERE/embedded.py"
@@ -12,11 +13,11 @@ EEZ_CANDIDATE_IMAGE="$(docker image inspect --format '{{.Id}}' "$EEZ_NETHERMIND_
 export EEZ_CANDIDATE_USER
 EEZ_CANDIDATE_USER="$(id -u):$(id -g)"
 export EEZ_CANDIDATE_SKIP_CONSENSUS_CALLS
+export EEZ_TEST_PROOF_SIGNER_BIN="$EEZ_RUNTIME_DIR/eez-proof-signer"
 if [[ "$EEZ_PROFILE" == rollupx ]]; then
     EEZ_CANDIDATE_SKIP_CONSENSUS_CALLS=false
     export EEZ_TEST_PREBUILT=true
     export EEZ_TEST_RUNTIME_BIN_DIR="$EEZ_RUNTIME_DIR"
-    export EEZ_TEST_PROOF_SIGNER_BIN="$EEZ_RUNTIME_DIR/eez-proof-signer"
     export CARGO_MANIFEST_DIR="$EEZ_UPSTREAM/crates/eez-testkit"
 else
     EEZ_CANDIDATE_SKIP_CONSENSUS_CALLS="$(jq -er '.streaming.skip_consensus_layer_calls | if type == "boolean" then tostring else error("missing execution profile") end' "$EEZ_CI_RESULT_DIR/upstream.json")"
@@ -44,7 +45,9 @@ mkdir -p "$EEZ_TEST_LOG_DIR"
         timeout 10m "$EEZ_UPSTREAM/$binary" "$suite::" --test-threads=1
     else
         binary="$(jq -er --arg suite "$suite" '.[$suite]' "$EEZ_CI_RESULT_DIR/test-binaries.json")"
-        timeout 10m "$EEZ_UPSTREAM/$binary" --test-threads=1
+        timeout 10m env "CARGO_BIN_EXE_eez-composer=$EEZ_RUNTIME_DIR/eez-composer" \
+            "CARGO_BIN_EXE_eez-follower=$EEZ_RUNTIME_DIR/eez-follower" \
+            "$EEZ_UPSTREAM/$binary" --test-threads=1
     fi
 )
 python3 "$HERE/embedded.py" report --inventory "$EEZ_EMBEDDED_RESULTS/inventory.json" --directory "$EEZ_EMBEDDED_RESULTS"
