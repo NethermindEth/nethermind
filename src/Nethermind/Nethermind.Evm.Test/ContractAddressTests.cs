@@ -30,7 +30,9 @@ public class ContractAddressTests
     /// <remarks>Nonces either side of each change in their encoded length, against the RLP encoding of the whole list.</remarks>
     [Test]
     public void Create_address_matches_the_rlp_of_deployer_and_nonce(
-        [Values(0x7fUL, 0x80UL, 0xffUL, 0x100UL, 0xffffUL, 0x1_0000UL, 0xffff_ffffUL, 0x1_0000_0000UL, 0x00ff_ffff_ffff_ffffUL, 0x0100_0000_0000_0000UL, ulong.MaxValue)] ulong nonce) =>
+        [Values(0x7fUL, 0x80UL, 0xffUL, 0x100UL, 0xffffUL, 0x1_0000UL, 0xff_ffffUL, 0x100_0000UL, 0xffff_ffffUL, 0x1_0000_0000UL,
+            0xff_ffff_ffffUL, 0x100_0000_0000UL, 0xffff_ffff_ffffUL, 0x1_0000_0000_0000UL, 0x00ff_ffff_ffff_ffffUL, 0x0100_0000_0000_0000UL,
+            ulong.MaxValue)] ulong nonce) =>
         Assert.That(ContractAddress.From(Deployer, nonce), Is.EqualTo(FromRlp(Deployer, nonce)));
 
     /// <remarks>A null deployer or a nonce over 64 bits takes the general RLP path.</remarks>
