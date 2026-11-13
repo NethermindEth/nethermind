@@ -209,7 +209,7 @@ public class TransactionForRpcTests
             _ => RpcTransactionErrors.AtLeastOneBlobInBlobTransaction
         };
         TransactionForRpc request = DeserializeTransactionForRpc($$"""
-            { {{sidecar}}"blobVersionedHashes":{{hashes}},"maxFeePerBlobGas":"0x1",
+            { {{sidecar}}"to":"{{TestItem.AddressD}}","blobVersionedHashes":{{hashes}},"maxFeePerBlobGas":"0x1",
               "maxFeePerGas":"0x1","maxPriorityFeePerGas":"{{(invalidFee ? "0x2" : "0x1")}}",
               "input":"0x01","data":"0x2a" }
             """);
