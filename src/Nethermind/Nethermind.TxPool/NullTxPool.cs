@@ -54,8 +54,6 @@ namespace Nethermind.TxPool
 
         public AcceptTxResult ValidateTxForBlobSampling(Transaction tx) => AcceptTxResult.Invalid;
 
-        public AcceptTxResult ValidateTxBeforeProofAdmission(Transaction tx) => AcceptTxResult.Invalid;
-
         public void ForgetRejectedBlobTransaction(Hash256 hash) { }
 
         public bool ForgetInvalidBlobProofs(Hash256 hash) => false;

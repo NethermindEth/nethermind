@@ -453,6 +453,22 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        // A wrapper may carry a sender's next nonces together, and a full pool rejects a peer's gap; the earlier ones are
+        // not pooled yet, so the caller checks contiguity and the dry run must not reject the later ones.
+        [Test]
+        public void Validation_before_proof_admission_leaves_nonce_contiguity_to_the_caller()
+        {
+            _txPool = CreatePool(new TxPoolConfig { Size = 1 });
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
+            Assert.That(_txPool.SubmitTx(Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject, TxHandlingOptions.None),
+                Is.EqualTo(AcceptTxResult.Accepted));
+
+            Transaction next = Build.A.Transaction.WithNonce(1).WithGasPrice(10).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            Assert.That(_txPool.ValidateTxBeforeProofAdmission(next), Is.EqualTo(AcceptTxResult.Accepted));
+        }
+
         // A dry run that kept its paymaster, code-dependency or payer-exposure reservation would let repeated validation
         // exhaust them; with every cap at one transaction, a leak fails the next validation or the final submission.
         [Test]
