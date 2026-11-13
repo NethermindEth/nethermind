@@ -42,7 +42,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
                 peerNetworkInfo.RemoteAddress = session.State != SessionState.New ? session.RemoteHost : "Handshake";
 
                 if (session.TryGetProtocolHandler(Protocol.Eth, out IProtocolHandler handler)
-                    && handler is ISyncPeer { IsInitialized: true } syncPeer)
+                    && handler is ISyncPeer { HeadHash: not null } syncPeer)
                 {
                     Protocols["eth"] = new EthProtocolInfo
                     {

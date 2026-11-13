@@ -187,7 +187,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [TearDown]
         public void TearDown() => (_txPool as IDisposable)?.Dispose();
 
-        private static Peer SetUpPeerA(bool ethInitialized = true)
+        private static Peer SetUpPeerA(bool statusReceived = true)
         {
             Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303, true);
             node.ClientId = "Geth/v1.9.21-stable/linux-amd64/go1.15.2";
@@ -210,8 +210,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 UInt256 difficulty = 0x5ea4ed;
                 syncPeer.TotalDifficulty.Returns(difficulty);
-                syncPeer.HeadHash.Returns(TestItem.KeccakA);
-                syncPeer.IsInitialized.Returns(ethInitialized);
+                syncPeer.HeadHash.Returns(statusReceived ? TestItem.KeccakA : null);
             }
 
             IProtocolHandler p2PProtocolHandler = Substitute.For<IProtocolHandler, IP2PProtocolHandler>();
@@ -410,9 +409,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public async Task parity_netPeers_eth_handler_not_initialized()
+        public async Task parity_netPeers_eth_status_not_received()
         {
-            Peer peer = SetUpPeerA(ethInitialized: false);
+            Peer peer = SetUpPeerA(statusReceived: false);
             IPeerManager peerManager = Substitute.For<IPeerManager>();
             peerManager.ActivePeers.Returns(new List<Peer> { peer });
             peerManager.ActivePeersCount.Returns(1);
