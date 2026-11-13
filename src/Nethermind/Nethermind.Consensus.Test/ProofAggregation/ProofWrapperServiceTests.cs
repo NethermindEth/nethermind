@@ -795,18 +795,20 @@ public class ProofWrapperServiceTests
         }
     }
 
-    // A transaction whose own proving cost exceeds the per-wrapper budget is still produced, alone, rather than never offered.
+    // The widest transaction the protocol allows fits the per-wrapper budget, so the "produced alone" path in
+    // ProofWrapperService is a safety net for future constant changes rather than a case the limits can reach: one direct leaf
+    // takes MAX_LEANSIG_DEPS_PER_WRAPPER signatures and a transaction may declare at most MaxStarksPerTx leanSTARK proofs.
     [Test]
-    public void Transaction_exceeding_the_proving_budget_alone_is_still_produced()
+    public void Widest_transaction_fits_the_proving_budget_and_is_produced()
     {
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         Dictionary<FrameDependency, byte[]> witnesses = [];
-        Transaction wide = WitnessedTransaction(store, witnesses, 0, sphincs: Eip8288Constants.MaxSigsPerTx, starks: 1);
+        Transaction wide = WitnessedTransaction(store, witnesses, 0, sphincs: Eip8288Constants.MaxSigsPerTx, starks: Eip8288Constants.MaxStarksPerTx);
         Transaction small = WitnessedTransaction(store, witnesses, 1, sphincs: 1);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(store.TryGetInput(Eip8288Dependencies.ForTransaction(wide, FrameTxSigHash.ComputeValue), out AggregationInput wideInput), Is.True);
-            Assert.That(RecursiveStarkAggregator.EstimatedCost(wideInput), Is.GreaterThan(ProofWrapperService.MaxWrapperProvingCost));
+            Assert.That(RecursiveStarkAggregator.EstimatedCost(wideInput), Is.LessThanOrEqualTo(ProofWrapperService.MaxWrapperProvingCost));
         }
         FakeLeanProofVerifier verifier = new(true);
         ProofWrapperService service = CreateService([wide, small], store, verifier);
@@ -818,7 +820,6 @@ public class ProofWrapperServiceTests
         {
             Assert.That(result, Is.EqualTo(Result.Success));
             Assert.That(produced.SelectMany(static w => w.Transactions).Select(static tx => tx.Hash), Is.EquivalentTo(new[] { wide.Hash, small.Hash }));
-            Assert.That(produced.Single(w => w.Transactions.Any(tx => tx.Hash == wide.Hash)).Transactions, Has.Count.EqualTo(1));
             Assert.That(produced.Select(static w => w.Mode), Is.All.EqualTo(MempoolWrapper.ModeRecursive));
             Assert.That(verifier.ProofCalls, Is.Positive);
         }

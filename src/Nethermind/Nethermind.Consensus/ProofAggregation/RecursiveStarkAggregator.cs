@@ -19,7 +19,15 @@ public static class RecursiveStarkAggregator
     // with every inclusion-list proof, fold over bounded steps of a binary tree, pruning each child separately; only the slot
     // deadline bounds the rounds.
     private const int MaxRecursiveChildren = 2;
-    internal const int DirectBatchSize = 4;
+    /// <summary>Fresh signatures folded into one direct leaf, so one native call.</summary>
+    /// <remarks>A recursive merge costs about nine signatures, so fewer, wider leaves cost less than more, narrower ones.
+    /// Four came from the former in-tree BLAKE2s-to-Keccak backend, whose raw proving witness made wide direct batches
+    /// expensive in memory, and was documented there as "the conservative default for smaller CI hosts", not as a bound.
+    /// The packaged ABI 12 backend reports <c>MAX_DEPS</c> 256 per call, and <c>MAX_LEANSIG_DEPS_PER_WRAPPER</c> is the
+    /// largest fresh-signature set a produced mode-0 wrapper may carry, so one leaf now covers a whole wrapper. The batch
+    /// loop takes whatever is available and never waits to fill a leaf, and <see cref="MaxProductionWitnessBytes"/> still
+    /// caps a leaf's serialized witnesses.</remarks>
+    internal const int DirectBatchSize = Eip8288Constants.MaxLeanSigDepsPerWrapper;
 
     /// <summary>Runs the STARK check of a block proof against its dependency list.</summary>
     /// <remarks>An empty dependency list carries an empty <c>stark_proof</c> and invokes no verifier; any other list needs
@@ -161,6 +169,17 @@ public static class RecursiveStarkAggregator
         }
     }
 
+    /// <summary>Whether any direct dependency of <paramref name="input"/> is already proven by one of its recursive children.</summary>
+    private static bool AnyDependencyProvenByChild(AggregationInput input)
+    {
+        if (input.Deps.Count == 0 || input.RecursiveProofs.Count == 0) return false;
+        HashSet<FrameDependency> covered = [];
+        foreach (RecursiveProofInput child in input.RecursiveProofs) covered.UnionWith(child.InnerDeps);
+        foreach (FrameDependency dependency in input.Deps)
+            if (covered.Contains(dependency)) return true;
+        return false;
+    }
+
     /// <summary>Folds inputs in bounded batches before generating the final recursive proof.</summary>
     /// <remarks>Every step proves and verifies under <paramref name="forkVerifier"/>'s <c>AGGREGATED_VK</c>.</remarks>
     public static byte[] Prove(AggregationInput input, ILeanProofVerifier verifier, Eip8288Verifier forkVerifier, in ValueHash256 depsHash,
@@ -186,10 +205,13 @@ public static class RecursiveStarkAggregator
                 return parent.Proof.ToArray();
             }
         }
+        // A direct dependency a child already proves is authenticated and then left out of the leaf below, so the one-call
+        // path is only equivalent while no child covers one: taking it then would fold that witness again for nothing.
         if (input.RecursiveProofs.Count <= MaxRecursiveChildren && input.Deps.Count <= DirectBatchSize
             && input.Discards.Count <= Eip8288Constants.MaxProofDependencies
             && (input.Deps.Count <= 1 || DirectInputSize(input.Witnesses) <= MaxProductionWitnessBytes)
-            && InputSize(input) <= Eip8288Constants.MaxAggregationInputBytes)
+            && InputSize(input) <= Eip8288Constants.MaxAggregationInputBytes
+            && !AnyDependencyProvenByChild(input))
         {
             byte[] result = ProductionProofCache.Prove(verifier, in depsHash, aggregatedVk, input, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
