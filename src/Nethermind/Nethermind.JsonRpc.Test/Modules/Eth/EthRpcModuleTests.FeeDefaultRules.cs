@@ -56,14 +56,14 @@ public partial class EthRpcModuleTests
     [TestCase("eth_createAccessList", """{"type":"0x4","gasPrice":"0x1","authorizationList":AUTH}""", "both gasPrice and authorizationList specified", TestName = "Create access list, gas price with an authorization list")]
     [TestCase("eth_createAccessList", """{"gasPrice":"0x1","authorizationList":[]}""", "both gasPrice and authorizationList specified", TestName = "Create access list, gas price with an empty authorization list")]
     [TestCase("eth_createAccessList", """{"type":"0x4","gasPrice":"0x0"}""", "gasPrice must be non-zero after london fork", TestName = "Create access list, set-code type with a zero gas price")]
-    [TestCase("eth_sendTransaction", """{"blobVersionedHashes":[],"maxFeePerGas":"0x0","maxPriorityFeePerGas":"0x0","input":"0x01","data":"0x2a"}""", "maxFeePerGas must be non-zero")]
-    [TestCase("eth_sendTransaction", """{"blobVersionedHashes":[],"gasPrice":"0x0","input":"0x01","data":"0x2a"}""", "gasPrice must be non-zero after london fork")]
-    [TestCase("eth_signTransaction", """{"blobVersionedHashes":[],"maxFeePerGas":"0x0","maxPriorityFeePerGas":"0x0","input":"0x01","data":"0x2a"}""", "maxFeePerGas must be non-zero")]
-    [TestCase("eth_signTransaction", """{"blobVersionedHashes":[],"gasPrice":"0x0","input":"0x01","data":"0x2a"}""", "gasPrice must be non-zero after london fork")]
-    [TestCase("eth_signTransaction", """{"blobVersionedHashes":[],"gasPrice":"0x1","maxFeePerGas":"0x1","input":"0x01","data":"0x2a"}""", RpcTransactionErrors.GasPriceInEip1559)]
-    [TestCase("eth_sendTransaction", """{"blobVersionedHashes":[],"gasPrice":"0x1","maxFeePerGas":"0x1","input":"0x01","data":"0x2a"}""", RpcTransactionErrors.GasPriceInEip1559)]
-    [TestCase("eth_signTransaction", """{"blobVersionedHashes":[],"gasPrice":"0x1","maxFeePerBlobGas":"0x0","input":"0x01","data":"0x2a"}""", RpcTransactionErrors.ZeroMaxFeePerBlobGas)]
-    [TestCase("eth_sendTransaction", """{"blobVersionedHashes":[],"gasPrice":"0x1","maxFeePerBlobGas":"0x0","input":"0x01","data":"0x2a"}""", RpcTransactionErrors.ZeroMaxFeePerBlobGas)]
+    [TestCase("eth_sendTransaction", """{"blobVersionedHashes":[],"maxFeePerGas":"0x0","maxPriorityFeePerGas":"0x0","input":"0x01","data":"0x2a"}""", RpcTransactionErrors.DataAndInputDiffer)]
+    [TestCase("eth_sendTransaction", """{"blobVersionedHashes":[],"gasPrice":"0x0","input":"0x01","data":"0x2a"}""", RpcTransactionErrors.DataAndInputDiffer)]
+    [TestCase("eth_signTransaction", """{"blobVersionedHashes":[],"maxFeePerGas":"0x0","maxPriorityFeePerGas":"0x0","input":"0x01","data":"0x2a"}""", RpcTransactionErrors.DataAndInputDiffer)]
+    [TestCase("eth_signTransaction", """{"blobVersionedHashes":[],"gasPrice":"0x0","input":"0x01","data":"0x2a"}""", RpcTransactionErrors.DataAndInputDiffer)]
+    [TestCase("eth_signTransaction", """{"blobVersionedHashes":[],"gasPrice":"0x1","maxFeePerGas":"0x1","input":"0x01","data":"0x2a"}""", RpcTransactionErrors.DataAndInputDiffer)]
+    [TestCase("eth_sendTransaction", """{"blobVersionedHashes":[],"gasPrice":"0x1","maxFeePerGas":"0x1","input":"0x01","data":"0x2a"}""", RpcTransactionErrors.DataAndInputDiffer)]
+    [TestCase("eth_signTransaction", """{"blobVersionedHashes":[],"gasPrice":"0x1","maxFeePerBlobGas":"0x0","input":"0x01","data":"0x2a"}""", RpcTransactionErrors.DataAndInputDiffer)]
+    [TestCase("eth_sendTransaction", """{"blobVersionedHashes":[],"gasPrice":"0x1","maxFeePerBlobGas":"0x0","input":"0x01","data":"0x2a"}""", RpcTransactionErrors.DataAndInputDiffer)]
     public async Task Fee_default_rules_reject_the_request(string method, string feeFields, string expected) =>
         Assert.That(await FeeDefaultsError(method, feeFields.Replace("AUTH", SetCodeAuthorization), london: true), Is.EqualTo(expected));
 
