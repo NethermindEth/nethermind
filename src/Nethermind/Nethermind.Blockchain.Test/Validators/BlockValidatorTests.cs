@@ -380,6 +380,38 @@ public class BlockValidatorTests
         Assert.That(result, Is.EqualTo(valid), error);
     }
 
+    // Without batch pricing a batch claim is an unknown scheme, so the real transaction validator rejects a block declaring one;
+    // with it the scheme is accepted, whatever else the block still fails.
+    [Test]
+    public void Eip8288_batch_claims_are_invalid_in_blocks_without_batch_pricing([Values] bool batchPricing)
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        FrameDependency dependency = new(Eip8288Constants.BatchedLeanStarkScheme, ValueKeccak.Compute("claim"), ValueKeccak.Compute("key"));
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = TestBlockchainIds.ChainId,
+            SenderAddress = TestItem.AddressA,
+            Frames = [new TxFrame(FrameMode.DepVerify, 0, null, dependency.FrameCharge(batchPricing), UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))],
+            FrameSignatures = [],
+        };
+        tx.Hash = tx.CalculateHash();
+        Block block = Build.A.Block.WithParent(parent).WithEncodedSize(Eip7934Constants.DefaultMaxRlpBlockSize).WithTransactions(tx).TestObject;
+        IReleaseSpec spec = new OverridableReleaseSpec(Eip8288Prototype.Instance) { IsEipBatchedDependencyPricingEnabled = batchPricing };
+        BlockValidator validator = new(new TxValidator(TestBlockchainIds.ChainId), Always.Valid, Always.Valid,
+            new CustomSpecProvider(((ForkActivation)0, spec)), LimboLogs.Instance, Substitute.For<ILeanProofVerifier>());
+
+        bool valid = validator.ValidateSuggestedBlock(block, parent, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            if (!batchPricing) Assert.That(valid, Is.False);
+            Assert.That(error ?? string.Empty, batchPricing
+                ? Does.Not.Contain(FrameTxValidation.InvalidDependencyScheme)
+                : Does.Contain(FrameTxValidation.InvalidDependencyScheme));
+        }
+    }
+
     private sealed class StatementLeanProofVerifier(ValueHash256 accepted) : ILeanProofVerifier
     {
         public void EnsureAvailable() { }
