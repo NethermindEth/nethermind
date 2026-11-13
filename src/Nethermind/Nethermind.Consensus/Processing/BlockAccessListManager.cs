@@ -155,6 +155,9 @@ public partial class BlockAccessListManager(
         {
             Reset();
             _currentGeneratedBlockAccessList = (ParallelExecutionEnabled && !ForceConstructGeneratedBlockAccessList) ? null : GeneratedBlockAccessList;
+            // A valid block generates the accounts its access list holds.
+            if (suggestedBlock.BlockAccessList is { } suggestedAccess)
+                _currentGeneratedBlockAccessList?.EnsureCapacity(suggestedAccess.AccountChanges.Count);
             if (VerifyOnly && suggestedBlock.BlockAccessList is { TotalStorageReads: > 0 } bal)
                 _readPlan = new BalReadStoragePlan(bal);
             // Build the column-oriented validation index once per block; per-tx ChangesEqual
