@@ -394,7 +394,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// <remarks>Witnesses pinned by pending transactions are never evicted, so a full store would otherwise refuse every wrapper.
     /// Transactions the next blocks could not include give way, oldest first, to a wrapper whose new transactions the next blocks
     /// could, but only when evicting at most <see cref="MaxEvictedPerAdmission"/> of them frees enough, only those whose
-    /// eviction frees witness capacity, and only once every new incoming transaction passes admission but for its witnesses.</remarks>
+    /// eviction frees witness capacity, and only once every new incoming transaction passes admission but for its witnesses.
+    /// That check is best-effort: it judges each transaction alone, without its wrapper's earlier ones from the same sender, and
+    /// admission can still defer a peer's transaction once the head's simulation budget is spent, partly by the check itself.
+    /// Either way at most <see cref="MaxEvictedPerAdmission"/> transactions the next blocks could not include are lost.</remarks>
     private bool TryBeginAdmission(MempoolWrapper decoded, TxHandlingOptions handling, out IDisposable? scope)
     {
         if (leanProofStore.TryBeginAdmission(decoded.Deps, decoded.Proofs, decoded.RecursiveStark?.StarkProof, out scope)) return true;
