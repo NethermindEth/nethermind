@@ -306,7 +306,8 @@ public partial class BlockAccessListManager
         _generatedChargeableStorageReads += slice.CoveredStorageReads;
         foreach (AccountChangesAtIndex ac in slice.AccountChanges)
         {
-            if (!IsSystemContract(ac.Address))
+            // An account without reads adds nothing, so the address scan is skipped for it.
+            if (ac.StorageReads.Count != 0 && !IsSystemContract(ac.Address))
             {
                 if (_readPlan is null) _generatedChargeableStorageReads += (ulong)ac.StorageReads.Count;
                 else

@@ -12,6 +12,7 @@ using EraException = Nethermind.Era1.Exceptions.EraException;
 using EraVerificationException = Nethermind.Era1.Exceptions.EraVerificationException;
 using Nethermind.EraE.Proofs;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 

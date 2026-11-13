@@ -23,6 +23,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Evm;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.State;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.Tracing;
@@ -33,6 +34,7 @@ using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 
@@ -48,10 +50,13 @@ public class GethStyleTracer(
     IOverridableEnv<GethStyleTracer.BlockProcessingComponents> blockProcessingEnv,
     IPrefixStateSeedSource prefixSeeds,
     IOverridableCodeInfoRepository codeInfoRepository,
+    ILogManager logManager,
     IParallelBlockTracer? parallelTracer = null,
     GethStyleTracer.TraceCallRequestState? callRequestState = null
 ) : IGethStyleTracer
 {
+    private readonly ILogger _logger = logManager.GetClassLogger<GethStyleTracer>();
+
     public GethLikeTxTrace? Trace(Hash256 blockHash, int txIndex, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null)
     {
         Block block = blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None) ?? throw new InvalidOperationException($"No historical block found for {blockHash}");
@@ -130,6 +135,9 @@ public class GethStyleTracer(
     private (BlockHeader Header, IReleaseSpec Spec) PrepareCallHeader(Block block, GethTraceOptions options)
     {
         BlockHeader header = block.Header.Clone();
+        // Taken before preprocessing restores IsPostMerge, which stored headers do not carry. Only ever set it:
+        // a chain such as Taiko keeps post-merge headers with a nonzero difficulty.
+        if (header.Difficulty == 0) header.IsPostMerge = true;
         options.BlockOverrides?.ApplyOverrides(header);
         if (options.NoBaseFee) header.BaseFeePerGas = UInt256.Zero;
         return (header, specProvider.GetSpec(header));
@@ -310,7 +318,15 @@ public class GethStyleTracer(
 
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverrideAtTarget(block.Header, options.StateOverrides);
         IntermediateRootsBlockTracer tracer = new(scope.Component.WorldState, specProvider.GetSpec(block.Header));
-        scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlyReplay, tracer.WithCancellation(cancellationToken), cancellationToken);
+        try
+        {
+            scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlySigned, tracer.WithCancellation(cancellationToken), cancellationToken);
+        }
+        catch (InvalidTransactionException e)
+        {
+            // Mirror geth: a rejected transaction ends the replay, returning the roots of the transactions before it.
+            if (_logger.IsDebug) _logger.Debug($"Intermediate roots replay of block {block.ToString(Block.Format.FullHashAndNumber)} stopped: {e.Message}");
+        }
         return tracer.BuildResult();
     }
 
@@ -686,9 +702,8 @@ public class GethStyleTracer(
         if (receipt.Logs is not null) return receipt.Logs.Length;
         if (receipt.LogsRlp.IsEmpty) return 0;
 
-        RlpReader logs = new(receipt.LogsRlp);
-        logs.SkipLength();
-        return logs.PeekNumberOfItemsRemaining();
+        RlpReader logs = new RlpReader(receipt.LogsRlp).EnterSequence<OffFlag>(out _);
+        return logs.CountItems<OffFlag>(int.MaxValue);
     }
 
     /// <summary>A JavaScript tracer owns a script engine; one per worker at once is not a cost a block trace should pay.</summary>
@@ -713,7 +728,7 @@ public class GethStyleTracer(
     private static Block GetBlockToTrace(Rlp blockRlp)
     {
         Block block = Rlp.Decode<Block>(blockRlp)
-            ?? throw new RlpException("Block decoded as null.");
+            ?? throw new RlpReaderException("Block decoded as null.");
         if (block.TotalDifficulty is null)
         {
             block.Header.TotalDifficulty = 1;

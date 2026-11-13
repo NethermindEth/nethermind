@@ -10,13 +10,9 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.State;
 using Nethermind.Int256;
 
-[assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
-[assembly: InternalsVisibleTo("Nethermind.State.Test")]
-
-namespace Nethermind.State;
+namespace Nethermind.Evm.State;
 
 /// <remarks>
 /// Records only while <see cref="SetGeneratingBlockAccessList"/> holds a slice, so the decorator can sit
@@ -81,7 +77,8 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         {
             // Skip the GetOrAddAccountChanges probe when physical existence is already recorded.
             if (accountChanges?.AccountExists is not true) _generatingBlockAccessList.RecordAccountExistence(address, true);
-            _generatingBlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
+            // A zero credit records only the account's entry, which the line above or an earlier access already made.
+            if (!balanceChange.IsZero) _generatingBlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
         }
 
         return wasCreated;
