@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -213,30 +214,74 @@ public class ProofRpcModuleTests
 
     /// <remarks>The proof method finds a block by hash whether it is canonical or not; only a canonical one is pruned history.</remarks>
     [Test]
-    public async Task When_no_canonical_block_below_the_served_floor_holds_the_transaction_transaction_receipt_returns_null()
+    public async Task When_the_index_names_a_side_chain_block_below_the_served_floor_transaction_receipt_returns_null()
     {
         Block sideChain = Build.A.Block.WithParent(_blockTree.FindBlock(0)!)
             .WithTransactions(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).TestObject).WithExtraData([1]).TestObject;
         _blockTree.SuggestBlock(sideChain, BlockTreeSuggestOptions.ForceDontSetAsMain);
         Hash256 sideChainTx = sideChain.Transactions[0].Hash!;
-        // A hash-valued entry still naming a reorganised-out block, and a compact one now resolving to a block without
-        // the transaction; no receipts for either.
+        // A hash-valued entry still naming a reorganised-out block, and no receipts for it.
         IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
         receiptFinder.FindBlockHash(sideChainTx).Returns(sideChain.Hash);
-        receiptFinder.FindBlockHash(TestItem.KeccakA).Returns(_blockTree.FindBlock(1)!.Hash);
         receiptFinder.Get(Arg.Any<Block>()).Returns(Array.Empty<TxReceipt>());
         RebuildContainerWith(receiptFinder);
         _blockTree.UpdateLowestServedBlock(2);
         Assert.That(_blockTree.IsMainChain(sideChain.Header), Is.False, "precondition: a side-chain block below the served floor");
 
-        string sideChainReceipt = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", sideChainTx, false);
-        string reorganisedOutReceipt = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", TestItem.KeccakA, false);
+        string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", sideChainTx, false);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(sideChainReceipt, Is.EqualTo(NullResultResponse), "an entry naming a side-chain block");
-            Assert.That(reorganisedOutReceipt, Is.EqualTo(NullResultResponse), "an entry naming a canonical block without the transaction");
-        }
+        Assert.That(response, Is.EqualTo(NullResultResponse));
+    }
+
+    /// <remarks>
+    /// Block 1 holds the transaction, and the receipts read for it have none for it. Block 1 is at a floor of 1 and below
+    /// a floor of 2; settled means canonical and at or below the head, and otherwise the block is above the head and was
+    /// never processed.
+    /// </remarks>
+    private static IEnumerable<TestCaseData> MissingReceiptCases()
+    {
+        yield return new TestCaseData(true, 2ul, true, false, true).SetName("Proof_missing_receipt_below_the_floor");
+        yield return new TestCaseData(true, 2ul, false, true, true).SetName("Proof_missing_receipt_below_the_floor_not_settled_with_a_receipt_per_transaction");
+        yield return new TestCaseData(false, 2ul, true, false, false).SetName("Proof_missing_receipt_of_a_side_chain_block_below_the_floor");
+        yield return new TestCaseData(true, 1ul, true, false, true).SetName("Proof_missing_receipt_at_the_floor_with_fewer_receipts_than_transactions");
+        yield return new TestCaseData(true, 1ul, true, true, false).SetName("Proof_missing_receipt_at_the_floor_with_a_receipt_per_transaction");
+        yield return new TestCaseData(true, 1ul, false, false, false).SetName("Proof_missing_receipt_at_the_floor_not_settled");
+    }
+
+    /// <remarks>
+    /// The rule <c>eth_getTransactionReceipt</c> applies, decided from the block the method resolved and the receipts it
+    /// read: one index lookup, one receipts read, and no header or body read by hash, so it cannot decide on another block
+    /// after a reorg or start a second regeneration.
+    /// </remarks>
+    [TestCaseSource(nameof(MissingReceiptCases))]
+    public async Task When_the_receipt_is_missing_transaction_receipt_decides_from_the_block_and_the_receipts_it_read(
+        bool canonical, ulong floor, bool settled, bool receiptPerTransaction, bool pruned)
+    {
+        Block block = _blockTree.FindBlock(1)!;
+        Hash256 txHash = block.Transactions[0].Hash!;
+        TxReceipt[] receipts = receiptPerTransaction
+            ? [new TxReceipt { TxHash = TestItem.KeccakG, Index = 0 }, new TxReceipt { TxHash = TestItem.KeccakH, Index = 1 }]
+            : [new TxReceipt { TxHash = TestItem.KeccakH, Index = 0 }];
+        Assert.That(block.Transactions, Has.Length.EqualTo(2), "precondition: a receipt per transaction is two receipts");
+
+        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+        receiptFinder.FindBlockHash(txHash).Returns(block.Hash);
+        receiptFinder.Get(block, Arg.Any<bool>(), Arg.Any<bool>()).Returns(receipts);
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.FindBlock(Arg.Any<BlockParameter>()).Returns(block);
+        blockFinder.IsMainChain(block.Header).Returns(canonical);
+        blockFinder.LowestServedBlock.Returns(floor);
+        blockFinder.Head.Returns(Build.A.Block.WithNumber(settled ? block.Number + 1 : block.Number - 1).TestObject);
+        blockFinder.GetInfo(block.Number, block.Hash!).Returns(((BlockInfo?)null, (ChainLevelInfo?)null));
+        RebuildContainerWith(receiptFinder, blockFinder: blockFinder);
+
+        string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", txHash, false);
+
+        Assert.That(response, Is.EqualTo(pruned ? PrunedHistoryResponse : NullResultResponse));
+        receiptFinder.Received(1).FindBlockHash(txHash);
+        receiptFinder.ReceivedWithAnyArgs(1).Get(null!, default, default);
+        blockFinder.DidNotReceiveWithAnyArgs().FindHeader(null!, default, default);
+        blockFinder.DidNotReceiveWithAnyArgs().FindBlock(null!, default, default);
     }
 
     /// <remarks>

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -34,23 +35,49 @@ public class BlockFinderExtensionsTests
         Complete
     }
 
+    /// <summary>The last read a case makes, in the order the predicate reads: the index, the canonical header, the body, the receipts.</summary>
+    public enum LastRead
+    {
+        Index,
+        Header,
+        Body,
+        Receipts
+    }
+
     /// <remarks>
     /// The block the index names is at height <see cref="Number"/>; a floor of <c>Number + 1</c> puts it below the served
-    /// floor, a floor of <see cref="Number"/> at it. The rows that expect <c>false</c> before a body read set every other
-    /// condition so that a missing check would answer <c>true</c>.
+    /// floor, a floor of <see cref="Number"/> at it, and a head of <c>Number / 2</c> leaves it unsettled. The rows that
+    /// expect <c>false</c> before a body read set every other condition so that a missing check would answer <c>true</c>.
     /// </remarks>
-    [TestCase(false, true, Number + 1, Body.WithTheTransaction, Receipts.Missing, Head, false, TestName = "IsTransactionPruned_no_index_entry")]
-    [TestCase(true, false, Number + 1, Body.WithTheTransaction, Receipts.Missing, Head, false, TestName = "IsTransactionPruned_side_chain_block")]
-    [TestCase(true, true, Number + 1, Body.NotStored, Receipts.Missing, Head, true, TestName = "IsTransactionPruned_body_not_stored_below_the_floor")]
-    [TestCase(true, true, Number, Body.NotStored, Receipts.Missing, Head, false, TestName = "IsTransactionPruned_body_not_stored_at_the_floor")]
-    [TestCase(true, true, Number + 1, Body.WithoutTheTransaction, Receipts.Complete, Head, false, TestName = "IsTransactionPruned_body_without_the_transaction_below_the_floor")]
-    [TestCase(true, true, Number + 1, Body.WithTheTransaction, Receipts.Complete, Head, true, TestName = "IsTransactionPruned_body_with_the_transaction_below_the_floor")]
-    [TestCase(true, true, Number, Body.WithTheTransaction, Receipts.Missing, Head, true, TestName = "IsTransactionPruned_receipts_missing_at_the_floor")]
-    [TestCase(true, true, Number, Body.WithTheTransaction, Receipts.Complete, Head, false, TestName = "IsTransactionPruned_receipts_stored_at_the_floor")]
-    [TestCase(true, true, Number, Body.WithTheTransaction, Receipts.Missing, Number / 2, false, TestName = "IsTransactionPruned_receipts_missing_above_the_head")]
-    [TestCase(true, true, Number, Body.WithoutTheTransaction, Receipts.Missing, Head, false, TestName = "IsTransactionPruned_body_without_the_transaction_receipts_missing_at_the_floor")]
+    private static IEnumerable<TestCaseData> IsTransactionPrunedCases()
+    {
+        yield return new TestCaseData(false, true, Number + 1, Body.WithTheTransaction, Receipts.Missing, Head, LastRead.Index, false)
+            .SetName("IsTransactionPruned_no_index_entry");
+        yield return new TestCaseData(true, false, Number + 1, Body.WithTheTransaction, Receipts.Missing, Head, LastRead.Header, false)
+            .SetName("IsTransactionPruned_side_chain_block");
+        yield return new TestCaseData(true, true, Number + 1, Body.NotStored, Receipts.Missing, Head, LastRead.Body, true)
+            .SetName("IsTransactionPruned_body_not_stored_below_the_floor");
+        yield return new TestCaseData(true, true, Number, Body.NotStored, Receipts.Missing, Head, LastRead.Body, false)
+            .SetName("IsTransactionPruned_body_not_stored_at_the_floor");
+        yield return new TestCaseData(true, true, Number + 1, Body.WithoutTheTransaction, Receipts.Complete, Head, LastRead.Body, false)
+            .SetName("IsTransactionPruned_body_without_the_transaction_below_the_floor");
+        yield return new TestCaseData(true, true, Number + 1, Body.WithTheTransaction, Receipts.Complete, Head, LastRead.Body, true)
+            .SetName("IsTransactionPruned_body_with_the_transaction_below_the_floor");
+        yield return new TestCaseData(true, true, Number + 1, Body.WithTheTransaction, Receipts.Missing, Number / 2, LastRead.Body, true)
+            .SetName("IsTransactionPruned_body_with_the_transaction_below_the_floor_above_the_head");
+        yield return new TestCaseData(true, true, Number, Body.WithTheTransaction, Receipts.Missing, Head, LastRead.Receipts, true)
+            .SetName("IsTransactionPruned_receipts_missing_at_the_floor");
+        yield return new TestCaseData(true, true, Number, Body.WithTheTransaction, Receipts.Complete, Head, LastRead.Receipts, false)
+            .SetName("IsTransactionPruned_receipts_stored_at_the_floor");
+        yield return new TestCaseData(true, true, Number, Body.WithTheTransaction, Receipts.Missing, Number / 2, LastRead.Header, false)
+            .SetName("IsTransactionPruned_receipts_missing_above_the_head");
+        yield return new TestCaseData(true, true, Number, Body.WithoutTheTransaction, Receipts.Missing, Head, LastRead.Body, false)
+            .SetName("IsTransactionPruned_body_without_the_transaction_receipts_missing_at_the_floor");
+    }
+
+    [TestCaseSource(nameof(IsTransactionPrunedCases))]
     public void IsTransactionPruned_decides_from_the_index_entry_the_body_and_the_receipts(
-        bool indexed, bool canonical, ulong floor, Body body, Receipts receipts, ulong head, bool expected)
+        bool indexed, bool canonical, ulong floor, Body body, Receipts receipts, ulong head, LastRead lastRead, bool expected)
     {
         Transaction[] transactions = Enumerable.Range(0, 2)
             .Select(static i => Build.A.Transaction.WithNonce((ulong)i).SignedAndResolved(TestItem.PrivateKeyB).TestObject)
@@ -79,13 +106,20 @@ public class BlockFinderExtensionsTests
         bool pruned = blockFinder.IsTransactionPruned(receiptFinder, txHash);
 
         Assert.That(pruned, Is.EqualTo(expected));
-        // A hash without an entry, which is every poll for a pending transaction, does nothing past the index read; an
-        // entry that is not canonical reads no body.
-        if (!indexed) blockFinder.DidNotReceiveWithAnyArgs().FindHeader(null!, default, default);
-        if (!indexed || !canonical)
+        // A read is made only once the checks before it pass. A hash without an entry, which is every poll for a pending
+        // transaction, reads nothing past the index; neither an entry that is not canonical nor a block at or above the
+        // floor that is not settled reads a body; a block below the floor reads no receipts.
+        if (lastRead < LastRead.Header) blockFinder.DidNotReceiveWithAnyArgs().FindHeader(null!, default, default);
+        if (lastRead < LastRead.Body) blockFinder.DidNotReceiveWithAnyArgs().FindBlock(null!, default, default);
+        if (lastRead < LastRead.Receipts)
         {
-            blockFinder.DidNotReceiveWithAnyArgs().FindBlock(null!, default, default);
             receiptFinder.DidNotReceiveWithAnyArgs().Get(null!, default, default);
+        }
+        else
+        {
+            // Only their number is used: one read, without recovery.
+            receiptFinder.ReceivedWithAnyArgs(1).Get(null!, default, default);
+            receiptFinder.Received(1).Get(block, recover: false, recoverSender: false);
         }
     }
 }
