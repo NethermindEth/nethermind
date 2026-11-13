@@ -417,18 +417,21 @@ namespace Nethermind.Serialization.Rlp
             writer.EndSequence(sequence);
         }
 
-        /// <summary>
-        /// Encodes a non-null <paramref name="account"/> into a freshly allocated <see cref="byte"/> array.
-        /// </summary>
+        /// <inheritdoc/>
         /// <remarks>
         /// Computes the content length once and reuses it for both sizing the buffer and writing the
         /// sequence header, avoiding the double <see cref="GetContentLength"/> pass that the generic
-        /// <see cref="RlpDecoder{T}.EncodeAsBytes"/> incurs. The buffer is allocated uninitialized
+        /// <see cref="RlpDecoder{T}.Encode(T, RlpBehaviors)"/> incurs. The buffer is allocated uninitialized
         /// because encoding fills it completely.
         /// </remarks>
         [SkipLocalsInit]
-        public byte[] EncodeAsBytes(Account account)
+        public override byte[] Encode(Account? account, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            if (account is null)
+            {
+                return [Rlp.EmptyListByte];
+            }
+
             int contentLength = GetContentLength(account);
             byte[] bytes = GC.AllocateUninitializedArray<byte>(Rlp.LengthOfSequence(contentLength));
             // The fixed shape is written straight into the array, keeping the position in a register rather than in a
@@ -452,9 +455,9 @@ namespace Nethermind.Serialization.Rlp
             return bytes;
         }
 
-        /// <inheritdoc cref="EncodeAsBytes(Account)"/>
+        /// <summary>Encodes <paramref name="account"/> into a freshly allocated <see cref="byte"/> array.</summary>
         [SkipLocalsInit]
-        public byte[] EncodeAsBytes(in AccountStruct account)
+        public byte[] Encode(in AccountStruct account)
         {
             byte[] bytes = GC.AllocateUninitializedArray<byte>(Rlp.LengthOfSequence(GetContentLength(account)));
             Encode(bytes, account);

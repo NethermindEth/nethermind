@@ -278,8 +278,8 @@ public static class Utils
         EthereumEcdsa ecdsa = new(chainId);
         ecdsa.Sign(signer, tx, isEip155Enabled: true);
 
-        Rlp rlp = TxDecoder.Instance.Encode(tx);
-        string raw = "0x" + rlp.Bytes.ToHexString();
+        byte[] rlp = TxDecoder.Instance.Encode(tx);
+        string raw = "0x" + rlp.ToHexString();
 
         JsonNode result = await SendJsonRpcRequestAsync(httpClient, "eth_sendRawTransaction", raw);
         return result.GetValue<string>();
@@ -916,8 +916,8 @@ public static class Utils
 
         // eth_sendRawTransaction expects the EIP-4844 network ("mempool") form: the typed payload
         // followed by the blobs/commitments/proofs wrapper, un-wrapped from a byte string.
-        Rlp rlp = TxDecoder.Instance.Encode(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping);
-        string raw = "0x" + rlp.Bytes.ToHexString();
+        byte[] rlp = TxDecoder.Instance.Encode(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping);
+        string raw = "0x" + rlp.ToHexString();
 
         JsonNode result = await SendJsonRpcRequestAsync(httpClient, "eth_sendRawTransaction", raw);
         return result.GetValue<string>();

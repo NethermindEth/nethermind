@@ -115,7 +115,7 @@ public class ShutterEventSimulator
             ShutterCrypto.ComputeIdentity(identity, identityPreimage);
             G1 key = identity.Dup().Mult(_eonData[eon].SecretKey.ToLittleEndian());
 
-            byte[] encodedTx = Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
+            byte[] encodedTx = Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping);
             EncryptedMessage encryptedMessage = ShutterCrypto.Encrypt(encodedTx, identity, new(_eonData[eon].Key), new(sigma));
             byte[] encryptedTx = ShutterCrypto.EncodeEncryptedMessage(encryptedMessage).ToArray();
 

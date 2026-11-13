@@ -82,8 +82,8 @@ public class DebugModuleTests
         using JsonRpcResponse response = await Request("debug_getRawHeader", "0x0");
 
         byte[] actual = RpcTest.AssertSuccess<ArrayPoolList<byte>>(response).AsSpan().ToArray();
-        Assert.That(actual, Is.EqualTo(new XdcHeaderDecoder().Encode(header).Bytes));
-        Assert.That(actual, Is.Not.EqualTo(new HeaderDecoder().Encode(header).Bytes));
+        Assert.That(actual, Is.EqualTo(new XdcHeaderDecoder().Encode(header)));
+        Assert.That(actual, Is.Not.EqualTo(new HeaderDecoder().Encode(header)));
     }
 
     [Test]
@@ -96,7 +96,7 @@ public class DebugModuleTests
         using JsonRpcResponse response = await Request("debug_getRawBlock", "0x1");
 
         byte[] actual = RpcTest.AssertSuccess<ArrayPoolList<byte>>(response).AsSpan().ToArray();
-        Assert.That(actual, Is.EqualTo(new BlockDecoder(new XdcHeaderDecoder()).Encode(block).Bytes));
-        Assert.That(actual, Is.Not.EqualTo(new BlockDecoder(new HeaderDecoder()).Encode(block).Bytes));
+        Assert.That(actual, Is.EqualTo(new BlockDecoder(new XdcHeaderDecoder()).Encode(block)));
+        Assert.That(actual, Is.Not.EqualTo(new BlockDecoder(new HeaderDecoder()).Encode(block)));
     }
 }

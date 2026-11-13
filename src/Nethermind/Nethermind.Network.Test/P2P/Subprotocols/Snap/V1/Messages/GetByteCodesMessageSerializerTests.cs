@@ -6,6 +6,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
@@ -76,7 +77,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
 
         private static byte[] EncodeMessageWithNullHash()
         {
-            int hashesLength = Rlp.OfEmptyByteArray.Length;
+            int hashesLength = RlpTestHelper.OfEmptyByteArray.Length;
             int contentLength = Rlp.LengthOf(1L)
                 + Rlp.LengthOfSequence(hashesLength)
                 + Rlp.LengthOf(10L);

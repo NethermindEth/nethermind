@@ -42,7 +42,7 @@ public class BlobTxStorageTests
         BlobTxStorage blobTxStorage = new(columnsDb);
         Transaction[] transactions = CreateBlobTransactions(txCount);
 
-        byte[] legacyEntry = TxDecoder.Instance.Encode(transactions, RlpBehaviors.InMempoolForm).Bytes;
+        byte[] legacyEntry = TxDecoder.Instance.Encode(transactions, RlpBehaviors.InMempoolForm);
         columnsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs)
             .Set(blockNumber.ToBigEndianSpanWithoutLeadingZeros(out _), legacyEntry);
 
@@ -59,7 +59,7 @@ public class BlobTxStorageTests
         BlobTxStorage blobTxStorage = new(columnsDb);
         Transaction[] transactions = CreateV1BlobTransactions(txCount);
 
-        byte[] storageEntry = TxDecoder.Instance.Encode(transactions, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage).Bytes;
+        byte[] storageEntry = TxDecoder.Instance.Encode(transactions, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage);
         columnsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs)
             .Set(blockNumber.ToBigEndianSpanWithoutLeadingZeros(out _), storageEntry);
 
@@ -255,7 +255,7 @@ public class BlobTxStorageTests
         Transaction[] transactions = CreateBlobTransactions(2);
         db.GetColumnDb(BlobTxsColumns.ProcessedTxs).Set(
             358UL.ToBigEndianSpanWithoutLeadingZeros(out _),
-            TxDecoder.Instance.Encode(transactions, RlpBehaviors.InMempoolForm).Bytes);
+            TxDecoder.Instance.Encode(transactions, RlpBehaviors.InMempoolForm));
 
         Assert.That(((IProcessedBlobTxStorage)storage).TryGetProcessedTransaction(358, 0, out _), Is.False);
     }

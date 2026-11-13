@@ -159,12 +159,10 @@ public class DebugRpcModule(
 
     private Result<Transaction> ToTraceCallTransaction(TransactionForRpc call, IReleaseSpec spec)
     {
-        if (call is not BlobTransactionForRpc { MaxFeePerBlobGas.IsZero: true })
-            return call.ToCallTransaction(spec, jsonRpcConfig.GasCap);
-
-        // Geth permits a zero blob fee cap for simulated calls; retain all other RPC validation.
+        // Geth permits a zero blob fee cap for simulated calls, and defaults an omitted one to zero; retain all other RPC validation.
         Result<Transaction> result = BlobTransactionForRpc.WithZeroBlobFeeCapOmitted(call).ToCallTransaction(spec, jsonRpcConfig.GasCap);
-        if (result) result.Data.MaxFeePerBlobGas = UInt256.Zero;
+        if (result.Success(out Transaction? tx, out _) && tx.SupportsBlobs)
+            tx.MaxFeePerBlobGas ??= UInt256.Zero;
         return result;
     }
 
@@ -551,7 +549,7 @@ public class DebugRpcModule(
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByHash(byte[] blockRlp, Hash256 transactionHash, GethTraceOptions options = null)
     {
-        Block? block = TryGetBlockAndCheckState(new Rlp(blockRlp), out ResultWrapper<GethLikeTxTrace>? blockError);
+        Block? block = TryGetBlockAndCheckState(blockRlp, out ResultWrapper<GethLikeTxTrace>? blockError);
         if (blockError is not null)
         {
             return blockError;
@@ -589,7 +587,7 @@ public class DebugRpcModule(
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByIndex(byte[] blockRlp, int txIndex, GethTraceOptions options = null)
     {
-        Block? block = TryGetBlockAndCheckState(new Rlp(blockRlp), out ResultWrapper<GethLikeTxTrace>? blockError);
+        Block? block = TryGetBlockAndCheckState(blockRlp, out ResultWrapper<GethLikeTxTrace>? blockError);
         if (blockError is not null)
         {
             return blockError;
@@ -672,7 +670,7 @@ public class DebugRpcModule(
         if (options?.ParsedTimeout.Error is not null && string.IsNullOrEmpty(options.Tracer))
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("invalid argument 1", ErrorCodes.InvalidParams);
 
-        Block? block = TryGetBlockAndCheckState(new Rlp(blockRlp), out ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? blockError, requireCompleteInput: true);
+        Block? block = TryGetBlockAndCheckState(blockRlp, out ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? blockError, requireCompleteInput: true);
         if (blockError is not null)
         {
             return blockError;
@@ -1667,20 +1665,20 @@ public class DebugRpcModule(
         return blockchainBridge.HasStateForBlock(parent) ? null : GetStateFailureResult<TResult>(parent);
     }
 
-    private Block? TryGetBlockAndCheckState<TResult>(Rlp blockRlp, out ResultWrapper<TResult>? error, bool requireCompleteInput = false)
+    private Block? TryGetBlockAndCheckState<TResult>(byte[] blockRlp, out ResultWrapper<TResult>? error, bool requireCompleteInput = false)
     {
         Block? block;
         bool decodingBlock = false;
 
         try
         {
-            if (blockRlp.Bytes.Length == 0)
+            if (blockRlp.Length == 0)
             {
                 error = GetRlpDecodingFailureResult<TResult>("EOF");
                 return null;
             }
 
-            ReadOnlySpan<byte> encoded = blockRlp.Bytes;
+            ReadOnlySpan<byte> encoded = blockRlp;
             if (encoded[0] > 0xf7)
             {
                 int lengthOfLength = encoded[0] - 0xf7;
@@ -1698,7 +1696,7 @@ public class DebugRpcModule(
                 }
             }
 
-            RlpReader context = new(blockRlp.Bytes);
+            RlpReader context = new(blockRlp);
             RlpReader root = context;
             root.SkipItem();
             decodingBlock = true;

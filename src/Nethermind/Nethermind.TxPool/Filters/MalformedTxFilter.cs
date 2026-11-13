@@ -48,7 +48,9 @@ namespace Nethermind.TxPool.Filters
             Metrics.PendingTransactionsWithExpensiveFiltering++;
             if (tx.SenderAddress is null)
             {
-                if (!ecdsa.TryRecoverAddress(tx, out Address? senderAddress))
+                // Where the spec does not validate chain ids, a legacy signature for another chain is accepted, and block
+                // processing recovers it over the chain id it carries.
+                if (!ecdsa.TryRecoverAddress(tx, out Address? senderAddress, !spec.ValidateChainId))
                 {
                     Metrics.PendingTransactionsUnresolvableSender++;
                     if (logger.IsTrace) TraceUnresolvableSender(tx);

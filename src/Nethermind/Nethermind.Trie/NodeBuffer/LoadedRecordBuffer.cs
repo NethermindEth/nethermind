@@ -4,8 +4,6 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using Nethermind.Core.Crypto;
 
@@ -24,7 +22,6 @@ internal sealed class LoadedRecordBuffer : IDisposable
 
     /// <summary>Loads the node of <paramref name="hash"/> at <paramref name="path"/> from <paramref name="store"/> into this buffer.</summary>
     /// <returns>False when the store has no such node.</returns>
-    /// <exception cref="TrieException">The store returns RLP that is not a valid trie node.</exception>
     public bool TryLoad(INodeRecordStore store, in TreePath path, in ValueHash256 hash, out NodeRecord record)
     {
         record = default;
@@ -32,7 +29,6 @@ internal sealed class LoadedRecordBuffer : IDisposable
     }
 
     /// <summary>Writes the record of a node embedded in its parent, which has no hash of its own, into this buffer.</summary>
-    /// <exception cref="TrieException">The RLP is not a valid trie node.</exception>
     public NodeRecord AddEmbedded(ReadOnlySpan<byte> rlp) => Add(rlp, default);
 
     /// <summary>Releases every record, which must no longer be read.</summary>
@@ -54,8 +50,7 @@ internal sealed class LoadedRecordBuffer : IDisposable
             return copied;
         }
 
-        if (!NodeRecordCodec.TryDecode(node, out NodeRecordKind kind, out ushort hashMask)) ThrowInvalidRlp();
-
+        NodeRecordCodec.Decode(node, out NodeRecordKind kind, out ushort hashMask);
         int length = NodeRecordCodec.Length(BitOperations.PopCount(hashMask), node.Length);
         NodeRecordCodec.WriteFromRlp(node, kind, hashMask, hash, 0, Reserve(length, out NodeRecord record));
         return record;
@@ -75,9 +70,6 @@ internal sealed class LoadedRecordBuffer : IDisposable
         _used += length;
         return destination;
     }
-
-    [DoesNotReturn, StackTraceHidden]
-    private static void ThrowInvalidRlp() => throw new TrieException("Invalid trie node RLP.");
 
     private readonly ref struct Target
     {

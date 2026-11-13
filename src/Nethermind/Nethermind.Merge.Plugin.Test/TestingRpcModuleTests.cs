@@ -568,7 +568,7 @@ public class TestingRpcModuleTests
 
         for (int i = 0; i < transactions.Length; i++)
         {
-            byte[] encoded = TxDecoder.Instance.Encode(transactions[i], RlpBehaviors.SkipTypedWrapping).Bytes;
+            byte[] encoded = TxDecoder.Instance.Encode(transactions[i], RlpBehaviors.SkipTypedWrapping);
             txRlps[i] = encoded;
             txHex[i] = encoded.ToHexString(true);
         }

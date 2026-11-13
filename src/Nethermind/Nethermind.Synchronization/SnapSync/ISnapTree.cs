@@ -56,7 +56,7 @@ public interface ISnapTree<in TEntries> : IDisposable
         {
             RefPathWithAccount entry = accounts[i];
             AccountStruct account = entry.Account.ToStruct();
-            byte[] rlpValue = account.IsTotallyEmpty ? StateTree.EmptyAccountRlp.Bytes : AccountDecoder.Instance.EncodeAsBytes(account);
+            byte[] rlpValue = account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : AccountDecoder.Instance.Encode(account);
             bulkEntries.Add(new PatriciaTree.BulkSetEntry(entry.Path, rlpValue));
             totalBytes += rlpValue.Length;
         }

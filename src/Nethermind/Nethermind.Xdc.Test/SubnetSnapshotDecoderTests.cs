@@ -25,18 +25,18 @@ public class SubnetSnapshotDecoderTests
 
     [Test, TestCaseSource(nameof(Snapshots))]
     public void RoundTrip(SubnetSnapshot original) =>
-        Assert.That(Decoder.Decode(Decoder.Encode(original).Bytes), Is.EqualTo(original).UsingXdcComparer());
+        Assert.That(Decoder.Decode(Decoder.Encode(original)), Is.EqualTo(original).UsingXdcComparer());
 
     [Test, TestCaseSource(nameof(Snapshots))]
     public void Decodes_with_a_trailing_item(SubnetSnapshot original) =>
-        Assert.That(Decoder.Decode(RlpTestHelper.WithTrailingItem(Decoder.Encode(original).Bytes)), Is.EqualTo(original).UsingXdcComparer());
+        Assert.That(Decoder.Decode(RlpTestHelper.WithTrailingItem(Decoder.Encode(original))), Is.EqualTo(original).UsingXdcComparer());
 
     [Test]
     public void Decode_throws_on_null_penalty()
     {
         // The encoder refuses a null address, so the empty string is written by hand.
-        Rlp rlp = Rlp.Encode(Rlp.Encode(1UL), Rlp.Encode(Keccak.EmptyTreeHash), Rlp.OfEmptyList, Rlp.Encode(new[] { Rlp.OfEmptyByteArray }));
+        byte[] rlp = RlpTestHelper.EncodeSequence(Rlp.Encode(1UL), Rlp.Encode(Keccak.EmptyTreeHash), RlpTestHelper.OfEmptyList, RlpTestHelper.EncodeSequence(new[] { RlpTestHelper.OfEmptyByteArray }));
 
-        Assert.That(() => Decoder.Decode(rlp.Bytes), Throws.TypeOf<RlpReaderException>());
+        Assert.That(() => Decoder.Decode(rlp), Throws.TypeOf<RlpReaderException>());
     }
 }

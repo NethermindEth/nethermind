@@ -7,6 +7,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
@@ -130,9 +131,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             // A sequence header declaring one content byte and carrying none. AccountDecoder yields no
             // account without reading past that header, so the entry's declared length is consumed
             // exactly and its checkpoint still passes.
-            Rlp accountCarryingNothing = new([0xc1]);
-            Rlp[] entries = [Rlp.Encode(Rlp.Encode(TestItem.KeccakA), accountCarryingNothing)];
-            byte[] serialized = Rlp.Encode(Rlp.Encode(1), Rlp.Encode(entries), Rlp.OfEmptyList).Bytes;
+            byte[] accountCarryingNothing = [0xc1];
+            byte[][] entries = [RlpTestHelper.EncodeSequence(Rlp.Encode(TestItem.KeccakA), accountCarryingNothing)];
+            byte[] serialized = RlpTestHelper.EncodeSequence(Rlp.Encode(1), RlpTestHelper.EncodeSequence(entries), RlpTestHelper.OfEmptyList);
 
             AccountRangeMessageSerializer serializer = new();
 

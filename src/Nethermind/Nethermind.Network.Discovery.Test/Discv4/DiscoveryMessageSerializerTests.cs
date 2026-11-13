@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Crypto;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv4.Messages;
@@ -78,7 +79,7 @@ public class DiscoveryMessageSerializerTests
     }
 
     [TestCaseSource(nameof(PingCompatibilityCases))]
-    public void PingMessage_Accepts_Compatible_Fields(byte[] version, byte[] trailingBytes, Rlp[] extraFields, int expectedVersion, ulong? expectedEnrSequence)
+    public void PingMessage_Accepts_Compatible_Fields(byte[] version, byte[] trailingBytes, byte[][] extraFields, int expectedVersion, ulong? expectedEnrSequence)
     {
         byte[] packet = CreatePingPacket(version, trailingBytes, extraFields);
 
@@ -94,9 +95,9 @@ public class DiscoveryMessageSerializerTests
 
     private static IEnumerable<TestCaseData> PingCompatibilityCases()
     {
-        yield return new TestCaseData("not-a-numeric-version"u8.ToArray(), Array.Empty<byte>(), Array.Empty<Rlp>(), 0, null)
+        yield return new TestCaseData("not-a-numeric-version"u8.ToArray(), Array.Empty<byte>(), Array.Empty<byte[]>(), 0, null)
             .SetName("PingMessage_Accepts_Long_Version");
-        yield return new TestCaseData(new byte[] { 0x80, 0, 0, 0 }, Array.Empty<byte>(), Array.Empty<Rlp>(), 0, null)
+        yield return new TestCaseData(new byte[] { 0x80, 0, 0, 0 }, Array.Empty<byte>(), Array.Empty<byte[]>(), 0, null)
             .SetName("PingMessage_Accepts_High_UInt_Version");
         yield return new TestCaseData(new byte[] { 4 }, Array.Empty<byte>(), new[] { Rlp.Encode("not-an-enr-sequence"u8), Rlp.Encode(42) }, 4, null)
             .SetName("PingMessage_Ignores_Unknown_Extra_Elements");
@@ -104,14 +105,14 @@ public class DiscoveryMessageSerializerTests
             .SetName("PingMessage_Reads_EnrSequence_And_Ignores_Subsequent_Elements");
         yield return new TestCaseData(new byte[] { 5 }, Array.Empty<byte>(), new[] { Rlp.Encode(42) }, 5, 42UL)
             .SetName("PingMessage_Reads_EnrSequence_For_Other_Version");
-        yield return new TestCaseData(new byte[] { 4 }, new byte[] { 0xff }, Array.Empty<Rlp>(), 4, null)
+        yield return new TestCaseData(new byte[] { 4 }, new byte[] { 0xff }, Array.Empty<byte[]>(), 4, null)
             .SetName("PingMessage_Ignores_Bytes_After_Rlp_List");
     }
 
     [Test]
     public void PingMessage_Rejects_Rlp_Boundary_Violation([Values] bool listExceedsPacket)
     {
-        byte[] payload = CreatePingPacket([4], Rlp.Encode(42))[DiscoveryPacketDataOffset..];
+        byte[] payload = CreatePingPacket([4], [], Rlp.Encode(42))[DiscoveryPacketDataOffset..];
         payload[^1] = 0xc1;
         if (listExceedsPacket)
         {
@@ -130,7 +131,7 @@ public class DiscoveryMessageSerializerTests
     [Test]
     public void PingMessage_Reports_Truncated_EnrSequence_As_Rlp_Error([Values(0x81, 0x88)] byte prefix)
     {
-        byte[] payload = CreatePingPacket([4], Rlp.Encode(42))[DiscoveryPacketDataOffset..];
+        byte[] payload = CreatePingPacket([4], [], Rlp.Encode(42))[DiscoveryPacketDataOffset..];
         payload[^1] = prefix;
         byte[] packet = SignAndWrapDiscoveryPacket((byte)MsgType.Ping, payload);
 
@@ -587,7 +588,7 @@ public class DiscoveryMessageSerializerTests
         long expirationTime = 60 + _timestamper.UnixTime.MillisecondsLong;
 
         int nodeContentLength = Rlp.LengthOf(ip) + 2 * Rlp.LengthOf(port) + Rlp.LengthOf(id);
-        int nodesContentLength = Rlp.LengthOfSequence(nodeContentLength) + Rlp.OfEmptyList.Bytes.Length;
+        int nodesContentLength = Rlp.LengthOfSequence(nodeContentLength) + RlpTestHelper.OfEmptyList.Length;
         int contentLength = Rlp.LengthOfSequence(nodesContentLength) + Rlp.LengthOf(expirationTime);
 
         byte[] data = new byte[Rlp.LengthOfSequence(contentLength)];
@@ -599,7 +600,7 @@ public class DiscoveryMessageSerializerTests
         writer.Encode(port);
         writer.Encode(port);
         writer.Encode(id);
-        writer.Encode(Rlp.OfEmptyList);
+        writer.EncodeNullObject();
         writer.Encode(expirationTime);
 
         NeighborsMsg deserialized = _messageSerializationService.Deserialize<NeighborsMsg>(
@@ -626,13 +627,11 @@ public class DiscoveryMessageSerializerTests
         return packet;
     }
 
-    private byte[] CreatePingPacket(byte[] version, params Rlp[] extraFields) => CreatePingPacket(version, [], extraFields);
-
-    private byte[] CreatePingPacket(byte[] version, byte[] trailingBytes, params Rlp[] extraFields)
+    private byte[] CreatePingPacket(byte[] version, byte[] trailingBytes, params byte[][] extraFields)
     {
-        Rlp endpoint = Rlp.Encode(Rlp.Encode(_farAddress.Address.GetAddressBytes()), Rlp.Encode(_farAddress.Port), Rlp.Encode(_farAddress.Port));
-        Rlp[] fields = [Rlp.Encode(version), endpoint, endpoint, Rlp.Encode(_timestamper.UnixTime.SecondsLong + 60), .. extraFields];
-        byte[] payload = Rlp.Encode(fields).Bytes;
+        byte[] endpoint = RlpTestHelper.EncodeSequence(Rlp.Encode(_farAddress.Address.GetAddressBytes()), Rlp.Encode(_farAddress.Port), Rlp.Encode(_farAddress.Port));
+        byte[][] fields = [Rlp.Encode(version), endpoint, endpoint, Rlp.Encode(_timestamper.UnixTime.SecondsLong + 60), .. extraFields];
+        byte[] payload = RlpTestHelper.EncodeSequence(fields);
         byte[] data = new byte[payload.Length + trailingBytes.Length];
         payload.CopyTo(data, 0);
         trailingBytes.CopyTo(data, payload.Length);

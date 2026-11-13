@@ -59,7 +59,7 @@ namespace Nethermind.Benchmarks.Rlp
         }
 
         [Benchmark]
-        public byte[] Improved2() => _blockDecoder.Encode(_block).Bytes;
+        public byte[] Improved2() => _blockDecoder.Encode(_block);
 
         [Benchmark]
         public byte[] Improved3()
@@ -72,6 +72,6 @@ namespace Nethermind.Benchmarks.Rlp
         }
 
         [Benchmark(Baseline = true)]
-        public byte[] Current() => Serialization.Rlp.Rlp.Encode(_block).Bytes;
+        public byte[] Current() => Serialization.Rlp.Rlp.Encode(_block);
     }
 }

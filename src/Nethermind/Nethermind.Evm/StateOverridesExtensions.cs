@@ -27,9 +27,13 @@ public static class StateOverridesExtensions
         overridableCodeInfoRepository.ResetPrecompileOverrides(spec);
         if (overrides is not null)
         {
-            foreach ((Address address, AccountOverride? value) in overrides)
+            // As in geth, accounts are overridden in ascending address order, so of two precompiles moved to one
+            // address the higher one is at the destination.
+            Address[] addresses = [.. overrides.Keys];
+            Array.Sort(addresses);
+            foreach (Address address in addresses)
             {
-                AccountOverride accountOverride = value ?? new AccountOverride();
+                AccountOverride accountOverride = overrides[address] ?? new AccountOverride();
                 if (accountOverride.Nonce is not null && accountOverride.Nonce.Value > MaxNonce)
                     throw new ArgumentException($"Nonce override {accountOverride.Nonce.Value} exceeds the maximum supported value ({MaxNonce})");
 

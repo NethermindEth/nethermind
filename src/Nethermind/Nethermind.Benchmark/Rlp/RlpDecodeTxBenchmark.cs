@@ -25,16 +25,16 @@ namespace Nethermind.Benchmarks.Rlp
             [
                 Serialization.Rlp.Rlp.Encode(
                     Build.A.Transaction.Signed(ecdsa, TestItem.PrivateKeyA).TestObject,
-                    RlpBehaviors.SkipTypedWrapping).Bytes,
+                    RlpBehaviors.SkipTypedWrapping),
                 Serialization.Rlp.Rlp.Encode(
                     Build.A.Transaction.WithType(TxType.EIP1559).WithMaxFeePerGas(30)
                         .Signed(ecdsa, TestItem.PrivateKeyA).TestObject,
-                    RlpBehaviors.SkipTypedWrapping).Bytes,
+                    RlpBehaviors.SkipTypedWrapping),
                 Serialization.Rlp.Rlp.Encode(
                     Build.A.Transaction.WithType(TxType.AccessList)
                         .WithAccessList(Build.An.AccessList.TestObject)
                         .Signed(ecdsa, TestItem.PrivateKeyA).TestObject,
-                    RlpBehaviors.SkipTypedWrapping).Bytes,
+                    RlpBehaviors.SkipTypedWrapping),
             ];
         }
 

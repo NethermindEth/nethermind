@@ -55,6 +55,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
     private bool _gasCostAlreadySet;
     private bool _gasCostReported;
     private ulong? _calculatedGasCost;
+    private string? _stackFailure;
     private bool _pendingStorageTouched;
 
     private UInt256[]? _stackBuffer;
@@ -118,6 +119,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
         _gasCostAlreadySet = false;
         _gasCostReported = false;
         _calculatedGasCost = null;
+        _stackFailure = null;
         _pendingStorageTouched = false;
         ResetRefund();
         _stackCount = 0;
@@ -159,6 +161,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
         _gasCostAlreadySet = false;
         _gasCostReported = false;
         _calculatedGasCost = null;
+        _stackFailure = null;
         _pendingStorageTouched = false;
         _pendingStorageMap = null;
         _stackCount = 0;
@@ -186,7 +189,11 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
     }
 
     /// <inheritdoc/>
-    public void ReportOperationStart(ulong gasCost, int stackHead, int stackInputs, int stackGrowth) => _calculatedGasCost = gasCost;
+    public void ReportOperationStart(ulong gasCost, int stackHead, int stackInputs, int stackGrowth)
+    {
+        _calculatedGasCost = gasCost;
+        _stackFailure = GetStackFailure(stackHead, stackInputs, stackGrowth);
+    }
 
     /// <inheritdoc/>
     public void ReportOperationReady(ulong gasCost, string? error) => _calculatedGasCost = gasCost;
@@ -212,6 +219,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
             _pendingGasCost = gasCost;
         if (error == EvmExceptionType.StaticCallViolation && _pendingOpcode == Instruction.SSTORE)
             _pendingError = "out of gas: write protection";
+        if (error == EvmExceptionType.OutOfGas) _pendingError ??= _stackFailure;
         if (!IsExecutionFault(error)) _pendingError ??= GetErrorDescription(error);
     }
 

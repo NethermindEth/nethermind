@@ -218,7 +218,7 @@ public class FlatSnapTrieFactoryTests
 
     private static readonly ValueHash256 FirstPartitionLimit = new("0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
     private static readonly byte[] BranchRlp = BuildBranchRlp();
-    private static readonly byte[] SlotRlp = Rlp.Encode(new byte[] { 1 }).Bytes;
+    private static readonly byte[] SlotRlp = Rlp.Encode(new byte[] { 1 });
     private static readonly string[] StorageNodePaths = ["", "1", "8", "c", "1111111111111111", "cccccccccccccccc"];
 
     // The last account before the checkpoint, and the first path still to download, which shares its 20-byte key.

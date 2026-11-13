@@ -16,7 +16,7 @@ public static class PathWithAccountTestExtensions
     {
         using AccountCollector collector = new();
         foreach (PathWithAccount account in accounts)
-            collector.Collect(account.Path, account.Account is null ? ReadOnlySpan<byte>.Empty : AccountDecoder.Instance.EncodeAsBytes(account.Account));
+            collector.Collect(account.Path, account.Account is null ? ReadOnlySpan<byte>.Empty : AccountDecoder.Instance.Encode(account.Account));
         return collector.ToPathWithAccountList();
     }
 

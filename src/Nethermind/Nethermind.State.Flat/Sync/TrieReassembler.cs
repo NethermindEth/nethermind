@@ -126,7 +126,7 @@ public sealed class TrieReassembler(IPersistence persistence, ILogManager logMan
             {
                 UInt256 value = default;
                 if (reader.TryGetStorageRaw(address, path.Path, ref value))
-                    return TrieNodeFactory.CreateLeaf(ReadOnlySpan<byte>.Empty, Rlp.Encode(value).Bytes);
+                    return TrieNodeFactory.CreateLeaf(ReadOnlySpan<byte>.Empty, Rlp.Encode(value));
             }
 
             return null;
@@ -227,7 +227,7 @@ public sealed class TrieReassembler(IPersistence persistence, ILogManager logMan
         Account newAccount = oldAccount.WithChangedStorageRoot(newStorageRoot);
         batch.SetAccountRaw(fullPath.Path, newAccount.ToStruct());
 
-        return TrieNodeFactory.CreateLeaf(node.Key!, _accountDecoder.EncodeAsBytes(newAccount));
+        return TrieNodeFactory.CreateLeaf(node.Key!, _accountDecoder.Encode(newAccount));
     }
 
     private TrieNode Persist(IPersistence.IWriteBatch batch, Hash256? address, ref TreePath path, TrieNode node)

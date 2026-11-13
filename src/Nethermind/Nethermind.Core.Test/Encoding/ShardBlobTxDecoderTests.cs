@@ -187,11 +187,11 @@ public partial class ShardBlobTxDecoderTests
     [TestCaseSource(nameof(OverLimitCollectionDecodeCases))]
     public void Decode_rejects_more_than_blob_count_limit_for_decoding(Transaction tx, RlpBehaviors rlpBehaviors)
     {
-        Rlp encoded = _txDecoder.Encode(tx, rlpBehaviors);
+        byte[] encoded = _txDecoder.Encode(tx, rlpBehaviors);
 
         void DecodeByRlpReader()
         {
-            RlpReader decoderContext = new(encoded.Bytes);
+            RlpReader decoderContext = new(encoded);
             _txDecoder.Decode(ref decoderContext, rlpBehaviors);
         }
 
@@ -206,9 +206,9 @@ public partial class ShardBlobTxDecoderTests
             BlobCountLimit,
             BlobCellProofsCountLimit,
             ProofVersion.V1);
-        Rlp encoded = _txDecoder.Encode(tx, RlpBehaviors.InMempoolForm);
+        byte[] encoded = _txDecoder.Encode(tx, RlpBehaviors.InMempoolForm);
 
-        RlpReader decoderContext = new(encoded.Bytes);
+        RlpReader decoderContext = new(encoded);
         Transaction? decoded = _txDecoder.Decode(ref decoderContext, RlpBehaviors.InMempoolForm);
 
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)decoded!.NetworkWrapper!;
@@ -264,9 +264,9 @@ public partial class ShardBlobTxDecoderTests
     public void Mempool_form_encodes_elided_blob_payload_as_empty_rlp_list([Values(ProofVersion.V0, ProofVersion.V1)] ProofVersion version)
     {
         Transaction tx = BuildMempoolTransactionWithWrapperCounts(0, 1, 1, version);
-        Rlp encoded = _txDecoder.Encode(tx, RlpBehaviors.InMempoolForm);
+        byte[] encoded = _txDecoder.Encode(tx, RlpBehaviors.InMempoolForm);
 
-        RlpReader outer = new(encoded.Bytes);
+        RlpReader outer = new(encoded);
         ReadOnlySpan<byte> envelope = outer.ReadBytes();
         Assert.That(envelope[0], Is.EqualTo((byte)TxType.Blob));
         RlpReader wireReader = new RlpReader(envelope[1..]).EnterSequence(out _);
@@ -278,7 +278,7 @@ public partial class ShardBlobTxDecoderTests
 
         Assert.That(wireReader.ReadRaw(1)[0], Is.EqualTo(Rlp.EmptyListByte));
 
-        RlpReader decoderContext = new(encoded.Bytes);
+        RlpReader decoderContext = new(encoded);
         Transaction? decoded = _txDecoder.Decode(ref decoderContext, RlpBehaviors.InMempoolForm);
         Assert.That(((ShardBlobNetworkWrapper)decoded!.NetworkWrapper!).Blobs, Is.Empty);
     }
@@ -301,7 +301,7 @@ public partial class ShardBlobTxDecoderTests
             .SignedAndResolved()
             .TestObject;
 
-        byte[] rlp = _txDecoder.Encode(tx).Bytes;
+        byte[] rlp = _txDecoder.Encode(tx);
 
         Assert.That(() =>
         {
@@ -328,8 +328,8 @@ public partial class ShardBlobTxDecoderTests
 
         if ((rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm)
         {
-            Rlp epEncoded = _txDecoder.Encode(decoded!, rlpBehaviors ^ RlpBehaviors.InMempoolForm);
-            RlpReader epCtx = new(epEncoded.Bytes);
+            byte[] epEncoded = _txDecoder.Encode(decoded!, rlpBehaviors ^ RlpBehaviors.InMempoolForm);
+            RlpReader epCtx = new(epEncoded);
             Transaction? epDecoded = _txDecoder.Decode(ref epCtx, rlpBehaviors ^ RlpBehaviors.InMempoolForm);
             Assert.That(epDecoded!.Hash, Is.EqualTo(signedHash));
         }
@@ -339,13 +339,13 @@ public partial class ShardBlobTxDecoderTests
             Assert.That(IBlobProofsManager.For(wrapper.Version).ValidateProofs(wrapper));
         }
 
-        Rlp encoded = _txDecoder.Encode(decoded!, rlpBehaviors);
-        Rlp encodedWithDecodedByRlpReader =
+        byte[] encoded = _txDecoder.Encode(decoded!, rlpBehaviors);
+        byte[] encodedWithDecodedByRlpReader =
             _txDecoder.Encode(decodedByRlpReader!, rlpBehaviors);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(encoded.Bytes, Is.EqualTo(incomingTxRlp));
-            Assert.That(encodedWithDecodedByRlpReader.Bytes, Is.EqualTo(incomingTxRlp));
+            Assert.That(encoded, Is.EqualTo(incomingTxRlp));
+            Assert.That(encodedWithDecodedByRlpReader, Is.EqualTo(incomingTxRlp));
         }
     }
 

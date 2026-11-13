@@ -135,6 +135,10 @@ public sealed partial class ParallelBlockTracer : IParallelBlockTracer, IDisposa
             if (!_seeds.TryOpenBlock(block, out ICoveredBlock? covered)) return false;
             using ICoveredBlock coverage = covered;
 
+            // Each transaction is traced by a replay of its own. All of them run on this one set of copies of the
+            // block's transactions and tell the processor they already own them, so a block is copied once rather than
+            // once per transaction. The workers share the copies as they would share the block's own transactions.
+            block = block.WithOwnTransactions();
             Transaction[] transactions = block.Transactions;
             int workers = Math.Max(1, Math.Min(slots.Degree, transactions.Length - 1));
             BlockRun<TTrace> run = BlockRun<TTrace>.Rent();
@@ -229,7 +233,7 @@ public sealed partial class ParallelBlockTracer : IParallelBlockTracer, IDisposa
 
                 boundary.IsExecutionRequired = true;
 
-                scope.Component.Processor.Process(OwnCopy(block), TraceProcessingOptions.ReadOnlyReplay, bounded, token);
+                scope.Component.Processor.Process(OwnCopy(block), TraceProcessingOptions.ReadOnlyReplay, bounded, ownsTransactions: true, token);
                 if (!boundary.HasExecuted)
                     throw new InvalidOperationException("The indexed trace bypassed transaction prefix execution.");
                 traces = tracer.BuildResult();
@@ -275,7 +279,7 @@ public sealed partial class ParallelBlockTracer : IParallelBlockTracer, IDisposa
             try
             {
                 TransactionTraceBoundary boundary = TransactionTraceBoundary.AfterTransactions(tracer.WithCancellation(token), seeds);
-                scope.Component.Processor.Process(OwnCopy(block), TraceProcessingOptions.ReadOnlyReplay, boundary, token);
+                scope.Component.Processor.Process(OwnCopy(block), TraceProcessingOptions.ReadOnlyReplay, boundary, ownsTransactions: true, token);
                 if (!boundary.HasExecuted)
                     throw new InvalidOperationException("The indexed reward trace bypassed transaction prefix execution.");
                 return tracer.BuildResult();
@@ -292,8 +296,8 @@ public sealed partial class ParallelBlockTracer : IParallelBlockTracer, IDisposa
         }
     }
 
-    /// <summary>Processing stamps the header it is handed, so every run gets a header of its own; the body, and the
-    /// senders recovered on it, are shared.</summary>
+    /// <summary>Processing stamps the header it is handed, so every run gets a header of its own; the body, with the
+    /// copies of the block's transactions and the senders recovered on them, is shared.</summary>
     private static Block OwnCopy(Block block) => block.WithReplacedHeader(block.Header.Clone());
 
     private static bool HashesKnown(Transaction[] transactions)

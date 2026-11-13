@@ -35,7 +35,7 @@ public abstract class SignableTransactionForRpc : TransactionForRpc
 
         public override SignableTransactionForRpc? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
             // The base converter matches only TransactionForRpc, so its concrete-type deserialization never re-enters this one.
-            TypeInfoJsonSerializer.Deserialize<TransactionForRpc>(ref reader, options) switch
+            TypeInfoJsonSerializer.ReadNested<TransactionForRpc>(ref reader, options) switch
             {
                 null => null,
                 SignableTransactionForRpc signable => signable,

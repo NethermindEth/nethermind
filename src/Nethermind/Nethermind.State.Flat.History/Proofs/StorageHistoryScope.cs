@@ -80,7 +80,7 @@ internal sealed class StorageHistoryScope(
 
     protected override byte[]? DecodeLeafValue(scoped ReadOnlySpan<byte> storedValue)
     {
-        if (!rlpWrapSlots) return storedValue.IsZero() ? null : Rlp.Encode(storedValue.WithoutLeadingZeros()).Bytes;
+        if (!rlpWrapSlots) return storedValue.IsZero() ? null : Rlp.Encode(storedValue.WithoutLeadingZeros());
 
         try
         {

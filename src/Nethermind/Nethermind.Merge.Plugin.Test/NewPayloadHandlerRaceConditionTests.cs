@@ -901,7 +901,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             timeoutMs: LongRequestBudgetMs);
 
         ExecutionPayloadV3 payload = ExecutionPayloadV3.Create(block);
-        payload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject).Bytes];
+        payload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject)];
         Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(payload);
         // Awaited first, so the assertion below means the request is on the wait, not at an earlier await.
         await waitRequested.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -958,9 +958,9 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             timeoutMs: 20_000);
 
         ExecutionPayloadV3 firstPayload = ExecutionPayloadV3.Create(block);
-        firstPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject).Bytes];
+        firstPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject)];
         ExecutionPayloadV3 resentPayload = ExecutionPayloadV3.Create(block);
-        resentPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject).Bytes];
+        resentPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject)];
 
         Task<ResultWrapper<PayloadStatusV1>> first = handler.HandleAsync(firstPayload);
         await firstEnqueueEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -1012,7 +1012,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             timeoutMs: LongRequestBudgetMs);
 
         ExecutionPayloadV3 payload = ExecutionPayloadV3.Create(block);
-        payload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject).Bytes];
+        payload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject)];
 
         Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(payload);
         await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -1082,11 +1082,11 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             timeoutMs: TimedOutRequestBudgetMs);
 
         ExecutionPayloadV3 heldPayload = ExecutionPayloadV3.Create(block);
-        heldPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject).Bytes];
+        heldPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject)];
         ExecutionPayloadV3 retryPayload = ExecutionPayloadV3.Create(block);
         retryPayload.InclusionListTransactions = heldPayload.InclusionListTransactions;
         ExecutionPayloadV3 resentPayload = ExecutionPayloadV3.Create(block);
-        resentPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject).Bytes];
+        resentPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject)];
 
         Task<ResultWrapper<PayloadStatusV1>> resent;
         try
@@ -1162,9 +1162,9 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
                 .Returns(_ => new ValueTask<AddBlockResult>((Interlocked.Increment(ref suggests) == 1 ? timedOutSuggest : resentSuggest).Task)));
 
         ExecutionPayloadV3 timedOutPayload = ExecutionPayloadV3.Create(block);
-        timedOutPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject).Bytes];
+        timedOutPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject)];
         ExecutionPayloadV3 resentPayload = ExecutionPayloadV3.Create(block);
-        resentPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject).Bytes];
+        resentPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject)];
 
         ResultWrapper<PayloadStatusV1> timedOut = await handler.HandleAsync(timedOutPayload).WaitAsync(AnswerWait);
         Assert.That(timedOut.Data.Status, Is.EqualTo(PayloadStatus.Syncing), "the first request gives up while its suggest is still pending");
@@ -1236,9 +1236,9 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
                 }));
 
         ExecutionPayloadV3 queuedPayload = ExecutionPayloadV3.Create(block);
-        queuedPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject).Bytes];
+        queuedPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject)];
         ExecutionPayloadV3 timedOutPayload = ExecutionPayloadV3.Create(block);
-        timedOutPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject).Bytes];
+        timedOutPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject)];
         ExecutionPayloadV3 resentPayload = ExecutionPayloadV3.Create(block);
         resentPayload.InclusionListTransactions = timedOutPayload.InclusionListTransactions;
 
@@ -1314,7 +1314,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
                     : ValueTask.FromResult(AddBlockResult.AlreadyKnown)));
 
         ExecutionPayloadV3 timedOutPayload = ExecutionPayloadV3.Create(block);
-        timedOutPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject).Bytes];
+        timedOutPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject)];
         ExecutionPayloadV3 resentPayload = ExecutionPayloadV3.Create(block);
         resentPayload.InclusionListTransactions = timedOutPayload.InclusionListTransactions;
 
@@ -1375,9 +1375,9 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
                     : new ValueTask<AddBlockResult>(timedOutSuggest.Task)));
 
         ExecutionPayloadV3 queuedPayload = ExecutionPayloadV3.Create(block);
-        queuedPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject).Bytes];
+        queuedPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject)];
         ExecutionPayloadV3 timedOutPayload = ExecutionPayloadV3.Create(block);
-        timedOutPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject).Bytes];
+        timedOutPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject)];
 
         try
         {

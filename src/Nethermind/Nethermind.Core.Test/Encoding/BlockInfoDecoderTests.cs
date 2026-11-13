@@ -28,7 +28,7 @@ public class BlockInfoDecoderTests
     [Test]
     public void Can_handle_nulls()
     {
-        Rlp rlp = Rlp.Encode((BlockInfo)null!);
+        byte[] rlp = Rlp.Encode((BlockInfo)null!);
         Assert.That(rlp.Length, Is.EqualTo(1));
 
         BlockInfo? decoded = Rlp.Decode<BlockInfo>(rlp);
@@ -42,8 +42,8 @@ public class BlockInfoDecoderTests
         blockInfo.IsFinalized = true;
         blockInfo.Metadata |= BlockMetadata.Invalid;
 
-        Rlp rlp = Rlp.Encode(blockInfo);
-        BlockInfo decoded = (valueDecode ? Rlp.Decode<BlockInfo>(rlp.Bytes.AsSpan()) : Rlp.Decode<BlockInfo>(rlp))!;
+        byte[] rlp = Rlp.Encode(blockInfo);
+        BlockInfo decoded = (valueDecode ? Rlp.Decode<BlockInfo>(rlp.AsSpan()) : Rlp.Decode<BlockInfo>(rlp))!;
 
         using (Assert.EnterMultipleScope())
         {
@@ -61,8 +61,8 @@ public class BlockInfoDecoderTests
         blockInfo.WasProcessed = true;
         blockInfo.IsFinalized = isFinalized;
 
-        Rlp rlp = BlockInfoEncodeDeprecated(blockInfo, chainWithFinalization);
-        BlockInfo decoded = (valueDecode ? Rlp.Decode<BlockInfo>(rlp.Bytes.AsSpan()) : Rlp.Decode<BlockInfo>(rlp))!;
+        byte[] rlp = BlockInfoEncodeDeprecated(blockInfo, chainWithFinalization);
+        BlockInfo decoded = (valueDecode ? Rlp.Decode<BlockInfo>(rlp.AsSpan()) : Rlp.Decode<BlockInfo>(rlp))!;
 
         using (Assert.EnterMultipleScope())
         {
@@ -73,11 +73,11 @@ public class BlockInfoDecoderTests
         }
     }
 
-    public static Rlp BlockInfoEncodeDeprecated(BlockInfo? item, bool chainWithFinalization)
+    public static byte[] BlockInfoEncodeDeprecated(BlockInfo? item, bool chainWithFinalization)
     {
         if (item is null)
         {
-            return Rlp.OfEmptyList;
+            return RlpTestHelper.OfEmptyList;
         }
 
         int contentLength = 0;
@@ -101,6 +101,6 @@ public class BlockInfoDecoderTests
             writer.Encode(item.IsFinalized);
         }
 
-        return new Rlp(bytes);
+        return bytes;
     }
 }

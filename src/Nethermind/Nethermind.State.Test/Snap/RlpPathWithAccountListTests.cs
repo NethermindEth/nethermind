@@ -37,7 +37,7 @@ public class RlpPathWithAccountListTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(list[i].Path, Is.EqualTo(Accounts[i].Path), $"path {i}");
-                Assert.That(list[i].Account.Rlp.ToArray(), Is.EqualTo(AccountDecoder.Slim.EncodeAsBytes(Accounts[i].Account!)), $"slim rlp {i}");
+                Assert.That(list[i].Account.Rlp.ToArray(), Is.EqualTo(AccountDecoder.Slim.Encode(Accounts[i].Account!)), $"slim rlp {i}");
                 Assert.That(list[i].Account.ToStruct(), Is.EqualTo(Accounts[i].Account!.ToStruct()), $"account {i}");
             }
         }

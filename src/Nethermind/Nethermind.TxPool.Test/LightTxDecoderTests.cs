@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -665,7 +666,7 @@ public class LightTxDecoderTests
         int consensusSize = tx.GetLength(shouldCountBlobs: false);
         int wrapperOverhead =
             (proofVersion is ProofVersion.V1 ? 1 : 0)               // wrapper_version
-            + Rlp.OfEmptyList.Length                                // elided blobs
+            + RlpTestHelper.OfEmptyList.Length                                // elided blobs
             + Rlp.LengthOf(wrapper.Commitments)
             + Rlp.LengthOf(wrapper.Proofs);
 

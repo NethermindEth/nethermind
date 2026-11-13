@@ -165,7 +165,7 @@ public class ChainLevelInfoRepositoryTests
         ChainLevelInfo cached = CreateBatchLevel(1);
         ChainLevelInfo replacement = CreateBatchLevel(2);
         repository.PersistLevel(1, cached);
-        db.PutSpan(1UL.ToBigEndianSpanWithoutLeadingZeros(out _), Rlp.Encode(replacement).Bytes);
+        db.PutSpan(1UL.ToBigEndianSpanWithoutLeadingZeros(out _), Rlp.Encode(replacement));
         Assert.That(repository.LoadLevel(1), Is.SameAs(cached), "precondition: the single-key cache still has the old level");
 
         using ArrayPoolListRef<ulong> numbers = new(1, 1UL);

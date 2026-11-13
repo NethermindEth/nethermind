@@ -60,7 +60,7 @@ public sealed class NeighborsMsgSerializer(
         }
         else
         {
-            writer.Encode(Rlp.OfEmptyList);
+            writer.EncodeNullObject();
         }
 
         writer.Encode(msg.ExpirationTime);
@@ -122,7 +122,7 @@ public sealed class NeighborsMsgSerializer(
         }
         else
         {
-            contentLength += Rlp.OfEmptyList.Bytes.Length;
+            contentLength += Rlp.LengthOfNull;
         }
 
         contentLength += Rlp.LengthOf(msg.ExpirationTime);

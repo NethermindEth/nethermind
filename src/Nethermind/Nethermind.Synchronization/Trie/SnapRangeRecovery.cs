@@ -132,7 +132,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
             if (pathAndAccounts.Count > 0)
             {
                 RefPathWithAccount first = pathAndAccounts[0];
-                accountRlp = AccountRlpDecoder.EncodeAsBytes(first.Account.ToAccount());
+                accountRlp = AccountRlpDecoder.Encode(first.Account.ToAccount());
                 slotPath = first.Path;
             }
 

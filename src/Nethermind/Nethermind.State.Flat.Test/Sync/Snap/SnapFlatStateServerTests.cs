@@ -158,7 +158,7 @@ public class SnapFlatStateServerTests
     {
         Hash256 accountPath = TestItem.AddressA.ToAccountPath.ToCommitment();
         byte[] accountRlp = truncateCodeHash
-            ? AccountDecoder.Instance.EncodeAsBytes(Account.TotallyEmpty)[..^1]
+            ? AccountDecoder.Instance.Encode(Account.TotallyEmpty)[..^1]
             : [0xc4, 0x80, 0x80, 0xa0];
         byte[] stateRootRlp = BuildSingleAccountStateRoot(accountPath, accountRlp, out _rootHash);
         _stateId = new StateId(0, _rootHash.ValueHash256);
@@ -185,7 +185,7 @@ public class SnapFlatStateServerTests
         Hash256 addressHash = Keccak.Compute(TestItem.AddressA.Bytes);
         Hash256 storageRoot = BuildAndPersistStorageRoot(addressHash, slotCount: 1, out byte[] storageRootRlp);
         Account account = Build.An.Account.WithBalance(1).WithStorageRoot(storageRoot).TestObject;
-        byte[] stateRootRlp = BuildSingleAccountStateRoot(addressHash, AccountDecoder.Instance.EncodeAsBytes(account), out _rootHash);
+        byte[] stateRootRlp = BuildSingleAccountStateRoot(addressHash, AccountDecoder.Instance.Encode(account), out _rootHash);
         _stateId = new StateId(0, _rootHash.ValueHash256);
         WriteState(stateRootRlp, addressHash, storageRootRlp);
 
@@ -310,7 +310,7 @@ public class SnapFlatStateServerTests
         {
             account = account.WithChangedCodeHash(TestItem.KeccakA);
         }
-        byte[] stateRootRlp = BuildSingleAccountStateRoot(addressHash, AccountDecoder.Instance.EncodeAsBytes(account), out _rootHash);
+        byte[] stateRootRlp = BuildSingleAccountStateRoot(addressHash, AccountDecoder.Instance.Encode(account), out _rootHash);
         _stateId = new StateId(0, _rootHash.ValueHash256);
 
         _flatDbManager.GatherReadOnlySnapshotBundle(_stateId, Arg.Any<ReaderFlags>())

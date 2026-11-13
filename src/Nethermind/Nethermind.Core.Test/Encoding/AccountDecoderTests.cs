@@ -36,7 +36,7 @@ namespace Nethermind.Core.Test.Encoding
         ];
 
         [Test]
-        public void EncodeAsBytes_matches_the_writer_encoding(
+        public void Encode_matches_the_writer_encoding(
             [Values(0UL, 1UL, 127UL, 128UL, 255UL, 256UL, ulong.MaxValue)] ulong nonce, [ValueSource(nameof(Words))] UInt256 balance, [Values] bool slim, [Values] bool hasStorageAndCode)
         {
             Account account = new(nonce, balance);
@@ -48,10 +48,14 @@ namespace Nethermind.Core.Test.Encoding
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(decoder.EncodeAsBytes(account), Is.EqualTo(expected));
-                Assert.That(decoder.EncodeAsBytes(account.ToStruct()), Is.EqualTo(expected));
+                Assert.That(decoder.Encode(account), Is.EqualTo(expected));
+                Assert.That(decoder.Encode(account.ToStruct()), Is.EqualTo(expected));
             }
         }
+
+        [Test]
+        public void Encodes_null_as_empty_list([Values] bool slim) =>
+            Assert.That(new AccountDecoder(slim).Encode((Account?)null), Is.EqualTo(RlpTestHelper.OfEmptyList));
 
         [Test]
         public void Decode_reads_back_every_field(
@@ -60,7 +64,7 @@ namespace Nethermind.Core.Test.Encoding
             Account account = new(nonce, balance);
             if (hasStorageAndCode) account = account.WithChangedCodeHash(TestItem.KeccakA).WithChangedStorageRoot(TestItem.KeccakB);
             AccountDecoder decoder = new(slim);
-            byte[] bytes = decoder.EncodeAsBytes(account);
+            byte[] bytes = decoder.Encode(account);
             RlpReader ctx = new(bytes);
 
             Account decoded = decoder.Decode(ref ctx, trusted ? RlpBehaviors.TrustedInput : RlpBehaviors.None)!;
@@ -101,7 +105,7 @@ namespace Nethermind.Core.Test.Encoding
         {
             Account account = new Account(100).WithChangedStorageRoot(TestItem.KeccakB);
             AccountDecoder decoder = new();
-            byte[] bytes = decoder.EncodeAsBytes(account);
+            byte[] bytes = decoder.Encode(account);
             RlpReader ctx = new(bytes);
 
             Hash256 storageRoot = decoder.DecodeStorageRootOnly(ref ctx);
@@ -119,7 +123,7 @@ namespace Nethermind.Core.Test.Encoding
             Account account = new Account(100).WithChangedCodeHash(TestItem.KeccakA).WithChangedStorageRoot(TestItem.KeccakB);
             AccountDecoder decoder = new();
             // The trailing empty string becomes an extra item once the list claims one more byte.
-            byte[] bytes = [.. decoder.EncodeAsBytes(account), Rlp.EmptyByteArrayByte];
+            byte[] bytes = [.. decoder.Encode(account), Rlp.EmptyByteArrayByte];
             (int prefixLength, _) = RlpTestHelper.PrefixAndContentLength(bytes);
             bytes[prefixLength - 1] = (byte)(bytes[prefixLength - 1] + lengthDelta);
 

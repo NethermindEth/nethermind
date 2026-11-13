@@ -7,6 +7,7 @@ using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -24,10 +25,10 @@ public class FrameTxDecodeRejectionTransactionTestTests : TransactionTestBase
     private const string Fork = "Eip8141Prototype";
 
     /// <summary>2^64 as a nine-byte integer, one byte wider than the nonce field.</summary>
-    private static readonly Rlp NonceOf2Pow64 = new([0x89, 0x01, 0, 0, 0, 0, 0, 0, 0, 0]);
+    private static readonly byte[] NonceOf2Pow64 = [0x89, 0x01, 0, 0, 0, 0, 0, 0, 0, 0];
 
     /// <summary>A zero with a leading zero byte: the single byte 0x00 instead of the empty string 0x80.</summary>
-    private static readonly Rlp ZeroWithLeadingZero = new([0x00]);
+    private static readonly byte[] ZeroWithLeadingZero = [0x00];
 
     private static IEnumerable<TestCaseData> LabelledRejectionCases()
     {
@@ -36,14 +37,13 @@ public class FrameTxDecodeRejectionTransactionTestTests : TransactionTestBase
         yield return new TestCaseData("0x06c0", "TransactionException.RLP_TOO_FEW_ELEMENTS")
             .SetName("An empty payload list is RLP_TOO_FEW_ELEMENTS");
 
-        Rlp withoutLastField = Rlp.Encode(
-            Rlp.Encode(1L),                                 // chain_id
+        byte[] withoutLastField = RlpTestHelper.EncodeSequence(Rlp.Encode(1L),                                 // chain_id
             Rlp.Encode(0L),                                 // nonce
             Rlp.Encode(TestItem.AddressA.Bytes),            // sender
-            Rlp.Encode(Array.Empty<Rlp>()),                 // frames
-            Rlp.Encode(Array.Empty<Rlp>()),                 // signatures
-            Rlp.Encode(Rlp.Encode(0L), Rlp.Encode(0L)));    // fees; no blob_versioned_hashes
-        yield return new TestCaseData(Bytes.Concat((byte)TxType.FrameTx, withoutLastField.Bytes).ToHexString(true),
+            RlpTestHelper.EncodeSequence(),                 // frames
+            RlpTestHelper.EncodeSequence(),                 // signatures
+            RlpTestHelper.EncodeSequence(Rlp.Encode(0L), Rlp.Encode(0L)));    // fees; no blob_versioned_hashes
+        yield return new TestCaseData(Bytes.Concat((byte)TxType.FrameTx, withoutLastField).ToHexString(true),
                 "TransactionException.RLP_TOO_FEW_ELEMENTS")
             .SetName("A payload without its last field is RLP_TOO_FEW_ELEMENTS");
         yield return new TestCaseData(FrameTxPayload.Encode(nonce: NonceOf2Pow64).ToHexString(true),
@@ -56,7 +56,7 @@ public class FrameTxDecodeRejectionTransactionTestTests : TransactionTestBase
         yield return new TestCaseData(FrameTxPayload.Encode(nonceKeys: [Rlp.Encode(1L)], nonce: NonceOf2Pow64).ToHexString(true),
                 "TransactionException.TYPE_6_INVALID_FRAME_FORMAT")
             .SetName("A keyed nonce_seq wider than 64 bits is TYPE_6_INVALID_FRAME_FORMAT");
-        yield return new TestCaseData(FrameTxPayload.Encode(fees: Rlp.Encode(new[] { Rlp.Encode(0L) })).ToHexString(true), // the list [max_fee]
+        yield return new TestCaseData(FrameTxPayload.Encode(fees: RlpTestHelper.EncodeSequence(new[] { Rlp.Encode(0L) })).ToHexString(true), // the list [max_fee]
                 "TransactionException.TYPE_6_INVALID_FRAME_FORMAT")
             .SetName("A fee list missing an element is TYPE_6_INVALID_FRAME_FORMAT");
     }

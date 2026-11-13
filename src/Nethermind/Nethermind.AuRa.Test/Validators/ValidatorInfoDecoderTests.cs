@@ -14,7 +14,7 @@ namespace Nethermind.AuRa.Test.Validators
         public void Can_decode_previously_encoded()
         {
             ValidatorInfo info = new(10, 5, new[] { TestItem.AddressA, TestItem.AddressC });
-            Rlp rlp = Rlp.Encode(info);
+            byte[] rlp = Rlp.Encode(info);
             ValidatorInfo decoded = Rlp.Decode<ValidatorInfo>(rlp);
             Assert.That(decoded, Is.EqualTo(info).UsingPropertiesComparer());
         }

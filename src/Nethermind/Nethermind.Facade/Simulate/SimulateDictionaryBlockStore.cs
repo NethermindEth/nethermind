@@ -69,7 +69,7 @@ public class SimulateDictionaryBlockStore(IBlockStore baseBlockStore) : IBlockSt
     {
         if (_blockNumDict.TryGetValue(blockNumber, out Block block))
         {
-            return _blockDecoder.Encode(block).Bytes;
+            return _blockDecoder.Encode(block);
         }
         return baseBlockStore.GetRlp(blockNumber, blockHash);
     }
