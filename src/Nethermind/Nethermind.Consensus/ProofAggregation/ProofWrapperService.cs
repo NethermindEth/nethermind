@@ -616,7 +616,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             }
             // Admission is per transaction: a pool rejection, including EIP-8272 recent-root mempool rules, leaves the proof and
             // the other transactions intact.
-            AcceptTxResult result = IsAwaitingAvailability(transaction)
+            AcceptTxResult result = transaction.IsAwaitingAvailability()
                 ? AdmitAwaitingAvailability(transaction, source)
                 : txPool.SubmitTx(transaction, handling);
             if (result != AcceptTxResult.Accepted) firstError ??= result.ToString();
@@ -629,11 +629,6 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             }
         }
     }
-
-    /// <summary>Whether a wrapped transaction carries blobs without their data, as EIP-8437 transports it, so its availability
-    /// is established through EIP-8070 cell retrieval rather than from the wrapper.</summary>
-    private static bool IsAwaitingAvailability(Transaction transaction) =>
-        transaction.CarriesBlobs && transaction.NetworkWrapper is ShardBlobNetworkWrapper { Blobs.Length: 0, Cells: null };
 
     /// <summary>Pins the transaction's coverage, still inside this wrapper's admission, and hands it to cell retrieval.</summary>
     private AcceptTxResult AdmitAwaitingAvailability(Transaction transaction, object? source)
