@@ -424,7 +424,7 @@ public class GuestDispatchDifferentialTests
     }
 
     /// <remarks>
-    /// POP and CALLDATALOAD run checked in every table, and the random programs emit no CLZ, so they cannot cover them.
+    /// POP, CALLDATALOAD and CLZ run checked in the traced and cancelable tables; this pins the head they carry in every table.
     /// </remarks>
     [Test]
     public void Always_checked_bodies_keep_the_carried_head([Values] Table table)

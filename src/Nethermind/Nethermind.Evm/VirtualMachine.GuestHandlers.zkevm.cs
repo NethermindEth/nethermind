@@ -1202,7 +1202,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
 
         /// <summary>CLZ (EIP-7939) of the top word, in place.</summary>
-        /// <remarks>A short stack or gas runs the shared CLZ handler instead, which faults on it.</remarks>
+        /// <remarks>
+        /// An empty stack runs the shared CLZ handler instead, which faults on it. A short gas takes the fast path and leaves
+        /// the gas negative, and the next test halts the frame (see <see cref="ChargeUntested"/>).
+        /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static EvmExceptionType ExecuteClz(
