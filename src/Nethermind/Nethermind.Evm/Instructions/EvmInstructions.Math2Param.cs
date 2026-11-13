@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -440,13 +441,51 @@ public static partial class EvmInstructions
         }
 
         // The result goes to a local first: the exponent it overwrites is still an input.
-        UInt256.Exp(in a, in exponent, out UInt256 expResult);
+        UInt256 expResult;
+        if (DispatchFlags.PowerOfTwoExp && IsPowerOfTwo(in a))
+        {
+            PowerOfTwoExp(in a, in exponent, out expResult);
+        }
+        else
+        {
+            UInt256.Exp(in a, in exponent, out expResult);
+        }
         EvmStack.WriteUInt256ToSlot(ref topRef, in expResult);
         if (TTracingInst.IsActive) stack.ReportPushWord(ref topRef);
         return EvmExceptionType.None;
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
+    }
+
+    private const int MaxBitIndex = 255;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsPowerOfTwo(in UInt256 value)
+    {
+        ulong u0 = value.u0, u1 = value.u1, u2 = value.u2, u3 = value.u3;
+        return BitOperations.IsPow2(u0 | u1 | u2 | u3) && ((u0 & u1) | (u2 & u3) | ((u0 | u1) & (u2 | u3))) == 0;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void PowerOfTwoExp(in UInt256 powerOfTwo, in UInt256 exponent, out UInt256 result)
+    {
+        if ((exponent.u1 | exponent.u2 | exponent.u3) != 0 || exponent.u0 > MaxBitIndex)
+        {
+            result = default;
+            return;
+        }
+
+        int shift = (MaxBitIndex - powerOfTwo.CountLeadingZeros()) * (int)exponent.u0;
+        if (shift > MaxBitIndex)
+        {
+            result = default;
+            return;
+        }
+
+        ulong bit = 1UL << shift;
+        int limb = shift >> 6;
+        result = new UInt256(limb == 0 ? bit : 0, limb == 1 ? bit : 0, limb == 2 ? bit : 0, limb == 3 ? bit : 0);
     }
 
     private static ulong ExpCost<Eip160>(ulong expSize) where Eip160 : struct, IFlag =>

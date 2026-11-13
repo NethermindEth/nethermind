@@ -21,6 +21,8 @@ internal static partial class DispatchFlags
     /// <summary>The guest's dispatch handlers run no fast paths, so its tables need no plain copy to fall back on.</summary>
     public static bool UntracedFastPaths => false;
 
+    public const bool PowerOfTwoExp = false;
+
     public static bool Tracing(bool isTracing) => ConstTracing;
 
     public static bool Cancelable(bool tracerIsCancelable) => ConstCancelable;
