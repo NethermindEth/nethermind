@@ -265,6 +265,25 @@ public class PayloadPreparationServiceTests
         }
     }
 
+    [Test]
+    [CancelAfter(30000)]
+    public void Improvement_rebuilds_without_new_transactions_once_the_tx_pool_has_processed_the_parent()
+    {
+        RecordingBlockImprovementContextFactory factory = new();
+        // No transaction arrives, so the improvement loop would otherwise wait out its delay and skip the rebuild.
+        ITxPool txPool = Substitute.For<ITxPool>();
+        using TestPayloadPreparationService service = new(Substitute.For<IBlockProducer>(), txPool, factory,
+            Substitute.For<ITimerFactory>(), LimboLogs.Instance, TimePerSlot, TimeSpan.FromSeconds(5));
+
+        service.StartPreparingPayload(ParentHeader, Attributes);
+        Assert.That(() => factory.Contexts.Count, Is.EqualTo(1).After(5000, 10));
+
+        txPool.TxPoolHeadChanged += Raise.Event<EventHandler<Block>>(txPool, Build.A.Block.WithNumber(5).TestObject);
+        txPool.TxPoolHeadChanged += Raise.Event<EventHandler<Block>>(txPool, Build.A.Block.WithHeader(ParentHeader).TestObject);
+
+        Assert.That(() => factory.Contexts.Count, Is.EqualTo(2).After(3000, 10));
+    }
+
     private static (MockBlockImprovementContext Context, SharedCancellationTokenSource Cts) CreateRound(DateTimeOffset startDateTime, Action? onCancelling = null)
     {
         SharedCancellationTokenSource cts = new(new CancellationTokenSource());
