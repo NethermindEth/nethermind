@@ -149,15 +149,17 @@ namespace Nethermind.TxPool
             }
         }
 
-        public AcceptTxResult ValidateTxBeforeProofAdmission(Transaction tx)
+        public AcceptTxResult ValidateTxBeforeProofAdmission(Transaction tx, TxHandlingOptions handlingOptions)
         {
+            // Blobs a wrapper carries elided are admitted through EIP-8070 sampling, which defers their proofs as here.
+            bool awaitingAvailability = tx.NetworkWrapper is ShardBlobNetworkWrapper wrapper && !wrapper.HasFullBlobs() && wrapper.Cells is not { Length: > 0 };
             TxFilteringState state = default;
             _newHeadLock.EnterReadLock();
             try
             {
                 state = new(tx, _accounts, _specProvider.GetCurrentHeadSpec());
                 bool canRecycle = false;
-                return FilterTransactions(tx, TxHandlingOptions.None, ref state, ref canRecycle, skipDependencyProofFilters: true);
+                return FilterTransactions(tx, handlingOptions, ref state, ref canRecycle, skipSamplingDeferredFilters: awaitingAvailability, skipDependencyProofFilters: true);
             }
             finally
             {

@@ -6278,6 +6278,7 @@ namespace Nethermind.TxPool.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(_txPool.ValidateTxForBlobSampling(tx), Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.ValidateTxBeforeProofAdmission(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted), "sampling defers its blob proofs");
                 Assert.That(tx.GetElidedNetworkEncodingSize(), Is.EqualTo(tx.GetLength()));
                 Assert.That(new LightTransaction(tx).PersistedDependencyBearing, Is.False);
             }

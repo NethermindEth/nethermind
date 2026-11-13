@@ -1048,7 +1048,7 @@ public class ProofWrapperServiceTests
         pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
             .Returns(call => incomingUnfunded ? AcceptTxResult.InsufficientFunds
                 : store.PinPending(call.Arg<Transaction>(), poolOwner) ? AcceptTxResult.Accepted : AcceptTxResult.MissingDependencyProof);
-        pool.ValidateTxBeforeProofAdmission(Arg.Any<Transaction>())
+        pool.ValidateTxBeforeProofAdmission(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
             .Returns(incomingUnfunded ? AcceptTxResult.InsufficientFunds : AcceptTxResult.Accepted);
         pool.GetPendingTransactionsBySender().Returns(BySender([.. pinned]));
         pool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>());
