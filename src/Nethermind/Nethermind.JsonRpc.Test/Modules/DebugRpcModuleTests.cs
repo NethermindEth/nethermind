@@ -73,7 +73,7 @@ public partial class DebugRpcModuleTests
     [TestCaseSource(nameof(TransactionIndexingCases))]
     public async Task Debug_traceTransaction_indexing_miss(string scenario, bool stream)
     {
-        List<Hash256?> executed = [];
+        List<Transaction> executed = [];
         bool history = scenario is "uninitialized-completed-history" or "uninitialized-unfinished-history";
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new ReceiptSyncRpcBlockchain { SealEngineType = SealEngineType.NethDev })
             .WithFlatDb(false)
@@ -81,7 +81,7 @@ public partial class DebugRpcModuleTests
             .WithReceiptConfig(new ReceiptConfig { TxLookupLimit = 0 })
             .Build(builder =>
             {
-                builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new PrefixCountingAdapter(inner, executed));
+                builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new ExecutedTransactionsAdapter(inner, executed));
                 if (history)
                 {
                     ReleaseSpec spec = Berlin.Instance.Clone();
@@ -794,13 +794,13 @@ public partial class DebugRpcModuleTests
     public async Task TransactionTracing_WhenTargetSelected_ExecutesOnlyPrefix(
         string method, int targetIndex, bool stream, bool unsupportedValidationModule)
     {
-        List<Hash256?> executed = [];
+        List<Transaction> executed = [];
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithConfig(new JsonRpcConfig { Timeout = -1, EnableTracingStreamMode = stream })
             .Build(builder =>
             {
                 builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
-                    .AddDecorator<ITransactionProcessorAdapter>((_, inner) => new PrefixCountingAdapter(inner, executed));
+                    .AddDecorator<ITransactionProcessorAdapter>((_, inner) => new ExecutedTransactionsAdapter(inner, executed));
                 if (unsupportedValidationModule) builder.AddSingleton<IBlockValidationModule, UnsupportedTraceValidationModule>();
             });
         ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressB);
@@ -830,7 +830,7 @@ public partial class DebugRpcModuleTests
                 "an additional validation module without explicit prefix support must retain full replay");
         }
         for (int i = 0; i < executed.Count; i++)
-            Assert.That(executed[i], Is.EqualTo(block.Transactions[i].Hash), "prefix order and original transaction identities must be preserved");
+            Assert.That(executed[i].Hash, Is.EqualTo(block.Transactions[i].Hash), "prefix order and original transaction identities must be preserved");
     }
 
     private sealed class UnsupportedTraceValidationModule : Module, IBlockValidationModule;
@@ -2998,17 +2998,5 @@ public partial class DebugRpcModuleTests
 
         string? caller = (string?)JToken.Parse(response)["result"]?["from"];
         Assert.That(caller is null ? null : new Address(caller), Is.EqualTo(from), response);
-    }
-
-    private sealed class PrefixCountingAdapter(ITransactionProcessorAdapter inner, List<Hash256?> executed) : ITransactionProcessorAdapter
-    {
-        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
-        {
-            executed.Add(transaction.Hash);
-            return inner.Execute(transaction, txTracer);
-        }
-
-        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => inner.SetBlockExecutionContext(blockExecutionContext);
-        public void PrepareForInclusionCheck(Transaction transaction, ulong stateGasAvailable) => inner.PrepareForInclusionCheck(transaction, stateGasAvailable);
     }
 }

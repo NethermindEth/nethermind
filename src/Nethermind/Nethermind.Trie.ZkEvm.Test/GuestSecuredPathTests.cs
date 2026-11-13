@@ -17,9 +17,10 @@ namespace Nethermind.Trie.ZkEvm.Test;
 /// <summary>Tests for the guest's checks of the secured-trie witness nodes its raw-key walks reach.</summary>
 /// <remarks>
 /// Each node is keyed by a made-up hash rather than its keccak: in a ZK_EVM build the Keccak permutation is a zkVM precompile
-/// that throws outside the guest. The walks never hash a node they read, so they cannot tell.
+/// that throws outside the guest. The walks never hash a node they read, so they cannot tell. Not parallel: a ZK_EVM build
+/// makes <c>[ThreadStatic]</c> a no-op, so concurrent writes share <see cref="PatriciaTree"/>'s traverse stack.
 /// </remarks>
-[Parallelizable(ParallelScope.All)]
+[NonParallelizable]
 public class GuestSecuredPathTests
 {
     private const int KeyNibbles = 64;

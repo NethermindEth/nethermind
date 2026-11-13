@@ -14,7 +14,7 @@ using Nethermind.Serialization.FluentRlp;
 namespace Nethermind.Trie.NodeBuffer;
 
 /// <summary>Reads a node record in place; see <see cref="NodeRecordCodec"/> for the layout.</summary>
-/// <remarks>The record's RLP is trusted to be well formed, as <see cref="NodeRecordCodec.TryDecode"/> or the encoder left it.</remarks>
+/// <remarks>The record's RLP is trusted to be well formed.</remarks>
 public readonly ref struct NodeRecordRef
 {
     private readonly ReadOnlySpan<byte> _record;

@@ -98,6 +98,9 @@ public class GeneratedBlockAccessList
     }
 
     public void Clear() => _accountChanges.ClearAndTrim();
+
+    /// <summary>Makes room for <paramref name="accounts"/> accounts without growing the account map as they merge in.</summary>
+    internal void EnsureCapacity(int accounts) => _accountChanges.EnsureCapacity(accounts);
     public void Reset() => Clear();
 
     /// <summary>

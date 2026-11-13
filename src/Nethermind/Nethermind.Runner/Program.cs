@@ -165,6 +165,14 @@ async Task<int> ConfigureAsync(string[] args)
         parseResult.InvocationConfiguration.EnableDefaultExceptionHandler = false;
         parseResult.InvocationConfiguration.ProcessTerminationTimeout = Timeout.InfiniteTimeSpan;
 
+        // The default error action follows the errors with the help for every config option, which buries them.
+        if (parseResult.Action is ParseErrorAction)
+        {
+            // Flushed first so that the errors are the last lines logged.
+            pluginLoader.LogDiagnostics();
+            return BasicOptions.ReportParseErrors(parseResult, logger);
+        }
+
         return await parseResult.InvokeAsync();
     }
     finally
@@ -553,8 +561,53 @@ static class BasicOptions
     public static Argument<string?> Command { get; } = new("command")
     {
         Description = "A standalone command to run instead of the node. Runs only that command and exits; an unknown name lists what is available.",
-        Arity = ArgumentArity.ZeroOrOne
+        Arity = ArgumentArity.ZeroOrOne,
+        // An unrecognized option is otherwise taken as the command name.
+        Validators =
+        {
+            static result =>
+            {
+                if (result.Tokens is [Token token] && token.Value.StartsWith('-'))
+                    result.AddError($"Unrecognized option '{token.Value}'.");
+            }
+        }
     };
+
+    /// <summary>Logs the errors of a command line that failed to parse.</summary>
+    /// <remarks>
+    /// An unrecognized option is logged before the other errors because the value that follows it
+    /// is reported as an unrecognized argument.
+    /// </remarks>
+    /// <returns>
+    /// <see cref="ExitCodes.UnrecognizedOption"/> if an option or argument was not recognized;
+    /// otherwise, <see cref="ExitCodes.GeneralError"/>.
+    /// </returns>
+    public static int ReportParseErrors(ParseResult parseResult, ILogger logger)
+    {
+        List<string> messages = [];
+        int unrecognizedOptions = 0;
+
+        foreach (ParseError error in parseResult.Errors)
+        {
+            if (error.SymbolResult is ArgumentResult result && result.Argument == Command)
+                messages.Insert(unrecognizedOptions++, error.Message);
+            else
+                messages.Add(error.Message);
+        }
+
+        foreach (string message in messages)
+            logger.Error(message);
+
+        bool unrecognized = unrecognizedOptions > 0 || parseResult.UnmatchedTokens.Count > 0;
+        // A stray argument cannot be an option that was removed.
+        bool unrecognizedOption = unrecognizedOptions > 0 || parseResult.UnmatchedTokens.Any(static token => token.StartsWith('-'));
+
+        logger.Error(unrecognizedOption
+            ? "Run with --help to list the available options. An option that worked in an earlier version may have been removed; check the release notes."
+            : "Run with --help to list the available options.");
+
+        return unrecognized ? ExitCodes.UnrecognizedOption : ExitCodes.GeneralError;
+    }
 
     public static Option<string> Configuration { get; } =
         new("--config", "-c")
