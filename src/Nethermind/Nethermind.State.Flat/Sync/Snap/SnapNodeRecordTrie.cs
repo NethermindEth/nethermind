@@ -14,7 +14,6 @@ using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeBuffer;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat.Sync.Snap;
 
@@ -24,7 +23,8 @@ namespace Nethermind.State.Flat.Sync.Snap;
 /// </summary>
 /// <remarks>
 /// The buffer is rented, on the bulk set, from a pool for its number of entries, and returned on <see cref="Dispose"/>.
-/// The proof's nodes, as the boundary fill trimmed them, are written to it first, so the bulk set starts from them.
+/// The proof's nodes are written to it first, from their RLP as received or re-encoded where the boundary walk trimmed them,
+/// so the bulk set starts from them.
 /// </remarks>
 internal sealed class SnapNodeRecordTrie(IPersistence.IPersistenceReader reader, IPersistence.IWriteBatch writeBatch, Hash256? address, bool enableDoubleWriteCheck)
     : INodeRecordStore, IDisposable
@@ -40,13 +40,15 @@ internal sealed class SnapNodeRecordTrie(IPersistence.IPersistenceReader reader,
 
     private PrivateNodeRecordBuffer? _buffer;
     private int _category;
-    private TrieNode? _proofRoot;
+    private IByteArrayList? _proofs;
+    private IReadOnlyList<SnapProofNode>? _proofNodes;
     private ulong _proofRootPointer;
     private (ValueHash256 Hash, ulong Pointer) _root = (ValueKeccak.EmptyTreeHash, 0);
 
     public Hash256 RootHash { get; private set; } = Keccak.EmptyTreeHash;
 
-    public void SetRootFromProof(TrieNode root) => _proofRoot = root;
+    /// <inheritdoc cref="ISnapTree{TEntry}.SetRootFromProof"/>
+    public void SetRootFromProof(IByteArrayList proofs, IReadOnlyList<SnapProofNode> nodes) => (_proofs, _proofNodes) = (proofs, nodes);
 
     public bool IsPersisted(in TreePath path, in ValueHash256 keccak)
     {
@@ -56,16 +58,16 @@ internal sealed class SnapNodeRecordTrie(IPersistence.IPersistenceReader reader,
 
     /// <summary>Sets the entries over the proof's nodes and computes the root hash.</summary>
     /// <exception cref="MissingTrieNodeException">An entry reaches a node that is neither in the proof nor persisted.</exception>
+    /// <exception cref="TrieNodeException">A proof node is not a valid node.</exception>
     public void BulkSet<TEntry>(IReadOnlyList<TEntry> entries) where TEntry : ISnapEntry
     {
         _category = 0;
         while (entries.Count > Categories[_category].MaxEntries) _category++;
-        _buffer =Pools[_category].TryDequeue(out PrivateNodeRecordBuffer? pooled) ? pooled : new PrivateNodeRecordBuffer(Categories[_category].GenerationBytes);
-        if (_proofRoot is not null)
+        _buffer = Pools[_category].TryDequeue(out PrivateNodeRecordBuffer? pooled) ? pooled : new PrivateNodeRecordBuffer(Categories[_category].GenerationBytes);
+        if (_proofNodes is not null)
         {
-            TreePath path = TreePath.Empty;
-            _proofRootPointer = WriteProofNode(_proofRoot, ref path);
-            _root = (_proofRoot.Keccak!.ValueHash256, _proofRootPointer);
+            _root = WriteProofNodes(_proofs!, _proofNodes);
+            _proofRootPointer = _root.Pointer;
         }
 
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkSetEntries = ISnapTree<TEntry>.ToBulkSetEntries(entries);
@@ -76,14 +78,18 @@ internal sealed class SnapNodeRecordTrie(IPersistence.IPersistenceReader reader,
     /// <summary>Persists the trie's nodes as <see cref="SnapUpperBoundAdapter"/> commits a stitched trie: each whose keys all lie at or below <paramref name="upperBound"/> and whose children are all persisted.</summary>
     /// <remarks>
     /// The nodes are reached from the root by their records' child pointers. A child without a pointer is not written by this range,
-    /// so is checked in persistence. When the root is persisted, so is marked the proof's root, as a trie node commit marks it.
+    /// so is checked in persistence.
     /// </remarks>
     /// <param name="skipRoot">Whether the root is left out.</param>
-    public void Commit(in ValueHash256 upperBound, bool skipRoot)
+    /// <returns>Whether the proof's root is persisted; true without a proof.</returns>
+    public bool Commit(in ValueHash256 upperBound, bool skipRoot)
     {
-        if (_root.Pointer == 0) return;
+        bool isRootWritten = _root.Pointer != 0 && Persist(_root.Pointer, TreePath.Empty, upperBound, skipRoot);
+        if (_proofRootPointer == 0 || isRootWritten) return true;
 
-        if (Persist(_root.Pointer, TreePath.Empty, upperBound, skipRoot) && _proofRoot is not null) _proofRoot.IsPersisted = true;
+        // The range never writes a leaf root of the proof, which a range holding its key may have, as stitching checks.
+        _buffer!.TryLocate(_proofRootPointer, out NodeRecord proofRoot);
+        return proofRoot.Kind == NodeRecordKind.Leaf && IsPersisted(TreePath.Empty, proofRoot.Hash);
     }
 
     public void Dispose()
@@ -105,40 +111,80 @@ internal sealed class SnapNodeRecordTrie(IPersistence.IPersistenceReader reader,
             ? reader.TryLoadStateRlp(path, ReadFlags.None, action, arg)
             : reader.TryLoadStorageRlp(address, path, ReadFlags.None, action, arg);
 
-    /// <summary>Writes the record of the proof node <paramref name="node"/> at <paramref name="path"/>, after those of the proof nodes below it, linking them by pointer.</summary>
-    /// <returns>The record's pointer, or 0 when the node is embedded in its parent.</returns>
-    private ulong WriteProofNode(TrieNode node, ref TreePath path)
+    /// <summary>Writes the records of the proof's <paramref name="nodes"/>, each after those of its children, which it references by pointer.</summary>
+    /// <returns>The root's hash and pointer.</returns>
+    private (ValueHash256 Hash, ulong Pointer) WriteProofNodes(IByteArrayList proofs, IReadOnlyList<SnapProofNode> nodes)
     {
-        int childCount = node.IsBranch ? TrieNode.BranchesCount : node.IsExtension ? 1 : 0;
-        Span<ulong> childPointers = stackalloc ulong[childCount];
-        for (int i = 0; i < childCount; i++)
+        using ArrayPoolListRef<(ValueHash256 Hash, ulong Pointer)> written = new(nodes.Count, nodes.Count);
+        Span<(ValueHash256 Hash, ulong Pointer)> records = written.AsSpan();
+        for (int i = nodes.Count - 1; i >= 0; i--)
         {
-            childPointers[i] = 0;
-            if (!node.TryGetDirtyChild(i, out TrieNode? child)) continue;
-
-            int previousLength = node.AppendChildPath(ref path, i);
-            childPointers[i] = WriteProofNode(child, ref path);
-            path.TruncateMut(previousLength);
+            records[i] = WriteProofNode(proofs, nodes, i, records);
         }
 
-        node.ResolveKey(NullTrieNodeResolver.Instance, ref path, canBeParallel: false);
-        if (node.Keccak is null) return 0;
+        return records[0];
+    }
 
-        ReadOnlySpan<byte> rlp = node.FullRlp.AsSpan();
-        if (!NodeRecordCodec.TryDecode(rlp, out NodeRecordKind kind, out ushort hashMask)) throw new TrieNodeException("Invalid proof node.", path, node.Keccak);
+    /// <summary>Writes the record of proof node <paramref name="index"/>, less its cleared children and linked to the records of its proof children.</summary>
+    /// <param name="written">The records of the nodes after <paramref name="index"/>, among them its children.</param>
+    private (ValueHash256 Hash, ulong Pointer) WriteProofNode(IByteArrayList proofs, IReadOnlyList<SnapProofNode> nodes, int index, ReadOnlySpan<(ValueHash256 Hash, ulong Pointer)> written)
+    {
+        SnapProofNode node = nodes[index];
+        ReadOnlySpan<byte> rlp = proofs[node.ProofIndex];
+        if (!NodeRecordCodec.TryDecode(rlp, out NodeRecordKind kind, out ushort hashMask)) throw new TrieNodeException("Invalid proof node.", node.Path, new Hash256(ValueKeccak.Compute(rlp)));
 
+        bool isTrimmed = node.ClearedChildren != 0;
+        for (int i = index + 1; !isTrimmed && i < nodes.Count; i++)
+        {
+            isTrimmed = nodes[i].ParentIndex == index;
+        }
+
+        if (!isTrimmed) return WriteRecord(rlp, kind, hashMask, []);
+
+        Span<byte> original = stackalloc byte[NodeRecordCodec.Length(BitOperations.PopCount(hashMask), rlp.Length)];
+        NodeRecordCodec.WriteFromRlp(rlp, kind, hashMask, default, 0, original);
+        NodeRecordRef view = new(original);
+        bool isBranch = kind is NodeRecordKind.HashedBranch or NodeRecordKind.InlineBranch;
+        Span<ChildRef> children = stackalloc ChildRef[isBranch ? TrieNode.BranchesCount : 1];
+        if (isBranch) view.CopyChildren(children);
+        else children[0] = view.Child(0);
+
+        for (int mask = node.ClearedChildren; mask != 0; mask &= mask - 1)
+        {
+            children[BitOperations.TrailingZeroCount(mask)] = default;
+        }
+
+        for (int i = index + 1; i < nodes.Count; i++)
+        {
+            if (nodes[i].ParentIndex == index) children[nodes[i].ChildIndex] = ChildRef.ForHash(written[i].Hash, written[i].Pointer);
+        }
+
+        Span<byte> key = stackalloc byte[view.KeyLength(0)];
+        view.CopyKey(0, key);
+        Span<byte> trimmed = stackalloc byte[isBranch ? NodeRlp.BranchLength(children) : NodeRlp.ExtensionLength(key, children[0])];
+        if (isBranch) NodeRlp.WriteBranch(children, trimmed);
+        else NodeRlp.WriteExtension(key, children[0], trimmed);
+
+        NodeRecordCodec.TryDecode(trimmed, out NodeRecordKind trimmedKind, out ushort trimmedHashMask);
+        return WriteRecord(trimmed, trimmedKind, trimmedHashMask, children);
+    }
+
+    /// <summary>Writes the record of <paramref name="rlp"/>, pointing to the records of the <paramref name="children"/> that have one.</summary>
+    private (ValueHash256 Hash, ulong Pointer) WriteRecord(ReadOnlySpan<byte> rlp, NodeRecordKind kind, ushort hashMask, ReadOnlySpan<ChildRef> children)
+    {
+        ValueHash256 hash = ValueKeccak.Compute(rlp);
         using INodeRecordWriteBatch batch = _buffer!.StartWriteBatch(NodeRecordCodec.AlignedLength(NodeRecordCodec.Length(BitOperations.PopCount(hashMask), rlp.Length)));
         Span<byte> record = batch.Bytes;
-        NodeRecordCodec.WriteFromRlp(rlp, kind, hashMask, node.Keccak.ValueHash256, 0, record);
-        for (int i = 0; i < childCount; i++)
+        NodeRecordCodec.WriteFromRlp(rlp, kind, hashMask, hash, 0, record);
+        for (int i = 0; i < children.Length; i++)
         {
-            if (childPointers[i] == 0) continue;
+            if (children[i].Kind != ChildRefKind.Hash || children[i].Pointer == 0) continue;
 
             int position = BitOperations.PopCount(hashMask & ((1u << i) - 1));
-            BinaryPrimitives.WriteUInt64LittleEndian(record[(NodeRecordCodec.HeaderLength + NodeRecordCodec.PointerLength * position)..], childPointers[i]);
+            BinaryPrimitives.WriteUInt64LittleEndian(record[(NodeRecordCodec.HeaderLength + NodeRecordCodec.PointerLength * position)..], children[i].Pointer);
         }
 
-        return batch.BasePointer;
+        return (hash, batch.BasePointer);
     }
 
     /// <summary>Persists the persistable nodes below the record at <paramref name="pointer"/>, then the record's node when it is persistable too.</summary>

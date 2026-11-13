@@ -183,9 +183,12 @@ public class FlatSnapTreeTrieNodeParityTests
     private sealed class TrieNodeTree<TEntry>(PatriciaTree tree, SnapUpperBoundAdapter adapter, IPersistence.IPersistenceReader reader, IPersistence.IWriteBatch writeBatch, Hash256? address)
         : ISnapTree<TEntry> where TEntry : ISnapEntry
     {
+        private List<(TrieNode, TreePath)>? _proofNodes;
+
         public Hash256 RootHash => tree.RootHash;
 
-        public void SetRootFromProof(TrieNode root) => tree.RootRef = root;
+        public void SetRootFromProof(IByteArrayList proofs, IReadOnlyList<SnapProofNode> nodes) =>
+            _proofNodes = PatriciaSnapProof.SetRoot(tree, proofs, nodes);
 
         public bool IsPersisted(in TreePath path, in ValueHash256 keccak)
         {
@@ -195,10 +198,12 @@ public class FlatSnapTreeTrieNodeParityTests
 
         public void BulkSetAndUpdateRootHash(IReadOnlyList<TEntry> entries) => ISnapTree<TEntry>.DoBulkSetAndUpdateRootHash(tree, entries);
 
-        public void Commit(ValueHash256 upperBound)
+        public bool Commit(ValueHash256 upperBound)
         {
+            PatriciaSnapProof.StitchBoundaries(_proofNodes, this);
             adapter.UpperBound = upperBound;
             tree.Commit(skipRoot: address is null, WriteFlags.DisableWAL);
+            return _proofNodes is not { Count: > 0 } || _proofNodes[0].Item1.IsPersisted;
         }
 
         public void Dispose()

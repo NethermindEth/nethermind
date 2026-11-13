@@ -4,11 +4,12 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.State.Snap;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization.SnapSync
 {
@@ -97,7 +98,7 @@ namespace Nethermind.Synchronization.SnapSync
             in ValueHash256 expectedRootHash,
             IByteArrayList? proofs) where TEntry : ISnapEntry
         {
-            (AddRangeResult result, List<(TrieNode, TreePath)>? sortedBoundaryList, bool moreChildrenToRight) =
+            (AddRangeResult result, bool moreChildrenToRight) =
                 BuildAndVerifyRoot(tree, entries, startingHash, limitHash, expectedRootHash, proofs);
 
             if (result != AddRangeResult.OK)
@@ -117,11 +118,7 @@ namespace Nethermind.Synchronization.SnapSync
                 if (!moreChildrenToRight) upperBound = ValueKeccak.MaxValue;
             }
 
-            StitchBoundaries(sortedBoundaryList, tree, startingHash);
-
-            tree.Commit(upperBound);
-
-            bool isRootPersisted = sortedBoundaryList is not { Count: > 0 } || sortedBoundaryList[0].Item1.IsPersisted;
+            bool isRootPersisted = tree.Commit(upperBound);
             return (AddRangeResult.OK, moreChildrenToRight, isRootPersisted);
         }
 
@@ -129,7 +126,7 @@ namespace Nethermind.Synchronization.SnapSync
         /// Fills the boundary proof nodes and bulk-sets the range entries into <paramref name="tree"/> in memory,
         /// then checks that the recomputed root equals <paramref name="expectedRootHash"/>. Nothing is committed.
         /// </summary>
-        private static (AddRangeResult result, List<(TrieNode, TreePath)>? sortedBoundaryList, bool moreChildrenToRight) BuildAndVerifyRoot<TEntry>(
+        private static (AddRangeResult result, bool moreChildrenToRight) BuildAndVerifyRoot<TEntry>(
             ISnapTree<TEntry> tree,
             IReadOnlyList<TEntry> entries,
             in ValueHash256 startingHash,
@@ -141,35 +138,34 @@ namespace Nethermind.Synchronization.SnapSync
             // [startingHash, limitHash] cleared, which leaves nothing more to fetch in the range.
             bool isProofOfAbsence = entries.Count == 0;
             if (isProofOfAbsence && proofs is not { Count: > 0 })
-                return (AddRangeResult.EmptyRange, null, false);
+                return (AddRangeResult.EmptyRange, false);
 
             // Validate sorting order
             for (int i = 1; i < entries.Count; i++)
             {
                 if (entries[i - 1].Path.CompareTo(entries[i].Path) >= 0)
-                    return (AddRangeResult.InvalidOrder, null, false);
+                    return (AddRangeResult.InvalidOrder, false);
             }
 
             if (!isProofOfAbsence && entries[0].Path < startingHash)
-                return (AddRangeResult.InvalidOrder, null, false);
+                return (AddRangeResult.InvalidOrder, false);
 
             ValueHash256 lastPath = isProofOfAbsence ? limitHash : entries[entries.Count - 1].Path;
 
             AddRangeResult result;
-            List<(TrieNode, TreePath)> sortedBoundaryList;
             bool moreChildrenToRight;
             try
             {
-                (result, sortedBoundaryList, moreChildrenToRight) =
+                (result, moreChildrenToRight) =
                     FillBoundaryTree(tree, startingHash, lastPath, limitHash, expectedRootHash, proofs);
             }
             catch (Exception)
             {
-                return (AddRangeResult.InvalidProof, null, false);
+                return (AddRangeResult.InvalidProof, false);
             }
 
             if (result != AddRangeResult.OK)
-                return (result, null, false);
+                return (result, false);
 
             try
             {
@@ -180,17 +176,17 @@ namespace Nethermind.Synchronization.SnapSync
                 // The tree holds only the proof nodes, so the bulk set loads a node only when an entry reaches a child
                 // the proof keeps as a hash, such as a leaf beside the range: the entries do not fit the proof. Patricia
                 // stores report the node they cannot load as a MissingTrieNodeException, flat ones as a TrieNodeException.
-                return (AddRangeResult.InvalidProof, null, false);
+                return (AddRangeResult.InvalidProof, false);
             }
 
             if (tree.RootHash.ValueHash256 != expectedRootHash)
-                return (AddRangeResult.DifferentRootHash, null, false);
+                return (AddRangeResult.DifferentRootHash, false);
 
-            return (AddRangeResult.OK, sortedBoundaryList, moreChildrenToRight && !isProofOfAbsence);
+            return (AddRangeResult.OK, moreChildrenToRight && !isProofOfAbsence);
         }
 
         [SkipLocalsInit]
-        private static (AddRangeResult result, List<(TrieNode, TreePath)> sortedBoundaryList, bool moreChildrenToRight) FillBoundaryTree<TEntry>(
+        private static (AddRangeResult result, bool moreChildrenToRight) FillBoundaryTree<TEntry>(
             ISnapTree<TEntry> tree,
             in ValueHash256? startingHash,
             in ValueHash256 endHash,
@@ -201,21 +197,22 @@ namespace Nethermind.Synchronization.SnapSync
         {
             if (proofs is null || proofs.Count == 0)
             {
-                return (AddRangeResult.OK, null, false);
+                return (AddRangeResult.OK, false);
             }
 
             ArgumentNullException.ThrowIfNull(tree);
 
             ValueHash256 effectiveStartingHash = startingHash ?? ValueKeccak.Zero;
-            List<(TrieNode, TreePath)> sortedBoundaryList = [];
+            List<SnapProofNode> sortedBoundaryList = [];
 
-            Dictionary<ValueHash256, TrieNode> dict = CreateProofDict(proofs);
+            Dictionary<ValueHash256, int> dict = CreateProofDict(proofs);
 
-            if (!dict.TryGetValue(expectedRootHash, out TrieNode root))
+            if (!dict.TryGetValue(expectedRootHash, out int rootIndex))
             {
-                return (AddRangeResult.MissingRootHashInProofs, null, true);
+                return (AddRangeResult.MissingRootHashInProofs, true);
             }
 
+            ProofNode root = new(proofs[rootIndex]);
             if (dict.Count == 1 && root.IsLeaf)
             {
                 // Special case with some server sending proof where the root is the same as the only path.
@@ -223,7 +220,7 @@ namespace Nethermind.Synchronization.SnapSync
                 TreePath rootPath = TreePath.FromNibble(root.Key);
                 if (rootPath.Length == 64 && rootPath.Path.Equals(endHash))
                 {
-                    return (AddRangeResult.OK, null, false);
+                    return (AddRangeResult.OK, false);
                 }
             }
 
@@ -238,22 +235,23 @@ namespace Nethermind.Synchronization.SnapSync
             // Connect the proof nodes starting from state root.
             // It also remove child path which is within the start/end range. If key are missing, the resolved
             // hash will not match.
-            Stack<(TrieNode node, TreePath path)> proofNodesToProcess = new();
+            Stack<int> proofNodesToProcess = new();
 
-            tree.SetRootFromProof(root);
-            proofNodesToProcess.Push((root, TreePath.Empty));
-            sortedBoundaryList.Add((root, TreePath.Empty));
+            proofNodesToProcess.Push(sortedBoundaryList.Count);
+            sortedBoundaryList.Add(new SnapProofNode(rootIndex, TreePath.Empty, -1, 0, 0));
 
             bool moreChildrenToRight = false;
             while (proofNodesToProcess.Count > 0)
             {
-                (TrieNode node, TreePath path) = proofNodesToProcess.Pop();
+                int nodeIndex = proofNodesToProcess.Pop();
+                TreePath path = sortedBoundaryList[nodeIndex].Path;
+                ProofNode node = new(proofs[sortedBoundaryList[nodeIndex].ProofIndex]);
 
                 if (node.IsExtension)
                 {
                     if (node.Key is not { Length: > 0 })
                     {
-                        return (AddRangeResult.InvalidProofNode, null, true);
+                        return (AddRangeResult.InvalidProofNode, true);
                     }
 
                     if (node.GetChildHashAsValueKeccak(ExtensionRlpChildIndex, out ValueHash256 childKeccak))
@@ -264,12 +262,10 @@ namespace Nethermind.Synchronization.SnapSync
 
                         if (childPath.CompareTo(leftBoundaryPath.Truncate(childPath.Length)) >= 0)
                         {
-                            if (dict.TryGetValue(childKeccak, out TrieNode child))
+                            if (dict.TryGetValue(childKeccak, out int child))
                             {
-                                node.SetChild(0, child);
-
-                                proofNodesToProcess.Push((child, childPath));
-                                sortedBoundaryList.Add((child, childPath));
+                                proofNodesToProcess.Push(sortedBoundaryList.Count);
+                                sortedBoundaryList.Add(new SnapProofNode(child, childPath, nodeIndex, 0, 0));
                             }
                             else if (childPath.CompareTo(rightBoundaryPath.Truncate(childPath.Length)) <= 0)
                             {
@@ -277,7 +273,7 @@ namespace Nethermind.Synchronization.SnapSync
                                 // this extension, or it is a root extension inside the range. Kept as a hash, the child
                                 // would stand for every key of the range under it: the entries could leave them out and
                                 // the root would still match.
-                                return (AddRangeResult.InvalidProof, null, true);
+                                return (AddRangeResult.InvalidProof, true);
                             }
                         }
                     }
@@ -289,56 +285,63 @@ namespace Nethermind.Synchronization.SnapSync
 
                     int maxIndex = moreChildrenToRight ? right : 15;
 
+                    ushort clearedChildren = 0;
                     for (int ci = left; ci <= maxIndex; ci++)
                     {
                         bool hasKeccak = node.GetChildHashAsValueKeccak(ci, out ValueHash256 childKeccak);
-                        TrieNode? child = null;
-                        if (hasKeccak)
+                        int childProofIndex = -1;
+                        if (hasKeccak && dict.TryGetValue(childKeccak, out int proofIndex))
                         {
-                            dict.TryGetValue(childKeccak, out child);
+                            childProofIndex = proofIndex;
                         }
 
-                        if (child is null)
+                        ProofNode child = default;
+                        bool hasChild = childProofIndex >= 0;
+                        if (hasChild)
+                        {
+                            child = new ProofNode(proofs[childProofIndex]);
+                        }
+                        else
                         {
                             // Note: be careful with inline node. Inline node is not set in the proof dictionary
-                            byte[]? inlineRlp = node.GetInlineNodeRlp(ci);
-                            if (inlineRlp is not null)
+                            ReadOnlySpan<byte> inlineRlp = node.GetInlineNodeRlp(ci);
+                            if (!inlineRlp.IsEmpty)
                             {
-                                child = new TrieNode(NodeType.Unknown, inlineRlp);
-                                child.ResolveNode(NullTrieNodeResolver.Instance, path.Append(ci));
+                                child = new ProofNode(inlineRlp);
+                                hasChild = true;
                             }
                         }
 
                         // The limit may have lower nibble that is less than the path's current nibble, even if upper
                         // nibble is higher. So need to check whole path
                         TreePath childPath = path.Append(ci);
-                        moreChildrenToRight |= (hasKeccak || child is not null) && (ci > right && (childPath.Path <= limitHash || noLimit));
+                        moreChildrenToRight |= (hasKeccak || hasChild) && (ci > right && (childPath.Path <= limitHash || noLimit));
 
                         if (ci >= left && ci <= right)
                         {
                             // Clear child within boundary
-                            node.SetChild(ci, null);
+                            clearedChildren |= (ushort)(1 << ci);
                         }
 
-                        if (child is not null && !hasKeccak && (ci == left || ci == right))
+                        if (hasChild && !hasKeccak && (ci == left || ci == right))
                         {
                             // Inline node at boundary. Need to be set back or keccak will be incorrect.
                             // but must not be set as part of boundary list or break stitching.
                             TreePath wholePath = childPath.Append(child.Key);
                             if (leftBoundaryPath.CompareToTruncated(wholePath, wholePath.Length) > 0 || rightBoundaryPath.CompareToTruncated(wholePath, wholePath.Length) < 0)
                             {
-                                node.SetChild(ci, child);
+                                clearedChildren &= (ushort)~(1 << ci);
                             }
                         }
 
-                        if (hasKeccak && (ci == left || ci == right) && child is not null)
+                        if (hasKeccak && (ci == left || ci == right) && hasChild)
                         {
                             if (child.IsBranch)
                             {
-                                node.SetChild(ci, child);
+                                clearedChildren &= (ushort)~(1 << ci);
 
-                                proofNodesToProcess.Push((child, childPath));
-                                sortedBoundaryList.Add((child, childPath));
+                                proofNodesToProcess.Push(sortedBoundaryList.Count);
+                                sortedBoundaryList.Add(new SnapProofNode(childProofIndex, childPath, nodeIndex, ci, 0));
                             }
                             else if (child.IsExtension)
                             {
@@ -346,9 +349,9 @@ namespace Nethermind.Synchronization.SnapSync
                                 TreePath wholePath = childPath.Append(child.Key);
                                 if (leftBoundaryPath.CompareToTruncated(wholePath, wholePath.Length) >= 0 || rightBoundaryPath.CompareToTruncated(wholePath, wholePath.Length) <= 0)
                                 {
-                                    node.SetChild(ci, child);
-                                    proofNodesToProcess.Push((child, childPath));
-                                    sortedBoundaryList.Add((child, childPath));
+                                    clearedChildren &= (ushort)~(1 << ci);
+                                    proofNodesToProcess.Push(sortedBoundaryList.Count);
+                                    sortedBoundaryList.Add(new SnapProofNode(childProofIndex, childPath, nodeIndex, ci, 0));
                                 }
                             }
                             else
@@ -360,113 +363,99 @@ namespace Nethermind.Synchronization.SnapSync
                                     // Leaf are range proof, proof that the range covers the requested path.
                                     // But we dont persist them as it should be persisted by the range itself through
                                     // other range.
-                                    node.NodeData[ci] = child.Keccak;
+                                    clearedChildren &= (ushort)~(1 << ci);
                                 }
                             }
                         }
                     }
+
+                    sortedBoundaryList[nodeIndex] = sortedBoundaryList[nodeIndex] with { ClearedChildren = clearedChildren };
                 }
             }
 
-            return (AddRangeResult.OK, sortedBoundaryList, moreChildrenToRight);
+            tree.SetRootFromProof(proofs, sortedBoundaryList);
+            return (AddRangeResult.OK, moreChildrenToRight);
         }
 
-        private static Dictionary<ValueHash256, TrieNode> CreateProofDict(IByteArrayList proofs)
+        private static Dictionary<ValueHash256, int> CreateProofDict(IByteArrayList proofs)
         {
-            Dictionary<ValueHash256, TrieNode> dict = [];
+            Dictionary<ValueHash256, int> dict = [];
 
             for (int i = 0; i < proofs.Count; i++)
             {
-                byte[] proof = proofs[i].ToArray();
-                TrieNode node = new(NodeType.Unknown, proof, isDirty: true);
-                node.IsBoundaryProofNode = true;
+                ReadOnlySpan<byte> proof = proofs[i];
 
-                TreePath emptyPath = TreePath.Empty;
-                node.ResolveNode(UnknownNodeResolver.Instance, emptyPath);
-                node.ResolveKey(UnknownNodeResolver.Instance, ref emptyPath);
+                // Rejects a malformed proof even when no path reaches it.
+                _ = new ProofNode(proof);
 
-                dict[node.Keccak] = node;
+                dict[ValueKeccak.Compute(proof)] = i;
             }
 
             return dict;
         }
 
-        private static void StitchBoundaries<TEntry>(List<(TrieNode, TreePath)>? sortedBoundaryList, ISnapTree<TEntry> tree, ValueHash256 startPath) where TEntry : ISnapEntry
+        /// <summary>A proof node read in place from its RLP, as far as the boundary walk needs it.</summary>
+        private readonly ref struct ProofNode
         {
-            if (sortedBoundaryList is null || sortedBoundaryList.Count == 0)
+            private const int LeafOrExtensionItemCount = 2;
+
+            // Sixteen children and a value.
+            private const int BranchItemCount = 17;
+
+            private readonly RlpReader _items;
+            private readonly ReadOnlySpan<byte> _hexPrefix;
+
+            /// <exception cref="RlpReaderException">The RLP is malformed.</exception>
+            /// <exception cref="TrieException">The RLP is neither a branch, an extension nor a leaf.</exception>
+            public ProofNode(ReadOnlySpan<byte> rlp)
             {
-                return;
+                _items = new RlpReader(rlp).EnterSequence<OffFlag>(out _);
+                int itemCount = _items.CountItems<OffFlag>(BranchItemCount);
+                IsBranch = itemCount == BranchItemCount;
+                if (IsBranch) return;
+
+                if (itemCount != LeafOrExtensionItemCount) throw new TrieException("A proof node is neither a branch, an extension nor a leaf.");
+
+                RlpReader reader = _items;
+                _hexPrefix = reader.ReadBytes<OffFlag>();
+                IsLeaf = HexPrefix.ReadHeader(_hexPrefix).IsLeaf;
             }
 
-            for (int i = sortedBoundaryList.Count - 1; i >= 0; i--)
+            public bool IsBranch { get; }
+
+            public bool IsLeaf { get; }
+
+            public bool IsExtension => !IsBranch && !IsLeaf;
+
+            /// <summary>The key nibbles of a leaf or an extension; empty for a branch.</summary>
+            public byte[] Key => IsBranch ? [] : HexPrefix.FromBytes(_hexPrefix).key;
+
+            /// <summary>Gets the hash of the child that RLP item <paramref name="index"/> references, as <see cref="TrieNode.GetChildHashAsValueKeccak"/> does.</summary>
+            public bool GetChildHashAsValueKeccak(int index, out ValueHash256 keccak)
             {
-                (TrieNode node, TreePath path) = sortedBoundaryList[i];
-                if (!node.IsPersisted)
+                RlpReader reader = Seek(index);
+                ReadOnlySpan<byte> hash = reader.IsNextSequence ? default : reader.ReadBytes<OffFlag>();
+                bool isHash = hash.Length == ValueHash256.MemorySize;
+                keccak = isHash ? new ValueHash256(hash) : default;
+                return isHash;
+            }
+
+            /// <summary>The RLP of the child embedded as RLP item <paramref name="index"/>; empty when it is not embedded.</summary>
+            public ReadOnlySpan<byte> GetInlineNodeRlp(int index)
+            {
+                RlpReader reader = Seek(index);
+                return reader.IsNextSequence ? reader.ReadEncodedItem<OffFlag>() : default;
+            }
+
+            private RlpReader Seek(int index)
+            {
+                RlpReader reader = _items;
+                for (int i = 0; i < index; i++)
                 {
-                    INodeData nodeData = node.NodeData;
-                    if (nodeData is ExtensionData extensionData)
-                    {
-                        if (IsChildPersisted(node, ref path, extensionData._value, ExtensionRlpChildIndex, tree, startPath))
-                        {
-                            node.IsBoundaryProofNode = false;
-                        }
-                    }
-                    else if (nodeData is BranchData branchData)
-                    {
-                        bool isBoundaryProofNode = false;
-                        int ci = 0;
-                        foreach (object? o in branchData.Branches)
-                        {
-                            if (!IsChildPersisted(node, ref path, o, ci, tree, startPath))
-                            {
-                                isBoundaryProofNode = true;
-                                break;
-                            }
-                            ci++;
-                        }
-
-                        node.IsBoundaryProofNode = isBoundaryProofNode;
-                    }
-
-                    //leaves as a part of boundary are only added if they are outside the processed range,
-                    //therefore they will not be persisted during current Commit. Still it is possible, they have already
-                    //been persisted when processing a range they belong, so it is needed to do a check here.
-                    //Without it, there is a risk that the whole dependant path (including root) will not be eventually stitched and persisted
-                    //leading to TrieNodeException after sync (as healing may not get to heal the particular storage trie)
-                    if (node.IsLeaf)
-                    {
-                        node.IsPersisted = tree.IsPersisted(path, node.Keccak);
-                        node.IsBoundaryProofNode = !node.IsPersisted;
-                    }
+                    reader.SkipItem<OffFlag>();
                 }
-            }
-        }
 
-        private static bool IsChildPersisted<TEntry>(TrieNode node, ref TreePath nodePath, object? child, int childIndex, ISnapTree<TEntry> tree, ValueHash256 startPath) where TEntry : ISnapEntry
-        {
-            if (child is TrieNode childNode)
-            {
-                return !childNode.IsBoundaryProofNode;
-            }
-
-            ValueHash256 childKeccak;
-            if (child is Hash256 hash)
-            {
-                childKeccak = hash.ValueHash256;
-            }
-            else if (!node.GetChildHashAsValueKeccak(childIndex, out childKeccak))
-            {
-                return true;
-            }
-
-            int previousPathLength = node.AppendChildPath(ref nodePath, childIndex);
-            try
-            {
-                return tree.IsPersisted(nodePath, childKeccak);
-            }
-            finally
-            {
-                nodePath.TruncateMut(previousPathLength);
+                return reader;
             }
         }
     }

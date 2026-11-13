@@ -18,10 +18,16 @@ public interface ISnapTree<in TEntry> : IDisposable where TEntry : ISnapEntry
 {
     Hash256 RootHash { get; }
 
-    void SetRootFromProof(TrieNode root);
+    /// <summary>Sets the root to the proof's <paramref name="nodes"/>, whose RLP is in <paramref name="proofs"/>.</summary>
+    /// <param name="proofs">Read until the range is committed.</param>
+    /// <param name="nodes">The root first, a parent before its children.</param>
+    void SetRootFromProof(IByteArrayList proofs, IReadOnlyList<SnapProofNode> nodes);
     bool IsPersisted(in TreePath path, in ValueHash256 keccak);
     void BulkSetAndUpdateRootHash(IReadOnlyList<TEntry> entries);
-    void Commit(ValueHash256 upperBound);
+
+    /// <summary>Persists the range and the proof's nodes whose children are all persisted.</summary>
+    /// <returns>Whether the proof's root is persisted; true without a proof.</returns>
+    bool Commit(ValueHash256 upperBound);
 
     /// <summary>
     /// Converts entries to <see cref="PatriciaTree.BulkSetEntry"/>, tracks metrics,

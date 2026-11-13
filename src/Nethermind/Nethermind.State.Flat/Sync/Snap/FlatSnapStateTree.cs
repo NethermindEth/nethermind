@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Snap;
@@ -21,7 +22,7 @@ public class FlatSnapStateTree(IPersistence.IPersistenceReader reader, IPersiste
 
     public Hash256 RootHash => _trie.RootHash;
 
-    public void SetRootFromProof(TrieNode root) => _trie.SetRootFromProof(root);
+    public void SetRootFromProof(IByteArrayList proofs, IReadOnlyList<SnapProofNode> nodes) => _trie.SetRootFromProof(proofs, nodes);
 
     public bool IsPersisted(in TreePath path, in ValueHash256 keccak) => _trie.IsPersisted(path, keccak);
 
@@ -31,7 +32,7 @@ public class FlatSnapStateTree(IPersistence.IPersistenceReader reader, IPersiste
         _trie.BulkSet(entries);
     }
 
-    public void Commit(ValueHash256 upperBound)
+    public bool Commit(ValueHash256 upperBound)
     {
         if (_pendingEntries is not null)
         {
@@ -49,7 +50,7 @@ public class FlatSnapStateTree(IPersistence.IPersistenceReader reader, IPersiste
             }
         }
 
-        _trie.Commit(upperBound, skipRoot: true);
+        return _trie.Commit(upperBound, skipRoot: true);
     }
 
     public void Dispose()

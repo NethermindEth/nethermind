@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
@@ -21,7 +22,7 @@ public class FlatSnapStorageTree(IPersistence.IPersistenceReader reader, IPersis
 
     public Hash256 RootHash => _trie.RootHash;
 
-    public void SetRootFromProof(TrieNode root) => _trie.SetRootFromProof(root);
+    public void SetRootFromProof(IByteArrayList proofs, IReadOnlyList<SnapProofNode> nodes) => _trie.SetRootFromProof(proofs, nodes);
 
     public bool IsPersisted(in TreePath path, in ValueHash256 keccak) => _trie.IsPersisted(path, keccak);
 
@@ -31,7 +32,7 @@ public class FlatSnapStorageTree(IPersistence.IPersistenceReader reader, IPersis
         _trie.BulkSet(entries);
     }
 
-    public void Commit(ValueHash256 upperBound)
+    public bool Commit(ValueHash256 upperBound)
     {
         if (_pendingEntries is not null)
         {
@@ -53,7 +54,7 @@ public class FlatSnapStorageTree(IPersistence.IPersistenceReader reader, IPersis
             }
         }
 
-        _trie.Commit(upperBound, skipRoot: false);
+        return _trie.Commit(upperBound, skipRoot: false);
     }
 
     public void Dispose()
