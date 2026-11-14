@@ -172,14 +172,7 @@ public class OwnedBlockBodies : IDisposable, IReadOnlyList<BlockBody?>
 
     private static void ReturnPooledTransactions(BlockBody?[] bodies)
     {
-        foreach (BlockBody? blockBody in bodies)
-        {
-            if (blockBody is null) continue;
-            foreach (Transaction tx in blockBody.Transactions)
-            {
-                TxDecoder.TxObjectPool.Return(tx);
-            }
-        }
+        foreach (BlockBody? blockBody in bodies) BlockBodyDecoder.ReturnTransactions(blockBody);
     }
 
     public IEnumerator<BlockBody?> GetEnumerator()

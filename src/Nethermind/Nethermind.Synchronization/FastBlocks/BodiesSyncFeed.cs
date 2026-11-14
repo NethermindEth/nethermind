@@ -268,7 +268,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
                     if (decodedIndex != responseIndex && responseIndex < responseCount)
                     {
-                        ReturnTransactions(body);
+                        BlockBodyDecoder.ReturnTransactions(body);
                         body = null;
                         decodedIndex = responseIndex;
                         try
@@ -321,7 +321,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
             finally
             {
-                ReturnTransactions(body);
+                BlockBodyDecoder.ReturnTransactions(body);
             }
 
             if (responseIndex < (responses?.Count ?? 0))
@@ -345,12 +345,6 @@ namespace Nethermind.Synchronization.FastBlocks
             LogPostProcessingBatchInfo(batch, validResponsesCount);
 
             return validResponsesCount;
-        }
-
-        private static void ReturnTransactions(BlockBody? body)
-        {
-            if (body is null) return;
-            foreach (Transaction transaction in body.Transactions) TxDecoder.TxObjectPool.Return(transaction);
         }
 
         private void LogPostProcessingBatchInfo(BodiesSyncBatch batch, int validResponsesCount)

@@ -197,6 +197,10 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
     /// that <see cref="IHeaderDecoder"/> writes: the uncles hash is computed from that encoding, so a body kept as
     /// received is covered by it only then.
     /// </para>
+    /// <para>
+    /// The first read of a transaction's <see cref="Transaction.Hash"/> drops its encoding, so compute the transaction
+    /// root before reading any hash.
+    /// </para>
     /// </remarks>
     /// <param name="body">The encoded body with its sequence prefix. The transactions refer to these bytes.</param>
     /// <returns>The body, or <see langword="null"/> for an empty sequence, which marks a missing body.</returns>
@@ -231,6 +235,16 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
         reader.ExitSequence(in content, itemLength);
         reader.CheckEnd();
         return null;
+    }
+
+    /// <summary>Returns the pooled transactions of <paramref name="body"/> to <see cref="TxDecoder.TxObjectPool"/>.</summary>
+    /// <remarks>
+    /// For a body from <see cref="DecodeWithEncodedTransactions"/> or a pooled decode. Do not use its transactions after.
+    /// </remarks>
+    public static void ReturnTransactions(BlockBody? body)
+    {
+        if (body is null) return;
+        foreach (Transaction transaction in body.Transactions) TxDecoder.TxObjectPool.Return(transaction);
     }
 
     private void CheckCanonicalUncles(ReadOnlySpan<byte> encodedUncles, BlockHeader[] uncles)

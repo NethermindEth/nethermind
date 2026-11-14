@@ -192,7 +192,7 @@ public sealed class EraExporter(
                     }
 
                     await eraWriter.Add(block, bodies.GetEncoded(0), receipts, cancel);
-                    foreach (Transaction transaction in block.Transactions) TxDecoder.TxObjectPool.Return(transaction);
+                    BlockBodyDecoder.ReturnTransactions(block.Body);
                     lastBlockHash = block.Hash!;
                     progress.Update(Interlocked.Increment(ref totalProcessed));
                 }

@@ -14,7 +14,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Era1.Exceptions;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 
 
 namespace Nethermind.Era1;
@@ -183,7 +182,7 @@ public class EraImporter(
             if (_logger.IsTrace) _logger.Trace($"Importing block {blockNumber}");
             cancellation.ThrowIfCancellationRequested();
 
-            // Blocks that are only stored keep their transactions encoded, so they are not decoded.
+            // Blocks that are only stored are stored as read, so their bodies are not encoded again.
             bool process = suggestFromBlock <= blockNumber;
             Block? block;
             byte[]? body = null;
@@ -231,7 +230,6 @@ public class EraImporter(
         }
     }
 
-    /// <param name="b">The block, with its transactions kept encoded; they are returned to the pool here.</param>
     /// <param name="body">The encoded body of <paramref name="b"/>.</param>
     private void InsertBlockAndReceipts(Block b, byte[] body, TxReceipt[] r, ulong lastBlockNumber)
     {
@@ -242,8 +240,6 @@ public class EraImporter(
         }
         if (!receiptStorage.HasBlock(b.Number, b.Hash!))
             receiptStorage.Insert(b, r, true, writeFlags: WriteFlags.DisableWAL, lastBlockNumber: lastBlockNumber);
-
-        foreach (Transaction transaction in b.Transactions) TxDecoder.TxObjectPool.Return(transaction);
     }
 
     private async Task SuggestAndProcessBlock(Block block)

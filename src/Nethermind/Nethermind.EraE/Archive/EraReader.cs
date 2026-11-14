@@ -34,7 +34,7 @@ public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxRec
     {
         for (ulong blockNumber = e2.First; blockNumber <= e2.LastBlock; blockNumber++)
         {
-            (Block block, _, TxReceipt[] receipts) = await ReadBlockAndReceipts(blockNumber, false, cancellation);
+            (Block block, _, TxReceipt[] receipts) = await ReadBlockAndReceipts(blockNumber, DecodeBody, cancellation);
             yield return (block, receipts);
         }
     }
@@ -46,15 +46,11 @@ public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxRec
         if (number > e2.LastBlock)
             throw new ArgumentOutOfRangeException(nameof(number), $"Cannot exceed last block {e2.LastBlock}.");
 
-        (Block block, _, TxReceipt[] receipts) = await ReadBlockAndReceipts(number, false, cancellation);
+        (Block block, _, TxReceipt[] receipts) = await ReadBlockAndReceipts(number, DecodeBody, cancellation);
         return (block, receipts);
     }
 
-    /// <summary>Reads a block with its transactions kept encoded, the encoded body, and the receipts.</summary>
-    /// <remarks>
-    /// The transactions are pooled and refer to the returned body, so return them to <see cref="TxDecoder.TxObjectPool"/>
-    /// when done; see <see cref="BlockBodyDecoder.DecodeWithEncodedTransactions"/>.
-    /// </remarks>
+    /// <summary>Reads a block, its body as stored in the archive, and the receipts.</summary>
     public async Task<(Block Block, byte[] Body, TxReceipt[] Receipts)> GetEncodedBlockByNumber(ulong number, CancellationToken cancellation = default)
     {
         if (number < e2.First)
@@ -62,7 +58,7 @@ public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxRec
         if (number > e2.LastBlock)
             throw new ArgumentOutOfRangeException(nameof(number), $"Cannot exceed last block {e2.LastBlock}.");
 
-        (Block block, byte[]? body, TxReceipt[] receipts) = await ReadBlockAndReceipts(number, true, cancellation);
+        (Block block, byte[]? body, TxReceipt[] receipts) = await ReadBlockAndReceipts(number, DecodeKeepingEncoding, cancellation);
         return (block, body!, receipts);
     }
 
@@ -114,7 +110,7 @@ public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxRec
                 while (blockNumbers.TryDequeue(out ulong blockNumber))
                 {
                     // The body is only checked against the header, which the encoded transactions are enough for.
-                    (Block block, _, TxReceipt[] receipts) = await ReadBlockAndReceipts(blockNumber, true, cancellation);
+                    (Block block, _, TxReceipt[] receipts) = await ReadBlockAndReceipts(blockNumber, DecodeWithEncodedTransactions, cancellation);
 
                     if (block.Header.Number != blockNumber)
                         throw new EraVerificationException($"Mismatched header number {block.Header.Number}. Block {blockNumber}.");
@@ -134,7 +130,7 @@ public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxRec
                         block.TotalDifficulty ?? UInt256.Zero,
                         !block.Header.IsPostMerge);
 
-                    foreach (Transaction transaction in block.Transactions) TxDecoder.TxObjectPool.Return(transaction);
+                    BlockBodyDecoder.ReturnTransactions(block.Body);
                 }
             }, cancellation);
         }
@@ -171,7 +167,7 @@ public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxRec
 
     public void Dispose() => e2.Dispose();
 
-    private async Task<(Block, byte[]?, TxReceipt[])> ReadBlockAndReceipts(ulong blockNumber, bool encodedTransactions, CancellationToken cancellation)
+    private async Task<(Block, byte[]?, TxReceipt[])> ReadBlockAndReceipts(ulong blockNumber, Func<Memory<byte>, (BlockBody, byte[]?)> decodeBody, CancellationToken cancellation)
     {
         long headerPos = e2.HeaderOffset(blockNumber);
         (BlockHeader header, _) = await e2.ReadSnappyCompressedEntryAndDecode(
@@ -183,7 +179,7 @@ public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxRec
 
         long bodyPos = e2.BodyOffset(blockNumber);
         ((BlockBody body, byte[]? encodedBody), _) = await e2.ReadSnappyCompressedEntryAndDecode(
-            bodyPos, encodedTransactions ? DecodeEncodedBody : (Func<Memory<byte>, (BlockBody, byte[]?)>)DecodeBody, EntryTypes.CompressedBody, cancellation);
+            bodyPos, decodeBody, EntryTypes.CompressedBody, cancellation);
 
         long receiptsPos = e2.SlimReceiptsOffset(blockNumber);
         (TxReceipt[] receipts, _) = await e2.ReadSnappyCompressedEntryAndDecode(
@@ -217,9 +213,9 @@ public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxRec
     }
 
     // The buffer is pooled and reused after this returns, so the transactions get their own copy to refer to.
-    private (BlockBody, byte[]?) DecodeEncodedBody(Memory<byte> buffer)
-    {
-        byte[] body = buffer.ToArray();
-        return (_blockBodyDecoder.DecodeWithEncodedTransactions(body)!, body);
-    }
+    private (BlockBody, byte[]?) DecodeWithEncodedTransactions(Memory<byte> buffer) =>
+        (_blockBodyDecoder.DecodeWithEncodedTransactions(buffer.ToArray())!, null);
+
+    // The body is stored as read, but receipt recovery needs the decoded transactions.
+    private (BlockBody, byte[]?) DecodeKeepingEncoding(Memory<byte> buffer) => (DecodeBody(buffer).Item1, buffer.ToArray());
 }

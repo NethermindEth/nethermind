@@ -43,6 +43,8 @@ public class EraImporterTest
         targetCtx.Resolve<IBlockTree>().SuggestBlock(sourceTree.FindBlock(0, BlockTreeLookupOptions.None)!);
         IBlockStore targetStore = targetCtx.Resolve<IBlockStore>();
         IReceiptStorage targetReceipts = targetCtx.Resolve<IReceiptStorage>();
+        Dictionary<Hash256, TxReceipt[]> insertedReceipts = [];
+        targetReceipts.ReceiptsInserted += (_, e) => insertedReceipts[e.BlockHeader.Hash!] = e.TxReceipts;
 
         string? accumulatorFile = withTrustedAccumulators ? Path.Join(exportPath, EraExporter.AccumulatorFileName) : null;
         await targetCtx.Resolve<IEraImporter>().Import(exportPath, 0, ulong.MaxValue, accumulatorFile, CancellationToken.None);
@@ -53,9 +55,12 @@ public class EraImporterTest
             {
                 Block block = sourceTree.FindBlock(i, BlockTreeLookupOptions.None)!;
                 Assert.That(targetStore.GetRlp(i, block.Hash!), Is.EqualTo(sourceStore.GetRlp(i, block.Hash!)), $"block {i}");
-                foreach (Transaction transaction in block.Transactions)
+                TxReceipt[] receipts = insertedReceipts[block.Hash!];
+                for (int t = 0; t < block.Transactions.Length; t++)
                 {
+                    Transaction transaction = block.Transactions[t];
                     Assert.That(targetReceipts.FindBlockHash(transaction.Hash!), Is.EqualTo(block.Hash), $"transaction in block {i}");
+                    Assert.That(receipts[t].Recipient, Is.EqualTo(transaction.To), $"recipient of transaction {t} in block {i}");
                 }
             }
         }
