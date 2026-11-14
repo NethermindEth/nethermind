@@ -28,8 +28,10 @@ GUEST_EXTLIB := /airbender/libairbender.bflat.manifest
 OPT_FLAGS := -Os
 TRIM_FLAGS := --no-stacktrace-data
 # The compact Int256: its large arithmetic primitives stay out of line, which
-# on RV32 saves hundreds of kilobytes of ROM.
-GUEST_DOTNET_FLAGS := -p:Int256ZkEvmCompact=true
+# on RV32 saves hundreds of kilobytes of ROM. Its DLL has the same size and
+# timestamp as the default variant's, so MSBuild would keep a default DLL left
+# in the output by an earlier build; the copy is forced.
+GUEST_DOTNET_FLAGS := -p:Int256ZkEvmCompact=true -p:SkipCopyUnchangedFiles=false
 
 # BIN_DIR must be set before the include - BFLAT_REFS expands it.
 include $(MAKEFILE_DIR)/../Nethermind.Stateless.Guest/build.mk
