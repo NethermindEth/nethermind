@@ -28,6 +28,12 @@ public static class Eip8288Constants
     /// capacity of at least <c>MAX_RLP_BLOCK_SIZE // 96</c>, which this prototype guest does not reach.</remarks>
     public const int MaxProofDependencies = 256;
 
+    /// <summary>Batch-pricing EIP (ethereum/EIPs#12664) <c>MAX_DEPS_PER_BLOCK</c> (provisional): distinct resolved dependencies a
+    /// block may hold, across all schemes and leaf payments included.</summary>
+    /// <remarks>A block-validity limit independent of the gas limit, which also excuses an inclusion-list omission whose dependencies
+    /// would exceed it. Block building never nears it, since this node's guests prove at most <see cref="MaxProofDependencies"/>.</remarks>
+    public const int MaxDepsPerBlock = 16384;
+
     /// <summary>Batch-pricing EIP (ethereum/EIPs#12664) <c>MAX_CLAIMS_PER_BATCH_LEAF</c> (provisional): claims one leanSTARK leaf
     /// may prove.</summary>
     /// <remarks>A parameter of the guest behind <see cref="BatchedAggregatedVk"/>, so changing it changes that key; EIP-8288's guest

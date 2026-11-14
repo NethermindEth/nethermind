@@ -39,7 +39,12 @@ public class LeanProofCapacityTests
         string expected = generic && !batchPricing ? "Generic STARK proof count limit exceeded" : "Dependency proof count limit exceeded";
         Assert.That(LeanProofCapacity.CapacityError(existing, generic ? maximum : 0, [added], batchPricing), Is.EqualTo(expected));
         existing.Add(added);
-        Assert.That(LeanProofCapacity.CapacityError(existing, batchPricing), Is.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(LeanProofCapacity.CapacityError(existing, batchPricing), Is.EqualTo(expected));
+            // ethereum/EIPs#12664: block building refuses a statement here, so it never nears MAX_DEPS_PER_BLOCK.
+            Assert.That(existing, Has.Count.LessThan(Eip8288Constants.MaxDepsPerBlock));
+        }
     }
 
     [Test]

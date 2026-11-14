@@ -416,6 +416,49 @@ public class BlockValidatorTests
         }
     }
 
+    // ethereum/EIPs#12664 Test Case: a block holding MAX_DEPS_PER_BLOCK distinct resolved dependencies is accepted if otherwise valid
+    // and one more is rejected, counting a repeated triple once and a leaf payment like any other; without batch pricing the limit
+    // does not apply.
+    [TestCase(Eip8288Constants.MaxDepsPerBlock, true, true)]
+    [TestCase(Eip8288Constants.MaxDepsPerBlock + 1, true, false)]
+    [TestCase(Eip8288Constants.MaxDepsPerBlock + 1, false, true)]
+    public void Eip8288_block_dependency_limit_counts_distinct_dependencies(int distinct, bool batchPricing, bool valid)
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        FrameDependency[] dependencies = new FrameDependency[distinct + 1];
+        for (int i = 0; i < distinct - 1; i++)
+            dependencies[i] = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute(i.ToString()), default);
+        dependencies[distinct - 1] = new(Eip8288Constants.LeanStarkLeafPaymentScheme, ValueKeccak.Compute("batch"), ValueKeccak.Compute("key"));
+        dependencies[distinct] = dependencies[0];
+        Transaction[] transactions = [.. dependencies.Chunk(Eip8141Constants.MaxFrames * Eip8288Constants.MaxDependenciesPerFrame).Select(static (chunk, index) =>
+        {
+            Transaction tx = new()
+            {
+                Type = TxType.FrameTx,
+                SenderAddress = TestItem.AddressA,
+                Nonce = (ulong)index,
+                Frames = [.. chunk.Chunk(Eip8288Constants.MaxDependenciesPerFrame)
+                    .Select(static frame => new TxFrame(FrameMode.DepVerify, 0, null, 0, UInt256.Zero, Eip8288Dependencies.Serialize(frame)))],
+                FrameSignatures = [],
+            };
+            tx.Hash = tx.CalculateHash();
+            return tx;
+        })];
+        Block block = Build.A.Block.WithParent(parent).WithEncodedSize(Eip7934Constants.DefaultMaxRlpBlockSize).WithTransactions(transactions).TestObject;
+        block.StarkProof = [1];
+        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof),
+            new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
+
+        bool result = CreateEip8288Validator(new FixedLeanProofVerifier(true), batchPricing: batchPricing).ValidateSuggestedBlock(block, parent, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue), Has.Count.EqualTo(distinct));
+            Assert.That(result, Is.EqualTo(valid), error);
+            if (!valid) Assert.That(error, Is.EqualTo(BlockErrorMessages.TooManyBlockDependencies(distinct)));
+        }
+    }
+
     private sealed class StatementLeanProofVerifier(ValueHash256 accepted) : ILeanProofVerifier
     {
         public void EnsureAvailable() { }

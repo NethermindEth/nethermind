@@ -213,7 +213,14 @@ public class InclusionListValidatorTests
     [TestCase(4096, 0, Eip8288Constants.LeanSphincsScheme, true, TestName = "Dependency already in a large block")]
     [TestCase(256, 256, Eip8288Constants.LeanStarkScheme, false, TestName = "Many leanSTARKs are no omission ground for another")]
     [TestCase(256, 256, Eip8288Constants.LeanSphincsScheme, false, TestName = "Many leanSTARKs are no omission ground for a leanSPHINCS")]
-    public void No_dependency_capacity_excuses_an_omission(int blockDependencies, int blockLeanStark, byte scheme, bool present)
+    // ethereum/EIPs#12664: with batch pricing, an entry whose distinct dependencies would take the block past MAX_DEPS_PER_BLOCK is
+    // excused, and one reaching the limit exactly or adding nothing new is not.
+    [TestCase(Eip8288Constants.MaxDepsPerBlock - 1, 0, Eip8288Constants.LeanSphincsScheme, false, true, false, TestName = "Reaching the block dependency limit is no omission ground")]
+    [TestCase(Eip8288Constants.MaxDepsPerBlock, 0, Eip8288Constants.LeanSphincsScheme, false, true, true, TestName = "Passing the block dependency limit excuses an omission")]
+    [TestCase(Eip8288Constants.MaxDepsPerBlock, 0, Eip8288Constants.LeanSphincsScheme, true, true, false, TestName = "A dependency already at the block limit is no omission ground")]
+    [TestCase(Eip8288Constants.MaxDepsPerBlock, 0, Eip8288Constants.LeanSphincsScheme, false, false, false, TestName = "Without batch pricing the block dependency limit is no omission ground")]
+    public void No_dependency_capacity_excuses_an_omission(int blockDependencies, int blockLeanStark, byte scheme, bool present,
+        bool batchPricing = false, bool excused = false)
     {
         FrameDependency[] blockDeps = new FrameDependency[blockDependencies];
         for (int i = 0; i < blockDependencies; i++)
@@ -231,21 +238,25 @@ public class InclusionListValidatorTests
         FrameDependency dependency = present ? blockDeps[^1] : new(scheme, ValueKeccak.Compute("omitted"), default);
         Transaction entry = BuildFrameTx();
         entry.GasLimit = 1_000_000;
-        entry.Frames = [.. entry.Frames!, new TxFrame(FrameMode.DepVerify, FrameFlags.None, null,
-            dependency.Scheme == Eip8288Constants.LeanStarkScheme ? Eip8288Constants.LeanStarkVerificationGas : Eip8288Constants.LeanSphincsVerificationGas,
+        entry.Frames = [.. entry.Frames!, new TxFrame(FrameMode.DepVerify, FrameFlags.None, null, dependency.FrameCharge(batchPricing),
             UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))];
         entry.Hash = entry.CalculateHash();
 
         Block block = Build.A.Block.WithGasLimit(30_000_000).WithGasUsed(1_000_000).WithTransactions(blockTx)
             .WithInclusionListTransactions([entry]).TestObject;
-        OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
+        OverridableReleaseSpec spec = new(Bogota.Instance)
+        {
+            IsEip8141Enabled = true,
+            IsEip8288Enabled = true,
+            IsEipBatchedDependencyPricingEnabled = batchPricing
+        };
 
         CommitteeInclusionList[] lists = [Counted([entry], Proven)];
         using (Assert.EnterMultipleScope())
         {
             Assert.That(InclusionListProofValidator.SelectEligible([entry], lists, spec), Has.Length.EqualTo(1));
             Assert.That(InclusionListValidator.IsSatisfied(block, [entry], StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator,
-                lists, frameCanInclude: static _ => true), Is.False);
+                lists, frameCanInclude: static _ => true), Is.EqualTo(excused));
         }
     }
 
