@@ -18,6 +18,11 @@ internal sealed class PrivateNodeRecordBuffer(int generationBytes) : INodeRecord
     private const int InitialGenerationSlots = 16;
 
     private readonly Lock _lock = new();
+
+    // A ConcurrentDictionary would make Clear slow: clearing one acquires all of its locks, one per core, even when it is
+    // empty, which on 64 cores took about 0.75 µs, some 10% of applying a tiny snap storage range, as the pooled snap
+    // buffer is cleared after every range. Roots are rare in comparison: only the overlay buffer indexes them, about once
+    // per trie, so a plain dictionary under _lock is cheaper.
     private readonly Dictionary<(Hash256? Address, ValueHash256 Root), ulong> _roots = [];
     private Generation?[] _generations = new Generation?[InitialGenerationSlots];
     private ulong _firstGeneration = 1;

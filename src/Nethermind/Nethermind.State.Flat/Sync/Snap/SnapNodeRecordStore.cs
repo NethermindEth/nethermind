@@ -18,28 +18,23 @@ using Nethermind.Trie.NodeBuffer;
 namespace Nethermind.State.Flat.Sync.Snap;
 
 /// <summary>
-/// The trie of one snap range, the state trie when <paramref name="address"/> is null, otherwise that account's storage trie,
-/// built by <see cref="NodeRecordBulkSet"/> as node records in a temporary buffer and persisted from there.
+/// The node records of one snap range's trie, the state trie when <paramref name="address"/> is null, otherwise that account's
+/// storage trie, built by <see cref="NodeRecordBulkSet"/> in a temporary buffer and persisted from there.
 /// </summary>
 /// <remarks>
 /// The buffer is rented, on the bulk set, from a pool for its number of entries, and returned on <see cref="Dispose"/>.
 /// The proof's nodes are written to it first, from their RLP as received or re-encoded where the boundary walk trimmed them,
 /// so the bulk set starts from them.
 /// </remarks>
-internal sealed class SnapNodeRecordTrie(IPersistence.IPersistenceReader reader, IPersistence.IWriteBatch writeBatch, Hash256? address, bool enableDoubleWriteCheck)
+internal sealed class SnapNodeRecordStore(IPersistence.IPersistenceReader reader, IPersistence.IWriteBatch writeBatch, Hash256? address, bool enableDoubleWriteCheck)
     : INodeRecordStore, IDisposable
 {
     private const int MaxPooledPerCategory = 16;
 
-    // An entry writes some 200 bytes of records, its leaf and a share of the branches above it, besides up to some 16 KiB of proof.
-    // A larger range spills into more generations, which a returned buffer frees, so a pooled one keeps only its first.
-    private static readonly (int MaxEntries, int GenerationBytes)[] Categories =
-        [(16, 32 * 1024), (256, 128 * 1024), (4096, 1024 * 1024), (int.MaxValue, 4 * 1024 * 1024)];
-
-    private static readonly ConcurrentQueue<PrivateNodeRecordBuffer>[] Pools = [.. Categories.Select(static _ => new ConcurrentQueue<PrivateNodeRecordBuffer>())];
+    private static readonly ConcurrentQueue<PrivateNodeRecordBuffer>[] Pools = [.. Enum.GetValues<SizeCategory>().Select(static _ => new ConcurrentQueue<PrivateNodeRecordBuffer>())];
 
     private PrivateNodeRecordBuffer? _buffer;
-    private int _category;
+    private SizeCategory _sizeCategory;
     private IByteArrayList? _proofs;
     private IReadOnlyList<SnapProofNode>? _proofNodes;
     private ulong _proofRootPointer;
@@ -60,9 +55,7 @@ internal sealed class SnapNodeRecordTrie(IPersistence.IPersistenceReader reader,
     /// <exception cref="MissingTrieNodeException">An entry reaches a node that is neither in the proof nor persisted.</exception>
     public void BulkSet<TEntry>(IReadOnlyList<TEntry> entries) where TEntry : ISnapEntry
     {
-        _category = 0;
-        while (entries.Count > Categories[_category].MaxEntries) _category++;
-        _buffer = Pools[_category].TryDequeue(out PrivateNodeRecordBuffer? pooled) ? pooled : new PrivateNodeRecordBuffer(Categories[_category].GenerationBytes);
+        _buffer = RentBuffer(entries.Count);
         if (_proofNodes is not null)
         {
             _root = WriteProofNodes(_proofs!, _proofNodes);
@@ -96,7 +89,8 @@ internal sealed class SnapNodeRecordTrie(IPersistence.IPersistenceReader reader,
         if (_buffer is null) return;
 
         _buffer.Clear();
-        if (Pools[_category].Count < MaxPooledPerCategory) Pools[_category].Enqueue(_buffer);
+        ConcurrentQueue<PrivateNodeRecordBuffer> pool = Pools[(int)_sizeCategory];
+        if (pool.Count < MaxPooledPerCategory) pool.Enqueue(_buffer);
         else _buffer.Dispose();
         _buffer = null;
     }
@@ -109,6 +103,23 @@ internal sealed class SnapNodeRecordTrie(IPersistence.IPersistenceReader reader,
         address is null
             ? reader.TryLoadStateRlp(path, ReadFlags.None, action, arg)
             : reader.TryLoadStorageRlp(address, path, ReadFlags.None, action, arg);
+
+    /// <summary>Rents the buffer of a range of <paramref name="entryCount"/> entries from the pool of its <see cref="SizeCategory"/>.</summary>
+    /// <remarks>
+    /// An entry writes some 200 bytes of records, its leaf and a share of the branches above it, besides up to some 16 KiB of proof.
+    /// A larger range spills into more generations, which a returned buffer frees, so a pooled one keeps only its first.
+    /// </remarks>
+    private PrivateNodeRecordBuffer RentBuffer(int entryCount)
+    {
+        (_sizeCategory, int generationBytes) = entryCount switch
+        {
+            <= 16 => (SizeCategory.Tiny, 32 * 1024),
+            <= 256 => (SizeCategory.Small, 128 * 1024),
+            <= 4096 => (SizeCategory.Medium, 1024 * 1024),
+            _ => (SizeCategory.Large, 4 * 1024 * 1024),
+        };
+        return Pools[(int)_sizeCategory].TryDequeue(out PrivateNodeRecordBuffer? pooled) ? pooled : new PrivateNodeRecordBuffer(generationBytes);
+    }
 
     /// <summary>Writes the records of the proof's <paramref name="nodes"/>, each after those of its children, which it references by pointer.</summary>
     /// <returns>The root's hash and pointer.</returns>
@@ -242,5 +253,14 @@ internal sealed class SnapNodeRecordTrie(IPersistence.IPersistenceReader reader,
 
             writeBatch.SetStorageTrieNode(address, path, rlp);
         }
+    }
+
+    /// <summary>The size of a range's buffer, by the range's number of entries; each has a pool of its own.</summary>
+    private enum SizeCategory
+    {
+        Tiny,
+        Small,
+        Medium,
+        Large,
     }
 }

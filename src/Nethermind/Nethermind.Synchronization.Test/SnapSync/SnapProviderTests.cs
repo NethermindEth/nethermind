@@ -1103,7 +1103,7 @@ public class SnapProviderTests
         NodeStorage nodeStorage = new(db);
         SnapUpperBoundAdapter adapter = new(new RawScopedTrieStore(nodeStorage));
         StateTree stree = new(adapter, LimboLogs.Instance);
-        TestSnapTrieFactory factory = new(() => new TrieNodeSnapStateTree(stree, adapter, nodeStorage));
+        TestSnapTrieFactory factory = new(() => new PatriciaSnapStateTree(stree, adapter, nodeStorage));
         Assert.That(SnapProviderHelper.AddAccountRange(
                 factory,
                 0,

@@ -17,19 +17,19 @@ namespace Nethermind.State.Flat.Sync.Snap;
 /// </summary>
 public class FlatSnapStorageTree(IPersistence.IPersistenceReader reader, IPersistence.IWriteBatch writeBatch, Hash256 addressHash, bool enableDoubleWriteCheck) : ISnapTree<PathWithStorageSlot>
 {
-    private readonly SnapNodeRecordTrie _trie = new(reader, writeBatch, addressHash, enableDoubleWriteCheck);
+    private readonly SnapNodeRecordStore _store = new(reader, writeBatch, addressHash, enableDoubleWriteCheck);
     private IReadOnlyList<PathWithStorageSlot>? _pendingEntries;
 
-    public Hash256 RootHash => _trie.RootHash;
+    public Hash256 RootHash => _store.RootHash;
 
-    public void SetRootFromProof(IByteArrayList proofs, IReadOnlyList<SnapProofNode> nodes) => _trie.SetRootFromProof(proofs, nodes);
+    public void SetRootFromProof(IByteArrayList proofs, IReadOnlyList<SnapProofNode> nodes) => _store.SetRootFromProof(proofs, nodes);
 
-    public bool IsPersisted(in TreePath path, in ValueHash256 keccak) => _trie.IsPersisted(path, keccak);
+    public bool IsPersisted(in TreePath path, in ValueHash256 keccak) => _store.IsPersisted(path, keccak);
 
     public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithStorageSlot> entries)
     {
         _pendingEntries = entries;
-        _trie.BulkSet(entries);
+        _store.BulkSet(entries);
     }
 
     public bool Commit(ValueHash256 upperBound)
@@ -54,12 +54,12 @@ public class FlatSnapStorageTree(IPersistence.IPersistenceReader reader, IPersis
             }
         }
 
-        return _trie.Commit(upperBound, skipRoot: false);
+        return _store.Commit(upperBound, skipRoot: false);
     }
 
     public void Dispose()
     {
-        _trie.Dispose();
+        _store.Dispose();
         writeBatch.Dispose();
         reader.Dispose();
     }
