@@ -251,15 +251,15 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Send_does_not_fill_a_blob_transaction()
+    public async Task Send_does_not_fill_a_blob_transaction([Values] bool suppliedBlobs)
     {
         IGasPriceOracle oracle = Substitute.For<IGasPriceOracle>();
         using TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithGasPriceOracle(oracle).Build(new TestSpecProvider(Cancun.Instance));
 
-        await test.TestEthRpc("eth_sendTransaction", FeeDefaultsRequest(
-            """{"type":"0x3","maxFeePerBlobGas":"0x1","blobVersionedHashes":["0x0100000000000000000000000000000000000000000000000000000000000000"]}""",
-            HeldAccount));
+        JsonObject request = JsonNode.Parse("""{"type":"0x3","maxFeePerBlobGas":"0x1","blobVersionedHashes":["0x0100000000000000000000000000000000000000000000000000000000000000"]}""")!.AsObject();
+        if (suppliedBlobs) request["blobs"] = new JsonArray();
+        await test.TestEthRpc("eth_sendTransaction", FeeDefaultsRequest(request.ToJsonString(), HeldAccount));
 
         _ = oracle.DidNotReceive().GetGasPriceEstimate();
         oracle.DidNotReceive().GetMaxPriorityGasFeeEstimate();
@@ -378,7 +378,8 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Blob_submission_calldata_conflicts_precede_blob_semantic_errors(
         [Values("eth_sendTransaction", "eth_signTransaction", "eth_fillTransaction")] string method,
-        [Values("0x2a", "0x01", null)] string? data, [Values] bool invalidFee, [Values("missing", "version", "zero-cap")] string blobErrorKind)
+        [Values("0x2a", "0x01", null)] string? data, [Values] bool invalidFee,
+        [Values("missing", "version", "zero-cap")] string blobErrorKind, [Values] bool suppliedBlobs)
     {
         using Context ctx = blobErrorKind == "missing" ? await Context.CreateWithLondonEnabled() : await Context.CreateWithCancunEnabled();
         ctx.Test.RpcConfig.EnableEthSignTransaction = true;
@@ -389,6 +390,7 @@ public partial class EthRpcModuleTests
                 ? "0x0200000000000000000000000000000000000000000000000000000000000000"
                 : "0x0100000000000000000000000000000000000000000000000000000000000000");
         if (blobErrorKind == "zero-cap") request["maxFeePerBlobGas"] = "0x0";
+        if (suppliedBlobs) request["blobs"] = new JsonArray();
         request["gasPrice"] = invalidFee ? "0x0" : "0x1";
 
         string response = await ctx.Test.TestEthRpc(method, FeeDefaultsRequest(request.ToJsonString(), HeldAccount));
@@ -399,7 +401,7 @@ public partial class EthRpcModuleTests
             _ => RpcTransactionErrors.BlobFeeCapWithoutBlobHashes
         };
         string expected = data == "0x2a" ? RpcTransactionErrors.DataAndInputDiffer
-            : invalidFee && blobErrorKind != "zero-cap" ? "gasPrice must be non-zero after london fork"
+            : invalidFee && !suppliedBlobs && blobErrorKind != "zero-cap" ? "gasPrice must be non-zero after london fork"
             : blobError;
         JToken json = JToken.Parse(response);
         using (Assert.EnterMultipleScope())

@@ -29,6 +29,10 @@ public abstract class SignableTransactionForRpc : TransactionForRpc
     protected SignableTransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData)
         : base(transaction, extraData) { }
 
+    internal virtual bool ShouldCheckFeesBeforeConversion() => true;
+
+    internal virtual bool ShouldFillDefaultsOnSend() => true;
+
     public sealed class SignableTransactionJsonConverter : JsonConverter<SignableTransactionForRpc>
     {
         private readonly GeneratedJsonDispatch _generated = new();
