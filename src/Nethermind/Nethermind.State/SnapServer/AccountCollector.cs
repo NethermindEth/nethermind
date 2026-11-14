@@ -5,7 +5,6 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 using Nethermind.Trie;
@@ -20,13 +19,12 @@ public class AccountCollector : RangeQueryVisitor.ILeafValueCollector
     {
         if (value.IsEmpty)
         {
-            Accounts.Add(new PathWithAccount(path, null));
+            Accounts.Add(new PathWithAccount(path, default));
             return 32 + 1;
         }
 
-        RlpReader ctx = new(value);
-        Account accnt = AccountDecoder.Instance.Decode(ref ctx, RlpBehaviors.TrustedInput)
-            ?? throw new TrieException("An account leaf must contain a decodable account value.");
+        if (!AccountDecoder.Instance.TryDecodeStruct<OffFlag>(value, out AccountStruct accnt))
+            throw new TrieException("An account leaf must contain a decodable account value.");
         Accounts.Add(new PathWithAccount(path, accnt));
         return 32 + AccountDecoder.Slim.GetLength(accnt);
     }

@@ -29,12 +29,12 @@ namespace Nethermind.Core.Test.Builders
 
             public static PathWithAccount[] AccountsWithPaths = new PathWithAccount[]
                 {
-                new(AccountAddress0, _account0),
-                new(new Hash256("0000000000000000000000000000000000000000000000000000000001112345"), _account1),
-                new(new Hash256("0000000000000000000000000000000000000000000000000000000001113456"), _account2),
-                new(new Hash256("0000000000000000000000000000000000000000000000000000000001114567"), _account3),
-                new(new Hash256("0000000000000000000000000000000000000000000000000000000001123456"), _account4),
-                new(new Hash256("0000000000000000000000000000000000000000000000000000000001123457"), _account5),
+                new(AccountAddress0, _account0.ToStruct()),
+                new(new Hash256("0000000000000000000000000000000000000000000000000000000001112345"), _account1.ToStruct()),
+                new(new Hash256("0000000000000000000000000000000000000000000000000000000001113456"), _account2.ToStruct()),
+                new(new Hash256("0000000000000000000000000000000000000000000000000000000001114567"), _account3.ToStruct()),
+                new(new Hash256("0000000000000000000000000000000000000000000000000000000001123456"), _account4.ToStruct()),
+                new(new Hash256("0000000000000000000000000000000000000000000000000000000001123457"), _account5.ToStruct()),
                 };
 
             public static PathWithStorageSlot[] SlotsWithPaths = new PathWithStorageSlot[]
@@ -60,12 +60,12 @@ namespace Nethermind.Core.Test.Builders
 
             public static void FillStateTreeWithTestAccounts(StateTree stateTree)
             {
-                stateTree.Set(AccountsWithPaths[0].Path, AccountsWithPaths[0].Account);
-                stateTree.Set(AccountsWithPaths[1].Path, AccountsWithPaths[1].Account);
-                stateTree.Set(AccountsWithPaths[2].Path, AccountsWithPaths[2].Account);
-                stateTree.Set(AccountsWithPaths[3].Path, AccountsWithPaths[3].Account);
-                stateTree.Set(AccountsWithPaths[4].Path, AccountsWithPaths[4].Account);
-                stateTree.Set(AccountsWithPaths[5].Path, AccountsWithPaths[5].Account);
+                stateTree.Set(AccountsWithPaths[0].Path, AccountsWithPaths[0].Account.ToAccount());
+                stateTree.Set(AccountsWithPaths[1].Path, AccountsWithPaths[1].Account.ToAccount());
+                stateTree.Set(AccountsWithPaths[2].Path, AccountsWithPaths[2].Account.ToAccount());
+                stateTree.Set(AccountsWithPaths[3].Path, AccountsWithPaths[3].Account.ToAccount());
+                stateTree.Set(AccountsWithPaths[4].Path, AccountsWithPaths[4].Account.ToAccount());
+                stateTree.Set(AccountsWithPaths[5].Path, AccountsWithPaths[5].Account.ToAccount());
                 stateTree.Commit();
             }
 

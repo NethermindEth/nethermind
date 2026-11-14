@@ -136,8 +136,7 @@ public class SnapStateServerTests
     {
         using IWriteBatch batch = context.BeginWriteBatch();
         foreach (PathWithAccount pwa in TestItem.Tree.AccountsWithPaths)
-            batch.SetAccount(pwa.Path.ToCommitment(), pwa.Account
-                ?? throw new InvalidOperationException("A test account entry must contain an account value."));
+            batch.SetAccount(pwa.Path.ToCommitment(), pwa.Account.ToAccount());
     }
 
     private static void FillMultipleAccounts(ISnapServerContext context, int count)
@@ -223,7 +222,7 @@ public class SnapStateServerTests
             context.Server.GetAccountRanges(context.RootHash, path, path.IncrementPath(), 4000, CancellationToken.None);
         using AccountsAndProofs response = new() { PathAndAccounts = accounts, Proofs = proofs };
 
-        PathWithAccount stale = new(path, Build.An.Account.WithBalance(2).TestObject);
+        PathWithAccount stale = new(path, Build.An.Account.WithBalance(2).TestObject.ToStruct());
         using AccountsToRefreshRequest request = new()
         {
             RootHash = useCorrectRoot ? context.RootHash : TestItem.KeccakA,
@@ -239,7 +238,7 @@ public class SnapStateServerTests
         {
             Assert.That(result, Is.EqualTo(expectedResult));
             // On success the stale empty storage root must be replaced by the verified one.
-            Assert.That(stale.Account?.StorageRoot, Is.EqualTo(useCorrectRoot ? storageRoot : Keccak.EmptyTreeHash));
+            Assert.That(stale.Account.StorageRoot, Is.EqualTo(useCorrectRoot ? storageRoot : Keccak.EmptyTreeHash));
         }
     }
 
@@ -269,7 +268,7 @@ public class SnapStateServerTests
         proofs.Dispose();
 
         using AccountsAndProofs response = new() { PathAndAccounts = accounts, Proofs = new ByteArrayListAdapter(trimmedProofs) };
-        PathWithAccount stale = new(path, Build.An.Account.WithBalance(2).TestObject);
+        PathWithAccount stale = new(path, Build.An.Account.WithBalance(2).TestObject.ToStruct());
         using AccountsToRefreshRequest request = new()
         {
             RootHash = context.RootHash,
@@ -284,7 +283,7 @@ public class SnapStateServerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
-            Assert.That(stale.Account?.StorageRoot, Is.EqualTo(storageRoot));
+            Assert.That(stale.Account.StorageRoot, Is.EqualTo(storageRoot));
         }
     }
 
@@ -302,7 +301,7 @@ public class SnapStateServerTests
             context.Server.GetAccountRanges(context.RootHash, path, path.IncrementPath(), 4000, CancellationToken.None);
         using AccountsAndProofs response = new() { PathAndAccounts = accounts, Proofs = proofs };
 
-        PathWithAccount stale = new(path, Build.An.Account.WithBalance(2).TestObject);
+        PathWithAccount stale = new(path, Build.An.Account.WithBalance(2).TestObject.ToStruct());
         using AccountsToRefreshRequest request = new()
         {
             RootHash = context.RootHash,
@@ -318,7 +317,7 @@ public class SnapStateServerTests
         {
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
             // Absent account: nothing adopted, storage root unchanged.
-            Assert.That(stale.Account?.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
+            Assert.That(stale.Account.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
         }
     }
 
@@ -390,7 +389,7 @@ public class SnapStateServerTests
         context.SetRawAccount(accountPath, accountRlp);
         using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList(
             [new PathGroup { Group = [accountPath.BytesToArray(), []] }]);
-        PathWithAccount[] accounts = [new(accountPath, Account.TotallyEmpty)];
+        PathWithAccount[] accounts = [new(accountPath, AccountStruct.TotallyEmpty)];
         RlpReaderException? expectedException = null;
         Account? expected = null;
         if (accountRlp.Length > 0)
@@ -640,7 +639,7 @@ public class SnapStateServerTests
             StorageRange storageRangeRequest = new()
             {
                 StartingHash = Keccak.Zero,
-                Accounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.Tree.AccountsWithPaths[0].Path, new Account(UInt256.Zero).WithChangedStorageRoot(storageRoot)) }
+                Accounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.Tree.AccountsWithPaths[0].Path, new Account(UInt256.Zero).WithChangedStorageRoot(storageRoot).ToStruct()) }
             };
             AddRangeResult result = context.SnapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, storageSlots[0], proofs);
 
@@ -695,7 +694,7 @@ public class SnapStateServerTests
                 StorageRange storageRangeRequest = new()
                 {
                     StartingHash = startRange,
-                    Accounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.Tree.AccountsWithPaths[0].Path, new Account(UInt256.Zero).WithChangedStorageRoot(storageRoot)) }
+                    Accounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.Tree.AccountsWithPaths[0].Path, new Account(UInt256.Zero).WithChangedStorageRoot(storageRoot).ToStruct()) }
                 };
                 AddRangeResult result = context.SnapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, storageSlots[0], proofs);
 
@@ -737,7 +736,7 @@ public class SnapStateServerTests
                 for (int j = 0; j < i; j += 1)
                     batch.SetSlot(storagePath, TestItem.GetRandomKeccak(), TestItem.GetRandomKeccak().Bytes.ToArray());
                 batch.SetAccount(address, TestItem.GenerateRandomAccount());
-                accountWithStorage.Add(new PathWithAccount(address.ToAccountPath, new Account(0)));
+                accountWithStorage.Add(new PathWithAccount(address.ToAccountPath, new AccountStruct(0)));
             }
         }
 

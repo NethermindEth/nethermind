@@ -69,7 +69,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             AccountRangeMessage msg = new()
             {
                 RequestId = 1,
-                PathsWithAccounts = new ArrayPoolList<PathWithAccount>(2) { new(TestItem.KeccakA, acc01), new(TestItem.KeccakB, acc02) },
+                PathsWithAccounts = new ArrayPoolList<PathWithAccount>(2) { new(TestItem.KeccakA, acc01.ToStruct()), new(TestItem.KeccakB, acc02.ToStruct()) },
                 Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(2) { TestItem.RandomDataA, TestItem.RandomDataB })
             };
 
@@ -91,7 +91,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             AccountRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
-                PathsWithAccounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.KeccakB, acc01) },
+                PathsWithAccounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.KeccakB, acc01.ToStruct()) },
                 Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(2) { TestItem.RandomDataA, TestItem.RandomDataB })
             };
 
@@ -152,7 +152,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             AccountRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
-                PathsWithAccounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.KeccakB, acc01) },
+                PathsWithAccounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.KeccakB, acc01.ToStruct()) },
                 Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(2) { TestItem.RandomDataA, TestItem.RandomDataB })
             };
 

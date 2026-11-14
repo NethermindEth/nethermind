@@ -57,7 +57,7 @@ public class SnapMessageLimitsTests
         ArrayPoolList<PathWithAccount> accounts = new(count);
         for (int i = 0; i < count; i++)
         {
-            accounts.Add(new PathWithAccount(TestItem.KeccakA, Build.An.Account.WithBalance(1).TestObject));
+            accounts.Add(new PathWithAccount(TestItem.KeccakA, Build.An.Account.WithBalance(1).TestObject.ToStruct()));
         }
 
         using AccountRangeMessage msg = new()

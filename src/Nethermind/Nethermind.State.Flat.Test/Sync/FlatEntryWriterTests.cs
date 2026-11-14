@@ -49,7 +49,7 @@ public class FlatEntryWriterTests
 
         FlatEntryWriter.WriteAccountFlatEntries(writeBatch, path, leaf);
 
-        writeBatch.Received(1).SetAccountRaw(new Hash256(Bytes.FromHexString(expectedPathHex)), Arg.Any<Account>());
+        writeBatch.Received(1).SetAccountRaw(new Hash256(Bytes.FromHexString(expectedPathHex)), Arg.Any<AccountStruct>());
     }
 
     #endregion

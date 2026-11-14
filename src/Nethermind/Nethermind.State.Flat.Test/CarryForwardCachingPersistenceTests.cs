@@ -209,7 +209,7 @@ public class CarryForwardCachingPersistenceTests
         using (IPersistence.IWriteBatch batch = cache.CreateWriteBatch(Basis0, Basis1))
         {
             // A raw write clears everything, as every snap sync and healing batch does.
-            batch.SetAccountRaw(default, new Account(1, 100));
+            batch.SetAccountRaw(default, new AccountStruct(1, 100));
         }
 
         Assert.That(GC.GetAllocatedBytesForCurrentThread() - before, Is.LessThan(256 * 1024));
@@ -724,7 +724,7 @@ public class CarryForwardCachingPersistenceTests
         yield return ClearingScenario("self_destruct_clears_cache", batch => batch.SelfDestruct(Address));
         yield return ClearingScenario("delete_account_range_clears_cache", batch => batch.DeleteAccountRange(default, default));
         yield return ClearingScenario("delete_storage_range_clears_cache", batch => batch.DeleteStorageRange(default, default, default));
-        yield return ClearingScenario("set_account_raw_clears_cache", batch => batch.SetAccountRaw(default, new Account(1, 100)));
+        yield return ClearingScenario("set_account_raw_clears_cache", batch => batch.SetAccountRaw(default, new AccountStruct(1, 100)));
         yield return ClearingScenario("set_storage_raw_encoded_clears_cache", batch => batch.SetStorageRawEncoded(default, default, default));
 
         yield return new TestCaseData((Action<CarryForwardCachingPersistence, FakePersistence>)((cache, _) =>
@@ -953,7 +953,7 @@ public class CarryForwardCachingPersistenceTests
                         Pattern(keyToClear, block).ToBigEndian());
                     break;
                 case 2:
-                    batch.SetAccountRaw(HashOf(clearedAddress), new Account(block + 1, (UInt256)keyToClear));
+                    batch.SetAccountRaw(HashOf(clearedAddress), new AccountStruct(block + 1, (UInt256)keyToClear));
                     break;
                 case 3:
                     ValueHash256 slotHash = HashOf(clearedSlot);
@@ -1044,7 +1044,7 @@ public class CarryForwardCachingPersistenceTests
             public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) =>
                 _slots[(model._addressesByHash[addrHash], model._slotsByHash[slotHash])] = new UInt256(rlpValue, isBigEndian: true);
 
-            public void SetAccountRaw(in ValueHash256 addrHash, Account account) => _accounts[model._addressesByHash[addrHash]] = account;
+            public void SetAccountRaw(in ValueHash256 addrHash, in AccountStruct account) => _accounts[model._addressesByHash[addrHash]] = account.ToAccount();
 
             public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath)
             {

@@ -32,8 +32,7 @@ internal static class FlatEntryWriter
             try
             {
                 path.AppendMut(node.Key);
-                RlpReader context = new(node.Value.AsSpan());
-                Account account = AccountDecoder.Instance.Decode(ref context)!;
+                AccountDecoder.Instance.TryDecodeStruct(node.Value.AsSpan(), out AccountStruct account);
                 writeBatch.SetAccountRaw(path.Path, account);
             }
             finally
@@ -48,8 +47,7 @@ internal static class FlatEntryWriter
             BranchInlineChildLeafEnumerator enumerator = new(ref path, node);
             while (enumerator.MoveNext())
             {
-                RlpReader context = new(enumerator.CurrentValue);
-                Account account = AccountDecoder.Instance.Decode(ref context)!;
+                AccountDecoder.Instance.TryDecodeStruct(enumerator.CurrentValue, out AccountStruct account);
                 writeBatch.SetAccountRaw(enumerator.CurrentPath, account);
             }
         }

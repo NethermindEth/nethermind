@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
@@ -242,12 +243,13 @@ public sealed class SnapCheckpoint
     private static void WriteAccount(ArrayBufferWriter<byte> writer, PathWithAccount account)
     {
         writer.Write(account.Path.Bytes);
-        int length = account.Account is null ? 0 : AccountDecoder.Instance.GetLength(account.Account);
+        int contentLength = AccountDecoder.Instance.GetContentLength(account.Account);
+        int length = account.Account.IsNull ? 0 : Rlp.LengthOfSequence(contentLength);
         WriteCount(writer, length);
-        if (account.Account is null) return;
+        if (account.Account.IsNull) return;
 
         RlpWriter rlp = RlpWriter.ContentWriter(writer.GetSpan(length)[..length]);
-        AccountDecoder.Instance.Encode(account.Account, ref rlp);
+        AccountDecoder.Instance.Encode(account.Account, ref rlp, contentLength);
         writer.Advance(length);
     }
 
@@ -282,10 +284,10 @@ public sealed class SnapCheckpoint
         {
             ValueHash256 path = ReadHash();
             ReadOnlySpan<byte> rlp = ReadBytes(ReadCount(1));
-            if (rlp.IsEmpty) return new PathWithAccount(path, null);
+            if (rlp.IsEmpty) return new PathWithAccount(path, default);
 
-            RlpReader rlpReader = new(rlp);
-            return new PathWithAccount(path, AccountDecoder.Instance.Decode(ref rlpReader));
+            AccountDecoder.Instance.TryDecodeStruct(rlp, out AccountStruct account);
+            return new PathWithAccount(path, account);
         }
 
         public void EnsureEnd()

@@ -186,7 +186,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             ISnapTestHelper helper = container.Resolve<ISnapTestHelper>();
             ISnapTrieFactory factory = container.Resolve<ISnapTrieFactory>();
 
-            PathWithAccount pathWithAccount = new(account, new Account(1, 1, new Hash256("0xeb8594ba5b3314111518b584bbd3801fb3aed5970bd8b47fd9ff744505fe101c"), TestItem.KeccakA));
+            PathWithAccount pathWithAccount = new(account, new AccountStruct(1, 1, new Hash256("0xeb8594ba5b3314111518b584bbd3801fb3aed5970bd8b47fd9ff744505fe101c"), TestItem.KeccakA));
             (AddRangeResult result, bool moreChildrenToRight, Hash256 _, bool rootFinished) = SnapProviderHelper.AddStorageRange(
                 factory,
                 pathWithAccount,
@@ -219,7 +219,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             ISnapTestHelper helper = container.Resolve<ISnapTestHelper>();
             ISnapTrieFactory factory = container.Resolve<ISnapTrieFactory>();
 
-            PathWithAccount pathWithAccount = new(account, new Account(1, 1, new Hash256("0xeb8594ba5b3314111518b584bbd3801fb3aed5970bd8b47fd9ff744505fe101c"), TestItem.KeccakA));
+            PathWithAccount pathWithAccount = new(account, new AccountStruct(1, 1, new Hash256("0xeb8594ba5b3314111518b584bbd3801fb3aed5970bd8b47fd9ff744505fe101c"), TestItem.KeccakA));
             (AddRangeResult result, bool moreChildrenToRight, Hash256 _, bool rootFinished) = SnapProviderHelper.AddStorageRange(
                 factory,
                 pathWithAccount,
@@ -242,7 +242,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             PathWithAccount account = new(
                 TestItem.KeccakA,
-                new Account(UInt256.Zero).WithChangedStorageRoot(storageRoot));
+                new Account(UInt256.Zero).WithChangedStorageRoot(storageRoot).ToStruct());
 
             PathWithStorageSlot[] slots = [new(ValueKeccak.Zero, [0x01])];
 
@@ -303,7 +303,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             new()
             {
                 StartingHash = startingHash,
-                Accounts = new ArrayPoolList<PathWithAccount>(1) { new(accountPath, new Account(UInt256.Zero).WithChangedStorageRoot(storageRoot)) }
+                Accounts = new ArrayPoolList<PathWithAccount>(1) { new(accountPath, new Account(UInt256.Zero).WithChangedStorageRoot(storageRoot).ToStruct()) }
             };
     }
 }

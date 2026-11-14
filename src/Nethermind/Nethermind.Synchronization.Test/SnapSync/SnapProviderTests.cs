@@ -104,7 +104,7 @@ public class SnapProviderTests
 
         StorageRange storage = new()
         {
-            Accounts = new PathWithAccount[] { new(TestItem.KeccakA, Account.TotallyEmpty) }.ToPooledList(),
+            Accounts = new PathWithAccount[] { new(TestItem.KeccakA, AccountStruct.TotallyEmpty) }.ToPooledList(),
         };
         List<PathWithStorageSlot> slots =
         [
@@ -135,7 +135,7 @@ public class SnapProviderTests
 
         StorageRange storage = new()
         {
-            Accounts = new PathWithAccount[] { new(TestItem.KeccakA, Account.TotallyEmpty) }.ToPooledList(),
+            Accounts = new PathWithAccount[] { new(TestItem.KeccakA, AccountStruct.TotallyEmpty) }.ToPooledList(),
         };
 
         // Test with empty slots list
@@ -267,7 +267,7 @@ public class SnapProviderTests
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
 
-        PathWithAccount account = new(TestItem.ValueKeccaks[0], Account.TotallyEmpty);
+        PathWithAccount account = new(TestItem.ValueKeccaks[0], AccountStruct.TotallyEmpty);
         progressTracker.EnqueueAccountStorage(account);
 
         DrainAccountRangePartition(progressTracker);
@@ -298,8 +298,8 @@ public class SnapProviderTests
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
 
-        PathWithAccount covered = new(TestItem.ValueKeccaks[0], Account.TotallyEmpty);
-        PathWithAccount uncovered = new(TestItem.ValueKeccaks[1], Account.TotallyEmpty);
+        PathWithAccount covered = new(TestItem.ValueKeccaks[0], AccountStruct.TotallyEmpty);
+        PathWithAccount uncovered = new(TestItem.ValueKeccaks[1], AccountStruct.TotallyEmpty);
         progressTracker.EnqueueAccountStorage(covered);
         progressTracker.EnqueueAccountStorage(uncovered);
         DrainAccountRangePartition(progressTracker);
@@ -350,7 +350,7 @@ public class SnapProviderTests
         PathWithAccount[] accounts = new PathWithAccount[accountCount];
         for (int i = 0; i < accountCount; i++)
         {
-            accounts[i] = new PathWithAccount(TestItem.ValueKeccaks[i], Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject);
+            accounts[i] = new PathWithAccount(TestItem.ValueKeccaks[i], Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject.ToStruct());
             progressTracker.EnqueueAccountStorage(accounts[i]);
         }
 
@@ -402,7 +402,7 @@ public class SnapProviderTests
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
 
-        PathWithAccount account = new(TestItem.ValueKeccaks[0], Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject);
+        PathWithAccount account = new(TestItem.ValueKeccaks[0], Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject.ToStruct());
         progressTracker.EnqueueAccountStorage(account);
         DrainAccountRangePartition(progressTracker);
 
@@ -449,7 +449,7 @@ public class SnapProviderTests
 
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
 
-        PathWithAccount account = new(TestItem.ValueKeccaks[0], Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject);
+        PathWithAccount account = new(TestItem.ValueKeccaks[0], Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject.ToStruct());
 
         for (int attempt = 0; attempt < SnapProvider.MaxConsecutiveEmptyStorageResponses; attempt++)
         {
@@ -562,7 +562,7 @@ public class SnapProviderTests
 
         for (int i = 0; i < accountCount; i++)
         {
-            progressTracker.EnqueueAccountStorage(new PathWithAccount(TestItem.ValueKeccaks[i], Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject));
+            progressTracker.EnqueueAccountStorage(new PathWithAccount(TestItem.ValueKeccaks[i], Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject.ToStruct()));
         }
 
         DrainAccountRangePartition(progressTracker);
@@ -643,7 +643,7 @@ public class SnapProviderTests
         DrainAccountRangePartition(progressTracker);
 
         // Discovered at an older pivot with storage; the storage has since been emptied.
-        PathWithAccount stale = new(TestItem.KeccakA, Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject);
+        PathWithAccount stale = new(TestItem.KeccakA, Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject.ToStruct());
         progressTracker.EnqueueAccountRefresh(stale, ValueKeccak.Zero, Keccak.MaxValue);
 
         progressTracker.IsFinished(out SnapSyncBatch? refresh);
@@ -664,7 +664,7 @@ public class SnapProviderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(stale.Account!.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash), "the proven (empty) storage root is adopted");
+            Assert.That(stale.Account.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash), "the proven (empty) storage root is adopted");
             Assert.That(progressTracker.IsFinished(out SnapSyncBatch? next), Is.True, "an account without storage leaves nothing to fetch");
             Assert.That(next, Is.Null);
         }
@@ -699,7 +699,7 @@ public class SnapProviderTests
         // A path immediately before an existing account: absent from the state, and its neighbour is what proves
         // the absence. A gap with no successor would come back as an empty range, i.e. Expired rather than NotFound.
         ValueHash256 missing = ((ValueHash256)TestItem.KeccakB).DecrementPath();
-        PathWithAccount gone = new(missing, Build.An.Account.WithStorageRoot(TestItem.KeccakG).TestObject);
+        PathWithAccount gone = new(missing, Build.An.Account.WithStorageRoot(TestItem.KeccakG).TestObject.ToStruct());
 
         RegisterLargeStorage(progressTracker, gone, partitionCount);
 
@@ -719,7 +719,7 @@ public class SnapProviderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(gone.Account!.StorageRoot, Is.EqualTo(TestItem.KeccakG), "an absent account adopts nothing; guards that this was NotFound and not Verified");
+            Assert.That(gone.Account.StorageRoot, Is.EqualTo(TestItem.KeccakG), "an absent account adopts nothing; guards that this was NotFound and not Verified");
             Assert.That(progressTracker.LargeStorageProgressCount, Is.Zero, "a deleted account must not keep counting as large storage left");
         }
     }
@@ -751,7 +751,7 @@ public class SnapProviderTests
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
         DrainAccountRangePartition(progressTracker);
 
-        PathWithAccount account = new(TestItem.KeccakA, withStorage);
+        PathWithAccount account = new(TestItem.KeccakA, withStorage.ToStruct());
 
         RegisterLargeStorage(progressTracker, account, partitionCount);
 
@@ -772,7 +772,7 @@ public class SnapProviderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(account.Account!.StorageRoot, Is.EqualTo(TestItem.KeccakF), "guards that this was Verified with storage, not NotFound or emptied");
+            Assert.That(account.Account.StorageRoot, Is.EqualTo(TestItem.KeccakF), "guards that this was Verified with storage, not NotFound or emptied");
             Assert.That(progressTracker.LargeStorageProgressCount, Is.Zero,
                 "an account restarted at origin 0 must not keep its stale large-storage entry");
         }
@@ -797,7 +797,7 @@ public class SnapProviderTests
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
 
-        PathWithAccount account = new(TestItem.ValueKeccaks[0], Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject);
+        PathWithAccount account = new(TestItem.ValueKeccaks[0], Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject.ToStruct());
         progressTracker.EnqueueAccountStorage(account);
         DrainAccountRangePartition(progressTracker);
 
@@ -840,7 +840,7 @@ public class SnapProviderTests
         switch (requestKind)
         {
             case nameof(SnapSyncBatch.StorageRangeRequest):
-                progressTracker.EnqueueAccountStorage(new(work, Account.TotallyEmpty));
+                progressTracker.EnqueueAccountStorage(new(work, AccountStruct.TotallyEmpty));
                 DrainAccountRangePartition(progressTracker);
                 break;
             case nameof(SnapSyncBatch.CodesRequest):
@@ -888,7 +888,7 @@ public class SnapProviderTests
         {
             batch.AccountRangeResponse = new AccountsAndProofs
             {
-                PathAndAccounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.ValueKeccaks[0], Account.TotallyEmpty) },
+                PathAndAccounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.ValueKeccaks[0], AccountStruct.TotallyEmpty) },
                 Proofs = EmptyByteArrayList.Instance
             };
         }
@@ -1096,7 +1096,7 @@ public class SnapProviderTests
         }
 
         ValueHash256[] paths = asReq.Paths.Select((bt) => new ValueHash256(Bytes.FromHexString(bt))).ToArray();
-        List<PathWithAccount> pathWithAccounts = accounts.Select((acc, idx) => new PathWithAccount(paths[idx], acc)).ToList();
+        List<PathWithAccount> pathWithAccounts = accounts.Select((acc, idx) => new PathWithAccount(paths[idx], acc.ToStruct())).ToList();
         List<byte[]> proofs = asReq.Proofs.Select((str) => Bytes.FromHexString(str)).ToList();
 
         TestMemDb db = new();
@@ -1670,7 +1670,7 @@ public class SnapProviderTests
         ArrayPoolList<PathWithAccount> accounts = new(accountCount);
         for (int i = 0; i < accountCount; i++)
         {
-            accounts.Add(new PathWithAccount(TestItem.ValueKeccaks[i], Account.TotallyEmpty));
+            accounts.Add(new PathWithAccount(TestItem.ValueKeccaks[i], AccountStruct.TotallyEmpty));
         }
 
         return new StorageRange { Accounts = accounts, StartingHash = Keccak.Zero };
@@ -1715,7 +1715,7 @@ public class SnapProviderTests
         stateTree.Set(accountHash, Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject);
         stateTree.Commit();
 
-        return (new PathWithAccount(accountHash, new Account(0, 1).WithChangedStorageRoot(storageTree.RootHash)), slots, stateTree);
+        return (new PathWithAccount(accountHash, new Account(0, 1).WithChangedStorageRoot(storageTree.RootHash).ToStruct()), slots, stateTree);
     }
 
     private static byte[][] ProveStorage(StateTree stateTree, in ValueHash256 accountPath, params ValueHash256[] slotPaths)

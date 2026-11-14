@@ -235,8 +235,8 @@ public class ProgressTrackerTests
         snapTrieFactory.When(static f => f.SaveCheckpoint(Arg.Any<SnapCheckpoint?>())).Do(call => saved = call.Arg<SnapCheckpoint?>());
         using ProgressTracker progressTracker = CreateProgressTracker(snapTrieFactory: snapTrieFactory, snapResume: true, checkpointInterval: TimeSpan.MaxValue);
 
-        PathWithAccount withStorage = new(TestItem.ValueKeccaks[1], Build.An.Account.WithBalance(1).WithStorageRoot(TestItem.KeccakA).TestObject);
-        PathWithAccount toRefresh = new(TestItem.ValueKeccaks[2], Build.An.Account.WithBalance(2).TestObject);
+        PathWithAccount withStorage = new(TestItem.ValueKeccaks[1], Build.An.Account.WithBalance(1).WithStorageRoot(TestItem.KeccakA).TestObject.ToStruct());
+        PathWithAccount toRefresh = new(TestItem.ValueKeccaks[2], Build.An.Account.WithBalance(2).TestObject.ToStruct());
         ValueHash256 refreshFrom = new("0x8000000000000000000000000000000000000000000000000000000000000000");
         progressTracker.EnqueueAccountStorage(withStorage);
         progressTracker.EnqueueAccountRefresh(toRefresh, refreshFrom, null);
@@ -285,8 +285,8 @@ public class ProgressTrackerTests
             interrupted.ReportRequestReleased(accountRange);
             accountRange.Dispose();
 
-            interrupted.EnqueueAccountStorage(new PathWithAccount(TestItem.ValueKeccaks[1], Build.An.Account.WithStorageRoot(TestItem.KeccakA).TestObject));
-            interrupted.EnqueueAccountStorage(new PathWithAccount(TestItem.ValueKeccaks[2], Build.An.Account.WithStorageRoot(TestItem.KeccakB).TestObject));
+            interrupted.EnqueueAccountStorage(new PathWithAccount(TestItem.ValueKeccaks[1], Build.An.Account.WithStorageRoot(TestItem.KeccakA).TestObject.ToStruct()));
+            interrupted.EnqueueAccountStorage(new PathWithAccount(TestItem.ValueKeccaks[2], Build.An.Account.WithStorageRoot(TestItem.KeccakB).TestObject.ToStruct()));
             interrupted.IsFinished(out SnapSyncBatch? droppedInFlight);
             Assert.That(droppedInFlight!.StorageRangeRequest!.Accounts, Has.Count.EqualTo(2));
             interrupted.SaveCheckpointAtShutdown();
@@ -359,8 +359,8 @@ public class ProgressTrackerTests
         snapTrieFactory.LoadCheckpoint().Returns(_ => saved is null ? null : SnapCheckpoint.Decode(saved.Encode()));
 
         ValueHash256 nextAccount = new("0x4000000000000000000000000000000000000000000000000000000000000000");
-        PathWithAccount withStorage = new(TestItem.ValueKeccaks[1], Build.An.Account.WithBalance(1).WithStorageRoot(TestItem.KeccakA).TestObject);
-        PathWithAccount toRefresh = new(TestItem.ValueKeccaks[2], Build.An.Account.WithBalance(2).TestObject);
+        PathWithAccount withStorage = new(TestItem.ValueKeccaks[1], Build.An.Account.WithBalance(1).WithStorageRoot(TestItem.KeccakA).TestObject.ToStruct());
+        PathWithAccount toRefresh = new(TestItem.ValueKeccaks[2], Build.An.Account.WithBalance(2).TestObject.ToStruct());
         ValueHash256 refreshFrom = new("0x8000000000000000000000000000000000000000000000000000000000000000");
         IStateSyncPivot pivot = Substitute.For<IStateSyncPivot>();
         pivot.GetPivotHeader().Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(Keccak.EmptyTreeHash).TestObject);
@@ -406,7 +406,7 @@ public class ProgressTrackerTests
             Assert.That(batches.Where(static b => b.AccountRangeRequest is not null).Select(static b => b.AccountRangeRequest!.StartingHash),
                 Is.EquivalentTo(new[] { nextAccount, new ValueHash256("0x8000000000000000000000000000000000000000000000000000000000000000") }));
             Assert.That(batches.Single(static b => b.AccountsToRefreshRequest is not null).AccountsToRefreshRequest!.Paths[0].StorageStartingHash, Is.EqualTo(refreshFrom));
-            Assert.That(batches.Single(static b => b.StorageRangeRequest is not null).StorageRangeRequest!.Accounts[0].Account!.StorageRoot, Is.EqualTo(TestItem.KeccakA));
+            Assert.That(batches.Single(static b => b.StorageRangeRequest is not null).StorageRangeRequest!.Accounts[0].Account.StorageRoot, Is.EqualTo(TestItem.KeccakA));
             Assert.That(batches.Single(static b => b.CodesRequest is not null).CodesRequest, Is.EqualTo(new[] { TestItem.ValueKeccaks[3] }));
             Assert.That(pivot.UpdatedStorages, Is.EquivalentTo(new[] { toRefresh.Path.ToCommitment() }), "the account to heal survives the restart");
         }

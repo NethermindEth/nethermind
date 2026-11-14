@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.FluentRlp;
@@ -75,7 +76,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
                 {
                     RlpReader pwaReader = pwasReader.EnterSequence(out int length);
                     ValueHash256 path = pwaReader.DecodeValueKeccakNonNull();
-                    pathsWithAccounts.Add(new PathWithAccount(path, _decoder.DecodeGuardNotNull(ref pwaReader)));
+                    if (!_decoder.TryDecodeStruct(ref pwaReader, out AccountStruct account))
+                        throw new RlpReaderException("An account range entry must contain an account.");
+                    pathsWithAccounts.Add(new PathWithAccount(path, account));
                     pwasReader.ExitSequence(pwaReader, length);
                 }
 

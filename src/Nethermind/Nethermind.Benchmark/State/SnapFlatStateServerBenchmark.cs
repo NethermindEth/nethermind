@@ -88,7 +88,7 @@ public class SnapFlatStateServerBenchmark
         stateId = CommitBlocks(persistence, addresses, storageAddress, stateId);
 
         _rootHash = stateId.StateRoot.ToCommitment();
-        _storageAccount = [new PathWithAccount(storageAddressHash, storageAccount)];
+        _storageAccount = [new PathWithAccount(storageAddressHash, storageAccount.ToStruct())];
         _server = new SnapFlatStateServer(new InMemoryFlatDbManager(persistence, _nodeRecordBuffer, _snapshots), new SingleStateRootIndex(stateId), NullLogManager.Instance);
     }
 

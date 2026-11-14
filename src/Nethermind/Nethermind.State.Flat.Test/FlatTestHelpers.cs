@@ -333,7 +333,7 @@ internal sealed class FakeWriteBatch : IPersistence.IWriteBatch
     public List<(TreePath Path, byte[] Rlp)> SetStateTrieNodeCalls { get; } = [];
     public List<(Hash256 Address, TreePath Path, byte[] Rlp)> SetStorageTrieNodeCalls { get; } = [];
     public List<(ValueHash256 AddrHash, ValueHash256 SlotHash, byte[] RlpValue)> SetStorageRawEncodedCalls { get; } = [];
-    public List<(ValueHash256 AddrHash, Account Account)> SetAccountRawCalls { get; } = [];
+    public List<(ValueHash256 AddrHash, AccountStruct Account)> SetAccountRawCalls { get; } = [];
     public List<(ValueHash256 FromPath, ValueHash256 ToPath)> DeleteAccountRangeCalls { get; } = [];
     public List<(ValueHash256 AddressHash, ValueHash256 FromPath, ValueHash256 ToPath)> DeleteStorageRangeCalls { get; } = [];
     public List<(ValueHash256 FromPath, ValueHash256 ToPath)> SelfDestructRangeCalls { get; } = [];
@@ -354,7 +354,7 @@ internal sealed class FakeWriteBatch : IPersistence.IWriteBatch
     public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) =>
         SetStorageRawEncodedCalls.Add((addrHash, slotHash, rlpValue.ToArray()));
 
-    public void SetAccountRaw(in ValueHash256 addrHash, Account account) => SetAccountRawCalls.Add((addrHash, account));
+    public void SetAccountRaw(in ValueHash256 addrHash, in AccountStruct account) => SetAccountRawCalls.Add((addrHash, account));
 
     public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) =>
         DeleteAccountRangeCalls.Add((fromPath, toPath));
