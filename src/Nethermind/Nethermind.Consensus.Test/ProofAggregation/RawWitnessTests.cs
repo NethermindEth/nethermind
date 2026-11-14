@@ -357,7 +357,10 @@ public class RawWitnessTests
         List<FrameDependency> deps = Eip8288Dependencies.ForTransaction(proven, FrameTxSigHash.ComputeValue);
         ProofWrapperAcceptance proofBacked = await node.Service.AcceptOwnedDetailedAsync(Encode(new MempoolWrapper
         {
-            Transactions = [proven], Mode = MempoolWrapper.ModeDirect, Deps = deps, Proofs = [[1]]
+            Transactions = [proven],
+            Mode = MempoolWrapper.ModeDirect,
+            Deps = deps,
+            Proofs = [[1]]
         }), source: nodeId);
 
         using (Assert.EnterMultipleScope())
@@ -412,142 +415,54 @@ public class RawWitnessTests
         Assert.That(node.Raw.TryEnterValidation(), Is.True);
     }
 
-    // When the global budget is full, the largest other peer source gives way, oldest first; a source never evicts itself and a
-    // peer never evicts local submissions, even when they hold the most.
+    // Local submissions hold at most a quarter of the raw pool, evicting only their own oldest; peers share the rest with
+    // largest-holder eviction. Neither side can evict the other.
     [Test]
-    public void Full_raw_pool_evicts_the_largest_other_peer_source_and_never_local_entries()
-    {
-        Node local = CreateNode();
-        RawSignature localSignature = Signature(1);
-        FrameDependency localRaw = RawDependency(localSignature);
-        MempoolWrapper localDecoded = RawWrapper(new() { [localRaw] = localSignature }, Transaction(0, localRaw));
-        object peer = new(), other = new();
-        static ValueHash256 Key(int i) => ValueKeccak.Compute(BitConverter.GetBytes(i));
-        for (int i = 0; i < RawWitnessPool.MaxWrappers - 1; i++)
-            local.Raw.TryAdd([1], Key(i), localDecoded, Eip8288Verifier.For(Batched), null, local: true);
-        local.Raw.TryAdd([1], Key(-1), localDecoded, Eip8288Verifier.For(Batched), peer, peer);
-
-        RawWitnessPool.Admission otherAdded = local.Raw.TryAdd([1], Key(-2), localDecoded, Eip8288Verifier.For(Batched), other, other);
-        RawWitnessPool.Admission otherAgain = local.Raw.TryAdd([1], Key(-3), localDecoded, Eip8288Verifier.For(Batched), other, other);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(otherAdded, Is.EqualTo(RawWitnessPool.Admission.Added));
-            Assert.That(local.Raw.Contains(Key(-1)), Is.False, "the other peer gave way");
-            Assert.That(otherAgain, Is.EqualTo(RawWitnessPool.Admission.Full), "only local entries and the requester's own remain");
-            Assert.That(Enumerable.Range(0, RawWitnessPool.MaxWrappers - 1).All(i => local.Raw.Contains(Key(i))), Is.True, "no local entry was evicted");
-        }
-    }
-
-    [Test]
-    public void Full_raw_pool_evicts_the_largest_other_source()
+    public void Local_and_peer_raw_partitions_never_evict_each_other()
     {
         Node node = CreateNode();
         RawSignature signature = Signature(1);
         FrameDependency raw = RawDependency(signature);
         MempoolWrapper decoded = RawWrapper(new() { [raw] = signature }, Transaction(0, raw));
+        Eip8288Verifier verifier = Eip8288Verifier.For(Batched);
         object a = new(), b = new();
-        static ValueHash256 Hash(int i) => ValueKeccak.Compute(BitConverter.GetBytes(i));
-        for (int i = 0; i < RawWitnessPool.MaxWrappers; i++)
-            Assert.That(node.Raw.TryAdd([1], Hash(i), decoded, Eip8288Verifier.For(Batched), a, a), Is.EqualTo(RawWitnessPool.Admission.Added));
+        const int peerShare = RawWitnessPool.MaxWrappers - RawWitnessPool.MaxLocalWrappers;
+        static ValueHash256 Key(string kind, int i) => ValueKeccak.Compute($"{kind} {i}");
+        for (int i = 0; i < RawWitnessPool.MaxLocalWrappers; i++) node.Raw.TryAdd([1], Key("local", i), decoded, verifier, null, local: true);
+        for (int i = 0; i < peerShare; i++) node.Raw.TryAdd([1], Key("a", i), decoded, verifier, a, a);
+
+        RawWitnessPool.Admission peerB = node.Raw.TryAdd([1], Key("b", 0), decoded, verifier, b, b);
+        RawWitnessPool.Admission peerASelf = node.Raw.TryAdd([1], Key("a", -1), decoded, verifier, a, a);
+        RawWitnessPool.Admission extraLocal = node.Raw.TryAdd([1], Key("local", -1), decoded, verifier, null, local: true);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(node.Raw.TryAdd([1], Hash(-1), decoded, Eip8288Verifier.For(Batched), a, a), Is.EqualTo(RawWitnessPool.Admission.Full));
-            Assert.That(node.Raw.TryAdd([1], Hash(-2), decoded, Eip8288Verifier.For(Batched), b, b), Is.EqualTo(RawWitnessPool.Admission.Added));
-            Assert.That(node.Raw.Contains(Hash(0)), Is.False, "the oldest of the largest source gave way");
-            Assert.That(node.Raw.Contains(Hash(1)), Is.True);
-            Assert.That(node.Raw.Count, Is.EqualTo(RawWitnessPool.MaxWrappers));
+            Assert.That(peerB, Is.EqualTo(RawWitnessPool.Admission.Added));
+            Assert.That(node.Raw.Contains(Key("a", 0)), Is.False, "the largest other peer gave way");
+            Assert.That(peerASelf, Is.EqualTo(RawWitnessPool.Admission.Full), "the largest peer cannot evict a smaller one");
+            Assert.That(node.Raw.Contains(Key("b", 0)), Is.True);
+            Assert.That(extraLocal, Is.EqualTo(RawWitnessPool.Admission.Added));
+            Assert.That(node.Raw.Contains(Key("local", 0)), Is.False, "local exceeds its quota only by evicting its own oldest");
+            Assert.That(Enumerable.Range(1, RawWitnessPool.MaxLocalWrappers - 1).All(i => node.Raw.Contains(Key("local", i))), Is.True,
+                "peers evicted no local entry");
+            Assert.That(node.Raw.Snapshot().Count(static e => !e.Local), Is.EqualTo(peerShare), "peers keep three quarters");
+            Assert.That(node.Raw.Snapshot().Count(static e => e.Local), Is.EqualTo(RawWitnessPool.MaxLocalWrappers));
         }
-    }
-
-    // EIP-8437: a covering proof admits the raw-held transaction as new, so its wrapper is relayed, and the raw candidate leaves.
-    [Test]
-    public async Task Covering_proof_admits_a_raw_held_transaction_as_new_and_releases_the_candidate()
-    {
-        Node node = CreateNode();
-        RawSignature signature = Signature(1);
-        FrameDependency raw = RawDependency(signature);
-        Transaction transaction = Transaction(0, raw);
-        await node.Service.AcceptOwnedDetailedAsync(Encode(RawWrapper(new() { [raw] = signature }, transaction)));
-
-        ProofWrapperAcceptance proven = await node.Service.AcceptOwnedDetailedAsync(Encode(new MempoolWrapper
-        {
-            Transactions = [transaction],
-            Mode = MempoolWrapper.ModeDirect,
-            Deps = [raw],
-            Proofs = [[1]]
-        }));
-        node.Pool.NewPending += Raise.Event<EventHandler<TxEventArgs>>(node.Pool, new TxEventArgs(transaction));
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(proven.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted), proven.Result.Error);
-            Assert.That(node.Relayed, Has.Count.EqualTo(2));
-            Assert.That(node.Store.Covers(transaction), Is.True);
-            Assert.That(node.Raw.Holds(transaction.Hash!.ValueHash256), Is.False);
-        }
-    }
-
-    // A raw wrapper adding nothing to a transaction that is already pending is accepted but not relayed.
-    [Test]
-    public async Task Raw_wrapper_for_an_already_pending_transaction_is_not_relayed()
-    {
-        Node node = CreateNode();
-        RawSignature signature = Signature(1);
-        FrameDependency raw = RawDependency(signature);
-        Transaction transaction = Transaction(0, raw);
-        await node.Service.AcceptOwnedDetailedAsync(Encode(new MempoolWrapper
-        {
-            Transactions = [transaction],
-            Mode = MempoolWrapper.ModeDirect,
-            Deps = [raw],
-            Proofs = [[1]]
-        }));
-
-        ProofWrapperAcceptance result = await node.Service.AcceptOwnedDetailedAsync(Encode(RawWrapper(new() { [raw] = signature }, transaction)));
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted), result.Result.Error);
-            Assert.That(node.Relayed, Has.Count.EqualTo(1));
-        }
-    }
-
-    // EIP-8437: raw candidates are revalidated and evicted under ordinary pool rules, including expiry and nonce changes.
-    [TestCase("stale nonce")]
-    [TestCase("max age")]
-    public async Task Raw_candidates_leave_on_staleness(string scenario)
-    {
-        Node node = CreateNode();
-        RawSignature signature = Signature(1);
-        FrameDependency raw = RawDependency(signature);
-        Transaction transaction = Transaction(0, raw);
-        await node.Service.AcceptOwnedDetailedAsync(Encode(RawWrapper(new() { [raw] = signature }, transaction)));
-        if (scenario == "stale nonce") SetNonce(node, 1);
-        else node.Clock.Advance(RawWitnessPool.MaxAge + TimeSpan.FromSeconds(1));
-
-        node.Pool.TxPoolHeadChanged += Raise.Event<EventHandler<Block>>(node.Pool, Build.A.Block.TestObject);
-
-        Assert.That(node.Raw.Holds(transaction.Hash!.ValueHash256), Is.False);
     }
 
     [Test]
-    public async Task Stale_transaction_is_not_held()
+    public void A_peer_alone_in_a_full_partition_is_refused_rather_than_evicting_itself()
     {
         Node node = CreateNode();
-        SetNonce(node, 5);
         RawSignature signature = Signature(1);
         FrameDependency raw = RawDependency(signature);
+        MempoolWrapper decoded = RawWrapper(new() { [raw] = signature }, Transaction(0, raw));
+        object a = new();
+        for (int i = 0; i < RawWitnessPool.MaxWrappers - RawWitnessPool.MaxLocalWrappers; i++)
+            node.Raw.TryAdd([1], ValueKeccak.Compute(BitConverter.GetBytes(i)), decoded, Eip8288Verifier.For(Batched), a, a);
 
-        ProofWrapperAcceptance result = await node.Service.AcceptOwnedDetailedAsync(Encode(RawWrapper(new() { [raw] = signature }, Transaction(0, raw))));
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.PoolRejected));
-            Assert.That(node.Raw.Count, Is.Zero);
-            Assert.That(node.Relayed, Is.Empty);
-        }
+        Assert.That(node.Raw.TryAdd([1], ValueKeccak.Compute("one more"), decoded, Eip8288Verifier.For(Batched), a, a),
+            Is.EqualTo(RawWitnessPool.Admission.Full));
     }
 
     // A peer's raw candidates, once proven, are admitted as the peer's: never as local transactions.

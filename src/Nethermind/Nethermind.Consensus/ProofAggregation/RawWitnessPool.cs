@@ -27,6 +27,9 @@ public sealed class RawWitnessPool : IDisposable
     public const long MaxBytesPerSource = 1024 * 1024;
     /// <summary>Raw wrappers held in total.</summary>
     public const int MaxWrappers = 512;
+    /// <summary>The share of <see cref="MaxWrappers"/> and <see cref="MaxBytes"/> local submissions may hold; peers keep the rest.</summary>
+    public const int MaxLocalWrappers = MaxWrappers / 4;
+    public const long MaxLocalBytes = MaxBytes / 4;
     /// <summary>Verifications per second, in total and per source: native raw-signature checks, ordinary witnesses and
     /// validation-prefix simulations; each refills to one second's worth.</summary>
     public const double MaxVerificationsPerSecond = 64;
@@ -98,6 +101,7 @@ public sealed class RawWitnessPool : IDisposable
     private readonly HashSet<(ValueHash256 Wrapper, ValueHash256 Verifier)> _invalid = [];
     private readonly Queue<(ValueHash256 Wrapper, ValueHash256 Verifier)> _invalidOrder = new();
     private int _validations;
+    private int _localCount;
 
     public RawWitnessPool(ITxPool txPool, IChainHeadInfoProvider head, ITxPoolConfig config, IFrameTxPrefixSimulator? simulator = null,
         TimeProvider? clock = null)
@@ -204,20 +208,24 @@ public sealed class RawWitnessPool : IDisposable
     }
 
     /// <summary>Holds a validated raw wrapper within the byte budgets.</summary>
-    /// <remarks>Beyond its own budget a source is refused. When the global budget is full, the source holding the most bytes, if
-    /// another, gives way, oldest first, so one source cannot keep the others out.</remarks>
+    /// <remarks>Local submissions and peers have separate partitions, so neither can evict the other. Local submissions hold at most
+    /// <see cref="MaxLocalWrappers"/> and <see cref="MaxLocalBytes"/>, beyond which their own oldest give way. Peers share the rest:
+    /// beyond its own budget a peer is refused, and when the partition is full the peer holding the most wrappers, then bytes, if
+    /// another, gives way, oldest first, so one peer cannot keep the others out.</remarks>
     public Admission TryAdd(byte[] wrapper, in ValueHash256 hash, MempoolWrapper decoded, Eip8288Verifier verifier, object? source,
         object? identity = null, bool local = false)
     {
-        object owner = identity ?? LocalSource;
+        object owner = local ? LocalSource : identity ?? source ?? LocalSource;
         lock (_gate)
         {
             if (_entries.ContainsKey(hash)) return Admission.Known;
             PruneExpired();
             _sourceBytes.TryGetValue(owner, out long sourceBytes);
-            if (sourceBytes + wrapper.Length > MaxBytesPerSource || !MakeRoom(owner, wrapper.Length)) return Admission.Full;
+            if (local ? !MakeLocalRoom(wrapper.Length) : sourceBytes + wrapper.Length > MaxBytesPerSource || !MakeRoom(owner, wrapper.Length))
+                return Admission.Full;
             Entry entry = new(wrapper, hash, decoded, verifier, source, owner, local, _clock.GetTimestamp());
             _entries.Add(hash, entry);
+            if (local) _localCount++;
             _order.AddLast(hash);
             Bytes += wrapper.Length;
             _sourceBytes[owner] = _sourceBytes.GetValueOrDefault(owner) + wrapper.Length;
@@ -231,11 +239,29 @@ public sealed class RawWitnessPool : IDisposable
         }
     }
 
-    /// <summary>Evicts the largest other peer source's oldest wrappers, largest by count, then bytes, until <paramref name="bytes"/>
-    /// more fit the global budget; local submissions are never evicted.</summary>
+    private long LocalBytes => _sourceBytes.GetValueOrDefault(LocalSource);
+
+    /// <summary>Evicts the oldest local wrappers until <paramref name="bytes"/> more fit the local partition.</summary>
+    private bool MakeLocalRoom(int bytes)
+    {
+        if (bytes > MaxLocalBytes) return false;
+        while (_localCount >= MaxLocalWrappers || LocalBytes + bytes > MaxLocalBytes)
+        {
+            foreach (ValueHash256 hash in _order)
+            {
+                if (!_entries[hash].Local) continue;
+                RemoveLocked(hash);
+                break;
+            }
+        }
+        return true;
+    }
+
+    /// <summary>Evicts the largest other peer's oldest wrappers, largest by count, then bytes, until <paramref name="bytes"/> more fit
+    /// the peers' partition.</summary>
     private bool MakeRoom(object owner, int bytes)
     {
-        while (_entries.Count >= MaxWrappers || Bytes + bytes > MaxBytes)
+        while (_entries.Count - _localCount >= MaxWrappers - MaxLocalWrappers || Bytes - LocalBytes + bytes > MaxBytes - MaxLocalBytes)
         {
             Dictionary<object, int> counts = [];
             foreach (Entry entry in _entries.Values)
@@ -326,6 +352,7 @@ public sealed class RawWitnessPool : IDisposable
     private bool RemoveLocked(in ValueHash256 wrapper)
     {
         if (!_entries.Remove(wrapper, out Entry? entry)) return false;
+        if (entry.Local) _localCount--;
         _order.Remove(entry.Hash);
         Bytes -= entry.Wrapper.Length;
         object owner = entry.Identity;
