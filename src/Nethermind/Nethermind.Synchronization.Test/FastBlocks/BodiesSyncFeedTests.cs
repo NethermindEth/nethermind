@@ -89,7 +89,6 @@ public class BodiesSyncFeedTests
         new(
             MainnetSpecProvider.Instance,
             _syncingToBlockTree,
-            new BlockStore(_blocksDb),
             blockValidator,
             _syncPointers,
             _syncPeerPool,
@@ -199,16 +198,18 @@ public class BodiesSyncFeedTests
     }
 
     [Test]
-    public async Task ShouldReportBreachForBodyThatDoesNotDecode()
+    public async Task ShouldReportBreachForBodyThatDoesNotDecode([Values] bool rlpError)
     {
         _feed.InitializeFeed();
 
         using BodiesSyncBatch req = (await _feed.PrepareRequest())!;
         Block firstBlock = _syncingFromBlockTree.FindBlock(req.Infos[0]!.BlockNumber, BlockTreeLookupOptions.None)!;
         Block secondBlock = _syncingFromBlockTree.FindBlock(req.Infos[1]!.BlockNumber, BlockTreeLookupOptions.None)!;
-        // A body whose uncles item is a byte string instead of a sequence.
-        byte[] malformedBody = [0xc2, 0xc0, 0x80];
-        req.Response = CreateEncodedResponse(BlockBodyDecoder.Instance.Encode(firstBlock.Body), malformedBody);
+        // A body whose uncles item is a byte string instead of a sequence, or one whose uncle decode fails otherwise.
+        byte[] malformedBody = rlpError ? [0xc2, 0xc0, 0x80] : ThrowingHeaderDecoder.BodyWithUncle();
+        req.Response = CreateEncodedResponse(
+            rlpError ? BlockBodyDecoder.Instance : ThrowingHeaderDecoder.BodyDecoder,
+            BlockBodyDecoder.Instance.Encode(firstBlock.Body), malformedBody);
         req.ResponseSourcePeer = new PeerInfo(Substitute.For<ISyncPeer>());
 
         SyncResponseHandlingResult result = _feed.HandleResponse(req);
@@ -221,7 +222,7 @@ public class BodiesSyncFeedTests
         }
         _syncPeerPool.Received(1).ReportBreachOfProtocol(
             Arg.Any<PeerInfo>(),
-            DisconnectReason.InvalidTxOrUncle,
+            DisconnectReason.BreachOfProtocol,
             Arg.Any<string>());
     }
 
@@ -232,7 +233,7 @@ public class BodiesSyncFeedTests
             ? OwnedBlockBodies.FromEncodedBlocks([.. blocks.Select(static block => BlockDecoder.Encode(block))])
             : new OwnedBlockBodies([.. blocks.Select(static block => block.Body)]);
 
-    private static OwnedBlockBodies CreateEncodedResponse(params byte[][] bodies)
+    private static OwnedBlockBodies CreateEncodedResponse(BlockBodyDecoder decoder, params byte[][] bodies)
     {
         IMemoryOwner<byte> memory = MemoryPool<byte>.Shared.Rent(bodies.Sum(static body => body.Length));
         Range[] ranges = new Range[bodies.Length];
@@ -244,7 +245,7 @@ public class BodiesSyncFeedTests
             offset += bodies[i].Length;
         }
 
-        return new OwnedBlockBodies(memory, ranges, BlockBodyDecoder.Instance);
+        return new OwnedBlockBodies(memory, ranges, decoder);
     }
 
     [Test]

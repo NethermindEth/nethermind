@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Blocks;
@@ -20,13 +19,7 @@ public interface IBlockStore
 
     /// <summary>Stores the block made of <paramref name="header"/> and an encoded body.</summary>
     /// <param name="body">The encoded body with its sequence prefix, as a block bodies message carries it.</param>
-    void Insert(BlockHeader header, ReadOnlySpan<byte> body, WriteFlags writeFlags = WriteFlags.None)
-    {
-        RlpReader reader = new(body);
-        BlockBody decoded = BlockBodyDecoder.Instance.Decode(ref reader, RlpBehaviors.SkipPooledTransactions)
-            ?? throw new ArgumentException("The body is missing.", nameof(body));
-        Insert(new Block(header, decoded), writeFlags);
-    }
+    void Insert(BlockHeader header, ReadOnlySpan<byte> body, WriteFlags writeFlags = WriteFlags.None);
 
     /// <summary>
     /// Inserts a freshly suggested block, deferring the durable write off the engine API path when

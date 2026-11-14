@@ -6,7 +6,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -14,7 +13,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.Stats;
@@ -49,7 +47,6 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly ulong _flushDbInterval; // About every 10GB on mainnet
 
         private readonly IBlockTree _blockTree;
-        private readonly IBlockStore _blockStore;
         private readonly IBlockValidator _blockValidator;
         private readonly ISyncConfig _syncConfig;
         private readonly ISyncReport _syncReport;
@@ -70,7 +67,6 @@ namespace Nethermind.Synchronization.FastBlocks
         public BodiesSyncFeed(
             ISpecProvider specProvider,
             IBlockTree blockTree,
-            IBlockStore blockStore,
             IBlockValidator blockValidator,
             ISyncPointers syncPointers,
             ISyncPeerPool syncPeerPool,
@@ -84,7 +80,6 @@ namespace Nethermind.Synchronization.FastBlocks
             : base(metadataDb, specProvider, logManager.GetClassLogger<BodiesSyncFeed>())
         {
             _blockTree = blockTree;
-            _blockStore = blockStore;
             _blockValidator = blockValidator;
             _syncPointers = syncPointers;
             _syncPeerPool = syncPeerPool;
@@ -257,6 +252,7 @@ namespace Nethermind.Synchronization.FastBlocks
             // Its transactions keep only their encoding: the body is stored as received, so they are never decoded.
             BlockBody? body = null;
             Hash256? rejectedBodyTxRoot = null;
+            bool invalidEncoding = false;
 
             try
             {
@@ -279,10 +275,12 @@ namespace Nethermind.Synchronization.FastBlocks
                         {
                             body = responses!.DecodeWithEncodedTransactions(responseIndex);
                         }
-                        catch (RlpReaderException e)
+                        // Any decode failure comes from the bytes the peer sent, so it is the peer's fault.
+                        catch (Exception e)
                         {
                             if (_logger.IsDebug) _logger.Debug($"{batch} - body {responseIndex} is not a valid body: {e.Message}");
                             responseCount = responseIndex;
+                            invalidEncoding = true;
                         }
                     }
 
@@ -304,7 +302,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     if ((rejectedBodyTxRoot is null || rejectedBodyTxRoot == header.TxRoot)
                         && _blockValidator.ValidateBodyAgainstHeader(header, body, out _))
                     {
-                        _blockStore.Insert(header, responses!.GetEncoded(responseIndex).Span, WriteFlags.DisableWAL);
+                        _blockTree.Insert(header, responses!.GetEncoded(responseIndex).Span, WriteFlags.DisableWAL);
                         _syncStatusList.MarkInserted(blockInfo.BlockNumber);
                         responseIndex++;
                         rejectedBodyTxRoot = null;
@@ -328,11 +326,18 @@ namespace Nethermind.Synchronization.FastBlocks
 
             if (responseIndex < (responses?.Count ?? 0))
             {
-                if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID - tx or uncles");
+                if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID - {(invalidEncoding ? "block bodies" : "tx or uncles")}");
 
                 if (batch.ResponseSourcePeer is not null)
                 {
-                    _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, DisconnectReason.InvalidTxOrUncle, "invalid tx or uncles root");
+                    if (invalidEncoding)
+                    {
+                        _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, DisconnectReason.BreachOfProtocol, "invalid block bodies received");
+                    }
+                    else
+                    {
+                        _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, DisconnectReason.InvalidTxOrUncle, "invalid tx or uncles root");
+                    }
                 }
             }
 

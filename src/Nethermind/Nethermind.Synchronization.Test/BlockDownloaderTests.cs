@@ -857,7 +857,7 @@ public partial class BlockDownloaderTests
     }
 
     [Test]
-    public async Task Reports_breach_on_body_that_does_not_decode()
+    public async Task Reports_breach_on_body_that_does_not_decode([Values] bool rlpError)
     {
         await using IContainer node = CreateNode();
         Context ctx = node.Resolve<Context>();
@@ -873,11 +873,12 @@ public partial class BlockDownloaderTests
         ctx.ConfigureBestPeer(peerInfo);
 
         BlocksRequest blockRequest = await ctx.Feed.PrepareRequest(default);
-        // A body whose uncles item is a byte string instead of a sequence.
-        byte[] malformedBody = [0xc2, 0xc0, 0x80];
+        // A body whose uncles item is a byte string instead of a sequence, or one whose uncle decode fails otherwise.
+        byte[] malformedBody = rlpError ? [0xc2, 0xc0, 0x80] : ThrowingHeaderDecoder.BodyWithUncle();
         IMemoryOwner<byte> memory = MemoryPool<byte>.Shared.Rent(malformedBody.Length);
         malformedBody.CopyTo(memory.Memory);
-        blockRequest.OwnedBodies = new OwnedBlockBodies(memory, [new Range(0, malformedBody.Length)], BlockBodyDecoder.Instance);
+        blockRequest.OwnedBodies = new OwnedBlockBodies(memory, [new Range(0, malformedBody.Length)],
+            rlpError ? BlockBodyDecoder.Instance : ThrowingHeaderDecoder.BodyDecoder);
 
         SyncResponseHandlingResult result = ctx.Feed.HandleResponse(blockRequest, peerInfo);
 

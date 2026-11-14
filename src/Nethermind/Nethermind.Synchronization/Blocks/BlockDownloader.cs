@@ -18,7 +18,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Extensions;
 using Nethermind.History;
 using Nethermind.Logging;
-using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.Stats;
@@ -529,7 +528,8 @@ namespace Nethermind.Synchronization.Blocks
             {
                 bodies = response.OwnedBodies?.Bodies;
             }
-            catch (RlpReaderException e)
+            // Any decode failure comes from the bytes the peer sent, so it is the peer's fault.
+            catch (Exception e)
             {
                 if (_logger.IsDebug) _logger.Debug($"Invalid block bodies from {peer:hide}: {e.Message}");
                 if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, "invalid block bodies received");

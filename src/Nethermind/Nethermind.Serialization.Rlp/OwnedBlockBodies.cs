@@ -5,7 +5,6 @@ using System;
 using System.Buffers;
 using System.Collections;
 using System.Collections.Generic;
-using Nethermind.Core.Crypto;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
@@ -28,6 +27,7 @@ public class OwnedBlockBodies : IDisposable, IReadOnlyList<BlockBody?>
     private IMemoryOwner<byte>? _memoryOwner;
     private readonly Range[]? _encodedBodies;
     private readonly BlockBodyDecoder? _decoder;
+    private byte[]?[]? _encodedOnRead;
     private bool _ownsPooledTransactions;
 
     /// <param name="bodies">Bodies whose lifetimes are managed by this owner.</param>
@@ -55,19 +55,21 @@ public class OwnedBlockBodies : IDisposable, IReadOnlyList<BlockBody?>
     /// <exception cref="RlpReaderException">A block is not a sequence that starts with an item.</exception>
     public static OwnedBlockBodies FromEncodedBlocks(IReadOnlyList<byte[]> blocks)
     {
+        // Holds where each body content is in its block until the copy loop replaces it with the place of the copy.
+        Range[] encodedBodies = new Range[blocks.Count];
         int length = 0;
         for (int i = 0; i < blocks.Count; i++)
         {
-            length += Rlp.LengthOfSequence(GetBodyContent(blocks[i]).Length);
+            encodedBodies[i] = GetBodyContent(blocks[i]);
+            length += Rlp.LengthOfSequence(encodedBodies[i].GetOffsetAndLength(blocks[i].Length).Length);
         }
 
         IMemoryOwner<byte> memory = MemoryPool<byte>.Shared.Rent(length);
-        Range[] encodedBodies = new Range[blocks.Count];
         RlpWriter writer = RlpWriter.ContentWriter(memory.Memory.Span[..length]);
         for (int i = 0; i < blocks.Count; i++)
         {
             int start = writer.Length;
-            ReadOnlySpan<byte> content = GetBodyContent(blocks[i]);
+            ReadOnlySpan<byte> content = blocks[i].AsSpan(encodedBodies[i]);
             RlpSequence sequence = writer.StartSequence(content.Length);
             writer.WriteEncoded(content);
             writer.EndSequence(sequence);
@@ -76,20 +78,25 @@ public class OwnedBlockBodies : IDisposable, IReadOnlyList<BlockBody?>
 
         return new OwnedBlockBodies(memory, encodedBodies, BlockBodyDecoder.Instance);
 
-        static ReadOnlySpan<byte> GetBodyContent(byte[] block)
+        static Range GetBodyContent(byte[] block)
         {
             RlpReader items = new RlpReader(block).EnterSequence(out _);
             items.SkipItem();
-            return items.ReadRaw(items.Remaining);
+            int start = block.Length - items.Remaining;
+            return new Range(start, start + items.ReadRaw(items.Remaining).Length);
         }
     }
 
     /// <summary>The bodies, decoded on the first read when they are held encoded.</summary>
-    /// <remarks>A <see langword="null"/> body is one the peer did not have.</remarks>
+    /// <remarks>
+    /// A <see langword="null"/> body is one the peer did not have. The decoded bodies do not refer to the encoded
+    /// memory, so the first read releases it.
+    /// </remarks>
     /// <exception cref="RlpReaderException">An encoded body is not a valid body.</exception>
+    /// <exception cref="ObjectDisposedException">The encoded bodies were released before the first read.</exception>
     public BlockBody?[] Bodies => _bodies ??= DecodeBodies();
 
-    /// <summary>The encoded body at <paramref name="index"/> with its sequence prefix, encoded now if it is held decoded.</summary>
+    /// <summary>The encoded body at <paramref name="index"/> with its sequence prefix, encoded on the first call if it is held decoded.</summary>
     /// <remarks>
     /// An empty sequence is a body the peer did not have. The memory is valid until this owner is disposed or disowned.
     /// </remarks>
@@ -100,8 +107,10 @@ public class OwnedBlockBodies : IDisposable, IReadOnlyList<BlockBody?>
             return _memoryOwner.Memory[_encodedBodies[index]];
         }
 
-        BlockBody? body = Bodies[index];
-        return body is null ? new[] { Rlp.EmptyListByte } : (_decoder ?? BlockBodyDecoder.Instance).Encode(body);
+        _encodedOnRead ??= new byte[]?[_count];
+        return _encodedOnRead[index] ??= Bodies[index] is { } body
+            ? (_decoder ?? BlockBodyDecoder.Instance).Encode(body)
+            : [Rlp.EmptyListByte];
     }
 
     /// <summary>
@@ -114,16 +123,16 @@ public class OwnedBlockBodies : IDisposable, IReadOnlyList<BlockBody?>
 
     private BlockBody?[] DecodeBodies()
     {
-        if (_encodedBodies is null || _memoryOwner is null || _decoder is null) return [];
+        IMemoryOwner<byte> memory = _memoryOwner ?? throw new ObjectDisposedException(nameof(OwnedBlockBodies));
 
-        BlockBody?[] bodies = new BlockBody?[_encodedBodies.Length];
+        BlockBody?[] bodies = new BlockBody?[_count];
         _ownsPooledTransactions = true;
         try
         {
             for (int i = 0; i < bodies.Length; i++)
             {
-                RlpReader reader = new(_memoryOwner.Memory.Span[_encodedBodies[i]]);
-                bodies[i] = _decoder.Decode(ref reader);
+                RlpReader reader = new(memory.Memory.Span[_encodedBodies![i]]);
+                bodies[i] = _decoder!.Decode(ref reader);
                 reader.CheckEnd();
             }
         }
@@ -133,29 +142,16 @@ public class OwnedBlockBodies : IDisposable, IReadOnlyList<BlockBody?>
             throw;
         }
 
+        memory.Dispose();
+        _memoryOwner = null;
         return bodies;
     }
 
-    /// <summary>
-    /// Disown the `BlockBody`, copying any `Memory<byte>` so that it does not depend on the `_memoryOwner.`
-    /// </summary>
+    /// <summary>Gives the decoded bodies and their transactions to the caller, so that disposal does not return them to the pool.</summary>
     /// <remarks>Bodies not decoded yet by a read of <see cref="Bodies"/> are released.</remarks>
     public void Disown()
     {
         _ownsPooledTransactions = false;
-        if (_memoryOwner is null) return;
-
-        foreach (BlockBody? blockBody in _bodies ?? [])
-        {
-            if (blockBody is null) continue;
-            foreach (Transaction tx in blockBody.Transactions)
-            {
-                Hash256? _ = tx.Hash; // Just need to trigger hash calculation
-                // Disconnect from any backing
-                tx.Data = tx.Data.ToArray();
-            }
-        }
-
         _memoryOwner?.Dispose();
         _memoryOwner = null;
     }

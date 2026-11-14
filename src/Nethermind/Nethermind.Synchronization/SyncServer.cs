@@ -12,6 +12,7 @@ using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
@@ -43,6 +44,7 @@ namespace Nethermind.Synchronization
     {
         private readonly IBlockTree _blockTree;
         private readonly IBlockStore _blockStore;
+        private readonly IHeaderStore _headerStore;
         private readonly ILogger _logger;
         private readonly ISyncPeerPool _pool;
         private readonly ISyncModeSelector _syncModeSelector;
@@ -77,6 +79,7 @@ namespace Nethermind.Synchronization
             [KeyFilter(DbNames.Code)] IReadOnlyKeyValueStore codeDb,
             IBlockTree blockTree,
             IBlockStore blockStore,
+            IHeaderStore headerStore,
             IReceiptFinder receiptFinder,
             IBlockAccessListStore blockAccessListStore,
             IBlockValidator blockValidator,
@@ -102,6 +105,7 @@ namespace Nethermind.Synchronization
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
+            _headerStore = headerStore ?? throw new ArgumentNullException(nameof(headerStore));
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _blockAccessListStore = blockAccessListStore ?? throw new ArgumentNullException(nameof(blockAccessListStore));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
@@ -474,8 +478,8 @@ namespace Nethermind.Synchronization
 
         public byte[]? FindBlockRlp(Hash256 hash)
         {
-            BlockHeader? header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            return header is null ? null : _blockStore.GetRlp(header.Number, hash);
+            ulong? number = _headerStore.GetBlockNumber(hash);
+            return number is null ? null : _blockStore.GetRlp(number.Value, hash);
         }
 
         public BlockHeader? FindHeader(Hash256 hash) => _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);

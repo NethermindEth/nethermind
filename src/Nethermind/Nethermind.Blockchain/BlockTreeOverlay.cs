@@ -84,6 +84,9 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
         WriteFlags bodiesWriteFlags = WriteFlags.None) =>
         _overlayTree.Insert(block, insertBlockOptions, insertHeaderOptions, bodiesWriteFlags);
 
+    public void Insert(BlockHeader header, ReadOnlySpan<byte> body, WriteFlags bodiesWriteFlags = WriteFlags.None) =>
+        _overlayTree.Insert(header, body, bodiesWriteFlags);
+
     public void UpdateHeadBlock(Hash256 blockHash) =>
         _overlayTree.UpdateHeadBlock(blockHash);
 

@@ -407,6 +407,18 @@ namespace Nethermind.Blockchain
             return AddBlockResult.Added;
         }
 
+        /// <inheritdoc/>
+        public void Insert(BlockHeader header, ReadOnlySpan<byte> body, WriteFlags bodiesWriteFlags = WriteFlags.None)
+        {
+            if (header.Number == _genesisBlockNumber)
+            {
+                throw new InvalidOperationException("Genesis block should not be inserted.");
+            }
+
+            _blockStore.Insert(header, body, bodiesWriteFlags);
+            _headerStore.InsertBlockNumber(header.Hash!, header.Number);
+        }
+
         protected virtual AddBlockResult Suggest(Block? block, BlockHeader header, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
         {
             bool shouldProcess = options.ContainsFlag(BlockTreeSuggestOptions.ShouldProcess);

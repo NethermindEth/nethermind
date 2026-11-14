@@ -180,6 +180,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         {
             using GetBlockBodiesMessage msg62 = new(new[] { Keccak.Zero, TestItem.KeccakA });
             using Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockBodiesMessage msg66 = new(1111, msg62);
+            _syncManager.FindBlockRlp(Arg.Any<Hash256>()).Returns((byte[]?)null);
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.GetBlockBodies);

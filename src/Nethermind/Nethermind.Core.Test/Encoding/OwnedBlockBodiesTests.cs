@@ -45,7 +45,11 @@ public class OwnedBlockBodiesTests
         BlockBody body = CreateBody(2);
         using OwnedBlockBodies bodies = new([missingBody ? null : body]);
 
-        Assert.That(bodies.GetEncoded(0).ToArray(), Is.EqualTo(Encode(missingBody ? null : body)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bodies.GetEncoded(0).ToArray(), Is.EqualTo(Encode(missingBody ? null : body)));
+            Assert.That(bodies.GetEncoded(0).Equals(bodies.GetEncoded(0)), Is.True, "encoded once");
+        }
     }
 
     [Test]
@@ -53,7 +57,11 @@ public class OwnedBlockBodiesTests
     {
         BlockBody body = CreateBody(2);
         OwnedBlockBodies bodies = CreateEncoded(body, out IMemoryOwner<byte> memory);
-        if (decodedBeforeDisown) _ = bodies.Bodies;
+        if (decodedBeforeDisown)
+        {
+            _ = bodies.Bodies;
+            memory.Received(1).Dispose();
+        }
 
         bodies.Disown();
         memory.Received(1).Dispose();
@@ -63,7 +71,8 @@ public class OwnedBlockBodiesTests
         }
         else
         {
-            Assert.That(bodies.Bodies, Is.Empty);
+            Assert.Throws<ObjectDisposedException>(() => _ = bodies.Bodies);
+            Assert.Throws<ObjectDisposedException>(() => bodies.GetEncoded(0));
         }
 
         bodies.Dispose();
