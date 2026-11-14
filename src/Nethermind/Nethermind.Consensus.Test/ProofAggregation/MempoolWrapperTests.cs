@@ -189,19 +189,29 @@ public class MempoolWrapperTests
     }
 
     [Test]
-    public void Decoder_leaves_dependency_order_and_witness_count_to_validation([Values] bool unsorted)
+    public void Decoder_leaves_dependency_order_to_validation()
     {
         List<FrameDependency> canonical = Eip8288Dependencies.Canonicalize([Sphincs("a"), Sphincs("b")]);
-        Rlp encoded = unsorted
-            ? Raw([Encoded(canonical)], MempoolWrapper.ModeDirect, [canonical[1], canonical[0]],
-                Rlp.Encode([Rlp.Encode(new byte[] { 1 }), Rlp.Encode(new byte[] { 1 })]))
-            : Raw([Encoded(canonical)], MempoolWrapper.ModeDirect, canonical, Rlp.Encode([Rlp.Encode(new byte[] { 1 })]));
+        Rlp encoded = Raw([Encoded(canonical)], MempoolWrapper.ModeDirect, [canonical[1], canonical[0]],
+            Rlp.Encode([Rlp.Encode(new byte[] { 1 }), Rlp.Encode(new byte[] { 1 })]));
         MempoolWrapper decoded = Decode(encoded);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(MempoolWrapperValidator.Validate(decoded, Accepting, Eip8288Verifier.Pinned, out string? error), Is.False);
-            Assert.That(error, Is.EqualTo(unsorted ? MempoolWrapperValidator.DepsMismatch : MempoolWrapperValidator.ProofCountMismatch));
+            Assert.That(error, Is.EqualTo(MempoolWrapperValidator.DepsMismatch));
         }
+    }
+
+    // EIP-8437: in modes 0 and 2, a dependency/witness count mismatch is malformed encoding.
+    [TestCase(1)]
+    [TestCase(3)]
+    [TestCase(Eip8288Constants.MaxLeanSigDepsPerWrapper + 2)]
+    public void Witness_count_mismatch_is_malformed(int witnesses)
+    {
+        List<FrameDependency> canonical = Eip8288Dependencies.Canonicalize([Sphincs("a"), Sphincs("b")]);
+        Rlp encoded = Raw([Encoded(canonical)], MempoolWrapper.ModeDirect, canonical,
+            Rlp.Encode([.. Enumerable.Range(0, witnesses).Select(static _ => Rlp.Encode(new byte[] { 1 }))]));
+        Assert.That(() => Decode(encoded), Throws.InstanceOf<RlpException>().With.Message.EqualTo(MempoolWrapperDecoder.WitnessCountMismatch));
     }
 
     [Test]
@@ -296,17 +306,6 @@ public class MempoolWrapperTests
         Assert.That(() => Decode(encoded), Throws.InstanceOf<RlpException>());
     }
 
-    [Test]
-    public void Excessive_witness_entries_are_a_proof_rule_failure()
-    {
-        Rlp encoded = Raw([Encoded([Sphincs("a")])], MempoolWrapper.ModeDirect, [Sphincs("a")],
-            Rlp.Encode([.. Enumerable.Range(0, Eip8288Constants.MaxLeanSigDepsPerWrapper + 2).Select(static _ => Rlp.Encode(new byte[] { 1 }))]));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(MempoolWrapperValidator.Validate(Decode(encoded), Accepting, Eip8288Verifier.Pinned, out string? error), Is.False);
-            Assert.That(error, Is.EqualTo(MempoolWrapperValidator.ProofCountMismatch));
-        }
-    }
 
     // EIP-8288 Test Case 12: MAX_WRAPPER_BYTES bounds the complete encoding, full transactions included: a wrapper exactly at
     // the limit is accepted and one byte above it is rejected.

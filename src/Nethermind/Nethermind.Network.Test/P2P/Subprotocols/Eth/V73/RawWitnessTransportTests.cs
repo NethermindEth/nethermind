@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
@@ -173,6 +175,54 @@ public class RawWitnessTransportTests
         }
     }
 
+    // EIP-8437: in mode 0 too, a dependency/witness count mismatch is malformed; and mode 2's caps of 64 transactions, counting
+    // those sharing a dependency, and 16 raw entries are hard item-count violations, with the boundary accepted.
+    [TestCase(MempoolWrapper.ModeDirect, 1, 0, false)]
+    [TestCase(MempoolWrapper.ModeDirect, 1, 2, false)]
+    [TestCase(MempoolWrapper.ModeRaw, MempoolWrapper.MaxRawTransactions, 1, true)]
+    [TestCase(MempoolWrapper.ModeRaw, MempoolWrapper.MaxRawTransactions + 1, 1, false)]
+    [TestCase(MempoolWrapper.ModeRaw, MempoolWrapper.MaxRawEntries, MempoolWrapper.MaxRawEntries, true)]
+    [TestCase(MempoolWrapper.ModeRaw, MempoolWrapper.MaxRawEntries + 1, MempoolWrapper.MaxRawEntries + 1, false)]
+    public void Witness_counts_and_mode_2_caps_are_encoding_rules(byte mode, int transactions, int entries, bool parses)
+    {
+        // One leanSTARK dependency per raw entry, shared round-robin by the transactions; mode 0 carries a single leanSPHINCS one.
+        FrameDependency[] deps = mode == MempoolWrapper.ModeRaw
+            ? [.. Enumerable.Range(0, entries).Select(static i => new FrameDependency(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute(BitConverter.GetBytes(i)), default))]
+            : [new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("sig"), default)];
+        Transaction[] txs = [.. Enumerable.Range(0, transactions).Select(i => Declaring(i, deps[i % deps.Length]))];
+        List<FrameDependency> canonical = Eip8288Dependencies.Canonicalize(deps);
+        Rlp[] witnesses = mode == MempoolWrapper.ModeRaw
+            ? [.. canonical.Select(static _ => Rlp.Encode(Rlp.Encode(new byte[] { 1 }), Rlp.Encode(new byte[32]), Rlp.Encode(new byte[8])))]
+            : [.. Enumerable.Range(0, entries).Select(static _ => Rlp.Encode(new byte[] { 1 }))];
+        byte[] body = Rlp.Encode(
+            Rlp.Encode([.. txs.OrderBy(static t => t.Hash!.ToString()).Select(static t => Rlp.Encode(Envelope(t)))]),
+            Rlp.Encode(mode),
+            Rlp.Encode(Rlp.Encode([.. canonical.Select(static d => { byte[] b = new byte[Eip8288Constants.DependencyTripleLength]; d.WriteTo(b); return Rlp.Encode(b); })]),
+                Rlp.Encode(witnesses))).Bytes;
+
+        if (parses) Assert.That(WrapperBodies.ParseWrapper(body), Has.Length.EqualTo(transactions));
+        else Assert.That(() => WrapperBodies.ParseWrapper(body), Throws.InstanceOf<RlpException>());
+    }
+
+    /// <summary>A frame transaction, distinct by <paramref name="seed"/>, declaring <paramref name="dependency"/>.</summary>
+    private static Transaction Declaring(int seed, FrameDependency dependency)
+    {
+        Transaction transaction = FrameTransaction(seed, dependency.Scheme);
+        transaction.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, dependency.VerificationGas, Int256.UInt256.Zero,
+            Eip8288Dependencies.Serialize([dependency])), new(FrameMode.Sender, FrameFlags.None, Address.Zero, 21_000, Int256.UInt256.Zero, BitConverter.GetBytes(seed))];
+        transaction.Hash = new Hash256(ValueKeccak.Compute(Envelope(transaction)));
+        return transaction;
+    }
+
+    // EIP-8437: a node recognizing no programs ignores a mode 2 announcement without fetching it, but still runs the wire checks.
+    [Test]
+    public void Mode_2_announcements_keep_their_wire_checks_where_unsupported()
+    {
+        byte[] badLength = Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt(2), Eth73Rlp.EncodeUInt((ulong)Eth73Protocol.MaxWrapperBytes + 1),
+            Eth73Rlp.EncodeBytes(new byte[32]), Eth73Rlp.EncodeBytes(new byte[32]), Eth73Rlp.EncodeBytes(new byte[32]));
+        Assert.That(() => WrapperAnnouncement.Decode(badLength), Throws.InstanceOf<RlpException>());
+    }
+
     [Test]
     public void Mode_2_shape_counts_raw_entry_bytes()
     {
@@ -194,6 +244,7 @@ public class RawWitnessTransportTests
     [TestCase("raw entry for leanSPHINCS")]
     [TestCase("no raw entry")]
     [TestCase("extra entry")]
+    [TestCase("missing entry")]
     public void Malformed_mode_2_bodies_are_rejected(string scenario)
     {
         Transaction generic = GenericTransaction(1), sphincs = FrameTransaction(2);
@@ -205,6 +256,7 @@ public class RawWitnessTransportTests
         {
             "raw entry for leanSPHINCS" => [.. decoded.Deps.Select(static _ => Raw())],
             "no raw entry" => [.. decoded.Deps.Select(static _ => Rlp.Encode(new byte[] { 1 }))],
+            "missing entry" => [Raw()],
             _ => [.. decoded.Deps.Select(d => d.Scheme == Eip8288Constants.LeanStarkScheme ? Raw() : Rlp.Encode(new byte[] { 1 })), Rlp.Encode(new byte[] { 1 })],
         };
         byte[] malformed = Rlp.Encode(

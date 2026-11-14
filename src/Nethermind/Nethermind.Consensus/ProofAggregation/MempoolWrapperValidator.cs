@@ -103,8 +103,20 @@ public static class MempoolWrapperValidator
         };
     }
 
+    /// <summary>The direct witnesses of a mode-0 or mode-2 wrapper by scheme: every dependency's in mode 0, and in mode 2 those without a
+    /// raw entry, since raw entries do not consume the direct-proof allowance (EIP-8437).</summary>
+    public static (int Sphincs, int Stark) CountDirect(MempoolWrapper wrapper)
+    {
+        if (wrapper.Mode != MempoolWrapper.ModeRaw || wrapper.RawWitnesses is not { } raws || raws.Count != wrapper.Deps.Count)
+            return Eip8288Dependencies.CountByScheme(wrapper.Deps);
+        List<FrameDependency> direct = [];
+        for (int i = 0; i < raws.Count; i++)
+            if (raws[i] is null) direct.Add(wrapper.Deps[i]);
+        return Eip8288Dependencies.CountByScheme(direct);
+    }
+
     /// <summary>Checks the dependency list is nonempty, canonical and of enabled schemes, and applies
-    /// <c>MAX_LEANSIG_DEPS_PER_WRAPPER</c> and <c>MAX_LEANSTARK_DEPS_PER_WRAPPER</c> to modes 0 and 2.</summary>
+    /// <c>MAX_LEANSIG_DEPS_PER_WRAPPER</c> and <c>MAX_LEANSTARK_DEPS_PER_WRAPPER</c> to the direct witnesses of modes 0 and 2.</summary>
     private static bool CheckLimits(MempoolWrapper wrapper, out string? error)
     {
         error = null;
@@ -114,7 +126,7 @@ public static class MempoolWrapperValidator
         foreach (FrameDependency dependency in wrapper.Deps)
             if (!Eip8288Dependencies.IsAcceptedScheme(dependency.Scheme)) { error = InvalidProof; return false; }
         if (wrapper.Mode == MempoolWrapper.ModeRecursive) return true;
-        (int sphincs, int stark) = Eip8288Dependencies.CountByScheme(wrapper.Deps);
+        (int sphincs, int stark) = CountDirect(wrapper);
         if (sphincs > Eip8288Constants.MaxLeanSigDepsPerWrapper) error = TooManySigDeps;
         else if (stark > Eip8288Constants.MaxLeanStarkDepsPerWrapper) error = TooManyStarkDeps;
         return error is null;

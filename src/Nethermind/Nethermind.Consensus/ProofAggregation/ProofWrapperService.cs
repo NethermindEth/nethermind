@@ -450,9 +450,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// <summary>Validates a mode-2 wrapper and holds it as a raw candidate, relaying it when it holds a new transaction.</summary>
     /// <remarks>
     /// EIP-8437: every raw witness passes its recognized program's native check with the dependency's <c>data_hash</c> as its claim,
-    /// every ordinary witness verifies as in mode 0, and each transaction not already pending passes the ordinary checks: not
-    /// expired, not stale and authorized by its validation prefix at the head. Already pending transactions count as neither
-    /// admitted nor rejected. Nothing enters the pool or the proof store: raw acceptance establishes no proof coverage.
+    /// every ordinary witness verifies as in mode 0, and each transaction not already pending is held only if it passes the static
+    /// checks: not expired, not stale and authorized by its validation prefix at the head. The wrapper is relayed under the relay
+    /// rule applied to holding. Nothing enters the pool or the proof store: holding establishes no proof coverage, reserves no
+    /// balance and replaces no pool entry; full account, balance and replacement checks run when a covering proof is admitted.
     /// Raw validation is bounded apart from proof-backed admission: a held or known-invalid wrapper is not validated again, at most
     /// <see cref="RawWitnessPool.MaxConcurrentValidations"/> run at once, and every native check, ordinary witness and simulation is
     /// charged to the raw budgets of <paramref name="identity"/> first. A spent budget declines without penalty.
@@ -483,45 +484,51 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                         ? ProofWrapperAcceptance.LocalFailure(frameError) : ProofWrapperAcceptance.Invalid(frameError!, verifier);
                 if (transaction.CarriesBlobs) return ProofWrapperAcceptance.LocalFailure("Mode 2 does not carry blob-carrying transactions.");
             }
-            // Mode 0's dependency limits bound what a wrapper is charged; one beyond them is invalid before any work.
-            (int sigDeps, int starkDeps) = Eip8288Dependencies.CountByScheme(decoded.Deps);
+            // Mode 0's limits on the direct witnesses, with decoding's raw-entry and transaction caps, bound what a wrapper is charged;
+            // one beyond them is invalid before any work.
+            (int sigDeps, int starkDeps) = MempoolWrapperValidator.CountDirect(decoded);
             if (sigDeps > Eip8288Constants.MaxLeanSigDepsPerWrapper) return ProofWrapperAcceptance.Invalid(MempoolWrapperValidator.TooManySigDeps, verifier);
             if (starkDeps > Eip8288Constants.MaxLeanStarkDepsPerWrapper) return ProofWrapperAcceptance.Invalid(MempoolWrapperValidator.TooManyStarkDeps, verifier);
-            // Local policy: transactions sharing dependencies would multiply simulations beyond what the dependency limits bound.
-            if (decoded.Transactions.Count > decoded.Deps.Count)
-                return ProofWrapperAcceptance.LocalFailure("Mode 2 wrappers carry at most one transaction per dependency.");
             // Each dependency's witness, raw or ordinary, and each transaction's simulation.
             if (!rawWitnesses.TryTakeVerifications(identity, decoded.Deps.Count + decoded.Transactions.Count)) return AdmissionBusy();
-            // Unpending counts transactions to hold, whoever else holds them, so removing another origin's wrapper never drops them;
-            // fresh counts those no held wrapper lists yet, which make the wrapper worth relaying.
-            (bool valid, string? error, int unpending, int fresh, bool indeterminate) = await Task.Run(() =>
+            // Held counts transactions accepted into holding, whoever else holds them, so removing another origin's wrapper never drops
+            // them; fresh counts those no held wrapper lists yet. Already pending transactions count as neither held nor rejected.
+            (bool valid, string? error, int heldCount, int fresh, int rejected, bool indeterminate) = await Task.Run(() =>
             {
                 if (!MempoolWrapperValidator.Validate(decoded, leanProofVerifier, in verifier, out string? proofError, recognizedPrograms))
-                    return (false, proofError, 0, 0, false);
-                int toHold = 0, added = 0;
+                    return (false, proofError, 0, 0, 0, false);
+                string? firstRejection = null;
+                int toHold = 0, added = 0, refused = 0;
                 foreach (Transaction transaction in decoded.Transactions)
                 {
                     if (txPool.TryGetPendingTransaction(transaction.Hash!.ValueHash256, out _)) continue;
                     if (rawWitnesses.CheckTransaction(transaction, simulate: true, local, out bool undecided) is { } rejection)
-                        return (true, rejection, 0, 0, undecided);
+                    {
+                        if (undecided) return (true, rejection, 0, 0, 0, true);
+                        firstRejection ??= rejection;
+                        refused++;
+                        continue;
+                    }
                     toHold++;
                     if (!rawWitnesses.Holds(transaction.Hash!.ValueHash256)) added++;
                 }
-                return (true, (string?)null, toHold, added, false);
+                return (true, firstRejection, toHold, added, refused, false);
             }, cancellationToken);
             if (!valid)
             {
                 rawWitnesses.RememberInvalid(hash, verifier);
                 return ProofWrapperAcceptance.Invalid(error!, verifier);
             }
-            if (error is not null) return indeterminate ? AdmissionBusy() : new(ProofWrapperAcceptanceStatus.PoolRejected, Result<Hash256[]>.Fail(error));
+            if (indeterminate) return AdmissionBusy();
             if (RefreshVerifier() != verifier) return ProofWrapperAcceptance.LocalFailure(VerifierChangedDuringAdmission);
-            // Every transaction is pending already: nothing to hold, relay or prove.
-            if (unpending == 0) return RawAccepted(decoded);
+            ProofWrapperAcceptance accepted = error is null ? RawAccepted(decoded) : new(ProofWrapperAcceptanceStatus.PoolRejected, Result<Hash256[]>.Fail(error));
+            // Every transaction is pending or rejected: nothing to hold, relay or prove.
+            if (heldCount == 0) return accepted;
             RawWitnessPool.Admission admission = rawWitnesses.TryAdd(wrapper, hash, decoded, verifier, source, identity, local);
             if (admission == RawWitnessPool.Admission.Full) return ProofWrapperAcceptance.LocalFailure("Raw witness capacity is full; retry later.");
-            if (admission == RawWitnessPool.Admission.Added && fresh != 0) WrapperValidated?.Invoke(wrapper, verifier);
-            return RawAccepted(decoded);
+            // EIP-8437's relay rule, applied to acceptance into holding: at least one newly held transaction, and no fewer than rejected.
+            if (admission == RawWitnessPool.Admission.Added && fresh != 0 && fresh >= rejected) WrapperValidated?.Invoke(wrapper, verifier);
+            return accepted;
         }
         catch (InvalidOperationException exception)
         {

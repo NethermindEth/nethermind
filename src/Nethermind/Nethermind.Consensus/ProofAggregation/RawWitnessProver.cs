@@ -101,6 +101,12 @@ public sealed class RawWitnessProver : IDisposable
         List<ReadOnlyMemory<byte>> witnesses = new(ordinaryDeps.Count);
         foreach (FrameDependency dependency in ordinaryDeps) witnesses.Add(ordinary[dependency]);
 
+        // Proving work is charged to the candidates' origin before it starts.
+        if (!_pool.TryTakeProving(group[0].Identity, claims.Count))
+        {
+            foreach (RawWitnessPool.Entry entry in group) entry.Attempted = false;
+            return null;
+        }
         ValueHash256 depsHash = verifier.DepsHash(deps);
         byte[] Prove()
         {
@@ -169,7 +175,7 @@ public sealed class RawWitnessProver : IDisposable
         long bytes = 0;
         foreach (RawWitnessPool.Entry entry in _pool.Snapshot())
         {
-            if (entry.Attempted || entry.Verifier != verifier) continue;
+            if (entry.Attempted || entry.Verifier != verifier || group.Count == 0 && !_pool.CanProve(entry.Identity)) continue;
             HashSet<FrameDependency> entryRaw = [];
             ValueHash256? entryKey = null;
             bool sameProgram = true;

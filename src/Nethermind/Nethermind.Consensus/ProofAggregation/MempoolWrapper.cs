@@ -22,6 +22,12 @@ public sealed class MempoolWrapper
     /// <summary>EIP-8437's bound on one raw entry's complete RLP encoding.</summary>
     public const int MaxRawWitnessBytes = 16 * 1024;
 
+    /// <summary>EIP-8437's bound on a mode-2 wrapper's raw entries.</summary>
+    public const int MaxRawEntries = 16;
+
+    /// <summary>EIP-8437's bound on a mode-2 wrapper's transactions, counting those sharing a dependency.</summary>
+    public const int MaxRawTransactions = 64;
+
     /// <summary>Full EIP-8141 transactions in their pooled network form, in strictly ascending transaction-hash order.</summary>
     /// <remarks>Each <see cref="Transaction.Hash"/> is the consensus hash, which excludes any blob network wrapper.</remarks>
     public required IReadOnlyList<Transaction> Transactions { get; init; }

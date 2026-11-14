@@ -261,21 +261,47 @@ public class RawWitnessTests
         }
     }
 
-    [Test]
-    public void Mode_0_dependency_limits_apply_to_mode_2()
+    // EIP-8437: raw entries do not consume the direct generic-proof allowance; mode 0's per-scheme limits apply to the rest.
+    [TestCase(1, true)]
+    [TestCase(2, false)]
+    public void Raw_entries_do_not_consume_the_direct_proof_allowance(int provenGeneric, bool valid)
     {
-        Dictionary<FrameDependency, RawSignature> raws = [];
-        for (byte i = 1; i <= Eip8288Constants.MaxLeanStarkDepsPerWrapper + 1; i++) raws[RawDependency(Signature(i))] = Signature(i);
-        Transaction[] transactions = [.. raws.Keys.Select((d, i) => Transaction((ulong)i, d))];
-        MempoolWrapper wrapper = RawWrapper(raws, transactions);
+        RawSignature first = Signature(1), second = Signature(2);
+        FrameDependency a = RawDependency(first), b = RawDependency(second);
+        FrameDependency[] proven = [.. Enumerable.Range(0, provenGeneric).Select(static i => new FrameDependency(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute($"proven {i}"), ProgramKey))];
+        Transaction[] transactions = [Transaction(0, a), Transaction(1, b), .. proven.Select((d, i) => Transaction((ulong)(2 + i), d))];
+        MempoolWrapper wrapper = RawWrapper(new() { [a] = first, [b] = second }, transactions);
 
-        bool valid = MempoolWrapperValidator.Validate(wrapper, new FakeLeanProofVerifier(true), Eip8288Verifier.For(Batched), out string? error, new FakeRecognized());
+        bool result = MempoolWrapperValidator.Validate(wrapper, new FakeLeanProofVerifier(true), Eip8288Verifier.For(Batched), out string? error, new FakeRecognized());
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(valid, Is.False);
-            Assert.That(error, Is.EqualTo(MempoolWrapperValidator.TooManyStarkDeps));
+            Assert.That(result, Is.EqualTo(valid), error);
+            if (!valid) Assert.That(error, Is.EqualTo(MempoolWrapperValidator.TooManyStarkDeps));
         }
+    }
+
+    // EIP-8437: at most 64 transactions, counting those sharing a dependency, and 16 raw entries; beyond either is a hard
+    // item-count violation, and the boundary is accepted.
+    [TestCase(MempoolWrapper.MaxRawTransactions, 1, true)]
+    [TestCase(MempoolWrapper.MaxRawTransactions + 1, 1, false)]
+    [TestCase(MempoolWrapper.MaxRawEntries, MempoolWrapper.MaxRawEntries, true)]
+    [TestCase(MempoolWrapper.MaxRawEntries + 1, MempoolWrapper.MaxRawEntries + 1, false)]
+    public void Mode_2_transaction_and_raw_entry_caps_are_encoding_rules(int transactions, int rawEntries, bool decodes)
+    {
+        Dictionary<FrameDependency, RawSignature> raws = [];
+        for (byte i = 1; i <= rawEntries; i++) raws[RawDependency(Signature(i))] = Signature(i);
+        FrameDependency[] deps = [.. raws.Keys];
+        Transaction[] txs = [.. Enumerable.Range(0, transactions).Select(i => Transaction((ulong)i, deps[i % deps.Length]))];
+        List<FrameDependency> canonical = Eip8288Dependencies.Canonicalize(deps);
+        byte[] encoded = Rlp.Encode(
+            Rlp.Encode([.. txs.OrderBy(static t => t.Hash!.ToString()).Select(static t => Rlp.Encode(MempoolWrapperDecoder.EncodeTransaction(t)))]),
+            Rlp.Encode(MempoolWrapper.ModeRaw),
+            Rlp.Encode(Rlp.Encode([.. canonical.Select(static d => { byte[] b = new byte[Eip8288Constants.DependencyTripleLength]; d.WriteTo(b); return Rlp.Encode(b); })]),
+                Rlp.Encode([.. canonical.Select(d => Rlp.Encode(Rlp.Encode(raws[d].PublicKey), Rlp.Encode(raws[d].Message.ToByteArray()), Rlp.Encode(raws[d].Signature)))]))).Bytes;
+
+        if (decodes) Assert.That(Decode(encoded).Transactions, Has.Count.EqualTo(transactions));
+        else Assert.That(() => Decode(encoded), Throws.InstanceOf<RlpException>().With.Message.EqualTo(MempoolWrapperDecoder.TooManyRawItems));
     }
 
     // EIP-8437: raw acceptance establishes no proof coverage, so a raw-held transaction is neither pending nor covered and creates
@@ -589,14 +615,16 @@ public class RawWitnessTests
         }
     }
 
-    // A wrapper beyond mode 0's dependency limits is invalid before any native check or charge.
+    // A wrapper beyond mode 0's limits on its direct witnesses is invalid before any native check or charge.
     [Test]
     public async Task Over_limit_wrapper_is_invalid_before_charging()
     {
         Node node = CreateNode();
-        Dictionary<FrameDependency, RawSignature> raws = [];
-        for (byte i = 1; i <= Eip8288Constants.MaxLeanStarkDepsPerWrapper + 1; i++) raws[RawDependency(Signature(i))] = Signature(i);
-        Transaction[] transactions = [.. raws.Keys.Select((d, i) => Transaction((ulong)i, d))];
+        RawSignature signature = Signature(1);
+        FrameDependency raw = RawDependency(signature);
+        Dictionary<FrameDependency, RawSignature> raws = new() { [raw] = signature };
+        Transaction[] transactions = [Transaction(0, raw), .. Enumerable.Range(1, Eip8288Constants.MaxLeanStarkDepsPerWrapper + 1)
+            .Select(i => Transaction((ulong)i, new FrameDependency(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute($"proven {i}"), ProgramKey)))];
         object peer = new();
 
         ProofWrapperAcceptance result = await node.Service.AcceptOwnedDetailedAsync(Encode(RawWrapper(raws, transactions)), source: peer, identity: peer);
@@ -609,23 +637,97 @@ public class RawWitnessTests
         }
     }
 
-    // Transactions sharing one dependency would each need a simulation the dependency limits do not bound: declined without work.
+    // Transactions sharing one raw dependency are each simulated and charged, up to the 64-transaction cap.
     [Test]
-    public async Task Wrapper_with_more_transactions_than_dependencies_is_declined_before_charging()
+    public async Task Transactions_sharing_a_dependency_are_held_and_charged_each()
     {
         Node node = CreateNode();
         RawSignature signature = Signature(1);
         FrameDependency raw = RawDependency(signature);
-        Transaction[] sharing = [.. Enumerable.Range(0, 3).Select(i => Transaction((ulong)i, raw))];
+        Transaction[] sharing = [.. Enumerable.Range(0, MempoolWrapper.MaxRawTransactions).Select(i => Transaction((ulong)i, raw))];
         object peer = new();
 
         ProofWrapperAcceptance result = await node.Service.AcceptOwnedDetailedAsync(Encode(RawWrapper(new() { [raw] = signature }, sharing)), source: peer, identity: peer);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.LocalFailure));
-            Assert.That(node.Recognized.Verifications, Is.Zero);
-            Assert.That(node.Raw.TryTakeVerifications(peer, (int)RawWitnessPool.MaxVerificationsPerSourcePerSecond), Is.True, "nothing was charged");
+            Assert.That(result.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted), result.Result.Error);
+            Assert.That(node.Raw.Holds(sharing[^1].Hash!.ValueHash256), Is.True);
+            Assert.That(node.Raw.TryTakeVerifications(peer, 1), Is.False, "one witness and 64 simulations put the source in debt");
+        }
+    }
+
+    // EIP-8437: remote exhaustion leaves the local reservation available.
+    [Test]
+    public void Local_submissions_keep_their_budgets_when_peers_exhaust_theirs()
+    {
+        Node node = CreateNode();
+        int perPeer = (int)RawWitnessPool.MaxVerificationsPerSourcePerSecond;
+        for (int i = 0; i < RawWitnessPool.MaxVerificationsPerSecond / perPeer; i++)
+            Assert.That(node.Raw.TryTakeVerifications(new object(), perPeer), Is.True);
+        object peer = new();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.Raw.TryTakeVerifications(peer, 1), Is.False, "the peers' shared budget is spent");
+            Assert.That(node.Raw.TryTakeVerifications(null, (int)RawWitnessPool.MaxVerificationsPerSourcePerSecond), Is.True);
+        }
+    }
+
+    // EIP-8437: raw candidates have a proving-work budget per node identity, kept apart for local submissions.
+    [Test]
+    public async Task Proving_work_is_budgeted_per_origin()
+    {
+        Node node = CreateNode();
+        object peer = new();
+        int count = (int)RawWitnessPool.MaxProvedClaimsPerSourcePerMinute + 1;
+        for (byte i = 1; i <= count; i++)
+        {
+            RawSignature signature = Signature(i);
+            FrameDependency raw = RawDependency(signature);
+            node.Clock.Advance(TimeSpan.FromSeconds(1));
+            await node.Service.AcceptOwnedDetailedAsync(Encode(RawWrapper(new() { [raw] = signature }, Transaction(i, raw))), source: peer, identity: peer);
+        }
+        RawSignature localSignature = Signature(200);
+        FrameDependency localRaw = RawDependency(localSignature);
+        await node.Service.AcceptDetailedAsync(Encode(RawWrapper(new() { [localRaw] = localSignature }, Transaction(200, localRaw))));
+        Assert.That(node.Raw.Count, Is.EqualTo(count + 1));
+        using RawWitnessProver prover = new(node.Service, node.Raw, node.Recognized, new ProductionProofCache(node.Verifier), new TxPoolConfig(), LimboLogs.Instance);
+
+        for (int i = 0; i < count + 1; i++) await prover.ProveOnceAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.Recognized.Proved, Has.Count.EqualTo(count), "the peer's budget allows a minute's worth; the local one is separate");
+            Assert.That(node.Recognized.Proved.Any(r => r.Message == localSignature.Message), Is.True);
+        }
+    }
+
+    // EIP-8437: the relay rule applies to acceptance into holding: a wrapper whose transactions are partly rejected is held for
+    // the rest, and relayed only if it newly holds no fewer than it rejects.
+    [TestCase(1, 1, true)]
+    [TestCase(1, 2, false)]
+    public async Task Relay_rule_applies_to_acceptance_into_holding(int accepted, int stale, bool relayed)
+    {
+        Node node = CreateNode();
+        SetNonce(node, (ulong)stale);
+        Dictionary<FrameDependency, RawSignature> raws = [];
+        List<Transaction> transactions = [];
+        for (int i = 0; i < stale + accepted; i++)
+        {
+            RawSignature signature = Signature((byte)(i + 1));
+            FrameDependency raw = RawDependency(signature);
+            raws[raw] = signature;
+            transactions.Add(Transaction((ulong)i, raw));
+        }
+
+        ProofWrapperAcceptance result = await node.Service.AcceptOwnedDetailedAsync(Encode(RawWrapper(raws, [.. transactions])));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.PoolRejected));
+            Assert.That(node.Raw.Holds(transactions[^1].Hash!.ValueHash256), Is.True);
+            Assert.That(node.Relayed, relayed ? Has.Count.EqualTo(1) : Is.Empty);
         }
     }
 

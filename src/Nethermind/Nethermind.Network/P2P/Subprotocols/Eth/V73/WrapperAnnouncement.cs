@@ -95,9 +95,10 @@ public static class WrapperBodies
 
     /// <summary>Checks the canonical wrapper encoding and returns its consensus transaction hashes, in order.</summary>
     /// <remarks>Checks the encoding rules: <c>MAX_WRAPPER_BYTES</c>, full transaction encodings in strictly ascending
-    /// transaction-hash order and well-formed dependency triples. Dependency and proof rules, such as the dependency list's order,
-    /// the mode-0 dependency limits and witness count, are left to validation, which discards a wrapper breaking them without
-    /// penalty (EIP-8437). Hash references are resolved before a returned wrapper is parsed, so an unresolved one is rejected.</remarks>
+    /// transaction-hash order, well-formed dependency triples, one witness per dependency in modes 0 and 2, and mode 2's framing and
+    /// transaction and raw-entry caps. Dependency and proof rules, such as the dependency list's order and the mode-0 dependency
+    /// limits, are left to validation, which discards a wrapper breaking them without penalty (EIP-8437). Hash references are
+    /// resolved before a returned wrapper is parsed, so an unresolved one is rejected.</remarks>
     public static ValueHash256[] ParseWrapper(ReadOnlySpan<byte> wrapper, out WrapperShape shape, out WrapperCoverage coverage)
     {
         int verificationBytes = 0;
@@ -118,6 +119,8 @@ public static class WrapperBodies
         if (hashes.Count == 0) throw new RlpException("Wrapper carries no transactions");
         ulong mode = fields.ReadUInt64();
         if (mode > MempoolWrapper.ModeRaw) throw new RlpException("Unknown wrapper mode");
+        if (mode == MempoolWrapper.ModeRaw && hashes.Count > MempoolWrapper.MaxRawTransactions)
+            throw new RlpException("Mode 2 wrapper exceeds its transaction count");
         Eth73RlpReader content = fields.ReadList();
         fields.End();
         Eth73RlpReader dependencies = content.ReadList();
@@ -137,7 +140,13 @@ public static class WrapperBodies
         if (mode == MempoolWrapper.ModeDirect)
         {
             Eth73RlpReader proofs = content.ReadList();
-            while (proofs.HasMore) verificationBytes += proofs.ReadBytes().Length;
+            int witnesses = 0;
+            while (proofs.HasMore)
+            {
+                verificationBytes += proofs.ReadBytes().Length;
+                witnesses++;
+            }
+            if (witnesses != dependencyCount) throw new RlpException("Witness count does not match the dependencies");
         }
         else if (mode == MempoolWrapper.ModeRaw)
         {
@@ -165,11 +174,10 @@ public static class WrapperBodies
     /// <returns>The entries' bytes; their verification work is the dependencies', which the caller already counted.</returns>
     private static int ParseRawEntries(Eth73RlpReader entries, byte[] dependencyEntries, int dependencyCount)
     {
-        int bytes = 0, index = 0;
-        bool anyRaw = false;
+        int bytes = 0, index = 0, raws = 0;
         while (entries.HasMore)
         {
-            if (index == dependencyCount) throw new RlpException("Mode 2 entry count does not match its dependencies");
+            if (index == dependencyCount) throw new RlpException("Witness count does not match the dependencies");
             if (!entries.IsListNext)
             {
                 bytes += entries.ReadBytes().Length;
@@ -186,11 +194,12 @@ public static class WrapperBodies
             raw.ReadBytes();
             raw.End();
             bytes += item.Length;
-            anyRaw = true;
+            if (++raws > MempoolWrapper.MaxRawEntries) throw new RlpException("Mode 2 wrapper exceeds its raw-entry count");
             index++;
         }
         entries.End();
-        if (!anyRaw || index != dependencyCount) throw new RlpException("Invalid mode 2 entries");
+        if (index != dependencyCount) throw new RlpException("Witness count does not match the dependencies");
+        if (raws == 0) throw new RlpException("Mode 2 wrapper carries no raw entry");
         return bytes;
     }
 

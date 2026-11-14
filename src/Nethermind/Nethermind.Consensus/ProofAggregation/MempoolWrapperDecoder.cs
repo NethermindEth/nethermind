@@ -18,11 +18,12 @@ namespace Nethermind.Consensus.ProofAggregation;
 /// STARK for mode 1, whose public input is derived from <c>deps</c>, and for EIP-8437's mode 2 one entry per dependency, either
 /// an ordinary witness or a raw <c>[public-key, message, signature]</c> list.
 /// </summary>
-/// <remarks>Decoding enforces the encoding rules: <c>MAX_WRAPPER_BYTES</c>, transaction ordering and well-formed 96-byte
-/// dependency triples of a defined scheme. Dependency and proof rules, including the dependency list's order, the mode-0 limits
-/// and witness count, are left to <see cref="MempoolWrapperValidator"/>, so EIP-8437 discards a wrapper breaking them without
-/// penalizing its sender. Mode 2's framing is encoding: one entry per dependency, raw entries only for leanSTARK dependencies,
-/// each within <see cref="MempoolWrapper.MaxRawWitnessBytes"/> with a 32-byte message, and at least one of them.</remarks>
+/// <remarks>Decoding enforces the encoding rules: <c>MAX_WRAPPER_BYTES</c>, transaction ordering, well-formed 96-byte dependency
+/// triples of a defined scheme and, in modes 0 and 2, one witness per dependency (EIP-8437). Dependency and proof rules, including
+/// the dependency list's order and the mode-0 limits, are left to <see cref="MempoolWrapperValidator"/>, so EIP-8437 discards a
+/// wrapper breaking them without penalizing its sender. Mode 2's framing is encoding: raw entries only for leanSTARK dependencies,
+/// each within <see cref="MempoolWrapper.MaxRawWitnessBytes"/> with a 32-byte message, at least one and at most
+/// <see cref="MempoolWrapper.MaxRawEntries"/> of them, and at most <see cref="MempoolWrapper.MaxRawTransactions"/> transactions.</remarks>
 public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
 {
     public static readonly MempoolWrapperDecoder Instance = new();
@@ -33,6 +34,8 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
     public const string MalformedTransaction = "Proof wrapper transaction is not a pooled EIP-8141 transaction.";
     public const string TransactionReference = "Proof wrapper transaction is an unresolved hash reference.";
     public const string MalformedRawWitness = "Mode 2 wrapper has a malformed raw witness.";
+    public const string WitnessCountMismatch = "Proof wrapper witness count does not match its dependencies.";
+    public const string TooManyRawItems = "Mode 2 wrapper exceeds its transaction or raw-entry count.";
 
     protected override MempoolWrapper DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -59,6 +62,7 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
         byte mode = decoderContext.DecodeByte();
         if (mode is not (MempoolWrapper.ModeDirect or MempoolWrapper.ModeRecursive or MempoolWrapper.ModeRaw))
             throw new RlpException(MempoolWrapperValidator.UnknownMode);
+        if (mode == MempoolWrapper.ModeRaw && transactions.Count > MempoolWrapper.MaxRawTransactions) throw new RlpException(TooManyRawItems);
 
         int contentCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
         int depsCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
@@ -92,6 +96,7 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
                 proofs.Add(decoderContext.DecodeByteArray(RlpLimit.For<RecursiveStark>(Eip8288Constants.MaxProofBytes, nameof(MempoolWrapper.Proofs))));
             }
             decoderContext.Check(proofsCheck);
+            if (proofs.Count != deps.Count) throw new RlpException(WitnessCountMismatch);
         }
         else
         {
@@ -121,10 +126,10 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
         int proofsCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
         List<byte[]> proofs = [];
         List<RawSignature?> raws = [];
-        bool anyRaw = false;
+        int rawCount = 0;
         while (decoderContext.Position < proofsCheck)
         {
-            if (proofs.Count == deps.Count) throw new RlpException(MalformedRawWitness);
+            if (proofs.Count == deps.Count) throw new RlpException(WitnessCountMismatch);
             if (!decoderContext.IsSequenceNext())
             {
                 proofs.Add(decoderContext.DecodeByteArray(RlpLimit.For<RecursiveStark>(Eip8288Constants.MaxProofBytes, nameof(MempoolWrapper.Proofs))));
@@ -141,12 +146,13 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
             byte[] signature = decoderContext.DecodeByteArray(limit);
             decoderContext.Check(entryCheck);
             if (message.Length != ValueHash256.MemorySize) throw new RlpException(MalformedRawWitness);
+            if (++rawCount > MempoolWrapper.MaxRawEntries) throw new RlpException(TooManyRawItems);
             proofs.Add([]);
             raws.Add(new RawSignature(publicKey, new ValueHash256(message), signature));
-            anyRaw = true;
         }
         decoderContext.Check(proofsCheck);
-        if (!anyRaw || proofs.Count != deps.Count) throw new RlpException(MalformedRawWitness);
+        if (proofs.Count != deps.Count) throw new RlpException(WitnessCountMismatch);
+        if (rawCount == 0) throw new RlpException(MalformedRawWitness);
         return (proofs, raws);
     }
 
@@ -264,6 +270,7 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
         }
         if (item.Mode == MempoolWrapper.ModeDirect)
         {
+            if (item.Proofs?.Count != item.Deps.Count) throw new RlpException(WitnessCountMismatch);
             int innerContentLength = 0;
             foreach (byte[] proof in item.Proofs ?? [])
             {
@@ -288,9 +295,10 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
         IReadOnlyList<byte[]>? proofs = item.Proofs;
         IReadOnlyList<RawSignature?>? raws = item.RawWitnesses;
         if (proofs is null || raws is null || proofs.Count != item.Deps.Count || raws.Count != proofs.Count)
-            throw new RlpException(MalformedRawWitness);
+            throw new RlpException(WitnessCountMismatch);
+        if (item.Transactions.Count > MempoolWrapper.MaxRawTransactions) throw new RlpException(TooManyRawItems);
         long length = 0;
-        bool anyRaw = false;
+        int rawCount = 0;
         for (int i = 0; i < proofs.Count; i++)
         {
             if (raws[i] is { } raw)
@@ -299,7 +307,7 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
                 if (entry > MempoolWrapper.MaxRawWitnessBytes || item.Deps[i].Scheme != Eip8288Constants.LeanStarkScheme)
                     throw new RlpException(MalformedRawWitness);
                 length += entry;
-                anyRaw = true;
+                if (++rawCount > MempoolWrapper.MaxRawEntries) throw new RlpException(TooManyRawItems);
             }
             else
             {
@@ -308,7 +316,7 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
             }
             if (length > Eip8288Constants.MaxWrapperBytes) throw new RlpException("Proof wrapper exceeds MAX_WRAPPER_BYTES.");
         }
-        if (!anyRaw) throw new RlpException(MalformedRawWitness);
+        if (rawCount == 0) throw new RlpException(MalformedRawWitness);
         return (int)length;
     }
 }

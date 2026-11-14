@@ -32,14 +32,21 @@ public sealed class RawWitnessPool : IDisposable
     /// <summary>The share of <see cref="MaxWrappers"/> and <see cref="MaxBytes"/> local submissions may hold; peers keep the rest.</summary>
     public const int MaxLocalWrappers = MaxWrappers / 4;
     public const long MaxLocalBytes = MaxBytes / 4;
-    /// <summary>Verifications per second, in total and per source: native raw-signature checks, ordinary witnesses and
+    /// <summary>Verifications per second, in total for peers and per source: native raw-signature checks, ordinary witnesses and
     /// validation-prefix simulations; each refills to one second's worth.</summary>
-    /// <remarks>A source's own allowance is charged in full and may go into debt; the shared one is charged at most
-    /// <see cref="MaxCharge"/> and never goes into debt.</remarks>
-    public const double MaxVerificationsPerSecond = 64;
+    /// <remarks>A source's own allowance is charged in full and may go into debt; the peers' shared one is charged at most
+    /// <see cref="MaxCharge"/> and never goes into debt. Local submissions are charged their own allowance only, so peers cannot
+    /// exhaust it.</remarks>
+    public const double MaxVerificationsPerSecond = 128;
     public const double MaxVerificationsPerSourcePerSecond = 16;
-    /// <summary>The most one wrapper is charged: mode 0's dependency limits, each a witness and at most one transaction to simulate.</summary>
-    public const int MaxCharge = 2 * (Eip8288Constants.MaxLeanSigDepsPerWrapper + Eip8288Constants.MaxLeanStarkDepsPerWrapper);
+    /// <summary>The most one wrapper costs: a witness per dependency (raw entries and mode 0's direct limits) and a simulation per
+    /// transaction (EIP-8437's mode-2 caps).</summary>
+    public const int MaxCharge = MempoolWrapper.MaxRawEntries + Eip8288Constants.MaxLeanSigDepsPerWrapper
+        + Eip8288Constants.MaxLeanStarkDepsPerWrapper + MempoolWrapper.MaxRawTransactions;
+    /// <summary>Raw signatures proved per minute, in total for peers and per source, with a minute's worth of burst; local submissions
+    /// are charged their own allowance only.</summary>
+    public const double MaxProvedClaimsPerMinute = 64;
+    public const double MaxProvedClaimsPerSourcePerMinute = 16;
     /// <summary>Raw wrappers validated at once; more are declined until one finishes.</summary>
     public const int MaxConcurrentValidations = 4;
     /// <summary>Sources whose allowances are remembered; the least recently charged is forgotten first.</summary>
@@ -75,24 +82,34 @@ public sealed class RawWitnessPool : IDisposable
 
     /// <summary>A refilling allowance. With debt allowed, a charge above one second's worth is taken from a full allowance, leaving it
     /// in debt; without, a charge must fit what is available.</summary>
-    private sealed class Allowance(double perSecond, TimeProvider clock)
+    /// <param name="capacity">The most it holds; one second's worth when null.</param>
+    private sealed class Allowance(double perSecond, TimeProvider clock, double? capacity = null)
     {
         private readonly double _rate = perSecond;
-        private double _available = perSecond;
+        private readonly double _capacity = capacity ?? perSecond;
+        private double _available = capacity ?? perSecond;
         private long _updated = clock.GetTimestamp();
 
         public bool TryTake(double amount, bool allowDebt)
         {
-            long now = clock.GetTimestamp();
-            _available = Math.Min(_rate, _available + clock.GetElapsedTime(_updated, now).TotalSeconds * _rate);
-            _updated = now;
-            if ((allowDebt ? Math.Min(amount, _rate) : amount) > _available) return false;
+            if (!Has(allowDebt ? Math.Min(amount, _capacity) : amount)) return false;
             _available -= amount;
             return true;
         }
 
-        public void Refund(double amount) => _available = Math.Min(_rate, _available + amount);
+        public bool Has(double amount)
+        {
+            long now = clock.GetTimestamp();
+            _available = Math.Min(_capacity, _available + clock.GetElapsedTime(_updated, now).TotalSeconds * _rate);
+            _updated = now;
+            return amount <= _available;
+        }
+
+        public void Refund(double amount) => _available = Math.Min(_capacity, _available + amount);
     }
+
+    /// <summary>A source's verification and proving allowances.</summary>
+    private sealed record SourceAllowances(Allowance Verifications, Allowance Proving);
 
     private static readonly object LocalSource = new();
     /// <summary>The owner of a peer's wrapper admitted without a source or identity, kept apart from local submissions.</summary>
@@ -110,8 +127,9 @@ public sealed class RawWitnessPool : IDisposable
     private readonly Dictionary<ValueHash256, List<ValueHash256>> _byTransaction = [];
     private readonly Dictionary<object, long> _sourceBytes = [];
     private readonly Allowance _verifications;
-    private readonly Dictionary<object, LinkedListNode<(object Identity, Allowance Allowance)>> _sourceVerifications = [];
-    private readonly LinkedList<(object Identity, Allowance Allowance)> _sourceOrder = new();
+    private readonly Allowance _proving;
+    private readonly Dictionary<object, LinkedListNode<(object Identity, SourceAllowances Allowances)>> _sourceAllowances = [];
+    private readonly LinkedList<(object Identity, SourceAllowances Allowances)> _sourceOrder = new();
     private readonly HashSet<(ValueHash256 Wrapper, ValueHash256 Verifier)> _invalid = [];
     private readonly Queue<(ValueHash256 Wrapper, ValueHash256 Verifier)> _invalidOrder = new();
     private int _validations;
@@ -126,6 +144,7 @@ public sealed class RawWitnessPool : IDisposable
         _simulator = simulator;
         _clock = clock ?? TimeProvider.System;
         _verifications = new(MaxVerificationsPerSecond, _clock);
+        _proving = new(MaxProvedClaimsPerMinute / 60, _clock, MaxProvedClaimsPerMinute);
         IsEnabled = config.RecognizedPrograms.Length != 0;
         if (!IsEnabled) return;
         _txPool.NewPending += OnNewPending;
@@ -149,32 +168,53 @@ public sealed class RawWitnessPool : IDisposable
     /// <returns>False when either is spent, which permits refusal without penalty.</returns>
     public bool TryTakeVerifications(object? identity, int count)
     {
-        lock (_gate)
-        {
-            Allowance perSource = SourceAllowance(identity ?? LocalSource);
-            int shared = Math.Min(count, MaxCharge);
-            if (!_verifications.TryTake(shared, allowDebt: false)) return false;
-            if (perSource.TryTake(count, allowDebt: true)) return true;
-            _verifications.Refund(shared);
-            return false;
-        }
+        lock (_gate) return TryTake(identity, count, MaxCharge, _verifications, static a => a.Verifications);
     }
 
-    private Allowance SourceAllowance(object identity)
+    /// <summary>Whether <paramref name="identity"/>, a held entry's, may have a raw signature proved now.</summary>
+    public bool CanProve(object identity)
     {
-        if (_sourceVerifications.Remove(identity, out LinkedListNode<(object Identity, Allowance Allowance)>? node)) _sourceOrder.Remove(node);
+        lock (_gate)
+            return SourceAllowance(identity).Proving.Has(1) && (identity == LocalSource || _proving.Has(1));
+    }
+
+    /// <summary>Takes <paramref name="claims"/> proved signatures from the proving budgets of <paramref name="identity"/>, a held
+    /// entry's, as <see cref="TryTakeVerifications"/> does.</summary>
+    public bool TryTakeProving(object identity, int claims)
+    {
+        lock (_gate) return TryTake(identity, claims, (int)MaxProvedClaimsPerMinute, _proving, static a => a.Proving);
+    }
+
+    /// <summary>Charges a source in full, with debt, and peers' shared allowance at most <paramref name="sharedCap"/> without debt;
+    /// local submissions are charged their own allowance only.</summary>
+    private bool TryTake(object? identity, int count, int sharedCap, Allowance shared, Func<SourceAllowances, Allowance> select)
+    {
+        object owner = identity ?? LocalSource;
+        Allowance perSource = select(SourceAllowance(owner));
+        if (owner == LocalSource) return perSource.TryTake(count, allowDebt: true);
+        int sharedCount = Math.Min(count, sharedCap);
+        if (!shared.TryTake(sharedCount, allowDebt: false)) return false;
+        if (perSource.TryTake(count, allowDebt: true)) return true;
+        shared.Refund(sharedCount);
+        return false;
+    }
+
+    private SourceAllowances SourceAllowance(object identity)
+    {
+        if (_sourceAllowances.Remove(identity, out LinkedListNode<(object Identity, SourceAllowances Allowances)>? node)) _sourceOrder.Remove(node);
         else
         {
-            if (_sourceVerifications.Count == MaxTrackedSources)
+            if (_sourceAllowances.Count == MaxTrackedSources)
             {
-                _sourceVerifications.Remove(_sourceOrder.First!.Value.Identity);
+                _sourceAllowances.Remove(_sourceOrder.First!.Value.Identity);
                 _sourceOrder.RemoveFirst();
             }
-            node = new((identity, new Allowance(MaxVerificationsPerSourcePerSecond, _clock)));
+            node = new((identity, new SourceAllowances(new Allowance(MaxVerificationsPerSourcePerSecond, _clock),
+                new Allowance(MaxProvedClaimsPerSourcePerMinute / 60, _clock, MaxProvedClaimsPerSourcePerMinute))));
         }
         _sourceOrder.AddLast(node);
-        _sourceVerifications[identity] = node;
-        return node.Value.Allowance;
+        _sourceAllowances[identity] = node;
+        return node.Value.Allowances;
     }
 
     /// <summary>Takes one of the <see cref="MaxConcurrentValidations"/> validation slots, released by <see cref="ExitValidation"/>.</summary>
