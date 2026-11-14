@@ -43,6 +43,7 @@ internal static unsafe partial class BN254
         if (version == 0 || (version & G2CacheWriteMarker) != 0)
             return;
 
+        // Safety: the copy is used only after the full fence and a matching second version read, a failed copy is discarded, and the native table lives for the process lifetime.
         point = Unsafe.AsRef<mclBnG2>(slot);
         bool matches = new ReadOnlySpan<byte>(entry->Key, G2Size).SequenceEqual(new ReadOnlySpan<byte>(data, G2Size));
 
