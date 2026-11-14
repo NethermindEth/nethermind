@@ -34,7 +34,7 @@ public class CallFrameEntryCreditTests
     [TestCase(ExecutionType.CALL, 0, false, false, ExpectedResult = true)]
     [TestCase(ExecutionType.CREATE, 0, true, false, ExpectedResult = true)]
     [TestCase(ExecutionType.CALL, 0, true, true, ExpectedResult = true)]
-    public bool Frame_entry_reaches_the_world_state(ExecutionType executionType, int value, bool hasCode, bool blockAccessList)
+    public bool Frame_entry_credits_the_executing_account(ExecutionType executionType, int value, bool hasCode, bool blockAccessList)
     {
         IReleaseSpec spec = blockAccessList ? Amsterdam.Instance : Osaka.Instance;
         FrameEnteringVirtualMachine vm = new(spec);
@@ -46,7 +46,8 @@ public class CallFrameEntryCreditTests
 
         vm.EnterFrame(frame);
 
-        return vm.WorldState.ReceivedCalls().Any();
+        return vm.WorldState.ReceivedCalls().Any(static call => call.GetMethodInfo().Name
+            is nameof(IWorldState.AccountExists) or nameof(IWorldState.AddToBalance) or nameof(IWorldState.AddToBalanceAndCreateIfNotExists));
     }
 
     private sealed class FrameEnteringVirtualMachine : VirtualMachine<EthereumGasPolicy>
