@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Era1.Exceptions;
@@ -182,15 +183,8 @@ public class EraImporter(
             if (_logger.IsTrace) _logger.Trace($"Importing block {blockNumber}");
             cancellation.ThrowIfCancellationRequested();
 
-            // Blocks that are only stored are stored as read, so their bodies are not encoded again.
-            bool process = suggestFromBlock <= blockNumber;
-            Block? block;
-            byte[]? body = null;
-            TxReceipt[]? receipt;
-            if (process)
-                (block, receipt) = await eraStore.FindBlockAndReceipts(blockNumber, cancellation: cancellation);
-            else
-                (block, body, receipt) = await eraStore.FindEncodedBlockAndReceipts(blockNumber, cancellation: cancellation);
+            (Block? block, ArrayPoolList<byte>? body, TxReceipt[]? receipt) = await eraStore.FindEncodedBlockAndReceipts(blockNumber, cancellation: cancellation);
+            using ArrayPoolList<byte>? _ = body;
 
             if (block is null)
             {
@@ -217,27 +211,24 @@ public class EraImporter(
 
             KnownHeaders.EnsureMatch(blockTree, block);
 
-            if (process)
+            if (suggestFromBlock <= block.Number)
             {
                 await pacer.WaitForQueue(block.Number, cancellation);
                 await SuggestAndProcessBlock(block);
                 blockTree.ForkChoiceUpdated(block.Hash, blockTree.SafeHash);
             }
             else
-                InsertBlockAndReceipts(block, body!, receipt, to);
+                InsertBlockAndReceipts(block, body!.AsSpan(), receipt, to);
 
             progress.Update(Interlocked.Increment(ref blocksProcessed));
         }
     }
 
-    /// <param name="body">The encoded body of <paramref name="b"/>.</param>
-    private void InsertBlockAndReceipts(Block b, byte[] body, TxReceipt[] r, ulong lastBlockNumber)
+    /// <param name="body">The encoded body of <paramref name="b"/>, stored as it is.</param>
+    private void InsertBlockAndReceipts(Block b, ReadOnlySpan<byte> body, TxReceipt[] r, ulong lastBlockNumber)
     {
         if (blockTree.FindBlock(b.Number) is null)
-        {
-            blockTree.Insert(b.Header, body, WriteFlags.DisableWAL);
-            blockTree.Insert(b.Header);
-        }
+            blockTree.Insert(b.Header, body, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, bodiesWriteFlags: WriteFlags.DisableWAL);
         if (!receiptStorage.HasBlock(b.Number, b.Hash!))
             receiptStorage.Insert(b, r, true, writeFlags: WriteFlags.DisableWAL, lastBlockNumber: lastBlockNumber);
     }

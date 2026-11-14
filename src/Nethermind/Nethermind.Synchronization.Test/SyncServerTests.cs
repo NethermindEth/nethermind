@@ -133,9 +133,10 @@ public class SyncServerTests
         {
             ctx.HeaderStore.GetBlockNumber(TestItem.KeccakA).Returns(5UL);
         }
-        ctx.BlockStore.GetRlp(5, TestItem.KeccakA).Returns(blockRlp);
+        ctx.BlockStore.GetOwnedRlp(5, TestItem.KeccakA).Returns(ArrayMemoryManager.From(blockRlp));
 
-        Assert.That(ctx.SyncServer.FindBlockRlp(TestItem.KeccakA), Is.EqualTo(headerKnown ? blockRlp : null));
+        using MemoryManager<byte>? found = ctx.SyncServer.FindBlockRlp(TestItem.KeccakA);
+        Assert.That(found?.Memory.ToArray(), Is.EqualTo(headerKnown ? blockRlp : null));
     }
 
     [TestCase(true, true, true)]

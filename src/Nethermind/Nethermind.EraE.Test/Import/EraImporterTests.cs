@@ -15,6 +15,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Caching;
@@ -769,9 +770,9 @@ public class EraImporterTests
             return (block is null ? null : rewrite(number, block), receipts);
         }
 
-        public async Task<(Block?, byte[]?, TxReceipt[]?)> FindEncodedBlockAndReceipts(ulong number, bool ensureValidated = true, CancellationToken cancellation = default)
+        public async Task<(Block?, ArrayPoolList<byte>?, TxReceipt[]?)> FindEncodedBlockAndReceipts(ulong number, bool ensureValidated = true, CancellationToken cancellation = default)
         {
-            (Block? block, byte[]? body, TxReceipt[]? receipts) = await inner.FindEncodedBlockAndReceipts(number, ensureValidated, cancellation);
+            (Block? block, ArrayPoolList<byte>? body, TxReceipt[]? receipts) = await inner.FindEncodedBlockAndReceipts(number, ensureValidated, cancellation);
             return (block is null ? null : rewrite(number, block), body, receipts);
         }
     }

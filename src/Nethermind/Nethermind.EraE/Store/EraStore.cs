@@ -208,7 +208,7 @@ public sealed class EraStore : IEraStore
     }
 
     /// <inheritdoc/>
-    public async Task<(Block?, byte[]?, TxReceipt[]?)> FindEncodedBlockAndReceipts(ulong number, bool ensureValidated = true, CancellationToken cancellation = default)
+    public async Task<(Block?, ArrayPoolList<byte>?, TxReceipt[]?)> FindEncodedBlockAndReceipts(ulong number, bool ensureValidated = true, CancellationToken cancellation = default)
     {
         long epoch = GetEpochNumber(number);
         if (!_epochs.ContainsKey(epoch))

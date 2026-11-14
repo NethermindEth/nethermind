@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
@@ -41,6 +43,10 @@ public interface IBlockStore
 
     Block? Get(ulong blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true);
     byte[]? GetRlp(ulong blockNumber, Hash256 blockHash);
+
+    /// <summary>The stored block encoding, in memory that the caller disposes.</summary>
+    /// <remarks>Unlike <see cref="GetRlp"/>, the database value need not be copied to a managed array.</remarks>
+    MemoryManager<byte>? GetOwnedRlp(ulong blockNumber, Hash256 blockHash) => ArrayMemoryManager.From(GetRlp(blockNumber, blockHash));
     ReceiptRecoveryBlock? GetReceiptRecoveryBlock(ulong blockNumber, Hash256 blockHash);
     void Cache(Block block);
 

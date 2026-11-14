@@ -5,6 +5,7 @@ using System.IO.Abstractions;
 using System.Runtime.CompilerServices;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Era1.Exceptions;
@@ -205,7 +206,7 @@ public class EraStore : IEraStore
     }
 
     /// <inheritdoc/>
-    public async Task<(Block?, byte[]?, TxReceipt[]?)> FindEncodedBlockAndReceipts(ulong number, bool ensureValidated = true, CancellationToken cancellation = default)
+    public async Task<(Block?, ArrayPoolList<byte>?, TxReceipt[]?)> FindEncodedBlockAndReceipts(ulong number, bool ensureValidated = true, CancellationToken cancellation = default)
     {
         long partOfEpoch = GetEpochNumber(number);
         if (!_epochs.ContainsKey(partOfEpoch))

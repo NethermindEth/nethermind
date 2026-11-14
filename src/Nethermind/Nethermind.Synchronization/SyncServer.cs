@@ -474,10 +474,10 @@ namespace Nethermind.Synchronization
                 : new RlpByteArrayList(builder.ToRlpItemList());
         }
 
-        public byte[]? FindBlockRlp(Hash256 hash)
+        public MemoryManager<byte>? FindBlockRlp(Hash256 hash)
         {
             ulong? number = _headerStore.GetBlockNumber(hash);
-            return number is null ? null : _blockStore.GetRlp(number.Value, hash);
+            return number is null ? null : _blockStore.GetOwnedRlp(number.Value, hash);
         }
 
         public BlockHeader? FindHeader(Hash256 hash) => _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);

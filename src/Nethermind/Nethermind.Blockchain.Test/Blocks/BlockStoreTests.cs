@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
@@ -68,7 +69,13 @@ public class BlockStoreTests
 
         store.Insert(block.Header, BlockBodyDecoder.Instance.Encode(block.Body), WriteFlags.DisableWAL);
 
-        Assert.That(store.GetRlp(block.Number, block.Hash!), Is.EqualTo(new BlockDecoder().Encode(block)));
+        byte[] expected = new BlockDecoder().Encode(block);
+        using MemoryManager<byte>? owned = store.GetOwnedRlp(block.Number, block.Hash!);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.GetRlp(block.Number, block.Hash!), Is.EqualTo(expected));
+            Assert.That(owned?.Memory.ToArray(), Is.EqualTo(expected));
+        }
         db.KeyWasWrittenWithFlags(Bytes.Concat(block.Number.ToBigEndianByteArray(), block.Hash!.BytesToArray()), WriteFlags.DisableWAL);
     }
 

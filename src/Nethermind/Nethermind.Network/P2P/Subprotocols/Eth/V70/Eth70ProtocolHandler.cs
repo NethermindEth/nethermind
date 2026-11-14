@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -301,7 +302,10 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                 IReleaseSpec spec = _specProvider.GetSpec(header);
                 expectedGasUsed.Add(header.GasUsed);
                 blockGasLimits.Add(header.GasLimit);
-                transactionGasLimits.Add(SyncServer.FindBlockRlp(blockHash) is { } blockRlp ? BlockBodyDecoder.ReadTransactionGasLimits(blockRlp) : null);
+                using (MemoryManager<byte>? blockRlp = SyncServer.FindBlockRlp(blockHash))
+                {
+                    transactionGasLimits.Add(blockRlp is null ? null : BlockBodyDecoder.ReadTransactionGasLimits(blockRlp.Memory.Span));
+                }
                 receiptRlpBehaviors.Add(spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None);
                 validateReceiptGasUpperBoundAgainstHeader.Add(!spec.IsEip8037Enabled);
                 validateReceiptGasEqualToHeader.Add(!spec.IsEip7778Enabled && !spec.IsEip8037Enabled);

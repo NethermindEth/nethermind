@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -10,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -62,7 +64,7 @@ public class Eth70ProtocolHandlerTests
         Node node = new(TestItem.PublicKeyA, new IPEndPoint(IPAddress.Broadcast, 30303));
         _session.Node.Returns(node);
         _syncManager = Substitute.For<ISyncServer>();
-        _syncManager.FindBlockRlp(Arg.Any<Hash256>()).Returns((byte[]?)null);
+        _syncManager.FindBlockRlp(Arg.Any<Hash256>()).Returns((MemoryManager<byte>?)null);
         _transactionPool = Substitute.For<ITxPool>();
         _specProvider = Substitute.For<IChainHeadSpecProvider>();
         _gossipPolicy = Substitute.For<IGossipPolicy>();
@@ -526,7 +528,7 @@ public class Eth70ProtocolHandlerTests
             .WithTransactionsRoot(bodyKnown ? Keccak.EmptyTreeHash : TestItem.KeccakB)
             .TestObject;
         _syncManager.FindHeader(Keccak.Zero).Returns(header);
-        _syncManager.FindBlockRlp(Keccak.Zero).Returns(bodyKnown ? new BlockDecoder().Encode(new Block(header, [], [])) : null);
+        _syncManager.FindBlockRlp(Keccak.Zero).Returns(bodyKnown ? ArrayMemoryManager.From(new BlockDecoder().Encode(new Block(header, [], []))) : null);
 
         StrongBox<int> requestCount = RespondWithSingleReceiptPages(prependCompleteBlock: false, lastBlockIncomplete: true);
 
@@ -1382,7 +1384,7 @@ public class Eth70ProtocolHandlerTests
         Block block = new(header, transactions, []);
 
         _syncManager.FindHeader(blockHash).Returns(header);
-        _syncManager.FindBlockRlp(blockHash).Returns(new BlockDecoder().Encode(block));
+        _syncManager.FindBlockRlp(blockHash).Returns(ArrayMemoryManager.From(new BlockDecoder().Encode(block)));
     }
 
     private sealed class CountingReadOnlyList<T>(IReadOnlyList<T> inner) : IReadOnlyList<T>

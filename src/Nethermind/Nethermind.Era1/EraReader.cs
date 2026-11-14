@@ -23,7 +23,7 @@ namespace Nethermind.Era1;
 public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 {
     private readonly ReceiptMessageDecoder _receiptDecoder = new();
-    private readonly BlockBodyDecoder _blockBodyDecoder = (BlockBodyDecoder)Rlp.GetDecoderOrThrow<BlockBody>();
+    private readonly IRlpDecoder<BlockBody> _blockBodyDecoder = Rlp.GetDecoderOrThrow<BlockBody>();
     private readonly IRlpDecoder<BlockHeader> _headerDecoder = Rlp.GetDecoderOrThrow<BlockHeader>();
     private readonly E2StoreReader _fileReader = e2;
 
@@ -38,7 +38,7 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
     {
         foreach (ulong blockNumber in EnumerateBlockNumber())
         {
-            EntryReadResult result = await ReadBlockAndReceipts(blockNumber, false, DecodeBody, cancellation);
+            EntryReadResult result = await ReadBlockAndReceipts(blockNumber, false, BodyForm.Decoded, cancellation);
             yield return (result.Block, result.Receipts);
         }
     }
@@ -82,7 +82,7 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
         {
             while (blockNumbers.TryDequeue(out ulong blockNumber))
             {
-                EntryReadResult? result = await ReadBlockAndReceipts(blockNumber, true, validateTransactions ? DecodeBody : DecodeWithEncodedTransactions, cancellation);
+                EntryReadResult? result = await ReadBlockAndReceipts(blockNumber, true, validateTransactions ? BodyForm.Decoded : BodyForm.EncodedTransactions, cancellation);
                 EntryReadResult err = result.Value;
 
                 if (err.Block.Header.Number != blockNumber)
@@ -109,9 +109,10 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
                 // Note: Header.Hash is calculated by HeaderDecoder.
                 blockHashes[(int)(err.Block.Header.Number - startBlock)] = (err.Block.Header.Hash!, err.Block.TotalDifficulty!.Value);
 
-                if (!validateTransactions)
+                if (err.EncodedBody is not null)
                 {
                     BlockBodyDecoder.ReturnTransactions(err.Block.Body);
+                    err.EncodedBody.Dispose();
                 }
             }
         }, cancellation)).ToPooledList(verifyConcurrency);
@@ -154,7 +155,7 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
         using AccumulatorCalculator calculator = new();
         foreach (ulong blockNumber in EnumerateBlockNumber())
         {
-            EntryReadResult result = await ReadBlockAndReceipts(blockNumber, true, DecodeBody, cancellation);
+            EntryReadResult result = await ReadBlockAndReceipts(blockNumber, true, BodyForm.Decoded, cancellation);
             calculator.Add(result.Block.Header.Hash!, result.Block.TotalDifficulty!.Value);
         }
 
@@ -167,18 +168,19 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
             throw new ArgumentOutOfRangeException(nameof(number), $"Cannot be less than the first block number {_fileReader.First}. Number is {number}.");
         if (number > _fileReader.LastBlock)
             throw new ArgumentOutOfRangeException(nameof(number), $"Cannot be more than the last block number {_fileReader.LastBlock}. Number is {number}.");
-        EntryReadResult result = await ReadBlockAndReceipts(number, false, DecodeBody, cancellation);
+        EntryReadResult result = await ReadBlockAndReceipts(number, false, BodyForm.Decoded, cancellation);
         return (result.Block, result.Receipts);
     }
 
     /// <summary>Reads a block, its body as stored in the archive, and the receipts.</summary>
-    public async Task<(Block Block, byte[] Body, TxReceipt[] Receipts)> GetEncodedBlockByNumber(ulong number, CancellationToken cancellation = default)
+    /// <remarks>Dispose the body when done.</remarks>
+    public async Task<(Block Block, ArrayPoolList<byte> Body, TxReceipt[] Receipts)> GetEncodedBlockByNumber(ulong number, CancellationToken cancellation = default)
     {
-        EntryReadResult result = await ReadBlockAndReceipts(number, false, DecodeKeepingEncoding, cancellation);
+        EntryReadResult result = await ReadBlockAndReceipts(number, false, BodyForm.DecodedAndEncoded, cancellation);
         return (result.Block, result.EncodedBody!, result.Receipts);
     }
 
-    private async Task<EntryReadResult> ReadBlockAndReceipts(ulong blockNumber, bool computeHeaderHash, Func<Memory<byte>, (BlockBody, byte[]?)> decodeBody, CancellationToken cancellationToken)
+    private async Task<EntryReadResult> ReadBlockAndReceipts(ulong blockNumber, bool computeHeaderHash, BodyForm bodyForm, CancellationToken cancellationToken)
     {
         if (blockNumber < _fileReader.First
             || blockNumber > _fileReader.LastBlock)
@@ -194,9 +196,9 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
 
         position += readSize;
 
-        ((BlockBody body, byte[]? encodedBody), readSize) = await _fileReader.ReadSnappyCompressedEntryAndDecode(
+        ((BlockBody body, ArrayPoolList<byte>? encodedBody), readSize) = await _fileReader.ReadSnappyCompressedEntryAndDecode(
             position,
-            decodeBody,
+            buffer => DecodeBody(buffer, bodyForm),
             EntryTypes.CompressedBody, cancellationToken);
 
         position += readSize;
@@ -219,18 +221,42 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
         return new EntryReadResult(block, receipts, encodedBody);
     }
 
-    private (BlockBody, byte[]?) DecodeBody(Memory<byte> buffer)
+    /// <summary>How a body is read.</summary>
+    private enum BodyForm
     {
-        RlpReader ctx = new(buffer.Span);
-        return (_blockBodyDecoder.Decode(ref ctx, RlpBehaviors.SkipPooledTransactions)!, null);
+        /// <summary>Decoded in full.</summary>
+        Decoded,
+
+        /// <summary>Decoded in full, with its encoding kept so that it can be stored as read.</summary>
+        DecodedAndEncoded,
+
+        /// <summary>
+        /// With its transactions kept encoded, which is enough to check the body against the header. The pooled
+        /// transactions refer to the kept encoding.
+        /// </summary>
+        EncodedTransactions,
     }
 
-    // The buffer is pooled and reused after this returns, so the transactions get their own copy to refer to.
-    private (BlockBody, byte[]?) DecodeWithEncodedTransactions(Memory<byte> buffer) =>
-        (_blockBodyDecoder.DecodeWithEncodedTransactions(buffer.ToArray())!, null);
+    // The entry buffer is pooled and reused after this returns, so a kept encoding gets its own pooled copy.
+    private (BlockBody, ArrayPoolList<byte>?) DecodeBody(Memory<byte> buffer, BodyForm form)
+    {
+        if (form == BodyForm.EncodedTransactions && _blockBodyDecoder is BlockBodyDecoder decoder)
+        {
+            ArrayPoolList<byte> encoded = CopyOf(buffer.Span);
+            return (decoder.DecodeWithEncodedTransactions(encoded.AsMemory())!, encoded);
+        }
 
-    // The body is stored as read, but receipt recovery needs the decoded transactions.
-    private (BlockBody, byte[]?) DecodeKeepingEncoding(Memory<byte> buffer) => (DecodeBody(buffer).Item1, buffer.ToArray());
+        RlpReader reader = new(buffer.Span);
+        BlockBody body = _blockBodyDecoder.Decode(ref reader, RlpBehaviors.SkipPooledTransactions)!;
+        return (body, form == BodyForm.DecodedAndEncoded ? CopyOf(buffer.Span) : null);
+
+        static ArrayPoolList<byte> CopyOf(ReadOnlySpan<byte> bytes)
+        {
+            ArrayPoolList<byte> copy = new(bytes.Length, bytes.Length);
+            bytes.CopyTo(copy.AsSpan());
+            return copy;
+        }
+    }
 
     private BlockHeader DecodeHeader(Memory<byte> buffer)
     {
@@ -249,10 +275,10 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
 
     public void Dispose() => _fileReader.Dispose();
 
-    private struct EntryReadResult(Block block, TxReceipt[] receipts, byte[]? encodedBody)
+    private struct EntryReadResult(Block block, TxReceipt[] receipts, ArrayPoolList<byte>? encodedBody)
     {
         public Block Block { get; } = block;
         public TxReceipt[] Receipts { get; } = receipts;
-        public byte[]? EncodedBody { get; } = encodedBody;
+        public ArrayPoolList<byte>? EncodedBody { get; } = encodedBody;
     }
 }
