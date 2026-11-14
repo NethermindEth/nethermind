@@ -993,8 +993,9 @@ namespace Nethermind.Db.LogIndex
             buffer ??= [];
             if (buffer.Length < capacity)
             {
+                int[] larger = SafeArrayPool<int>.Shared.Rent(capacity);
                 ReturnDbValueBuffer(buffer);
-                buffer = SafeArrayPool<int>.Shared.Rent(capacity);
+                buffer = larger;
             }
 
             Span<int> blocks = buffer.AsSpan(0, length);
