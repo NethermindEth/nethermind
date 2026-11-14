@@ -13,7 +13,6 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Specs;

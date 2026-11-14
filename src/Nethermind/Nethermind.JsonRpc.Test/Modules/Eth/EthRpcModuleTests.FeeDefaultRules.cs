@@ -290,6 +290,32 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Fill_chain_id_precedes_creation_validation_and_estimation(
+        [Values("0x", "0xfe")] string input, [Values] bool wrongChain)
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+        ulong chainId = ctx.Test.Bridge.GetChainId();
+        JsonObject request = new()
+        {
+            ["from"] = HeldAccount,
+            ["nonce"] = "0x0",
+            ["gasPrice"] = "0x3b9aca00",
+            ["input"] = input,
+            ["chainId"] = wrongChain ? "0xffff" : $"0x{chainId:x}"
+        };
+        string response = await ctx.Test.TestEthRpc("eth_fillTransaction", JsonSerializer.Deserialize<object>(request.ToJsonString()));
+        string expected = wrongChain ? RpcTransactionErrors.InvalidChainId(chainId, 0xffff)
+            : input == "0x" ? RpcTransactionErrors.ContractCreationWithoutData : "invalid opcode: INVALID";
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo(expected), response);
+            Assert.That(json["result"], Is.Null, response);
+            if (wrongChain) Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+        }
+    }
+
+    [Test]
     public async Task Fill_calldata_conflicts_precede_fees_and_chain_id(
         [Values("0x2a", "0x01", null)] string? data, [Values] bool invalidFee)
     {

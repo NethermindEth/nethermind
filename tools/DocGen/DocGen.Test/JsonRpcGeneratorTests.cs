@@ -48,6 +48,7 @@ public class JsonRpcGeneratorTests
     [TestCase("eth", "eth_signTransaction", "Conflicting non-null")]
     [TestCase("eth", "eth_fillTransaction", "Conflicting non-null")]
     [TestCase("eth", "eth_call", "A non-null `input` takes precedence over `data`.")]
+    [TestCase("eth", "eth_simulateV1", "A non-null `input` takes precedence over `data`.")]
     [TestCase("eth", "eth_estimateGas", "A non-null `input` takes precedence over `data`.")]
     [TestCase("eth", "eth_createAccessList", "A non-null `input` takes precedence over `data`.")]
     [TestCase("debug", "debug_traceCall", "A non-null `input` takes precedence over `data`.")]

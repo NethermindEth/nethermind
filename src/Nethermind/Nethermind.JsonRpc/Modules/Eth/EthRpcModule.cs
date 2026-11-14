@@ -391,6 +391,9 @@ public partial class EthRpcModule(
     /// </remarks>
     protected async Task<ResultWrapper<Hash256>?> CheckAndFillSendTransaction(SignableTransactionForRpc rpcTx)
     {
+        if (rpcTx is LegacyTransactionForRpc { HasConflictingCalldata: true })
+            return ResultWrapper<Hash256>.Fail(RpcTransactionErrors.DataAndInputDiffer, ErrorCodes.InvalidInput);
+
         if (rpcTx is BlobTransactionForRpc { Blobs: not null } || _blockFinder.Head?.Header is not { } head)
             return null;
 
@@ -407,9 +410,6 @@ public partial class EthRpcModule(
     /// <returns>The result, and whether the request keeps the signature it brought.</returns>
     private async Task<(ResultWrapper<Hash256> Result, bool SignatureKept)> SignAndSendTransaction(SignableTransactionForRpc rpcTx)
     {
-        if (rpcTx.GetSubmissionDataError() == RpcTransactionErrors.DataAndInputDiffer)
-            return ResultWrapper<Hash256>.Fail(RpcTransactionErrors.DataAndInputDiffer, ErrorCodes.InvalidInput);
-
         if (await CheckAndFillSendTransaction(rpcTx) is { } sendError)
             return (sendError, false);
 
@@ -488,7 +488,7 @@ public partial class EthRpcModule(
         if (!_rpcConfig.EnableEthSignTransaction)
             return ResultWrapper<SignTransactionResult>.Fail("eth_signTransaction is disabled", ErrorCodes.MethodNotFound);
 
-        if (rpcTx.GetSubmissionDataError() == RpcTransactionErrors.DataAndInputDiffer)
+        if (rpcTx is LegacyTransactionForRpc { HasConflictingCalldata: true })
             return ResultWrapper<SignTransactionResult>.Fail(RpcTransactionErrors.DataAndInputDiffer, ErrorCodes.InvalidInput);
 
         // With the signing fields present, fees are checked before the rest of the request; a request carrying
@@ -588,7 +588,7 @@ public partial class EthRpcModule(
         if (head is null)
             return ResultWrapper<FillTransactionResult>.Fail("No head block available", ErrorCodes.ResourceUnavailable);
 
-        if (rpcTx.GetSubmissionDataError() == RpcTransactionErrors.DataAndInputDiffer)
+        if (rpcTx is LegacyTransactionForRpc { HasConflictingCalldata: true })
             return ResultWrapper<FillTransactionResult>.Fail(RpcTransactionErrors.DataAndInputDiffer, ErrorCodes.InvalidInput);
 
         IReleaseSpec spec = _specProvider.GetSpec(head);
@@ -603,13 +603,13 @@ public partial class EthRpcModule(
         if (rpcTx is not BlobTransactionForRpc { Blobs: not null } && FeeDefaultRules.Error(rpcTx, spec.IsEip1559Enabled) is { } feeError)
             return ResultWrapper<FillTransactionResult>.Fail(feeError, ErrorCodes.InvalidInput);
 
+        if (legacyTx.ChainId is { } requestedChainId && requestedChainId != chainId)
+            return ResultWrapper<FillTransactionResult>.Fail(RpcTransactionErrors.InvalidChainId(chainId, requestedChainId), ErrorCodes.InvalidInput);
+
         legacyTx.Nonce ??= _txPool.GetLatestPendingNonce(from);
 
         if (await FillFeesAndGas(rpcTx, head, spec) is { } fillError)
             return ResultWrapper<FillTransactionResult>.Fail(fillError.Error, fillError.ErrorCode);
-
-        if (legacyTx.ChainId is { } requestedChainId && requestedChainId != chainId)
-            return ResultWrapper<FillTransactionResult>.Fail(RpcTransactionErrors.InvalidChainId(chainId, requestedChainId), ErrorCodes.InvalidInput);
 
         legacyTx.ChainId ??= chainId;
 

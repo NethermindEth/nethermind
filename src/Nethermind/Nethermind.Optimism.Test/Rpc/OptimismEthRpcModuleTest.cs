@@ -218,6 +218,27 @@ public class OptimismEthRpcModuleTest
         }
     }
 
+    [TestCase(",\"input\":\"0x1234\",\"data\":\"0xabcd\"", true)]
+    [TestCase(",\"input\":\"0x1234\",\"data\":\"0x1234\"", false)]
+    [TestCase(",\"input\":\"0x1234\"", false)]
+    [TestCase(",\"data\":\"0x1234\"", false)]
+    [TestCase("", false)]
+    public async Task Send_transaction_checks_input_and_data_before_zero_gas_price(string aliases, bool differ)
+    {
+        using TestRpcBlockchain rpcBlockchain = await BuildSendRpc(sequencer: null);
+
+        string serialized = await SendFromC(rpcBlockchain, ",\"gas\":\"0x186a0\",\"nonce\":\"0x0\",\"gasPrice\":\"0x0\"" + aliases);
+
+        JToken response = JToken.Parse(serialized);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response["error"]?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput), serialized);
+            Assert.That(response["error"]?["message"]?.Value<string>(), Is.EqualTo(differ
+                ? RpcTransactionErrors.DataAndInputDiffer
+                : "gasPrice must be non-zero after london fork"), serialized);
+        }
+    }
+
     [TestCase("0x7e5f4552091a69125d5dfcb7b8c2659029395bdf", "maxFeePerGas (0xa) < maxPriorityFeePerGas (0x3b9aca00)", TestName = "Send_transaction_from_a_held_account_reports_the_fee_rule_it_breaks")]
     [TestCase("0x000000000000000000000000000000000000dead", "unknown account", TestName = "Send_transaction_from_an_account_the_node_does_not_hold_reports_an_unknown_account")]
     public async Task Send_transaction_checks_fees_and_account_like_the_base_module(string from, string expected)
