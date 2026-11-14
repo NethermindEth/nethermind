@@ -38,7 +38,7 @@ internal static class SoftLimitTestHelper
         for (int i = 0; i < requestedCount; i++)
         {
             // A block that does not fit under the hard cap is not served at all.
-            if (sizeEstimate + receiptBlockSize > SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit)
+            if (SyncPeerProtocolHandlerBase.GetMaxReceiptsResponseSize(sizeEstimate + receiptBlockSize) > SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit)
             {
                 return i;
             }

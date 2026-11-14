@@ -18,6 +18,7 @@ using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Stats.SyncLimits;
@@ -30,6 +31,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
     public abstract class SyncPeerProtocolHandlerBase : ZeroProtocolHandlerBase, ISyncPeer
     {
         protected const int MaxReceiptsLookups = 2 * NethermindSyncLimits.MaxReceiptFetch;
+        private static readonly int MaxRequestIdLength = Rlp.LengthOf(ulong.MaxValue);
 
         internal static ulong SoftOutgoingMessageSizeLimit = 2UL.MiB;
         internal static ulong HardOutgoingReceiptsMessageSizeLimit = 10UL.MiB;
@@ -435,7 +437,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 ulong blockSize = EstimateReceiptsSize(blockTxReceipts);
 
                 // Cap the message size; return the prefix (receipts match request hashes positionally).
-                if (sizeEstimate + blockSize > HardOutgoingReceiptsMessageSizeLimit)
+                if (GetMaxReceiptsResponseSize(sizeEstimate + blockSize) > HardOutgoingReceiptsMessageSizeLimit)
                 {
                     // An empty prefix means the block alone does not fit, so this peer can never get it from us.
                     if (txReceipts.Count == 0 && Logger.IsDebug) Logger.Debug($"Cannot serve receipts of {blockHash} to {Node?.ToString("c"):hide}: estimated {blockSize} bytes exceeds the {HardOutgoingReceiptsMessageSizeLimit} bytes limit.");
@@ -456,6 +458,11 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         }
 
         protected virtual ulong EstimateReceiptsSize(TxReceipt[] receipts) => MessageSizeEstimator.EstimateSize(receipts);
+
+        internal static ulong GetMaxReceiptsResponseSize(ulong receiptsContentSize) =>
+            receiptsContentSize > int.MaxValue / 2
+                ? ulong.MaxValue
+                : (ulong)Rlp.LengthOfSequence(MaxRequestIdLength + Rlp.LengthOfSequence((int)receiptsContentSize));
 
         private static IOwnedReadOnlyList<BlockHeader> TruncateHeadersAtFirstMissing(IOwnedReadOnlyList<BlockHeader> headers)
         {
