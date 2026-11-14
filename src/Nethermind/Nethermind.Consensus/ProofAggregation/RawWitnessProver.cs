@@ -77,9 +77,13 @@ public sealed class RawWitnessProver : IDisposable
         foreach (RawWitnessPool.Entry entry in group)
         {
             MempoolWrapper wrapper = entry.Decoded;
+            // Only the held transactions are proved, so only their dependencies.
+            HashSet<FrameDependency> heldDeps = [];
+            foreach (Transaction transaction in entry.Held) heldDeps.UnionWith(Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue));
             for (int i = 0; i < wrapper.Deps.Count; i++)
             {
                 FrameDependency dependency = wrapper.Deps[i];
+                if (!heldDeps.Contains(dependency)) continue;
                 deps.Add(dependency);
                 if (wrapper.RawWitnesses![i] is { } raw)
                 {
@@ -89,7 +93,7 @@ public sealed class RawWitnessProver : IDisposable
                 }
                 else ordinary.TryAdd(dependency, wrapper.Proofs![i]);
             }
-            foreach (Transaction transaction in wrapper.Transactions) transactions.TryAdd(transaction.Hash!.ValueHash256, transaction);
+            foreach (Transaction transaction in entry.Held) transactions.TryAdd(transaction.Hash!.ValueHash256, transaction);
         }
         deps = Eip8288Dependencies.Canonicalize(deps);
         leafDeps = Eip8288Dependencies.Canonicalize(leafDeps);
@@ -102,7 +106,7 @@ public sealed class RawWitnessProver : IDisposable
         foreach (FrameDependency dependency in ordinaryDeps) witnesses.Add(ordinary[dependency]);
 
         // Proving work is charged to the candidates' origin before it starts.
-        if (!_pool.TryTakeProving(group[0].Identity, claims.Count))
+        if (!_pool.TryTakeProving(group[0], claims.Count))
         {
             foreach (RawWitnessPool.Entry entry in group) entry.Attempted = false;
             return null;
@@ -175,7 +179,7 @@ public sealed class RawWitnessProver : IDisposable
         long bytes = 0;
         foreach (RawWitnessPool.Entry entry in _pool.Snapshot())
         {
-            if (entry.Attempted || entry.Verifier != verifier || group.Count == 0 && !_pool.CanProve(entry.Identity)) continue;
+            if (entry.Attempted || entry.Verifier != verifier || group.Count == 0 && !_pool.CanProve(entry, _maxClaims)) continue;
             HashSet<FrameDependency> entryRaw = [];
             ValueHash256? entryKey = null;
             bool sameProgram = true;

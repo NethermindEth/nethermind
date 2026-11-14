@@ -633,7 +633,7 @@ public class RawWitnessTests
         {
             Assert.That(result.Result.Error, Is.EqualTo(MempoolWrapperValidator.TooManyStarkDeps));
             Assert.That(node.Recognized.Verifications, Is.Zero);
-            Assert.That(node.Raw.TryTakeVerifications(peer, (int)RawWitnessPool.MaxVerificationsPerSourcePerSecond), Is.True, "nothing was charged");
+            Assert.That(node.Raw.TryTakeVerifications(peer, local: false, (int)RawWitnessPool.MaxVerificationsPerSourcePerSecond), Is.True, "nothing was charged");
         }
     }
 
@@ -653,7 +653,7 @@ public class RawWitnessTests
         {
             Assert.That(result.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted), result.Result.Error);
             Assert.That(node.Raw.Holds(sharing[^1].Hash!.ValueHash256), Is.True);
-            Assert.That(node.Raw.TryTakeVerifications(peer, 1), Is.False, "one witness and 64 simulations put the source in debt");
+            Assert.That(node.Raw.TryTakeVerifications(peer, local: false, 1), Is.False, "one witness and 64 simulations put the source in debt");
         }
     }
 
@@ -664,13 +664,28 @@ public class RawWitnessTests
         Node node = CreateNode();
         int perPeer = (int)RawWitnessPool.MaxVerificationsPerSourcePerSecond;
         for (int i = 0; i < RawWitnessPool.MaxVerificationsPerSecond / perPeer; i++)
-            Assert.That(node.Raw.TryTakeVerifications(new object(), perPeer), Is.True);
+            Assert.That(node.Raw.TryTakeVerifications(new object(), local: false, perPeer), Is.True);
         object peer = new();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(node.Raw.TryTakeVerifications(peer, 1), Is.False, "the peers' shared budget is spent");
-            Assert.That(node.Raw.TryTakeVerifications(null, (int)RawWitnessPool.MaxVerificationsPerSourcePerSecond), Is.True);
+            Assert.That(node.Raw.TryTakeVerifications(peer, local: false, 1), Is.False, "the peers' shared budget is spent");
+            Assert.That(node.Raw.TryTakeVerifications(null, local: true, (int)RawWitnessPool.MaxVerificationsPerSourcePerSecond), Is.True);
+        }
+    }
+
+    // A peer without an identity is charged to a bucket of its own, never as a local submission.
+    [Test]
+    public void Peer_without_identity_is_never_charged_as_local()
+    {
+        Node node = CreateNode();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.Raw.TryTakeVerifications(null, local: false, RawWitnessPool.MaxCharge), Is.True);
+            Assert.That(node.Raw.TryTakeVerifications(null, local: false, 1), Is.False, "the identity-less peers' bucket is in debt");
+            Assert.That(node.Raw.TryTakeVerifications(null, local: true, (int)RawWitnessPool.MaxVerificationsPerSourcePerSecond), Is.True,
+                "the local allowance is untouched");
         }
     }
 
@@ -727,7 +742,36 @@ public class RawWitnessTests
         {
             Assert.That(result.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.PoolRejected));
             Assert.That(node.Raw.Holds(transactions[^1].Hash!.ValueHash256), Is.True);
+            Assert.That(node.Raw.Holds(transactions[0].Hash!.ValueHash256), Is.False, "a rejected transaction is not held");
             Assert.That(node.Relayed, relayed ? Has.Count.EqualTo(1) : Is.Empty);
+        }
+
+        // Revalidation judges only the held transactions, so the stale one does not take the accepted one down with it.
+        node.Pool.TxPoolHeadChanged += Raise.Event<EventHandler<Block>>(node.Pool, Build.A.Block.TestObject);
+        for (int i = 0; i < 20; i++) await Task.Delay(10);
+        Assert.That(node.Raw.Holds(transactions[^1].Hash!.ValueHash256), Is.True);
+    }
+
+    // The prover proves the held transactions only, and only their dependencies.
+    [Test]
+    public async Task Prover_proves_only_held_transactions()
+    {
+        Node node = CreateNode();
+        SetNonce(node, 1);
+        RawSignature stale = Signature(1), fresh = Signature(2);
+        FrameDependency staleDep = RawDependency(stale), freshDep = RawDependency(fresh);
+        Transaction staleTx = Transaction(0, staleDep), freshTx = Transaction(1, freshDep);
+        await node.Service.AcceptOwnedDetailedAsync(Encode(RawWrapper(new() { [staleDep] = stale, [freshDep] = fresh }, staleTx, freshTx)));
+        using RawWitnessProver prover = new(node.Service, node.Raw, node.Recognized, new ProductionProofCache(node.Verifier),
+            new TxPoolConfig { RawWitnessMaxClaimsPerLeaf = 2 }, LimboLogs.Instance);
+
+        ProofWrapperAcceptance? result = await prover.ProveOnceAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result?.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted), result?.Result.Error);
+            Assert.That(node.Verifier.LastInput!.BatchLeaves.Single().Dependencies, Is.EqualTo(new[] { freshDep }));
+            Assert.That(node.Pool.GetPendingTransactions().Select(static t => t.Hash), Is.EqualTo(new[] { freshTx.Hash }));
         }
     }
 
@@ -741,10 +785,10 @@ public class RawWitnessTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(node.Raw.TryTakeVerifications(a, 1_000), Is.True, "a full allowance takes the clamped charge");
-            Assert.That(node.Raw.TryTakeVerifications(b, rest + 1), Is.False, "the shared budget lost only the clamped charge, without debt");
-            Assert.That(node.Raw.TryTakeVerifications(b, Math.Min(rest, (int)RawWitnessPool.MaxVerificationsPerSourcePerSecond)), Is.True);
-            Assert.That(node.Raw.TryTakeVerifications(a, 1), Is.False, "a's own allowance is in debt");
+            Assert.That(node.Raw.TryTakeVerifications(a, local: false, 1_000), Is.True, "a full allowance takes the clamped charge");
+            Assert.That(node.Raw.TryTakeVerifications(b, local: false, rest + 1), Is.False, "the shared budget lost only the clamped charge, without debt");
+            Assert.That(node.Raw.TryTakeVerifications(b, local: false, Math.Min(rest, (int)RawWitnessPool.MaxVerificationsPerSourcePerSecond)), Is.True);
+            Assert.That(node.Raw.TryTakeVerifications(a, local: false, 1), Is.False, "a's own allowance is in debt");
         }
     }
 

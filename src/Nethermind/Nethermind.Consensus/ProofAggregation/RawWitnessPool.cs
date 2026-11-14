@@ -62,12 +62,16 @@ public sealed class RawWitnessPool : IDisposable
     /// <param name="source">What admitted it: the peer connection, or null for a local submission.</param>
     /// <param name="identity">The stable identity its budgets are charged to, such as the peer's node ID.</param>
     /// <param name="local">Whether it was submitted locally, which its proven coverage keeps.</param>
+    /// <param name="held">The wrapper's transactions accepted into holding.</param>
     public sealed class Entry(byte[] wrapper, ValueHash256 hash, MempoolWrapper decoded, Eip8288Verifier verifier, object? source, object identity,
-        bool local, long added)
+        bool local, long added, IReadOnlyList<Transaction> held)
     {
         public byte[] Wrapper { get; } = wrapper;
         public ValueHash256 Hash { get; } = hash;
         public MempoolWrapper Decoded { get; } = decoded;
+
+        /// <summary>The transactions accepted into holding; the wrapper's others were rejected or already pending.</summary>
+        public IReadOnlyList<Transaction> Held { get; } = held;
 
         /// <summary>The verifier the wrapper was validated under.</summary>
         public Eip8288Verifier Verifier { get; } = verifier;
@@ -166,30 +170,37 @@ public sealed class RawWitnessPool : IDisposable
     /// <summary>Takes <paramref name="count"/> verifications from the global budget and that of <paramref name="identity"/>, a
     /// stable source identity (a peer's node ID) or null for local submissions, so a reconnecting peer keeps its spent budget.</summary>
     /// <returns>False when either is spent, which permits refusal without penalty.</returns>
-    public bool TryTakeVerifications(object? identity, int count)
+    /// <param name="local">Whether this is a local submission; a peer is never charged as local, whatever its identity.</param>
+    public bool TryTakeVerifications(object? identity, bool local, int count)
     {
-        lock (_gate) return TryTake(identity, count, MaxCharge, _verifications, static a => a.Verifications);
+        lock (_gate) return TryTake(Owner(identity, local), count, MaxCharge, _verifications, static a => a.Verifications);
     }
 
-    /// <summary>Whether <paramref name="identity"/>, a held entry's, may have a raw signature proved now.</summary>
-    public bool CanProve(object identity)
+    /// <summary>Whether a held entry's origin may have <paramref name="claims"/> raw signatures proved now.</summary>
+    public bool CanProve(Entry entry, int claims)
     {
         lock (_gate)
-            return SourceAllowance(identity).Proving.Has(1) && (identity == LocalSource || _proving.Has(1));
+        {
+            int own = Math.Min(claims, (int)MaxProvedClaimsPerSourcePerMinute);
+            return SourceAllowance(entry.Identity).Proving.Has(own)
+                && (entry.Local || _proving.Has(Math.Min(claims, (int)MaxProvedClaimsPerMinute)));
+        }
     }
 
-    /// <summary>Takes <paramref name="claims"/> proved signatures from the proving budgets of <paramref name="identity"/>, a held
-    /// entry's, as <see cref="TryTakeVerifications"/> does.</summary>
-    public bool TryTakeProving(object identity, int claims)
+    /// <summary>Takes <paramref name="claims"/> proved signatures from the proving budgets of a held entry's origin, as
+    /// <see cref="TryTakeVerifications"/> does.</summary>
+    public bool TryTakeProving(Entry entry, int claims)
     {
-        lock (_gate) return TryTake(identity, claims, (int)MaxProvedClaimsPerMinute, _proving, static a => a.Proving);
+        lock (_gate) return TryTake(entry.Identity, claims, (int)MaxProvedClaimsPerMinute, _proving, static a => a.Proving);
     }
+
+    /// <summary>The budget owner: local submissions share one, and a peer without an identity a bucket of its own.</summary>
+    private static object Owner(object? identity, bool local) => local ? LocalSource : identity ?? UnknownPeer;
 
     /// <summary>Charges a source in full, with debt, and peers' shared allowance at most <paramref name="sharedCap"/> without debt;
     /// local submissions are charged their own allowance only.</summary>
-    private bool TryTake(object? identity, int count, int sharedCap, Allowance shared, Func<SourceAllowances, Allowance> select)
+    private bool TryTake(object owner, int count, int sharedCap, Allowance shared, Func<SourceAllowances, Allowance> select)
     {
-        object owner = identity ?? LocalSource;
         Allowance perSource = select(SourceAllowance(owner));
         if (owner == LocalSource) return perSource.TryTake(count, allowDebt: true);
         int sharedCount = Math.Min(count, sharedCap);
@@ -279,10 +290,12 @@ public sealed class RawWitnessPool : IDisposable
     /// <see cref="MaxLocalWrappers"/> and <see cref="MaxLocalBytes"/>, beyond which their own oldest give way. Peers share the rest:
     /// beyond its own budget a peer is refused, and when the partition is full the peer holding the most wrappers, then bytes, if
     /// another, gives way, oldest first, so one peer cannot keep the others out.</remarks>
+    /// <param name="held">The transactions accepted into holding; all of the wrapper's when null.</param>
     public Admission TryAdd(byte[] wrapper, in ValueHash256 hash, MempoolWrapper decoded, Eip8288Verifier verifier, object? source,
-        object? identity = null, bool local = false)
+        object? identity = null, bool local = false, IReadOnlyList<Transaction>? held = null)
     {
-        object owner = local ? LocalSource : identity ?? source ?? UnknownPeer;
+        object owner = Owner(identity ?? source, local);
+        held ??= decoded.Transactions;
         lock (_gate)
         {
             if (_entries.ContainsKey(hash)) return Admission.Known;
@@ -290,13 +303,13 @@ public sealed class RawWitnessPool : IDisposable
             _sourceBytes.TryGetValue(owner, out long sourceBytes);
             if (local ? !MakeLocalRoom(wrapper.Length) : sourceBytes + wrapper.Length > MaxBytesPerSource || !MakeRoom(owner, wrapper.Length))
                 return Admission.Full;
-            Entry entry = new(wrapper, hash, decoded, verifier, source, owner, local, _clock.GetTimestamp());
+            Entry entry = new(wrapper, hash, decoded, verifier, source, owner, local, _clock.GetTimestamp(), held);
             _entries.Add(hash, entry);
             if (local) _localCount++;
             _order.AddLast(hash);
             _bytes += wrapper.Length;
             _sourceBytes[owner] = _sourceBytes.GetValueOrDefault(owner) + wrapper.Length;
-            foreach (Transaction transaction in decoded.Transactions)
+            foreach (Transaction transaction in held)
             {
                 ValueHash256 transactionHash = transaction.Hash!.ValueHash256;
                 if (!_byTransaction.TryGetValue(transactionHash, out List<ValueHash256>? holders)) _byTransaction[transactionHash] = holders = [];
@@ -391,7 +404,7 @@ public sealed class RawWitnessPool : IDisposable
         lock (_gate) PruneExpired();
         return Retain(entry =>
         {
-            foreach (Transaction transaction in entry.Decoded.Transactions)
+            foreach (Transaction transaction in entry.Held)
                 if (CheckTransaction(transaction, simulate: false, local: false, out _) is not null) return false;
             return true;
         });
@@ -414,7 +427,7 @@ public sealed class RawWitnessPool : IDisposable
         long sourceBytes = _sourceBytes[owner] - entry.Wrapper.Length;
         if (sourceBytes == 0) _sourceBytes.Remove(owner);
         else _sourceBytes[owner] = sourceBytes;
-        foreach (Transaction transaction in entry.Decoded.Transactions)
+        foreach (Transaction transaction in entry.Held)
         {
             ValueHash256 transactionHash = transaction.Hash!.ValueHash256;
             List<ValueHash256> holders = _byTransaction[transactionHash];
@@ -435,7 +448,7 @@ public sealed class RawWitnessPool : IDisposable
         foreach (Entry entry in listing)
         {
             bool covered = true;
-            foreach (Transaction transaction in entry.Decoded.Transactions)
+            foreach (Transaction transaction in entry.Held)
                 covered &= transaction.Hash == pending || _txPool.TryGetPendingTransaction(transaction.Hash!.ValueHash256, out _);
             if (covered) Remove(entry.Hash);
         }
