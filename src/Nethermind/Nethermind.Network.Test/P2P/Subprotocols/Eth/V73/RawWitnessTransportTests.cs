@@ -120,6 +120,33 @@ public class RawWitnessTransportTests
         Assert.That(sent.Any(a => a.Hash == Describe(second).Hash), Is.EqualTo(announced));
     }
 
+    // A raw candidate's transactions are never pending until proven, so a new peer must not make its held mode-2 wrapper look
+    // stale: it stays offered and is announced to the peer, while a wrapper of transactions neither pending nor held is dropped.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Held_raw_wrapper_survives_and_is_announced_to_a_new_peer(bool held)
+    {
+        using WrapperTestNode node = new(rawWitnesses: true);
+        Transaction transaction = GenericTransaction(1);
+        byte[] wrapper = RawWrapper(64, transaction);
+        Assert.That(node.Transport.PublishWrapper(wrapper), Is.True);
+        if (held)
+        {
+            RlpReader reader = new(wrapper);
+            node.Raw!.TryAdd(wrapper, ValueKeccak.Compute(wrapper), MempoolWrapperDecoder.Instance.Decode(ref reader)!, Eip8288Verifier.Pinned, null, local: true);
+        }
+        FakeWrapperLink link = new();
+
+        node.Connect(link);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.Transport.IsStored(Describe(wrapper).Hash), Is.EqualTo(held));
+            Assert.That(link.Sent<NewProofWrapperHashesMessage>().SelectMany(static m => m.Announcements).Any(a => a.Hash == Describe(wrapper).Hash),
+                Is.EqualTo(held));
+        }
+    }
+
     // EIP-8437: raw candidates have byte and count budgets of their own that preserve capacity for proof-backed traffic.
     [Test]
     public void Raw_wrappers_evict_only_raw_wrappers_from_the_offer_store()

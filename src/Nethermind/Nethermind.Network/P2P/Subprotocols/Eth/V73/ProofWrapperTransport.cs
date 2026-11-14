@@ -131,13 +131,13 @@ public sealed partial class ProofWrapperTransport : IDisposable
                 peer.RestoreFailureScore(departed.Score, departed.At);
             _peers.Add(peer);
             // Peers announce the wrappers they offer on connection, most recent first, within the announcement rate limit.
-            // A wrapper none of whose transactions is still pending is dropped instead of being replayed to every new peer.
+            // A wrapper none of whose transactions is still pending, or held raw, is dropped instead of being replayed to every new peer.
             List<ValueHash256>? stale = null;
             foreach (WrapperStore.Entry entry in _store.Recent())
             {
                 if (peer.ToAnnounce.Count == WrapperTransportLimits.MaxConnectAnnouncements) break;
                 if (entry.Verifier != _verifier) continue;
-                if (_wrappers.IsAnyPending(entry.Hashes)) peer.ToAnnounce.Add(entry.Announcement);
+                if (_wrappers.IsAnyPendingOrHeld(entry.Hashes)) peer.ToAnnounce.Add(entry.Announcement);
                 else (stale ??= []).Add(entry.Announcement.Hash);
             }
             foreach (ValueHash256 wrapperHash in stale ?? []) _store.Remove(wrapperHash);

@@ -95,10 +95,10 @@ internal sealed class WrapperTestNode : IDisposable
             lock (Pending) Pending.Add(call.Arg<Transaction>());
             return AcceptTxResult.Accepted;
         });
-        RawWitnessPool? raw = rawWitnesses
+        Raw = rawWitnesses
             ? new(Pool, Substitute.For<IChainHeadInfoProvider>(), new TxPoolConfig { RecognizedPrograms = ["slhdsa-shake128s-pure-v1"] })
             : null;
-        Wrappers = new ProofWrapperService(Pool, specs, Tree, ProofStore, Verifier, new ForwardingBlobAdmission(this), raw,
+        Wrappers = new ProofWrapperService(Pool, specs, Tree, ProofStore, Verifier, new ForwardingBlobAdmission(this), Raw,
             rawWitnesses ? Substitute.For<IRecognizedProgramVerifier>() : null);
         Transport = new ProofWrapperTransport(Wrappers, LimboLogs.Instance, Time);
     }
@@ -110,6 +110,9 @@ internal sealed class WrapperTestNode : IDisposable
     public List<Transaction> Pending { get; } = [];
     public LeanProofStore ProofStore { get; } = new(FrameTxSigHash.ComputeValue);
     public ProofWrapperService Wrappers { get; }
+
+    /// <summary>The raw candidates, when the node recognizes a program.</summary>
+    public RawWitnessPool? Raw { get; }
     public ProofWrapperTransport Transport { get; }
 
     /// <summary>Where validated wrappers hand their blob-carrying transactions; none refuses them.</summary>

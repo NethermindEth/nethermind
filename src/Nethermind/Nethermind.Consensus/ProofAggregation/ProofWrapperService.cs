@@ -1302,11 +1302,12 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         return true;
     }
 
-    /// <summary>Whether any of <paramref name="transactions"/> is still pending.</summary>
-    internal bool IsAnyPending(ReadOnlySpan<ValueHash256> transactions)
+    /// <summary>Whether any of <paramref name="transactions"/> is still pending, or held as an EIP-8437 raw candidate, which is never
+    /// pending until a proof covers it.</summary>
+    internal bool IsAnyPendingOrHeld(ReadOnlySpan<ValueHash256> transactions)
     {
         foreach (ValueHash256 hash in transactions)
-            if (txPool.TryGetPendingTransaction(hash, out _)) return true;
+            if (txPool.TryGetPendingTransaction(hash, out _) || rawWitnesses?.Holds(hash) == true) return true;
         return false;
     }
 
