@@ -4,7 +4,6 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics.X86;
 using System.Threading;
 using Nethermind.Core.Extensions;
 using Nethermind.MclBindings;
@@ -47,8 +46,7 @@ internal static unsafe partial class BN254
         point = Unsafe.AsRef<mclBnG2>(slot);
         bool matches = new ReadOnlySpan<byte>(entry->Key, G2Size).SequenceEqual(new ReadOnlySpan<byte>(data, G2Size));
 
-        if (!Sse.IsSupported)
-            Interlocked.MemoryBarrier();
+        Interlocked.MemoryBarrier();
 
         if (matches && Volatile.Read(ref entry->Version) == version)
         {
