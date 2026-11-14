@@ -26,6 +26,7 @@ public static class EthereumEcdsaExtensions
     /// and the signature (<see cref="CalculateSenderCacheKey"/>), so an entry is correct for every transaction
     /// that maps to it. That holds for legacy transactions too: the signing hash already reflects the chain id
     /// the signature was checked against, so a legacy transaction recovered on ingress is not recovered again.
+    /// The zkEVM guest has no ingress and keeps legacy transactions uncached.
     /// </remarks>
     private const int SenderCacheCapacity = 1 << 15;
     private static readonly AssociativeCache<ValueHash256, Address> _senderCache = new(SenderCacheCapacity);
@@ -127,15 +128,21 @@ public static class EthereumEcdsaExtensions
     {
         // The result is this transaction's sender, so an encoding of another transaction must not be hashed.
         ValueHash256 hash = SignatureHash(ecdsa, tx, signature, encoded, useSignatureChainId, checkOwnership: true);
-        ValueHash256 key = CalculateSenderCacheKey(in hash, signature);
-        if (_senderCache.TryGet(key, out Address? cached))
+        // The guest recovers every sender once, so it keeps legacy senders out of the cache, as before, and hashes no key for them.
+        bool cacheable = !ZkEvmFlag.IsActive || tx.Type != TxType.Legacy;
+        ValueHash256 key = default;
+        if (cacheable)
         {
-            return cached;
+            key = CalculateSenderCacheKey(in hash, signature);
+            if (_senderCache.TryGet(key, out Address? cached))
+            {
+                return cached;
+            }
         }
 
         Address? recovered = ecdsa.RecoverAddress(signature, in hash);
 
-        if (recovered is not null)
+        if (cacheable && recovered is not null)
         {
             _senderCache.Set(key, recovered);
         }
