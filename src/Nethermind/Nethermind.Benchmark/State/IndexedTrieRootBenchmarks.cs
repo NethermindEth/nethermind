@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.State.Proofs;
+using Nethermind.Trie;
 
 namespace Nethermind.Benchmarks.State;
 
@@ -33,6 +34,7 @@ public class IndexedTrieRootBenchmarks
     [GlobalSetup]
     public void Setup()
     {
+        VerifyRoots();
         Random random = new(Count * 3 + (int)Mix);
         _transactions = new byte[Count][];
         _receipts = new TxReceipt[Count];
@@ -67,6 +69,41 @@ public class IndexedTrieRootBenchmarks
 
     [Benchmark]
     public Hash256 ReceiptRoot() => ReceiptTrie.CalculateRoot(Osaka.Instance, _receipts, Decoder);
+
+    private static readonly int[] VerifiedLengths = [1, 2, 31, 32, 100, 123, 124, 125, 136, 261, 262, 300, 2163, 2164, 2165, 4000];
+
+    private static void VerifyRoots()
+    {
+        Random random = new(7);
+        for (int count = 1; count <= 300; count++)
+        {
+            byte[][] values = new byte[count][];
+            using TrackingCappedArrayPool pool = new();
+            TxTrie trie = new(ReadOnlySpan<Transaction>.Empty, bufferPool: pool, canBeParallel: false);
+            for (int i = 0; i < count; i++)
+            {
+                byte[] value = new byte[VerifiedLengths[random.Next(VerifiedLengths.Length)]];
+                random.NextBytes(value);
+                values[i] = value;
+                trie.Set(Nethermind.Serialization.Rlp.Rlp.Encode(i), value);
+            }
+            trie.UpdateRootHash(canBeParallel: false);
+            if (TxTrie.CalculateRoot(values) != trie.RootHash) throw new InvalidOperationException($"Transaction root mismatch at {count}");
+
+            TxReceipt[] receipts = new TxReceipt[count];
+            for (int i = 0; i < count; i++)
+            {
+                LogEntry[] logs = new LogEntry[random.Next(4) == 0 ? random.Next(10, 30) : random.Next(0, 4)];
+                for (int j = 0; j < logs.Length; j++)
+                    logs[j] = new LogEntry(new Address(RandomBytes(random, Address.Size)), RandomBytes(random, random.Next(0, 3) * 32),
+                        [new Hash256(RandomBytes(random, Hash256.Size))]);
+                receipts[i] = new TxReceipt { TxType = TxType.EIP1559, StatusCode = 1, GasUsedTotal = (ulong)i + 1, Bloom = new Bloom(RandomBytes(random, Bloom.ByteLength)), Logs = logs };
+            }
+            using TrackingCappedArrayPool receiptPool = new();
+            if (ReceiptTrie.CalculateRoot(Osaka.Instance, receipts, Decoder) != new ReceiptTrie(Osaka.Instance, receipts, Decoder, receiptPool, canBeParallel: false).RootHash)
+                throw new InvalidOperationException($"Receipt root mismatch at {count}");
+        }
+    }
 
     private int GetTransactionLength(Random random) => Mix switch
     {
