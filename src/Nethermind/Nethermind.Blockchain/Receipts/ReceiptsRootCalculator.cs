@@ -16,19 +16,10 @@ public class ReceiptsRootCalculator : IReceiptsRootCalculator
     private static IRlpDecoder<TxReceipt> _decoder => field ??= Rlp.GetDecoderOrThrow<TxReceipt>(RlpDecoderKey.Trie);
     private static ReceiptMessageDecoder _skipStateDecoder => field ??= new(skipStateAndStatus: true);
 
-    /// <summary>Computes the receipts root of a block's receipts as a receipts message carries them.</summary>
-    /// <remarks>
-    /// The root is the one <see cref="GetReceiptsRoot"/> computes for the decoded receipts when they are in canonical
-    /// form. A root that differs from the expected one is to be checked again on the decoded receipts, which
-    /// <see cref="GetReceiptsRoot"/> may normalize or compute without their state and status.
-    /// </remarks>
-    /// <param name="blockReceipts">The encoded sequence of the block's receipts.</param>
-    /// <param name="withBloom">Whether the receipts have blooms: the eth/63 to eth/68 form.</param>
-    /// <returns>The root, or <see langword="null"/> when the receipts must be decoded for it.</returns>
-    public Hash256? TryGetReceiptsRoot(ReadOnlySpan<byte> blockReceipts, bool withBloom, IReceiptSpec spec) =>
-        _decoder.GetType() == typeof(ReceiptMessageDecoder) && ReceiptTrie.TryCalculateRoot(spec, blockReceipts, withBloom, out Hash256 root)
-            ? root
-            : null;
+    /// <inheritdoc/>
+    /// <remarks>Reads the receipts with <see cref="NetworkReceipt"/>, which takes the standard receipt forms only.</remarks>
+    public Hash256? GetReceiptsRoot(ReadOnlyMemory<byte> blockReceipts, bool withBloom, IReceiptSpec spec) =>
+        ReceiptTrie.TryCalculateRoot(spec, blockReceipts.Span, withBloom, out Hash256 root) ? root : null;
 
     public Hash256 GetReceiptsRoot(TxReceipt[] receipts, IReceiptSpec spec, Hash256? suggestedRoot)
     {

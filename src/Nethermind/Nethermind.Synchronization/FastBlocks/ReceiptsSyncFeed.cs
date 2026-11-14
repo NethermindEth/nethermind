@@ -55,6 +55,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly ISyncConfig _syncConfig;
         private readonly ISyncReport _syncReport;
         private readonly IReceiptStorage _receiptStorage;
+        private readonly IReceiptsRootCalculator _receiptsRootCalculator;
         private readonly ISyncPointers _syncPointers;
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly IHistoryPruner _historyPruner;
@@ -73,6 +74,7 @@ namespace Nethermind.Synchronization.FastBlocks
             IBlockTree blockTree,
             IBlockStore blockStore,
             IReceiptStorage receiptStorage,
+            IReceiptsRootCalculator receiptsRootCalculator,
             ISyncPointers syncPointers,
             ISyncPeerPool syncPeerPool,
             ISyncConfig syncConfig,
@@ -83,6 +85,7 @@ namespace Nethermind.Synchronization.FastBlocks
             : base(metadataDb, specProvider, logManager?.GetClassLogger<ReceiptsSyncFeed>() ?? default)
         {
             _receiptStorage = receiptStorage;
+            _receiptsRootCalculator = receiptsRootCalculator;
             _syncPointers = syncPointers;
             _syncPeerPool = syncPeerPool;
             _syncConfig = syncConfig;
@@ -257,8 +260,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 {
                     // EIP-7668 roots ignore receipt blooms, so there is nothing to normalize.
                     if (!releaseSpec.IsEip7668Enabled) NormalizeZeroBlooms(receipts);
-                    // TODO: Optimism use op root calculator
-                    preparedReceipts = ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, releaseSpec, header.ReceiptsRoot) != header.ReceiptsRoot
+                    preparedReceipts = _receiptsRootCalculator.GetReceiptsRoot(receipts, releaseSpec, header.ReceiptsRoot) != header.ReceiptsRoot
                         ? null
                         : receipts;
                 }
@@ -292,12 +294,12 @@ namespace Nethermind.Synchronization.FastBlocks
         }
 
         /// <remarks>A root that differs is checked again on the decoded receipts, which the root calculator may normalize.</remarks>
-        private static bool IsReceiptsRoot(NetworkBlockReceipts receipts, int index, IReceiptSpec spec, Hash256? receiptsRoot)
+        private bool IsReceiptsRoot(NetworkBlockReceipts receipts, int index, IReceiptSpec spec, Hash256? receiptsRoot)
         {
-            ReadOnlySpan<byte> encoded = receipts.GetEncoded(index).Span;
+            ReadOnlyMemory<byte> encoded = receipts.GetEncoded(index);
             return receiptsRoot == Keccak.EmptyTreeHash
                 ? encoded.Length == 1
-                : ReceiptsRootCalculator.Instance.TryGetReceiptsRoot(encoded, receipts.WithBloom, spec) is { } root && root == receiptsRoot;
+                : _receiptsRootCalculator.GetReceiptsRoot(encoded, receipts.WithBloom, spec) is { } root && root == receiptsRoot;
         }
 
         /// <summary>

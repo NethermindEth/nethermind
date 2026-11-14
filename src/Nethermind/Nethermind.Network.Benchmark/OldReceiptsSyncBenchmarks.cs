@@ -120,7 +120,7 @@ public class OldReceiptsSyncBenchmarks
         using ReceiptsMessage69 message = ((IMessageSerializer<ReceiptsMessage69>)_serializer).Deserialize(_message);
         NetworkBlockReceipts receipts = (NetworkBlockReceipts)message.EthMessage.TxReceipts;
         ReadOnlyMemory<byte> encoded = receipts.GetEncoded(0);
-        if (ReceiptsRootCalculator.Instance.TryGetReceiptsRoot(encoded.Span, receipts.WithBloom, _spec) != _block.ReceiptsRoot)
+        if (ReceiptsRootCalculator.Instance.GetReceiptsRoot(encoded, receipts.WithBloom, _spec) != _block.ReceiptsRoot)
             throw new InvalidOperationException("The receipts root does not match.");
 
         Transaction[] transactions = BlockBodyDecoder.DecodeEncodedTransactionsOfBlock(_blockStore.GetRlp(_block.Number, _block.Hash!)!);

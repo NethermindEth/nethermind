@@ -140,12 +140,13 @@ public class ReceiptsSyncFeedTests
         _metadataDb?.Dispose();
     }
 
-    private ReceiptsSyncFeed CreateFeed() =>
+    private ReceiptsSyncFeed CreateFeed(IReceiptsRootCalculator? receiptsRootCalculator = null) =>
         new(
             _specProvider,
             _blockTree,
             _blockStore,
             _receiptStorage,
+            receiptsRootCalculator ?? ReceiptsRootCalculator.Instance,
             _syncPointers,
             _syncPeerPool,
             _syncConfig,
@@ -164,6 +165,7 @@ public class ReceiptsSyncFeedTests
                 _blockTree,
                 _blockStore,
                 _receiptStorage,
+                ReceiptsRootCalculator.Instance,
                 _syncPointers,
                 _syncPeerPool,
                 _syncConfig,
@@ -182,6 +184,7 @@ public class ReceiptsSyncFeedTests
             _blockTree,
             _blockStore,
             NullReceiptStorage.Instance,
+            ReceiptsRootCalculator.Instance,
             _syncPointers,
             _syncPeerPool,
             _syncConfig,
@@ -318,6 +321,7 @@ public class ReceiptsSyncFeedTests
             _blockTree,
             _blockStore,
             _receiptStorage,
+            ReceiptsRootCalculator.Instance,
             _syncPointers,
             _syncPeerPool,
             _syncConfig,
@@ -365,6 +369,7 @@ public class ReceiptsSyncFeedTests
             _blockTree,
             _blockStore,
             _receiptStorage,
+            ReceiptsRootCalculator.Instance,
             _syncPointers,
             _syncPeerPool,
             _syncConfig,
@@ -529,6 +534,32 @@ public class ReceiptsSyncFeedTests
         Assert.That(handlingResult, Is.EqualTo(SyncResponseHandlingResult.OK));
         _receiptStorage.ReceivedWithAnyArgs(requested).TryInsertNetworkReceipts(default!, default, default, default);
         _receiptStorage.Received(storeTakesEncoded ? 0 : requested).Insert(Arg.Any<Block>(), Arg.Any<TxReceipt[]>(), true);
+    }
+
+    [Test]
+    public async Task Decodes_receipts_whose_root_the_calculator_does_not_compute_encoded()
+    {
+        LoadScenario(_1024BodiesWithOneTxEach);
+        // A calculator for receipts in another form, as a plugin registers it.
+        IReceiptsRootCalculator calculator = Substitute.For<IReceiptsRootCalculator>();
+        calculator.GetReceiptsRoot(Arg.Any<TxReceipt[]>(), Arg.Any<IReceiptSpec>(), Arg.Any<Hash256?>())
+            .Returns(ci => ReceiptsRootCalculator.Instance.GetReceiptsRoot(ci.ArgAt<TxReceipt[]>(0), ci.ArgAt<IReceiptSpec>(1), ci.ArgAt<Hash256?>(2)));
+        _feed.Dispose();
+        _feed = CreateFeed(calculator);
+        _feed.InitializeFeed();
+
+        using ReceiptsSyncBatch? batch = await _feed.PrepareRequest();
+        FillBatchResponses(batch!);
+        using (IOwnedReadOnlyList<TxReceipt[]?> decoded = batch!.Response!)
+        {
+            batch.Response = Encode(decoded)!;
+        }
+
+        SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch);
+
+        Assert.That(handlingResult, Is.EqualTo(SyncResponseHandlingResult.OK));
+        _receiptStorage.DidNotReceiveWithAnyArgs().TryInsertNetworkReceipts(default!, default, default, default);
+        _receiptStorage.Received(batch.Infos.Length).Insert(Arg.Any<Block>(), Arg.Any<TxReceipt[]>(), true);
     }
 
     [Test]

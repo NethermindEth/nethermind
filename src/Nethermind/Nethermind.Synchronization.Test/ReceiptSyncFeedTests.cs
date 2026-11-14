@@ -81,6 +81,7 @@ public class ReceiptSyncFeedTests
             _syncingToBlockTree,
             _syncingToBlockStore,
             _receiptStorage,
+            ReceiptsRootCalculator.Instance,
             new MemorySyncPointers(),
             _syncPeerPool,
             _syncConfig,
