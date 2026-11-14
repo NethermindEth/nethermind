@@ -27,6 +27,7 @@ public class PacketSplitterWriteBenchmarks
 
     private byte[] _packet = null!;
     private EmbeddedChannel _channel = null!;
+    private FrameMacProcessor _macProcessor = null!;
 
     [GlobalSetup]
     public void Setup()
@@ -48,12 +49,13 @@ public class PacketSplitterWriteBenchmarks
             EgressMac = macTemplate.Copy()
         };
 
-        // Half random, half repeated bytes, so Snappy has some work to do without collapsing the payload.
+        // Half random bytes and half zeros, so Snappy compresses part of the payload.
         _packet = new byte[PacketSize];
         random.NextBytes(_packet.AsSpan(0, PacketSize / 2));
         _packet[0] = 0x10;
 
-        ZeroPacketSplitter splitter = new(new FrameCipher(aes), new FrameMacProcessor(new PublicKey(keyBytes), secrets));
+        _macProcessor = new FrameMacProcessor(new PublicKey(keyBytes), secrets);
+        ZeroPacketSplitter splitter = new(new FrameCipher(aes), _macProcessor);
         if (Snappy) splitter.EnableSnappy(NullLogManager.Instance);
         _channel = new EmbeddedChannel(splitter);
         _channel.Configuration.Allocator = PooledByteBufferAllocator.Default;
@@ -77,5 +79,9 @@ public class PacketSplitterWriteBenchmarks
     }
 
     [GlobalCleanup]
-    public void Cleanup() => _channel.FinishAndReleaseAll();
+    public void Cleanup()
+    {
+        _channel.FinishAndReleaseAll();
+        _macProcessor.Dispose();
+    }
 }
