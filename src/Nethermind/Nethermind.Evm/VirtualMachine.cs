@@ -547,8 +547,6 @@ public partial class VirtualMachine<TGasPolicy>(
                             {
                                 IncorporateChildStateGasRefunds(previousState);
                             }
-
-                            TGasPolicy.RepayStateGasSpill(ref _currentState.Gas);
                         }
                     }
                     else
@@ -855,8 +853,6 @@ public partial class VirtualMachine<TGasPolicy>(
             // but halt semantics require restoring the full initial state reservoir and discarding
             // the child's stateGasUsed (since the child's state changes are being reverted).
             TGasPolicy.RevertRefundToHalt(ref _currentState.Gas, in previousState.Gas);
-            // The parent's up-front create state charge is refunded LIFO: a spilled charge
-            // returns to gas_left (burned by a later halt), not the reservoir (which survives it).
             if (previousState.IsCreateStateGasCharged)
             {
                 CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost());
@@ -1015,8 +1011,6 @@ public partial class VirtualMachine<TGasPolicy>(
         PopAndRestoreParentState();
         if (failedCreate && childCreateStateGasCharged)
         {
-            // State-gas refunds are LIFO: spilled state gas returns to gas_left first, then
-            // the reservoir; refunding straight to the reservoir would survive a later halt.
             CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost());
         }
         else if (childNewAccountCharged)
@@ -1044,10 +1038,8 @@ public partial class VirtualMachine<TGasPolicy>(
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void RefundRevertedTopLevelStateGas()
     {
-        // EIP-8037 top-level REVERT: gas_left is preserved, so the spilled portion of
-        // state_gas_used (originally drawn from gas_left) is still in the user's pocket.
-        // Refund the full state_gas_used — reservoir-portion AND spilled-portion — to the
-        // reservoir. The user is billed only the execution component.
+        // EIP-8037 top-level REVERT: refund the full state_gas_used — reservoir-portion AND
+        // spilled-portion — to the reservoir. The user is billed only the execution component.
         long stateGasFloor = _currentState.InitialStateGasUsed;
         long revertedStateGas = TGasPolicy.GetStateGasUsed(in _currentState.Gas);
         if (revertedStateGas > stateGasFloor)
@@ -1057,12 +1049,12 @@ public partial class VirtualMachine<TGasPolicy>(
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal unsafe void CreditStateGasRefund(ref TGasPolicy gas, long amount, bool trackSpillRefund = true) =>
-        GetExecutionHandlers().CreditStateGasRefund(this, ref gas, amount, trackSpillRefund);
+    internal unsafe void CreditStateGasRefund(ref TGasPolicy gas, long amount) =>
+        GetExecutionHandlers().CreditStateGasRefund(this, ref gas, amount);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     [SkipLocalsInit]
-    internal void CreditStateGasRefund<Eip8037>(ref TGasPolicy gas, long amount, bool trackSpillRefund = true)
+    internal void CreditStateGasRefund<Eip8037>(ref TGasPolicy gas, long amount)
         where Eip8037 : struct, IFlag
     {
         if (!Eip8037.IsActive || amount == 0)
@@ -1077,7 +1069,7 @@ public partial class VirtualMachine<TGasPolicy>(
 
         if (appliedRefund > 0)
         {
-            TGasPolicy.RefundStateGas(ref gas, appliedRefund, stateGasFloor, trackSpillRefund);
+            TGasPolicy.RefundStateGas(ref gas, appliedRefund, stateGasFloor);
         }
 
         long pendingRefund = amount - appliedRefund;
@@ -1085,7 +1077,7 @@ public partial class VirtualMachine<TGasPolicy>(
         {
             // Restored state gas paid by an ancestor frame stays spendable here; the
             // state-gas-used reduction must propagate upward separately.
-            TGasPolicy.AddStateGasRefundToReservoir(ref gas, pendingRefund, trackSpillRefund);
+            TGasPolicy.AddStateGasRefundToReservoir(ref gas, pendingRefund);
             vmState.StateGasRefundAdvanced += pendingRefund;
         }
     }

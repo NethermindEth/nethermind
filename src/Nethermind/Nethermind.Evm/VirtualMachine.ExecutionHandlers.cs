@@ -41,7 +41,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 (false, true) => &RunPrecompileCore<OffFlag, OnFlag>,
                 (false, false) => &RunPrecompileCore<OffFlag, OffFlag>,
             };
-        public readonly delegate*<VirtualMachine<TGasPolicy>, ref TGasPolicy, long, bool, void> CreditStateGasRefund =
+        public readonly delegate*<VirtualMachine<TGasPolicy>, ref TGasPolicy, long, void> CreditStateGasRefund =
             spec.IsEip8037Enabled ? &CreditStateGasRefundCore<OnFlag> : &CreditStateGasRefundCore<OffFlag>;
     }
 
@@ -88,6 +88,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where Eip8360 : struct, IFlag => vm.RunPrecompile<Eip158, Eip8360>(state);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void CreditStateGasRefundCore<Eip8037>(VirtualMachine<TGasPolicy> vm, ref TGasPolicy gas, long amount, bool trackSpillRefund)
-        where Eip8037 : struct, IFlag => vm.CreditStateGasRefund<Eip8037>(ref gas, amount, trackSpillRefund);
+    private static void CreditStateGasRefundCore<Eip8037>(VirtualMachine<TGasPolicy> vm, ref TGasPolicy gas, long amount)
+        where Eip8037 : struct, IFlag => vm.CreditStateGasRefund<Eip8037>(ref gas, amount);
 }
