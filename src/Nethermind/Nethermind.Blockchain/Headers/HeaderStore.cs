@@ -119,6 +119,7 @@ public class HeaderStore : IHeaderStore, IClearableCache
     public BlockHeader? GetIfBloomMatches(Hash256 blockHash, ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found) =>
         GetIfBloomMatches(in blockHash.ValueHash256, blockHash, blockNumber, bloomMatches, out found);
 
+    /// <inheritdoc/>
     public BlockHeader? GetIfBloomMatches(in ValueHash256 blockHash, ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found) =>
         GetIfBloomMatches(in blockHash, null, blockNumber, bloomMatches, out found);
 
