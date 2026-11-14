@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections;
 using System.Collections.Generic;
@@ -6344,11 +6345,8 @@ public class Eth72ProtocolHandlerTests
         public ArrayPoolSpan<byte> Serialize<T>(T message)
             where T : MessageBase => inner.Serialize(message);
 
-        public int GetLength<T>(T message)
-            where T : MessageBase => inner.GetLength(message);
-
-        public void Serialize<T>(T message, Span<byte> destination)
-            where T : MessageBase => inner.Serialize(message, destination);
+        public void Serialize<T, TWriter>(T message, ref TWriter writer)
+            where T : MessageBase where TWriter : IBufferWriter<byte> => inner.Serialize(message, ref writer);
 
         public T Deserialize<T>(ArraySegment<byte> bytes)
             where T : MessageBase => GetOverride<T>() ?? inner.Deserialize<T>(bytes);

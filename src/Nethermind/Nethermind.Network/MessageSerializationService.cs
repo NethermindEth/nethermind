@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -61,10 +62,13 @@ public class MessageSerializationService : IMessageSerializationService
             : serializer.Deserialize(content.Span);
     }
 
-    public int GetLength<T>(T message) where T : MessageBase => GetSerializer<T>().GetLength(message);
-
-    public void Serialize<T>(T message, Span<byte> destination) where T : MessageBase
-        => SerializeExactly(GetSerializer<T>(), destination, message);
+    public void Serialize<T, TWriter>(T message, ref TWriter writer) where T : MessageBase where TWriter : IBufferWriter<byte>
+    {
+        IMessageSerializer<T> serializer = GetSerializer<T>();
+        int length = serializer.GetLength(message);
+        SerializeExactly(serializer, writer.GetSpan(length)[..length], message);
+        writer.Advance(length);
+    }
 
     // A short write would leave stale pooled bytes in the message.
     private static void SerializeExactly<T>(IMessageSerializer<T> serializer, Span<byte> destination, T message) where T : MessageBase

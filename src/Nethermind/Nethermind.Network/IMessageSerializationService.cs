@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Network.Rlpx;
 
@@ -15,12 +16,10 @@ namespace Nethermind.Network
         /// <returns>The serialized message, which the caller disposes to return it to the pool.</returns>
         ArrayPoolSpan<byte> Serialize<T>(T message) where T : MessageBase;
 
-        /// <summary>Returns the length of a message serialized by <see cref="Serialize{T}(T, Span{byte})"/>.</summary>
-        int GetLength<T>(T message) where T : MessageBase;
-
-        /// <summary>Serializes a message into <paramref name="destination"/>, which is exactly its length.</summary>
+        /// <summary>Serializes a message into <paramref name="writer"/>, advancing it by exactly the message's length.</summary>
+        /// <remarks>Requests the span for the whole message with a single <see cref="IBufferWriter{T}.GetSpan"/> call.</remarks>
         /// <exception cref="InvalidOperationException">The serializer wrote other than the length it reported.</exception>
-        void Serialize<T>(T message, Span<byte> destination) where T : MessageBase;
+        void Serialize<T, TWriter>(T message, ref TWriter writer) where T : MessageBase where TWriter : IBufferWriter<byte>;
 
         T Deserialize<T>(ArraySegment<byte> bytes) where T : MessageBase;
 

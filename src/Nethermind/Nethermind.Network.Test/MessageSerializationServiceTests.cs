@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using Autofac;
 using DotNetty.Buffers;
 using Nethermind.Core;
@@ -18,13 +19,29 @@ namespace Nethermind.Network.Test;
 public class MessageSerializationServiceTests
 {
     [Test]
-    public void Serialize_rejects_a_write_of_other_than_the_reported_length([Values(-1, 1)] int lengthError, [Values] bool intoSpan)
+    public void Serialize_rejects_a_write_of_other_than_the_reported_length([Values(-1, 1)] int lengthError, [Values] bool toWriter)
     {
         MessageSerializationService service = new(SerializerInfo.Create(new SpanSerializer { LengthError = lengthError }));
         SpanMessage message = new();
 
-        Action serialize = intoSpan ? () => service.Serialize(message, new byte[service.GetLength(message)]) : () => service.Serialize(message);
+        Action serialize = toWriter ? () => SerializeToWriter(service, message) : () => service.Serialize(message);
         Assert.That(serialize, Throws.InvalidOperationException.With.Message.Contains("wrote"));
+    }
+
+    [Test]
+    public void Serialize_advances_the_writer_by_the_message_length()
+    {
+        MessageSerializationService service = new(SerializerInfo.Create(new SpanSerializer()));
+
+        Assert.That(SerializeToWriter(service, new SpanMessage()).WrittenCount, Is.EqualTo(SpanSerializer.Length));
+    }
+
+    // Its span is longer than the message, so the service must slice it to the message's length.
+    private static ArrayBufferWriter<byte> SerializeToWriter(MessageSerializationService service, SpanMessage message)
+    {
+        ArrayBufferWriter<byte> writer = new();
+        service.Serialize(message, ref writer);
+        return writer;
     }
 
     [Test]
@@ -45,7 +62,7 @@ public class MessageSerializationServiceTests
     {
         MessageSerializationService service = new();
 
-        Action use = serialize ? () => service.GetLength(new SpanMessage()) : () => service.Deserialize<SpanMessage>(Array.Empty<byte>());
+        Action use = serialize ? () => SerializeToWriter(service, new SpanMessage()) : () => service.Deserialize<SpanMessage>(Array.Empty<byte>());
         Assert.That(use, Throws.InvalidOperationException.With.Message.EqualTo($"No serializer registered for {nameof(SpanMessage)}."));
     }
 
@@ -68,7 +85,7 @@ public class MessageSerializationServiceTests
 
     private sealed class SpanSerializer : IMessageSerializer<SpanMessage>
     {
-        private const int Length = 8;
+        public const int Length = 8;
 
         public int LengthError { get; init; }
 

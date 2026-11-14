@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -51,24 +52,44 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
     internal static IByteBuffer Serialize<T>(IMessageSerializationService serializationService, T message, IByteBufferAllocator allocator)
         where T : P2PMessage
     {
-        int packetTypeLength = Rlp.LengthOf(message.AdaptivePacketType);
-        int length = packetTypeLength + serializationService.GetLength(message);
-        IByteBuffer buffer = allocator.Buffer(length);
+        PacketWriter writer = new(allocator, message.AdaptivePacketType);
         try
         {
-            // DotNetty allocators return array-backed buffers, the direct ones included.
-            Span<byte> packet = buffer.Array.AsSpan(buffer.ArrayOffset + buffer.WriterIndex, length);
-            RlpWriter writer = RlpWriter.ContentWriter(packet);
-            writer.Encode(message.AdaptivePacketType);
-            serializationService.Serialize(message, packet[packetTypeLength..]);
-            buffer.SetWriterIndex(buffer.WriterIndex + length);
-            return buffer;
+            serializationService.Serialize(message, ref writer);
+            return writer.Buffer ?? throw new InvalidOperationException($"{nameof(IMessageSerializationService)} did not request a span for the message.");
         }
         catch
         {
-            buffer.SafeRelease();
+            writer.Buffer?.SafeRelease();
             throw;
         }
+    }
+
+    /// <summary>Writes a packet into a single buffer from <paramref name="allocator"/>: its packet type, then its content.</summary>
+    /// <remarks>Allocates the buffer on the one <see cref="GetSpan"/> call for the content, so it holds exactly the packet.</remarks>
+    private struct PacketWriter(IByteBufferAllocator allocator, int packetType) : IBufferWriter<byte>
+    {
+        public IByteBuffer? Buffer { get; private set; }
+
+        public Span<byte> GetSpan(int sizeHint = 0)
+        {
+            if (Buffer is not null)
+                throw new InvalidOperationException($"{nameof(PacketWriter)} takes the content in a single span.");
+
+            int packetTypeLength = Rlp.LengthOf(packetType);
+            int length = packetTypeLength + sizeHint;
+            IByteBuffer buffer = Buffer = allocator.Buffer(length);
+            // DotNetty allocators return array-backed buffers, the direct ones included.
+            Span<byte> packet = buffer.Array.AsSpan(buffer.ArrayOffset + buffer.WriterIndex, length);
+            RlpWriter writer = RlpWriter.ContentWriter(packet);
+            writer.Encode(packetType);
+            buffer.SetWriterIndex(buffer.WriterIndex + packetTypeLength);
+            return packet[packetTypeLength..];
+        }
+
+        public readonly Memory<byte> GetMemory(int sizeHint = 0) => throw new NotSupportedException();
+
+        public readonly void Advance(int count) => Buffer!.SetWriterIndex(Buffer.WriterIndex + count);
     }
 
     private void SendBuffer(IByteBuffer buffer)
