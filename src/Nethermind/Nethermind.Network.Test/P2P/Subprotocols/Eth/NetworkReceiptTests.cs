@@ -3,6 +3,7 @@
 
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Encoding;
@@ -65,12 +66,34 @@ public class NetworkReceiptTests
         Assert.That(ReceiptTrie.TryCalculateRoot(new ReleaseSpec { IsEip658Enabled = true }, Encode(receipts, withBloom, eip658: true), withBloom, out _), Is.False);
     }
 
+    [Test]
+    public void Stored_receipts_match_the_decoded_and_recovered_ones([Values] bool withBloom, [Values] bool eip658, [Values] bool storeTxHashes)
+    {
+        TxReceipt[] receipts = CreateReceipts(eip658);
+        byte[] message = Encode(receipts, withBloom, eip658);
+        Transaction[] transactions = new Transaction[receipts.Length];
+        for (int i = 0; i < receipts.Length; i++)
+        {
+            transactions[i] = new Transaction { Type = receipts[i].TxType, Hash = TestItem.Keccaks[i] };
+            receipts[i].TxHash = TestItem.Keccaks[i];
+        }
+
+        ReceiptArrayStorageDecoder storageDecoder = new(compactEncoding: true, storeTxHashes);
+        RlpBehaviors behaviors = RlpBehaviors.Storage | (eip658 ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None);
+
+        using ArrayPoolSpan<byte> stored = storageDecoder.EncodeNetworkReceipts(message, withBloom, eip658, transactions);
+
+        Assert.That(stored.ToArray(), Is.EqualTo(storageDecoder.Encode(receipts, behaviors)));
+    }
+
     private static TxReceipt[] CreateReceipts(bool eip658)
     {
         LogEntry[] logs =
         [
             Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA, TestItem.KeccakB).WithData([0, 0, 1, 2]).TestObject,
             Build.A.LogEntry.WithAddress(TestItem.AddressB).WithTopics().WithData([]).TestObject,
+            Build.A.LogEntry.WithAddress(TestItem.AddressC).WithTopics(Keccak.Zero, new Hash256("0x0000000000000000000000000000000000000000000000000000000000000001"))
+                .WithData([0, 0, 0]).TestObject,
         ];
         TxReceipt[] receipts =
         [
