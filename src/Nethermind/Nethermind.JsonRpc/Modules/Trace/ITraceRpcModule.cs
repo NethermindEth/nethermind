@@ -17,7 +17,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
     public interface ITraceRpcModule : IRpcModule
     {
         [JsonRpcMethod(Description = "Executes and traces a call without submitting a transaction. A non-null `input` takes precedence over `data`."
-            + " Blob versioned hashes use shared byte-array decoding rather than Geth's fixed-size JSON binding; malformed lengths or overwritten duplicate values can therefore produce different errors.", IsImplemented = true, IsSharable = false)]
+            + " Blob versioned hashes are decoded as byte arrays; invalid lengths are rejected during Blob transaction conversion, not JSON decoding. For duplicate fields, the last value is used.", IsImplemented = true, IsSharable = false)]
         ResultWrapper<ParityTxTraceFromReplay> trace_call(TransactionForRpc call,
             [JsonRpcParameter(Description = "Possible values : [\"VmTrace\", \"StateDiff\", \"Trace\", \"Rewards\", \"All\"]")] string[] traceTypes,
             BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null);

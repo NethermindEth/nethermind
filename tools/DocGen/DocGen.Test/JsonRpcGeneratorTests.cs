@@ -48,7 +48,7 @@ public class JsonRpcGeneratorTests
     [TestCase("eth", "eth_signTransaction", "Conflicting non-null")]
     [TestCase("eth", "eth_fillTransaction", "Conflicting non-null")]
     [TestCase("eth", "eth_call", "A non-null `input` takes precedence over `data`.")]
-    [TestCase("eth", "eth_simulateV1", "A non-null `input` takes precedence over `data`.")]
+    [TestCase("eth", "eth_simulateV1", "block). A non-null `input` takes precedence over `data`.")]
     [TestCase("eth", "eth_estimateGas", "A non-null `input` takes precedence over `data`.")]
     [TestCase("eth", "eth_createAccessList", "A non-null `input` takes precedence over `data`.")]
     [TestCase("debug", "debug_traceCall", "A non-null `input` takes precedence over `data`.")]
@@ -58,7 +58,11 @@ public class JsonRpcGeneratorTests
         string doc = File.ReadAllText(Path.Combine(RpcDirectory, $"{ns}.md"));
         string methodDoc = doc.Split($"### {method}\n", 2, StringSplitOptions.None)[1];
         string description = methodDoc[..methodDoc.IndexOf("<Tabs>", StringComparison.Ordinal)];
-        Assert.That(description, Does.Contain(aliasPolicy).And.Contain("Geth's fixed-size JSON binding"));
+        Assert.That(description, Does.Contain(aliasPolicy)
+            .And.Contain("decoded as byte arrays")
+            .And.Contain("during Blob transaction conversion, not JSON decoding")
+            .And.Contain("For duplicate fields, the last value is used.")
+            .And.Not.Contain("Geth"));
     }
 
     [TestCase("trace", "trace_get", "- `callType`:", "`includeInTrace`")]

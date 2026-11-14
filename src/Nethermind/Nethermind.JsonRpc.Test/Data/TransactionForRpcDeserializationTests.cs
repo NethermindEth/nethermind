@@ -11,7 +11,6 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
-using System;
 using System.Collections;
 using System.Text.Json;
 
