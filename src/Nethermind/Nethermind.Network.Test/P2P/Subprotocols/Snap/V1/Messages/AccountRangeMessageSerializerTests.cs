@@ -125,14 +125,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             }
         }
 
-        [Test]
-        public void Deserialize_RejectsAccountEntryCarryingNoAccount()
+        // A sequence header declaring one content byte and carrying none. AccountDecoder yields no
+        // account without reading past that header, so the entry's declared length is consumed
+        // exactly and its checkpoint still passes.
+        [TestCase("c1")]
+        // A canonical all-zero account decodes, but equals the missing-account sentinel (AccountStruct.IsNull).
+        [TestCase("f8448080a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000000")]
+        public void Deserialize_RejectsAccountEntryCarryingNoAccount(string accountHex)
         {
-            // A sequence header declaring one content byte and carrying none. AccountDecoder yields no
-            // account without reading past that header, so the entry's declared length is consumed
-            // exactly and its checkpoint still passes.
-            byte[] accountCarryingNothing = [0xc1];
-            byte[][] entries = [RlpTestHelper.EncodeSequence(Rlp.Encode(TestItem.KeccakA), accountCarryingNothing)];
+            byte[][] entries = [RlpTestHelper.EncodeSequence(Rlp.Encode(TestItem.KeccakA), Bytes.FromHexString(accountHex))];
             byte[] serialized = RlpTestHelper.EncodeSequence(Rlp.Encode(1), RlpTestHelper.EncodeSequence(entries), RlpTestHelper.OfEmptyList);
 
             AccountRangeMessageSerializer serializer = new();

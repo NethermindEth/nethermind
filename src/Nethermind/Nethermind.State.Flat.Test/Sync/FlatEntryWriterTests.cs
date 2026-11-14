@@ -52,6 +52,18 @@ public class FlatEntryWriterTests
         writeBatch.Received(1).SetAccountRaw(new Hash256(Bytes.FromHexString(expectedPathHex)), Arg.Any<AccountStruct>());
     }
 
+    [Test]
+    public void WriteAccountFlatEntries_LeafCarryingNoAccount_Throws()
+    {
+        TrieNode leaf = TrieNodeFactory.CreateLeaf(Nibbles("cdef"), Bytes.FromHexString("c1"));
+        TreePath empty = TreePath.Empty;
+        leaf.ResolveKey(NullTrieNodeResolver.Instance, ref empty);
+
+        Assert.That(
+            () => FlatEntryWriter.WriteAccountFlatEntries(Substitute.For<IPersistence.IWriteBatch>(), TreePath.FromHexString("1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab"), leaf),
+            Throws.InvalidOperationException);
+    }
+
     #endregion
 
     #region WriteStorageFlatEntries Tests

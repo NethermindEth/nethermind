@@ -286,7 +286,8 @@ public sealed class SnapCheckpoint
             ReadOnlySpan<byte> rlp = ReadBytes(ReadCount(1));
             if (rlp.IsEmpty) return new PathWithAccount(path, default);
 
-            AccountDecoder.Instance.TryDecodeStruct(rlp, out AccountStruct account);
+            if (!AccountDecoder.Instance.TryDecodeStruct(rlp, out AccountStruct account))
+                throw new InvalidDataException("The snap checkpoint holds an account entry without an account.");
             return new PathWithAccount(path, account);
         }
 

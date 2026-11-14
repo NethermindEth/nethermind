@@ -16,6 +16,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.SnapSync;
@@ -340,6 +341,29 @@ public class ProgressTrackerTests
 
         resumed.UpdateAccountRangePartitionProgress(limit, new ValueHash256("0x3000000000000000000000000000000000000000000000000000000000000000"), moreChildrenToRight: true);
         Assert.That(Metrics.SnapRangesProgress, Is.EqualTo(1875));
+    }
+
+    [Test]
+    public void Checkpoint_rejects_an_account_entry_carrying_no_account()
+    {
+        AccountStruct account = new(1);
+        byte[] encoded = new SnapCheckpoint
+        {
+            AnchorNumber = 1,
+            AnchorHash = TestItem.KeccakA,
+            Partitions = [],
+            StoragesToRetrieve = [new PathWithAccount(TestItem.ValueKeccaks[0], account)],
+            StorageRanges = [],
+            AccountsToRefresh = [],
+            CodesToRetrieve = [],
+            UpdatedStorages = [],
+        }.Encode();
+        byte[] accountRlp = AccountDecoder.Instance.Encode(account);
+        int rlpStart = encoded.AsSpan().IndexOf(accountRlp);
+        // The entry's 4-byte length and account RLP become a one-byte placeholder that carries no account.
+        byte[] carryingNoAccount = [.. encoded[..(rlpStart - sizeof(int))], .. Bytes.FromHexString("00000001c1"), .. encoded[(rlpStart + accountRlp.Length)..]];
+
+        Assert.That(() => SnapCheckpoint.Decode(carryingNoAccount), Throws.TypeOf<InvalidDataException>());
     }
 
     // Regression: a restart during the state ranges phase used to start the account ranges over from the beginning.
