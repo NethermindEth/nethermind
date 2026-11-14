@@ -61,11 +61,8 @@ on:
 permissions:
   contents: read
 
-# Every run creates a VM of its own, named from the run id and attempt, so dispatches never share one. The group keeps
-# attempts of one run from overlapping without letting a newer dispatch cancel or replace a pending run.
-concurrency:
-  group: eip8288-calibration-${{ github.run_id }}
-  cancel-in-progress: false
+# No concurrency group: every run creates a VM of its own, named from the run id and attempt, so dispatches never share
+# one, and a group would let a newer dispatch replace a pending one.
 
 jobs:
   resolve:
@@ -202,9 +199,12 @@ jobs:
           shopt -s nullglob
           scratch=$RUNNER_TEMP/$RUN_DIR
           [[ ! -f $scratch/out/host.txt ]] || { echo '```'; cat "$scratch/out/host.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-          # The step summary is capped at 1 MiB; the full reports are in the artifact.
+          # GitHub drops a step summary over 1 MiB entirely, so the reports share a budget; all are in the artifact.
+          budget=900000
           for report in "$scratch"/out/*/report.md; do
-            { echo "## $(basename "$(dirname "$report")")"; head -c 200000 "$report"; echo; } >> "$GITHUB_STEP_SUMMARY"
+            if (( budget <= 0 )); then echo "_Further reports omitted; see the artifact._" >> "$GITHUB_STEP_SUMMARY"; break; fi
+            { echo "## $(basename "$(dirname "$report")")"; head -c "$budget" "$report"; echo; } >> "$GITHUB_STEP_SUMMARY"
+            budget=$(( budget - $(wc -c < "$report") ))
           done
 
       - name: Upload results
@@ -219,12 +219,6 @@ jobs:
             !${{ runner.temp }}/${{ env.RUN_DIR }}/out/**/corpus
           if-no-files-found: warn
           retention-days: 30
-
-      - name: Clean up
-        if: always()
-        run: |
-          docker ps -aq --filter label=lean-calibration=1 | xargs -r docker rm -f
-          rm -rf "${RUNNER_TEMP:?}/${RUN_DIR:?}"
 
   destroy_runner:
     name: Destroy the calibration runner
