@@ -4,8 +4,10 @@
 using System.Buffers.Binary;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -37,23 +39,23 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 GenesisHash = nullBestHash ? Keccak.Zero : null
             };
             StatusMessageSerializer serializer = new();
-            Assert.That(() => serializer.SerializeToArray(statusMessage), Throws.InstanceOf<RlpException>());
+            Assert.That(() => serializer.SerializeToArray(statusMessage), Throws.InstanceOf<RlpReaderException>());
         }
 
         [Test]
         public void Deserialize_throws_on_null_required_hash([Values] bool nullBestHash)
         {
-            Rlp bestHash = nullBestHash ? Rlp.OfEmptyByteArray : Rlp.Encode(Keccak.Zero);
-            Rlp genesisHash = nullBestHash ? Rlp.Encode(Keccak.Zero) : Rlp.OfEmptyByteArray;
-            Rlp payload = Rlp.Encode(
-                Rlp.OfEmptyByteArray,
-                Rlp.OfEmptyByteArray,
-                Rlp.OfEmptyByteArray,
+            byte[] bestHash = nullBestHash ? RlpTestHelper.OfEmptyByteArray : Rlp.Encode(Keccak.Zero);
+            byte[] genesisHash = nullBestHash ? Rlp.Encode(Keccak.Zero) : RlpTestHelper.OfEmptyByteArray;
+            byte[] payload = RlpTestHelper.EncodeSequence(
+                RlpTestHelper.OfEmptyByteArray,
+                RlpTestHelper.OfEmptyByteArray,
+                RlpTestHelper.OfEmptyByteArray,
                 bestHash,
                 genesisHash);
             StatusMessageSerializer serializer = new();
 
-            Assert.That(() => serializer.Deserialize(payload.Bytes), Throws.InstanceOf<RlpException>());
+            Assert.That(() => serializer.Deserialize(payload), Throws.InstanceOf<RlpReaderException>());
         }
 
         [TestCase("e83f018302008080a0044852b2a670ade5407e78fb2863c51de9fcb96542a07186fe3aeda6bb8a116d")]
@@ -62,7 +64,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             StatusMessageSerializer serializer = new();
 
-            Assert.That(() => serializer.Deserialize(Bytes.FromHexString(message)), Throws.InstanceOf<RlpException>());
+            Assert.That(() => serializer.Deserialize(Bytes.FromHexString(message)), Throws.InstanceOf<RlpReaderException>());
         }
 
         [Test]

@@ -9,9 +9,11 @@ using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
+using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Converters;
@@ -45,6 +47,66 @@ public class FrameTransactionForRpcTests
     };
 
     private static readonly EthereumJsonSerializer Serializer = new();
+
+    [Test]
+    public void FromTransaction_InBlock_ReportsGasAsIntrinsicPlusFrameLimits()
+    {
+        Transaction tx = BuildMinimalFrameTx();
+        tx.GasLimit = FrameTxValidation.TotalGasLimit(tx.Frames!);
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, Eip8141Prototype.Instance, out ulong intrinsicGas, out _, out _), Is.True);
+        TransactionForRpcContext context = new(tx.ChainId!.Value, TestItem.KeccakA, 1, 0, 1, 1, Eip8141Prototype.Instance);
+
+        using JsonDocument json = JsonDocument.Parse(Serializer.Serialize(TransactionForRpc.FromTransaction(tx, context)));
+
+        Assert.That(json.RootElement.GetProperty("gas").GetString(), Is.EqualTo($"0x{intrinsicGas + tx.GasLimit:x}"));
+    }
+
+    [Test]
+    public void FromTransaction_Pending_ReportsTheGasOfTheNextBlock()
+    {
+        const ulong SecondsPerSlot = 12;
+        Transaction tx = BuildMinimalFrameTx();
+        tx.GasLimit = FrameTxValidation.TotalGasLimit(tx.Frames!);
+        BlockHeader head = Build.A.BlockHeader.WithNumber(0).WithTimestamp(0).TestObject;
+        CustomSpecProvider specProvider = new(((ForkActivation)0, Prague.Instance), (new ForkActivation(0, SecondsPerSlot), Eip8141Prototype.Instance));
+        TransactionForRpcContext pending = TransactionForRpcContext.ForPending(specProvider, head, SecondsPerSlot);
+        TransactionForRpcContext included = new(tx.ChainId!.Value, TestItem.KeccakA, head.Number + 1, 0, head.Timestamp + SecondsPerSlot, 1, specProvider.GetSpec(head.Number + 1, head.Timestamp + SecondsPerSlot));
+
+        using JsonDocument pendingJson = JsonDocument.Parse(Serializer.Serialize(TransactionForRpc.FromTransaction(tx, pending)));
+        using JsonDocument includedJson = JsonDocument.Parse(Serializer.Serialize(TransactionForRpc.FromTransaction(tx, included)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pending.Spec, Is.SameAs(Eip8141Prototype.Instance));
+            Assert.That(pendingJson.RootElement.GetProperty("gas").GetString(), Is.EqualTo(includedJson.RootElement.GetProperty("gas").GetString()));
+            Assert.That(pendingJson.RootElement.GetProperty("gas").GetString(), Is.Not.EqualTo($"0x{tx.GasLimit:x}"));
+        }
+    }
+
+    [Test]
+    public void FromTransaction_InBlock_WhenFloorBinds_ReportsGasAsMaxGas()
+    {
+        byte[] calldata = new byte[8 * 1024];
+        Array.Fill(calldata, (byte)0xff);
+        Transaction tx = BuildMinimalFrameTx();
+        tx.Frames =
+        [
+            SelfVerify(PrefixFrameGas),
+            new TxFrame(FrameMode.Default, FrameFlags.None, TestItem.AddressB, 21_000, 50_000, UInt256.Zero, calldata),
+        ];
+        tx.GasLimit = FrameTxValidation.TotalGasLimit(tx.Frames);
+        bool priced = FrameTxValidation.TryCalculateGasBudget(tx, Eip8141Prototype.Instance, out ulong intrinsicGas, out _, out ulong maxGas);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(priced, Is.True);
+            Assert.That(maxGas, Is.GreaterThan(intrinsicGas + tx.GasLimit));
+        }
+        TransactionForRpcContext context = new(tx.ChainId!.Value, TestItem.KeccakA, 1, 0, 1, 1, Eip8141Prototype.Instance);
+
+        using JsonDocument json = JsonDocument.Parse(Serializer.Serialize(TransactionForRpc.FromTransaction(tx, context)));
+
+        Assert.That(json.RootElement.GetProperty("gas").GetString(), Is.EqualTo($"0x{maxGas:x}"));
+    }
 
     [Test]
     public void ToCallTransaction_NonFrameCreationWithoutData_UsesCallDefaults(

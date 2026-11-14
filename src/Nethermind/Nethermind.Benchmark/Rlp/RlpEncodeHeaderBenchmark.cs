@@ -43,9 +43,7 @@ namespace Nethermind.Benchmarks.Rlp
             _header = _scenarios[ScenarioIndex];
 
             Console.WriteLine($"Length current: {Current().Length}");
-            Console.WriteLine($"Length improved: {Improved().Length}");
             Console.WriteLine($"Length improved2: {Improved2().Length}");
-            Check(Current(), Improved());
             Check(Current(), Improved2());
         }
 
@@ -61,12 +59,9 @@ namespace Nethermind.Benchmarks.Rlp
         }
 
         [Benchmark]
-        public byte[] Improved2() => _headerDecoder.Encode(_header).Bytes;
-
-        [Benchmark]
-        public byte[] Improved() => throw new NotImplementedException();
+        public byte[] Improved2() => _headerDecoder.Encode(_header);
 
         [Benchmark(Baseline = true)]
-        public byte[] Current() => Serialization.Rlp.Rlp.Encode(_header).Bytes;
+        public byte[] Current() => Serialization.Rlp.Rlp.Encode(_header);
     }
 }

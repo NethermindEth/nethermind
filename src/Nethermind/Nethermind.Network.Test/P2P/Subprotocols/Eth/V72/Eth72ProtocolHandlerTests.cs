@@ -37,6 +37,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V72;
 using Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.Stats;
@@ -426,7 +427,7 @@ public class Eth72ProtocolHandlerTests
         // Peers compare the announced size with the decoded typed transaction envelope, excluding the enclosing
         // PooledTransactions list element's RLP string prefix.
         byte[] servedTxBytes = TxDecoder.Instance
-            .Encode(elidedTx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping).Bytes;
+            .Encode(elidedTx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping);
 
         using (Assert.EnterMultipleScope())
         {
@@ -622,7 +623,7 @@ public class Eth72ProtocolHandlerTests
 
         HandleIncomingStatusMessage();
 
-        Assert.That(() => HandleZeroMessage(message, Eth72MessageCode.NewPooledTransactionHashes), Throws.TypeOf<RlpException>());
+        Assert.That(() => HandleZeroMessage(message, Eth72MessageCode.NewPooledTransactionHashes), Throws.TypeOf<RlpReaderException>());
     }
 
     [Test]
@@ -1321,7 +1322,7 @@ public class Eth72ProtocolHandlerTests
         HandleIncomingStatusMessage();
 
         Assert.That(
-            () => _handler.HandleMessage(new ZeroPacket(packet) { PacketType = Eth66MessageCode.PooledTransactions }),
+            () => _handler.HandleMessage(new NettyBufferPacket(packet) { PacketType = Eth66MessageCode.PooledTransactions }),
             Throws.Nothing);
     }
 
@@ -1479,7 +1480,7 @@ public class Eth72ProtocolHandlerTests
                 new PooledTransactionsMessage65(new ArrayPoolList<Transaction>(1) { tx }));
             using DisposableByteBuffer packet = SerializePooledResponse(response, malformed);
 
-            Assert.That(() => _handler.HandleMessage(new ZeroPacket(packet) { PacketType = Eth66MessageCode.PooledTransactions }), Throws.Nothing);
+            Assert.That(() => _handler.HandleMessage(new NettyBufferPacket(packet) { PacketType = Eth66MessageCode.PooledTransactions }), Throws.Nothing);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(_handler.RequestedPooledTransactionHashes, Is.EqualTo(correlated ? 0 : 1));
@@ -1504,7 +1505,7 @@ public class Eth72ProtocolHandlerTests
         using PooledTransactionsMessage66 response = new(GetLastGetPooledTransactionsRequestId(tx.Hash!),
             new PooledTransactionsMessage65(IOwnedReadOnlyList<Transaction>.Empty));
         using DisposableByteBuffer packet = SerializePooledResponse(response, malformed);
-        Action receive = () => _handler.HandleMessage(new ZeroPacket(packet) { PacketType = Eth66MessageCode.PooledTransactions });
+        Action receive = () => _handler.HandleMessage(new NettyBufferPacket(packet) { PacketType = Eth66MessageCode.PooledTransactions });
         if (malformed)
             Assert.That(receive, Throws.Exception);
         else
@@ -2632,7 +2633,7 @@ public class Eth72ProtocolHandlerTests
         _sparseBlobPoolPeerRegistry.RecordAnnouncement(otherPeer, tx.Hash!, requestedMask);
         using CellsMessage72 response = new(GetLastGetCellsRequestId(tx.Hash!, requestedMask), [tx.Hash!], [[]], BlobCellMask.Empty.ToBytes());
 
-        Assert.That(() => HandleZeroMessage(response, Eth72MessageCode.Cells), Throws.TypeOf<RlpException>());
+        Assert.That(() => HandleZeroMessage(response, Eth72MessageCode.Cells), Throws.TypeOf<RlpReaderException>());
         Assert.That(otherPeer.CellRequests, Has.Count.EqualTo(1));
         Assert.That(otherPeer.CellRequests[0], Is.EqualTo((tx.Hash!, requestedMask)));
     }
@@ -2694,7 +2695,7 @@ public class Eth72ProtocolHandlerTests
         _sparseBlobPoolPeerRegistry.RecordAnnouncement(otherPeer, tx.Hash!, requestedMask);
         using CellsMessage72 response = new(GetLastGetCellsRequestId(tx.Hash!, requestedMask), [tx.Hash!], [], requestedMask.ToBytes());
 
-        Assert.That(() => HandleZeroMessage(response, Eth72MessageCode.Cells), Throws.TypeOf<RlpException>());
+        Assert.That(() => HandleZeroMessage(response, Eth72MessageCode.Cells), Throws.TypeOf<RlpReaderException>());
         Assert.That(otherPeer.CellRequests, Has.Count.EqualTo(1));
         Assert.That(otherPeer.CellRequests[0], Is.EqualTo((tx.Hash!, requestedMask)));
     }
@@ -2723,7 +2724,7 @@ public class Eth72ProtocolHandlerTests
         _sparseBlobPoolPeerRegistry.RecordAnnouncement(otherPeer, tx.Hash!, requestedMask);
         using CellsMessage72 response = new(GetLastGetCellsRequestId(tx.Hash!, requestedMask), [tx.Hash!], [[]], [1, 2]);
 
-        Assert.That(() => HandleZeroMessage(response, Eth72MessageCode.Cells), Throws.TypeOf<RlpException>());
+        Assert.That(() => HandleZeroMessage(response, Eth72MessageCode.Cells), Throws.TypeOf<RlpReaderException>());
         Assert.That(otherPeer.CellRequests, Has.Count.EqualTo(1));
         Assert.That(otherPeer.CellRequests[0], Is.EqualTo((tx.Hash!, requestedMask)));
     }
@@ -2757,7 +2758,7 @@ public class Eth72ProtocolHandlerTests
         packet.WriteByte(0);
         packet.ReadByte();
 
-        Assert.That(() => _handler.HandleMessage(new ZeroPacket(packet) { PacketType = Eth72MessageCode.Cells }), Throws.TypeOf<RlpException>());
+        Assert.That(() => _handler.HandleMessage(new NettyBufferPacket(packet) { PacketType = Eth72MessageCode.Cells }), Throws.TypeOf<RlpReaderException>());
         Assert.That(otherPeer.CellRequests, Has.Count.EqualTo(1));
         Assert.That(otherPeer.CellRequests[0], Is.EqualTo((tx.Hash!, requestedMask)));
     }
@@ -2793,7 +2794,7 @@ public class Eth72ProtocolHandlerTests
         using CellsMessage72 response = new(GetLastGetCellsRequestId(tx.Hash!, requestedMask), [tx.Hash!], [responseCells], requestedMask.ToBytes());
         pendingTransactionAvailable = true;
 
-        Assert.That(() => HandleZeroMessage(response, Eth72MessageCode.Cells), Throws.TypeOf<RlpException>());
+        Assert.That(() => HandleZeroMessage(response, Eth72MessageCode.Cells), Throws.TypeOf<RlpReaderException>());
         _transactionPool.DidNotReceive().MergeBlobCells(Arg.Any<Hash256>(), Arg.Any<BlobCellMask>(), Arg.Any<byte[][]>());
     }
 
@@ -2828,7 +2829,7 @@ public class Eth72ProtocolHandlerTests
         using CellsMessage72 response = new(GetLastGetCellsRequestId(tx.Hash!, requestedMask), [tx.Hash!], [responseCells], requestedMask.ToBytes());
         pendingTransactionAvailable = true;
 
-        Assert.That(() => HandleZeroMessage(response, Eth72MessageCode.Cells), Throws.TypeOf<RlpException>());
+        Assert.That(() => HandleZeroMessage(response, Eth72MessageCode.Cells), Throws.TypeOf<RlpReaderException>());
         _transactionPool.DidNotReceive().MergeBlobCells(Arg.Any<Hash256>(), Arg.Any<BlobCellMask>(), Arg.Any<byte[][]>());
     }
 
@@ -5759,14 +5760,14 @@ public class Eth72ProtocolHandlerTests
 
         using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
         statusPacket.ReadByte();
-        _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
+        _handler.HandleMessage(new NettyBufferPacket(statusPacket) { PacketType = 0 });
     }
 
     private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
     {
         using DisposableByteBuffer packet = _svc.ZeroSerialize(msg).AsDisposable();
         packet.ReadByte();
-        _handler.HandleMessage(new ZeroPacket(packet) { PacketType = (byte)messageCode });
+        _handler.HandleMessage(new NettyBufferPacket(packet) { PacketType = (byte)messageCode });
     }
 
     private long GetLastGetCellsRequestId(Hash256 hash, BlobCellMask cellMask)
@@ -6350,18 +6351,8 @@ public class Eth72ProtocolHandlerTests
         public T Deserialize<T>(ArraySegment<byte> bytes)
             where T : MessageBase => GetOverride<T>() ?? inner.Deserialize<T>(bytes);
 
-        public T Deserialize<T>(IByteBuffer buffer)
-            where T : MessageBase
-        {
-            T? message = GetOverride<T>();
-            if (message is null)
-            {
-                return inner.Deserialize<T>(buffer);
-            }
-
-            buffer.SkipBytes(buffer.ReadableBytes);
-            return message;
-        }
+        public T Deserialize<T>(ZeroPacket packet)
+            where T : MessageBase => GetOverride<T>() ?? inner.Deserialize<T>(packet);
 
         private T? GetOverride<T>() where T : MessageBase =>
             typeof(T) == typeof(PooledTransactionsMessage66) && PooledTransactions is not null

@@ -68,9 +68,9 @@ public class GeneratedBlockAccessList
             _accountChanges.TryGetValue(sourceAccount.Address, out GeneratedAccountChanges? target);
             if (target is null) count++;
 
-            foreach (UInt256 key in sourceAccount.StorageChanges.Keys)
+            foreach (KeyValuePair<UInt256, StorageChange> change in sourceAccount.StorageChanges)
             {
-                if (target is null || !target.HasStorageKey(key)) count++;
+                if (target is null || !target.HasStorageKey(change.Key)) count++;
             }
 
             foreach (UInt256 key in sourceAccount.StorageReads)
@@ -98,6 +98,9 @@ public class GeneratedBlockAccessList
     }
 
     public void Clear() => _accountChanges.ClearAndTrim();
+
+    /// <summary>Makes room for <paramref name="accounts"/> accounts without growing the account map as they merge in.</summary>
+    internal void EnsureCapacity(int accounts) => _accountChanges.EnsureCapacity(accounts);
     public void Reset() => Clear();
 
     /// <summary>

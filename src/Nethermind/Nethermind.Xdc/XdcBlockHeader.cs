@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Types;
@@ -84,7 +85,7 @@ public class XdcBlockHeader(
         internal set
         {
             _extraFieldsV2 = value;
-            ExtraData = value is null ? [] : [XdcConstants.ConsensusVersion, .. _extraConsensusDataDecoder.EncodeAsBytes(value)];
+            ExtraData = value is null ? [] : [XdcConstants.ConsensusVersion, .. _extraConsensusDataDecoder.Encode(value)];
         }
     }
 
@@ -92,12 +93,8 @@ public class XdcBlockHeader(
 
     internal XdcProcessedRewards? ProcessedRewards { get; set; }
 
-    public virtual ValueHash256 CalculateHash(RlpBehaviors behaviors = RlpBehaviors.None)
-    {
-        KeccakRlpWriter writer = new();
-        _headerDecoder.Encode(ref writer, this, behaviors);
-        return writer.GetHash();
-    }
+    public virtual ValueHash256 CalculateHash(RlpBehaviors behaviors = RlpBehaviors.None) =>
+        _headerDecoder.ComputeValueHash(this, behaviors);
 
     /// <inheritdoc />
     public override BlockHeader CreateSimulatedChild(ulong timestamp)

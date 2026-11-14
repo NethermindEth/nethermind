@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.State.Proofs;
@@ -25,13 +27,15 @@ public sealed class WithdrawalTrie : PatriciaTrie<Withdrawal>
     public static Hash256 CalculateRoot(ReadOnlySpan<Withdrawal> withdrawals) =>
         new IndexedTrieRoot.Calculator<Withdrawal, WithdrawalEncoder>(withdrawals, default).Calculate(canBeParallel: false);
 
+    [SkipLocalsInit]
     protected override void Initialize(ReadOnlySpan<Withdrawal> withdrawals)
     {
-        int key = 0;
+        ulong key = 0;
+        Span<byte> keyBuffer = stackalloc byte[Rlp.MaxLengthOfUInt64Rlp];
 
         foreach (Withdrawal withdrawal in withdrawals)
         {
-            Set(Rlp.Encode(key++).Bytes, _codec.EncodeAsBytes(withdrawal));
+            Set(Rlp.Encode(key++, keyBuffer), _codec.Encode(withdrawal));
         }
     }
 
@@ -41,7 +45,7 @@ public sealed class WithdrawalTrie : PatriciaTrie<Withdrawal>
         // Empty signals uncached data; the codec always writes a nonempty RLP, even for null.
         public ReadOnlySpan<byte> GetEncodedValue(Withdrawal item) => default;
         public int GetLength(Withdrawal item) => _codec.GetLength(item, RlpBehaviors.None);
-        public void Encode<TWriter>(ref TWriter writer, Withdrawal item) where TWriter : struct, IRlpWriteBackend, allows ref struct =>
+        public void Encode(ref RlpWriter writer, Withdrawal item) =>
             _codec.Encode(ref writer, item);
     }
 }

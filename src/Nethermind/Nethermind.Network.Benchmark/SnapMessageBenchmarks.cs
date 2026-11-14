@@ -14,6 +14,7 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State.Snap;
@@ -24,7 +25,7 @@ namespace Nethermind.Network.Benchmarks;
 
 /// <summary>
 /// Measures serializing snap messages into a packet the way the packet sender does, and
-/// deserializing them from a DotNetty buffer the way the snap protocol handlers do.
+/// deserializing them from a received packet the way the snap protocol handlers do.
 /// </summary>
 [MemoryDiagnoser]
 public class SnapMessageBenchmarks
@@ -48,8 +49,8 @@ public class SnapMessageBenchmarks
 
     private IContainer _container = null!;
     private Func<int> _serialize = null!;
-    private Func<IByteBuffer, P2PMessage> _deserialize = null!;
-    private IByteBuffer _body = null!;
+    private Func<ZeroPacket, P2PMessage> _deserialize = null!;
+    private NettyBufferPacket _body = null!;
 
     [ParamsAllValues]
     public Message Type { get; set; }
@@ -102,7 +103,7 @@ public class SnapMessageBenchmarks
                 {
                     ArrayPoolList<PathWithStorageSlot> accountSlots = new(128);
                     foreach (Hash256 hash in Hashes(128))
-                        accountSlots.Add(new PathWithStorageSlot(hash.ValueHash256, Rlp.Encode(hash.Bytes[..20]).Bytes));
+                        accountSlots.Add(new PathWithStorageSlot(hash.ValueHash256, Rlp.Encode(hash.Bytes[..20])));
                     slots.Add(accountSlots);
                 }
                 SetUp(service, new Snap1.StorageRangeMessage { RequestId = RequestId, Slots = slots, Proofs = Nodes(8, 532) });
@@ -132,7 +133,7 @@ public class SnapMessageBenchmarks
             case Message.BlockAccessLists:
                 ArrayPoolList<byte[]> blockAccessLists = new(16);
                 for (int i = 0; i < 16; i++)
-                    blockAccessLists.Add(Rlp.Encode(new byte[16 * 1024]).Bytes);
+                    blockAccessLists.Add(Rlp.Encode(new byte[16 * 1024]));
                 SetUp(service, new Snap2.BlockAccessListsMessage(new ByteArrayListAdapter(blockAccessLists)) { RequestId = RequestId });
                 break;
         }
@@ -151,7 +152,6 @@ public class SnapMessageBenchmarks
     [Benchmark]
     public int Deserialize()
     {
-        _body.SetReaderIndex(0);
         using P2PMessage message = _deserialize(_body);
         return message.PacketType;
     }
@@ -169,7 +169,7 @@ public class SnapMessageBenchmarks
 
         IByteBuffer packet = service.ZeroSerialize(message);
         packet.SkipBytes(Rlp.LengthOf(message.AdaptivePacketType));
-        _body = Unpooled.WrappedBuffer(packet.ReadAllBytesAsArray());
+        _body = new NettyBufferPacket(Unpooled.WrappedBuffer(packet.ReadAllBytesAsArray()));
         packet.Release();
     }
 

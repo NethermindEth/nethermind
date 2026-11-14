@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Serialization.FluentRlp;
 using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp;
@@ -9,36 +10,27 @@ namespace Nethermind.Serialization.Rlp;
 [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(WithdrawalDecoder))]
 public sealed class WithdrawalDecoder() : RlpDecoder<Withdrawal>
 {
-    protected override Withdrawal? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override Withdrawal? DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        => rlpBehaviors.IsTrustedInput() ? Decode<OffFlag>(ref reader, rlpBehaviors) : Decode<OnFlag>(ref reader, rlpBehaviors);
+
+    internal static Withdrawal? Decode<TCanonicalChecks>(ref RlpReader reader, RlpBehaviors rlpBehaviors) where TCanonicalChecks : struct, IFlag
     {
-        if (decoderContext.TryConsumeNull(out LiteRlpReader rlp, out int position)) return null;
+        if (reader.TryReadEmptySequence()) return null;
 
-        rlp.ReadSequenceLength(ref position, out int sequenceLength);
-        int checkPosition = position + sequenceLength;
-
-        rlp.DecodeULong(ref position, out ulong index);
-        rlp.DecodeULong(ref position, out ulong validatorIndex);
-        rlp.DecodeAddress(ref position, out Address address);
-        rlp.DecodeULong(ref position, out ulong amountInGwei);
-        decoderContext.Position = position;
-
+        RlpReader fields = reader.EnterSequence<TCanonicalChecks>(out int itemLength);
         Withdrawal withdrawal = new()
         {
-            Index = index,
-            ValidatorIndex = validatorIndex,
-            Address = address,
-            AmountInGwei = amountInGwei
+            Index = fields.DecodeULong<TCanonicalChecks>(),
+            ValidatorIndex = fields.DecodeULong<TCanonicalChecks>(),
+            Address = fields.DecodeAddress(),
+            AmountInGwei = fields.DecodeULong<TCanonicalChecks>()
         };
-
-        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
-        {
-            RlpHelpers.Check(position, checkPosition);
-        }
+        reader.ExitSequence(in fields, itemLength, rlpBehaviors);
 
         return withdrawal;
     }
 
-    public override void Encode<TWriter>(ref TWriter writer, Withdrawal? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(ref RlpWriter writer, Withdrawal? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -48,19 +40,12 @@ public sealed class WithdrawalDecoder() : RlpDecoder<Withdrawal>
 
         int contentLength = GetContentLength(item);
 
-        writer.StartSequence(contentLength);
+        RlpSequence sequence = writer.StartSequence(contentLength);
         writer.Encode(item.Index);
         writer.Encode(item.ValidatorIndex);
         writer.Encode(item.Address);
         writer.Encode(item.AmountInGwei);
-    }
-
-    public override Rlp Encode(Withdrawal? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
-        RlpWriter writer = new(bytes);
-        Encode(ref writer, item, rlpBehaviors);
-        return new(bytes);
+        writer.EndSequence(sequence);
     }
 
     private static int GetContentLength(Withdrawal item) =>
@@ -70,5 +55,5 @@ public sealed class WithdrawalDecoder() : RlpDecoder<Withdrawal>
         Rlp.LengthOf(item.AmountInGwei);
 
     public override int GetLength(Withdrawal? item, RlpBehaviors _)
-        => item is null ? Rlp.OfEmptyList.Length : Rlp.LengthOfSequence(GetContentLength(item));
+        => item is null ? Rlp.LengthOfNull : Rlp.LengthOfSequence(GetContentLength(item));
 }

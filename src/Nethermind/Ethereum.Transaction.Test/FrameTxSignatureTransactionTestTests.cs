@@ -96,7 +96,7 @@ public class FrameTxSignatureTransactionTestTests : TransactionTestBase
         {
             Name = TestContext.CurrentContext.Test.Name,
             Fork = Fork,
-            TxBytes = Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes.ToHexString(true),
+            TxBytes = Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).ToHexString(true),
             ExpectedException = expectedException,
         };
 }

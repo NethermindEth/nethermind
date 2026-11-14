@@ -198,7 +198,7 @@ public class StatelessInputGeneratorTests
     public void Direct_execution_rejects_missing_or_unrelated_parent([Values] bool unrelatedParent)
     {
         Block block = Build.A.Block.WithParentBeaconBlockRoot(TestItem.KeccakA).TestObject;
-        using Witness witness = EmptyWitness(unrelatedParent ? [Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes] : []);
+        using Witness witness = EmptyWitness(unrelatedParent ? [Rlp.Encode(Build.A.BlockHeader.TestObject)] : []);
 
         Assert.That(StatelessExecutor.Execute(block, witness, new TestSpecProvider(Osaka.Instance)), Is.False);
     }
@@ -209,7 +209,7 @@ public class StatelessInputGeneratorTests
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         Block block = Build.A.Block.WithParent(parent).TestObject;
         block.Header.TxRoot = TestItem.KeccakA;
-        using Witness witness = EmptyWitness([Rlp.Encode(parent).Bytes]);
+        using Witness witness = EmptyWitness([Rlp.Encode(parent)]);
 
         Assert.That(StatelessExecutor.Execute(block, witness, new TestSpecProvider(Osaka.Instance)), Is.False);
     }
@@ -310,7 +310,7 @@ public class StatelessInputGeneratorTests
     {
         Block block = Build.A.Block.WithParentBeaconBlockRoot(TestItem.KeccakA).TestObject;
         block.Header.RequestsHash = TestItem.KeccakB;
-        using Witness witness = EmptyWitness(unrelatedParent ? [Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes] : []);
+        using Witness witness = EmptyWitness(unrelatedParent ? [Rlp.Encode(Build.A.BlockHeader.TestObject)] : []);
 
         Assert.That(async () => await InputGenerator.EncodeInput(block, witness,
             new TestSpecProvider(Osaka.Instance)), Throws.TypeOf<InvalidDataException>());
@@ -354,7 +354,7 @@ public class StatelessInputGeneratorTests
             new TestSpecProvider(Osaka.Instance), new CancellationToken(canceled: true)), Throws.InstanceOf<OperationCanceledException>());
     }
 
-    private static (Block Block, Witness Witness, ISpecProvider SpecProvider) CreateBlock(bool amsterdam, bool currentChainActivation = false, bool requests = true)
+    internal static (Block Block, Witness Witness, ISpecProvider SpecProvider) CreateBlock(bool amsterdam, bool currentChainActivation = false, bool requests = true)
     {
         IReleaseSpec spec = amsterdam ? Amsterdam.Instance : Osaka.Instance;
         ISpecProvider specProvider = new TestSpecProvider(spec);
@@ -400,7 +400,7 @@ public class StatelessInputGeneratorTests
             Codes = new ArrayPoolList<byte[]>([.. dbProvider.CodeDb.GetAllValues()]),
             State = stateNodes.Nodes,
             Keys = ArrayPoolList<byte[]>.Empty(),
-            Headers = new ArrayPoolList<byte[]>([Rlp.Encode(parent).Bytes])
+            Headers = new ArrayPoolList<byte[]>([Rlp.Encode(parent)])
         };
         try
         {

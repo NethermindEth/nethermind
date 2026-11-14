@@ -14,6 +14,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Stateless.Execution.IO;
@@ -32,7 +33,7 @@ public class WitnessTests
         for (int i = 0; i < count; i++)
         {
             BlockHeader header = Build.A.BlockHeader.WithNumber(i).WithParentHash(breakChain ? Keccak.Zero : parent).TestObject;
-            byte[] bytes = Rlp.Encode(header).Bytes;
+            byte[] bytes = Rlp.Encode(header);
             encoded.Add(bytes);
             parent = Keccak.Compute(bytes);
         }
@@ -60,13 +61,13 @@ public class WitnessTests
     {
         using Witness witness = new()
         {
-            Headers = new ArrayPoolList<byte[]>([[.. Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes, 0x00]]),
+            Headers = new ArrayPoolList<byte[]>([[.. Rlp.Encode(Build.A.BlockHeader.TestObject), 0x00]]),
             Codes = IOwnedReadOnlyList<byte[]>.Empty,
             State = IOwnedReadOnlyList<byte[]>.Empty,
             Keys = IOwnedReadOnlyList<byte[]>.Empty
         };
 
-        Assert.That(() => witness.DecodeHeaders(), Throws.TypeOf<RlpException>());
+        Assert.That(() => witness.DecodeHeaders(), Throws.TypeOf<RlpReaderException>());
     }
 
     [Test]

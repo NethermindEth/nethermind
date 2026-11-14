@@ -3,6 +3,7 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Types;
@@ -21,9 +22,9 @@ internal class ExtraConsensusDataDecoderTests
         RlpReader context = new(Bytes.FromHexString(extraDataRlp));
         ExtraFieldsV2 decodedExtraData = decoder.DecodeGuardNotNull(ref context);
 
-        Rlp encodedExtraData = decoder.Encode(decodedExtraData);
+        byte[] encodedExtraData = decoder.Encode(decodedExtraData);
 
-        RlpReader encodedContext = new(encodedExtraData.Bytes);
+        RlpReader encodedContext = new(encodedExtraData);
         ExtraFieldsV2 unencoded = decoder.DecodeGuardNotNull(ref encodedContext);
 
         Assert.That(unencoded, Is.EqualTo(decodedExtraData).UsingXdcComparer());
@@ -35,7 +36,7 @@ internal class ExtraConsensusDataDecoderTests
         ExtraFieldsV2 extraFields = new(1, new QuorumCertificate(new BlockRoundInfo(Hash256.Zero, 1, 1), [new Signature(new byte[64], 0), new Signature(new byte[64], 0), new Signature(new byte[64], 0)], 0));
         ExtraConsensusDataDecoder decoder = new();
         byte[] bytes = new byte[decoder.GetLength(extraFields, RlpBehaviors.None)];
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
         decoder.Encode(ref writer, extraFields);
 
         RlpReader context = new(bytes);
@@ -50,9 +51,9 @@ internal class ExtraConsensusDataDecoderTests
         ExtraFieldsV2 extraFieldsV2 = new(1, null!);
         ExtraConsensusDataDecoder decoder = new();
 
-        Rlp encodedExtraData = decoder.Encode(extraFieldsV2);
+        byte[] encodedExtraData = decoder.Encode(extraFieldsV2);
 
-        RlpReader context = new(encodedExtraData.Bytes);
+        RlpReader context = new(encodedExtraData);
         ExtraFieldsV2 unencoded = decoder.DecodeGuardNotNull(ref context);
 
         Assert.That(unencoded, Is.EqualTo(extraFieldsV2).UsingXdcComparer());

@@ -12,6 +12,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
 
@@ -360,7 +361,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
             public bool TryGet<TArg>(scoped ReadOnlySpan<byte> key, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
             {
                 if (!TryGet(key, out byte[]? value)) return inner.TryGet(key, flags, action, arg);
-                if (value is null or { Length: 0 }) return false;
+                if (value is null) return false;
                 action(value, arg);
                 return true;
             }
@@ -457,7 +458,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
                 else batch.Stage(column, key, value, delete: false);
             }
 
-            public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => batch.Stage(column, key, value, delete: false);
+            public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => batch.Stage(column, key, value, delete: value.IsNull());
 
             public void Remove(ReadOnlySpan<byte> key) => batch.Stage(column, key, default, delete: true);
 

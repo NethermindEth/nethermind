@@ -66,7 +66,7 @@ public class BaseFlatPersistenceReaderTests
     {
         byte[] payload = new byte[BaseFlatPersistence.StorageValueSize];
         for (int i = 0; i < payload.Length; i++) payload[i] = (byte)(i + 1);
-        byte[] rlp = Rlp.Encode(payload).Bytes; // 0xa0 + 32 bytes
+        byte[] rlp = Rlp.Encode(payload); // 0xa0 + 32 bytes
 
         FixedValueStore store = new(rlp);
         BaseFlatPersistence.Reader reader = new(store, store, isPreimageMode: false, rlpWrapSlots: true);

@@ -60,7 +60,7 @@ internal class XdcBlockProducer(
 
         //TODO maybe some sanity checks here for round and hash
 
-        byte[] extra = [XdcConstants.ConsensusVersion, .. _extraConsensusDataDecoder.Encode(new ExtraFieldsV2(currentRound, highestCert)).Bytes];
+        byte[] extra = [XdcConstants.ConsensusVersion, .. _extraConsensusDataDecoder.Encode(new ExtraFieldsV2(currentRound, highestCert))];
 
         Address blockAuthor = sealer.Address;
         ulong gasLimit = GasLimitCalculator.GetGasLimit(parent);

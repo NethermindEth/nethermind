@@ -10,6 +10,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -89,6 +90,42 @@ public partial class DebugRpcModuleTests
         {
             Assert.That(JToken.Parse(response)["result"]!["failed"]!.Value<bool>(), Is.False, response);
             Assert.That(observedFees, Is.EqualTo(new UInt256?[] { null, (UInt256)fee }));
+        }
+    }
+
+    [TestCase("0x9", null, 0, false, true)]
+    [TestCase(null, "0x0", 0, false, true)]
+    [TestCase("0x9", null, 5, false, false)]
+    [TestCase("0x9", null, 5, true, true)]
+    public async Task Debug_traceCall_blob_fee_override_reads_prevrandao_or_difficulty(
+        string? blobBaseFee, string? maxFeePerBlobGas, int difficulty, bool isPostMerge, bool expectMixHash)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        BlockHeader head = ctx.Blockchain.BlockTree.Head!.Header;
+        head.ExcessBlobGas = 0;
+        head.Difficulty = (UInt256)difficulty;
+        head.MixHash = TestItem.KeccakH;
+        head.IsPostMerge = isPostMerge;
+        const string address = "0xc200000000000000000000000000000000000000";
+        Dictionary<string, object> transaction = new() { ["to"] = address, ["gas"] = "0x186a0" };
+        Dictionary<string, object> options = new()
+        {
+            ["stateOverrides"] = new Dictionary<string, object> { [address] = new { code = "0x4460005260206000f3" } }
+        };
+        if (blobBaseFee is not null) options["blockOverrides"] = new { blobBaseFee };
+        if (maxFeePerBlobGas is not null)
+        {
+            transaction["maxFeePerBlobGas"] = maxFeePerBlobGas;
+            transaction["blobVersionedHashes"] = new[] { "0x01" + new string('0', 62) };
+        }
+
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", transaction, "latest", options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(response)["result"]!["failed"]!.Value<bool>(), Is.False, response);
+            Assert.That(ParseReturnValue(response),
+                Is.EqualTo(expectMixHash ? TestItem.KeccakH.Bytes.ToArray() : head.Difficulty.ToBigEndian()));
         }
     }
 
@@ -233,6 +270,45 @@ public partial class DebugRpcModuleTests
             Assert.That(envelope["error"]?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput), response);
             Assert.That(envelope["error"]?["message"]?.Value<string>(), Is.EqualTo("tracing failed: " + detail), response);
         }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_runs_an_omitted_blob_fee_cap_at_zero_blob_base_fee([Values(null, "0x9")] string? blobBaseFeeOverride)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = false })
+            .Build(new TestSpecProvider(Cancun.Instance));
+        chain.BlockTree.Head!.Header.ExcessBlobGas = 0;
+        Dictionary<string, object> call = new()
+        {
+            ["to"] = TestItem.AddressC.ToString(),
+            ["gas"] = "0x186a0",
+            ["blobVersionedHashes"] = new[] { "0x01" + new string('0', 62) }
+        };
+        // BLOBBASEFEE; MSTORE at 0; RETURN 32 bytes
+        object stateOverrides = new Dictionary<string, object> { [TestItem.AddressC.ToString()] = new { code = "0x4a60005260206000f3" } };
+
+        Dictionary<string, object> options = new() { ["stateOverrides"] = stateOverrides };
+        if (blobBaseFeeOverride is not null) options["blockOverrides"] = new { blobBaseFee = blobBaseFeeOverride };
+
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", call, "latest", options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(response)["result"]?["failed"]?.Value<bool>(), Is.False, response);
+            Assert.That(new UInt256(ParseReturnValue(response), true), Is.EqualTo(UInt256.Zero), response);
+        }
+    }
+
+    // A blob fee cap only describes a blob transaction, so a cap alone is rejected at every fork, as in trace_call and
+    // debug_traceCallMany (trace-interop H14), although Geth's debug_traceCall runs it from Cancun.
+    [Test]
+    public async Task Debug_traceCall_rejects_a_lone_blob_fee_cap([Values("0x0", "0x1")] string blobFeeCap)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressC.ToString(), gas = "0x186a0", maxFeePerBlobGas = blobFeeCap }, "latest");
+        Assert.That((string?)JToken.Parse(response)["error"]?["message"], Is.EqualTo(RpcTransactionErrors.BlobFeeCapWithoutBlobHashes), response);
     }
 
     private static void AssertBlobPayment(string response, ulong expectedBalance, ulong expectedFee)

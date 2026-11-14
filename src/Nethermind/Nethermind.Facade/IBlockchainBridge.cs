@@ -10,6 +10,7 @@ using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
+using Nethermind.Evm.Tracing;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -29,6 +30,11 @@ namespace Nethermind.Facade
         bool IsMining { get; }
         void RecoverTxSenders(Block block);
         Address? RecoverTxSender(Transaction tx);
+
+        /// <summary>Recovers the sender of <paramref name="tx"/>, or null when its signature recovers none.</summary>
+        /// <param name="useSignatureChainId">Whether a legacy EIP-155 signature is recovered over the chain id it carries, as
+        /// block processing does where the spec does not validate chain ids.</param>
+        Address? RecoverTxSender(Transaction tx, bool useSignatureChainId);
         TxReceipt GetReceipt(Hash256 txHash);
         (TxReceipt? Receipt, ulong BlockTimestamp, TxGasInfo? GasInfo, int LogIndexStart) GetTxReceiptInfo(Hash256 txHash);
         bool TryGetTransaction(Hash256 txHash, [NotNullWhen(true)] out TransactionLookupResult? result, bool checkTxnPool = true);
@@ -101,6 +107,7 @@ namespace Nethermind.Facade
         bool HasStateForBlock(BlockHeader? baseBlock);
 
         Witness GenerateExecutionWitness(BlockHeader parent, Block block);
+        Witness GenerateExecutionWitness(BlockHeader parent, Block block, IBlockTracer tracer);
         SingleCallWitnessResult GenerateExecutionWitness(BlockHeader header, Transaction tx, CancellationToken cancellationToken = default);
 
         ReadOnlyBlockAccessList? GetBlockAccessList(ulong blockNumber, Hash256 blockHash);

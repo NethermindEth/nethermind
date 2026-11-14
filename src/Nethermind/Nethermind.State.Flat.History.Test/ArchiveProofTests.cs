@@ -2718,13 +2718,13 @@ public class ArchiveProofTests
     private void CorruptEveryStorageRow()
     {
         IDb column = _historyColumns.GetColumnDb(FlatHistoryColumns.StorageHistory);
-        foreach (byte[] key in AllKeys(column)) column.PutSpan(key, Nethermind.Serialization.Rlp.Rlp.Encode(new byte[] { 0xEE, 0xEE }).Bytes);
+        foreach (byte[] key in AllKeys(column)) column.PutSpan(key, Nethermind.Serialization.Rlp.Rlp.Encode(new byte[] { 0xEE, 0xEE }));
     }
 
     private void CorruptAccountRowsOf(Address address)
     {
         IDb column = _historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory);
-        byte[] tampered = Nethermind.Serialization.Rlp.AccountDecoder.Slim.EncodeAsBytes(new Account(9999, 9999));
+        byte[] tampered = Nethermind.Serialization.Rlp.AccountDecoder.Slim.Encode(new Account(9999, 9999));
         byte[] accountPath = Keccak.Compute(address.Bytes).BytesToArray();
         foreach (byte[] key in AllKeys(column).Where(key => key.AsSpan().StartsWith(accountPath))) column.PutSpan(key, tampered);
     }
@@ -2732,7 +2732,7 @@ public class ArchiveProofTests
     private void CorruptEveryAccountRow()
     {
         IDb column = _historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory);
-        byte[] tampered = Nethermind.Serialization.Rlp.AccountDecoder.Slim.EncodeAsBytes(new Account(9999, 9999));
+        byte[] tampered = Nethermind.Serialization.Rlp.AccountDecoder.Slim.Encode(new Account(9999, 9999));
         foreach (byte[] key in AllKeys(column)) column.PutSpan(key, tampered);
     }
 

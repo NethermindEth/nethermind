@@ -90,7 +90,7 @@ internal sealed class TracingProducedBlockProcessor(
 
             if ((_dumpOptions & (ProducedBlockDumpOptions.Rlp | ProducedBlockDumpOptions.RlpLog)) != 0)
             {
-                byte[] rlp = Rlp.Encode(processed, RlpBehaviors.AllowExtraBytes).Bytes;
+                byte[] rlp = Rlp.Encode(processed, RlpBehaviors.AllowExtraBytes);
                 if ((_dumpOptions & ProducedBlockDumpOptions.Rlp) != 0) File.WriteAllBytes(Path.Combine(DumpDirectory, $"block_{name}.rlp"), rlp);
                 if ((_dumpOptions & ProducedBlockDumpOptions.RlpLog) != 0 && _logger.IsInfo) _logger.Info($"RLP dump of produced block {processed.Hash} is {rlp.ToHexString()}");
             }

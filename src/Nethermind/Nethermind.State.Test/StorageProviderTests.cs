@@ -437,6 +437,155 @@ public partial class StorageProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Small_transactions_after_a_heavy_one_empty_the_round_caches_and_keep_insertion_order()
+    {
+        const int HeavyCount = 2_048;
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        using IDisposable scope = provider.BeginScope(IWorldState.PreGenesis);
+        provider.CreateAccount(ctx.Address1, 1);
+        provider.CreateAccount(ctx.Address2, 1);
+        provider.Commit(Osaka.Instance, NullStateTracer.Instance, commitRoots: false);
+
+        provider.TakeSnapshot(newTransactionStart: true);
+        for (int i = 0; i < HeavyCount; i++)
+        {
+            provider.Set(new StorageCell(ctx.Address1, (UInt256)i), UInt256.One);
+            provider.CreateAccount(Address.FromNumber((UInt256)(i + 1)), UInt256.One);
+        }
+
+        provider.Commit(Osaka.Instance, NullStateTracer.Instance, commitRoots: false);
+
+        ICollection accountCache = (ICollection)GetPrivateField(provider._stateProvider, "_intraTxCache");
+        IDictionary storageCache = (IDictionary)GetPrivateField(provider._persistentStorageProvider, "_intraBlockCache");
+        StorageCell[] cells =
+        [
+            new(ctx.Address1, (UInt256)HeavyCount),
+            new(ctx.Address1, UInt256.Zero),
+            new(ctx.Address1, (UInt256)(HeavyCount + 1)),
+        ];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(GetCollectionCapacity(accountCache), Is.GreaterThan(CoreCollectionExtensions.SparseClearCapacityDivisor * cells.Length * 2));
+            Assert.That(GetCollectionCapacity(storageCache), Is.GreaterThan(CoreCollectionExtensions.SparseClearCapacityDivisor * cells.Length * 2));
+        }
+
+        for (int tx = 0; tx < cells.Length; tx++)
+        {
+            StorageCell[] written = [.. cells[tx..], .. cells[..tx]];
+            provider.TakeSnapshot(newTransactionStart: true);
+            foreach (StorageCell cell in written) provider.Set(in cell, (UInt256)(tx + 2));
+            provider.AddToBalance(ctx.Address2, UInt256.One, Osaka.Instance);
+
+            Assert.That(storageCache.Keys.Cast<StorageCell>(), Is.EqualTo(written));
+
+            provider.Commit(Osaka.Instance, NullStateTracer.Instance, commitRoots: false);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(accountCache.Count, Is.Zero);
+                Assert.That(storageCache.Count, Is.Zero);
+            }
+        }
+
+        provider.TakeSnapshot(newTransactionStart: true);
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (StorageCell cell in cells)
+            {
+                provider.Get(in cell, out UInt256 value);
+                provider.GetOriginal(in cell, out UInt256 original);
+                Assert.That(value, Is.EqualTo((UInt256)(cells.Length + 1)));
+                Assert.That(original, Is.EqualTo((UInt256)(cells.Length + 1)));
+            }
+
+            Assert.That(provider.GetBalance(ctx.Address2), Is.EqualTo((UInt256)(cells.Length + 1)));
+        }
+    }
+
+    [Test]
+    public void Small_transaction_with_cleared_and_zeroed_cells_after_a_heavy_one_empties_the_round_caches()
+    {
+        const int HeavyCount = 2_048;
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        using IDisposable scope = provider.BeginScope(IWorldState.PreGenesis);
+        provider.CreateAccount(ctx.Address1, 1);
+        provider.Commit(Osaka.Instance, NullStateTracer.Instance, commitRoots: false);
+
+        provider.TakeSnapshot(newTransactionStart: true);
+        for (int i = 0; i < HeavyCount; i++)
+        {
+            provider.Set(new StorageCell(ctx.Address1, (UInt256)i), UInt256.One);
+            provider.CreateAccount(Address.FromNumber((UInt256)(i + 1)), UInt256.One);
+        }
+
+        provider.Commit(Osaka.Instance, NullStateTracer.Instance, commitRoots: false);
+
+        ICollection accountCache = (ICollection)GetPrivateField(provider._stateProvider, "_intraTxCache");
+        IDictionary storageCache = (IDictionary)GetPrivateField(provider._persistentStorageProvider, "_intraBlockCache");
+        StorageCell zeroed = new(ctx.Address1, (UInt256)HeavyCount);
+        StorageCell read = new(ctx.Address1, UInt256.Zero);
+
+        provider.TakeSnapshot(newTransactionStart: true);
+        provider.Set(in zeroed, (UInt256)5);
+        provider.Set(in zeroed, UInt256.Zero);
+        provider.Get(in read, out _);
+        provider.ClearStorage(ctx.Address1);
+        provider.Commit(Osaka.Instance, NullStateTracer.Instance, commitRoots: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accountCache.Count, Is.Zero);
+            Assert.That(storageCache.Count, Is.Zero);
+        }
+
+        provider.TakeSnapshot(newTransactionStart: true);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReadSlot(provider, zeroed), Is.EqualTo(UInt256.Zero));
+            Assert.That(ReadSlot(provider, read), Is.EqualTo(UInt256.Zero));
+        }
+    }
+
+    [Test]
+    public void Restored_call_that_grew_the_round_caches_past_the_trim_limit_leaves_them_trimmed()
+    {
+        const int Count = CoreCollectionExtensions.DefaultTrimAboveCapacity + 1_808;
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        using IDisposable scope = provider.BeginScope(IWorldState.PreGenesis);
+        provider.CreateAccount(ctx.Address1, 1);
+        provider.Commit(Osaka.Instance, NullStateTracer.Instance, commitRoots: false);
+
+        provider.TakeSnapshot(newTransactionStart: true);
+        Snapshot beforeCall = provider.TakeSnapshot();
+        for (int i = 0; i < Count; i++)
+        {
+            StorageCell cell = new(ctx.Address1, (UInt256)i);
+            provider.Set(in cell, UInt256.One);
+            provider.SetTransientState(in cell, UInt256.One);
+            provider.CreateAccount(Address.FromNumber((UInt256)(i + 1)), UInt256.One);
+        }
+
+        provider.Restore(beforeCall);
+        StorageCell kept = new(ctx.Address1, (UInt256)Count);
+        provider.Set(in kept, UInt256.One);
+        provider.SetTransientState(in kept, UInt256.One);
+        provider.AddToBalance(ctx.Address1, UInt256.One, Osaka.Instance);
+        provider.Commit(Osaka.Instance, NullStateTracer.Instance, commitRoots: false);
+
+        object transientStorage = GetPrivateField(provider, "_transientStorageProvider");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(GetCollectionCapacity(GetPrivateField(provider._stateProvider, "_intraTxCache")), Is.LessThanOrEqualTo(CoreCollectionExtensions.DefaultTrimAboveCapacity));
+            Assert.That(GetCollectionCapacity(GetPrivateField(provider._persistentStorageProvider, "_intraBlockCache")), Is.LessThanOrEqualTo(CoreCollectionExtensions.DefaultTrimAboveCapacity));
+            Assert.That(GetCollectionCapacity(GetPrivateField(transientStorage, "_intraBlockCache")), Is.LessThanOrEqualTo(CoreCollectionExtensions.DefaultTrimAboveCapacity));
+        }
+    }
+
+    [Test]
     public void Large_map_pool_reuses_the_largest_nearby_map([Values] bool returnLargestFirst)
     {
         PersistentStorageProvider.LargeMapPool<UInt256, int> pool = new(UInt256Comparer.Instance, minRetainedCapacity: 1024);

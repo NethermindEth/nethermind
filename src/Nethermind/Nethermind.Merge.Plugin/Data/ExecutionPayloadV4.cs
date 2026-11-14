@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Merge.Plugin.Data;
@@ -23,7 +24,7 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
     protected new static TExecutionPayload Create<TExecutionPayload>(Block block) where TExecutionPayload : ExecutionPayloadV4, new()
     {
         TExecutionPayload executionPayload = ExecutionPayloadV3.Create<TExecutionPayload>(block);
-        executionPayload.BlockAccessList = block.EncodedBlockAccessList ?? (block.BlockAccessList is null ? null : Rlp.Encode(block.BlockAccessList).Bytes);
+        executionPayload.BlockAccessList = block.EncodedBlockAccessList ?? (block.BlockAccessList is null ? null : Rlp.Encode(block.BlockAccessList));
         executionPayload.SlotNumber = block.SlotNumber;
         return executionPayload;
     }
@@ -98,11 +99,11 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
         try
         {
             blockAccessList = Rlp.Decode<ReadOnlyBlockAccessList>(encodedBlockAccessList)
-                ?? throw new RlpException("Block access list decoded as null.");
+                ?? throw new RlpReaderException("Block access list decoded as null.");
             error = null;
             return true;
         }
-        catch (RlpException e)
+        catch (RlpReaderException e)
         {
             blockAccessList = null;
             error = $"Error decoding block access list: {e.Message}";
@@ -118,17 +119,16 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
         }
 
         RlpReader reader = new(encodedBlockAccessList);
-        if (!reader.IsSequenceNext())
+        if (!reader.IsNextSequence)
         {
             return false;
         }
 
         try
         {
-            (int prefixLength, int contentLength) = reader.PeekPrefixAndContentLength();
-            return prefixLength + contentLength == reader.Length;
+            return reader.PeekNextItem().Length == encodedBlockAccessList.Length;
         }
-        catch (RlpException)
+        catch (RlpReaderException)
         {
             return false;
         }

@@ -301,6 +301,29 @@ public class TransactionForRpcTests
     }
 
     [Test]
+    public void Nested_transactions_are_read_in_sequence()
+    {
+        Utf8JsonReader reader = new(
+            """[{"gasPrice":"0x1","nonce":"0x7"},null,{"type":"0x2","maxFeePerGas":"0x2","maxPriorityFeePerGas":"0x1"}]"""u8);
+        reader.Read();
+        SignableTransactionForRpc?[] txs = new SignableTransactionForRpc?[3];
+        for (int i = 0; i < txs.Length; i++)
+        {
+            reader.Read();
+            txs[i] = TypeInfoJsonSerializer.Deserialize<SignableTransactionForRpc>(ref reader, EthereumJsonSerializer.JsonOptions);
+        }
+
+        reader.Read();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.TokenType, Is.EqualTo(JsonTokenType.EndArray));
+            Assert.That(txs[0], Is.TypeOf<LegacyTransactionForRpc>().With.Property(nameof(LegacyTransactionForRpc.Nonce)).EqualTo(7UL));
+            Assert.That(txs[1], Is.Null);
+            Assert.That(txs[2], Is.TypeOf<EIP1559TransactionForRpc>());
+        }
+    }
+
+    [Test]
     public void GasPrice_does_not_drop_the_access_list()
     {
         Transaction tx = ToTransaction(
@@ -516,6 +539,23 @@ public class TransactionForRpcTests
             Assert.That(result.Data!.MaxFeePerGas, Is.EqualTo((UInt256)10), "fee cap as requested");
         }
     }
+
+    /// <remarks>
+    /// A typed transaction's signature carries its y-parity offset by 27, as a decoded one does, so a <c>v</c> of 0 or 1, or a
+    /// <c>yParity</c> when <c>v</c> is left out, is that y-parity. A legacy y-parity <c>v</c> is protected for its chain id
+    /// (EIP-155), and so is one of a request whose fields select no type; any other <c>v</c> is taken as given.
+    /// </remarks>
+    [TestCase("\"accessList\":[],\"gasPrice\":\"0x1\",\"v\":\"0x0\"", 27UL)]
+    [TestCase("\"accessList\":[],\"gasPrice\":\"0x1\",\"v\":\"0x1\"", 28UL)]
+    [TestCase("\"maxFeePerGas\":\"0x2\",\"maxPriorityFeePerGas\":\"0x1\",\"v\":\"0x1\",\"yParity\":\"0x1\"", 28UL)]
+    [TestCase("\"maxFeePerGas\":\"0x2\",\"maxPriorityFeePerGas\":\"0x1\",\"yParity\":\"0x1\"", 28UL)]
+    [TestCase("\"maxFeePerGas\":\"0x2\",\"maxPriorityFeePerGas\":\"0x1\",\"v\":\"0x1c\"", 28UL)]
+    [TestCase("\"maxFeePerGas\":\"0x2\",\"maxPriorityFeePerGas\":\"0x1\",\"v\":\"0x1c\",\"yParity\":\"0x0\"", 28UL)]
+    [TestCase("\"gasPrice\":\"0x1\",\"v\":\"0x1\"", 38UL)]
+    [TestCase("\"gasPrice\":\"0x1\",\"v\":\"0x1c\"", 28UL)]
+    [TestCase("\"type\":\"0x0\",\"v\":\"0x1\"", 38UL)]
+    public void Signature_v_is_read_as_the_transaction_type_carries_it(string fields, ulong expectedV) =>
+        Assert.That(ToTransaction($$"""{"chainId":"0x1","r":"0x1","s":"0x2",{{fields}}}""").Signature?.V, Is.EqualTo(expectedV));
 
     private Transaction ToTransaction(string json)
     {

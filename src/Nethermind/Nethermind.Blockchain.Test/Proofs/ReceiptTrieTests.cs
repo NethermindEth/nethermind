@@ -6,9 +6,11 @@ using System;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Threading;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -94,7 +96,7 @@ public class ReceiptTrieTests
     {
         protected override TxReceipt DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors) => throw new NotSupportedException();
         public override int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors) => 0;
-        public override void Encode<TWriter>(ref TWriter writer, TxReceipt item, RlpBehaviors rlpBehaviors) { }
+        public override void Encode(ref RlpWriter writer, TxReceipt item, RlpBehaviors rlpBehaviors) { }
     }
 
     [Test]
@@ -106,7 +108,7 @@ public class ReceiptTrieTests
         Array.Fill(receipts, receipt);
         receipt.Logs = null;
 
-        Assert.That(() => ReceiptTrie.CalculateRoot(Osaka.Instance, receipts, _decoder), Throws.TypeOf<RlpException>());
+        Assert.That(() => ReceiptTrie.CalculateRoot(Osaka.Instance, receipts, _decoder), Throws.TypeOf<RlpReaderException>());
 
         receipt.Logs = logs;
         AssertRootMatches(Osaka.Instance, receipts, _decoder);
@@ -199,7 +201,7 @@ public class ReceiptTrieTests
             Hash256 proofHash = Keccak.Compute(proof[i - 1]);
             if (i > 1)
             {
-                if (!new Rlp(proof[i - 2]).ToString(false).Contains(proofHash.ToString(false)))
+                if (!proof[i - 2].ToHexString().Contains(proofHash.ToString(false)))
                 {
                     throw new InvalidDataException();
                 }

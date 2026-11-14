@@ -19,15 +19,27 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 /// Each runtime is a V8 isolate with its own heap: a script that outgrows the soft limit interrupts only the trace
 /// that runs it, traces served concurrently no longer serialise on one isolate lock, and disposing the runtime
 /// with the trace releases everything the trace allocated, so no limit has to be re-armed for the next one.
-/// The monitored soft limit is the effective bound on the script heap. The old-space size sits above it and the
-/// expansion multiplier lets V8 grow the heap on demand instead of terminating the process, so together they
-/// absorb the allocation burst between two heap samples and keep the sampler ahead of V8's own hard limit.
+/// Every limit below applies to one runtime, not to all the traces served at once.
+/// The soft limit is a sampled, best-effort bound on the V8 heap: ClearScript samples the heap size whenever a hook
+/// enters the script and periodically while it runs, and interrupts the script with its memory-limit error when the
+/// heap is still over the limit after a full collection, so a script can allocate past it between two samples.
+/// The old-space size caps V8's old generation; the total heap limit V8 reports is slightly higher because it also
+/// covers the young generation. When V8 cannot satisfy an allocation within these constraints, it ends the process.
+/// The old-space ceiling sits far above the soft limit to absorb what a script allocates between two samples.
+/// A single call into a built-in that never reaches an interrupt check, such as <c>JSON.parse</c> of a large string,
+/// is not sampled while it runs, so its V8 heap allocations are bounded only by this ceiling and by the memory
+/// available to the process. The trace ends with the memory-limit error only if a later sample still finds the heap
+/// over the soft limit after a collection. Array buffer memory is allocated outside the V8 heap, so neither limit
+/// bounds it. Raising the ceiling does not preallocate that memory.
+/// The size is fixed: ClearScript enforces the soft limit with last-resort collections, and V8 can raise its heap
+/// limit through the near-heap-limit callback on those collections, so a heap expansion multiplier would raise the
+/// ceiling each time a collection brings a script back under the soft limit, until it overflows and V8 aborts the
+/// process.
 /// A runtime serves the single thread that runs its trace and is not thread-safe.
 /// </remarks>
 internal sealed partial class TracerRuntime : IDisposable
 {
-    private const int MaxOldSpaceMb = 256;
-    private const double HeapExpansionMultiplier = 2;
+    private const int MaxOldSpaceMb = 16384;
     private static readonly UIntPtr HeapSoftLimit = new(128 * 1024 * 1024);
 
     private const string TracersPath = "Data/JSTracers/";
@@ -45,8 +57,7 @@ internal sealed partial class TracerRuntime : IDisposable
     {
         _runtime = new V8Runtime(new V8RuntimeConstraints
         {
-            MaxOldSpaceSize = MaxOldSpaceMb,
-            HeapExpansionMultiplier = HeapExpansionMultiplier
+            MaxOldSpaceSize = MaxOldSpaceMb
         });
 
         try
@@ -61,6 +72,11 @@ internal sealed partial class TracerRuntime : IDisposable
     }
 
     public V8ScriptEngine CreateScriptEngine(V8ScriptEngineFlags flags) => _runtime.CreateScriptEngine(flags);
+
+    /// <summary>
+    /// V8's hard limit on this runtime's heap in bytes, the old-space size plus the young generation.
+    /// </summary>
+    internal ulong HeapSizeLimit => _runtime.GetHeapInfo().HeapSizeLimit;
 
     public V8Script BigInteger => GetScript(BigIntegerJavaScript,
         _builtInSources.Value.TryGetValue(BigIntegerJavaScript, out string? code)

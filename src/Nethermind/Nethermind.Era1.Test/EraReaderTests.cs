@@ -10,6 +10,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Encoding;
 using Nethermind.Core.Test.IO;
 using Nethermind.Era1.Exceptions;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using NSubstitute;
@@ -35,7 +36,7 @@ internal class EraReaderTests
             {
                 Hash256 root = ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, MainnetSpecProvider.Instance.GetSpec(block.Header), block.ReceiptsRoot);
                 block.Header.ReceiptsRoot = root;
-                block.Header.Hash = Keccak.Compute(headerDecoder.Encode(block.Header).Bytes);
+                block.Header.Hash = Keccak.Compute(headerDecoder.Encode(block.Header));
                 addedContents.Add((block, receipts));
                 await builder.Add(block, receipts);
             }
@@ -160,7 +161,7 @@ internal class EraReaderTests
 
         Assert.That(
             () => DecodeReceipts(receiptsWithEmptyListItem),
-            Throws.TypeOf<RlpException>());
+            Throws.TypeOf<RlpReaderException>());
     }
 
     private static TxReceipt[] DecodeReceipts(byte[] bytes)

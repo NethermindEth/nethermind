@@ -9,6 +9,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.TxDecoders;
 using NUnit.Framework;
@@ -90,11 +91,11 @@ public class FrameTxDecoderTests
         Transaction withoutWrapper = EncodeDecode(withWrapper, RlpBehaviors.None);
         withoutWrapper.NetworkWrapper = null;
 
-        Rlp consensusWithWrapper = _txDecoder.EncodeTx(withWrapper);
-        Rlp consensusWithoutWrapper = _txDecoder.EncodeTx(withoutWrapper);
+        byte[] consensusWithWrapper = _txDecoder.EncodeTx(withWrapper);
+        byte[] consensusWithoutWrapper = _txDecoder.EncodeTx(withoutWrapper);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(consensusWithWrapper.Bytes, Is.EqualTo(consensusWithoutWrapper.Bytes));
+            Assert.That(consensusWithWrapper, Is.EqualTo(consensusWithoutWrapper));
             Assert.That(FrameTxSigHash.ComputeValue(withWrapper), Is.EqualTo(FrameTxSigHash.ComputeValue(withoutWrapper)));
         }
     }
@@ -122,14 +123,14 @@ public class FrameTxDecoderTests
 
         // The plain form is byte-identical to the consensus form.
         byte[] bytes = new byte[_txDecoder.GetLength(tx, RlpBehaviors.SkipTypedWrapping)];
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
         _txDecoder.Encode(ref writer, tx, RlpBehaviors.SkipTypedWrapping);
 
         Assert.That(() =>
         {
             RlpReader reader = new(bytes);
             _txDecoder.Decode(ref reader, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping);
-        }, Throws.InstanceOf<RlpException>());
+        }, Throws.InstanceOf<RlpReaderException>());
 
         // The same bytes stay a valid consensus form: only the mempool form requires the sidecar.
         RlpReader consensusReader = new(bytes);
@@ -141,7 +142,7 @@ public class FrameTxDecoderTests
     public void Decode_NetworkWrapperWithoutSidecar_ThrowsRlpException()
     {
         // A wrapper holding only the body leaves the reader at the end of the buffer, where the peek reads out of bounds.
-        byte[] payload = TypedPayload(Rlp.Encode(new[] { FrameTxBody() }));
+        byte[] payload = TypedPayload(RlpTestHelper.EncodeSequence(new[] { FrameTxBody() }));
 
         void Decode()
         {
@@ -149,7 +150,7 @@ public class FrameTxDecoderTests
             _txDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
         }
 
-        Assert.That(Decode, Throws.InstanceOf<RlpException>());
+        Assert.That(Decode, Throws.InstanceOf<RlpReaderException>());
     }
 
     [Test]
@@ -166,7 +167,7 @@ public class FrameTxDecoderTests
             _txDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
         }
 
-        Assert.That(Decode, Throws.InstanceOf<RlpException>().With.Message.Contains("trailing element"));
+        Assert.That(Decode, Throws.InstanceOf<RlpReaderException>().With.Message.Contains("trailing element"));
     }
 
     [Test]
@@ -183,9 +184,9 @@ public class FrameTxDecoderTests
             _txDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
         }
 
-        // The generic address-decode message, not a frame-specific one: "Unexpected RLP prefix" is the
+        // The generic fixed-width field message, not a frame-specific one: it is the
         // FrameExceptionFragments.Decode fragment EF fixture rejects match on.
-        Assert.That(Decode, Throws.InstanceOf<RlpException>()
+        Assert.That(Decode, Throws.InstanceOf<RlpReaderException>()
             .With.Message.Contains("Unexpected RLP prefix").And.Message.Contains("decoding Address"));
     }
 
@@ -198,7 +199,7 @@ public class FrameTxDecoderTests
     [TestCase((byte)1, (byte)8, FrameTxValidation.InvalidFlags, TestName = "Decode_FrameFlagsWithAnUndefinedBit_DecodesAndFailsValidation")]
     public void Decode_FrameCarryingAnUndefinedWireValue_DecodesButFailsValidation(byte mode, byte flags, string expectedError)
     {
-        byte[] payload = TypedPayload(FrameTxBody(frames: Rlp.Encode(new[] { RawFrame(mode, flags) })));
+        byte[] payload = TypedPayload(FrameTxBody(frames: RlpTestHelper.EncodeSequence(new[] { RawFrame(mode, flags) })));
         RlpReader reader = new(payload);
 
         Transaction decoded = _txDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
@@ -213,12 +214,12 @@ public class FrameTxDecoderTests
     }
 
     /// <summary>A frame tuple built from raw mode and flag bytes, bypassing <see cref="TxFrame"/>.</summary>
-    private static Rlp RawFrame(byte mode, byte flags) =>
-        Rlp.Encode([
+    private static byte[] RawFrame(byte mode, byte flags) =>
+        RlpTestHelper.EncodeSequence([
             Rlp.Encode(mode),
             Rlp.Encode(flags),
             Rlp.Encode(TestItem.AddressB.Bytes),
-            Rlp.Encode(Rlp.Encode(1_000L), Rlp.Encode(0L)), // limits
+            RlpTestHelper.EncodeSequence(Rlp.Encode(1_000L), Rlp.Encode(0L)), // limits
             Rlp.Encode(0L),                                 // value
             Rlp.Encode(Array.Empty<byte>())]);              // data
 
@@ -251,11 +252,11 @@ public class FrameTxDecoderTests
     {
         TxFrameSignature entry = new(TxFrameSignature.SchemeSecp256k1, null, default, new byte[signatureLength]);
         byte[] buffer = new byte[16];
-        RlpWriter writer = new(buffer);
+        RlpWriter writer = RlpWriter.ContentWriter(buffer);
 
         TxFrameSignatureDecoder.Instance.Encode(ref writer, entry, elideCanonicalSignatureBytes: true);
 
-        Assert.That(buffer.AsSpan(0, writer.Position).ToArray(), Is.EqualTo(Bytes.FromHexString(expectedHex)));
+        Assert.That(buffer.AsSpan(0, writer.Length).ToArray(), Is.EqualTo(Bytes.FromHexString(expectedHex)));
     }
 
     [Test]
@@ -281,7 +282,7 @@ public class FrameTxDecoderTests
     }
 
     [TestCaseSource(nameof(TrailingListCases))]
-    public void Decode_PayloadWithTrailingList_Throws(Rlp trailing)
+    public void Decode_PayloadWithTrailingList_Throws(byte[] trailing)
     {
         void Decode()
         {
@@ -289,15 +290,15 @@ public class FrameTxDecoderTests
             _txDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
         }
 
-        Assert.That(Decode, Throws.InstanceOf<RlpException>().With.Message.Contains("trailing element"));
+        Assert.That(Decode, Throws.InstanceOf<RlpReaderException>().With.Message.Contains("trailing element"));
     }
 
     private static IEnumerable<TestCaseData> TrailingListCases()
     {
-        yield return new TestCaseData(Rlp.OfEmptyList).SetName("Decode_PayloadWithTrailingEmptyList_Throws");
-        yield return new TestCaseData(Rlp.Encode(new[]
+        yield return new TestCaseData(RlpTestHelper.OfEmptyList).SetName("Decode_PayloadWithTrailingEmptyList_Throws");
+        yield return new TestCaseData(RlpTestHelper.EncodeSequence(new[]
         {
-            Rlp.Encode(new[] { Rlp.Encode(TestItem.KeccakA.BytesToArray()), Rlp.Encode(7L), Rlp.Encode(TestItem.KeccakB.BytesToArray()) })
+            RlpTestHelper.EncodeSequence(new[] { Rlp.Encode(TestItem.KeccakA.BytesToArray()), Rlp.Encode(7L), Rlp.Encode(TestItem.KeccakB.BytesToArray()) })
         })).SetName("Decode_PayloadWithTrailingRecentRootReferenceList_Throws");
     }
 
@@ -310,23 +311,23 @@ public class FrameTxDecoderTests
     /// <param name="signatures">Replaces the signatures field; defaults to the empty list.</param>
     /// <param name="fees">Replaces the fees field; defaults to three zero per-gas fees.</param>
     /// <param name="trailing">Extra elements appended after <c>blob_versioned_hashes</c>.</param>
-    private static Rlp FrameTxBody(Rlp? chainId = null, Rlp? nonce = null, Rlp? sender = null, Rlp? signatures = null, Rlp? frames = null, Rlp? fees = null, params Rlp[] trailing) =>
-        Rlp.Encode([
+    private static byte[] FrameTxBody(byte[]? chainId = null, byte[]? nonce = null, byte[]? sender = null, byte[]? signatures = null, byte[]? frames = null, byte[]? fees = null, params byte[][] trailing) =>
+        RlpTestHelper.EncodeSequence([
             chainId ?? Rlp.Encode(TestBlockchainIds.ChainId),
             nonce ?? Rlp.Encode(0L),                        // nonce
             sender ?? Rlp.Encode(TestItem.AddressA.Bytes),  // sender
-            frames ?? Rlp.Encode(Array.Empty<Rlp>()),       // frames
-            signatures ?? Rlp.Encode(Array.Empty<Rlp>()),   // signatures
-            fees ?? Rlp.Encode(Rlp.Encode(0L), Rlp.Encode(0L)),
-            Rlp.Encode(Array.Empty<Rlp>()),                 // blob_versioned_hashes
+            frames ?? RlpTestHelper.EncodeSequence(),       // frames
+            signatures ?? RlpTestHelper.EncodeSequence(),   // signatures
+            fees ?? RlpTestHelper.EncodeSequence(Rlp.Encode(0L), Rlp.Encode(0L)),
+            RlpTestHelper.EncodeSequence(),                 // blob_versioned_hashes
             .. trailing]);
 
     /// <summary>Prefixes <paramref name="rlp"/> with the frame transaction type byte.</summary>
-    private static byte[] TypedPayload(Rlp rlp)
+    private static byte[] TypedPayload(byte[] rlp)
     {
         byte[] payload = new byte[1 + rlp.Length];
         payload[0] = (byte)TxType.FrameTx;
-        rlp.Bytes.CopyTo(payload, 1);
+        rlp.CopyTo(payload, 1);
         return payload;
     }
 
@@ -417,7 +418,7 @@ public class FrameTxDecoderTests
     [Test]
     public void Decode_FeeList_ReadsMaxFeeThenPriorityFee()
     {
-        RlpReader reader = new(TypedPayload(FrameTxBody(fees: Rlp.Encode(Rlp.Encode(11L), Rlp.Encode(22L)))));
+        RlpReader reader = new(TypedPayload(FrameTxBody(fees: RlpTestHelper.EncodeSequence(Rlp.Encode(11L), Rlp.Encode(22L)))));
 
         Transaction tx = _txDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
 
@@ -435,11 +436,11 @@ public class FrameTxDecoderTests
     [TestCase(4, TestName = "Decode_FourItemFeeList_Throws")]
     public void Decode_FeeListOfAnotherLength_Throws(int feeCount)
     {
-        Rlp[] fees = [Rlp.Encode(11L), Rlp.Encode(22L), Rlp.Encode(33L), Rlp.Encode(44L)];
-        byte[] payload = TypedPayload(FrameTxBody(fees: Rlp.Encode(fees[..feeCount])));
+        byte[][] fees = [Rlp.Encode(11L), Rlp.Encode(22L), Rlp.Encode(33L), Rlp.Encode(44L)];
+        byte[] payload = TypedPayload(FrameTxBody(fees: RlpTestHelper.EncodeSequence(fees[..feeCount])));
 
         Assert.That(() => { RlpReader reader = new(payload); _txDecoder.Decode(ref reader, RlpBehaviors.SkipTypedWrapping); },
-            Throws.InstanceOf<RlpException>());
+            Throws.InstanceOf<RlpReaderException>());
     }
 
     [Test]
@@ -449,7 +450,7 @@ public class FrameTxDecoderTests
         tx.Nonce = 0;
         tx.GasPrice = 22;
 
-        byte[] expected = TypedPayload(FrameTxBody(fees: Rlp.Encode(Rlp.Encode(11L), Rlp.Encode(22L))));
+        byte[] expected = TypedPayload(FrameTxBody(fees: RlpTestHelper.EncodeSequence(Rlp.Encode(11L), Rlp.Encode(22L))));
 
         Assert.That(EncodeConsensusPayload(tx), Is.EqualTo(expected));
     }
@@ -470,13 +471,13 @@ public class FrameTxDecoderTests
         Transaction keyed = CreateFrameTx();
         keyed.NonceKeys = [1];
         byte[] bytes = new byte[_txDecoder.GetLength(keyed, RlpBehaviors.None)];
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
         _txDecoder.Encode(ref writer, keyed);
         // The one-byte key `01` and the empty list `c0` occupy the same slot, so no length changes.
         int keyIndex = Array.IndexOf(bytes, (byte)0xc1) + 1;
         bytes[keyIndex] = 0xc0;
 
-        Assert.That(() => { RlpReader reader = new(bytes); _txDecoder.Decode(ref reader); }, Throws.InstanceOf<RlpException>());
+        Assert.That(() => { RlpReader reader = new(bytes); _txDecoder.Decode(ref reader); }, Throws.InstanceOf<RlpReaderException>());
     }
 
     // An under-declared nonce_keys header consumes the same bytes as the canonical one, so without a closing
@@ -488,7 +489,7 @@ public class FrameTxDecoderTests
         Transaction keyed = CreateFrameTx();
         keyed.NonceKeys = [300];
         byte[] bytes = new byte[_txDecoder.GetLength(keyed, RlpBehaviors.None)];
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
         _txDecoder.Encode(ref writer, keyed);
 
         // `c3 82 01 2c` is the whole nonce_keys list; `c1` under-declares it without moving any other byte.
@@ -504,7 +505,7 @@ public class FrameTxDecoderTests
         if (underDeclare)
         {
             bytes[headerIndex] = 0xc1;
-            Assert.That(() => { RlpReader reader = new(bytes); _txDecoder.Decode(ref reader); }, Throws.InstanceOf<RlpException>());
+            Assert.That(() => { RlpReader reader = new(bytes); _txDecoder.Decode(ref reader); }, Throws.InstanceOf<RlpReaderException>());
         }
         else
         {
@@ -513,7 +514,7 @@ public class FrameTxDecoderTests
         }
     }
 
-    // RlpLimitException, not the bare RlpException an out-of-range read is wrapped in: the keys are read into
+    // RlpLimitException, not the bare RlpReaderException an out-of-range read is wrapped in: the keys are read into
     // a fixed buffer, so without the decoder's own count guard the over-cap key overruns it and throws anyway.
     [TestCase(Eip8250Constants.MaxNonceKeys, false)]
     [TestCase(Eip8250Constants.MaxNonceKeys + 1, true)]
@@ -640,7 +641,7 @@ public class FrameTxDecoderTests
     }
 
     // The gas budget alone admits 10,000,001 entries at the default MaxBlockGas, so one-byte placeholders would
-    // size an array eight times their own length. RlpLimitException, not the RlpException a null element
+    // size an array eight times their own length. RlpLimitException, not the RlpReaderException a null element
     // raises, is what distinguishes refusing the count from allocating for it.
     [Test]
     public void Decode_SignatureCountTheBytesCannotHold_IsRefusedBeforeAllocating([Values(1_024, 100_000)] int count)
@@ -657,25 +658,25 @@ public class FrameTxDecoderTests
     public void Decode_SignatureListReachingPastThisTransaction_IsRefusedBeforeAllocating([Values] bool allowExtraBytes)
     {
         const int count = 64;
-        Rlp[] entries = new Rlp[count];
+        byte[][] entries = new byte[count][];
         for (int i = 0; i < entries.Length; i++)
         {
             // The five-byte minimum: a four-item sequence of empty items.
-            entries[i] = Rlp.Encode(Rlp.OfEmptyByteArray, Rlp.OfEmptyByteArray, Rlp.OfEmptyByteArray, Rlp.OfEmptyByteArray);
+            entries[i] = RlpTestHelper.EncodeSequence(RlpTestHelper.OfEmptyByteArray, RlpTestHelper.OfEmptyByteArray, RlpTestHelper.OfEmptyByteArray, RlpTestHelper.OfEmptyByteArray);
         }
 
-        byte[] body = FrameTxBody(signatures: Rlp.Encode(entries)).Bytes;
+        byte[] body = FrameTxBody(signatures: RlpTestHelper.EncodeSequence(entries));
         RlpReader walk = new(body);
-        walk.ReadSequenceLength();
-        int contentStart = walk.Position;
-        walk.DecodeULong();  // chain_id
-        walk.DecodeULong();  // nonce
-        walk.DecodeAddress();
-        walk.Position += walk.PeekNextRlpLength(); // frames
-        byte[] payload = TypedPayload(WithDeclaredContentLength(body, contentStart, walk.Position - contentStart));
+        RlpReader content = walk.EnterSequence(out int itemLength);
+        int contentStart = itemLength - content.Remaining;
+        content.DecodeULong();  // chain_id
+        content.DecodeULong();  // nonce
+        content.DecodeAddress();
+        content.SkipItem(); // frames
+        byte[] payload = TypedPayload(WithDeclaredContentLength(body, contentStart, content.BytesRead));
 
         Assert.That(() => DecodeConsensusPayload(payload, allowExtraBytes ? RlpBehaviors.AllowExtraBytes : RlpBehaviors.None),
-            Throws.InstanceOf<RlpLimitException>());
+            Throws.InstanceOf<RlpReaderException>());
     }
 
     // The direction an attacker uses: an honest envelope around a payload that declares more than it holds.
@@ -687,19 +688,19 @@ public class FrameTxDecoderTests
         const int count = 100_000;
         const int siblingBytes = MinSignatureRlpLength * count;
 
-        byte[] body = FrameTxBody(signatures: PlaceholderList(count)).Bytes;
+        byte[] body = FrameTxBody(signatures: PlaceholderList(count));
         RlpReader walk = new(body);
-        walk.ReadSequenceLength();
-        int contentStart = walk.Position;
-        Rlp overDeclared = WithDeclaredContentLength(body, contentStart, body.Length - contentStart + siblingBytes);
+        RlpReader content = walk.EnterSequence(out int itemLength);
+        int contentStart = itemLength - content.Remaining;
+        byte[] overDeclared = WithDeclaredContentLength(body, contentStart, body.Length - contentStart + siblingBytes);
 
         Transaction sibling = CreateFrameTx(signatures: [new TxFrameSignature(
             TxFrameSignature.SchemeArbitrary, null, default, FilledBytes(siblingBytes, 0x01))]);
-        byte[] message = Rlp.Encode([
+        byte[] message = RlpTestHelper.EncodeSequence([
             Rlp.Encode(TypedPayload(overDeclared)),
-            Rlp.Encode(EncodeConsensusPayload(sibling))]).Bytes;
+            Rlp.Encode(EncodeConsensusPayload(sibling))]);
 
-        Assert.That(() => DecodeMessage(message), Throws.InstanceOf<RlpLimitException>());
+        Assert.That(() => DecodeMessage(message), Throws.InstanceOf<RlpReaderException>());
     }
 
     /// <summary>Decodes a batched <c>Transactions</c>-style message: many transactions, one reader.</summary>
@@ -711,16 +712,16 @@ public class FrameTxDecoderTests
 
     /// <summary>Re-emits <paramref name="body"/>'s sequence header declaring <paramref name="declared"/> content
     /// bytes, leaving every byte of the content itself in place.</summary>
-    private static Rlp WithDeclaredContentLength(byte[] body, int contentStart, int declared)
+    private static byte[] WithDeclaredContentLength(byte[] body, int contentStart, int declared)
     {
         byte[] header = new byte[Rlp.LengthOfSequence(declared) - declared];
-        RlpWriter headerWriter = new(header);
+        RlpWriter headerWriter = RlpWriter.ContentWriter(header);
         headerWriter.StartSequence(declared);
 
         byte[] doctored = new byte[header.Length + body.Length - contentStart];
         header.CopyTo(doctored, 0);
         body.AsSpan(contentStart).CopyTo(doctored.AsSpan(header.Length));
-        return new Rlp(doctored);
+        return doctored;
     }
 
     [Test]
@@ -729,7 +730,7 @@ public class FrameTxDecoderTests
         byte[] payload = TypedPayload(FrameTxBody(chainId: Rlp.Encode((UInt256)ulong.MaxValue + 1)));
 
         Assert.That(() => DecodeConsensusPayload(payload),
-            Throws.InstanceOf<RlpException>().With.Message.Contains("Unexpected length of integer"));
+            Throws.InstanceOf<RlpReaderException>().With.Message.Contains("Unexpected length of integer"));
     }
 
     // EIP-8141 requires nonce < 2^64. A wider nonce gets the NonceTooWide error the other transaction types report.
@@ -739,7 +740,7 @@ public class FrameTxDecoderTests
         byte[] payload = TypedPayload(FrameTxBody(nonce: Rlp.Encode((UInt256)ulong.MaxValue + 1)));
 
         Assert.That(() => DecodeConsensusPayload(payload),
-            Throws.InstanceOf<RlpException>().With.Message.Contains("NonceTooWide"));
+            Throws.InstanceOf<RlpReaderException>().With.Message.Contains("NonceTooWide"));
     }
 
     [TestCase(FrameDataDecodeCap, false)]
@@ -767,57 +768,55 @@ public class FrameTxDecoderTests
             "the overrun must keep the short-form prefix, or it declares a length of length instead");
         payload[1] += (byte)overrun;
 
-        Assert.That(() => DecodeConsensusPayload(payload), Throws.InstanceOf<RlpException>().With.Message.Contains("payload is incomplete"));
+        Assert.That(() => DecodeConsensusPayload(payload), Throws.InstanceOf<RlpReaderException>().With.Message.Contains("payload is incomplete"));
     }
 
     [TestCaseSource(nameof(TruncatedPayloadCases))]
     public void Decode_InputEndingBeforeThePayloadDoes_ThrowsTruncated(byte[] payload) =>
         Assert.That(() => DecodeConsensusPayload(payload),
-            Throws.InstanceOf<RlpException>().With.Message.EqualTo("RLP data is truncated: frame transaction payload is incomplete."));
+            Throws.InstanceOf<RlpReaderException>().With.Message.EqualTo("RLP data is truncated: frame transaction payload is incomplete."));
 
-    /// <summary>Inputs that stop before the payload is complete, every header declaring only the bytes present.
-    /// Without the decoder's end-of-input checks each one reads past the end of the buffer, and the index exception
-    /// surfaces as <c>Cannot decode stream of</c>.</summary>
+    /// <summary>Inputs that stop before the payload is complete, every header declaring only the bytes present.</summary>
     private static IEnumerable<TestCaseData> TruncatedPayloadCases()
     {
-        Rlp chainId = Rlp.Encode(TestBlockchainIds.ChainId);
-        Rlp nonce = Rlp.Encode(0L);
-        Rlp sender = Rlp.Encode(TestItem.AddressA.Bytes);
+        byte[] chainId = Rlp.Encode(TestBlockchainIds.ChainId);
+        byte[] nonce = Rlp.Encode(0L);
+        byte[] sender = Rlp.Encode(TestItem.AddressA.Bytes);
 
         yield return new TestCaseData(new[] { (byte)TxType.FrameTx }).SetName("Decode_TypeByteAlone_ThrowsTruncated");
         yield return new TestCaseData(new[] { (byte)TxType.FrameTx, Rlp.EmptyListByte })
             .SetName("Decode_EmptyPayloadList_ThrowsTruncated");
-        yield return new TestCaseData(TypedPayload(Rlp.Encode([
+        yield return new TestCaseData(TypedPayload(RlpTestHelper.EncodeSequence([
                 chainId, nonce, sender,
-                Rlp.Encode(Array.Empty<Rlp>()),                     // frames
-                Rlp.Encode(Array.Empty<Rlp>()),                     // signatures
-                Rlp.Encode(Rlp.Encode(0L), Rlp.Encode(0L))])))      // fees; no blob_versioned_hashes
+                RlpTestHelper.EncodeSequence(),                     // frames
+                RlpTestHelper.EncodeSequence(),                     // signatures
+                RlpTestHelper.EncodeSequence(Rlp.Encode(0L), Rlp.Encode(0L))]))) // fees; no blob_versioned_hashes
             .SetName("Decode_PayloadWithoutItsLastField_ThrowsTruncated");
 
         // The execution gas limit declares eight bytes and one follows it, so the input ends inside the frame.
-        Rlp frameEndingInItsGasLimit = Rlp.Encode([
+        byte[] frameEndingInItsGasLimit = RlpTestHelper.EncodeSequence([
             Rlp.Encode((byte)FrameMode.Default),
             Rlp.Encode((byte)FrameFlags.None),
             Rlp.Encode(TestItem.AddressB.Bytes),
-            Rlp.Encode([new Rlp([0x88, 0x01])])]);          // limits
-        yield return new TestCaseData(TypedPayload(Rlp.Encode([chainId, nonce, sender, Rlp.Encode([frameEndingInItsGasLimit])])))
+            RlpTestHelper.EncodeSequence([[0x88, 0x01]])]);  // limits
+        yield return new TestCaseData(TypedPayload(RlpTestHelper.EncodeSequence([chainId, nonce, sender, RlpTestHelper.EncodeSequence([frameEndingInItsGasLimit])])))
             .SetName("Decode_InputEndingInsideAFrame_ThrowsTruncated");
 
         // The signer declares 20 bytes and two follow it, so the input ends inside the signature entry.
-        Rlp signatureEndingInItsSigner = Rlp.Encode([Rlp.Encode(TxFrameSignature.SchemeArbitrary), new Rlp([0x94, 0x01, 0x02])]);
-        yield return new TestCaseData(TypedPayload(Rlp.Encode([
-                chainId, nonce, sender, Rlp.Encode(Array.Empty<Rlp>()), Rlp.Encode([signatureEndingInItsSigner])])))
+        byte[] signatureEndingInItsSigner = RlpTestHelper.EncodeSequence([Rlp.Encode(TxFrameSignature.SchemeArbitrary), [0x94, 0x01, 0x02]]);
+        yield return new TestCaseData(TypedPayload(RlpTestHelper.EncodeSequence([
+                chainId, nonce, sender, RlpTestHelper.EncodeSequence(), RlpTestHelper.EncodeSequence([signatureEndingInItsSigner])])))
             .SetName("Decode_InputEndingInsideASignature_ThrowsTruncated");
     }
 
     /// <summary>An RLP list of <paramref name="count"/> single-byte items, without materialising the items.</summary>
-    private static Rlp PlaceholderList(int count)
+    private static byte[] PlaceholderList(int count)
     {
         byte[] bytes = new byte[Rlp.LengthOfSequence(count)];
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
         writer.StartSequence(count);
         bytes.AsSpan(bytes.Length - count).Fill(Rlp.EmptyListByte);
-        return new Rlp(bytes);
+        return bytes;
     }
 
     private static Transaction DecodeConsensusPayload(byte[] payload, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -829,7 +828,7 @@ public class FrameTxDecoderTests
     private static Transaction EncodeDecode(Transaction tx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         byte[] bytes = new byte[_txDecoder.GetLength(tx, rlpBehaviors)];
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
         _txDecoder.Encode(ref writer, tx, rlpBehaviors);
         RlpReader reader = new(bytes);
         return _txDecoder.Decode(ref reader, rlpBehaviors)!;
@@ -841,7 +840,7 @@ public class FrameTxDecoderTests
     private static byte[] EncodeConsensusPayload(Transaction tx)
     {
         byte[] bytes = new byte[_txDecoder.GetLength(tx, RlpBehaviors.SkipTypedWrapping)];
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
         _txDecoder.Encode(ref writer, tx, RlpBehaviors.SkipTypedWrapping);
         return bytes;
     }

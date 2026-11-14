@@ -16,6 +16,7 @@ using Nethermind.Db;
 using Nethermind.Init.Modules;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State.Flat.Persistence;
@@ -367,7 +368,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
             ReadOnlySpan<byte> stripped = ((ReadOnlySpan<byte>)storageValue).WithoutLeadingZeros();
-            writer.SetStorageRawEncoded(addrHash, slotHash, Rlp.Encode(stripped).Bytes);
+            writer.SetStorageRawEncoded(addrHash, slotHash, Rlp.Encode(stripped));
         }
 
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())

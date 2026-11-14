@@ -6,6 +6,7 @@ using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeBuffer;
@@ -37,7 +38,7 @@ internal abstract class NodeRecordBufferVisitor(
     /// <remarks>A record decoded from RLP has no child pointers, so every node below it is loaded from persistence too.</remarks>
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
     /// <param name="buffer">The walking worker's buffer, which a record decoded from RLP is written to.</param>
-    /// <returns>False when neither holds a valid node.</returns>
+    /// <returns>False when neither holds it.</returns>
     protected bool TryLoad(Hash256? address, in TreePath path, in ValueHash256 hash, ulong pointer, DecodeBuffer buffer, out NodeRecord record)
     {
         if (pointer != 0 && _nodeRecordBuffer is not null && _nodeRecordBuffer.TryLocate(pointer, out record))
@@ -54,8 +55,7 @@ internal abstract class NodeRecordBufferVisitor(
     }
 
     /// <summary>The record of a child embedded in its parent's record, written to <paramref name="buffer"/>.</summary>
-    protected static NodeRecord InlineRecord(in ChildRef child, DecodeBuffer buffer) =>
-        DecodeRecord(child.InlineRlp, default, buffer) ?? throw new TrieException("Invalid embedded trie node RLP.");
+    protected static NodeRecord InlineRecord(in ChildRef child, DecodeBuffer buffer) => DecodeRecord(child.InlineRlp, default, buffer);
 
     protected void RecordLookup(in TreePath path)
     {
@@ -63,11 +63,10 @@ internal abstract class NodeRecordBufferVisitor(
         diagnostics?.ObserveDepth(path.Length);
     }
 
-    /// <returns>The record of <paramref name="rlp"/> with every child pointer 0, written to <paramref name="buffer"/>, or null when it is not a valid trie node.</returns>
-    private static NodeRecord? DecodeRecord(ReadOnlySpan<byte> rlp, in ValueHash256 hash, DecodeBuffer buffer)
+    /// <returns>The record of <paramref name="rlp"/> with every child pointer 0, written to <paramref name="buffer"/>.</returns>
+    private static NodeRecord DecodeRecord(ReadOnlySpan<byte> rlp, in ValueHash256 hash, DecodeBuffer buffer)
     {
-        if (!NodeRecordCodec.TryDecode(rlp, out NodeRecordKind kind, out ushort hashMask)) return null;
-
+        NodeRecordCodec.Decode(rlp, out NodeRecordKind kind, out ushort hashMask);
         byte[] record = buffer.Reserve(NodeRecordCodec.Length(BitOperations.PopCount(hashMask), rlp.Length));
         NodeRecordCodec.WriteFromRlp(rlp, kind, hashMask, hash, 0, record);
         return new NodeRecord(record, 0);
@@ -134,14 +133,15 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext>(
     INodeRecordVisitor<TNodeContext> visitor,
     VisitingOptions options,
     VisitingStats? diagnostics)
-    : NodeRecordBufferVisitor(bundle, stateSnapshot, diagnostics, visitor.ExtraReadFlag | (visitor.IsFullDbScan ? ReadFlags.HintReadAhead : ReadFlags.None))
+    : NodeRecordBufferVisitor(bundle, stateSnapshot, diagnostics, visitor.ExtraReadFlag | (visitor.IsRangeScan ? ReadFlags.HintReadAhead : ReadFlags.None))
     where TNodeContext : struct, INodeContext<TNodeContext>
 {
     private const long SubtreeSizeThreshold = 256 * 1024;
     private readonly ConcurrencyController _workers = new(options.MaxDegreeOfParallelism);
     private readonly DecodeBuffer _buffer = new();
 
-    public void Accept(Hash256 rootHash)
+    /// <param name="address">The address hash of the storage trie at <paramref name="rootHash"/>, to visit that trie alone as <see cref="PatriciaTree.Accept{TNodeContext}"/> does given a storage address; null for the state trie.</param>
+    public void Accept(Hash256 rootHash, Hash256? address)
     {
         if (!visitor.IsFullDbScan) visitor.VisitTree(default, rootHash);
         if (rootHash == Keccak.EmptyTreeHash)
@@ -150,14 +150,14 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext>(
             return;
         }
 
-        if (!TryLoadRoot(null, rootHash, _buffer, out NodeRecord root))
+        if (!TryLoadRoot(address, rootHash, _buffer, out NodeRecord root))
         {
             visitor.VisitMissingNode(default, rootHash);
             return;
         }
 
         if (visitor.IsFullDbScan) visitor.VisitTree(default, rootHash);
-        Visit(root, default, null, TreePath.Empty, long.MaxValue, _buffer);
+        Visit(root, default, address, TreePath.Empty, long.MaxValue, _buffer);
         _buffer.Dispose();
     }
 

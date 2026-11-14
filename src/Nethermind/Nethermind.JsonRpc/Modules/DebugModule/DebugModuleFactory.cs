@@ -3,6 +3,7 @@
 
 using System.Diagnostics.CodeAnalysis;
 using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
@@ -55,6 +56,7 @@ public class DebugModuleFactory(
             .AddScoped<GethStyleTracer.TraceCallRequestState>()
             .AddScoped<IBlobBaseFeeOverrideProvider, TraceCallBlobBaseFeeOverrideProvider>()
             .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
+            .AddDecorator<IBlockhashProvider, BlockNumberOverrideBlockhashProvider>()
 
             // So the debug rpc change the adapter sometime.
             .AddScoped<ITransactionProcessorAdapter, ChangeableTransactionProcessorAdapter>()

@@ -16,6 +16,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.Test.P2P.Subprotocols;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Serialization.Rlp;
 using GetBlockHeadersMessage = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages.GetBlockHeadersMessage;
 
 namespace Nethermind.Network.Test;
@@ -192,7 +193,7 @@ public class MessageDictionaryTests
         using IOwnedReadOnlyList<BlockHeader> response = new[] { Build.A.BlockHeader.TestObject }.ToPooledList();
         _testMessageDictionary.Send(request);
 
-        _testMessageDictionary.ThrowIfNotRequested(UndecodableResponse.Create(111));
+        _testMessageDictionary.ThrowIfNotRequested(UndecodableResponse.Create(111).AsSpan());
         _testMessageDictionary.Handle(111, response, 100);
 
         Assert.That(request.CompletionSource.Task.Result, Is.SameAs(response));
@@ -203,7 +204,7 @@ public class MessageDictionaryTests
     {
         _testMessageDictionary.Send(CreateRequest(111));
 
-        Assert.That(() => _testMessageDictionary.ThrowIfNotRequested(content), Throws.TypeOf<SubprotocolException>());
+        Assert.That(() => _testMessageDictionary.ThrowIfNotRequested(content.AsSpan()), Throws.TypeOf<SubprotocolException>());
     }
 
     [Test]
@@ -220,7 +221,7 @@ public class MessageDictionaryTests
         using (DisposableByteBuffer content = UndecodableResponse.Create(111).AsDisposable())
         {
             using MessageDictionary<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>>.ResponseScope response =
-                dictionary.BeginResponse(content);
+                dictionary.BeginResponse(content.AsSpan());
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(response.IsExpired, Is.True);
@@ -230,7 +231,7 @@ public class MessageDictionaryTests
 
         using (DisposableByteBuffer repeatedContent = UndecodableResponse.Create(111).AsDisposable())
         {
-            Assert.That(() => dictionary.BeginResponse(repeatedContent), Throws.TypeOf<SubprotocolException>());
+            Assert.That(() => dictionary.BeginResponse(repeatedContent.AsSpan()), Throws.TypeOf<SubprotocolException>());
         }
         Assert.That(request.CompletionSource.Task.IsFaulted, Is.True);
     }
@@ -265,7 +266,7 @@ public class MessageDictionaryTests
         using (DisposableByteBuffer content = UndecodableResponse.Create(111).AsDisposable())
         {
             using MessageDictionary<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>>.ResponseScope response =
-                dictionary.BeginResponse(content);
+                dictionary.BeginResponse(content.AsSpan());
             Task<bool> expireTask = Task.Run(() => dictionary.TryExpireRequest(111));
 #pragma warning disable NUnit2045 // Completion must be confirmed before reading the result; .Result has no timeout.
             Assert.That(expireTask.Wait(1000), Is.True);
@@ -326,7 +327,7 @@ public class MessageDictionaryTests
         _testMessageDictionary.Handle(111, responseData, 100);
 
         using DisposableByteBuffer content = UndecodableResponse.Create(111).AsDisposable();
-        Assert.That(() => _testMessageDictionary.BeginResponse(content), Throws.TypeOf<SubprotocolException>());
+        Assert.That(() => _testMessageDictionary.BeginResponse(content.AsSpan()), Throws.TypeOf<SubprotocolException>());
     }
 
     [Test]
@@ -340,7 +341,7 @@ public class MessageDictionaryTests
         Request<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>> replacement = CreateRequest(112);
         IOwnedReadOnlyList<BlockHeader> rejectedData = Substitute.For<IOwnedReadOnlyList<BlockHeader>>();
         using (MessageDictionary<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>>.ResponseScope response =
-               dictionary.BeginResponse(content))
+               dictionary.BeginResponse(content.AsSpan()))
         {
             Task sendTask = Task.Run(() => dictionary.Send(replacement));
             Assert.That(sendTask.Wait(1000), Is.True);
@@ -376,7 +377,7 @@ public class MessageDictionaryTests
         Assert.Throws<InvalidOperationException>(() =>
         {
             using MessageDictionary<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>>.ResponseScope response =
-                dictionary.BeginResponse(content);
+                dictionary.BeginResponse(content.AsSpan());
             throw new InvalidOperationException("decoder failed");
         });
 

@@ -9,6 +9,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Enr;
@@ -70,9 +71,12 @@ public class NodeRecord
 
     private Hash256 CalculateContentHash()
     {
-        KeccakRlpWriter writer = new();
+        int length = Rlp.LengthOfSequence(GetContentLengthWithoutSignature());
+        using ArrayPoolSpan<byte> buffer = new(length);
+        RlpWriter writer = RlpWriter.ContentWriter(buffer);
         EncodeContent(ref writer);
-        return writer.GetHash();
+        Rlp.CheckLength(in writer, length);
+        return Keccak.Compute(buffer);
     }
 
     /// <summary>
@@ -254,14 +258,14 @@ public class NodeRecord
         NodeRecordSigner signer = new(ecdsa);
         RlpReader reader = new(bytes);
         NodeRecord nodeRecord = signer.Deserialize(ref reader);
-        if (reader.Position != bytes.Length)
+        if (reader.HasNext)
         {
-            throw new RlpException("Unexpected trailing bytes in ENR.");
+            throw new RlpReaderException("Unexpected trailing bytes in ENR.");
         }
 
         if (!signer.Verify(nodeRecord))
         {
-            throw new RlpException("Invalid ENR signature.");
+            throw new RlpReaderException("Invalid ENR signature.");
         }
 
         return nodeRecord;
@@ -359,16 +363,17 @@ public class NodeRecord
     /// Applies Rlp([seq, k, v, ...]]).
     /// </summary>
     /// <param name="writer">An RLP writer to encode the content to.</param>
-    private void EncodeContent<TWriter>(ref TWriter writer)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    private void EncodeContent(ref RlpWriter writer)
     {
         int contentLength = GetContentLengthWithoutSignature();
-        writer.StartSequence(contentLength);
+        RlpSequence sequence = writer.StartSequence(contentLength);
         writer.Encode(EnrSequence);
         for (int i = 0; i < Entries.Count; i++)
         {
             Entries.GetValueAtIndex(i).Encode(ref writer);
         }
+
+        writer.EndSequence(sequence);
     }
 
     /// <summary>
@@ -386,8 +391,9 @@ public class NodeRecord
 
         int rlpLength = GetRlpLengthWithSignature();
         byte[] bytes = GC.AllocateUninitializedArray<byte>(rlpLength);
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
         Encode(ref writer);
+        Rlp.CheckLength(in writer, rlpLength);
         return bytes;
     }
 
@@ -395,25 +401,26 @@ public class NodeRecord
     /// Applies Rlp([signature, seq, k, v, ...]]).
     /// </summary>
     /// <param name="writer">An RLP writer to encode the content to.</param>
-    public void Encode<TWriter>(ref TWriter writer)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    public void Encode(ref RlpWriter writer)
     {
         if (OriginalRlp is not null)
         {
-            writer.Write(OriginalRlp);
+            writer.WriteEncoded(OriginalRlp);
             return;
         }
 
         RequireSignature();
 
         int contentLength = GetContentLengthWithSignature();
-        writer.StartSequence(contentLength);
+        RlpSequence sequence = writer.StartSequence(contentLength);
         writer.Encode(Signature!.Bytes);
         writer.Encode(EnrSequence);
         for (int i = 0; i < Entries.Count; i++)
         {
             Entries.GetValueAtIndex(i).Encode(ref writer);
         }
+
+        writer.EndSequence(sequence);
     }
 
     private string CreateEnrString()
@@ -427,8 +434,9 @@ public class NodeRecord
         }
 
         using ArrayPoolSpan<byte> bytes = new(GetRlpLengthWithSignature());
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
         Encode(ref writer);
+        Rlp.CheckLength(in writer, bytes.Length);
         return string.Concat(prefix, Base64Url.EncodeToString(bytes));
     }
 

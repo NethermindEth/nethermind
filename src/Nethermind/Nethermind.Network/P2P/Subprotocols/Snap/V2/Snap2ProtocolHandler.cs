@@ -44,7 +44,7 @@ public class Snap2ProtocolHandler : Snap1ProtocolHandler, ISnapSyncPeer, IStatic
 
     protected override bool HandleMessageCore(ZeroPacket message)
     {
-        int size = message.Content.ReadableBytes;
+        int size = message.Content.Length;
 
         switch (message.PacketType)
         {
@@ -56,7 +56,7 @@ public class Snap2ProtocolHandler : Snap1ProtocolHandler, ISnapSyncPeer, IStatic
                     HandleInBackground<GetBlockAccessListsMessage, BlockAccessListsMessage>(message, Handle);
                 return true;
             case Snap2MessageCode.BlockAccessLists:
-                HandleCorrelatedResponse(_getBlockAccessListsRequests, message.Content, size, SelectBlockAccessLists);
+                HandleCorrelatedResponse(_getBlockAccessListsRequests, message, size, SelectBlockAccessLists);
                 return true;
             default:
                 return base.HandleMessageCore(message);

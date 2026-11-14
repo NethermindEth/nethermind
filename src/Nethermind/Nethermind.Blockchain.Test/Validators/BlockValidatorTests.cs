@@ -292,7 +292,7 @@ public class BlockValidatorTests
                 .WithBlobGasUsed(0)
                 .WithWithdrawals([])
                 .WithBlockAccessList(new ReadOnlyBlockAccessList())
-                .WithEncodedBlockAccessList(Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes).TestObject,
+                .WithEncodedBlockAccessList(Rlp.Encode(new ReadOnlyBlockAccessList())).TestObject,
             parent,
             new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)),
             "InvalidBlockLevelAccessListHash")
@@ -478,7 +478,7 @@ public class BlockValidatorTests
         // ValidateProcessedBlock must catch the floor against the BAL produced during execution.
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithPrecompileChanges(parent.Hash!, timestamp: 12).TestObject;
-        byte[] encodedBal = Rlp.Encode(bal).Bytes;
+        byte[] encodedBal = Rlp.Encode(bal);
         Hash256 balHash = new(ValueKeccak.Compute(encodedBal).Bytes);
 
         Block suggestedBlock = Build.A.Block
@@ -746,7 +746,7 @@ file static class BalBuilderExtensions
 {
     public static BlockBuilder WithBal(this BlockBuilder builder, ReadOnlyBlockAccessList bal)
     {
-        byte[] encoded = Rlp.Encode(bal).Bytes;
+        byte[] encoded = Rlp.Encode(bal);
         return builder
             .WithBlockAccessList(bal)
             .WithEncodedBlockAccessList(encoded)

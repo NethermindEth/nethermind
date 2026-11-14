@@ -13,9 +13,11 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Snap;
@@ -370,14 +372,14 @@ public class SnapStateServerTests
     {
         yield return new TestCaseData(Array.Empty<byte>()).SetName("{m}: AbsentAccount");
         yield return new TestCaseData(new byte[] { 0xc1, 0x80 }).SetName("{m}: PlaceholderAccount");
-        yield return new TestCaseData(AccountDecoder.Instance.EncodeAsBytes(Account.TotallyEmpty)).SetName("{m}: EmptyAccount");
-        yield return new TestCaseData(AccountDecoder.Instance.EncodeAsBytes(
+        yield return new TestCaseData(AccountDecoder.Instance.Encode(Account.TotallyEmpty)).SetName("{m}: EmptyAccount");
+        yield return new TestCaseData(AccountDecoder.Instance.Encode(
             new Account(1).WithChangedCodeHash(TestItem.KeccakA))).SetName("{m}: AccountWithCode");
         yield return new TestCaseData(new byte[] { 0xc4, 0x80, 0x80, 0x80, 0x80 }).SetName("{m}: NullHashes");
-        yield return new TestCaseData(Rlp.Encode(Rlp.Encode(0), Rlp.Encode(0), Rlp.Encode(Keccak.EmptyTreeHash), Rlp.OfEmptyByteArray).Bytes)
+        yield return new TestCaseData(RlpTestHelper.EncodeSequence(Rlp.Encode(0), Rlp.Encode(0), Rlp.Encode(Keccak.EmptyTreeHash), RlpTestHelper.OfEmptyByteArray))
             .SetName("{m}: NullCodeHash");
         yield return new TestCaseData(new byte[] { 0xc4, 0x80, 0x80, 0xa0 }).SetName("{m}: TruncatedStorageHash");
-        yield return new TestCaseData(AccountDecoder.Instance.EncodeAsBytes(Account.TotallyEmpty)[..^1]).SetName("{m}: TruncatedCodeHash");
+        yield return new TestCaseData(AccountDecoder.Instance.Encode(Account.TotallyEmpty)[..^1]).SetName("{m}: TruncatedCodeHash");
     }
 
     [TestCaseSource(nameof(AccountPayloads))]
@@ -389,7 +391,7 @@ public class SnapStateServerTests
         using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList(
             [new PathGroup { Group = [accountPath.BytesToArray(), []] }]);
         PathWithAccount[] accounts = [new(accountPath, Account.TotallyEmpty)];
-        RlpException? expectedException = null;
+        RlpReaderException? expectedException = null;
         Account? expected = null;
         if (accountRlp.Length > 0)
         {
@@ -397,7 +399,7 @@ public class SnapStateServerTests
             {
                 expected = AccountDecoder.Instance.Decode(accountRlp);
             }
-            catch (RlpException exception)
+            catch (RlpReaderException exception)
             {
                 expectedException = exception;
             }

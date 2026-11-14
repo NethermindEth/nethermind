@@ -11,6 +11,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 using NSubstitute;
@@ -37,20 +38,16 @@ public class MessageSerializationServiceTests
     }
 
     [Test]
-    public void Deserialize_from_a_byte_buffer_reads_the_rest_of_it_with_a_span_serializer()
+    public void Deserialize_reads_the_readable_bytes_of_a_byte_buffer_packet()
     {
         using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
-        using DisposableByteBuffer packet = UnpooledByteBufferAllocator.Default.Buffer().AsDisposable();
-        packet.WriteBytes(Bytes.FromHexString("01c104"));
-        packet.SkipBytes(1);
+        using DisposableByteBuffer buffer = UnpooledByteBufferAllocator.Default.Buffer().AsDisposable();
+        buffer.WriteBytes(Bytes.FromHexString("01c104"));
+        buffer.SkipBytes(1);
 
-        DisconnectMessage message = container.Resolve<IMessageSerializationService>().Deserialize<DisconnectMessage>(packet);
+        DisconnectMessage message = container.Resolve<IMessageSerializationService>().Deserialize<DisconnectMessage>(new NettyBufferPacket(buffer));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(message.Reason, Is.EqualTo((int)EthDisconnectReason.TooManyPeers));
-            Assert.That(packet.IsReadable(), Is.False);
-        }
+        Assert.That(message.Reason, Is.EqualTo((int)EthDisconnectReason.TooManyPeers));
     }
 
     [Test]

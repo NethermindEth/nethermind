@@ -61,7 +61,7 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
         EthereumEcdsa ecdsa = new(0);
         BlockRoundInfo blockRoundInfo = new(Hash256.Zero, 1, 1);
         QuorumCertificate quorumForSigning = new(blockRoundInfo, null, 450);
-        IEnumerable<Signature> signatures = keys.Select(k => ecdsa.Sign(k, Keccak.Compute(qcEncoder.Encode(quorumForSigning, RlpBehaviors.ForSealing).Bytes)));
+        IEnumerable<Signature> signatures = keys.Select(k => ecdsa.Sign(k, Keccak.Compute(qcEncoder.Encode(quorumForSigning, RlpBehaviors.ForSealing))));
         QuorumCertificate quorumCert = new(blockRoundInfo, [.. signatures], 450);
         ExtraFieldsV2 extraFieldsV2 = new(1, quorumCert);
 
@@ -71,8 +71,8 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
     private void EncodeExtraData(ExtraFieldsV2 extraFieldsV2)
     {
         ExtraConsensusDataDecoder extraEncoder = new();
-        Rlp extraEncoded = extraEncoder.Encode(extraFieldsV2);
-        XdcTestObjectInternal.ExtraData = [0x2, .. extraEncoded.Bytes];
+        byte[] extraEncoded = extraEncoder.Encode(extraFieldsV2);
+        XdcTestObjectInternal.ExtraData = [0x2, .. extraEncoded];
     }
 
     public XdcBlockHeaderBuilder WithExtraConsensusData(ExtraFieldsV2 extraFieldsV2)

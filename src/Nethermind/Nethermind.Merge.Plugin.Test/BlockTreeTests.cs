@@ -348,8 +348,8 @@ public partial class BlockTreeTests
                 AddBlockResult insertResult = NotSyncedTree.Insert(beaconBlock!, BlockTreeInsertBlockOptions.SaveHeader,
                     BlockTreeInsertHeaderOptions.BeaconBlockInsert | BlockTreeInsertHeaderOptions.MoveToBeaconMainChain);
                 Assert.That(insertResult, Is.EqualTo(AddBlockResult.Added));
-                NotSyncedTreeBuilder.MetadataDb.Set(MetadataDbKeys.LowestInsertedBeaconHeaderHash, Rlp.Encode(beaconBlock!.Hash).Bytes);
-                NotSyncedTreeBuilder.MetadataDb.Set(MetadataDbKeys.BeaconSyncPivotNumber, Rlp.Encode(beaconBlock.Number).Bytes);
+                NotSyncedTreeBuilder.MetadataDb.Set(MetadataDbKeys.LowestInsertedBeaconHeaderHash, Rlp.Encode(beaconBlock!.Hash));
+                NotSyncedTreeBuilder.MetadataDb.Set(MetadataDbKeys.BeaconSyncPivotNumber, Rlp.Encode(beaconBlock.Number));
                 return this;
             }
 
@@ -548,19 +548,19 @@ public partial class BlockTreeTests
             public ScenarioBuilder InsertToHeaderDb(BlockHeader header)
             {
                 HeaderDecoder headerDecoder = new();
-                Rlp newRlp = headerDecoder.Encode(header);
-                NotSyncedTreeBuilder.HeadersDb.Set(header.Hash!, newRlp.Bytes);
+                byte[] newRlp = headerDecoder.Encode(header);
+                NotSyncedTreeBuilder.HeadersDb.Set(header.Hash!, newRlp);
                 return this;
             }
 
             public ScenarioBuilder InsertToBlockDb(Block block)
             {
                 BlockDecoder blockDecoder = new();
-                Rlp newRlp = blockDecoder.Encode(block);
+                byte[] newRlp = blockDecoder.Encode(block);
                 NotSyncedTreeBuilder.BlocksDb.Set(
                     block.Number,
                     block.GetOrCalculateHash(),
-                    newRlp.Bytes);
+                    newRlp);
 
                 return this;
             }

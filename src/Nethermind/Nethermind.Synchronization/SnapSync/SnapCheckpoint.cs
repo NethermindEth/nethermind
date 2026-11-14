@@ -7,6 +7,7 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
@@ -214,7 +215,7 @@ public sealed class SnapCheckpoint
                 UpdatedStorages = updatedStorages,
             };
         }
-        catch (Exception e) when (e is ArgumentOutOfRangeException or RlpException)
+        catch (Exception e) when (e is ArgumentOutOfRangeException or RlpReaderException)
         {
             throw new InvalidDataException("The snap checkpoint is truncated or malformed.", e);
         }
@@ -241,9 +242,13 @@ public sealed class SnapCheckpoint
     private static void WriteAccount(ArrayBufferWriter<byte> writer, PathWithAccount account)
     {
         writer.Write(account.Path.Bytes);
-        byte[] rlp = account.Account is null ? [] : AccountDecoder.Instance.EncodeAsBytes(account.Account);
-        WriteCount(writer, rlp.Length);
-        writer.Write(rlp);
+        int length = account.Account is null ? 0 : AccountDecoder.Instance.GetLength(account.Account);
+        WriteCount(writer, length);
+        if (account.Account is null) return;
+
+        RlpWriter rlp = RlpWriter.ContentWriter(writer.GetSpan(length)[..length]);
+        AccountDecoder.Instance.Encode(account.Account, ref rlp);
+        writer.Advance(length);
     }
 
     private ref struct Reader(ReadOnlySpan<byte> data)
