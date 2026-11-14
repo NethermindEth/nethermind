@@ -181,6 +181,22 @@ public class ColumnsDbTests
     }
 
     [Test]
+    public void Prefetch_ignores_a_trailing_partial_key()
+    {
+        const int count = 10;
+        const int keyLength = 8;
+        byte[] keys = new byte[count * keyLength + 3];
+        for (int i = 0; i < count; i++) BinaryPrimitives.WriteInt64BigEndian(keys.AsSpan(i * keyLength, keyLength), i);
+        long before = Metrics.PrefetchedKeys;
+
+        using IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)_db).CreateSnapshot();
+        IReadPrefetcher prefetcher = (IReadPrefetcher)snapshot.GetColumn(ReceiptsColumns.Blocks);
+
+        Assert.DoesNotThrow(() => prefetcher.Prefetch(keys, keyLength));
+        Assert.That(Metrics.PrefetchedKeys - before, Is.EqualTo(count));
+    }
+
+    [Test]
     public void Snapshot_cache_probe_reports_disk_reads_as_not_cached()
     {
         string path = DbPath + "-cache-probe";
