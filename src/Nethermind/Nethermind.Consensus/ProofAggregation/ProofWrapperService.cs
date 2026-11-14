@@ -487,6 +487,9 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             (int sigDeps, int starkDeps) = Eip8288Dependencies.CountByScheme(decoded.Deps);
             if (sigDeps > Eip8288Constants.MaxLeanSigDepsPerWrapper) return ProofWrapperAcceptance.Invalid(MempoolWrapperValidator.TooManySigDeps, verifier);
             if (starkDeps > Eip8288Constants.MaxLeanStarkDepsPerWrapper) return ProofWrapperAcceptance.Invalid(MempoolWrapperValidator.TooManyStarkDeps, verifier);
+            // Local policy: transactions sharing dependencies would multiply simulations beyond what the dependency limits bound.
+            if (decoded.Transactions.Count > decoded.Deps.Count)
+                return ProofWrapperAcceptance.LocalFailure("Mode 2 wrappers carry at most one transaction per dependency.");
             // Each dependency's witness, raw or ordinary, and each transaction's simulation.
             if (!rawWitnesses.TryTakeVerifications(identity, decoded.Deps.Count + decoded.Transactions.Count)) return AdmissionBusy();
             // Unpending counts transactions to hold, whoever else holds them, so removing another origin's wrapper never drops them;

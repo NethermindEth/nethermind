@@ -34,8 +34,8 @@ public sealed class RawWitnessPool : IDisposable
     public const long MaxLocalBytes = MaxBytes / 4;
     /// <summary>Verifications per second, in total and per source: native raw-signature checks, ordinary witnesses and
     /// validation-prefix simulations; each refills to one second's worth.</summary>
-    /// <remarks>A charge is clamped to <see cref="MaxCharge"/>. Only a source's own allowance may go into debt, so one large wrapper
-    /// takes at most its clamped cost from the shared one.</remarks>
+    /// <remarks>A source's own allowance is charged in full and may go into debt; the shared one is charged at most
+    /// <see cref="MaxCharge"/> and never goes into debt.</remarks>
     public const double MaxVerificationsPerSecond = 64;
     public const double MaxVerificationsPerSourcePerSecond = 16;
     /// <summary>The most one wrapper is charged: mode 0's dependency limits, each a witness and at most one transaction to simulate.</summary>
@@ -152,10 +152,10 @@ public sealed class RawWitnessPool : IDisposable
         lock (_gate)
         {
             Allowance perSource = SourceAllowance(identity ?? LocalSource);
-            count = Math.Min(count, MaxCharge);
-            if (!_verifications.TryTake(count, allowDebt: false)) return false;
+            int shared = Math.Min(count, MaxCharge);
+            if (!_verifications.TryTake(shared, allowDebt: false)) return false;
             if (perSource.TryTake(count, allowDebt: true)) return true;
-            _verifications.Refund(count);
+            _verifications.Refund(shared);
             return false;
         }
     }

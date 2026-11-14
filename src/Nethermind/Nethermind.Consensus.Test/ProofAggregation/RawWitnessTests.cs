@@ -607,7 +607,27 @@ public class RawWitnessTests
         }
     }
 
-    // A charge is clamped to the largest admissible wrapper's cost, and only the source's own allowance goes into debt.
+    // Transactions sharing one dependency would each need a simulation the dependency limits do not bound: declined without work.
+    [Test]
+    public async Task Wrapper_with_more_transactions_than_dependencies_is_declined_before_charging()
+    {
+        Node node = CreateNode();
+        RawSignature signature = Signature(1);
+        FrameDependency raw = RawDependency(signature);
+        Transaction[] sharing = [.. Enumerable.Range(0, 3).Select(i => Transaction((ulong)i, raw))];
+        object peer = new();
+
+        ProofWrapperAcceptance result = await node.Service.AcceptOwnedDetailedAsync(Encode(RawWrapper(new() { [raw] = signature }, sharing)), source: peer, identity: peer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.LocalFailure));
+            Assert.That(node.Recognized.Verifications, Is.Zero);
+            Assert.That(node.Raw.TryTakeVerifications(peer, (int)RawWitnessPool.MaxVerificationsPerSourcePerSecond), Is.True, "nothing was charged");
+        }
+    }
+
+    // The shared budget is charged at most the largest admissible wrapper's cost, never into debt; the source is charged in full.
     [Test]
     public void Oversized_charges_are_clamped_and_never_indebt_the_shared_budget()
     {
