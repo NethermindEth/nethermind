@@ -321,43 +321,105 @@ public class RawWitnessTests
         }
     }
 
-    // EIP-8437: raw candidates have their own verification budget; exhausting it refuses further raw work without penalty and
-    // takes nothing from proof-backed admission.
+    // EIP-8437: raw candidates have their own verification budget, charged for every witness, raw or ordinary, and every
+    // simulation, and kept per stable source identity across reconnections. Exhausting it refuses further raw work without
+    // penalty and takes nothing from proof-backed admission.
     [Test]
     public async Task Spent_raw_budget_declines_raw_work_but_not_proof_backed_wrappers()
     {
         Node node = CreateNode();
-        object peer = new();
-        int busy = 0;
-        for (byte i = 1; i <= RawWitnessPool.MaxVerificationsPerSourcePerSecond + 1; i++)
+        object nodeId = new();
+        int accepted = 0, busy = 0;
+        for (byte i = 1; i <= 10; i++)
         {
             RawSignature signature = Signature(i);
             FrameDependency raw = RawDependency(signature);
-            ProofWrapperAcceptance result = await node.Service.AcceptOwnedDetailedAsync(Encode(RawWrapper(new() { [raw] = signature }, Transaction(i, raw))), source: peer);
+            // A fresh connection object each time: the budget follows the identity, not the connection.
+            ProofWrapperAcceptance result = await node.Service.AcceptOwnedDetailedAsync(
+                Encode(RawWrapper(new() { [raw] = signature }, Transaction(i, raw, SphincsDependency($"ordinary {i}")))), source: new object(), identity: nodeId);
             if (result.Status == ProofWrapperAcceptanceStatus.Busy) busy++;
+            else if (result.Status == ProofWrapperAcceptanceStatus.Accepted) accepted++;
         }
         Transaction proven = Transaction(100, SphincsDependency("proven"));
         List<FrameDependency> deps = Eip8288Dependencies.ForTransaction(proven, FrameTxSigHash.ComputeValue);
         ProofWrapperAcceptance proofBacked = await node.Service.AcceptOwnedDetailedAsync(Encode(new MempoolWrapper
         {
-            Transactions = [proven],
-            Mode = MempoolWrapper.ModeDirect,
-            Deps = deps,
-            Proofs = [[1]]
-        }), source: peer);
+            Transactions = [proven], Mode = MempoolWrapper.ModeDirect, Deps = deps, Proofs = [[1]]
+        }), source: nodeId);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(busy, Is.EqualTo(1));
-            Assert.That(node.Recognized.Verifications, Is.EqualTo((int)RawWitnessPool.MaxVerificationsPerSourcePerSecond));
+            // Two witnesses and one simulation per wrapper.
+            Assert.That(accepted, Is.EqualTo((int)RawWitnessPool.MaxVerificationsPerSourcePerSecond / 3));
+            Assert.That(busy, Is.EqualTo(10 - accepted));
+            Assert.That(node.Recognized.Verifications, Is.EqualTo(accepted));
             Assert.That(proofBacked.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted), proofBacked.Result.Error);
         }
 
         node.Clock.Advance(TimeSpan.FromSeconds(1));
         RawSignature later = Signature(200);
         FrameDependency laterDep = RawDependency(later);
-        ProofWrapperAcceptance refilled = await node.Service.AcceptOwnedDetailedAsync(Encode(RawWrapper(new() { [laterDep] = later }, Transaction(200, laterDep))), source: peer);
+        ProofWrapperAcceptance refilled = await node.Service.AcceptOwnedDetailedAsync(Encode(RawWrapper(new() { [laterDep] = later }, Transaction(200, laterDep))),
+            source: new object(), identity: nodeId);
         Assert.That(refilled.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted), refilled.Result.Error);
+    }
+
+    // Held and known-invalid wrappers are answered without validating, or charging, again.
+    [Test]
+    public async Task Repeated_wrappers_are_not_validated_again()
+    {
+        Node node = CreateNode();
+        RawSignature signature = Signature(1), bad = new([1], ValueKeccak.Compute("m"), [0]);
+        FrameDependency raw = RawDependency(signature);
+        FrameDependency badDep = new(Eip8288Constants.LeanStarkScheme, ClaimOf(bad), ProgramKey);
+        byte[] held = Encode(RawWrapper(new() { [raw] = signature }, Transaction(0, raw)));
+        byte[] invalid = Encode(RawWrapper(new() { [badDep] = bad }, Transaction(1, badDep)));
+        await node.Service.AcceptOwnedDetailedAsync(held);
+        await node.Service.AcceptOwnedDetailedAsync(invalid);
+        int verifications = node.Recognized.Verifications;
+
+        ProofWrapperAcceptance heldAgain = await node.Service.AcceptOwnedDetailedAsync(held);
+        ProofWrapperAcceptance invalidAgain = await node.Service.AcceptOwnedDetailedAsync(invalid);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(heldAgain.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted));
+            Assert.That(invalidAgain.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Invalid));
+            Assert.That(node.Recognized.Verifications, Is.EqualTo(verifications));
+        }
+    }
+
+    [Test]
+    public void Concurrent_raw_validations_are_capped()
+    {
+        Node node = CreateNode();
+        for (int i = 0; i < RawWitnessPool.MaxConcurrentValidations; i++) Assert.That(node.Raw.TryEnterValidation(), Is.True);
+        Assert.That(node.Raw.TryEnterValidation(), Is.False);
+        node.Raw.ExitValidation();
+        Assert.That(node.Raw.TryEnterValidation(), Is.True);
+    }
+
+    // When the global budget is full, the largest other source gives way, oldest first; a source never evicts itself.
+    [Test]
+    public void Full_raw_pool_evicts_the_largest_other_source()
+    {
+        Node node = CreateNode();
+        RawSignature signature = Signature(1);
+        FrameDependency raw = RawDependency(signature);
+        MempoolWrapper decoded = RawWrapper(new() { [raw] = signature }, Transaction(0, raw));
+        object a = new(), b = new();
+        static ValueHash256 Hash(int i) => ValueKeccak.Compute(BitConverter.GetBytes(i));
+        for (int i = 0; i < RawWitnessPool.MaxWrappers; i++)
+            Assert.That(node.Raw.TryAdd([1], Hash(i), decoded, Eip8288Verifier.For(Batched), a, a), Is.EqualTo(RawWitnessPool.Admission.Added));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.Raw.TryAdd([1], Hash(-1), decoded, Eip8288Verifier.For(Batched), a, a), Is.EqualTo(RawWitnessPool.Admission.Full));
+            Assert.That(node.Raw.TryAdd([1], Hash(-2), decoded, Eip8288Verifier.For(Batched), b, b), Is.EqualTo(RawWitnessPool.Admission.Added));
+            Assert.That(node.Raw.Contains(Hash(0)), Is.False, "the oldest of the largest source gave way");
+            Assert.That(node.Raw.Contains(Hash(1)), Is.True);
+            Assert.That(node.Raw.Count, Is.EqualTo(RawWitnessPool.MaxWrappers));
+        }
     }
 
     // EIP-8437: a covering proof admits the raw-held transaction as new, so its wrapper is relayed, and the raw candidate leaves.
@@ -446,6 +508,28 @@ public class RawWitnessTests
             Assert.That(result.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.PoolRejected));
             Assert.That(node.Raw.Count, Is.Zero);
             Assert.That(node.Relayed, Is.Empty);
+        }
+    }
+
+    // A peer's raw candidates, once proven, are admitted as the peer's: never as local transactions.
+    [Test]
+    public async Task Prover_admits_proven_coverage_as_its_candidates_were([Values] bool local)
+    {
+        Node node = CreateNode();
+        object peer = new();
+        RawSignature signature = Signature(1);
+        FrameDependency raw = RawDependency(signature);
+        byte[] wrapper = Encode(RawWrapper(new() { [raw] = signature }, Transaction(0, raw)));
+        if (local) await node.Service.AcceptDetailedAsync(wrapper);
+        else await node.Service.AcceptOwnedDetailedAsync(wrapper, source: peer, identity: peer);
+        using RawWitnessProver prover = new(node.Service, node.Raw, node.Recognized, node.Verifier, new TxPoolConfig(), LimboLogs.Instance);
+
+        ProofWrapperAcceptance? result = await prover.ProveOnceAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result?.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted), result?.Result.Error);
+            node.Pool.Received(1).SubmitTx(Arg.Any<Transaction>(), local ? TxHandlingOptions.PersistentBroadcast : TxHandlingOptions.None);
         }
     }
 

@@ -510,7 +510,7 @@ public sealed partial class ProofWrapperTransport
             return;
         }
         (Verdict verdict, string? error, Eip8288Verifier? verifier) =
-            await VerifyAsync(token => _wrappers.AcceptOwnedDetailedAsync(wrapper, token, fetch.Server?.Link), cancellation).ConfigureAwait(false);
+            await VerifyAsync(token => _wrappers.AcceptOwnedDetailedAsync(wrapper, token, fetch.Server?.Link, fetch.Server?.Link.NodeId), cancellation).ConfigureAwait(false);
         // Encodings received in full within a validated wrapper resolve the server's later references.
         if (verdict is Verdict.Valid or Verdict.PoolRejected && fetch.Server is { Closed: false } server)
             foreach ((ValueHash256 hash, byte[] encoding) in WrapperCompaction.Encodings(wrapper)) server.Received.Add(hash, encoding);

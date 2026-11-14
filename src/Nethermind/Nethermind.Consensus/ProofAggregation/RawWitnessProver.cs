@@ -18,7 +18,9 @@ namespace Nethermind.Consensus.ProofAggregation;
 /// <remarks>
 /// Opt-in (<see cref="ITxPoolConfig.RawWitnessProverEnabled"/>): a leaf needs gigabytes of memory. A cycle takes the oldest
 /// untried candidates whose raw witnesses all name the first one's program, up to
-/// <see cref="ITxPoolConfig.RawWitnessMaxClaimsPerLeaf"/> claims. Each candidate is tried once; a busy prover returns it untried.
+/// <see cref="ITxPoolConfig.RawWitnessMaxClaimsPerLeaf"/> claims, all local or all from peers. Each candidate is tried once; a busy
+/// prover returns it untried. The mode-1 wrapper is admitted as its candidates were: a peer's through peer admission, under the
+/// first candidate's source, so its transactions never take local treatment.
 /// Leaves publish batch statements, so only the batch-pricing guest takes them.
 /// </remarks>
 public sealed class RawWitnessProver : IDisposable
@@ -124,7 +126,11 @@ public sealed class RawWitnessProver : IDisposable
             Deps = deps,
             RecursiveStark = new RecursiveStark(proof, new Hash256(Eip8288Dependencies.ComputeDepsHash(deps))),
         }).Bytes;
-        ProofWrapperAcceptance acceptance = await _wrappers.AcceptDetailedAsync(encoded, cancellationToken);
+        // Proven coverage keeps its candidates' origin: a peer's transactions never become local.
+        RawWitnessPool.Entry origin = group[0];
+        ProofWrapperAcceptance acceptance = origin.Local
+            ? await _wrappers.AcceptDetailedAsync(encoded, cancellationToken)
+            : await _wrappers.AcceptOwnedDetailedAsync(encoded, cancellationToken, origin.Source, origin.Identity);
         if (_logger.IsInfo)
             _logger.Info($"EIP-8437 proved {claims.Count} raw signature(s) under {key.ToShortString()} for {ordered.Count} transaction(s): " +
                 $"mode-1 wrapper {ValueKeccak.Compute(encoded).ToShortString()} {acceptance.Status}");
@@ -155,7 +161,8 @@ public sealed class RawWitnessProver : IDisposable
                 sameProgram &= dependency.VerificationKey == entryKey;
                 entryRaw.Add(dependency);
             }
-            if (!sameProgram || entryKey is not { } program || !_recognized.Recognizes(program) || group.Count != 0 && program != key) continue;
+            if (!sameProgram || entryKey is not { } program || !_recognized.Recognizes(program)
+                || group.Count != 0 && (program != key || entry.Local != group[0].Local)) continue;
             HashSet<FrameDependency> claims = [.. raw, .. entryRaw];
             HashSet<FrameDependency> direct = [.. ordinary];
             for (int i = 0; i < entry.Decoded.Deps.Count; i++)

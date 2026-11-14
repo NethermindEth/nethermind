@@ -256,18 +256,21 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// Validation subscribers must treat the encoded body as read-only.</remarks>
     /// <param name="source">The connection the wrapper came from, to which cell retrieval for its blob-carrying transactions is
     /// first attributed.</param>
-    internal Task<ProofWrapperAcceptance> AcceptOwnedDetailedAsync(byte[] wrapper, CancellationToken cancellationToken = default, object? source = null)
-        => AcceptDetailedCoreAsync(wrapper, false, cancellationToken, source);
+    /// <param name="identity">The source's stable identity, such as a peer's node ID, which mode-2 budgets are charged to so a
+    /// reconnecting peer keeps what it spent; the source itself when null.</param>
+    internal Task<ProofWrapperAcceptance> AcceptOwnedDetailedAsync(byte[] wrapper, CancellationToken cancellationToken = default, object? source = null,
+        object? identity = null)
+        => AcceptDetailedCoreAsync(wrapper, false, cancellationToken, source, identity);
 
     private async Task<ProofWrapperAcceptance> AcceptDetailedCoreAsync(byte[] wrapper, bool copyInput, CancellationToken cancellationToken,
-        object? source = null)
+        object? source = null, object? identity = null)
     {
         IReleaseSpec? admissionSpec = TargetSpec;
         if (admissionSpec?.IsEip8288Enabled != true)
             return ProofWrapperAcceptance.LocalFailure("EIP-8288 proof wrappers are unavailable.");
         if (wrapper.Length > Eip8288Constants.MaxWrapperBytes)
             return ProofWrapperAcceptance.Malformed("Proof wrapper exceeds MAX_WRAPPER_BYTES.");
-        if (IsRawMode(wrapper)) return await AcceptRawAsync(wrapper, copyInput, admissionSpec, cancellationToken, source);
+        if (IsRawMode(wrapper)) return await AcceptRawAsync(wrapper, copyInput, admissionSpec, cancellationToken, source, identity ?? source);
         AdmissionQueue queue = copyInput ? _rpcAdmission : _peerAdmission;
         if (Interlocked.Increment(ref queue.Callers) > MaxAdmissionWaiters + 1)
         {
@@ -453,12 +456,15 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// every ordinary witness verifies as in mode 0, and each transaction not already pending passes the ordinary checks: not
     /// expired, not stale and authorized by its validation prefix at the head. Already pending transactions count as neither
     /// admitted nor rejected. Nothing enters the pool or the proof store: raw acceptance establishes no proof coverage.
-    /// Native checks are charged to the raw verification budget first; a spent budget declines without penalty.
+    /// Raw validation is bounded apart from proof-backed admission: a held or known-invalid wrapper is not validated again, at most
+    /// <see cref="RawWitnessPool.MaxConcurrentValidations"/> run at once, and every native check, ordinary witness and simulation is
+    /// charged to the raw budgets of <paramref name="identity"/> first. A spent budget declines without penalty.
     /// </remarks>
     private async Task<ProofWrapperAcceptance> AcceptRawAsync(byte[] wrapper, bool local, IReleaseSpec admissionSpec,
-        CancellationToken cancellationToken, object? source)
+        CancellationToken cancellationToken, object? source, object? identity)
     {
         if (!AcceptsRawWitnesses) return ProofWrapperAcceptance.LocalFailure(RawWitnessesDisabled);
+        if (!rawWitnesses!.TryEnterValidation()) return AdmissionBusy();
         try
         {
             if (RefreshVerifier() is not { } verifier) return ProofWrapperAcceptance.LocalFailure("EIP-8288 proof wrappers are unavailable.");
@@ -478,9 +484,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 if (transaction.CarriesBlobs) return ProofWrapperAcceptance.LocalFailure("Mode 2 does not carry blob-carrying transactions.");
             }
             ValueHash256 hash = ValueKeccak.Compute(wrapper);
-            int rawCount = 0;
-            foreach (RawSignature? raw in decoded.RawWitnesses!) if (raw is not null) rawCount++;
-            if (!rawWitnesses!.TryTakeVerifications(source, rawCount)) return AdmissionBusy();
+            if (rawWitnesses.IsKnownInvalid(hash, verifier)) return ProofWrapperAcceptance.Invalid(MempoolWrapperValidator.InvalidRawWitness, verifier);
+            if (rawWitnesses.Contains(hash)) return RawAccepted(decoded);
+            // Each dependency's witness, raw or ordinary, and each transaction's simulation.
+            if (!rawWitnesses.TryTakeVerifications(identity, decoded.Deps.Count + decoded.Transactions.Count)) return AdmissionBusy();
             (bool valid, string? error, int fresh, bool indeterminate) = await Task.Run(() =>
             {
                 if (!MempoolWrapperValidator.Validate(decoded, leanProofVerifier, in verifier, out string? proofError, recognizedPrograms))
@@ -495,20 +502,33 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 }
                 return (true, (string?)null, added, false);
             }, cancellationToken);
-            if (!valid) return ProofWrapperAcceptance.Invalid(error!, verifier);
+            if (!valid)
+            {
+                rawWitnesses.RememberInvalid(hash, verifier);
+                return ProofWrapperAcceptance.Invalid(error!, verifier);
+            }
             if (error is not null) return indeterminate ? AdmissionBusy() : new(ProofWrapperAcceptanceStatus.PoolRejected, Result<Hash256[]>.Fail(error));
             if (RefreshVerifier() != verifier) return ProofWrapperAcceptance.LocalFailure(VerifierChangedDuringAdmission);
-            if (rawWitnesses.TryAdd(wrapper, hash, decoded, verifier, source) == RawWitnessPool.Admission.Full)
-                return ProofWrapperAcceptance.LocalFailure("Raw witness capacity is full; retry later.");
-            if (fresh != 0) WrapperValidated?.Invoke(wrapper, verifier);
-            Hash256[] hashes = new Hash256[decoded.Transactions.Count];
-            for (int i = 0; i < hashes.Length; i++) hashes[i] = decoded.Transactions[i].Hash!;
-            return new(ProofWrapperAcceptanceStatus.Accepted, Result<Hash256[]>.Success(hashes));
+            RawWitnessPool.Admission admission = rawWitnesses.TryAdd(wrapper, hash, decoded, verifier, source, identity, local);
+            if (admission == RawWitnessPool.Admission.Full) return ProofWrapperAcceptance.LocalFailure("Raw witness capacity is full; retry later.");
+            if (admission == RawWitnessPool.Admission.Added && fresh != 0) WrapperValidated?.Invoke(wrapper, verifier);
+            return RawAccepted(decoded);
         }
         catch (InvalidOperationException exception)
         {
             return ProofWrapperAcceptance.LocalFailure(exception.Message);
         }
+        finally
+        {
+            rawWitnesses.ExitValidation();
+        }
+    }
+
+    private static ProofWrapperAcceptance RawAccepted(MempoolWrapper decoded)
+    {
+        Hash256[] hashes = new Hash256[decoded.Transactions.Count];
+        for (int i = 0; i < hashes.Length; i++) hashes[i] = decoded.Transactions[i].Hash!;
+        return new(ProofWrapperAcceptanceStatus.Accepted, Result<Hash256[]>.Success(hashes));
     }
 
     /// <summary>Reserves the wrapper's witnesses, beyond proof capacity when it is full and evicting pending transactions not

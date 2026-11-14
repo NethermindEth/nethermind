@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -28,16 +27,27 @@ public sealed class RawWitnessPool : IDisposable
     public const long MaxBytesPerSource = 1024 * 1024;
     /// <summary>Raw wrappers held in total.</summary>
     public const int MaxWrappers = 512;
-    /// <summary>Native raw-signature checks per second, in total and per source; each refills to one second's worth.</summary>
+    /// <summary>Verifications per second, in total and per source: native raw-signature checks, ordinary witnesses and
+    /// validation-prefix simulations; each refills to one second's worth.</summary>
     public const double MaxVerificationsPerSecond = 64;
     public const double MaxVerificationsPerSourcePerSecond = 16;
+    /// <summary>Raw wrappers validated at once; more are declined until one finishes.</summary>
+    public const int MaxConcurrentValidations = 4;
+    /// <summary>Sources whose allowances are remembered; the least recently charged is forgotten first.</summary>
+    public const int MaxTrackedSources = 4096;
+    /// <summary>Invalid raw wrapper hashes remembered, so a repeat is declined without validation.</summary>
+    public const int MaxRememberedInvalid = 1024;
     /// <summary>How long a candidate waits for a prover before it is dropped.</summary>
     public static readonly TimeSpan MaxAge = TimeSpan.FromMinutes(5);
 
     public enum Admission { Added, Known, Full }
 
     /// <summary>A held raw wrapper.</summary>
-    public sealed class Entry(byte[] wrapper, ValueHash256 hash, MempoolWrapper decoded, Eip8288Verifier verifier, object? source, long added)
+    /// <param name="source">What admitted it: the peer connection, or null for a local submission.</param>
+    /// <param name="identity">The stable identity its budgets are charged to, such as the peer's node ID.</param>
+    /// <param name="local">Whether it was submitted locally, which its proven coverage keeps.</param>
+    public sealed class Entry(byte[] wrapper, ValueHash256 hash, MempoolWrapper decoded, Eip8288Verifier verifier, object? source, object identity,
+        bool local, long added)
     {
         public byte[] Wrapper { get; } = wrapper;
         public ValueHash256 Hash { get; } = hash;
@@ -45,7 +55,9 @@ public sealed class RawWitnessPool : IDisposable
 
         /// <summary>The verifier the wrapper was validated under.</summary>
         public Eip8288Verifier Verifier { get; internal set; } = verifier;
-        internal object? Source { get; } = source;
+        public object? Source { get; } = source;
+        internal object Identity { get; } = identity;
+        public bool Local { get; } = local;
         internal long Added { get; } = added;
 
         /// <summary>Whether a prover has tried this candidate, so it is not retried every cycle.</summary>
@@ -81,7 +93,11 @@ public sealed class RawWitnessPool : IDisposable
     private readonly Dictionary<ValueHash256, List<ValueHash256>> _byTransaction = [];
     private readonly Dictionary<object, long> _sourceBytes = [];
     private readonly Allowance _verifications;
-    private readonly ConditionalWeakTable<object, Allowance> _sourceVerifications = [];
+    private readonly Dictionary<object, LinkedListNode<(object Identity, Allowance Allowance)>> _sourceVerifications = [];
+    private readonly LinkedList<(object Identity, Allowance Allowance)> _sourceOrder = new();
+    private readonly HashSet<(ValueHash256 Wrapper, ValueHash256 Verifier)> _invalid = [];
+    private readonly Queue<(ValueHash256 Wrapper, ValueHash256 Verifier)> _invalidOrder = new();
+    private int _validations;
 
     public RawWitnessPool(ITxPool txPool, IChainHeadInfoProvider head, ITxPoolConfig config, IFrameTxPrefixSimulator? simulator = null,
         TimeProvider? clock = null)
@@ -104,17 +120,67 @@ public sealed class RawWitnessPool : IDisposable
 
     public long Bytes { get; private set; }
 
-    /// <summary>Takes <paramref name="count"/> native checks from the global and the source's verification budgets.</summary>
+    /// <summary>Takes <paramref name="count"/> verifications from the global budget and that of <paramref name="identity"/>, a
+    /// stable source identity (a peer's node ID) or null for local submissions, so a reconnecting peer keeps its spent budget.</summary>
     /// <returns>False when either is spent, which permits refusal without penalty.</returns>
-    public bool TryTakeVerifications(object? source, int count)
+    public bool TryTakeVerifications(object? identity, int count)
     {
         lock (_gate)
         {
-            Allowance perSource = _sourceVerifications.GetValue(source ?? LocalSource, _ => new(MaxVerificationsPerSourcePerSecond, _clock));
+            Allowance perSource = SourceAllowance(identity ?? LocalSource);
             if (!_verifications.TryTake(count)) return false;
             if (perSource.TryTake(count)) return true;
             _verifications.TryTake(-count);
             return false;
+        }
+    }
+
+    private Allowance SourceAllowance(object identity)
+    {
+        if (_sourceVerifications.Remove(identity, out LinkedListNode<(object Identity, Allowance Allowance)>? node)) _sourceOrder.Remove(node);
+        else
+        {
+            if (_sourceVerifications.Count == MaxTrackedSources)
+            {
+                _sourceVerifications.Remove(_sourceOrder.First!.Value.Identity);
+                _sourceOrder.RemoveFirst();
+            }
+            node = new((identity, new Allowance(MaxVerificationsPerSourcePerSecond, _clock)));
+        }
+        _sourceOrder.AddLast(node);
+        _sourceVerifications[identity] = node;
+        return node.Value.Allowance;
+    }
+
+    /// <summary>Takes one of the <see cref="MaxConcurrentValidations"/> validation slots, released by <see cref="ExitValidation"/>.</summary>
+    public bool TryEnterValidation()
+    {
+        if (Interlocked.Increment(ref _validations) <= MaxConcurrentValidations) return true;
+        Interlocked.Decrement(ref _validations);
+        return false;
+    }
+
+    public void ExitValidation() => Interlocked.Decrement(ref _validations);
+
+    /// <summary>Whether <paramref name="wrapper"/> is held, so a repeat needs no validation.</summary>
+    public bool Contains(in ValueHash256 wrapper)
+    {
+        lock (_gate) return _entries.ContainsKey(wrapper);
+    }
+
+    /// <summary>Whether <paramref name="wrapper"/> was found invalid under <paramref name="verifier"/>.</summary>
+    public bool IsKnownInvalid(in ValueHash256 wrapper, in Eip8288Verifier verifier)
+    {
+        lock (_gate) return _invalid.Contains((wrapper, verifier.AggregatedVk));
+    }
+
+    public void RememberInvalid(in ValueHash256 wrapper, in Eip8288Verifier verifier)
+    {
+        lock (_gate)
+        {
+            if (!_invalid.Add((wrapper, verifier.AggregatedVk))) return;
+            _invalidOrder.Enqueue((wrapper, verifier.AggregatedVk));
+            if (_invalidOrder.Count > MaxRememberedInvalid) _invalid.Remove(_invalidOrder.Dequeue());
         }
     }
 
@@ -138,21 +204,23 @@ public sealed class RawWitnessPool : IDisposable
     }
 
     /// <summary>Holds a validated raw wrapper within the byte budgets.</summary>
-    public Admission TryAdd(byte[] wrapper, in ValueHash256 hash, MempoolWrapper decoded, Eip8288Verifier verifier, object? source)
+    /// <remarks>Beyond its own budget a source is refused. When the global budget is full, the source holding the most bytes, if
+    /// another, gives way, oldest first, so one source cannot keep the others out.</remarks>
+    public Admission TryAdd(byte[] wrapper, in ValueHash256 hash, MempoolWrapper decoded, Eip8288Verifier verifier, object? source,
+        object? identity = null, bool local = false)
     {
-        object owner = source ?? LocalSource;
+        object owner = identity ?? LocalSource;
         lock (_gate)
         {
             if (_entries.ContainsKey(hash)) return Admission.Known;
             PruneExpired();
             _sourceBytes.TryGetValue(owner, out long sourceBytes);
-            if (_entries.Count >= MaxWrappers || Bytes + wrapper.Length > MaxBytes || sourceBytes + wrapper.Length > MaxBytesPerSource)
-                return Admission.Full;
-            Entry entry = new(wrapper, hash, decoded, verifier, source, _clock.GetTimestamp());
+            if (sourceBytes + wrapper.Length > MaxBytesPerSource || !MakeRoom(owner, wrapper.Length)) return Admission.Full;
+            Entry entry = new(wrapper, hash, decoded, verifier, source, owner, local, _clock.GetTimestamp());
             _entries.Add(hash, entry);
             _order.AddLast(hash);
             Bytes += wrapper.Length;
-            _sourceBytes[owner] = sourceBytes + wrapper.Length;
+            _sourceBytes[owner] = _sourceBytes.GetValueOrDefault(owner) + wrapper.Length;
             foreach (Transaction transaction in decoded.Transactions)
             {
                 ValueHash256 transactionHash = transaction.Hash!.ValueHash256;
@@ -161,6 +229,26 @@ public sealed class RawWitnessPool : IDisposable
             }
             return Admission.Added;
         }
+    }
+
+    /// <summary>Evicts the largest other source's oldest wrappers until <paramref name="bytes"/> more fit the global budget.</summary>
+    private bool MakeRoom(object owner, int bytes)
+    {
+        while (_entries.Count >= MaxWrappers || Bytes + bytes > MaxBytes)
+        {
+            object? largest = null;
+            long most = 0;
+            foreach ((object source, long held) in _sourceBytes)
+                if (held > most) (largest, most) = (source, held);
+            if (largest is null || Equals(largest, owner)) return false;
+            foreach (ValueHash256 hash in _order)
+            {
+                if (!Equals(_entries[hash].Identity, largest)) continue;
+                RemoveLocked(hash);
+                break;
+            }
+        }
+        return true;
     }
 
     /// <summary>Whether a held raw wrapper lists <paramref name="transaction"/>.</summary>
@@ -232,7 +320,7 @@ public sealed class RawWitnessPool : IDisposable
         if (!_entries.Remove(wrapper, out Entry? entry)) return false;
         _order.Remove(entry.Hash);
         Bytes -= entry.Wrapper.Length;
-        object owner = entry.Source ?? LocalSource;
+        object owner = entry.Identity;
         long sourceBytes = _sourceBytes[owner] - entry.Wrapper.Length;
         if (sourceBytes == 0) _sourceBytes.Remove(owner);
         else _sourceBytes[owner] = sourceBytes;
