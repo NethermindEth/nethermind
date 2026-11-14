@@ -1129,6 +1129,44 @@ public class Eip8288BlockProductionTests
         }
     }
 
+    // Batch claims and leaf payments are never built (ethereum/EIPs#12664 leaves builder submission out of scope): even with a held
+    // witness, the picker leaves them out and the rest of the payload is built, so production never reaches a finalized statement.
+    [Test]
+    public async Task Producing_blocks_leave_out_batch_claims_and_payments_with_held_witnesses(
+        [Values(Eip8288Constants.BatchedLeanStarkScheme, Eip8288Constants.LeanStarkLeafPaymentScheme)] byte scheme)
+    {
+        CountingVerifier verifier = new();
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs, builder => builder.AddSingleton<ISpecProvider>(
+            new TestSingleReleaseSpecProvider(new Nethermind.Specs.Test.OverridableReleaseSpec(Eip8288Prototype.Instance)
+            {
+                IsEipBatchedDependencyPricingEnabled = true
+            })));
+        FrameDependency dependency = new(scheme, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256);
+        proofs.AddVerified([dependency], [[1]], null);
+        Transaction batched = CreateTransaction(chain, dependency, [], transaction =>
+        {
+            transaction.Frames![1] = new(FrameMode.DepVerify, FrameFlags.None, null, dependency.FrameCharge(batchPricing: true), UInt256.Zero,
+                Eip8288Dependencies.Serialize([dependency]));
+            transaction.GasLimit = FrameTxValidation.TotalGasLimit(transaction.Frames);
+        });
+        Transaction plain = CreatePlainTransaction(chain);
+        Block? template = await chain.BlockProducer.BuildBlock(flags: IBlockProducer.Flags.EmptyBlock);
+        Assert.That(template, Is.Not.Null);
+        await using ScopedBlockProducerEnv environment = chain.Container.Resolve<IBlockProducerEnvFactory>().CreateTransient();
+
+        Block? processed = environment.ChainProcessor.Process(new Block(template!.Header, [batched, plain], [], template.Withdrawals),
+            ProcessingOptions.ProducingBlock, NullBlockTracer.Instance);
+
+        Assert.That(processed, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(processed!.Transactions, Is.EqualTo(new[] { plain }));
+            Assert.That(processed.StarkProof, Is.Empty);
+            Assert.That(verifier.ProofCalls, Is.Zero);
+        }
+    }
+
     // EIP-8288 Test Case 11: an inclusion-list proof may cover a superset of its list (a reused mempool wrapper proof); it is
     // merged into the block proof with the surplus discarded, and block_deps_hash covers exactly dependencies(block).
     [Test]

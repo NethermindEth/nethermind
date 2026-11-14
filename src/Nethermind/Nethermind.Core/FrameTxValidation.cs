@@ -76,9 +76,10 @@ public static class FrameTxValidation
     /// <see langword="null"/> on success.</param>
     /// <returns><see langword="true"/> if every stateless constraint holds.</returns>
     public static bool IsWellFormed(Transaction transaction, IReleaseSpec spec, out string? error) =>
-        IsWellFormed(transaction, spec.IsEip7906Enabled, spec.IsEip8141Enabled && spec.IsEip8288Enabled, out error);
+        IsWellFormed(transaction, spec.IsEip7906Enabled, spec.IsEip8141Enabled && spec.IsEip8288Enabled,
+            spec.IsEipBatchedDependencyPricingEnabled, out error);
 
-    private static bool IsWellFormed(Transaction transaction, bool assertEnabled, bool dependencyEnabled, out string? error)
+    private static bool IsWellFormed(Transaction transaction, bool assertEnabled, bool dependencyEnabled, bool batchedEnabled, out string? error)
     {
         error = null;
 
@@ -103,7 +104,7 @@ public static class FrameTxValidation
 
             if (frame.Mode == FrameMode.DepVerify)
             {
-                if (!dependencyEnabled || !IsWellFormedDependencyFrame(frame, out error))
+                if (!dependencyEnabled || !IsWellFormedDependencyFrame(frame, batchedEnabled, out error))
                 {
                     error ??= InvalidMode;
                     return false;
@@ -790,7 +791,7 @@ public static class FrameTxValidation
                              + signatureVerificationCost
                              + valueTransferCost
                              + keyedNonceAccessCost
-                             + (spec.IsEip8288Enabled ? Eip8288Dependencies.RecursiveStarkGas(transaction) : 0);
+                             + (spec.IsEip8288Enabled ? Eip8288Dependencies.RecursiveStarkGas(transaction, spec.IsEipBatchedDependencyPricingEnabled) : 0);
         ulong floorTokens = spec.IsEip7976Enabled ? dataLength * spec.GasCosts.TxDataNonZeroMultiplier : tokens;
         floorGas = spec.IsEip7623Enabled ? mandatoryGas + floorTokens * spec.GasCosts.TotalCostFloorPerToken : 0;
         intrinsicGas = mandatoryGas + tokens * GasCostOf.TxDataZero;
@@ -912,8 +913,14 @@ public static class FrameTxValidation
     /// <summary>Checks the triples of a dependency verification frame: at least one and at most
     /// <see cref="Eip8288Constants.MaxDependenciesPerFrame"/>, each zero-padded with an enabled scheme.</summary>
     /// <remarks>These are the frame validity checks that precede EIP-8288 capacity checks and fix the transaction's dependency
-    /// union: an unsupported scheme invalidates the transaction rather than being filtered out of it.</remarks>
-    public static bool IsWellFormedDependencyData(ReadOnlySpan<byte> data, out string? error)
+    /// union: an unsupported scheme invalidates the transaction rather than being filtered out of it. This form, the public
+    /// mempool's, admits neither batch-pricing EIP scheme.</remarks>
+    public static bool IsWellFormedDependencyData(ReadOnlySpan<byte> data, out string? error) =>
+        IsWellFormedDependencyData(data, batchedEnabled: false, out error);
+
+    /// <summary><see cref="IsWellFormedDependencyData(ReadOnlySpan{byte}, out string?)"/>, also admitting the batch-pricing EIP's
+    /// schemes when <paramref name="batchedEnabled"/> (<see cref="Eip8288Dependencies.IsFrameScheme"/>).</summary>
+    internal static bool IsWellFormedDependencyData(ReadOnlySpan<byte> data, bool batchedEnabled, out string? error)
     {
         error = null;
         if (data.Length == 0 || data.Length % Eip8288Constants.DependencyTripleLength != 0)
@@ -938,7 +945,7 @@ public static class FrameTxValidation
                 return false;
             }
 
-            if (!Eip8288Dependencies.IsAcceptedScheme(triple[31]))
+            if (!Eip8288Dependencies.IsFrameScheme(triple, batchedEnabled))
             {
                 error = InvalidDependencyScheme;
                 return false;
@@ -948,7 +955,7 @@ public static class FrameTxValidation
         return true;
     }
 
-    private static bool IsWellFormedDependencyFrame(TxFrame frame, out string? error)
+    private static bool IsWellFormedDependencyFrame(TxFrame frame, bool batchedEnabled, out string? error)
     {
         error = null;
 
@@ -959,17 +966,13 @@ public static class FrameTxValidation
             return false;
         }
 
-        if (!IsWellFormedDependencyData(frame.Data.Span, out error)) return false;
+        if (!IsWellFormedDependencyData(frame.Data.Span, batchedEnabled, out error)) return false;
 
+        // Every declaration, before deduplication; the gas depends on the scheme byte alone.
         ReadOnlySpan<byte> data = frame.Data.Span;
-        int count = data.Length / Eip8288Constants.DependencyTripleLength;
         ulong expectedGas = 0;
-        for (int i = 0; i < count; i++)
-        {
-            expectedGas += data[i * Eip8288Constants.DependencyTripleLength + 31] == Eip8288Constants.LeanStarkScheme
-                ? Eip8288Constants.LeanStarkVerificationGas
-                : Eip8288Constants.LeanSphincsVerificationGas;
-        }
+        for (int i = 31; i < data.Length; i += Eip8288Constants.DependencyTripleLength)
+            expectedGas += new FrameDependency(data[i], default, default).FrameCharge(batchedEnabled);
 
         if (frame.StateGasLimit != 0 || frame.ExecutionGasLimit != expectedGas)
         {

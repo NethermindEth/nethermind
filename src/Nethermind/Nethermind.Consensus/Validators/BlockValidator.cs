@@ -136,6 +136,12 @@ public class BlockValidator(
         }
 
         List<FrameDependency> dependencies = Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue);
+        if (spec.IsEipBatchedDependencyPricingEnabled && dependencies.Count > Eip8288Constants.MaxDepsPerBlock)
+        {
+            error = BlockErrorMessages.TooManyBlockDependencies(dependencies.Count);
+            return false;
+        }
+
         Hash256 computed = new(Eip8288Dependencies.ComputeDepsHash(dependencies));
         if (recursiveStark.BlockDepsHash != computed)
         {
@@ -144,7 +150,10 @@ public class BlockValidator(
             return false;
         }
 
-        if (!RecursiveStarkAggregator.VerifyStarkCheck(_leanProofVerifier, Eip8288Verifier.For(spec), dependencies.Count, in computed.ValueHash256,
+        ValueHash256 statement = spec.IsEipBatchedDependencyPricingEnabled
+            ? Eip8288Dependencies.ProofStatement(dependencies, computed.ValueHash256)
+            : computed.ValueHash256;
+        if (!RecursiveStarkAggregator.VerifyStarkCheck(_leanProofVerifier, Eip8288Verifier.For(spec), dependencies.Count, in statement,
                 block.StarkProof))
         {
             error = BlockErrorMessages.InvalidRecursiveStark;

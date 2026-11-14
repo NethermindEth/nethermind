@@ -93,6 +93,9 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
     public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) =>
         verifier.VerifyLeanStark(in dataHash, in verificationKey, witness);
     /// <inheritdoc/>
+    public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness, ReadOnlySpan<byte> aggregatedVk) =>
+        verifier.VerifyLeanStark(in dataHash, in verificationKey, witness, aggregatedVk);
+    /// <inheritdoc/>
     /// <remarks>
     /// A recursive proof that verified once is accepted again without the native call: a produced block is otherwise
     /// verified when produced and again on import, and identical proofs arrive repeatedly in wrappers and blocks.
@@ -151,12 +154,14 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
         ValueHash256 statement = depsHash;
         ArgumentNullException.ThrowIfNull(input);
         if (input.Deps.Count != input.Witnesses.Count || input.Deps.Count > Eip8288Constants.MaxProofDependencies
-            || input.Discards.Count > Eip8288Constants.MaxProofDependencies || input.RecursiveProofs.Count > Eip8288Constants.MaxProofDependencies)
+            || input.Discards.Count > Eip8288Constants.MaxProofDependencies || input.RecursiveProofs.Count > Eip8288Constants.MaxProofDependencies
+            // Batch leaves are private to their owner's own aggregation; no wrapper or block carries one to this cache.
+            || input.BatchLeaves.Count != 0)
             throw new ArgumentException("Invalid aggregation input shape.", nameof(input));
         foreach (RecursiveProofInput parent in input.RecursiveProofs)
             if (parent.InnerDeps is null || parent.InnerDeps.Count > Eip8288Constants.MaxProofDependencies)
                 throw new ArgumentException("Invalid recursive aggregation input.", nameof(input));
-        if (RecursiveStarkAggregator.InputSize(input) > Eip8288Constants.MaxAggregationInputBytes)
+        if (RecursiveStarkAggregator.InputSize(input, aggregatedVk.SequenceEqual(Eip8288Constants.BatchedAggregatedVk)) > Eip8288Constants.MaxAggregationInputBytes)
             throw new ArgumentException("Aggregation input exceeds the proving bound.", nameof(input));
         input = Snapshot(input);
         byte[] keyBytes = aggregatedVk.ToArray();

@@ -11,12 +11,18 @@ namespace Nethermind.TxPool.Filters;
 /// <summary>Requires verified EIP-8288 witnesses before rejected hashes are cached.</summary>
 internal sealed class DependencyProofTxFilter(LeanProofStore? proofStore) : IIncomingTxFilter
 {
+    /// <summary>ethereum/EIPs#12664: batch claim and leaf payment transactions go to builders directly, never through the public
+    /// mempool.</summary>
+    internal const string BatchedDependencyNotPooled = "Batch claim and leaf payment transactions are submitted to builders, not the public mempool.";
+
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        if (state.HeadSpec.IsEip8288Enabled && Eip8288Dependencies.RecursiveStarkGas(tx) != 0)
+        if (state.HeadSpec.IsEip8288Enabled && Eip8288Dependencies.IsDependencyBearing(tx))
         {
             if (!FrameTxValidation.IsWellFormed(tx, state.HeadSpec, out string? error))
                 return AcceptTxResult.Invalid.WithMessage(error!);
+            if (Eip8288Dependencies.DeclaresBatched(tx))
+                return AcceptTxResult.Invalid.WithMessage(BatchedDependencyNotPooled);
             List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(tx, FrameTxSigHash.ComputeValue);
             state.ProofDependencies = dependencies;
             (int sphincs, int stark) = Eip8288Dependencies.CountByScheme(dependencies);

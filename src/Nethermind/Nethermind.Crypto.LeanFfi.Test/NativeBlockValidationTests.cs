@@ -25,7 +25,7 @@ namespace Nethermind.Crypto.LeanFfi.Test;
 public class NativeBlockValidationTests
 {
     [OneTimeSetUp]
-    public void EnsureNativeLibraryLoads() => Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(12u));
+    public void EnsureNativeLibraryLoads() => Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(16u));
 
     [Test]
     public void BlockValidator_with_native_verifier_accepts_produced_recursive_stark()

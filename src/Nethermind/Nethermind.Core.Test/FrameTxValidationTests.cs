@@ -691,6 +691,27 @@ public class FrameTxValidationTests
         }
     }
 
+    // ethereum/EIPs#12664: with batch pricing on, batch claims and leaf payments pay no proof share in intrinsic gas and the
+    // others pay RECURSIVE_PROOF_SHARE_GAS; off, every declaration pays EIP-8288's.
+    [Test]
+    public void TryCalculateGasBudget_Eip8288_BatchPricingExemptsItsSchemesFromTheProofShare([Values] bool batched)
+    {
+        IReleaseSpec disabled = ReleaseSpecSubstitute.Create();
+        IReleaseSpec enabled = ReleaseSpecSubstitute.Create();
+        enabled.IsEip8288Enabled.Returns(true);
+        enabled.IsEipBatchedDependencyPricingEnabled.Returns(batched);
+        Transaction tx = CreateValidFrameTx(t => t.Frames = [SelfVerifyFrame(), Frame(),
+            DepFrame([Eip8288Constants.LeanStarkScheme, Eip8288Constants.BatchedLeanStarkScheme, Eip8288Constants.LeanStarkLeafPaymentScheme])]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, disabled, out ulong baseIntrinsic, out _, out _), Is.True);
+            Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, enabled, out ulong intrinsic, out _, out _), Is.True);
+            Assert.That(intrinsic - baseIntrinsic,
+                Is.EqualTo(batched ? Eip8288Constants.RecursiveProofShareGas : 3 * Eip8288Constants.LeanStarkVerificationGas));
+        }
+    }
+
     [TestCase(new ulong[] { }, 0ul)]
     [TestCase(new ulong[] { 0 }, 12_100ul)]
     [TestCase(new ulong[] { 1 }, 12_100ul)]
@@ -817,12 +838,107 @@ public class FrameTxValidationTests
             null);
     }
 
+    // ethereum/EIPs#12664 Test Cases: both new schemes take 31 zero padding bytes, a payment a nonzero digest, and only with
+    // batch pricing; without it they are unknown schemes as before. Each declaration is charged, duplicates included.
+    [TestCaseSource(nameof(BatchPricingCases))]
+    public void IsWellFormed_BatchPricingDependencyFrames_ReturnsExpectedError(Action<Transaction> mutate, bool batchedEnabled, string? expectedError)
+    {
+        Transaction tx = CreateValidFrameTx(mutate);
+        bool wellFormed = FrameTxValidation.IsWellFormed(tx,
+            ReleaseSpecSubstitute.CreateFrame(assertEnabled: false, dependencyEnabled: true, batchedEnabled), out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wellFormed, Is.EqualTo(expectedError is null));
+            Assert.That(error, Is.EqualTo(expectedError));
+        }
+    }
+
+    private static IEnumerable<TestCaseData> BatchPricingCases()
+    {
+        foreach (bool enabled in new[] { true, false })
+        {
+            string? whenEnabled(string? error) => enabled ? error : FrameTxValidation.InvalidDependencyScheme;
+            yield return BatchCase("BatchClaim", enabled, static tx => tx.Frames = [BatchFrame(Eip8288Constants.BatchedLeanStarkScheme)], whenEnabled(null));
+            yield return BatchCase("LeafPayment", enabled, static tx => tx.Frames = [BatchFrame(Eip8288Constants.LeanStarkLeafPaymentScheme)], whenEnabled(null));
+            yield return BatchCase("ZeroPaymentDigest", enabled,
+                static tx => tx.Frames = [DepFrameRaw([Eip8288Constants.LeanStarkLeafPaymentScheme], batchPricing: true, mutateData: static data => data[32] = 0)],
+                FrameTxValidation.InvalidDependencyScheme);
+            yield return BatchCase("ZeroBatchClaimSubstitutes", enabled,
+                static tx => tx.Frames = [DepFrameRaw([Eip8288Constants.BatchedLeanStarkScheme], batchPricing: true, mutateData: static data => data[32] = 0)],
+                whenEnabled(null));
+            yield return BatchCase("BatchClaimPadding", enabled,
+                static tx => tx.Frames = [DepFrameRaw([Eip8288Constants.BatchedLeanStarkScheme], batchPricing: true, mutateData: static data => data[30] = 1)],
+                FrameTxValidation.DependencyPaddingNotZero);
+            yield return BatchCase("PaymentPadding", enabled,
+                static tx => tx.Frames = [DepFrameRaw([Eip8288Constants.LeanStarkLeafPaymentScheme], batchPricing: true, mutateData: static data => data[0] = 1)],
+                FrameTxValidation.DependencyPaddingNotZero);
+            yield return BatchCase("PaymentAtLeanStarkGas", enabled,
+                static tx => tx.Frames = [DepFrameRaw([Eip8288Constants.LeanStarkLeafPaymentScheme], gasLimit: Eip8288Constants.LeanStarkClaimGas)],
+                whenEnabled(FrameTxValidation.DependencyFrameGasMismatch));
+            yield return BatchCase("DuplicateClaimChargedTwice", enabled,
+                static tx => tx.Frames = [BatchFrame(Eip8288Constants.BatchedLeanStarkScheme, Eip8288Constants.BatchedLeanStarkScheme)],
+                whenEnabled(null));
+            yield return BatchCase("DuplicateClaimChargedOnce", enabled,
+                static tx => tx.Frames = [DepFrameRaw([Eip8288Constants.BatchedLeanStarkScheme, Eip8288Constants.BatchedLeanStarkScheme],
+                    gasLimit: Eip8288Constants.LeanStarkClaimGas)],
+                whenEnabled(FrameTxValidation.DependencyFrameGasMismatch));
+        }
+    }
+
+    private static TestCaseData BatchCase(string name, bool enabled, Action<Transaction> mutate, string? expectedError) =>
+        new TestCaseData(mutate, enabled, expectedError).SetName($"IsWellFormed_BatchPricing_{name}_{(enabled ? "Enabled" : "Disabled")}");
+
+    // ethereum/EIPs#12664 Test Case: 64 included claims and one payment cost 64 x 4,200 plus 675,000 = 943,800, neither scheme
+    // paying the proof share.
+    [Test]
+    public void BatchPricing_charges_claims_and_payments_without_the_proof_share()
+    {
+        byte[] schemes = [.. Enumerable.Repeat(Eip8288Constants.BatchedLeanStarkScheme, 64), Eip8288Constants.LeanStarkLeafPaymentScheme];
+        Transaction tx = CreateValidFrameTx(tx => tx.Frames = [DepFrameRaw(schemes, batchPricing: true)]);
+        Assert.That(FrameTxValidation.IsWellFormed(tx, ReleaseSpecSubstitute.CreateFrame(false, true, true), out string? error), Is.True, error);
+        ulong frameGas = tx.Frames![0].ExecutionGasLimit;
+        ulong proofShare = Eip8288Dependencies.RecursiveStarkGas(tx, batchedEnabled: true);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(frameGas, Is.EqualTo(943_800UL));
+            Assert.That(proofShare, Is.Zero);
+        }
+    }
+
+    // ethereum/EIPs#12664 Test Case: two sponsors paying for one leaf are each charged in full, frame and intrinsic gas alike; the
+    // block holds the payment once.
+    [Test]
+    public void BatchPricing_charges_two_sponsors_of_one_leaf_in_full()
+    {
+        IReleaseSpec spec = ReleaseSpecSubstitute.CreateFrame(false, true, true);
+        // The same payment frame at zero gas isolates the charge from the frame's own overhead.
+        Transaction Sponsor(bool pays) => CreateValidFrameTx(tx => tx.Frames =
+            [SelfVerifyFrame(), DepFrameRaw([Eip8288Constants.LeanStarkLeafPaymentScheme], gasLimit: pays ? null : 0, batchPricing: true)]);
+        Transaction[] sponsors = [Sponsor(true), Sponsor(true)];
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(Sponsor(false), spec, out _, out _, out ulong unpaid), Is.True);
+        Block block = Build.A.Block.WithTransactions(sponsors).TestObject;
+
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (Transaction sponsor in sponsors)
+            {
+                Assert.That(FrameTxValidation.IsWellFormed(sponsor, spec, out string? error), Is.True, error);
+                Assert.That(FrameTxValidation.TryCalculateGasBudget(sponsor, spec, out _, out _, out ulong charged), Is.True);
+                Assert.That(charged - unpaid, Is.EqualTo(675_000UL));
+            }
+            Assert.That(Eip8288Dependencies.ForBlock(block, static _ => default), Has.Count.EqualTo(1));
+        }
+    }
+
     private static TestCaseData DepCase(string name, Action<Transaction> mutate, string? expectedError) =>
         new TestCaseData(mutate, expectedError).SetName($"IsWellFormed_Eip8288_{name}");
 
     private static TxFrame DepFrame(params byte[] schemes) => DepFrameRaw(schemes);
 
-    private static TxFrame DepFrameRaw(byte[] schemes, ulong? gasLimit = null, ulong stateGasLimit = 0, Address? target = null, UInt256 value = default, FrameFlags flags = FrameFlags.None, Action<byte[]>? mutateData = null)
+    private static TxFrame BatchFrame(params byte[] schemes) => DepFrameRaw(schemes, batchPricing: true);
+
+    private static TxFrame DepFrameRaw(byte[] schemes, ulong? gasLimit = null, ulong stateGasLimit = 0, Address? target = null, UInt256 value = default, FrameFlags flags = FrameFlags.None, Action<byte[]>? mutateData = null, bool batchPricing = false)
     {
         ulong gas = 0;
         byte[] data = new byte[schemes.Length * Eip8288Constants.DependencyTripleLength];
@@ -832,9 +948,7 @@ public class FrameTxValidationTests
             data[baseOffset + 31] = schemes[i];
             data[baseOffset + 32] = 0xAA; // arbitrary non-zero data_hash / vk content
             data[baseOffset + 64] = 0xBB;
-            gas += schemes[i] == Eip8288Constants.LeanStarkScheme
-                ? Eip8288Constants.LeanStarkVerificationGas
-                : Eip8288Constants.LeanSphincsVerificationGas;
+            gas += new FrameDependency(schemes[i], default, default).FrameCharge(batchPricing);
         }
 
         mutateData?.Invoke(data);

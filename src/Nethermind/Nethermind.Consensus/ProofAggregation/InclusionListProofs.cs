@@ -59,7 +59,7 @@ public sealed class InclusionListProofService(ILeanProofVerifier verifier, LeanP
             long size = Eip8288Constants.IlProofBytes(held.Proof.Length, held.InnerDeps.Count);
             List<FrameDependency> proofDeps = Eip8288Dependencies.Canonicalize(held.InnerDeps);
             if (size > Eip8288Constants.MaxIlProofBytes || held.Proof.IsEmpty || proofDeps.Count != held.InnerDeps.Count
-                || !Eip8288Dependencies.AreSchemesEnabled(proofDeps) || !Eip8288Dependencies.FitsProofList(proofDeps))
+                || !Eip8288Dependencies.AreSchemesEnabled(proofDeps) || !Eip8288Dependencies.FitsProofList(proofDeps, targetSpec.IsEipBatchedDependencyPricingEnabled))
                 continue;
             byte[] starkProof = held.Proof.ToArray();
             ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(proofDeps);
@@ -111,16 +111,16 @@ public sealed class InclusionListProofService(ILeanProofVerifier verifier, LeanP
         return proven;
     }
 
-    /// <remarks>A proof over more than <see cref="Eip8288Constants.MaxProofDependencies"/> dependencies, or more than
-    /// <see cref="Eip8288Constants.MaxGenericStarkProofs"/> leanSTARK ones, is not verified: the pinned guest commits to at most that
-    /// many, so none verifies, and the builder could not fold one into its block aggregate. The list then imposes no
+    /// <remarks>A proof over more than <see cref="Eip8288Constants.MaxProofDependencies"/> dependencies, or, without batch pricing,
+    /// more than <see cref="Eip8288Constants.MaxGenericStarkProofs"/> leanSTARK ones, is not verified: the pinned guest commits to at
+    /// most that many, so none verifies, and the builder could not fold one into its block aggregate. The list then imposes no
     /// dependency-bearing obligation.</remarks>
     private bool TryVerify(CommitteeInclusionList list, IReleaseSpec spec, out List<FrameDependency>? proofDeps)
     {
         proofDeps = null;
         if (list.StarkProof.Length == 0 || list.ProofDeps.Length is 0 or > Eip8288Constants.MaxProofDependencies
             || !InclusionListProofValidator.TryParseProofDeps(list.ProofDeps, out proofDeps)
-            || !Eip8288Dependencies.FitsProofList(proofDeps!))
+            || !Eip8288Dependencies.FitsProofList(proofDeps!, spec.IsEipBatchedDependencyPricingEnabled))
         {
             proofDeps = null;
             return false;
@@ -208,7 +208,8 @@ public static class InclusionListProofValidator
     /// <c>DEP_VERIFY_FRAME_MODE</c> frame, or whose dependencies <paramref name="proofDeps"/> covers.</summary>
     /// <remarks>An entry with a dependency verification frame is dependency-bearing even when the frame carries no triples or
     /// fails static validity, and EIP-7805 excuses its omission as an invalid transaction. An entry that does not decode never
-    /// reaches a list.</remarks>
+    /// reaches a list. Entries declaring a batch claim or leaf payment never bind (ethereum/EIPs#12664): a list proof naming either
+    /// scheme is discarded by <see cref="TryParseProofDeps"/>, so no proof covers them.</remarks>
     private static Transaction[] SelectBinding(IReadOnlyList<Transaction> transactions, IReadOnlySet<FrameDependency>? proofDeps,
         IReleaseSpec spec)
     {

@@ -10,7 +10,7 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Consensus.Test.ProofAggregation;
 
 /// <summary>Test verifier with a fixed verdict, to exercise both accept and reject paths.</summary>
-/// <remarks>Like the native backend, it rejects aggregate proofs under any key but its pinned guest's.</remarks>
+/// <remarks>Like the native backend, it rejects aggregate proofs under any key but its guests'.</remarks>
 internal sealed class FakeLeanProofVerifier(bool result) : ILeanProofVerifier
 {
     public void EnsureAvailable() { }
@@ -31,8 +31,10 @@ internal sealed class FakeLeanProofVerifier(bool result) : ILeanProofVerifier
     }
     public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => Verify();
     public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => Verify();
+    public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness, ReadOnlySpan<byte> aggregatedVk) => Verify();
     public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
-        => Verify() && aggregatedVk.SequenceEqual(Eip8288Verifier.PinnedAggregatedVk.Bytes);
+        => Verify() && (aggregatedVk.SequenceEqual(Eip8288Verifier.PinnedAggregatedVk.Bytes)
+            || aggregatedVk.SequenceEqual(Eip8288Verifier.BatchedAggregatedVk.Bytes));
     public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)
     {
         LargestRecursiveInput = Math.Max(LargestRecursiveInput, input.RecursiveProofs.Count);

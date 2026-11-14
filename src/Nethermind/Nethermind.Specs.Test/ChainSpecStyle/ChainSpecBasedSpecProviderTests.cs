@@ -4,6 +4,7 @@
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -969,6 +970,72 @@ public class ChainSpecBasedSpecProviderTests
         };
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(timestamp)).IsEip8288Enabled, Is.EqualTo(enabled));
+    }
+
+    // Batch pricing (ethereum/EIPs#12664) takes effect only with EIP-8288 and switches AGGREGATED_VK to the batch-pricing guest's
+    // key; before it, and without it, the pinned EIP-8288 key stays.
+    [TestCase(10UL, 20UL, 15UL, false)]
+    [TestCase(10UL, 20UL, 20UL, true)]
+    [TestCase(30UL, 20UL, 25UL, false)]
+    [TestCase(10UL, null, 100UL, false)]
+    public void Batched_dependency_pricing_follows_eip8288_and_selects_its_key(ulong? proofTime, ulong? batchTime, ulong timestamp, bool enabled)
+    {
+        ChainSpec chainSpec = new()
+        {
+            Parameters = new ChainParameters
+            {
+                Eip8141TransitionTimestamp = 0,
+                Eip8288TransitionTimestamp = proofTime,
+                EipBatchedDependencyPricingTransitionTimestamp = batchTime
+            },
+            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
+        };
+        IReleaseSpec spec = new ChainSpecBasedSpecProvider(chainSpec).GetSpec(ForkActivation.TimestampOnly(timestamp));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.IsEipBatchedDependencyPricingEnabled, Is.EqualTo(enabled));
+            Assert.That(spec.Eip8288AggregatedVk, Is.EqualTo(enabled ? Eip8288Verifier.BatchedAggregatedVk : Eip8288Verifier.PinnedAggregatedVk));
+        }
+    }
+
+    // The flag selects pricing, schemes and the block statement, and the key selects the guest, so the two must agree: a key
+    // override while the flag is on is refused, as is the batch-pricing guest's key without the flag.
+    [TestCase(true, false, true, TestName = "A key override active with batch pricing is refused")]
+    [TestCase(false, false, false, TestName = "A key override without batch pricing is kept")]
+    [TestCase(false, true, true, TestName = "The batch-pricing guest's key without batch pricing is refused")]
+    public void Batched_dependency_pricing_and_its_key_cannot_be_configured_apart(bool batchPricing, bool batchKey, bool refused)
+    {
+        Hash256 key = batchKey ? new Hash256(Eip8288Verifier.BatchedAggregatedVk) : Keccak.Compute("next AGGREGATED_VK");
+        ChainSpec chainSpec = new()
+        {
+            Parameters = new ChainParameters
+            {
+                Eip8141TransitionTimestamp = 0,
+                Eip8288TransitionTimestamp = 0,
+                Eip8288AggregatedVkTransitionTimestamp = 10,
+                Eip8288AggregatedVk = key,
+                EipBatchedDependencyPricingTransitionTimestamp = batchPricing ? 10UL : null
+            },
+            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
+        };
+
+        if (refused) Assert.Throws<InvalidOperationException>(() => new ChainSpecBasedSpecProvider(chainSpec).GetSpec(ForkActivation.TimestampOnly(15)));
+        else Assert.That(new ChainSpecBasedSpecProvider(chainSpec).GetSpec(ForkActivation.TimestampOnly(15)).Eip8288AggregatedVk,
+            Is.EqualTo(key.ValueHash256));
+    }
+
+    // A spec that sets the flag directly defaults to the batch-pricing guest's key, and one that clears it to EIP-8288's, so tests
+    // overriding the flag run the guest it selects.
+    [Test]
+    public void Release_specs_setting_batched_dependency_pricing_default_to_its_key([Values] bool overridable, [Values] bool batchPricing)
+    {
+        IReleaseSpec spec = overridable
+            ? new OverridableReleaseSpec(batchPricing ? Eip8288Prototype.Instance : new ReleaseSpec { IsEipBatchedDependencyPricingEnabled = true })
+            {
+                IsEipBatchedDependencyPricingEnabled = batchPricing
+            }
+            : new ReleaseSpec { IsEipBatchedDependencyPricingEnabled = batchPricing };
+        Assert.That(spec.Eip8288AggregatedVk, Is.EqualTo(batchPricing ? Eip8288Verifier.BatchedAggregatedVk : Eip8288Verifier.PinnedAggregatedVk));
     }
 
     private static IEnumerable<TestCaseData> FloorEipTransitions()

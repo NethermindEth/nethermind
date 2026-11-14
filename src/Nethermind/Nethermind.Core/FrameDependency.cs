@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core;
 
@@ -23,6 +24,20 @@ public readonly struct FrameDependency(byte scheme, ValueHash256 dataHash, Value
     public ulong VerificationGas => Scheme == Eip8288Constants.LeanStarkScheme
         ? Eip8288Constants.LeanStarkVerificationGas
         : Eip8288Constants.LeanSphincsVerificationGas;
+
+    /// <summary>Per-scheme frame charge from the batch-pricing EIP's activation (ethereum/EIPs#12664), which replaces
+    /// <see cref="VerificationGas"/>.</summary>
+    public ulong BatchPricedVerificationGas => Scheme switch
+    {
+        Eip8288Constants.LeanStarkScheme => Eip8288Constants.BatchPricedLeanStarkVerificationGas,
+        Eip8288Constants.BatchedLeanStarkScheme => Eip8288Constants.LeanStarkClaimGas,
+        Eip8288Constants.LeanStarkLeafPaymentScheme => Eip8288Constants.LeanStarkLeafPaymentGas,
+        _ => Eip8288Constants.BatchPricedLeanSphincsVerificationGas
+    };
+
+    /// <summary>The frame charge <see cref="VerificationGas"/>, or <see cref="BatchPricedVerificationGas"/> once
+    /// <paramref name="batchPricing"/> is active.</summary>
+    public ulong FrameCharge(bool batchPricing) => batchPricing ? BatchPricedVerificationGas : VerificationGas;
 
     /// <summary>Writes the canonical 96-byte encoding <c>bytes32_be(scheme) || data_hash || verification_key</c>.</summary>
     public void WriteTo(Span<byte> destination)
@@ -134,7 +149,11 @@ public static class Eip8288Dependencies
     /// The EIP-8288 <c>recursive_stark_gas</c> of this transaction: part of its intrinsic gas, charged per
     /// declared dependency, duplicates included, on top of the per-scheme verification gas the frames already paid.
     /// </summary>
-    public static ulong RecursiveStarkGas(Transaction tx)
+    /// <remarks>EIP-8288 charges <see cref="Eip8288Constants.LeanStarkVerificationGas"/> per declaration. From the batch-pricing EIP's
+    /// activation (ethereum/EIPs#12664), when <paramref name="batchedEnabled"/>, it charges
+    /// <see cref="Eip8288Constants.RecursiveProofShareGas"/> instead, and neither batch claims nor leaf payments pay it: their frame
+    /// charges replace it.</remarks>
+    public static ulong RecursiveStarkGas(Transaction tx, bool batchedEnabled)
     {
         TxFrame[]? frames = tx.Frames;
         if (frames is null) return 0;
@@ -142,10 +161,16 @@ public static class Eip8288Dependencies
         ulong count = 0;
         foreach (TxFrame frame in frames)
         {
-            if (IsDependencyFrame(frame)) count += (ulong)(frame.Data.Length / Eip8288Constants.DependencyTripleLength);
+            if (!IsDependencyFrame(frame)) continue;
+            ReadOnlySpan<byte> data = frame.Data.Span;
+            // Whole triples only, as Length / 96 counts them; i is each one's scheme byte.
+            for (int i = 31; i + 64 < data.Length; i += Eip8288Constants.DependencyTripleLength)
+            {
+                if (!batchedEnabled || data[i] is not (Eip8288Constants.BatchedLeanStarkScheme or Eip8288Constants.LeanStarkLeafPaymentScheme)) count++;
+            }
         }
 
-        return count * Eip8288Constants.LeanStarkVerificationGas;
+        return count * (batchedEnabled ? Eip8288Constants.RecursiveProofShareGas : Eip8288Constants.LeanStarkVerificationGas);
     }
 
     /// <summary>Concatenates dependencies into their <c>96·k</c>-byte wire form.</summary>
@@ -177,6 +202,8 @@ public static class Eip8288Dependencies
     // Closes the digest of a list holding leanSTARK dependencies: a 96-byte preimage, which no list of 64-byte entries shares.
     private static ReadOnlySpan<byte> LeanStarkDepsDomain => "eip8288/leanstark-deps\0\0\0\0\0\0\0\0\0\0"u8;
 
+    private static ReadOnlySpan<byte> BatchFinalTag => "EIP8288:batch-final:v1"u8;
+
     /// <summary>Spec <c>get_deps_hash</c>, the <c>block_deps_hash</c> and <c>deps_hash</c> a recursive STARK is verified against:
     /// <c>DEPS_HASH</c> over the canonical dependencies' 64-byte <c>data_hash || key</c> entries, where a leanSPHINCS key is the raw
     /// public key a triple carries in its <c>verification_key_hash</c> field, not a hash of it.</summary>
@@ -186,7 +213,9 @@ public static class Eip8288Dependencies
     /// validation) commits to
     /// <c>DEPS_HASH(get_deps_hash(leanSPHINCS) || get_deps_hash(leanSTARK) || "eip8288/leanstark-deps")</c>, the domain
     /// zero-padded to 32 bytes, as the pinned recursive guest does. That 96-byte preimage is never a list of 64-byte entries,
-    /// and the position of an entry's list binds its scheme.</remarks>
+    /// and the position of an entry's list binds its scheme. The batch-pricing EIP's schemes (ethereum/EIPs#12664) join the
+    /// leanSTARK list keyed by <see cref="SchemeKey"/>, sorted by entry; a block holding either is proved against
+    /// <see cref="ProofStatement"/>.</remarks>
     public static ValueHash256 ComputeDepsHash(IReadOnlyList<FrameDependency> dependencies)
     {
         dependencies = Canonicalize(dependencies);
@@ -206,14 +235,72 @@ public static class Eip8288Dependencies
     private static ValueHash256 ListDepsHash(IReadOnlyList<FrameDependency> dependencies, bool sphincs)
     {
         KeccakHash hash = KeccakHash.Create();
-        foreach (FrameDependency dependency in dependencies)
+        if (sphincs || !HasBatchScheme(dependencies))
         {
-            if ((dependency.Scheme == Eip8288Constants.LeanSphincsScheme) != sphincs) continue;
-            hash.Update(dependency.DataHash.Bytes);
-            hash.Update(dependency.VerificationKey.Bytes);
+            foreach (FrameDependency dependency in dependencies)
+            {
+                if ((dependency.Scheme == Eip8288Constants.LeanSphincsScheme) != sphincs) continue;
+                hash.Update(dependency.DataHash.Bytes);
+                hash.Update(dependency.VerificationKey.Bytes);
+            }
+
+            return hash.GenerateValueHash();
+        }
+
+        List<(ValueHash256 DataHash, ValueHash256 Key)> entries = new(dependencies.Count);
+        foreach (FrameDependency dependency in dependencies)
+            if (dependency.Scheme != Eip8288Constants.LeanSphincsScheme) entries.Add((dependency.DataHash, SchemeKey(dependency)));
+        // Rekeyed entries leave the canonical triple order, so the entries are sorted themselves.
+        entries.Sort(static (left, right) =>
+        {
+            int comparison = left.DataHash.CompareTo(right.DataHash);
+            return comparison != 0 ? comparison : left.Key.CompareTo(right.Key);
+        });
+        foreach ((ValueHash256 dataHash, ValueHash256 key) in entries)
+        {
+            hash.Update(dataHash.Bytes);
+            hash.Update(key.Bytes);
         }
 
         return hash.GenerateValueHash();
+    }
+
+    /// <summary>The leanSTARK list key of a dependency: its verification key, or for a batch-pricing EIP scheme
+    /// <c>keccak256(scheme word || verification_key_hash)</c>, binding the scheme.</summary>
+    /// <remarks>A leanSTARK key is a committed bytecode key, so a program whose key equals this hash would need a preimage of the
+    /// commitment: separation from plain leanSTARK entries rests on its preimage resistance, not on the key format.</remarks>
+    private static ValueHash256 SchemeKey(in FrameDependency dependency)
+    {
+        if (dependency.Scheme is not (Eip8288Constants.BatchedLeanStarkScheme or Eip8288Constants.LeanStarkLeafPaymentScheme))
+            return dependency.VerificationKey;
+        Span<byte> preimage = stackalloc byte[64];
+        preimage[31] = dependency.Scheme;
+        dependency.VerificationKey.Bytes.CopyTo(preimage[32..]);
+        return ValueKeccak.Compute(preimage);
+    }
+
+    /// <summary>The statement a block proof over <paramref name="dependencies"/>, of digest <paramref name="depsHash"/>, verifies
+    /// against: ethereum/EIPs#12664 <c>get_batch_final_hash(depsHash)</c> when they hold a batch claim or leaf payment, else
+    /// <paramref name="depsHash"/> itself.</summary>
+    /// <remarks>Only a finalized proof, whose batch claims the guest checks are paid, has the former; a plain proof never
+    /// satisfies a block with either scheme.</remarks>
+    public static ValueHash256 ProofStatement(IReadOnlyList<FrameDependency> dependencies, in ValueHash256 depsHash) =>
+        HasBatchScheme(dependencies) ? BatchFinalHash(depsHash) : depsHash;
+
+    /// <summary>ethereum/EIPs#12664 <c>get_batch_final_hash(deps_hash) = DEPS_HASH("EIP8288:batch-final:v1" || deps_hash)</c>.</summary>
+    public static ValueHash256 BatchFinalHash(in ValueHash256 depsHash)
+    {
+        Span<byte> preimage = stackalloc byte[BatchFinalTag.Length + 32];
+        BatchFinalTag.CopyTo(preimage);
+        depsHash.Bytes.CopyTo(preimage[BatchFinalTag.Length..]);
+        return ValueKeccak.Compute(preimage);
+    }
+
+    private static bool HasBatchScheme(IReadOnlyList<FrameDependency> dependencies)
+    {
+        foreach (FrameDependency dependency in dependencies)
+            if (dependency.Scheme is Eip8288Constants.BatchedLeanStarkScheme or Eip8288Constants.LeanStarkLeafPaymentScheme) return true;
+        return false;
     }
 
     /// <summary>Whether a dependency scheme is enabled: leanSPHINCS, and leanSTARK, which this node enables as a deviation from
@@ -222,6 +309,32 @@ public static class Eip8288Dependencies
 
     /// <summary>Whether a dependency scheme is one EIP-8288 defines.</summary>
     public static bool IsKnownScheme(byte scheme) => scheme is Eip8288Constants.LeanSphincsScheme or Eip8288Constants.LeanStarkScheme;
+
+    /// <summary>Whether a dependency frame may declare <paramref name="triple"/>'s scheme: an enabled EIP-8288 one, or, when
+    /// <paramref name="batchedEnabled"/>, a batch-pricing EIP batch claim or leaf payment (ethereum/EIPs#12664), a payment with a
+    /// nonzero digest. The caller checks the 31 zero padding bytes.</summary>
+    internal static bool IsFrameScheme(ReadOnlySpan<byte> triple, bool batchedEnabled) => triple[31] switch
+    {
+        Eip8288Constants.BatchedLeanStarkScheme => batchedEnabled,
+        Eip8288Constants.LeanStarkLeafPaymentScheme => batchedEnabled && !triple[32..64].IsZero(),
+        byte scheme => IsAcceptedScheme(scheme)
+    };
+
+    /// <summary>Whether <paramref name="transaction"/> declares a batch-pricing EIP batch claim or leaf payment.</summary>
+    /// <remarks>Such transactions are submitted directly to builders: they never enter or propagate through the public mempool,
+    /// inside wrappers included, and impose no EIP-7805 inclusion obligation (ethereum/EIPs#12664).</remarks>
+    public static bool DeclaresBatched(Transaction transaction)
+    {
+        foreach (TxFrame frame in transaction.Frames ?? [])
+        {
+            if (!IsDependencyFrame(frame)) continue;
+            ReadOnlySpan<byte> data = frame.Data.Span;
+            for (int i = 31; i < data.Length; i += Eip8288Constants.DependencyTripleLength)
+                if (data[i] is Eip8288Constants.BatchedLeanStarkScheme or Eip8288Constants.LeanStarkLeafPaymentScheme) return true;
+        }
+
+        return false;
+    }
 
     /// <summary>The leanSTARK dependencies in <paramref name="dependencies"/>, repeats included.</summary>
     public static int CountLeanStark(IEnumerable<FrameDependency> dependencies)
@@ -233,12 +346,13 @@ public static class Eip8288Dependencies
     }
 
     /// <summary>Whether one dependency list of the pinned recursive guest can hold <paramref name="dependencies"/>: at most
-    /// <see cref="Eip8288Constants.MaxProofDependencies"/>, <see cref="Eip8288Constants.MaxGenericStarkProofs"/> of them
-    /// leanSTARK.</summary>
+    /// <see cref="Eip8288Constants.MaxProofDependencies"/>, and without <paramref name="batchPricing"/> at most
+    /// <see cref="Eip8288Constants.MaxGenericStarkProofs"/> of them leanSTARK.</summary>
     /// <remarks>The circuit's dependency-list limit: a statement over it is split or deferred when built and a mode-1 proof over it
     /// is invalid when received (EIP-8288).</remarks>
-    public static bool FitsProofList(IReadOnlyCollection<FrameDependency> dependencies) =>
-        dependencies.Count <= Eip8288Constants.MaxProofDependencies && CountLeanStark(dependencies) <= Eip8288Constants.MaxGenericStarkProofs;
+    public static bool FitsProofList(IReadOnlyCollection<FrameDependency> dependencies, bool batchPricing) =>
+        dependencies.Count <= Eip8288Constants.MaxProofDependencies
+        && (batchPricing || CountLeanStark(dependencies) <= Eip8288Constants.MaxGenericStarkProofs);
 
     /// <summary>Whether every dependency's scheme is enabled (<see cref="IsAcceptedScheme"/>).</summary>
     public static bool AreSchemesEnabled(IReadOnlyList<FrameDependency> dependencies)
@@ -287,15 +401,15 @@ public static class Eip8288Dependencies
         return Canonicalize(inputs);
     }
 
-    /// <summary>Counts dependencies per scheme (leanSPHINCS, leanSTARK) for the mempool/tx limits.</summary>
+    /// <summary>Counts dependencies per scheme (leanSPHINCS, any leanSTARK) for the mempool/tx limits.</summary>
     public static (int Sphincs, int Stark) CountByScheme(IReadOnlyList<FrameDependency> dependencies)
     {
         int sphincs = 0;
         int stark = 0;
         for (int i = 0; i < dependencies.Count; i++)
         {
-            if (dependencies[i].Scheme == Eip8288Constants.LeanStarkScheme) stark++;
-            else sphincs++;
+            if (dependencies[i].Scheme == Eip8288Constants.LeanSphincsScheme) sphincs++;
+            else stark++;
         }
 
         return (sphincs, stark);

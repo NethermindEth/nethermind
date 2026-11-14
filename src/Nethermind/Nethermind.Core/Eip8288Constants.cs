@@ -24,17 +24,44 @@ public static class Eip8288Constants
     /// <remarks>The dependency-list limit of the circuit behind the pinned <see cref="AggregatedVk"/>, not a FOCIL omission bound;
     /// EIP-8288 has no block dependency quota. Mode-1 wrapper proofs above it are invalid (EIP-8288), discarded without penalty;
     /// an inclusion-list proof above it imposes no obligation; a block whose dependencies exceed it is invalid here, since no
-    /// proof under that key can cover it, as with <see cref="MaxAggregateProofBytes"/>.</remarks>
+    /// proof under that key can cover it, as with <see cref="MaxAggregateProofBytes"/>. EIP-8288 requires an aggregation output
+    /// capacity of at least <c>MAX_RLP_BLOCK_SIZE // 96</c>, which this prototype guest does not reach.</remarks>
     public const int MaxProofDependencies = 256;
 
-    /// <summary>Maximum leanSTARK dependencies in one dependency list of the pinned recursive guest, selected, child and discard
-    /// lists alike.</summary>
-    /// <remarks>Part of the circuit limit like <see cref="MaxProofDependencies"/>: a statement over more is split or deferred by the
-    /// builder, a mode-1 wrapper proof over it is invalid, an inclusion-list proof over it imposes no obligation, and a block over
-    /// it is invalid here, since no proof under the pinned <see cref="AggregatedVk"/> can cover it.</remarks>
+    /// <summary>Batch-pricing EIP (ethereum/EIPs#12664) <c>MAX_DEPS_PER_BLOCK</c> (provisional): distinct resolved dependencies a
+    /// block may hold, across all schemes and leaf payments included.</summary>
+    /// <remarks>A block-validity limit independent of the gas limit, which also excuses an inclusion-list omission whose dependencies
+    /// would exceed it. Block building never nears it, since this node's guests prove at most <see cref="MaxProofDependencies"/>.</remarks>
+    public const int MaxDepsPerBlock = 16384;
+
+    /// <summary>Batch-pricing EIP (ethereum/EIPs#12664) <c>MAX_CLAIMS_PER_BATCH_LEAF</c> (provisional): claims one leanSTARK leaf
+    /// may prove.</summary>
+    /// <remarks>A parameter of the guest behind <see cref="BatchedAggregatedVk"/>, so changing it changes that key; EIP-8288's guest
+    /// takes no batch leaves. It bounds a single leaf only; recursive aggregation combines leaves into larger dependency
+    /// lists.</remarks>
+    public const int MaxClaimsPerBatchLeaf = 256;
+
+    /// <summary>EIP-8288 <c>MAX_INNER_PROOFS_PER_STEP</c> (provisional, 16 in the EIP): direct leanSTARK proofs, batch leaves and
+    /// recursive proofs verified by one aggregation step together.</summary>
+    /// <remarks>Raw leanSPHINCS witnesses do not count. Discarded and redundant inputs do; the pinned guest verifies up to this
+    /// many in one execution. Chosen with the leaf bounds, as ethereum/EIPs#12664 requires: under the pinned guest's committed
+    /// bytecode key, 16 maximum-resource leaves under distinct keys commit 2^27.6 of a step's 2^30 witness bound.</remarks>
+    public const int MaxInnerProofsPerStep = 16;
+
+    /// <summary>EIP-8288's guest (<see cref="AggregatedVk"/>): recursive proofs one aggregation step verifies.</summary>
+    public const int BaseMaxRecursiveInputs = 16;
+
+    /// <summary>Maximum leanSTARK dependencies in one dependency list of EIP-8288's guest (<see cref="AggregatedVk"/>), selected,
+    /// child and discard lists alike.</summary>
+    /// <remarks>Part of that circuit's limit like <see cref="MaxProofDependencies"/>: a statement over more is split or deferred by
+    /// the builder, a mode-1 wrapper proof over it is invalid, an inclusion-list proof over it imposes no obligation, and a block
+    /// over it is invalid here. The batch-pricing guest has no such per-list bound.</remarks>
     public const int MaxGenericStarkProofs = 16;
 
     /// <summary>Maximum instructions of a leanSTARK program the pinned generic verifier accepts.</summary>
+    /// <remarks>An EIP-8288 verifier resource bound counting the compiled program padded to a power of two, support code
+    /// included. Like every leanSTARK resource bound, it applies to each leaf at direct admission and in aggregation, even
+    /// when all its claims are discarded.</remarks>
     public const int MaxLeanStarkInstructions = 2048;
 
     /// <summary>Maximum encoded native direct witness or proof buffer the pinned backend accepts, such as a mode-0 leanSTARK proof.</summary>
@@ -78,6 +105,36 @@ public static class Eip8288Constants
     public const ulong LeanSphincsVerificationGas = 3_000;
     public const ulong LeanStarkVerificationGas = 30_000;
 
+    /// <summary>Batch-pricing EIP (ethereum/EIPs#12664) <c>BATCHED_LEANSTARK_SCHEME</c> (provisional): a claim of a sponsored
+    /// leaf, <c>data_hash</c> the claim and <c>verification_key_hash</c> the leaf's key.</summary>
+    public const byte BatchedLeanStarkScheme = 0x12;
+
+    /// <summary>Batch-pricing EIP <c>LEANSTARK_LEAF_PAYMENT_SCHEME</c> (provisional): a leaf's payment, <c>data_hash</c> its nonzero
+    /// <c>get_batch_hash(claims)</c> and <c>verification_key_hash</c> its key. Effective only in the block of the claims it
+    /// sources.</summary>
+    public const byte LeanStarkLeafPaymentScheme = 0x13;
+
+    /// <summary>Batch-pricing EIP <c>LEANSPHINCS_VERIFICATION_GAS</c> (provisional): from its activation, a leanSPHINCS
+    /// declaration's frame charge in place of <see cref="LeanSphincsVerificationGas"/>.</summary>
+    public const ulong BatchPricedLeanSphincsVerificationGas = 15_400;
+
+    /// <summary>Batch-pricing EIP <c>LEANSTARK_VERIFICATION_GAS</c> (provisional): from its activation, a leanSTARK declaration's
+    /// frame charge, its recursive child slot included, in place of <see cref="LeanStarkVerificationGas"/>.</summary>
+    public const ulong BatchPricedLeanStarkVerificationGas = 572_000;
+
+    /// <summary>Batch-pricing EIP <c>RECURSIVE_PROOF_SHARE_GAS</c> (provisional): from its activation, each ordinary declared
+    /// dependency's intrinsic share of the block's recursive proof, in place of EIP-8288's <see cref="LeanStarkVerificationGas"/>
+    /// (<see cref="Eip8288Dependencies.RecursiveStarkGas"/>).</summary>
+    public const ulong RecursiveProofShareGas = 5_100;
+
+    /// <summary>Batch-pricing EIP <c>LEANSTARK_LEAF_PAYMENT_GAS</c> (provisional): a leaf payment's frame charge, covering the leaf's
+    /// verification and fixed payment-binding work, in place of EIP-8288's proof share.</summary>
+    public const ulong LeanStarkLeafPaymentGas = 675_000;
+
+    /// <summary>Batch-pricing EIP <c>LEANSTARK_CLAIM_GAS</c> (provisional): a batch claim's frame charge, in place of EIP-8288's
+    /// proof share.</summary>
+    public const ulong LeanStarkClaimGas = 4_200;
+
     public const int MaxSigsPerTx = 16;
     public const int MaxStarksPerTx = 1;
 
@@ -99,8 +156,16 @@ public static class Eip8288Constants
     /// mode. Equal to the <c>eth</c> soft response limit, so EIP-8437 retrieves each wrapper whole.</summary>
     public const int MaxWrapperBytes = 2 * 1024 * 1024;
 
-    /// <summary>Fiat-Shamir key of the recursive guest in the pinned Nethermind.Crypto.Lean package.</summary>
+    /// <summary>Fiat-Shamir key of EIP-8288's recursive guest in the pinned Nethermind.Crypto.Lean package.</summary>
     public static ReadOnlySpan<byte> AggregatedVk => _aggregatedVk;
 
+    /// <summary>Fiat-Shamir key of the package's recursive guest with batch pricing (ethereum/EIPs#12664), which forks enabling
+    /// <see cref="Specs.IReleaseSpec.IsEipBatchedDependencyPricingEnabled"/> verify with.</summary>
+    /// <remarks>Built from the same source as <see cref="AggregatedVk"/>'s guest, it also takes leaves of up to
+    /// <see cref="MaxClaimsPerBatchLeaf"/> claims, establishing <see cref="BatchedLeanStarkScheme"/> claims bound to their
+    /// <see cref="LeanStarkLeafPaymentScheme"/> payment, and finalizes them.</remarks>
+    public static ReadOnlySpan<byte> BatchedAggregatedVk => _batchedAggregatedVk;
+
     private static readonly byte[] _aggregatedVk = Convert.FromHexString("f6f37690cf7241c9ea24392f349867acc1c8e06034e8ce149e2f11a25eec56f9");
+    private static readonly byte[] _batchedAggregatedVk = Convert.FromHexString("ed44310d2b59ac7308d964cb622e32dc966b1e2e9b6f201fcdc350b1bbd705ff");
 }

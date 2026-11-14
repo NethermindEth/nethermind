@@ -278,17 +278,19 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 return ProofWrapperAcceptance.Malformed($"Invalid proof wrapper RLP: {exception.Message}");
             }
             // EIP-8288: mode 1 is limited by the dependency list the AGGREGATED_VK circuit accepts, here the pinned guest's.
-            if (decoded.Mode == MempoolWrapper.ModeRecursive && !Eip8288Dependencies.FitsProofList(decoded.Deps))
+            if (decoded.Mode == MempoolWrapper.ModeRecursive && !Eip8288Dependencies.FitsProofList(decoded.Deps, admissionSpec.IsEipBatchedDependencyPricingEnabled))
                 return ProofWrapperAcceptance.Invalid(WiderThanCircuitBound, verifier);
             // EIP-8437 carries blob-carrying transactions with their blob data elided, so a wrapper submitted with full blobs is
             // relayed in that form; its blobs reach peers as EIP-8070 cells once the pool holds them.
             byte[]? relay = ElidedForRelay(decoded, wrapper);
+            IReleaseSpec transactionSpec = PoolPricingSpec(admissionSpec);
             foreach (Transaction transaction in decoded.Transactions)
             {
-                if (!Preflight(transaction, out string? frameError, admissionSpec))
+                if (!Preflight(transaction, out string? frameError, transactionSpec))
                     return frameError is FrameTxValidation.AssertFrameNotEnabled or FrameTxValidation.KeyedNoncesNotEnabled
                         or FrameTxValidation.LegacyNonceNotAllowed
-                        ? ProofWrapperAcceptance.LocalFailure(frameError) : ProofWrapperAcceptance.Invalid(frameError!, verifier);
+                        || !ReferenceEquals(transactionSpec, admissionSpec) && Preflight(transaction, out _, admissionSpec)
+                        ? ProofWrapperAcceptance.LocalFailure(frameError!) : ProofWrapperAcceptance.Invalid(frameError!, verifier);
             }
             (ValueHash256, ValueHash256) wrapperHash = (ValueKeccak.Compute(wrapper), verifier.AggregatedVk);
             if (!_verifiedWrappers.TryGetValue(wrapperHash, out string? error))
@@ -969,7 +971,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             List<FrameDependency> union = [];
             for (int i = start; i < end; i++) union.AddRange(candidates[i].Deps);
             union = Eip8288Dependencies.Canonicalize(union);
-            if (!Eip8288Dependencies.FitsProofList(union) || !leanProofStore.TryGetInput(union, out AggregationInput input)
+            if (!Eip8288Dependencies.FitsProofList(union, floors.Spec?.IsEipBatchedDependencyPricingEnabled == true) || !leanProofStore.TryGetInput(union, out AggregationInput input)
                 || union.Count + input.Discards.Count > Eip8288Constants.MaxProofDependencies) return null;
             fits = end - start == 1 || ProvingCost(input, union, previousProof) <= MaxWrapperProvingCost;
             List<Transaction> transactions = new(end - start);
@@ -1188,6 +1190,16 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
 
     /// <summary>Whether any scheduled fork of this chain enables EIP-8288; when not, wrapper work never needs to run.</summary>
     public bool IsScheduled => specProvider.GetFinalSpec().IsEip8288Enabled;
+
+    /// <summary>The spec a wrapper's transactions are judged under: <paramref name="admissionSpec"/>, or the head's when only one of
+    /// them has batch pricing (ethereum/EIPs#12664).</summary>
+    /// <remarks>The pool validates every transaction against its head, and batch pricing changes their frame charges, so across its
+    /// activation the head decides which price is admissible. A transaction priced for the target fork alone is then a local
+    /// failure rather than the peer's.</remarks>
+    private IReleaseSpec PoolPricingSpec(IReleaseSpec admissionSpec) =>
+        blockFinder.Head is { } head && specProvider.GetSpec(head.Header) is { } headSpec
+            && headSpec.IsEipBatchedDependencyPricingEnabled != admissionSpec.IsEipBatchedDependencyPricingEnabled
+            ? headSpec : admissionSpec;
 
     private bool Preflight(Transaction transaction, out string? error, IReleaseSpec? admissionSpec = null)
     {

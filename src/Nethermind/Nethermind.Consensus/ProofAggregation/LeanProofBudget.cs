@@ -42,12 +42,12 @@ internal sealed class LeanProofBudget
         return true;
     }
 
-    public bool TryPrepare(AggregationInput input, IReadOnlyList<FrameDependency> required,
+    public bool TryPrepare(AggregationInput input, IReadOnlyList<FrameDependency> required, bool batchPricing,
         out AggregationInput contribution, out string? error)
     {
         contribution = new();
         error = null;
-        error = LeanProofCapacity.CapacityError(_required, _genericProofs, required);
+        error = LeanProofCapacity.CapacityError(_required, _genericProofs, required, batchPricing);
         if (error is not null) return false;
         HashSet<FrameDependency> addedCoverage = [];
         List<RecursiveProofInput> parents = [];

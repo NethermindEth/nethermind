@@ -70,6 +70,48 @@ public class InclusionListProofsTests
         }
     }
 
+    // ethereum/EIPs#12664 Test Case: activation with old verdicts cached. The batch-pricing guest takes a direct leanSTARK witness
+    // on get_claim_hash(claim), so a verdict under EIP-8288's key does not answer for it; a leanSPHINCS verdict carries over.
+    [Test]
+    public void Direct_leanstark_verdicts_do_not_carry_into_the_batch_pricing_guest([Values] bool leanStark)
+    {
+        FakeLeanProofVerifier verifier = new(true);
+        FrameDependency dependency = new(leanStark ? Eip8288Constants.LeanStarkScheme : Eip8288Constants.LeanSphincsScheme,
+            ValueKeccak.Compute("activation"), default);
+        Eip8288Verifier batched = new(Eip8288Verifier.BatchedAggregatedVk);
+        byte[] bytes = [9];
+        ProofVerdictCache cache = ProofVerdictCache.For(verifier);
+        Assert.That(ProofVerdictCache.VerifyDirect(verifier, Eip8288Verifier.Pinned, dependency, bytes), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.TryGetDirectVerdict(dependency, ValueKeccak.Compute(bytes), batched), leanStark ? Is.Null : Is.True);
+            Assert.That(ProofVerdictCache.VerifyDirect(verifier, batched, dependency, bytes), Is.True);
+            Assert.That(verifier.VerificationCalls, Is.EqualTo(leanStark ? 2 : 1));
+        }
+    }
+
+    // A verifier that knows only EIP-8288's direct statement refuses the batch-pricing guest's instead of checking the bare claim.
+    [Test]
+    public void Default_direct_leanstark_check_refuses_the_batch_pricing_guest()
+    {
+        ILeanProofVerifier verifier = new BaseOnlyVerifier();
+        ValueHash256 claim = ValueKeccak.Compute("claim");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verifier.VerifyLeanStark(claim, default, [1], Eip8288Verifier.PinnedAggregatedVk.Bytes), Is.True);
+            Assert.That(() => verifier.VerifyLeanStark(claim, default, [1], Eip8288Verifier.BatchedAggregatedVk.Bytes), Throws.TypeOf<NotSupportedException>());
+        }
+    }
+
+    private sealed class BaseOnlyVerifier : ILeanProofVerifier
+    {
+        public void EnsureAvailable() { }
+        public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => true;
+        public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => true;
+        public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof) => true;
+        public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input) => [];
+    }
+
     [Test]
     public void Verdict_cache_is_bounded()
     {
@@ -184,22 +226,57 @@ public class InclusionListProofsTests
     }
 
     // A proof the pinned guest cannot have produced, over more dependencies or more leanSTARK dependencies than one of its lists
-    // holds, is refused locally without verification: the list then obligates no dependency-bearing entry.
-    [TestCase(Eip8288Constants.MaxProofDependencies + 1, 0, false)]
-    [TestCase(Eip8288Constants.MaxGenericStarkProofs + 1, Eip8288Constants.MaxGenericStarkProofs + 1, false)]
-    [TestCase(Eip8288Constants.MaxGenericStarkProofs + 8, Eip8288Constants.MaxGenericStarkProofs, true)]
-    public void A_list_proof_beyond_the_proving_bound_obligates_nothing_and_is_not_verified(int count, int leanStark, bool withinBound)
+    // holds, is refused locally without verification: the list then obligates no dependency-bearing entry. The batch-pricing
+    // guest has the list bound only.
+    [TestCase(Eip8288Constants.MaxProofDependencies + 1, 0, false, false)]
+    [TestCase(Eip8288Constants.MaxGenericStarkProofs + 1, Eip8288Constants.MaxGenericStarkProofs + 1, false, false)]
+    [TestCase(Eip8288Constants.MaxGenericStarkProofs + 8, Eip8288Constants.MaxGenericStarkProofs, false, true)]
+    [TestCase(Eip8288Constants.MaxProofDependencies + 1, 0, true, false)]
+    [TestCase(Eip8288Constants.MaxGenericStarkProofs + 1, Eip8288Constants.MaxGenericStarkProofs + 1, true, true)]
+    [TestCase(Eip8288Constants.MaxProofDependencies + 1, Eip8288Constants.MaxProofDependencies + 1, true, false)]
+    public void A_list_proof_beyond_the_proving_bound_obligates_nothing_and_is_not_verified(int count, int leanStark, bool batchPricing,
+        bool withinBound)
     {
+        IReleaseSpec spec = batchPricing
+            ? new OverridableReleaseSpec(Eip8288Prototype.Instance) { IsEipBatchedDependencyPricingEnabled = true }
+            : Eip8288Prototype.Instance;
         FakeLeanProofVerifier verifier = new(true);
         FrameDependency[] dependencies = [.. Enumerable.Range(0, count).Select(i => i < leanStark
             ? new FrameDependency(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute($"wide-{i}"), default)
             : Dependency($"wide-{i}"))];
         CommitteeInclusionList[] lists = [new([ValidDependencyFrame(default)], [1], Encode(Eip8288Dependencies.Canonicalize(dependencies)))];
-        new InclusionListProofService(verifier).ResolveObligations(lists, Eip8288Prototype.Instance);
+        new InclusionListProofService(verifier).ResolveObligations(lists, spec);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(lists[0].VerifiedProofDeps, withinBound ? Is.Not.Null : Is.Null);
             Assert.That(verifier.VerificationCalls, Is.EqualTo(withinBound ? 1 : 0));
+        }
+    }
+
+    // ethereum/EIPs#12664 Test Cases: batch claim and leaf payment entries impose no obligation. Under an ordinary proof the
+    // covered and dependency-free entries bind; a proof naming either new scheme covers no entry, and only dependency-free ones bind.
+    [Test]
+    public void Batch_claim_and_payment_entries_never_bind([Values] bool proofNamesNewSchemes)
+    {
+        IReleaseSpec spec = new OverridableReleaseSpec(Eip8288Prototype.Instance) { IsEipBatchedDependencyPricingEnabled = true };
+        Transaction ordinary = new();
+        Transaction covered = ValidDependencyFrame(ValueKeccak.Compute("covered"), batchPricing: true);
+        Transaction claim = ValidDependencyFrame(ValueKeccak.Compute("claim"), Eip8288Constants.BatchedLeanStarkScheme, batchPricing: true);
+        Transaction payment = ValidDependencyFrame(ValueKeccak.Compute("payment"), Eip8288Constants.LeanStarkLeafPaymentScheme, batchPricing: true);
+        Transaction[] entries = [claim, covered, payment, ordinary];
+        Assert.That(entries.All(tx => InclusionListProofValidator.IsStaticallyValid(tx, spec)), Is.True);
+        Transaction[] proven = proofNamesNewSchemes ? entries : [covered];
+        List<FrameDependency> proofDeps = Eip8288Dependencies.Canonicalize(
+            proven.SelectMany(static tx => Eip8288Dependencies.ForTransaction(tx, FrameTxSigHash.ComputeValue)));
+        CommitteeInclusionList[] lists = [new(entries, [1], Encode(proofDeps))];
+
+        new InclusionListProofService(new FakeLeanProofVerifier(true)).ResolveObligations(lists, spec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(lists[0].VerifiedProofDeps, proofNamesNewSchemes ? Is.Null : Is.Not.Null);
+            Assert.That(InclusionListProofValidator.SelectEligible([], lists, spec),
+                Is.EqualTo(proofNamesNewSchemes ? new[] { ordinary } : new[] { covered, ordinary }));
         }
     }
 
@@ -360,10 +437,10 @@ public class InclusionListProofsTests
         return transaction;
     }
 
-    private static Transaction ValidDependencyFrame(ValueHash256 message, byte scheme = Eip8288Constants.LeanSphincsScheme)
+    private static Transaction ValidDependencyFrame(ValueHash256 message, byte scheme = Eip8288Constants.LeanSphincsScheme, bool batchPricing = false)
     {
         FrameDependency dep = new(scheme, message, default);
-        TxFrame[] frames = [new(FrameMode.DepVerify, FrameFlags.None, null, dep.VerificationGas,
+        TxFrame[] frames = [new(FrameMode.DepVerify, FrameFlags.None, null, dep.FrameCharge(batchPricing),
             UInt256.Zero, Eip8288Dependencies.Serialize([dep]))];
         return new()
         {

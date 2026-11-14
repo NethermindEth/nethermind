@@ -31,11 +31,22 @@ public readonly struct RecursiveProofInput
     public ValueHash256 ProofHash { get; }
 }
 
+/// <summary>A batch leaf (ethereum/EIPs#12664): one leanSTARK proof of <c>get_batch_hash(Claims)</c> under one verification key,
+/// establishing <see cref="Dependencies"/>.</summary>
+/// <remarks>Only the batch-pricing guest takes batch leaves. Claims are nonempty, strictly increasing and at most
+/// <see cref="Eip8288Constants.MaxClaimsPerBatchLeaf"/>. Each dependency is <c>(LEANSTARK_SCHEME, claim, VerificationKeyHash)</c> or
+/// <c>(BATCHED_LEANSTARK_SCHEME, claim, VerificationKeyHash)</c>; the backend rejects anything else.</remarks>
+public sealed record BatchLeafInput(ValueHash256 VerificationKeyHash, IReadOnlyList<ValueHash256> Claims, IReadOnlyList<FrameDependency> Dependencies,
+    ReadOnlyMemory<byte> Proof);
+
 /// <summary>Inputs to a recursive aggregation step (spec "private inputs").</summary>
+/// <remarks>Direct leanSTARK witnesses, <see cref="BatchLeaves"/> and <see cref="RecursiveProofs"/> together are at most
+/// <see cref="Eip8288Constants.MaxInnerProofsPerStep"/>.</remarks>
 public sealed class AggregationInput
 {
     public IReadOnlyList<FrameDependency> Deps { get; init; } = [];
     public IReadOnlyList<ReadOnlyMemory<byte>> Witnesses { get; init; } = [];
+    public IReadOnlyList<BatchLeafInput> BatchLeaves { get; init; } = [];
     public IReadOnlyList<RecursiveProofInput> RecursiveProofs { get; init; } = [];
     public IReadOnlyList<FrameDependency> Discards { get; init; } = [];
 }

@@ -75,6 +75,17 @@ public class LeanProofVerifierWiringTests
     }
 
     [Test]
+    public void Production_decorator_refuses_batch_leaves_instead_of_dropping_them()
+    {
+        FakeLeanProofVerifier backend = new(true);
+        AggregationInput input = new() { BatchLeaves = [new(default, [ValueKeccak.Compute("claim")], [new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("claim"), default)], new byte[] { 1 })] };
+
+        Assert.That(() => new ProductionProofCache(backend).ProveRecursiveStark(default, Eip8288Constants.AggregatedVk, input),
+            Throws.ArgumentException);
+        Assert.That(backend.ProofCalls, Is.Zero);
+    }
+
+    [Test]
     public async Task Production_decorator_forwards_backend_availability()
     {
         ILeanProofVerifier backend = Substitute.For<ILeanProofVerifier>();

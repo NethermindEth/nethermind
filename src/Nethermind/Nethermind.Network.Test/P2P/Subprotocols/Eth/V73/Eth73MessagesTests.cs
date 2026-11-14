@@ -375,7 +375,8 @@ public class Eth73MessagesTests
 
     // EIP-8288 Test Case 12: empty transaction lists, unresolved references and duplicate or reordered transactions are rejected
     // before validation. A dependency list wider than the mode-0 limits or out of order parses: EIP-8437 leaves dependency-rule
-    // failures to validation, which discards them without penalty.
+    // failures to validation, which discards them without penalty. A batch claim or leaf payment never travels in a wrapper
+    // (ethereum/EIPs#12664), so either is rejected whichever fork is active.
     [TestCase("valid")]
     [TestCase("trailing")]
     [TestCase("empty")]
@@ -386,6 +387,8 @@ public class Eth73MessagesTests
     [TestCase("aggregate proof")]
     [TestCase("wide dependency list")]
     [TestCase("unsorted dependencies")]
+    [TestCase("batch claim")]
+    [TestCase("leaf payment")]
     public void Canonical_wrapper_parser_rejects_noncanonical_bodies(string scenario)
     {
         Transaction[] transactions = [.. Enumerable.Range(0, 2).Select(WrapperTestObjects.FrameTransaction).OrderBy(static t => t.Hash!.ToString())];
@@ -415,6 +418,9 @@ public class Eth73MessagesTests
                     transactions.SelectMany(static t => Eip8288Dependencies.ForTransaction(t, FrameTxSigHash.ComputeValue)))
                 .Select(static d => Eth73Rlp.EncodeBytes(Eip8288Dependencies.Serialize([d])))]), Eth73Rlp.EncodeBytes(new byte[Eip8288Constants.MaxAggregateProofBytes + 1]))),
             "wide dependency list" => Rebuilt(encoded, Eth73Rlp.EncodeList(Eth73Rlp.EncodeList([.. wide]), Eth73Rlp.EncodeBytes([1]))),
+            "batch claim" or "leaf payment" => Rebuilt(encoded, Eth73Rlp.EncodeList(Eth73Rlp.EncodeList([Eth73Rlp.EncodeBytes(Eip8288Dependencies.Serialize(
+                [new FrameDependency(scenario == "batch claim" ? Eip8288Constants.BatchedLeanStarkScheme : Eip8288Constants.LeanStarkLeafPaymentScheme,
+                    ValueKeccak.Compute("batched"), ValueKeccak.Compute("batched-vk"))]))]), Eth73Rlp.EncodeBytes([1]))),
             _ => Rebuilt(encoded, Eth73Rlp.EncodeList(Eth73Rlp.EncodeList([.. wide.AsEnumerable().Reverse()]), Eth73Rlp.EncodeBytes([1])))
         };
         if (scenario is "valid" or "wide dependency list" or "unsorted dependencies")

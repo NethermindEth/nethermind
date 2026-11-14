@@ -20,13 +20,15 @@ namespace Nethermind.Crypto;
 public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
 {
     private const string Library = "nethermind_lean";
-    private const uint ExpectedAbiVersion = 12;
-    private const int MaxRecursiveInputs = 16;
+    private const uint ExpectedAbiVersion = 16;
+    // The ABI's guests: EIP-8288's, and the one with batch pricing (ethereum/EIPs#12664).
+    private const uint BaseGuest = 0;
+    private const uint BatchedGuest = 1;
     private static readonly Lazy<bool> BackendAvailable = new(CheckBackend);
     public const int MaxProofBytes = Eip8288Constants.MaxProofBytes;
     public static readonly NativeLeanProofVerifier Instance = new();
 
-    /// <summary>Checks the ABI and recursive guest key once, before an EIP-8288 node starts processing.</summary>
+    /// <summary>Checks the ABI and both recursive guest keys once, before an EIP-8288 node starts processing.</summary>
     public void EnsureAvailable() => _ = BackendAvailable.Value;
 
     private static bool CheckBackend()
@@ -35,16 +37,17 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
         {
             // The first native call starts leanVM's worker pool on its caller; keep that on the prover thread, which dispatches
             // every proof.
-            if (!ProverThread.Run(static () => AggregatedVerificationKey).AsSpan().SequenceEqual(Eip8288Constants.AggregatedVk))
+            if (!ProverThread.Run(static () => AggregatedVerificationKey).AsSpan().SequenceEqual(Eip8288Constants.AggregatedVk)
+                || !ProverThread.Run(static () => GuestKey(BatchedGuest)).AsSpan().SequenceEqual(Eip8288Constants.BatchedAggregatedVk))
                 throw new InvalidOperationException("The native Lean recursive guest key does not match this node.");
-            Span<uint> limits = stackalloc uint[7];
-            ReadOnlySpan<uint> expectedLimits = [MaxProofBytes, Eip8288Constants.MaxProofDependencies,
-                MaxRecursiveInputs, Eip8288Constants.LeanSphincsWitnessBytes, Eip8288Constants.MaxAggregationInputBytes,
+            ReadOnlySpan<uint> baseLimits = [MaxProofBytes, Eip8288Constants.MaxProofDependencies,
+                Eip8288Constants.BaseMaxRecursiveInputs, Eip8288Constants.LeanSphincsWitnessBytes, Eip8288Constants.MaxAggregationInputBytes,
                 Eip8288Constants.MaxGenericStarkProofs, Eip8288Constants.MaxLeanStarkInstructions];
-            fixed (uint* p = limits)
-                if (nlean_limits(p, (nuint)limits.Length) != 1 ||
-                    !limits.SequenceEqual(expectedLimits))
-                    throw new InvalidOperationException("The native Lean acceptance bounds do not match this node.");
+            ReadOnlySpan<uint> batchedLimits = [MaxProofBytes, Eip8288Constants.MaxProofDependencies,
+                Eip8288Constants.MaxInnerProofsPerStep, Eip8288Constants.LeanSphincsWitnessBytes, Eip8288Constants.MaxAggregationInputBytes,
+                Eip8288Constants.MaxClaimsPerBatchLeaf, Eip8288Constants.MaxLeanStarkInstructions];
+            if (!LimitsMatch(BaseGuest, baseLimits) || !LimitsMatch(BatchedGuest, batchedLimits))
+                throw new InvalidOperationException("The native Lean acceptance bounds do not match this node.");
             return true;
         }
         catch (Exception exception) when (IsUnavailable(exception) || exception is InvalidOperationException)
@@ -53,22 +56,33 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
         }
     }
 
+    private static bool LimitsMatch(uint guest, ReadOnlySpan<uint> expected)
+    {
+        Span<uint> limits = stackalloc uint[7];
+        fixed (uint* p = limits)
+            return nlean_limits(guest, p, (nuint)limits.Length) == 1 && limits.SequenceEqual(expected);
+    }
+
     /// <summary>Native library ABI version.</summary>
     public static uint AbiVersion => nlean_abi_version();
 
-    /// <summary>The pinned recursive guest's Fiat-Shamir verification key.</summary>
-    public static byte[] AggregatedVerificationKey
+    /// <summary>The pinned EIP-8288 recursive guest's Fiat-Shamir verification key.</summary>
+    public static byte[] AggregatedVerificationKey => GuestKey(BaseGuest);
+
+    private static byte[] GuestKey(uint guest)
     {
-        get
+        byte[] key = new byte[32];
+        fixed (byte* p = key)
         {
-            byte[] key = new byte[32];
-            fixed (byte* p = key)
-            {
-                if (AbiVersion != ExpectedAbiVersion || nlean_aggregated_vk(p) != 1) throw new InvalidOperationException("Lean verification key unavailable");
-            }
-            return key;
+            if (AbiVersion != ExpectedAbiVersion || nlean_aggregated_vk(guest, p) != 1) throw new InvalidOperationException("Lean verification key unavailable");
         }
+        return key;
     }
+
+    /// <summary>The native guest whose key <paramref name="aggregatedVk"/> is: the batch-pricing one for its key, else EIP-8288's,
+    /// which rejects any key but its own.</summary>
+    private static uint GuestOf(ReadOnlySpan<byte> aggregatedVk) =>
+        aggregatedVk.SequenceEqual(Eip8288Constants.BatchedAggregatedVk) ? BatchedGuest : BaseGuest;
 
     /// <inheritdoc/>
     public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness)
@@ -85,7 +99,15 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
     }
 
     /// <inheritdoc/>
-    public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness)
+    /// <remarks>Verifies as EIP-8288's guest takes the witness, on the bare claim.</remarks>
+    public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) =>
+        VerifyLeanStark(in dataHash, in verificationKey, witness, BaseGuest);
+
+    /// <inheritdoc/>
+    public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness, ReadOnlySpan<byte> aggregatedVk) =>
+        VerifyLeanStark(in dataHash, in verificationKey, witness, GuestOf(aggregatedVk));
+
+    private static bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness, uint guest)
     {
         if (witness.IsEmpty || witness.Length > MaxProofBytes) return false;
         try
@@ -93,7 +115,7 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
             fixed (byte* d = dataHash.Bytes)
             fixed (byte* v = verificationKey.Bytes)
             fixed (byte* w = witness)
-                return Verdict(AbiVersion != ExpectedAbiVersion ? -1 : nlean_verify_leanstark(d, v, w, (nuint)witness.Length));
+                return Verdict(AbiVersion != ExpectedAbiVersion ? -1 : nlean_verify_leanstark(guest, d, v, w, (nuint)witness.Length));
         }
         catch (Exception e) when (IsUnavailable(e)) { throw new InvalidOperationException("Native Lean backend unavailable", e); }
     }
@@ -107,7 +129,7 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
             fixed (byte* h = depsHash.Bytes)
             fixed (byte* vk = aggregatedVk)
             fixed (byte* p = proof)
-                return Verdict(AbiVersion != ExpectedAbiVersion ? -1 : nlean_verify_recursive(h, vk, (nuint)aggregatedVk.Length, p, (nuint)proof.Length));
+                return Verdict(AbiVersion != ExpectedAbiVersion ? -1 : nlean_verify_recursive(GuestOf(aggregatedVk), h, vk, (nuint)aggregatedVk.Length, p, (nuint)proof.Length));
         }
         catch (Exception e) when (IsUnavailable(e)) { throw new InvalidOperationException("Native Lean backend unavailable", e); }
     }
@@ -125,7 +147,7 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
     private static byte[] Prove(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)
     {
         ArgumentNullException.ThrowIfNull(input);
-        byte[] witness = SerializeInput(input);
+        byte[] witness = SerializeInput(input, GuestOf(aggregatedVk) == BatchedGuest);
         if (aggregatedVk.Length != 32 || AbiVersion != ExpectedAbiVersion) throw new InvalidOperationException("Incompatible Lean verifier ABI or key");
         ValueHash256 hash = depsHash;
         byte[] vk = aggregatedVk.ToArray();
@@ -148,7 +170,7 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
             fixed (byte* vk = aggregatedVk)
             fixed (byte* w = witness)
             {
-                int result = nlean_prove_recursive(h, vk, (nuint)aggregatedVk.Length, w, (nuint)witness.Length, &proof, &length);
+                int result = nlean_prove_recursive(GuestOf(aggregatedVk), h, vk, (nuint)aggregatedVk.Length, w, (nuint)witness.Length, &proof, &length);
                 if (result != 1) throw new InvalidOperationException(result == 0 ? "Lean aggregation rejected its input" : $"Lean aggregation panicked: {LastPanic()}");
             }
             if (proof == null || length > Eip8288Constants.MaxAggregateProofBytes) throw new InvalidOperationException("Invalid native Lean proof buffer");
@@ -210,9 +232,16 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
         }
     }
 
-    internal static byte[] SerializeInput(AggregationInput input)
+    /// <summary>Encodes <paramref name="input"/> for the guest <paramref name="batchedGuest"/> selects.</summary>
+    /// <remarks>EIP-8288's guest takes 96-byte child and discard dependencies, at most
+    /// <see cref="Eip8288Constants.BaseMaxRecursiveInputs"/> children and no batch leaves; the batch-pricing guest takes 192-byte
+    /// records and at most <see cref="Eip8288Constants.MaxInnerProofsPerStep"/> inner proofs.</remarks>
+    internal static byte[] SerializeInput(AggregationInput input, bool batchedGuest)
     {
-        if (input.Deps.Count != input.Witnesses.Count || input.Deps.Count > Eip8288Constants.MaxProofDependencies || input.RecursiveProofs.Count > MaxRecursiveInputs || input.Discards.Count > Eip8288Constants.MaxProofDependencies)
+        if (input.Deps.Count != input.Witnesses.Count || input.Deps.Count > Eip8288Constants.MaxProofDependencies || input.Discards.Count > Eip8288Constants.MaxProofDependencies
+            || (batchedGuest
+                ? InnerProofs(input) > Eip8288Constants.MaxInnerProofsPerStep
+                : input.RecursiveProofs.Count > Eip8288Constants.BaseMaxRecursiveInputs || input.BatchLeaves.Count != 0))
             throw new ArgumentException("Invalid Lean aggregation input", nameof(input));
         using MemoryStream stream = new();
         using BinaryWriter writer = new(stream);
@@ -230,13 +259,56 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
                 || child.InnerDeps.Count > Eip8288Constants.MaxProofDependencies)
                 throw new ArgumentException("Invalid child dependencies", nameof(input));
             writer.Write(child.InnerDeps.Count);
-            foreach (FrameDependency dep in child.InnerDeps) WriteDependency(writer, dep);
+            foreach (FrameDependency dep in child.InnerDeps) WriteRecord(writer, dep, batchedGuest);
             WriteBlob(writer, child.Proof.Span);
         }
         writer.Write(input.Discards.Count);
-        foreach (FrameDependency dep in input.Discards) WriteDependency(writer, dep);
+        foreach (FrameDependency dep in input.Discards) WriteRecord(writer, dep, batchedGuest);
+        // An optional trailing section, absent when there are no batch leaves.
+        if (input.BatchLeaves.Count != 0)
+        {
+            writer.Write(input.BatchLeaves.Count);
+            foreach (BatchLeafInput leaf in input.BatchLeaves)
+            {
+                if (leaf.Claims.Count is 0 or > Eip8288Constants.MaxClaimsPerBatchLeaf
+                    || leaf.Dependencies.Count is 0 or > Eip8288Constants.MaxProofDependencies)
+                    throw new ArgumentException("Invalid batch leaf", nameof(input));
+                writer.Write(leaf.VerificationKeyHash.Bytes);
+                writer.Write(leaf.Claims.Count);
+                foreach (ValueHash256 claim in leaf.Claims) writer.Write(claim.Bytes);
+                writer.Write(leaf.Dependencies.Count);
+                foreach (FrameDependency dep in leaf.Dependencies) WriteDependency(writer, dep);
+                WriteBlob(writer, leaf.Proof.Span);
+            }
+        }
         if (stream.Length > Eip8288Constants.MaxAggregationInputBytes) throw new ArgumentException("Lean aggregation input too large", nameof(input));
         return stream.ToArray();
+    }
+
+    /// <summary>EIP-8288 inner proofs of one step: batch leaves, direct leanSTARK witnesses as singleton leaves, and recursive
+    /// proofs; leanSPHINCS witnesses do not count.</summary>
+    private static int InnerProofs(AggregationInput input)
+    {
+        int count = input.BatchLeaves.Count + input.RecursiveProofs.Count;
+        foreach (FrameDependency dep in input.Deps)
+            if (dep.Scheme != Eip8288Constants.LeanSphincsScheme) count++;
+        return count;
+    }
+
+    /// <summary>Writes a child's or discard's dependency, and for the batch-pricing guest then 96 zero bytes for the source only a
+    /// batch claim has, which this managed fold does not carry.</summary>
+    private static void WriteRecord(BinaryWriter writer, FrameDependency dep, bool batchedGuest)
+    {
+        if (!batchedGuest)
+        {
+            WriteDependency(writer, dep);
+            return;
+        }
+        if (dep.Scheme == Eip8288Constants.BatchedLeanStarkScheme)
+            throw new ArgumentException("A batch claim's source is not carried by the managed aggregation input");
+        WriteDependency(writer, dep);
+        if (writer.BaseStream.Length + Eip8288Constants.DependencyTripleLength > Eip8288Constants.MaxAggregationInputBytes) throw new ArgumentException("Lean aggregation input too large");
+        writer.Write(stackalloc byte[Eip8288Constants.DependencyTripleLength]);
     }
 
     private static void WriteDependency(BinaryWriter writer, FrameDependency dep)
@@ -286,22 +358,22 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
     private static partial uint nlean_abi_version();
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    private static partial int nlean_limits(uint* output, nuint length);
+    private static partial int nlean_limits(uint guest, uint* output, nuint length);
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    private static partial int nlean_aggregated_vk(byte* output);
+    private static partial int nlean_aggregated_vk(uint guest, byte* output);
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     private static partial int nlean_verify_leansphincs(byte* dataHash, byte* vk, byte* witness, nuint witnessLen);
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    private static partial int nlean_verify_leanstark(byte* dataHash, byte* vk, byte* witness, nuint witnessLen);
+    private static partial int nlean_verify_leanstark(uint guest, byte* dataHash, byte* vk, byte* witness, nuint witnessLen);
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    private static partial int nlean_verify_recursive(byte* depsHash, byte* vk, nuint vkLen, byte* proof, nuint proofLen);
+    private static partial int nlean_verify_recursive(uint guest, byte* depsHash, byte* vk, nuint vkLen, byte* proof, nuint proofLen);
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    private static partial int nlean_prove_recursive(byte* depsHash, byte* vk, nuint vkLen, byte* input, nuint inputLen, byte** output, nuint* outputLen);
+    private static partial int nlean_prove_recursive(uint guest, byte* depsHash, byte* vk, nuint vkLen, byte* input, nuint inputLen, byte** output, nuint* outputLen);
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     private static partial void nlean_free(byte* proof, nuint proofLen);

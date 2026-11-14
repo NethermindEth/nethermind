@@ -89,6 +89,23 @@ public class MempoolWrapperTests
         Assert.That(MempoolWrapperValidator.Validate(wrapper, Accepting, Eip8288Verifier.Pinned, out string? error), Is.True, error);
     }
 
+    // ethereum/EIPs#12664: batch claims and leaf payments never travel in wrappers, whichever fork is active: the decoder refuses
+    // them and validation does too for a wrapper built in memory.
+    [Test]
+    public void Batch_pricing_schemes_are_refused_in_wrappers(
+        [Values(Eip8288Constants.BatchedLeanStarkScheme, Eip8288Constants.LeanStarkLeafPaymentScheme)] byte scheme,
+        [Values(MempoolWrapper.ModeDirect, MempoolWrapper.ModeRecursive)] byte mode)
+    {
+        FrameDependency batched = new(scheme, Keccak.Compute("batched"), Keccak.Compute("batched-vk"));
+        MempoolWrapper wrapper = Batch(mode, [[batched]]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(MempoolWrapperValidator.Validate(wrapper, Accepting, Eip8288Verifier.Pinned, out _), Is.False);
+            Assert.That(() => RoundTrip(wrapper), Throws.InstanceOf<RlpException>());
+        }
+    }
+
     [TestCase(0)]
     [TestCase(1)]
     [TestCase(3)]
