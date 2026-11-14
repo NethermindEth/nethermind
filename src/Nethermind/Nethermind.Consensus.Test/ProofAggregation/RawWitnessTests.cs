@@ -752,6 +752,28 @@ public class RawWitnessTests
         Assert.That(node.Raw.Holds(transactions[^1].Hash!.ValueHash256), Is.True);
     }
 
+    // An entry whose held transactions carry no raw entry has nothing to prove: the prover passes it over without throwing.
+    [Test]
+    public async Task Prover_skips_an_entry_whose_held_transactions_carry_no_raw_entry()
+    {
+        Node node = CreateNode();
+        SetNonce(node, 1);
+        RawSignature signature = Signature(1);
+        FrameDependency raw = RawDependency(signature), sphincs = SphincsDependency("held");
+        Transaction staleRaw = Transaction(0, raw), heldOrdinary = Transaction(1, sphincs);
+        await node.Service.AcceptOwnedDetailedAsync(Encode(RawWrapper(new() { [raw] = signature }, staleRaw, heldOrdinary)));
+        Assert.That(node.Raw.Holds(heldOrdinary.Hash!.ValueHash256), Is.True);
+        using RawWitnessProver prover = new(node.Service, node.Raw, node.Recognized, new ProductionProofCache(node.Verifier), new TxPoolConfig(), LimboLogs.Instance);
+
+        ProofWrapperAcceptance? result = await prover.ProveOnceAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Null);
+            Assert.That(node.Recognized.Proved, Is.Empty);
+        }
+    }
+
     // The prover proves the held transactions only, and only their dependencies.
     [Test]
     public async Task Prover_proves_only_held_transactions()

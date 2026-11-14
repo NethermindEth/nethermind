@@ -78,8 +78,7 @@ public sealed class RawWitnessProver : IDisposable
         {
             MempoolWrapper wrapper = entry.Decoded;
             // Only the held transactions are proved, so only their dependencies.
-            HashSet<FrameDependency> heldDeps = [];
-            foreach (Transaction transaction in entry.Held) heldDeps.UnionWith(Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue));
+            HashSet<FrameDependency> heldDeps = HeldDependencies(entry);
             for (int i = 0; i < wrapper.Deps.Count; i++)
             {
                 FrameDependency dependency = wrapper.Deps[i];
@@ -180,24 +179,27 @@ public sealed class RawWitnessProver : IDisposable
         foreach (RawWitnessPool.Entry entry in _pool.Snapshot())
         {
             if (entry.Attempted || entry.Verifier != verifier || group.Count == 0 && !_pool.CanProve(entry, _maxClaims)) continue;
+            HashSet<FrameDependency> heldDeps = HeldDependencies(entry);
             HashSet<FrameDependency> entryRaw = [];
             ValueHash256? entryKey = null;
             bool sameProgram = true;
             for (int i = 0; i < entry.Decoded.Deps.Count; i++)
             {
-                if (entry.Decoded.RawWitnesses![i] is null) continue;
+                if (entry.Decoded.RawWitnesses![i] is null || !heldDeps.Contains(entry.Decoded.Deps[i])) continue;
                 FrameDependency dependency = entry.Decoded.Deps[i];
                 entryKey ??= dependency.VerificationKey;
                 sameProgram &= dependency.VerificationKey == entryKey;
                 entryRaw.Add(dependency);
             }
-            // One program, and one origin, so the proof is admitted as each candidate was.
+            // One program, and one origin, so the proof is admitted as each candidate was. An entry whose held transactions carry no
+            // raw entry has nothing to prove.
             if (!sameProgram || entryKey is not { } program || !_recognized.Recognizes(program)
                 || group.Count != 0 && (program != key || entry.Local != group[0].Local || !Equals(entry.Identity, group[0].Identity))) continue;
             HashSet<FrameDependency> claims = [.. raw, .. entryRaw];
             HashSet<FrameDependency> direct = [.. ordinary];
             for (int i = 0; i < entry.Decoded.Deps.Count; i++)
-                if (entry.Decoded.RawWitnesses![i] is null && entry.Decoded.Deps[i].Scheme == Eip8288Constants.LeanStarkScheme)
+                if (entry.Decoded.RawWitnesses![i] is null && entry.Decoded.Deps[i].Scheme == Eip8288Constants.LeanStarkScheme
+                    && heldDeps.Contains(entry.Decoded.Deps[i]))
                     direct.Add(entry.Decoded.Deps[i]);
             // One leaf beside the direct leanSTARK witnesses, each a singleton leaf of the step.
             if (claims.Count > _maxClaims || direct.Count + 1 > Eip8288Constants.MaxInnerProofsPerStep
@@ -213,6 +215,13 @@ public sealed class RawWitnessProver : IDisposable
             ordinary = direct;
         }
         return group;
+    }
+
+    private static HashSet<FrameDependency> HeldDependencies(RawWitnessPool.Entry entry)
+    {
+        HashSet<FrameDependency> dependencies = [];
+        foreach (Transaction transaction in entry.Held) dependencies.UnionWith(Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue));
+        return dependencies;
     }
 
     public void Dispose() => _timer?.Dispose();
