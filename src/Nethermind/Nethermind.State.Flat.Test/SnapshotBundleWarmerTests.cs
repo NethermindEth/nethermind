@@ -588,7 +588,6 @@ public class SnapshotBundleWarmerTests
             Assert.That(firstWarmUp, concurrent ? Is.GreaterThanOrEqualTo(persisted.Count) : Is.EqualTo(persisted.Count));
             Assert.That(secondWarmUp, Is.Zero, "the position index reuses every warmed record");
             Assert.That(reader.Reads, Is.EqualTo(readsBeforeBulkSet));
-            Assert.That(reader.OwnedReads, Is.Zero, "warming and demand loading must use the borrowed-span API");
             Assert.That(trie.RootHash, Is.EqualTo(expected.RootHash));
         }
 
@@ -650,20 +649,8 @@ public class SnapshotBundleWarmerTests
         ManualResetEventSlim? release = null) : NoopPersistenceReader, IPersistence.IPersistenceReader
     {
         private int _reads;
-        private int _ownedReads;
 
         public int Reads => Volatile.Read(ref _reads);
-        public int OwnedReads => Volatile.Read(ref _ownedReads);
-
-        byte[]? IPersistence.IPersistenceReader.TryLoadStateRlp(in TreePath path, ReadFlags flags) => LoadOwned(path);
-
-        byte[]? IPersistence.IPersistenceReader.TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => LoadOwned(path);
-
-        private byte[]? LoadOwned(in TreePath path)
-        {
-            Interlocked.Increment(ref _ownedReads);
-            return Load(path);
-        }
 
         bool IPersistence.IPersistenceReader.TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) =>
             Load(path, action, arg);

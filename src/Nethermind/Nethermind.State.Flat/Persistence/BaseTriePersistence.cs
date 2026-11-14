@@ -348,21 +348,6 @@ public static class BaseTriePersistence
         IReadOnlyKeyValueStore fallbackNodes
     ) : BasePersistence.ITrieReader
     {
-        [SkipLocalsInit]
-        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) =>
-            path.Length switch
-            {
-                <= StateNodesTopThreshold => stateTopNodes.Get(EncodeStateTopNodeKey(stackalloc byte[StateNodesTopPathLength], in path), flags: flags),
-                <= ShortenedPathThreshold => stateNodes.Get(EncodeShortenedStateNodeKey(stackalloc byte[ShortenedPathLength], in path), flags: flags),
-                _ => fallbackNodes.Get(EncodeFullStateNodeKey(stackalloc byte[FullStateNodesKeyLength], in path), flags: flags)
-            };
-
-        [SkipLocalsInit]
-        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) =>
-            path.Length <= ShortenedPathThreshold
-                ? storageNodes.Get(EncodeShortenedStorageNodeKey(stackalloc byte[ShortenedStorageNodesKeyLength], address, in path), flags: flags)
-                : fallbackNodes.Get(EncodeFullStorageNodeKey(stackalloc byte[FullStorageNodesKeyLength], address, in path), flags: flags);
-
         public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
             path.Length switch
             {

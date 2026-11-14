@@ -223,18 +223,6 @@ public class FlatStorageTreeDeleteWarmupTests
 
         public long Loads => Interlocked.Read(ref _loads);
 
-        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags)
-        {
-            Interlocked.Increment(ref _loads);
-            return inner.TryLoadStateRlp(path, flags);
-        }
-
-        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags)
-        {
-            Interlocked.Increment(ref _loads);
-            return inner.TryLoadStorageRlp(address, path, flags);
-        }
-
         public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
         {
             Interlocked.Increment(ref _loads);

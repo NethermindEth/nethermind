@@ -96,9 +96,10 @@ public sealed class TrieReassembler(IPersistence persistence, ILogManager logMan
     {
         token.ThrowIfCancellationRequested();
 
-        byte[]? rlp = address is null
-            ? reader.TryLoadStateRlp(path, ReadFlags.None)
-            : reader.TryLoadStorageRlp(address, path, ReadFlags.None);
+        byte[]? rlp = null;
+        _ = address is null
+            ? reader.TryLoadStateRlp(path, ReadFlags.None, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref rlp))
+            : reader.TryLoadStorageRlp(address, path, ReadFlags.None, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref rlp));
 
         if (rlp is not null)
         {
