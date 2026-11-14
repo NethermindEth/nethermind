@@ -151,6 +151,7 @@ public sealed class SerializedLogs : IBufferWriter<byte>, IDisposable
         }
         else
         {
+            // Each log is a separate top-level value; a reset keeps the writer from separating them with a comma.
             writer.Reset(this);
         }
 
