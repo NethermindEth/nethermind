@@ -227,7 +227,7 @@ public class OptimismEthRpcModuleTest
     {
         using TestRpcBlockchain rpcBlockchain = await BuildSendRpc(sequencer: null);
 
-        string serialized = await SendFromC(rpcBlockchain, ",\"gas\":\"0x186a0\",\"nonce\":\"0x0\",\"gasPrice\":\"0x0\"" + aliases);
+        string serialized = await SendFrom(rpcBlockchain, rpcBlockchain.TestWallet.GetAccounts()[0], ",\"gas\":\"0x186a0\",\"nonce\":\"0x0\",\"gasPrice\":\"0x0\"" + aliases);
 
         JToken response = JToken.Parse(serialized);
         using (Assert.EnterMultipleScope())
@@ -236,6 +236,7 @@ public class OptimismEthRpcModuleTest
             Assert.That(response["error"]?["message"]?.Value<string>(), Is.EqualTo(differ
                 ? RpcTransactionErrors.DataAndInputDiffer
                 : "gasPrice must be non-zero after london fork"), serialized);
+            Assert.That(response["result"], Is.Null, serialized);
         }
     }
 
