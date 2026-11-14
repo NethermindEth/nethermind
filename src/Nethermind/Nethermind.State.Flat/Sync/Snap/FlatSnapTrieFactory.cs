@@ -14,7 +14,7 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
+using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.State.Flat.Sync.Snap;
 
@@ -186,21 +186,34 @@ public class FlatSnapTrieFactory(
         for (int length = 0; length < MaxNodePathLength; length++)
         {
             TreePath path = boundary.Truncate(length);
-            byte[]? rlp = null;
-            _ = address is null
-                ? reader.TryLoadStateRlp(path, ReadFlags.None, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref rlp))
-                : reader.TryLoadStorageRlp(address, path, ReadFlags.None, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref rlp));
-            if (rlp is null) continue;
+            TreePath keys = path;
+            bool found = address is null
+                ? reader.TryLoadStateRlp(path, ReadFlags.None, AppendNodeKey, new Span<TreePath>(ref keys))
+                : reader.TryLoadStorageRlp(address, path, ReadFlags.None, AppendNodeKey, new Span<TreePath>(ref keys));
+            if (!found) continue;
 
-            TrieNode node = new(NodeType.Unknown, rlp);
-            node.ResolveNode(NullTrieNodeResolver.Instance, path);
-            TreePath keys = node.IsBranch ? path : path.Append(node.Key);
             if (keys.ToUpperBoundPath().CompareTo(from) < 0 || keys.ToLowerBoundPath().CompareTo(to) > 0) continue;
 
             // A null span deletes the key.
             if (address is null) batch.SetStateTrieNode(path, default);
             else batch.SetStorageTrieNode(address, path, default);
         }
+    }
+
+    /// <summary>Appends the key nibbles of the leaf or extension node <paramref name="rlp"/> to the path in <paramref name="keys"/>; a branch has no key.</summary>
+    private static void AppendNodeKey(ReadOnlySpan<byte> rlp, Span<TreePath> keys)
+    {
+        NodeRlpReader reader = new(rlp);
+        int position = 0;
+        reader.ReadSequenceLength(ref position, out _);
+        int keyPosition = position;
+        reader.SkipItems(ref position, 2);
+        if (position != rlp.Length) return;
+
+        reader.DecodeByteArraySpan(ref keyPosition, out ReadOnlySpan<byte> hexPrefix);
+        Span<byte> nibbles = stackalloc byte[NodeRlp.HexPrefixNibbleCount(hexPrefix)];
+        NodeRlp.ReadHexPrefix(hexPrefix, 0, nibbles);
+        keys[0] = keys[0].Append(nibbles);
     }
 
     /// <summary>Finds the lowest path whose 20-byte account key no account below <paramref name="path"/> can share.</summary>
