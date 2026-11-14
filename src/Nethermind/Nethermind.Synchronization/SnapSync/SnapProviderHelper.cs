@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Serialization.FluentRlp;
 using Nethermind.State.Snap;
 using Nethermind.Trie;
 
@@ -211,7 +210,7 @@ namespace Nethermind.Synchronization.SnapSync
                 return (AddRangeResult.MissingRootHashInProofs, true);
             }
 
-            TrieNodeRlpRef root = new(proofs[rootIndex]);
+            NodeRlpReader root = new(proofs[rootIndex]);
             if (dict.Count == 1 && root.IsLeaf)
             {
                 // Special case with some server sending proof where the root is the same as the only path.
@@ -244,7 +243,7 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 int nodeIndex = proofNodesToProcess.Pop();
                 TreePath path = sortedBoundaryList[nodeIndex].Path;
-                TrieNodeRlpRef node = new(proofs[sortedBoundaryList[nodeIndex].ProofIndex]);
+                NodeRlpReader node = new(proofs[sortedBoundaryList[nodeIndex].ProofIndex]);
 
                 if (node.IsExtension)
                 {
@@ -294,11 +293,11 @@ namespace Nethermind.Synchronization.SnapSync
                             childProofIndex = proofIndex;
                         }
 
-                        TrieNodeRlpRef child = default;
+                        NodeRlpReader child = default;
                         bool hasChild = childProofIndex >= 0;
                         if (hasChild)
                         {
-                            child = new TrieNodeRlpRef(proofs[childProofIndex]);
+                            child = new NodeRlpReader(proofs[childProofIndex]);
                         }
                         else
                         {
@@ -306,7 +305,7 @@ namespace Nethermind.Synchronization.SnapSync
                             ReadOnlySpan<byte> inlineRlp = node.GetInlineNodeRlp(ci);
                             if (!inlineRlp.IsEmpty)
                             {
-                                child = new TrieNodeRlpRef(inlineRlp);
+                                child = new NodeRlpReader(inlineRlp);
                                 hasChild = true;
                             }
                         }
@@ -385,91 +384,12 @@ namespace Nethermind.Synchronization.SnapSync
                 ReadOnlySpan<byte> proof = proofs[i];
 
                 // Rejects a malformed proof even when no path reaches it.
-                _ = new TrieNodeRlpRef(proof);
+                new NodeRlpReader(proof).ValidateNode();
 
                 dict[ValueKeccak.Compute(proof)] = i;
             }
 
             return dict;
-        }
-
-        /// <summary>A proof node read in place from its RLP, as far as the boundary walk needs it.</summary>
-        private readonly ref struct TrieNodeRlpRef
-        {
-            private const int LeafOrExtensionItemCount = 2;
-
-            // Sixteen children and a value.
-            private const int BranchItemCount = 17;
-
-            private readonly ReadOnlySpan<byte> _rlp;
-
-            /// <exception cref="RlpReaderException">The RLP is malformed.</exception>
-            /// <exception cref="TrieException">The RLP is not one list of the items of a branch, an extension or a leaf.</exception>
-            public TrieNodeRlpRef(ReadOnlySpan<byte> rlp)
-            {
-                _rlp = rlp;
-                NodeRlpReader reader = new(rlp);
-                int position = 0;
-                reader.ReadSequenceLength(ref position, out int length);
-                int end = position + length;
-                int itemCount = 0;
-                for (; position < end && itemCount <= BranchItemCount; itemCount++) reader.SkipItem(ref position);
-
-                // NodeRlpReader checks a short item only as it slices it, so items filling the RLP exactly keep the reads below within it.
-                if (position != end || end != rlp.Length || itemCount is not (LeafOrExtensionItemCount or BranchItemCount))
-                    throw new TrieException("A proof node is neither a branch, an extension nor a leaf.");
-
-                if (itemCount == LeafOrExtensionItemCount) _ = HexPrefix.ReadHeader(KeyHexPrefix);
-            }
-
-            public bool IsBranch => Seek(LeafOrExtensionItemCount) < _rlp.Length;
-
-            public bool IsLeaf => !IsBranch && HexPrefix.ReadHeader(KeyHexPrefix).IsLeaf;
-
-            public bool IsExtension => !IsBranch && !IsLeaf;
-
-            /// <summary>The key nibbles of a leaf or an extension; empty for a branch.</summary>
-            public byte[] Key => IsBranch ? [] : HexPrefix.FromBytes(KeyHexPrefix).key;
-
-            /// <summary>Gets the hash of the child that RLP item <paramref name="index"/> references, as <see cref="TrieNode.GetChildHashAsValueKeccak"/> does.</summary>
-            public bool GetChildHashAsValueKeccak(int index, out ValueHash256 keccak)
-            {
-                NodeRlpReader reader = new(_rlp);
-                int position = Seek(index);
-                bool isHash = reader.Data[position] == NodeRlpReader.KeccakRlpPrefix
-                    || reader.PeekPrefixAndContentLength(position).ContentLength == ValueHash256.MemorySize;
-                keccak = default;
-                if (isHash) reader.DecodeValueKeccakNonNull(ref position, out keccak);
-                return isHash;
-            }
-
-            /// <summary>The RLP of the child embedded as RLP item <paramref name="index"/>; empty when it is not embedded.</summary>
-            public ReadOnlySpan<byte> GetInlineNodeRlp(int index)
-            {
-                NodeRlpReader reader = new(_rlp);
-                int position = Seek(index);
-                return reader.IsSequenceNext(position) ? _rlp.Slice(position, reader.PeekNextRlpLength(position)) : default;
-            }
-
-            private ReadOnlySpan<byte> KeyHexPrefix
-            {
-                get
-                {
-                    int position = Seek(0);
-                    new NodeRlpReader(_rlp).DecodeByteArraySpan(ref position, out ReadOnlySpan<byte> hexPrefix);
-                    return hexPrefix;
-                }
-            }
-
-            /// <summary>The offset of RLP item <paramref name="index"/>.</summary>
-            private int Seek(int index)
-            {
-                NodeRlpReader reader = new(_rlp);
-                int position = 0;
-                reader.ReadSequenceLength(ref position, out _);
-                reader.SkipItems(ref position, index);
-                return position;
-            }
         }
     }
 }

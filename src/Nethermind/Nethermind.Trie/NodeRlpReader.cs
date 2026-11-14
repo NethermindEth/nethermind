@@ -31,6 +31,10 @@ public readonly ref struct NodeRlpReader(ReadOnlySpan<byte> data)
     private const int ListOffset = 0xc0;
     private const int ShortListMaxPrefix = 0xf7;
     private const int SmallPrefixBarrier = 56;
+    private const int LeafOrExtensionItemCount = 2;
+
+    // Sixteen children and a value.
+    private const int BranchItemCount = 17;
 
     private readonly ReadOnlySpan<byte> _data = data;
 
@@ -116,6 +120,75 @@ public readonly ref struct NodeRlpReader(ReadOnlySpan<byte> data)
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void DecodeValueKeccakNonNull(scoped ref int position, out ValueHash256 keccak)
         => position = DecodeValueKeccakNonNull(_data, position, out keccak);
+
+    /// <summary>Checks that the data is one trie node, for RLP not found by its hash.</summary>
+    /// <remarks>
+    /// The node must be one list whose items, the 17 of a branch or the 2 of a leaf or an extension, fill the data exactly: a short
+    /// item is otherwise checked only as it is sliced. The node reads below then stay within the data.
+    /// </remarks>
+    /// <exception cref="TrieException">The data is not a branch, an extension or a leaf.</exception>
+    /// <exception cref="RlpReaderException">An item has a malformed prefix.</exception>
+    public void ValidateNode()
+    {
+        int position = 0;
+        ReadSequenceLength(ref position, out int length);
+        int end = position + length;
+        int itemCount = 0;
+        for (; position < end && itemCount <= BranchItemCount; itemCount++) SkipItem(ref position);
+
+        if (position != end || end != _data.Length || itemCount is not (LeafOrExtensionItemCount or BranchItemCount)
+            || (itemCount == LeafOrExtensionItemCount && KeyHexPrefix.IsEmpty))
+        {
+            throw new TrieException("The RLP is neither a branch, an extension nor a leaf.");
+        }
+    }
+
+    /// <summary>Whether the node is a branch rather than a leaf or an extension.</summary>
+    /// <remarks>The node's items must fill the data, as they do for a node found by its hash or checked by <see cref="ValidateNode"/>.</remarks>
+    public bool IsBranch => SeekItem(LeafOrExtensionItemCount) < _data.Length;
+
+    public bool IsLeaf => !IsBranch && HexPrefix.ReadHeader(KeyHexPrefix).IsLeaf;
+
+    public bool IsExtension => !IsBranch && !IsLeaf;
+
+    /// <summary>The key nibbles of a leaf or an extension; empty for a branch.</summary>
+    public byte[] Key => IsBranch ? [] : HexPrefix.FromBytes(KeyHexPrefix).key;
+
+    /// <summary>Gets the hash of the child that RLP item <paramref name="index"/> references, as <see cref="TrieNode.GetChildHashAsValueKeccak"/> does.</summary>
+    public bool GetChildHashAsValueKeccak(int index, out ValueHash256 keccak)
+    {
+        int position = SeekItem(index);
+        bool isHash = _data[position] == KeccakRlpPrefix || PeekPrefixAndContentLength(position).ContentLength == ValueHash256.MemorySize;
+        keccak = default;
+        if (isHash) DecodeValueKeccakNonNull(ref position, out keccak);
+        return isHash;
+    }
+
+    /// <summary>The RLP of the child embedded as RLP item <paramref name="index"/>; empty when it is not embedded.</summary>
+    public ReadOnlySpan<byte> GetInlineNodeRlp(int index)
+    {
+        int position = SeekItem(index);
+        return IsSequenceNext(position) ? _data.Slice(position, PeekNextRlpLength(position)) : default;
+    }
+
+    private ReadOnlySpan<byte> KeyHexPrefix
+    {
+        get
+        {
+            int position = SeekItem(0);
+            DecodeByteArraySpan(ref position, out ReadOnlySpan<byte> hexPrefix);
+            return hexPrefix;
+        }
+    }
+
+    /// <summary>The offset of the node's RLP item <paramref name="index"/>.</summary>
+    private int SeekItem(int index)
+    {
+        int position = 0;
+        ReadSequenceLength(ref position, out _);
+        SkipItems(ref position, index);
+        return position;
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int GetPrefixLength(int prefixByte)
