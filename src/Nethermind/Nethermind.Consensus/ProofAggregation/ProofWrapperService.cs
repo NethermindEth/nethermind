@@ -98,11 +98,6 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     internal TimeSpan AdmissionWaitTimeout { get; set; } = TimeSpan.FromSeconds(5);
     // Remembered verifications are keyed by AGGREGATED_VK too, so none answers under another verifier.
     private readonly Dictionary<(ValueHash256 Wrapper, ValueHash256 Verifier), string?> _verifiedWrappers = [];
-
-    /// <summary>The clock of the leanSTARK verification rate limit batched dependencies impose (ethereum/EIPs#12664).</summary>
-    internal TimeProvider VerificationClock { init => _verificationBudget = new(value); }
-
-    private LeanStarkVerificationBudget _verificationBudget = new(TimeProvider.System);
     private readonly Queue<(ValueHash256 Wrapper, ValueHash256 Verifier)> _verifiedWrapperOrder = [];
     private sealed record WrapperSnapshot(ValueHash256 Selection, Hash256[] Transactions, byte[] Encoded, ValueHash256 Hash, RecursiveProofInput Parent,
         Eip8288Verifier Verifier);
@@ -298,8 +293,6 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             (ValueHash256, ValueHash256) wrapperHash = (ValueKeccak.Compute(wrapper), verifier.AggregatedVk);
             if (!_verifiedWrappers.TryGetValue(wrapperHash, out string? error))
             {
-                if (admissionSpec.IsEipBatchedDependencyPricingEnabled && !_verificationBudget.TrySpend(LeanStarkVerificationBudget.Cost(decoded)))
-                    return AdmissionBusy();
                 (bool valid, string? validationError) = await Task.Run(() =>
                 {
                     bool proofValid = MempoolWrapperValidator.Validate(decoded, leanProofVerifier, in verifier, out string? proofError);
