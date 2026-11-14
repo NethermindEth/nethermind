@@ -102,5 +102,5 @@ public static class Eip8288Constants
     /// <summary>Fiat-Shamir key of the recursive guest in the pinned Nethermind.Crypto.Lean package.</summary>
     public static ReadOnlySpan<byte> AggregatedVk => _aggregatedVk;
 
-    private static readonly byte[] _aggregatedVk = Convert.FromHexString("f7cf74585d02043051f0575c23c6b441b0b08ac9e273f5e989c5984b8a4ac0e5");
+    private static readonly byte[] _aggregatedVk = Convert.FromHexString("f6f37690cf7241c9ea24392f349867acc1c8e06034e8ce149e2f11a25eec56f9");
 }

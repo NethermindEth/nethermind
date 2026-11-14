@@ -70,6 +70,9 @@ public class NativeLeanProofVerifierTests
                 // EIP-8288: the leanSPHINCS verification key is the 32-byte public key itself, not its hash.
                 Assert.That(dep.VerificationKey, Is.EqualTo(new ValueHash256(witness.AsSpan(0, 32))));
                 Assert.That(Verify(dep.DataHash, ValueKeccak.Compute(witness.AsSpan(0, 32)), witness), Is.False);
+                // The key is PK.seed || PK.root; the former PK.root || PK.seed order names another key.
+                byte[] rootFirst = [.. witness.AsSpan(16, 16), .. witness.AsSpan(0, 16), .. witness.AsSpan(32)];
+                Assert.That(Verify(dep.DataHash, new ValueHash256(rootFirst.AsSpan(0, 32)), rootFirst), Is.False);
             }
             Assert.That(Verify(dep.DataHash, dep.VerificationKey, []), Is.False);
             Assert.That(Verify(dep.DataHash, dep.VerificationKey, witness[..^1]), Is.False);
