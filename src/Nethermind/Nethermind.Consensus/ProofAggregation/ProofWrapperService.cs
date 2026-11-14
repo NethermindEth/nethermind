@@ -406,7 +406,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// Transactions the next blocks could not include give way, oldest first, to a wrapper whose new transactions the next blocks
     /// could, but only when evicting at most <see cref="MaxEvictedPerAdmission"/> of them frees enough, and only those whose
     /// eviction frees witness capacity. They are evicted only when the scope ends (<see cref="RestoreCapacity"/>), so a rejected
-    /// wrapper evicts nothing. Transactions awaiting blob availability are not pooled by admission, so a wrapper adding one never
+    /// wrapper evicts nothing for itself, though an excess an earlier admission left is drained first. Transactions awaiting blob availability are not pooled by admission, so a wrapper adding one never
     /// evicts.</remarks>
     /// <param name="admitted">The transactions the admission will pool, which <see cref="RestoreCapacity"/> rolls back when no
     /// eviction can make room for them.</param>
@@ -455,29 +455,36 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         {
             _stagedAdmissions--;
             bool rolledBack = false;
-            if (admitted.Count != 0 && !leanProofStore.ShedExcess())
+            try
             {
-                FeeFloors floors = ExecutableFeeFloors();
-                List<ValueHash256> evictable = [];
-                foreach (Transaction victim in victims)
-                    if (IsStillNotExecutable(victim, floors)) evictable.Add(victim.Hash!.ValueHash256);
-                List<ValueHash256>? releases = leanProofStore.ReleasesToFit(evictable);
-                rolledBack = releases is null;
-                if (rolledBack)
-                    foreach (Transaction transaction in admitted)
-                    {
-                        txPool.RemoveTransaction(transaction.Hash);
-                        lock (_localTransactions) _localTransactions.Remove(transaction.Hash!.ValueHash256);
-                    }
-                else
+                if (admitted.Count != 0 && !leanProofStore.ShedExcess())
                 {
-                    HashSet<ValueHash256> evicted = [.. releases!];
-                    _evictionCandidates?.Candidates.RemoveAll(candidate => evicted.Contains(candidate.Hash!.ValueHash256));
-                    foreach (ValueHash256 hash in releases!)
-                        if (txPool.RemoveTransaction(new Hash256(hash))) TxPool.Metrics.Eip8288CapacityEvictedTransactions++;
+                    FeeFloors floors = ExecutableFeeFloors();
+                    List<ValueHash256> evictable = [];
+                    foreach (Transaction victim in victims)
+                        if (IsStillNotExecutable(victim, floors)) evictable.Add(victim.Hash!.ValueHash256);
+                    List<ValueHash256>? releases = leanProofStore.ReleasesToFit(evictable);
+                    rolledBack = releases is null;
+                    if (rolledBack)
+                        foreach (Transaction transaction in admitted)
+                        {
+                            txPool.RemoveTransaction(transaction.Hash);
+                            lock (_localTransactions) _localTransactions.Remove(transaction.Hash!.ValueHash256);
+                        }
+                    else
+                    {
+                        HashSet<ValueHash256> evicted = [.. releases!];
+                        _evictionCandidates?.Candidates.RemoveAll(candidate => evicted.Contains(candidate.Hash!.ValueHash256));
+                        foreach (ValueHash256 hash in releases!)
+                            if (txPool.RemoveTransaction(new Hash256(hash))) TxPool.Metrics.Eip8288CapacityEvictedTransactions++;
+                    }
                 }
             }
-            leanProofStore.EndStaging(admission, commit: admitted.Count != 0 && !rolledBack);
+            finally
+            {
+                // Records left staged would refuse every later admission beyond capacity.
+                leanProofStore.EndStaging(admission, commit: admitted.Count != 0 && !rolledBack);
+            }
             DrainExcess();
             return rolledBack;
         }

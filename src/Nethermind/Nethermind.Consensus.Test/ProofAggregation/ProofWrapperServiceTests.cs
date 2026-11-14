@@ -1014,6 +1014,7 @@ public class ProofWrapperServiceTests
     [TestCase(64, false, false, 0UL, 0, false, false, false, "foreign", TestName = "Witnesses staged beyond capacity are out of other admissions' reach")]
     [TestCase(64, false, false, 0UL, 2, false, false, false, "drain", TestName = "An excess left over is drained before admitting beyond capacity")]
     [TestCase(64, false, false, 0UL, 2, false, false, false, "concurrent", TestName = "Another wrapper evicts nothing while an admission is staged")]
+    [TestCase(64, false, false, 0UL, 2, false, false, false, "throws", TestName = "A pool fault while evicting still ends the staging")]
     [TestCase(64, false, false, 0UL, 0, false, false, false, "simulation", TestName = "An incoming transaction admission rejects evicts nothing")]
     [TestCase(64, false, false, 0UL, 0, false, false, false, "known", TestName = "An incoming transaction the pool already knows evicts nothing")]
     [TestCase(64, false, false, 0UL, 0, false, false, false, "quota", TestName = "An incoming transaction over its sender's witness quota evicts nothing")]
@@ -1026,7 +1027,7 @@ public class ProofWrapperServiceTests
         bool gap = incoming is "gap" or "gap-interrupted";
         using CancellationTokenSource cancellation = new();
         Transaction? firstSubmitted = null;
-        int submissions = 0;
+        int submissions = 0, removals = 0;
         bool evictedWhileStaged = false;
         ProofWrapperService? service = null;
         byte[]? concurrentWrapper = null;
@@ -1128,6 +1129,7 @@ public class ProofWrapperServiceTests
         {
             if (incoming == "concurrent" && submissions <= ProofWrapperService.AdmissionChunk) evictedWhileStaged = true;
             store.UnpinPending(call.Arg<Hash256>().ValueHash256, poolOwner);
+            if (incoming == "throws" && ++removals == removed) throw new InvalidOperationException("pool fault");
             return true;
         });
         IWrappedBlobTransactionAdmission blobAdmission = Substitute.For<IWrappedBlobTransactionAdmission>();
@@ -1178,7 +1180,7 @@ public class ProofWrapperServiceTests
                 Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted));
 
         ProofWrapperAcceptanceStatus expected = incoming is "simulation" or "known" or "quota" or "unpinned" or "foreign" or "drain" ? ProofWrapperAcceptanceStatus.PoolRejected
-            : removed != 0 && !gap ? ProofWrapperAcceptanceStatus.Accepted : ProofWrapperAcceptanceStatus.LocalFailure;
+            : removed != 0 && !gap && incoming != "throws" ? ProofWrapperAcceptanceStatus.Accepted : ProofWrapperAcceptanceStatus.LocalFailure;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(expected), result.Result.Error);
@@ -1186,11 +1188,11 @@ public class ProofWrapperServiceTests
             if (secondWrapper) pool.Received(1).GetPendingTransactionsBySender();
             if (secondWrapper) pool.Received(gapFilled || incoming == "unpinned" ? 0 : 1).RemoveTransaction(pinned[2].Hash);
             pool.Received(removed != 0 && !oldestSharedWithExecutable && !localVictims && !gap ? 1 : 0).RemoveTransaction(oldest.Hash);
-            pool.Received(expected != ProofWrapperAcceptanceStatus.LocalFailure || gap ? 1 : 0)
+            pool.Received(expected != ProofWrapperAcceptanceStatus.LocalFailure || gap || incoming == "throws" ? 1 : 0)
                 .SubmitTx(Arg.Is<Transaction>(tx => tx.Hash == first.Hash), Arg.Any<TxHandlingOptions>());
             pool.Received(gap ? 1 : 0).RemoveTransaction(first.Hash);
             blobAdmission.DidNotReceive().Admit(Arg.Any<Transaction>(), Arg.Any<object?>(), Arg.Any<IDisposable>());
-            Assert.That(store.Covers(first), Is.EqualTo(expected == ProofWrapperAcceptanceStatus.Accepted));
+            Assert.That(store.Covers(first), Is.EqualTo(expected == ProofWrapperAcceptanceStatus.Accepted || incoming == "throws"));
             if (incoming == "unpinned") Assert.That(store.Covers(existing), Is.True);
             Assert.That(foreignAdmitted, Is.False, "staged witnesses are out of other admissions' reach");
             Assert.That(evictedWhileStaged, Is.False, "nothing is evicted for room a staged admission holds");
