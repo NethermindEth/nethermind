@@ -90,6 +90,28 @@ public class InclusionListProofsTests
         }
     }
 
+    // A verifier that knows only EIP-8288's direct statement refuses the batch-pricing guest's instead of checking the bare claim.
+    [Test]
+    public void Default_direct_leanstark_check_refuses_the_batch_pricing_guest()
+    {
+        ILeanProofVerifier verifier = new BaseOnlyVerifier();
+        ValueHash256 claim = ValueKeccak.Compute("claim");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verifier.VerifyLeanStark(claim, default, [1], Eip8288Verifier.PinnedAggregatedVk.Bytes), Is.True);
+            Assert.That(() => verifier.VerifyLeanStark(claim, default, [1], Eip8288Verifier.BatchedAggregatedVk.Bytes), Throws.TypeOf<NotSupportedException>());
+        }
+    }
+
+    private sealed class BaseOnlyVerifier : ILeanProofVerifier
+    {
+        public void EnsureAvailable() { }
+        public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => true;
+        public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => true;
+        public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof) => true;
+        public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input) => [];
+    }
+
     [Test]
     public void Verdict_cache_is_bounded()
     {
