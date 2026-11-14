@@ -35,6 +35,7 @@ public class BodiesSyncFeedTests
 {
     private IBlockTree _syncingFromBlockTree;
     private IBlockTree _syncingToBlockTree;
+    private IBlockStore _syncingToBlockStore;
     private TestMemDb _blocksDb;
     private ISyncPointers _syncPointers;
     private BodiesSyncFeed _feed;
@@ -55,9 +56,9 @@ public class BodiesSyncFeedTests
         _blocksDb = new TestMemDb();
         _metadataDb = new MemDb();
         _syncPointers = new MemorySyncPointers();
-        _syncingToBlockTree = Build.A.BlockTree()
-            .WithBlocksDb(_blocksDb)
-            .TestObject;
+        BlockTreeBuilder syncingToBuilder = Build.A.BlockTree().WithBlocksDb(_blocksDb);
+        _syncingToBlockTree = syncingToBuilder.TestObject;
+        _syncingToBlockStore = syncingToBuilder.BlockStore;
 
         for (ulong i = 1; i < 100; i++)
         {
@@ -189,7 +190,7 @@ public class BodiesSyncFeedTests
             Assert.That(_syncingToBlockTree.FindBlock(skippedBlock.Hash!, BlockTreeLookupOptions.None, skippedBlock.Number), Is.Null);
             Assert.That(_syncingToBlockTree.FindBlock(thirdBlock.Hash!, BlockTreeLookupOptions.None, thirdBlock.Number), Is.Not.Null);
             Assert.That(_syncingToBlockTree.FindBlock(fourthBlock.Hash!, BlockTreeLookupOptions.None, fourthBlock.Number), Is.Not.Null);
-            Assert.That(new BlockStore(_blocksDb).GetRlp(thirdBlock.Number, thirdBlock.Hash!), Is.EqualTo(BlockDecoder.Encode(thirdBlock)));
+            Assert.That(_syncingToBlockStore.GetRlp(thirdBlock.Number, thirdBlock.Hash!), Is.EqualTo(BlockDecoder.Encode(thirdBlock)));
         }
         _syncPeerPool.DidNotReceive().ReportBreachOfProtocol(
             Arg.Any<PeerInfo>(),

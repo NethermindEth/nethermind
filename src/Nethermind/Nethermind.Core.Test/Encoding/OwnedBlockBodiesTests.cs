@@ -120,10 +120,8 @@ public class OwnedBlockBodiesTests
     private static OwnedBlockBodies CreateEncoded(BlockBody? body, out IMemoryOwner<byte> memory)
     {
         byte[] encoded = Encode(body);
-        IMemoryOwner<byte> pooled = MemoryPool<byte>.Shared.Rent(encoded.Length);
-        encoded.CopyTo(pooled.Memory);
         memory = Substitute.For<IMemoryOwner<byte>>();
-        memory.Memory.Returns(pooled.Memory);
+        memory.Memory.Returns(encoded.AsMemory());
         return new OwnedBlockBodies(memory, [new Range(0, encoded.Length)], BlockBodyDecoder.Instance);
     }
 
