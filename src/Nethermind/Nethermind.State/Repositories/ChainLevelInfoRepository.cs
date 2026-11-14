@@ -135,7 +135,7 @@ namespace Nethermind.State.Repositories
             if (_blockInfoDb is IReadOnlyNativeKeyValueStore native)
             {
                 ReadOnlySpan<byte> slice = native.GetNativeSlice(key, out IntPtr handle);
-                if (slice.IsNull()) return IChainLevelInfoRepository.TryGetMainChainBlock(null, out blockHash, out totalDifficulty);
+                if (slice.IsNull()) return NotFound(out blockHash, out totalDifficulty);
 
                 try
                 {
@@ -148,7 +148,7 @@ namespace Nethermind.State.Repositories
             }
 
             Span<byte> data = _blockInfoDb.GetSpan(key);
-            if (data.IsNull()) return IChainLevelInfoRepository.TryGetMainChainBlock(null, out blockHash, out totalDifficulty);
+            if (data.IsNull()) return NotFound(out blockHash, out totalDifficulty);
 
             try
             {
@@ -162,7 +162,7 @@ namespace Nethermind.State.Repositories
 
         private bool ReadMainChainBlock(ReadOnlySpan<byte> rlp, out ValueHash256 blockHash, out UInt256 totalDifficulty)
         {
-            if (rlp.Length == 0) return IChainLevelInfoRepository.TryGetMainChainBlock(null, out blockHash, out totalDifficulty);
+            if (rlp.Length == 0) return NotFound(out blockHash, out totalDifficulty);
             if (ChainLevelDecoder.TryReadMainChainBlock(rlp, out bool hasMainChainBlock, out blockHash, out totalDifficulty)) return hasMainChainBlock;
 
             RlpReader reader = new(rlp);
@@ -272,6 +272,13 @@ namespace Nethermind.State.Repositories
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public bool Equals(in LevelNumber other) => _number == other._number;
+        }
+
+        private static bool NotFound(out ValueHash256 blockHash, out UInt256 totalDifficulty)
+        {
+            blockHash = default;
+            totalDifficulty = default;
+            return false;
         }
     }
 }

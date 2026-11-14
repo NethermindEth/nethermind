@@ -24,7 +24,7 @@ namespace Nethermind.State.Repositories
             TryGetMainChainBlock(LoadLevelWithoutCaching(number), out blockHash, out totalDifficulty);
 
         /// <summary>Reads the main chain block's hash and total difficulty of a decoded level; <see langword="false"/> when it has none.</summary>
-        public static bool TryGetMainChainBlock(ChainLevelInfo? level, out ValueHash256 blockHash, out UInt256 totalDifficulty)
+        internal static bool TryGetMainChainBlock(ChainLevelInfo? level, out ValueHash256 blockHash, out UInt256 totalDifficulty)
         {
             if (level?.MainChainBlock is { } block)
             {
