@@ -104,6 +104,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     private WrapperSnapshot? _cachedWrapper;
     private readonly Lock _verifierLock = new();
     private readonly Lock _commitLock = new();
+    // Admissions beyond capacity whose scope has not ended; guarded by _commitLock.
+    private int _stagedAdmissions;
     internal const string WiderThanCircuitBound = "Mode 1 proof covers more dependencies than the AGGREGATED_VK circuit accepts.";
     private const string VerifierChangedDuringAdmission = "The target fork's verifier changed during validation; retry.";
     private Eip8288Verifier? _verifier;
@@ -411,6 +413,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     private bool TryBeginAdmission(MempoolWrapper decoded, List<Transaction> admitted, out IDisposable? scope)
     {
         if (leanProofStore.TryBeginAdmission(decoded.Deps, decoded.Proofs, decoded.RecursiveStark?.StarkProof, out scope)) return true;
+        // Only one admission may exceed capacity at a time, and evicting for this one would free room the staged one holds.
+        if (_stagedAdmissions != 0) return false;
         FeeFloors floors = ExecutableFeeFloors();
         if (!AddsOnlyExecutable(decoded.Transactions, floors)) return false;
         Dictionary<ValueHash256, Transaction> candidates = [];
@@ -432,6 +436,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         List<Transaction> victims = new(releases.Count);
         foreach (ValueHash256 hash in releases) victims.Add(candidates[hash]);
         scope = new CapacityRestoringScope(this, overCapacity!, victims, admitted);
+        _stagedAdmissions++;
         return true;
     }
 
@@ -440,12 +445,15 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// transactions, and publishes the admission's witnesses only if they stay.</summary>
     /// <remarks>Victims are rechecked, as gossip or the admission itself may since have filled a nonce gap. Nothing is evicted or
     /// rolled back when nothing was admitted, nor when the admitted transactions' witnesses fit once unpinned records are shed.
-    /// Until this decides, the store stages those witnesses, so no other transaction can pin them and keep it over capacity.</remarks>
+    /// Until this decides, the store stages those witnesses, so no other transaction can pin them and keep it over capacity.
+    /// A rollback only removes the admitted transactions: pending-transaction subscribers have already seen them, and a transaction
+    /// the pool evicted for size to insert them is not restored.</remarks>
     /// <returns>Whether the admitted transactions were rolled back.</returns>
     private bool RestoreCapacity(IDisposable admission, List<Transaction> victims, List<Transaction> admitted)
     {
         lock (_commitLock)
         {
+            _stagedAdmissions--;
             HashSet<Transaction> planned = [.. victims];
             _evictionCandidates?.Candidates.RemoveAll(planned.Contains);
             bool rolledBack = false;

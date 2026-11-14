@@ -1012,6 +1012,7 @@ public class ProofWrapperServiceTests
     [TestCase(64, false, false, 0UL, 0, false, false, false, "unpinned", TestName = "Admitting only transactions whose witnesses fit evicts nothing")]
     [TestCase(64, false, false, 0UL, 0, false, false, false, "foreign", TestName = "Witnesses staged beyond capacity are out of other admissions' reach")]
     [TestCase(64, false, false, 0UL, 2, false, false, false, "drain", TestName = "An excess left over is drained before admitting beyond capacity")]
+    [TestCase(64, false, false, 0UL, 2, false, false, false, "concurrent", TestName = "Another wrapper evicts nothing while an admission is staged")]
     [TestCase(64, false, false, 0UL, 0, false, false, false, "simulation", TestName = "An incoming transaction admission rejects evicts nothing")]
     [TestCase(64, false, false, 0UL, 0, false, false, false, "known", TestName = "An incoming transaction the pool already knows evicts nothing")]
     [TestCase(64, false, false, 0UL, 0, false, false, false, "quota", TestName = "An incoming transaction over its sender's witness quota evicts nothing")]
@@ -1024,6 +1025,11 @@ public class ProofWrapperServiceTests
         bool gap = incoming is "gap" or "gap-interrupted";
         using CancellationTokenSource cancellation = new();
         Transaction? firstSubmitted = null;
+        int submissions = 0;
+        bool evictedWhileStaged = false;
+        ProofWrapperService? service = null;
+        byte[]? concurrentWrapper = null;
+        Task<ProofWrapperAcceptance>? concurrent = null;
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         object poolOwner = new();
         static Transaction Transaction(FrameDependency dependency, Address sender, ulong timestamp = 0, ulong nonce = 0, bool awaitsBlobs = false)
@@ -1091,6 +1097,9 @@ public class ProofWrapperServiceTests
             if (gap) filled.Add(oldest.SenderAddress!);
             Transaction submitted = call.Arg<Transaction>();
             firstSubmitted ??= submitted;
+            // Another wrapper takes the admission turn the first chunk hands on, while this one's witness is staged.
+            if (++submissions == ProofWrapperService.AdmissionChunk && incoming == "concurrent")
+                concurrent = service!.AcceptOwnedDetailedAsync(concurrentWrapper!);
             // Cancelled before the wrapper's second transaction, once the first is pooled.
             if (incoming == "gap-interrupted") cancellation.Cancel();
             if (incoming == "foreign")
@@ -1116,6 +1125,7 @@ public class ProofWrapperServiceTests
             Array.IndexOf(TestItem.Addresses, call.Arg<Address>()) >= nonExecutable || filled.Contains(call.Arg<Address>()) ? ulong.MaxValue : 0UL);
         pool.RemoveTransaction(Arg.Any<Hash256?>()).Returns(call =>
         {
+            if (incoming == "concurrent" && submissions <= ProofWrapperService.AdmissionChunk) evictedWhileStaged = true;
             store.UnpinPending(call.Arg<Hash256>().ValueHash256, poolOwner);
             return true;
         });
@@ -1123,7 +1133,7 @@ public class ProofWrapperServiceTests
         blobAdmission.Admit(Arg.Any<Transaction>(), Arg.Any<object?>(), Arg.Any<IDisposable>()).Returns(AcceptTxResult.Accepted);
         IBlockFinder finder = Substitute.For<IBlockFinder>();
         finder.Head.Returns(Build.A.Block.TestObject);
-        ProofWrapperService service = new(pool, new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), finder, store,
+        service = new(pool, new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), finder, store,
             new FakeLeanProofVerifier(true), blobAdmission);
         if (localVictims)
             foreach (Transaction transaction in pinned.Take(2))
@@ -1148,11 +1158,15 @@ public class ProofWrapperServiceTests
         }
 
         Transaction first = Incoming("incoming", Address.Zero);
+        if (incoming == "concurrent") concurrentWrapper = Wrapper(Incoming("concurrent", Address.SystemUser));
         byte[] wrapper = incoming switch
         {
             "unpinned" => Wrapper(first, existing),
             // A second transaction on the same witness, so only one is staged.
             "gap-interrupted" => Wrapper(first, Incoming("incoming", Address.SystemUser)),
+            // A wrapper of two chunks on one witness.
+            "concurrent" => Wrapper([first, .. Enumerable.Range(1, ProofWrapperService.AdmissionChunk)
+                .Select(i => Incoming("incoming", Address.FromNumber((UInt256)i)))]),
             _ => Wrapper(first)
         };
         ProofWrapperAcceptance result = await service.AcceptOwnedDetailedAsync(wrapper, cancellation.Token);
@@ -1178,6 +1192,9 @@ public class ProofWrapperServiceTests
             Assert.That(store.Covers(first), Is.EqualTo(expected == ProofWrapperAcceptanceStatus.Accepted));
             if (incoming == "unpinned") Assert.That(store.Covers(existing), Is.True);
             Assert.That(foreignAdmitted, Is.False, "staged witnesses are out of other admissions' reach");
+            Assert.That(evictedWhileStaged, Is.False, "nothing is evicted for room a staged admission holds");
+            if (concurrent is not null)
+                Assert.That((await concurrent).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.LocalFailure));
             Assert.That(store.ShedExcess(), Is.True, "the store ends within capacity");
         }
         // Nothing is left to refuse a later admission beyond capacity.
