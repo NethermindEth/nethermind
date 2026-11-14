@@ -125,7 +125,11 @@ public static class Eip8288Constants
     /// <summary>Batch-pricing EIP <c>RECURSIVE_PROOF_SHARE_GAS</c> (provisional): from its activation, each ordinary declared
     /// dependency's intrinsic share of the block's recursive proof, in place of EIP-8288's <see cref="LeanStarkVerificationGas"/>
     /// (<see cref="Eip8288Dependencies.RecursiveStarkGas"/>).</summary>
-    public const ulong RecursiveProofShareGas = 4_200;
+    public const ulong RecursiveProofShareGas = 5_100;
+
+    /// <summary>Batch-pricing EIP <c>LEANSTARK_LEAF_PAYMENT_GAS</c> (provisional): a leaf payment's frame charge, covering the leaf's
+    /// verification and fixed payment-binding work, in place of EIP-8288's proof share.</summary>
+    public const ulong LeanStarkLeafPaymentGas = 675_000;
 
     /// <summary>Batch-pricing EIP <c>LEANSTARK_CLAIM_GAS</c> (provisional): a batch claim's frame charge, in place of EIP-8288's
     /// proof share.</summary>

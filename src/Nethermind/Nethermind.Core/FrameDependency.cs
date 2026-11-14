@@ -31,8 +31,7 @@ public readonly struct FrameDependency(byte scheme, ValueHash256 dataHash, Value
     {
         Eip8288Constants.LeanStarkScheme => Eip8288Constants.BatchPricedLeanStarkVerificationGas,
         Eip8288Constants.BatchedLeanStarkScheme => Eip8288Constants.LeanStarkClaimGas,
-        // A leaf's verification and its proof share are charged once, to its payment.
-        Eip8288Constants.LeanStarkLeafPaymentScheme => Eip8288Constants.BatchPricedLeanStarkVerificationGas + Eip8288Constants.RecursiveProofShareGas,
+        Eip8288Constants.LeanStarkLeafPaymentScheme => Eip8288Constants.LeanStarkLeafPaymentGas,
         _ => Eip8288Constants.BatchPricedLeanSphincsVerificationGas
     };
 

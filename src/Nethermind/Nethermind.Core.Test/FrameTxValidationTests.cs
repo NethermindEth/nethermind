@@ -889,7 +889,7 @@ public class FrameTxValidationTests
     private static TestCaseData BatchCase(string name, bool enabled, Action<Transaction> mutate, string? expectedError) =>
         new TestCaseData(mutate, enabled, expectedError).SetName($"IsWellFormed_BatchPricing_{name}_{(enabled ? "Enabled" : "Disabled")}");
 
-    // ethereum/EIPs#12664 Test Case: 64 included claims and one payment cost 64 x 4,200 plus 576,200 = 845,000, neither scheme
+    // ethereum/EIPs#12664 Test Case: 64 included claims and one payment cost 64 x 4,200 plus 675,000 = 943,800, neither scheme
     // paying the proof share.
     [Test]
     public void BatchPricing_charges_claims_and_payments_without_the_proof_share()
@@ -901,7 +901,7 @@ public class FrameTxValidationTests
         ulong proofShare = Eip8288Dependencies.RecursiveStarkGas(tx, batchedEnabled: true);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(frameGas, Is.EqualTo(845_000UL));
+            Assert.That(frameGas, Is.EqualTo(943_800UL));
             Assert.That(proofShare, Is.Zero);
         }
     }
@@ -925,7 +925,7 @@ public class FrameTxValidationTests
             {
                 Assert.That(FrameTxValidation.IsWellFormed(sponsor, spec, out string? error), Is.True, error);
                 Assert.That(FrameTxValidation.TryCalculateGasBudget(sponsor, spec, out _, out _, out ulong charged), Is.True);
-                Assert.That(charged - unpaid, Is.EqualTo(576_200UL));
+                Assert.That(charged - unpaid, Is.EqualTo(675_000UL));
             }
             Assert.That(Eip8288Dependencies.ForBlock(block, static _ => default), Has.Count.EqualTo(1));
         }

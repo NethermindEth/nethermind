@@ -272,10 +272,10 @@ public class FrameDependencyTests
 
     // ethereum/EIPs#12664 per-scheme charges (frame charge, proof share): EIP-8288's before activation, the batch-pricing table
     // from it. The new schemes exist only from activation.
-    [TestCase(Eip8288Constants.LeanSphincsScheme, 3_000UL, 30_000UL, 15_400UL, 4_200UL)]
-    [TestCase(Eip8288Constants.LeanStarkScheme, 30_000UL, 30_000UL, 572_000UL, 4_200UL)]
+    [TestCase(Eip8288Constants.LeanSphincsScheme, 3_000UL, 30_000UL, 15_400UL, 5_100UL)]
+    [TestCase(Eip8288Constants.LeanStarkScheme, 30_000UL, 30_000UL, 572_000UL, 5_100UL)]
     [TestCase(Eip8288Constants.BatchedLeanStarkScheme, null, null, 4_200UL, 0UL)]
-    [TestCase(Eip8288Constants.LeanStarkLeafPaymentScheme, null, null, 576_200UL, 0UL)]
+    [TestCase(Eip8288Constants.LeanStarkLeafPaymentScheme, null, null, 675_000UL, 0UL)]
     public void Declarations_are_charged_per_scheme_and_activation(byte scheme, ulong? chargeBefore, ulong? shareBefore, ulong chargeFrom, ulong shareFrom)
     {
         FrameDependency dep = new(scheme, ValueKeccak.Compute("data"), default);
@@ -291,6 +291,21 @@ public class FrameDependencyTests
             Assert.That(dep.FrameCharge(batchPricing: true), Is.EqualTo(chargeFrom));
             Assert.That(Eip8288Dependencies.RecursiveStarkGas(tx, batchedEnabled: true), Is.EqualTo(shareFrom));
         }
+    }
+
+    // ethereum/EIPs#12664 Test Case: one native or ordinary generic declaration costs 20,500 or 577,100 gas from activation,
+    // frame charge and intrinsic proof share together.
+    [TestCase(Eip8288Constants.LeanSphincsScheme, ExpectedResult = 20_500UL)]
+    [TestCase(Eip8288Constants.LeanStarkScheme, ExpectedResult = 577_100UL)]
+    public ulong One_declaration_costs_its_frame_charge_and_proof_share(byte scheme)
+    {
+        FrameDependency dep = new(scheme, ValueKeccak.Compute("data"), default);
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            Frames = [new TxFrame(FrameMode.DepVerify, FrameFlags.None, null, 0, UInt256.Zero, Eip8288Dependencies.Serialize([dep]))]
+        };
+        return dep.FrameCharge(batchPricing: true) + Eip8288Dependencies.RecursiveStarkGas(tx, batchedEnabled: true);
     }
 
     [Test]
