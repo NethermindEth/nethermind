@@ -43,7 +43,7 @@ public readonly ref struct NetworkReceipt
     /// <summary>The block's gas used up to this receipt, or its own gas used under EIP-8116.</summary>
     public ulong GasUsedTotal { get; }
 
-    /// <summary>The bloom bytes as received; empty when the message has none, as from eth/69 on.</summary>
+    /// <summary>The bloom bytes as received; empty for a zero-length bloom (EIP-7668) or when the message has none, as from eth/69 on.</summary>
     public ReadOnlySpan<byte> Bloom { get; }
 
     /// <summary>The encoded log sequence.</summary>
@@ -82,11 +82,12 @@ public readonly ref struct NetworkReceipt
                 ReadOnlySpan<byte> envelope = reader.ReadBytes();
                 if (envelope.IsEmpty) return false;
                 type = (TxType)envelope[0];
-                if (type == TxType.Legacy) return false;
+                if (type is TxType.Legacy or > TxType.SetCode) return false;
                 payload = envelope[1..];
             }
 
             RlpReader payloadReader = new(payload);
+            if (!payloadReader.HasNext || !payloadReader.IsNextSequence) return false;
             fields = payloadReader.EnterSequence(out int payloadLength);
             if (payloadLength != payload.Length) return false;
         }
@@ -109,9 +110,14 @@ public readonly ref struct NetworkReceipt
         if (withBloom)
         {
             ReadOnlySpan<byte> bloomItem = fields.ReadEncodedItem();
-            // A zero-length bloom (EIP-7668) is valid only where the decoder is told the fork is scheduled.
-            if (bloomItem.Length != BloomItemLength || bloomItem[0] != 0xb9 || bloomItem[1] != 0x01 || bloomItem[2] != 0x00) return false;
-            bloom = bloomItem[3..];
+            if (bloomItem.Length == BloomItemLength && bloomItem[0] == 0xb9 && bloomItem[1] == 0x01 && bloomItem[2] == 0x00)
+            {
+                bloom = bloomItem[3..];
+            }
+            else if (bloomItem.Length != 1 || bloomItem[0] != Rlp.EmptyByteArrayByte)
+            {
+                return false;
+            }
         }
 
         if (!fields.HasNext || !fields.IsNextSequence) return false;

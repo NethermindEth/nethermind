@@ -17,6 +17,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -236,7 +237,18 @@ namespace Nethermind.Synchronization.FastBlocks
                     return true;
                 }
 
-                TxReceipt[] receipts = response[index] ?? [];
+                TxReceipt[] receipts;
+                try
+                {
+                    receipts = response[index] ?? [];
+                }
+                catch (RlpReaderException e)
+                {
+                    // Receipts kept encoded are decoded on first read, so a malformed response fails here.
+                    if (_logger.IsDebug) _logger.Debug($"Receipts of {blockInfo.BlockNumber} ({blockInfo.BlockHash}) do not decode: {e.Message}");
+                    return false;
+                }
+
                 if (header.ReceiptsRoot == Keccak.EmptyTreeHash)
                 {
                     preparedReceipts = receipts.Length == 0 ? receipts : null;
@@ -253,6 +265,30 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             return preparedReceipts is not null;
+        }
+
+        /// <exception cref="InvalidDataException">The receipts do not fit the block, or the block is gone.</exception>
+        private void InsertKeptEncoded(BlockInfo blockInfo, BlockHeader header, byte[] blockRlp, NetworkBlockReceipts receipts, int index)
+        {
+            Transaction[] transactions = BlockBodyDecoder.DecodeEncodedTransactionsOfBlock(blockRlp);
+            try
+            {
+                if (_receiptStorage.TryInsertNetworkReceipts(new Block(header, new BlockBody(transactions, [])), receipts.GetEncoded(index), receipts.WithBloom, ensureCanonical: true))
+                {
+                    return;
+                }
+            }
+            finally
+            {
+                foreach (Transaction transaction in transactions) TxDecoder.TxObjectPool.Return(transaction);
+            }
+
+            TxReceipt[] decoded = receipts[index];
+            // The encoded root check takes the bloom of the logs for an all-zero one, so the decoded receipts need it too.
+            if (!_specProvider.GetSpec(header).IsEip7668Enabled) NormalizeZeroBlooms(decoded);
+            Block block = _blockTree.FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: blockInfo.BlockNumber)
+                ?? throw new InvalidDataException($"Block {blockInfo.BlockNumber} ({blockInfo.BlockHash}) is not stored.");
+            _receiptStorage.Insert(block, decoded, ensureCanonical: true);
         }
 
         /// <remarks>A root that differs is checked again on the decoded receipts, which the root calculator may normalize.</remarks>
@@ -307,8 +343,11 @@ namespace Nethermind.Synchronization.FastBlocks
                     bool headerMissing = !hasBreachedProtocol && header is null;
                     if (isValid)
                     {
-                        byte[]? blockRlp = _blockStore.GetRlp(blockInfo.BlockNumber, blockInfo.BlockHash);
-                        if (blockRlp is null)
+                        // Receipts kept encoded need the block's transaction hashes only; the decoded ones go through
+                        // receipt recovery, which reads the transactions' recipients.
+                        byte[]? blockRlp = keptEncoded ? _blockStore.GetRlp(blockInfo.BlockNumber, blockInfo.BlockHash) : null;
+                        Block? block = keptEncoded ? null : _blockTree.FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: blockInfo.BlockNumber);
+                        if (blockRlp is null && block is null)
                         {
                             if (blockInfo.BlockNumber >= _barrier)
                             {
@@ -320,19 +359,15 @@ namespace Nethermind.Synchronization.FastBlocks
                         }
                         else
                         {
-                            // The receipts need only the hash and type of each transaction, so the transactions stay encoded.
-                            Transaction[] transactions = BlockBodyDecoder.DecodeEncodedTransactionsOfBlock(blockRlp);
                             try
                             {
-                                Block block = new(header!, new BlockBody(transactions, []));
-                                if (!keptEncoded)
+                                if (block is not null)
                                 {
                                     _receiptStorage.Insert(block, prepared, ensureCanonical: true);
                                 }
-                                else if (batch.Response is NetworkBlockReceipts network
-                                         && !_receiptStorage.TryInsertNetworkReceipts(block, network.GetEncoded(i), network.WithBloom, ensureCanonical: true))
+                                else
                                 {
-                                    _receiptStorage.Insert(block, network[i], ensureCanonical: true);
+                                    InsertKeptEncoded(blockInfo, header!, blockRlp!, (NetworkBlockReceipts)batch.Response!, i);
                                 }
 
                                 _syncStatusList.MarkInserted(blockInfo.BlockNumber);
@@ -341,10 +376,6 @@ namespace Nethermind.Synchronization.FastBlocks
                             catch (InvalidDataException)
                             {
                                 _syncStatusList.MarkPending(blockInfo);
-                            }
-                            finally
-                            {
-                                foreach (Transaction transaction in transactions) TxDecoder.TxObjectPool.Return(transaction);
                             }
                         }
                     }

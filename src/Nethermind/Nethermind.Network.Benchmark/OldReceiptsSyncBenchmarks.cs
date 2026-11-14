@@ -2,23 +2,21 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Autofac;
 using BenchmarkDotNet.Attributes;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.Synchronization.FastBlocks;
@@ -35,13 +33,13 @@ public class OldReceiptsSyncBenchmarks
 {
     private static readonly ReceiptMessageDecoder69 Decoder69 = new();
 
-    private TestSpecProvider _specProvider = null!;
+    private IContainer _container = null!;
     private IReleaseSpec _spec = null!;
     private byte[] _message = null!;
     private ReceiptsMessageSerializer69 _serializer = null!;
     private Block _block = null!;
-    private BlockStore _blockStore = null!;
-    private PersistentReceiptStorage _receiptStorage = null!;
+    private IBlockStore _blockStore = null!;
+    private IReceiptStorage _receiptStorage = null!;
 
     [Params(150)]
     public int TransactionCount { get; set; }
@@ -55,9 +53,10 @@ public class OldReceiptsSyncBenchmarks
     [GlobalSetup]
     public void Setup()
     {
-        _specProvider = new(Eip7668 ? new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = true } : Bogota.Instance);
-        _spec = _specProvider.GenesisSpec;
-        EthereumEcdsa ecdsa = new(_specProvider.ChainId);
+        _spec = Eip7668 ? new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = true } : Bogota.Instance;
+        _container = new ContainerBuilder().AddModule(new TestNethermindModule(_spec)).Build();
+        ISpecProvider specProvider = _container.Resolve<ISpecProvider>();
+        EthereumEcdsa ecdsa = new(specProvider.ChainId);
         Transaction[] transactions = new Transaction[TransactionCount];
         TxReceipt[] receipts = new TxReceipt[TransactionCount];
         ulong gasUsedTotal = 0;
@@ -80,18 +79,19 @@ public class OldReceiptsSyncBenchmarks
         Hash256 receiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, _spec, null);
         _block = Build.A.Block.WithNumber(1).WithTransactions(transactions).WithReceiptsRoot(receiptsRoot).TestObject;
 
-        _blockStore = new BlockStore(new TestMemDb());
+        _blockStore = _container.Resolve<IBlockStore>();
         _blockStore.Insert(_block);
-        BlockTree blockTree = Build.A.BlockTree().WithSpecProvider(_specProvider).WithBlockStore(_blockStore).OfChainLength(1).TestObject;
-        _receiptStorage = new PersistentReceiptStorage(
-            new TestMemColumnsDb<ReceiptsColumns>(), _specProvider, new ReceiptsRecovery(ecdsa, _specProvider), blockTree, _blockStore, new ReceiptConfig());
+        _receiptStorage = _container.Resolve<IReceiptStorage>();
 
-        _serializer = new ReceiptsMessageSerializer69(_specProvider);
+        _serializer = new ReceiptsMessageSerializer69(specProvider);
         IMessageSerializer<ReceiptsMessage69> serializer = _serializer;
         using ReceiptsMessage69 message = new(1, new Eth63.ReceiptsMessage(new ArrayPoolList<TxReceipt[]>(1) { receipts }));
         _message = new byte[serializer.GetLength(message)];
         serializer.Serialize(_message, message);
     }
+
+    [GlobalCleanup]
+    public void Cleanup() => _container.Dispose();
 
     /// <summary>The receipts decoded as the message serializer decoded them before they were kept encoded.</summary>
     [Benchmark(Baseline = true)]
@@ -124,7 +124,8 @@ public class OldReceiptsSyncBenchmarks
             throw new InvalidOperationException("The receipts root does not match.");
 
         Transaction[] transactions = BlockBodyDecoder.DecodeEncodedTransactionsOfBlock(_blockStore.GetRlp(_block.Number, _block.Hash!)!);
-        _receiptStorage.TryInsertNetworkReceipts(new Block(_block.Header, new BlockBody(transactions, [])), encoded, receipts.WithBloom, ensureCanonical: true);
+        if (!_receiptStorage.TryInsertNetworkReceipts(new Block(_block.Header, new BlockBody(transactions, [])), encoded, receipts.WithBloom, ensureCanonical: true))
+            throw new InvalidOperationException("The receipt store does not take encoded receipts.");
         foreach (Transaction transaction in transactions) TxDecoder.TxObjectPool.Return(transaction);
         return transactions.Length;
     }

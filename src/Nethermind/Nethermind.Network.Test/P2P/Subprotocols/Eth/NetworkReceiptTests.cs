@@ -59,6 +59,19 @@ public class NetworkReceiptTests
     }
 
     [Test]
+    public void Keeps_zero_length_blooms_encoded_only_where_the_decoder_takes_them([Values] bool allowZeroLengthBloom)
+    {
+        TxReceipt[] receipts = CreateReceipts(eip658: true);
+        byte[] block = RlpTestHelper.EncodeSequence([.. receipts.Select(static receipt => Decoder.Encode(receipt, RlpBehaviors.Eip658Receipts | RlpBehaviors.Eip7668Receipts))]);
+        byte[] message = RlpTestHelper.EncodeSequence(block);
+
+        using NetworkBlockReceipts? kept = NetworkBlockReceipts.TryCreate(message, withBloom: true, static (ref RlpReader _) => [],
+            RlpLimit.For<TxReceipt[]>(16, "blocks"), RlpLimit.For<TxReceipt>(16, "receipts"), allowZeroLengthBloom);
+
+        Assert.That(kept is not null, Is.EqualTo(allowZeroLengthBloom));
+    }
+
+    [Test]
     public void Leaves_deposit_receipts_to_the_decoder([Values] bool withBloom)
     {
         TxReceipt[] receipts = [Build.A.Receipt.WithTxType(TxType.DepositTx).WithStatusCode(1).WithCalculatedBloom().TestObject];

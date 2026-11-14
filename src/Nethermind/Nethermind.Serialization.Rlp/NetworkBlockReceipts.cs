@@ -25,6 +25,7 @@ public sealed class NetworkBlockReceipts(IMemoryOwner<byte> memory, Range[] bloc
 {
     private IMemoryOwner<byte>? _memory = memory;
     private readonly Range[] _blocks = blocks;
+    // Holds null for the blocks not decoded yet.
     private TxReceipt[][]? _decoded;
 
     /// <summary>Whether the receipts have blooms: the eth/63 to eth/68 form.</summary>
@@ -43,9 +44,10 @@ public sealed class NetworkBlockReceipts(IMemoryOwner<byte> memory, Range[] bloc
     /// <param name="encoded">The encoded sequence of the blocks' receipt sequences.</param>
     /// <param name="withBloom">Whether the receipts have blooms: the eth/63 to eth/68 form.</param>
     /// <param name="decodeBlock">Decodes the receipt sequence of one block.</param>
+    /// <param name="allowZeroLengthBloom">Whether <paramref name="decodeBlock"/> takes a zero-length bloom (EIP-7668).</param>
     /// <returns>The receipts, or <see langword="null"/> when a receipt has a shape left to the receipt decoder.</returns>
     /// <exception cref="RlpReaderException">The receipts are not valid RLP.</exception>
-    public static NetworkBlockReceipts? TryCreate(ReadOnlySpan<byte> encoded, bool withBloom, RefRlpReaderFunc<TxReceipt[]> decodeBlock, RlpLimit blocksLimit, RlpLimit receiptsLimit)
+    public static NetworkBlockReceipts? TryCreate(ReadOnlySpan<byte> encoded, bool withBloom, RefRlpReaderFunc<TxReceipt[]> decodeBlock, RlpLimit blocksLimit, RlpLimit receiptsLimit, bool allowZeroLengthBloom)
     {
         RlpReader blocks = new RlpReader(encoded).EnterSequence(out int itemLength);
         int blocksStart = itemLength - blocks.Remaining;
@@ -58,7 +60,8 @@ public sealed class NetworkBlockReceipts(IMemoryOwner<byte> memory, Range[] bloc
             receipts.CountItems(receiptsLimit);
             while (receipts.HasNext)
             {
-                if (!NetworkReceipt.TryRead(ref receipts, withBloom, out _)) return null;
+                if (!NetworkReceipt.TryRead(ref receipts, withBloom, out NetworkReceipt receipt)
+                    || (withBloom && !allowZeroLengthBloom && receipt.Bloom.IsEmpty)) return null;
             }
 
             ranges[i] = new Range(start, start + block.Length);
@@ -69,43 +72,46 @@ public sealed class NetworkBlockReceipts(IMemoryOwner<byte> memory, Range[] bloc
         return new NetworkBlockReceipts(memory, ranges, withBloom, decodeBlock);
     }
 
-    /// <summary>Takes the encoded receipt sequences of blocks, each as <see cref="GetEncoded"/> gives one.</summary>
-    /// <param name="blocks">The blocks' encoded receipt sequences, each holding receipts <see cref="NetworkReceipt.TryRead"/> reads.</param>
+    /// <summary>Takes the encoded receipt sequences of blocks from <paramref name="buffer"/>, which it then owns.</summary>
+    /// <param name="buffer">The blocks' encoded receipt sequences, each holding receipts <see cref="NetworkReceipt.TryRead"/> reads.</param>
+    /// <param name="blocks">Where the receipt sequence of each block is in <paramref name="buffer"/>.</param>
     /// <param name="withBloom">Whether the receipts have blooms: the eth/63 to eth/68 form.</param>
     /// <param name="decodeBlock">Decodes the receipt sequence of one block.</param>
-    public static NetworkBlockReceipts FromBlocks(IReadOnlyList<byte[]> blocks, bool withBloom, RefRlpReaderFunc<TxReceipt[]> decodeBlock)
+    public static NetworkBlockReceipts FromBuffer(ArrayPoolList<byte> buffer, Range[] blocks, bool withBloom, RefRlpReaderFunc<TxReceipt[]> decodeBlock) =>
+        new(new PooledListMemory(buffer), blocks, withBloom, decodeBlock);
+
+    private sealed class PooledListMemory(ArrayPoolList<byte> list) : IMemoryOwner<byte>
     {
-        int length = 0;
-        foreach (byte[] block in blocks) length += block.Length;
+        public Memory<byte> Memory => list.AsMemory();
 
-        IMemoryOwner<byte> memory = MemoryPool<byte>.Shared.Rent(length);
-        Range[] ranges = new Range[blocks.Count];
-        int offset = 0;
-        for (int i = 0; i < ranges.Length; i++)
-        {
-            blocks[i].CopyTo(memory.Memory.Span[offset..]);
-            ranges[i] = new Range(offset, offset + blocks[i].Length);
-            offset += blocks[i].Length;
-        }
-
-        return new NetworkBlockReceipts(memory, ranges, withBloom, decodeBlock);
+        public void Dispose() => list.Dispose();
     }
 
-    public TxReceipt[] this[int index] => AsSpan()[index];
-
-    public ReadOnlySpan<TxReceipt[]> AsSpan() => _decoded ??= Decode();
-
-    private TxReceipt[][] Decode()
+    /// <summary>The receipts of the block at <paramref name="index"/>, decoded on the first read of that block only.</summary>
+    /// <exception cref="RlpReaderException">The block's receipts are not valid.</exception>
+    public TxReceipt[] this[int index]
     {
-        TxReceipt[][] decoded = new TxReceipt[_blocks.Length][];
-        for (int i = 0; i < decoded.Length; i++)
+        get
         {
-            RlpReader reader = new(GetEncoded(i).Span);
-            decoded[i] = BlockDecoder(ref reader);
-            reader.CheckEnd();
+            _decoded ??= new TxReceipt[_blocks.Length][];
+            TxReceipt[]? receipts = _decoded[index];
+            return receipts ?? (_decoded[index] = Decode(index));
         }
+    }
 
-        return decoded;
+    /// <summary>The receipts of every block, each decoded on its first read.</summary>
+    public ReadOnlySpan<TxReceipt[]> AsSpan()
+    {
+        for (int i = 0; i < _blocks.Length; i++) _ = this[i];
+        return _decoded ?? [];
+    }
+
+    private TxReceipt[] Decode(int index)
+    {
+        RlpReader reader = new(GetEncoded(index).Span);
+        TxReceipt[] receipts = BlockDecoder(ref reader);
+        reader.CheckEnd();
+        return receipts;
     }
 
     public IEnumerator<TxReceipt[]> GetEnumerator()

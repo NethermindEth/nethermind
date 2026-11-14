@@ -26,6 +26,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         // Whether the receipts are kept encoded with blooms (eth/63 to eth/68) or without (eth/69 on); null when the
         // decoder is not one whose form NetworkReceipt reads.
         private readonly bool? _networkReceiptsWithBloom;
+        private readonly bool _allowZeroLengthBloom;
 
         public ReceiptsMessageSerializer(ISpecProvider specProvider) : this(specProvider, Rlp.GetDecoderOrThrow<TxReceipt>()) { }
 
@@ -38,6 +39,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
             RlpBehaviors decodeBehaviors = specProvider.GetFinalSpec().IsEip7668Enabled ? RlpBehaviors.Eip7668Receipts : RlpBehaviors.None;
             _decodeArrayFunc = (ref RlpReader ctx) => ctx.DecodeNonNullArray((ref RlpReader nestedContext) => _decoder.Decode(ref nestedContext, decodeBehaviors), limit: BlockReceiptsRlpLimit);
             _networkReceiptsWithBloom = decoder.GetType() == typeof(ReceiptMessageDecoder) ? true : decoder is ReceiptMessageDecoder69 ? false : null;
+            _allowZeroLengthBloom = decodeBehaviors == RlpBehaviors.Eip7668Receipts;
         }
 
         public int Serialize(Span<byte> destination, ReceiptsMessage message)
@@ -106,7 +108,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
             if (_networkReceiptsWithBloom is { } withBloom)
             {
                 RlpReader encoded = ctx;
-                NetworkBlockReceipts? receipts = NetworkBlockReceipts.TryCreate(encoded.ReadEncodedItem(), withBloom, _decodeArrayFunc, ReceiptsRlpLimit, BlockReceiptsRlpLimit);
+                NetworkBlockReceipts? receipts = NetworkBlockReceipts.TryCreate(encoded.ReadEncodedItem(), withBloom, _decodeArrayFunc, ReceiptsRlpLimit, BlockReceiptsRlpLimit, _allowZeroLengthBloom);
                 if (receipts is not null)
                 {
                     ctx = encoded;

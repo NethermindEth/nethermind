@@ -361,30 +361,6 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     }
 
     [Test]
-    public void Block_with_encoded_transactions_stores_the_same_receipts_and_index()
-    {
-        Block block = Build.A.Block.WithNumber(1).WithTransactions(
-            Build.A.Transaction.WithNonce(0).SignedAndResolved().TestObject,
-            Build.A.Transaction.WithNonce(1).WithType(TxType.EIP1559).WithTo(null).SignedAndResolved().TestObject).TestObject;
-        byte[] encoded = new BlockDecoder().Encode(block);
-        RlpReader reader = new(encoded);
-        // Sync loads blocks from the database, whose transactions have no senders.
-        Block decoded = new BlockDecoder().Decode(ref reader)!;
-        Transaction[] encodedTransactions = BlockBodyDecoder.DecodeEncodedTransactionsOfBlock(encoded);
-        Block withEncodedTransactions = new(decoded.Header, new BlockBody(encodedTransactions, []));
-        TestMemColumnsDb<ReceiptsColumns> otherDb = new();
-        otherDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, Array.Empty<byte>());
-        PersistentReceiptStorage other = new(otherDb, _specProvider, _receiptsRecovery, _blockTree, _blockStore, _receiptConfig, _decoder)
-        { MigratedBlockNumber = 0 };
-
-        _storage.Insert(decoded, CreateReceipts(), ensureCanonical: true, lastBlockNumber: 1);
-        other.Insert(withEncodedTransactions, CreateReceipts(), ensureCanonical: true, lastBlockNumber: 1);
-
-        AssertSameContent(otherDb);
-        foreach (Transaction transaction in encodedTransactions) TxDecoder.TxObjectPool.Return(transaction);
-    }
-
-    [Test]
     public void Network_receipts_store_the_same_receipts_and_index_as_decoded_ones()
     {
         Block block = Build.A.Block.WithNumber(1).WithTransactions(
@@ -400,18 +376,29 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         { MigratedBlockNumber = 0 };
 
         // Sync stores receipts against blocks from the database, whose transactions have no senders.
-        RlpReader reader = new(new BlockDecoder().Encode(block));
+        byte[] encodedBlock = new BlockDecoder().Encode(block);
+        RlpReader reader = new(encodedBlock);
         Block stored = new BlockDecoder().Decode(ref reader)!;
+        _blockStore.Get(stored.Number, stored.Hash!, Arg.Any<RlpBehaviors>(), Arg.Any<bool>()).Returns(stored);
+        Transaction[] encodedTransactions = BlockBodyDecoder.DecodeEncodedTransactionsOfBlock(encodedBlock);
+        TxReceipt[]? inserted = null;
+        other.ReceiptsInserted += (_, args) => inserted = args.TxReceipts;
+
         _storage.Insert(stored, CreateReceipts(), ensureCanonical: true);
-        bool keptEncoded = other.TryInsertNetworkReceipts(stored, message, withBloom: true, ensureCanonical: true);
+        bool keptEncoded = other.TryInsertNetworkReceipts(new Block(stored.Header, new BlockBody(encodedTransactions, [])), message, withBloom: true, ensureCanonical: true);
+        foreach (Transaction transaction in encodedTransactions) TxDecoder.TxObjectPool.Return(transaction);
 
         Assert.That(keptEncoded, Is.EqualTo(useCompactReceipts));
-        if (keptEncoded) AssertSameContent(otherDb);
+        if (keptEncoded)
+        {
+            AssertSameContent(otherDb);
+            Assert.That(inserted!.Select(static r => r.Recipient), Is.EqualTo(block.Transactions.Select(static tx => tx.To)));
+        }
     }
 
     private void AssertSameContent(TestMemColumnsDb<ReceiptsColumns> otherDb)
     {
-        foreach (ReceiptsColumns column in new[] { ReceiptsColumns.Default, ReceiptsColumns.Transactions })
+        foreach (ReceiptsColumns column in new[] { ReceiptsColumns.Default, ReceiptsColumns.Transactions, ReceiptsColumns.Blocks })
         {
             Assert.That(otherDb.GetColumnDb(column).GetAll().ToDictionary(static kv => kv.Key.ToHexString(), static kv => kv.Value),
                 Is.EquivalentTo(_receiptsDb.GetColumnDb(column).GetAll().ToDictionary(static kv => kv.Key.ToHexString(), static kv => kv.Value)),

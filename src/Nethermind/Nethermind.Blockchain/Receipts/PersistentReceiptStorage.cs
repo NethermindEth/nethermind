@@ -1029,7 +1029,10 @@ namespace Nethermind.Blockchain.Receipts
         }
 
         /// <inheritdoc/>
-        /// <remarks>Stores the receipts as <see cref="Insert(Block, TxReceipt[], IReleaseSpec, bool, WriteFlags, ulong?)"/> stores them once decoded.</remarks>
+        /// <remarks>
+        /// Stores the receipts as <see cref="Insert(Block, TxReceipt[], IReleaseSpec, bool, WriteFlags, ulong?)"/> stores them
+        /// once decoded. Only the compact form takes them, as it stores no field recovered from the transactions but their hashes.
+        /// </remarks>
         [SkipLocalsInit]
         public bool TryInsertNetworkReceipts(Block block, ReadOnlyMemory<byte> blockReceipts, bool withBloom, bool ensureCanonical)
         {
@@ -1046,7 +1049,8 @@ namespace Nethermind.Blockchain.Receipts
                 if (ReceiptsInserted is not null)
                 {
                     insertedReceipts = _storageDecoder.Decode(rlp, RlpBehaviors.TrustedInput);
-                    _receiptsRecovery.TryRecover(block, insertedReceipts, false);
+                    // The block may hold the transaction hashes only, and recovery reads the recipients.
+                    _receiptsRecovery.TryRecover(_blockStore.Get(block.Number, block.Hash!, shouldCache: false) ?? block, insertedReceipts, false);
                 }
             }
 
