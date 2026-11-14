@@ -106,14 +106,9 @@ public readonly ref struct NetworkReceipt
         if (withBloom)
         {
             ReadOnlySpan<byte> bloomItem = fields.ReadEncodedItem();
-            if (bloomItem.Length == BloomItemLength && bloomItem[0] == 0xb9 && bloomItem[1] == 0x01 && bloomItem[2] == 0x00)
-            {
-                bloom = bloomItem[3..];
-            }
-            else if (bloomItem.Length != 1 || bloomItem[0] != Rlp.EmptyByteArrayByte)
-            {
-                return false;
-            }
+            // A zero-length bloom (EIP-7668) is valid only where the decoder is told the fork is scheduled.
+            if (bloomItem.Length != BloomItemLength || bloomItem[0] != 0xb9 || bloomItem[1] != 0x01 || bloomItem[2] != 0x00) return false;
+            bloom = bloomItem[3..];
         }
 
         if (!fields.HasNext || !fields.IsNextSequence) return false;

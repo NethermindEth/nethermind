@@ -1028,6 +1028,35 @@ namespace Nethermind.Blockchain.Receipts
             ReceiptsInserted?.Invoke(this, new(block.Header, txReceipts));
         }
 
+        /// <inheritdoc/>
+        /// <remarks>Stores the receipts as <see cref="Insert(Block, TxReceipt[], IReleaseSpec, bool, WriteFlags, ulong?)"/> stores them once decoded.</remarks>
+        [SkipLocalsInit]
+        public bool TryInsertNetworkReceipts(Block block, ReadOnlySpan<byte> blockReceipts, bool withBloom, bool ensureCanonical)
+        {
+            if (!_storageDecoder.CanEncodeNetworkReceipts) return false;
+
+            IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+            TxReceipt[]? insertedReceipts = null;
+            using (ArrayPoolSpan<byte> rlp = _storageDecoder.EncodeNetworkReceipts(blockReceipts, withBloom, spec.IsEip658Enabled, block.Transactions))
+            {
+                Span<byte> blockNumPrefixed = stackalloc byte[40];
+                GetBlockNumPrefixedKey(block.Number, block.Hash!, blockNumPrefixed);
+                _receiptsDb.PutSpan(blockNumPrefixed, rlp, WriteFlags.None);
+
+                if (ReceiptsInserted is not null)
+                {
+                    insertedReceipts = _storageDecoder.Decode(rlp, RlpBehaviors.TrustedInput);
+                    _receiptsRecovery.TryRecover(block, insertedReceipts, false);
+                }
+            }
+
+            _receiptsCache.Delete(block.Hash);
+            if (ensureCanonical) EnsureCanonical(block, null);
+            if (block.Number < MigratedBlockNumber) MigratedBlockNumber = block.Number;
+            if (insertedReceipts is not null) ReceiptsInserted?.Invoke(this, new(block.Header, insertedReceipts));
+            return true;
+        }
+
         private static bool HasAllSenders(Block block)
         {
             foreach (Transaction tx in block.Transactions)

@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
@@ -212,24 +213,36 @@ namespace Nethermind.Synchronization.FastBlocks
         /// The header of <paramref name="blockInfo"/>, or <see langword="null"/> when the local header store has none,
         /// so the rejection says nothing about the peer that sent <paramref name="receipts"/>.
         /// </param>
-        private bool TryPrepareReceipts(BlockInfo blockInfo, TxReceipt[] receipts, out TxReceipt[]? preparedReceipts, out BlockHeader? header)
+        /// <param name="keptEncoded">
+        /// <c>true</c> when the receipts were checked as received, so they can be stored without decoding them;
+        /// <paramref name="preparedReceipts"/> is then <see langword="null"/>.
+        /// </param>
+        private bool TryPrepareReceipts(BlockInfo blockInfo, IOwnedReadOnlyList<TxReceipt[]?> response, int index, out TxReceipt[]? preparedReceipts, out bool keptEncoded, out BlockHeader? header)
         {
             header = _blockTree.FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: blockInfo.BlockNumber);
+            keptEncoded = false;
+            preparedReceipts = null;
             if (header is null)
             {
                 if (_logger.IsDebug) _logger.Debug($"Could not find header {blockInfo.BlockNumber} ({blockInfo.BlockHash})");
-                preparedReceipts = null;
             }
             else
             {
+                // The header carries the timestamp that timestamp-activated receipt rules (EIP-7668) need.
+                IReceiptSpec releaseSpec = _specProvider.GetSpec(header);
+                if (response is NetworkBlockReceipts network && IsReceiptsRoot(network, index, releaseSpec, header.ReceiptsRoot))
+                {
+                    keptEncoded = true;
+                    return true;
+                }
+
+                TxReceipt[] receipts = response[index] ?? [];
                 if (header.ReceiptsRoot == Keccak.EmptyTreeHash)
                 {
                     preparedReceipts = receipts.Length == 0 ? receipts : null;
                 }
                 else
                 {
-                    // The header carries the timestamp that timestamp-activated receipt rules (EIP-7668) need.
-                    IReceiptSpec releaseSpec = _specProvider.GetSpec(header);
                     // EIP-7668 roots ignore receipt blooms, so there is nothing to normalize.
                     if (!releaseSpec.IsEip7668Enabled) NormalizeZeroBlooms(receipts);
                     // TODO: Optimism use op root calculator
@@ -240,6 +253,15 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             return preparedReceipts is not null;
+        }
+
+        /// <remarks>A root that differs is checked again on the decoded receipts, which the root calculator may normalize.</remarks>
+        private static bool IsReceiptsRoot(NetworkBlockReceipts receipts, int index, IReceiptSpec spec, Hash256? receiptsRoot)
+        {
+            ReadOnlySpan<byte> encoded = receipts.GetEncoded(index);
+            return receiptsRoot == Keccak.EmptyTreeHash
+                ? encoded.Length == 1
+                : ReceiptsRootCalculator.Instance.TryGetReceiptsRoot(encoded, receipts.WithBloom, spec) is { } root && root == receiptsRoot;
         }
 
         /// <summary>
@@ -270,13 +292,10 @@ namespace Nethermind.Synchronization.FastBlocks
             for (int i = 0; i < blockInfos.Length; i++)
             {
                 BlockInfo? blockInfo = blockInfos[i];
-                TxReceipt[]? receipts = (batch.Response?.Count ?? 0) <= i
-                    ? null
-                    : (batch.Response![i] ?? []);
-
-                if (receipts is not null)
+                if ((batch.Response?.Count ?? 0) > i)
                 {
                     TxReceipt[]? prepared = null;
+                    bool keptEncoded = false;
                     // last batch
                     if (blockInfo is null)
                     {
@@ -284,7 +303,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     }
 
                     BlockHeader? header = null;
-                    bool isValid = !hasBreachedProtocol && TryPrepareReceipts(blockInfo, receipts, out prepared, out header);
+                    bool isValid = !hasBreachedProtocol && TryPrepareReceipts(blockInfo, batch.Response!, i, out prepared, out keptEncoded, out header);
                     bool headerMissing = !hasBreachedProtocol && header is null;
                     if (isValid)
                     {
@@ -305,7 +324,17 @@ namespace Nethermind.Synchronization.FastBlocks
                             Transaction[] transactions = BlockBodyDecoder.DecodeEncodedTransactionsOfBlock(blockRlp);
                             try
                             {
-                                _receiptStorage.Insert(new Block(header!, new BlockBody(transactions, [])), prepared, ensureCanonical: true);
+                                Block block = new(header!, new BlockBody(transactions, []));
+                                if (!keptEncoded)
+                                {
+                                    _receiptStorage.Insert(block, prepared, ensureCanonical: true);
+                                }
+                                else if (batch.Response is NetworkBlockReceipts network
+                                         && !_receiptStorage.TryInsertNetworkReceipts(block, network.GetEncoded(i), network.WithBloom, ensureCanonical: true))
+                                {
+                                    _receiptStorage.Insert(block, network[i], ensureCanonical: true);
+                                }
+
                                 _syncStatusList.MarkInserted(blockInfo.BlockNumber);
                                 validResponsesCount++;
                             }
