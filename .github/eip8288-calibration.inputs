@@ -3,6 +3,6 @@
 # shared reproducible-benchmarks runners.
 RUNNER=c3-highmem-22
 PROVISIONING_MODEL=SPOT
-LEAN_BINDINGS_REF=afe333612a90aea0acd365be0423ac190bfca817
-SCENARIOS=gcp-deep-carry
-TIMEOUT_MINUTES=90
+LEAN_BINDINGS_REF=0310f3d277f98e1c1aecfc297a4cab70cc0442d8
+SCENARIOS=gcp-pq-leaves-bounds
+TIMEOUT_MINUTES=120
