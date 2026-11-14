@@ -6,6 +6,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.ProofAggregation;
@@ -732,6 +733,39 @@ public class RawWitnessTests
             Assert.That(node.Pool.GetPendingTransactions(), Has.Length.EqualTo(maxClaims));
             Assert.That(node.Raw.Count, Is.EqualTo(2 - maxClaims));
             Assert.That(Decode(node.Relayed[^1]).Mode, Is.EqualTo(MempoolWrapper.ModeRecursive));
+        }
+    }
+
+    // The leaf and its fold are background work: while a producer proves, the raw prover backs off, untried, and proves later.
+    [Test]
+    public async Task Raw_prover_yields_to_block_production()
+    {
+        Node node = CreateNode();
+        RawSignature signature = Signature(1);
+        FrameDependency raw = RawDependency(signature);
+        await node.Service.AcceptOwnedDetailedAsync(Encode(RawWrapper(new() { [raw] = signature }, Transaction(0, raw))));
+        ProductionProofCache cache = new(node.Verifier);
+        using ManualResetEventSlim producing = new(), release = new();
+        node.Verifier.OnProving = () =>
+        {
+            if (release.IsSet) return;
+            producing.Set();
+            release.Wait(TimeSpan.FromSeconds(10));
+        };
+        Task production = Task.Run(() => cache.ProveRecursiveStark(ValueKeccak.Compute("block"), Eip8288Constants.BatchedAggregatedVk, new AggregationInput()));
+        Assert.That(producing.Wait(TimeSpan.FromSeconds(10)), Is.True);
+        using RawWitnessProver prover = new(node.Service, node.Raw, node.Recognized, cache, new TxPoolConfig(), LimboLogs.Instance);
+
+        ProofWrapperAcceptance? whileProducing = await prover.ProveOnceAsync();
+        release.Set();
+        await production;
+        ProofWrapperAcceptance? afterwards = await prover.ProveOnceAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(whileProducing, Is.Null);
+            Assert.That(afterwards?.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted), afterwards?.Result.Error);
+            Assert.That(node.Recognized.Proved, Has.Count.EqualTo(1), "no leaf was proved while the producer held the gate");
         }
     }
 

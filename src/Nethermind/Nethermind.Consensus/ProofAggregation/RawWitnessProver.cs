@@ -101,8 +101,8 @@ public sealed class RawWitnessProver : IDisposable
         List<ReadOnlyMemory<byte>> witnesses = new(ordinaryDeps.Count);
         foreach (FrameDependency dependency in ordinaryDeps) witnesses.Add(ordinary[dependency]);
 
-        byte[] proof;
-        try
+        ValueHash256 depsHash = verifier.DepsHash(deps);
+        byte[] Prove()
         {
             byte[] leaf = _recognized.ProveLeaf(key, signatures);
             AggregationInput input = new()
@@ -111,10 +111,16 @@ public sealed class RawWitnessProver : IDisposable
                 Witnesses = witnesses,
                 BatchLeaves = [new BatchLeafInput(key, claims, leafDeps, leaf)],
             };
-            ValueHash256 depsHash = verifier.DepsHash(deps);
-            proof = _verifier.ProveRecursiveStark(in depsHash, verifier.AggregatedVk.Bytes, input);
+            return _verifier.ProveRecursiveStark(in depsHash, verifier.AggregatedVk.Bytes, input);
         }
-        catch (LeanProverBusyException)
+        byte[] proof;
+        try
+        {
+            // The leaf and its fold yield to block production, as background aggregation does.
+            proof = _verifier is ProductionProofCache cache ? cache.Background(Prove) : Prove();
+        }
+        catch (Exception exception) when (exception is LeanProverBusyException
+            || exception is InvalidOperationException { Message: ProductionProofCache.BackgroundBusyMessage })
         {
             foreach (RawWitnessPool.Entry entry in group) entry.Attempted = false;
             return null;

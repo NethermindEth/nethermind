@@ -153,8 +153,6 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
         cancellationToken.ThrowIfCancellationRequested();
         ValueHash256 statement = depsHash;
         ArgumentNullException.ThrowIfNull(input);
-        // Batch leaves come only from their owner's prover (an EIP-8437 mode-2 prover), whose one-off folds are not worth caching.
-        if (input.BatchLeaves.Count != 0) return verifier.ProveRecursiveStark(in depsHash, aggregatedVk, input);
         if (input.Deps.Count != input.Witnesses.Count || input.Deps.Count > Eip8288Constants.MaxProofDependencies
             || input.Discards.Count > Eip8288Constants.MaxProofDependencies || input.RecursiveProofs.Count > Eip8288Constants.MaxProofDependencies)
             throw new ArgumentException("Invalid aggregation input shape.", nameof(input));
@@ -163,6 +161,14 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
                 throw new ArgumentException("Invalid recursive aggregation input.", nameof(input));
         if (RecursiveStarkAggregator.InputSize(input) > Eip8288Constants.MaxAggregationInputBytes)
             throw new ArgumentException("Aggregation input exceeds the proving bound.", nameof(input));
+        // Batch leaves come only from their owner's prover (an EIP-8437 mode-2 prover): its one-off folds are not cached, but they
+        // take the proving gate as background work, yielding to producers.
+        if (input.BatchLeaves.Count != 0)
+        {
+            ValueHash256 leafStatement = depsHash;
+            byte[] leafKey = aggregatedVk.ToArray();
+            return Background(() => verifier.ProveRecursiveStark(in leafStatement, leafKey, input));
+        }
         input = Snapshot(input);
         byte[] keyBytes = aggregatedVk.ToArray();
         aggregatedVk = keyBytes;
@@ -344,6 +350,19 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
             return proof;
         }
         finally { if (entered) Monitor.Exit(_provingLock); }
+    }
+
+    /// <summary>Runs proving work outside this cache's statements, such as an EIP-8437 mode-2 prover's leaf and fold, under the
+    /// proving gate as background work.</summary>
+    /// <exception cref="InvalidOperationException">With <see cref="BackgroundBusyMessage"/>, when a producer holds or awaits the
+    /// gate: the caller retries on its next cycle.</exception>
+    internal T Background<T>(Func<T> work)
+    {
+        // Already inside the gate on this thread (the gate is reentrant), as a fold within a gated leaf is.
+        if (Monitor.IsEntered(_provingLock)) return work();
+        if (Volatile.Read(ref _producersWaiting) != 0 || !Monitor.TryEnter(_provingLock)) throw BackgroundBusy();
+        try { return work(); }
+        finally { Monitor.Exit(_provingLock); }
     }
 
     internal const string BackgroundBusyMessage = "Proof production is busy; retry background aggregation on the next cadence.";
