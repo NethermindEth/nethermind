@@ -432,7 +432,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     break;
                 }
 
-                ulong blockSize = MessageSizeEstimator.EstimateSize(blockTxReceipts);
+                ulong blockSize = EstimateReceiptsSize(blockTxReceipts);
 
                 // Cap the message size; return the prefix (receipts match request hashes positionally).
                 if (sizeEstimate + blockSize > HardOutgoingReceiptsMessageSizeLimit)
@@ -454,6 +454,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
             return Task.FromResult(new ReceiptsMessage(txReceipts));
         }
+
+        protected virtual ulong EstimateReceiptsSize(TxReceipt[] receipts) => MessageSizeEstimator.EstimateSize(receipts);
 
         private static IOwnedReadOnlyList<BlockHeader> TruncateHeadersAtFirstMissing(IOwnedReadOnlyList<BlockHeader> headers)
         {

@@ -139,13 +139,48 @@ public class Eth69ProtocolHandlerTests
         const int count = 512;
         using GetReceiptsMessage66 msg = new(1111, new(Enumerable.Repeat(Keccak.Zero, count).ToPooledList(count)));
         TxReceipt[] receipts = Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, count).ToArray();
-        int expectedCount = SoftLimitTestHelper.CountReceiptBlocksWithinSoftLimit(receipts, count);
+        int expectedCount = SoftLimitTestHelper.CountReceiptBlocksWithinSoftLimit(receipts, count, new ReceiptMessageDecoder69());
         _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(receipts);
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg, Eth63MessageCode.GetReceipts);
 
         _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage69>(r => r.EthMessage.TxReceipts.Count == expectedCount));
+    }
+
+    [Test]
+    public void Should_size_receipts_without_bloom_for_soft_message_size_limit()
+    {
+        const int count = 512;
+        using GetReceiptsMessage66 msg = new(1111, new(Enumerable.Repeat(Keccak.Zero, count).ToPooledList(count)));
+        TxReceipt[] receipts = SoftLimitTestHelper.CreateLogHeavyReceipts(100);
+        int expectedCount = SoftLimitTestHelper.CountReceiptBlocksWithinSoftLimit(receipts, count, new ReceiptMessageDecoder69());
+        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(receipts);
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(msg, Eth63MessageCode.GetReceipts);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expectedCount, Is.GreaterThan(SoftLimitTestHelper.CountReceiptBlocksWithinSoftLimit(receipts, count)));
+            _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage69>(r => r.EthMessage.TxReceipts.Count == expectedCount));
+        }
+    }
+
+    [Test]
+    public void Should_not_calculate_bloom_when_serving_receipts()
+    {
+        TxReceipt receipt = SoftLimitTestHelper.CreateLogHeavyReceipts(1)[0];
+        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns([receipt]);
+
+        IOwnedReadOnlyList<TxReceipt[]?> response = RequestReceipts(Keccak.Zero);
+        receipt.Logs = [];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response, Has.Count.EqualTo(1));
+            Assert.That(receipt.Bloom, Is.EqualTo(Bloom.Empty));
+        }
     }
 
     [Test]
