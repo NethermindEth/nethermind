@@ -1,47 +1,20 @@
 name: EEZ live L1/L2 integration
 
 on:
-  pull_request:
-    paths:
-      - 'src/Nethermind/Nethermind.Eez*/**'
-      - 'src/Nethermind/Nethermind.Consensus*/**'
-      - 'src/Nethermind/Nethermind.Core*/**'
-      - 'src/Nethermind/Nethermind.Evm*/**'
-      - 'src/Nethermind/Nethermind.Blockchain*/**'
-      - 'src/Nethermind/Nethermind.Specs*/**'
-      - 'src/Nethermind/Nethermind.Runner*/**'
-      - 'src/Nethermind/Nethermind.Serialization.Rlp*/**'
-      - 'src/Nethermind/Directory.*'
-      - 'Dockerfile'
-      - 'scripts/entrypoint.sh'
-      - 'scripts/eez/**'
-      - 'Directory.*'
-      - 'global.json'
-      - '.github/workflows/eez-devnet-tests.yml'
-      - '.github/workflows/eez-devnet-profile.yml'
-      - '.github/workflows/eez-devnet-prepare.yml'
-  push:
-    branches: [master]
-    paths:
-      - 'src/Nethermind/Nethermind.Eez*/**'
-      - 'src/Nethermind/Nethermind.Consensus*/**'
-      - 'src/Nethermind/Nethermind.Core*/**'
-      - 'src/Nethermind/Nethermind.Evm*/**'
-      - 'src/Nethermind/Nethermind.Blockchain*/**'
-      - 'src/Nethermind/Nethermind.Specs*/**'
-      - 'src/Nethermind/Nethermind.Runner*/**'
-      - 'src/Nethermind/Nethermind.Serialization.Rlp*/**'
-      - 'src/Nethermind/Directory.*'
-      - 'Dockerfile'
-      - 'scripts/entrypoint.sh'
-      - 'scripts/eez/**'
-      - 'Directory.*'
-      - 'global.json'
-      - '.github/workflows/eez-devnet-tests.yml'
-      - '.github/workflows/eez-devnet-profile.yml'
-      - '.github/workflows/eez-devnet-prepare.yml'
-  schedule:
-    - cron: '23 3 * * *'
+  workflow_call:
+    inputs:
+      selection:
+        type: string
+        default: full
+      upstream_revision:
+        type: string
+        default: ''
+      rollupx_revision:
+        type: string
+        default: ''
+      quorum_revision:
+        type: string
+        default: ''
   workflow_dispatch:
     inputs:
       upstream_revision:
@@ -61,7 +34,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.quorum_revision != '' && 'quorum' || 'profiles' }}
+  group: eez-live-${{ github.event_name }}-${{ github.ref == 'refs/heads/master' && github.run_id || github.ref }}-${{ inputs.quorum_revision != '' && 'quorum' || 'profiles' }}
   cancel-in-progress: true
 
 jobs:
@@ -101,6 +74,7 @@ jobs:
     with:
       profile: rollup0
       revision: ${{ inputs.upstream_revision }}
+      selection: ${{ inputs.selection || 'full' }}
 
   prepare-rollupx:
     name: Prepare rollupx
@@ -109,6 +83,7 @@ jobs:
     with:
       profile: rollupx
       revision: ${{ inputs.rollupx_revision }}
+      selection: ${{ inputs.selection || 'full' }}
 
   rollup0:
     name: rollup0
@@ -129,7 +104,7 @@ jobs:
       suites: ${{ needs.prepare-rollupx.outputs.suites }}
 
   complete:
-    name: All upstream partitions
+    name: Selected upstream partitions
     needs: [rollup0, rollupx]
     if: ${{ always() && inputs.quorum_revision == '' }}
     runs-on: ubuntu-24.04
@@ -142,14 +117,15 @@ jobs:
         with:
           pattern: eez-live-*
           path: artifacts/eez-partitions
-      - name: Require every upstream partition
+      - name: Require every selected upstream partition
         env:
+          EEZ_SELECTION: ${{ inputs.selection || 'full' }}
           ROLLUP0_RESULT: ${{ needs.rollup0.result }}
           ROLLUPX_RESULT: ${{ needs.rollupx.result }}
         run: |
           test "$ROLLUP0_RESULT" = success
           test "$ROLLUPX_RESULT" = success
-          python3 scripts/eez/devnet/partitions.py aggregate --directory artifacts/eez-partitions
+          python3 scripts/eez/devnet/partitions.py aggregate --directory artifacts/eez-partitions --selection "$EEZ_SELECTION"
       - uses: actions/upload-artifact@v4
         with:
           name: eez-live-summary

@@ -6,6 +6,9 @@ on:
       profile:
         required: true
         type: string
+      selection:
+        type: string
+        default: full
       revision:
         required: false
         type: string
@@ -25,6 +28,7 @@ jobs:
     outputs:
       suites: ${{ steps.suites.outputs.suites }}
     env:
+      EEZ_SELECTION: ${{ inputs.selection }}
       EEZ_PROFILE: ${{ inputs.profile }}
       EEZ_UPSTREAM: ${{ github.workspace }}/upstream
       EEZ_CI_RESULT_DIR: ${{ github.workspace }}/artifacts/eez-inputs-${{ inputs.profile }}
@@ -60,7 +64,7 @@ jobs:
       - name: Select profile test suites
         id: suites
         run: |
-          suites="$(python3 scripts/eez/devnet/partitions.py suites --profile "$EEZ_PROFILE")"
+          suites="$(python3 scripts/eez/devnet/partitions.py suites --profile "$EEZ_PROFILE" --selection "$EEZ_SELECTION")"
           echo "suites=$suites" >> "$GITHUB_OUTPUT"
       - name: Reuse prepared inputs for the exact source and adapters
         id: prepared

@@ -26,7 +26,7 @@ NATIVE_PROTOCOL_CHECK = """jq -e '.suite.complete == true and .suite.excluded_fr
 """
 
 
-def suites(profile):
+def suites(profile, selection="full"):
     if profile not in PROFILES:
         raise ValueError("unexpected profile")
     result = [*WAVE_GROUPS, "protocol"]
@@ -35,7 +35,14 @@ def suites(profile):
         result += ["embedded-" + suite for suite in CASES]
     else:
         result += ["embedded-" + suite for suite in NATIVE_CASES]
-    return result
+    if selection == "full":
+        return result
+    if selection == "smoke":
+        selected = ["recovery"] if profile == "rollup0" else ["embedded-queue_reorg"]
+        if not set(selected).issubset(result):
+            raise ValueError("smoke suite missing from full inventory")
+        return selected
+    raise ValueError("unexpected coverage selection")
 
 
 def protocol_cases(upstream, profile):
@@ -259,9 +266,9 @@ def report(directory):
     (directory / "partition.json").write_text(json.dumps(result, indent=2) + "\n")
 
 
-def aggregate(directory):
+def aggregate(directory, selection="full"):
     reports = [json.loads(path.read_text()) for path in directory.glob("*/partition.json")]
-    expected = {(profile, suite) for profile in PROFILES for suite in suites(profile)}
+    expected = {(profile, suite) for profile in PROFILES for suite in suites(profile, selection)}
     actual = [(item["profile"], item["suite"]) for item in reports]
     if len(actual) != len(set(actual)) or set(actual) != expected:
         raise ValueError("missing or duplicate upstream test partitions")
@@ -276,7 +283,7 @@ def aggregate(directory):
         if any(value != plans[0] for value in plans):
             raise ValueError("partitions used different coverage plans")
         check_plan(plans[0], profile)
-    (directory / "summary.json").write_text(json.dumps({"result": "pass", "partitions": reports}, indent=2) + "\n")
+    (directory / "summary.json").write_text(json.dumps({"result": "pass", "selection": selection, "partitions": reports}, indent=2) + "\n")
 
 
 def main():
@@ -285,20 +292,25 @@ def main():
     for name in ("scope", "report", "aggregate"):
         command = commands.add_parser(name)
         command.add_argument("--directory", type=Path, required=True)
+        if name == "aggregate":
+            command.add_argument("--selection", choices=("full", "smoke"), default="full")
     inventory = commands.add_parser("suites")
     inventory.add_argument("--profile", choices=PROFILES, required=True)
+    inventory.add_argument("--selection", choices=("full", "smoke"), default="full")
     build = commands.add_parser("plan")
     build.add_argument("--upstream", type=Path, required=True)
     build.add_argument("--manifest", type=Path, required=True)
     build.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if args.mode == "suites":
-        print(json.dumps(suites(args.profile)))
+        print(json.dumps(suites(args.profile, args.selection)))
     elif args.mode == "plan":
         result = plan(args.upstream, json.loads(args.manifest.read_text()))
         args.output.write_text(json.dumps(result, indent=2) + "\n")
+    elif args.mode == "aggregate":
+        aggregate(args.directory, args.selection)
     else:
-        {"scope": scope, "report": report, "aggregate": aggregate}[args.mode](args.directory)
+        {"scope": scope, "report": report}[args.mode](args.directory)
 
 
 if __name__ == "__main__":

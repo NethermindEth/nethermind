@@ -1,5 +1,54 @@
 # Live EEZ integration tests
 
+## Monorepo dependencies and CI selection
+
+EEZ stays in this repository and uses ordinary project references. `Nethermind.Eez`
+composes the follower and network services. `Nethermind.Eez.Execution` uses the
+shared execution code. `Nethermind.Eez.Prove` contains protobuf contracts and has
+no project references. The standalone attester uses Execution and Prove without
+depending on the follower plugin. Runner registers the plugin. Shared application
+projects cannot reference EEZ; the selector checks these boundaries on every run.
+
+`eez-checks.yml` owns automatic EEZ runs and the final `EEZ checks` result.
+The two child workflows are reusable and retain manual dispatch for replay.
+Configure branch protection to require the parent result rather than individual
+partitions, which can be intentionally inapplicable.
+
+| Change | Required EEZ checks |
+| --- | --- |
+| Unrelated files, Markdown, or test projects outside the EEZ dependency graph | Selection and dependency check only |
+| EEZ tests | Compatibility tests and upstream streaming vectors |
+| Shared production dependency or Runner | Compatibility, streaming vectors, and live smoke |
+| EEZ production code, adapters, workflows, or shared build inputs | Compatibility, streaming vectors, and full live integration |
+| Nightly or manual parent dispatch | All compatibility, streaming, and live integration checks |
+
+Selection walks transitive `ProjectReference` entries from the follower and
+attester projects. Conditional references are included conservatively. A deleted
+or renamed file is classified using both sides of the Git diff. Failed diff
+collection or an invalid dependency graph fails the parent check. The final job
+requires success from every selected lane; failed, cancelled, and unexpectedly
+skipped work cannot pass it.
+
+Compatibility runs the EEZ test assembly without the two streaming conformance
+fixtures. The streaming lane runs those fixtures with the selected upstream data.
+Compatibility and conformance share one build per release architecture (x64 and
+ARM64). Compatibility also retains checked, no-intrinsics and Trie DB variants
+with local fixtures. The two runtime-only variants reuse the x64 release build. The general test matrices no longer repeat the EEZ assembly. Live smoke runs the existing Rollup0 recovery partition, including
+our prover, and the RollupX embedded queue/reorg partition. Smoke retains each
+partition's assertions and is reported explicitly as partial coverage. Only the
+full selection can report the complete partition inventory as passed.
+
+Prepared upstream inputs retain the existing source, toolchain and adapter cache
+identity. Candidate follower/prover images are built once per live run and shared
+by its partitions. Each stateful partition owns an independent devnet. Upstream
+selection remains automatic, with immutable source revisions recorded for each
+run. No manually updated revision pin is required.
+
+Warm smoke partitions use the existing 15-minute consumer limits. Cold upstream
+preparation has a separate build budget and can still exceed that duration. This
+selection change does not establish a measured 10-15-minute end-to-end guarantee.
+The full nightly suite retains all existing partition limits and coverage.
+
 ## Rollup0 quorum preview
 
 The manual `quorum_revision` input selects the current public head of

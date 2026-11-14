@@ -1,41 +1,23 @@
 name: EEZ streaming session tests
 
 on:
-  pull_request:
-    paths:
-      - 'src/Nethermind/Nethermind.Eez*/**'
-      - 'src/Nethermind/Nethermind.Consensus*/**'
-      - 'src/Nethermind/Nethermind.Core*/**'
-      - 'src/Nethermind/Nethermind.Evm*/**'
-      - 'src/Nethermind/Nethermind.Blockchain*/**'
-      - 'src/Nethermind/Nethermind.Specs*/**'
-      - 'src/Nethermind/Nethermind.Serialization.Rlp*/**'
-      - 'src/Nethermind/Directory.*'
-      - 'Directory.*'
-      - 'global.json'
-      - 'scripts/eez/devnet/upstream.py'
-      - 'scripts/eez/devnet/test_*.py'
-      - '.github/workflows/eez-streaming-tests.yml'
-  push:
-    branches: [master]
-    paths:
-      - 'src/Nethermind/Nethermind.Eez*/**'
-      - 'src/Nethermind/Nethermind.Consensus*/**'
-      - 'src/Nethermind/Nethermind.Core*/**'
-      - 'src/Nethermind/Nethermind.Evm*/**'
-      - 'src/Nethermind/Nethermind.Blockchain*/**'
-      - 'src/Nethermind/Nethermind.Specs*/**'
-      - 'src/Nethermind/Nethermind.Serialization.Rlp*/**'
-      - 'src/Nethermind/Directory.*'
-      - 'Directory.*'
-      - 'global.json'
-      - 'scripts/eez/devnet/upstream.py'
-      - 'scripts/eez/devnet/test_*.py'
-      - '.github/workflows/eez-streaming-tests.yml'
-  schedule:
-    - cron: '43 3 * * *'
+  workflow_call:
+    inputs:
+      conformance:
+        type: boolean
+        default: true
+      upstream_revision:
+        type: string
+        default: ''
+      rollupx_revision:
+        type: string
+        default: ''
   workflow_dispatch:
     inputs:
+      conformance:
+        description: Run selected upstream vectors instead of compatibility tests
+        type: boolean
+        default: true
       upstream_revision:
         description: 'Replay a public upstream main commit; empty selects current main'
         type: string
@@ -49,12 +31,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: eez-streaming-${{ github.event_name }}-${{ github.ref }}
+  group: eez-streaming-${{ github.event_name }}-${{ github.ref == 'refs/heads/master' && github.run_id || github.ref }}-${{ inputs.conformance == false && 'unit' || 'conformance' }}
   cancel-in-progress: true
 
 jobs:
   prepare:
     name: Select upstream execution data
+    if: inputs.conformance
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -81,19 +64,30 @@ jobs:
           retention-days: 14
 
   tests:
-    name: Session execution (${{ matrix.runner }})
+    name: EEZ execution (${{ matrix.runner }}, ${{ matrix.variant }})
     needs: prepare
+    if: ${{ !cancelled() && (needs.prepare.result == 'success' || inputs.conformance == false && needs.prepare.result == 'skipped') }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 25
     env:
-      EEZ_REQUIRE_UPSTREAM_VECTORS: 'true'
+      EEZ_REQUIRE_UPSTREAM_VECTORS: ${{ inputs.conformance && matrix.variant == 'release' && 'true' || 'false' }}
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
+        include:
+          - runner: ubuntu-latest
+            variant: release
+            build-args: ''
+          - runner: ubuntu-24.04-arm
+            variant: release
+            build-args: ''
+          - runner: ubuntu-latest
+            variant: checked
+            build-args: -p:DefineConstants=TRACE%3BDEBUG
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v8
+        if: needs.prepare.result == 'success' && matrix.variant == 'release'
         with:
           name: eez-selected-vectors
           path: ${{ runner.temp }}
@@ -101,24 +95,51 @@ jobs:
       - name: Restore
         run: dotnet restore src/Nethermind/Nethermind.Eez.Test/Nethermind.Eez.Test.csproj --locked-mode
       - name: Compile
-        run: dotnet build src/Nethermind/Nethermind.Eez.Test/Nethermind.Eez.Test.csproj -c Release --no-restore
+        run: dotnet build src/Nethermind/Nethermind.Eez.Test/Nethermind.Eez.Test.csproj -c Release --no-restore ${{ matrix.build-args }}
       - name: Execution requests and witness tests
+        if: matrix.variant == 'release'
         run: |
           dotnet test --project src/Nethermind/Nethermind.Consensus.Test/Nethermind.Consensus.Test.csproj -c Release \
             -- --filter 'FullyQualifiedName~Nethermind.Consensus.Test.Stateless.WitnessTests|FullyQualifiedName~Nethermind.Consensus.Test.Stateless.ExistingBlockWitnessTests|FullyQualifiedName~Nethermind.Consensus.Test.ExecutionProcessorTests'
-      - name: Test
+      - name: Compatibility tests
+        env:
+          EEZ_LOCAL_CONFORMANCE: ${{ matrix.variant != 'release' || !inputs.conformance }}
+        run: |
+          filter='FullyQualifiedName!~StreamingConformanceTests'
+          if [[ "$EEZ_LOCAL_CONFORMANCE" == true ]]; then filter='FullyQualifiedName~Nethermind.Eez.Test'; fi
+          dotnet src/Nethermind/artifacts/bin/Nethermind.Eez.Test/release/Nethermind.Eez.Test.dll \
+            --filter "$filter" --minimum-expected-tests 1 \
+            --hangdump --hangdump-timeout 5m --hangdump-type Mini --crashdump --crashdump-type Mini
+      - name: No-intrinsics compatibility
+        if: matrix.runner == 'ubuntu-latest' && matrix.variant == 'release'
+        env:
+          DOTNET_EnableHWIntrinsic: '0'
+          EEZ_REQUIRE_UPSTREAM_VECTORS: 'false'
+        run: |
+          dotnet src/Nethermind/artifacts/bin/Nethermind.Eez.Test/release/Nethermind.Eez.Test.dll \
+            --minimum-expected-tests 1 --hangdump --hangdump-timeout 5m --hangdump-type Mini --crashdump --crashdump-type Mini
+      - name: Trie DB compatibility
+        if: matrix.runner == 'ubuntu-latest' && matrix.variant == 'release'
+        env:
+          TEST_USE_TRIE: '1'
+          EEZ_REQUIRE_UPSTREAM_VECTORS: 'false'
+        run: |
+          dotnet src/Nethermind/artifacts/bin/Nethermind.Eez.Test/release/Nethermind.Eez.Test.dll \
+            --minimum-expected-tests 1 --hangdump --hangdump-timeout 5m --hangdump-type Mini --crashdump --crashdump-type Mini
+      - name: Upstream streaming conformance
+        if: inputs.conformance && matrix.variant == 'release'
         env:
           EEZ_CONFORMANCE_VECTOR_DIR: ${{ runner.temp }}/eez-vectors
           EEZ_ROLLUPX_EXECUTION_VECTOR_DIR: ${{ runner.temp }}/eez-rollupx-vectors
         run: |
           dotnet src/Nethermind/artifacts/bin/Nethermind.Eez.Test/release/Nethermind.Eez.Test.dll \
-            --hangdump --hangdump-timeout 5m --hangdump-type Mini \
-            --crashdump --crashdump-type Mini
+            --filter 'FullyQualifiedName~StreamingConformanceTests' --minimum-expected-tests 1 \
+            --hangdump --hangdump-timeout 5m --hangdump-type Mini --crashdump --crashdump-type Mini
       - name: Retain vector provenance
-        if: always()
+        if: always() && needs.prepare.result == 'success' && matrix.variant == 'release'
         uses: actions/upload-artifact@v4
         with:
-          name: eez-vector-provenance-${{ matrix.runner }}
+          name: eez-vector-provenance-${{ matrix.runner }}-${{ matrix.variant }}
           path: |
             ${{ runner.temp }}/eez-vectors/upstream.json
             ${{ runner.temp }}/eez-rollupx-vectors/upstream.json

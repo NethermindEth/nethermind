@@ -183,6 +183,40 @@ run_check "state-chaining" bash "$HERE/verify-state-chaining.sh"
                             partitions.aggregate(root)
                         self.assertFalse((root / "summary.json").exists())
 
+    def test_smoke_retains_live_prover_and_native_reorg_coverage(self):
+        self.assertEqual(["recovery"], partitions.suites("rollup0", "smoke"))
+        self.assertEqual(["embedded-queue_reorg"], partitions.suites("rollupx", "smoke"))
+        with self.assertRaises(ValueError):
+            partitions.suites("rollup0", "unknown")
+
+    def test_smoke_requires_both_profiles_and_cannot_claim_full_coverage(self):
+        for failure in (None, "missing", "duplicate", "candidate"):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                records = []
+                for profile in partitions.PROFILES:
+                    plan = self.coverage_plan(profile)
+                    for suite in partitions.suites(profile, "smoke"):
+                        records.append({"result": "pass", "profile": profile, "suite": suite,
+                                        "candidate_revision": "a" * 40, "upstream": plan["upstream"], "plan": plan})
+                if failure == "missing": records.pop()
+                if failure == "duplicate": records.append(copy.deepcopy(records[0]))
+                if failure == "candidate": records[0]["candidate_revision"] = "b" * 40
+                for index, record in enumerate(records):
+                    path = root / str(index)
+                    path.mkdir()
+                    (path / "partition.json").write_text(json.dumps(record))
+                with patch.dict(os.environ, {"GITHUB_SHA": "a" * 40}):
+                    with self.assertRaises(ValueError):
+                        partitions.aggregate(root)
+                    if failure is None:
+                        partitions.aggregate(root, "smoke")
+                        self.assertEqual("smoke", json.loads((root / "summary.json").read_text())["selection"])
+                    else:
+                        with self.assertRaises((ValueError, AssertionError)):
+                            partitions.aggregate(root, "smoke")
+                        self.assertFalse((root / "summary.json").exists())
+
     def test_full_native_protocol_cannot_pass_with_missing_or_incomplete_evidence(self):
         for failure in (None, "targets", "passed", "duplicate", "suite", "causal"):
             with self.subTest(failure=failure), tempfile.TemporaryDirectory() as directory:
