@@ -19,7 +19,13 @@ public class RlpxHostTraceLoggingTests
     private ILoggerFactory _originalFactory = null!;
 
     [SetUp]
-    public void SetUp() => _originalFactory = InternalLoggerFactory.DefaultFactory;
+    public void SetUp()
+    {
+        _originalFactory = InternalLoggerFactory.DefaultFactory;
+        // DotNetty types cache their logger in static fields on first use. Touch them before the swap,
+        // so they keep the original factory after this fixture.
+        new EmbeddedChannel().FinishAndReleaseAll();
+    }
 
     [TearDown]
     public void TearDown() => InternalLoggerFactory.DefaultFactory = _originalFactory;
