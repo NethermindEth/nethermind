@@ -746,6 +746,29 @@ public class Eth70ProtocolHandlerTests
     }
 
     [Test]
+    public async Task Should_keep_unequal_blocks_encoded_after_response_disposal([Values] bool largeBlockFirst)
+    {
+        Hash256[] hashes = [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC];
+        TxReceipt[][] blocks = [BuildSequentialReceipts(1), BuildSequentialReceipts(1), BuildSequentialReceipts(1)];
+        int largeBlockIndex = largeBlockFirst ? 0 : blocks.Length - 1;
+        blocks[largeBlockIndex][0].Logs = [new LogEntry(TestItem.AddressA, new byte[2048], [])];
+        foreach (Hash256 hash in hashes) SetupBlockMetadata(hash, 1_000_000, GasCostOf.Transaction, 100_000);
+
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
+        {
+            GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
+            using ReceiptsMessage70 response = new(sent.RequestId, blocks.ToPooledList(), false);
+            HandleZeroMessage(response, Eth70MessageCode.Receipts);
+        });
+
+        HandleIncomingStatusMessage();
+        using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(hashes, CancellationToken.None);
+
+        Assert.That(result, Is.InstanceOf<NetworkBlockReceipts>().And.Count.EqualTo(blocks.Length));
+        for (int i = 0; i < blocks.Length; i++) AssertReceiptsEqual(result[i], blocks[i]);
+    }
+
+    [Test]
     public async Task Should_skip_transaction_metadata_validation_when_block_body_is_missing()
     {
         Hash256 blockHash = TestItem.KeccakA;

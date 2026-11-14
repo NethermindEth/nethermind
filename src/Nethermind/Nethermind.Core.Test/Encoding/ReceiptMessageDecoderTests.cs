@@ -197,6 +197,17 @@ public class ReceiptLogCountLimitTests
     }
 
     [Test]
+    public void Network_reader_enforces_log_count_limit_during_traversal([Values(0, TwoLogBlockGasLimit, TwoLogBlockGasLimit + 1)] int logCount)
+    {
+        byte[] encoded = ReceiptRlpBuilder.EncodeReceipt(
+            ReceiptRlpBuilder.Repeat(logCount, ReceiptRlpBuilder.MinimalLog()));
+        RlpLimit.InitMaxBlockGas(TwoLogBlockGas);
+        RlpReader reader = new(encoded);
+
+        Assert.That(NetworkReceipt.TryRead(ref reader, withBloom: true, out _), Is.EqualTo(logCount <= TwoLogBlockGasLimit));
+    }
+
+    [Test]
     public void Decode_rejects_a_log_count_above_the_gas_ceiling()
     {
         // Every log is backed by its own 24 bytes, so only the gas ceiling can reject this count.
