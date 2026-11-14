@@ -257,7 +257,11 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
             throw new RlpException(MempoolWrapperValidator.UnknownMode);
         if (item.Deps.Count > Eip8288Constants.MaxWrapperDependencies) throw new RlpException("Proof wrapper exceeds MAX_WRAPPER_BYTES.");
         int depsLength = Rlp.LengthOfSequence(item.Deps.Count * Rlp.LengthOfByteString(Eip8288Constants.DependencyTripleLength, 0));
-        if (item.Mode == MempoolWrapper.ModeRaw) return (depsLength + Rlp.LengthOfSequence(RawInnerLength(item)), RawInnerLength(item));
+        if (item.Mode == MempoolWrapper.ModeRaw)
+        {
+            int rawLength = RawInnerLength(item);
+            return (depsLength + Rlp.LengthOfSequence(rawLength), rawLength);
+        }
         if (item.Mode == MempoolWrapper.ModeDirect)
         {
             int innerContentLength = 0;

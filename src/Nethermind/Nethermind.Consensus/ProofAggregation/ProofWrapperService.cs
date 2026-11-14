@@ -202,12 +202,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     private void ApplyUpgradeRule(Eip8288Verifier verifier)
     {
         (int dropped, int evicted) = Purge(verifier);
-        rawWitnesses?.Retain(entry =>
-        {
-            if (!MempoolWrapperValidator.VerifyProofs(entry.Decoded, leanProofVerifier, in verifier, out _, recognizedPrograms)) return false;
-            entry.Verifier = verifier;
-            return true;
-        });
+        // Raw candidates carry no coverage; peers re-offer what the new verifier accepts, so none is re-verified here.
+        rawWitnesses?.Retain(static _ => false);
         TxPool.Metrics.Eip8288VerifierChanges++;
         TxPool.Metrics.Eip8288UpgradeDroppedProofs += dropped;
         TxPool.Metrics.Eip8288UpgradeEvictedTransactions += evicted;
@@ -470,6 +466,9 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         {
             if (RefreshVerifier() is not { } verifier) return ProofWrapperAcceptance.LocalFailure("EIP-8288 proof wrappers are unavailable.");
             if (local) wrapper = (byte[])wrapper.Clone();
+            ValueHash256 hash = ValueKeccak.Compute(wrapper);
+            if (rawWitnesses.IsKnownInvalid(hash, verifier)) return ProofWrapperAcceptance.Invalid(MempoolWrapperValidator.InvalidRawWitness, verifier);
+            if (rawWitnesses.TryGet(hash, out RawWitnessPool.Entry? held)) return RawAccepted(held!.Decoded);
             MempoolWrapper decoded;
             try { decoded = DecodeProofWrapper(wrapper); }
             catch (Exception exception) when (exception is RlpException or ArgumentException)
@@ -484,9 +483,6 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                         ? ProofWrapperAcceptance.LocalFailure(frameError) : ProofWrapperAcceptance.Invalid(frameError!, verifier);
                 if (transaction.CarriesBlobs) return ProofWrapperAcceptance.LocalFailure("Mode 2 does not carry blob-carrying transactions.");
             }
-            ValueHash256 hash = ValueKeccak.Compute(wrapper);
-            if (rawWitnesses.IsKnownInvalid(hash, verifier)) return ProofWrapperAcceptance.Invalid(MempoolWrapperValidator.InvalidRawWitness, verifier);
-            if (rawWitnesses.Contains(hash)) return RawAccepted(decoded);
             // Each dependency's witness, raw or ordinary, and each transaction's simulation.
             if (!rawWitnesses.TryTakeVerifications(identity, decoded.Deps.Count + decoded.Transactions.Count)) return AdmissionBusy();
             (bool valid, string? error, int fresh, bool indeterminate) = await Task.Run(() =>
@@ -510,9 +506,11 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             }
             if (error is not null) return indeterminate ? AdmissionBusy() : new(ProofWrapperAcceptanceStatus.PoolRejected, Result<Hash256[]>.Fail(error));
             if (RefreshVerifier() != verifier) return ProofWrapperAcceptance.LocalFailure(VerifierChangedDuringAdmission);
+            // Every transaction is pending or held already: nothing to hold, relay or prove.
+            if (fresh == 0) return RawAccepted(decoded);
             RawWitnessPool.Admission admission = rawWitnesses.TryAdd(wrapper, hash, decoded, verifier, source, identity, local);
             if (admission == RawWitnessPool.Admission.Full) return ProofWrapperAcceptance.LocalFailure("Raw witness capacity is full; retry later.");
-            if (admission == RawWitnessPool.Admission.Added && fresh != 0) WrapperValidated?.Invoke(wrapper, verifier);
+            if (admission == RawWitnessPool.Admission.Added) WrapperValidated?.Invoke(wrapper, verifier);
             return RawAccepted(decoded);
         }
         catch (InvalidOperationException exception)

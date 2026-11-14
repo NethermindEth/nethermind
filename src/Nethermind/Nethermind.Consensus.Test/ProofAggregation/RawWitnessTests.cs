@@ -465,6 +465,140 @@ public class RawWitnessTests
             Is.EqualTo(RawWitnessPool.Admission.Full));
     }
 
+    // EIP-8437: a covering proof admits the raw-held transaction as new, so its wrapper is relayed, and the raw candidate leaves.
+    [Test]
+    public async Task Covering_proof_admits_a_raw_held_transaction_as_new_and_releases_the_candidate()
+    {
+        Node node = CreateNode();
+        RawSignature signature = Signature(1);
+        FrameDependency raw = RawDependency(signature);
+        Transaction transaction = Transaction(0, raw);
+        await node.Service.AcceptOwnedDetailedAsync(Encode(RawWrapper(new() { [raw] = signature }, transaction)));
+
+        ProofWrapperAcceptance proven = await node.Service.AcceptOwnedDetailedAsync(Encode(new MempoolWrapper
+        {
+            Transactions = [transaction],
+            Mode = MempoolWrapper.ModeDirect,
+            Deps = [raw],
+            Proofs = [[1]]
+        }));
+        node.Pool.NewPending += Raise.Event<EventHandler<TxEventArgs>>(node.Pool, new TxEventArgs(transaction));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(proven.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted), proven.Result.Error);
+            Assert.That(node.Relayed, Has.Count.EqualTo(2));
+            Assert.That(node.Store.Covers(transaction), Is.True);
+            Assert.That(node.Raw.Holds(transaction.Hash!.ValueHash256), Is.False);
+        }
+    }
+
+    // A raw wrapper adding nothing to a transaction that is already pending is accepted but not relayed.
+    [Test]
+    public async Task Raw_wrapper_for_an_already_pending_transaction_is_not_relayed()
+    {
+        Node node = CreateNode();
+        RawSignature signature = Signature(1);
+        FrameDependency raw = RawDependency(signature);
+        Transaction transaction = Transaction(0, raw);
+        await node.Service.AcceptOwnedDetailedAsync(Encode(new MempoolWrapper
+        {
+            Transactions = [transaction],
+            Mode = MempoolWrapper.ModeDirect,
+            Deps = [raw],
+            Proofs = [[1]]
+        }));
+
+        ProofWrapperAcceptance result = await node.Service.AcceptOwnedDetailedAsync(Encode(RawWrapper(new() { [raw] = signature }, transaction)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted), result.Result.Error);
+            Assert.That(node.Relayed, Has.Count.EqualTo(1));
+            Assert.That(node.Raw.Count, Is.Zero, "nothing to hold or prove");
+        }
+    }
+
+    // The largest admissible mode-2 wrapper costs more verifications than a second's allowance; a full allowance still takes it.
+    [Test]
+    public async Task Largest_admissible_wrapper_fits_the_raw_budget()
+    {
+        Node node = CreateNode();
+        RawSignature signature = Signature(1);
+        FrameDependency raw = RawDependency(signature);
+        FrameDependency[] deps = [raw, .. Enumerable.Range(0, Eip8288Constants.MaxLeanSigDepsPerWrapper).Select(static i => SphincsDependency($"sig {i}"))];
+        byte[] wrapper = Encode(RawWrapper(new() { [raw] = signature }, Transaction(0, deps)));
+        Assert.That(deps.Length + 1, Is.GreaterThan((int)RawWitnessPool.MaxVerificationsPerSourcePerSecond));
+
+        ProofWrapperAcceptance result = await node.Service.AcceptOwnedDetailedAsync(wrapper, source: new object());
+
+        Assert.That(result.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted), result.Result.Error);
+    }
+
+    // A dependency one candidate carries raw and another as an ordinary witness is proved once, by the leaf. Mode 0's limit of one
+    // leanSTARK dependency per wrapper keeps admission from producing such a pair, so the candidates are placed directly.
+    [Test]
+    public async Task Prover_establishes_a_shared_dependency_by_the_leaf_alone()
+    {
+        Node node = CreateNode();
+        RawSignature first = Signature(1), second = Signature(2);
+        FrameDependency shared = RawDependency(first), own = RawDependency(second);
+        Transaction a = Transaction(0, shared), b = Transaction(1, shared), c = Transaction(2, own);
+        Eip8288Verifier verifier = Eip8288Verifier.For(Batched);
+        object peer = new();
+        node.Raw.TryAdd([1], ValueKeccak.Compute("a"), RawWrapper(new() { [shared] = first }, a), verifier, peer, peer);
+        node.Raw.TryAdd([2], ValueKeccak.Compute("bc"), RawWrapper(new() { [own] = second }, b, c), verifier, peer, peer);
+        using RawWitnessProver prover = new(node.Service, node.Raw, node.Recognized, node.Verifier,
+            new TxPoolConfig { RawWitnessMaxClaimsPerLeaf = 2 }, LimboLogs.Instance);
+
+        ProofWrapperAcceptance? result = await prover.ProveOnceAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result?.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted), result?.Result.Error);
+            Assert.That(node.Verifier.LastInput!.Deps, Is.Empty, "b's ordinary witness of the shared dependency is not folded twice");
+            Assert.That(node.Verifier.LastInput!.BatchLeaves.Single().Dependencies, Is.EquivalentTo(new[] { shared, own }));
+        }
+    }
+
+    // EIP-8437: raw candidates are revalidated and evicted under ordinary pool rules, including expiry and nonce changes.
+    [TestCase("stale nonce")]
+    [TestCase("max age")]
+    public async Task Raw_candidates_leave_on_staleness(string scenario)
+    {
+        Node node = CreateNode();
+        RawSignature signature = Signature(1);
+        FrameDependency raw = RawDependency(signature);
+        Transaction transaction = Transaction(0, raw);
+        await node.Service.AcceptOwnedDetailedAsync(Encode(RawWrapper(new() { [raw] = signature }, transaction)));
+        if (scenario == "stale nonce") SetNonce(node, 1);
+        else node.Clock.Advance(RawWitnessPool.MaxAge + TimeSpan.FromSeconds(1));
+
+        node.Pool.TxPoolHeadChanged += Raise.Event<EventHandler<Block>>(node.Pool, Build.A.Block.TestObject);
+
+        // Revalidation runs off the pool's head loop.
+        for (int i = 0; i < 200 && node.Raw.Holds(transaction.Hash!.ValueHash256); i++) await Task.Delay(10);
+        Assert.That(node.Raw.Holds(transaction.Hash!.ValueHash256), Is.False);
+    }
+
+    [Test]
+    public async Task Stale_transaction_is_not_held()
+    {
+        Node node = CreateNode();
+        SetNonce(node, 5);
+        RawSignature signature = Signature(1);
+        FrameDependency raw = RawDependency(signature);
+
+        ProofWrapperAcceptance result = await node.Service.AcceptOwnedDetailedAsync(Encode(RawWrapper(new() { [raw] = signature }, Transaction(0, raw))));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.PoolRejected));
+            Assert.That(node.Raw.Count, Is.Zero);
+            Assert.That(node.Relayed, Is.Empty);
+        }
+    }
+
     // A peer's raw candidates, once proven, are admitted as the peer's: never as local transactions.
     [Test]
     public async Task Prover_admits_proven_coverage_as_its_candidates_were([Values] bool local)

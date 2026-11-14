@@ -4,8 +4,10 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Logging;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.ProofAggregation;
@@ -67,6 +69,8 @@ public sealed class RawWitnessPool : IDisposable
         public bool Attempted { get; set; }
     }
 
+    /// <summary>A refilling allowance; a charge above one second's worth is taken from a full allowance, leaving it in debt, so
+    /// every admissible wrapper can be charged however large.</summary>
     private sealed class Allowance(double perSecond, TimeProvider clock)
     {
         private readonly double _rate = perSecond;
@@ -78,15 +82,21 @@ public sealed class RawWitnessPool : IDisposable
             long now = clock.GetTimestamp();
             _available = Math.Min(_rate, _available + clock.GetElapsedTime(_updated, now).TotalSeconds * _rate);
             _updated = now;
-            if (amount > _available) return false;
+            if (Math.Min(amount, _rate) > _available) return false;
             _available -= amount;
             return true;
         }
+
+        public void Refund(double amount) => _available = Math.Min(_rate, _available + amount);
     }
 
     private static readonly object LocalSource = new();
+    /// <summary>The owner of a peer's wrapper admitted without a source or identity, kept apart from local submissions.</summary>
+    private static readonly object UnknownPeer = new();
 
+    private readonly ILogger _logger;
     private readonly ITxPool _txPool;
+    private int _revalidating;
     private readonly IChainHeadInfoProvider _head;
     private readonly IFrameTxPrefixSimulator? _simulator;
     private readonly TimeProvider _clock;
@@ -104,8 +114,9 @@ public sealed class RawWitnessPool : IDisposable
     private int _localCount;
 
     public RawWitnessPool(ITxPool txPool, IChainHeadInfoProvider head, ITxPoolConfig config, IFrameTxPrefixSimulator? simulator = null,
-        TimeProvider? clock = null)
+        TimeProvider? clock = null, ILogManager? logManager = null)
     {
+        _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<RawWitnessPool>();
         _txPool = txPool;
         _head = head;
         _simulator = simulator;
@@ -122,7 +133,12 @@ public sealed class RawWitnessPool : IDisposable
 
     public int Count { get { lock (_gate) return _entries.Count; } }
 
-    public long Bytes { get; private set; }
+    public long Bytes
+    {
+        get { lock (_gate) return _bytes; }
+    }
+
+    private long _bytes;
 
     /// <summary>Takes <paramref name="count"/> verifications from the global budget and that of <paramref name="identity"/>, a
     /// stable source identity (a peer's node ID) or null for local submissions, so a reconnecting peer keeps its spent budget.</summary>
@@ -134,7 +150,7 @@ public sealed class RawWitnessPool : IDisposable
             Allowance perSource = SourceAllowance(identity ?? LocalSource);
             if (!_verifications.TryTake(count)) return false;
             if (perSource.TryTake(count)) return true;
-            _verifications.TryTake(-count);
+            _verifications.Refund(count);
             return false;
         }
     }
@@ -165,6 +181,12 @@ public sealed class RawWitnessPool : IDisposable
     }
 
     public void ExitValidation() => Interlocked.Decrement(ref _validations);
+
+    /// <summary>The held wrapper <paramref name="wrapper"/>, so a repeat needs no decoding or validation.</summary>
+    public bool TryGet(in ValueHash256 wrapper, out Entry? entry)
+    {
+        lock (_gate) return _entries.TryGetValue(wrapper, out entry);
+    }
 
     /// <summary>Whether <paramref name="wrapper"/> is held, so a repeat needs no validation.</summary>
     public bool Contains(in ValueHash256 wrapper)
@@ -215,7 +237,7 @@ public sealed class RawWitnessPool : IDisposable
     public Admission TryAdd(byte[] wrapper, in ValueHash256 hash, MempoolWrapper decoded, Eip8288Verifier verifier, object? source,
         object? identity = null, bool local = false)
     {
-        object owner = local ? LocalSource : identity ?? source ?? LocalSource;
+        object owner = local ? LocalSource : identity ?? source ?? UnknownPeer;
         lock (_gate)
         {
             if (_entries.ContainsKey(hash)) return Admission.Known;
@@ -227,7 +249,7 @@ public sealed class RawWitnessPool : IDisposable
             _entries.Add(hash, entry);
             if (local) _localCount++;
             _order.AddLast(hash);
-            Bytes += wrapper.Length;
+            _bytes += wrapper.Length;
             _sourceBytes[owner] = _sourceBytes.GetValueOrDefault(owner) + wrapper.Length;
             foreach (Transaction transaction in decoded.Transactions)
             {
@@ -261,7 +283,7 @@ public sealed class RawWitnessPool : IDisposable
     /// the peers' partition.</summary>
     private bool MakeRoom(object owner, int bytes)
     {
-        while (_entries.Count - _localCount >= MaxWrappers - MaxLocalWrappers || Bytes - LocalBytes + bytes > MaxBytes - MaxLocalBytes)
+        while (_entries.Count - _localCount >= MaxWrappers - MaxLocalWrappers || _bytes - LocalBytes + bytes > MaxBytes - MaxLocalBytes)
         {
             Dictionary<object, int> counts = [];
             foreach (Entry entry in _entries.Values)
@@ -354,7 +376,7 @@ public sealed class RawWitnessPool : IDisposable
         if (!_entries.Remove(wrapper, out Entry? entry)) return false;
         if (entry.Local) _localCount--;
         _order.Remove(entry.Hash);
-        Bytes -= entry.Wrapper.Length;
+        _bytes -= entry.Wrapper.Length;
         object owner = entry.Identity;
         long sourceBytes = _sourceBytes[owner] - entry.Wrapper.Length;
         if (sourceBytes == 0) _sourceBytes.Remove(owner);
@@ -369,12 +391,34 @@ public sealed class RawWitnessPool : IDisposable
         return true;
     }
 
+    /// <summary>Drops the held wrappers listing the newly pending transaction whose transactions are now all pending.</summary>
     private void OnNewPending(object? sender, TxEventArgs e)
     {
-        if (e.Transaction.Hash is { } hash) RemoveListing([hash.ValueHash256]);
+        if (e.Transaction.Hash is not { } pending) return;
+        List<Entry> listing = [];
+        lock (_gate)
+            if (_byTransaction.TryGetValue(pending.ValueHash256, out List<ValueHash256>? holders))
+                foreach (ValueHash256 wrapper in holders) listing.Add(_entries[wrapper]);
+        foreach (Entry entry in listing)
+        {
+            bool covered = true;
+            foreach (Transaction transaction in entry.Decoded.Transactions)
+                covered &= transaction.Hash == pending || _txPool.TryGetPendingTransaction(transaction.Hash!.ValueHash256, out _);
+            if (covered) Remove(entry.Hash);
+        }
     }
 
-    private void OnHeadChanged(object? sender, Block block) => Revalidate();
+    /// <summary>Revalidates off the pool's head loop, one pass at a time.</summary>
+    private void OnHeadChanged(object? sender, Block block)
+    {
+        if (Interlocked.Exchange(ref _revalidating, 1) == 1) return;
+        _ = Task.Run(() =>
+        {
+            try { Revalidate(); }
+            catch (Exception exception) { if (_logger.IsWarn) _logger.Warn($"EIP-8437 raw candidate revalidation failed: {exception.Message}"); }
+            finally { Volatile.Write(ref _revalidating, 0); }
+        });
+    }
 
     public void Dispose()
     {

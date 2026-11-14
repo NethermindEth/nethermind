@@ -18,7 +18,8 @@ namespace Nethermind.Consensus.ProofAggregation;
 /// <remarks>
 /// Opt-in (<see cref="ITxPoolConfig.RawWitnessProverEnabled"/>): a leaf needs gigabytes of memory. A cycle takes the oldest
 /// untried candidates whose raw witnesses all name the first one's program, up to
-/// <see cref="ITxPoolConfig.RawWitnessMaxClaimsPerLeaf"/> claims, all local or all from peers. Each candidate is tried once; a busy
+/// <see cref="ITxPoolConfig.RawWitnessMaxClaimsPerLeaf"/> claims, all from one origin (local or one peer) and within the bytes a
+/// produced wrapper may carry. Each candidate is tried once; a busy
 /// prover returns it untried. The mode-1 wrapper is admitted as its candidates were: a peer's through peer admission, under the
 /// first candidate's source, so its transactions never take local treatment.
 /// Leaves publish batch statements, so only the batch-pricing guest takes them.
@@ -92,6 +93,8 @@ public sealed class RawWitnessProver : IDisposable
         }
         deps = Eip8288Dependencies.Canonicalize(deps);
         leafDeps = Eip8288Dependencies.Canonicalize(leafDeps);
+        // A dependency one candidate carries raw and another as an ordinary witness is established by the leaf alone.
+        foreach (FrameDependency dependency in leafDeps) ordinary.Remove(dependency);
         List<ValueHash256> claims = new(leafDeps.Count);
         foreach (FrameDependency dependency in leafDeps) claims.Add(dependency.DataHash);
         List<FrameDependency> ordinaryDeps = Eip8288Dependencies.Canonicalize(ordinary.Keys);
@@ -119,13 +122,22 @@ public sealed class RawWitnessProver : IDisposable
 
         List<Transaction> ordered = [.. transactions.Values];
         ordered.Sort(static (a, b) => a.Hash!.CompareTo(b.Hash!));
-        byte[] encoded = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+        byte[] encoded;
+        try
         {
-            Transactions = ordered,
-            Mode = MempoolWrapper.ModeRecursive,
-            Deps = deps,
-            RecursiveStark = new RecursiveStark(proof, new Hash256(Eip8288Dependencies.ComputeDepsHash(deps))),
-        }).Bytes;
+            encoded = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+            {
+                Transactions = ordered,
+                Mode = MempoolWrapper.ModeRecursive,
+                Deps = deps,
+                RecursiveStark = new RecursiveStark(proof, new Hash256(Eip8288Dependencies.ComputeDepsHash(deps))),
+            }).Bytes;
+        }
+        catch (RlpException exception)
+        {
+            if (_logger.IsWarn) _logger.Warn($"EIP-8437 proved raw signatures but could not encode their wrapper: {exception.Message}");
+            return null;
+        }
         // Proven coverage keeps its candidates' origin: a peer's transactions never become local.
         RawWitnessPool.Entry origin = group[0];
         ProofWrapperAcceptance acceptance = origin.Local
@@ -147,6 +159,8 @@ public sealed class RawWitnessProver : IDisposable
         List<RawWitnessPool.Entry> group = [];
         HashSet<FrameDependency> raw = [];
         HashSet<FrameDependency> ordinary = [];
+        // Each candidate's whole wrapper bounds its transactions' encodings in the produced one.
+        long bytes = 0;
         foreach (RawWitnessPool.Entry entry in _pool.Snapshot())
         {
             if (entry.Attempted || entry.Verifier != verifier) continue;
@@ -161,20 +175,23 @@ public sealed class RawWitnessProver : IDisposable
                 sameProgram &= dependency.VerificationKey == entryKey;
                 entryRaw.Add(dependency);
             }
+            // One program, and one origin, so the proof is admitted as each candidate was.
             if (!sameProgram || entryKey is not { } program || !_recognized.Recognizes(program)
-                || group.Count != 0 && (program != key || entry.Local != group[0].Local)) continue;
+                || group.Count != 0 && (program != key || entry.Local != group[0].Local || !Equals(entry.Identity, group[0].Identity))) continue;
             HashSet<FrameDependency> claims = [.. raw, .. entryRaw];
             HashSet<FrameDependency> direct = [.. ordinary];
             for (int i = 0; i < entry.Decoded.Deps.Count; i++)
                 if (entry.Decoded.RawWitnesses![i] is null && entry.Decoded.Deps[i].Scheme == Eip8288Constants.LeanStarkScheme)
                     direct.Add(entry.Decoded.Deps[i]);
             // One leaf beside the direct leanSTARK witnesses, each a singleton leaf of the step.
-            if (claims.Count > _maxClaims || direct.Count + 1 > Eip8288Constants.MaxInnerProofsPerStep)
+            if (claims.Count > _maxClaims || direct.Count + 1 > Eip8288Constants.MaxInnerProofsPerStep
+                || bytes + entry.Wrapper.Length > ProofWrapperService.MaxWrapperTransactionBytes)
             {
                 if (group.Count == 0) entry.Attempted = true;
                 break;
             }
             group.Add(entry);
+            bytes += entry.Wrapper.Length;
             key = program;
             raw = claims;
             ordinary = direct;
