@@ -69,13 +69,16 @@ public static class RecursiveStarkAggregator
         return (long)signatures * SignatureCost + (long)generics * GenericLeafCost + calls * MergeCost;
     }
 
+    private static int RecordLength(bool batchedGuest) =>
+        batchedGuest ? 2 * Eip8288Constants.DependencyTripleLength : Eip8288Constants.DependencyTripleLength;
+
     /// <summary>Measures the native aggregation-input encoding, including nested witnesses.</summary>
     /// <param name="input">The input.</param>
     /// <param name="batchedGuest">Whether the batch-pricing guest takes it, whose children's dependencies and discards are 192-byte
     /// records, each a dependency and its batch-claim source; EIP-8288's guest takes the 96-byte dependencies alone.</param>
     public static long InputSize(AggregationInput input, bool batchedGuest)
     {
-        int recordLength = batchedGuest ? 2 * Eip8288Constants.DependencyTripleLength : Eip8288Constants.DependencyTripleLength;
+        int recordLength = RecordLength(batchedGuest);
         long size = 12 + (long)input.Discards.Count * recordLength;
         foreach (ReadOnlyMemory<byte> witness in input.Witnesses) size += Eip8288Constants.DependencyTripleLength + 4 + witness.Length;
         foreach (RecursiveProofInput proof in input.RecursiveProofs)
@@ -179,6 +182,7 @@ public static class RecursiveStarkAggregator
     {
         byte[] aggregatedVk = forkVerifier.AggregatedVk.ToByteArray();
         bool batchedGuest = forkVerifier.AggregatedVk == Eip8288Verifier.BatchedAggregatedVk;
+        int recordLength = RecordLength(batchedGuest);
         cancellationToken.ThrowIfCancellationRequested();
         if (input.Deps.Count != input.Witnesses.Count) throw new ArgumentException("Witness count mismatch", nameof(input));
         // Batch leaves are private to their owner, who aggregates them through the verifier directly; this node-side fold never
@@ -270,7 +274,7 @@ public static class RecursiveStarkAggregator
                 do
                 {
                     RecursiveProofInput child = children[offset];
-                    long entrySize = 8L + (long)child.InnerDeps.Count * Eip8288Constants.DependencyTripleLength + child.Proof.Length;
+                    long entrySize = 8L + (long)child.InnerDeps.Count * recordLength + child.Proof.Length;
                     if (batch.Count > 0 && bytes + entrySize > Eip8288Constants.MaxAggregationInputBytes) break;
                     batch.Add(child);
                     deps.AddRange(child.InnerDeps);
