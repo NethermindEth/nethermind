@@ -56,11 +56,9 @@ public class JsonRpcGeneratorTests
     public void Call_and_submission_descriptions_document_alias_and_binding_policy(string ns, string method, string aliasPolicy)
     {
         string doc = File.ReadAllText(Path.Combine(RpcDirectory, $"{ns}.md"));
-        int start = doc.IndexOf($"### {method}\n", StringComparison.Ordinal);
-        Assert.That(start, Is.GreaterThanOrEqualTo(0), $"{method} is not documented");
-        int end = doc.IndexOf("<Tabs>", start, StringComparison.Ordinal);
-        Assert.That(end, Is.GreaterThan(start), $"{method} has no description section");
-        Assert.That(doc[start..end], Does.Contain(aliasPolicy).And.Contain("Geth's fixed-size JSON binding"));
+        string methodDoc = doc.Split($"### {method}\n", 2, StringSplitOptions.None)[1];
+        string description = methodDoc[..methodDoc.IndexOf("<Tabs>", StringComparison.Ordinal)];
+        Assert.That(description, Does.Contain(aliasPolicy).And.Contain("Geth's fixed-size JSON binding"));
     }
 
     [TestCase("trace", "trace_get", "- `callType`:", "`includeInTrace`")]
