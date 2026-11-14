@@ -69,10 +69,11 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
     /// Rejects a fork schedule that geth rejects, so that a genesis skipping a fork fails instead of loading with that fork off.
     /// </summary>
     /// <remarks>
-    /// Ports the missing-fork check of <c>CheckConfigForkOrder</c> from geth's <c>params/config.go</c>: every non-optional
-    /// fork must be set up to the last set fork. Optional forks may be left out without blocking later ones.
-    /// Every set timestamp label is checked again as an optional fork after <c>bpo5Time</c>, which covers the
-    /// Nethermind-only labels unknown to geth.
+    /// Ports <c>CheckConfigForkOrder</c> from geth's <c>params/config.go</c>: every non-optional fork must be set up to
+    /// the last set fork, and each set fork must not come before the previous set fork of the same kind (block or
+    /// timestamp). Optional forks may be left out without blocking later ones.
+    /// Nethermind-only timestamp labels unknown to geth have no defined order, so they only require every
+    /// non-optional fork to be set.
     /// </remarks>
     private static void ValidateForkOrder(GethGenesisConfigJson config)
     {
@@ -106,12 +107,8 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
             ("bpo5Time", null, config.Bpo5Time, true),
         ];
 
-        foreach ((string forkName, ulong timestamp) in ((IHasNamedForks)config).NamedForkTimestamps!)
-        {
-            forks.Add(($"{char.ToLowerInvariant(forkName[0])}{forkName[1..]}Time", null, timestamp, true));
-        }
-
         string? lastUnsetFork = null;
+        (string Name, ulong? Block, ulong? Timestamp) lastSetFork = default;
         foreach ((string name, ulong? block, ulong? timestamp, bool optional) in forks)
         {
             if (block is not null || timestamp is not null)
@@ -122,10 +119,30 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
                         ? $"Unsupported fork ordering: {lastUnsetFork} not enabled, but {name} enabled at block {block}"
                         : $"Unsupported fork ordering: {lastUnsetFork} not enabled, but {name} enabled at timestamp {timestamp}");
                 }
+
+                if (block < lastSetFork.Block)
+                {
+                    throw new InvalidDataException($"Unsupported fork ordering: {lastSetFork.Name} enabled at block {lastSetFork.Block}, but {name} enabled at block {block}");
+                }
+
+                if (timestamp < lastSetFork.Timestamp)
+                {
+                    throw new InvalidDataException($"Unsupported fork ordering: {lastSetFork.Name} enabled at timestamp {lastSetFork.Timestamp}, but {name} enabled at timestamp {timestamp}");
+                }
+
+                lastSetFork = (name, block, timestamp);
             }
             else if (!optional)
             {
                 lastUnsetFork = name;
+            }
+        }
+
+        foreach ((string forkName, ulong timestamp) in ((IHasNamedForks)config).NamedForkTimestamps!)
+        {
+            if (lastUnsetFork is not null)
+            {
+                throw new InvalidDataException($"Unsupported fork ordering: {lastUnsetFork} not enabled, but {char.ToLowerInvariant(forkName[0])}{forkName[1..]}Time enabled at timestamp {timestamp}");
             }
         }
     }
