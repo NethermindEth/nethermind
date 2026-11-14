@@ -59,8 +59,15 @@ public sealed class SerializedLogs : IBufferWriter<byte>, IDisposable
     internal void Add(FilterLog log)
     {
         Utf8JsonWriter writer = RentWriter();
-        TypeInfoJsonSerializer.Serialize(writer, log, EthereumJsonSerializer.JsonOptions);
-        CompleteLog(writer);
+        try
+        {
+            TypeInfoJsonSerializer.Serialize(writer, log, EthereumJsonSerializer.JsonOptions);
+            CompleteLog(writer);
+        }
+        finally
+        {
+            writer.Reset(DetachedOutput);
+        }
     }
 
     /// <summary>Writes the log exactly as the JSON writer of <see cref="FilterLog"/> would, without materializing it.</summary>
@@ -82,30 +89,37 @@ public sealed class SerializedLogs : IBufferWriter<byte>, IDisposable
         }
 
         Utf8JsonWriter writer = RentWriter();
-        writer.WriteStartObject();
-        writer.WritePropertyName("address"u8);
-        ByteArrayConverter.Convert(writer, log.Address.Bytes, skipLeadingZeros: false);
-        writer.WritePropertyName("blockHash"u8);
-        HexWriter.WriteFixed32HexRawValue(writer, blockHash.Bytes);
-        writer.WritePropertyName("blockNumber"u8);
-        NumericConverterHelper.Write(writer, blockNumber);
-        writer.WritePropertyName("blockTimestamp"u8);
-        NumericConverterHelper.Write(writer, blockTimestamp);
-        writer.WritePropertyName("data"u8);
-        WriteData(writer, log);
-        writer.WritePropertyName("logIndex"u8);
-        NumericConverterHelper.Write(writer, logIndex);
-        writer.WriteBoolean("removed"u8, false);
-        writer.WritePropertyName("topics"u8);
-        writer.WriteStartArray();
-        WriteTopics(writer, log, iterator);
-        writer.WriteEndArray();
-        writer.WritePropertyName("transactionHash"u8);
-        HexWriter.WriteFixed32HexRawValue(writer, transactionHash);
-        writer.WritePropertyName("transactionIndex"u8);
-        NumericConverterHelper.Write(writer, transactionIndex);
-        writer.WriteEndObject();
-        CompleteLog(writer);
+        try
+        {
+            writer.WriteStartObject();
+            writer.WritePropertyName("address"u8);
+            ByteArrayConverter.Convert(writer, log.Address.Bytes, skipLeadingZeros: false);
+            writer.WritePropertyName("blockHash"u8);
+            HexWriter.WriteFixed32HexRawValue(writer, blockHash.Bytes);
+            writer.WritePropertyName("blockNumber"u8);
+            NumericConverterHelper.Write(writer, blockNumber);
+            writer.WritePropertyName("blockTimestamp"u8);
+            NumericConverterHelper.Write(writer, blockTimestamp);
+            writer.WritePropertyName("data"u8);
+            WriteData(writer, log);
+            writer.WritePropertyName("logIndex"u8);
+            NumericConverterHelper.Write(writer, logIndex);
+            writer.WriteBoolean("removed"u8, false);
+            writer.WritePropertyName("topics"u8);
+            writer.WriteStartArray();
+            WriteTopics(writer, log, iterator);
+            writer.WriteEndArray();
+            writer.WritePropertyName("transactionHash"u8);
+            HexWriter.WriteFixed32HexRawValue(writer, transactionHash);
+            writer.WritePropertyName("transactionIndex"u8);
+            NumericConverterHelper.Write(writer, transactionIndex);
+            writer.WriteEndObject();
+            CompleteLog(writer);
+        }
+        finally
+        {
+            writer.Reset(DetachedOutput);
+        }
     }
 
     [DoesNotReturn, StackTraceHidden]
@@ -161,7 +175,6 @@ public sealed class SerializedLogs : IBufferWriter<byte>, IDisposable
     private void CompleteLog(Utf8JsonWriter writer)
     {
         writer.Flush();
-        writer.Reset(DetachedOutput);
         if (Count == _ends.Length)
         {
             _ends = Grow(_ends, Count + 1, Count);

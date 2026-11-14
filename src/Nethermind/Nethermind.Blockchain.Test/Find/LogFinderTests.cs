@@ -6,7 +6,9 @@ using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Facade.Filters;
@@ -826,6 +828,23 @@ public class LogFinderTests
 
         Assert.That(() => FoundLogs.Serialize(malformedFinder.FindLogs(filter)).ToArray(), Throws.InstanceOf<RlpReaderException>());
         AssertSerializedAsFilterLogs(validFinder.FindLogs(filter));
+    }
+
+    [Test]
+    public void FindLogs_AfterAMalformedLogFailed_DetachesTheThreadWriter([Values] bool compact, [Values] bool streamsTopics)
+    {
+        Block block = _rawBlockTree.FindBlock(1, BlockTreeLookupOptions.None)!;
+        byte[] malformed = EncodeReceipt(block, compact, new LogEntry(TestItem.AddressA, [1, 2, 3], [TestItem.KeccakA, TestItem.KeccakB]));
+        int topic = malformed.AsSpan().LastIndexOf(TestItem.KeccakB.Bytes) - 1;
+        malformed[topic] = 0xe0;
+        LogFinder finder = CreateEncodedLogFinder(block, malformed, TopicCountingDecoder.Create(compact, streamsTopics), false, out _);
+        LogFilter filter = FilterBuilder.New().FromBlock(1).ToBlock(1).WithAddress(TestItem.AddressA).Build();
+
+        Assert.That(() => FoundLogs.Serialize(finder.FindLogs(filter)).ToArray(), Throws.InstanceOf<RlpReaderException>());
+
+        Utf8JsonWriter? writer = (Utf8JsonWriter?)typeof(SerializedLogs).GetField("_threadWriter", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null);
+        Assert.That(writer, Is.Not.Null);
+        Assert.That(writer!.BytesPending, Is.Zero, "the failed instance's partly written log is still held by the thread writer");
     }
 
     [Test]
