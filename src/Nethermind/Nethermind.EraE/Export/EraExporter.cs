@@ -3,6 +3,7 @@
 
 using System.IO.Abstractions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -23,6 +24,7 @@ namespace Nethermind.EraE.Export;
 public sealed class EraExporter(
     IFileSystem fileSystem,
     IBlockTree blockTree,
+    IBlockStore blockStore,
     IReceiptStorage receiptStorage,
     ISpecProvider specProvider,
     IEraEConfig eraConfig,
@@ -164,8 +166,12 @@ public sealed class EraExporter(
             {
                 for (ulong blockNumber = writeFrom; blockNumber <= writeTo; blockNumber++)
                 {
-                    Block block = blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)
+                    // The body is copied as stored, with its transactions kept encoded, so they are not decoded.
+                    BlockHeader header = blockTree.FindHeader(blockNumber, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)
                         ?? throw new EraException($"Could not find block {blockNumber}. The node may not have finished syncing block bodies for this range.");
+                    using OwnedBlockBodies bodies = OwnedBlockBodies.FromEncodedBlocks(
+                        [blockStore.GetRlp(blockNumber, header.Hash!) ?? throw new EraException($"Could not find block {blockNumber}. The node may not have finished syncing block bodies for this range.")]);
+                    Block block = new(header, bodies.DecodeWithEncodedTransactions(0)!);
 
                     block.Header.IsPostMerge = poSSwitcher.IsPostMerge(block.Header);
 
@@ -185,7 +191,8 @@ public sealed class EraExporter(
                         }
                     }
 
-                    await eraWriter.Add(block, receipts, cancel);
+                    await eraWriter.Add(block, bodies.GetEncoded(0), receipts, cancel);
+                    foreach (Transaction transaction in block.Transactions) TxDecoder.TxObjectPool.Return(transaction);
                     lastBlockHash = block.Hash!;
                     progress.Update(Interlocked.Increment(ref totalProcessed));
                 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
+using Nethermind.Core.Specs;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using NSubstitute;
@@ -17,6 +18,30 @@ namespace Nethermind.Era1.Test;
 
 public class EraExporterTests
 {
+    [Test]
+    public async Task Export_WritesTheBytesOfTheDecodedBlocks()
+    {
+        const int ChainLength = 16;
+        await using IContainer container = await EraTestModule.CreateExportedEraEnv(ChainLength);
+        IBlockTree blockTree = container.Resolve<IBlockTree>();
+        IReceiptStorage receiptStorage = container.Resolve<IReceiptStorage>();
+
+        using MemoryStream expected = new();
+        using (EraWriter writer = new(expected, container.Resolve<ISpecProvider>()))
+        {
+            for (ulong i = 0; i < ChainLength; i++)
+            {
+                Block block = blockTree.FindBlock(i, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)!;
+                await writer.Add(block, receiptStorage.Get(block, true, false));
+            }
+
+            await writer.Finalize();
+        }
+
+        string exported = Directory.GetFiles(container.ResolveTempDirPath(), "*.era1").Single();
+        Assert.That(await File.ReadAllBytesAsync(exported), Is.EqualTo(expected.ToArray()));
+    }
+
     [TestCase(1, 0UL, 1UL - 1, 1UL, 1)]
     [TestCase(3, 0UL, 3UL - 1, 1UL, 3)]
     [TestCase(16, 0UL, 16UL - 1, 16UL, 1)]

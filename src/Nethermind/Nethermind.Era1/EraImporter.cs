@@ -14,6 +14,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Era1.Exceptions;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 
 
 namespace Nethermind.Era1;
@@ -182,7 +183,16 @@ public class EraImporter(
             if (_logger.IsTrace) _logger.Trace($"Importing block {blockNumber}");
             cancellation.ThrowIfCancellationRequested();
 
-            (Block? block, TxReceipt[]? receipt) = await eraStore.FindBlockAndReceipts(blockNumber, cancellation: cancellation);
+            // Blocks that are only stored keep their transactions encoded, so they are not decoded.
+            bool process = suggestFromBlock <= blockNumber;
+            Block? block;
+            byte[]? body = null;
+            TxReceipt[]? receipt;
+            if (process)
+                (block, receipt) = await eraStore.FindBlockAndReceipts(blockNumber, cancellation: cancellation);
+            else
+                (block, body, receipt) = await eraStore.FindEncodedBlockAndReceipts(blockNumber, cancellation: cancellation);
+
             if (block is null)
             {
                 throw new EraImportException($"Unable to find block info for block {blockNumber}");
@@ -208,25 +218,32 @@ public class EraImporter(
 
             KnownHeaders.EnsureMatch(blockTree, block);
 
-            if (suggestFromBlock <= block.Number)
+            if (process)
             {
                 await pacer.WaitForQueue(block.Number, cancellation);
                 await SuggestAndProcessBlock(block);
                 blockTree.ForkChoiceUpdated(block.Hash, blockTree.SafeHash);
             }
             else
-                InsertBlockAndReceipts(block, receipt, to);
+                InsertBlockAndReceipts(block, body!, receipt, to);
 
             progress.Update(Interlocked.Increment(ref blocksProcessed));
         }
     }
 
-    private void InsertBlockAndReceipts(Block b, TxReceipt[] r, ulong lastBlockNumber)
+    /// <param name="b">The block, with its transactions kept encoded; they are returned to the pool here.</param>
+    /// <param name="body">The encoded body of <paramref name="b"/>.</param>
+    private void InsertBlockAndReceipts(Block b, byte[] body, TxReceipt[] r, ulong lastBlockNumber)
     {
         if (blockTree.FindBlock(b.Number) is null)
-            blockTree.Insert(b, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, bodiesWriteFlags: WriteFlags.DisableWAL);
+        {
+            blockTree.Insert(b.Header, body, WriteFlags.DisableWAL);
+            blockTree.Insert(b.Header);
+        }
         if (!receiptStorage.HasBlock(b.Number, b.Hash!))
             receiptStorage.Insert(b, r, true, writeFlags: WriteFlags.DisableWAL, lastBlockNumber: lastBlockNumber);
+
+        foreach (Transaction transaction in b.Transactions) TxDecoder.TxObjectPool.Return(transaction);
     }
 
     private async Task SuggestAndProcessBlock(Block block)

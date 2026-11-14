@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Test.Builders;
@@ -26,6 +28,39 @@ namespace Nethermind.Era1.Test;
 
 public class EraImporterTest
 {
+    [Test]
+    public async Task Import_OfBlocksThatAreOnlyStored_KeepsTheArchivedBodiesAndIndexesTheTransactions([Values] bool withTrustedAccumulators)
+    {
+        const int ChainLength = 32;
+        await using IContainer sourceCtx = await EraTestModule.CreateExportedEraEnv(ChainLength);
+        string exportPath = sourceCtx.ResolveTempDirPath();
+        IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+        IBlockStore sourceStore = sourceCtx.Resolve<IBlockStore>();
+
+        await using IContainer targetCtx = EraTestModule.BuildContainerBuilder()
+            .AddSingleton<ISyncConfig>(new SyncConfig { FastSync = true, SnapSync = true })
+            .Build();
+        targetCtx.Resolve<IBlockTree>().SuggestBlock(sourceTree.FindBlock(0, BlockTreeLookupOptions.None)!);
+        IBlockStore targetStore = targetCtx.Resolve<IBlockStore>();
+        IReceiptStorage targetReceipts = targetCtx.Resolve<IReceiptStorage>();
+
+        string? accumulatorFile = withTrustedAccumulators ? Path.Join(exportPath, EraExporter.AccumulatorFileName) : null;
+        await targetCtx.Resolve<IEraImporter>().Import(exportPath, 0, ulong.MaxValue, accumulatorFile, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (ulong i = 1; i < ChainLength; i++)
+            {
+                Block block = sourceTree.FindBlock(i, BlockTreeLookupOptions.None)!;
+                Assert.That(targetStore.GetRlp(i, block.Hash!), Is.EqualTo(sourceStore.GetRlp(i, block.Hash!)), $"block {i}");
+                foreach (Transaction transaction in block.Transactions)
+                {
+                    Assert.That(targetReceipts.FindBlockHash(transaction.Hash!), Is.EqualTo(block.Hash), $"transaction in block {i}");
+                }
+            }
+        }
+    }
+
     [Test]
     public void ImportAsArchiveSync_DirectoryContainsNoEraFiles_ThrowEraImportException()
     {

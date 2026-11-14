@@ -3,6 +3,7 @@
 
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -28,6 +29,7 @@ public class EraTestModule(bool useRealValidator = false) : Module
         return new ContainerBuilder()
             .AddModule(new EraTestModule())
             .AddSingleton<IBlockTree>(blockTreeBuilder.TestObject)
+            .AddSingleton(blockTreeBuilder.BlockStore)
             .OnBuild((ctx) =>
             {
                 blockTreeBuilder

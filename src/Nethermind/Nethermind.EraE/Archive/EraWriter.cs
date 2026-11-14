@@ -93,7 +93,15 @@ public sealed class EraWriter : IDisposable
         }
     }
 
-    public async Task Add(Block block, TxReceipt[] receipts, CancellationToken cancellation = default)
+    public Task Add(Block block, TxReceipt[] receipts, CancellationToken cancellation = default) =>
+        AddCore(block, null, receipts, cancellation);
+
+    /// <summary>Adds <paramref name="block"/> with its body already encoded, so its transactions are not encoded again.</summary>
+    /// <param name="encodedBody">The encoded body of <paramref name="block"/> with its sequence prefix.</param>
+    public Task Add(Block block, Memory<byte> encodedBody, TxReceipt[] receipts, CancellationToken cancellation = default) =>
+        AddCore(block, encodedBody, receipts, cancellation);
+
+    private async Task AddCore(Block block, Memory<byte>? encodedBody, TxReceipt[] receipts, CancellationToken cancellation)
     {
         ArgumentNullException.ThrowIfNull(block);
         ArgumentNullException.ThrowIfNull(receipts);
@@ -132,7 +140,7 @@ public sealed class EraWriter : IDisposable
 
         RlpBehaviors rlpBehaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
 
-        AddEncodedPayloads(block, receipts, rlpBehaviors, spec.IsEip658Enabled);
+        AddEncodedPayloads(block, encodedBody, receipts, rlpBehaviors, spec.IsEip658Enabled);
 
         if (isPostMerge && _beaconRootsProvider is not null && _slotTime is not null)
         {
@@ -396,7 +404,7 @@ public sealed class EraWriter : IDisposable
         payloads.Clear();
     }
 
-    private void AddEncodedPayloads(Block block, TxReceipt[] receipts, RlpBehaviors rlpBehaviors, bool isEip658)
+    private void AddEncodedPayloads(Block block, Memory<byte>? encodedBody, TxReceipt[] receipts, RlpBehaviors rlpBehaviors, bool isEip658)
     {
         ArrayPoolSpan<byte> headerRlp = _headerDecoder.EncodeToArrayPoolSpan(block.Header, rlpBehaviors);
         try
@@ -409,7 +417,17 @@ public sealed class EraWriter : IDisposable
             throw;
         }
 
-        ArrayPoolSpan<byte> bodyRlp = _blockBodyDecoder.EncodeToArrayPoolSpan(block.Body, rlpBehaviors);
+        ArrayPoolSpan<byte> bodyRlp;
+        if (encodedBody is { } encoded)
+        {
+            bodyRlp = new ArrayPoolSpan<byte>(encoded.Length);
+            encoded.Span.CopyTo(bodyRlp);
+        }
+        else
+        {
+            bodyRlp = _blockBodyDecoder.EncodeToArrayPoolSpan(block.Body, rlpBehaviors);
+        }
+
         try
         {
             _bodies.Add(bodyRlp);

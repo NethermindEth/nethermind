@@ -104,6 +104,24 @@ public sealed class RemoteEraStoreDecorator : IEraStore
         return (block, receipts);
     }
 
+    /// <inheritdoc/>
+    public async Task<(Block?, byte[]?, TxReceipt[]?)> FindEncodedBlockAndReceipts(
+        ulong number, bool ensureValidated = true, CancellationToken cancellation = default)
+    {
+        if (_localStore is not null)
+        {
+            (Block? b, byte[]? body, TxReceipt[]? r) = await _localStore.FindEncodedBlockAndReceipts(number, ensureValidated, cancellation).ConfigureAwait(false);
+            if (b is not null) return (b, body, r);
+        }
+
+        uint epoch = (uint)(number / _maxEraSize);
+        string localPath = await EnsureEpochAvailableAsync(epoch, ensureValidated, cancellation).ConfigureAwait(false);
+
+        using EraRenter renter = RentReader(epoch, localPath);
+        if (number > renter.Reader.LastBlock) return (null, null, null);
+        return await renter.Reader.GetEncodedBlockByNumber(number, cancellation).ConfigureAwait(false);
+    }
+
     public bool HasEpoch(ulong blockNumber) => _localStore is not null && _localStore.HasEpoch(blockNumber);
 
     public ulong NextEraStart(ulong blockNumber)

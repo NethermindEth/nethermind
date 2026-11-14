@@ -13,6 +13,7 @@ using Nethermind.Era1.Exceptions;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
+using Nethermind.State.Proofs;
 using NSubstitute;
 
 namespace Nethermind.Era1.Test;
@@ -135,6 +136,22 @@ internal class EraReaderTests
         using EraReader sut = new(tmpFile.FilePath);
         ValueHash256 fileRoot = await sut.VerifyContent(Substitute.For<ISpecProvider>(), Always.Valid, default);
         Assert.That(root, Is.EqualTo(fileRoot));
+    }
+
+    [Test]
+    public async Task VerifyContent_DecodesTransactionsOnlyToValidateThem([Values] bool validateTransactions)
+    {
+        using PopulatedTestFile tmpFile = await PopulatedTestFile.Create(Build.A.Transaction.Signed().TestObject);
+        IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
+        // The root is computed while the call runs, as the transactions of an encoded body go back to the pool after it.
+        blockValidator.ValidateBodyAgainstHeader(Arg.Any<BlockHeader>(), Arg.Any<BlockBody>(), out Arg.Any<string?>())
+            .Returns(call => TxTrie.CalculateRoot(call.Arg<BlockBody>().Transactions) == call.Arg<BlockHeader>().TxRoot);
+        blockValidator.ValidateOrphanedBlock(Arg.Any<Block>(), out Arg.Any<string?>()).Returns(true);
+
+        using EraReader sut = new(tmpFile.FilePath);
+        await sut.VerifyContent(Substitute.For<ISpecProvider>(), blockValidator, validateTransactions: validateTransactions);
+
+        blockValidator.Received(validateTransactions ? tmpFile.AddedContents.Count : 0).ValidateOrphanedBlock(Arg.Any<Block>(), out Arg.Any<string?>());
     }
 
     [Test]

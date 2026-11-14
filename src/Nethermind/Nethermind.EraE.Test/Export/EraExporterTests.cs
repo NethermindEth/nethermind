@@ -4,6 +4,7 @@
 using System.IO.Abstractions;
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
@@ -14,11 +15,13 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using NSubstitute;
 using NSubstitute.ReturnsExtensions;
+using Nethermind.EraE.Archive;
 using Nethermind.EraE.Config;
 using Nethermind.EraE.E2Store;
 using EraException = Nethermind.Era1.Exceptions.EraException;
 using Nethermind.EraE.Export;
 using Nethermind.EraE.Store;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 using Testably.Abstractions;
 
@@ -26,6 +29,30 @@ namespace Nethermind.EraE.Test.Export;
 
 public class EraExporterTests
 {
+    [Test]
+    public async Task Export_WritesTheBytesOfTheDecodedBlocks()
+    {
+        const int ChainLength = 16;
+        await using IContainer container = await EraETestModule.CreateExportedEraEnv(ChainLength);
+        IBlockTree blockTree = container.Resolve<IBlockTree>();
+        IReceiptStorage receiptStorage = container.Resolve<IReceiptStorage>();
+
+        using MemoryStream expected = new();
+        using (EraWriter writer = new(expected, container.Resolve<ISpecProvider>()))
+        {
+            for (ulong i = 0; i < ChainLength; i++)
+            {
+                Block block = blockTree.FindBlock(i, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)!;
+                await writer.Add(block, receiptStorage.Get(block, true, false));
+            }
+
+            await writer.Finalize();
+        }
+
+        string exported = Directory.GetFiles(container.ResolveTempDirPath(), $"*{EraPathUtils.FileExtension}").Single();
+        Assert.That(await File.ReadAllBytesAsync(exported), Is.EqualTo(expected.ToArray()));
+    }
+
     [TestCase(1, 0UL, 0UL, 1UL, 1)]
     [TestCase(3, 0UL, 2UL, 1UL, 3)]
     [TestCase(16, 0UL, 15UL, 16UL, 1)]
@@ -600,15 +627,19 @@ public class EraExporterTests
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.Head.Returns(genesis);
         blockTree.FindBlock(0UL, BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(genesis);
+        blockTree.FindHeader(0UL, BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(genesis.Header);
+        IBlockStore blockStore = Substitute.For<IBlockStore>();
+        blockStore.GetRlp(0UL, genesis.Hash!).Returns(new BlockDecoder().Encode(genesis));
 
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
-        receiptStorage.Get(genesis, true, false).Returns([]);
+        receiptStorage.Get(Arg.Is<Block>(block => block.Hash == genesis.Hash), true, false).Returns([]);
 
         IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
         poSSwitcher.IsPostMerge(genesis.Header).Returns(true);
 
         await using IContainer container = EraETestModule.BuildContainerBuilder()
             .AddSingleton<IBlockTree>(blockTree)
+            .AddSingleton<IBlockStore>(blockStore)
             .AddSingleton<IReceiptStorage>(receiptStorage)
             .AddSingleton<IPoSSwitcher>(poSSwitcher)
             .AddSingleton<IEraEConfig>(new EraEConfig { MaxEraSize = 16, NetworkName = EraETestModule.TestNetwork })

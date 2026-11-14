@@ -207,6 +207,18 @@ public sealed class EraStore : IEraStore
         return (b, r);
     }
 
+    /// <inheritdoc/>
+    public async Task<(Block?, byte[]?, TxReceipt[]?)> FindEncodedBlockAndReceipts(ulong number, bool ensureValidated = true, CancellationToken cancellation = default)
+    {
+        long epoch = GetEpochNumber(number);
+        if (!_epochs.ContainsKey(epoch))
+            return (null, null, null);
+
+        using EraRenter _ = RentReader(epoch, out EraReader reader);
+        if (ensureValidated) await EnsureEpochVerified(epoch, reader, cancellation);
+        return await reader.GetEncodedBlockByNumber(number, cancellation);
+    }
+
     private EraRenter RentReader(long epoch, out EraReader reader)
     {
         int shardIdx = (int)(epoch % _maxOpenFile);

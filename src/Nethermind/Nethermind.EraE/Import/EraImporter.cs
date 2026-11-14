@@ -19,6 +19,7 @@ using EraVerificationException = Nethermind.Era1.Exceptions.EraVerificationExcep
 using Nethermind.EraE.Export;
 using Nethermind.EraE.Store;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.EraE.Import;
 
@@ -153,7 +154,15 @@ public sealed class EraImporter(
             if (_logger.IsTrace) _logger.Trace($"Importing EraE block {number}");
             cancellation.ThrowIfCancellationRequested();
 
-            (Block? block, TxReceipt[]? receipts) = await eraStore.FindBlockAndReceipts(number, cancellation: cancellation);
+            // Blocks that are only stored keep their transactions encoded, so they are not decoded.
+            bool process = suggestFromBlock <= number;
+            Block? block;
+            byte[]? body = null;
+            TxReceipt[]? receipts;
+            if (process)
+                (block, receipts) = await eraStore.FindBlockAndReceipts(number, cancellation: cancellation);
+            else
+                (block, body, receipts) = await eraStore.FindEncodedBlockAndReceipts(number, cancellation: cancellation);
 
             if (block is null)
                 throw new EraImportException($"Block {number} not found in archive.");
@@ -168,7 +177,7 @@ public sealed class EraImporter(
 
             KnownHeaders.EnsureMatch(blockTree, block);
 
-            if (suggestFromBlock <= block.Number)
+            if (process)
             {
                 await pacer.WaitForQueue(block.Number, cancellation);
                 await SuggestAndProcessBlock(block);
@@ -176,14 +185,16 @@ public sealed class EraImporter(
             }
             else
             {
-                InsertBlockAndReceipts(block, receipts, to);
+                InsertBlockAndReceipts(block, body!, receipts, to);
             }
 
             progress.Update(Interlocked.Increment(ref blocksProcessed));
         }
     }
 
-    private void InsertBlockAndReceipts(Block block, TxReceipt[] receipts, ulong lastBlockNumber)
+    /// <param name="block">The block, with its transactions kept encoded; they are returned to the pool here.</param>
+    /// <param name="body">The encoded body of <paramref name="block"/>.</param>
+    private void InsertBlockAndReceipts(Block block, byte[] body, TxReceipt[] receipts, ulong lastBlockNumber)
     {
         Block? existing = blockTree.FindBlock(block.Number);
         if (existing is null)
@@ -191,7 +202,8 @@ public sealed class EraImporter(
             BlockTreeInsertHeaderOptions headerOptions = block.Header.IsPostMerge
                 ? BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded
                 : BlockTreeInsertHeaderOptions.None;
-            AddBlockResult result = blockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, headerOptions, bodiesWriteFlags: WriteFlags.DisableWAL);
+            blockTree.Insert(block.Header, body, WriteFlags.DisableWAL);
+            AddBlockResult result = blockTree.Insert(block.Header, headerOptions);
             if (result is not AddBlockResult.Added and not AddBlockResult.AlreadyKnown)
                 if (_logger.IsWarn) _logger.Warn($"Unexpected block tree insert result {result} for block {block.Number}.");
         }
@@ -200,12 +212,15 @@ public sealed class EraImporter(
             // Block body already exists (e.g. downloaded during snap sync ancient-bodies phase) but
             // TotalDifficulty was not stored at that time. Re-insert so the block tree stores the
             // correct TD — either from the era file (if available) or computed via SetTotalDifficulty.
-            AddBlockResult result = blockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, bodiesWriteFlags: WriteFlags.DisableWAL);
+            blockTree.Insert(block.Header, body, WriteFlags.DisableWAL);
+            AddBlockResult result = blockTree.Insert(block.Header);
             if (result is not AddBlockResult.Added and not AddBlockResult.AlreadyKnown)
                 if (_logger.IsWarn) _logger.Warn($"Unexpected block tree insert result {result} for block {block.Number} (TD re-insert).");
         }
         if (!receiptStorage.HasBlock(block.Number, block.Hash!))
             receiptStorage.Insert(block, receipts, true, writeFlags: WriteFlags.DisableWAL, lastBlockNumber: lastBlockNumber);
+
+        foreach (Transaction transaction in block.Transactions) TxDecoder.TxObjectPool.Return(transaction);
     }
 
     private async Task SuggestAndProcessBlock(Block block)

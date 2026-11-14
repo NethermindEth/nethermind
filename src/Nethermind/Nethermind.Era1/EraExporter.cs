@@ -3,6 +3,7 @@
 
 using System.IO.Abstractions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -10,12 +11,14 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Era1.Exceptions;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Era1;
 
 public class EraExporter(
     IFileSystem fileSystem,
     IBlockTree blockTree,
+    IBlockStore blockStore,
     IReceiptStorage receiptStorage,
     ISpecProvider specProvider,
     IEraConfig eraConfig,
@@ -205,8 +208,12 @@ public class EraExporter(
             {
                 for (ulong y = startingIndex; y <= endingIndex; y++)
                 {
-                    Block? block = blockTree.FindBlock(y, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)
+                    // The body is copied as stored, with its transactions kept encoded, so they are not decoded.
+                    BlockHeader header = blockTree.FindHeader(y, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)
                         ?? throw new EraException($"Could not find a block with number {y}.");
+                    using OwnedBlockBodies bodies = OwnedBlockBodies.FromEncodedBlocks(
+                        [blockStore.GetRlp(y, header.Hash!) ?? throw new EraException($"Could not find a block with number {y}.")]);
+                    Block block = new(header, bodies.DecodeWithEncodedTransactions(0)!);
 
                     TxReceipt[]? receipts = receiptStorage.Get(block, true, false);
                     if (receipts is null || (block.Header.ReceiptsRoot != Keccak.EmptyTreeHash && receipts.Length == 0))
@@ -219,7 +226,8 @@ public class EraExporter(
                         throw new EraException($"Block {block.ToString(Block.Format.FullHashAndNumber)} does not have total difficulty specified");
                     }
 
-                    await eraWriter.Add(block, receipts, cancellation);
+                    await eraWriter.Add(block, bodies.GetEncoded(0), receipts, cancellation);
+                    foreach (Transaction transaction in block.Transactions) TxDecoder.TxObjectPool.Return(transaction);
                     progress.Update(Interlocked.Increment(ref totalProcessed));
                 }
 
