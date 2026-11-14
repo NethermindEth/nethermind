@@ -1,8 +1,9 @@
 name: EIP-8288 gas calibration
 
-# Runs the lean-bindings calibration suite (src/ffi/calibration) on the reproducible benchmark boxes. All logic is in
-# the suite's ci/run-calibration.sh; this workflow reads its inputs from .github/eip8288-calibration.inputs so it can
-# become workflow_dispatch / workflow_call unchanged.
+# Runs the lean-bindings calibration suite (src/ffi/calibration) on one machine: an ephemeral GCE VM through
+# .github/actions/gcp-runner, or one of the shared reproducible-benchmarks boxes. All calibration logic is in the
+# suite's ci/run-calibration.sh; inputs come from .github/eip8288-calibration.inputs so this can become
+# workflow_dispatch / workflow_call unchanged.
 on:
   push:
     branches: [test/eip8288-gas-calibration]
@@ -15,7 +16,9 @@ jobs:
   resolve:
     runs-on: ubuntu-latest
     outputs:
-      arches: ${{ steps.env.outputs.arches }}
+      runner: ${{ steps.env.outputs.runner }}
+      gcp: ${{ steps.env.outputs.gcp }}
+      model: ${{ steps.env.outputs.model }}
       ref: ${{ steps.env.outputs.ref }}
       scenarios: ${{ steps.env.outputs.scenarios }}
       timeout: ${{ steps.env.outputs.timeout }}
@@ -28,43 +31,90 @@ jobs:
           gh api -H "Accept: application/vnd.github.raw" \
             "repos/${{ github.repository }}/contents/.github/eip8288-calibration.inputs?ref=${{ github.sha }}" > inputs.env
           set -a; . ./inputs.env; set +a
-          echo "arches=$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1].split(",")))' "$ARCHES")" >> "$GITHUB_OUTPUT"
-          { echo "ref=$LEAN_BINDINGS_REF"; echo "scenarios=$SCENARIOS"; echo "timeout=$TIMEOUT_MINUTES"; } >> "$GITHUB_OUTPUT"
+          case $RUNNER in box-*) gcp=false ;; *) gcp=true ;; esac
+          { echo "runner=$RUNNER"; echo "gcp=$gcp"; echo "model=${PROVISIONING_MODEL:-SPOT}"; echo "ref=$LEAN_BINDINGS_REF"
+            echo "scenarios=$SCENARIOS"; echo "timeout=$TIMEOUT_MINUTES"; } >> "$GITHUB_OUTPUT"
           cat inputs.env
 
-  calibrate:
+  create_a_runner:
     needs: resolve
-    strategy:
-      fail-fast: false
-      matrix:
-        arch: ${{ fromJSON(needs.resolve.outputs.arches) }}
-    runs-on: [self-hosted, "${{ matrix.arch == 'arm64' && 'reproducible-benchmarks-arm' || 'reproducible-benchmarks' }}"]
+    if: needs.resolve.outputs.gcp == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      runner_label: ${{ steps.label.outputs.value }}
+    steps:
+      - name: Derive runner label
+        id: label
+        run: echo "value=eip8288-calibration-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+          repositories: "nethermind"
+
+      - name: Create a Runner
+        uses: ./.github/actions/gcp-runner
+        with:
+          action: create
+          runner_label: ${{ steps.label.outputs.value }}
+          github_token: ${{ steps.gh-app.outputs.token }}
+          machine_type: ${{ needs.resolve.outputs.runner }}
+          local_ssd_count: 0
+          boot_disk_size: 200
+          provisioning_model: ${{ needs.resolve.outputs.model }}
+          max_run_duration: 3h30m
+          zones: ${{ vars.GCP_ZONES }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
+          runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}
+
+  calibrate:
+    needs: [resolve, create_a_runner]
+    if: always() && needs.resolve.result == 'success' && (needs.resolve.outputs.gcp != 'true' || needs.create_a_runner.result == 'success')
+    runs-on: ${{ needs.resolve.outputs.gcp == 'true' && fromJSON(format('["{0}"]', needs.create_a_runner.outputs.runner_label)) || (needs.resolve.outputs.runner == 'box-arm64' && fromJSON('["self-hosted","reproducible-benchmarks-arm"]') || fromJSON('["self-hosted","reproducible-benchmarks"]')) }}
     timeout-minutes: 180
     env:
-      RUN_DIR: eip8288-calibration-${{ github.run_id }}-${{ matrix.arch }}
-      LABEL: ${{ matrix.arch == 'arm64' && 'reproducible-benchmarks-arm' || 'reproducible-benchmarks' }}
+      RUN_DIR: eip8288-calibration-${{ github.run_id }}
     steps:
-      - name: Calibrate (yields to a waiting manual benchmark run)
+      - name: Calibrate
         env:
           GH_TOKEN: ${{ github.token }}
+          GCP: ${{ needs.resolve.outputs.gcp }}
+          RUNNER_KIND: ${{ needs.resolve.outputs.runner }}
           REF: ${{ needs.resolve.outputs.ref }}
           SCENARIOS: ${{ needs.resolve.outputs.scenarios }}
           TIMEOUT_MINUTES: ${{ needs.resolve.outputs.timeout }}
         run: |
           SCRATCH=$RUNNER_TEMP/$RUN_DIR
           mkdir -p "$SCRATCH/out"
-          df -h "$RUNNER_TEMP" /var/lib/docker 2>/dev/null || true
-          git clone -q --branch "$REF" https://github.com/NethermindEth/lean-bindings.git "$SCRATCH/lean-bindings"
-          "$SCRATCH/lean-bindings/src/ffi/calibration/ci/run-calibration.sh" --arch "${{ matrix.arch }}" \
-            --lean-bindings-ref "$REF@$(git -C "$SCRATCH/lean-bindings" rev-parse HEAD)" \
-            --yield-to-manual-runs "${{ github.repository }}" --runner-label "$LABEL" \
-            --scenarios "$SCENARIOS" --timeout-minutes "$TIMEOUT_MINUTES" --out "$SCRATCH/out" --docker rust:1.99.0-bookworm
+          df -h "$RUNNER_TEMP" || true
+          git clone -q https://github.com/NethermindEth/lean-bindings.git "$SCRATCH/lean-bindings"
+          git -C "$SCRATCH/lean-bindings" -c advice.detachedHead=false checkout -q "$REF"
+          args=(--lean-bindings-ref "$REF@$(git -C "$SCRATCH/lean-bindings" rev-parse HEAD)" --scenarios "$SCENARIOS"
+                --timeout-minutes "$TIMEOUT_MINUTES" --out "$SCRATCH/out" --docker rust:1.99.0-bookworm)
+          # The shared boxes defer to manual benchmark runs; an ephemeral VM is ours alone.
+          if [ "$GCP" != true ]; then
+            case $RUNNER_KIND in box-arm64) arch=arm64 label=reproducible-benchmarks-arm ;; *) arch=amd64 label=reproducible-benchmarks ;; esac
+            args+=(--arch "$arch" --yield-to-manual-runs "${{ github.repository }}" --runner-label "$label")
+          fi
+          "$SCRATCH/lean-bindings/src/ffi/calibration/ci/run-calibration.sh" "${args[@]}"
 
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: eip8288-calibration-${{ matrix.arch }}
+          name: eip8288-calibration-${{ needs.resolve.outputs.runner }}
           path: |
             ${{ runner.temp }}/${{ env.RUN_DIR }}/out
             !${{ runner.temp }}/${{ env.RUN_DIR }}/out/.home
@@ -77,3 +127,45 @@ jobs:
         run: |
           docker ps -aq --filter label=lean-calibration=1 | xargs -r docker rm -f
           rm -rf "${RUNNER_TEMP:?}/${RUN_DIR:?}"
+
+  destroy_runner:
+    needs: [resolve, create_a_runner, calibrate]
+    if: always() && needs.resolve.outputs.gcp == 'true' && needs.create_a_runner.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+          repositories: "nethermind"
+
+      - name: Destroy Runner
+        id: destroy
+        uses: ./.github/actions/gcp-runner
+        with:
+          action: destroy
+          runner_label: ${{ needs.create_a_runner.outputs.runner_label || format('eip8288-calibration-{0}-{1}', github.run_id, github.run_attempt) }}
+          github_token: ${{ steps.gh-app.outputs.token }}
+          expect_instance: ${{ needs.create_a_runner.result == 'success' }}
+          zones: ${{ vars.GCP_ZONES }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
+          runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}
+
+      - name: Report teardown
+        if: always()
+        env:
+          INSTANCE: ${{ steps.destroy.outputs.instance_name }}
+          TERMINATED_BY: ${{ steps.destroy.outputs.terminated_by }}
+          PREEMPTED: ${{ steps.destroy.outputs.preempted }}
+        run: echo "instance=${INSTANCE} terminated_by=${TERMINATED_BY} preempted=${PREEMPTED}"
