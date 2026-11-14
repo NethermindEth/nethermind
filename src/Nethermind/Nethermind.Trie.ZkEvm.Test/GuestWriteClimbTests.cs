@@ -103,7 +103,7 @@ public class GuestWriteClimbTests
             Assert.That(tree.Get(Convert.FromHexString(key)).ToArray(), Is.EqualTo(value), key);
         }
 
-        HashSet<TrieNode> onPaths = new(ReferenceEqualityComparer.Instance);
+        HashSet<TrieNode> onPaths = [with(ReferenceEqualityComparer.Instance)];
         foreach (byte[] key in written) Walk(tree, key, onPaths);
 
         foreach ((TrieNode node, TrieNode? parent) in Nodes(tree.RootRef!, null))

@@ -179,7 +179,7 @@ public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, i
             else if (_second is null)
                 _second = enumerator;
             else
-                (_all ??= new List<IEnumerator<int>>(capacity) { _first, _second }).Add(enumerator);
+                (_all ??= [with(capacity), _first, _second]).Add(enumerator);
         }
 
         public readonly IEnumerator<int>? Build() =>

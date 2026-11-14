@@ -165,8 +165,6 @@ jobs:
 
       - name: Set up .NET for CI scripts
         uses: ./.github/actions/setup-dotnet
-        with:
-          dotnet-version: 10.0.x
 
       - name: Wait for creation of node
         id: wait

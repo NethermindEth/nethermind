@@ -197,7 +197,7 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
 
     private List<Log> BuildLogs()
     {
-        List<Log> logs = new(_logs.Count);
+        List<Log> logs = [with(_logs.Count)];
         for (int i = 0; i < _logs.Count; i++)
         {
             LogEntry entry = _logs[i];

@@ -14,7 +14,7 @@ namespace Nethermind.TxPool.Collections;
 /// </remarks>
 internal sealed class WorstValueHeap<TValue, TKey>(IComparer<TValue> comparer) where TValue : notnull
 {
-    private readonly Dictionary<TValue, int> _slots = new(ReferenceComparer.Instance);
+    private readonly Dictionary<TValue, int> _slots = [with(ReferenceComparer.Instance)];
     private readonly List<(TValue Value, TKey Key)> _heap = [];
 
     public int Count => _heap.Count;

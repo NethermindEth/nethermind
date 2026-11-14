@@ -284,7 +284,7 @@ public class GethGenesisParityTests
     /// <summary>Maps each fork class name to the geth config key of the <c>*Time</c> property that schedules it.</summary>
     private static Dictionary<string, string> DiscoverGethTimeKeys()
     {
-        Dictionary<string, string> keys = new(StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, string> keys = [with(StringComparer.OrdinalIgnoreCase)];
         foreach (PropertyInfo property in typeof(GethGenesisConfigJson).GetProperties().Where(static p => IsForkLabel(p) && p.Name.EndsWith("Time", StringComparison.Ordinal)))
         {
             // Read the routed key back instead of trusting the property name: a property may label a differently named fork.

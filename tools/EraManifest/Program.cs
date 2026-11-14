@@ -69,11 +69,12 @@ verifyCommand.SetAction((parseResult, cancellationToken) => RunCommand(async () 
     return mismatches.Count == 0 ? 0 : 1;
 }));
 
-RootCommand rootCommand = new("Generates or verifies the accumulators.txt and checksums.txt manifests of era1 files.")
-{
+RootCommand rootCommand =
+[
+    with("Generates or verifies the accumulators.txt and checksums.txt manifests of era1 files."),
     generateCommand,
     verifyCommand
-};
+];
 
 return await rootCommand.Parse(args).InvokeAsync();
 

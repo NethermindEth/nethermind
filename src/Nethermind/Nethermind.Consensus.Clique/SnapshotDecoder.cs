@@ -73,7 +73,7 @@ namespace Nethermind.Consensus.Clique
             RlpReader items = decoderContext.EnterSequence(out int itemLength);
             int length = items.DecodePositiveInt();
             Rlp.GuardLimit(length, items.Remaining);
-            SortedList<Address, ulong> signers = new(GenericComparer.GetOptimized<Address>());
+            SortedList<Address, ulong> signers = [with(GenericComparer.GetOptimized<Address>())];
             for (int i = 0; i < length; i++)
             {
                 Address signer = items.DecodeAddress();
@@ -90,7 +90,7 @@ namespace Nethermind.Consensus.Clique
             RlpReader items = decoderContext.EnterSequence(out int itemLength);
             int length = items.DecodePositiveInt();
             Rlp.GuardLimit(length, items.Remaining);
-            List<Vote> votes = new(length);
+            List<Vote> votes = [with(length)];
             for (int i = 0; i < length; i++)
             {
                 Address signer = items.DecodeAddress();
@@ -109,7 +109,7 @@ namespace Nethermind.Consensus.Clique
             RlpReader items = decoderContext.EnterSequence(out int itemLength);
             int length = items.DecodePositiveInt();
             Rlp.GuardLimit(length, items.Remaining);
-            Dictionary<Address, Tally> tally = new(length);
+            Dictionary<Address, Tally> tally = [with(length)];
             for (int i = 0; i < length; i++)
             {
                 Address address = items.DecodeAddress();

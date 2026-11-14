@@ -25,7 +25,7 @@ public static class RpcGeneratedTypeInfoRegistry
 
         lock (_lock)
         {
-            Dictionary<RuntimeTypeHandle, Func<Type, JsonTypeInfo?>> registrations = new(_registrations);
+            Dictionary<RuntimeTypeHandle, Func<Type, JsonTypeInfo?>> registrations = [with(_registrations)];
             for (int i = 0; i < types.Length; i++)
             {
                 Type type = types[i] ?? throw new ArgumentException("Registered RPC payload types cannot contain null.", nameof(types));

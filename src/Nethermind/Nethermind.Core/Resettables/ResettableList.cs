@@ -16,7 +16,7 @@ public class ResettableList<T> : IList<T>, IReadOnlyList<T>
 
     public ResettableList(int startCapacity = Resettable.StartCapacity, int resetRatio = Resettable.ResetRatio)
     {
-        _wrapped = new List<T>(startCapacity);
+        _wrapped = [with(startCapacity)];
         _startCapacity = startCapacity;
         _resetRatio = resetRatio;
         _currentCapacity = _startCapacity;

@@ -109,7 +109,7 @@ For more info, see [Building Docker image](https://docs.nethermind.io/developers
 
 **Prerequisites**
 
-Install [.NET SDK](https://get.dot.net) 10 or later.
+Install [.NET SDK](https://get.dot.net) 11 or later.
 
 **Clone the repository**
 

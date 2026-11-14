@@ -6,7 +6,7 @@ public abstract class TopNAnalyzer<TData, TEncoding, TStat>(int topN, int capaci
     where TEncoding : notnull
 {
     protected readonly int TopN = topN;
-    protected readonly Dictionary<TEncoding, ulong> TopNMap = new(capacity);
+    protected readonly Dictionary<TEncoding, ulong> TopNMap = [with(capacity)];
     protected readonly PriorityQueue<TEncoding, ulong> TopNQueue = new(topN);
     protected ulong Max = 1;
     protected ulong MinSupport = 1;

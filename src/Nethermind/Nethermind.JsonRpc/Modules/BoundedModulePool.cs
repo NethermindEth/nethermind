@@ -80,7 +80,7 @@ namespace Nethermind.JsonRpc.Modules
         private readonly T _shared;
         private readonly Task<T> _sharedAsTask;
         private readonly ConcurrentQueue<Task<T>> _pool = new();
-        private readonly Dictionary<object, Task<T>> _exclusiveAsTasks = new(ReferenceEqualityComparer.Instance);
+        private readonly Dictionary<object, Task<T>> _exclusiveAsTasks = [with(ReferenceEqualityComparer.Instance)];
         private readonly SemaphoreSlim _semaphore;
         private readonly RpcLimits _limits;
 

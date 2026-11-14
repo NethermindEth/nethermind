@@ -41,7 +41,7 @@ IBlockProcessor blockProcessor = new BlockProcessor(..., txProcessor, worldState
 
 The rule: **if production modules already wire a component, use them — don't construct it yourself**.
 
-## Running tests (.NET 10 / Microsoft.Testing.Platform)
+## Running tests (Microsoft.Testing.Platform)
 
 - `dotnet test --project <path>.csproj -c release -- --filter "FullyQualifiedName~Name"`
 - Do NOT pass `--nologo` or `-v q` — MTP treats unknown arguments as filter tokens and reports **zero tests ran**, which reads as a false green. Verify the output names the tests it executed.

@@ -11,7 +11,7 @@ namespace Nethermind.Db
     {
         private readonly IKeyValueStore _store = storeWithNoBatchSupport;
         // Note: need to keep order of operation
-        private readonly ArrayPoolList<(byte[] Key, byte[]? Value)> _writes = new(1);
+        private readonly ArrayPoolList<(byte[] Key, byte[]? Value)> _writes = [with(1)];
         private WriteFlags _writeFlags = WriteFlags.None;
 
         public void Dispose()

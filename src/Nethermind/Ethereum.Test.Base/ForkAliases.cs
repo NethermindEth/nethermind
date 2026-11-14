@@ -24,7 +24,7 @@ public static class ForkAliases
     /// <exception cref="ArgumentException">An entry is not a single <c>From=To</c> pair.</exception>
     public static void Set(IReadOnlyList<string> aliases)
     {
-        Dictionary<string, string> parsed = new(StringComparer.Ordinal);
+        Dictionary<string, string> parsed = [with(StringComparer.Ordinal)];
         foreach (string alias in aliases)
         {
             string[] parts = alias.Split('=');

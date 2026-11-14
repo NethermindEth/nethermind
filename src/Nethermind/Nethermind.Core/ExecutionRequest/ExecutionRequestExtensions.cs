@@ -66,7 +66,7 @@ public static partial class ExecutionRequestExtensions
         ExecutionRequest[] builderExitRequests
     )
     {
-        ArrayPoolList<byte[]> result = new(MaxRequestsCount);
+        ArrayPoolList<byte[]> result = [with(MaxRequestsCount)];
 
         if (depositRequests.Length > 0)
         {

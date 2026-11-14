@@ -87,7 +87,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages
         {
             RlpReader ctx = reader.EnterSequence(out int itemLength);
             int entryCount = ctx.CountItems(RlpLimit);
-            ArrayPoolList<byte[]> blockAccessLists = new(entryCount);
+            ArrayPoolList<byte[]> blockAccessLists = [with(entryCount)];
 
             try
             {

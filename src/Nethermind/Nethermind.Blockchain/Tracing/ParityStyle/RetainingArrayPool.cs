@@ -54,7 +54,7 @@ internal sealed class RetainingArrayPool<T> : ArrayPool<T> where T : unmanaged
         if (array.Length == 0) return;
         if (clearArray) Array.Clear(array);
 
-        (_buckets[BitOperations.Log2((uint)array.Length)] ??= new ArrayPoolList<T[]>(4)).Add(array);
+        (_buckets[BitOperations.Log2((uint)array.Length)] ??= [with(4)]).Add(array);
     }
 
     /// <summary>Hands every retained array to the shared pool.</summary>

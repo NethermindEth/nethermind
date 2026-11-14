@@ -156,7 +156,7 @@ public class SnapFlatStateServerBenchmark
         // A write batch takes each key once, as block processing hands it the block's final values.
         static HashSet<int> DistinctIndices(Random random, int count, int maxExclusive)
         {
-            HashSet<int> indices = new(count);
+            HashSet<int> indices = [with(count)];
             while (indices.Count < count) indices.Add(random.Next(maxExclusive));
             return indices;
         }

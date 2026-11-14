@@ -24,8 +24,8 @@ public class StatelessBlockTree : IBlockTree, IBlockhashCache, IHeaderFinder
 
     public StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
     {
-        _hashToHeader = new(headers.Count);
-        _numberToHeader = new(headers.Count);
+        _hashToHeader = [with(headers.Count)];
+        _numberToHeader = [with(headers.Count)];
 
         foreach (BlockHeader header in headers)
         {

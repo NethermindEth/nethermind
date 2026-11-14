@@ -24,7 +24,7 @@ namespace Nethermind.TxPool;
 internal sealed class PeerValidationShares(long headBudgetTicks)
 {
     private readonly Lock _lock = new();
-    private readonly Dictionary<object, long> _spentTicks = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<object, long> _spentTicks = [with(ReferenceEqualityComparer.Instance)];
     private long _headGeneration = long.MinValue;
     private int _previousActiveCount;
 

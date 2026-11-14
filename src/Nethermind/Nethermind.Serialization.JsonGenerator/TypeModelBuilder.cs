@@ -47,7 +47,7 @@ internal static class TypeModelBuilder
         CheckType(type, diagnostics);
 
         List<Entry> entries = [];
-        Dictionary<string, int> indexByName = new(StringComparer.Ordinal);
+        Dictionary<string, int> indexByName = [with(StringComparer.Ordinal)];
         Dictionary<string, IPropertySymbol>? ignoredMembers = null;
 
         for (INamedTypeSymbol? current = type; current is not null; current = current.BaseType)
@@ -276,7 +276,7 @@ internal static class TypeModelBuilder
 
         if (entry.IsIgnored)
         {
-            (ignoredMembers ??= new Dictionary<string, IPropertySymbol>(StringComparer.Ordinal))[entry.Symbol.Name] = entry.Symbol;
+            (ignoredMembers ??= [with(StringComparer.Ordinal)])[entry.Symbol.Name] = entry.Symbol;
         }
     }
 

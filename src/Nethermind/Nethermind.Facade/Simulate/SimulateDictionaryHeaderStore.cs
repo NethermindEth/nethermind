@@ -71,7 +71,7 @@ public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore)
         BlockHeader? cursor = Get(endBlockHash, shouldCache: false, blockNumber: endBlockNumber);
         if (cursor is null) return ArrayPoolList<BlockHeader>.Empty();
 
-        ArrayPoolList<BlockHeader> result = new(count) { cursor };
+        ArrayPoolList<BlockHeader> result = [with(count), cursor];
         while (result.Count < count && cursor.ParentHash is not null && cursor.Number > 0)
         {
             cursor = Get(cursor.ParentHash, shouldCache: false, blockNumber: cursor.Number - 1);

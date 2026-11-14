@@ -177,7 +177,7 @@ internal static class McpToolInput
             return false;
         }
 
-        HashSet<AddressAsKey> result = new(input.Length);
+        HashSet<AddressAsKey> result = [with(input.Length)];
         for (int i = 0; i < input.Length; i++)
         {
             if (!TryParseAddress(input[i], $"{parameter}[{i}]", out Address? address, out error))

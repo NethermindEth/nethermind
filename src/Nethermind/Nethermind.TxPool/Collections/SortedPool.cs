@@ -140,7 +140,7 @@ namespace Nethermind.TxPool.Collections
         public Dictionary<TGroupKey, TValue[]> GetBucketSnapshot()
         {
             using McsLock.Disposable lockRelease = Lock.Acquire();
-            Dictionary<TGroupKey, TValue[]> snapshots = new(_buckets.Count);
+            Dictionary<TGroupKey, TValue[]> snapshots = [with(_buckets.Count)];
             foreach ((TGroupKey key, EnhancedSortedSet<TValue> bucket) in _buckets)
             {
                 snapshots[key] = CopyBucketToArray(bucket);
@@ -336,7 +336,7 @@ namespace Nethermind.TxPool.Collections
         {
             using McsLock.Disposable lockRelease = Lock.Acquire();
 
-            EnhancedSortedSet<TValue> sortedValues = new(_sortedComparer);
+            EnhancedSortedSet<TValue> sortedValues = [with(_sortedComparer)];
             foreach (KeyValuePair<TGroupKey, EnhancedSortedSet<TValue>> bucket in _buckets)
             {
                 sortedValues.Add(bucket.Value.Min!);

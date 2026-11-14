@@ -33,7 +33,7 @@ internal sealed class WindowSlab : IDisposable
     private const int ChunkSize = 1 << 20;
     private const int SlotsPerChunk = ChunkSize / SlotSize;
 
-    private readonly ArrayPoolList<byte[]> _chunks = new(4);
+    private readonly ArrayPoolList<byte[]> _chunks = [with(4)];
     private readonly Dictionary<int, byte[]> _oversizedWholes = [];
     private int _count;
     private int _previousCount;

@@ -133,7 +133,7 @@ internal static class McpArgumentBinder
         switch (value.ValueKind)
         {
             case JsonValueKind.Array:
-                List<JsonElement> items = new(value.GetArrayLength());
+                List<JsonElement> items = [with(value.GetArrayLength())];
                 foreach (JsonElement item in value.EnumerateArray())
                 {
                     items.Add(item.ValueKind is JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False ? AsString(item) : item);

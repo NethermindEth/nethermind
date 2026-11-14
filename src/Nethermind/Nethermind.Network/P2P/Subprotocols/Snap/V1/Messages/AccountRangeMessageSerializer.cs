@@ -70,7 +70,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 
                 RlpReader pwasReader = ctx.EnterSequence(out int pwasLength);
                 int count = pwasReader.CountItems(SnapMessageLimits.AccountRangeEntriesRlpLimit);
-                pathsWithAccounts = new ArrayPoolList<PathWithAccount>(count);
+                pathsWithAccounts = [with(count)];
                 for (int i = 0; i < count; i++)
                 {
                     RlpReader pwaReader = pwasReader.EnterSequence(out int length);

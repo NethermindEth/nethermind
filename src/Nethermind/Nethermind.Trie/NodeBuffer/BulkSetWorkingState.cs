@@ -75,8 +75,8 @@ internal sealed class BulkSetWorkingState : IDisposable
     private static readonly ConcurrentQueue<BulkSetWorkingState> Pool = new();
     private static readonly ChildRef[] EmptyChildren = new ChildRef[BranchChildCount];
 
-    private readonly ArrayPoolList<PendingNode> _nodes = new(InitialNodeCapacity);
-    private readonly NativeMemoryList<ChildRef> _children = new(InitialNodeCapacity * BranchChildCount);
+    private readonly ArrayPoolList<PendingNode> _nodes = [with(InitialNodeCapacity)];
+    private readonly NativeMemoryList<ChildRef> _children = [with(InitialNodeCapacity * BranchChildCount)];
     private readonly ArrayPoolList<SetOneFrame> _frames = new(MaxKeyNibbles, MaxKeyNibbles);
 
     private NativeMemoryList<int> _collected = NativeMemoryList<int>.Empty();

@@ -31,7 +31,7 @@ public class GetBlobsHandler(ITxPool txPool, IChainHeadSpecProvider chainHeadSpe
         bool allBlobsAvailable = true;
         Metrics.NumberOfRequestedBlobs += request.Length;
 
-        ArrayPoolList<BlobAndProofV1?> response = new(request.Length);
+        ArrayPoolList<BlobAndProofV1?> response = [with(request.Length)];
         try
         {
             foreach (byte[] requestedBlobVersionedHash in request)

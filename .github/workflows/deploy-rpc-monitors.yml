@@ -23,8 +23,6 @@ jobs:
 
       - name: Set up .NET
         uses: ./.github/actions/setup-dotnet
-        with:
-          dotnet-version: '10.0.x'
 
       - name: Publish
         run: dotnet publish tools/RpcTests/RpcTests.Monitor/RpcTests.Monitor.csproj -c Release -o publish

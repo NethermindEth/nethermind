@@ -107,7 +107,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v6
 
       - name: Create base worktree
         shell: bash
@@ -119,6 +119,11 @@ jobs:
           git worktree remove --force "${base_dir}" >/dev/null 2>&1 || true
           git worktree add --detach -f "${base_dir}" "${base_sha}"
           echo "BASE_WORKTREE=${base_dir}" >> "${GITHUB_ENV}"
+
+      - name: Set up .NET for base
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: ${{ env.BASE_WORKTREE }}/global.json
 
       - name: Use PR opcode benchmark harness for base (probe, fall back to base harness)
         shell: bash

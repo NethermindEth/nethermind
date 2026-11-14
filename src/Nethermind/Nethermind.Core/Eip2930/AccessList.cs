@@ -37,8 +37,8 @@ public class AccessList : IEnumerable<(Address Address, AccessList.StorageKeysEn
 
     public class Builder(int addressCapacity, int keyCapacity)
     {
-        private readonly List<(Address address, int count)> _addresses = new(addressCapacity);
-        private readonly List<UInt256> _keys = new(keyCapacity);
+        private readonly List<(Address address, int count)> _addresses = [with(addressCapacity)];
+        private readonly List<UInt256> _keys = [with(keyCapacity)];
 
         public Builder() : this(0, 0) { }
 

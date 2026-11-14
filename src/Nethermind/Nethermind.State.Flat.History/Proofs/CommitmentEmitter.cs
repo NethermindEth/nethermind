@@ -77,7 +77,7 @@ public sealed class CommitmentEmitter : IDisposable
         _recordComposedChildViews = recordComposedChildViews;
         _deepStorageSnapshots = deepStorageSnapshots;
         _release = release;
-        _exactBranches = new HashSet<NodePathKey>(Math.Min(exactBranchEntries, InitialExactBranchEntries));
+        _exactBranches = [with(Math.Min(exactBranchEntries, InitialExactBranchEntries))];
         _maxExactBranches = exactBranchEntries;
         _extensionTargets = new ClockCache<NodePathKey, bool>(extensionTargetEntries);
         _respectFloors = respectFloors;

@@ -169,7 +169,7 @@ internal sealed class FileNetworkStorage(string path, ILogManager logManager) : 
             return;
         }
 
-        Dictionary<string, PersistedNetworkNode> nodes = new(persistedNodeElements.Length);
+        Dictionary<string, PersistedNetworkNode> nodes = [with(persistedNodeElements.Length)];
         for (int i = 0; i < persistedNodeElements.Length; i++)
         {
             try

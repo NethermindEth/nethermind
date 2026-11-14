@@ -18,7 +18,7 @@ public sealed class StorageRangeResult
     {
         if (range.HasStorage)
         {
-            Storage = new Dictionary<Hash256, StorageRangeEntry>(range.Slots.Count);
+            Storage = [with(range.Slots.Count)];
             foreach ((ValueHash256 key, ValueHash256 value) in range.Slots)
             {
                 Storage.Add(new Hash256(key), new StorageRangeEntry(new Hash256(value)));

@@ -65,7 +65,7 @@ public class BlockAccessListsMessageSerializer : Eth66SerializerBase<BlockAccess
     {
         RlpReader ctx = reader.EnterSequence(out int itemLength);
         int entryCount = ctx.CountItems(RlpLimit);
-        ArrayPoolList<byte[]?> blockAccessLists = new(entryCount);
+        ArrayPoolList<byte[]?> blockAccessLists = [with(entryCount)];
 
         try
         {

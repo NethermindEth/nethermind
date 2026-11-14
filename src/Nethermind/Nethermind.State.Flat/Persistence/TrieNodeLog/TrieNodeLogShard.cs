@@ -182,7 +182,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         {
             Dictionary<ulong, TrieNodeLogWriteBatch.Pending> pending = Interlocked.Exchange(ref _pendingPool, null) ?? [];
             using Lock.Scope _ = _lock.EnterScope();
-            return new TrieNodeLogWriteBatch(this, version ?? ++_version, new ArrayPoolList<TrieNodeLogGeneration>(2), pending);
+            return new TrieNodeLogWriteBatch(this, version ?? ++_version, [with(2)], pending);
         }
         catch
         {
@@ -333,7 +333,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
 
     private ArrayPoolList<TrieNodeLogGeneration> PinAllNoLock()
     {
-        ArrayPoolList<TrieNodeLogGeneration> pinned = new(_generations.Count);
+        ArrayPoolList<TrieNodeLogGeneration> pinned = [with(_generations.Count)];
         foreach (TrieNodeLogGeneration generation in _generations)
         {
             if (generation.TryAcquire()) pinned.Add(generation);
