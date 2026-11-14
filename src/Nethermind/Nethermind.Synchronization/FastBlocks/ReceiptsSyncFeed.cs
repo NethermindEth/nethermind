@@ -258,7 +258,7 @@ namespace Nethermind.Synchronization.FastBlocks
         /// <remarks>A root that differs is checked again on the decoded receipts, which the root calculator may normalize.</remarks>
         private static bool IsReceiptsRoot(NetworkBlockReceipts receipts, int index, IReceiptSpec spec, Hash256? receiptsRoot)
         {
-            ReadOnlySpan<byte> encoded = receipts.GetEncoded(index);
+            ReadOnlySpan<byte> encoded = receipts.GetEncoded(index).Span;
             return receiptsRoot == Keccak.EmptyTreeHash
                 ? encoded.Length == 1
                 : ReceiptsRootCalculator.Instance.TryGetReceiptsRoot(encoded, receipts.WithBloom, spec) is { } root && root == receiptsRoot;

@@ -380,19 +380,50 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         _storage.Insert(decoded, CreateReceipts(), ensureCanonical: true, lastBlockNumber: 1);
         other.Insert(withEncodedTransactions, CreateReceipts(), ensureCanonical: true, lastBlockNumber: 1);
 
+        AssertSameContent(otherDb);
+        foreach (Transaction transaction in encodedTransactions) TxDecoder.TxObjectPool.Return(transaction);
+    }
+
+    [Test]
+    public void Network_receipts_store_the_same_receipts_and_index_as_decoded_ones()
+    {
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(
+            Build.A.Transaction.WithNonce(0).SignedAndResolved().TestObject,
+            Build.A.Transaction.WithNonce(1).WithType(TxType.EIP1559).SignedAndResolved().TestObject).TestObject;
+        TxReceipt[] receipts = CreateReceipts();
+        foreach (TxReceipt receipt in receipts) receipt.Bloom = new Bloom(receipt.Logs);
+        ReceiptMessageDecoder decoder = new();
+        byte[] message = RlpTestHelper.EncodeSequence([.. receipts.Select(receipt => decoder.Encode(receipt, RlpBehaviors.Eip658Receipts))]);
+        TestMemColumnsDb<ReceiptsColumns> otherDb = new();
+        otherDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, Array.Empty<byte>());
+        PersistentReceiptStorage other = new(otherDb, _specProvider, _receiptsRecovery, _blockTree, _blockStore, _receiptConfig, _decoder)
+        { MigratedBlockNumber = 0 };
+
+        // Sync stores receipts against blocks from the database, whose transactions have no senders.
+        RlpReader reader = new(new BlockDecoder().Encode(block));
+        Block stored = new BlockDecoder().Decode(ref reader)!;
+        _storage.Insert(stored, CreateReceipts(), ensureCanonical: true);
+        bool keptEncoded = other.TryInsertNetworkReceipts(stored, message, withBloom: true, ensureCanonical: true);
+
+        Assert.That(keptEncoded, Is.EqualTo(useCompactReceipts));
+        if (keptEncoded) AssertSameContent(otherDb);
+    }
+
+    private void AssertSameContent(TestMemColumnsDb<ReceiptsColumns> otherDb)
+    {
         foreach (ReceiptsColumns column in new[] { ReceiptsColumns.Default, ReceiptsColumns.Transactions })
         {
             Assert.That(otherDb.GetColumnDb(column).GetAll().ToDictionary(static kv => kv.Key.ToHexString(), static kv => kv.Value),
                 Is.EquivalentTo(_receiptsDb.GetColumnDb(column).GetAll().ToDictionary(static kv => kv.Key.ToHexString(), static kv => kv.Value)),
                 column.ToString());
         }
-
-        static TxReceipt[] CreateReceipts() =>
-        [
-            Build.A.Receipt.WithGasUsedTotal(21_000).WithLogs(Build.A.LogEntry.TestObject).TestObject,
-            Build.A.Receipt.WithGasUsedTotal(100_000).WithStatusCode(StatusCode.Failure).TestObject,
-        ];
     }
+
+    private static TxReceipt[] CreateReceipts() =>
+    [
+        Build.A.Receipt.WithGasUsedTotal(21_000).WithLogs(Build.A.LogEntry.TestObject).TestObject,
+        Build.A.Receipt.WithGasUsedTotal(100_000).WithStatusCode(StatusCode.Failure).TestObject,
+    ];
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Returns_null_for_missing_tx()

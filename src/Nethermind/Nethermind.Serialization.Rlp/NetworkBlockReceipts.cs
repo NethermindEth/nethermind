@@ -30,11 +30,14 @@ public sealed class NetworkBlockReceipts(IMemoryOwner<byte> memory, Range[] bloc
     /// <summary>Whether the receipts have blooms: the eth/63 to eth/68 form.</summary>
     public bool WithBloom { get; } = withBloom;
 
+    /// <summary>Decodes the encoded receipt sequence of one block, as reads of this list decode it.</summary>
+    public RefRlpReaderFunc<TxReceipt[]> BlockDecoder { get; } = decodeBlock;
+
     public int Count => _blocks.Length;
 
     /// <summary>The encoded receipt sequence of the block at <paramref name="index"/>, valid until disposal.</summary>
-    public ReadOnlySpan<byte> GetEncoded(int index) =>
-        (_memory ?? throw new ObjectDisposedException(nameof(NetworkBlockReceipts))).Memory.Span[_blocks[index]];
+    public ReadOnlyMemory<byte> GetEncoded(int index) =>
+        (_memory ?? throw new ObjectDisposedException(nameof(NetworkBlockReceipts))).Memory[_blocks[index]];
 
     /// <summary>Takes the receipts of each block of <paramref name="encoded"/> when every receipt is one <see cref="NetworkReceipt.TryRead"/> reads.</summary>
     /// <param name="encoded">The encoded sequence of the blocks' receipt sequences.</param>
@@ -66,6 +69,28 @@ public sealed class NetworkBlockReceipts(IMemoryOwner<byte> memory, Range[] bloc
         return new NetworkBlockReceipts(memory, ranges, withBloom, decodeBlock);
     }
 
+    /// <summary>Takes the encoded receipt sequences of blocks, each as <see cref="GetEncoded"/> gives one.</summary>
+    /// <param name="blocks">The blocks' encoded receipt sequences, each holding receipts <see cref="NetworkReceipt.TryRead"/> reads.</param>
+    /// <param name="withBloom">Whether the receipts have blooms: the eth/63 to eth/68 form.</param>
+    /// <param name="decodeBlock">Decodes the receipt sequence of one block.</param>
+    public static NetworkBlockReceipts FromBlocks(IReadOnlyList<byte[]> blocks, bool withBloom, RefRlpReaderFunc<TxReceipt[]> decodeBlock)
+    {
+        int length = 0;
+        foreach (byte[] block in blocks) length += block.Length;
+
+        IMemoryOwner<byte> memory = MemoryPool<byte>.Shared.Rent(length);
+        Range[] ranges = new Range[blocks.Count];
+        int offset = 0;
+        for (int i = 0; i < ranges.Length; i++)
+        {
+            blocks[i].CopyTo(memory.Memory.Span[offset..]);
+            ranges[i] = new Range(offset, offset + blocks[i].Length);
+            offset += blocks[i].Length;
+        }
+
+        return new NetworkBlockReceipts(memory, ranges, withBloom, decodeBlock);
+    }
+
     public TxReceipt[] this[int index] => AsSpan()[index];
 
     public ReadOnlySpan<TxReceipt[]> AsSpan() => _decoded ??= Decode();
@@ -75,8 +100,8 @@ public sealed class NetworkBlockReceipts(IMemoryOwner<byte> memory, Range[] bloc
         TxReceipt[][] decoded = new TxReceipt[_blocks.Length][];
         for (int i = 0; i < decoded.Length; i++)
         {
-            RlpReader reader = new(GetEncoded(i));
-            decoded[i] = decodeBlock(ref reader);
+            RlpReader reader = new(GetEncoded(i).Span);
+            decoded[i] = BlockDecoder(ref reader);
             reader.CheckEnd();
         }
 

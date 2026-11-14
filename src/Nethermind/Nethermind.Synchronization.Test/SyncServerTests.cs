@@ -125,14 +125,6 @@ public class SyncServerTests
     }
 
     [Test]
-    public void When_finding_by_hash_block_info_is_not_loaded()
-    {
-        Context ctx = new();
-        ctx.SyncServer.Find(TestItem.KeccakA);
-        ctx.BlockTree.Received().FindBlock(Arg.Any<Hash256>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.ExcludeTxHashes);
-    }
-
-    [Test]
     public void Finds_stored_block_rlp_by_its_block_number([Values] bool headerKnown)
     {
         Context ctx = new();

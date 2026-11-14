@@ -39,7 +39,7 @@ namespace Nethermind.Blockchain.Receipts
         /// <param name="withBloom">Whether the receipts have blooms: the eth/63 to eth/68 form.</param>
         /// <param name="ensureCanonical">Whether to index the block's transactions as canonical.</param>
         /// <exception cref="System.IO.InvalidDataException">The receipts and the transactions differ in number.</exception>
-        bool TryInsertNetworkReceipts(Block block, ReadOnlySpan<byte> blockReceipts, bool withBloom, bool ensureCanonical) => false;
+        bool TryInsertNetworkReceipts(Block block, ReadOnlyMemory<byte> blockReceipts, bool withBloom, bool ensureCanonical) => false;
 
         ulong MigratedBlockNumber { get; set; }
         bool HasBlock(ulong blockNumber, Hash256 hash);

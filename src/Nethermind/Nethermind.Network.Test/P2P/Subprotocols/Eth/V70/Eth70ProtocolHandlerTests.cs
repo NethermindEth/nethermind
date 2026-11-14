@@ -62,6 +62,7 @@ public class Eth70ProtocolHandlerTests
         Node node = new(TestItem.PublicKeyA, new IPEndPoint(IPAddress.Broadcast, 30303));
         _session.Node.Returns(node);
         _syncManager = Substitute.For<ISyncServer>();
+        _syncManager.FindBlockRlp(Arg.Any<Hash256>()).Returns((byte[]?)null);
         _transactionPool = Substitute.For<ITxPool>();
         _specProvider = Substitute.For<IChainHeadSpecProvider>();
         _gossipPolicy = Substitute.For<IGossipPolicy>();
@@ -525,7 +526,7 @@ public class Eth70ProtocolHandlerTests
             .WithTransactionsRoot(bodyKnown ? Keccak.EmptyTreeHash : TestItem.KeccakB)
             .TestObject;
         _syncManager.FindHeader(Keccak.Zero).Returns(header);
-        _syncManager.Find(Keccak.Zero).Returns(bodyKnown ? new Block(header, [], []) : new Block(header));
+        _syncManager.FindBlockRlp(Keccak.Zero).Returns(bodyKnown ? new BlockDecoder().Encode(new Block(header, [], [])) : null);
 
         StrongBox<int> requestCount = RespondWithSingleReceiptPages(prependCompleteBlock: false, lastBlockIncomplete: true);
 
@@ -740,7 +741,7 @@ public class Eth70ProtocolHandlerTests
         HandleIncomingStatusMessage();
         using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(new[] { blockHash }, CancellationToken.None);
 
-        Assert.That(result, Has.Count.EqualTo(1));
+        Assert.That(result, Is.InstanceOf<NetworkBlockReceipts>().And.Count.EqualTo(1), "whole blocks of receipts stay encoded");
         AssertReceiptsEqual(result[0], receipts);
     }
 
@@ -759,10 +760,7 @@ public class Eth70ProtocolHandlerTests
             .WithGasUsed(GasCostOf.Transaction)
             .WithTransactionsRoot(TestItem.KeccakB)
             .TestObject;
-        Block blockWithMissingBody = new(header);
-
         _syncManager.FindHeader(blockHash).Returns(header);
-        _syncManager.Find(blockHash).Returns(blockWithMissingBody);
         _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
         {
             GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
@@ -1384,7 +1382,7 @@ public class Eth70ProtocolHandlerTests
         Block block = new(header, transactions, []);
 
         _syncManager.FindHeader(blockHash).Returns(header);
-        _syncManager.Find(blockHash).Returns(block);
+        _syncManager.FindBlockRlp(blockHash).Returns(new BlockDecoder().Encode(block));
     }
 
     private sealed class CountingReadOnlyList<T>(IReadOnlyList<T> inner) : IReadOnlyList<T>

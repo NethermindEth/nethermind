@@ -20,8 +20,6 @@ namespace Nethermind.Synchronization
         void StopNotifyingPeersAboutNewBlocks();
         TxReceipt[]? GetReceipts(Hash256 blockHashes);
         MemoryManager<byte>? GetBlockAccessListRlp(Hash256 blockHash);
-        Block? Find(Hash256 hash);
-
         /// <summary>The stored block with <paramref name="hash"/>, encoded as the block store holds it.</summary>
         /// <returns>The encoded block, or <see langword="null"/> when its body is not stored.</returns>
         byte[]? FindBlockRlp(Hash256 hash);

@@ -16,8 +16,10 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -500,6 +502,41 @@ public class ReceiptsSyncFeedTests
         }
 
         batch.Response = response;
+    }
+
+    [Test]
+    public async Task Stores_receipts_kept_encoded_as_received([Values] bool storeTakesEncoded)
+    {
+        LoadScenario(_1024BodiesWithOneTxEach);
+        _receiptStorage.TryInsertNetworkReceipts(default!, default, default, default).ReturnsForAnyArgs(storeTakesEncoded);
+
+        using ReceiptsSyncBatch? batch = await _feed.PrepareRequest();
+        FillBatchResponses(batch!);
+        using (IOwnedReadOnlyList<TxReceipt[]?> decoded = batch!.Response!)
+        {
+            batch.Response = Encode(decoded)!;
+        }
+
+        int requested = batch.Infos.Length;
+
+        SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch);
+
+        Assert.That(handlingResult, Is.EqualTo(SyncResponseHandlingResult.OK));
+        _receiptStorage.ReceivedWithAnyArgs(requested).TryInsertNetworkReceipts(default!, default, default, default);
+        _receiptStorage.Received(storeTakesEncoded ? 0 : requested).Insert(Arg.Any<Block>(), Arg.Any<TxReceipt[]>(), true);
+    }
+
+    private static NetworkBlockReceipts Encode(IOwnedReadOnlyList<TxReceipt[]?> blocks)
+    {
+        ReceiptMessageDecoder decoder = new();
+        byte[][] encoded = new byte[blocks.Count][];
+        for (int i = 0; i < encoded.Length; i++)
+        {
+            encoded[i] = RlpTestHelper.EncodeSequence([.. blocks[i]!.Select(receipt => decoder.Encode(receipt, RlpBehaviors.Eip658Receipts))]);
+        }
+
+        return NetworkBlockReceipts.FromBlocks(encoded, withBloom: true,
+            (ref RlpReader reader) => reader.DecodeNonNullArray((ref RlpReader item) => decoder.Decode(ref item))!);
     }
 
     [Test]

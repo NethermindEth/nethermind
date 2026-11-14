@@ -1031,13 +1031,13 @@ namespace Nethermind.Blockchain.Receipts
         /// <inheritdoc/>
         /// <remarks>Stores the receipts as <see cref="Insert(Block, TxReceipt[], IReleaseSpec, bool, WriteFlags, ulong?)"/> stores them once decoded.</remarks>
         [SkipLocalsInit]
-        public bool TryInsertNetworkReceipts(Block block, ReadOnlySpan<byte> blockReceipts, bool withBloom, bool ensureCanonical)
+        public bool TryInsertNetworkReceipts(Block block, ReadOnlyMemory<byte> blockReceipts, bool withBloom, bool ensureCanonical)
         {
             if (!_storageDecoder.CanEncodeNetworkReceipts) return false;
 
             IReleaseSpec spec = _specProvider.GetSpec(block.Header);
             TxReceipt[]? insertedReceipts = null;
-            using (ArrayPoolSpan<byte> rlp = _storageDecoder.EncodeNetworkReceipts(blockReceipts, withBloom, spec.IsEip658Enabled, block.Transactions))
+            using (ArrayPoolSpan<byte> rlp = _storageDecoder.EncodeNetworkReceipts(blockReceipts.Span, withBloom, spec.IsEip658Enabled, block.Transactions))
             {
                 Span<byte> blockNumPrefixed = stackalloc byte[40];
                 GetBlockNumPrefixedKey(block.Number, block.Hash!, blockNumPrefixed);

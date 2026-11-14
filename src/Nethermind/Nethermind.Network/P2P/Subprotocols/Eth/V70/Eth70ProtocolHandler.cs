@@ -20,6 +20,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V69;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
@@ -254,7 +255,8 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
     /// <param name="token">Cancels the requests.</param>
     private async Task<(IOwnedReadOnlyList<TxReceipt[]>, long)> SendGetReceiptsWithPaging(IOwnedReadOnlyList<Hash256> blockHashes, ReadOnlyMemory<int> expectedReceiptCounts, CancellationToken token)
     {
-        ArrayPoolList<TxReceipt[]> aggregated = new(blockHashes.Count);
+        ArrayPoolList<AggregatedReceipts> aggregated = new(blockHashes.Count);
+        RefRlpReaderFunc<TxReceipt[]>? decodeBlock = null;
         ArrayPoolList<TxReceipt>? partialReceipts = null;
         ulong partialReceiptsGas = 0;
         ulong partialReceiptsLogsGas = 0;
@@ -265,7 +267,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 
         using ArrayPoolList<ulong> expectedGasUsed = new(blockHashes.Count);
         using ArrayPoolList<ulong?> blockGasLimits = new(blockHashes.Count);
-        using ArrayPoolList<Transaction[]?> blockTransactions = new(blockHashes.Count);
+        using ArrayPoolList<ulong[]?> transactionGasLimits = new(blockHashes.Count);
         using ArrayPoolList<RlpBehaviors> receiptRlpBehaviors = new(blockHashes.Count);
         using ArrayPoolList<bool> validateReceiptGasUpperBoundAgainstHeader = new(blockHashes.Count);
         using ArrayPoolList<bool> validateReceiptGasEqualToHeader = new(blockHashes.Count);
@@ -281,7 +283,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                 {
                     expectedGasUsed.Add(0);
                     blockGasLimits.Add(null);
-                    blockTransactions.Add(null);
+                    transactionGasLimits.Add(null);
                     receiptRlpBehaviors.Add(RlpBehaviors.None);
                     validateReceiptGasUpperBoundAgainstHeader.Add(false);
                     validateReceiptGasEqualToHeader.Add(false);
@@ -295,10 +297,9 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                 }
 
                 IReleaseSpec spec = _specProvider.GetSpec(header);
-                Block? block = SyncServer.Find(blockHash);
                 expectedGasUsed.Add(header.GasUsed);
                 blockGasLimits.Add(header.GasLimit);
-                blockTransactions.Add(GetTransactionsForReceiptValidation(block));
+                transactionGasLimits.Add(SyncServer.FindBlockRlp(blockHash) is { } blockRlp ? BlockBodyDecoder.ReadTransactionGasLimits(blockRlp) : null);
                 receiptRlpBehaviors.Add(spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None);
                 validateReceiptGasUpperBoundAgainstHeader.Add(!spec.IsEip8037Enabled);
                 validateReceiptGasEqualToHeader.Add(!spec.IsEip7778Enabled && !spec.IsEip8037Enabled);
@@ -314,7 +315,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         for (int i = 0; i < blockHashes.Count; i++)
         {
             int expected = i < expectedCounts.Length ? expectedCounts[i] : -1;
-            maxReceiptsPerBlock[i] = expected >= 0 ? expected : blockTransactions[i]?.Length ?? -1;
+            maxReceiptsPerBlock[i] = expected >= 0 ? expected : transactionGasLimits[i]?.Length ?? -1;
         }
 
         try
@@ -353,20 +354,44 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                         throw new SubprotocolException($"Received partial receipts response below minimum size ({size} bytes < {SoftOutgoingMessageSizeLimit / 4} bytes)");
                     }
 
-                    ReadOnlySpan<TxReceipt[]?> txReceipts = response.TxReceipts.AsSpan();
+                    IOwnedReadOnlyList<TxReceipt[]?> txReceipts = response.TxReceipts;
+                    NetworkBlockReceipts? network = txReceipts as NetworkBlockReceipts;
+                    decodeBlock ??= network?.BlockDecoder;
 
-                    for (int i = 0; i < txReceipts.Length; i++)
+                    for (int i = 0; i < txReceipts.Count; i++)
                     {
                         bool isFirst = i == 0;
-                        bool isLast = i == txReceipts.Length - 1;
-                        TxReceipt[] blockReceipts = txReceipts[i] ?? throw new SubprotocolException("Unexpected null receipt block payload");
+                        bool isLast = i == txReceipts.Count - 1;
                         ulong blockExpectedGasUsed = expectedGasUsed[blockIndex];
                         ulong? blockGasLimit = blockGasLimits[blockIndex];
-                        Transaction[]? transactions = blockTransactions[blockIndex];
+                        ulong[]? transactions = transactionGasLimits[blockIndex];
                         RlpBehaviors receiptBehaviors = receiptRlpBehaviors[blockIndex];
                         bool validateGasUpperBound = validateReceiptGasUpperBoundAgainstHeader[blockIndex];
                         bool validateGasEqual = validateReceiptGasEqualToHeader[blockIndex];
                         bool isEip8116Enabled = eip8116Blocks?[blockIndex] == true;
+
+                        // A whole block's receipts kept encoded are checked and kept as received; a block split across
+                        // responses is joined decoded.
+                        if (network is not null && !(isFirst && firstBlockReceiptIndex > 0) && !(response.LastBlockIncomplete && isLast))
+                        {
+                            ReadOnlySpan<byte> encoded = network.GetEncoded(i).Span;
+                            using (ArrayPoolList<ReceiptFacts> facts = ReadReceiptFacts(encoded, receiptBehaviors))
+                            {
+                                ValidateBlockReceipts(facts.AsSpan(), blockExpectedGasUsed, blockGasLimit, transactions, validateGasUpperBound,
+                                    validateGasEqual, firstBlockReceiptIndex, true, partialReceiptsGas, partialReceiptsLogsGas,
+                                    partialReceiptsContentSize, isEip8116Enabled);
+                            }
+
+                            aggregated.Add(new AggregatedReceipts(null, encoded.ToArray()));
+                            blockIndex++;
+                            firstBlockReceiptIndex = 0;
+                            partialReceiptsGas = 0;
+                            partialReceiptsLogsGas = 0;
+                            partialReceiptsContentSize = 0;
+                            continue;
+                        }
+
+                        TxReceipt[] blockReceipts = txReceipts[i] ?? throw new SubprotocolException("Unexpected null receipt block payload");
 
                         if (isFirst && firstBlockReceiptIndex > 0)
                         {
@@ -396,7 +421,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                             else
                             {
                                 TxReceipt[] completed = partialReceipts.AsSpan().ToArray();
-                                aggregated.Add(completed);
+                                aggregated.Add(new AggregatedReceipts(completed, null));
                                 partialReceipts.Dispose();
                                 partialReceipts = null;
                                 blockIndex++;
@@ -420,7 +445,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                             // so stop at the complete prefix; callers treat the short tail as pending.
                             if (blockGasLimit is null)
                             {
-                                return (aggregated, (long)totalResponseSize);
+                                return (ToReceipts(aggregated, decodeBlock), (long)totalResponseSize);
                             }
 
                             ReceiptsValidationResult validationResult = ValidateBlockReceipts(blockReceipts, blockExpectedGasUsed,
@@ -440,7 +465,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                         ValidateBlockReceipts(blockReceipts, blockExpectedGasUsed, blockGasLimit, transactions,
                             receiptBehaviors, validateGasUpperBound, validateGasEqual, firstBlockReceiptIndex, true, partialReceiptsGas,
                             partialReceiptsLogsGas, partialReceiptsContentSize, isEip8116Enabled);
-                        aggregated.Add(blockReceipts);
+                        aggregated.Add(new AggregatedReceipts(blockReceipts, null));
                         blockIndex++;
                         firstBlockReceiptIndex = 0;
                         partialReceiptsGas = 0;
@@ -455,7 +480,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                 }
             }
 
-            return (aggregated, (long)totalResponseSize);
+            return (ToReceipts(aggregated, decodeBlock), (long)totalResponseSize);
         }
         catch
         {
@@ -463,6 +488,60 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
             partialReceipts?.Dispose();
             throw;
         }
+    }
+
+    /// <summary>A block's receipts as joined from the responses: decoded, or kept encoded as received.</summary>
+    private readonly record struct AggregatedReceipts(TxReceipt[]? Decoded, byte[]? Encoded);
+
+    /// <summary>What the receipt checks read from one receipt.</summary>
+    /// <param name="Size">The receipt's length as <see cref="ReceiptMessageDecoder"/> encodes it.</param>
+    private readonly record struct ReceiptFacts(ulong Size, ulong GasUsedTotal, ulong LogsGas);
+
+    /// <summary>Gives the joined receipts, kept encoded when every block is, and takes ownership of <paramref name="aggregated"/>.</summary>
+    private static IOwnedReadOnlyList<TxReceipt[]> ToReceipts(ArrayPoolList<AggregatedReceipts> aggregated, RefRlpReaderFunc<TxReceipt[]>? decodeBlock)
+    {
+        using ArrayPoolList<AggregatedReceipts> _ = aggregated;
+        ReadOnlySpan<AggregatedReceipts> blocks = aggregated.AsSpan();
+        bool allEncoded = blocks.Length > 0;
+        foreach (AggregatedReceipts block in blocks) allEncoded &= block.Encoded is not null;
+
+        if (allEncoded)
+        {
+            byte[][] encoded = new byte[blocks.Length][];
+            for (int i = 0; i < blocks.Length; i++) encoded[i] = blocks[i].Encoded!;
+            return NetworkBlockReceipts.FromBlocks(encoded, withBloom: false, decodeBlock!);
+        }
+
+        ArrayPoolList<TxReceipt[]> receipts = new(blocks.Length);
+        foreach (AggregatedReceipts block in blocks)
+        {
+            if (block.Decoded is not null)
+            {
+                receipts.Add(block.Decoded);
+                continue;
+            }
+
+            RlpReader reader = new(block.Encoded);
+            receipts.Add(decodeBlock!(ref reader));
+            reader.CheckEnd();
+        }
+
+        return receipts;
+    }
+
+    private static ArrayPoolList<ReceiptFacts> ReadReceiptFacts(ReadOnlySpan<byte> blockReceipts, RlpBehaviors receiptBehaviors)
+    {
+        bool eip658 = (receiptBehaviors & RlpBehaviors.Eip658Receipts) != 0;
+        RlpReader receipts = new RlpReader(blockReceipts).EnterSequence(out _);
+        ArrayPoolList<ReceiptFacts> facts = new(receipts.CountItems());
+        while (receipts.HasNext)
+        {
+            if (!NetworkReceipt.TryRead(ref receipts, withBloom: false, out NetworkReceipt receipt))
+                throw new SubprotocolException("Unexpected receipt shape in encoded receipts");
+            facts.Add(new ReceiptFacts((ulong)receipt.GetMessageLength(eip658), receipt.GasUsedTotal, receipt.LogsGas));
+        }
+
+        return facts;
     }
 
     private static TxReceipt[] CopyReceipts(TxReceipt[] receipts, int startIndex, int count)
@@ -552,7 +631,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         TxReceipt[] blockReceipts,
         ulong expectedGasUsed,
         ulong? blockGasLimit,
-        Transaction[]? transactions,
+        ulong[]? transactionGasLimits,
         RlpBehaviors receiptBehaviors,
         bool validateReceiptGasUpperBoundAgainstHeader,
         bool validateReceiptGasEqualToHeader,
@@ -563,10 +642,35 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         ulong previousReceiptsContentSize,
         bool isEip8116Enabled)
     {
-        if (blockReceipts is { Length: 0 })
+        using ArrayPoolList<ReceiptFacts> facts = new(blockReceipts.Length);
+        foreach (TxReceipt receipt in blockReceipts)
+        {
+            facts.Add(new ReceiptFacts(GetReceiptSize(receipt, receiptBehaviors), receipt.GasUsedTotal, AddReceiptLogsGas(0, receipt)));
+        }
+
+        return ValidateBlockReceipts(facts.AsSpan(), expectedGasUsed, blockGasLimit, transactionGasLimits, validateReceiptGasUpperBoundAgainstHeader,
+            validateReceiptGasEqualToHeader, firstReceiptIndex, isCompleteSegment, previousGasUsed, previousLogsGas, previousReceiptsContentSize,
+            isEip8116Enabled);
+    }
+
+    private static ReceiptsValidationResult ValidateBlockReceipts(
+        ReadOnlySpan<ReceiptFacts> blockReceipts,
+        ulong expectedGasUsed,
+        ulong? blockGasLimit,
+        ulong[]? transactionGasLimits,
+        bool validateReceiptGasUpperBoundAgainstHeader,
+        bool validateReceiptGasEqualToHeader,
+        int firstReceiptIndex,
+        bool isCompleteSegment,
+        ulong previousGasUsed,
+        ulong previousLogsGas,
+        ulong previousReceiptsContentSize,
+        bool isEip8116Enabled)
+    {
+        if (blockReceipts.IsEmpty)
         {
             ValidateEmptyReceiptsSegment(firstReceiptIndex, isCompleteSegment);
-            ValidateReceiptCount(firstReceiptIndex, blockReceipts.Length, transactions, isCompleteSegment);
+            ValidateReceiptCount(firstReceiptIndex, blockReceipts.Length, transactionGasLimits, isCompleteSegment);
             ValidateTotalReceiptsSizeAgainstBlockGasLimit(previousReceiptsContentSize, blockGasLimit);
             ValidateSegmentGasAgainstHeader(previousGasUsed, previousLogsGas, expectedGasUsed, isCompleteSegment,
                 validateReceiptGasUpperBoundAgainstHeader, validateReceiptGasEqualToHeader);
@@ -580,16 +684,15 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         for (int i = 0; i < blockReceipts.Length; i++)
         {
             int receiptIndex = checked(firstReceiptIndex + i);
-            TxReceipt receipt = blockReceipts[i];
-            ulong receiptSize = GetReceiptSize(receipt, receiptBehaviors);
-            ValidateReceiptSizeAgainstTransactionGasLimit(receiptSize, transactions, receiptIndex);
-            receiptsContentSize = checked(receiptsContentSize + receiptSize);
+            ReceiptFacts receipt = blockReceipts[i];
+            ValidateReceiptSizeAgainstTransactionGasLimit(receipt.Size, transactionGasLimits, receiptIndex);
+            receiptsContentSize = checked(receiptsContentSize + receipt.Size);
             ValidateTotalReceiptsSizeAgainstBlockGasLimit(receiptsContentSize, blockGasLimit);
-            previousGasUsed = ValidateReceiptGas(receipt, previousGasUsed, isEip8116Enabled);
-            logsGas = AddReceiptLogsGas(logsGas, receipt);
+            previousGasUsed = ValidateReceiptGas(receipt.GasUsedTotal, previousGasUsed, isEip8116Enabled);
+            logsGas = checked(logsGas + receipt.LogsGas);
         }
 
-        ValidateReceiptCount(firstReceiptIndex, blockReceipts.Length, transactions, isCompleteSegment);
+        ValidateReceiptCount(firstReceiptIndex, blockReceipts.Length, transactionGasLimits, isCompleteSegment);
         ValidateSegmentGasAgainstHeader(previousGasUsed, logsGas, expectedGasUsed, isCompleteSegment,
             validateReceiptGasUpperBoundAgainstHeader, validateReceiptGasEqualToHeader);
 
@@ -610,29 +713,26 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         return Math.Max(previousGasUsed, minimalPreviousGasUsed);
     }
 
-    private static Transaction[]? GetTransactionsForReceiptValidation(Block? block) =>
-        block is { IsBodyMissing: false } ? block.Transactions : null;
-
     private static ulong GetReceiptSize(TxReceipt receipt, RlpBehaviors behaviors) =>
         (ulong)ReceiptMessageDecoder.GetLength(receipt, behaviors);
 
-    /// <returns>The block's gas used up to and including <paramref name="receipt"/>.</returns>
+    /// <returns>The block's gas used up to and including the receipt.</returns>
     /// <remarks>An EIP-8116 receipt holds its transaction's own gas used, so the running total is summed here.</remarks>
-    private static ulong ValidateReceiptGas(TxReceipt receipt, ulong previousGasUsed, bool isEip8116Enabled)
+    private static ulong ValidateReceiptGas(ulong receiptGasUsedTotal, ulong previousGasUsed, bool isEip8116Enabled)
     {
-        ulong receiptGasUsed = isEip8116Enabled ? receipt.GasUsedTotal : GetReceiptGasUsed(receipt, previousGasUsed);
+        ulong receiptGasUsed = isEip8116Enabled ? receiptGasUsedTotal : GetReceiptGasUsed(receiptGasUsedTotal, previousGasUsed);
         ValidateReceiptGasCoversIntrinsicCost(receiptGasUsed);
-        return isEip8116Enabled ? checked(previousGasUsed + receiptGasUsed) : receipt.GasUsedTotal;
+        return isEip8116Enabled ? checked(previousGasUsed + receiptGasUsed) : receiptGasUsedTotal;
     }
 
-    private static ulong GetReceiptGasUsed(TxReceipt receipt, ulong previousGasUsed)
+    private static ulong GetReceiptGasUsed(ulong receiptGasUsedTotal, ulong previousGasUsed)
     {
-        if (receipt.GasUsedTotal < previousGasUsed)
+        if (receiptGasUsedTotal < previousGasUsed)
         {
             throw new SubprotocolException("Cumulative gas decreased within block receipts");
         }
 
-        return receipt.GasUsedTotal - previousGasUsed;
+        return receiptGasUsedTotal - previousGasUsed;
     }
 
     private static void ValidateReceiptGasCoversIntrinsicCost(ulong receiptGasUsed)
@@ -663,21 +763,21 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
     private static void ValidateReceiptCount(
         int firstReceiptIndex,
         int deliveredReceiptCount,
-        Transaction[]? transactions,
+        ulong[]? transactionGasLimits,
         bool isCompleteSegment)
     {
-        if (transactions is null)
+        if (transactionGasLimits is null)
         {
             return;
         }
 
         int deliveredReceiptsEnd = checked(firstReceiptIndex + deliveredReceiptCount);
-        if (deliveredReceiptsEnd > transactions.Length)
+        if (deliveredReceiptsEnd > transactionGasLimits.Length)
         {
             throw new SubprotocolException("Receipt count exceeds block transactions count");
         }
 
-        if (isCompleteSegment && deliveredReceiptsEnd != transactions.Length)
+        if (isCompleteSegment && deliveredReceiptsEnd != transactionGasLimits.Length)
         {
             throw new SubprotocolException("Receipt count mismatch with block transactions count");
         }
@@ -685,20 +785,20 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 
     private static void ValidateReceiptSizeAgainstTransactionGasLimit(
         ulong receiptSize,
-        Transaction[]? transactions,
+        ulong[]? transactionGasLimits,
         int receiptIndex)
     {
-        if (transactions is null)
+        if (transactionGasLimits is null)
         {
             return;
         }
 
-        if (receiptIndex >= transactions.Length)
+        if (receiptIndex >= transactionGasLimits.Length)
         {
             throw new SubprotocolException("Receipt count exceeds block transactions count");
         }
 
-        ulong maxReceiptSize = GetReceiptSizeLimit(transactions[receiptIndex].GasLimit);
+        ulong maxReceiptSize = GetReceiptSizeLimit(transactionGasLimits[receiptIndex]);
         if (receiptSize > maxReceiptSize)
         {
             throw new SubprotocolException("Receipt size exceeds transaction gas limit allowance");
