@@ -21,8 +21,12 @@ internal sealed class PersistenceTrieStoreAdapter(
 {
     public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => new(NodeType.Unknown, hash);
 
-    public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        reader.TryLoadStateRlp(path, flags);
+    public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+    {
+        byte[]? rlp = null;
+        reader.TryLoadStateRlp(path, flags, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref rlp));
+        return rlp;
+    }
 
     public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
         new StateCommitter(writeBatch, reader, enableDoubleWriteCheck);
@@ -31,7 +35,7 @@ internal sealed class PersistenceTrieStoreAdapter(
     {
         public TrieNode CommitNode(ref TreePath path, TrieNode node)
         {
-            if (enableDoubleWriteCheck && reader.TryLoadStateRlp(path, ReadFlags.None) is not null)
+            if (enableDoubleWriteCheck && reader.TryLoadStateRlp(path, ReadFlags.None, static (_, _) => { }, 0))
             {
                 throw new InvalidOperationException($"Double state rlp write. {path}");
             }
@@ -55,8 +59,12 @@ internal sealed class PersistenceStorageTrieStoreAdapter(
 {
     public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => new(NodeType.Unknown, hash);
 
-    public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        reader.TryLoadStorageRlp(addressHash, path, flags);
+    public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+    {
+        byte[]? rlp = null;
+        reader.TryLoadStorageRlp(addressHash, path, flags, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref rlp));
+        return rlp;
+    }
 
     public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
         new StorageCommitter(writeBatch, reader, addressHash, enableDoubleWriteCheck);
@@ -65,7 +73,7 @@ internal sealed class PersistenceStorageTrieStoreAdapter(
     {
         public TrieNode CommitNode(ref TreePath path, TrieNode node)
         {
-            if (enableDoubleWriteCheck && reader.TryLoadStorageRlp(address, path, ReadFlags.None) is not null)
+            if (enableDoubleWriteCheck && reader.TryLoadStorageRlp(address, path, ReadFlags.None, static (_, _) => { }, 0))
             {
                 throw new InvalidOperationException($"Double storage rlp write. {address} {path}");
             }

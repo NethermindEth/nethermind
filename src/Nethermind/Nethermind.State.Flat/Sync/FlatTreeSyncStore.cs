@@ -30,15 +30,13 @@ public class FlatTreeSyncStore(
     public bool NodeExists(Hash256? address, in TreePath path, in ValueHash256 hash)
     {
         using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
-        byte[]? data = address is null
-            ? reader.TryLoadStateRlp(path, ReadFlags.None)
-            : reader.TryLoadStorageRlp(address, path, ReadFlags.None);
-
-        if (data is null) return false;
 
         // Rehash and verify
-        ValueHash256 computedHash = ValueKeccak.Compute(data);
-        return computedHash == hash;
+        ValueHash256 computedHash = default;
+        bool found = address is null
+            ? reader.TryLoadStateRlp(path, ReadFlags.None, static (data, result) => result[0] = ValueKeccak.Compute(data), new Span<ValueHash256>(ref computedHash))
+            : reader.TryLoadStorageRlp(address, path, ReadFlags.None, static (data, result) => result[0] = ValueKeccak.Compute(data), new Span<ValueHash256>(ref computedHash));
+        return found && computedHash == hash;
     }
 
     public void SaveNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> data)
@@ -71,9 +69,10 @@ public class FlatTreeSyncStore(
 
     private static TrieNode? ReadExistingNode(IPersistence.IPersistenceReader reader, Hash256? address, TreePath path)
     {
-        byte[]? existingData = address is null
-            ? reader.TryLoadStateRlp(path, ReadFlags.None)
-            : reader.TryLoadStorageRlp(address, path, ReadFlags.None);
+        byte[]? existingData = null;
+        _ = address is null
+            ? reader.TryLoadStateRlp(path, ReadFlags.None, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref existingData))
+            : reader.TryLoadStorageRlp(address, path, ReadFlags.None, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref existingData));
         if (existingData is null) return null;
 
         TrieNode existingNode = new(NodeType.Unknown, existingData);
@@ -310,7 +309,11 @@ public class FlatTreeSyncStore(
         public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
             new(NodeType.Unknown, hash);
 
-        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-            reader.TryLoadStateRlp(path, flags);
+        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+        {
+            byte[]? rlp = null;
+            reader.TryLoadStateRlp(path, flags, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref rlp));
+            return rlp;
+        }
     }
 }

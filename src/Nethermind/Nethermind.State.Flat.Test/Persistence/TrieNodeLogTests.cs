@@ -84,17 +84,7 @@ public class TrieNodeLogTests
     private byte[]? ReadTop()
     {
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
-        return reader.TryLoadStateRlp(TopPath, ReadFlags.None);
-    }
-
-    /// <summary>Loads the state node at <paramref name="path"/>, through the span-action overload when <paramref name="spanAction"/> is set.</summary>
-    private static byte[]? LoadState(IPersistence.IPersistenceReader reader, in TreePath path, bool spanAction)
-    {
-        if (!spanAction) return reader.TryLoadStateRlp(path, ReadFlags.None);
-
-        byte[]? rlp = null;
-        reader.TryLoadStateRlp(path, ReadFlags.None, static (span, result) => result[0] = span.ToArray(), new Span<byte[]?>(ref rlp));
-        return rlp;
+        return reader.LoadStateRlp(TopPath, ReadFlags.None);
     }
 
     /// <summary>Reads the trie columns directly, bypassing the log.</summary>
@@ -218,7 +208,7 @@ public class TrieNodeLogTests
             static (_, exception) => throw exception);
 
     [Test]
-    public void Readers_see_the_version_of_their_snapshot_across_overwrites_and_merges([Values] bool spanAction)
+    public void Readers_see_the_version_of_their_snapshot_across_overwrites_and_merges()
     {
         using IPersistence.IPersistenceReader before = _persistence.CreateReader();
         WriteTop(0, 1, Rlp1);
@@ -231,11 +221,11 @@ public class TrieNodeLogTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(LoadState(before, TopPath, spanAction), Is.Null);
-            Assert.That(LoadState(atV1, TopPath, spanAction), Is.EqualTo(Rlp1));
-            Assert.That(LoadState(atV2, TopPath, spanAction), Is.EqualTo(Rlp2));
-            Assert.That(LoadState(afterMerge, TopPath, spanAction), Is.EqualTo(Rlp2));
-            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp2));
+            Assert.That(before.LoadStateRlp(TopPath, ReadFlags.None), Is.Null);
+            Assert.That(atV1.LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
+            Assert.That(atV2.LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp2));
+            Assert.That(afterMerge.LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp2));
+            Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp2));
             Assert.That(LogFiles(), Is.Not.Empty, "the merged generation stays on disk while a reader pins it");
         }
 
@@ -245,7 +235,7 @@ public class TrieNodeLogTests
     }
 
     [Test]
-    public void Merge_writes_only_the_latest_record_per_key_and_applies_tombstones([Values] bool spanAction)
+    public void Merge_writes_only_the_latest_record_per_key_and_applies_tombstones()
     {
         // The node must be in RocksDB for the range delete's scan to find it: sync batches bypass the log.
         using (IPersistence.IWriteBatch sync = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
@@ -264,9 +254,9 @@ public class TrieNodeLogTests
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(LoadState(reader, TopPath, spanAction), Is.EqualTo(Rlp3));
-            Assert.That(LoadState(reader, MediumPath, spanAction), Is.Null, "tombstone hides the RocksDB value");
-            Assert.That(Raw().TryLoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp1));
+            Assert.That(reader.LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp3));
+            Assert.That(reader.LoadStateRlp(MediumPath, ReadFlags.None), Is.Null, "tombstone hides the RocksDB value");
+            Assert.That(Raw().LoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp1));
         }
 
         long flushedBefore = FlushedStateBytes();
@@ -274,14 +264,14 @@ public class TrieNodeLogTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp3));
-            Assert.That(Raw().TryLoadStateRlp(MediumPath, ReadFlags.None), Is.Null);
+            Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp3));
+            Assert.That(Raw().LoadStateRlp(MediumPath, ReadFlags.None), Is.Null);
             Assert.That(FlushedStateBytes() - flushedBefore, Is.EqualTo(3 + Rlp3.Length + 8), "one 3-byte top key with its latest value and one 8-byte tombstone key");
         }
     }
 
     [Test]
-    public void A_null_span_deletes_and_an_empty_value_is_stored([Values] bool spanAction)
+    public void A_null_span_deletes_and_an_empty_value_is_stored()
     {
         WriteTop(0, 1, Rlp1);
         using (IPersistence.IWriteBatch batch = Batch(1, 2))
@@ -293,16 +283,16 @@ public class TrieNodeLogTests
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(LoadState(reader, TopPath, spanAction), Is.Null);
-            Assert.That(LoadState(reader, MediumPath, spanAction), Is.Empty);
+            Assert.That(reader.LoadStateRlp(TopPath, ReadFlags.None), Is.Null);
+            Assert.That(reader.LoadStateRlp(MediumPath, ReadFlags.None), Is.Empty);
         }
 
         _log.Drain();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.Null);
-            Assert.That(Raw().TryLoadStateRlp(MediumPath, ReadFlags.None), Is.Empty);
+            Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.Null);
+            Assert.That(Raw().LoadStateRlp(MediumPath, ReadFlags.None), Is.Empty);
         }
     }
 
@@ -322,22 +312,22 @@ public class TrieNodeLogTests
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(reader.TryLoadStateRlp(longPath, ReadFlags.None), Is.EqualTo(Rlp1));
-            Assert.That(Raw().TryLoadStateRlp(longPath, ReadFlags.None), Is.EqualTo(Rlp1), "fallback nodes bypass the log");
-            Assert.That(reader.TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
-            Assert.That(reader.TryLoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp2));
-            Assert.That(reader.TryLoadStorageRlp(address, StoragePath, ReadFlags.None), Is.EqualTo(Rlp3));
-            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.Null);
-            Assert.That(Raw().TryLoadStateRlp(MediumPath, ReadFlags.None), Is.Null);
-            Assert.That(Raw().TryLoadStorageRlp(address, StoragePath, ReadFlags.None), Is.Null);
+            Assert.That(reader.LoadStateRlp(longPath, ReadFlags.None), Is.EqualTo(Rlp1));
+            Assert.That(Raw().LoadStateRlp(longPath, ReadFlags.None), Is.EqualTo(Rlp1), "fallback nodes bypass the log");
+            Assert.That(reader.LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
+            Assert.That(reader.LoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp2));
+            Assert.That(reader.LoadStorageRlp(address, StoragePath, ReadFlags.None), Is.EqualTo(Rlp3));
+            Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.Null);
+            Assert.That(Raw().LoadStateRlp(MediumPath, ReadFlags.None), Is.Null);
+            Assert.That(Raw().LoadStorageRlp(address, StoragePath, ReadFlags.None), Is.Null);
         }
 
         _log.Drain();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
-            Assert.That(Raw().TryLoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp2));
-            Assert.That(Raw().TryLoadStorageRlp(address, StoragePath, ReadFlags.None), Is.EqualTo(Rlp3));
+            Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
+            Assert.That(Raw().LoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp2));
+            Assert.That(Raw().LoadStorageRlp(address, StoragePath, ReadFlags.None), Is.EqualTo(Rlp3));
         }
     }
 
@@ -345,7 +335,7 @@ public class TrieNodeLogTests
     public void Sync_batch_drains_the_log_and_writes_directly()
     {
         WriteTop(0, 1, Rlp1);
-        Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.Null);
+        Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.Null);
 
         using (IPersistence.IWriteBatch sync = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
         {
@@ -354,8 +344,8 @@ public class TrieNodeLogTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
-            Assert.That(Raw().TryLoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp2));
+            Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
+            Assert.That(Raw().LoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp2));
             Assert.That(ReadTop(), Is.EqualTo(Rlp1));
         }
         Assert.That(LogFiles, Is.Empty.After(5000, 20));
@@ -388,8 +378,8 @@ public class TrieNodeLogTests
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(reader.TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(large));
-            Assert.That(reader.TryLoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp2));
+            Assert.That(reader.LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(large));
+            Assert.That(reader.LoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp2));
         }
     }
 
@@ -443,19 +433,19 @@ public class TrieNodeLogTests
         WriteTop(1, 2, Value(2)); // seals generation 1
         WriteTop(2, 3, Value(3)); // generation 2
 
-        Assert.That(Raw().TryLoadStateRlp(coldPath, ReadFlags.None), Is.Null, "a lag of one keeps generation 1 unmerged until generation 2 is sealed");
+        Assert.That(Raw().LoadStateRlp(coldPath, ReadFlags.None), Is.Null, "a lag of one keeps generation 1 unmerged until generation 2 is sealed");
 
         WriteTop(3, 4, Value(4)); // seals generation 2, so generation 1 is merged
-        Assert.That(() => Raw().TryLoadStateRlp(coldPath, ReadFlags.None), Is.EqualTo(Rlp1).After(5000, 20));
+        Assert.That(() => Raw().LoadStateRlp(coldPath, ReadFlags.None), Is.EqualTo(Rlp1).After(5000, 20));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.Null, "rewritten in generation 2, so not merged from generation 1");
+            Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.Null, "rewritten in generation 2, so not merged from generation 1");
             Assert.That(ReadTop(), Is.EqualTo(Value(4)));
         }
         Assert.That(LogFiles, Has.Length.EqualTo(1).After(5000, 20), "generation 1 deleted, generation 2 sealed and waiting for a newer one");
 
         _log.Drain();
-        Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Value(4)));
+        Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Value(4)));
     }
 
     private async Task ReopenWithSecondLevel(int secondLevelMergeLag)
@@ -482,7 +472,7 @@ public class TrieNodeLogTests
     private byte[]? ReadNode(ulong block)
     {
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
-        return reader.TryLoadStateRlp(DistinctPath(block), ReadFlags.None);
+        return reader.LoadStateRlp(DistinctPath(block), ReadFlags.None);
     }
 
     /// <summary>
@@ -523,8 +513,8 @@ public class TrieNodeLogTests
             Assert.That(ShardFiles("state-0-l2"), Is.Not.Empty);
             Assert.That(SecondLevelStoredStateBytes() - secondLevelStoredBefore, Is.EqualTo(TrieNodeLogRecord.HeaderLength * 3 + 3 + 3000 + 3 + Rlp1.Length),
                 "the latest top record and the cold record, each with a 3-byte key, plus a commit record");
-            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.Null);
-            Assert.That(Raw().TryLoadStateRlp(coldPath, ReadFlags.None), Is.Null);
+            Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.Null);
+            Assert.That(Raw().LoadStateRlp(coldPath, ReadFlags.None), Is.Null);
             Assert.That(ReadTop(), Is.EqualTo(Value(2)));
         }
 
@@ -535,14 +525,14 @@ public class TrieNodeLogTests
             batch.SetStateTrieNode(TopPath, Value(3));
         }
         WriteTop(3, 4, Value(4)); // seals first-level generation 2, whose copy fills the second level's generation
-        Assert.That(() => Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Value(4)).After(5000, 20));
+        Assert.That(() => Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Value(4)).After(5000, 20));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Raw().TryLoadStateRlp(coldPath, ReadFlags.None), Is.EqualTo(Rlp1));
-            Assert.That(Raw().TryLoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp2));
-            Assert.That(beforeMedium.TryLoadStateRlp(MediumPath, ReadFlags.None), Is.Null, "the second-level copy is newer than the reader's version");
-            Assert.That(beforeMedium.TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Value(2)));
-            Assert.That(beforeMedium.TryLoadStateRlp(coldPath, ReadFlags.None), Is.EqualTo(Rlp1));
+            Assert.That(Raw().LoadStateRlp(coldPath, ReadFlags.None), Is.EqualTo(Rlp1));
+            Assert.That(Raw().LoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp2));
+            Assert.That(beforeMedium.LoadStateRlp(MediumPath, ReadFlags.None), Is.Null, "the second-level copy is newer than the reader's version");
+            Assert.That(beforeMedium.LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Value(2)));
+            Assert.That(beforeMedium.LoadStateRlp(coldPath, ReadFlags.None), Is.EqualTo(Rlp1));
         }
 
         beforeMedium.Dispose();
@@ -555,7 +545,7 @@ public class TrieNodeLogTests
         _log.Drain();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Value(6)));
+            Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Value(6)));
             Assert.That(LogFiles, Is.Empty.After(5000, 20));
         }
     }
@@ -577,13 +567,13 @@ public class TrieNodeLogTests
         }
         for (ulong block = 1; block < 4; block++) WriteTop(block, block + 1, Value((byte)(block + 1)));
         Assert.That(() => ShardFiles("state-0"), Is.Empty.After(5000, 20), "a first-level lag of zero merges every sealed generation");
-        Assert.That(Raw().TryLoadStateRlp(coldPath, ReadFlags.None), Is.Null, "a second-level lag of one keeps second-level generation 1 until generation 2 is sealed");
+        Assert.That(Raw().LoadStateRlp(coldPath, ReadFlags.None), Is.Null, "a second-level lag of one keeps second-level generation 1 until generation 2 is sealed");
 
         for (ulong block = 4; block < 8; block++) WriteTop(block, block + 1, Value((byte)(block + 1)));
-        Assert.That(() => Raw().TryLoadStateRlp(coldPath, ReadFlags.None), Is.EqualTo(Rlp1).After(5000, 20));
+        Assert.That(() => Raw().LoadStateRlp(coldPath, ReadFlags.None), Is.EqualTo(Rlp1).After(5000, 20));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.Null, "rewritten in second-level generation 2, so not merged from generation 1");
+            Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.Null, "rewritten in second-level generation 2, so not merged from generation 1");
             Assert.That(ReadTop(), Is.EqualTo(Value(8)));
         }
     }
@@ -617,8 +607,8 @@ public class TrieNodeLogTests
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(reader.TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(large));
-            Assert.That(reader.TryLoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp1));
+            Assert.That(reader.LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(large));
+            Assert.That(reader.LoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp1));
         }
 
         WriteTop(3, 4, Rlp3);
@@ -628,8 +618,8 @@ public class TrieNodeLogTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(LogFiles(), Is.Empty);
-            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp3), "the first level's newer record is merged after the second level's");
-            Assert.That(Raw().TryLoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp1));
+            Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp3), "the first level's newer record is merged after the second level's");
+            Assert.That(Raw().LoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp1));
         }
     }
 
@@ -649,15 +639,15 @@ public class TrieNodeLogTests
             Assert.That(Directory.GetFiles(Path.Combine(_directory.Path, "state-0")), Is.Not.Empty);
             Assert.That(Directory.GetFiles(Path.Combine(_directory.Path, "state-1")), Is.Not.Empty);
             Assert.That(Directory.GetFiles(Path.Combine(_directory.Path, "storage-0")), Is.Empty, "storage nodes have their own partition");
-            Assert.That(reader.TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
-            Assert.That(reader.TryLoadStateRlp(highPath, ReadFlags.None), Is.EqualTo(Rlp2));
+            Assert.That(reader.LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
+            Assert.That(reader.LoadStateRlp(highPath, ReadFlags.None), Is.EqualTo(Rlp2));
         }
 
         _log.Drain();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
-            Assert.That(Raw().TryLoadStateRlp(highPath, ReadFlags.None), Is.EqualTo(Rlp2));
+            Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
+            Assert.That(Raw().LoadStateRlp(highPath, ReadFlags.None), Is.EqualTo(Rlp2));
         }
     }
 
@@ -680,7 +670,7 @@ public class TrieNodeLogTests
         _log.Drain();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(value));
+            Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(value));
             Assert.That(LogFiles, Is.Empty.After(5000, 20));
         }
     }
@@ -696,7 +686,7 @@ public class TrieNodeLogTests
             batch.SetStateTrieNode(MediumPath, Rlp3);
         }
         await _log.DisposeAsync();
-        Assert.That(Raw().TryLoadStateRlp(highPath, ReadFlags.None), Is.Null);
+        Assert.That(Raw().LoadStateRlp(highPath, ReadFlags.None), Is.Null);
 
         TrieNodeLog.MergeAllOnDisk(_directory.Path, FileSystem, _db, LimboLogs.Instance);
 
@@ -707,10 +697,10 @@ public class TrieNodeLogTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Directory.GetDirectories(_directory.Path).Where(static directory => Directory.GetFiles(directory).Length > 0), Is.Empty);
-            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
-            Assert.That(Raw().TryLoadStateRlp(highPath, ReadFlags.None), Is.EqualTo(Rlp2));
-            Assert.That(Raw().TryLoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp3));
-            Assert.That(reader.TryLoadStateRlp(highPath, ReadFlags.None), Is.EqualTo(Rlp2));
+            Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
+            Assert.That(Raw().LoadStateRlp(highPath, ReadFlags.None), Is.EqualTo(Rlp2));
+            Assert.That(Raw().LoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp3));
+            Assert.That(reader.LoadStateRlp(highPath, ReadFlags.None), Is.EqualTo(Rlp2));
         }
     }
 
@@ -759,14 +749,14 @@ public class TrieNodeLogTests
     {
         WriteTop(0, 1, Rlp1);
         await _log.DisposeAsync();
-        Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.Null, "by default the log is kept for the next start");
+        Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.Null, "by default the log is kept for the next start");
 
         _config.TrieNodeLogDrainOnShutdown = true;
         Open();
         await _log.DisposeAsync();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
+            Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
             Assert.That(LogFiles(), Is.Empty);
         }
     }
@@ -832,7 +822,7 @@ public class TrieNodeLogTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.Null, "the drain preceded the snapshot the range delete scanned");
+            Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.Null, "the drain preceded the snapshot the range delete scanned");
             Assert.That(ReadTop(), Is.Null);
         }
     }
@@ -968,7 +958,7 @@ public class TrieNodeLogTests
         await _log.DisposeAsync();
         using (Assert.EnterMultipleScope())
         {
-            for (ulong block = 0; block < 5; block++) Assert.That(Raw().TryLoadStateRlp(DistinctPath(block), ReadFlags.None), Is.EqualTo(Value((byte)block, 4096)));
+            for (ulong block = 0; block < 5; block++) Assert.That(Raw().LoadStateRlp(DistinctPath(block), ReadFlags.None), Is.EqualTo(Value((byte)block, 4096)));
             Assert.That(LogFiles(), Is.Empty);
         }
     }
@@ -1188,7 +1178,7 @@ public class TrieNodeLogTests
             using IPersistence.IWriteBatch sync = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
             sync.SetStateTrieNode(TreePath.FromHexString($"{index:x}bcdef"), Rlp2);
         }), Throws.Nothing);
-        Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1), "the first bypass batch drained the log");
+        Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1), "the first bypass batch drained the log");
     }
 
     [Test]
