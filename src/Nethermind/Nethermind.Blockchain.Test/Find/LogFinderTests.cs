@@ -747,6 +747,8 @@ public class LogFinderTests
 
     private static readonly Hash256 TopicOne = new("0x0000000000000000000000000000000000000000000000000000000000000001");
 
+    private const int MaxBytesPerSerializedLogs = 96;
+
     [Test]
     public void FindLogs_WhenEncodedLogsHaveManyTopics_SerializesThemAsFilterLogs([Values] bool compact, [Values] bool indexed, [Values] bool streamsTopics)
     {
@@ -805,6 +807,64 @@ public class LogFinderTests
         {
             Assert.That(() => finder.FindLogs(filter).ToArray(), Throws.InstanceOf<RlpReaderException>());
             Assert.That(() => FoundLogs.Serialize(finder.FindLogs(filter)).ToArray(), Throws.InstanceOf<RlpReaderException>());
+        }
+    }
+
+    [Test]
+    public void FindLogs_AfterAMalformedLogFailed_SerializesTheNextLogsUnchanged([Values] bool compact, [Values] bool streamsTopics)
+    {
+        Block block = _rawBlockTree.FindBlock(1, BlockTreeLookupOptions.None)!;
+        byte[] malformed = EncodeReceipt(block, compact, new LogEntry(TestItem.AddressA, [], [TestItem.KeccakA, TestItem.KeccakB]));
+        int topic = malformed.AsSpan().LastIndexOf(TestItem.KeccakB.Bytes) - 1;
+        malformed[topic] = 0xe0;
+        LogFinder malformedFinder = CreateEncodedLogFinder(block, malformed, TopicCountingDecoder.Create(compact, streamsTopics), false, out _);
+        byte[] valid = EncodeReceipt(block, compact,
+            new LogEntry(TestItem.AddressA, [1, 2, 3], [TestItem.KeccakA, TopicOne]),
+            new LogEntry(TestItem.AddressA, new byte[300], [TestItem.KeccakB]));
+        LogFinder validFinder = CreateEncodedLogFinder(block, valid, TopicCountingDecoder.Create(compact, streamsTopics), false, out _);
+        LogFilter filter = FilterBuilder.New().FromBlock(1).ToBlock(1).WithAddress(TestItem.AddressA).Build();
+
+        Assert.That(() => FoundLogs.Serialize(malformedFinder.FindLogs(filter)).ToArray(), Throws.InstanceOf<RlpReaderException>());
+        AssertSerializedAsFilterLogs(validFinder.FindLogs(filter));
+    }
+
+    [Test]
+    public void Serialize_KeepsEachLogInItsOwnInstance()
+    {
+        FilterLog[] logs = Enumerable.Range(0, 4)
+            .Select(static i => new FilterLog(i, 1, 2, TestItem.KeccakA, i, TestItem.KeccakB, TestItem.AddressA, new byte[i * 40], [TestItem.KeccakC]))
+            .ToArray();
+        EthereumJsonSerializer serializer = new();
+
+        SerializedLogs[] serialized = FoundLogs.Serialize(logs).ToArray();
+        try
+        {
+            Assert.That(serialized.Select(static s => Encoding.UTF8.GetString(s[0])), Is.EqualTo(logs.Select(log => serializer.Serialize(log))));
+        }
+        finally
+        {
+            foreach (SerializedLogs s in serialized) s.Dispose();
+        }
+    }
+
+    [Test]
+    public void Serialize_DoesNotAllocateAJsonWriterPerInstance()
+    {
+        const int Count = 64;
+        FilterLog[] logs = Enumerable.Range(0, Count)
+            .Select(static i => new FilterLog(i, 1, 2, TestItem.KeccakA, i, TestItem.KeccakB, TestItem.AddressA, [], []))
+            .ToArray();
+        SerializeAll(logs);
+
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        SerializeAll(logs);
+        long allocatedPerInstance = (GC.GetAllocatedBytesForCurrentThread() - allocatedBefore) / Count;
+
+        Assert.That(allocatedPerInstance, Is.LessThan(MaxBytesPerSerializedLogs));
+
+        static void SerializeAll(FilterLog[] logs)
+        {
+            foreach (SerializedLogs s in FoundLogs.Serialize(logs)) s.Dispose();
         }
     }
 
