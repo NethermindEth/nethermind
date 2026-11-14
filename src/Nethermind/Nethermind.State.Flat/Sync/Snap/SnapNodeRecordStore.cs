@@ -47,8 +47,9 @@ internal sealed class SnapNodeRecordStore(IPersistence.IPersistenceReader reader
 
     public bool IsPersisted(in TreePath path, in ValueHash256 keccak)
     {
-        byte[]? rlp = address is null ? reader.TryLoadStateRlp(path, ReadFlags.None) : reader.TryLoadStorageRlp(address, path, ReadFlags.None);
-        return rlp is not null && ValueKeccak.Compute(rlp) == keccak;
+        ValueHash256 computedHash = default;
+        return TryLoad(path, keccak, static (rlp, result) => result[0] = ValueKeccak.Compute(rlp), new Span<ValueHash256>(ref computedHash))
+            && computedHash == keccak;
     }
 
     /// <summary>Sets the entries over the proof's nodes and computes the root hash.</summary>
@@ -243,13 +244,13 @@ internal sealed class SnapNodeRecordStore(IPersistence.IPersistenceReader reader
     {
         if (address is null)
         {
-            if (enableDoubleWriteCheck && reader.TryLoadStateRlp(path, ReadFlags.None) is not null) throw new InvalidOperationException($"Double state rlp write. {path}");
+            if (enableDoubleWriteCheck && reader.TryLoadStateRlp(path, ReadFlags.None, static (_, _) => { }, 0)) throw new InvalidOperationException($"Double state rlp write. {path}");
 
             writeBatch.SetStateTrieNode(path, rlp);
         }
         else
         {
-            if (enableDoubleWriteCheck && reader.TryLoadStorageRlp(address, path, ReadFlags.None) is not null) throw new InvalidOperationException($"Double storage rlp write. {address} {path}");
+            if (enableDoubleWriteCheck && reader.TryLoadStorageRlp(address, path, ReadFlags.None, static (_, _) => { }, 0)) throw new InvalidOperationException($"Double storage rlp write. {address} {path}");
 
             writeBatch.SetStorageTrieNode(address, path, rlp);
         }

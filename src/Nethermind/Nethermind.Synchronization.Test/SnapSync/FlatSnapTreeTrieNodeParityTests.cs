@@ -192,8 +192,12 @@ public class FlatSnapTreeTrieNodeParityTests
 
         public bool IsPersisted(in TreePath path, in ValueHash256 keccak)
         {
-            byte[]? rlp = address is null ? reader.TryLoadStateRlp(path, ReadFlags.None) : reader.TryLoadStorageRlp(address, path, ReadFlags.None);
-            return rlp is not null && ValueKeccak.Compute(rlp) == keccak;
+            ValueHash256 computedHash = default;
+            Span<ValueHash256> result = new(ref computedHash);
+            bool found = address is null
+                ? reader.TryLoadStateRlp(path, ReadFlags.None, static (rlp, hash) => hash[0] = ValueKeccak.Compute(rlp), result)
+                : reader.TryLoadStorageRlp(address, path, ReadFlags.None, static (rlp, hash) => hash[0] = ValueKeccak.Compute(rlp), result);
+            return found && computedHash == keccak;
         }
 
         public void BulkSetAndUpdateRootHash(IReadOnlyList<TEntry> entries) => ISnapTree<TEntry>.DoBulkSetAndUpdateRootHash(tree, entries);
