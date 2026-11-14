@@ -61,14 +61,15 @@ public class ReceiptOnePassEncodingTests
         {
             Hash256[] topics = new Hash256[random.Next(0, 5)];
             for (int t = 0; t < topics.Length; t++) topics[t] = new Hash256(RandomBytes(random, Hash256.Size));
-            logs[i] = new LogEntry(new Address(RandomBytes(random, Address.Size)), RandomData(random), topics);
+            Address address = random.Next(10) == 0 ? null! : new Address(RandomBytes(random, Address.Size));
+            logs[i] = random.Next(10) == 0 ? null! : new LogEntry(address, RandomData(random), topics);
         }
 
         byte[] bloom = RandomBytes(random, Bloom.ByteLength);
         return new TxReceipt
         {
             TxType = type,
-            StatusCode = (byte)random.Next(2),
+            StatusCode = random.Next(8) == 0 ? (byte)random.Next(0x80, 0x100) : (byte)random.Next(2),
             GasUsedTotal = random.Next(6) switch
             {
                 0 => 0,
