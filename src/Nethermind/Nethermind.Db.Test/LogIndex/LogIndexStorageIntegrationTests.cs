@@ -82,6 +82,24 @@ namespace Nethermind.Db.Test.LogIndex
         }
 
         [Test]
+        public void Posting_enumerator_ends_when_disposed([Values] bool backwards)
+        {
+            using IDb db = _dbFactory.CreateDb(new DbSettings(nameof(LogIndexStorage), "reverse-postings"));
+            SeedPostingChunks(db, "mixed");
+            IEnumerator<int> enumerator = CreatePostingEnumerator(db, 0, int.MaxValue, backwards);
+            Assert.That(enumerator.MoveNext(), Is.True);
+
+            enumerator.Dispose();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(enumerator.MoveNext(), Is.False);
+                Assert.That(enumerator.Current, Is.EqualTo(-1));
+            }
+            enumerator.Dispose();
+        }
+
+        [Test]
         public void Posting_enumerator_rejects_inverted_range([Values] bool backwards)
         {
             using IDb db = _dbFactory.CreateDb(new DbSettings(nameof(LogIndexStorage), "reverse-postings"));
