@@ -163,7 +163,22 @@ tests.Case("child_workflows_have_no_automatic_triggers", () =>
 tests.Case("general_test_matrices_do_not_repeat_eez", () =>
 {
     foreach (var file in new[] { "nethermind-tests.yml", "nethermind-tests-checked.yml", "nethermind-tests-trie.yml" })
-        RpcScriptTests.Assert(!File.ReadAllText(Path.Combine(workflow.Root, ".github/workflows", file)).Contains("Nethermind.Eez.Test", StringComparison.Ordinal),
+        RpcScriptTests.Assert(!HasEezMatrix(new WorkflowTest(file).Document),
             "The selective workflow owns EEZ test variants: " + file);
 });
+foreach (var packed in new[] { false, true })
+{
+    tests.Case($"general_matrix_rejects_duplicate_eez_{packed}", () =>
+    {
+        var general = new WorkflowTest("nethermind-tests.yml");
+        var matrix = (YamlMappingNode)WorkflowTest.Get(WorkflowTest.Get(general.Job("tests"), "strategy"), "matrix")!;
+        var entries = (YamlSequenceNode)WorkflowTest.Get(matrix, "project")!;
+        entries.Add(packed ? new YamlMappingNode { { "list", "Nethermind.Core.Test Nethermind.Eez.Test" } } : new YamlScalarNode("Nethermind.Eez.Test"));
+        RpcScriptTests.Assert(HasEezMatrix(general.Document), "An EEZ entry in an ordinary matrix must be rejected.");
+    });
+}
 tests.Complete();
+
+static bool HasEezMatrix(YamlMappingNode document) => ((YamlMappingNode)WorkflowTest.Get(document, "jobs")!).Children.Values
+    .Select(job => WorkflowTest.Get(WorkflowTest.Get(job, "strategy"), "matrix"))
+    .Any(matrix => matrix is not null && matrix.ToString().Contains("Nethermind.Eez.Test", StringComparison.Ordinal));
