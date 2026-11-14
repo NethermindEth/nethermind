@@ -932,6 +932,26 @@ public partial class EngineModuleTests
     }
 
     /// <summary>
+    /// Import releases a block's access-list encoding once stored, and trusted inputs serialize that encoding, so a
+    /// witness generation that reproduces the block restores it.
+    /// </summary>
+    [Test]
+    public async Task Witness_of_a_block_whose_access_list_encoding_was_released_restores_it()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+        await ProduceCanonicalBlock(chain, BuildWitnessTransfer(chain));
+        Block block = chain.BlockTree.Head!;
+        BlockHeader parent = chain.BlockTree.FindHeader(block.ParentHash!)!;
+        block.EncodedBlockAccessList = null;
+
+        using IWitnessGeneratingBlockProcessingEnvScope scope = chain.Container.Resolve<IWitnessGeneratingBlockProcessingEnvFactory>().CreateScope();
+        using Witness witness = scope.Env.CreateExistingBlockWitnessCollector().GetWitnessForExistingBlock(parent, block);
+
+        Assert.That(block.EncodedBlockAccessList is null ? null : Keccak.Compute(block.EncodedBlockAccessList),
+            Is.EqualTo(block.Header.BlockAccessListHash));
+    }
+
+    /// <summary>
     /// Builds one Amsterdam block on the current head (including <paramref name="txs"/>), submits it via
     /// <c>engine_newPayloadWithWitnessV5</c>, asserts the block is VALID, and returns the produced witness.
     /// </summary>

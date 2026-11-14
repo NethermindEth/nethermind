@@ -5,12 +5,16 @@ using System;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
+using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Stateless;
 
@@ -26,8 +30,12 @@ public interface IExistingBlockWitnessCollector
 public class WitnessCollector(
     WitnessGeneratingWorldState worldState,
     IBlockProcessor blockProcessor,
-    ISpecProvider specProvider) : IExistingBlockWitnessCollector
+    ISpecProvider specProvider,
+    IPoSSwitcher poSSwitcher,
+    ILogManager logManager) : IExistingBlockWitnessCollector
 {
+    private readonly ILogger _logger = logManager.GetClassLogger<WitnessCollector>();
+
     /// <remarks>
     /// Re-processes <paramref name="block"/> directly via <see cref="IBlockProcessor.ProcessOne"/>, so the caller
     /// must have recovered transaction senders first (this bypasses the pipeline's <c>RecoverSignatures</c> step).
@@ -43,17 +51,24 @@ public class WitnessCollector(
         using IDisposable scope = worldState.BeginScope(parentHeader);
 
         // Processing writes execution artifacts back onto the block it is given, and callers pass the block tree's
-        // shared instance, so execute a copy.
-        Block isolated = block.WithReplacedHeader(block.Header.Clone());
+        // shared instance, so execute a copy. Storage does not persist the post-merge flag and only some callers
+        // restore it; without it PREVRANDAO evaluates to the difficulty. A plain Block, as WithReplacedHeader on a
+        // BlockToProduce drops the access list.
+        BlockHeader header = block.Header.Clone();
+        header.IsPostMerge = poSSwitcher.IsPostMerge(header);
+        Block isolated = new(header, block.Body, block.BlockAccessList);
         try
         {
             // NoValidation is required, not an optimisation: the shared validator is the merge plugin's
             // InvalidBlockInterceptor, which records into the process-wide InvalidChainTracker, so a replay that
             // diverges on this node would make the Engine API reject the block and its descendants. The header is
             // compared with the execution outcome below instead.
-            (Block processed, _) = blockProcessor.ProcessOne(isolated, ProcessingOptions.ReadOnlyChain | ProcessingOptions.NoValidation,
-                tracer, specProvider.GetSpec(block.Header), token);
-            ThrowIfNotReproduced(block, processed);
+            (Block processed, TxReceipt[] receipts) = blockProcessor.ProcessOne(isolated,
+                ProcessingOptions.ReadOnlyChain | ProcessingOptions.NoValidation, tracer, specProvider.GetSpec(header), token);
+            ThrowIfNotReproduced(block, processed, receipts);
+
+            // Trusted inputs serialize the block's access list, which import may have released after storing it.
+            block.EncodedBlockAccessList ??= isolated.EncodedBlockAccessList;
         }
         finally
         {
@@ -64,13 +79,13 @@ public class WitnessCollector(
     }
 
     /// <remarks>The header hash commits to every execution outcome the block validator compares.</remarks>
-    private static void ThrowIfNotReproduced(Block block, Block processed)
+    private void ThrowIfNotReproduced(Block block, Block processed, TxReceipt[] receipts)
     {
-        if (processed.Hash == block.Hash) return;
+        Hash256 expected = block.Hash ?? block.Header.CalculateHash();
+        if (processed.Hash == expected) return;
 
-        string error = processed.Header.StateRoot != block.Header.StateRoot
-            ? BlockErrorMessages.InvalidStateRoot(block.Header.StateRoot!, processed.Header.StateRoot!)
-            : BlockErrorMessages.InvalidHeaderHash(block.Hash!, processed.Hash!);
+        string error = BlockValidator.DescribeMismatch(processed, receipts, block, _logger)
+            ?? BlockErrorMessages.InvalidHeaderHash(expected, processed.Hash!);
         throw new InvalidBlockException(block, error);
     }
 }

@@ -13,11 +13,13 @@ using Nethermind.Consensus.Stateless;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
+using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -74,5 +76,66 @@ public class ExistingBlockWitnessTests
             block.WithReplacedHeader(block.Header.Clone()), ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance, chain.SpecProvider.GetSpec(block.Header), CancellationToken.None);
 
         Assert.That(processed.Header.StateRoot, Is.EqualTo(block.Header.StateRoot));
+    }
+
+    /// <summary>A replay that reproduces the state but not another execution outcome still fails, naming that outcome.</summary>
+    [Test]
+    public async Task Witness_of_a_block_whose_replay_differs_outside_the_state_fails_naming_the_field()
+    {
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(Osaka.Instance)));
+        Block block = await chain.AddBlock();
+        BlockHeader header = block.Header.Clone();
+        header.ReceiptsRoot = Keccak.Zero;
+        header.Hash = header.CalculateHash();
+        Block differing = new(header, block.Body);
+
+        BlockHeader parent = chain.BlockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.None)!;
+        using IWitnessGeneratingBlockProcessingEnvScope scope = chain.Container.Resolve<IWitnessGeneratingBlockProcessingEnvFactory>().CreateScope();
+        InvalidBlockException failure = Assert.Throws<InvalidBlockException>(() =>
+            scope.Env.CreateExistingBlockWitnessCollector().GetWitnessForExistingBlock(parent, differing));
+
+        Assert.That(failure.Message, Does.StartWith("InvalidReceiptsRoot"));
+    }
+
+    // PREVRANDAO, MSTORE at 0, LOG0 the 32 bytes, RETURN nothing: the receipts root commits to the value the opcode reads.
+    private static readonly byte[] PrevRandaoLoggingInitCode = [0x44, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xa0, 0x60, 0x00, 0x60, 0x00, 0xf3];
+
+    /// <summary>
+    /// Storage does not keep the post-merge flag, so a block read back from it must still replay PREVRANDAO from the
+    /// mix hash rather than the difficulty.
+    /// </summary>
+    [Test]
+    public async Task Witness_of_a_post_merge_block_read_back_without_its_flag_replays_PREVRANDAO_from_the_mix_hash()
+    {
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(Paris.Instance))
+            .AddSingleton<IPoSSwitcher>(AlwaysPoS.Instance));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block suggested = Build.A.Block
+            .WithParent(parent)
+            .WithDifficulty(0)
+            .WithMixHash(TestItem.KeccakB)
+            .WithPostMergeFlag(true)
+            .WithTransactions(Build.A.Transaction.WithNonce(0).WithCode(PrevRandaoLoggingInitCode).WithGasLimit(1_000_000)
+                .SignedAndResolved(TestItem.PrivateKeyB).TestObject)
+            .TestObject;
+        // Ground truth mirroring live processing, where the flag is set.
+        Block block = chain.BranchProcessor.Process(parent, [suggested], ProcessingOptions.ReadOnlyChain | ProcessingOptions.NoValidation,
+            NullBlockTracer.Instance)[0];
+        BlockHeader storedHeader = block.Header.Clone();
+        storedHeader.IsPostMerge = false;
+        storedHeader.TotalDifficulty = null;
+        Block stored = new(storedHeader, block.Body);
+
+        using IWitnessGeneratingBlockProcessingEnvScope scope = chain.Container.Resolve<IWitnessGeneratingBlockProcessingEnvFactory>().CreateScope();
+        using Witness witness = scope.Env.CreateExistingBlockWitnessCollector().GetWitnessForExistingBlock(parent, stored);
+
+        StatelessBlockProcessingEnv stateless = new(witness, chain.SpecProvider, Always.Valid, LimboLogs.Instance);
+        using IDisposable stateScope = stateless.WorldState.BeginScope(parent);
+        (Block processed, _) = stateless.BlockProcessor.ProcessOne(block.WithReplacedHeader(block.Header.Clone()),
+            ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance, chain.SpecProvider.GetSpec(block.Header), CancellationToken.None);
+
+        Assert.That(processed.Hash, Is.EqualTo(block.Hash));
     }
 }
