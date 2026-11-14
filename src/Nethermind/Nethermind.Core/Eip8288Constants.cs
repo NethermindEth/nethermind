@@ -166,6 +166,6 @@ public static class Eip8288Constants
     /// <see cref="LeanStarkLeafPaymentScheme"/> payment, and finalizes them.</remarks>
     public static ReadOnlySpan<byte> BatchedAggregatedVk => _batchedAggregatedVk;
 
-    private static readonly byte[] _aggregatedVk = Convert.FromHexString("f7cf74585d02043051f0575c23c6b441b0b08ac9e273f5e989c5984b8a4ac0e5");
-    private static readonly byte[] _batchedAggregatedVk = Convert.FromHexString("8085df136766c4745c98d4dc25307f654ae4e5abb1c43e60136c1e2b723295c4");
+    private static readonly byte[] _aggregatedVk = Convert.FromHexString("f6f37690cf7241c9ea24392f349867acc1c8e06034e8ce149e2f11a25eec56f9");
+    private static readonly byte[] _batchedAggregatedVk = Convert.FromHexString("ed44310d2b59ac7308d964cb622e32dc966b1e2e9b6f201fcdc350b1bbd705ff");
 }

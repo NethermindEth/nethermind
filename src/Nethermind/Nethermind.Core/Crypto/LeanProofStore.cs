@@ -708,7 +708,7 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
         {
             foreach (ProofRecord record in _recursiveCache) Consider(record);
             foreach (ProofRecord record in _records)
-                if (record.RecursiveProof is not null) Consider(record);
+                if (record.RecursiveProof is not null && !_staged.ContainsKey(record)) Consider(record);
         }
         // Fewer extra dependencies mean fewer discards for the same reuse.
         overlaps.Sort(static (x, y) => x.Shared != y.Shared
@@ -747,7 +747,7 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
 
         void Consider(ProofRecord record)
         {
-            if (record.RecursiveProof is null) return;
+            if (record.RecursiveProof is null || _staged.ContainsKey(record)) return;
             long size = record.RecursiveProof.Length + (long)record.Dependencies.Length * Eip8288Constants.DependencyTripleLength;
             if (size >= bestSize) return;
             foreach (FrameDependency dependency in dependencies)
@@ -769,7 +769,7 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
         int bestNeeded = Needed(covering);
         foreach (ProofRecord candidate in holders)
         {
-            if (candidate.RecursiveProof is null || ReferenceEquals(candidate, covering)) continue;
+            if (candidate.RecursiveProof is null || ReferenceEquals(candidate, covering) || _staged.ContainsKey(candidate)) continue;
             int needed = Needed(candidate);
             if (needed < bestNeeded || needed == bestNeeded && candidate.Dependencies.Length >= best.Dependencies.Length) continue;
             (best, bestNeeded) = (candidate, needed);
@@ -794,7 +794,7 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
         {
             foreach (ProofRecord record in _recursiveCache) Consider(record);
             foreach (ProofRecord record in _records)
-                if (record.RecursiveProof is not null) Consider(record);
+                if (record.RecursiveProof is not null && !_staged.ContainsKey(record)) Consider(record);
         }
         return subsets;
 

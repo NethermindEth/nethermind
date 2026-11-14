@@ -151,6 +151,41 @@ public class LeanProofStoreTests
         }
     }
 
+    // A recursive proof staged beyond capacity is no input to proving until its admission commits.
+    [Test]
+    public void Staged_recursive_proof_is_not_selected()
+    {
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        FrameDependency a = Dependency(2000), b = Dependency(2001), c = Dependency(2002);
+        store.AddVerified([a], null, [1]);
+        store.AddVerified([b], [[2]], null);
+        Assert.That(store.PinPending(Transaction([a], Sender(200), 0)) && store.PinPending(Transaction([b], Sender(201), 0)), Is.True);
+        for (int i = 0; i < 64; i++)
+        {
+            FrameDependency dependency = Dependency(i);
+            store.AddVerified([dependency], [new byte[LeanProofStore.MaxWrapperBytes / 2 - 1024]], null);
+            Assert.That(store.PinPending(Transaction([dependency], Sender(i + 1), 0)), Is.True);
+        }
+        List<FrameDependency> both = Eip8288Dependencies.Canonicalize([a, b]);
+        // Only c is new, so the staged proof is stored for it and proves a and b beside their published coverage.
+        Transaction admitted = Transaction([a, b, c], Sender(202), 0);
+        Assert.That(store.TryBeginAdmission(Eip8288Dependencies.Canonicalize([a, b, c]), null, new byte[LeanProofStore.MaxWrapperBytes * 3 / 4], out IDisposable? staging,
+            overCapacity: true) && store.PinPending(admitted), Is.True);
+        staging!.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.SmallestProving(both), Is.Null);
+            Assert.That(store.ProvenSubsets(new HashSet<FrameDependency> { a, b, c }), Is.EqualTo(new[] { new[] { a } }));
+            Assert.That(store.ProvenOverlaps(new HashSet<FrameDependency> { a, b }, 2), Is.Empty);
+            Assert.That(store.TryGetInput(both, out AggregationInput input), Is.True);
+            Assert.That(input.RecursiveProofs.Select(static proof => proof.InnerDeps), Is.EqualTo(new[] { new[] { a } }));
+            Assert.That(input.Deps, Is.EqualTo(new[] { b }));
+        }
+        store.UnpinPending(admitted.Hash!.ValueHash256);
+        store.EndStaging(staging, commit: false);
+    }
+
     [Test]
     public void Record_slots_accommodate_the_default_pool_transaction_capacity()
     {

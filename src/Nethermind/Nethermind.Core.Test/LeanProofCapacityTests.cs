@@ -76,13 +76,13 @@ public class LeanProofCapacityTests
         }
     }
 
-    // Without batch pricing a node keeps EIP-8288's guest unchanged: the ABI 12 package's key and its nlean_limits.
+    // Without batch pricing a node keeps EIP-8288's guest unchanged: the base branch's key and its nlean_limits.
     [Test]
     public void Flag_off_key_and_limits_equal_eip8288s()
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Convert.ToHexStringLower(Eip8288Constants.AggregatedVk), Is.EqualTo("f7cf74585d02043051f0575c23c6b441b0b08ac9e273f5e989c5984b8a4ac0e5"));
+            Assert.That(Convert.ToHexStringLower(Eip8288Constants.AggregatedVk), Is.EqualTo("f6f37690cf7241c9ea24392f349867acc1c8e06034e8ce149e2f11a25eec56f9"));
             Assert.That(Nethermind.Specs.Forks.Eip8288Prototype.Instance.IsEipBatchedDependencyPricingEnabled, Is.False);
             Assert.That(Eip8288Verifier.For(Nethermind.Specs.Forks.Eip8288Prototype.Instance).AggregatedVk, Is.EqualTo(Eip8288Verifier.PinnedAggregatedVk));
             Assert.That(new[] { Eip8288Constants.MaxProofBytes, Eip8288Constants.MaxProofDependencies, Eip8288Constants.BaseMaxRecursiveInputs,

@@ -1008,9 +1008,17 @@ public class ProofWrapperServiceTests
     [TestCase(64, false, false, 0UL, 3, false, true, TestName = "A second wrapper at the same head reuses the pool scan")]
     [TestCase(64, false, false, 0UL, 3, false, true, true, TestName = "A candidate whose nonce gap was filled since the scan is kept")]
     [TestCase(64, false, false, 0UL, 1, false, false, false, "gap", TestName = "A candidate whose nonce gap admission filled is kept and the admission rolled back")]
+    [TestCase(64, false, false, 0UL, 1, false, false, false, "gap-interrupted", TestName = "An interrupted admission that is rolled back reports no pooled transactions")]
     [TestCase(64, false, false, 0UL, 0, false, false, false, "unpinned", TestName = "Admitting only transactions whose witnesses fit evicts nothing")]
+    [TestCase(64, false, false, 0UL, 2, false, true, false, "unpinned", TestName = "Victims an admission did not evict stay candidates for the next")]
     [TestCase(64, false, false, 0UL, 0, false, false, false, "foreign", TestName = "Witnesses staged beyond capacity are out of other admissions' reach")]
     [TestCase(64, false, false, 0UL, 2, false, false, false, "drain", TestName = "An excess left over is drained before admitting beyond capacity")]
+    [TestCase(64, false, false, 0UL, 2, false, false, false, "concurrent", TestName = "A staged admission keeps its turn until its staging ends")]
+    [TestCase(64, false, false, 0UL, 2, false, false, false, "self-gap", TestName = "A victim whose nonce gap the wrapper's own sender fills is not planned")]
+    [TestCase(64, false, false, 0UL, 2, false, false, false, "purge", TestName = "A verifier change elsewhere keeps a staged admission's revalidating transactions")]
+    [TestCase(64, false, false, 0UL, 2, false, false, false, "purge-throws", TestName = "A verifier change during a faulting admission is still caught up")]
+    [TestCase(64, false, false, 0UL, 2, false, false, false, "vanished", TestName = "A transaction awaiting blob availability is not admitted while staged")]
+    [TestCase(64, false, false, 0UL, 2, false, false, false, "throws", TestName = "A pool fault while evicting still ends the staging")]
     [TestCase(64, false, false, 0UL, 0, false, false, false, "simulation", TestName = "An incoming transaction admission rejects evicts nothing")]
     [TestCase(64, false, false, 0UL, 0, false, false, false, "known", TestName = "An incoming transaction the pool already knows evicts nothing")]
     [TestCase(64, false, false, 0UL, 0, false, false, false, "quota", TestName = "An incoming transaction over its sender's witness quota evicts nothing")]
@@ -1020,6 +1028,20 @@ public class ProofWrapperServiceTests
         bool gapFilled = false, string? incoming = null)
     {
         const int pinnedCount = 64;
+        bool gap = incoming is "gap" or "gap-interrupted";
+        bool throws = incoming is "throws" or "purge-throws";
+        bool purges = incoming is "purge" or "purge-throws";
+        using CancellationTokenSource cancellation = new();
+        Transaction? firstSubmitted = null;
+        int submissions = 0;
+        bool scanned = false;
+        Hash256? vanishing = null;
+        List<Hash256> dropped = [];
+        OverridableReleaseSpec spec = new(Eip8288Prototype.Instance);
+        bool evictedWhileStaged = false;
+        ProofWrapperService? service = null;
+        byte[]? concurrentWrapper = null;
+        Task<ProofWrapperAcceptance>? concurrent = null;
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         object poolOwner = new();
         static Transaction Transaction(FrameDependency dependency, Address sender, ulong timestamp = 0, ulong nonce = 0, bool awaitsBlobs = false)
@@ -1084,8 +1106,16 @@ public class ProofWrapperServiceTests
         ITxPool pool = Substitute.For<ITxPool>();
         pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(call =>
         {
-            if (incoming == "gap") filled.Add(oldest.SenderAddress!);
+            if (gap) filled.Add(oldest.SenderAddress!);
             Transaction submitted = call.Arg<Transaction>();
+            firstSubmitted ??= submitted;
+            // Pooling the wrapper's transaction makes its sender's own gapped transaction executable.
+            if (incoming == "self-gap") filled.Add(submitted.SenderAddress!);
+            // Another wrapper takes the admission turn the first chunk hands on, while this one's witness is staged.
+            if (++submissions == ProofWrapperService.AdmissionChunk && incoming == "concurrent")
+                concurrent = service!.AcceptOwnedDetailedAsync(concurrentWrapper!);
+            // Cancelled before the wrapper's second transaction, once the first is pooled.
+            if (incoming == "gap-interrupted") cancellation.Cancel();
             if (incoming == "foreign")
             {
                 // Another admission of the same witness would reuse its record and pin it for its own transaction.
@@ -1094,30 +1124,52 @@ public class ProofWrapperServiceTests
                     && store.PinPending(Transaction(dependencies[0], TestItem.AddressF), new object());
                 other?.Dispose();
             }
-            return incoming switch
+            AcceptTxResult accepted = incoming switch
             {
                 "simulation" or "foreign" or "drain" => AcceptTxResult.FrameSimulationFailed,
                 "unpinned" when submitted.SenderAddress == Address.Zero => AcceptTxResult.FrameSimulationFailed,
+                // The staged wrapper pools nothing, as when its senders cannot pay.
+                "concurrent" when submitted.SenderAddress != Address.SystemUser => AcceptTxResult.FrameSimulationFailed,
                 "known" => AcceptTxResult.AlreadyKnown,
                 _ => store.PinPending(submitted, poolOwner) ? AcceptTxResult.Accepted : AcceptTxResult.MissingDependencyProof
             };
+            if (purges)
+            {
+                // Another thread, outside this admission's flow, applies a verifier change while the admission is staged.
+                spec.Eip8288AggregatedVk = Keccak.Compute("next AGGREGATED_VK");
+                using (ExecutionContext.SuppressFlow()) Task.Run(() => service!.RefreshVerifier()).GetAwaiter().GetResult();
+            }
+            return accepted;
         });
-        pool.GetPendingTransactionsBySender().Returns(BySender([.. pinned]));
+        pool.GetPendingTransactions().Returns(_ =>
+            [.. pinned.Where(tx => !dropped.Contains(tx.Hash!)), .. firstSubmitted is null ? [] : new[] { firstSubmitted }]);
+        pool.TryGetPendingTransaction(Arg.Any<ValueHash256>(), out Arg.Any<Transaction?>()).Returns(call =>
+            !scanned && vanishing is not null && call.ArgAt<ValueHash256>(0) == vanishing.ValueHash256);
+        // Pending until admission scans for victims, then gone before its submission.
+        pool.GetPendingTransactionsBySender().Returns(_ =>
+        {
+            scanned = true;
+            return BySender([.. pinned]);
+        });
         pool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>());
         pool.GetPendingTransactionsBySender(Arg.Any<Address>()).Returns(call => [.. pinned.Where(tx => tx.SenderAddress == call.Arg<Address>())]);
         pool.GetLatestPendingNonce(Arg.Any<Address>()).Returns(call =>
             Array.IndexOf(TestItem.Addresses, call.Arg<Address>()) >= nonExecutable || filled.Contains(call.Arg<Address>()) ? ulong.MaxValue : 0UL);
-        pool.RemoveTransaction(Arg.Any<Hash256?>()).Returns(call =>
+        bool Drop(Hash256 hash)
         {
-            store.UnpinPending(call.Arg<Hash256>().ValueHash256, poolOwner);
+            if (incoming == "concurrent" && submissions <= ProofWrapperService.AdmissionChunk) evictedWhileStaged = true;
+            store.UnpinPending(hash.ValueHash256, poolOwner);
+            dropped.Add(hash);
+            if (throws && dropped.Count == removed) throw new InvalidOperationException("pool fault");
             return true;
-        });
+        }
+        pool.EvictTransaction(Arg.Any<Transaction>()).Returns(call => Drop(call.Arg<Transaction>().Hash!));
+        pool.RemoveTransaction(Arg.Any<Hash256?>()).Returns(call => Drop(call.Arg<Hash256>()));
         IWrappedBlobTransactionAdmission blobAdmission = Substitute.For<IWrappedBlobTransactionAdmission>();
         blobAdmission.Admit(Arg.Any<Transaction>(), Arg.Any<object?>(), Arg.Any<IDisposable>()).Returns(AcceptTxResult.Accepted);
         IBlockFinder finder = Substitute.For<IBlockFinder>();
         finder.Head.Returns(Build.A.Block.TestObject);
-        ProofWrapperService service = new(pool, new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), finder, store,
-            new FakeLeanProofVerifier(true), blobAdmission);
+        service = new(pool, new TestSingleReleaseSpecProvider(spec), finder, store, new FakeLeanProofVerifier(true), blobAdmission);
         if (localVictims)
             foreach (Transaction transaction in pinned.Take(2))
                 Assert.That((await service.AcceptDetailedAsync(DirectWrapper(transaction))).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted));
@@ -1140,29 +1192,53 @@ public class ProofWrapperServiceTests
             }).Bytes;
         }
 
-        Transaction first = Incoming("incoming", Address.Zero);
-        ProofWrapperAcceptance result = await service.AcceptOwnedDetailedAsync(incoming == "unpinned" ? Wrapper(first, existing) : Wrapper(first));
+        Transaction first = Incoming("incoming", incoming == "self-gap" ? oldest.SenderAddress! : Address.Zero);
+        Transaction awaiting = Transaction(small, Address.SystemUser, awaitsBlobs: true);
+        if (incoming == "vanished") vanishing = awaiting.Hash;
+        if (incoming == "concurrent") concurrentWrapper = Wrapper(Incoming("concurrent", Address.SystemUser));
+        byte[] wrapper = incoming switch
+        {
+            "unpinned" => Wrapper(first, existing),
+            // A second transaction on the same witness, so only one is staged.
+            "gap-interrupted" => Wrapper(first, Incoming("incoming", Address.SystemUser)),
+            // A wrapper of two chunks on one witness.
+            "concurrent" => Wrapper([first, .. Enumerable.Range(1, ProofWrapperService.AdmissionChunk)
+                .Select(i => Incoming("incoming", Address.FromNumber((UInt256)i)))]),
+            "vanished" => Wrapper(first, awaiting),
+            _ => Wrapper(first)
+        };
+        ProofWrapperAcceptance result = await service.AcceptOwnedDetailedAsync(wrapper, cancellation.Token);
+        ProofWrapperAcceptanceStatus? concurrentStatus = concurrent is null ? null : (await concurrent).Status;
+        if (incoming == "gap-interrupted") first = firstSubmitted!;
         if (gapFilled) filled.Add(pinned[2].SenderAddress!);
         if (secondWrapper)
             Assert.That((await service.AcceptOwnedDetailedAsync(Wrapper(Incoming("second", Address.SystemUser)))).Status,
                 Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted));
 
-        ProofWrapperAcceptanceStatus expected = incoming is "simulation" or "known" or "quota" or "unpinned" or "foreign" or "drain" ? ProofWrapperAcceptanceStatus.PoolRejected
-            : removed != 0 && incoming != "gap" ? ProofWrapperAcceptanceStatus.Accepted : ProofWrapperAcceptanceStatus.LocalFailure;
+        ProofWrapperAcceptanceStatus expected = incoming is "simulation" or "known" or "quota" or "unpinned" or "foreign" or "drain" or "concurrent" or "vanished"
+            ? ProofWrapperAcceptanceStatus.PoolRejected
+            : removed != 0 && !gap && !throws ? ProofWrapperAcceptanceStatus.Accepted : ProofWrapperAcceptanceStatus.LocalFailure;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(expected), result.Result.Error);
-            pool.Received(removed).RemoveTransaction(Arg.Any<Hash256?>());
+            Assert.That(dropped, Has.Count.EqualTo(removed));
+            // Every drop is an eviction, which forgets the hash so the transaction can be resubmitted.
+            pool.DidNotReceive().RemoveTransaction(Arg.Any<Hash256?>());
             if (secondWrapper) pool.Received(1).GetPendingTransactionsBySender();
-            if (secondWrapper) pool.Received(gapFilled ? 0 : 1).RemoveTransaction(pinned[2].Hash);
-            pool.Received(removed != 0 && !oldestSharedWithExecutable && !localVictims && incoming != "gap" ? 1 : 0).RemoveTransaction(oldest.Hash);
-            pool.Received(expected != ProofWrapperAcceptanceStatus.LocalFailure || incoming == "gap" ? 1 : 0)
+            if (secondWrapper) Assert.That(dropped.Count(pinned[2].Hash!.Equals), Is.EqualTo(gapFilled || incoming == "unpinned" ? 0 : 1));
+            Assert.That(dropped.Count(oldest.Hash!.Equals),
+                Is.EqualTo(removed != 0 && !oldestSharedWithExecutable && !localVictims && !gap && incoming != "self-gap" ? 1 : 0));
+            pool.Received(expected != ProofWrapperAcceptanceStatus.LocalFailure || gap || throws ? 1 : 0)
                 .SubmitTx(Arg.Is<Transaction>(tx => tx.Hash == first.Hash), Arg.Any<TxHandlingOptions>());
-            pool.Received(incoming == "gap" ? 1 : 0).RemoveTransaction(first.Hash);
+            Assert.That(dropped.Count(first.Hash!.Equals), Is.EqualTo(gap ? 1 : 0), "only a rolled-back transaction is dropped");
             blobAdmission.DidNotReceive().Admit(Arg.Any<Transaction>(), Arg.Any<object?>(), Arg.Any<IDisposable>());
-            Assert.That(store.Covers(first), Is.EqualTo(expected == ProofWrapperAcceptanceStatus.Accepted));
+            Assert.That(store.Covers(first), Is.EqualTo(expected == ProofWrapperAcceptanceStatus.Accepted || throws || incoming == "vanished"));
+            // The change applied elsewhere purges once, and the admission catches up once its scope ends, faulted or not.
+            if (purges) pool.Received(2).GetPendingTransactions();
             if (incoming == "unpinned") Assert.That(store.Covers(existing), Is.True);
             Assert.That(foreignAdmitted, Is.False, "staged witnesses are out of other admissions' reach");
+            Assert.That(evictedWhileStaged, Is.False, "nothing is evicted for room a staged admission holds");
+            if (concurrentStatus is not null) Assert.That(concurrentStatus, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted));
             Assert.That(store.ShedExcess(), Is.True, "the store ends within capacity");
         }
         // Nothing is left to refuse a later admission beyond capacity.

@@ -11,7 +11,7 @@ namespace Nethermind.Core;
 /// <summary>
 /// A single EIP-8288 dependency triple <c>(scheme, data_hash, verification_key)</c> declared by a
 /// dependency-verification frame. <c>data_hash</c>/<c>verification_key</c> are the message hash and
-/// 32-byte public key (leanSPHINCS) or the public commitment and program key hash (leanSTARK).
+/// 32-byte public key <c>PK.seed || PK.root</c> (leanSPHINCS) or the public commitment and program key hash (leanSTARK).
 /// </summary>
 public readonly struct FrameDependency(byte scheme, ValueHash256 dataHash, ValueHash256 verificationKey)
     : IEquatable<FrameDependency>
