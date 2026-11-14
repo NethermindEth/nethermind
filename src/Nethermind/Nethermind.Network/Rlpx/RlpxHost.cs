@@ -147,8 +147,8 @@ namespace Nethermind.Network.Rlpx
                 IEventLoopGroup bossGroup = Interlocked.Exchange(ref _bossGroup, null);
                 IEventLoopGroup workerGroup = Interlocked.Exchange(ref _workerGroup, null);
                 await Task.WhenAll(
-                    bossGroup?.ShutdownGracefullyAsync() ?? Task.CompletedTask,
-                    workerGroup?.ShutdownGracefullyAsync() ?? Task.CompletedTask,
+                    bossGroup?.ShutdownGracefullyAsync(_shutdownQuietPeriod, _shutdownCloseTimeout) ?? Task.CompletedTask,
+                    workerGroup?.ShutdownGracefullyAsync(_shutdownQuietPeriod, _shutdownCloseTimeout) ?? Task.CompletedTask,
                     _group.ShutdownGracefullyAsync(_shutdownQuietPeriod, _shutdownCloseTimeout));
                 throw;
             }
@@ -606,22 +606,10 @@ namespace Nethermind.Network.Rlpx
 
             if (_logger.IsDebug) _logger.Debug("Closed _bootstrapChannel");
 
-            Task closingTask = Task.WhenAll(
+            await Task.WhenAll(
                 _bossGroup is not null ? _bossGroup.ShutdownGracefullyAsync(_shutdownQuietPeriod, _shutdownCloseTimeout) : Task.CompletedTask,
                 _workerGroup is not null ? _workerGroup.ShutdownGracefullyAsync(_shutdownCloseTimeout, _shutdownCloseTimeout) : Task.CompletedTask,
                 _group.ShutdownGracefullyAsync(_shutdownQuietPeriod, _shutdownCloseTimeout));
-
-            // below comment may arise from not understanding the quiet period but the resolution is correct
-            // we need to add additional timeout on our side as netty is not executing internal timeout properly, often it just hangs forever on closing
-            using CancellationTokenSource delayCancellation = new();
-            if (await Task.WhenAny(closingTask, Task.Delay(Timeouts.TcpClose, delayCancellation.Token)) != closingTask)
-            {
-                if (_logger.IsDebug) _logger.Debug($"Could not close rlpx connection in {Timeouts.TcpClose.TotalSeconds} seconds");
-            }
-            else
-            {
-                delayCancellation.Cancel();
-            }
 
             // Detach subscriptions and dispose any sessions that weren't disconnected during shutdown.
             // Sessions whose Disconnected event fired are already disposed via OnDisconnected.
