@@ -217,7 +217,7 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
             {
                 int unclesStart = content.BytesRead;
                 BlockHeader[] uncles = _headerDecoder.DecodeNonNullArray(ref content, RlpBehaviors.None, UnclesCountLimit);
-                CheckCanonicalUncles(contentSource.Span[unclesStart..content.BytesRead], uncles);
+                CheckCanonicalUnclesItem(contentSource.Span[unclesStart..content.BytesRead], uncles);
                 Withdrawal[]? withdrawals = content.HasNext ? DecodeWithdrawals<OnFlag>(ref content, RlpBehaviors.None) : null;
                 result = new BlockBody(transactions, uncles, withdrawals);
                 reader.ExitSequence(in content, itemLength);
@@ -247,7 +247,25 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
         foreach (Transaction transaction in body.Transactions) TxDecoder.TxObjectPool.Return(transaction);
     }
 
-    private void CheckCanonicalUncles(ReadOnlySpan<byte> encodedUncles, BlockHeader[] uncles)
+    /// <summary>Checks that the uncles in <paramref name="body"/> are in the encoding that <see cref="IHeaderDecoder"/> writes.</summary>
+    /// <remarks>
+    /// The uncles hash is computed from that encoding, so a body kept as received is bound to its header only then.
+    /// <see cref="DecodeWithEncodedTransactions"/> runs this check itself.
+    /// </remarks>
+    /// <param name="body">The encoded body with its sequence prefix.</param>
+    /// <param name="uncles">The uncles decoded from <paramref name="body"/>.</param>
+    /// <exception cref="RlpReaderException">The uncles are not in their canonical encoding.</exception>
+    public void CheckCanonicalUncles(ReadOnlySpan<byte> body, BlockHeader[] uncles)
+    {
+        if (uncles.Length == 0) return;
+
+        RlpReader reader = new(body);
+        RlpReader content = reader.EnterSequence(out _);
+        content.SkipItem();
+        CheckCanonicalUnclesItem(content.ReadEncodedItem(), uncles);
+    }
+
+    private void CheckCanonicalUnclesItem(ReadOnlySpan<byte> encodedUncles, BlockHeader[] uncles)
     {
         if (uncles.Length == 0) return;
 

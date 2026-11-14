@@ -36,6 +36,8 @@ internal static class ArchiveBodyDecoder
 
         RlpReader reader = new(buffer.Span);
         BlockBody body = decoder.Decode(ref reader, RlpBehaviors.SkipPooledTransactions)!;
+        // The importer stores these bytes as they are, so they must hash to the header's uncles hash.
+        (decoder as BlockBodyDecoder)?.CheckCanonicalUncles(buffer.Span, body.Uncles);
         return (body, form == BodyForm.DecodedAndEncoded ? new ArrayPoolList<byte>(buffer.Span) : null);
     }
 
