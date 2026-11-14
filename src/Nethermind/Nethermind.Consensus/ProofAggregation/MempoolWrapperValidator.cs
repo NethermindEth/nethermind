@@ -13,14 +13,18 @@ namespace Nethermind.Consensus.ProofAggregation;
 /// transaction within the per-transaction limits and declares at least one dependency, the dependency list is their union,
 /// mode 0 stays within <c>MAX_LEANSIG_DEPS_PER_WRAPPER</c> and <c>MAX_LEANSTARK_DEPS_PER_WRAPPER</c> and carries one verifying
 /// proof per dependency, and mode 1 carries one recursive STARK that verifies against <c>get_deps_hash(deps)</c>. Mode 1 has no
-/// wrapper-level dependency-count limit; <c>MAX_WRAPPER_BYTES</c>, checked on decoding, bounds it.
+/// wrapper-level dependency-count limit; <c>MAX_WRAPPER_BYTES</c>, checked on decoding, bounds it. EIP-8437's mode 2 takes mode
+/// 0's limits, and each raw witness must pass the native check of a recognized program whose claim is the dependency's
+/// <c>data_hash</c>.
 /// </summary>
 /// <remarks>Proof checks go through <see cref="ProofVerdictCache"/>, so a known proof arriving with another transaction list
 /// is not verified again. Every failure here is a proof or dependency-rule failure, which EIP-8437 discards without
 /// penalizing the sender; encoding violations are rejected earlier, by <see cref="MempoolWrapperDecoder"/>.</remarks>
 public static class MempoolWrapperValidator
 {
-    public const string UnknownMode = "wrapper mode must be 0 (direct) or 1 (recursive)";
+    public const string UnknownMode = "wrapper mode must be 0 (direct), 1 (recursive) or 2 (raw)";
+    public const string UnrecognizedProgram = "mode 2 raw witness names no recognized program under the target fork";
+    public const string InvalidRawWitness = "a mode 2 raw signature or its claim failed the native check";
     public const string DepsMismatch = "wrapper deps must be the sorted, deduplicated union of transaction dependencies";
     public const string NotFrameTransaction = "wrapper transactions must be EIP-8141 frame transactions";
     public const string TransactionLimits = "transaction exceeds EIP-8288 dependency limits";
@@ -35,11 +39,14 @@ public static class MempoolWrapperValidator
     public const string TransactionWithoutDependencies = "every wrapper transaction must declare at least one dependency";
 
     /// <summary>Fully validates a wrapper under <paramref name="forkVerifier"/>, the verifier of its target fork.</summary>
-    public static bool Validate(MempoolWrapper wrapper, ILeanProofVerifier verifier, in Eip8288Verifier forkVerifier, out string? error)
+    /// <param name="recognized">The recognized programs a mode-2 wrapper's raw witnesses are checked against; without them, every
+    /// raw witness is declined.</param>
+    public static bool Validate(MempoolWrapper wrapper, ILeanProofVerifier verifier, in Eip8288Verifier forkVerifier, out string? error,
+        IRecognizedProgramVerifier? recognized = null)
     {
         error = null;
 
-        if (wrapper.Mode is not (MempoolWrapper.ModeDirect or MempoolWrapper.ModeRecursive))
+        if (wrapper.Mode is not (MempoolWrapper.ModeDirect or MempoolWrapper.ModeRecursive or MempoolWrapper.ModeRaw))
         {
             error = UnknownMode;
             return false;
@@ -78,31 +85,35 @@ public static class MempoolWrapperValidator
             return false;
         }
 
-        return VerifyProofs(wrapper, verifier, in forkVerifier, out error);
+        return VerifyProofs(wrapper, verifier, in forkVerifier, out error, recognized);
     }
 
     /// <summary>Checks the dependency limits and verifies the witnesses or aggregate proof against the wrapper's dependencies.</summary>
     /// <remarks>Does not check the transactions against <see cref="MempoolWrapper.Deps"/>; <see cref="Validate"/> does.</remarks>
-    public static bool VerifyProofs(MempoolWrapper wrapper, ILeanProofVerifier verifier, in Eip8288Verifier forkVerifier, out string? error)
+    public static bool VerifyProofs(MempoolWrapper wrapper, ILeanProofVerifier verifier, in Eip8288Verifier forkVerifier, out string? error,
+        IRecognizedProgramVerifier? recognized = null)
     {
         error = null;
         if (!CheckLimits(wrapper, out error)) return false;
-        return wrapper.Mode == MempoolWrapper.ModeDirect
-            ? ValidateDirect(wrapper, verifier, in forkVerifier, ref error)
-            : ValidateRecursive(wrapper, verifier, in forkVerifier, ref error);
+        return wrapper.Mode switch
+        {
+            MempoolWrapper.ModeDirect => ValidateDirect(wrapper, verifier, in forkVerifier, ref error),
+            MempoolWrapper.ModeRaw => ValidateRaw(wrapper, verifier, in forkVerifier, recognized, ref error),
+            _ => ValidateRecursive(wrapper, verifier, in forkVerifier, ref error),
+        };
     }
 
     /// <summary>Checks the dependency list is nonempty, canonical and of enabled schemes, and applies
-    /// <c>MAX_LEANSIG_DEPS_PER_WRAPPER</c> and <c>MAX_LEANSTARK_DEPS_PER_WRAPPER</c> to mode 0 only.</summary>
+    /// <c>MAX_LEANSIG_DEPS_PER_WRAPPER</c> and <c>MAX_LEANSTARK_DEPS_PER_WRAPPER</c> to modes 0 and 2.</summary>
     private static bool CheckLimits(MempoolWrapper wrapper, out string? error)
     {
         error = null;
-        if (wrapper.Mode is not (MempoolWrapper.ModeDirect or MempoolWrapper.ModeRecursive)) { error = UnknownMode; return false; }
+        if (wrapper.Mode is not (MempoolWrapper.ModeDirect or MempoolWrapper.ModeRecursive or MempoolWrapper.ModeRaw)) { error = UnknownMode; return false; }
         if (wrapper.Deps.Count == 0) { error = EmptyAggregate; return false; }
         if (!DepsEqual(Eip8288Dependencies.Canonicalize(wrapper.Deps), wrapper.Deps)) { error = DepsMismatch; return false; }
         foreach (FrameDependency dependency in wrapper.Deps)
             if (!Eip8288Dependencies.IsAcceptedScheme(dependency.Scheme)) { error = InvalidProof; return false; }
-        if (wrapper.Mode != MempoolWrapper.ModeDirect) return true;
+        if (wrapper.Mode == MempoolWrapper.ModeRecursive) return true;
         (int sphincs, int stark) = Eip8288Dependencies.CountByScheme(wrapper.Deps);
         if (sphincs > Eip8288Constants.MaxLeanSigDepsPerWrapper) error = TooManySigDeps;
         else if (stark > Eip8288Constants.MaxLeanStarkDepsPerWrapper) error = TooManyStarkDeps;
@@ -121,6 +132,50 @@ public static class MempoolWrapperValidator
         for (int i = 0; i < wrapper.Deps.Count; i++)
         {
             if (proofs[i] is null || !ProofVerdictCache.VerifyDirect(verifier, in forkVerifier, wrapper.Deps[i], proofs[i]))
+            {
+                error = InvalidProof;
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>Checks each raw witness natively and verifies the ordinary witnesses beside it as mode 0 does.</summary>
+    /// <remarks>Recognized programs publish batch-leaf statements, which only the batch-pricing guest takes, so no raw witness is
+    /// recognized under EIP-8288's guest. A recognized check establishes no proof coverage: the caller must keep the wrapper out
+    /// of the proof store.</remarks>
+    private static bool ValidateRaw(MempoolWrapper wrapper, ILeanProofVerifier verifier, in Eip8288Verifier forkVerifier,
+        IRecognizedProgramVerifier? recognized, ref string? error)
+    {
+        IReadOnlyList<byte[]>? proofs = wrapper.Proofs;
+        IReadOnlyList<RawSignature?>? raws = wrapper.RawWitnesses;
+        if (proofs is null || raws is null || proofs.Count != wrapper.Deps.Count || raws.Count != proofs.Count)
+        {
+            error = ProofCountMismatch;
+            return false;
+        }
+
+        bool batched = forkVerifier.AggregatedVk == Eip8288Verifier.BatchedAggregatedVk;
+        for (int i = 0; i < wrapper.Deps.Count; i++)
+        {
+            FrameDependency dependency = wrapper.Deps[i];
+            if (raws[i] is not { } raw) continue;
+            if (!batched || recognized is null || !recognized.Recognizes(dependency.VerificationKey))
+            {
+                error = UnrecognizedProgram;
+                return false;
+            }
+            if (!recognized.Verify(dependency.VerificationKey, raw, out ValueHash256 claim) || claim != dependency.DataHash)
+            {
+                error = InvalidRawWitness;
+                return false;
+            }
+        }
+
+        for (int i = 0; i < wrapper.Deps.Count; i++)
+        {
+            if (raws[i] is null && !ProofVerdictCache.VerifyDirect(verifier, in forkVerifier, wrapper.Deps[i], proofs[i]))
             {
                 error = InvalidProof;
                 return false;

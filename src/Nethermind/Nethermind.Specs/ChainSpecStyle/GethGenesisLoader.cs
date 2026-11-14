@@ -181,6 +181,7 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
 
             Eip8288AggregatedVkTransitionTimestamp = config.Eip8288AggregatedVkTimestamp,
             Eip8288AggregatedVk = config.Eip8288AggregatedVk,
+            EipBatchedDependencyPricingTransitionTimestamp = config.EipBatchedDependencyPricingTimestamp,
 
             // MaxCodeSize (EIP-170) is standard on all networks since Spurious Dragon
             MaxCodeSize = 0x6000,

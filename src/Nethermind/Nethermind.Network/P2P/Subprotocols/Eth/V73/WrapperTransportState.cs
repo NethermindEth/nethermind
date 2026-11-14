@@ -94,7 +94,9 @@ internal sealed class WrapperRateLimit(double perSecond, TimeProvider clock)
 
 /// <summary>Fully validated wrappers this node offers, bounded by bytes and count.</summary>
 /// <remarks>Only wrappers that passed full EIP-8288 validation, or were produced locally, are added.</remarks>
-internal sealed class WrapperStore(long maxBytes = WrapperTransportLimits.MaxStoreBytes, int maxObjects = WrapperTransportLimits.MaxStoreObjects)
+/// <remarks>Mode-2 wrappers have a byte and count budget of their own and only evict each other (EIP-8437).</remarks>
+internal sealed class WrapperStore(long maxBytes = WrapperTransportLimits.MaxStoreBytes, int maxObjects = WrapperTransportLimits.MaxStoreObjects,
+    long maxRawBytes = WrapperTransportLimits.MaxRawStoreBytes, int maxRawObjects = WrapperTransportLimits.MaxRawStoreObjects)
 {
     internal sealed class Entry(WrapperAnnouncement announcement, byte[] wrapper, ValueHash256[] hashes, Eip8288Verifier verifier, WrapperShape shape,
         ValueHash256[] encodingHashes)
@@ -121,8 +123,13 @@ internal sealed class WrapperStore(long maxBytes = WrapperTransportLimits.MaxSto
     private readonly Dictionary<ValueHash256, List<ValueHash256>> _byTransaction = [];
     private readonly Dictionary<WrapperCoverage, List<ValueHash256>> _byCoverage = [];
     private readonly LinkedList<ValueHash256> _order = new();
+    private readonly LinkedList<ValueHash256> _rawOrder = new();
 
+    /// <summary>Bytes of held proof-backed wrappers.</summary>
     public long Bytes { get; private set; }
+
+    /// <summary>Bytes of held mode-2 wrappers.</summary>
+    public long RawBytes { get; private set; }
     public int Count => _objects.Count;
 
     public bool TryGet(in ValueHash256 wrapperHash, out Entry entry) => _objects.TryGetValue(wrapperHash, out entry!);
@@ -132,11 +139,14 @@ internal sealed class WrapperStore(long maxBytes = WrapperTransportLimits.MaxSto
     public bool TryAdd(Entry entry)
     {
         ValueHash256 wrapperHash = entry.Announcement.Hash;
-        if (_objects.ContainsKey(wrapperHash) || entry.Bytes > maxBytes) return false;
-        while (_objects.Count >= maxObjects || entry.Bytes > maxBytes - Bytes) Remove(_order.First!.Value);
-        entry.Node = _order.AddLast(wrapperHash);
+        bool raw = entry.Shape.Mode == MempoolWrapper.ModeRaw;
+        (LinkedList<ValueHash256> order, long limit, int objects) = raw ? (_rawOrder, maxRawBytes, maxRawObjects) : (_order, maxBytes, maxObjects);
+        if (_objects.ContainsKey(wrapperHash) || entry.Bytes > limit) return false;
+        while (order.Count >= objects || entry.Bytes > limit - (raw ? RawBytes : Bytes)) Remove(order.First!.Value);
+        entry.Node = order.AddLast(wrapperHash);
         _objects[wrapperHash] = entry;
-        Bytes += entry.Bytes;
+        if (raw) RawBytes += entry.Bytes;
+        else Bytes += entry.Bytes;
         foreach (ValueHash256 transaction in entry.Hashes)
         {
             if (!_byTransaction.TryGetValue(transaction, out List<ValueHash256>? holders)) _byTransaction[transaction] = holders = [];
@@ -156,10 +166,17 @@ internal sealed class WrapperStore(long maxBytes = WrapperTransportLimits.MaxSto
         foreach (ValueHash256 wrapperHash in equivalent)
         {
             Entry entry = _objects[wrapperHash];
-            if (entry.Verifier == verifier && (entry.Shape.Mode == mode || entry.Shape.Mode == MempoolWrapper.ModeRecursive)) return true;
+            if (entry.Verifier == verifier && Suppresses(entry.Shape.Mode, mode)) return true;
         }
         return false;
     }
+
+    /// <summary>Whether a held wrapper of <paramref name="heldMode"/> with the same coverage hints makes one of
+    /// <paramref name="mode"/> redundant.</summary>
+    /// <remarks>EIP-8437: mode-2 raw witnesses establish no proof coverage, so they suppress only other mode-2 wrappers, while
+    /// modes 0 and 1 suppress mode 2.</remarks>
+    public static bool Suppresses(int heldMode, int mode) => heldMode == mode || heldMode == MempoolWrapper.ModeRecursive
+        || mode == MempoolWrapper.ModeRaw && heldMode == MempoolWrapper.ModeDirect;
 
     /// <summary>The held wrappers listing <paramref name="transaction"/>.</summary>
     public IReadOnlyList<ValueHash256> Listing(in ValueHash256 transaction) =>
@@ -168,18 +185,28 @@ internal sealed class WrapperStore(long maxBytes = WrapperTransportLimits.MaxSto
     /// <summary>Every held wrapper.</summary>
     public IReadOnlyCollection<Entry> All => _objects.Values;
 
-    /// <summary>Most recently added wrappers first.</summary>
+    /// <summary>Most recently added proof-backed wrappers first, then mode-2 wrappers likewise.</summary>
     public IEnumerable<Entry> Recent()
     {
         for (LinkedListNode<ValueHash256>? node = _order.Last; node is not null; node = node.Previous)
+            yield return _objects[node.Value];
+        for (LinkedListNode<ValueHash256>? node = _rawOrder.Last; node is not null; node = node.Previous)
             yield return _objects[node.Value];
     }
 
     public void Remove(ValueHash256 wrapperHash)
     {
         if (!_objects.Remove(wrapperHash, out Entry? entry)) return;
-        _order.Remove(entry.Node!);
-        Bytes -= entry.Bytes;
+        if (entry.Shape.Mode == MempoolWrapper.ModeRaw)
+        {
+            _rawOrder.Remove(entry.Node!);
+            RawBytes -= entry.Bytes;
+        }
+        else
+        {
+            _order.Remove(entry.Node!);
+            Bytes -= entry.Bytes;
+        }
         foreach (ValueHash256 transaction in entry.Hashes)
             if (_byTransaction.TryGetValue(transaction, out List<ValueHash256>? holders) && holders.Remove(wrapperHash) && holders.Count == 0)
                 _byTransaction.Remove(transaction);

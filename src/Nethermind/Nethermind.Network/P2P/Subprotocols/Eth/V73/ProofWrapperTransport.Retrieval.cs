@@ -45,7 +45,7 @@ public sealed partial class ProofWrapperTransport
                 ValueHash256 wrapperHash = announcement.Hash;
                 peer.Known.Add(wrapperHash);
                 peer.Exchanged.Add(wrapperHash);
-                if (!enabled || _store.Contains(wrapperHash)
+                if (!enabled || !SupportsMode(announcement.Mode) || _store.Contains(wrapperHash)
                     || IsTombstoned(wrapperHash, now)) continue;
                 if (_fetches.TryGetValue(wrapperHash, out WrapperFetch? existing))
                 {
@@ -60,6 +60,8 @@ public sealed partial class ProofWrapperTransport
                 // The pending cache is bounded, and each peer holds at most an equal share of it, so peers announcing wrappers
                 // they never serve cannot crowd out the others. Announcements are not repeated, so excess ones are lost.
                 if (peer.PendingFetches >= share) continue;
+                bool raw = announcement.Mode == MempoolWrapper.ModeRaw;
+                if (raw && _rawFetches >= WrapperTransportLimits.MaxPendingRawAnnouncements) continue;
                 if (_fetches.Count >= WrapperTransportLimits.MaxPendingAnnouncements && (!evictable || !EvictPending(peer, share)))
                 {
                     // Nothing becomes evictable while the rest of the message is handled.
@@ -68,6 +70,7 @@ public sealed partial class ProofWrapperTransport
                 }
                 WrapperFetch fetch = new(announcement, now) { Announcer = peer };
                 peer.PendingFetches++;
+                if (raw) _rawFetches++;
                 fetch.AddSource(peer, announcement);
                 _fetches.Add(wrapperHash, fetch);
             }
@@ -369,6 +372,7 @@ public sealed partial class ProofWrapperTransport
         {
             _fetches.Remove(fetch.Announcement.Hash);
             if (fetch.Announcer is { } announcer) announcer.PendingFetches--;
+            if (fetch.Announcement.Mode == MempoolWrapper.ModeRaw) _rawFetches--;
         }
         Drop(fetch);
         if (_logger.IsTrace) _logger.Trace($"eth/73 stopped fetching {fetch.Announcement}: {reason}");

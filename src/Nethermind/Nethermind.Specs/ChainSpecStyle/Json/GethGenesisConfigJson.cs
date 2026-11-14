@@ -77,6 +77,10 @@ public class GethGenesisConfigJson : IHasNamedForks
     /// <remarks>Devnet-only: EIP-8288 fixes <c>AGGREGATED_VK</c> at the protocol level, so a production network never overrides it; this
     /// models a verifier-changing fork for testing.</remarks>
     public Hash256? Eip8288AggregatedVk { get; set; }
+
+    /// <summary>Activation time, in Unix timestamp seconds, of batched generic proof dependencies (ethereum/EIPs#12664) on top of
+    /// EIP-8288; null leaves them unscheduled.</summary>
+    public ulong? EipBatchedDependencyPricingTimestamp { get; set; }
     /// <summary>Activation time for EIP-8250 keyed nonces, in Unix timestamp seconds; <c>null</c> leaves them unscheduled.</summary>
     public ulong? Eip8250PrototypeTime { get => GetTime(); set => SetTime(value); }
     /// <summary>Activation time for EIP-8272 recent roots, in Unix timestamp seconds; <c>null</c> leaves them unscheduled.</summary>

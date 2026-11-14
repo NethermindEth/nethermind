@@ -46,4 +46,7 @@ public class TxPoolConfig : ITxPoolConfig
     public bool PersistentBroadcastEnabled { get; set; } = true;
     public bool CurrentBlobBaseFeeRequired { get; set; } = true;
     public UInt256 MinBlobTxPriorityFee { get; set; } = 0;
+    public string[] RecognizedPrograms { get; set; } = [];
+    public bool RawWitnessProverEnabled { get; set; } = false;
+    public int RawWitnessMaxClaimsPerLeaf { get; set; } = 1;
 }

@@ -1,0 +1,179 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
+using Nethermind.TxPool;
+
+namespace Nethermind.Consensus.ProofAggregation;
+
+/// <summary>Proves held EIP-8437 raw candidates: one leaf per cycle over raw signatures of one recognized program, folded with
+/// the candidates' ordinary witnesses into a recursive proof and admitted locally as a mode-1 wrapper, which is then relayed.</summary>
+/// <remarks>
+/// Opt-in (<see cref="ITxPoolConfig.RawWitnessProverEnabled"/>): a leaf needs gigabytes of memory. A cycle takes the oldest
+/// untried candidates whose raw witnesses all name the first one's program, up to
+/// <see cref="ITxPoolConfig.RawWitnessMaxClaimsPerLeaf"/> claims. Each candidate is tried once; a busy prover returns it untried.
+/// Leaves publish batch statements, so only the batch-pricing guest takes them.
+/// </remarks>
+public sealed class RawWitnessProver : IDisposable
+{
+    private readonly ProofWrapperService _wrappers;
+    private readonly RawWitnessPool _pool;
+    private readonly IRecognizedProgramVerifier _recognized;
+    private readonly ILeanProofVerifier _verifier;
+    private readonly int _maxClaims;
+    private readonly ILogger _logger;
+    private readonly ITimer? _timer;
+    private int _running;
+
+    public RawWitnessProver(ProofWrapperService wrappers, RawWitnessPool pool, IRecognizedProgramVerifier recognized, ILeanProofVerifier verifier,
+        ITxPoolConfig config, ILogManager logManager, TimeProvider? clock = null)
+    {
+        _wrappers = wrappers;
+        _pool = pool;
+        _recognized = recognized;
+        _verifier = verifier;
+        _maxClaims = Math.Clamp(config.RawWitnessMaxClaimsPerLeaf, 1, Eip8288Constants.MaxClaimsPerBatchLeaf);
+        _logger = logManager.GetClassLogger<RawWitnessProver>();
+        if (!config.RawWitnessProverEnabled || !pool.IsEnabled || !wrappers.IsScheduled) return;
+        TimeSpan interval = TimeSpan.FromMilliseconds(Eip8288Constants.AggregationInterval);
+        _timer = (clock ?? TimeProvider.System).CreateTimer(static state => ((RawWitnessProver)state!).Tick(), this, interval, interval);
+    }
+
+    private void Tick()
+    {
+        if (Interlocked.Exchange(ref _running, 1) == 1) return;
+        _ = Task.Run(async () =>
+        {
+            try { await ProveOnceAsync(); }
+            catch (Exception exception) { if (_logger.IsWarn) _logger.Warn($"EIP-8437 raw witness proving failed: {exception.Message}"); }
+            finally { Volatile.Write(ref _running, 0); }
+        });
+    }
+
+    /// <summary>Proves one group of candidates and admits its mode-1 wrapper.</summary>
+    /// <returns>The admission's result, or null when there was nothing to prove.</returns>
+    public async Task<ProofWrapperAcceptance?> ProveOnceAsync(CancellationToken cancellationToken = default)
+    {
+        if (_wrappers.RefreshVerifier() is not { } verifier || verifier.AggregatedVk != Eip8288Verifier.BatchedAggregatedVk) return null;
+        List<RawWitnessPool.Entry> group = Select(verifier, out ValueHash256 key);
+        if (group.Count == 0) return null;
+        foreach (RawWitnessPool.Entry entry in group) entry.Attempted = true;
+
+        List<RawSignature> signatures = [];
+        List<FrameDependency> leafDeps = [];
+        Dictionary<FrameDependency, byte[]> ordinary = [];
+        List<FrameDependency> deps = [];
+        Dictionary<ValueHash256, Transaction> transactions = [];
+        foreach (RawWitnessPool.Entry entry in group)
+        {
+            MempoolWrapper wrapper = entry.Decoded;
+            for (int i = 0; i < wrapper.Deps.Count; i++)
+            {
+                FrameDependency dependency = wrapper.Deps[i];
+                deps.Add(dependency);
+                if (wrapper.RawWitnesses![i] is { } raw)
+                {
+                    if (leafDeps.Contains(dependency)) continue;
+                    leafDeps.Add(dependency);
+                    signatures.Add(raw);
+                }
+                else ordinary.TryAdd(dependency, wrapper.Proofs![i]);
+            }
+            foreach (Transaction transaction in wrapper.Transactions) transactions.TryAdd(transaction.Hash!.ValueHash256, transaction);
+        }
+        deps = Eip8288Dependencies.Canonicalize(deps);
+        leafDeps = Eip8288Dependencies.Canonicalize(leafDeps);
+        List<ValueHash256> claims = new(leafDeps.Count);
+        foreach (FrameDependency dependency in leafDeps) claims.Add(dependency.DataHash);
+        List<FrameDependency> ordinaryDeps = Eip8288Dependencies.Canonicalize(ordinary.Keys);
+        List<ReadOnlyMemory<byte>> witnesses = new(ordinaryDeps.Count);
+        foreach (FrameDependency dependency in ordinaryDeps) witnesses.Add(ordinary[dependency]);
+
+        byte[] proof;
+        try
+        {
+            byte[] leaf = _recognized.ProveLeaf(key, signatures);
+            AggregationInput input = new()
+            {
+                Deps = ordinaryDeps,
+                Witnesses = witnesses,
+                BatchLeaves = [new BatchLeafInput(key, claims, leafDeps, leaf)],
+            };
+            ValueHash256 depsHash = verifier.DepsHash(deps);
+            proof = _verifier.ProveRecursiveStark(in depsHash, verifier.AggregatedVk.Bytes, input);
+        }
+        catch (LeanProverBusyException)
+        {
+            foreach (RawWitnessPool.Entry entry in group) entry.Attempted = false;
+            return null;
+        }
+
+        List<Transaction> ordered = [.. transactions.Values];
+        ordered.Sort(static (a, b) => a.Hash!.CompareTo(b.Hash!));
+        byte[] encoded = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+        {
+            Transactions = ordered,
+            Mode = MempoolWrapper.ModeRecursive,
+            Deps = deps,
+            RecursiveStark = new RecursiveStark(proof, new Hash256(Eip8288Dependencies.ComputeDepsHash(deps))),
+        }).Bytes;
+        ProofWrapperAcceptance acceptance = await _wrappers.AcceptDetailedAsync(encoded, cancellationToken);
+        if (_logger.IsInfo)
+            _logger.Info($"EIP-8437 proved {claims.Count} raw signature(s) under {key.ToShortString()} for {ordered.Count} transaction(s): " +
+                $"mode-1 wrapper {ValueKeccak.Compute(encoded).ToShortString()} {acceptance.Status}");
+        if (acceptance.HasValidProof)
+            foreach (RawWitnessPool.Entry entry in group) _pool.Remove(entry.Hash);
+        return acceptance;
+    }
+
+    /// <summary>The oldest untried candidates under <paramref name="verifier"/> whose raw witnesses all name one recognized program,
+    /// up to the claim limit and the step's inner-proof limit.</summary>
+    private List<RawWitnessPool.Entry> Select(Eip8288Verifier verifier, out ValueHash256 key)
+    {
+        key = default;
+        List<RawWitnessPool.Entry> group = [];
+        HashSet<FrameDependency> raw = [];
+        HashSet<FrameDependency> ordinary = [];
+        foreach (RawWitnessPool.Entry entry in _pool.Snapshot())
+        {
+            if (entry.Attempted || entry.Verifier != verifier) continue;
+            HashSet<FrameDependency> entryRaw = [];
+            ValueHash256? entryKey = null;
+            bool sameProgram = true;
+            for (int i = 0; i < entry.Decoded.Deps.Count; i++)
+            {
+                if (entry.Decoded.RawWitnesses![i] is null) continue;
+                FrameDependency dependency = entry.Decoded.Deps[i];
+                entryKey ??= dependency.VerificationKey;
+                sameProgram &= dependency.VerificationKey == entryKey;
+                entryRaw.Add(dependency);
+            }
+            if (!sameProgram || entryKey is not { } program || !_recognized.Recognizes(program) || group.Count != 0 && program != key) continue;
+            HashSet<FrameDependency> claims = [.. raw, .. entryRaw];
+            HashSet<FrameDependency> direct = [.. ordinary];
+            for (int i = 0; i < entry.Decoded.Deps.Count; i++)
+                if (entry.Decoded.RawWitnesses![i] is null && entry.Decoded.Deps[i].Scheme == Eip8288Constants.LeanStarkScheme)
+                    direct.Add(entry.Decoded.Deps[i]);
+            // One leaf beside the direct leanSTARK witnesses, each a singleton leaf of the step.
+            if (claims.Count > _maxClaims || direct.Count + 1 > Eip8288Constants.MaxInnerProofsPerStep)
+            {
+                if (group.Count == 0) entry.Attempted = true;
+                break;
+            }
+            group.Add(entry);
+            key = program;
+            raw = claims;
+            ordinary = direct;
+        }
+        return group;
+    }
+
+    public void Dispose() => _timer?.Dispose();
+}

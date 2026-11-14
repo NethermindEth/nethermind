@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Security.Cryptography;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -34,7 +35,8 @@ public sealed class WrapperAnnouncement
         Encoded = encoded;
     }
 
-    /// <summary>EIP-8288's wrapper mode: 0 for direct dependencies, 1 for a recursive STARK.</summary>
+    /// <summary>The wrapper mode: 0 for direct dependencies, 1 for a recursive STARK, 2 for EIP-8437's raw signatures; an
+    /// announcement may name others, which no node supports and every node ignores.</summary>
     public int Mode { get; }
     public int Length { get; }
     public ValueHash256 Hash { get; }
@@ -55,7 +57,7 @@ public sealed class WrapperAnnouncement
     public static WrapperAnnouncement Create(ReadOnlySpan<byte> wrapper, int mode, WrapperCoverage coverage)
     {
         if (wrapper.Length is 0 or > Eth73Protocol.MaxWrapperBytes) throw new ArgumentException("Wrapper length is out of bounds", nameof(wrapper));
-        if (mode is not (0 or 1)) throw new ArgumentException("Wrapper mode must be 0 or 1", nameof(mode));
+        if (mode is not (0 or 1 or 2)) throw new ArgumentException("Wrapper mode must be 0, 1 or 2", nameof(mode));
         ValueHash256 hash = ValueKeccak.Compute(wrapper);
         return new(mode, wrapper.Length, hash, coverage, Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt((ulong)mode), Eth73Rlp.EncodeUInt((ulong)wrapper.Length),
             Eth73Rlp.EncodeBytes(hash.Bytes), Eth73Rlp.EncodeBytes(coverage.DepsHash.Bytes), Eth73Rlp.EncodeBytes(coverage.TxsHash.Bytes)));
@@ -66,14 +68,14 @@ public sealed class WrapperAnnouncement
         Eth73RlpReader outer = new(encoded);
         Eth73RlpReader fields = outer.ReadList();
         outer.End();
+        // EIP-8437: an announcement of an unsupported mode is well-formed; the recipient ignores it without penalty.
         ulong mode = fields.ReadUInt64();
-        if (mode > 1) throw new RlpException("Unknown wrapper mode");
         ulong length = fields.ReadUInt64();
         if (length is 0 or > Eth73Protocol.MaxWrapperBytes) throw new RlpException("Wrapper length is out of bounds");
         ValueHash256 hash = fields.ReadHash();
         WrapperCoverage coverage = new(fields.ReadHash(), fields.ReadHash());
         fields.End();
-        return new((int)mode, (int)length, hash, coverage, encoded.ToArray());
+        return new((int)Math.Min(mode, int.MaxValue), (int)length, hash, coverage, encoded.ToArray());
     }
 
     public override string ToString() => $"mode-{Mode} wrapper {Hash.ToShortString()} ({Length} bytes)";
@@ -115,7 +117,7 @@ public static class WrapperBodies
         }
         if (hashes.Count == 0) throw new RlpException("Wrapper carries no transactions");
         ulong mode = fields.ReadUInt64();
-        if (mode > 1) throw new RlpException("Unknown wrapper mode");
+        if (mode > MempoolWrapper.ModeRaw) throw new RlpException("Unknown wrapper mode");
         Eth73RlpReader content = fields.ReadList();
         fields.End();
         Eth73RlpReader dependencies = content.ReadList();
@@ -132,10 +134,14 @@ public static class WrapperBodies
             work += (long)(dependency[31] == Eip8288Constants.LeanStarkScheme
                 ? Eip8288Constants.LeanStarkVerificationGas : Eip8288Constants.LeanSphincsVerificationGas);
         }
-        if (mode == 0)
+        if (mode == MempoolWrapper.ModeDirect)
         {
             Eth73RlpReader proofs = content.ReadList();
             while (proofs.HasMore) verificationBytes += proofs.ReadBytes().Length;
+        }
+        else if (mode == MempoolWrapper.ModeRaw)
+        {
+            verificationBytes = ParseRawEntries(content.ReadList(), dependencyEntries, dependencyCount);
         }
         else
         {
@@ -151,6 +157,41 @@ public static class WrapperBodies
         for (int i = 0; i < hashes.Count; i++) hashes[i].Bytes.CopyTo(transactionHashes.AsSpan(i * ValueHash256.MemorySize));
         coverage = new(ValueKeccak.Compute(dependencyEntries), ValueKeccak.Compute(transactionHashes));
         return [.. hashes];
+    }
+
+    /// <summary>Checks EIP-8437 mode-2 framing: one entry per dependency, each an ordinary witness or a raw
+    /// <c>[public-key, message, signature]</c> of a leanSTARK dependency within <see cref="MempoolWrapper.MaxRawWitnessBytes"/> and
+    /// with a 32-byte message, at least one of them raw.</summary>
+    /// <returns>The entries' bytes; their verification work is the dependencies', which the caller already counted.</returns>
+    private static int ParseRawEntries(Eth73RlpReader entries, byte[] dependencyEntries, int dependencyCount)
+    {
+        int bytes = 0, index = 0;
+        bool anyRaw = false;
+        while (entries.HasMore)
+        {
+            if (index == dependencyCount) throw new RlpException("Mode 2 entry count does not match its dependencies");
+            if (!entries.IsListNext)
+            {
+                bytes += entries.ReadBytes().Length;
+                index++;
+                continue;
+            }
+            ReadOnlySpan<byte> item = entries.ReadItem();
+            if (item.Length > MempoolWrapper.MaxRawWitnessBytes
+                || dependencyEntries[index * Eip8288Constants.DependencyTripleLength + 31] != Eip8288Constants.LeanStarkScheme)
+                throw new RlpException("Invalid mode 2 raw witness");
+            Eth73RlpReader raw = new Eth73RlpReader(item).ReadList();
+            raw.ReadBytes();
+            if (raw.ReadBytes().Length != ValueHash256.MemorySize) throw new RlpException("Invalid mode 2 raw witness");
+            raw.ReadBytes();
+            raw.End();
+            bytes += item.Length;
+            anyRaw = true;
+            index++;
+        }
+        entries.End();
+        if (!anyRaw || index != dependencyCount) throw new RlpException("Invalid mode 2 entries");
+        return bytes;
     }
 
     /// <summary>The consensus hash of a wrapped EIP-8141 transaction in its pooled network form: Keccak-256 of the EIP-2718
@@ -223,14 +264,14 @@ public static class WrapperBodies
     public static ValueHash256[] ParseWrapper(ReadOnlySpan<byte> wrapper) => ParseWrapper(wrapper, out _, out _);
 
     /// <summary>Reads the mode field, the second field of the wrapper list, without checking the rest of the encoding.</summary>
-    /// <exception cref="RlpException">The encoding has no mode field of 0 or 1 in that position.</exception>
+    /// <exception cref="RlpException">The encoding has no mode field of 0, 1 or 2 in that position.</exception>
     public static int ReadMode(ReadOnlySpan<byte> wrapper)
     {
         Eth73RlpReader outer = new(wrapper);
         Eth73RlpReader fields = outer.ReadList();
         fields.ReadItem();
         ulong mode = fields.ReadUInt64();
-        return mode <= 1 ? (int)mode : throw new RlpException("Unknown wrapper mode");
+        return mode <= MempoolWrapper.ModeRaw ? (int)mode : throw new RlpException("Unknown wrapper mode");
     }
 
     /// <summary>The mode a returned wrapper declares, or -1 when it declares none, so it matches no announcement.</summary>

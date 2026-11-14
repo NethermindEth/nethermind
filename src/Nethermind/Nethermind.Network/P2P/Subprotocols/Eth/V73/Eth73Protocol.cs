@@ -129,6 +129,15 @@ public static class WrapperTransportLimits
     public const long MaxStoreBytes = 128L * 1024 * 1024;
     public const int MaxStoreObjects = 256;
 
+    /// <summary>EIP-8437 mode-2 wrappers held for serving, apart from <see cref="MaxStoreBytes"/> and <see cref="MaxStoreObjects"/>,
+    /// so raw traffic never evicts proof-backed wrappers.</summary>
+    public const long MaxRawStoreBytes = 8L * 1024 * 1024;
+    public const int MaxRawStoreObjects = 128;
+
+    /// <summary>The share of <see cref="MaxPendingAnnouncements"/> mode-2 announcements may hold, so raw traffic never crowds
+    /// proof-backed wrappers out of the pending cache.</summary>
+    public const int MaxPendingRawAnnouncements = MaxPendingAnnouncements / 4;
+
     /// <summary>Held wrappers announced to a newly connected peer, most recent first.</summary>
     public const int MaxConnectAnnouncements = Eth73Protocol.MaxAnnouncements;
 

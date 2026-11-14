@@ -50,6 +50,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
     private long _chargedBytes;
     private int _validationWorkers;
     private int _nextPeer;
+    private int _rawFetches;
     private bool _disposed;
     private Eip8288Verifier? _verifier;
 
@@ -70,6 +71,11 @@ public sealed partial class ProofWrapperTransport : IDisposable
 
     /// <summary>Whether the head activates EIP-8288; the transport is inert otherwise.</summary>
     public bool IsEnabled => _wrappers.IsEnabled;
+
+    /// <summary>Whether this node fetches announced wrappers of <paramref name="mode"/>: modes 0 and 1, and EIP-8437's mode 2 when
+    /// it recognizes any program.</summary>
+    private bool SupportsMode(int mode) => mode is MempoolWrapper.ModeDirect or MempoolWrapper.ModeRecursive
+        || mode == MempoolWrapper.ModeRaw && _wrappers.AcceptsRawWitnesses;
 
     internal int PeerCount { get { lock (_gate) return _peers.Count; } }
     internal int FetchCount { get { lock (_gate) return _fetches.Count; } }
@@ -488,6 +494,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
             foreach (ValueHash256 wrapperHash in _store.Listing(transaction))
                 if (wrapperHash != entry.Announcement.Hash && !candidates.ContainsKey(wrapperHash)
                     && _store.TryGet(wrapperHash, out WrapperStore.Entry candidate) && candidate.Verifier == entry.Verifier
+                    && (candidate.Shape.Mode != MempoolWrapper.ModeRaw || entry.Shape.Mode == MempoolWrapper.ModeRaw)
                     && peer.Exchanged.Contains(wrapperHash, now))
                     candidates[wrapperHash] = candidate;
         if (candidates.Count == 0) return false;

@@ -157,11 +157,9 @@ public class Eth73MessagesTests
 
     private static byte[] Hash32(int length = 32) => Eth73Rlp.EncodeBytes(new byte[length]);
 
-    // check_vectors.py: modes other than 0 and 1, a mode encoded as a byte string, entries without exactly five fields and hints
-    // other than 32 bytes fail.
-    [TestCase("mode 2")]
-    [TestCase("mode 256")]
-    [TestCase("string mode")]
+    // check_vectors.py: a mode that is not an integer, entries without exactly five fields and hints other than 32 bytes fail.
+    // Unsupported modes decode: the recipient ignores them (RawWitnessTransportTests).
+    [TestCase("list mode")]
     [TestCase("noncanonical mode")]
     [TestCase("two fields")]
     [TestCase("three fields")]
@@ -174,9 +172,7 @@ public class Eth73MessagesTests
         static byte[] Length() => Eth73Rlp.EncodeUInt(1);
         byte[] encoded = scenario switch
         {
-            "mode 2" => Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt(2), Length(), Hash32(), Hash32(), Hash32()),
-            "mode 256" => Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt(256), Length(), Hash32(), Hash32(), Hash32()),
-            "string mode" => Eth73Rlp.EncodeList(Eth73Rlp.EncodeBytes([1, 0]), Length(), Hash32(), Hash32(), Hash32()),
+            "list mode" => Eth73Rlp.EncodeList(Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt(1)), Length(), Hash32(), Hash32(), Hash32()),
             "noncanonical mode" => Eth73Rlp.EncodeList([0x81, 0x01], Length(), Hash32(), Hash32(), Hash32()),
             "two fields" => Eth73Rlp.EncodeList(Length(), Hash32()),
             "three fields" => Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt(0), Length(), Hash32()),
@@ -188,7 +184,7 @@ public class Eth73MessagesTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(() => WrapperAnnouncement.Decode(encoded), Throws.InstanceOf<RlpException>());
-            Assert.That(() => WrapperAnnouncement.Create(new byte[1], 2, default), Throws.ArgumentException);
+            Assert.That(() => WrapperAnnouncement.Create(new byte[1], 3, default), Throws.ArgumentException);
             Assert.That(WrapperAnnouncement.Decode(Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt(1), Length(), Hash32(), Hash32(), Hash32())).Mode, Is.EqualTo(1));
         }
     }

@@ -18,6 +18,7 @@ internal sealed class FakeLeanProofVerifier(bool result) : ILeanProofVerifier
     public byte[] ProofOutput { get; set; } = [1];
 
     public int LargestRecursiveInput { get; private set; }
+    public AggregationInput? LastInput { get; private set; }
     public int ProofCalls { get; private set; }
     public int VerificationCalls { get; private set; }
     public Action? OnVerification { get; set; }
@@ -38,6 +39,7 @@ internal sealed class FakeLeanProofVerifier(bool result) : ILeanProofVerifier
     public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)
     {
         LargestRecursiveInput = Math.Max(LargestRecursiveInput, input.RecursiveProofs.Count);
+        LastInput = input;
         ProofCalls++;
         OnProving?.Invoke();
         return (byte[])ProofOutput.Clone();

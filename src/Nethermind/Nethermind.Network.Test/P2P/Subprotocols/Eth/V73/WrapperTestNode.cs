@@ -74,7 +74,8 @@ internal sealed class FakeWrapperLink(string name = "peer") : IWrapperLink
 /// <summary>A transport over substitute chain components, with valid-by-default proofs and a manual clock.</summary>
 internal sealed class WrapperTestNode : IDisposable
 {
-    public WrapperTestNode(ISpecProvider? specProvider = null)
+    /// <param name="rawWitnesses">Whether the node recognizes a program, so it fetches and relays EIP-8437 mode-2 wrappers.</param>
+    public WrapperTestNode(ISpecProvider? specProvider = null, bool rawWitnesses = false)
     {
         Time = new ManualTimeProvider();
         ISpecProvider specs = specProvider ?? new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance);
@@ -94,7 +95,11 @@ internal sealed class WrapperTestNode : IDisposable
             lock (Pending) Pending.Add(call.Arg<Transaction>());
             return AcceptTxResult.Accepted;
         });
-        Wrappers = new ProofWrapperService(Pool, specs, Tree, ProofStore, Verifier, new ForwardingBlobAdmission(this));
+        RawWitnessPool? raw = rawWitnesses
+            ? new(Pool, Substitute.For<IChainHeadInfoProvider>(), new TxPoolConfig { RecognizedPrograms = ["slhdsa-shake128s-pure-v1"] })
+            : null;
+        Wrappers = new ProofWrapperService(Pool, specs, Tree, ProofStore, Verifier, new ForwardingBlobAdmission(this), raw,
+            rawWitnesses ? Substitute.For<IRecognizedProgramVerifier>() : null);
         Transport = new ProofWrapperTransport(Wrappers, LimboLogs.Instance, Time);
     }
 
@@ -214,6 +219,23 @@ internal static class WrapperTestObjects
             Deps = deps,
             Mode = MempoolWrapper.ModeRecursive,
             RecursiveStark = new RecursiveStark(proof, new Hash256(Eip8288Dependencies.ComputeDepsHash(deps)))
+        }).Bytes;
+    }
+
+    /// <summary>A mode-2 wrapper over <paramref name="transactions"/>, whose leanSTARK dependencies carry an opaque raw witness of
+    /// <paramref name="signatureBytes"/> and the others a one-byte ordinary witness.</summary>
+    public static byte[] RawWrapper(int signatureBytes, params Transaction[] transactions)
+    {
+        Transaction[] sorted = [.. transactions.OrderBy(t => t.Hash!.ToString())];
+        List<FrameDependency> deps = Eip8288Dependencies.Canonicalize(sorted.SelectMany(tx => Eip8288Dependencies.ForTransaction(tx, FrameTxSigHash.ComputeValue)));
+        static bool Raw(FrameDependency d) => d.Scheme == Eip8288Constants.LeanStarkScheme;
+        return MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+        {
+            Transactions = sorted,
+            Deps = deps,
+            Mode = MempoolWrapper.ModeRaw,
+            Proofs = [.. deps.Select(d => Raw(d) ? [] : new byte[] { 1 })],
+            RawWitnesses = [.. deps.Select(d => Raw(d) ? new RawSignature([1], d.DataHash, new byte[signatureBytes]) : null)],
         }).Bytes;
     }
 
