@@ -19,7 +19,8 @@ make build
 ```
 
 bflat fails the build on an F, D, C or A instruction in the image, as
-Airbender decodes RV32IM only, and on an image that does not fit the ROM.
+Airbender decodes RV32IM only, and on an image that does not fit the ROM,
+its unwind tables included.
 
 The build writes `bin/nethermind` (ELF), `bin/nethermind.bin` (the ROM image) and
 `bin/nethermind.text` (the instructions).
