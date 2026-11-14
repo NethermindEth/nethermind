@@ -246,6 +246,17 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
         if (!encodedUncles.SequenceEqual(canonical)) throw new RlpReaderException("Uncles are not in their canonical encoding");
     }
 
+    /// <summary>Reads the transactions of an encoded block, each kept in its encoded form.</summary>
+    /// <remarks>The transactions are as <see cref="DecodeWithEncodedTransactions"/> returns them, with the same rules.</remarks>
+    /// <param name="block">An encoded block: a sequence of the header and then the body items. The transactions refer to these bytes.</param>
+    public static Transaction[] DecodeEncodedTransactionsOfBlock(Memory<byte> block)
+    {
+        RlpReader items = new RlpReader(block.Span).EnterSequence(out int itemLength);
+        Memory<byte> itemsSource = block[(itemLength - items.Remaining)..];
+        items.SkipItem();
+        return ReadEncodedTransactions(ref items, itemsSource);
+    }
+
     /// <param name="reader">Reader whose next item is the transaction sequence.</param>
     /// <param name="source">The bytes that <paramref name="reader"/> reads, from its start.</param>
     private static Transaction[] ReadEncodedTransactions(ref RlpReader reader, Memory<byte> source)

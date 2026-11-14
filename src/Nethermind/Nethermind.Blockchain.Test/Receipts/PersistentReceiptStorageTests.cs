@@ -360,6 +360,40 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         { MigratedBlockNumber = 0 };
     }
 
+    [Test]
+    public void Block_with_encoded_transactions_stores_the_same_receipts_and_index()
+    {
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(
+            Build.A.Transaction.WithNonce(0).SignedAndResolved().TestObject,
+            Build.A.Transaction.WithNonce(1).WithType(TxType.EIP1559).WithTo(null).SignedAndResolved().TestObject).TestObject;
+        byte[] encoded = new BlockDecoder().Encode(block);
+        RlpReader reader = new(encoded);
+        // Sync loads blocks from the database, whose transactions have no senders.
+        Block decoded = new BlockDecoder().Decode(ref reader)!;
+        Transaction[] encodedTransactions = BlockBodyDecoder.DecodeEncodedTransactionsOfBlock(encoded);
+        Block withEncodedTransactions = new(decoded.Header, new BlockBody(encodedTransactions, []));
+        TestMemColumnsDb<ReceiptsColumns> otherDb = new();
+        otherDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, Array.Empty<byte>());
+        PersistentReceiptStorage other = new(otherDb, _specProvider, _receiptsRecovery, _blockTree, _blockStore, _receiptConfig, _decoder)
+        { MigratedBlockNumber = 0 };
+
+        _storage.Insert(decoded, CreateReceipts(), ensureCanonical: true, lastBlockNumber: 1);
+        other.Insert(withEncodedTransactions, CreateReceipts(), ensureCanonical: true, lastBlockNumber: 1);
+
+        foreach (ReceiptsColumns column in new[] { ReceiptsColumns.Default, ReceiptsColumns.Transactions })
+        {
+            Assert.That(otherDb.GetColumnDb(column).GetAll().ToDictionary(static kv => kv.Key.ToHexString(), static kv => kv.Value),
+                Is.EquivalentTo(_receiptsDb.GetColumnDb(column).GetAll().ToDictionary(static kv => kv.Key.ToHexString(), static kv => kv.Value)),
+                column.ToString());
+        }
+
+        static TxReceipt[] CreateReceipts() =>
+        [
+            Build.A.Receipt.WithGasUsedTotal(21_000).WithLogs(Build.A.LogEntry.TestObject).TestObject,
+            Build.A.Receipt.WithGasUsedTotal(100_000).WithStatusCode(StatusCode.Failure).TestObject,
+        ];
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Returns_null_for_missing_tx()
     {

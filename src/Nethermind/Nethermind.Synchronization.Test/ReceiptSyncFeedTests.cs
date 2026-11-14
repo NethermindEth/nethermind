@@ -5,6 +5,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -30,6 +31,7 @@ public class ReceiptSyncFeedTests
 {
     private IBlockTree _syncingFromBlockTree;
     private IBlockTree _syncingToBlockTree;
+    private BlockStore _syncingToBlockStore;
     private ReceiptsSyncFeed _feed;
     private ISyncConfig _syncConfig;
     private Block _pivotBlock;
@@ -48,7 +50,9 @@ public class ReceiptSyncFeedTests
             .TestObject;
 
         _receiptStorage = Substitute.For<IReceiptStorage>();
+        _syncingToBlockStore = new BlockStore(new MemDb());
         _syncingToBlockTree = Build.A.BlockTree()
+            .WithBlockStore(_syncingToBlockStore)
             .TestObject;
 
         for (ulong i = 1; i < 100; i++)
@@ -75,6 +79,7 @@ public class ReceiptSyncFeedTests
         _feed = new ReceiptsSyncFeed(
             MainnetSpecProvider.Instance,
             _syncingToBlockTree,
+            _syncingToBlockStore,
             _receiptStorage,
             new MemorySyncPointers(),
             _syncPeerPool,

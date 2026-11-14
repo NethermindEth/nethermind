@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -15,6 +16,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
@@ -47,6 +49,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly FastBlocksAllocationStrategy _approximateAllocationStrategy = new(TransferSpeedType.Receipts, 0, true);
 
         private readonly IBlockTree _blockTree;
+        private readonly IBlockStore _blockStore;
         private readonly ISyncConfig _syncConfig;
         private readonly ISyncReport _syncReport;
         private readonly IReceiptStorage _receiptStorage;
@@ -66,6 +69,7 @@ namespace Nethermind.Synchronization.FastBlocks
         public ReceiptsSyncFeed(
             ISpecProvider specProvider,
             IBlockTree blockTree,
+            IBlockStore blockStore,
             IReceiptStorage receiptStorage,
             ISyncPointers syncPointers,
             ISyncPeerPool syncPeerPool,
@@ -82,6 +86,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncConfig = syncConfig;
             _syncReport = syncReport;
             _blockTree = blockTree;
+            _blockStore = blockStore;
             _historyPruner = historyPruner;
             _receiptDownloadStrategy = new(_blockTree, _receiptStorage, _syncReport, _historyPruner);
 
@@ -203,14 +208,13 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
-        /// <param name="headerMissing">
-        /// <c>true</c> when the local header store has no header for <paramref name="blockInfo"/>, so the
-        /// rejection says nothing about the peer that sent <paramref name="receipts"/>.
+        /// <param name="header">
+        /// The header of <paramref name="blockInfo"/>, or <see langword="null"/> when the local header store has none,
+        /// so the rejection says nothing about the peer that sent <paramref name="receipts"/>.
         /// </param>
-        private bool TryPrepareReceipts(BlockInfo blockInfo, TxReceipt[] receipts, out TxReceipt[]? preparedReceipts, out bool headerMissing)
+        private bool TryPrepareReceipts(BlockInfo blockInfo, TxReceipt[] receipts, out TxReceipt[]? preparedReceipts, out BlockHeader? header)
         {
-            BlockHeader? header = _blockTree.FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: blockInfo.BlockNumber);
-            headerMissing = header is null;
+            header = _blockTree.FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: blockInfo.BlockNumber);
             if (header is null)
             {
                 if (_logger.IsDebug) _logger.Debug($"Could not find header {blockInfo.BlockNumber} ({blockInfo.BlockHash})");
@@ -279,12 +283,13 @@ namespace Nethermind.Synchronization.FastBlocks
                         break;
                     }
 
-                    bool headerMissing = false;
-                    bool isValid = !hasBreachedProtocol && TryPrepareReceipts(blockInfo, receipts, out prepared, out headerMissing);
+                    BlockHeader? header = null;
+                    bool isValid = !hasBreachedProtocol && TryPrepareReceipts(blockInfo, receipts, out prepared, out header);
+                    bool headerMissing = !hasBreachedProtocol && header is null;
                     if (isValid)
                     {
-                        Block? block = _blockTree.FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: blockInfo.BlockNumber);
-                        if (block is null)
+                        byte[]? blockRlp = _blockStore.GetRlp(blockInfo.BlockNumber, blockInfo.BlockHash);
+                        if (blockRlp is null)
                         {
                             if (blockInfo.BlockNumber >= _barrier)
                             {
@@ -296,15 +301,21 @@ namespace Nethermind.Synchronization.FastBlocks
                         }
                         else
                         {
+                            // The receipts need only the hash and type of each transaction, so the transactions stay encoded.
+                            Transaction[] transactions = BlockBodyDecoder.DecodeEncodedTransactionsOfBlock(blockRlp);
                             try
                             {
-                                _receiptStorage.Insert(block, prepared, ensureCanonical: true);
-                                _syncStatusList.MarkInserted(block.Number);
+                                _receiptStorage.Insert(new Block(header!, new BlockBody(transactions, [])), prepared, ensureCanonical: true);
+                                _syncStatusList.MarkInserted(blockInfo.BlockNumber);
                                 validResponsesCount++;
                             }
                             catch (InvalidDataException)
                             {
                                 _syncStatusList.MarkPending(blockInfo);
+                            }
+                            finally
+                            {
+                                foreach (Transaction transaction in transactions) TxDecoder.TxObjectPool.Return(transaction);
                             }
                         }
                     }

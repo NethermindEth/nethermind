@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -17,6 +18,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -76,6 +78,8 @@ public class ReceiptsSyncFeedTests
     private ISyncConfig _syncConfig;
     private ISyncReport _syncReport;
     private IBlockTree _blockTree;
+    private IBlockStore _blockStore;
+    private static readonly BlockDecoder BlockDecoder = new();
     private IDb _metadataDb;
     private IHistoryPruner _historyPruner;
 
@@ -103,6 +107,7 @@ public class ReceiptsSyncFeedTests
         _receiptStorage = Substitute.For<IReceiptStorage>();
         _syncPointers = new MemorySyncPointers();
         _blockTree = Substitute.For<IBlockTree>();
+        _blockStore = Substitute.For<IBlockStore>();
         _historyPruner = Substitute.For<IHistoryPruner>();
         _metadataDb = new TestMemDb();
 
@@ -136,6 +141,7 @@ public class ReceiptsSyncFeedTests
         new(
             _specProvider,
             _blockTree,
+            _blockStore,
             _receiptStorage,
             _syncPointers,
             _syncPeerPool,
@@ -153,6 +159,7 @@ public class ReceiptsSyncFeedTests
             () => _feed = new ReceiptsSyncFeed(
                 _specProvider,
                 _blockTree,
+                _blockStore,
                 _receiptStorage,
                 _syncPointers,
                 _syncPeerPool,
@@ -170,6 +177,7 @@ public class ReceiptsSyncFeedTests
         _feed = new ReceiptsSyncFeed(
             _specProvider,
             _blockTree,
+            _blockStore,
             NullReceiptStorage.Instance,
             _syncPointers,
             _syncPeerPool,
@@ -305,6 +313,7 @@ public class ReceiptsSyncFeedTests
         _feed = new ReceiptsSyncFeed(
             _specProvider,
             _blockTree,
+            _blockStore,
             _receiptStorage,
             _syncPointers,
             _syncPeerPool,
@@ -351,6 +360,7 @@ public class ReceiptsSyncFeedTests
         _feed = new ReceiptsSyncFeed(
             specProvider ?? _specProvider,
             _blockTree,
+            _blockStore,
             _receiptStorage,
             _syncPointers,
             _syncPeerPool,
@@ -376,9 +386,9 @@ public class ReceiptsSyncFeedTests
                 return blockInfo;
             });
 
-        _blockTree.FindBlock(Keccak.Zero, BlockTreeLookupOptions.None)
+        _blockStore.GetRlp(default, Keccak.Zero)
             .ReturnsForAnyArgs(ci =>
-                scenario.BlocksByHash.TryGetValue(ci.Arg<Hash256>(), out Block? value) ? value : null);
+                scenario.BlocksByHash.TryGetValue(ci.Arg<Hash256>(), out Block? value) ? BlockDecoder.Encode(value) : null);
 
         _blockTree.FindHeader(Keccak.Zero, BlockTreeLookupOptions.None)
             .ReturnsForAnyArgs(ci =>
@@ -497,12 +507,11 @@ public class ReceiptsSyncFeedTests
     {
         LoadScenario(_1024BodiesWithOneTxEach);
 
-        // Given no block number, the block tree resolves one from the block number index first, so a body whose
-        // index entry is missing is only reachable when the number the feed already knows is passed along.
-        _blockTree.FindBlock(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>())
-            .Returns(ci => ci.ArgAt<ulong?>(2) is null
-                ? null
-                : _1024BodiesWithOneTxEach.BlocksByHash.GetValueOrDefault(ci.ArgAt<Hash256>(0)));
+        // A body whose block number index entry is missing is only reachable by the number the feed already knows.
+        _blockStore.GetRlp(Arg.Any<ulong>(), Arg.Any<Hash256>())
+            .Returns(ci => _1024BodiesWithOneTxEach.BlocksByHash.GetValueOrDefault(ci.ArgAt<Hash256>(1)) is { } block && block.Number == ci.ArgAt<ulong>(0)
+                ? BlockDecoder.Encode(block)
+                : null);
 
         using ReceiptsSyncBatch? batch = await _feed.PrepareRequest();
         FillBatchResponses(batch!);

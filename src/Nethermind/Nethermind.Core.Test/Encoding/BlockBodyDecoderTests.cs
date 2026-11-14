@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Serialization.FluentRlp;
@@ -105,6 +106,24 @@ public class BlockBodyDecoderTests
         finally
         {
             foreach (Transaction transaction in decoded.Transactions) TxDecoder.TxObjectPool.Return(transaction);
+        }
+    }
+
+    [TestCaseSource(nameof(ValidBodies))]
+    public void Encoded_transactions_of_a_block_keep_their_hashes(BlockBody body)
+    {
+        Block block = new(Build.A.BlockHeader.TestObject, body);
+
+        Transaction[] transactions = BlockBodyDecoder.DecodeEncodedTransactionsOfBlock(new BlockDecoder().Encode(block));
+
+        try
+        {
+            Assert.That(transactions.Select(static tx => (tx.Type, tx.Hash)),
+                Is.EqualTo(body.Transactions.Select(static tx => (tx.Type, tx.CalculateHash()))));
+        }
+        finally
+        {
+            foreach (Transaction transaction in transactions) TxDecoder.TxObjectPool.Return(transaction);
         }
     }
 
