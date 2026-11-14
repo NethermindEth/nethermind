@@ -1007,8 +1007,8 @@ public class ProofWrapperServiceTests
     [TestCase(64, false, false, 0UL, 2, true, TestName = "Locally submitted transactions are evicted last")]
     [TestCase(64, false, false, 0UL, 3, false, true, TestName = "A second wrapper at the same head reuses the pool scan")]
     [TestCase(64, false, false, 0UL, 3, false, true, true, TestName = "A candidate whose nonce gap was filled since the scan is kept")]
-    [TestCase(64, false, false, 0UL, 1, false, false, false, "gap", TestName = "A candidate whose nonce gap admission filled is kept and the admission rolled back")]
-    [TestCase(64, false, false, 0UL, 1, false, false, false, "gap-interrupted", TestName = "An interrupted admission that is rolled back reports no pooled transactions")]
+    [TestCase(64, false, false, 0UL, 0, false, false, false, "gap", TestName = "A candidate whose nonce gap admission filled is kept and the admission rolled back")]
+    [TestCase(64, false, false, 0UL, 0, false, false, false, "gap-interrupted", TestName = "An interrupted admission that is rolled back reports no pooled transactions")]
     [TestCase(64, false, false, 0UL, 0, false, false, false, "unpinned", TestName = "Admitting only transactions whose witnesses fit evicts nothing")]
     [TestCase(64, false, false, 0UL, 2, false, true, false, "unpinned", TestName = "Victims an admission did not evict stay candidates for the next")]
     [TestCase(64, false, false, 0UL, 0, false, false, false, "foreign", TestName = "Witnesses staged beyond capacity are out of other admissions' reach")]
@@ -1125,6 +1125,11 @@ public class ProofWrapperServiceTests
         pool.GetPendingTransactionsBySender(Arg.Any<Address>()).Returns(call => [.. pinned.Where(tx => tx.SenderAddress == call.Arg<Address>())]);
         pool.GetLatestPendingNonce(Arg.Any<Address>()).Returns(call =>
             Array.IndexOf(TestItem.Addresses, call.Arg<Address>()) >= nonExecutable || filled.Contains(call.Arg<Address>()) ? ulong.MaxValue : 0UL);
+        pool.EvictTransaction(Arg.Any<Transaction>()).Returns(call =>
+        {
+            store.UnpinPending(call.Arg<Transaction>().Hash!.ValueHash256, poolOwner);
+            return true;
+        });
         pool.RemoveTransaction(Arg.Any<Hash256?>()).Returns(call =>
         {
             if (incoming == "concurrent" && submissions <= ProofWrapperService.AdmissionChunk) evictedWhileStaged = true;
@@ -1190,7 +1195,9 @@ public class ProofWrapperServiceTests
             pool.Received(removed != 0 && !oldestSharedWithExecutable && !localVictims && !gap ? 1 : 0).RemoveTransaction(oldest.Hash);
             pool.Received(expected != ProofWrapperAcceptanceStatus.LocalFailure || gap || incoming == "throws" ? 1 : 0)
                 .SubmitTx(Arg.Is<Transaction>(tx => tx.Hash == first.Hash), Arg.Any<TxHandlingOptions>());
-            pool.Received(gap ? 1 : 0).RemoveTransaction(first.Hash);
+            // A rolled-back transaction is evicted, which forgets its hash so the wrapper can be resubmitted.
+            pool.Received(gap ? 1 : 0).EvictTransaction(Arg.Is<Transaction>(tx => tx.Hash == first.Hash));
+            pool.DidNotReceive().RemoveTransaction(first.Hash);
             blobAdmission.DidNotReceive().Admit(Arg.Any<Transaction>(), Arg.Any<object?>(), Arg.Any<IDisposable>());
             Assert.That(store.Covers(first), Is.EqualTo(expected == ProofWrapperAcceptanceStatus.Accepted || incoming == "throws"));
             if (incoming == "unpinned") Assert.That(store.Covers(existing), Is.True);

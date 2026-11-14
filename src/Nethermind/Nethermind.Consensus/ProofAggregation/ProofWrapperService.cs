@@ -446,8 +446,9 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// <remarks>Victims are rechecked, as gossip or the admission itself may since have filled a nonce gap. Nothing is evicted or
     /// rolled back when nothing was admitted, nor when the admitted transactions' witnesses fit once unpinned records are shed.
     /// Until this decides, the store stages those witnesses, so no other transaction can pin them and keep it over capacity.
-    /// A rollback only removes the admitted transactions: pending-transaction subscribers have already seen them, and a transaction
-    /// the pool evicted for size to insert them is not restored.</remarks>
+    /// A rollback evicts the admitted transactions, so their hashes stay resubmittable unless the pool's frame eviction retry budget
+    /// keeps one, which is then only removed. Pending-transaction subscribers have already seen them, and a transaction the pool
+    /// evicted for size to insert them is not restored.</remarks>
     /// <returns>Whether the admitted transactions were rolled back.</returns>
     private bool RestoreCapacity(IDisposable admission, List<Transaction> victims, List<Transaction> admitted)
     {
@@ -468,7 +469,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                     if (rolledBack)
                         foreach (Transaction transaction in admitted)
                         {
-                            txPool.RemoveTransaction(transaction.Hash);
+                            // Evicting forgets the hash, so the wrapper can be resubmitted once there is room.
+                            if (!txPool.EvictTransaction(transaction)) txPool.RemoveTransaction(transaction.Hash);
                             lock (_localTransactions) _localTransactions.Remove(transaction.Hash!.ValueHash256);
                         }
                     else
