@@ -355,9 +355,9 @@ namespace Nethermind.Specs.ChainSpecStyle
                 && (chainSpec.Parameters.Eip8288AggregatedVkTransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp
                 ? upgradedVk.ValueHash256
                 : releaseSpec.IsEipBatchedDependencyPricingEnabled ? Eip8288Verifier.BatchedAggregatedVk : Eip8288Verifier.PinnedAggregatedVk;
-            // Only the batch-pricing guest verifies its schemes, so a key override would leave their blocks unprovable.
-            if (releaseSpec.IsEipBatchedDependencyPricingEnabled && releaseSpec.Eip8288AggregatedVk != Eip8288Verifier.BatchedAggregatedVk)
-                throw new InvalidOperationException("'EipBatchedDependencyPricingTransitionTimestamp' requires the batch-pricing guest's key; 'Eip8288AggregatedVk' overrides it.");
+            // The flag selects pricing and the block statement while the key selects the guest, so they must agree either way.
+            if (releaseSpec.IsEipBatchedDependencyPricingEnabled != (releaseSpec.Eip8288AggregatedVk == Eip8288Verifier.BatchedAggregatedVk))
+                throw new InvalidOperationException("'EipBatchedDependencyPricingTransitionTimestamp' and the batch-pricing guest's key go together; 'Eip8288AggregatedVk' must not override one without the other.");
             releaseSpec.IsEip8250Enabled = (chainSpec.Parameters.Eip8250TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip8272Enabled = (chainSpec.Parameters.Eip8272TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip7906Enabled = (chainSpec.Parameters.Eip7906TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;

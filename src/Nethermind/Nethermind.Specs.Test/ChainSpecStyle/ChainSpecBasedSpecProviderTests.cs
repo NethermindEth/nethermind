@@ -998,12 +998,14 @@ public class ChainSpecBasedSpecProviderTests
         }
     }
 
-    // Only the batch-pricing guest verifies its schemes: a key override while the flag is on is refused, and a release spec that
-    // sets the flag directly defaults to that guest's key.
-    [TestCase(15UL, true, TestName = "A key override active with batch pricing is refused")]
-    [TestCase(15UL, false, TestName = "A key override without batch pricing is kept")]
-    public void Batched_dependency_pricing_refuses_an_overridden_key(ulong timestamp, bool refused)
+    // The flag selects pricing, schemes and the block statement, and the key selects the guest, so the two must agree: a key
+    // override while the flag is on is refused, as is the batch-pricing guest's key without the flag.
+    [TestCase(true, false, true, TestName = "A key override active with batch pricing is refused")]
+    [TestCase(false, false, false, TestName = "A key override without batch pricing is kept")]
+    [TestCase(false, true, true, TestName = "The batch-pricing guest's key without batch pricing is refused")]
+    public void Batched_dependency_pricing_and_its_key_cannot_be_configured_apart(bool batchPricing, bool batchKey, bool refused)
     {
+        Hash256 key = batchKey ? new Hash256(Eip8288Verifier.BatchedAggregatedVk) : Keccak.Compute("next AGGREGATED_VK");
         ChainSpec chainSpec = new()
         {
             Parameters = new ChainParameters
@@ -1011,22 +1013,29 @@ public class ChainSpecBasedSpecProviderTests
                 Eip8141TransitionTimestamp = 0,
                 Eip8288TransitionTimestamp = 0,
                 Eip8288AggregatedVkTransitionTimestamp = 10,
-                Eip8288AggregatedVk = Keccak.Compute("next AGGREGATED_VK"),
-                EipBatchedDependencyPricingTransitionTimestamp = refused ? 10UL : null
+                Eip8288AggregatedVk = key,
+                EipBatchedDependencyPricingTransitionTimestamp = batchPricing ? 10UL : null
             },
             EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
         };
 
-        if (refused) Assert.Throws<InvalidOperationException>(() => new ChainSpecBasedSpecProvider(chainSpec).GetSpec(ForkActivation.TimestampOnly(timestamp)));
-        else Assert.That(new ChainSpecBasedSpecProvider(chainSpec).GetSpec(ForkActivation.TimestampOnly(timestamp)).Eip8288AggregatedVk,
-            Is.EqualTo(Keccak.Compute("next AGGREGATED_VK").ValueHash256));
+        if (refused) Assert.Throws<InvalidOperationException>(() => new ChainSpecBasedSpecProvider(chainSpec).GetSpec(ForkActivation.TimestampOnly(15)));
+        else Assert.That(new ChainSpecBasedSpecProvider(chainSpec).GetSpec(ForkActivation.TimestampOnly(15)).Eip8288AggregatedVk,
+            Is.EqualTo(key.ValueHash256));
     }
 
+    // A spec that sets the flag directly defaults to the batch-pricing guest's key, and one that clears it to EIP-8288's, so tests
+    // overriding the flag run the guest it selects.
     [Test]
-    public void Release_spec_enabling_batched_dependency_pricing_defaults_to_its_key()
+    public void Release_specs_setting_batched_dependency_pricing_default_to_its_key([Values] bool overridable, [Values] bool batchPricing)
     {
-        ReleaseSpec spec = new() { IsEipBatchedDependencyPricingEnabled = true };
-        Assert.That(spec.Eip8288AggregatedVk, Is.EqualTo(Eip8288Verifier.BatchedAggregatedVk));
+        IReleaseSpec spec = overridable
+            ? new OverridableReleaseSpec(batchPricing ? Eip8288Prototype.Instance : new ReleaseSpec { IsEipBatchedDependencyPricingEnabled = true })
+            {
+                IsEipBatchedDependencyPricingEnabled = batchPricing
+            }
+            : new ReleaseSpec { IsEipBatchedDependencyPricingEnabled = batchPricing };
+        Assert.That(spec.Eip8288AggregatedVk, Is.EqualTo(batchPricing ? Eip8288Verifier.BatchedAggregatedVk : Eip8288Verifier.PinnedAggregatedVk));
     }
 
     private static IEnumerable<TestCaseData> FloorEipTransitions()

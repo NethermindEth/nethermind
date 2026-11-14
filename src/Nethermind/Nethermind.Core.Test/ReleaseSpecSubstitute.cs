@@ -19,6 +19,7 @@ public static class ReleaseSpecSubstitute
         spec.IsEip8141Enabled.Returns(dependencyEnabled);
         spec.IsEip8288Enabled.Returns(dependencyEnabled);
         spec.IsEipBatchedDependencyPricingEnabled.Returns(dependencyEnabled && batchedEnabled);
+        if (dependencyEnabled && batchedEnabled) spec.Eip8288AggregatedVk.Returns(Eip8288Verifier.BatchedAggregatedVk);
         return spec;
     }
 

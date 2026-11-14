@@ -102,7 +102,13 @@ namespace Nethermind.Specs.Test
         public bool IsEip8282Enabled { get; set; } = spec.IsEip8282Enabled;
         public bool IsEip8141Enabled { get; set; } = spec.IsEip8141Enabled;
         public bool IsEip8288Enabled { get; set; } = spec.IsEip8288Enabled;
-        public ValueHash256 Eip8288AggregatedVk { get; set; } = spec.Eip8288AggregatedVk;
+        // A key the wrapped spec merely derives from its flag follows this spec's flag instead, as in ReleaseSpec.
+        public ValueHash256 Eip8288AggregatedVk
+        {
+            get => field == default ? (IsEipBatchedDependencyPricingEnabled ? Eip8288Verifier.BatchedAggregatedVk : Eip8288Verifier.PinnedAggregatedVk) : field;
+            set;
+        } = spec.Eip8288AggregatedVk == (spec.IsEipBatchedDependencyPricingEnabled ? Eip8288Verifier.BatchedAggregatedVk : Eip8288Verifier.PinnedAggregatedVk)
+            ? default : spec.Eip8288AggregatedVk;
         public bool IsEipBatchedDependencyPricingEnabled { get; set; } = spec.IsEipBatchedDependencyPricingEnabled;
         public bool IsEip8250Enabled { get; set; } = spec.IsEip8250Enabled;
         public bool IsEip8272Enabled { get; set; } = spec.IsEip8272Enabled;
