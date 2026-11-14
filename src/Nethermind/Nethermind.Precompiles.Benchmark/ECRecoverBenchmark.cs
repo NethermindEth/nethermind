@@ -13,12 +13,11 @@ using Nethermind.Specs.Forks;
 namespace Nethermind.Precompiles.Benchmark;
 
 /// <summary>
-/// Times <see cref="ECRecoverPrecompile"/> on distinct valid signatures, and separately on a repeated one.
+/// Times <see cref="ECRecoverPrecompile"/> on distinct valid signatures.
 /// </summary>
 /// <remarks>
 /// The precompile keeps its last input and result per thread, so repeating one input times a cache hit rather than a
-/// public key recovery. <see cref="Recover"/> cycles through distinct signatures so that every call misses the cache;
-/// <see cref="RecoverCacheHit"/> repeats one to show the cost of a hit.
+/// public key recovery. <see cref="Recover"/> cycles through distinct signatures so that every call misses the cache.
 /// </remarks>
 public class ECRecoverBenchmark
 {
@@ -75,7 +74,4 @@ public class ECRecoverBenchmark
             overallResult &= ECRecoverPrecompile.Instance.Run(input, Cancun.Instance);
         return overallResult;
     }
-
-    [Benchmark]
-    public bool RecoverCacheHit() => ECRecoverPrecompile.Instance.Run(_inputs[0], Cancun.Instance);
 }
