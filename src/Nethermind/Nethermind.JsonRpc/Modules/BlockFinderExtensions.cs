@@ -4,8 +4,10 @@
 using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Facade.Find;
 
 namespace Nethermind.JsonRpc.Modules
 {
@@ -42,6 +44,79 @@ namespace Nethermind.JsonRpc.Modules
             // The served floor, not the published boundary: during a backfill the two differ, and this check
             // must agree with what the node advertises as earliest over eth/69.
             return requestedBlock < blockFinder.LowestServedBlock;
+        }
+
+        /// <summary>
+        /// Whether a lookup by transaction hash that found no receipt has hit pruned history (error 4444) rather than an
+        /// unknown, pending or reorganised-out transaction.
+        /// </summary>
+        /// <remarks>
+        /// The floor can come from the configured ancient bodies barrier or the download frontiers as well as from
+        /// history pruning, so a block below it may still be stored. A stored body is checked for the transaction
+        /// because a compact index entry names a height: for a transaction reorganised out of it, the entry resolves to
+        /// the block now canonical there. At or above the floor the receipts are read again rather than the caller's
+        /// miss trusted, because the head moves before the index entry of a new block is published: a transaction mined
+        /// between the caller's lookup and this one has its receipts by then.
+        /// </remarks>
+        internal static bool IsTransactionPruned(this IBlockFinder blockFinder, IReceiptFinder receiptFinder, Hash256 txHash)
+        {
+            if (receiptFinder.FindBlockHash(txHash) is not { } blockHash
+                || blockFinder.FindHeader(blockHash, BlockTreeLookupOptions.RequireCanonical) is not { } header)
+            {
+                return false;
+            }
+
+            return IsPrunedHistory(blockFinder, header, txHash, block: null, receipts: null, receiptFinder);
+        }
+
+        /// <summary>
+        /// The same decision as <see cref="IsTransactionPruned(IBlockFinder, IReceiptFinder, Hash256)"/>, for a block the
+        /// caller resolved from the transaction index and has shown to hold the transaction, with the receipts it read.
+        /// </summary>
+        /// <remarks>
+        /// No index entry, header, body or receipts are read again, so it decides on that block even if the index entry
+        /// has moved since, and cannot start a second regeneration. The head race needs no second read here: the caller
+        /// found the index entry itself, and a newly processed block's index entries are published only after its
+        /// receipts are stored or held for the deferred write.
+        /// </remarks>
+        internal static bool IsTransactionPruned(this IBlockFinder blockFinder, Block block, TxReceipt[] receipts) =>
+            blockFinder.IsMainChain(block.Header)
+            && IsPrunedHistory(blockFinder, block.Header, txHash: null, block, receipts, receiptFinder: null);
+
+        /// <summary>The rule of <see cref="IsTransactionPruned(IBlockFinder, IReceiptFinder, Hash256)"/>, for the canonical block <paramref name="header"/>.</summary>
+        /// <remarks>
+        /// A <paramref name="block"/> passed in is one the caller has shown to hold the transaction. Without one, the body
+        /// is read here once the checks that need none have passed, and searched for <paramref name="txHash"/>.
+        /// </remarks>
+        private static bool IsPrunedHistory(IBlockFinder blockFinder, BlockHeader header, Hash256? txHash, Block? block, TxReceipt[]? receipts, IReceiptFinder? receiptFinder)
+        {
+            bool belowTheFloor = header.Number < blockFinder.LowestServedBlock;
+            if (!belowTheFloor && !LogFinder.WasPruned(blockFinder, header))
+            {
+                return false;
+            }
+
+            if (block is null)
+            {
+                block = blockFinder.FindBlock(header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, header.Number);
+                if (block is null)
+                {
+                    return belowTheFloor;
+                }
+
+                if (block.GetTransactionIndex(txHash!.ValueHash256) < 0)
+                {
+                    return false;
+                }
+            }
+
+            if (belowTheFloor)
+            {
+                return true;
+            }
+
+            receipts ??= receiptFinder!.Get(block, recover: false, recoverSender: false);
+            return receipts.Length != block.Transactions.Length;
         }
 
         /// <param name="unknownBlockErrorCode">The code for a block that is not known, instead of <see cref="ErrorCodes.ResourceNotFound"/>.</param>

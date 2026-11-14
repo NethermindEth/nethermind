@@ -1435,16 +1435,13 @@ public partial class EthRpcModule(
 
     /// <summary>
     /// Answers a receipt lookup by transaction hash that has no receipt to return: the
-    /// <see cref="ErrorCodes.PrunedHistoryUnavailable"/> error when the transaction index still places the transaction
-    /// in a canonical block below the served floor, otherwise a <c>null</c> result.
+    /// <see cref="ErrorCodes.PrunedHistoryUnavailable"/> error when the miss is pruned history as
+    /// <see cref="BlockFinderExtensions.IsTransactionPruned(IBlockFinder, IReceiptFinder, Hash256)"/> decides it, otherwise a <c>null</c> result.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The floor is <see cref="IBlockFinder.LowestServedBlock"/>, the oldest block the node advertises as served. It
-    /// can come from the configured ancient bodies barrier or the download frontiers as well as from history pruning,
-    /// so a block below it may still be stored. The error code is the one a block search returns when it misses below
-    /// the floor. Every other miss is a <c>null</c> result: the index gives no block hash, the block it names is not
-    /// canonical or its header is not stored, or the block is at or above the floor.
+    /// The error code is the one a block search returns when it misses below the floor, and the one
+    /// <c>eth_getBlockReceipts</c> returns for a settled block whose receipts are missing.
     /// </para>
     /// <para>
     /// History pruning deletes bodies and receipts but leaves the transaction index to a background sweep, so an entry
@@ -1452,9 +1449,7 @@ public partial class EthRpcModule(
     /// </para>
     /// </remarks>
     protected ResultWrapper<ReceiptForRpc?> GetMissingTransactionReceiptResult(Hash256 txHash) =>
-        _receiptFinder.FindBlockHash(txHash) is { } blockHash
-        && _blockFinder.FindHeader(blockHash, BlockTreeLookupOptions.RequireCanonical) is { } header
-        && _blockFinder.IsBlockPruned(new BlockParameter(header.Number))
+        _blockFinder.IsTransactionPruned(_receiptFinder, txHash)
             ? ResultWrapper<ReceiptForRpc?>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable)
             : ResultWrapper<ReceiptForRpc?>.Success(null);
 
