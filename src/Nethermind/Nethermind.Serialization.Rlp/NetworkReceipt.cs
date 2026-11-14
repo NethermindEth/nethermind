@@ -54,9 +54,12 @@ public readonly ref struct NetworkReceipt
 
     /// <summary>Reads the next receipt of <paramref name="reader"/> when it has a shape this reader takes.</summary>
     /// <param name="withBloom">Whether the receipt has a bloom: the eth/63 to eth/68 form; otherwise the eth/69 form.</param>
+    /// <param name="logsChecked">
+    /// Whether the receipt was read before, so its logs are not checked again; <see cref="LogsGas"/> is then zero.
+    /// </param>
     /// <returns><see langword="false"/> for a shape left to <see cref="ReceiptMessageDecoder"/>; the reader is then not usable.</returns>
     /// <exception cref="RlpReaderException">The receipt is not valid RLP.</exception>
-    public static bool TryRead(ref RlpReader reader, bool withBloom, out NetworkReceipt receipt)
+    public static bool TryRead(ref RlpReader reader, bool withBloom, out NetworkReceipt receipt, bool logsChecked = false)
     {
         receipt = default;
         if (!reader.HasNext || reader.IsNextItemEmptyList()) return false;
@@ -113,7 +116,8 @@ public readonly ref struct NetworkReceipt
 
         if (!fields.HasNext || !fields.IsNextSequence) return false;
         ReadOnlySpan<byte> logs = fields.ReadEncodedItem();
-        if (fields.HasNext || !TryGetLogsGas(logs, out ulong logsGas)) return false;
+        ulong logsGas = 0;
+        if (fields.HasNext || (!logsChecked && !TryGetLogsGas(logs, out logsGas))) return false;
         if (!withBloom) reader.ExitSequence(in fields, receiptLength);
 
         receipt = new NetworkReceipt(type, statusOrState, gasUsedTotalItem, gasUsedTotal, bloom, logs, logsGas);
