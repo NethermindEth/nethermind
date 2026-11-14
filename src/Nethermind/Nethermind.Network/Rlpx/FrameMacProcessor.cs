@@ -75,6 +75,8 @@ public sealed class FrameMacProcessor : IFrameMacProcessor
         }
     }
 
+    public void UpdateIngressMac(ReadOnlySpan<byte> input) => _ingressMac.Update(input);
+
     public void CalculateMac(byte[] output)
     {
         DoFinalNoReset(_egressMac, _egressMacCopy, _addMacBuffer); // frame MAC seed
