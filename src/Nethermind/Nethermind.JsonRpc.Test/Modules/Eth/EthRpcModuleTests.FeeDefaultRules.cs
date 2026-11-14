@@ -294,6 +294,7 @@ public partial class EthRpcModuleTests
         [Values("0x", "0xfe")] string input, [Values] bool wrongChain)
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
+        await ctx.Test.AddFundsAfterLondon((new Address(HeldAccount), 1.Ether));
         ulong chainId = ctx.Test.Bridge.GetChainId();
         JsonObject request = new()
         {
