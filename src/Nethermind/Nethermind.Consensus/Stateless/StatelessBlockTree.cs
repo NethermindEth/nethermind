@@ -116,7 +116,9 @@ public class StatelessBlockTree : IBlockTree, IBlockhashCache, IHeaderFinder
         WriteFlags bodiesWriteFlags = WriteFlags.None)
         => throw new NotSupportedException();
 
-    public void Insert(BlockHeader header, ReadOnlySpan<byte> body, WriteFlags bodiesWriteFlags = WriteFlags.None)
+    public AddBlockResult Insert(BlockHeader header, ReadOnlySpan<byte> body, BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None,
+        BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None,
+        WriteFlags bodiesWriteFlags = WriteFlags.None)
         => throw new NotSupportedException();
 
     /// <inheritdoc/>

@@ -84,10 +84,14 @@ namespace Nethermind.Blockchain
         AddBlockResult Insert(Block block, BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None,
             BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None, WriteFlags bodiesWriteFlags = WriteFlags.None);
 
-        /// <summary>Inserts a disconnected block (not for processing) made of <paramref name="header"/> and an encoded body.</summary>
+        /// <summary>
+        /// Inserts a disconnected block (not for processing) made of <paramref name="header"/> and an encoded body,
+        /// as <see cref="Insert(Block, BlockTreeInsertBlockOptions, BlockTreeInsertHeaderOptions, WriteFlags)"/> does.
+        /// </summary>
         /// <param name="body">The encoded body with its sequence prefix, as a block bodies message carries it.</param>
-        /// <remarks>The header is not saved, and no block access list is stored, as a block body does not carry one.</remarks>
-        void Insert(BlockHeader header, ReadOnlySpan<byte> body, WriteFlags bodiesWriteFlags = WriteFlags.None);
+        /// <remarks>The body is stored as it is. No block access list is stored, as a block body does not carry one.</remarks>
+        AddBlockResult Insert(BlockHeader header, ReadOnlySpan<byte> body, BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None,
+            BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None, WriteFlags bodiesWriteFlags = WriteFlags.None);
 
         /// <summary>Writes the persisted head pointer without moving the live head.</summary>
         void UpdateHeadBlock(Hash256 blockHash);

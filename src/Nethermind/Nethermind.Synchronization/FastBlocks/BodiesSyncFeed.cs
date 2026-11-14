@@ -302,7 +302,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     if ((rejectedBodyTxRoot is null || rejectedBodyTxRoot == header.TxRoot)
                         && _blockValidator.ValidateBodyAgainstHeader(header, body, out _))
                     {
-                        _blockTree.Insert(header, responses!.GetEncoded(responseIndex).Span, WriteFlags.DisableWAL);
+                        _blockTree.Insert(header, responses!.GetEncoded(responseIndex).Span, BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, bodiesWriteFlags: WriteFlags.DisableWAL);
                         _syncStatusList.MarkInserted(blockInfo.BlockNumber);
                         responseIndex++;
                         rejectedBodyTxRoot = null;

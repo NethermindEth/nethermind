@@ -223,6 +223,19 @@ public class BlockStore : IBlockStore, IClearableCache
         return _blockDb.Get(blockHash);
     }
 
+    /// <inheritdoc/>
+    public MemoryManager<byte>? GetOwnedRlp(ulong blockNumber, Hash256 blockHash)
+    {
+        if (_pending is not null && _pending.TryGet(blockHash, out Block? pendingBlock))
+        {
+            return ArrayMemoryManager.From(_blockDecoder.Encode(pendingBlock));
+        }
+
+        Span<byte> dbKey = stackalloc byte[40];
+        KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, dbKey);
+        return ReadBlockMemory(dbKey) ?? ReadBlockMemory(blockHash.Bytes);
+    }
+
     public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(ulong blockNumber, Hash256 blockHash)
     {
         ValueHash256 cacheKey = blockHash.ValueHash256;
@@ -239,8 +252,8 @@ public class BlockStore : IBlockStore, IClearableCache
         Span<byte> keyWithBlockNumber = stackalloc byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, keyWithBlockNumber);
 
-        MemoryManager<byte>? memoryOwner = ReadRecoveryBlockMemory(keyWithBlockNumber);
-        memoryOwner ??= ReadRecoveryBlockMemory(blockHash.Bytes);
+        MemoryManager<byte>? memoryOwner = ReadBlockMemory(keyWithBlockNumber);
+        memoryOwner ??= ReadBlockMemory(blockHash.Bytes);
         if (memoryOwner is null) return null;
 
         ReceiptRecoveryBlock? block = null;
@@ -256,7 +269,7 @@ public class BlockStore : IBlockStore, IClearableCache
         }
     }
 
-    private MemoryManager<byte>? ReadRecoveryBlockMemory(ReadOnlySpan<byte> key)
+    private MemoryManager<byte>? ReadBlockMemory(ReadOnlySpan<byte> key)
     {
         if (_blockDb is not IReadOnlyNativeKeyValueStore native) return _blockDb.GetOwnedMemory(key);
 
@@ -276,7 +289,7 @@ public class BlockStore : IBlockStore, IClearableCache
         }
     }
 
-    // Only the recovery decoder reads this memory; a nonzero native lease keeps the pointer valid until disposal.
+    // A nonzero native lease keeps the pointer valid until disposal.
     private sealed unsafe class PinnedBlockMemory(IReadOnlyNativeKeyValueStore db, nint handle, ReadOnlySpan<byte> bytes) : MemoryManager<byte>
     {
         private nint _handle = handle;

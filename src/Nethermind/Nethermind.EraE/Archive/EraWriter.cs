@@ -404,6 +404,13 @@ public sealed class EraWriter : IDisposable
         payloads.Clear();
     }
 
+    private static ArrayPoolSpan<byte> CopyOf(ReadOnlySpan<byte> bytes)
+    {
+        ArrayPoolSpan<byte> copy = new(bytes.Length);
+        bytes.CopyTo(copy);
+        return copy;
+    }
+
     private void AddEncodedPayloads(Block block, Memory<byte>? encodedBody, TxReceipt[] receipts, RlpBehaviors rlpBehaviors, bool isEip658)
     {
         ArrayPoolSpan<byte> headerRlp = _headerDecoder.EncodeToArrayPoolSpan(block.Header, rlpBehaviors);
@@ -417,16 +424,10 @@ public sealed class EraWriter : IDisposable
             throw;
         }
 
-        ArrayPoolSpan<byte> bodyRlp;
-        if (encodedBody is { } encoded)
-        {
-            bodyRlp = new ArrayPoolSpan<byte>(encoded.Length);
-            encoded.Span.CopyTo(bodyRlp);
-        }
-        else
-        {
-            bodyRlp = _blockBodyDecoder.EncodeToArrayPoolSpan(block.Body, rlpBehaviors);
-        }
+        // The body is kept until the epoch is written, after the caller has released its encoded body.
+        ArrayPoolSpan<byte> bodyRlp = encodedBody is { } encoded
+            ? CopyOf(encoded.Span)
+            : _blockBodyDecoder.EncodeToArrayPoolSpan(block.Body, rlpBehaviors);
 
         try
         {

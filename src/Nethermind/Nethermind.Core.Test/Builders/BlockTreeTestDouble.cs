@@ -186,8 +186,9 @@ public class BlockTreeTestDouble : IBlockTree
         BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None, WriteFlags bodiesWriteFlags = WriteFlags.None) =>
         Inner?.Insert(block, insertBlockOptions, insertHeaderOptions, bodiesWriteFlags) ?? AddBlockResult.Added;
 
-    public virtual void Insert(BlockHeader header, ReadOnlySpan<byte> body, WriteFlags bodiesWriteFlags = WriteFlags.None) =>
-        Inner?.Insert(header, body, bodiesWriteFlags);
+    public virtual AddBlockResult Insert(BlockHeader header, ReadOnlySpan<byte> body, BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None,
+        BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None, WriteFlags bodiesWriteFlags = WriteFlags.None) =>
+        Inner?.Insert(header, body, insertBlockOptions, insertHeaderOptions, bodiesWriteFlags) ?? AddBlockResult.Added;
 
     public virtual void UpdateHeadBlock(Hash256 blockHash) => Inner?.UpdateHeadBlock(blockHash);
     /// <inheritdoc/>

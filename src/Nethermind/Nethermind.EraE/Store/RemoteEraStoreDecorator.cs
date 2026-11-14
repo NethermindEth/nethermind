@@ -105,12 +105,12 @@ public sealed class RemoteEraStoreDecorator : IEraStore
     }
 
     /// <inheritdoc/>
-    public async Task<(Block?, byte[]?, TxReceipt[]?)> FindEncodedBlockAndReceipts(
+    public async Task<(Block?, ArrayPoolList<byte>?, TxReceipt[]?)> FindEncodedBlockAndReceipts(
         ulong number, bool ensureValidated = true, CancellationToken cancellation = default)
     {
         if (_localStore is not null)
         {
-            (Block? b, byte[]? body, TxReceipt[]? r) = await _localStore.FindEncodedBlockAndReceipts(number, ensureValidated, cancellation).ConfigureAwait(false);
+            (Block? b, ArrayPoolList<byte>? body, TxReceipt[]? r) = await _localStore.FindEncodedBlockAndReceipts(number, ensureValidated, cancellation).ConfigureAwait(false);
             if (b is not null) return (b, body, r);
         }
 

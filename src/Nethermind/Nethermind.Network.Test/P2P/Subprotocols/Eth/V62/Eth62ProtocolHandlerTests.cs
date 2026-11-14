@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
@@ -13,6 +14,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -69,7 +71,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _session.Node.Returns(node);
             _session.When(s => s.DeliverMessage(Arg.Any<P2PMessage>())).Do(c => c.Arg<P2PMessage>().AddTo(_disposables));
             _syncManager = Substitute.For<ISyncServer>();
-            _syncManager.FindBlockRlp(Arg.Any<Hash256>()).Returns((byte[]?)null);
+            _syncManager.FindBlockRlp(Arg.Any<Hash256>()).Returns((MemoryManager<byte>?)null);
             _transactionPool = Substitute.For<ITxPool>();
             _genesisBlock = Build.A.Block.Genesis.TestObject;
             _syncManager.Head.Returns(_genesisBlock.Header);
@@ -547,7 +549,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         private void ServeBlock(Hash256 hash, Block block) =>
-            _syncManager.FindBlockRlp(hash).Returns(new BlockDecoder().Encode(block));
+            _syncManager.FindBlockRlp(hash).Returns(ArrayMemoryManager.From(new BlockDecoder().Encode(block)));
 
         [Test]
         public void Can_handle_transactions([Values(true, false)] bool canGossipTransactions)

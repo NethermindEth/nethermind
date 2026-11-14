@@ -53,14 +53,14 @@ public class OwnedBlockBodies : IDisposable, IReadOnlyList<BlockBody?>
     /// <summary>Takes the bodies of encoded blocks without decoding them.</summary>
     /// <param name="blocks">Encoded blocks, each a sequence of the header and then the body items.</param>
     /// <exception cref="RlpReaderException">A block is not a sequence that starts with an item.</exception>
-    public static OwnedBlockBodies FromEncodedBlocks(IReadOnlyList<byte[]> blocks)
+    public static OwnedBlockBodies FromEncodedBlocks(IReadOnlyList<ReadOnlyMemory<byte>> blocks)
     {
         // Holds where each body content is in its block until the copy loop replaces it with the place of the copy.
         Range[] encodedBodies = new Range[blocks.Count];
         int length = 0;
         for (int i = 0; i < blocks.Count; i++)
         {
-            encodedBodies[i] = GetBodyContent(blocks[i]);
+            encodedBodies[i] = GetBodyContent(blocks[i].Span);
             length += Rlp.LengthOfSequence(encodedBodies[i].GetOffsetAndLength(blocks[i].Length).Length);
         }
 
@@ -69,7 +69,7 @@ public class OwnedBlockBodies : IDisposable, IReadOnlyList<BlockBody?>
         for (int i = 0; i < blocks.Count; i++)
         {
             int start = writer.Length;
-            ReadOnlySpan<byte> content = blocks[i].AsSpan(encodedBodies[i]);
+            ReadOnlySpan<byte> content = blocks[i].Span[encodedBodies[i]];
             RlpSequence sequence = writer.StartSequence(content.Length);
             writer.WriteEncoded(content);
             writer.EndSequence(sequence);
@@ -78,7 +78,7 @@ public class OwnedBlockBodies : IDisposable, IReadOnlyList<BlockBody?>
 
         return new OwnedBlockBodies(memory, encodedBodies, BlockBodyDecoder.Instance);
 
-        static Range GetBodyContent(byte[] block)
+        static Range GetBodyContent(ReadOnlySpan<byte> block)
         {
             RlpReader items = new RlpReader(block).EnterSequence(out _);
             items.SkipItem();
