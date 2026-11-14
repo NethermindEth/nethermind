@@ -3,8 +3,8 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Serialization.Rlp;
 
