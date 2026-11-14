@@ -98,7 +98,8 @@ public class OwnedBlockBodies : IDisposable, IReadOnlyList<BlockBody?>
 
     /// <summary>The encoded body at <paramref name="index"/> with its sequence prefix, encoded on the first call if it is held decoded.</summary>
     /// <remarks>
-    /// An empty sequence is a body the peer did not have. The memory is valid until this owner is disposed or disowned.
+    /// An empty sequence is a body the peer did not have. The memory is valid until this owner is disposed or disowned,
+    /// or until the first read of <see cref="Bodies"/>, the indexer or the enumerator releases the encoded bodies.
     /// </remarks>
     public Memory<byte> GetEncoded(int index)
     {
@@ -115,7 +116,8 @@ public class OwnedBlockBodies : IDisposable, IReadOnlyList<BlockBody?>
 
     /// <summary>
     /// The body at <paramref name="index"/> decoded by <see cref="BlockBodyDecoder.DecodeWithEncodedTransactions"/>,
-    /// which keeps its transactions encoded. The transactions are valid until this owner is disposed or disowned.
+    /// which keeps its transactions encoded. The transactions are valid until this owner is disposed or disowned, or
+    /// until the first read of <see cref="Bodies"/>, the indexer or the enumerator releases the encoded bodies.
     /// </summary>
     /// <exception cref="RlpReaderException">The encoded body is not a valid body.</exception>
     public BlockBody? DecodeWithEncodedTransactions(int index) =>
@@ -170,14 +172,7 @@ public class OwnedBlockBodies : IDisposable, IReadOnlyList<BlockBody?>
 
     private static void ReturnPooledTransactions(BlockBody?[] bodies)
     {
-        foreach (BlockBody? blockBody in bodies)
-        {
-            if (blockBody is null) continue;
-            foreach (Transaction tx in blockBody.Transactions)
-            {
-                TxDecoder.TxObjectPool.Return(tx);
-            }
-        }
+        foreach (BlockBody? blockBody in bodies) BlockBodyDecoder.ReturnTransactions(blockBody);
     }
 
     public IEnumerator<BlockBody?> GetEnumerator()

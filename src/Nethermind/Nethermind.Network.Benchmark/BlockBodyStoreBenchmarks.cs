@@ -1,12 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
@@ -21,7 +22,8 @@ public class BlockBodyStoreBenchmarks
 {
     private BlockHeader _header = null!;
     private byte[] _body = null!;
-    private BlockStore _store = null!;
+    private IContainer _container = null!;
+    private IBlockStore _store = null!;
 
     [Params(150, 500)]
     public int TransactionCount { get; set; }
@@ -43,8 +45,12 @@ public class BlockBodyStoreBenchmarks
         Block block = Build.A.Block.WithNumber(1).WithTransactions(transactions).TestObject;
         _header = block.Header;
         _body = BlockBodyDecoder.Instance.Encode(block.Body);
-        _store = new BlockStore(new MemDb());
+        _container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
+        _store = _container.Resolve<IBlockStore>();
     }
+
+    [GlobalCleanup]
+    public void Cleanup() => _container.Dispose();
 
     [Benchmark(Baseline = true)]
     public Hash256 Decoded()

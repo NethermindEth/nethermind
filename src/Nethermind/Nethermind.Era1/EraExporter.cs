@@ -227,7 +227,7 @@ public class EraExporter(
                     }
 
                     await eraWriter.Add(block, bodies.GetEncoded(0), receipts, cancellation);
-                    foreach (Transaction transaction in block.Transactions) TxDecoder.TxObjectPool.Return(transaction);
+                    BlockBodyDecoder.ReturnTransactions(block.Body);
                     progress.Update(Interlocked.Increment(ref totalProcessed));
                 }
 
