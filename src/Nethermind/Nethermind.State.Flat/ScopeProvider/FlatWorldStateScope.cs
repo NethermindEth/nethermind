@@ -3,6 +3,7 @@
 
 using System.Buffers;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
@@ -795,6 +796,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         // One delegate for every storage batch of the block.
         private readonly Action<Address, Hash256> _markDirty;
         private bool _disposed;
+        private bool _collectionsReleased;
 
         public WriteBatch(FlatWorldStateScope scope, int estimatedAccountCount, ILogger logger)
         {
@@ -812,6 +814,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         public void Set(Address key, Account? account)
         {
+            Debug.Assert(!_disposed);
             _dirtyAccounts[key] = account;
 
             if (account is null)
@@ -838,8 +841,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     estimatedEntries: estimatedEntries,
                     onRootUpdated: _markDirty);
 
-        private void MarkDirty(Address address, Hash256 storageTreeRootHash) =>
+        private void MarkDirty(Address address, Hash256 storageTreeRootHash)
+        {
+            Debug.Assert(!_collectionsReleased);
             _dirtyStorageTree.Enqueue((address, storageTreeRootHash));
+        }
 
         public void Dispose()
         {
@@ -885,6 +891,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             finally
             {
                 _dirtyAccounts.ClearAndTrim();
+                _collectionsReleased = true;
                 _spareDirtyAccounts = _dirtyAccounts;
                 if (_dirtyStorageTree.IsEmpty) _spareDirtyStorageTrees = _dirtyStorageTree;
 
