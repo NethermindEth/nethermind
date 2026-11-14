@@ -1,0 +1,270 @@
+name: Run EIP-8288 Calibration
+
+# Runs the EIP-8288 proving and verification calibration suite (NethermindEth/lean-bindings, src/ffi/calibration) on
+# an ephemeral GCE VM created through .github/actions/gcp-runner. All calibration logic is in the suite's
+# ci/run-calibration.sh; this workflow only provisions the machine, calls it and collects the output.
+on:
+  workflow_dispatch:
+    inputs:
+      config:
+        description: Suite config under src/ffi/calibration/configs, run as one scenario
+        type: choice
+        options:
+          - gcp-committed
+          - gcp-committed-batch
+          - gcp-flat
+          - gcp-two-budget
+          - gcp-worst-cases
+          - gcp-deep-carry
+          - gcp-share-blocks
+          - gcp-pq-leaves
+          - gcp-pq-leaves-bounds
+          - native-verify
+          - xcal
+          - smoke
+        default: gcp-committed
+      scenarios:
+        description: Optional comma-separated config names (or paths in the checkout) replacing `config`, run in order under one timeout
+        type: string
+        default: ''
+      machine_type:
+        description: GCE machine type (x86-64 only). Constants only compare across runs on the same type.
+        type: string
+        default: c3-highmem-22
+      provisioning:
+        description: SPOT is cheaper but can be reclaimed mid-run; STANDARD bills on-demand
+        type: choice
+        options: [SPOT, STANDARD]
+        default: SPOT
+      boot_disk_type:
+        description: Boot disk type; auto picks hyperdisk-balanced for N4/C4/C4D and pd-balanced otherwise
+        type: choice
+        options: [auto, pd-balanced, pd-ssd, hyperdisk-balanced]
+        default: auto
+      lean_bindings_ref:
+        description: lean-bindings branch, tag or commit holding the suite
+        type: string
+        default: feature/gas-calibration-suite
+      timeout_minutes:
+        description: Suite time budget in minutes, shared by all scenarios (at most 360)
+        type: string
+        default: '180'
+      leanvm_revs:
+        description: Optional comma-separated leanVM revisions whose README benchmarks run first (machine cross-calibration, with xcal)
+        type: string
+        default: ''
+      ecrecover_anchor:
+        description: Also time Nethermind's ecrecover precompile at this commit as the native-verification gas anchor
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# Every run creates a VM of its own, named from the run id and attempt, so dispatches never share one. The group keeps
+# attempts of one run from overlapping without letting a newer dispatch cancel or replace a pending run.
+concurrency:
+  group: eip8288-calibration-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    name: Validate inputs
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      scenarios: ${{ steps.resolve.outputs.scenarios }}
+      boot_disk_type: ${{ steps.resolve.outputs.boot_disk_type }}
+      job_timeout: ${{ steps.resolve.outputs.job_timeout }}
+      max_run_duration: ${{ steps.resolve.outputs.max_run_duration }}
+    steps:
+      - name: Resolve inputs
+        id: resolve
+        env:
+          CONFIG: ${{ inputs.config }}
+          SCENARIOS: ${{ inputs.scenarios }}
+          MACHINE_TYPE: ${{ inputs.machine_type }}
+          BOOT_DISK_TYPE: ${{ inputs.boot_disk_type }}
+          REF: ${{ inputs.lean_bindings_ref }}
+          TIMEOUT_MINUTES: ${{ inputs.timeout_minutes }}
+          LEANVM_REVS: ${{ inputs.leanvm_revs }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+          scenarios=${SCENARIOS:-$CONFIG}
+          # run-calibration.sh quotes the scenario list into a container command line, so keep it to plain names.
+          name='[A-Za-z0-9_][A-Za-z0-9._/-]*'
+          [[ $scenarios =~ ^$name(,$name)*$ ]] || fail "scenarios must be comma-separated config names or paths"
+          [[ $MACHINE_TYPE =~ ^[a-z][a-z0-9]*-[a-z0-9-]+$ ]] || fail "machine_type is not a GCE machine type"
+          # The runner image and actions/runner download are x86-64 only.
+          case $MACHINE_TYPE in c4a-*|t2a-*|n4a-*|a4x-*) fail "$MACHINE_TYPE is Arm; the GCP runner is x86-64 only" ;; esac
+          [[ $REF =~ ^$name$ ]] || fail "lean_bindings_ref must be a branch, tag or commit"
+          [[ $LEANVM_REVS =~ ^($name(,$name)*)?$ ]] || fail "leanvm_revs must be comma-separated revisions"
+          if [[ ! $TIMEOUT_MINUTES =~ ^[1-9][0-9]{0,2}$ ]] || (( TIMEOUT_MINUTES > 360 )); then fail "timeout_minutes must be 1-360"; fi
+          disk=$BOOT_DISK_TYPE
+          if [[ $disk == auto ]]; then
+            case $MACHINE_TYPE in c4-*|c4d-*|n4-*|n4d-*) disk=hyperdisk-balanced ;; *) disk=pd-balanced ;; esac
+          fi
+          # Job budget: the suite plus clone, image pull and the optional leanVM and ecrecover runs. The VM's lifetime
+          # adds boot time on top, as the backstop GCE enforces if teardown fails.
+          {
+            echo "scenarios=$scenarios"
+            echo "boot_disk_type=$disk"
+            echo "job_timeout=$(( TIMEOUT_MINUTES + 60 ))"
+            echo "max_run_duration=$(( TIMEOUT_MINUTES + 90 ))m"
+          } | tee -a "$GITHUB_OUTPUT"
+
+  create_a_runner:
+    name: Create the calibration runner
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      runner_label: ${{ steps.label.outputs.value }}
+    steps:
+      - name: Derive runner label
+        id: label
+        run: echo "value=eip8288-calibration-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+          repositories: "nethermind"
+
+      - name: Create a Runner
+        uses: ./.github/actions/gcp-runner
+        with:
+          action: create
+          runner_label: ${{ steps.label.outputs.value }}
+          github_token: ${{ steps.gh-app.outputs.token }}
+          machine_type: ${{ inputs.machine_type }}
+          local_ssd_count: 0
+          boot_disk_size: 200
+          boot_disk_type: ${{ needs.resolve.outputs.boot_disk_type }}
+          provisioning_model: ${{ inputs.provisioning }}
+          max_run_duration: ${{ needs.resolve.outputs.max_run_duration }}
+          zones: ${{ vars.GCP_ZONES }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
+          runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}
+
+  calibrate:
+    name: Calibrate
+    needs: [resolve, create_a_runner]
+    runs-on: ${{ needs.create_a_runner.outputs.runner_label }}
+    timeout-minutes: ${{ fromJSON(needs.resolve.outputs.job_timeout) }}
+    env:
+      RUN_DIR: eip8288-calibration-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Calibrate
+        env:
+          REF: ${{ inputs.lean_bindings_ref }}
+          SCENARIOS: ${{ needs.resolve.outputs.scenarios }}
+          TIMEOUT_MINUTES: ${{ inputs.timeout_minutes }}
+          LEANVM_REVS: ${{ inputs.leanvm_revs }}
+        run: |
+          set -euo pipefail
+          scratch=$RUNNER_TEMP/$RUN_DIR
+          rm -rf "$scratch"
+          mkdir -p "$scratch/out"
+          df -h "$RUNNER_TEMP" || true
+          git clone -q https://github.com/NethermindEth/lean-bindings.git "$scratch/lean-bindings"
+          git -C "$scratch/lean-bindings" -c advice.detachedHead=false checkout -q "$REF"
+          sha=$(git -C "$scratch/lean-bindings" rev-parse HEAD)
+          echo "lean-bindings $REF at $sha"
+          args=(--lean-bindings-ref "$REF@$sha" --scenarios "$SCENARIOS" --timeout-minutes "$TIMEOUT_MINUTES"
+                --out "$scratch/out" --arch amd64 --docker rust:1.99.0-bookworm)
+          [[ -z $LEANVM_REVS ]] || args+=(--leanvm-revs "$LEANVM_REVS")
+          "$scratch/lean-bindings/src/ffi/calibration/ci/run-calibration.sh" "${args[@]}"
+
+      - name: Time the ecrecover anchor
+        if: ${{ !cancelled() && inputs.ecrecover_anchor }}
+        run: |
+          set -euo pipefail
+          scratch=$RUNNER_TEMP/$RUN_DIR
+          bench=$scratch/lean-bindings/src/ffi/calibration/ci/ecrecover-bench.sh
+          [[ -x $bench ]] || { echo "::error::$bench is missing at this lean-bindings ref"; exit 1; }
+          "$bench" "$scratch/out/ecrecover" "$GITHUB_SHA"
+
+      - name: Publish summary
+        if: always()
+        run: |
+          shopt -s nullglob
+          scratch=$RUNNER_TEMP/$RUN_DIR
+          [[ ! -f $scratch/out/host.txt ]] || { echo '```'; cat "$scratch/out/host.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          # The step summary is capped at 1 MiB; the full reports are in the artifact.
+          for report in "$scratch"/out/*/report.md; do
+            { echo "## $(basename "$(dirname "$report")")"; head -c 200000 "$report"; echo; } >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: eip8288-calibration-${{ inputs.machine_type }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/${{ env.RUN_DIR }}/out
+            !${{ runner.temp }}/${{ env.RUN_DIR }}/out/.home
+            !${{ runner.temp }}/${{ env.RUN_DIR }}/out/**/bin
+            !${{ runner.temp }}/${{ env.RUN_DIR }}/out/**/corpus
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Clean up
+        if: always()
+        run: |
+          docker ps -aq --filter label=lean-calibration=1 | xargs -r docker rm -f
+          rm -rf "${RUNNER_TEMP:?}/${RUN_DIR:?}"
+
+  destroy_runner:
+    name: Destroy the calibration runner
+    needs: [create_a_runner, calibrate]
+    if: always() && needs.create_a_runner.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+          repositories: "nethermind"
+
+      - name: Destroy Runner
+        id: destroy
+        uses: ./.github/actions/gcp-runner
+        with:
+          action: destroy
+          runner_label: ${{ needs.create_a_runner.outputs.runner_label || format('eip8288-calibration-{0}-{1}', github.run_id, github.run_attempt) }}
+          github_token: ${{ steps.gh-app.outputs.token }}
+          expect_instance: ${{ needs.create_a_runner.result == 'success' }}
+          zones: ${{ vars.GCP_ZONES }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
+          runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}
+
+      - name: Report teardown
+        if: always()
+        env:
+          INSTANCE: ${{ steps.destroy.outputs.instance_name }}
+          TERMINATED_BY: ${{ steps.destroy.outputs.terminated_by }}
+          PREEMPTED: ${{ steps.destroy.outputs.preempted }}
+        run: echo "instance=${INSTANCE} terminated_by=${TERMINATED_BY} preempted=${PREEMPTED}"
