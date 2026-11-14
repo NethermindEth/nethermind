@@ -17,6 +17,7 @@ using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
@@ -27,6 +28,7 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
 using Nethermind.Serialization.FluentRlp;
@@ -896,6 +898,37 @@ public partial class EngineModuleTests
         Assert.That(witness.Codes.Any(code => code.AsSpan().SequenceEqual(runtimeCode)), Is.True,
             "witness Codes must contain the called contract's runtime bytecode");
         AssertWitnessProvesAccount(witness, chain.StateReader, parent, contract, UInt256.Zero);
+    }
+
+    /// <summary>
+    /// A witness replay is a local query: when it does not reproduce the block, the request fails, but the canonical
+    /// block and its descendants stay valid for the Engine API.
+    /// </summary>
+    [Test]
+    public async Task Witness_replay_that_diverges_from_the_header_fails_and_leaves_the_chain_valid()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+        BlockHeader beforeTransfer = chain.BlockTree.Head!.Header;
+        await ProduceCanonicalBlock(chain, BuildWitnessTransfer(chain));
+        await ProduceCanonicalBlock(chain);
+        Block block = chain.BlockTree.Head!;
+
+        // Replaying on the state before the transfer stands in for a node-local fault: execution matches the block
+        // up to the post-state root, which cannot match the header.
+        using IWitnessGeneratingBlockProcessingEnvScope scope = chain.Container.Resolve<IWitnessGeneratingBlockProcessingEnvFactory>().CreateScope();
+        InvalidBlockException? failure = Assert.Throws<InvalidBlockException>(() =>
+            scope.Env.CreateExistingBlockWitnessCollector().GetWitnessForExistingBlock(beforeTransfer, block));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failure!.Message, Does.StartWith("InvalidStateRoot"));
+            Assert.That(chain.Container.Resolve<IInvalidChainTracker>().IsOnKnownInvalidChain(block.Hash!, out _), Is.False,
+                "a failed witness replay must not be recorded as an invalid block");
+        }
+
+        // The next payload builds on the block, so the Engine API must still answer VALID for it and its forkchoice.
+        await ProduceCanonicalBlock(chain);
+        Assert.That(chain.BlockTree.Head!.ParentHash, Is.EqualTo(block.Hash));
     }
 
     /// <summary>
