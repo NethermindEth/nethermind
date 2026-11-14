@@ -384,25 +384,13 @@ namespace Nethermind.Blockchain
                 if (Logger.IsTrace) Logger.Trace($"Block tree in cannot accept new blocks mode. SkipCanAcceptNewBlocks: {skipCanAcceptNewBlocks}, Block {block}");
             }
 
-            if (!CanAcceptNewBlocks && !skipCanAcceptNewBlocks)
-            {
-                return AddBlockResult.CannotAccept;
-            }
-
-            if (block.Number == _genesisBlockNumber)
-            {
-                throw new InvalidOperationException("Genesis block should not be inserted.");
-            }
+            if (!CanInsertBlock(block.Header, insertBlockOptions)) return AddBlockResult.CannotAccept;
 
             _blockStore.Insert(block, writeFlags: blockWriteFlags);
             _headerStore.InsertBlockNumber(block.Hash, block.Number);
             _balStore.InsertFromBlock(block);
 
-            bool saveHeader = (insertBlockOptions & BlockTreeInsertBlockOptions.SaveHeader) != 0;
-            if (saveHeader)
-            {
-                Insert(block.Header, insertHeaderOptions);
-            }
+            InsertHeaderIfRequested(block.Header, insertBlockOptions, insertHeaderOptions);
 
             return AddBlockResult.Added;
         }
@@ -411,9 +399,21 @@ namespace Nethermind.Blockchain
         public AddBlockResult Insert(BlockHeader header, ReadOnlySpan<byte> body, BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None,
             BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None, WriteFlags bodiesWriteFlags = WriteFlags.None)
         {
-            if (!CanAcceptNewBlocks && (insertBlockOptions & BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks) == 0)
+            if (!CanInsertBlock(header, insertBlockOptions)) return AddBlockResult.CannotAccept;
+
+            _blockStore.Insert(header, body, bodiesWriteFlags);
+            _headerStore.InsertBlockNumber(header.Hash!, header.Number);
+
+            InsertHeaderIfRequested(header, insertBlockOptions, insertHeaderOptions);
+
+            return AddBlockResult.Added;
+        }
+
+        private bool CanInsertBlock(BlockHeader header, BlockTreeInsertBlockOptions options)
+        {
+            if (!CanAcceptNewBlocks && (options & BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks) == 0)
             {
-                return AddBlockResult.CannotAccept;
+                return false;
             }
 
             if (header.Number == _genesisBlockNumber)
@@ -421,15 +421,15 @@ namespace Nethermind.Blockchain
                 throw new InvalidOperationException("Genesis block should not be inserted.");
             }
 
-            _blockStore.Insert(header, body, bodiesWriteFlags);
-            _headerStore.InsertBlockNumber(header.Hash!, header.Number);
+            return true;
+        }
 
-            if ((insertBlockOptions & BlockTreeInsertBlockOptions.SaveHeader) != 0)
+        private void InsertHeaderIfRequested(BlockHeader header, BlockTreeInsertBlockOptions blockOptions, BlockTreeInsertHeaderOptions headerOptions)
+        {
+            if ((blockOptions & BlockTreeInsertBlockOptions.SaveHeader) != 0)
             {
-                Insert(header, insertHeaderOptions);
+                Insert(header, headerOptions);
             }
-
-            return AddBlockResult.Added;
         }
 
         protected virtual AddBlockResult Suggest(Block? block, BlockHeader header, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)

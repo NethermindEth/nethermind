@@ -85,34 +85,35 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
                 EntryReadResult? result = await ReadBlockAndReceipts(blockNumber, true, validateTransactions ? BodyForm.Decoded : BodyForm.EncodedTransactions, cancellation);
                 EntryReadResult err = result.Value;
 
-                if (err.Block.Header.Number != blockNumber)
+                try
                 {
-                    throw new EraVerificationException($"Mismatched header number {err.Block.Header.Number}. Block number {blockNumber}.");
+                    if (err.Block.Header.Number != blockNumber)
+                    {
+                        throw new EraVerificationException($"Mismatched header number {err.Block.Header.Number}. Block number {blockNumber}.");
+                    }
+
+                    if (!blockValidator.ValidateBodyAgainstHeader(err.Block.Header, err.Block.Body, out string? error))
+                    {
+                        throw new EraVerificationException($"Mismatched block body against header: {error}. Block number {blockNumber}.");
+                    }
+
+                    if (validateTransactions && !blockValidator.ValidateOrphanedBlock(err.Block, out error))
+                    {
+                        throw new EraVerificationException($"Invalid block {error}");
+                    }
+
+                    Hash256 receiptRoot = ReceiptTrie.CalculateRoot(specProvider.GetReceiptSpec(err.Block.Number), err.Receipts, _receiptDecoder);
+                    if (err.Block.Header.ReceiptsRoot != receiptRoot)
+                    {
+                        throw new EraVerificationException($"Mismatched receipt root. Block number {blockNumber}.");
+                    }
+
+                    // Note: Header.Hash is calculated by HeaderDecoder.
+                    blockHashes[(int)(err.Block.Header.Number - startBlock)] = (err.Block.Header.Hash!, err.Block.TotalDifficulty!.Value);
                 }
-
-                if (!blockValidator.ValidateBodyAgainstHeader(err.Block.Header, err.Block.Body, out string? error))
+                finally
                 {
-                    throw new EraVerificationException($"Mismatched block body against header: {error}. Block number {blockNumber}.");
-                }
-
-                if (validateTransactions && !blockValidator.ValidateOrphanedBlock(err.Block, out error))
-                {
-                    throw new EraVerificationException($"Invalid block {error}");
-                }
-
-                Hash256 receiptRoot = ReceiptTrie.CalculateRoot(specProvider.GetReceiptSpec(err.Block.Number), err.Receipts, _receiptDecoder);
-                if (err.Block.Header.ReceiptsRoot != receiptRoot)
-                {
-                    throw new EraVerificationException($"Mismatched receipt root. Block number {blockNumber}.");
-                }
-
-                // Note: Header.Hash is calculated by HeaderDecoder.
-                blockHashes[(int)(err.Block.Header.Number - startBlock)] = (err.Block.Header.Hash!, err.Block.TotalDifficulty!.Value);
-
-                if (err.EncodedBody is not null)
-                {
-                    BlockBodyDecoder.ReturnTransactions(err.Block.Body);
-                    err.EncodedBody.Dispose();
+                    ArchiveBodyDecoder.Release(err.Block.Body, err.EncodedBody, BodyForm.EncodedTransactions);
                 }
             }
         }, cancellation)).ToPooledList(verifyConcurrency);
@@ -198,63 +199,34 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
 
         ((BlockBody body, ArrayPoolList<byte>? encodedBody), readSize) = await _fileReader.ReadSnappyCompressedEntryAndDecode(
             position,
-            buffer => DecodeBody(buffer, bodyForm),
+            buffer => ArchiveBodyDecoder.Decode(buffer, bodyForm, _blockBodyDecoder),
             EntryTypes.CompressedBody, cancellationToken);
 
-        position += readSize;
-
-        (TxReceipt[] receipts, readSize) = await _fileReader.ReadSnappyCompressedEntryAndDecode(
-            position,
-            DecodeReceipts,
-            EntryTypes.CompressedReceipts, cancellationToken);
-
-        position += readSize;
-
-        _ = _fileReader.ReadEntryAndDecode(
-            position,
-            static (buffer) => new UInt256(buffer.Span, isBigEndian: false),
-            EntryTypes.TotalDifficulty,
-            out UInt256 currentTotalDifficulty);
-        header.TotalDifficulty = currentTotalDifficulty;
-
-        Block block = new(header, body);
-        return new EntryReadResult(block, receipts, encodedBody);
-    }
-
-    /// <summary>How a body is read.</summary>
-    private enum BodyForm
-    {
-        /// <summary>Decoded in full.</summary>
-        Decoded,
-
-        /// <summary>Decoded in full, with its encoding kept so that it can be stored as read.</summary>
-        DecodedAndEncoded,
-
-        /// <summary>
-        /// With its transactions kept encoded, which is enough to check the body against the header. The pooled
-        /// transactions refer to the kept encoding.
-        /// </summary>
-        EncodedTransactions,
-    }
-
-    // The entry buffer is pooled and reused after this returns, so a kept encoding gets its own pooled copy.
-    private (BlockBody, ArrayPoolList<byte>?) DecodeBody(Memory<byte> buffer, BodyForm form)
-    {
-        if (form == BodyForm.EncodedTransactions && _blockBodyDecoder is BlockBodyDecoder decoder)
+        try
         {
-            ArrayPoolList<byte> encoded = CopyOf(buffer.Span);
-            return (decoder.DecodeWithEncodedTransactions(encoded.AsMemory())!, encoded);
+            position += readSize;
+
+            (TxReceipt[] receipts, readSize) = await _fileReader.ReadSnappyCompressedEntryAndDecode(
+                position,
+                DecodeReceipts,
+                EntryTypes.CompressedReceipts, cancellationToken);
+
+            position += readSize;
+
+            _ = _fileReader.ReadEntryAndDecode(
+                position,
+                static (buffer) => new UInt256(buffer.Span, isBigEndian: false),
+                EntryTypes.TotalDifficulty,
+                out UInt256 currentTotalDifficulty);
+            header.TotalDifficulty = currentTotalDifficulty;
+
+            Block block = new(header, body);
+            return new EntryReadResult(block, receipts, encodedBody);
         }
-
-        RlpReader reader = new(buffer.Span);
-        BlockBody body = _blockBodyDecoder.Decode(ref reader, RlpBehaviors.SkipPooledTransactions)!;
-        return (body, form == BodyForm.DecodedAndEncoded ? CopyOf(buffer.Span) : null);
-
-        static ArrayPoolList<byte> CopyOf(ReadOnlySpan<byte> bytes)
+        catch
         {
-            ArrayPoolList<byte> copy = new(bytes.Length, bytes.Length);
-            bytes.CopyTo(copy.AsSpan());
-            return copy;
+            ArchiveBodyDecoder.Release(body, encodedBody, bodyForm);
+            throw;
         }
     }
 

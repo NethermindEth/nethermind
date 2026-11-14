@@ -6,7 +6,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using NSubstitute;
-using NSubstitute.ReturnsExtensions;
 using System.IO.Abstractions;
 using Autofac;
 using Nethermind.Core.Crypto;
@@ -363,19 +362,30 @@ public class EraExporterTests
         Assert.That(() => { _ = sut.Export(tmpDirectory, 0UL, to); }, Throws.TypeOf<ArgumentException>());
     }
 
-    [Test]
-    public void Export_ReceiptsAreNull_ThrowEraException()
+    [Test, NonParallelizable]
+    public void Export_returns_transactions_when_receipts_fail([Values] bool cancel)
     {
         using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(10)
             .AddSingleton<IReceiptStorage>(Substitute.For<IReceiptStorage>())
             .Build();
+        IBlockTree tree = container.Resolve<IBlockTree>();
+        ulong number = Enumerable.Range(1, 9).Select(i => tree.FindBlock((ulong)i)!)
+            .First(block => block.Transactions.Length > 0).Number;
+        Transaction? decoded = null;
+        container.Resolve<IReceiptStorage>().Get(Arg.Any<Block>(), Arg.Any<bool>(), Arg.Any<bool>())
+            .Returns(call =>
+            {
+                decoded = call.Arg<Block>().Transactions[0];
+                decoded.Nonce = 123;
+                if (cancel) throw new OperationCanceledException();
+                return (TxReceipt[]?)null;
+            });
 
-        string tmpDirectory = container.ResolveTempDirPath();
-        container.Resolve<IReceiptStorage>().Get(Arg.Any<Block>(), Arg.Any<bool>(), Arg.Any<bool>()).ReturnsNull();
-
-        IEraExporter sut = container.Resolve<IEraExporter>();
-
-        Assert.That(() => sut.Export(tmpDirectory, 0UL, 1UL), Throws.TypeOf<EraException>());
+        IEraExporter exporter = container.Resolve<IEraExporter>();
+        Assert.That(() => exporter.Export(container.ResolveTempDirPath(), number, number),
+            cancel ? Throws.InstanceOf<OperationCanceledException>() : Throws.TypeOf<EraException>());
+        Assert.That(decoded, Is.Not.Null);
+        Assert.That(decoded!.Nonce, Is.EqualTo(0UL), "Returning to the pool resets the transaction nonce.");
     }
 
     /// <summary>The real file system, listing files in ordinal order or in reverse.</summary>

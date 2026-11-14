@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO.Abstractions;
+using System.Buffers;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
@@ -169,30 +170,39 @@ public sealed class EraExporter(
                     // The body is copied as stored, with its transactions kept encoded, so they are not decoded.
                     BlockHeader header = blockTree.FindHeader(blockNumber, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)
                         ?? throw new EraException($"Could not find block {blockNumber}. The node may not have finished syncing block bodies for this range.");
-                    using OwnedBlockBodies bodies = OwnedBlockBodies.FromEncodedBlocks(
-                        [blockStore.GetRlp(blockNumber, header.Hash!) ?? throw new EraException($"Could not find block {blockNumber}. The node may not have finished syncing block bodies for this range.")]);
-                    Block block = new(header, bodies.DecodeWithEncodedTransactions(0)!);
-
-                    block.Header.IsPostMerge = poSSwitcher.IsPostMerge(block.Header);
-
-                    TxReceipt[]? receipts = receiptStorage.Get(block, true, false);
-                    if (receipts is null || (block.Header.ReceiptsRoot != Keccak.EmptyTreeHash && receipts.Length == 0))
-                        throw new EraException($"Could not find receipts for block {block.ToString(Block.Format.FullHashAndNumber)}.");
-
-                    if (block.Header.ReceiptsRoot != Keccak.EmptyTreeHash)
+                    OwnedBlockBodies bodies;
+                    using (IMemoryOwner<byte> storedBlock = blockStore.GetOwnedRlp(blockNumber, header.Hash!) ?? throw new EraException($"Could not find block {blockNumber}. The node may not have finished syncing block bodies for this range."))
                     {
-                        Hash256 computedRoot = ReceiptTrie.CalculateRoot(specProvider.GetSpec(block.Header), receipts, _receiptDecoder);
-                        if (computedRoot != block.Header.ReceiptsRoot)
-                        {
-                            throw new EraException(
-                                $"Receipt root mismatch at block {block.ToString(Block.Format.FullHashAndNumber)}: " +
-                                "the database contains stale or corrupt receipt data. " +
-                                "Re-import from the original ERA source before re-exporting.");
-                        }
+                        bodies = OwnedBlockBodies.FromEncodedBlocks([storedBlock.Memory]);
                     }
+                    using OwnedBlockBodies ownedBodies = bodies;
+                    Block block = new(header, bodies.DecodeWithEncodedTransactions(0)!);
+                    try
+                    {
+                        block.Header.IsPostMerge = poSSwitcher.IsPostMerge(block.Header);
 
-                    await eraWriter.Add(block, bodies.GetEncoded(0), receipts, cancel);
-                    BlockBodyDecoder.ReturnTransactions(block.Body);
+                        TxReceipt[]? receipts = receiptStorage.Get(block, true, false);
+                        if (receipts is null || (block.Header.ReceiptsRoot != Keccak.EmptyTreeHash && receipts.Length == 0))
+                            throw new EraException($"Could not find receipts for block {block.ToString(Block.Format.FullHashAndNumber)}.");
+
+                        if (block.Header.ReceiptsRoot != Keccak.EmptyTreeHash)
+                        {
+                            Hash256 computedRoot = ReceiptTrie.CalculateRoot(specProvider.GetSpec(block.Header), receipts, _receiptDecoder);
+                            if (computedRoot != block.Header.ReceiptsRoot)
+                            {
+                                throw new EraException(
+                                    $"Receipt root mismatch at block {block.ToString(Block.Format.FullHashAndNumber)}: " +
+                                    "the database contains stale or corrupt receipt data. " +
+                                    "Re-import from the original ERA source before re-exporting.");
+                            }
+                        }
+
+                        await eraWriter.Add(block, bodies.GetEncoded(0), receipts, cancel);
+                    }
+                    finally
+                    {
+                        BlockBodyDecoder.ReturnTransactions(block.Body);
+                    }
                     lastBlockHash = block.Hash!;
                     progress.Update(Interlocked.Increment(ref totalProcessed));
                 }

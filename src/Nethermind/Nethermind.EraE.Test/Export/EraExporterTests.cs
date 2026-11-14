@@ -9,6 +9,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -559,21 +560,30 @@ public class EraExporterTests
         Assert.That(() => sut.Export(tmpDirectory, 20UL, 10UL), Throws.TypeOf<ArgumentException>());
     }
 
-    [Test]
-    public async Task Export_WhenReceiptsStorageReturnsNull_ThrowsEraException()
+    [Test, NonParallelizable]
+    public void Export_returns_transactions_when_receipts_fail([Values] bool cancel)
     {
-        await using IContainer container = EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(10)
+        using IContainer container = EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(10)
             .AddSingleton<IReceiptStorage>(Substitute.For<IReceiptStorage>())
             .Build();
+        IBlockTree tree = container.Resolve<IBlockTree>();
+        ulong number = Enumerable.Range(1, 9).Select(i => tree.FindBlock((ulong)i)!)
+            .First(block => block.Transactions.Length > 0).Number;
+        Transaction? decoded = null;
+        container.Resolve<IReceiptStorage>().Get(Arg.Any<Block>(), Arg.Any<bool>(), Arg.Any<bool>())
+            .Returns(call =>
+            {
+                decoded = call.Arg<Block>().Transactions[0];
+                decoded.Nonce = 123;
+                if (cancel) throw new OperationCanceledException();
+                return (TxReceipt[]?)null;
+            });
 
-        container.Resolve<IReceiptStorage>()
-            .Get(Arg.Any<Block>(), Arg.Any<bool>(), Arg.Any<bool>())
-            .ReturnsNull();
-
-        IEraExporter sut = container.Resolve<IEraExporter>();
-        string tmpDirectory = container.ResolveTempDirPath();
-
-        Assert.That(() => sut.Export(tmpDirectory, 0UL, 1UL), Throws.TypeOf<EraException>());
+        IEraExporter exporter = container.Resolve<IEraExporter>();
+        Assert.That(() => exporter.Export(container.ResolveTempDirPath(), number, number),
+            cancel ? Throws.InstanceOf<OperationCanceledException>() : Throws.TypeOf<EraException>());
+        Assert.That(decoded, Is.Not.Null);
+        Assert.That(decoded!.Nonce, Is.EqualTo(0UL), "Returning to the pool resets the transaction nonce.");
     }
 
     [Test]
@@ -629,7 +639,7 @@ public class EraExporterTests
         blockTree.FindBlock(0UL, BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(genesis);
         blockTree.FindHeader(0UL, BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(genesis.Header);
         IBlockStore blockStore = Substitute.For<IBlockStore>();
-        blockStore.GetRlp(0UL, genesis.Hash!).Returns(new BlockDecoder().Encode(genesis));
+        blockStore.GetOwnedRlp(0UL, genesis.Hash!).Returns(_ => ArrayMemoryManager.From(new BlockDecoder().Encode(genesis)));
 
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
         receiptStorage.Get(Arg.Is<Block>(block => block.Hash == genesis.Hash), true, false).Returns([]);

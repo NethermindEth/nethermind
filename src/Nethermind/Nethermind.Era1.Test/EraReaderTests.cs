@@ -76,6 +76,28 @@ internal class EraReaderTests
     }
 
     [Test, NonParallelizable]
+    public async Task VerifyContent_returns_transactions_when_validation_fails([Values] bool throwFromValidator)
+    {
+        Transaction source = Build.A.Transaction.WithType(TxType.EIP1559).Signed().TestObject;
+        using PopulatedTestFile file = await PopulatedTestFile.Create(source);
+        Transaction? decoded = null;
+        IBlockValidator validator = Substitute.For<IBlockValidator>();
+        validator.ValidateBodyAgainstHeader(Arg.Any<BlockHeader>(), Arg.Any<BlockBody>(), out Arg.Any<string?>())
+            .Returns(call =>
+            {
+                decoded = call.Arg<BlockBody>().Transactions[0];
+                if (throwFromValidator) throw new OperationCanceledException();
+                return false;
+            });
+
+        using EraReader reader = new(file.FilePath);
+        Assert.That(() => reader.VerifyContent(Substitute.For<ISpecProvider>(), validator, verifyConcurrency: 1, validateTransactions: false),
+            throwFromValidator ? Throws.InstanceOf<OperationCanceledException>() : Throws.TypeOf<EraVerificationException>());
+        Assert.That(decoded, Is.Not.Null);
+        Assert.That(decoded!.Type, Is.EqualTo(TxType.Legacy), "Returning to the pool resets the transaction type.");
+    }
+
+    [Test, NonParallelizable]
     public async Task Imported_transactions_do_not_consume_the_network_pool()
     {
         Transaction source = Build.A.Transaction.Signed().TestObject;
