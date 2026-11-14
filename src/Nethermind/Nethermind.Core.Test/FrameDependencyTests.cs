@@ -198,6 +198,7 @@ public class FrameDependencyTests
             Assert.That(Eip8288Dependencies.ComputeDepsHash(deps, batchedEnabled: true), Is.EqualTo(ValueKeccak.Compute(expected)));
             Assert.That(Eip8288Dependencies.ComputeDepsHash(deps, batchedEnabled: false), Is.EqualTo(Eip8288Dependencies.ComputeDepsHash(deps)));
             Assert.That(Eip8288Dependencies.ComputeDepsHash([], batchedEnabled: true), Is.EqualTo(Eip8288Dependencies.ComputeDepsHash([])));
+            Assert.That(Eip8288Dependencies.ComputeDepsHash([], batchedEnabled: true), Is.EqualTo(Keccak.OfAnEmptyString.ValueHash256));
             Assert.That(new Eip8288Verifier(Eip8288Verifier.BatchedAggregatedVk).DepsHash(deps),
                 Is.EqualTo(Eip8288Dependencies.ComputeDepsHash(deps, batchedEnabled: true)));
             Assert.That(Eip8288Verifier.Pinned.DepsHash(deps), Is.EqualTo(Eip8288Dependencies.ComputeDepsHash(deps)));
