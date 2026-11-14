@@ -114,7 +114,7 @@ public class NativeBatchLeafTests
     private static (ValueHash256[] Claims, ValueHash256 Key, ReadOnlyMemory<byte> Proof) FixtureLeaf()
     {
         byte[] claimBytes = NativeLeanProofVerifierTests.Fixture("stark-batch-claims");
-        return ([new(claimBytes.AsSpan(0, 32)), new(claimBytes.AsSpan(32, 32))], new(NativeLeanProofVerifierTests.Fixture("stark-key")),
+        return ([new(claimBytes.AsSpan(0, 32)), new(claimBytes.AsSpan(32, 32))], new(NativeLeanProofVerifierTests.Fixture("stark-batched-key")),
             NativeLeanProofVerifierTests.Fixture("stark-batch-proof"));
     }
 

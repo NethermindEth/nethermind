@@ -38,9 +38,9 @@ public static class Eip8288Constants
     /// <summary>EIP-8288 <c>MAX_INNER_PROOFS_PER_STEP</c> (provisional, 16 in the EIP): direct leanSTARK proofs, batch leaves and
     /// recursive proofs verified by one aggregation step together.</summary>
     /// <remarks>Raw leanSPHINCS witnesses do not count. Discarded and redundant inputs do; the pinned guest verifies up to this
-    /// many in one execution. Chosen with the leaf bounds, as EIPs#12654 requires: in the pinned guest 13 maximum-resource leaves
-    /// fit a step's 2^30 committed-witness bound and 14 do not; 12 leaves room for the leanSPHINCS signatures a step may add.</remarks>
-    public const int MaxInnerProofsPerStep = 12;
+    /// many in one execution. Chosen with the leaf bounds, as ethereum/EIPs#12664 requires: under the pinned guest's committed
+    /// bytecode key, 16 maximum-resource leaves under distinct keys commit 2^27.6 of a step's 2^30 witness bound.</remarks>
+    public const int MaxInnerProofsPerStep = 16;
 
     /// <summary>EIP-8288's guest (<see cref="AggregatedVk"/>): recursive proofs one aggregation step verifies.</summary>
     public const int BaseMaxRecursiveInputs = 16;
@@ -157,5 +157,5 @@ public static class Eip8288Constants
     public static ReadOnlySpan<byte> BatchedAggregatedVk => _batchedAggregatedVk;
 
     private static readonly byte[] _aggregatedVk = Convert.FromHexString("f7cf74585d02043051f0575c23c6b441b0b08ac9e273f5e989c5984b8a4ac0e5");
-    private static readonly byte[] _batchedAggregatedVk = Convert.FromHexString("df3a802307fe9831311df1288864e5ab0e672b19a224f6b23a374fc873a69828");
+    private static readonly byte[] _batchedAggregatedVk = Convert.FromHexString("8085df136766c4745c98d4dc25307f654ae4e5abb1c43e60136c1e2b723295c4");
 }
