@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO.Abstractions;
+using System.Buffers;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
@@ -211,23 +212,32 @@ public class EraExporter(
                     // The body is copied as stored, with its transactions kept encoded, so they are not decoded.
                     BlockHeader header = blockTree.FindHeader(y, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)
                         ?? throw new EraException($"Could not find a block with number {y}.");
-                    using OwnedBlockBodies bodies = OwnedBlockBodies.FromEncodedBlocks(
-                        [blockStore.GetRlp(y, header.Hash!) ?? throw new EraException($"Could not find a block with number {y}.")]);
+                    OwnedBlockBodies bodies;
+                    using (IMemoryOwner<byte> storedBlock = blockStore.GetOwnedRlp(y, header.Hash!) ?? throw new EraException($"Could not find a block with number {y}."))
+                    {
+                        bodies = OwnedBlockBodies.FromEncodedBlocks([storedBlock.Memory]);
+                    }
+                    using OwnedBlockBodies ownedBodies = bodies;
                     Block block = new(header, bodies.DecodeWithEncodedTransactions(0)!);
-
-                    TxReceipt[]? receipts = receiptStorage.Get(block, true, false);
-                    if (receipts is null || (block.Header.ReceiptsRoot != Keccak.EmptyTreeHash && receipts.Length == 0))
+                    try
                     {
-                        throw new EraException($"Could not find receipts for block {block.ToString(Block.Format.FullHashAndNumber)} {receiptStorage.GetHashCode()}");
-                    }
+                        TxReceipt[]? receipts = receiptStorage.Get(block, true, false);
+                        if (receipts is null || (block.Header.ReceiptsRoot != Keccak.EmptyTreeHash && receipts.Length == 0))
+                        {
+                            throw new EraException($"Could not find receipts for block {block.ToString(Block.Format.FullHashAndNumber)} {receiptStorage.GetHashCode()}");
+                        }
 
-                    if (block.TotalDifficulty is null)
+                        if (block.TotalDifficulty is null)
+                        {
+                            throw new EraException($"Block {block.ToString(Block.Format.FullHashAndNumber)} does not have total difficulty specified");
+                        }
+
+                        await eraWriter.Add(block, bodies.GetEncoded(0), receipts, cancellation);
+                    }
+                    finally
                     {
-                        throw new EraException($"Block {block.ToString(Block.Format.FullHashAndNumber)} does not have total difficulty specified");
+                        BlockBodyDecoder.ReturnTransactions(block.Body);
                     }
-
-                    await eraWriter.Add(block, bodies.GetEncoded(0), receipts, cancellation);
-                    BlockBodyDecoder.ReturnTransactions(block.Body);
                     progress.Update(Interlocked.Increment(ref totalProcessed));
                 }
 

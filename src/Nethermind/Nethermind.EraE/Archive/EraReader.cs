@@ -8,6 +8,8 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.EraE.E2Store;
+using BodyForm = Nethermind.Era1.BodyForm;
+using ArchiveBodyDecoder = Nethermind.Era1.ArchiveBodyDecoder;
 using AccumulatorCalculator = Nethermind.Era1.AccumulatorCalculator;
 using EraException = Nethermind.Era1.Exceptions.EraException;
 using EraVerificationException = Nethermind.Era1.Exceptions.EraVerificationException;
@@ -114,28 +116,29 @@ public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxRec
                     // The body is only checked against the header, which the encoded transactions are enough for.
                     (Block block, ArrayPoolList<byte>? encodedBody, TxReceipt[] receipts) = await ReadBlockAndReceipts(blockNumber, BodyForm.EncodedTransactions, cancellation);
 
-                    if (block.Header.Number != blockNumber)
-                        throw new EraVerificationException($"Mismatched header number {block.Header.Number}. Block {blockNumber}.");
-
-                    if (!blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body, out string? error))
-                        throw new EraVerificationException($"Mismatched block body against header: {error}. Block {blockNumber}.");
-
-                    Hash256 receiptRoot = ReceiptTrie.CalculateRoot(
-                        specProvider.GetSpec(block.Header), receipts, _fullReceiptDecoder);
-                    if (block.Header.ReceiptsRoot != receiptRoot)
-                        throw new EraVerificationException($"Mismatched receipt root at block {blockNumber}.");
-
-                    // Safe: each dequeued blockNumber is unique, so each idx is written by exactly one worker.
-                    int idx = (int)(block.Header.Number - startBlock);
-                    blockMeta[idx] = (
-                        block.Header.Hash!,
-                        block.TotalDifficulty ?? UInt256.Zero,
-                        !block.Header.IsPostMerge);
-
-                    if (encodedBody is not null)
+                    try
                     {
-                        BlockBodyDecoder.ReturnTransactions(block.Body);
-                        encodedBody.Dispose();
+                        if (block.Header.Number != blockNumber)
+                            throw new EraVerificationException($"Mismatched header number {block.Header.Number}. Block {blockNumber}.");
+
+                        if (!blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body, out string? error))
+                            throw new EraVerificationException($"Mismatched block body against header: {error}. Block {blockNumber}.");
+
+                        Hash256 receiptRoot = ReceiptTrie.CalculateRoot(
+                            specProvider.GetSpec(block.Header), receipts, _fullReceiptDecoder);
+                        if (block.Header.ReceiptsRoot != receiptRoot)
+                            throw new EraVerificationException($"Mismatched receipt root at block {blockNumber}.");
+
+                        // Safe: each dequeued blockNumber is unique, so each idx is written by exactly one worker.
+                        int idx = (int)(block.Header.Number - startBlock);
+                        blockMeta[idx] = (
+                            block.Header.Hash!,
+                            block.TotalDifficulty ?? UInt256.Zero,
+                            !block.Header.IsPostMerge);
+                    }
+                    finally
+                    {
+                        ArchiveBodyDecoder.Release(block.Body, encodedBody, BodyForm.EncodedTransactions);
                     }
                 }
             }, cancellation);
@@ -185,67 +188,38 @@ public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxRec
 
         long bodyPos = e2.BodyOffset(blockNumber);
         ((BlockBody body, ArrayPoolList<byte>? encodedBody), _) = await e2.ReadSnappyCompressedEntryAndDecode(
-            bodyPos, buffer => DecodeBody(buffer, bodyForm), EntryTypes.CompressedBody, cancellation);
+            bodyPos, buffer => ArchiveBodyDecoder.Decode(buffer, bodyForm, _blockBodyDecoder), EntryTypes.CompressedBody, cancellation);
 
-        long receiptsPos = e2.SlimReceiptsOffset(blockNumber);
-        (TxReceipt[] receipts, _) = await e2.ReadSnappyCompressedEntryAndDecode(
-            receiptsPos, _slimReceiptDecoder.Decode, EntryTypes.CompressedSlimReceipts, cancellation);
-
-        if (e2.HasTotalDifficulty)
+        try
         {
-            long tdPos = e2.TotalDifficultyOffset(blockNumber);
-            e2.ReadEntryAndDecode(
-                tdPos,
-                static buf => new UInt256(buf.Span, isBigEndian: false),
-                EntryTypes.TotalDifficulty,
-                out UInt256 td);
-            header.TotalDifficulty = td;
-        }
+            long receiptsPos = e2.SlimReceiptsOffset(blockNumber);
+            (TxReceipt[] receipts, _) = await e2.ReadSnappyCompressedEntryAndDecode(
+                receiptsPos, _slimReceiptDecoder.Decode, EntryTypes.CompressedSlimReceipts, cancellation);
 
-        // Bloom is not stored in slim receipts; TxReceipt.Bloom auto-calculates from Logs on first access.
-        return (new Block(header, body), encodedBody, receipts);
+            if (e2.HasTotalDifficulty)
+            {
+                long tdPos = e2.TotalDifficultyOffset(blockNumber);
+                e2.ReadEntryAndDecode(
+                    tdPos,
+                    static buf => new UInt256(buf.Span, isBigEndian: false),
+                    EntryTypes.TotalDifficulty,
+                    out UInt256 td);
+                header.TotalDifficulty = td;
+            }
+
+            // Bloom is not stored in slim receipts; TxReceipt.Bloom auto-calculates from Logs on first access.
+            return (new Block(header, body), encodedBody, receipts);
+        }
+        catch
+        {
+            ArchiveBodyDecoder.Release(body, encodedBody, bodyForm);
+            throw;
+        }
     }
 
     private BlockHeader DecodeHeader(Memory<byte> buffer)
     {
         RlpReader ctx = new(buffer.Span);
         return _headerDecoder.Decode(ref ctx)!;
-    }
-
-    /// <summary>How a body is read.</summary>
-    private enum BodyForm
-    {
-        /// <summary>Decoded in full.</summary>
-        Decoded,
-
-        /// <summary>Decoded in full, with its encoding kept so that it can be stored as read.</summary>
-        DecodedAndEncoded,
-
-        /// <summary>
-        /// With its transactions kept encoded, which is enough to check the body against the header. The pooled
-        /// transactions refer to the kept encoding.
-        /// </summary>
-        EncodedTransactions,
-    }
-
-    // The entry buffer is pooled and reused after this returns, so a kept encoding gets its own pooled copy.
-    private (BlockBody, ArrayPoolList<byte>?) DecodeBody(Memory<byte> buffer, BodyForm form)
-    {
-        if (form == BodyForm.EncodedTransactions && _blockBodyDecoder is BlockBodyDecoder decoder)
-        {
-            ArrayPoolList<byte> encoded = CopyOf(buffer.Span);
-            return (decoder.DecodeWithEncodedTransactions(encoded.AsMemory())!, encoded);
-        }
-
-        RlpReader reader = new(buffer.Span);
-        BlockBody body = _blockBodyDecoder.Decode(ref reader, RlpBehaviors.SkipPooledTransactions)!;
-        return (body, form == BodyForm.DecodedAndEncoded ? CopyOf(buffer.Span) : null);
-
-        static ArrayPoolList<byte> CopyOf(ReadOnlySpan<byte> bytes)
-        {
-            ArrayPoolList<byte> copy = new(bytes.Length, bytes.Length);
-            bytes.CopyTo(copy.AsSpan());
-            return copy;
-        }
     }
 }

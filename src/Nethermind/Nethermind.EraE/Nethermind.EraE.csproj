@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\Nethermind.Era1\ArchiveBodyDecoder.cs" Link="Archive\ArchiveBodyDecoder.cs" />
     <PackageReference Include="CommunityToolkit.HighPerformance" />
     <PackageReference Include="Polly" />
     <PackageReference Include="Snappier" />
