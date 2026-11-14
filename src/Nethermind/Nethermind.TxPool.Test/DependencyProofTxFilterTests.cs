@@ -18,14 +18,12 @@ namespace Nethermind.TxPool.Test;
 
 public class DependencyProofTxFilterTests
 {
-    // ethereum/EIPs#12664 Test Case: batch claims and leaf payments are never admitted to the public mempool, even with a held
-    // proof; without batch pricing they are unknown schemes, as before.
+    // ethereum/EIPs#12664 Test Case: an unsupported scheme is rejected with batched dependencies on as off, even with a held proof.
     [Test]
-    public void Batch_claims_and_payments_are_not_admitted([Values(Eip8288Constants.BatchedLeanStarkScheme, Eip8288Constants.LeanStarkLeafPaymentScheme)] byte scheme,
-        [Values] bool batchedEnabled)
+    public void Unsupported_scheme_is_not_admitted([Values] bool batchedEnabled)
     {
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
-        FrameDependency dependency = new(scheme, ValueKeccak.Compute("claim"), ValueKeccak.Compute("key"));
+        FrameDependency dependency = new(0x12, ValueKeccak.Compute("claim"), ValueKeccak.Compute("key"));
         store.AddVerified([dependency], null, [1]);
         Transaction tx = new()
         {
@@ -33,7 +31,7 @@ public class DependencyProofTxFilterTests
             SenderAddress = Address.Zero,
             Hash = new Hash256(dependency.DataHash),
             NonceKeys = [UInt256.Zero],
-            Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, dependency.FrameCharge(batchedEnabled), UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
+            Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanStarkVerificationGas, UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
         };
         IReleaseSpec spec = new OverridableReleaseSpec(Eip8288Prototype.Instance) { IsEipBatchedDependencyPricingEnabled = batchedEnabled };
         TxFilteringState filtering = new(tx, Substitute.For<IAccountStateProvider>(), spec);
@@ -41,7 +39,7 @@ public class DependencyProofTxFilterTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
-            Assert.That(result.ToString(), Does.EndWith(batchedEnabled ? DependencyProofTxFilter.BatchedDependencyNotPooled : FrameTxValidation.InvalidDependencyScheme));
+            Assert.That(result.ToString(), Does.EndWith(FrameTxValidation.InvalidDependencyScheme));
             Assert.That(filtering.ProofReservation, Is.Null);
         }
     }

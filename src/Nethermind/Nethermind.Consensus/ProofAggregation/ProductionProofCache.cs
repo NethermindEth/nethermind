@@ -155,13 +155,13 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
         ArgumentNullException.ThrowIfNull(input);
         if (input.Deps.Count != input.Witnesses.Count || input.Deps.Count > Eip8288Constants.MaxProofDependencies
             || input.Discards.Count > Eip8288Constants.MaxProofDependencies || input.RecursiveProofs.Count > Eip8288Constants.MaxProofDependencies
-            // Batch leaves are private to their owner's own aggregation; no wrapper or block carries one to this cache.
+            // A leaf reaches the network only folded into a recursive proof (ethereum/EIPs#12664), so none reaches this cache.
             || input.BatchLeaves.Count != 0)
             throw new ArgumentException("Invalid aggregation input shape.", nameof(input));
         foreach (RecursiveProofInput parent in input.RecursiveProofs)
             if (parent.InnerDeps is null || parent.InnerDeps.Count > Eip8288Constants.MaxProofDependencies)
                 throw new ArgumentException("Invalid recursive aggregation input.", nameof(input));
-        if (RecursiveStarkAggregator.InputSize(input, aggregatedVk.SequenceEqual(Eip8288Constants.BatchedAggregatedVk)) > Eip8288Constants.MaxAggregationInputBytes)
+        if (RecursiveStarkAggregator.InputSize(input) > Eip8288Constants.MaxAggregationInputBytes)
             throw new ArgumentException("Aggregation input exceeds the proving bound.", nameof(input));
         input = Snapshot(input);
         byte[] keyBytes = aggregatedVk.ToArray();

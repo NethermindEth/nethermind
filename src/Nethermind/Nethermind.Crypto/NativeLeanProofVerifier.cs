@@ -233,9 +233,9 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
     }
 
     /// <summary>Encodes <paramref name="input"/> for the guest <paramref name="batchedGuest"/> selects.</summary>
-    /// <remarks>EIP-8288's guest takes 96-byte child and discard dependencies, at most
-    /// <see cref="Eip8288Constants.BaseMaxRecursiveInputs"/> children and no batch leaves; the batch-pricing guest takes 192-byte
-    /// records and at most <see cref="Eip8288Constants.MaxInnerProofsPerStep"/> inner proofs.</remarks>
+    /// <remarks>Both guests take 96-byte dependencies. EIP-8288's guest takes at most <see cref="Eip8288Constants.BaseMaxRecursiveInputs"/>
+    /// children and no batch leaves; the batch guest at most <see cref="Eip8288Constants.MaxInnerProofsPerStep"/> inner proofs, with
+    /// the batch leaves in a trailing section.</remarks>
     internal static byte[] SerializeInput(AggregationInput input, bool batchedGuest)
     {
         if (input.Deps.Count != input.Witnesses.Count || input.Deps.Count > Eip8288Constants.MaxProofDependencies || input.Discards.Count > Eip8288Constants.MaxProofDependencies
@@ -259,11 +259,11 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
                 || child.InnerDeps.Count > Eip8288Constants.MaxProofDependencies)
                 throw new ArgumentException("Invalid child dependencies", nameof(input));
             writer.Write(child.InnerDeps.Count);
-            foreach (FrameDependency dep in child.InnerDeps) WriteRecord(writer, dep, batchedGuest);
+            foreach (FrameDependency dep in child.InnerDeps) WriteDependency(writer, dep);
             WriteBlob(writer, child.Proof.Span);
         }
         writer.Write(input.Discards.Count);
-        foreach (FrameDependency dep in input.Discards) WriteRecord(writer, dep, batchedGuest);
+        foreach (FrameDependency dep in input.Discards) WriteDependency(writer, dep);
         // An optional trailing section, absent when there are no batch leaves.
         if (input.BatchLeaves.Count != 0)
         {
@@ -293,22 +293,6 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
         foreach (FrameDependency dep in input.Deps)
             if (dep.Scheme != Eip8288Constants.LeanSphincsScheme) count++;
         return count;
-    }
-
-    /// <summary>Writes a child's or discard's dependency, and for the batch-pricing guest then 96 zero bytes for the source only a
-    /// batch claim has, which this managed fold does not carry.</summary>
-    private static void WriteRecord(BinaryWriter writer, FrameDependency dep, bool batchedGuest)
-    {
-        if (!batchedGuest)
-        {
-            WriteDependency(writer, dep);
-            return;
-        }
-        if (dep.Scheme == Eip8288Constants.BatchedLeanStarkScheme)
-            throw new ArgumentException("A batch claim's source is not carried by the managed aggregation input");
-        WriteDependency(writer, dep);
-        if (writer.BaseStream.Length + Eip8288Constants.DependencyTripleLength > Eip8288Constants.MaxAggregationInputBytes) throw new ArgumentException("Lean aggregation input too large");
-        writer.Write(stackalloc byte[Eip8288Constants.DependencyTripleLength]);
     }
 
     private static void WriteDependency(BinaryWriter writer, FrameDependency dep)

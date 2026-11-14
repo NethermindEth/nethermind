@@ -390,7 +390,7 @@ namespace Nethermind.Blockchain.Test
             Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
             transaction.Type = TxType.FrameTx;
             transaction.NonceKeys = [UInt256.Zero];
-            transaction.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, (ulong)count * dependencies[0].FrameCharge(batchPricing),
+            transaction.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, (ulong)count * Eip8288Constants.LeanStarkVerificationGas,
                 UInt256.Zero, Eip8288Dependencies.Serialize(dependencies))];
             LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
             proofs.AddVerified(dependencies, Enumerable.Repeat(new byte[] { 1 }, count).ToArray(), null);

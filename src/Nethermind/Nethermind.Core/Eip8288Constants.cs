@@ -29,7 +29,7 @@ public static class Eip8288Constants
     public const int MaxProofDependencies = 256;
 
     /// <summary>Batch-pricing EIP (ethereum/EIPs#12664) <c>MAX_DEPS_PER_BLOCK</c> (provisional): distinct resolved dependencies a
-    /// block may hold, across all schemes and leaf payments included.</summary>
+    /// block may hold, across both schemes.</summary>
     /// <remarks>A block-validity limit independent of the gas limit, which also excuses an inclusion-list omission whose dependencies
     /// would exceed it. Block building never nears it, since this node's guests prove at most <see cref="MaxProofDependencies"/>.</remarks>
     public const int MaxDepsPerBlock = 16384;
@@ -98,42 +98,17 @@ public static class Eip8288Constants
     public const byte LeanSphincsScheme = 0x10;
     /// <summary>EIP-8288 <c>LEANSTARK_SCHEME</c>, enabled here as a deviation from the EIP.</summary>
     /// <remarks>The EIP reserves it until <c>get_deps_hash</c> is defined for it. This node enables it with the pinned guest's
-    /// generic leanVM proof profile and the split-domain digest of <see cref="Eip8288Dependencies.ComputeDepsHash"/>, which leaves
+    /// generic leanVM proof profile and the split-domain digest of <see cref="Eip8288Dependencies.ComputeDepsHash(System.Collections.Generic.IReadOnlyList{FrameDependency})"/>, which leaves
     /// every leanSPHINCS-only list at the spec digest.</remarks>
     public const byte LeanStarkScheme = 0x11;
 
     public const ulong LeanSphincsVerificationGas = 3_000;
     public const ulong LeanStarkVerificationGas = 30_000;
 
-    /// <summary>Batch-pricing EIP (ethereum/EIPs#12664) <c>BATCHED_LEANSTARK_SCHEME</c> (provisional): a claim of a sponsored
-    /// leaf, <c>data_hash</c> the claim and <c>verification_key_hash</c> the leaf's key.</summary>
-    public const byte BatchedLeanStarkScheme = 0x12;
-
-    /// <summary>Batch-pricing EIP <c>LEANSTARK_LEAF_PAYMENT_SCHEME</c> (provisional): a leaf's payment, <c>data_hash</c> its nonzero
-    /// <c>get_batch_hash(claims)</c> and <c>verification_key_hash</c> its key. Effective only in the block of the claims it
-    /// sources.</summary>
-    public const byte LeanStarkLeafPaymentScheme = 0x13;
-
-    /// <summary>Batch-pricing EIP <c>LEANSPHINCS_VERIFICATION_GAS</c> (provisional): from its activation, a leanSPHINCS
-    /// declaration's frame charge in place of <see cref="LeanSphincsVerificationGas"/>.</summary>
-    public const ulong BatchPricedLeanSphincsVerificationGas = 15_400;
-
-    /// <summary>Batch-pricing EIP <c>LEANSTARK_VERIFICATION_GAS</c> (provisional): from its activation, a leanSTARK declaration's
-    /// frame charge, its recursive child slot included, in place of <see cref="LeanStarkVerificationGas"/>.</summary>
-    public const ulong BatchPricedLeanStarkVerificationGas = 572_000;
-
-    /// <summary>Batch-pricing EIP <c>RECURSIVE_PROOF_SHARE_GAS</c> (provisional): from its activation, each ordinary declared
-    /// dependency's intrinsic share of the block's recursive proof, in place of EIP-8288's <see cref="LeanStarkVerificationGas"/>
-    /// (<see cref="Eip8288Dependencies.RecursiveStarkGas"/>).</summary>
-    public const ulong RecursiveProofShareGas = 5_100;
-
-    /// <summary>Batch-pricing EIP <c>LEANSTARK_LEAF_PAYMENT_GAS</c> (provisional): a leaf payment's frame charge, covering the leaf's
-    /// verification and fixed payment-binding work, in place of EIP-8288's proof share.</summary>
-    public const ulong LeanStarkLeafPaymentGas = 675_000;
-
-    /// <summary>Batch-pricing EIP <c>LEANSTARK_CLAIM_GAS</c> (provisional): a batch claim's frame charge, in place of EIP-8288's
-    /// proof share.</summary>
-    public const ulong LeanStarkClaimGas = 4_200;
+    /// <summary>Batch-pricing EIP (ethereum/EIPs#12664) <c>RECURSIVE_PROOF_SHARE_GAS</c> (provisional): from its activation, each
+    /// declared dependency's intrinsic share of the block's recursive proof, in place of EIP-8288's
+    /// <see cref="LeanStarkVerificationGas"/> (<see cref="Eip8288Dependencies.RecursiveStarkGas"/>).</summary>
+    public const ulong RecursiveProofShareGas = 2_700;
 
     public const int MaxSigsPerTx = 16;
     public const int MaxStarksPerTx = 1;
@@ -161,9 +136,9 @@ public static class Eip8288Constants
 
     /// <summary>Fiat-Shamir key of the package's recursive guest with batch pricing (ethereum/EIPs#12664), which forks enabling
     /// <see cref="Specs.IReleaseSpec.IsEipBatchedDependencyPricingEnabled"/> verify with.</summary>
-    /// <remarks>Built from the same source as <see cref="AggregatedVk"/>'s guest, it also takes leaves of up to
-    /// <see cref="MaxClaimsPerBatchLeaf"/> claims, establishing <see cref="BatchedLeanStarkScheme"/> claims bound to their
-    /// <see cref="LeanStarkLeafPaymentScheme"/> payment, and finalizes them.</remarks>
+    /// <remarks>It takes leaves of up to <see cref="MaxClaimsPerBatchLeaf"/> claims, a direct leanSTARK witness as a proof of
+    /// <c>get_claim_hash(claim)</c>, and commits to the scheme-inclusive digest of
+    /// <see cref="Eip8288Dependencies.ComputeDepsHash(System.Collections.Generic.IReadOnlyList{FrameDependency}, bool)"/>.</remarks>
     public static ReadOnlySpan<byte> BatchedAggregatedVk => _batchedAggregatedVk;
 
     private static readonly byte[] _aggregatedVk = Convert.FromHexString("f6f37690cf7241c9ea24392f349867acc1c8e06034e8ce149e2f11a25eec56f9");

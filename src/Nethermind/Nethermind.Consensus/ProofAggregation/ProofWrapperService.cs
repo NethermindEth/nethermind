@@ -98,6 +98,11 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     internal TimeSpan AdmissionWaitTimeout { get; set; } = TimeSpan.FromSeconds(5);
     // Remembered verifications are keyed by AGGREGATED_VK too, so none answers under another verifier.
     private readonly Dictionary<(ValueHash256 Wrapper, ValueHash256 Verifier), string?> _verifiedWrappers = [];
+
+    /// <summary>The clock of the leanSTARK verification rate limit batched dependencies impose (ethereum/EIPs#12664).</summary>
+    internal TimeProvider VerificationClock { init => _verificationBudget = new(value); }
+
+    private LeanStarkVerificationBudget _verificationBudget = new(TimeProvider.System);
     private readonly Queue<(ValueHash256 Wrapper, ValueHash256 Verifier)> _verifiedWrapperOrder = [];
     private sealed record WrapperSnapshot(ValueHash256 Selection, Hash256[] Transactions, byte[] Encoded, ValueHash256 Hash, RecursiveProofInput Parent,
         Eip8288Verifier Verifier);
@@ -283,18 +288,18 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             // EIP-8437 carries blob-carrying transactions with their blob data elided, so a wrapper submitted with full blobs is
             // relayed in that form; its blobs reach peers as EIP-8070 cells once the pool holds them.
             byte[]? relay = ElidedForRelay(decoded, wrapper);
-            IReleaseSpec transactionSpec = PoolPricingSpec(admissionSpec);
             foreach (Transaction transaction in decoded.Transactions)
             {
-                if (!Preflight(transaction, out string? frameError, transactionSpec))
+                if (!Preflight(transaction, out string? frameError, admissionSpec))
                     return frameError is FrameTxValidation.AssertFrameNotEnabled or FrameTxValidation.KeyedNoncesNotEnabled
                         or FrameTxValidation.LegacyNonceNotAllowed
-                        || !ReferenceEquals(transactionSpec, admissionSpec) && Preflight(transaction, out _, admissionSpec)
-                        ? ProofWrapperAcceptance.LocalFailure(frameError!) : ProofWrapperAcceptance.Invalid(frameError!, verifier);
+                        ? ProofWrapperAcceptance.LocalFailure(frameError) : ProofWrapperAcceptance.Invalid(frameError!, verifier);
             }
             (ValueHash256, ValueHash256) wrapperHash = (ValueKeccak.Compute(wrapper), verifier.AggregatedVk);
             if (!_verifiedWrappers.TryGetValue(wrapperHash, out string? error))
             {
+                if (admissionSpec.IsEipBatchedDependencyPricingEnabled && !_verificationBudget.TrySpend(LeanStarkVerificationBudget.Cost(decoded)))
+                    return AdmissionBusy();
                 (bool valid, string? validationError) = await Task.Run(() =>
                 {
                     bool proofValid = MempoolWrapperValidator.Validate(decoded, leanProofVerifier, in verifier, out string? proofError);
@@ -1092,7 +1097,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         }
         try
         {
-            ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(deps);
+            ValueHash256 hash = verifier.DepsHash(deps);
             if (!leanProofStore.TryGetRecursiveProof(deps, out byte[]? proof))
             {
                 if (AwaitsOffer(deps, clock)) return Result<byte[]>.Fail(AwaitingOfferedProof);
@@ -1114,7 +1119,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 Transactions = transactions,
                 Deps = deps,
                 Mode = MempoolWrapper.ModeRecursive,
-                RecursiveStark = new RecursiveStark(proof!, new Hash256(hash))
+                RecursiveStark = new RecursiveStark(proof!, new Hash256(Eip8288Dependencies.ComputeDepsHash(deps)))
             };
             lock (_commitLock)
             {
@@ -1190,16 +1195,6 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
 
     /// <summary>Whether any scheduled fork of this chain enables EIP-8288; when not, wrapper work never needs to run.</summary>
     public bool IsScheduled => specProvider.GetFinalSpec().IsEip8288Enabled;
-
-    /// <summary>The spec a wrapper's transactions are judged under: <paramref name="admissionSpec"/>, or the head's when only one of
-    /// them has batch pricing (ethereum/EIPs#12664).</summary>
-    /// <remarks>The pool validates every transaction against its head, and batch pricing changes their frame charges, so across its
-    /// activation the head decides which price is admissible. A transaction priced for the target fork alone is then a local
-    /// failure rather than the peer's.</remarks>
-    private IReleaseSpec PoolPricingSpec(IReleaseSpec admissionSpec) =>
-        blockFinder.Head is { } head && specProvider.GetSpec(head.Header) is { } headSpec
-            && headSpec.IsEipBatchedDependencyPricingEnabled != admissionSpec.IsEipBatchedDependencyPricingEnabled
-            ? headSpec : admissionSpec;
 
     private bool Preflight(Transaction transaction, out string? error, IReleaseSpec? admissionSpec = null)
     {

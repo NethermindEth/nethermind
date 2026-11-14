@@ -350,75 +350,42 @@ public class BlockValidatorTests
         return new BlockValidator(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance, verifier);
     }
 
-    // ethereum/EIPs#12664 Test Case: a block with a batch claim or leaf payment is verified against get_batch_final_hash of its
-    // block_deps_hash, which stays the plain digest; a plain proof is rejected there, and other blocks keep the plain statement.
-    // Without batch pricing every block keeps EIP-8288's plain statement.
-    [TestCase(Eip8288Constants.LeanStarkScheme, false, true, true)]
-    [TestCase(Eip8288Constants.LeanStarkScheme, true, true, false)]
-    [TestCase(Eip8288Constants.BatchedLeanStarkScheme, true, true, true)]
-    [TestCase(Eip8288Constants.BatchedLeanStarkScheme, false, true, false)]
-    [TestCase(Eip8288Constants.LeanStarkLeafPaymentScheme, true, true, true)]
-    [TestCase(Eip8288Constants.LeanStarkLeafPaymentScheme, false, true, false)]
-    [TestCase(Eip8288Constants.BatchedLeanStarkScheme, false, false, true)]
-    [TestCase(Eip8288Constants.BatchedLeanStarkScheme, true, false, false)]
-    public void Eip8288_batch_blocks_verify_the_finalized_statement(byte scheme, bool finalizedProof, bool batchPricing, bool valid)
+    // ethereum/EIPs#12664: block_deps_hash and the block proof's statement are the scheme-inclusive digest with batched
+    // dependencies, EIP-8288's digest without; a block committing to the other fork's digest is rejected.
+    [TestCase(false, false, true)]
+    [TestCase(true, true, true)]
+    [TestCase(true, false, false)]
+    [TestCase(false, true, false)]
+    public void Eip8288_block_commitment_follows_the_forks_digest(bool batchPricing, bool batchedDigest, bool valid)
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;
-        FrameDependency dependency = new(scheme, ValueKeccak.Compute("claim"), ValueKeccak.Compute("key"));
+        FrameDependency[] dependencies =
+        [
+            new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("message"), ValueKeccak.Compute("pk")),
+            new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("claim"), ValueKeccak.Compute("key")),
+        ];
         Transaction tx = new()
         {
             Type = TxType.FrameTx,
             SenderAddress = TestItem.AddressA,
-            Frames = [new TxFrame(FrameMode.DepVerify, 0, null, dependency.VerificationGas, UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))],
+            Frames = [new TxFrame(FrameMode.DepVerify, 0, null, 0, UInt256.Zero, Eip8288Dependencies.Serialize(dependencies))],
             FrameSignatures = [],
         };
         tx.Hash = tx.CalculateHash();
         Block block = Build.A.Block.WithParent(parent).WithEncodedSize(Eip7934Constants.DefaultMaxRlpBlockSize).WithTransactions(tx).TestObject;
-        ValueHash256 depsHash = Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue);
+        ValueHash256 depsHash = Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue, batchedDigest);
         block.StarkProof = [1];
         block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), new Hash256(depsHash));
-        StatementLeanProofVerifier verifier = new(finalizedProof ? Eip8288Dependencies.BatchFinalHash(depsHash) : depsHash);
 
-        bool result = CreateEip8288Validator(verifier, batchPricing: batchPricing).ValidateSuggestedBlock(block, parent, out string? error);
+        bool result = CreateEip8288Validator(new StatementLeanProofVerifier(depsHash), batchPricing: batchPricing)
+            .ValidateSuggestedBlock(block, parent, out string? error);
 
         Assert.That(result, Is.EqualTo(valid), error);
     }
 
-    // Without batch pricing a batch claim is an unknown scheme, so the real transaction validator rejects a block declaring one;
-    // with it the scheme is accepted, whatever else the block still fails.
-    [Test]
-    public void Eip8288_batch_claims_are_invalid_in_blocks_without_batch_pricing([Values] bool batchPricing)
-    {
-        BlockHeader parent = Build.A.BlockHeader.TestObject;
-        FrameDependency dependency = new(Eip8288Constants.BatchedLeanStarkScheme, ValueKeccak.Compute("claim"), ValueKeccak.Compute("key"));
-        Transaction tx = new()
-        {
-            Type = TxType.FrameTx,
-            ChainId = TestBlockchainIds.ChainId,
-            SenderAddress = TestItem.AddressA,
-            Frames = [new TxFrame(FrameMode.DepVerify, 0, null, dependency.FrameCharge(batchPricing), UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))],
-            FrameSignatures = [],
-        };
-        tx.Hash = tx.CalculateHash();
-        Block block = Build.A.Block.WithParent(parent).WithEncodedSize(Eip7934Constants.DefaultMaxRlpBlockSize).WithTransactions(tx).TestObject;
-        IReleaseSpec spec = new OverridableReleaseSpec(Eip8288Prototype.Instance) { IsEipBatchedDependencyPricingEnabled = batchPricing };
-        BlockValidator validator = new(new TxValidator(TestBlockchainIds.ChainId), Always.Valid, Always.Valid,
-            new CustomSpecProvider(((ForkActivation)0, spec)), LimboLogs.Instance, Substitute.For<ILeanProofVerifier>());
-
-        bool valid = validator.ValidateSuggestedBlock(block, parent, out string? error);
-
-        using (Assert.EnterMultipleScope())
-        {
-            if (!batchPricing) Assert.That(valid, Is.False);
-            Assert.That(error ?? string.Empty, batchPricing
-                ? Does.Not.Contain(FrameTxValidation.InvalidDependencyScheme)
-                : Does.Contain(FrameTxValidation.InvalidDependencyScheme));
-        }
-    }
-
     // ethereum/EIPs#12664 Test Case: a block holding MAX_DEPS_PER_BLOCK distinct resolved dependencies is accepted if otherwise valid
-    // and one more is rejected, counting a repeated triple once and a leaf payment like any other; without batch pricing the limit
-    // does not apply.
+    // and one more is rejected, counting a repeated triple once and both schemes alike; without batch pricing the limit does not
+    // apply.
     [TestCase(Eip8288Constants.MaxDepsPerBlock, true, true)]
     [TestCase(Eip8288Constants.MaxDepsPerBlock + 1, true, false)]
     [TestCase(Eip8288Constants.MaxDepsPerBlock + 1, false, true)]
@@ -428,7 +395,7 @@ public class BlockValidatorTests
         FrameDependency[] dependencies = new FrameDependency[distinct + 1];
         for (int i = 0; i < distinct - 1; i++)
             dependencies[i] = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute(i.ToString()), default);
-        dependencies[distinct - 1] = new(Eip8288Constants.LeanStarkLeafPaymentScheme, ValueKeccak.Compute("batch"), ValueKeccak.Compute("key"));
+        dependencies[distinct - 1] = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("claim"), ValueKeccak.Compute("key"));
         dependencies[distinct] = dependencies[0];
         Transaction[] transactions = [.. dependencies.Chunk(Eip8141Constants.MaxFrames * Eip8288Constants.MaxDependenciesPerFrame).Select(static (chunk, index) =>
         {
@@ -447,7 +414,7 @@ public class BlockValidatorTests
         Block block = Build.A.Block.WithParent(parent).WithEncodedSize(Eip7934Constants.DefaultMaxRlpBlockSize).WithTransactions(transactions).TestObject;
         block.StarkProof = [1];
         block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof),
-            new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
+            new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue, batchPricing)));
 
         bool result = CreateEip8288Validator(new FixedLeanProofVerifier(true), batchPricing: batchPricing).ValidateSuggestedBlock(block, parent, out string? error);
 

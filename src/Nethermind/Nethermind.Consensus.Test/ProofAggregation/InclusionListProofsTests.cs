@@ -253,30 +253,26 @@ public class InclusionListProofsTests
         }
     }
 
-    // ethereum/EIPs#12664 Test Cases: batch claim and leaf payment entries impose no obligation. Under an ordinary proof the
-    // covered and dependency-free entries bind; a proof naming either new scheme covers no entry, and only dependency-free ones bind.
+    // ethereum/EIPs#12664 Test Case: with batched dependencies, a dependency-bearing entry binds only when the list's proof verifies
+    // and covers it under the block's fork; dependency-free entries bind either way.
     [Test]
-    public void Batch_claim_and_payment_entries_never_bind([Values] bool proofNamesNewSchemes)
+    public void Batched_entries_bind_only_under_a_valid_covering_proof([Values] bool validProof)
     {
         IReleaseSpec spec = new OverridableReleaseSpec(Eip8288Prototype.Instance) { IsEipBatchedDependencyPricingEnabled = true };
         Transaction ordinary = new();
-        Transaction covered = ValidDependencyFrame(ValueKeccak.Compute("covered"), batchPricing: true);
-        Transaction claim = ValidDependencyFrame(ValueKeccak.Compute("claim"), Eip8288Constants.BatchedLeanStarkScheme, batchPricing: true);
-        Transaction payment = ValidDependencyFrame(ValueKeccak.Compute("payment"), Eip8288Constants.LeanStarkLeafPaymentScheme, batchPricing: true);
-        Transaction[] entries = [claim, covered, payment, ordinary];
-        Assert.That(entries.All(tx => InclusionListProofValidator.IsStaticallyValid(tx, spec)), Is.True);
-        Transaction[] proven = proofNamesNewSchemes ? entries : [covered];
-        List<FrameDependency> proofDeps = Eip8288Dependencies.Canonicalize(
-            proven.SelectMany(static tx => Eip8288Dependencies.ForTransaction(tx, FrameTxSigHash.ComputeValue)));
+        Transaction covered = ValidDependencyFrame(ValueKeccak.Compute("covered"), Eip8288Constants.LeanStarkScheme);
+        Transaction uncovered = ValidDependencyFrame(ValueKeccak.Compute("uncovered"));
+        Transaction[] entries = [covered, uncovered, ordinary];
+        List<FrameDependency> proofDeps = Eip8288Dependencies.ForTransaction(covered, FrameTxSigHash.ComputeValue);
         CommitteeInclusionList[] lists = [new(entries, [1], Encode(proofDeps))];
 
-        new InclusionListProofService(new FakeLeanProofVerifier(true)).ResolveObligations(lists, spec);
+        new InclusionListProofService(new FakeLeanProofVerifier(validProof)).ResolveObligations(lists, spec);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(lists[0].VerifiedProofDeps, proofNamesNewSchemes ? Is.Null : Is.Not.Null);
+            Assert.That(lists[0].VerifiedProofDeps, validProof ? Is.Not.Null : Is.Null);
             Assert.That(InclusionListProofValidator.SelectEligible([], lists, spec),
-                Is.EqualTo(proofNamesNewSchemes ? new[] { ordinary } : new[] { covered, ordinary }));
+                Is.EqualTo(validProof ? new[] { covered, ordinary } : new[] { ordinary }));
         }
     }
 
@@ -437,10 +433,10 @@ public class InclusionListProofsTests
         return transaction;
     }
 
-    private static Transaction ValidDependencyFrame(ValueHash256 message, byte scheme = Eip8288Constants.LeanSphincsScheme, bool batchPricing = false)
+    private static Transaction ValidDependencyFrame(ValueHash256 message, byte scheme = Eip8288Constants.LeanSphincsScheme)
     {
         FrameDependency dep = new(scheme, message, default);
-        TxFrame[] frames = [new(FrameMode.DepVerify, FrameFlags.None, null, dep.FrameCharge(batchPricing),
+        TxFrame[] frames = [new(FrameMode.DepVerify, FrameFlags.None, null, dep.VerificationGas,
             UInt256.Zero, Eip8288Dependencies.Serialize([dep]))];
         return new()
         {

@@ -62,7 +62,7 @@ public sealed class InclusionListProofService(ILeanProofVerifier verifier, LeanP
                 || !Eip8288Dependencies.AreSchemesEnabled(proofDeps) || !Eip8288Dependencies.FitsProofList(proofDeps, targetSpec.IsEipBatchedDependencyPricingEnabled))
                 continue;
             byte[] starkProof = held.Proof.ToArray();
-            ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(proofDeps);
+            ValueHash256 depsHash = forkVerifier.DepsHash(proofDeps);
             verifications++;
             if (ProofVerdictCache.VerifyRecursive(verifier, in forkVerifier, in depsHash, starkProof))
             {
@@ -127,7 +127,7 @@ public sealed class InclusionListProofService(ILeanProofVerifier verifier, LeanP
         }
         Eip8288Verifier forkVerifier = Eip8288Verifier.For(spec);
         ValueHash256 proofHash = ValueKeccak.Compute(list.StarkProof);
-        (ValueHash256, ValueHash256, ValueHash256) key = (proofHash, Eip8288Dependencies.ComputeDepsHash(proofDeps!), forkVerifier.AggregatedVk);
+        (ValueHash256, ValueHash256, ValueHash256) key = (proofHash, forkVerifier.DepsHash(proofDeps!), forkVerifier.AggregatedVk);
         lock (_verdictsLock)
             if (_verdicts.TryGetValue(key, out bool known)) return known;
         bool valid = ProofVerdictCache.VerifyRecursive(verifier, in forkVerifier, in key.Item2, list.StarkProof, proofHash);
@@ -208,8 +208,7 @@ public static class InclusionListProofValidator
     /// <c>DEP_VERIFY_FRAME_MODE</c> frame, or whose dependencies <paramref name="proofDeps"/> covers.</summary>
     /// <remarks>An entry with a dependency verification frame is dependency-bearing even when the frame carries no triples or
     /// fails static validity, and EIP-7805 excuses its omission as an invalid transaction. An entry that does not decode never
-    /// reaches a list. Entries declaring a batch claim or leaf payment never bind (ethereum/EIPs#12664): a list proof naming either
-    /// scheme is discarded by <see cref="TryParseProofDeps"/>, so no proof covers them.</remarks>
+    /// reaches a list.</remarks>
     private static Transaction[] SelectBinding(IReadOnlyList<Transaction> transactions, IReadOnlySet<FrameDependency>? proofDeps,
         IReleaseSpec spec)
     {

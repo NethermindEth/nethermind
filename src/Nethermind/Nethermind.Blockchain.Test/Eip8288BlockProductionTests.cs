@@ -1129,41 +1129,36 @@ public class Eip8288BlockProductionTests
         }
     }
 
-    // Batch claims and leaf payments are never built (ethereum/EIPs#12664 leaves builder submission out of scope): even with a held
-    // witness, the picker leaves them out and the rest of the payload is built, so production never reaches a finalized statement.
+    // ethereum/EIPs#12664: a produced block commits to, and is proved against, the fork's dependency digest, scheme-inclusive with
+    // batched dependencies and EIP-8288's otherwise.
     [Test]
-    public async Task Producing_blocks_leave_out_batch_claims_and_payments_with_held_witnesses(
-        [Values(Eip8288Constants.BatchedLeanStarkScheme, Eip8288Constants.LeanStarkLeafPaymentScheme)] byte scheme)
+    public async Task Produced_block_commits_to_the_forks_dependency_digest([Values] bool batched)
     {
         CountingVerifier verifier = new();
         LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
         using BasicTestBlockchain chain = await CreateChain(verifier, proofs, builder => builder.AddSingleton<ISpecProvider>(
             new TestSingleReleaseSpecProvider(new Nethermind.Specs.Test.OverridableReleaseSpec(Eip8288Prototype.Instance)
             {
-                IsEipBatchedDependencyPricingEnabled = true
+                IsEipBatchedDependencyPricingEnabled = batched
             })));
-        FrameDependency dependency = new(scheme, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256);
         proofs.AddVerified([dependency], [[1]], null);
-        Transaction batched = CreateTransaction(chain, dependency, [], transaction =>
-        {
-            transaction.Frames![1] = new(FrameMode.DepVerify, FrameFlags.None, null, dependency.FrameCharge(batchPricing: true), UInt256.Zero,
-                Eip8288Dependencies.Serialize([dependency]));
-            transaction.GasLimit = FrameTxValidation.TotalGasLimit(transaction.Frames);
-        });
-        Transaction plain = CreatePlainTransaction(chain);
+        Transaction transaction = CreateTransaction(chain, dependency, []);
         Block? template = await chain.BlockProducer.BuildBlock(flags: IBlockProducer.Flags.EmptyBlock);
         Assert.That(template, Is.Not.Null);
         await using ScopedBlockProducerEnv environment = chain.Container.Resolve<IBlockProducerEnvFactory>().CreateTransient();
 
-        Block? processed = environment.ChainProcessor.Process(new Block(template!.Header, [batched, plain], [], template.Withdrawals),
+        Block? processed = environment.ChainProcessor.Process(new Block(template!.Header, [transaction], [], template.Withdrawals),
             ProcessingOptions.ProducingBlock, NullBlockTracer.Instance);
 
         Assert.That(processed, Is.Not.Null);
+        ValueHash256 expected = Eip8288Dependencies.ComputeDepsHash([dependency], batched);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(processed!.Transactions, Is.EqualTo(new[] { plain }));
-            Assert.That(processed.StarkProof, Is.Empty);
-            Assert.That(verifier.ProofCalls, Is.Zero);
+            Assert.That(processed!.Transactions, Is.EqualTo(new[] { transaction }));
+            Assert.That(processed.Header.RecursiveStark!.BlockDepsHash, Is.EqualTo(new Hash256(expected)));
+            Assert.That(processed.StarkProof![..32], Is.EqualTo(expected.ToByteArray()));
+            Assert.That(expected, batched ? Is.Not.EqualTo(Eip8288Dependencies.ComputeDepsHash([dependency])) : Is.EqualTo(Eip8288Dependencies.ComputeDepsHash([dependency])));
         }
     }
 

@@ -277,12 +277,8 @@ public partial class BlockProcessor(
             token.ThrowIfCancellationRequested();
             bool latest = _productionProofCache.ObserveProduction(block.Timestamp, block.Number);
             List<FrameDependency> deps = Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue);
-            ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(deps);
-            // Production proves the plain statement only. Batch claims and payments never reach it, since the picker leaves them
-            // out, and a block holding either would need the finalized one (ethereum/EIPs#12664), so building it would be a bug.
-            if (Eip8288Dependencies.ProofStatement(deps, depsHash) != depsHash)
-                throw new InvalidOperationException("Producing a block with batch claims or leaf payments is not supported.");
             Eip8288Verifier verifier = Eip8288Verifier.For(spec);
+            ValueHash256 depsHash = verifier.DepsHash(deps);
             (ValueHash256, ValueHash256) key = (depsHash, verifier.AggregatedVk);
             byte[] proof;
             if (deps.Count == 0)
@@ -397,7 +393,7 @@ public partial class BlockProcessor(
             AggregationInput narrowing = new() { RecursiveProofs = [narrowed], Discards = discards };
             if (RecursiveStarkAggregator.EstimatedCost(narrowing) <= MaxScheduledStatementCost)
             {
-                _productionProofCache.Schedule(narrowedTarget, Eip8288Dependencies.ComputeDepsHash(narrowedTarget), narrowing, verifier, store);
+                _productionProofCache.Schedule(narrowedTarget, verifier.DepsHash(narrowedTarget), narrowing, verifier, store);
                 return;
             }
         }
@@ -417,7 +413,7 @@ public partial class BlockProcessor(
         }
         List<FrameDependency> target = pending.Count == deps.Count ? deps : Eip8288Dependencies.Canonicalize(pending);
         if (store.TryGetRecursiveProof(target, out _)) return;
-        ValueHash256 targetHash = pending.Count == deps.Count ? depsHash : Eip8288Dependencies.ComputeDepsHash(target);
+        ValueHash256 targetHash = pending.Count == deps.Count ? depsHash : verifier.DepsHash(target);
         _productionProofCache.Schedule(target, targetHash, scheduled, verifier, store);
 
         // Folding every witness again, or extending a verified overlapping statement, whichever is estimated cheaper.

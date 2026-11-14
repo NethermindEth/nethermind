@@ -142,7 +142,7 @@ public class BlockValidator(
             return false;
         }
 
-        Hash256 computed = new(Eip8288Dependencies.ComputeDepsHash(dependencies));
+        Hash256 computed = new(Eip8288Dependencies.ComputeDepsHash(dependencies, spec.IsEipBatchedDependencyPricingEnabled));
         if (recursiveStark.BlockDepsHash != computed)
         {
             error = BlockErrorMessages.InvalidBlockDepsHash(recursiveStark.BlockDepsHash, computed);
@@ -150,10 +150,7 @@ public class BlockValidator(
             return false;
         }
 
-        ValueHash256 statement = spec.IsEipBatchedDependencyPricingEnabled
-            ? Eip8288Dependencies.ProofStatement(dependencies, computed.ValueHash256)
-            : computed.ValueHash256;
-        if (!RecursiveStarkAggregator.VerifyStarkCheck(_leanProofVerifier, Eip8288Verifier.For(spec), dependencies.Count, in statement,
+        if (!RecursiveStarkAggregator.VerifyStarkCheck(_leanProofVerifier, Eip8288Verifier.For(spec), dependencies.Count, in computed.ValueHash256,
                 block.StarkProof))
         {
             error = BlockErrorMessages.InvalidRecursiveStark;

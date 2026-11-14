@@ -77,7 +77,7 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
             }
 
             block.StarkProof = StarkProof;
-            block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(StarkProof), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
+            block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(StarkProof), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue, IsEipBatchedDependencyPricingEnabled)));
         }
 
         return baseResult;
@@ -109,4 +109,10 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public byte[]? StarkProof { get; set; }
+
+    /// <summary>Whether the payload's fork enables batched generic proof dependencies (ethereum/EIPs#12664), whose
+    /// scheme-inclusive digest <see cref="TryGetBlock"/> derives the dependency commitment with.</summary>
+    /// <remarks>Not on the wire: the receiving handler sets it from the payload's fork.</remarks>
+    [JsonIgnore]
+    public bool IsEipBatchedDependencyPricingEnabled { get; set; }
 }

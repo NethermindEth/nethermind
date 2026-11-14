@@ -398,45 +398,6 @@ public class RecursiveStarkAggregatorTests
         Assert.That(verifier.ProofCalls, Is.Zero);
     }
 
-    // The batch-pricing guest takes children's dependencies as 192-byte records, so regrouping must size them so: the first two
-    // children fit one step only as 96-byte dependencies, and under that guest the large one is folded on its own.
-    [Test]
-    public void Regrouped_steps_fit_the_aggregation_bound_under_each_guest([Values] bool batchedGuest)
-    {
-        const int firstProof = 10_000_000;
-        RecursiveProofInput[] children =
-        [
-            new([Sphincs("first")], new byte[firstProof]),
-            new([Sphincs("second")], new byte[Eip8288Constants.MaxAggregationInputBytes - firstProof - 300]),
-            new([Sphincs("third")], [1])
-        ];
-        StepSizeVerifier verifier = new(batchedGuest);
-        Eip8288Verifier fork = batchedGuest ? new(Eip8288Verifier.BatchedAggregatedVk) : Eip8288Verifier.Pinned;
-
-        byte[] proof = RecursiveStarkAggregator.Prove(new() { RecursiveProofs = children }, verifier, fork,
-            Eip8288Dependencies.ComputeDepsHash(children.SelectMany(static child => child.InnerDeps).ToList()));
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(proof, Is.Not.Empty);
-            Assert.That(verifier.LargestInput, Is.LessThanOrEqualTo(Eip8288Constants.MaxAggregationInputBytes));
-        }
-    }
-
-    private sealed class StepSizeVerifier(bool batchedGuest) : ILeanProofVerifier
-    {
-        public long LargestInput { get; private set; }
-        public void EnsureAvailable() { }
-        public bool VerifyLeanSphincs(in ValueHash256 hash, in ValueHash256 key, ReadOnlySpan<byte> witness) => true;
-        public bool VerifyLeanStark(in ValueHash256 hash, in ValueHash256 key, ReadOnlySpan<byte> witness) => true;
-        public bool VerifyRecursiveStark(in ValueHash256 hash, ReadOnlySpan<byte> key, ReadOnlySpan<byte> proof) => true;
-        public byte[] ProveRecursiveStark(in ValueHash256 hash, ReadOnlySpan<byte> key, AggregationInput input)
-        {
-            LargestInput = Math.Max(LargestInput, RecursiveStarkAggregator.InputSize(input, batchedGuest));
-            return [1];
-        }
-    }
-
     [Test]
     public void Hierarchical_children_prune_discarded_generic_claims_before_the_native_count_limit()
     {
@@ -517,7 +478,7 @@ public class RecursiveStarkAggregatorTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(batch.Deps, Has.Count.EqualTo(1));
-                Assert.That(RecursiveStarkAggregator.InputSize(batch, batchedGuest: false), Is.LessThanOrEqualTo(RecursiveStarkAggregator.MaxProductionWitnessBytes));
+                Assert.That(RecursiveStarkAggregator.InputSize(batch), Is.LessThanOrEqualTo(RecursiveStarkAggregator.MaxProductionWitnessBytes));
             }
         }
         using (Assert.EnterMultipleScope())
@@ -676,7 +637,7 @@ public class RecursiveStarkAggregatorTests
         Assert.Throws<ArgumentException>(() => RecursiveStarkAggregator.Prove(input, Accepting, Eip8288Verifier.Pinned, default));
         Assert.Throws<ArgumentException>(() => RecursiveStarkAggregatorTests.TryAggregate(input, Accepting, Eip8288Verifier.Pinned, out _, out _));
         Assert.Throws<ArgumentException>(() => RecursiveStarkAggregator.Combine([input], []));
-        Assert.Throws<ArgumentException>(() => RecursiveStarkAggregator.InputSize(input, batchedGuest: false));
+        Assert.Throws<ArgumentException>(() => RecursiveStarkAggregator.InputSize(input));
     }
 
     [Test]
@@ -884,7 +845,7 @@ public class RecursiveStarkAggregatorTests
             Assert.That(combined.Witnesses, Has.Count.EqualTo(1));
             Assert.That(combined.RecursiveProofs, Has.Count.EqualTo(1));
             Assert.That(combined.Discards, Is.Empty);
-            Assert.That(RecursiveStarkAggregator.InputSize(combined, batchedGuest: false), Is.EqualTo(RecursiveStarkAggregator.InputSize(input, batchedGuest: false)));
+            Assert.That(RecursiveStarkAggregator.InputSize(combined), Is.EqualTo(RecursiveStarkAggregator.InputSize(input)));
         }
     }
 

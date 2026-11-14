@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 
@@ -28,6 +29,11 @@ public readonly record struct Eip8288Verifier(ValueHash256 AggregatedVk)
 
     /// <summary>The verifier fixed by <paramref name="spec"/>.</summary>
     public static Eip8288Verifier For(IReleaseSpec spec) => new(spec.Eip8288AggregatedVk);
+
+    /// <summary>The <c>get_deps_hash</c> of <paramref name="dependencies"/> this verifier's guest commits to: the batch-pricing
+    /// guest's scheme-inclusive digest (ethereum/EIPs#12664), else EIP-8288's.</summary>
+    public ValueHash256 DepsHash(IReadOnlyList<FrameDependency> dependencies) =>
+        Eip8288Dependencies.ComputeDepsHash(dependencies, AggregatedVk == BatchedAggregatedVk);
 
     /// <summary>The identifier of the verification parameters for <paramref name="scheme"/>, or the zero hash for a scheme this
     /// verifier does not know.</summary>

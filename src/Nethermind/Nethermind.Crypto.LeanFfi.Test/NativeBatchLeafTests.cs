@@ -21,7 +21,7 @@ public class NativeBatchLeafTests
 
     private static readonly Eip8288Verifier Batched = new(Eip8288Verifier.BatchedAggregatedVk);
 
-    // EIP-8288 Test Cases 2 and 12 under the batch-pricing guest: two transactions each declare one leanSTARK claim under one
+    // EIP-8288 Test Cases 2 and 12 under the batch guest (ethereum/EIPs#12664): two transactions each declare one leanSTARK claim under one
     // key. A batch leaf or their singleton proofs, recursively aggregated, give a mode-1 wrapper over the same dependencies
     // and signature hashes; EIP-8288's guest takes no multi-claim leaf.
     [Test]
@@ -31,7 +31,7 @@ public class NativeBatchLeafTests
         Transaction[] transactions = [.. claims.Select((claim, nonce) => DependentTransaction(nonce, new FrameDependency(Eip8288Constants.LeanStarkScheme, claim, key)))];
         ValueHash256[] signatureHashes = [.. transactions.Select(static tx => FrameTxSigHash.ComputeValue(tx))];
         List<FrameDependency> deps = Dependencies(transactions);
-        ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(deps);
+        ValueHash256 depsHash = Batched.DepsHash(deps);
         BatchLeafInput leaf = new(key, claims, deps, leafProof);
         ReadOnlyMemory<byte>[] singletons = [NativeLeanProofVerifierTests.Fixture("stark-batch-singleton-0"),
             NativeLeanProofVerifierTests.Fixture("stark-batch-singleton-1")];
@@ -46,7 +46,7 @@ public class NativeBatchLeafTests
                 Transactions = transactions,
                 Deps = deps,
                 Mode = MempoolWrapper.ModeRecursive,
-                RecursiveStark = new(proof, new Hash256(depsHash))
+                RecursiveStark = new(proof, new Hash256(Eip8288Dependencies.ComputeDepsHash(deps)))
             };
             Assert.That(MempoolWrapperValidator.Validate(wrapper, Native, Batched, out string error), Is.True, error);
         }
@@ -71,44 +71,27 @@ public class NativeBatchLeafTests
         }
     }
 
-    // ethereum/EIPs#12664 Test Cases: members declare batch claims and a sponsor the leaf payment; the block proof covers both
-    // members or one with the payment, or the payment alone, never a claim without it, and only under the batch-pricing guest.
-    [Test]
-    public void Sponsored_leaf_proves_members_with_their_payment()
+    // ethereum/EIPs#12664 Test Cases: a leaf folds into a proof covering exactly the selected members, the same leaf and signed
+    // transactions either way, and only under the batch guest's scheme-inclusive digest.
+    [TestCase(1)]
+    [TestCase(2)]
+    public void Leaf_folds_into_a_proof_of_the_selected_members(int members)
     {
         (ValueHash256[] claims, ValueHash256 key, ReadOnlyMemory<byte> leafProof) = FixtureLeaf();
-        FrameDependency payment = new(Eip8288Constants.LeanStarkLeafPaymentScheme, BatchHash(claims), key);
-        Transaction[] members = [.. claims.Select((claim, nonce) => DependentTransaction(nonce, new FrameDependency(Eip8288Constants.BatchedLeanStarkScheme, claim, key)))];
-        Transaction sponsor = DependentTransaction(claims.Length, payment);
+        Transaction[] transactions = [.. claims.Take(members).Select((claim, nonce) =>
+            DependentTransaction(nonce, new FrameDependency(Eip8288Constants.LeanStarkScheme, claim, key)))];
+        List<FrameDependency> deps = Dependencies(transactions);
+        ValueHash256 depsHash = Batched.DepsHash(deps);
+        BatchLeafInput leaf = new(key, claims, deps, leafProof);
 
-        void Proves(IReadOnlyList<Transaction> block, bool valid)
+        byte[] proof = Native.ProveRecursiveStark(depsHash, Eip8288Constants.BatchedAggregatedVk, new() { BatchLeaves = [leaf] });
+
+        using (Assert.EnterMultipleScope())
         {
-            List<FrameDependency> deps = Dependencies(block);
-            ValueHash256 depsHash = Eip8288Dependencies.ProofStatement(deps, Eip8288Dependencies.ComputeDepsHash(deps));
-            BatchLeafInput leaf = new(key, claims, deps, leafProof);
-            if (!valid)
-            {
-                Assert.That(() => Native.ProveRecursiveStark(depsHash, Eip8288Constants.BatchedAggregatedVk, new() { BatchLeaves = [leaf] }),
-                    Throws.InvalidOperationException);
-                return;
-            }
-            byte[] proof = Native.ProveRecursiveStark(depsHash, Eip8288Constants.BatchedAggregatedVk, new() { BatchLeaves = [leaf] });
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(Native.VerifyRecursiveStark(depsHash, Eip8288Constants.BatchedAggregatedVk, proof), Is.True);
-                Assert.That(Native.VerifyRecursiveStark(Eip8288Dependencies.ComputeDepsHash(deps), Eip8288Constants.BatchedAggregatedVk, proof),
-                    Is.False, "a finalized proof is no plain one");
-                Assert.That(() => Native.ProveRecursiveStark(depsHash, Eip8288Constants.AggregatedVk, new() { BatchLeaves = [leaf] }),
-                    Throws.ArgumentException);
-            }
+            Assert.That(Native.VerifyRecursiveStark(depsHash, Eip8288Constants.BatchedAggregatedVk, proof), Is.True);
+            Assert.That(Native.VerifyRecursiveStark(Eip8288Dependencies.ComputeDepsHash(deps), Eip8288Constants.BatchedAggregatedVk, proof),
+                Is.False, "EIP-8288's split digest is another statement");
         }
-
-        Proves([members[0], members[1], sponsor], true);
-        Proves([members[1], sponsor], true);
-        // A payment after every member expired is still proved, and charged; two sponsors of one leaf are one dependency.
-        Proves([sponsor], true);
-        Proves([members[0], sponsor, DependentTransaction(claims.Length + 1, payment)], true);
-        Proves([members[1]], false);
     }
 
     private static (ValueHash256[] Claims, ValueHash256 Key, ReadOnlyMemory<byte> Proof) FixtureLeaf()
@@ -120,13 +103,6 @@ public class NativeBatchLeafTests
 
     private static List<FrameDependency> Dependencies(IEnumerable<Transaction> transactions) => Eip8288Dependencies.Canonicalize(
         transactions.SelectMany(static tx => Eip8288Dependencies.ForTransaction(tx, FrameTxSigHash.ComputeValue)));
-
-    /// <summary><c>get_batch_hash(claims)</c>: <c>keccak256("EIP8288:batch:v1" || claims)</c>.</summary>
-    private static ValueHash256 BatchHash(ValueHash256[] claims)
-    {
-        byte[] preimage = [.. "EIP8288:batch:v1"u8, .. claims.SelectMany(static claim => claim.Bytes.ToArray())];
-        return ValueKeccak.Compute(preimage);
-    }
 
     // EIP-8288 Test Case 12: MAX_INNER_PROOFS_PER_STEP counts direct leanSTARK proofs, batch leaves and recursive proofs together.
     [TestCase(0, true)]
@@ -151,7 +127,7 @@ public class NativeBatchLeafTests
     private static Transaction DependentTransaction(int nonce, FrameDependency dependency)
     {
         TxFrame[] frames = [FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas),
-            new(FrameMode.DepVerify, FrameFlags.None, null, dependency.FrameCharge(batchPricing: true),
+            new(FrameMode.DepVerify, FrameFlags.None, null, dependency.VerificationGas,
                 UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))];
         Transaction transaction = new()
         {
