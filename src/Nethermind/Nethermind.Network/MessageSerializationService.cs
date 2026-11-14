@@ -62,7 +62,7 @@ public class MessageSerializationService : IMessageSerializationService
             : serializer.Deserialize(content.Span);
     }
 
-    public void Serialize<T, TWriter>(T message, ref TWriter writer) where T : MessageBase where TWriter : IBufferWriter<byte>
+    public void Serialize<T>(T message, IBufferWriter<byte> writer) where T : MessageBase
     {
         IMessageSerializer<T> serializer = GetSerializer<T>();
         int length = serializer.GetLength(message);

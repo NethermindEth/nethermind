@@ -48,14 +48,19 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
         return length;
     }
 
+    // Messages are enqueued from any thread, so each thread reuses its own writer.
+    [ThreadStatic]
+    private static PacketWriter? t_writer;
+
     /// <summary>Serializes a message into a new buffer as its packet type followed by its content.</summary>
     internal static IByteBuffer Serialize<T>(IMessageSerializationService serializationService, T message, IByteBufferAllocator allocator)
         where T : P2PMessage
     {
-        PacketWriter writer = new(allocator, message.AdaptivePacketType);
+        PacketWriter writer = t_writer ??= new();
+        writer.Start(allocator, message.AdaptivePacketType);
         try
         {
-            serializationService.Serialize(message, ref writer);
+            serializationService.Serialize(message, writer);
             return writer.Buffer ?? throw new InvalidOperationException($"{nameof(IMessageSerializationService)} did not request a span for the message.");
         }
         catch
@@ -63,33 +68,53 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
             writer.Buffer?.SafeRelease();
             throw;
         }
+        finally
+        {
+            writer.Clear();
+        }
     }
 
-    /// <summary>Writes a packet into a single buffer from <paramref name="allocator"/>: its packet type, then its content.</summary>
+    /// <summary>Writes a packet into a single buffer from an allocator: its packet type, then its content.</summary>
     /// <remarks>Allocates the buffer on the one <see cref="GetSpan"/> call for the content, so it holds exactly the packet.</remarks>
-    private struct PacketWriter(IByteBufferAllocator allocator, int packetType) : IBufferWriter<byte>
+    private sealed class PacketWriter : IBufferWriter<byte>
     {
+        private IByteBufferAllocator? _allocator;
+        private int _packetType;
+
         public IByteBuffer? Buffer { get; private set; }
+
+        public void Start(IByteBufferAllocator allocator, int packetType)
+        {
+            _allocator = allocator;
+            _packetType = packetType;
+        }
+
+        // Keeps an idle thread's writer from holding on to the last buffer and allocator.
+        public void Clear()
+        {
+            _allocator = null;
+            Buffer = null;
+        }
 
         public Span<byte> GetSpan(int sizeHint = 0)
         {
             if (Buffer is not null)
                 throw new InvalidOperationException($"{nameof(PacketWriter)} takes the content in a single span.");
 
-            int packetTypeLength = Rlp.LengthOf(packetType);
+            int packetTypeLength = Rlp.LengthOf(_packetType);
             int length = packetTypeLength + sizeHint;
-            IByteBuffer buffer = Buffer = allocator.Buffer(length);
+            IByteBuffer buffer = Buffer = _allocator!.Buffer(length);
             // DotNetty allocators return array-backed buffers, the direct ones included.
             Span<byte> packet = buffer.Array.AsSpan(buffer.ArrayOffset + buffer.WriterIndex, length);
             RlpWriter writer = RlpWriter.ContentWriter(packet);
-            writer.Encode(packetType);
+            writer.Encode(_packetType);
             buffer.SetWriterIndex(buffer.WriterIndex + packetTypeLength);
             return packet[packetTypeLength..];
         }
 
-        public readonly Memory<byte> GetMemory(int sizeHint = 0) => throw new NotSupportedException();
+        public Memory<byte> GetMemory(int sizeHint = 0) => throw new NotSupportedException();
 
-        public readonly void Advance(int count) => Buffer!.SetWriterIndex(Buffer.WriterIndex + count);
+        public void Advance(int count) => Buffer!.SetWriterIndex(Buffer.WriterIndex + count);
     }
 
     private void SendBuffer(IByteBuffer buffer)

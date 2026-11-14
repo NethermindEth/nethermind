@@ -6345,8 +6345,8 @@ public class Eth72ProtocolHandlerTests
         public ArrayPoolSpan<byte> Serialize<T>(T message)
             where T : MessageBase => inner.Serialize(message);
 
-        public void Serialize<T, TWriter>(T message, ref TWriter writer)
-            where T : MessageBase where TWriter : IBufferWriter<byte> => inner.Serialize(message, ref writer);
+        public void Serialize<T>(T message, IBufferWriter<byte> writer)
+            where T : MessageBase => inner.Serialize(message, writer);
 
         public T Deserialize<T>(ArraySegment<byte> bytes)
             where T : MessageBase => GetOverride<T>() ?? inner.Deserialize<T>(bytes);

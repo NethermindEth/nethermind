@@ -19,7 +19,7 @@ namespace Nethermind.Network
         /// <summary>Serializes a message into <paramref name="writer"/>, advancing it by exactly the message's length.</summary>
         /// <remarks>Requests the span for the whole message with a single <see cref="IBufferWriter{T}.GetSpan"/> call.</remarks>
         /// <exception cref="InvalidOperationException">The serializer wrote other than the length it reported.</exception>
-        void Serialize<T, TWriter>(T message, ref TWriter writer) where T : MessageBase where TWriter : IBufferWriter<byte>;
+        void Serialize<T>(T message, IBufferWriter<byte> writer) where T : MessageBase;
 
         T Deserialize<T>(ArraySegment<byte> bytes) where T : MessageBase;
 

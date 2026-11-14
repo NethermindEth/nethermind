@@ -40,7 +40,7 @@ public class MessageSerializationServiceTests
     private static ArrayBufferWriter<byte> SerializeToWriter(MessageSerializationService service, SpanMessage message)
     {
         ArrayBufferWriter<byte> writer = new();
-        service.Serialize(message, ref writer);
+        service.Serialize(message, writer);
         return writer;
     }
 

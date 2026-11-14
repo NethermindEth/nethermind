@@ -125,6 +125,24 @@ namespace Nethermind.Network.Test.P2P
         }
 
         [Test]
+        public void Serializes_after_an_earlier_serialization_on_the_same_thread([Values(-1, 0)] int earlierLengthError)
+        {
+            (_, IMessageSerializationService earlierSerializer, TestMessage testMessage) = SetupChannel(isActive: true, lengthError: earlierLengthError);
+            IByteBuffer? earlier = null;
+            try
+            {
+                earlier = PacketSender.Serialize(earlierSerializer, testMessage, UnpooledByteBufferAllocator.Default);
+            }
+            catch (InvalidOperationException) when (earlierLengthError != 0) { }
+            earlier?.SafeRelease();
+            (_, IMessageSerializationService serializer, _) = SetupChannel(isActive: true, contentLength: 2);
+
+            using DisposableByteBuffer packet = PacketSender.Serialize(serializer, testMessage, UnpooledByteBufferAllocator.Default).AsDisposable();
+
+            Assert.That(packet.ReadableBytes, Is.EqualTo(3));
+        }
+
+        [Test]
         public async Task Send_after_delay_if_specified()
         {
             (IChannelHandlerContext context, IMessageSerializationService serializer, TestMessage testMessage) = SetupChannel(isActive: true);
