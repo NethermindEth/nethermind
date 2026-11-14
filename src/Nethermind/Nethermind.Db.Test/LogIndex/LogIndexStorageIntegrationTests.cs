@@ -61,11 +61,11 @@ namespace Nethermind.Db.Test.LogIndex
 
         [Test]
         public void Posting_enumerator_respects_direction_and_range(
-            [Values("empty", "forward", "backward", "mixed", "compressed")] string layout, [Values] bool backwards)
+            [Values("empty", "forward", "backward", "mixed", "compressed", "sizes")] string layout, [Values] bool backwards)
         {
             using IDb db = _dbFactory.CreateDb(new DbSettings(nameof(LogIndexStorage), "reverse-postings"));
             int[] blocks = SeedPostingChunks(db, layout);
-            (int From, int To)[] ranges = [(-1, int.MaxValue), (0, 0), (1, 1), (2, 2), (3, 5), (5, 15), (6, 14), (9, 11), (0, 5), (0, 7), (0, 9), (0, 11), (0, 13), (0, 15), (16, 18), (19, int.MaxValue), (int.MaxValue, int.MaxValue)];
+            (int From, int To)[] ranges = [(-1, int.MaxValue), (0, 0), (1, 1), (2, 2), (3, 5), (5, 15), (6, 14), (9, 11), (0, 5), (0, 7), (0, 9), (0, 11), (0, 13), (0, 15), (16, 18), (19, int.MaxValue), (120, 310), (139, 200), (int.MaxValue, int.MaxValue)];
             foreach ((int from, int to) in ranges)
             {
                 using IEnumerator<int> enumerator = CreatePostingEnumerator(db, from, to, backwards);
@@ -90,7 +90,7 @@ namespace Nethermind.Db.Test.LogIndex
 
         [Test]
         public void Posting_enumerator_retains_one_view_when_chunks_are_replaced(
-            [Values("mixed", "compressed")] string layout, [Values] bool backwards)
+            [Values("mixed", "compressed", "sizes")] string layout, [Values] bool backwards)
         {
             using IDb db = _dbFactory.CreateDb(new DbSettings(nameof(LogIndexStorage), "reverse-postings"));
             int[] blocks = SeedPostingChunks(db, layout);
@@ -137,6 +137,24 @@ namespace Nethermind.Db.Test.LogIndex
         private int[] SeedPostingChunks(IDb db, string layout)
         {
             List<int> blocks = [];
+            if (layout == "sizes")
+            {
+                // Chunks that grow, shrink and grow again, compressed and not, so an enumerator reuses its buffer.
+                WritePostingChunk(db, Postfix.BackwardMerge, [3, 1], compressed: false);
+                blocks.AddRange([1, 3]);
+                foreach ((int first, int count, bool compressed) in new[] { (100, 40, true), (200, 3, true), (300, 20, false) })
+                {
+                    byte[] suffix = new byte[4];
+                    BinaryPrimitives.WriteInt32BigEndian(suffix, first + 1);
+                    int[] chunk = Enumerable.Range(first, count).ToArray();
+                    WritePostingChunk(db, suffix, chunk, compressed);
+                    blocks.AddRange(chunk);
+                }
+                WritePostingChunk(db, Postfix.ForwardMerge, [400, 401, int.MaxValue], compressed: false);
+                blocks.AddRange([400, 401, int.MaxValue]);
+                return blocks.ToArray();
+            }
+
             if (layout is "backward" or "mixed" or "compressed")
             {
                 WritePostingChunk(db, Postfix.BackwardMerge, [3, 1], compressed: false);
