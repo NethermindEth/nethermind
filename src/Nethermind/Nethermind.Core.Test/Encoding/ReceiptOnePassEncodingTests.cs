@@ -7,13 +7,13 @@ using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
-namespace Nethermind.Core.ZkEvm.Test.Encoding;
+namespace Nethermind.Core.Test.Encoding;
 
 /// <summary>
-/// Covers the guest's one-pass encoding of receipts for the receipts root, which the host suite cannot reach.
+/// Covers the one-pass encoding of receipts for the receipts root, in the host and in the guest.
 /// </summary>
 /// <remarks>The logs, data and gas reach every prefix width.</remarks>
-public class GuestReceiptEncodingTests
+public class ReceiptOnePassEncodingTests
 {
     private static readonly ReceiptMessageDecoder Decoder = new();
 
