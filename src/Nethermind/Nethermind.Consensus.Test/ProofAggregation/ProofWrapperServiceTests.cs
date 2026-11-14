@@ -1016,6 +1016,7 @@ public class ProofWrapperServiceTests
     [TestCase(64, false, false, 0UL, 2, false, false, false, "concurrent", TestName = "A staged admission keeps its turn until its staging ends")]
     [TestCase(64, false, false, 0UL, 2, false, false, false, "self-gap", TestName = "A victim whose nonce gap the wrapper's own sender fills is not planned")]
     [TestCase(64, false, false, 0UL, 2, false, false, false, "purge", TestName = "A verifier change elsewhere keeps a staged admission's revalidating transactions")]
+    [TestCase(64, false, false, 0UL, 2, false, false, false, "purge-throws", TestName = "A verifier change during a faulting admission is still caught up")]
     [TestCase(64, false, false, 0UL, 2, false, false, false, "vanished", TestName = "A transaction awaiting blob availability is not admitted while staged")]
     [TestCase(64, false, false, 0UL, 2, false, false, false, "throws", TestName = "A pool fault while evicting still ends the staging")]
     [TestCase(64, false, false, 0UL, 0, false, false, false, "simulation", TestName = "An incoming transaction admission rejects evicts nothing")]
@@ -1028,6 +1029,8 @@ public class ProofWrapperServiceTests
     {
         const int pinnedCount = 64;
         bool gap = incoming is "gap" or "gap-interrupted";
+        bool throws = incoming is "throws" or "purge-throws";
+        bool purges = incoming is "purge" or "purge-throws";
         using CancellationTokenSource cancellation = new();
         Transaction? firstSubmitted = null;
         int submissions = 0;
@@ -1130,7 +1133,7 @@ public class ProofWrapperServiceTests
                 "known" => AcceptTxResult.AlreadyKnown,
                 _ => store.PinPending(submitted, poolOwner) ? AcceptTxResult.Accepted : AcceptTxResult.MissingDependencyProof
             };
-            if (incoming == "purge")
+            if (purges)
             {
                 // Another thread, outside this admission's flow, applies a verifier change while the admission is staged.
                 spec.Eip8288AggregatedVk = Keccak.Compute("next AGGREGATED_VK");
@@ -1157,7 +1160,7 @@ public class ProofWrapperServiceTests
             if (incoming == "concurrent" && submissions <= ProofWrapperService.AdmissionChunk) evictedWhileStaged = true;
             store.UnpinPending(hash.ValueHash256, poolOwner);
             dropped.Add(hash);
-            if (incoming == "throws" && dropped.Count == removed) throw new InvalidOperationException("pool fault");
+            if (throws && dropped.Count == removed) throw new InvalidOperationException("pool fault");
             return true;
         }
         pool.EvictTransaction(Arg.Any<Transaction>()).Returns(call => Drop(call.Arg<Transaction>().Hash!));
@@ -1214,7 +1217,7 @@ public class ProofWrapperServiceTests
 
         ProofWrapperAcceptanceStatus expected = incoming is "simulation" or "known" or "quota" or "unpinned" or "foreign" or "drain" or "concurrent" or "vanished"
             ? ProofWrapperAcceptanceStatus.PoolRejected
-            : removed != 0 && !gap && incoming != "throws" ? ProofWrapperAcceptanceStatus.Accepted : ProofWrapperAcceptanceStatus.LocalFailure;
+            : removed != 0 && !gap && !throws ? ProofWrapperAcceptanceStatus.Accepted : ProofWrapperAcceptanceStatus.LocalFailure;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(expected), result.Result.Error);
@@ -1225,11 +1228,13 @@ public class ProofWrapperServiceTests
             if (secondWrapper) Assert.That(dropped.Count(pinned[2].Hash!.Equals), Is.EqualTo(gapFilled || incoming == "unpinned" ? 0 : 1));
             Assert.That(dropped.Count(oldest.Hash!.Equals),
                 Is.EqualTo(removed != 0 && !oldestSharedWithExecutable && !localVictims && !gap && incoming != "self-gap" ? 1 : 0));
-            pool.Received(expected != ProofWrapperAcceptanceStatus.LocalFailure || gap || incoming == "throws" ? 1 : 0)
+            pool.Received(expected != ProofWrapperAcceptanceStatus.LocalFailure || gap || throws ? 1 : 0)
                 .SubmitTx(Arg.Is<Transaction>(tx => tx.Hash == first.Hash), Arg.Any<TxHandlingOptions>());
             Assert.That(dropped.Count(first.Hash!.Equals), Is.EqualTo(gap ? 1 : 0), "only a rolled-back transaction is dropped");
             blobAdmission.DidNotReceive().Admit(Arg.Any<Transaction>(), Arg.Any<object?>(), Arg.Any<IDisposable>());
-            Assert.That(store.Covers(first), Is.EqualTo(expected == ProofWrapperAcceptanceStatus.Accepted || incoming is "throws" or "vanished"));
+            Assert.That(store.Covers(first), Is.EqualTo(expected == ProofWrapperAcceptanceStatus.Accepted || throws || incoming == "vanished"));
+            // The change applied elsewhere purges once, and the admission catches up once its scope ends, faulted or not.
+            if (purges) pool.Received(2).GetPendingTransactions();
             if (incoming == "unpinned") Assert.That(store.Covers(existing), Is.True);
             Assert.That(foreignAdmitted, Is.False, "staged witnesses are out of other admissions' reach");
             Assert.That(evictedWhileStaged, Is.False, "nothing is evicted for room a staged admission holds");

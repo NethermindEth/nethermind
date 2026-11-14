@@ -332,52 +332,59 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 if (!TryBeginAdmission(decoded, admittedTransactions, out scope))
                     return ProofWrapperAcceptance.LocalFailure("Proof witness capacity is full; retry later.");
             }
-            using (scope)
+            try
             {
-                IReadOnlyList<Transaction> transactions = decoded.Transactions;
-                Hash256[] hashes = new Hash256[transactions.Count];
-                string? firstError = null;
-                try
+                using (scope)
                 {
-                    for (int start = 0; start < transactions.Count; start += AdmissionChunk)
+                    IReadOnlyList<Transaction> transactions = decoded.Transactions;
+                    Hash256[] hashes = new Hash256[transactions.Count];
+                    string? firstError = null;
+                    try
                     {
-                        // A staged admission keeps its turn: the capacity it holds would refuse whoever took it.
-                        if (start != 0 && scope is not CapacityRestoringScope)
+                        for (int start = 0; start < transactions.Count; start += AdmissionChunk)
                         {
-                            // Coverage of the chunks already in the pool is published before admission is handed on.
-                            leanProofStore.CommitAdmission(admittedDependencies);
-                            admittedDependencies.Clear();
-                            entered = false;
-                            ExitAdmission(queue);
-                            if (!(entered = await EnterAdmissionAsync(queue, cancellationToken)))
+                            // A staged admission keeps its turn: the capacity it holds would refuse whoever took it.
+                            if (start != 0 && scope is not CapacityRestoringScope)
                             {
-                                interrupted = pooled == 0 ? AdmissionBusy() : Interrupted(pooled, transactions.Count);
-                                break;
+                                // Coverage of the chunks already in the pool is published before admission is handed on.
+                                leanProofStore.CommitAdmission(admittedDependencies);
+                                admittedDependencies.Clear();
+                                entered = false;
+                                ExitAdmission(queue);
+                                if (!(entered = await EnterAdmissionAsync(queue, cancellationToken)))
+                                {
+                                    interrupted = pooled == 0 ? AdmissionBusy() : Interrupted(pooled, transactions.Count);
+                                    break;
+                                }
+                                Eip8288Verifier? refreshed = RefreshVerifier();
+                                if (refreshed != verifier)
+                                {
+                                    if (refreshed is { } changed) Purge(changed);
+                                    return ProofWrapperAcceptance.LocalFailure(VerifierChangedDuringAdmission);
+                                }
                             }
-                            Eip8288Verifier? refreshed = RefreshVerifier();
-                            if (refreshed != verifier)
-                            {
-                                if (refreshed is { } changed) Purge(changed);
-                                return ProofWrapperAcceptance.LocalFailure(VerifierChangedDuringAdmission);
-                            }
+                            SubmitProofTransactions(transactions, start, Math.Min(start + AdmissionChunk, transactions.Count), hashes,
+                                ref firstError, ref pooled, ref admitted, cancellationToken, admittedDependencies, source,
+                                handling, admittedTransactions, scope is CapacityRestoringScope);
                         }
-                        SubmitProofTransactions(transactions, start, Math.Min(start + AdmissionChunk, transactions.Count), hashes,
-                            ref firstError, ref pooled, ref admitted, cancellationToken, admittedDependencies, source,
-                            handling, admittedTransactions, scope is CapacityRestoringScope);
                     }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested && pooled != 0)
+                    {
+                        interrupted = Interrupted(pooled, transactions.Count);
+                    }
+                    finally
+                    {
+                        leanProofStore.CommitAdmission(admittedDependencies);
+                    }
+                    admission = firstError is null ? Result<Hash256[]>.Success(hashes) : Result<Hash256[]>.Fail(firstError);
                 }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested && pooled != 0)
-                {
-                    interrupted = Interrupted(pooled, transactions.Count);
-                }
-                finally
-                {
-                    leanProofStore.CommitAdmission(admittedDependencies);
-                }
-                admission = firstError is null ? Result<Hash256[]>.Success(hashes) : Result<Hash256[]>.Fail(firstError);
             }
-            // A verifier change during pool insertion purged before this admission committed; purge its leftovers.
-            if (RefreshVerifier() is { } current && current != verifier) Purge(current);
+            finally
+            {
+                // A verifier change during pool insertion purged before this admission committed; purge its leftovers, even
+                // when ending the scope faulted.
+                if (RefreshVerifier() is { } current && current != verifier) Purge(current);
+            }
             if (scope is CapacityRestoringScope { RolledBack: true })
                 return ProofWrapperAcceptance.LocalFailure("Proof witness capacity is full; retry later.");
             if (interrupted is { } stopped) return stopped;
@@ -412,13 +419,16 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// Transactions the next blocks could not include give way, oldest first, to a wrapper whose new transactions the next blocks
     /// could, but only when evicting at most <see cref="MaxEvictedPerAdmission"/> of them frees enough, and only those whose
     /// eviction frees witness capacity. They are evicted only when the scope ends (<see cref="RestoreCapacity"/>), so a rejected
-    /// wrapper evicts nothing for itself, though an excess an earlier admission left is drained first. Transactions awaiting blob availability are not pooled by admission, so a wrapper adding one never
-    /// evicts.</remarks>
+    /// wrapper evicts nothing for itself, though an excess an earlier admission left is drained first. Transactions awaiting blob
+    /// availability are not pooled by admission, so a wrapper adding one never evicts. A staged admission keeps the admission turn
+    /// for its whole wrapper, which <see cref="Eip8288Constants.MaxWrapperBytes"/> bounds.</remarks>
     /// <param name="admitted">The transactions the admission will pool, which <see cref="RestoreCapacity"/> rolls back when no
     /// eviction can make room for them.</param>
     private bool TryBeginAdmission(MempoolWrapper decoded, List<Transaction> admitted, out IDisposable? scope)
     {
         if (leanProofStore.TryBeginAdmission(decoded.Deps, decoded.Proofs, decoded.RecursiveStark?.StarkProof, out scope)) return true;
+        // Only one admission may exceed capacity at a time; draining or evicting for another would free room the staged one holds.
+        if (_staging is not null) return false;
         FeeFloors floors = ExecutableFeeFloors();
         if (!AddsOnlyExecutable(decoded.Transactions, floors)) return false;
         // The wrapper may fill a gap of its own senders' pending transactions, making them executable and the admission roll back.
@@ -455,7 +465,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// Until this decides, the store stages those witnesses, so no other transaction can pin them and keep it over capacity.
     /// A rollback evicts the admitted transactions, so their hashes stay resubmittable unless the pool's frame eviction retry budget
     /// keeps one, which is then only removed. Pending-transaction subscribers have already seen them, and a transaction the pool
-    /// evicted for size to insert them is not restored.</remarks>
+    /// evicted for size to insert them is not restored. A sender that fills its victims' gaps from outside the wrapper can repeat a
+    /// rollback, each costing it a wrapper's admission under the shared admission turn.</remarks>
     /// <returns>Whether the admitted transactions were rolled back.</returns>
     private bool RestoreCapacity(IDisposable admission, List<Transaction> victims, List<Transaction> admitted)
     {
