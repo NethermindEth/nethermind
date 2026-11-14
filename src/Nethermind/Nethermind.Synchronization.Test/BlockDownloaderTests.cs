@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -852,6 +853,35 @@ public partial class BlockDownloaderTests
         ctx.Feed.HandleResponse(blockRequest, peerInfo);
         _ = await ctx.Feed.PrepareRequest(default); // The block is validated here.
 
+        ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, Arg.Any<string>());
+    }
+
+    [Test]
+    public async Task Reports_breach_on_body_that_does_not_decode()
+    {
+        await using IContainer node = CreateNode();
+        Context ctx = node.Resolve<Context>();
+
+        Response options = Response.AllCorrect | Response.Consistent;
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), options));
+
+        PeerInfo peerInfo = new(syncPeer);
+        syncPeer.HeadNumber.Returns(1000UL);
+        ctx.ConfigureBestPeer(peerInfo);
+
+        BlocksRequest blockRequest = await ctx.Feed.PrepareRequest(default);
+        // A body whose uncles item is a byte string instead of a sequence.
+        byte[] malformedBody = [0xc2, 0xc0, 0x80];
+        IMemoryOwner<byte> memory = MemoryPool<byte>.Shared.Rent(malformedBody.Length);
+        malformedBody.CopyTo(memory.Memory);
+        blockRequest.OwnedBodies = new OwnedBlockBodies(memory, [new Range(0, malformedBody.Length)], BlockBodyDecoder.Instance);
+
+        SyncResponseHandlingResult result = ctx.Feed.HandleResponse(blockRequest, peerInfo);
+
+        Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.LesserQuality));
         ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, Arg.Any<string>());
     }
 

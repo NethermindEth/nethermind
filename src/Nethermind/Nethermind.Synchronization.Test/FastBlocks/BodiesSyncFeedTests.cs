@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
@@ -15,6 +17,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.History;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -86,6 +89,7 @@ public class BodiesSyncFeedTests
         new(
             MainnetSpecProvider.Instance,
             _syncingToBlockTree,
+            new BlockStore(_blocksDb),
             blockValidator,
             _syncPointers,
             _syncPeerPool,
@@ -161,7 +165,7 @@ public class BodiesSyncFeedTests
     }
 
     [Test]
-    public async Task ShouldHandleSparseBodyResponseWithoutReportingBreach()
+    public async Task ShouldHandleSparseBodyResponseWithoutReportingBreach([Values] bool encodedBodies)
     {
         _feed.InitializeFeed();
 
@@ -174,7 +178,7 @@ public class BodiesSyncFeedTests
         // cache being cleared.
         Block fourthBlock = _syncingFromBlockTree.FindBlock(req.Infos[3]!.BlockNumber, BlockTreeLookupOptions.None)!;
         Assert.That(fourthBlock.Header.TxRoot, Is.Not.EqualTo(thirdBlock.Header.TxRoot), "the two bodies must differ for this to assert anything");
-        req.Response = new OwnedBlockBodies([firstBlock.Body, thirdBlock.Body, fourthBlock.Body]);
+        req.Response = CreateResponse(encodedBodies, firstBlock, thirdBlock, fourthBlock);
         req.ResponseSourcePeer = new PeerInfo(Substitute.For<ISyncPeer>());
 
         SyncResponseHandlingResult result = _feed.HandleResponse(req);
@@ -186,11 +190,61 @@ public class BodiesSyncFeedTests
             Assert.That(_syncingToBlockTree.FindBlock(skippedBlock.Hash!, BlockTreeLookupOptions.None, skippedBlock.Number), Is.Null);
             Assert.That(_syncingToBlockTree.FindBlock(thirdBlock.Hash!, BlockTreeLookupOptions.None, thirdBlock.Number), Is.Not.Null);
             Assert.That(_syncingToBlockTree.FindBlock(fourthBlock.Hash!, BlockTreeLookupOptions.None, fourthBlock.Number), Is.Not.Null);
+            Assert.That(new BlockStore(_blocksDb).GetRlp(thirdBlock.Number, thirdBlock.Hash!), Is.EqualTo(BlockDecoder.Encode(thirdBlock)));
         }
         _syncPeerPool.DidNotReceive().ReportBreachOfProtocol(
             Arg.Any<PeerInfo>(),
             Arg.Any<DisconnectReason>(),
             Arg.Any<string>());
+    }
+
+    [Test]
+    public async Task ShouldReportBreachForBodyThatDoesNotDecode()
+    {
+        _feed.InitializeFeed();
+
+        using BodiesSyncBatch req = (await _feed.PrepareRequest())!;
+        Block firstBlock = _syncingFromBlockTree.FindBlock(req.Infos[0]!.BlockNumber, BlockTreeLookupOptions.None)!;
+        Block secondBlock = _syncingFromBlockTree.FindBlock(req.Infos[1]!.BlockNumber, BlockTreeLookupOptions.None)!;
+        // A body whose uncles item is a byte string instead of a sequence.
+        byte[] malformedBody = [0xc2, 0xc0, 0x80];
+        req.Response = CreateEncodedResponse(BlockBodyDecoder.Instance.Encode(firstBlock.Body), malformedBody);
+        req.ResponseSourcePeer = new PeerInfo(Substitute.For<ISyncPeer>());
+
+        SyncResponseHandlingResult result = _feed.HandleResponse(req);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.OK));
+            Assert.That(_syncingToBlockTree.FindBlock(firstBlock.Hash!, BlockTreeLookupOptions.None, firstBlock.Number), Is.Not.Null);
+            Assert.That(_syncingToBlockTree.FindBlock(secondBlock.Hash!, BlockTreeLookupOptions.None, secondBlock.Number), Is.Null);
+        }
+        _syncPeerPool.Received(1).ReportBreachOfProtocol(
+            Arg.Any<PeerInfo>(),
+            DisconnectReason.InvalidTxOrUncle,
+            Arg.Any<string>());
+    }
+
+    private static readonly BlockDecoder BlockDecoder = new();
+
+    private static OwnedBlockBodies CreateResponse(bool encodedBodies, params Block[] blocks) =>
+        encodedBodies
+            ? OwnedBlockBodies.FromEncodedBlocks([.. blocks.Select(static block => BlockDecoder.Encode(block))])
+            : new OwnedBlockBodies([.. blocks.Select(static block => block.Body)]);
+
+    private static OwnedBlockBodies CreateEncodedResponse(params byte[][] bodies)
+    {
+        IMemoryOwner<byte> memory = MemoryPool<byte>.Shared.Rent(bodies.Sum(static body => body.Length));
+        Range[] ranges = new Range[bodies.Length];
+        int offset = 0;
+        for (int i = 0; i < bodies.Length; i++)
+        {
+            bodies[i].CopyTo(memory.Memory[offset..]);
+            ranges[i] = new Range(offset, offset + bodies[i].Length);
+            offset += bodies[i].Length;
+        }
+
+        return new OwnedBlockBodies(memory, ranges, BlockBodyDecoder.Instance);
     }
 
     [Test]

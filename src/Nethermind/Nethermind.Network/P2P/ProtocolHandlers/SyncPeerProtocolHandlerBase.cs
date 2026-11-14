@@ -361,7 +361,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected Task<BlockBodiesMessage> FulfillBlockBodiesRequest(GetBlockBodiesMessage getBlockBodiesMessage, CancellationToken cancellationToken)
         {
             IReadOnlyList<Hash256> hashes = getBlockBodiesMessage.BlockHashes;
-            using ArrayPoolList<Block> blocks = new(hashes.Count);
+            using ArrayPoolList<byte[]> blocks = new(hashes.Count);
 
             ulong sizeEstimate = 0;
             for (int i = 0; i < hashes.Count; i++)
@@ -371,13 +371,13 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     break;
                 }
 
-                Block? block = SyncServer.Find(hashes[i]);
+                byte[]? block = SyncServer.FindBlockRlp(hashes[i]);
                 if (block is null)
                 {
                     continue;
                 }
 
-                ulong blockSize = MessageSizeEstimator.EstimateSize(block);
+                ulong blockSize = (ulong)block.Length;
 
                 // Cap the message size; return the prefix (bodies match request hashes positionally).
                 if (sizeEstimate + blockSize > HardOutgoingBodiesMessageSizeLimit)
@@ -395,7 +395,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 }
             }
 
-            return Task.FromResult(new BlockBodiesMessage(blocks));
+            return Task.FromResult(new BlockBodiesMessage { Bodies = OwnedBlockBodies.FromEncodedBlocks(blocks) });
         }
 
         protected void Handle(BlockHeadersMessage message, long size) => _headersRequests.Handle(message.BlockHeaders, size);

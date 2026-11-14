@@ -140,6 +140,7 @@ public class SyncServerReceiptsBenchmarks
             Substitute.For<IWorldStateManager>(),
             new MemDb(),
             blockTree,
+            blockStore,
             new FullInfoReceiptFinder(storage, new ReceiptsRecovery(ecdsa, specProvider), blockTree),
             Substitute.For<IBlockAccessListStore>(),
             Always.Valid,

@@ -14,6 +14,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core;
 using Nethermind.Db;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Blocks;
@@ -23,6 +24,7 @@ public class BlockStore : IBlockStore, IClearableCache
     public const int CacheSize = 128 + 32;
 
     private readonly IDb _blockDb;
+    private readonly IHeaderDecoder _headerDecoder;
     private readonly BlockDecoder _blockDecoder;
     // A block body is a re-execution input, so the persistence barrier must make it durable before state. Null when off.
     // Holds a sanitized header+body snapshot (not the live block, not encoded bytes): the body RLP depends only
@@ -39,7 +41,8 @@ public class BlockStore : IBlockStore, IClearableCache
         IStatePersistenceBarrier? persistenceBarrier = null)
     {
         _blockDb = blockDb;
-        _blockDecoder = new(headerDecoder ?? new HeaderDecoder());
+        _headerDecoder = headerDecoder ?? new HeaderDecoder();
+        _blockDecoder = new(_headerDecoder);
 
         if (deferredWriter is { Enabled: true })
         {
@@ -76,6 +79,28 @@ public class BlockStore : IBlockStore, IClearableCache
 
         using ArrayPoolSpan<byte> rlp = _blockDecoder.EncodeToArrayPoolSpan(block);
         _blockDb.Set(block.Number, block.Hash, rlp, writeFlags);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>The body is written as it is, so its transactions are not decoded.</remarks>
+    public void Insert(BlockHeader header, ReadOnlySpan<byte> body, WriteFlags writeFlags = WriteFlags.None)
+    {
+        if (header.Hash is null)
+        {
+            throw new InvalidOperationException("An attempt to store a block with a null hash.");
+        }
+
+        RlpReader reader = new(body);
+        RlpReader bodyItems = reader.EnterSequence(out _);
+        ReadOnlySpan<byte> bodyContent = bodyItems.ReadRaw(bodyItems.Remaining);
+        int contentLength = _headerDecoder.GetLength(header, RlpBehaviors.None) + bodyContent.Length;
+        using ArrayPoolSpan<byte> rlp = new(Rlp.LengthOfSequence(contentLength));
+        RlpWriter writer = RlpWriter.ContentWriter(rlp);
+        RlpSequence sequence = writer.StartSequence(contentLength);
+        _headerDecoder.Encode(ref writer, header);
+        writer.WriteEncoded(bodyContent);
+        writer.EndSequence(sequence);
+        _blockDb.Set(header.Number, header.Hash, rlp, writeFlags);
     }
 
     public void InsertDeferred(Block block)

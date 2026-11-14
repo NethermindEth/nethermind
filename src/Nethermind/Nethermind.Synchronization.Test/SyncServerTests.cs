@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
@@ -130,6 +131,21 @@ public class SyncServerTests
         ctx.BlockTree.Received().FindBlock(Arg.Any<Hash256>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.ExcludeTxHashes);
     }
 
+    [Test]
+    public void Finds_stored_block_rlp_by_its_header_number([Values] bool headerKnown)
+    {
+        Context ctx = new();
+        byte[] blockRlp = [0xc0];
+        if (headerKnown)
+        {
+            ctx.BlockTree.FindHeader(TestItem.KeccakA, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
+                .Returns(Build.A.BlockHeader.WithNumber(5).TestObject);
+        }
+        ctx.BlockStore.GetRlp(5, TestItem.KeccakA).Returns(blockRlp);
+
+        Assert.That(ctx.SyncServer.FindBlockRlp(TestItem.KeccakA), Is.EqualTo(headerKnown ? blockRlp : null));
+    }
+
     [TestCase(true, true, true)]
     [TestCase(false, true, false)]
     [TestCase(true, false, false)]
@@ -238,6 +254,7 @@ public class SyncServerTests
             ctx.WorldStateManager,
             new MemDb(),
             localBlockTree,
+            Substitute.For<IBlockStore>(),
             NullReceiptStorage.Instance,
             Substitute.For<IBlockAccessListStore>(),
             blockValidator,
@@ -463,6 +480,7 @@ public class SyncServerTests
             ctx.WorldStateManager,
             new MemDb(),
             localBlockTree,
+            Substitute.For<IBlockStore>(),
             NullReceiptStorage.Instance,
             Substitute.For<IBlockAccessListStore>(),
             blockValidator,
@@ -749,6 +767,7 @@ public class SyncServerTests
             Substitute.For<IWorldStateManager>(),
             new MemDb(),
             blockTree,
+            Substitute.For<IBlockStore>(),
             NullReceiptStorage.Instance,
             Substitute.For<IBlockAccessListStore>(),
             Always.Valid,
@@ -887,6 +906,7 @@ public class SyncServerTests
             worldStateManager,
             new MemDb(),
             localBlockTree,
+            Substitute.For<IBlockStore>(),
             NullReceiptStorage.Instance,
             Substitute.For<IBlockAccessListStore>(),
             Always.Valid,
@@ -1036,6 +1056,7 @@ public class SyncServerTests
             Substitute.For<IWorldStateManager>(),
             new MemDb(),
             blockTree,
+            Substitute.For<IBlockStore>(),
             NullReceiptStorage.Instance,
             Substitute.For<IBlockAccessListStore>(),
             Always.Valid,
@@ -1134,6 +1155,7 @@ public class SyncServerTests
             PeerPool = Substitute.For<ISyncPeerPool>();
 
             BlockTree = Substitute.For<IBlockTree>();
+            BlockStore = Substitute.For<IBlockStore>();
             WorldStateManager = Substitute.For<IWorldStateManager>();
             HistoryPruner = Substitute.For<IHistoryPruner>();
             SyncPointers = Substitute.For<ISyncPointers>();
@@ -1143,6 +1165,7 @@ public class SyncServerTests
                 WorldStateManager,
                 new MemDb(),
                 BlockTree,
+                BlockStore,
                 NullReceiptStorage.Instance,
                 Substitute.For<IBlockAccessListStore>(),
                 Always.Valid,
@@ -1168,6 +1191,8 @@ public class SyncServerTests
         public IBlockTree LocalBlockTree { get; set; } = null!;
         public ISyncPeer NodeWhoSentTheBlock { get; }
 
+        public IBlockStore BlockStore { get; }
+
         public SyncServer CreateSyncServer(
             IBlockTree localBlockTree,
             IBlockValidator? blockValidator = null,
@@ -1179,6 +1204,7 @@ public class SyncServerTests
                 WorldStateManager,
                 new MemDb(),
                 localBlockTree,
+                Substitute.For<IBlockStore>(),
                 receiptFinder ?? NullReceiptStorage.Instance,
                 Substitute.For<IBlockAccessListStore>(),
                 blockValidator ?? Always.Valid,
@@ -1196,6 +1222,7 @@ public class SyncServerTests
                 WorldStateManager,
                 new MemDb(),
                 BlockTree,
+                Substitute.For<IBlockStore>(),
                 NullReceiptStorage.Instance,
                 blockAccessListStore,
                 Always.Valid,

@@ -3,8 +3,10 @@
 
 using System.Collections.Generic;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Proofs;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Encoding;
@@ -82,6 +84,60 @@ public class BlockBodyDecoderTests
         Assert.That(decodedBody, Is.EqualTo(body).UsingBlockBodyComparer());
     }
 
+    [TestCaseSource(nameof(ValidBodies))]
+    public void Decode_with_encoded_transactions_keeps_roots_and_hashes(BlockBody body)
+    {
+        BlockBody decoded = BlockBodyDecoder.Instance.DecodeWithEncodedTransactions(BlockBodyDecoder.Instance.Encode(body))!;
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(TxTrie.CalculateRoot(decoded.Transactions), Is.EqualTo(TxTrie.CalculateRoot(body.Transactions)));
+                Assert.That(BlockBodyDecoder.Instance.Encode(new BlockBody([], decoded.Uncles, decoded.Withdrawals)),
+                    Is.EqualTo(BlockBodyDecoder.Instance.Encode(new BlockBody([], body.Uncles, body.Withdrawals))));
+                for (int i = 0; i < body.Transactions.Length; i++)
+                {
+                    Assert.That(decoded.Transactions[i].Type, Is.EqualTo(body.Transactions[i].Type));
+                    Assert.That(decoded.Transactions[i].Hash, Is.EqualTo(body.Transactions[i].CalculateHash()));
+                }
+            }
+        }
+        finally
+        {
+            foreach (Transaction transaction in decoded.Transactions) TxDecoder.TxObjectPool.Return(transaction);
+        }
+    }
+
+    [Test]
+    public void Decode_with_encoded_transactions_returns_null_for_missing_body() =>
+        Assert.That(BlockBodyDecoder.Instance.DecodeWithEncodedTransactions(RlpTestHelper.OfEmptyList), Is.Null);
+
+    [Test, NonParallelizable]
+    public void Decode_with_encoded_transactions_failure_returns_owned_transactions(
+        [Values("empty-envelope", "legacy-envelope", "wrapped-legacy", "null-transaction", "uncles", "withdrawals", "trailing")] string malformedField)
+    {
+        byte[] transaction = Rlp.Encode(Build.A.Transaction.Signed().TestObject);
+        byte[] transactions = RlpTestHelper.EncodeSequence([transaction]);
+        byte[] bytes = malformedField switch
+        {
+            "empty-envelope" => BodyWithTransactions(transaction, RlpTestHelper.OfEmptyByteArray),
+            "legacy-envelope" => BodyWithTransactions(transaction, [0x82, (byte)TxType.Legacy, 0xc0]),
+            "wrapped-legacy" => BodyWithTransactions(transaction, Rlp.Encode(transaction)),
+            "null-transaction" => BodyWithTransactions(transaction, RlpTestHelper.OfEmptyList),
+            "uncles" => RlpTestHelper.EncodeSequence(transactions, RlpTestHelper.OfEmptyByteArray),
+            "withdrawals" => RlpTestHelper.EncodeSequence(transactions, RlpTestHelper.OfEmptyList, RlpTestHelper.OfEmptyByteArray),
+            _ => RlpTestHelper.EncodeSequence(transactions, RlpTestHelper.OfEmptyList, RlpTestHelper.OfEmptyList, RlpTestHelper.OfEmptyByteArray)
+        };
+        HashSet<Transaction> pooled = TransactionPoolTestHelper.Refill();
+
+        Assert.Throws<RlpReaderException>(() => BlockBodyDecoder.Instance.DecodeWithEncodedTransactions(bytes));
+
+        TransactionPoolTestHelper.AssertAllReturned(pooled);
+
+        static byte[] BodyWithTransactions(byte[] valid, byte[] malformed) =>
+            RlpTestHelper.EncodeSequence(RlpTestHelper.EncodeSequence([valid, malformed]), RlpTestHelper.OfEmptyList);
+    }
+
     // check for RlpLimitException specifically, which should fire before decoding, so 0xC0 placeholders are fine here.
     // Tx bound at the default 1 GGas MaxBlockGas:
     // 1,000,000,000 / GasCostOf.TransactionEip2780 (12,000) + 1 == 83,334 entries.
@@ -117,6 +173,11 @@ public class BlockBodyDecoderTests
             [Build.A.Transaction.Signed().TestObject, Build.A.Transaction.Signed().TestObject], [],
             [Build.A.Withdrawal.TestObject, Build.A.Withdrawal.TestObject])
         ).SetName("transactions + withdrawals");
+
+        yield return new TestCaseData(new BlockBody(
+            [Build.A.Transaction.WithType(TxType.EIP1559).Signed().TestObject, Build.A.Transaction.Signed().TestObject,
+                Build.A.Transaction.WithType(TxType.AccessList).Signed().TestObject], [])
+        ).SetName("typed transactions");
     }
 
     private static void DecodeBody(byte[] bytes)

@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -13,6 +14,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -46,6 +49,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly ulong _flushDbInterval; // About every 10GB on mainnet
 
         private readonly IBlockTree _blockTree;
+        private readonly IBlockStore _blockStore;
         private readonly IBlockValidator _blockValidator;
         private readonly ISyncConfig _syncConfig;
         private readonly ISyncReport _syncReport;
@@ -66,6 +70,7 @@ namespace Nethermind.Synchronization.FastBlocks
         public BodiesSyncFeed(
             ISpecProvider specProvider,
             IBlockTree blockTree,
+            IBlockStore blockStore,
             IBlockValidator blockValidator,
             ISyncPointers syncPointers,
             ISyncPeerPool syncPeerPool,
@@ -79,6 +84,7 @@ namespace Nethermind.Synchronization.FastBlocks
             : base(metadataDb, specProvider, logManager.GetClassLogger<BodiesSyncFeed>())
         {
             _blockTree = blockTree;
+            _blockStore = blockStore;
             _blockValidator = blockValidator;
             _syncPointers = syncPointers;
             _syncPeerPool = syncPeerPool;
@@ -241,73 +247,86 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
-        private bool TryPrepareBlock(BlockInfo blockInfo, BlockBody blockBody, Hash256? rejectedBodyTxRoot, out Block? block)
-        {
-            BlockHeader header = _blockTree.FindHeader(blockInfo.BlockHash, blockNumber: blockInfo.BlockNumber);
-            if ((rejectedBodyTxRoot is null || rejectedBodyTxRoot == header.TxRoot)
-                && _blockValidator.ValidateBodyAgainstHeader(header, blockBody, out _))
-            {
-                block = new Block(header, blockBody);
-            }
-            else
-            {
-                block = null;
-            }
-
-            return block is not null;
-        }
-
         private int InsertBodies(BodiesSyncBatch batch)
         {
             int validResponsesCount = 0;
-            BlockBody[]? responses = batch.Response?.Bodies ?? [];
+            OwnedBlockBodies? responses = batch.Response;
+            int responseCount = responses?.Count ?? 0;
             int responseIndex = 0;
+            int decodedIndex = -1;
+            // Its transactions keep only their encoding: the body is stored as received, so they are never decoded.
+            BlockBody? body = null;
             Hash256? rejectedBodyTxRoot = null;
 
-            for (int i = 0; i < batch.Infos.Length; i++)
+            try
             {
-                BlockInfo? blockInfo = batch.Infos[i];
-                BlockBody? body = responses.Length <= responseIndex
-                    ? null
-                    : responses[responseIndex];
-
-                // last batch
-                if (blockInfo is null)
+                for (int i = 0; i < batch.Infos.Length; i++)
                 {
-                    break;
-                }
+                    BlockInfo? blockInfo = batch.Infos[i];
 
-                if (body is null)
-                {
-                    if (responseIndex < responses.Length)
+                    // last batch
+                    if (blockInfo is null)
+                    {
+                        break;
+                    }
+
+                    if (decodedIndex != responseIndex && responseIndex < responseCount)
+                    {
+                        ReturnTransactions(body);
+                        body = null;
+                        decodedIndex = responseIndex;
+                        try
+                        {
+                            body = responses!.DecodeWithEncodedTransactions(responseIndex);
+                        }
+                        catch (RlpReaderException e)
+                        {
+                            if (_logger.IsDebug) _logger.Debug($"{batch} - body {responseIndex} is not a valid body: {e.Message}");
+                            responseCount = responseIndex;
+                        }
+                    }
+
+                    if (responseIndex >= responseCount)
+                    {
+                        _syncStatusList.MarkPending(blockInfo);
+                        continue;
+                    }
+
+                    if (body is null)
                     {
                         responseIndex++;
                         rejectedBodyTxRoot = null;
+                        _syncStatusList.MarkPending(blockInfo);
+                        continue;
                     }
 
-                    _syncStatusList.MarkPending(blockInfo);
-                    continue;
-                }
-
-                if (TryPrepareBlock(blockInfo, body, rejectedBodyTxRoot, out Block? block))
-                {
-                    responseIndex++;
-                    rejectedBodyTxRoot = null;
-                    validResponsesCount++;
-                    InsertOneBlock(block!);
-                }
-                else
-                {
-                    // Body responses can be sparse, so a rejected body may belong to a later requested
-                    // header. Remember its transaction root so a header carrying a different one is ruled
-                    // out by a hash compare; a header whose root matches still goes to the validator, which
-                    // rebuilds the trie and may reject the body on uncles or withdrawals.
-                    rejectedBodyTxRoot ??= TxTrie.CalculateRoot(body.Transactions);
-                    _syncStatusList.MarkPending(blockInfo);
+                    BlockHeader header = _blockTree.FindHeader(blockInfo.BlockHash, blockNumber: blockInfo.BlockNumber);
+                    if ((rejectedBodyTxRoot is null || rejectedBodyTxRoot == header.TxRoot)
+                        && _blockValidator.ValidateBodyAgainstHeader(header, body, out _))
+                    {
+                        _blockStore.Insert(header, responses!.GetEncoded(responseIndex).Span, WriteFlags.DisableWAL);
+                        _syncStatusList.MarkInserted(blockInfo.BlockNumber);
+                        responseIndex++;
+                        rejectedBodyTxRoot = null;
+                        validResponsesCount++;
+                    }
+                    else
+                    {
+                        // Body responses can be sparse, so a rejected body may belong to a later requested
+                        // header. Remember its transaction root so a header carrying a different one is ruled
+                        // out by a hash compare; a header whose root matches still goes to the validator, which
+                        // rebuilds the trie and may reject the body on uncles or withdrawals.
+                        rejectedBodyTxRoot ??= TxTrie.CalculateRoot(body.Transactions);
+                        _syncStatusList.MarkPending(blockInfo);
+                    }
                 }
             }
+            finally
+            {
+                ReturnTransactions(body);
+            }
 
-            if (responseIndex < responses.Length)
+            if (responseIndex < (responses?.Count ?? 0))
             {
                 if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID - tx or uncles");
 
@@ -323,10 +342,10 @@ namespace Nethermind.Synchronization.FastBlocks
             return validResponsesCount;
         }
 
-        private void InsertOneBlock(Block block)
+        private static void ReturnTransactions(BlockBody? body)
         {
-            _blockTree.Insert(block, BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, bodiesWriteFlags: WriteFlags.DisableWAL);
-            _syncStatusList.MarkInserted(block.Number);
+            if (body is null) return;
+            foreach (Transaction transaction in body.Transactions) TxDecoder.TxObjectPool.Return(transaction);
         }
 
         private void LogPostProcessingBatchInfo(BodiesSyncBatch batch, int validResponsesCount)

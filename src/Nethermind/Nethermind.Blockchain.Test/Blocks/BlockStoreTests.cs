@@ -56,6 +56,23 @@ public class BlockStoreTests
     }
 
     [Test]
+    public void Test_insert_of_encoded_body_stores_the_encoded_block([Values] bool withWithdrawals)
+    {
+        TestMemDb db = new();
+        BlockStore store = new(db);
+        Block block = Build.A.Block.WithNumber(1)
+            .WithTransactions(Build.A.Transaction.Signed().TestObjectNTimes(2))
+            .WithUncles(Build.A.BlockHeader.TestObject)
+            .WithWithdrawals(withWithdrawals ? [Build.A.Withdrawal.TestObject] : null)
+            .TestObject;
+
+        store.Insert(block.Header, BlockBodyDecoder.Instance.Encode(block.Body), WriteFlags.DisableWAL);
+
+        Assert.That(store.GetRlp(block.Number, block.Hash!), Is.EqualTo(new BlockDecoder().Encode(block)));
+        db.KeyWasWrittenWithFlags(Bytes.Concat(block.Number.ToBigEndianByteArray(), block.Hash!.BytesToArray()), WriteFlags.DisableWAL);
+    }
+
+    [Test]
     public void Test_can_get_block_that_was_stored_with_hash([Values] bool cached)
     {
         TestMemDb db = new();

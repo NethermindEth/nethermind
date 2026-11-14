@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Serialization.FluentRlp;
 using System.Diagnostics;
@@ -177,6 +178,96 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
             {
                 for (int i = 0; i < decoded; i++) TxDecoder.TxObjectPool.Return(transactions[i]);
             }
+            throw;
+        }
+    }
+
+    /// <summary>Decodes a body, but keeps each transaction in its encoded form.</summary>
+    /// <remarks>
+    /// <para>
+    /// Each transaction is a pooled <see cref="Transaction"/> that holds only its type and, as its pre-hash, the bytes
+    /// that the transaction trie stores. This is enough for the transaction root and the transaction hash, and saves
+    /// decoding transactions that are stored but not executed. Return the transactions to
+    /// <see cref="TxDecoder.TxObjectPool"/> before <paramref name="body"/> is released, and never execute or encode them.
+    /// </para>
+    /// <para>
+    /// The fields inside a transaction are not checked, so compare the transaction root with the header before the
+    /// body is trusted. All other items get the checks of the full decode.
+    /// </para>
+    /// </remarks>
+    /// <param name="body">The encoded body with its sequence prefix. The transactions refer to these bytes.</param>
+    /// <returns>The body, or <see langword="null"/> for an empty sequence, which marks a missing body.</returns>
+    public BlockBody? DecodeWithEncodedTransactions(Memory<byte> body)
+    {
+        RlpReader reader = new(body.Span);
+        RlpReader content = reader.EnterSequence(out int itemLength);
+        BlockBody? result = null;
+        if (content.HasNext)
+        {
+            Transaction[] transactions = ReadEncodedTransactions(ref content, body[(itemLength - content.Remaining)..]);
+            try
+            {
+                BlockHeader[] uncles = _headerDecoder.DecodeNonNullArray(ref content, RlpBehaviors.None, UnclesCountLimit);
+                Withdrawal[]? withdrawals = content.HasNext ? DecodeWithdrawals<OnFlag>(ref content, RlpBehaviors.None) : null;
+                result = new BlockBody(transactions, uncles, withdrawals);
+                reader.ExitSequence(in content, itemLength);
+                reader.CheckEnd();
+            }
+            catch
+            {
+                foreach (Transaction transaction in transactions) TxDecoder.TxObjectPool.Return(transaction);
+                throw;
+            }
+
+            return result;
+        }
+
+        reader.ExitSequence(in content, itemLength);
+        reader.CheckEnd();
+        return null;
+    }
+
+    /// <param name="reader">Reader whose next item is the transaction sequence.</param>
+    /// <param name="source">The bytes that <paramref name="reader"/> reads, from its start.</param>
+    private static Transaction[] ReadEncodedTransactions(ref RlpReader reader, Memory<byte> source)
+    {
+        int sequenceStart = reader.BytesRead;
+        RlpReader items = reader.EnterSequence(out int itemLength);
+        Memory<byte> itemsSource = source.Slice(sequenceStart + itemLength - items.Remaining, items.Remaining);
+        int count = items.CountItems<OnFlag>(TransactionsCountLimit);
+        Transaction[] transactions = new Transaction[count];
+        int read = 0;
+        try
+        {
+            for (int i = 0; i < count; i++)
+            {
+                if (items.IsNextItemEmptyList()) ThrowNullArrayElement(i);
+                Transaction transaction = TxDecoder.TxObjectPool.Get();
+                transactions[read++] = transaction;
+                if (items.IsNextSequence)
+                {
+                    int start = items.BytesRead;
+                    transaction.Type = TxType.Legacy;
+                    transaction.SetPreHashMemoryNoLock(itemsSource.Slice(start, items.ReadEncodedItem().Length));
+                }
+                else
+                {
+                    ReadOnlySpan<byte> envelope = items.ReadBytes();
+                    // EIP-2718: a typed transaction starts with a type byte in [0x01, 0x7f].
+                    if (envelope.IsEmpty || envelope[0] is (byte)TxType.Legacy or > 0x7f)
+                        throw new RlpReaderException($"Transaction {i} is not an EIP-2718 typed transaction");
+
+                    transaction.Type = (TxType)envelope[0];
+                    transaction.SetPreHashMemoryNoLock(itemsSource.Slice(items.BytesRead - envelope.Length, envelope.Length));
+                }
+            }
+
+            reader.ExitSequence(in items, itemLength);
+            return transactions;
+        }
+        catch
+        {
+            for (int i = 0; i < read; i++) TxDecoder.TxObjectPool.Return(transactions[i]);
             throw;
         }
     }
