@@ -36,6 +36,9 @@ public interface IHeaderStore : IHeaderFinder
         found = header is not null;
         return found && bloomMatches(header!.Bloom!.Bytes) ? header : null;
     }
+
+    BlockHeader? GetIfBloomMatches(in ValueHash256 blockHash, ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found) =>
+        GetIfBloomMatches(new Hash256(in blockHash), blockNumber, bloomMatches, out found);
     void Cache(BlockHeader header);
     void Delete(Hash256 blockHash);
     void InsertBlockNumber(Hash256 blockHash, ulong blockNumber);

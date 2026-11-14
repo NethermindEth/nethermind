@@ -11,6 +11,7 @@ using Autofac;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
@@ -983,6 +984,46 @@ public class BlockTreeTests
         }
 
         Assert.That(blockInfoDb.ReadsCount - readsBefore, Is.EqualTo(2));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindCanonicalHeaderIfBloomMatches_rejects_a_historical_block_without_allocating()
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().WithHeaderStore(new HeaderStore(new MemDb(), new MemDb()));
+        builder.BlockInfoDb = new MemDb();
+        builder.OfChainLength(BlockStore.CacheSize + 8);
+        BlockTree blockTree = builder.TestObject;
+        ((IClearableCache)builder.ChainLevelInfoRepository).ClearCache();
+        Func<ReadOnlySpan<byte>, bool> rejectBloom = static _ => false;
+        blockTree.FindCanonicalHeaderIfBloomMatches(1, rejectBloom, out _);
+
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        BlockHeader? header = blockTree.FindCanonicalHeaderIfBloomMatches(1, rejectBloom, out bool found);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(header, Is.Null);
+            Assert.That(allocated, Is.Zero);
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindCanonicalHeaderIfBloomMatches_skips_a_historical_level_with_a_zero_hash()
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(BlockStore.CacheSize + 8);
+        BlockTree blockTree = builder.TestObject;
+        builder.ChainLevelInfoRepository.PersistLevel(1, new ChainLevelInfo(true, new BlockInfo(Keccak.Zero, 1)));
+        ((IClearableCache)builder.ChainLevelInfoRepository).ClearCache();
+
+        BlockHeader? header = blockTree.FindCanonicalHeaderIfBloomMatches(1, static _ => true, out bool found);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.False);
+            Assert.That(header, Is.Null);
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
