@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -44,6 +45,45 @@ public class NetworkReceiptTests
                 Assert.That(read.GetMessageLength(eip658), Is.EqualTo(Decoder.GetLength(receipt, behaviors)));
             }
         }
+    }
+
+    [Test]
+    public void Validated_reads_preserve_receipt_fields_and_advance_to_the_next_receipt([Values] bool withBloom, [Values] bool eip658)
+    {
+        byte[] message = Encode(CreateReceipts(eip658), withBloom, eip658);
+        RlpReader validating = new RlpReader(message).EnterSequence(out _);
+        RlpReader validated = validating;
+
+        while (validating.HasNext)
+        {
+            Assert.That(NetworkReceipt.TryRead(ref validating, withBloom, out NetworkReceipt expected), Is.True);
+            NetworkReceipt actual = NetworkReceipt.ReadValidated(ref validated, withBloom);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual.Type, Is.EqualTo(expected.Type));
+                Assert.That(actual.StatusOrState.SequenceEqual(expected.StatusOrState), Is.True);
+                Assert.That(actual.GasUsedTotalItem.SequenceEqual(expected.GasUsedTotalItem), Is.True);
+                Assert.That(actual.GasUsedTotal, Is.EqualTo(expected.GasUsedTotal));
+                Assert.That(actual.Bloom.SequenceEqual(expected.Bloom), Is.True);
+                Assert.That(actual.Logs.SequenceEqual(expected.Logs), Is.True);
+                Assert.That(actual.LogsGas, Is.Zero);
+                Assert.That(validated.BytesRead, Is.EqualTo(validating.BytesRead));
+            }
+        }
+
+        Assert.That(validated.HasNext, Is.False);
+    }
+
+    [Test]
+    public void Validates_topic_count_while_reading_logs([Values] bool withBloom, [Values(0, 4, 5)] int topicCount)
+    {
+        LogEntry log = new(TestItem.AddressA, [1, 2], Enumerable.Repeat(TestItem.KeccakA, topicCount).ToArray());
+        TxReceipt receipt = Build.A.Receipt.WithStatusCode(1).WithLogs(log).WithCalculatedBloom().TestObject;
+        byte[] message = Encode([receipt], withBloom, eip658: true);
+        RlpReader reader = new RlpReader(message).EnterSequence(out _);
+
+        Assert.That(NetworkReceipt.TryRead(ref reader, withBloom, out _), Is.EqualTo(topicCount <= 4));
     }
 
     [Test]

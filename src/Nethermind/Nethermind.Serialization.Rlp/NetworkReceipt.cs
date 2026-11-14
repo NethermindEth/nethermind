@@ -54,19 +54,66 @@ public readonly ref struct NetworkReceipt
 
     /// <summary>Reads the next receipt of <paramref name="reader"/> when it has a shape this reader takes.</summary>
     /// <param name="withBloom">Whether the receipt has a bloom: the eth/63 to eth/68 form; otherwise the eth/69 form.</param>
-    /// <param name="logsChecked">
-    /// Whether the receipt was read before, so its logs are not checked again; <see cref="LogsGas"/> is then zero.
-    /// </param>
     /// <returns><see langword="false"/> for a shape left to <see cref="ReceiptMessageDecoder"/>; the reader is then not usable.</returns>
     /// <exception cref="RlpReaderException">The receipt is not valid RLP.</exception>
-    public static bool TryRead(ref RlpReader reader, bool withBloom, out NetworkReceipt receipt, bool logsChecked = false)
+    public static bool TryRead(ref RlpReader reader, bool withBloom, out NetworkReceipt receipt) =>
+        TryReadCore(ref reader, withBloom, out receipt, validateLogs: true);
+
+    /// <summary>Reads a receipt whose encoding and logs have already been validated.</summary>
+    /// <remarks>
+    /// Only use for another pass over unchanged bytes accepted by <see cref="TryRead"/>.
+    /// Logs are not traversed, so <see cref="LogsGas"/> is zero.
+    /// </remarks>
+    public static NetworkReceipt ReadValidated(ref RlpReader reader, bool withBloom)
+    {
+        if (!TryReadCore(ref reader, withBloom, out NetworkReceipt receipt, validateLogs: false))
+            throw new RlpReaderException("Previously validated receipt has an unsupported shape.");
+        return receipt;
+    }
+
+    private static bool TryReadCore(ref RlpReader reader, bool withBloom, out NetworkReceipt receipt, bool validateLogs)
     {
         receipt = default;
+        if (!TryReadEnvelope(ref reader, withBloom, out TxType type, out RlpReader fields, out int receiptLength)) return false;
+
+        ReadOnlySpan<byte> statusOrState = fields.ReadEncodedItem();
+        if (!IsStatusOrState(statusOrState)) return false;
+
+        ReadOnlySpan<byte> gasUsedTotalItem = fields.ReadEncodedItem();
+        RlpReader gasReader = new(gasUsedTotalItem);
+        ulong gasUsedTotal = gasReader.DecodeULong();
+
+        ReadOnlySpan<byte> bloom = default;
+        if (withBloom)
+        {
+            ReadOnlySpan<byte> bloomItem = fields.ReadEncodedItem();
+            if (bloomItem.Length == BloomItemLength && bloomItem[0] == 0xb9 && bloomItem[1] == 0x01 && bloomItem[2] == 0x00)
+            {
+                bloom = bloomItem[3..];
+            }
+            else if (bloomItem.Length != 1 || bloomItem[0] != Rlp.EmptyByteArrayByte)
+            {
+                return false;
+            }
+        }
+
+        if (!fields.HasNext || !fields.IsNextSequence) return false;
+        ReadOnlySpan<byte> logs = fields.ReadEncodedItem();
+        ulong logsGas = 0;
+        if (fields.HasNext || (validateLogs && !TryGetLogsGas(logs, out logsGas))) return false;
+        if (!withBloom) reader.ExitSequence(in fields, receiptLength);
+
+        receipt = new NetworkReceipt(type, statusOrState, gasUsedTotalItem, gasUsedTotal, bloom, logs, logsGas);
+        return true;
+    }
+
+    private static bool TryReadEnvelope(scoped ref RlpReader reader, bool withBloom, out TxType type, out RlpReader fields, out int receiptLength)
+    {
+        type = default;
+        fields = default;
+        receiptLength = 0;
         if (!reader.HasNext || reader.IsNextItemEmptyList()) return false;
 
-        TxType type;
-        RlpReader fields;
-        int receiptLength = 0;
         if (withBloom)
         {
             ReadOnlySpan<byte> payload;
@@ -97,37 +144,7 @@ public readonly ref struct NetworkReceipt
             type = (TxType)fields.DecodeByte();
         }
 
-        if (type > TxType.SetCode) return false;
-
-        ReadOnlySpan<byte> statusOrState = fields.ReadEncodedItem();
-        if (!IsStatusOrState(statusOrState)) return false;
-
-        ReadOnlySpan<byte> gasUsedTotalItem = fields.ReadEncodedItem();
-        RlpReader gasReader = new(gasUsedTotalItem);
-        ulong gasUsedTotal = gasReader.DecodeULong();
-
-        ReadOnlySpan<byte> bloom = default;
-        if (withBloom)
-        {
-            ReadOnlySpan<byte> bloomItem = fields.ReadEncodedItem();
-            if (bloomItem.Length == BloomItemLength && bloomItem[0] == 0xb9 && bloomItem[1] == 0x01 && bloomItem[2] == 0x00)
-            {
-                bloom = bloomItem[3..];
-            }
-            else if (bloomItem.Length != 1 || bloomItem[0] != Rlp.EmptyByteArrayByte)
-            {
-                return false;
-            }
-        }
-
-        if (!fields.HasNext || !fields.IsNextSequence) return false;
-        ReadOnlySpan<byte> logs = fields.ReadEncodedItem();
-        ulong logsGas = 0;
-        if (fields.HasNext || (!logsChecked && !TryGetLogsGas(logs, out logsGas))) return false;
-        if (!withBloom) reader.ExitSequence(in fields, receiptLength);
-
-        receipt = new NetworkReceipt(type, statusOrState, gasUsedTotalItem, gasUsedTotal, bloom, logs, logsGas);
-        return true;
+        return type <= TxType.SetCode;
     }
 
     private static bool IsStatusOrState(ReadOnlySpan<byte> item) =>
@@ -137,9 +154,11 @@ public readonly ref struct NetworkReceipt
     {
         logsGas = 0;
         RlpReader items = new RlpReader(logs).EnterSequence(out _);
-        if (items.CountItems() > RlpLimit.ReceiptLogs.Limit) return false;
+        int logCount = 0;
+        int logLimit = RlpLimit.ReceiptLogs.Limit;
         while (items.HasNext)
         {
+            if (++logCount > logLimit) return false;
             if (!items.IsNextSequence || items.IsNextItemEmptyList()) return false;
             RlpReader log = items.EnterSequence(out int logLength);
             if (log.ReadBytes().Length != Address.Size || !log.HasNext || !log.IsNextSequence) return false;

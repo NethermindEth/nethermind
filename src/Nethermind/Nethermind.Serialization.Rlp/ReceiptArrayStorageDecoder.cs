@@ -214,7 +214,7 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
         int lengthIndex = 0;
         while (receipts.HasNext)
         {
-            NetworkReceipt.TryRead(ref receipts, withBloom, out NetworkReceipt receipt, logsChecked: true);
+            NetworkReceipt receipt = NetworkReceipt.ReadValidated(ref receipts, withBloom);
             WriteCompact(ref writer, in receipt, eip658, lengthsSpan, ref lengthIndex);
         }
 

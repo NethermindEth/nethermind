@@ -114,7 +114,7 @@ public sealed partial class ReceiptTrie : PatriciaTrie<TxReceipt>
         int offset = 0;
         for (int i = 0; i < count; i++)
         {
-            NetworkReceipt.TryRead(ref receipts, withBloom, out NetworkReceipt receipt, logsChecked: true);
+            NetworkReceipt receipt = NetworkReceipt.ReadValidated(ref receipts, withBloom);
             int length = receipt.GetTrieLeafLength(eip7668);
             scoped RlpWriter writer = RlpWriter.ContentWriter(buffer.AsSpan(offset, length));
             receipt.WriteTrieLeaf(ref writer, eip7668);

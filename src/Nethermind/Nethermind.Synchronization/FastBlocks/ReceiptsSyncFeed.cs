@@ -213,60 +213,57 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
-        /// <param name="header">
-        /// The header of <paramref name="blockInfo"/>, or <see langword="null"/> when the local header store has none,
-        /// so the rejection says nothing about the peer that sent <paramref name="receipts"/>.
-        /// </param>
-        /// <param name="keptEncoded">
-        /// <c>true</c> when the receipts were checked as received, so they can be stored without decoding them;
-        /// <paramref name="preparedReceipts"/> is then <see langword="null"/>.
-        /// </param>
-        private bool TryPrepareReceipts(BlockInfo blockInfo, IOwnedReadOnlyList<TxReceipt[]?> response, int index, out TxReceipt[]? preparedReceipts, out bool keptEncoded, out BlockHeader? header)
+        private enum ReceiptPreparationOutcome
         {
-            header = _blockTree.FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: blockInfo.BlockNumber);
-            keptEncoded = false;
-            preparedReceipts = null;
+            Invalid,
+            MissingHeader,
+            Encoded,
+            Decoded
+        }
+
+        private readonly record struct PreparedReceipts(ReceiptPreparationOutcome Outcome, BlockHeader? Header = null, TxReceipt[]? Receipts = null);
+
+        private PreparedReceipts PrepareReceipts(BlockInfo blockInfo, IOwnedReadOnlyList<TxReceipt[]?> response, int index)
+        {
+            BlockHeader? header = _blockTree.FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: blockInfo.BlockNumber);
             if (header is null)
             {
                 if (_logger.IsDebug) _logger.Debug($"Could not find header {blockInfo.BlockNumber} ({blockInfo.BlockHash})");
+                return new(ReceiptPreparationOutcome.MissingHeader);
             }
-            else
+
+            // The header carries the timestamp that timestamp-activated receipt rules (EIP-7668) need.
+            IReceiptSpec releaseSpec = _specProvider.GetSpec(header);
+            if (response is NetworkBlockReceipts network && IsReceiptsRoot(network, index, releaseSpec, header.ReceiptsRoot))
             {
-                // The header carries the timestamp that timestamp-activated receipt rules (EIP-7668) need.
-                IReceiptSpec releaseSpec = _specProvider.GetSpec(header);
-                if (response is NetworkBlockReceipts network && IsReceiptsRoot(network, index, releaseSpec, header.ReceiptsRoot))
-                {
-                    keptEncoded = true;
-                    return true;
-                }
-
-                TxReceipt[] receipts;
-                try
-                {
-                    receipts = response[index] ?? [];
-                }
-                catch (RlpReaderException e)
-                {
-                    // Receipts kept encoded are decoded on first read, so a malformed response fails here.
-                    if (_logger.IsDebug) _logger.Debug($"Receipts of {blockInfo.BlockNumber} ({blockInfo.BlockHash}) do not decode: {e.Message}");
-                    return false;
-                }
-
-                if (header.ReceiptsRoot == Keccak.EmptyTreeHash)
-                {
-                    preparedReceipts = receipts.Length == 0 ? receipts : null;
-                }
-                else
-                {
-                    // EIP-7668 roots ignore receipt blooms, so there is nothing to normalize.
-                    if (!releaseSpec.IsEip7668Enabled) NormalizeZeroBlooms(receipts);
-                    preparedReceipts = _receiptsRootCalculator.GetReceiptsRoot(receipts, releaseSpec, header.ReceiptsRoot) != header.ReceiptsRoot
-                        ? null
-                        : receipts;
-                }
+                return new(ReceiptPreparationOutcome.Encoded, header);
             }
 
-            return preparedReceipts is not null;
+            TxReceipt[] receipts;
+            try
+            {
+                receipts = response[index] ?? [];
+            }
+            catch (RlpReaderException e)
+            {
+                // Receipts kept encoded are decoded on first read, so a malformed response fails here.
+                if (_logger.IsDebug) _logger.Debug($"Receipts of {blockInfo.BlockNumber} ({blockInfo.BlockHash}) do not decode: {e.Message}");
+                return new(ReceiptPreparationOutcome.Invalid);
+            }
+
+            if (header.ReceiptsRoot == Keccak.EmptyTreeHash)
+            {
+                return receipts.Length == 0
+                    ? new(ReceiptPreparationOutcome.Decoded, header, receipts)
+                    : new(ReceiptPreparationOutcome.Invalid);
+            }
+
+            // EIP-7668 roots ignore receipt blooms, so there is nothing to normalize.
+            if (!releaseSpec.IsEip7668Enabled) NormalizeZeroBlooms(receipts);
+            // TODO: Optimism use op root calculator
+            return _receiptsRootCalculator.GetReceiptsRoot(receipts, releaseSpec, header.ReceiptsRoot) == header.ReceiptsRoot
+                ? new(ReceiptPreparationOutcome.Decoded, header, receipts)
+                : new(ReceiptPreparationOutcome.Invalid);
         }
 
         /// <exception cref="InvalidDataException">The receipts do not fit the block, or the block is gone.</exception>
@@ -332,19 +329,16 @@ namespace Nethermind.Synchronization.FastBlocks
                 BlockInfo? blockInfo = blockInfos[i];
                 if ((batch.Response?.Count ?? 0) > i)
                 {
-                    TxReceipt[]? prepared = null;
-                    bool keptEncoded = false;
                     // last batch
                     if (blockInfo is null)
                     {
                         break;
                     }
 
-                    BlockHeader? header = null;
-                    bool isValid = !hasBreachedProtocol && TryPrepareReceipts(blockInfo, batch.Response!, i, out prepared, out keptEncoded, out header);
-                    bool headerMissing = !hasBreachedProtocol && header is null;
-                    if (isValid)
+                    PreparedReceipts prepared = hasBreachedProtocol ? default : PrepareReceipts(blockInfo, batch.Response!, i);
+                    if (prepared.Outcome is ReceiptPreparationOutcome.Encoded or ReceiptPreparationOutcome.Decoded)
                     {
+                        bool keptEncoded = prepared.Outcome == ReceiptPreparationOutcome.Encoded;
                         // Receipts kept encoded need the block's transaction hashes only; the decoded ones go through
                         // receipt recovery, which reads the transactions' recipients.
                         byte[]? blockRlp = keptEncoded ? _blockStore.GetRlp(blockInfo.BlockNumber, blockInfo.BlockHash) : null;
@@ -365,11 +359,11 @@ namespace Nethermind.Synchronization.FastBlocks
                             {
                                 if (block is not null)
                                 {
-                                    _receiptStorage.Insert(block, prepared, ensureCanonical: true);
+                                    _receiptStorage.Insert(block, prepared.Receipts, ensureCanonical: true);
                                 }
                                 else
                                 {
-                                    InsertKeptEncoded(blockInfo, header!, blockRlp!, (NetworkBlockReceipts)batch.Response!, i);
+                                    InsertKeptEncoded(blockInfo, prepared.Header!, blockRlp!, (NetworkBlockReceipts)batch.Response!, i);
                                 }
 
                                 _syncStatusList.MarkInserted(blockInfo.BlockNumber);
@@ -381,7 +375,7 @@ namespace Nethermind.Synchronization.FastBlocks
                             }
                         }
                     }
-                    else if (headerMissing)
+                    else if (prepared.Outcome == ReceiptPreparationOutcome.MissingHeader)
                     {
                         missingHeaders.Add(blockInfo.BlockNumber);
                         _syncStatusList.MarkPending(blockInfo);
