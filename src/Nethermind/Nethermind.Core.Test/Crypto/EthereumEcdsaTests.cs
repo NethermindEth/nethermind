@@ -332,10 +332,8 @@ namespace Nethermind.Core.Test.Crypto
             Assert.That(address, Is.EqualTo(key.Address));
         }
 
-        [TestCase(TxType.EIP1559, true)]
-        [TestCase(TxType.Legacy, true)]
-        [TestCase(TxType.Legacy, false)]
-        public void RecoverAddress_repeat_recovery_uses_sender_cache(TxType txType, bool isEip155Enabled)
+        [Test]
+        public void RecoverAddress_repeat_recovery_uses_sender_cache([Values(TxType.EIP1559, TxType.Legacy)] TxType txType, [Values] bool isEip155Enabled)
         {
             // The sender cache is a process-wide static; reset it so the miss/hit sequence
             // asserted below cannot depend on what other tests recovered earlier.

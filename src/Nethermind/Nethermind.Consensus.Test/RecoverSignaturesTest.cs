@@ -87,7 +87,7 @@ public class RecoverSignaturesTest
     public void RecoverDataForTransactionTrace_leaves_the_block_senders_and_recovers_the_inclusion_list()
     {
         Transaction[] txs = SignedTransactions(5);
-        Transaction included = Signed(TestItem.PrivateKeyB, UnseenNonce());
+        Transaction included = Signed(TestItem.PrivateKeyB, 0);
         Block block = Build.A.Block.WithTransactions(txs).TestObject;
         block.InclusionListTransactions = [included];
 
@@ -370,8 +370,9 @@ public class RecoverSignaturesTest
     public void StartRecovery_ResentPayload_DoesNotStartASecondRecovery()
     {
         using ManualResetEventSlim gate = new();
-        Transaction[] first = SignedTransactions(2);
-        Transaction[] resent = SignedTransactions(2);
+        ulong nonce = UnseenNonce();
+        Transaction[] first = SignedTransactions(2, nonce);
+        Transaction[] resent = SignedTransactions(2, nonce);
         RecoverSignatures sut = CreateSut(gate, first[0], first[1]);
 
         try
@@ -457,11 +458,10 @@ public class RecoverSignaturesTest
     private static Transaction Signed(PrivateKey signer, ulong nonce, TxType type = TxType.Legacy) =>
         Build.A.Transaction.WithType(type).WithNonce(nonce).SignedAndResolved(signer).WithSenderAddress(null).TestObject;
 
-    private static Transaction[] SignedTransactions(int count)
-    {
-        ulong first = UnseenNonce();
-        return Enumerable.Range(0, count).Select(i => Signed(TestItem.PrivateKeyA, first + (ulong)i)).ToArray();
-    }
+    private static Transaction[] SignedTransactions(int count) => SignedTransactions(count, UnseenNonce());
+
+    private static Transaction[] SignedTransactions(int count, ulong firstNonce) =>
+        Enumerable.Range(0, count).Select(i => Signed(TestItem.PrivateKeyA, firstNonce + (ulong)i)).ToArray();
 
     /// <summary>
     /// A nonce no other test signs with, so the process-wide sender cache holds no entry for the transaction and its
