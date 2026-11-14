@@ -268,7 +268,8 @@ public static class Eip8288Dependencies
 
     /// <summary>The leanSTARK list key of a dependency: its verification key, or for a batch-pricing EIP scheme
     /// <c>keccak256(scheme word || verification_key_hash)</c>, binding the scheme.</summary>
-    /// <remarks>Such a preimage starts with zero bytes and a program key's with the leanVM tag, so it is no program's key.</remarks>
+    /// <remarks>A leanSTARK key is a committed bytecode key, so a program whose key equals this hash would need a preimage of the
+    /// commitment: separation from plain leanSTARK entries rests on its preimage resistance, not on the key format.</remarks>
     private static ValueHash256 SchemeKey(in FrameDependency dependency)
     {
         if (dependency.Scheme is not (Eip8288Constants.BatchedLeanStarkScheme or Eip8288Constants.LeanStarkLeafPaymentScheme))

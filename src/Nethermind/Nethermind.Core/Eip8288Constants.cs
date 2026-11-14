@@ -31,7 +31,7 @@ public static class Eip8288Constants
     /// <summary>Batch-pricing EIP (ethereum/EIPs#12664) <c>MAX_CLAIMS_PER_BATCH_LEAF</c> (provisional): claims one leanSTARK leaf
     /// may prove.</summary>
     /// <remarks>A parameter of the guest behind <see cref="BatchedAggregatedVk"/>, so changing it changes that key; EIP-8288's guest
-    /// takes one-claim leaves only. It bounds a single leaf only; recursive aggregation combines leaves into larger dependency
+    /// takes no batch leaves. It bounds a single leaf only; recursive aggregation combines leaves into larger dependency
     /// lists.</remarks>
     public const int MaxClaimsPerBatchLeaf = 256;
 

@@ -33,8 +33,8 @@ public readonly struct RecursiveProofInput
 
 /// <summary>A batch leaf (ethereum/EIPs#12664): one leanSTARK proof of <c>get_batch_hash(Claims)</c> under one verification key,
 /// establishing <see cref="Dependencies"/>.</summary>
-/// <remarks>Claims are nonempty, strictly increasing and at most <see cref="Eip8288Constants.MaxClaimsPerBatchLeaf"/>, one under
-/// EIP-8288's guest. Each dependency is <c>(LEANSTARK_SCHEME, claim, VerificationKeyHash)</c> or, under the batch-pricing guest,
+/// <remarks>Only the batch-pricing guest takes batch leaves. Claims are nonempty, strictly increasing and at most
+/// <see cref="Eip8288Constants.MaxClaimsPerBatchLeaf"/>. Each dependency is <c>(LEANSTARK_SCHEME, claim, VerificationKeyHash)</c> or
 /// <c>(BATCHED_LEANSTARK_SCHEME, claim, VerificationKeyHash)</c>; the backend rejects anything else.</remarks>
 public sealed record BatchLeafInput(ValueHash256 VerificationKeyHash, IReadOnlyList<ValueHash256> Claims, IReadOnlyList<FrameDependency> Dependencies,
     ReadOnlyMemory<byte> Proof);
