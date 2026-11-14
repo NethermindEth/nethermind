@@ -44,12 +44,6 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
 
     public StateId CurrentState => _innerReader.CurrentState;
 
-    public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) =>
-        _innerReader.TryLoadStateRlp(in path, flags);
-
-    public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) =>
-        _innerReader.TryLoadStorageRlp(address, in path, flags);
-
     public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
         _innerReader.TryLoadStateRlp(in path, flags, action, arg);
 
