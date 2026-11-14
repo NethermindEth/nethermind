@@ -891,13 +891,6 @@ namespace Nethermind.Db.LogIndex
             return index < 0 ? ~index : index;
         }
 
-        private ReadOnlySpan<byte> Compress(Span<byte> data, Span<byte> buffer)
-        {
-            ReadOnlySpan<int> blockNumbers = MemoryMarshal.Cast<byte, int>(data);
-            int length = (int)_compressionAlgorithm.Compress(blockNumbers, (nuint)blockNumbers.Length, buffer);
-            return buffer[..length];
-        }
-
         private static int ReadCompressionMarker(ReadOnlySpan<byte> source) => -BinaryPrimitives.ReadInt32LittleEndian(source);
         private static void WriteCompressionMarker(Span<byte> source, int len) => BinaryPrimitives.WriteInt32LittleEndian(source, -len);
 
@@ -944,7 +937,9 @@ namespace Nethermind.Db.LogIndex
 
         private static IDb GetMetaDb(IColumnsDb<LogIndexColumns> rootDb) => rootDb.GetColumnDb(LogIndexColumns.Meta);
 
-        private byte[] CompressDbValue(ReadOnlySpan<byte> key, Span<byte> data)
+        private byte[] CompressDbValue(ReadOnlySpan<byte> key, Span<byte> data) => CompressDbValue(_compressionAlgorithm, key, data);
+
+        internal static byte[] CompressDbValue(CompressionAlgorithm algorithm, ReadOnlySpan<byte> key, Span<byte> data)
         {
             if (IsCompressed(data, out _))
                 throw new LogIndexStateException("Attempt to compress already compressed data.", key);
@@ -955,8 +950,9 @@ namespace Nethermind.Db.LogIndex
 
             try
             {
-                WriteCompressionMarker(buffer, data.Length / BlockNumberSize);
-                int compressedLen = Compress(data, buffer.AsSpan(BlockNumberSize..)).Length;
+                ReadOnlySpan<int> blockNumbers = MemoryMarshal.Cast<byte, int>(data);
+                WriteCompressionMarker(buffer, blockNumbers.Length);
+                int compressedLen = (int)algorithm.Compress(blockNumbers, (nuint)blockNumbers.Length, buffer.AsSpan(BlockNumberSize..));
                 return buffer[..(BlockNumberSize + compressedLen)];
             }
             finally
@@ -965,7 +961,7 @@ namespace Nethermind.Db.LogIndex
             }
         }
 
-        private static void DecompressDbValue(CompressionAlgorithm algorithm, ReadOnlySpan<byte> data, Span<int> buffer)
+        internal static void DecompressDbValue(CompressionAlgorithm algorithm, ReadOnlySpan<byte> data, Span<int> buffer)
         {
             if (!IsCompressed(data, out int len))
                 throw new ValidationException("Data is not compressed");
