@@ -74,15 +74,23 @@ public class LeanProofVerifierWiringTests
         await chain.AddBlock();
     }
 
+    // An EIP-8437 mode-2 prover folds its leaves through the node's verifier, the production decorator: they reach the backend
+    // whole, never dropped, and uncached.
     [Test]
-    public void Production_decorator_refuses_batch_leaves_instead_of_dropping_them()
+    public void Production_decorator_forwards_batch_leaves_to_the_backend()
     {
         FakeLeanProofVerifier backend = new(true);
         AggregationInput input = new() { BatchLeaves = [new(default, [ValueKeccak.Compute("claim")], [new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("claim"), default)], new byte[] { 1 })] };
+        ProductionProofCache cache = new(backend);
 
-        Assert.That(() => new ProductionProofCache(backend).ProveRecursiveStark(default, Eip8288Constants.AggregatedVk, input),
-            Throws.ArgumentException);
-        Assert.That(backend.ProofCalls, Is.Zero);
+        cache.ProveRecursiveStark(default, Eip8288Constants.BatchedAggregatedVk, input);
+        cache.ProveRecursiveStark(default, Eip8288Constants.BatchedAggregatedVk, input);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(backend.ProofCalls, Is.EqualTo(2));
+            Assert.That(backend.LastInput, Is.SameAs(input));
+        }
     }
 
     [Test]

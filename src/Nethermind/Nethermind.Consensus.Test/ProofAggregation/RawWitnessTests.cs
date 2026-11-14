@@ -136,7 +136,8 @@ public class RawWitnessTests
         FakeRecognized recognized = new();
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         FakeLeanProofVerifier verifier = new(proofsValid);
-        ProofWrapperService service = new(pool, new TestSingleReleaseSpecProvider(spec ?? Batched), finder, store, verifier,
+        // As the node registers it: the backend behind the production decorator.
+        ProofWrapperService service = new(pool, new TestSingleReleaseSpecProvider(spec ?? Batched), finder, store, new ProductionProofCache(verifier),
             rawWitnesses: raw, recognizedPrograms: recognized);
         List<byte[]> relayed = [];
         service.WrapperValidated += (encoded, _) => relayed.Add(encoded);
@@ -548,7 +549,7 @@ public class RawWitnessTests
         object peer = new();
         node.Raw.TryAdd([1], ValueKeccak.Compute("a"), RawWrapper(new() { [shared] = first }, a), verifier, peer, peer);
         node.Raw.TryAdd([2], ValueKeccak.Compute("bc"), RawWrapper(new() { [own] = second }, b, c), verifier, peer, peer);
-        using RawWitnessProver prover = new(node.Service, node.Raw, node.Recognized, node.Verifier,
+        using RawWitnessProver prover = new(node.Service, node.Raw, node.Recognized, new ProductionProofCache(node.Verifier),
             new TxPoolConfig { RawWitnessMaxClaimsPerLeaf = 2 }, LimboLogs.Instance);
 
         ProofWrapperAcceptance? result = await prover.ProveOnceAsync();
@@ -693,7 +694,7 @@ public class RawWitnessTests
         byte[] wrapper = Encode(RawWrapper(new() { [raw] = signature }, Transaction(0, raw)));
         if (local) await node.Service.AcceptDetailedAsync(wrapper);
         else await node.Service.AcceptOwnedDetailedAsync(wrapper, source: peer, identity: peer);
-        using RawWitnessProver prover = new(node.Service, node.Raw, node.Recognized, node.Verifier, new TxPoolConfig(), LimboLogs.Instance);
+        using RawWitnessProver prover = new(node.Service, node.Raw, node.Recognized, new ProductionProofCache(node.Verifier), new TxPoolConfig(), LimboLogs.Instance);
 
         ProofWrapperAcceptance? result = await prover.ProveOnceAsync();
 
@@ -714,7 +715,7 @@ public class RawWitnessTests
         Transaction a = Transaction(0, firstDep, ordinary), b = Transaction(1, secondDep);
         await node.Service.AcceptOwnedDetailedAsync(Encode(RawWrapper(new() { [firstDep] = first }, a)));
         await node.Service.AcceptOwnedDetailedAsync(Encode(RawWrapper(new() { [secondDep] = second }, b)));
-        using RawWitnessProver prover = new(node.Service, node.Raw, node.Recognized, node.Verifier,
+        using RawWitnessProver prover = new(node.Service, node.Raw, node.Recognized, new ProductionProofCache(node.Verifier),
             new TxPoolConfig { RawWitnessMaxClaimsPerLeaf = maxClaims }, LimboLogs.Instance);
 
         ProofWrapperAcceptance? result = await prover.ProveOnceAsync();
@@ -743,7 +744,7 @@ public class RawWitnessTests
         FrameDependency raw = RawDependency(signature);
 
         ProofWrapperAcceptance admission = await node.Service.AcceptOwnedDetailedAsync(Encode(RawWrapper(new() { [raw] = signature }, Transaction(0, raw))));
-        using RawWitnessProver prover = new(node.Service, node.Raw, node.Recognized, node.Verifier, new TxPoolConfig(), LimboLogs.Instance);
+        using RawWitnessProver prover = new(node.Service, node.Raw, node.Recognized, new ProductionProofCache(node.Verifier), new TxPoolConfig(), LimboLogs.Instance);
 
         using (Assert.EnterMultipleScope())
         {

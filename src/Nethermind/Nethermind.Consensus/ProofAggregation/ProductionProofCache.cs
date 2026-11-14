@@ -153,10 +153,10 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
         cancellationToken.ThrowIfCancellationRequested();
         ValueHash256 statement = depsHash;
         ArgumentNullException.ThrowIfNull(input);
+        // Batch leaves come only from their owner's prover (an EIP-8437 mode-2 prover), whose one-off folds are not worth caching.
+        if (input.BatchLeaves.Count != 0) return verifier.ProveRecursiveStark(in depsHash, aggregatedVk, input);
         if (input.Deps.Count != input.Witnesses.Count || input.Deps.Count > Eip8288Constants.MaxProofDependencies
-            || input.Discards.Count > Eip8288Constants.MaxProofDependencies || input.RecursiveProofs.Count > Eip8288Constants.MaxProofDependencies
-            // A leaf reaches the network only folded into a recursive proof (ethereum/EIPs#12664), so none reaches this cache.
-            || input.BatchLeaves.Count != 0)
+            || input.Discards.Count > Eip8288Constants.MaxProofDependencies || input.RecursiveProofs.Count > Eip8288Constants.MaxProofDependencies)
             throw new ArgumentException("Invalid aggregation input shape.", nameof(input));
         foreach (RecursiveProofInput parent in input.RecursiveProofs)
             if (parent.InnerDeps is null || parent.InnerDeps.Count > Eip8288Constants.MaxProofDependencies)
