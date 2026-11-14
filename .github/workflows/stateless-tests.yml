@@ -102,6 +102,8 @@ jobs:
         # Skipped wherever OIDC is unavailable (forks, Dependabot, callers without
         # id-token: write); those runs pull anonymously as before.
         if: steps.dockerhub.outputs.available == 'true'
+        # A failed login falls back to anonymous pulls instead of failing the job
+        continue-on-error: true
         uses: docker/login-action@v4
         env:
           DOCKERHUB_OIDC_CONNECTIONID: ${{ vars.DOCKERHUB_READ_OIDC_CONNECTIONID }}
@@ -218,6 +220,8 @@ jobs:
         # Skipped wherever OIDC is unavailable (forks, Dependabot, callers without
         # id-token: write); those runs pull anonymously as before.
         if: steps.dockerhub.outputs.available == 'true'
+        # A failed login falls back to anonymous pulls instead of failing the job
+        continue-on-error: true
         uses: docker/login-action@v4
         env:
           DOCKERHUB_OIDC_CONNECTIONID: ${{ vars.DOCKERHUB_READ_OIDC_CONNECTIONID }}

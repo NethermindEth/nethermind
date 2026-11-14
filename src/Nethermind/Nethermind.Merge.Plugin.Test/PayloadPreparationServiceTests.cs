@@ -265,6 +265,51 @@ public class PayloadPreparationServiceTests
         }
     }
 
+    [TestCase(0, 10000)]
+    [TestCase(1, 100)]
+    [CancelAfter(30000)]
+    public async Task Improvement_rebuilds_without_new_transactions_once_the_tx_pool_has_processed_the_parent(int timeoutsBeforeCatchUp, int improvementDelayMs)
+    {
+        ITxPool txPool = Substitute.For<ITxPool>();
+        EventHandler<Block>? headChanged = null;
+        txPool.TxPoolHeadChanged += Arg.Do<EventHandler<Block>>(handler => headChanged = handler);
+        void CatchUp()
+        {
+            headChanged!(txPool, Build.A.Block.WithNumber(5).TestObject);
+            headChanged(txPool, Build.A.Block.WithHeader(ParentHeader).TestObject);
+        }
+
+        // The service reads the counter once per build and once after each improvement delay times out.
+        // No transaction is ever added, so without the fix the improvement loop never rebuilds.
+        int counterReads = 0;
+        txPool.PendingTransactionsAdded.Returns(_ =>
+        {
+            if (Interlocked.Increment(ref counterReads) == 1 + timeoutsBeforeCatchUp && timeoutsBeforeCatchUp > 0) CatchUp();
+            return 0L;
+        });
+
+        RecordingBlockImprovementContextFactory factory = new();
+        TaskCompletionSource firstBuild = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<int> rebuild = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        factory.OnContextCreated = () =>
+        {
+            if (factory.Contexts.Count == 1) firstBuild.TrySetResult();
+            else rebuild.TrySetResult(Volatile.Read(ref counterReads));
+        };
+        using TestPayloadPreparationService service = new(Substitute.For<IBlockProducer>(), txPool, factory,
+            Substitute.For<ITimerFactory>(), LimboLogs.Instance, TimePerSlot, TimeSpan.FromMilliseconds(improvementDelayMs));
+
+        service.StartPreparingPayload(ParentHeader, Attributes);
+        if (timeoutsBeforeCatchUp == 0)
+        {
+            await firstBuild.Task.WaitAsync(WaitTimeout);
+            CatchUp();
+        }
+
+        int readsBeforeRebuild = await rebuild.Task.WaitAsync(WaitTimeout);
+        Assert.That(readsBeforeRebuild, Is.EqualTo(2 + timeoutsBeforeCatchUp), "improvement delays timed out before the rebuild");
+    }
+
     private static (MockBlockImprovementContext Context, SharedCancellationTokenSource Cts) CreateRound(DateTimeOffset startDateTime, Action? onCancelling = null)
     {
         SharedCancellationTokenSource cts = new(new CancellationTokenSource());
