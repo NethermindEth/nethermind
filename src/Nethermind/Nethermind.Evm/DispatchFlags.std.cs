@@ -28,6 +28,7 @@ internal static partial class DispatchFlags
     /// <remarks>See <c>IOpcodeBody.HasUntracedFastPath</c> and <c>FallbackHandlersOffset</c>.</remarks>
     public static bool UntracedFastPaths => true;
 
+    /// <summary>Whether EXP builds the result of a power-of-two base as one bit.</summary>
     public const bool PowerOfTwoExp = true;
 
     /// <summary>Whether the coming transaction can be cancelled part-way through.</summary>
