@@ -561,6 +561,69 @@ public class RawWitnessTests
         }
     }
 
+    // Another origin's wrapper for a held transaction is held too, though not relayed, so removing the first holder (front-run,
+    // then evicted or expired) never drops the transaction's raw witness.
+    [Test]
+    public async Task Removing_one_holder_leaves_another_origins_wrapper_for_the_same_transaction()
+    {
+        Node node = CreateNode();
+        RawSignature signature = Signature(1);
+        FrameDependency raw = RawDependency(signature);
+        Transaction transaction = Transaction(0, raw);
+        byte[] fromA = Encode(RawWrapper(new() { [raw] = signature }, transaction));
+        byte[] fromB = Encode(RawWrapper(new() { [raw] = signature with { PublicKey = [9, 9] } }, transaction));
+        object a = new(), b = new();
+
+        await node.Service.AcceptOwnedDetailedAsync(fromA, source: a, identity: a);
+        ProofWrapperAcceptance second = await node.Service.AcceptOwnedDetailedAsync(fromB, source: b, identity: b);
+        node.Raw.Remove(ValueKeccak.Compute(fromA));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(second.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted), second.Result.Error);
+            Assert.That(node.Relayed, Has.Count.EqualTo(1), "the second wrapper adds no new transaction to relay");
+            Assert.That(node.Raw.Holds(transaction.Hash!.ValueHash256), Is.True);
+            Assert.That(node.Raw.Contains(ValueKeccak.Compute(fromB)), Is.True);
+        }
+    }
+
+    // A wrapper beyond mode 0's dependency limits is invalid before any native check or charge.
+    [Test]
+    public async Task Over_limit_wrapper_is_invalid_before_charging()
+    {
+        Node node = CreateNode();
+        Dictionary<FrameDependency, RawSignature> raws = [];
+        for (byte i = 1; i <= Eip8288Constants.MaxLeanStarkDepsPerWrapper + 1; i++) raws[RawDependency(Signature(i))] = Signature(i);
+        Transaction[] transactions = [.. raws.Keys.Select((d, i) => Transaction((ulong)i, d))];
+        object peer = new();
+
+        ProofWrapperAcceptance result = await node.Service.AcceptOwnedDetailedAsync(Encode(RawWrapper(raws, transactions)), source: peer, identity: peer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.Error, Is.EqualTo(MempoolWrapperValidator.TooManyStarkDeps));
+            Assert.That(node.Recognized.Verifications, Is.Zero);
+            Assert.That(node.Raw.TryTakeVerifications(peer, (int)RawWitnessPool.MaxVerificationsPerSourcePerSecond), Is.True, "nothing was charged");
+        }
+    }
+
+    // A charge is clamped to the largest admissible wrapper's cost, and only the source's own allowance goes into debt.
+    [Test]
+    public void Oversized_charges_are_clamped_and_never_indebt_the_shared_budget()
+    {
+        Node node = CreateNode();
+        object a = new(), b = new();
+        int rest = (int)RawWitnessPool.MaxVerificationsPerSecond - RawWitnessPool.MaxCharge;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.Raw.TryTakeVerifications(a, 1_000), Is.True, "a full allowance takes the clamped charge");
+            Assert.That(node.Raw.TryTakeVerifications(b, rest + 1), Is.False, "the shared budget lost only the clamped charge, without debt");
+            Assert.That(node.Raw.TryTakeVerifications(b, Math.Min(rest, (int)RawWitnessPool.MaxVerificationsPerSourcePerSecond)), Is.True);
+            Assert.That(node.Raw.TryTakeVerifications(a, 1), Is.False, "a's own allowance is in debt");
+        }
+    }
+
     // EIP-8437: raw candidates are revalidated and evicted under ordinary pool rules, including expiry and nonce changes.
     [TestCase("stale nonce")]
     [TestCase("max age")]

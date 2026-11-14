@@ -34,8 +34,12 @@ public sealed class RawWitnessPool : IDisposable
     public const long MaxLocalBytes = MaxBytes / 4;
     /// <summary>Verifications per second, in total and per source: native raw-signature checks, ordinary witnesses and
     /// validation-prefix simulations; each refills to one second's worth.</summary>
+    /// <remarks>A charge is clamped to <see cref="MaxCharge"/>. Only a source's own allowance may go into debt, so one large wrapper
+    /// takes at most its clamped cost from the shared one.</remarks>
     public const double MaxVerificationsPerSecond = 64;
     public const double MaxVerificationsPerSourcePerSecond = 16;
+    /// <summary>The most one wrapper is charged: mode 0's dependency limits, each a witness and at most one transaction to simulate.</summary>
+    public const int MaxCharge = 2 * (Eip8288Constants.MaxLeanSigDepsPerWrapper + Eip8288Constants.MaxLeanStarkDepsPerWrapper);
     /// <summary>Raw wrappers validated at once; more are declined until one finishes.</summary>
     public const int MaxConcurrentValidations = 4;
     /// <summary>Sources whose allowances are remembered; the least recently charged is forgotten first.</summary>
@@ -59,7 +63,7 @@ public sealed class RawWitnessPool : IDisposable
         public MempoolWrapper Decoded { get; } = decoded;
 
         /// <summary>The verifier the wrapper was validated under.</summary>
-        public Eip8288Verifier Verifier { get; internal set; } = verifier;
+        public Eip8288Verifier Verifier { get; } = verifier;
         public object? Source { get; } = source;
         internal object Identity { get; } = identity;
         public bool Local { get; } = local;
@@ -69,20 +73,20 @@ public sealed class RawWitnessPool : IDisposable
         public bool Attempted { get; set; }
     }
 
-    /// <summary>A refilling allowance; a charge above one second's worth is taken from a full allowance, leaving it in debt, so
-    /// every admissible wrapper can be charged however large.</summary>
+    /// <summary>A refilling allowance. With debt allowed, a charge above one second's worth is taken from a full allowance, leaving it
+    /// in debt; without, a charge must fit what is available.</summary>
     private sealed class Allowance(double perSecond, TimeProvider clock)
     {
         private readonly double _rate = perSecond;
         private double _available = perSecond;
         private long _updated = clock.GetTimestamp();
 
-        public bool TryTake(double amount)
+        public bool TryTake(double amount, bool allowDebt)
         {
             long now = clock.GetTimestamp();
             _available = Math.Min(_rate, _available + clock.GetElapsedTime(_updated, now).TotalSeconds * _rate);
             _updated = now;
-            if (Math.Min(amount, _rate) > _available) return false;
+            if ((allowDebt ? Math.Min(amount, _rate) : amount) > _available) return false;
             _available -= amount;
             return true;
         }
@@ -148,8 +152,9 @@ public sealed class RawWitnessPool : IDisposable
         lock (_gate)
         {
             Allowance perSource = SourceAllowance(identity ?? LocalSource);
-            if (!_verifications.TryTake(count)) return false;
-            if (perSource.TryTake(count)) return true;
+            count = Math.Min(count, MaxCharge);
+            if (!_verifications.TryTake(count, allowDebt: false)) return false;
+            if (perSource.TryTake(count, allowDebt: true)) return true;
             _verifications.Refund(count);
             return false;
         }
@@ -329,19 +334,7 @@ public sealed class RawWitnessPool : IDisposable
         lock (_gate) return RemoveLocked(wrapper);
     }
 
-    /// <summary>Drops every held wrapper listing one of <paramref name="transactions"/>.</summary>
-    public int RemoveListing(IEnumerable<ValueHash256> transactions)
-    {
-        int removed = 0;
-        lock (_gate)
-            foreach (ValueHash256 transaction in transactions)
-                if (_byTransaction.TryGetValue(transaction, out List<ValueHash256>? holders))
-                    foreach (ValueHash256 wrapper in holders.ToArray())
-                        if (RemoveLocked(wrapper)) removed++;
-        return removed;
-    }
-
-    /// <summary>Keeps the held wrappers <paramref name="keep"/> accepts, for example on a verifier change.</summary>
+    /// <summary>Keeps the held wrappers <paramref name="keep"/> accepts.</summary>
     public int Retain(Func<Entry, bool> keep)
     {
         List<Entry> entries = Snapshot();
