@@ -349,7 +349,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         // Test raw account operations
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
-            writer.SetAccountRaw(addrHash, acc);
+            writer.SetAccountRaw(addrHash, acc.ToStruct());
         }
 
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())

@@ -207,7 +207,8 @@ public sealed class TrieReassembler(IPersistence persistence, ILogManager logMan
         TrieNode node,
         ReadOnlySpan<StorageRootRewrite> storageRootRewrites)
     {
-        Account oldAccount = _accountDecoder.Decode(node.Value.AsSpan()) ?? throw new InvalidOperationException($"Invalid account leaf at {path}");
+        if (!_accountDecoder.TryDecodeStruct(node.Value.AsSpan(), out AccountStruct oldAccount))
+            throw new InvalidOperationException($"Invalid account leaf at {path}");
 
         TreePath fullPath = path.Append(node.Key);
 
@@ -225,7 +226,7 @@ public sealed class TrieReassembler(IPersistence persistence, ILogManager logMan
         if (newStorageRoot is null)
             return node;
 
-        Account newAccount = oldAccount.WithChangedStorageRoot(newStorageRoot);
+        AccountStruct newAccount = new(oldAccount.Nonce, oldAccount.Balance, newStorageRoot, oldAccount.CodeHash);
         batch.SetAccountRaw(fullPath.Path, newAccount);
 
         return TrieNodeFactory.CreateLeaf(node.Key!, _accountDecoder.Encode(newAccount));

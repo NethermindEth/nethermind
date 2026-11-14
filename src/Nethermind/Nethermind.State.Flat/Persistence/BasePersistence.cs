@@ -551,7 +551,7 @@ public static class BasePersistence
         /// <summary>Writes a slot whose value is already the trie-leaf RLP byte string (<c>RLP(stripped)</c>).</summary>
         public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue);
 
-        public void SetAccountRaw(in ValueHash256 addrHash, Account account);
+        public void SetAccountRaw(in ValueHash256 addrHash, in AccountStruct account);
 
         public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath);
 
@@ -619,9 +619,13 @@ public static class BasePersistence
         public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) =>
             _flatWriteBatch.SetStorageEncoded(addrHash, slotHash, rlpValue);
 
-        public void SetAccountRaw(in ValueHash256 addrHash, Account account)
+        [SkipLocalsInit]
+        public void SetAccountRaw(in ValueHash256 addrHash, in AccountStruct account)
         {
-            using ArrayPoolSpan<byte> rlp = _accountDecoder.EncodeToArrayPoolSpan(account);
+            int contentLength = _accountDecoder.GetContentLength(account);
+            Span<byte> rlp = stackalloc byte[Rlp.LengthOfSequence(contentLength)];
+            RlpWriter writer = RlpWriter.ContentWriter(rlp);
+            _accountDecoder.Encode(account, ref writer, contentLength);
             _flatWriteBatch.SetAccount(addrHash, rlp);
         }
 
@@ -972,7 +976,7 @@ public static class BasePersistence
         public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) =>
             _flatWriter.SetStorageRawEncoded(addrHash, slotHash, rlpValue);
 
-        public void SetAccountRaw(in ValueHash256 addrHash, Account account) =>
+        public void SetAccountRaw(in ValueHash256 addrHash, in AccountStruct account) =>
             _flatWriter.SetAccountRaw(addrHash, account);
 
         public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) =>

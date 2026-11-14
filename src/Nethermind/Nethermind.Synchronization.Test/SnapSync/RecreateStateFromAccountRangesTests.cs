@@ -99,12 +99,12 @@ public class RecreateStateFromAccountRangesTests
 
         tree.RootRef = nodes[0];
 
-        tree.Set(TestItem.Tree.AccountsWithPaths[0].Path, TestItem.Tree.AccountsWithPaths[0].Account);
-        tree.Set(TestItem.Tree.AccountsWithPaths[1].Path, TestItem.Tree.AccountsWithPaths[1].Account);
-        tree.Set(TestItem.Tree.AccountsWithPaths[2].Path, TestItem.Tree.AccountsWithPaths[2].Account);
-        tree.Set(TestItem.Tree.AccountsWithPaths[3].Path, TestItem.Tree.AccountsWithPaths[3].Account);
-        tree.Set(TestItem.Tree.AccountsWithPaths[4].Path, TestItem.Tree.AccountsWithPaths[4].Account);
-        tree.Set(TestItem.Tree.AccountsWithPaths[5].Path, TestItem.Tree.AccountsWithPaths[5].Account);
+        tree.Set(TestItem.Tree.AccountsWithPaths[0].Path, TestItem.Tree.AccountsWithPaths[0].Account.ToAccount());
+        tree.Set(TestItem.Tree.AccountsWithPaths[1].Path, TestItem.Tree.AccountsWithPaths[1].Account.ToAccount());
+        tree.Set(TestItem.Tree.AccountsWithPaths[2].Path, TestItem.Tree.AccountsWithPaths[2].Account.ToAccount());
+        tree.Set(TestItem.Tree.AccountsWithPaths[3].Path, TestItem.Tree.AccountsWithPaths[3].Account.ToAccount());
+        tree.Set(TestItem.Tree.AccountsWithPaths[4].Path, TestItem.Tree.AccountsWithPaths[4].Account.ToAccount());
+        tree.Set(TestItem.Tree.AccountsWithPaths[5].Path, TestItem.Tree.AccountsWithPaths[5].Account.ToAccount());
 
         tree.Commit();
 
@@ -400,13 +400,13 @@ public class RecreateStateFromAccountRangesTests
     {
         StateTree tree = new(new TestRawTrieStore(new MemDb()), LimboLogs.Instance);
 
-        PathWithAccount ac1 = new(Keccak.Zero, Build.An.Account.WithBalance(1).TestObject);
-        PathWithAccount ac2 = new(Keccak.Compute("anything"), Build.An.Account.WithBalance(2).TestObject);
-        PathWithAccount ac3 = new(Keccak.MaxValue, Build.An.Account.WithBalance(2).TestObject);
+        PathWithAccount ac1 = new(Keccak.Zero, Build.An.Account.WithBalance(1).TestObject.ToStruct());
+        PathWithAccount ac2 = new(Keccak.Compute("anything"), Build.An.Account.WithBalance(2).TestObject.ToStruct());
+        PathWithAccount ac3 = new(Keccak.MaxValue, Build.An.Account.WithBalance(2).TestObject.ToStruct());
 
-        tree.Set(ac1.Path, ac1.Account);
-        tree.Set(ac2.Path, ac2.Account);
-        tree.Set(ac3.Path, ac3.Account);
+        tree.Set(ac1.Path, ac1.Account.ToAccount());
+        tree.Set(ac2.Path, ac2.Account.ToAccount());
+        tree.Set(ac3.Path, ac3.Account.ToAccount());
         tree.Commit();
 
         Hash256 rootHash = tree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
@@ -462,7 +462,7 @@ public class RecreateStateFromAccountRangesTests
         {
             Hash256 path = Keccak.Compute(i.ToBigEndianByteArray());
             Account acc = Build.An.Account.WithBalance((UInt256)i).TestObject;
-            allAccounts.Add(new PathWithAccount(path, acc));
+            allAccounts.Add(new PathWithAccount(path, acc.ToStruct()));
         }
         allAccounts.Sort((a, b) => a.Path.CompareTo(b.Path));
 
@@ -509,7 +509,7 @@ public class RecreateStateFromAccountRangesTests
         {
             Hash256 path = Keccak.Compute(i.ToBigEndianByteArray());
             Account acc = Build.An.Account.WithBalance((UInt256)i).TestObject;
-            allAccounts.Add(new PathWithAccount(path, acc));
+            allAccounts.Add(new PathWithAccount(path, acc.ToStruct()));
         }
         allAccounts.Sort((a, b) => a.Path.CompareTo(b.Path));
 
@@ -544,7 +544,7 @@ public class RecreateStateFromAccountRangesTests
         {
             Hash256 path = Keccak.Compute(i.ToBigEndianByteArray());
             Account acc = Build.An.Account.WithBalance((UInt256)i).TestObject;
-            allAccounts.Add(new PathWithAccount(path, acc));
+            allAccounts.Add(new PathWithAccount(path, acc.ToStruct()));
         }
         allAccounts.Sort((a, b) => a.Path.CompareTo(b.Path));
 

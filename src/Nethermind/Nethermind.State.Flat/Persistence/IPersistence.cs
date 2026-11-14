@@ -113,7 +113,7 @@ public interface IPersistence
         /// unwrapped to its stripped bytes.
         /// </summary>
         void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue);
-        void SetAccountRaw(in ValueHash256 addrHash, Account account);
+        void SetAccountRaw(in ValueHash256 addrHash, in AccountStruct account);
 
         void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath);
         void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath);

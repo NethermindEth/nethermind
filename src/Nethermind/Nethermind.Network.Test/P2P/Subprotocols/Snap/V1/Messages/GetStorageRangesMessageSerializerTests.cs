@@ -29,7 +29,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
                 StorageRange = new()
                 {
                     RootHash = TestItem.KeccakA,
-                    Accounts = TestItem.Keccaks.Select(static k => new PathWithAccount(k, null)).ToPooledList(TestItem.Keccaks.Length),
+                    Accounts = TestItem.Keccaks.Select(static k => new PathWithAccount(k, default)).ToPooledList(TestItem.Keccaks.Length),
                     StartingHash = SnapSerializerGoldens.RangeStart,
                     LimitHash = SnapSerializerGoldens.RangeLimit
                 },
@@ -130,7 +130,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
                 StorageRange = new()
                 {
                     RootHash = TestItem.KeccakA,
-                    Accounts = Enumerable.Repeat(new PathWithAccount(TestItem.KeccakA, null), SnapMessageLimits.MaxRequestAccounts + 1).ToPooledList(SnapMessageLimits.MaxRequestAccounts + 1),
+                    Accounts = Enumerable.Repeat(new PathWithAccount(TestItem.KeccakA, default), SnapMessageLimits.MaxRequestAccounts + 1).ToPooledList(SnapMessageLimits.MaxRequestAccounts + 1),
                     StartingHash = TestItem.KeccakB,
                     LimitHash = TestItem.KeccakC
                 },

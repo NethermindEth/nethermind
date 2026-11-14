@@ -69,7 +69,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             AccountRangeMessage msg = new()
             {
                 RequestId = 1,
-                PathsWithAccounts = new ArrayPoolList<PathWithAccount>(2) { new(TestItem.KeccakA, acc01), new(TestItem.KeccakB, acc02) },
+                PathsWithAccounts = new ArrayPoolList<PathWithAccount>(2) { new(TestItem.KeccakA, acc01.ToStruct()), new(TestItem.KeccakB, acc02.ToStruct()) },
                 Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(2) { TestItem.RandomDataA, TestItem.RandomDataB })
             };
 
@@ -91,7 +91,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             AccountRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
-                PathsWithAccounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.KeccakB, acc01) },
+                PathsWithAccounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.KeccakB, acc01.ToStruct()) },
                 Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(2) { TestItem.RandomDataA, TestItem.RandomDataB })
             };
 
@@ -125,14 +125,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             }
         }
 
-        [Test]
-        public void Deserialize_RejectsAccountEntryCarryingNoAccount()
+        // A sequence header declaring one content byte and carrying none. AccountDecoder yields no
+        // account without reading past that header, so the entry's declared length is consumed
+        // exactly and its checkpoint still passes.
+        [TestCase("c1")]
+        // A canonical all-zero account decodes, but equals the missing-account sentinel (AccountStruct.IsNull).
+        [TestCase("f8448080a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000000")]
+        public void Deserialize_RejectsAccountEntryCarryingNoAccount(string accountHex)
         {
-            // A sequence header declaring one content byte and carrying none. AccountDecoder yields no
-            // account without reading past that header, so the entry's declared length is consumed
-            // exactly and its checkpoint still passes.
-            byte[] accountCarryingNothing = [0xc1];
-            byte[][] entries = [RlpTestHelper.EncodeSequence(Rlp.Encode(TestItem.KeccakA), accountCarryingNothing)];
+            byte[][] entries = [RlpTestHelper.EncodeSequence(Rlp.Encode(TestItem.KeccakA), Bytes.FromHexString(accountHex))];
             byte[] serialized = RlpTestHelper.EncodeSequence(Rlp.Encode(1), RlpTestHelper.EncodeSequence(entries), RlpTestHelper.OfEmptyList);
 
             AccountRangeMessageSerializer serializer = new();
@@ -152,7 +153,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             AccountRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
-                PathsWithAccounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.KeccakB, acc01) },
+                PathsWithAccounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.KeccakB, acc01.ToStruct()) },
                 Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(2) { TestItem.RandomDataA, TestItem.RandomDataB })
             };
 
