@@ -51,6 +51,7 @@ public sealed class FrameTxValidationTracer(
     // and consumed in SetOperationStack, as the operands aren't available any earlier.
     private int _targetStackIndex = -1;
     private int _valueStackIndex = -1;
+    private bool _hashesTarget;
 
     /// <summary>Whether the executing frame is the prefix-opening deploy frame, the only one whose
     /// carve-outs let it write state.</summary>
@@ -152,6 +153,7 @@ public sealed class FrameTxValidationTracer(
     {
         _targetStackIndex = -1;
         _valueStackIndex = -1;
+        _hashesTarget = false;
         SettleCreate();
         if (Violated) return;
 
@@ -193,6 +195,7 @@ public sealed class FrameTxValidationTracer(
             case Instruction.EXTCODEHASH:
             case Instruction.EXTCODECOPY:
                 _targetStackIndex = 0; // [address, ...]
+                _hashesTarget = opcode == Instruction.EXTCODEHASH;
                 break;
             case Instruction.GASPRICE:
             case Instruction.BLOCKHASH:
@@ -246,8 +249,10 @@ public sealed class FrameTxValidationTracer(
     {
         int index = _targetStackIndex;
         int valueIndex = _valueStackIndex;
+        bool hashesTarget = _hashesTarget;
         _targetStackIndex = -1;
         _valueStackIndex = -1;
+        _hashesTarget = false;
         if (Violated) return;
 
         if (index >= 0)
@@ -256,7 +261,7 @@ public sealed class FrameTxValidationTracer(
             if (stack.Count <= index) return;
 
             Address target = stack.PeekAddress(index);
-            if (IsForbiddenCallTarget(target))
+            if (IsForbiddenCallTarget(target) || (hashesTarget && spec.IsPrecompile(target)))
             {
                 Violate($"CALL*/EXTCODE* to disallowed target {target} in validation prefix");
                 return;
