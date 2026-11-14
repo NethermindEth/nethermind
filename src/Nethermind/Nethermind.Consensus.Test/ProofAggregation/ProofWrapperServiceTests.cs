@@ -1710,6 +1710,37 @@ public class ProofWrapperServiceTests
         }
     }
 
+    // In the slot before batch pricing activates the pool still prices transactions at its head, so a wrapper's transactions are
+    // priced as it prices them; one priced for the target fork alone is a local failure, not the peer's.
+    [Test]
+    public async Task Transactions_are_priced_as_the_pool_prices_them_in_the_slot_before_batch_pricing([Values] bool pricedForTarget)
+    {
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
+        Transaction transaction = CreateTransaction(dependency, TestItem.KeccakA);
+        transaction.Frames![0] = new(FrameMode.DepVerify, FrameFlags.None, null, dependency.FrameCharge(pricedForTarget), UInt256.Zero,
+            Eip8288Dependencies.Serialize([dependency]));
+        transaction.Hash = transaction.CalculateHash();
+        CustomSpecProvider specs = new(((ForkActivation)0, Eip8288Prototype.Instance),
+            (new ForkActivation(0, 1_000), new OverridableReleaseSpec(Eip8288Prototype.Instance) { IsEipBatchedDependencyPricingEnabled = true }));
+        IBlockFinder finder = Substitute.For<IBlockFinder>();
+        Block head = HeadWithParent(finder, 10, 990);
+        finder.Head.Returns(head);
+        ITxPool pool = Substitute.For<ITxPool>();
+        pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
+        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), new FakeLeanProofVerifier(true),
+            pool: pool, specProvider: specs, finder: finder);
+
+        ProofWrapperAcceptance accepted = await service.AcceptDetailedAsync(DirectWrapper(transaction));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(service.TargetSpec!.IsEipBatchedDependencyPricingEnabled, Is.True);
+            Assert.That(accepted.Status, Is.EqualTo(pricedForTarget ? ProofWrapperAcceptanceStatus.LocalFailure : ProofWrapperAcceptanceStatus.Accepted),
+                accepted.Result.Error);
+            pool.Received(pricedForTarget ? 0 : 1).SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+        }
+    }
+
     // EIP-8288 target fork: the fork active at head.timestamp + L, with L = (head.timestamp - parent.timestamp) /
     // (head.slot_number - parent.slot_number) from the EIP-7843 slot numbers, so a missed slot or another slot length changes the
     // estimate and no configured slot length is used. When slot numbers do not increase the target fork is the head's fork, as
@@ -1782,7 +1813,7 @@ public class ProofWrapperServiceTests
     }
 
     private static ProofWrapperService CreateService(Transaction[] transactions, LeanProofStore store, ILeanProofVerifier verifier, IReleaseSpec? spec = null, ITxPool? pool = null,
-        IWrappedBlobTransactionAdmission? blobAdmission = null, Block? head = null)
+        IWrappedBlobTransactionAdmission? blobAdmission = null, Block? head = null, ISpecProvider? specProvider = null, IBlockFinder? finder = null)
     {
         pool ??= Substitute.For<ITxPool>();
         pool.GetPendingTransactions().Returns(transactions);
@@ -1796,9 +1827,12 @@ public class ProofWrapperServiceTests
         pool.GetPendingTransactionsBySender().Returns(_ => BySender(pendingPool.GetPendingTransactions()));
         pool.GetLatestPendingNonce(Arg.Any<Address>()).Returns(ulong.MaxValue);
         pool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>());
-        IBlockFinder finder = Substitute.For<IBlockFinder>();
-        finder.Head.Returns(head ?? Build.A.Block.TestObject);
-        return new(pool, new TestSingleReleaseSpecProvider(spec ?? Eip8288Prototype.Instance), finder, store, verifier, blobAdmission);
+        if (finder is null)
+        {
+            finder = Substitute.For<IBlockFinder>();
+            finder.Head.Returns(head ?? Build.A.Block.TestObject);
+        }
+        return new(pool, specProvider ?? new TestSingleReleaseSpecProvider(spec ?? Eip8288Prototype.Instance), finder, store, verifier, blobAdmission);
     }
 
     private static Dictionary<AddressAsKey, Transaction[]> BySender(Transaction[] transactions) =>
