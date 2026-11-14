@@ -1129,6 +1129,39 @@ public class Eip8288BlockProductionTests
         }
     }
 
+    // ethereum/EIPs#12664: a produced block commits to, and is proved against, the fork's dependency digest, scheme-inclusive with
+    // batched dependencies and EIP-8288's otherwise.
+    [Test]
+    public async Task Produced_block_commits_to_the_forks_dependency_digest([Values] bool batched)
+    {
+        CountingVerifier verifier = new();
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs, builder => builder.AddSingleton<ISpecProvider>(
+            new TestSingleReleaseSpecProvider(new Nethermind.Specs.Test.OverridableReleaseSpec(Eip8288Prototype.Instance)
+            {
+                IsEipBatchedDependencyPricingEnabled = batched
+            })));
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256);
+        proofs.AddVerified([dependency], [[1]], null);
+        Transaction transaction = CreateTransaction(chain, dependency, []);
+        Block? template = await chain.BlockProducer.BuildBlock(flags: IBlockProducer.Flags.EmptyBlock);
+        Assert.That(template, Is.Not.Null);
+        await using ScopedBlockProducerEnv environment = chain.Container.Resolve<IBlockProducerEnvFactory>().CreateTransient();
+
+        Block? processed = environment.ChainProcessor.Process(new Block(template!.Header, [transaction], [], template.Withdrawals),
+            ProcessingOptions.ProducingBlock, NullBlockTracer.Instance);
+
+        Assert.That(processed, Is.Not.Null);
+        ValueHash256 expected = Eip8288Dependencies.ComputeDepsHash([dependency], batched);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(processed!.Transactions, Is.EqualTo(new[] { transaction }));
+            Assert.That(processed.Header.RecursiveStark!.BlockDepsHash, Is.EqualTo(new Hash256(expected)));
+            Assert.That(processed.StarkProof![..32], Is.EqualTo(expected.ToByteArray()));
+            Assert.That(expected, batched ? Is.Not.EqualTo(Eip8288Dependencies.ComputeDepsHash([dependency])) : Is.EqualTo(Eip8288Dependencies.ComputeDepsHash([dependency])));
+        }
+    }
+
     // EIP-8288 Test Case 11: an inclusion-list proof may cover a superset of its list (a reused mempool wrapper proof); it is
     // merged into the block proof with the surplus discarded, and block_deps_hash covers exactly dependencies(block).
     [Test]

@@ -790,7 +790,7 @@ public static class FrameTxValidation
                              + signatureVerificationCost
                              + valueTransferCost
                              + keyedNonceAccessCost
-                             + (spec.IsEip8288Enabled ? Eip8288Dependencies.RecursiveStarkGas(transaction) : 0);
+                             + (spec.IsEip8288Enabled ? Eip8288Dependencies.RecursiveStarkGas(transaction, spec.IsEipBatchedDependencyPricingEnabled) : 0);
         ulong floorTokens = spec.IsEip7976Enabled ? dataLength * spec.GasCosts.TxDataNonZeroMultiplier : tokens;
         floorGas = spec.IsEip7623Enabled ? mandatoryGas + floorTokens * spec.GasCosts.TotalCostFloorPerToken : 0;
         intrinsicGas = mandatoryGas + tokens * GasCostOf.TxDataZero;

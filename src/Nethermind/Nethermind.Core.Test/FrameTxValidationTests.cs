@@ -691,6 +691,27 @@ public class FrameTxValidationTests
         }
     }
 
+    // ethereum/EIPs#12664: with batched dependencies on, each declaration pays RECURSIVE_PROOF_SHARE_GAS in intrinsic gas; off,
+    // EIP-8288's LEANSTARK_VERIFICATION_GAS.
+    [Test]
+    public void TryCalculateGasBudget_Eip8288_ProofSharePerDeclaration([Values] bool batched)
+    {
+        IReleaseSpec disabled = ReleaseSpecSubstitute.Create();
+        IReleaseSpec enabled = ReleaseSpecSubstitute.Create();
+        enabled.IsEip8288Enabled.Returns(true);
+        enabled.IsEipBatchedDependencyPricingEnabled.Returns(batched);
+        Transaction tx = CreateValidFrameTx(t => t.Frames = [SelfVerifyFrame(), Frame(),
+            DepFrame([Eip8288Constants.LeanStarkScheme, Eip8288Constants.LeanSphincsScheme, Eip8288Constants.LeanStarkScheme])]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, disabled, out ulong baseIntrinsic, out _, out _), Is.True);
+            Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, enabled, out ulong intrinsic, out _, out _), Is.True);
+            Assert.That(intrinsic - baseIntrinsic,
+                Is.EqualTo(3 * (batched ? Eip8288Constants.RecursiveProofShareGas : Eip8288Constants.LeanStarkVerificationGas)));
+        }
+    }
+
     [TestCase(new ulong[] { }, 0ul)]
     [TestCase(new ulong[] { 0 }, 12_100ul)]
     [TestCase(new ulong[] { 1 }, 12_100ul)]
@@ -816,6 +837,42 @@ public class FrameTxValidationTests
             static tx => tx.Frames = [DepFrame(Eip8288Constants.LeanStarkScheme, Eip8288Constants.LeanStarkScheme)],
             null);
     }
+
+    // ethereum/EIPs#12664 Test Case: nonzero scheme padding or an unsupported scheme is rejected with batched dependencies on as
+    // off; the frame charges stay EIP-8288's.
+    [TestCaseSource(nameof(BatchedDependencyFrameCases))]
+    public void IsWellFormed_BatchedDependencyFrames_ReturnsExpectedError(Action<Transaction> mutate, bool batchedEnabled, string? expectedError)
+    {
+        Transaction tx = CreateValidFrameTx(mutate);
+        bool wellFormed = FrameTxValidation.IsWellFormed(tx,
+            ReleaseSpecSubstitute.CreateFrame(assertEnabled: false, dependencyEnabled: true, batchedEnabled), out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wellFormed, Is.EqualTo(expectedError is null));
+            Assert.That(error, Is.EqualTo(expectedError));
+        }
+    }
+
+    private static IEnumerable<TestCaseData> BatchedDependencyFrameCases()
+    {
+        foreach (bool enabled in new[] { true, false })
+        {
+            yield return BatchedCase("LeanStark", enabled, static tx => tx.Frames = [DepFrame(Eip8288Constants.LeanStarkScheme)], null);
+            yield return BatchedCase("Mixed", enabled,
+                static tx => tx.Frames = [DepFrame(Eip8288Constants.LeanSphincsScheme, Eip8288Constants.LeanStarkScheme)], null);
+            yield return BatchedCase("Padding", enabled,
+                static tx => tx.Frames = [DepFrameRaw([Eip8288Constants.LeanStarkScheme], mutateData: static data => data[30] = 1)],
+                FrameTxValidation.DependencyPaddingNotZero);
+            yield return BatchedCase("UnsupportedScheme", enabled, static tx => tx.Frames = [DepFrame(0x12)], FrameTxValidation.InvalidDependencyScheme);
+            yield return BatchedCase("LeanStarkAtSphincsGas", enabled,
+                static tx => tx.Frames = [DepFrameRaw([Eip8288Constants.LeanStarkScheme], gasLimit: Eip8288Constants.LeanSphincsVerificationGas)],
+                FrameTxValidation.DependencyFrameGasMismatch);
+        }
+    }
+
+    private static TestCaseData BatchedCase(string name, bool enabled, Action<Transaction> mutate, string? expectedError) =>
+        new TestCaseData(mutate, enabled, expectedError).SetName($"IsWellFormed_BatchedDependencies_{name}_{(enabled ? "Enabled" : "Disabled")}");
 
     private static TestCaseData DepCase(string name, Action<Transaction> mutate, string? expectedError) =>
         new TestCaseData(mutate, expectedError).SetName($"IsWellFormed_Eip8288_{name}");

@@ -114,6 +114,7 @@ public static class InclusionListValidator
         }
 
         Dictionary<AddressAsKey, AccountStruct>? senderCache = null;
+        HashSet<FrameDependency>? blockDependencies = null;
         for (int i = 0; i < il.Length; i++)
         {
             if (included[i] || il[i].SupportsFrames && il[i].Hash is { } hash && ilByHash.TryGetValue(hash, out int first) && included[first]) continue;
@@ -123,12 +124,25 @@ public static class InclusionListValidator
             {
                 // EIP-8288 adds no omission grounds: no block dependency quota, local proving or wrapper limits.
                 if (!spec.IsEip8288Enabled || !CouldIncludeFrameTx(il[i], block, spec, txValidator)) continue;
+                if (spec.IsEipBatchedDependencyPricingEnabled && ExceedsBlockDependencies(il[i], block, ref blockDependencies)) continue;
                 if ((frameCanInclude ?? throw new InvalidOperationException("Frame inclusion lists require prefix simulation."))(il[i])) return false;
                 continue;
             }
             if (CouldIncludeTx(il[i], block, state, spec, txValidator, ref senderCache)) return false;
         }
         return true;
+    }
+
+    /// <summary>Whether adding <paramref name="tx"/>'s distinct dependencies to <paramref name="block"/>'s would exceed
+    /// <see cref="Eip8288Constants.MaxDepsPerBlock"/>, the one capacity ground ethereum/EIPs#12664 gives for omitting it.</summary>
+    /// <remarks>A transaction adding no distinct dependency is never excused.</remarks>
+    private static bool ExceedsBlockDependencies(Transaction tx, Block block, ref HashSet<FrameDependency>? blockDependencies)
+    {
+        blockDependencies ??= [.. Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue)];
+        int count = blockDependencies.Count;
+        foreach (FrameDependency dependency in Eip8288Dependencies.ForTransaction(tx, FrameTxSigHash.ComputeValue))
+            if (!blockDependencies.Contains(dependency)) count++;
+        return count > Eip8288Constants.MaxDepsPerBlock;
     }
 
     private static bool CouldIncludeFrameTx(Transaction tx, Block block, IReleaseSpec spec, ITxValidator validator)

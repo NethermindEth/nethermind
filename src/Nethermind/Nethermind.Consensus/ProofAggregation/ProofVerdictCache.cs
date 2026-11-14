@@ -66,10 +66,11 @@ public sealed class ProofVerdictCache
     /// dependency's scheme.</summary>
     public static bool VerifyDirect(ILeanProofVerifier verifier, in Eip8288Verifier forkVerifier, FrameDependency dependency, byte[] witness)
     {
+        ValueHash256 aggregatedVk = forkVerifier.AggregatedVk;
         Func<bool>? check = dependency.Scheme switch
         {
             Eip8288Constants.LeanSphincsScheme => () => verifier.VerifyLeanSphincs(dependency.DataHash, dependency.VerificationKey, witness),
-            Eip8288Constants.LeanStarkScheme => () => verifier.VerifyLeanStark(dependency.DataHash, dependency.VerificationKey, witness),
+            Eip8288Constants.LeanStarkScheme => () => verifier.VerifyLeanStark(dependency.DataHash, dependency.VerificationKey, witness, aggregatedVk.Bytes),
             _ => null
         };
         if (check is null) return false;

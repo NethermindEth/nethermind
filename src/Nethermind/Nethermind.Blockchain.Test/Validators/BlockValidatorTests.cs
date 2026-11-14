@@ -340,13 +340,99 @@ public class BlockValidatorTests
         return depTx;
     }
 
-    private static BlockValidator CreateEip8288Validator(ILeanProofVerifier verifier, bool enabled = true)
+    private static BlockValidator CreateEip8288Validator(ILeanProofVerifier verifier, bool enabled = true, bool batchPricing = false)
     {
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
         spec.IsEip8288Enabled.Returns(enabled);
+        spec.IsEipBatchedDependencyPricingEnabled.Returns(batchPricing);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
         return new BlockValidator(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance, verifier);
+    }
+
+    // ethereum/EIPs#12664: block_deps_hash and the block proof's statement are the scheme-inclusive digest with batched
+    // dependencies, EIP-8288's digest without; a block committing to the other fork's digest is rejected.
+    [TestCase(false, false, true)]
+    [TestCase(true, true, true)]
+    [TestCase(true, false, false)]
+    [TestCase(false, true, false)]
+    public void Eip8288_block_commitment_follows_the_forks_digest(bool batchPricing, bool batchedDigest, bool valid)
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        FrameDependency[] dependencies =
+        [
+            new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("message"), ValueKeccak.Compute("pk")),
+            new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("claim"), ValueKeccak.Compute("key")),
+        ];
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            SenderAddress = TestItem.AddressA,
+            Frames = [new TxFrame(FrameMode.DepVerify, 0, null, 0, UInt256.Zero, Eip8288Dependencies.Serialize(dependencies))],
+            FrameSignatures = [],
+        };
+        tx.Hash = tx.CalculateHash();
+        Block block = Build.A.Block.WithParent(parent).WithEncodedSize(Eip7934Constants.DefaultMaxRlpBlockSize).WithTransactions(tx).TestObject;
+        ValueHash256 depsHash = Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue, batchedDigest);
+        block.StarkProof = [1];
+        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), new Hash256(depsHash));
+
+        bool result = CreateEip8288Validator(new StatementLeanProofVerifier(depsHash), batchPricing: batchPricing)
+            .ValidateSuggestedBlock(block, parent, out string? error);
+
+        Assert.That(result, Is.EqualTo(valid), error);
+    }
+
+    // ethereum/EIPs#12664 Test Case: a block holding MAX_DEPS_PER_BLOCK distinct resolved dependencies is accepted if otherwise valid
+    // and one more is rejected, counting a repeated triple once and both schemes alike; without batch pricing the limit does not
+    // apply.
+    [TestCase(Eip8288Constants.MaxDepsPerBlock, true, true)]
+    [TestCase(Eip8288Constants.MaxDepsPerBlock + 1, true, false)]
+    [TestCase(Eip8288Constants.MaxDepsPerBlock + 1, false, true)]
+    public void Eip8288_block_dependency_limit_counts_distinct_dependencies(int distinct, bool batchPricing, bool valid)
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        FrameDependency[] dependencies = new FrameDependency[distinct + 1];
+        for (int i = 0; i < distinct - 1; i++)
+            dependencies[i] = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute(i.ToString()), default);
+        dependencies[distinct - 1] = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("claim"), ValueKeccak.Compute("key"));
+        dependencies[distinct] = dependencies[0];
+        Transaction[] transactions = [.. dependencies.Chunk(Eip8141Constants.MaxFrames * Eip8288Constants.MaxDependenciesPerFrame).Select(static (chunk, index) =>
+        {
+            Transaction tx = new()
+            {
+                Type = TxType.FrameTx,
+                SenderAddress = TestItem.AddressA,
+                Nonce = (ulong)index,
+                Frames = [.. chunk.Chunk(Eip8288Constants.MaxDependenciesPerFrame)
+                    .Select(static frame => new TxFrame(FrameMode.DepVerify, 0, null, 0, UInt256.Zero, Eip8288Dependencies.Serialize(frame)))],
+                FrameSignatures = [],
+            };
+            tx.Hash = tx.CalculateHash();
+            return tx;
+        })];
+        Block block = Build.A.Block.WithParent(parent).WithEncodedSize(Eip7934Constants.DefaultMaxRlpBlockSize).WithTransactions(transactions).TestObject;
+        block.StarkProof = [1];
+        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof),
+            new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue, batchPricing)));
+
+        bool result = CreateEip8288Validator(new FixedLeanProofVerifier(true), batchPricing: batchPricing).ValidateSuggestedBlock(block, parent, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue), Has.Count.EqualTo(distinct));
+            Assert.That(result, Is.EqualTo(valid), error);
+            if (!valid) Assert.That(error, Is.EqualTo(BlockErrorMessages.TooManyBlockDependencies(distinct)));
+        }
+    }
+
+    private sealed class StatementLeanProofVerifier(ValueHash256 accepted) : ILeanProofVerifier
+    {
+        public void EnsureAvailable() { }
+        public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => false;
+        public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => false;
+        public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof) => depsHash == accepted;
+        public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input) => [];
     }
 
     private sealed class FixedLeanProofVerifier(bool result) : ILeanProofVerifier

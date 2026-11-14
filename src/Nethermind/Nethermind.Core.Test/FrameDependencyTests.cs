@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -16,16 +17,62 @@ namespace Nethermind.Core.Test;
 public class FrameDependencyTests
 {
     [Test]
-    public void Child_serialization_requires_empty_proof_exactly_for_empty_dependencies([Values] bool emptyDependencies, [Values] bool emptyProof)
+    public void Child_serialization_requires_empty_proof_exactly_for_empty_dependencies([Values] bool emptyDependencies, [Values] bool emptyProof,
+        [Values] bool batchedGuest)
     {
         RecursiveProofInput child = new(emptyDependencies ? [] : [new FrameDependency(Eip8288Constants.LeanSphincsScheme, default, default)],
             emptyProof ? [] : [1]);
         AggregationInput input = new() { RecursiveProofs = [child] };
 
         if (emptyDependencies == emptyProof)
-            Assert.DoesNotThrow(() => NativeLeanProofVerifier.SerializeInput(input));
+            Assert.DoesNotThrow(() => NativeLeanProofVerifier.SerializeInput(input, batchedGuest));
         else
-            Assert.Throws<ArgumentException>(() => NativeLeanProofVerifier.SerializeInput(input));
+            Assert.Throws<ArgumentException>(() => NativeLeanProofVerifier.SerializeInput(input, batchedGuest));
+    }
+
+    // EIP-8288's guest keeps the ABI 12 input: 96-byte child and discard dependencies, up to 16 children and no batch leaves.
+    [TestCase(Eip8288Constants.BaseMaxRecursiveInputs, false, true)]
+    [TestCase(Eip8288Constants.BaseMaxRecursiveInputs + 1, false, false)]
+    [TestCase(Eip8288Constants.BaseMaxRecursiveInputs, true, false)]
+    public void Base_guest_input_keeps_its_bounds_and_encoding(int children, bool withBatchLeaf, bool accepted)
+    {
+        FrameDependency stark = new(Eip8288Constants.LeanStarkScheme, TestItem.KeccakC.ValueHash256, TestItem.KeccakD.ValueHash256);
+        AggregationInput input = new()
+        {
+            RecursiveProofs = [.. Enumerable.Repeat(new RecursiveProofInput([stark], new byte[3]), children)],
+            Discards = [stark],
+            BatchLeaves = withBatchLeaf ? [new(stark.VerificationKey, [stark.DataHash], [stark], new byte[5])] : [],
+        };
+
+        if (!accepted)
+        {
+            Assert.Throws<ArgumentException>(() => NativeLeanProofVerifier.SerializeInput(input, batchedGuest: false));
+            return;
+        }
+        // Counts, then per child its dependency, proof length and proof, then the discards.
+        const int triple = Eip8288Constants.DependencyTripleLength;
+        Assert.That(NativeLeanProofVerifier.SerializeInput(input, batchedGuest: false), Has.Length.EqualTo(12 + children * (8 + triple + 3) + triple));
+    }
+
+    // The size pre-check must count the encoding exactly, the batch guest's trailing leaves included.
+    [TestCase(false, false)]
+    [TestCase(true, false)]
+    [TestCase(true, true)]
+    public void Aggregation_input_size_matches_its_encoding(bool batchedGuest, bool withBatchLeaf)
+    {
+        FrameDependency sphincs = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256);
+        FrameDependency stark = new(Eip8288Constants.LeanStarkScheme, TestItem.KeccakC.ValueHash256, TestItem.KeccakD.ValueHash256);
+        FrameDependency claim = new(Eip8288Constants.LeanStarkScheme, TestItem.KeccakE.ValueHash256, TestItem.KeccakF.ValueHash256);
+        AggregationInput input = new()
+        {
+            Deps = [sphincs],
+            Witnesses = [new byte[7]],
+            RecursiveProofs = [new([sphincs, stark], new byte[11])],
+            Discards = [stark],
+            BatchLeaves = withBatchLeaf ? [new(TestItem.KeccakF.ValueHash256, [TestItem.KeccakE.ValueHash256], [claim], new byte[13])] : [],
+        };
+
+        Assert.That(RecursiveStarkAggregator.InputSize(input), Is.EqualTo(NativeLeanProofVerifier.SerializeInput(input, batchedGuest).Length));
     }
 
     [Test]
@@ -138,6 +185,40 @@ public class FrameDependencyTests
         Assert.That(Eip8288Dependencies.ComputeDepsHash([VectorB, second, VectorA]), Is.EqualTo(ValueKeccak.Compute(expected)));
     }
 
+    // ethereum/EIPs#12664: get_deps_hash over the canonical 96-byte triples, scheme word included; EIP-8288's split digest without
+    // the flag. Both hash an empty list to the empty string's digest.
+    [Test]
+    public void Batched_digest_hashes_canonical_triples_with_their_scheme_words()
+    {
+        FrameDependency stark = VectorDependency(Eip8288Constants.LeanStarkScheme, 0x05, 7);
+        FrameDependency[] deps = [stark, VectorB, VectorA, stark];
+        byte[] expected = [.. Eip8288Dependencies.Serialize([VectorA, VectorB]), .. Eip8288Dependencies.Serialize([stark])];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Eip8288Dependencies.ComputeDepsHash(deps, batchedEnabled: true), Is.EqualTo(ValueKeccak.Compute(expected)));
+            Assert.That(Eip8288Dependencies.ComputeDepsHash(deps, batchedEnabled: false), Is.EqualTo(Eip8288Dependencies.ComputeDepsHash(deps)));
+            Assert.That(Eip8288Dependencies.ComputeDepsHash([], batchedEnabled: true), Is.EqualTo(Eip8288Dependencies.ComputeDepsHash([])));
+            Assert.That(Eip8288Dependencies.ComputeDepsHash([], batchedEnabled: true), Is.EqualTo(Keccak.OfAnEmptyString.ValueHash256));
+            Assert.That(new Eip8288Verifier(Eip8288Verifier.BatchedAggregatedVk).DepsHash(deps),
+                Is.EqualTo(Eip8288Dependencies.ComputeDepsHash(deps, batchedEnabled: true)));
+            Assert.That(Eip8288Verifier.Pinned.DepsHash(deps), Is.EqualTo(Eip8288Dependencies.ComputeDepsHash(deps)));
+        }
+    }
+
+    // ethereum/EIPs#12664 Test Case: the same claim and key under different schemes has distinct encodings and digests.
+    [Test]
+    public void Same_data_and_key_under_the_other_scheme_is_another_batched_digest()
+    {
+        FrameDependency sphincs = VectorDependency(Eip8288Constants.LeanSphincsScheme, 0x05, 7);
+        FrameDependency stark = VectorDependency(Eip8288Constants.LeanStarkScheme, 0x05, 7);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Eip8288Dependencies.Serialize([sphincs]), Is.Not.EqualTo(Eip8288Dependencies.Serialize([stark])));
+            Assert.That(Eip8288Dependencies.ComputeDepsHash([sphincs], batchedEnabled: true),
+                Is.Not.EqualTo(Eip8288Dependencies.ComputeDepsHash([stark], batchedEnabled: true)));
+        }
+    }
+
     // The scheme is part of a dependency: the same data and key under the other scheme is another digest.
     [Test]
     public void Same_data_and_key_under_the_other_scheme_is_another_digest() =>
@@ -183,6 +264,27 @@ public class FrameDependencyTests
     {
         FrameDependency dep = new(scheme, default, default);
         Assert.That(dep.VerificationGas, Is.EqualTo(expected));
+    }
+
+    // ethereum/EIPs#12664 Test Cases: one native or generic declaration costs 5,700 or 32,700 gas from activation, frame charge
+    // and RECURSIVE_PROOF_SHARE_GAS together, and 64 separately signed claims proved in one leaf are each charged: 64 x 32,700.
+    // Before activation the share is EIP-8288's 30,000.
+    [TestCase(Eip8288Constants.LeanSphincsScheme, 1, true, ExpectedResult = 5_700UL)]
+    [TestCase(Eip8288Constants.LeanStarkScheme, 1, true, ExpectedResult = 32_700UL)]
+    [TestCase(Eip8288Constants.LeanStarkScheme, 64, true, ExpectedResult = 2_092_800UL)]
+    [TestCase(Eip8288Constants.LeanSphincsScheme, 1, false, ExpectedResult = 33_000UL)]
+    [TestCase(Eip8288Constants.LeanStarkScheme, 1, false, ExpectedResult = 60_000UL)]
+    public ulong Declarations_cost_their_frame_charge_and_proof_share(byte scheme, int claims, bool batchedEnabled)
+    {
+        FrameDependency[] deps = [.. Enumerable.Range(0, claims).Select(i => new FrameDependency(scheme, ValueKeccak.Compute($"claim {i}"), default))];
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            Frames = [new TxFrame(FrameMode.DepVerify, FrameFlags.None, null, 0, UInt256.Zero, Eip8288Dependencies.Serialize(deps))]
+        };
+        ulong frameCharge = 0;
+        foreach (FrameDependency dep in deps) frameCharge += dep.VerificationGas;
+        return frameCharge + Eip8288Dependencies.RecursiveStarkGas(tx, batchedEnabled);
     }
 
     [Test]
@@ -251,6 +353,21 @@ public class FrameDependencyTests
         Assert.That(Eip8288Dependencies.ComputeDepsHash(reversed), Is.EqualTo(ValueKeccak.Compute(entries)));
     }
 
+    // A malformed frame's trailing partial triple is not a declaration, with batch pricing enabled or not.
+    [Test]
+    public void Recursive_stark_gas_counts_whole_triples_only([Values(50, 96, 127, 191, 192)] int length, [Values] bool batchedEnabled)
+    {
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            Frames = [new TxFrame(FrameMode.DepVerify, FrameFlags.None, null, 0, UInt256.Zero, new byte[length])]
+        };
+
+        Assert.That(Eip8288Dependencies.RecursiveStarkGas(tx, batchedEnabled),
+            Is.EqualTo((ulong)(length / Eip8288Constants.DependencyTripleLength)
+                * (batchedEnabled ? Eip8288Constants.RecursiveProofShareGas : Eip8288Constants.LeanStarkVerificationGas)));
+    }
+
     [Test]
     public void Repeated_declarations_share_one_dependency_but_each_pays_gas([Values(1, 2, 17)] int declarations)
     {
@@ -269,7 +386,7 @@ public class FrameDependencyTests
         {
             Assert.That(Eip8288Dependencies.ForTransaction(tx, FrameTxSigHash.ComputeValue), Has.Count.EqualTo(1));
             Assert.That(Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue), Has.Count.EqualTo(1));
-            Assert.That(Eip8288Dependencies.RecursiveStarkGas(tx), Is.EqualTo((ulong)declarations * Eip8288Constants.LeanStarkVerificationGas));
+            Assert.That(Eip8288Dependencies.RecursiveStarkGas(tx, batchedEnabled: false), Is.EqualTo((ulong)declarations * Eip8288Constants.LeanStarkVerificationGas));
         }
     }
 

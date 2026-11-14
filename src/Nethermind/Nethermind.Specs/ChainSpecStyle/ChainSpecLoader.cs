@@ -239,6 +239,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             Eip8288TransitionTimestamp = parameters.Eip8288TransitionTimestamp,
             Eip8288AggregatedVkTransitionTimestamp = parameters.Eip8288AggregatedVkTransitionTimestamp,
             Eip8288AggregatedVk = parameters.Eip8288AggregatedVk,
+            EipBatchedDependencyPricingTransitionTimestamp = parameters.EipBatchedDependencyPricingTransitionTimestamp,
             Eip8250TransitionTimestamp = parameters.Eip8250TransitionTimestamp,
             Eip8272TransitionTimestamp = parameters.Eip8272TransitionTimestamp,
             Eip7906TransitionTimestamp = parameters.Eip7906TransitionTimestamp,

@@ -387,6 +387,18 @@ public class RecursiveStarkAggregatorTests
     }
 
     [Test]
+    public void Batch_leaves_are_refused_rather_than_dropped()
+    {
+        FakeLeanProofVerifier verifier = new(true);
+        ValueHash256 claim = ValueKeccak.Compute("claim");
+        AggregationInput input = new() { BatchLeaves = [new(default, [claim], [new(Eip8288Constants.LeanStarkScheme, claim, default)], new byte[] { 1 })] };
+        ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([new(Eip8288Constants.LeanStarkScheme, claim, default)]);
+
+        Assert.That(() => RecursiveStarkAggregator.Prove(input, verifier, Eip8288Verifier.Pinned, hash), Throws.ArgumentException);
+        Assert.That(verifier.ProofCalls, Is.Zero);
+    }
+
+    [Test]
     public void Hierarchical_children_prune_discarded_generic_claims_before_the_native_count_limit()
     {
         FrameDependency[] dependencies = new FrameDependency[33];
@@ -523,7 +535,7 @@ public class RecursiveStarkAggregatorTests
                 throw new InvalidOperationException("Invalid dependency input");
             Assert.That(actual, Is.EqualTo(hash));
             HashSet<FrameDependency> required = [.. dependencies];
-            Assert.That(LeanProofCapacity.CapacityError(required), Is.Null);
+            Assert.That(LeanProofCapacity.CapacityError(required, batchPricing: false), Is.Null);
             return LeanProofTestEnvelope.Create(dependencies);
         }
     }
@@ -542,6 +554,7 @@ public class RecursiveStarkAggregatorTests
                 Assert.That(RecursiveStarkAggregatorTests.TryAggregate(input, Accepting, Eip8288Verifier.Pinned, out IReadOnlyList<FrameDependency> dependencies, out ValueHash256 actual), Is.True);
                 Assert.That(actual, Is.EqualTo(hash));
                 Assert.That(dependencies.Count, Is.LessThanOrEqualTo(Eip8288Constants.MaxGenericStarkProofs));
+                Assert.That(input.RecursiveProofs.Count + input.Deps.Count, Is.LessThanOrEqualTo(Eip8288Constants.MaxInnerProofsPerStep));
             }
             ProofCalls++;
             return hash.ToByteArray();

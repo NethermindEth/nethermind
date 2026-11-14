@@ -134,7 +134,10 @@ public static class Eip8288Dependencies
     /// The EIP-8288 <c>recursive_stark_gas</c> of this transaction: part of its intrinsic gas, charged per
     /// declared dependency, duplicates included, on top of the per-scheme verification gas the frames already paid.
     /// </summary>
-    public static ulong RecursiveStarkGas(Transaction tx)
+    /// <remarks>EIP-8288 charges <see cref="Eip8288Constants.LeanStarkVerificationGas"/> per declaration; from the batch-pricing EIP's
+    /// activation (ethereum/EIPs#12664), when <paramref name="batchedEnabled"/>, <see cref="Eip8288Constants.RecursiveProofShareGas"/>
+    /// instead.</remarks>
+    public static ulong RecursiveStarkGas(Transaction tx, bool batchedEnabled)
     {
         TxFrame[]? frames = tx.Frames;
         if (frames is null) return 0;
@@ -145,7 +148,7 @@ public static class Eip8288Dependencies
             if (IsDependencyFrame(frame)) count += (ulong)(frame.Data.Length / Eip8288Constants.DependencyTripleLength);
         }
 
-        return count * Eip8288Constants.LeanStarkVerificationGas;
+        return count * (batchedEnabled ? Eip8288Constants.RecursiveProofShareGas : Eip8288Constants.LeanStarkVerificationGas);
     }
 
     /// <summary>Concatenates dependencies into their <c>96·k</c>-byte wire form.</summary>
@@ -216,8 +219,27 @@ public static class Eip8288Dependencies
         return hash.GenerateValueHash();
     }
 
+    /// <summary><c>get_deps_hash</c> under <paramref name="batchedEnabled"/>'s rules: the batch-pricing EIP's digest
+    /// (ethereum/EIPs#12664) when it is active, else <see cref="ComputeDepsHash(IReadOnlyList{FrameDependency})"/>.</summary>
+    /// <remarks>The batch-pricing EIP replaces <c>get_deps_hash</c> everywhere, block commitments included, with <c>DEPS_HASH</c>
+    /// (Keccak-256 here) over the canonical dependencies' 96-byte triples, scheme word included, so the scheme is bound
+    /// structurally.</remarks>
+    public static ValueHash256 ComputeDepsHash(IReadOnlyList<FrameDependency> dependencies, bool batchedEnabled)
+    {
+        if (!batchedEnabled) return ComputeDepsHash(dependencies);
+        KeccakHash hash = KeccakHash.Create();
+        Span<byte> triple = stackalloc byte[Eip8288Constants.DependencyTripleLength];
+        foreach (FrameDependency dependency in Canonicalize(dependencies))
+        {
+            dependency.WriteTo(triple);
+            hash.Update(triple);
+        }
+
+        return hash.GenerateValueHash();
+    }
+
     /// <summary>Whether a dependency scheme is enabled: leanSPHINCS, and leanSTARK, which this node enables as a deviation from
-    /// EIP-8288 (see <see cref="ComputeDepsHash"/>).</summary>
+    /// EIP-8288 (see <see cref="ComputeDepsHash(IReadOnlyList{FrameDependency})"/>).</summary>
     public static bool IsAcceptedScheme(byte scheme) => scheme is Eip8288Constants.LeanSphincsScheme or Eip8288Constants.LeanStarkScheme;
 
     /// <summary>Whether a dependency scheme is one EIP-8288 defines.</summary>
@@ -233,12 +255,13 @@ public static class Eip8288Dependencies
     }
 
     /// <summary>Whether one dependency list of the pinned recursive guest can hold <paramref name="dependencies"/>: at most
-    /// <see cref="Eip8288Constants.MaxProofDependencies"/>, <see cref="Eip8288Constants.MaxGenericStarkProofs"/> of them
-    /// leanSTARK.</summary>
+    /// <see cref="Eip8288Constants.MaxProofDependencies"/>, and without <paramref name="batchPricing"/> at most
+    /// <see cref="Eip8288Constants.MaxGenericStarkProofs"/> of them leanSTARK.</summary>
     /// <remarks>The circuit's dependency-list limit: a statement over it is split or deferred when built and a mode-1 proof over it
     /// is invalid when received (EIP-8288).</remarks>
-    public static bool FitsProofList(IReadOnlyCollection<FrameDependency> dependencies) =>
-        dependencies.Count <= Eip8288Constants.MaxProofDependencies && CountLeanStark(dependencies) <= Eip8288Constants.MaxGenericStarkProofs;
+    public static bool FitsProofList(IReadOnlyCollection<FrameDependency> dependencies, bool batchPricing) =>
+        dependencies.Count <= Eip8288Constants.MaxProofDependencies
+        && (batchPricing || CountLeanStark(dependencies) <= Eip8288Constants.MaxGenericStarkProofs);
 
     /// <summary>Whether every dependency's scheme is enabled (<see cref="IsAcceptedScheme"/>).</summary>
     public static bool AreSchemesEnabled(IReadOnlyList<FrameDependency> dependencies)
@@ -301,6 +324,6 @@ public static class Eip8288Dependencies
         return (sphincs, stark);
     }
 
-    public static ValueHash256 ComputeBlockDepsHash(Block block, Func<Transaction, ValueHash256> computeSignatureHash) =>
-        ComputeDepsHash(ForBlock(block, computeSignatureHash));
+    public static ValueHash256 ComputeBlockDepsHash(Block block, Func<Transaction, ValueHash256> computeSignatureHash, bool batchedEnabled = false) =>
+        ComputeDepsHash(ForBlock(block, computeSignatureHash), batchedEnabled);
 }

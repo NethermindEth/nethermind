@@ -198,7 +198,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         {
             // Started before TryGetBlock so recovery overlaps the background transactions-root job it waits for.
             StartSenderRecovery(request, senderRecoveryCancellation.Token);
-            decodingResult = preparation.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
+            decodingResult = preparation.TryGetBlock(_specProvider.GetSpec(new ForkActivation(request.BlockNumber, request.Timestamp)),
+                _poSSwitcher.FinalTotalDifficulty);
         }
         if (decodingResult.IsError)
         {

@@ -335,6 +335,12 @@ namespace Nethermind.Core.Specs
         /// <c>Eip8288AggregatedVk</c> and its transition, to exercise verifier-changing forks.</remarks>
         Crypto.ValueHash256 Eip8288AggregatedVk => Eip8288Verifier.PinnedAggregatedVk;
 
+        /// <summary>Batched generic proof dependencies (ethereum/EIPs#12664, no EIP number yet): multi-claim leanSTARK leaves, the
+        /// scheme-inclusive dependency digest, <see cref="Eip8288Constants.RecursiveProofShareGas"/> and
+        /// <see cref="Eip8288Constants.MaxDepsPerBlock"/>; <see cref="Eip8288AggregatedVk"/> defaults to the batch guest's key.</summary>
+        /// <remarks>A provisional name for a draft EIP that requires EIP-8288; it is never enabled without it.</remarks>
+        bool IsEipBatchedDependencyPricingEnabled => false;
+
         /// <summary>
         /// EIP-8250: keyed nonces for frame transactions.
         /// </summary>

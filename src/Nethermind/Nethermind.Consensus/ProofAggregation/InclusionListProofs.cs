@@ -59,10 +59,10 @@ public sealed class InclusionListProofService(ILeanProofVerifier verifier, LeanP
             long size = Eip8288Constants.IlProofBytes(held.Proof.Length, held.InnerDeps.Count);
             List<FrameDependency> proofDeps = Eip8288Dependencies.Canonicalize(held.InnerDeps);
             if (size > Eip8288Constants.MaxIlProofBytes || held.Proof.IsEmpty || proofDeps.Count != held.InnerDeps.Count
-                || !Eip8288Dependencies.AreSchemesEnabled(proofDeps) || !Eip8288Dependencies.FitsProofList(proofDeps))
+                || !Eip8288Dependencies.AreSchemesEnabled(proofDeps) || !Eip8288Dependencies.FitsProofList(proofDeps, targetSpec.IsEipBatchedDependencyPricingEnabled))
                 continue;
             byte[] starkProof = held.Proof.ToArray();
-            ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(proofDeps);
+            ValueHash256 depsHash = forkVerifier.DepsHash(proofDeps);
             verifications++;
             if (ProofVerdictCache.VerifyRecursive(verifier, in forkVerifier, in depsHash, starkProof))
             {
@@ -111,23 +111,23 @@ public sealed class InclusionListProofService(ILeanProofVerifier verifier, LeanP
         return proven;
     }
 
-    /// <remarks>A proof over more than <see cref="Eip8288Constants.MaxProofDependencies"/> dependencies, or more than
-    /// <see cref="Eip8288Constants.MaxGenericStarkProofs"/> leanSTARK ones, is not verified: the pinned guest commits to at most that
-    /// many, so none verifies, and the builder could not fold one into its block aggregate. The list then imposes no
+    /// <remarks>A proof over more than <see cref="Eip8288Constants.MaxProofDependencies"/> dependencies, or, without batch pricing,
+    /// more than <see cref="Eip8288Constants.MaxGenericStarkProofs"/> leanSTARK ones, is not verified: the pinned guest commits to at
+    /// most that many, so none verifies, and the builder could not fold one into its block aggregate. The list then imposes no
     /// dependency-bearing obligation.</remarks>
     private bool TryVerify(CommitteeInclusionList list, IReleaseSpec spec, out List<FrameDependency>? proofDeps)
     {
         proofDeps = null;
         if (list.StarkProof.Length == 0 || list.ProofDeps.Length is 0 or > Eip8288Constants.MaxProofDependencies
             || !InclusionListProofValidator.TryParseProofDeps(list.ProofDeps, out proofDeps)
-            || !Eip8288Dependencies.FitsProofList(proofDeps!))
+            || !Eip8288Dependencies.FitsProofList(proofDeps!, spec.IsEipBatchedDependencyPricingEnabled))
         {
             proofDeps = null;
             return false;
         }
         Eip8288Verifier forkVerifier = Eip8288Verifier.For(spec);
         ValueHash256 proofHash = ValueKeccak.Compute(list.StarkProof);
-        (ValueHash256, ValueHash256, ValueHash256) key = (proofHash, Eip8288Dependencies.ComputeDepsHash(proofDeps!), forkVerifier.AggregatedVk);
+        (ValueHash256, ValueHash256, ValueHash256) key = (proofHash, forkVerifier.DepsHash(proofDeps!), forkVerifier.AggregatedVk);
         lock (_verdictsLock)
             if (_verdicts.TryGetValue(key, out bool known)) return known;
         bool valid = ProofVerdictCache.VerifyRecursive(verifier, in forkVerifier, in key.Item2, list.StarkProof, proofHash);

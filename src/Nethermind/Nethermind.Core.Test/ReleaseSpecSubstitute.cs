@@ -10,13 +10,16 @@ public static class ReleaseSpecSubstitute
 {
     public static IReleaseSpec Create() => Configure(Substitute.For<IReleaseSpec>());
 
-    /// <summary>A frame-transaction fork with EIP-7906 as asked, and EIP-8141 with EIP-8288 only when dependency frames are wanted.</summary>
-    public static IReleaseSpec CreateFrame(bool assertEnabled = true, bool dependencyEnabled = false)
+    /// <summary>A frame-transaction fork with EIP-7906 as asked, and EIP-8141 with EIP-8288 only when dependency frames are wanted,
+    /// with batch pricing (ethereum/EIPs#12664) when asked too.</summary>
+    public static IReleaseSpec CreateFrame(bool assertEnabled = true, bool dependencyEnabled = false, bool batchedEnabled = false)
     {
         IReleaseSpec spec = Create();
         spec.IsEip7906Enabled.Returns(assertEnabled);
         spec.IsEip8141Enabled.Returns(dependencyEnabled);
         spec.IsEip8288Enabled.Returns(dependencyEnabled);
+        spec.IsEipBatchedDependencyPricingEnabled.Returns(dependencyEnabled && batchedEnabled);
+        if (dependencyEnabled && batchedEnabled) spec.Eip8288AggregatedVk.Returns(Eip8288Verifier.BatchedAggregatedVk);
         return spec;
     }
 

@@ -139,13 +139,14 @@ public static class MempoolWrapperValidator
             return false;
         }
 
-        ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(wrapper.Deps);
-        if (recursiveStark.BlockDepsHash.ValueHash256 != depsHash)
+        if (recursiveStark.BlockDepsHash.ValueHash256 != Eip8288Dependencies.ComputeDepsHash(wrapper.Deps))
         {
             error = DepsHashMismatch;
             return false;
         }
 
+        // The wrapper binds its deps by EIP-8288's digest, as the decoder derives it; the proof's statement is the fork's.
+        ValueHash256 depsHash = forkVerifier.DepsHash(wrapper.Deps);
         if (recursiveStark.StarkProof is not { Length: > 0 and <= Eip8288Constants.MaxAggregateProofBytes }
             || !ProofVerdictCache.VerifyRecursive(verifier, in forkVerifier, in depsHash, recursiveStark.StarkProof))
         {

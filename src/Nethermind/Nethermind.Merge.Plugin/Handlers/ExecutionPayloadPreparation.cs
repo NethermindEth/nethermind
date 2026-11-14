@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Data;
@@ -36,6 +37,15 @@ internal sealed class ExecutionPayloadPreparation : IDisposable
             _txRootWork = ParallelUnbalancedWork.BackgroundFor(0, 1, ParallelUnbalancedWork.DefaultOptions,
                 _ => _txRoot = TxTrie.CalculateRoot(_encodedTransactions));
         }
+    }
+
+    /// <summary>Decodes the payload's block, its proof committed to its dependencies under the digest <paramref name="spec"/>
+    /// fixes (<see cref="ExecutionPayloadV3.CommitDependencies"/>).</summary>
+    public Result<Block> TryGetBlock(IReleaseSpec spec, UInt256? totalDifficulty = null)
+    {
+        Result<Block> result = TryGetBlock(totalDifficulty);
+        if (!result.IsError) ExecutionPayloadV3.CommitDependencies(result.Data, spec);
+        return result;
     }
 
     public Result<Block> TryGetBlock(UInt256? totalDifficulty = null)

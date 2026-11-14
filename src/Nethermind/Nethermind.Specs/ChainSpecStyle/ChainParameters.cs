@@ -206,6 +206,10 @@ public class ChainParameters
     /// <remarks>Devnet-only: EIP-8288 fixes <c>AGGREGATED_VK</c> at the protocol level, so a production network never overrides it; this
     /// models a verifier-changing fork for testing.</remarks>
     public Hash256? Eip8288AggregatedVk { get; set; }
+
+    /// <summary>Activation of batch pricing for generic proofs (ethereum/EIPs#12664, no EIP number yet), which takes effect only
+    /// with EIP-8288.</summary>
+    public ulong? EipBatchedDependencyPricingTransitionTimestamp { get; set; }
     public ulong? Eip8250TransitionTimestamp { get; set; }
 
     public ulong? Eip8272TransitionTimestamp { get; set; }

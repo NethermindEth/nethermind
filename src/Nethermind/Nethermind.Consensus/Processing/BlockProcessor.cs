@@ -277,8 +277,8 @@ public partial class BlockProcessor(
             token.ThrowIfCancellationRequested();
             bool latest = _productionProofCache.ObserveProduction(block.Timestamp, block.Number);
             List<FrameDependency> deps = Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue);
-            ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(deps);
             Eip8288Verifier verifier = Eip8288Verifier.For(spec);
+            ValueHash256 depsHash = verifier.DepsHash(deps);
             (ValueHash256, ValueHash256) key = (depsHash, verifier.AggregatedVk);
             byte[] proof;
             if (deps.Count == 0)
@@ -308,7 +308,8 @@ public partial class BlockProcessor(
                         (HashSet<FrameDependency> limit, int kept) = includable.ChooseProvenLimit(leanProofStore.ProvenSubsets(attempted));
                         // Only the latest payload's unrestricted body is worth proving; a restricted rebuild is a subset of it.
                         if (latest && producing.LeanDependencyLimit is null && !_productionProofCache.IsScheduledWithin(attempted))
-                            ScheduleProductionProof(producing, includable, attempted, deps, depsHash, limit, kept, leanProofStore, verifier);
+                            ScheduleProductionProof(producing, includable, attempted, deps, depsHash, limit, kept, leanProofStore, verifier,
+                                spec.IsEipBatchedDependencyPricingEnabled);
                         throw new LeanProofNotReadyException(limit);
                     }
                     AggregationInput input = producing is null ? new() : RecursiveStarkAggregator.Combine(producing.LeanProofInputs, deps);
@@ -369,7 +370,7 @@ public partial class BlockProcessor(
     /// </remarks>
     private void ScheduleProductionProof(BlockToProduce producing, IncludableTransactions includable, HashSet<FrameDependency> attempted,
         List<FrameDependency> deps, in ValueHash256 depsHash, HashSet<FrameDependency> provenLimit, int provenKept, LeanProofStore store,
-        Eip8288Verifier verifier)
+        Eip8288Verifier verifier, bool batchPricing)
     {
         RecursiveProofInput narrowed = default;
         HashSet<FrameDependency>? narrowedNeeded = null;
@@ -392,7 +393,7 @@ public partial class BlockProcessor(
             AggregationInput narrowing = new() { RecursiveProofs = [narrowed], Discards = discards };
             if (RecursiveStarkAggregator.EstimatedCost(narrowing) <= MaxScheduledStatementCost)
             {
-                _productionProofCache.Schedule(narrowedTarget, Eip8288Dependencies.ComputeDepsHash(narrowedTarget), narrowing, verifier, store);
+                _productionProofCache.Schedule(narrowedTarget, verifier.DepsHash(narrowedTarget), narrowing, verifier, store);
                 return;
             }
         }
@@ -400,19 +401,19 @@ public partial class BlockProcessor(
         if (pending.Count == 0) return;
         List<RecursiveProofInput> overlaps = store.ProvenOverlaps(pending, MaxExtensionCandidates);
         (AggregationInput scheduled, long cost) = Cheapest(pending);
-        if (cost > MaxScheduledStatementCost || !Eip8288Dependencies.FitsProofList(pending))
+        if (cost > MaxScheduledStatementCost || !Eip8288Dependencies.FitsProofList(pending, batchPricing))
         {
             // A statement over the whole backlog can take many slots while more arrives; prove a nonce-ordered prefix that fits
             // the budget instead, and let later passes take the rest. A statement the pinned guest cannot hold, such as one over
             // more leanSTARK dependencies than a list may carry, is never sent to the prover: a prefix that fits is.
             pending = includable.BoundedNeed(provenLimit, pending,
-                set => Eip8288Dependencies.FitsProofList(set) ? Cheapest(set).Cost : long.MaxValue, MaxScheduledStatementCost);
+                set => Eip8288Dependencies.FitsProofList(set, batchPricing) ? Cheapest(set).Cost : long.MaxValue, MaxScheduledStatementCost);
             if (pending.Count == 0) return;
             (scheduled, cost) = Cheapest(pending);
         }
         List<FrameDependency> target = pending.Count == deps.Count ? deps : Eip8288Dependencies.Canonicalize(pending);
         if (store.TryGetRecursiveProof(target, out _)) return;
-        ValueHash256 targetHash = pending.Count == deps.Count ? depsHash : Eip8288Dependencies.ComputeDepsHash(target);
+        ValueHash256 targetHash = pending.Count == deps.Count ? depsHash : verifier.DepsHash(target);
         _productionProofCache.Schedule(target, targetHash, scheduled, verifier, store);
 
         // Folding every witness again, or extending a verified overlapping statement, whichever is estimated cheaper.

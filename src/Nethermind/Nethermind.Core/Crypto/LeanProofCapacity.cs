@@ -11,13 +11,19 @@ namespace Nethermind.Core.Crypto;
 public static class LeanProofCapacity
 {
     /// <summary>Checks the distinct required claims against the pinned proof bounds.</summary>
-    public static string? CapacityError(IReadOnlySet<FrameDependency> required) => CapacityError(new HashSet<FrameDependency>(), 0, [.. required]);
+    /// <param name="required">The claims.</param>
+    /// <param name="batchPricing">Whether the batch-pricing guest (ethereum/EIPs#12664) proves them, which has no
+    /// <see cref="Eip8288Constants.MaxGenericStarkProofs"/> bound.</param>
+    public static string? CapacityError(IReadOnlySet<FrameDependency> required, bool batchPricing) =>
+        CapacityError(new HashSet<FrameDependency>(), 0, [.. required], batchPricing);
 
     /// <summary>Checks additional distinct claims without rescanning the base set.</summary>
     /// <param name="existing">Claims already counted.</param>
     /// <param name="genericProofs">The leanSTARK claims among <paramref name="existing"/>.</param>
     /// <param name="appended">Claims to add; repeats and claims already in <paramref name="existing"/> count once.</param>
-    public static string? CapacityError(IReadOnlySet<FrameDependency> existing, int genericProofs, IReadOnlyList<FrameDependency> appended)
+    /// <param name="batchPricing">Whether the batch-pricing guest proves them.</param>
+    public static string? CapacityError(IReadOnlySet<FrameDependency> existing, int genericProofs, IReadOnlyList<FrameDependency> appended,
+        bool batchPricing)
     {
         int count = existing.Count;
         HashSet<FrameDependency> added = [];
@@ -28,7 +34,7 @@ public static class LeanProofCapacity
             string? error = Add(dependency, ref genericProofs);
             if (error is not null) return error;
         }
-        return Check(count, genericProofs);
+        return Check(count, genericProofs, batchPricing);
     }
 
     private static string? Add(FrameDependency dependency, ref int generic)
@@ -38,10 +44,10 @@ public static class LeanProofCapacity
         return null;
     }
 
-    private static string? Check(int count, int generic)
+    private static string? Check(int count, int generic, bool batchPricing)
     {
         if (count > Eip8288Constants.MaxProofDependencies) return "Dependency proof count limit exceeded";
-        if (generic > Eip8288Constants.MaxGenericStarkProofs) return "Generic STARK proof count limit exceeded";
+        if (!batchPricing && generic > Eip8288Constants.MaxGenericStarkProofs) return "Generic STARK proof count limit exceeded";
         return null;
     }
 }

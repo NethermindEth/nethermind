@@ -136,7 +136,13 @@ public class BlockValidator(
         }
 
         List<FrameDependency> dependencies = Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue);
-        Hash256 computed = new(Eip8288Dependencies.ComputeDepsHash(dependencies));
+        if (spec.IsEipBatchedDependencyPricingEnabled && dependencies.Count > Eip8288Constants.MaxDepsPerBlock)
+        {
+            error = BlockErrorMessages.TooManyBlockDependencies(dependencies.Count);
+            return false;
+        }
+
+        Hash256 computed = new(Eip8288Dependencies.ComputeDepsHash(dependencies, spec.IsEipBatchedDependencyPricingEnabled));
         if (recursiveStark.BlockDepsHash != computed)
         {
             error = BlockErrorMessages.InvalidBlockDepsHash(recursiveStark.BlockDepsHash, computed);

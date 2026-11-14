@@ -150,12 +150,12 @@ public partial class FrameTxProcessorTests
             Assert.That(dependency.ExecutionGasLimit, Is.GreaterThan(Eip8141Constants.MaxVerifyGas));
             Assert.That(FrameTxValidation.ValidationWorkGas(tx), Is.EqualTo(200_000));
             Assert.That(FrameTxValidation.TotalGasLimit(frames), Is.EqualTo(200_000 + dependency.ExecutionGasLimit));
-            Assert.That(Eip8288Dependencies.RecursiveStarkGas(tx), Is.EqualTo((ulong)declarations * Eip8288Constants.LeanStarkVerificationGas));
+            Assert.That(Eip8288Dependencies.RecursiveStarkGas(tx, batchedEnabled: false), Is.EqualTo((ulong)declarations * Eip8288Constants.LeanStarkVerificationGas));
             Assert.That(receipt.Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
             Assert.That(receipt.ExecutionGasUsed, Is.EqualTo(dependency.ExecutionGasLimit));
             Assert.That(receipt.StateGasUsed, Is.Zero);
             Assert.That(receipt.Logs, Is.Empty);
-            Assert.That(tracer.GasSpent, Is.GreaterThanOrEqualTo(dependency.ExecutionGasLimit + Eip8288Dependencies.RecursiveStarkGas(tx)));
+            Assert.That(tracer.GasSpent, Is.GreaterThanOrEqualTo(dependency.ExecutionGasLimit + Eip8288Dependencies.RecursiveStarkGas(tx, batchedEnabled: false)));
             Assert.That(_stateProvider.GetBalance(payer), Is.EqualTo(balanceBefore - (UInt256)tracer.GasSpent));
             Assert.That(dependency.Data.ToArray(), Is.EqualTo(declarationBytes));
         }

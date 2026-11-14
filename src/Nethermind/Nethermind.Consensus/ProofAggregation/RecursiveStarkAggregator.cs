@@ -79,6 +79,13 @@ public static class RecursiveStarkAggregator
             if (proof.InnerDeps is null) throw new ArgumentException("Uninitialized recursive proof input", nameof(input));
             size += 8 + (long)proof.InnerDeps.Count * Eip8288Constants.DependencyTripleLength + proof.Proof.Length;
         }
+        if (input.BatchLeaves.Count != 0)
+        {
+            size += 4;
+            foreach (BatchLeafInput leaf in input.BatchLeaves)
+                size += 32 + 4 + (long)leaf.Claims.Count * 32 + 4 + (long)leaf.Dependencies.Count * Eip8288Constants.DependencyTripleLength
+                    + 4 + leaf.Proof.Length;
+        }
         return size;
     }
 
@@ -169,13 +176,16 @@ public static class RecursiveStarkAggregator
         byte[] aggregatedVk = forkVerifier.AggregatedVk.ToByteArray();
         cancellationToken.ThrowIfCancellationRequested();
         if (input.Deps.Count != input.Witnesses.Count) throw new ArgumentException("Witness count mismatch", nameof(input));
+        // A leaf reaches the network only folded into a recursive proof (ethereum/EIPs#12664); its owner aggregates it through the
+        // verifier directly, so this node-side fold never receives one and does not split them across steps.
+        if (input.BatchLeaves.Count != 0) throw new ArgumentException("Batch leaves are not folded by the managed aggregator", nameof(input));
         foreach (RecursiveProofInput child in input.RecursiveProofs)
             if (child.InnerDeps is null) throw new ArgumentException("Uninitialized recursive proof input", nameof(input));
         if (input.Deps.Count == 0 && input.RecursiveProofs.Count == 1 && input.Discards.Count == 0)
         {
             RecursiveProofInput parent = input.RecursiveProofs[0];
             if (parent.InnerDeps.Count <= Eip8288Constants.MaxProofDependencies
-                && Eip8288Dependencies.ComputeDepsHash(parent.InnerDeps) == depsHash)
+                && forkVerifier.DepsHash(parent.InnerDeps) == depsHash)
             {
                 // The same verified statement needs no new recursive guest execution.
                 cancellationToken.ThrowIfCancellationRequested();
@@ -225,7 +235,7 @@ public static class RecursiveStarkAggregator
                     bool valid = dependency.Scheme switch
                     {
                         Eip8288Constants.LeanSphincsScheme => verifier.VerifyLeanSphincs(dependency.DataHash, dependency.VerificationKey, input.Witnesses[offset].Span),
-                        Eip8288Constants.LeanStarkScheme => verifier.VerifyLeanStark(dependency.DataHash, dependency.VerificationKey, input.Witnesses[offset].Span),
+                        Eip8288Constants.LeanStarkScheme => verifier.VerifyLeanStark(dependency.DataHash, dependency.VerificationKey, input.Witnesses[offset].Span, aggregatedVk),
                         _ => false
                     };
                     if (!valid) throw new InvalidOperationException("Invalid direct dependency witness.");
@@ -290,7 +300,7 @@ public static class RecursiveStarkAggregator
                 RecursiveProofs = childInput.RecursiveProofs,
                 Discards = [.. removed]
             };
-            ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(canonical);
+            ValueHash256 hash = forkVerifier.DepsHash(canonical);
             byte[] childProof = ProductionProofCache.Prove(verifier, in hash, aggregatedVk, childInput, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             return new(canonical, childProof);
