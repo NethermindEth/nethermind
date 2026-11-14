@@ -89,6 +89,8 @@ namespace Nethermind.Db.LogIndex
             public static readonly byte[] MinBlockNum = "min"u8.ToArray();
             public static readonly byte[] MaxBlockNum = "max"u8.ToArray();
             public static readonly byte[] CompressionAlgo = "alg"u8.ToArray();
+            public static readonly byte[] UnrevertedReorg = "unr"u8.ToArray();
+            public static readonly byte[] PeakMaxBlockNum = "pmx"u8.ToArray();
         }
 
         public static class Postfix
@@ -196,6 +198,12 @@ namespace Nethermind.Db.LogIndex
 
         private int? _maxBlock;
         private int? _minBlock;
+        private int? _unrevertedReorg;
+
+        /// <summary>
+        /// The highest <see cref="_maxBlock"/> lowered by a reorg, as values may have been compressed against it.
+        /// </summary>
+        private int? _peakMaxBlock;
 
         public int? MaxBlockNumber => _maxBlock;
         public int? MinBlockNumber => _minBlock;
@@ -252,6 +260,8 @@ namespace Nethermind.Db.LogIndex
                 _compressionAlgorithm = SelectCompressionAlgorithm(config.CompressionAlgorithm);
 
                 (_minBlock, _maxBlock) = (LoadRangeBound(SpecialKey.MinBlockNum), LoadRangeBound(SpecialKey.MaxBlockNum));
+                _unrevertedReorg = LoadRangeBound(SpecialKey.UnrevertedReorg);
+                _peakMaxBlock = LoadRangeBound(SpecialKey.PeakMaxBlockNum);
 
                 if (Enabled)
                     _compressor.Start();
@@ -558,6 +568,8 @@ namespace Nethermind.Db.LogIndex
 
         private int? GetLastReorgableBlockNumber() => _maxBlock - _maxReorgDepth;
 
+        private int? GetLastPossiblyCompressedBlockNumber() => (_peakMaxBlock > _maxBlock ? _peakMaxBlock : _maxBlock) - _maxReorgDepth;
+
         private static bool IsBlockNewer(int next, int? lastMin, int? lastMax, bool isBackwardSync) => isBackwardSync
             ? lastMin is null || next < lastMin
             : lastMax is null || next > lastMax;
@@ -669,11 +681,41 @@ namespace Nethermind.Db.LogIndex
 
             try
             {
+                ThrowIfReorgedBeyondRevert();
+
+                // Compressed values are immutable, so a block that may already be compressed cannot be reverted
+                if (block.BlockNumber <= GetLastPossiblyCompressedBlockNumber())
+                    StopAtUnrevertableReorg(block.BlockNumber);
+
                 RemoveReorgedCore(block);
             }
             finally
             {
                 _forwardWriteSemaphore.Release();
+            }
+        }
+
+        /// <summary>Caps the index below <paramref name="blockNumber"/> and blocks further forward writes, also after a restart.</summary>
+        private void StopAtUnrevertableReorg(int blockNumber)
+        {
+            using (DbBatches batches = new(_rootDb))
+            {
+                SaveRangeBound(batches.Meta, SpecialKey.UnrevertedReorg, blockNumber);
+                SaveRangeBound(batches.Meta, SpecialKey.MaxBlockNum, blockNumber - 1);
+                batches.Commit();
+            }
+
+            (_unrevertedReorg, _maxBlock) = (blockNumber, blockNumber - 1);
+            ThrowIfReorgedBeyondRevert();
+        }
+
+        private void ThrowIfReorgedBeyondRevert()
+        {
+            if (_unrevertedReorg is { } block)
+            {
+                throw new LogIndexStateException(
+                    $"Log index: block {block} was replaced by a reorg deeper than the index can revert, so the index is used only below it. " +
+                    "Restart with LogIndex.Reset=true to rebuild the log index.");
             }
         }
 
@@ -706,11 +748,16 @@ namespace Nethermind.Db.LogIndex
             // Need to update the last block number so that new-receipts comparison won't fail when rewriting it
             int blockNum = block.BlockNumber - 1;
 
+            int? peakMaxBlock = _peakMaxBlock;
+            if (_maxBlock is { } currentMax && !(peakMaxBlock >= currentMax))
+                peakMaxBlock = SaveRangeBound(batches.Meta, SpecialKey.PeakMaxBlockNum, currentMax);
+
             (int minBlock, int maxBlock) = SaveRange(batches, blockNum, blockNum, isBackwardSync, isReorg: true);
 
             batches.Commit();
 
             // Postpone in-memory values update until batch is committed
+            _peakMaxBlock = peakMaxBlock;
             UpdateRange(minBlock, maxBlock, isBackwardSync);
         }
 
@@ -756,6 +803,9 @@ namespace Nethermind.Db.LogIndex
             long totalTimestamp = Stopwatch.GetTimestamp();
 
             bool isBackwardSync = aggregate.IsBackwardSync;
+            if (!isBackwardSync)
+                ThrowIfReorgedBeyondRevert();
+
             SemaphoreSlim semaphore = isBackwardSync ? _backwardWriteSemaphore : _forwardWriteSemaphore;
             await LockRunAsync(semaphore);
 
