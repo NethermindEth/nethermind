@@ -44,6 +44,23 @@ public class JsonRpcGeneratorTests
     [OneTimeTearDown]
     public void TearDown() => Directory.Delete(_docsRoot, recursive: true);
 
+    [TestCase("eth", "eth_sendTransaction", "Conflicting non-null")]
+    [TestCase("eth", "eth_signTransaction", "Conflicting non-null")]
+    [TestCase("eth", "eth_fillTransaction", "Conflicting non-null")]
+    [TestCase("eth", "eth_call", "A non-null `input` takes precedence over `data`.")]
+    [TestCase("eth", "eth_simulateV1", "A non-null `input` takes precedence over `data`.")]
+    [TestCase("eth", "eth_estimateGas", "A non-null `input` takes precedence over `data`.")]
+    [TestCase("eth", "eth_createAccessList", "A non-null `input` takes precedence over `data`.")]
+    [TestCase("debug", "debug_traceCall", "A non-null `input` takes precedence over `data`.")]
+    [TestCase("trace", "trace_call", "A non-null `input` takes precedence over `data`.")]
+    public void Call_and_submission_descriptions_document_alias_and_binding_policy(string ns, string method, string aliasPolicy)
+    {
+        string doc = File.ReadAllText(Path.Combine(RpcDirectory, $"{ns}.md"));
+        string methodDoc = doc.Split($"### {method}\n", 2, StringSplitOptions.None)[1];
+        string description = methodDoc[..methodDoc.IndexOf("<Tabs>", StringComparison.Ordinal)];
+        Assert.That(description, Does.Contain(aliasPolicy).And.Contain("Geth's fixed-size JSON binding"));
+    }
+
     [TestCase("trace", "trace_get", "- `callType`:", "`includeInTrace`")]
     [TestCase("trace", "trace_filter", "- `creationMethod`:", "`isPrecompiled`")]
     [TestCase("trace", "trace_replayTransaction", "- `refundAddress`:", "`includeInTrace`")]

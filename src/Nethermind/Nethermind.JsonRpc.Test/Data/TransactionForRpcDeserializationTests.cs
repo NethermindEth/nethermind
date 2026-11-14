@@ -11,6 +11,7 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
+using System;
 using System.Collections;
 using System.Text.Json;
 
@@ -35,6 +36,29 @@ public class TransactionForRpcDeserializationTests
         "\"input\":\"0x600160005260206000f3\",\"data\":\"0x602a60005260206000f3\"",
         "\"data\":\"0x602a60005260206000f3\",\"input\":\"0x\"",
     ];
+
+    [Test]
+    public void Blob_hash_binding_uses_shared_byte_array_decoding(
+        [Values("missing", "null", "empty", "valid", "version", "short", "upper-hex", "cleared", "replaced")] string kind,
+        [Values] bool frame)
+    {
+        string hash = "0x" + (kind == "version" ? "02" : "01") + new string('0', 62);
+        if (kind == "short") hash = "0x01";
+        if (kind == "upper-hex") hash = "0xAB" + hash[4..];
+        string hashes = kind == "null" ? "null" : kind == "empty" ? "[]" : $"[\"{hash}\"]";
+        string duplicate = kind == "cleared" ? ",\"blobVersionedHashes\":null"
+            : kind == "replaced" ? ",\"blobVersionedHashes\":[]" : "";
+        string frameFields = frame ? "\"frames\":[]," : "";
+        string hashFields = kind == "missing" ? "" : $",\"blobVersionedHashes\":{hashes}{duplicate}";
+        TransactionForRpc rpc = _serializer.Deserialize<TransactionForRpc>(
+            $$"""{ {{frameFields}}"maxFeePerBlobGas":"0x1"{{hashFields}}}""")!;
+        Assert.That(rpc, Is.TypeOf(frame ? typeof(FrameTransactionForRpc) : typeof(BlobTransactionForRpc)));
+        byte[][]? decodedHashes = frame ? ((FrameTransactionForRpc)rpc).BlobVersionedHashes : ((BlobTransactionForRpc)rpc).BlobVersionedHashes;
+
+        if (kind is "missing" or "null" or "cleared") Assert.That(decodedHashes, Is.Null);
+        else if (kind is "empty" or "replaced") Assert.That(decodedHashes, Is.Empty);
+        else Assert.That(decodedHashes, Is.EqualTo(new[] { Bytes.FromHexString(hash) }));
+    }
 
     [TestCase(EthereumEcdsaExtensions.MaxEip155ChainId, 1, false)]
     [TestCase(EthereumEcdsaExtensions.MaxEip155ChainId + 1, 0, false)]
@@ -225,6 +249,10 @@ public class TransactionForRpcDeserializationTests
     [TestCase("""{"data":"0x602a","input":"0x602a"}""", ExpectedResult = "0x602a")]
     [TestCase("""{"input":"0x602a","data":"0x602a","gasPrice":"0x1"}""", ExpectedResult = "0x602a")]
     [TestCase("""{"data":"0x","input":""}""", ExpectedResult = "0x")]
+    [TestCase("""{"input":"0x6001","input":null,"data":"0x602a"}""", ExpectedResult = "0x602a")]
+    [TestCase("""{"data":"0x602a","data":null}""", ExpectedResult = "0x")]
+    [TestCase("""{"data":"0x602a","INPUT":"0x6001","input":null}""", ExpectedResult = "0x602a")]
+    [TestCase("""{"data":"0x602a","DATA":"0x6001"}""", ExpectedResult = "0x6001")]
     public string Test_InputDataAliasResolution(string txJson) =>
         _serializer.Deserialize<TransactionForRpc>(txJson)!.ToTransaction().Data!.Data.ToArray().ToHexString(true);
 
@@ -239,19 +267,33 @@ public class TransactionForRpcDeserializationTests
     ];
 
     [Test]
-    public void Test_DifferingInputAndData_Throws([ValueSource(nameof(DifferingInputAndData))] string txJson) =>
-        Assert.That(() => _serializer.Deserialize<TransactionForRpc>(txJson),
-            Throws.TypeOf<DataAndInputDifferException>().With.Message.EqualTo(RpcTransactionErrors.DataAndInputDiffer));
+    public void Test_DifferingInputAndData_UsesInputForCallsAndRejectsSubmission([ValueSource(nameof(DifferingInputAndData))] string txJson)
+    {
+        using JsonDocument input = JsonDocument.Parse(txJson);
+        string expected = input.RootElement.GetProperty("input").GetString()!;
+        if (expected.Length == 0) expected = "0x";
+        TransactionForRpc rpc = _serializer.Deserialize<TransactionForRpc>(txJson[..^1] + ",\"to\":\"0x0000000000000000000000000000000000000010\"}")!;
+        Result<Transaction> call = rpc.ToCallTransaction(Prague.Instance);
+        Result<Transaction> submission = rpc.ToValidatedTransaction();
+
+        Assert.That(call.IsError, Is.False, call.Error);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(call.Data!.Data.ToArray().ToHexString(true), Is.EqualTo(expected));
+            Assert.That(submission.Error, Is.EqualTo(RpcTransactionErrors.DataAndInputDiffer));
+        }
+    }
 
     [Test]
-    public void Data_assignment_updates_input_outside_deserialization([Values] bool deserialized)
+    public void Data_assignment_updates_input_outside_deserialization([Values] bool deserialized, [Values] bool assignInput)
     {
         LegacyTransactionForRpc rpc = deserialized
-            ? _serializer.Deserialize<LegacyTransactionForRpc>("""{"data":"0x6001"}""")!
+            ? _serializer.Deserialize<LegacyTransactionForRpc>("""{"input":"0x01","data":"0x2a"}""")!
             : new LegacyTransactionForRpc { Input = [0x60, 0x01] };
         byte[] data = [0x60, 0x2a];
 
-        rpc.Data = data;
+        if (assignInput) rpc.Input = data;
+        else rpc.Data = data;
 
         using JsonDocument document = JsonDocument.Parse(_serializer.Serialize(rpc));
         using (Assert.EnterMultipleScope())
@@ -260,6 +302,16 @@ public class TransactionForRpcDeserializationTests
             Assert.That(rpc.ToTransaction().Data!.Data, Is.SequenceEqualTo(data));
             Assert.That(document.RootElement.GetProperty("input").GetString(), Is.EqualTo("0x602a"));
             Assert.That(document.RootElement.TryGetProperty("data", out _), Is.False);
+            Assert.That(rpc.ToValidatedTransaction().Error, Is.Not.EqualTo(RpcTransactionErrors.DataAndInputDiffer));
+        }
+
+        if (assignInput) rpc.Input = null;
+        else rpc.Data = null;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rpc.Input, Is.Null, "clearing calldata must not revive a JSON data alias");
+            Assert.That(rpc.ToValidatedTransaction().Error, Is.EqualTo(RpcTransactionErrors.ContractCreationWithoutData));
         }
     }
 
