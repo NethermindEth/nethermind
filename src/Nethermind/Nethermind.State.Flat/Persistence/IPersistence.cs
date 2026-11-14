@@ -41,8 +41,6 @@ public interface IPersistence
         // zero and missing to conform to a potential verkle need.
         bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue);
         StateId CurrentState { get; }
-        byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags);
-        byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags);
 
         /// <summary>Passes the RLP of the state trie node at <paramref name="path"/> to <paramref name="action"/>, which must not keep it.</summary>
         /// <returns>Whether the node was found.</returns>

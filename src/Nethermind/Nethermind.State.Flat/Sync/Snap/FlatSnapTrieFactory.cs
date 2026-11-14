@@ -186,9 +186,10 @@ public class FlatSnapTrieFactory(
         for (int length = 0; length < MaxNodePathLength; length++)
         {
             TreePath path = boundary.Truncate(length);
-            byte[]? rlp = address is null
-                ? reader.TryLoadStateRlp(path, ReadFlags.None)
-                : reader.TryLoadStorageRlp(address, path, ReadFlags.None);
+            byte[]? rlp = null;
+            _ = address is null
+                ? reader.TryLoadStateRlp(path, ReadFlags.None, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref rlp))
+                : reader.TryLoadStorageRlp(address, path, ReadFlags.None, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref rlp));
             if (rlp is null) continue;
 
             TrieNode node = new(NodeType.Unknown, rlp);
@@ -275,8 +276,6 @@ public class FlatSnapTrieFactory(
         public bool IsPreimageMode => Inner.IsPreimageMode;
         public Account? GetAccount(Address address) => Inner.GetAccount(address);
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => Inner.TryGetSlot(address, slot, ref outValue);
-        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => Inner.TryLoadStateRlp(path, flags);
-        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => Inner.TryLoadStorageRlp(address, path, flags);
         public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => Inner.TryLoadStateRlp(path, flags, action, arg);
         public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => Inner.TryLoadStorageRlp(address, path, flags, action, arg);
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) => Inner.GetAccountRaw(addrHash);

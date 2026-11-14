@@ -111,9 +111,6 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
 
     public bool IsPreimageMode => false;
 
-    public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => throw Unsupported();
-
-    public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => throw Unsupported();
     public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => throw Unsupported();
     public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => throw Unsupported();
 

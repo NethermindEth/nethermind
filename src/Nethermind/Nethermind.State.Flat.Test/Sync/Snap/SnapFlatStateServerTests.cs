@@ -190,11 +190,11 @@ public class SnapFlatStateServerTests
         WriteState(stateRootRlp, addressHash, storageRootRlp);
 
         using IPersistence.IPersistenceReader inner = _persistence.CreateReader();
-        IPersistence.IPersistenceReader reader = Substitute.For<SubstitutablePersistenceReader>();
+        SubstitutablePersistenceReader reader = Substitute.For<SubstitutablePersistenceReader>();
         reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
-            .Returns(ci => inner.TryLoadStateRlp((TreePath)ci[0], (ReadFlags)ci[1]));
+            .Returns(ci => inner.LoadStateRlp((TreePath)ci[0], (ReadFlags)ci[1]));
         reader.TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
-            .Returns(ci => inner.TryLoadStorageRlp((Hash256)ci[0], (TreePath)ci[1], (ReadFlags)ci[2]));
+            .Returns(ci => inner.LoadStorageRlp((Hash256)ci[0], (TreePath)ci[1], (ReadFlags)ci[2]));
         _flatDbManager.GatherReadOnlySnapshotBundle(_stateId, Arg.Any<ReaderFlags>())
             .Returns(_ => new ReadOnlySnapshotBundle(new SnapshotPooledList(0), reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), bufferPin: null));
 
@@ -247,7 +247,7 @@ public class SnapFlatStateServerTests
 
         _rootHash = stateTree.RootHash;
         _stateId = new StateId(0, _rootHash.ValueHash256);
-        IPersistence.IPersistenceReader reader = Substitute.For<SubstitutablePersistenceReader>();
+        SubstitutablePersistenceReader reader = Substitute.For<SubstitutablePersistenceReader>();
         reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
             .Returns(ci => stateTree.GetNodeByPath(((TreePath)ci[0]).ToNibble()));
         reader.TryLoadStorageRlp(addressHash, Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
