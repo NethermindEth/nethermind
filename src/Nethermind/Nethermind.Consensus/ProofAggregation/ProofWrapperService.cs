@@ -454,8 +454,6 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         lock (_commitLock)
         {
             _stagedAdmissions--;
-            HashSet<Transaction> planned = [.. victims];
-            _evictionCandidates?.Candidates.RemoveAll(planned.Contains);
             bool rolledBack = false;
             if (admitted.Count != 0 && !leanProofStore.ShedExcess())
             {
@@ -472,8 +470,12 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                         lock (_localTransactions) _localTransactions.Remove(transaction.Hash!.ValueHash256);
                     }
                 else
+                {
+                    HashSet<ValueHash256> evicted = [.. releases!];
+                    _evictionCandidates?.Candidates.RemoveAll(candidate => evicted.Contains(candidate.Hash!.ValueHash256));
                     foreach (ValueHash256 hash in releases!)
                         if (txPool.RemoveTransaction(new Hash256(hash))) TxPool.Metrics.Eip8288CapacityEvictedTransactions++;
+                }
             }
             leanProofStore.EndStaging(admission, commit: admitted.Count != 0 && !rolledBack);
             DrainExcess();

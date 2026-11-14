@@ -1010,6 +1010,7 @@ public class ProofWrapperServiceTests
     [TestCase(64, false, false, 0UL, 1, false, false, false, "gap", TestName = "A candidate whose nonce gap admission filled is kept and the admission rolled back")]
     [TestCase(64, false, false, 0UL, 1, false, false, false, "gap-interrupted", TestName = "An interrupted admission that is rolled back reports no pooled transactions")]
     [TestCase(64, false, false, 0UL, 0, false, false, false, "unpinned", TestName = "Admitting only transactions whose witnesses fit evicts nothing")]
+    [TestCase(64, false, false, 0UL, 2, false, true, false, "unpinned", TestName = "Victims an admission did not evict stay candidates for the next")]
     [TestCase(64, false, false, 0UL, 0, false, false, false, "foreign", TestName = "Witnesses staged beyond capacity are out of other admissions' reach")]
     [TestCase(64, false, false, 0UL, 2, false, false, false, "drain", TestName = "An excess left over is drained before admitting beyond capacity")]
     [TestCase(64, false, false, 0UL, 2, false, false, false, "concurrent", TestName = "Another wrapper evicts nothing while an admission is staged")]
@@ -1183,7 +1184,7 @@ public class ProofWrapperServiceTests
             Assert.That(result.Status, Is.EqualTo(expected), result.Result.Error);
             pool.Received(removed).RemoveTransaction(Arg.Any<Hash256?>());
             if (secondWrapper) pool.Received(1).GetPendingTransactionsBySender();
-            if (secondWrapper) pool.Received(gapFilled ? 0 : 1).RemoveTransaction(pinned[2].Hash);
+            if (secondWrapper) pool.Received(gapFilled || incoming == "unpinned" ? 0 : 1).RemoveTransaction(pinned[2].Hash);
             pool.Received(removed != 0 && !oldestSharedWithExecutable && !localVictims && !gap ? 1 : 0).RemoveTransaction(oldest.Hash);
             pool.Received(expected != ProofWrapperAcceptanceStatus.LocalFailure || gap ? 1 : 0)
                 .SubmitTx(Arg.Is<Transaction>(tx => tx.Hash == first.Hash), Arg.Any<TxHandlingOptions>());
