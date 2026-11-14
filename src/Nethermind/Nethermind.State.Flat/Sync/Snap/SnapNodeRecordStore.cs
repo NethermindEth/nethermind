@@ -144,13 +144,26 @@ internal sealed class SnapNodeRecordStore(IPersistence.IPersistenceReader reader
         ReadOnlySpan<byte> rlp = proofs[node.ProofIndex];
         NodeRecordCodec.Decode(rlp, out NodeRecordKind kind, out ushort hashMask);
 
+        // When the boundary walk kept every child of the node as it is, each child is the hash of a subtree outside the range,
+        // which this range neither builds nor writes, so the record is written from the RLP as received, without child pointers.
+        // Otherwise the children are rebuilt below, for one of two reasons:
+        // - a child the walk cleared (its bit in ClearedChildren) lies inside the range, so it is dropped for the entries to rebuild;
+        // - a child the walk kept as a proof node needs the pointer of its record, so the bulk set reaches that record instead of
+        //   loading the node from persistence, which does not hold it. Such children come after the node in the list, as parents
+        //   come before their children.
         bool isTrimmed = node.ClearedChildren != 0;
-        for (int i = index + 1; !isTrimmed && i < nodes.Count; i++)
+        if (!isTrimmed)
         {
-            isTrimmed = nodes[i].ParentIndex == index;
+            for (int i = index + 1; i < nodes.Count; i++)
+            {
+                if (nodes[i].ParentIndex != index) continue;
+
+                isTrimmed = true;
+                break;
+            }
         }
 
-        if (!isTrimmed) return WriteRecord(rlp, kind, hashMask, []);
+        if (!isTrimmed) return WriteToBuffer(rlp, kind, hashMask, []);
 
         Span<byte> original = stackalloc byte[NodeRecordCodec.Length(BitOperations.PopCount(hashMask), rlp.Length)];
         NodeRecordCodec.WriteFromRlp(rlp, kind, hashMask, default, 0, original);
@@ -160,11 +173,16 @@ internal sealed class SnapNodeRecordStore(IPersistence.IPersistenceReader reader
         if (isBranch) view.CopyChildren(children);
         else children[0] = view.Child(0);
 
+        // Clears each child the walk cleared, one set bit of ClearedChildren at a time: it lies inside the range, so it is left
+        // empty for the bulk set to rebuild from the entries.
         for (int mask = node.ClearedChildren; mask != 0; mask &= mask - 1)
         {
             children[BitOperations.TrailingZeroCount(mask)] = default;
         }
 
+        // Links each child the walk kept as a proof node to its record. It comes after this node in the list, so its record is
+        // already written and written[i] holds its hash and pointer: the hash is the one the RLP already has, and the pointer
+        // lets the bulk set reach the child's record instead of loading the node from persistence.
         for (int i = index + 1; i < nodes.Count; i++)
         {
             if (nodes[i].ParentIndex == index) children[nodes[i].ChildIndex] = ChildRef.ForHash(written[i].Hash, written[i].Pointer);
@@ -177,22 +195,22 @@ internal sealed class SnapNodeRecordStore(IPersistence.IPersistenceReader reader
         else NodeRlp.WriteExtension(key, children[0], trimmed);
 
         NodeRecordCodec.Decode(trimmed, out NodeRecordKind trimmedKind, out ushort trimmedHashMask);
-        return WriteRecord(trimmed, trimmedKind, trimmedHashMask, children);
+        return WriteToBuffer(trimmed, trimmedKind, trimmedHashMask, children);
     }
 
-    /// <summary>Writes the record of <paramref name="rlp"/>, pointing to the records of the <paramref name="children"/> that have one.</summary>
-    private (ValueHash256 Hash, ulong Pointer) WriteRecord(ReadOnlySpan<byte> rlp, NodeRecordKind kind, ushort hashMask, ReadOnlySpan<ChildRef> children)
+    /// <summary>Writes the record of <paramref name="rlp"/> to the buffer, pointing to the records of the <paramref name="children"/> that have one.</summary>
+    private (ValueHash256 Hash, ulong Pointer) WriteToBuffer(ReadOnlySpan<byte> rlp, NodeRecordKind kind, ushort hashMask, ReadOnlySpan<ChildRef> children)
     {
         ValueHash256 hash = ValueKeccak.Compute(rlp);
         using INodeRecordWriteBatch batch = _buffer!.StartWriteBatch(NodeRecordCodec.AlignedLength(NodeRecordCodec.Length(BitOperations.PopCount(hashMask), rlp.Length)));
-        Span<byte> record = batch.Bytes;
-        NodeRecordCodec.WriteFromRlp(rlp, kind, hashMask, hash, 0, record);
+        Span<byte> recordSpan = batch.Bytes;
+        NodeRecordCodec.WriteFromRlp(rlp, kind, hashMask, hash, 0, recordSpan);
         for (int i = 0; i < children.Length; i++)
         {
             if (children[i].Kind != ChildRefKind.Hash || children[i].Pointer == 0) continue;
 
             int position = BitOperations.PopCount(hashMask & ((1u << i) - 1));
-            BinaryPrimitives.WriteUInt64LittleEndian(record[(NodeRecordCodec.HeaderLength + NodeRecordCodec.PointerLength * position)..], children[i].Pointer);
+            BinaryPrimitives.WriteUInt64LittleEndian(recordSpan[(NodeRecordCodec.HeaderLength + NodeRecordCodec.PointerLength * position)..], children[i].Pointer);
         }
 
         return (hash, batch.BasePointer);
