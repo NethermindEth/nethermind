@@ -128,7 +128,7 @@ public static class EthereumEcdsaExtensions
     {
         // The result is this transaction's sender, so an encoding of another transaction must not be hashed.
         ValueHash256 hash = SignatureHash(ecdsa, tx, signature, encoded, useSignatureChainId, checkOwnership: true);
-        // The guest recovers every sender once, so it keeps legacy senders out of the cache, as before, and hashes no key for them.
+        // The guest has no pool ingress to warm the cache, so it hashes no key for legacy senders.
         bool cacheable = !ZkEvmFlag.IsActive || tx.Type != TxType.Legacy;
         ValueHash256 key = default;
         if (cacheable)
