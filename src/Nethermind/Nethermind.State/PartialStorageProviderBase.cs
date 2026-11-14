@@ -24,6 +24,7 @@ namespace Nethermind.State
         protected readonly ILogger _logger = logManager.GetClassLogger<PartialStorageProviderBase>();
         protected readonly List<Change> _changes = new(Resettable.StartCapacity);
         private int _protectedPosition = Resettable.EmptyPosition;
+        private int _intraBlockCacheHighWater;
 
         // stack of snapshot indexes on changes for start of each transaction
         // this is needed for OriginalValues for new transactions
@@ -81,6 +82,8 @@ namespace Nethermind.State
             {
                 return;
             }
+
+            if (_intraBlockCache.Count > _intraBlockCacheHighWater) _intraBlockCacheHighWater = _intraBlockCache.Count;
 
             ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
             for (int i = 0; i < currentPosition - snapshot; i++)
@@ -164,12 +167,14 @@ namespace Nethermind.State
 
         private void ClearIntraBlockCache()
         {
-            if (!Core.Collections.CollectionExtensions.IsSparseForRemoval(_intraBlockCache.Count, _intraBlockCache.Capacity))
+            int highWater = Math.Max(_intraBlockCacheHighWater, _intraBlockCache.Count);
+            if (!Core.Collections.CollectionExtensions.IsSparseForRemoval(highWater, _intraBlockCache.Capacity))
             {
-                _intraBlockCache.ClearAndTrim();
+                FullyClearIntraBlockCache();
                 return;
             }
 
+            _intraBlockCacheHighWater = highWater;
             ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
             for (int i = changes.Length - 1; i >= 0; i--)
             {
@@ -178,7 +183,13 @@ namespace Nethermind.State
             }
 
             Debug.Assert(_intraBlockCache.Count == 0, "Every cached cell has an update without a previous one.");
-            if (_intraBlockCache.Count != 0) _intraBlockCache.ClearAndTrim();
+            if (_intraBlockCache.Count != 0) FullyClearIntraBlockCache();
+        }
+
+        private void FullyClearIntraBlockCache()
+        {
+            _intraBlockCache.ClearAndTrim();
+            _intraBlockCacheHighWater = 0;
         }
 
         /// <summary>
