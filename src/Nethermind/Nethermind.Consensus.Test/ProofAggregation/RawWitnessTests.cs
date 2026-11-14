@@ -303,6 +303,19 @@ public class RawWitnessTests
         }
     }
 
+    // Peer input: a truncated body is malformed, never an exception escaping admission.
+    [TestCase(new byte[] { 0xc0 })]
+    [TestCase(new byte[] { 0xc1, 0xc0 })]
+    [TestCase(new byte[] { 0xc2, 0xc0, 0x02 })]
+    [TestCase(new byte[] { 0xc3, 0xc0, 0x02 })]
+    [TestCase(new byte[] { 0x02 })]
+    public async Task Truncated_bodies_are_malformed(byte[] body)
+    {
+        Node node = CreateNode();
+        ProofWrapperAcceptance result = await node.Service.AcceptOwnedDetailedAsync(body);
+        Assert.That(result.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Malformed), result.Result.Error);
+    }
+
     [Test]
     public async Task Raw_wrappers_are_declined_without_penalty_when_no_program_is_recognized()
     {
@@ -399,7 +412,33 @@ public class RawWitnessTests
         Assert.That(node.Raw.TryEnterValidation(), Is.True);
     }
 
-    // When the global budget is full, the largest other source gives way, oldest first; a source never evicts itself.
+    // When the global budget is full, the largest other peer source gives way, oldest first; a source never evicts itself and a
+    // peer never evicts local submissions, even when they hold the most.
+    [Test]
+    public void Full_raw_pool_evicts_the_largest_other_peer_source_and_never_local_entries()
+    {
+        Node local = CreateNode();
+        RawSignature localSignature = Signature(1);
+        FrameDependency localRaw = RawDependency(localSignature);
+        MempoolWrapper localDecoded = RawWrapper(new() { [localRaw] = localSignature }, Transaction(0, localRaw));
+        object peer = new(), other = new();
+        static ValueHash256 Key(int i) => ValueKeccak.Compute(BitConverter.GetBytes(i));
+        for (int i = 0; i < RawWitnessPool.MaxWrappers - 1; i++)
+            local.Raw.TryAdd([1], Key(i), localDecoded, Eip8288Verifier.For(Batched), null, local: true);
+        local.Raw.TryAdd([1], Key(-1), localDecoded, Eip8288Verifier.For(Batched), peer, peer);
+
+        RawWitnessPool.Admission otherAdded = local.Raw.TryAdd([1], Key(-2), localDecoded, Eip8288Verifier.For(Batched), other, other);
+        RawWitnessPool.Admission otherAgain = local.Raw.TryAdd([1], Key(-3), localDecoded, Eip8288Verifier.For(Batched), other, other);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(otherAdded, Is.EqualTo(RawWitnessPool.Admission.Added));
+            Assert.That(local.Raw.Contains(Key(-1)), Is.False, "the other peer gave way");
+            Assert.That(otherAgain, Is.EqualTo(RawWitnessPool.Admission.Full), "only local entries and the requester's own remain");
+            Assert.That(Enumerable.Range(0, RawWitnessPool.MaxWrappers - 1).All(i => local.Raw.Contains(Key(i))), Is.True, "no local entry was evicted");
+        }
+    }
+
     [Test]
     public void Full_raw_pool_evicts_the_largest_other_source()
     {

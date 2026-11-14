@@ -231,19 +231,27 @@ public sealed class RawWitnessPool : IDisposable
         }
     }
 
-    /// <summary>Evicts the largest other source's oldest wrappers until <paramref name="bytes"/> more fit the global budget.</summary>
+    /// <summary>Evicts the largest other peer source's oldest wrappers, largest by count, then bytes, until <paramref name="bytes"/>
+    /// more fit the global budget; local submissions are never evicted.</summary>
     private bool MakeRoom(object owner, int bytes)
     {
         while (_entries.Count >= MaxWrappers || Bytes + bytes > MaxBytes)
         {
+            Dictionary<object, int> counts = [];
+            foreach (Entry entry in _entries.Values)
+                if (!entry.Local) counts[entry.Identity] = counts.GetValueOrDefault(entry.Identity) + 1;
             object? largest = null;
-            long most = 0;
-            foreach ((object source, long held) in _sourceBytes)
-                if (held > most) (largest, most) = (source, held);
+            (int Count, long Bytes) most = default;
+            foreach ((object source, int count) in counts)
+            {
+                (int, long) size = (count, _sourceBytes[source]);
+                if (size.CompareTo(most) > 0) (largest, most) = (source, size);
+            }
             if (largest is null || Equals(largest, owner)) return false;
             foreach (ValueHash256 hash in _order)
             {
-                if (!Equals(_entries[hash].Identity, largest)) continue;
+                Entry entry = _entries[hash];
+                if (entry.Local || !Equals(entry.Identity, largest)) continue;
                 RemoveLocked(hash);
                 break;
             }

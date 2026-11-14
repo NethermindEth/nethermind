@@ -444,7 +444,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             reader.SkipItem();
             return reader.DecodeByte() == MempoolWrapper.ModeRaw;
         }
-        catch (RlpException)
+        // A truncated body runs off its end; full decoding reports it as malformed.
+        catch (Exception exception) when (exception is RlpException or IndexOutOfRangeException or ArgumentOutOfRangeException)
         {
             return false;
         }
