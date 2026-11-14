@@ -68,7 +68,7 @@ public class BlockBodiesServingBenchmarks
         BlockBody[] bodies = new BlockBody[BlockCount];
         for (int i = 0; i < BlockCount; i++)
         {
-            bodies[i] = _store.Get(_blocks[i].Number, _blocks[i].Hash, RlpBehaviors.ExcludeHashes)!.Body;
+            bodies[i] = _store.Get(_blocks[i].Number, _blocks[i].Hash, RlpBehaviors.ExcludeHashes, shouldCache: false)!.Body;
         }
 
         // The serializer before this change: each body encoded straight into the message.
