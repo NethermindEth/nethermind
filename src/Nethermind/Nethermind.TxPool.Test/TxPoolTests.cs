@@ -2356,11 +2356,23 @@ namespace Nethermind.TxPool.Test
                 .WithSenderAddress(TestItem.AddressA)
                 .WithGasPrice(2)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            EnsureSenderBalance(transaction);
+            Transaction removed = Build.A.Transaction
+                .WithSenderAddress(TestItem.AddressA)
+                .WithNonce(1)
+                .WithGasPrice(2)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
             _txPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
+            Assert.That(_txPool.SubmitTx(removed, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
 
             await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.TestObject);
-            Assert.That(_txPool.IsKnown(transaction.Hash), Is.True);
+            // A plain removal leaves the hash known, so the same transaction is refused as already known.
+            bool removedKnown = _txPool.RemoveTransaction(removed.Hash) && _txPool.IsKnown(removed.Hash);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.IsKnown(transaction.Hash), Is.True);
+                Assert.That(removedKnown, Is.True);
+            }
 
             Transaction dropped = null;
             _txPool.EvictedPending += (_, e) => dropped = e.Transaction;
