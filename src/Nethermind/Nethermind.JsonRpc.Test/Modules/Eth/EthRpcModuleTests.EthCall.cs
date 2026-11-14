@@ -582,6 +582,40 @@ public partial class EthRpcModuleTests
         AssertAccountDoesNotExist(ctx, TestAccount);
     }
 
+    /// <summary>
+    /// A call with the fields and signature of a signed transaction runs as its <c>from</c>, here a sender with no account, or
+    /// as the zero address when <c>from</c> is omitted, as an unsigned call does.
+    /// </summary>
+    [Test]
+    public async Task Rpc_runs_a_signed_call_as_its_from(
+        [Values("eth_call", "eth_estimateGas", "eth_createAccessList", "eth_simulateV1")] string method, [Values] bool fromOmitted)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        Address from = fromOmitted ? Address.Zero : TestItem.AddressF;
+        // eth_createAccessList requires a non-zero fee cap; priced, the call names the sender that cannot pay for it.
+        bool priced = method == "eth_createAccessList";
+        EIP1559TransactionForRpc call = SignedCallScenario.BuildCall(ctx.Test.EthereumEcdsa, ctx.Test.SpecProvider.ChainId, fromOmitted ? null : from, unpriced: !priced);
+        // Stops when the caller is `from` and hits an invalid instruction otherwise.
+        Dictionary<string, object> stateOverride = new() { [TestItem.AddressB.ToString()] = new { code = $"0x73{from.ToString(false, false)}3314601b57fe5b00" } };
+
+        string response = method == "eth_simulateV1"
+            ? await ctx.Test.TestEthRpc(method, new { blockStateCalls = new[] { new { stateOverrides = stateOverride, calls = new[] { call } } }, validation = false })
+            : await ctx.Test.TestEthRpc(method, call, "latest", stateOverride);
+
+        JToken parsed = JToken.Parse(response);
+        if (priced)
+        {
+            Assert.That(response, Does.Contain($"insufficient funds for gas * price + value: address {from}").IgnoreCase);
+            return;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parsed["error"], Is.Null, response);
+            if (method == "eth_simulateV1") Assert.That((string?)parsed["result"]?[0]?["calls"]?[0]?["status"], Is.EqualTo("0x1"), response);
+        }
+    }
+
     [Test]
     public async Task Eth_call_web3_sample_not_enough_gas_other_account()
     {
@@ -955,13 +989,14 @@ public partial class EthRpcModuleTests
         }
     }
 
-    [Test]
-    public async Task Eth_call_with_revert()
+    [TestCase("wrong-parameters")]
+    [TestCase("réverted ✓")]
+    [TestCase("a\nb\tc", @"a\nb\tc")]
+    public async Task Eth_call_with_revert(string errorMessage, string? jsonEscapedMessage = null)
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
 
         AbiSignature<string> errorSignature = new AbiSignature("Error").With(AbiType.String);
-        string errorMessage = "wrong-parameters";
         byte[] encodedError = AbiCodec.Encode(errorSignature, errorMessage);
         string abiEncodedErrorMessage = encodedError.ToHexString(true);
 
@@ -974,7 +1009,7 @@ public partial class EthRpcModuleTests
             $$"""{"from": "{{SecondaryTestAddress}}", "type": "0x2", "data": "{{dataStr}}", "gas": 1000000}""")!;
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         Assert.That(
-            serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":3,"message":"execution reverted: {{errorMessage}}","data":"{{abiEncodedErrorMessage}}"},"id":67}"""));
+            serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":3,"message":"execution reverted: {{jsonEscapedMessage ?? errorMessage}}","data":"{{abiEncodedErrorMessage}}"},"id":67}"""));
     }
 
     [Test]
@@ -1059,6 +1094,94 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
 
         Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expectedResult)).Using(JToken.EqualityComparer));
+    }
+
+    [Test]
+    public async Task Call_methods_reject_an_invalid_precompile_move_as_invalid_input(
+        [Values("eth_call", "eth_estimateGas", "eth_createAccessList")] string method,
+        [Values("not a precompile", "onto an overridden account", "onto itself")] string move)
+    {
+        string stateOverrideJson = move switch
+        {
+            "not a precompile" => """{"0xc100000000000000000000000000000000000000":{"movePrecompileToAddress":"0xc200000000000000000000000000000000000000"}}""",
+            "onto an overridden account" => """{"0x0000000000000000000000000000000000000004":{"movePrecompileToAddress":"0xc200000000000000000000000000000000000000"},"0xc200000000000000000000000000000000000000":{"balance":"0x1"}}""",
+            _ => """{"0x0000000000000000000000000000000000000004":{"movePrecompileToAddress":"0x0000000000000000000000000000000000000004"}}"""
+        };
+        object? transaction = JsonSerializer.Deserialize<object>("""{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xc200000000000000000000000000000000000000"}""");
+        using Context ctx = await Context.Create();
+
+        string serialized = await ctx.Test.TestEthRpc(method, transaction, "latest", JsonSerializer.Deserialize<object>(stateOverrideJson));
+
+        Assert.That(JToken.Parse(serialized)["error"]?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput), serialized);
+    }
+
+    // Geth checks accounts in ascending address order and the move of an account before its storage.
+    [TestCase("""{"0xc300000000000000000000000000000000000000":{"state":{},"stateDiff":{}},"0xc100000000000000000000000000000000000000":{"movePrecompileToAddress":"0xc200000000000000000000000000000000000000"}}""",
+        TestName = "Call methods report the invalid entry with the lowest address")]
+    [TestCase("""{"0xc100000000000000000000000000000000000000":{"state":{},"stateDiff":{},"movePrecompileToAddress":"0xc200000000000000000000000000000000000000"}}""",
+        TestName = "Call methods report an invalid move before a storage conflict")]
+    public async Task Call_methods_report_the_first_invalid_state_override(string stateOverrideJson)
+    {
+        object? transaction = JsonSerializer.Deserialize<object>("""{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xc200000000000000000000000000000000000000"}""");
+        using Context ctx = await Context.Create();
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", JsonSerializer.Deserialize<object>(stateOverrideJson));
+
+        JToken? error = JToken.Parse(serialized)["error"];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput), serialized);
+            Assert.That(error?["message"]?.Value<string>(), Is.EqualTo($"account {new Address("0xc100000000000000000000000000000000000000").ToString(withEip55Checksum: true)} is not a precompile"), serialized);
+        }
+    }
+
+    [Test]
+    public async Task Call_methods_check_a_precompile_move_against_the_fork_of_the_block_override(
+        [Values("eth_call", "eth_estimateGas")] string method,
+        [Values] bool intoOsaka)
+    {
+        using Context ctx = await Context.Create(new CustomSpecProvider(((ForkActivation)0, Prague.Instance), ((ForkActivation)1, Osaka.Instance)));
+        object? transaction = JsonSerializer.Deserialize<object>("""{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xc200000000000000000000000000000000000000"}""");
+        // P256VERIFY is a precompile from Osaka on.
+        object? stateOverride = JsonSerializer.Deserialize<object>("""{"0x0000000000000000000000000000000000000100":{"movePrecompileToAddress":"0xc200000000000000000000000000000000000000"}}""");
+        object blockOverride = new { number = intoOsaka ? "0x1" : "0x0" };
+
+        string serialized = await ctx.Test.TestEthRpc(method, transaction, intoOsaka ? "0x0" : "latest", stateOverride, blockOverride);
+
+        Assert.That(JToken.Parse(serialized)["error"]?["code"]?.Value<int>(), intoOsaka ? Is.Null : Is.EqualTo(ErrorCodes.InvalidInput), serialized);
+    }
+
+    [Test]
+    public async Task Call_methods_check_account_override_keys(
+        [Values("eth_call", "eth_estimateGas", "eth_createAccessList", "debug_traceCall")] string method,
+        [Values("\"bogusField\":\"0x1\"", "\"Balance\":\"0x2\"", "\"Code\":\"0x00\"")] string key)
+    {
+        using Context ctx = await Context.Create();
+        object? transaction = JsonSerializer.Deserialize<object>("""{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xc100000000000000000000000000000000000000"}""");
+        string stateOverride = "{\"0xc100000000000000000000000000000000000000\":{\"balance\":\"0x1\"," + key + "}}";
+
+        string serialized = method == "debug_traceCall"
+            ? await RpcTest.TestSerializedRequest(ctx.Test.DebugRpcModule, method, transaction, "latest", JsonSerializer.Deserialize<object>("{\"stateOverrides\":" + stateOverride + "}"))
+            : await ctx.Test.TestEthRpc(method, transaction, "latest", JsonSerializer.Deserialize<object>(stateOverride));
+
+        // A key in another case names its field, so only a second key for the field or an unknown key is rejected.
+        Assert.That(JToken.Parse(serialized)["error"]?["code"]?.Value<int>(), key.StartsWith("\"Code\"") ? Is.Null : Is.EqualTo(ErrorCodes.InvalidParams), serialized);
+    }
+
+    [Test]
+    public async Task Eth_call_puts_the_higher_of_two_moved_precompiles_at_their_destination([Values] bool higherListedFirst)
+    {
+        const string ecMul = "\"0x0000000000000000000000000000000000000007\":{\"movePrecompileToAddress\":\"0xc200000000000000000000000000000000000000\"}";
+        const string identity = "\"0x0000000000000000000000000000000000000004\":{\"movePrecompileToAddress\":\"0xc200000000000000000000000000000000000000\"}";
+        string stateOverrideJson = "{" + (higherListedFirst ? ecMul + "," + identity : identity + "," + ecMul) + "}";
+        // On 96 zero bytes, ecMul returns the 64-byte point at infinity and identity returns the 96 bytes.
+        object? transaction = JsonSerializer.Deserialize<object>(
+            """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xc200000000000000000000000000000000000000","input":"0x""" + new string('0', 192) + "\"}");
+        using Context ctx = await Context.Create();
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", JsonSerializer.Deserialize<object>(stateOverrideJson));
+
+        Assert.That(JToken.Parse(serialized)["result"]?.Value<string>(), Is.EqualTo("0x" + new string('0', 128)), serialized);
     }
 
     [TestCase(
@@ -1606,25 +1729,27 @@ public partial class EthRpcModuleTests
             Is.EqualTo("maxFeePerGas and maxPriorityFeePerGas are not valid before London is active"), serialized);
     }
 
-    [Test]
-    public async Task Eth_createAccessList_priority_fee_whose_filled_fee_cap_exceeds_256_bits_fails_on_the_low_bits()
+    // Chain 1, nonce 0, 100000 gas, no value or data; the cases differ in the recipient and the access list.
+    [TestCase("", "0xbfa8edae1a51ad390e4b8db674e2c44d4964c3c30973ff14db0f67fb82cd0e28", TestName = "Fee cap beyond 256 bits names a call")]
+    [TestCase(""","to":null""", "0x8e5bf475233b54bb39af2a960ff11fdf9efab2dbfd3e6ac0e003c6ad8a434230", TestName = "Fee cap beyond 256 bits names a contract creation")]
+    [TestCase(""","accessList":[{"address":"0x00000000000000000000000000000000000000aa","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000001"]}]""", "0x6bba4617a334e048a917b2f0761a50ca98f60c5c0442538a5d36c8489d307e49", TestName = "Fee cap beyond 256 bits names a call with an access list")]
+    public async Task Eth_createAccessList_priority_fee_whose_filled_fee_cap_exceeds_256_bits_fails_on_the_low_bits(string extraFields, string expectedHash)
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
         UInt256 baseFee = ctx.Test.BlockTree.Head!.BaseFeePerGas;
         UInt256 priorityFee = UInt256.MaxValue;
 
         string serialized = await ctx.Test.TestEthRpc("eth_createAccessList",
-            TipFeeRequest($$"""{"type":"0x2","maxPriorityFeePerGas":"{{priorityFee.ToHexString(skipLeadingZeros: true)}}"}"""), "latest", TipFeeState(OneEtherBalance));
+            TipFeeRequest($$"""{"type":"0x2","maxPriorityFeePerGas":"{{priorityFee.ToHexString(skipLeadingZeros: true)}}"{{extraFields}}}"""), "latest", TipFeeState(OneEtherBalance));
 
         string sender = new Address(TipFeeSender).ToString(withEip55Checksum: true);
         UInt256 lowBits = baseFee * 2 - 1;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(baseFee, Is.EqualTo((UInt256)765_625_000), "the hash below is for this base fee");
-            // The transaction is named with the 257-bit fee cap it was filled with: chain 1, nonce 0, 100000 gas,
-            // no value, data or access list.
+            // The transaction is named with the 257-bit fee cap it was filled with.
             Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(),
-                Is.EqualTo($"failed to apply transaction: 0xbfa8edae1a51ad390e4b8db674e2c44d4964c3c30973ff14db0f67fb82cd0e28 err: max priority fee per gas higher than max fee per gas: address {sender}, maxPriorityFeePerGas: {priorityFee}, maxFeePerGas: {lowBits}"),
+                Is.EqualTo($"failed to apply transaction: {expectedHash} err: max priority fee per gas higher than max fee per gas: address {sender}, maxPriorityFeePerGas: {priorityFee}, maxFeePerGas: {lowBits}"),
                 serialized);
         }
     }
@@ -1764,7 +1889,7 @@ public partial class EthRpcModuleTests
     {
         JsonObject request = JsonNode.Parse(feeFields)!.AsObject();
         request["from"] = TipFeeSender;
-        request["to"] = TipFeeTarget;
+        if (!request.ContainsKey("to")) request["to"] = TipFeeTarget;
         request["gas"] = TipFeeGas.ToHexString(true);
         return JsonSerializer.Deserialize<object>(request.ToJsonString());
     }

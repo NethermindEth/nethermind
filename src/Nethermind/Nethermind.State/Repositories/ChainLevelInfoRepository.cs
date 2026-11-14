@@ -13,6 +13,7 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.State.Repositories
@@ -201,7 +202,7 @@ namespace Nethermind.State.Repositories
             {
                 if (buffer.IsEmpty) return null;
                 RlpReader reader = new(buffer);
-                return decoder.Decode(ref reader, RlpBehaviors.AllowExtraBytes);
+                return decoder.Decode(ref reader, RlpBehaviors.AllowExtraBytes | RlpBehaviors.TrustedInput);
             }
         }
 

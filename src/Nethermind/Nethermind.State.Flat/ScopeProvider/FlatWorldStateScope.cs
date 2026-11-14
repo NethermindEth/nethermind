@@ -35,7 +35,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     // Taken before the block's first trie write and handed to its snapshot at commit, so every node the block writes stays readable.
     private INodeRecordBufferPin? _bufferPin;
 
-    private readonly Hash256 _initialStateRoot;
+    private readonly ValueHash256 _initialStateRoot;
+    private Hash256? _initialStateRootHash;
     // The state root warm-ups walk from; default in a trie-less scope.
     private readonly (ValueHash256 Hash, ulong Pointer) _initialTrieRoot;
     // Null in a trie-less scope.
@@ -92,7 +93,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         CodeDb = codeDb;
         _commitTarget = commitTarget;
 
-        _initialStateRoot = currentStateId.StateRoot.ToCommitment();
+        _initialStateRoot = currentStateId.StateRoot;
 
         _configuration = configuration;
         _warmReadPool = warmReadPool;
@@ -107,7 +108,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         {
             INodeRecordBuffer buffer = snapshotBundle.NodeRecordBuffer!;
             _bufferPin = buffer.PinHead();
-            _initialTrieRoot = buffer.ResolveRoot(null, _initialStateRoot.ValueHash256);
+            _initialTrieRoot = buffer.ResolveRoot(null, _initialStateRoot);
             _stateTrie = new NodeRecordTrie(snapshotBundle, null, _initialTrieRoot);
         }
 
@@ -219,7 +220,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (Interlocked.Decrement(ref _outstandingWarmups) == 0) Volatile.Read(ref _warmupsDrained)?.Set();
     }
 
-    public Hash256 RootHash => _stateTrie?.RootHash ?? _initialStateRoot;
+    public Hash256 RootHash => _stateTrie?.RootHash ?? (_initialStateRootHash ??= _initialStateRoot.ToCommitment());
 
     /// <summary>A trie-less scope never rehashes storage, so an account it wrote storage to keeps its old root.</summary>
     public bool StorageRootsAreAuthoritative => !_trieless;
@@ -743,7 +744,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     private void ReleaseStorageTrees()
     {
-        foreach (FlatStorageTree storage in _storages.Values) storage.ReleaseTrie();
+        foreach (KeyValuePair<AddressAsKey, FlatStorageTree> storage in _storages) storage.Value.ReleaseTrie();
         _storages.Clear();
     }
 

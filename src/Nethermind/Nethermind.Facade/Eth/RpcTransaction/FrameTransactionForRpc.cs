@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -26,8 +27,8 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
     public UInt256[]? NonceKeys { get; set; }
 
     /// <summary>EIP-8141 <c>frames</c>, in execution order; the field that discriminates this envelope.</summary>
-    /// <remarks>The transaction's <c>gas</c> is their summed limits, so a frame's own budget is read here
-    /// rather than from that total.</remarks>
+    /// <remarks><c>gas</c> is the transaction gas limit <c>max_gas</c>, priced at the including block's spec, or at the
+    /// next block's spec while pending. A frame's own budget is read here rather than from that total.</remarks>
     [JsonDiscriminator]
     public FrameForRpc[]? Frames { get; set; }
 
@@ -66,7 +67,18 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
         // The per-gas cap the base reported is derived, not signed.
         MaxFee = transaction.MaxFee;
         MaxFeePerGas = null;
+        UInt256 feePerBlobGas = UInt256.Zero;
+        if (extraData is { BaseFee: { } baseFee, Spec: { } spec }
+            && (!transaction.CarriesBlobs
+                || extraData.ExcessBlobGas is { } excessBlobGas && BlobGasCalculator.TryCalculateFeePerBlobGas(excessBlobGas, spec.BlobBaseFeeUpdateFraction, out feePerBlobGas))
+            && FrameTxValidation.TryCalculateGasPrice(transaction, spec, in baseFee, in feePerBlobGas, out UInt256 gasPrice))
+        {
+            GasPrice = gasPrice;
+        }
         BlobVersionedHashes = transaction.BlobVersionedHashes ?? [];
+
+        if (extraData.Spec is not null && FrameTxValidation.TryCalculateGasBudget(transaction, extraData.Spec, out _, out _, out ulong maxGas))
+            Gas = maxGas;
     }
 
     public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)

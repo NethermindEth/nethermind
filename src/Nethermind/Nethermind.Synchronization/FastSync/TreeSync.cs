@@ -17,6 +17,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -71,8 +72,8 @@ namespace Nethermind.Synchronization.FastSync
         // only resets / cleans up outside dispatcher.Run — the drain is the sole barrier.
         private readonly ConcurrentDictionary<StateSyncBatch, object?> _ongoingRequests = new();
         private Dictionary<StateSyncItem.NodeKey, HashSet<DependentItem>> _dependencies = [];
-        private readonly LruKeyCache<StateSyncItem.NodeKey> _alreadySavedNode = new(AlreadySavedCapacity, "saved nodes");
-        private readonly LruKeyCache<ValueHash256> _alreadySavedCode = new(AlreadySavedCapacity, "saved nodes");
+        private LruKeyCache<StateSyncItem.NodeKey> _alreadySavedNode = new(AlreadySavedCapacity, "saved nodes");
+        private LruKeyCache<ValueHash256> _alreadySavedCode = new(AlreadySavedCapacity, "saved nodes");
         private ConcurrentDictionary<StateSyncItem.NodeKey, byte[]> _previouslyPendingItems = new();
         private ConcurrentDictionary<StateSyncItem.NodeKey, byte[]> _newPendingItems = new();
 
@@ -762,12 +763,16 @@ namespace Nethermind.Synchronization.FastSync
             CleanupMemory();
         }
 
+        /// <remarks>
+        /// The saved-node caches are replaced rather than cleared, as clearing keeps their capacity, which grows to tens
+        /// of megabytes during a sync and would otherwise stay allocated for the life of the process.
+        /// </remarks>
         private void CleanupMemory()
         {
             _ongoingRequests.Clear();
             _dependencies.Clear();
-            _alreadySavedNode.Clear();
-            _alreadySavedCode.Clear();
+            _alreadySavedNode = new(AlreadySavedCapacity, "saved nodes");
+            _alreadySavedCode = new(AlreadySavedCapacity, "saved nodes");
             if (_rootSaved == 1)
             {
                 _previouslyPendingItems.Clear();

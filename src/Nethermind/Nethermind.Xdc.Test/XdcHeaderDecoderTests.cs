@@ -8,6 +8,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Encoding;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
 using NUnit.Framework;
@@ -29,8 +30,8 @@ namespace Nethermind.Xdc.Test
 
             XdcBlockHeader header = builder.TestObject;
 
-            Rlp encoded = codec.Encode(header);
-            return (header, encoded.Bytes);
+            byte[] encoded = codec.Encode(header);
+            return (header, encoded);
         }
 
         [Test]
@@ -85,7 +86,7 @@ namespace Nethermind.Xdc.Test
             header.Bloom = null;
             header.MixHash = null;
 
-            RlpReader context = new(codec.Encode(header).Bytes);
+            RlpReader context = new(codec.Encode(header));
             XdcBlockHeader decoded = (XdcBlockHeader)codec.Decode(ref context)!;
 
             using (Assert.EnterMultipleScope())
@@ -105,10 +106,10 @@ namespace Nethermind.Xdc.Test
         public void Rejects_Empty_Mandatory_Fixed_Size_Field([Values(0, 1, 2, 3, 4, 5, 6, 13)] int fieldIndex)
         {
             XdcHeaderDecoder codec = new();
-            byte[] validRlp = codec.Encode(Build.A.XdcBlockHeader().TestObject).Bytes;
+            byte[] validRlp = codec.Encode(Build.A.XdcBlockHeader().TestObject);
             byte[] crafted = HeaderRlpTestHelper.ReplaceFieldEncoding(validRlp, fieldIndex, [0x80]);
 
-            Assert.That(() => Decode(codec, crafted), Throws.InstanceOf<RlpException>());
+            Assert.That(() => Decode(codec, crafted), Throws.InstanceOf<RlpReaderException>());
         }
 
         private static void Decode(XdcHeaderDecoder codec, byte[] rlp)
@@ -136,8 +137,8 @@ namespace Nethermind.Xdc.Test
             int fullLen = encodedBytes.Length;
 
             // ForSealing encoding
-            Rlp encoded = decoder.Encode(header, RlpBehaviors.ForSealing);
-            RlpReader context = new(encoded.Bytes);
+            byte[] encoded = decoder.Encode(header, RlpBehaviors.ForSealing);
+            RlpReader context = new(encoded);
             XdcBlockHeader unencoded = (XdcBlockHeader)decoder.Decode(ref context, RlpBehaviors.ForSealing)!;
 
             Assert.That(unencoded.Validator, Is.Null,
@@ -153,7 +154,7 @@ namespace Nethermind.Xdc.Test
             RlpReader context = new(Bytes.FromHexString(hexRlp));
             XdcBlockHeader? unencoded = (XdcBlockHeader?)decoder.Decode(ref context);
 
-            string encoded = decoder.Encode(unencoded).ToString();
+            string encoded = decoder.Encode(unencoded).ToHexString(true);
 
             Assert.That(encoded, Is.EqualTo(hexRlp));
         }

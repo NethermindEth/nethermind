@@ -28,6 +28,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 using Nethermind.Evm.State;
@@ -459,27 +460,29 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         {
             int contentLength = Transactions.Sum(GetTxLength);
             using ArrayPoolSpan<byte> data = new(Rlp.LengthOfSequence(contentLength));
-            RlpWriter writer = new(data);
+            RlpWriter writer = RlpWriter.ContentWriter(data);
 
-            writer.StartSequence(contentLength);
+            RlpSequence sequence = writer.StartSequence(contentLength);
             foreach (Transaction tx in Transactions.AsSpan())
             {
                 txDecoder.Encode(ref writer, tx);
             }
+            writer.EndSequence(sequence);
 
-            return GetCompressedLength(data.Slice(0, writer.Position));
+            return GetCompressedLength(data.Slice(0, writer.Length));
         }
 
         public static ulong EstimateTxLength(Transaction tx, IRlpDecoder<Transaction> txDecoder)
         {
             int contentLength = txDecoder.GetLength(tx, RlpBehaviors.None);
             using ArrayPoolSpan<byte> data = new(Rlp.LengthOfSequence(contentLength));
-            RlpWriter writer = new(data);
+            RlpWriter writer = RlpWriter.ContentWriter(data);
 
-            writer.StartSequence(contentLength);
+            RlpSequence sequence = writer.StartSequence(contentLength);
             txDecoder.Encode(ref writer, tx);
+            writer.EndSequence(sequence);
 
-            return GetCompressedLength(data.Slice(0, writer.Position));
+            return GetCompressedLength(data.Slice(0, writer.Length));
         }
 
         private static ulong GetCompressedLength(ReadOnlySpan<byte> data)

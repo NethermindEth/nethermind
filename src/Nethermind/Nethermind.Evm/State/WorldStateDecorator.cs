@@ -11,11 +11,10 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 
-namespace Nethermind.State;
+namespace Nethermind.Evm.State;
 
 public abstract class WorldStateDecorator(IWorldState state) : IWorldState
 {
@@ -38,6 +37,8 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
         => State.HintBal(bal);
 
     public bool SupportsPrefetch => State.SupportsPrefetch;
+
+    public bool IsTrieBacked => State.IsTrieBacked;
 
     public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
         => State.Prefetch(accounts, slots, cancellationToken);

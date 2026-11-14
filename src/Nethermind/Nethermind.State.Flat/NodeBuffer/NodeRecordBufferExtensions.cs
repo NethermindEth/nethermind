@@ -3,7 +3,6 @@
 
 using System.Buffers.Binary;
 using System.Collections;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using Nethermind.Core.Collections;
@@ -28,11 +27,9 @@ public static class NodeRecordBufferExtensions
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
     /// <param name="hash">The keccak of <paramref name="rlp"/>, trusted as given.</param>
     /// <param name="childPointers">Child record pointers by branch nibble, or at index zero for an extension; zero or absent when unknown.</param>
-    /// <exception cref="TrieException">The RLP is not a valid trie node.</exception>
     public static ulong AppendRecordFromRlp(this INodeRecordBuffer buffer, Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> rlp, ReadOnlySpan<ulong> childPointers)
     {
-        if (!NodeRecordCodec.TryDecode(rlp, out NodeRecordKind kind, out ushort hashMask)) ThrowInvalidRlp();
-
+        NodeRecordCodec.Decode(rlp, out NodeRecordKind kind, out ushort hashMask);
         int length = NodeRecordCodec.Length(BitOperations.PopCount(hashMask), rlp.Length);
         using INodeRecordWriteBatch batch = buffer.StartWriteBatch(NodeRecordCodec.AlignedLength(length));
         Span<byte> record = batch.Bytes;
@@ -46,9 +43,6 @@ public static class NodeRecordBufferExtensions
         }
         return batch.BasePointer;
     }
-
-    [DoesNotReturn, StackTraceHidden]
-    private static void ThrowInvalidRlp() => throw new TrieException("Invalid trie node RLP.");
 
     /// <summary>Copies the buffer-resident node at the exact path from the given root, or misses at an unavailable child.</summary>
     /// <remarks>Inline children have no separate record and are not returned.</remarks>

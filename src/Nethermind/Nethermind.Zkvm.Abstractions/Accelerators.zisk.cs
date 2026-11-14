@@ -263,6 +263,63 @@ public static partial class Accelerators
     public static unsafe void Div256(ulong* a, ulong* b, ulong* quotient) => zkvm_u256_le_div(a, b, quotient);
 
     /// <summary>
+    /// Computes the signed, truncating <c>a / b</c> for 256-bit two's-complement integers.
+    /// </summary>
+    /// <remarks>EVM semantics: a zero divisor gives zero and <c>-2^255 / -1</c> gives <c>-2^255</c>. Otherwise as <see cref="Div256"/>.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static unsafe void SDiv256(ulong* a, ulong* b, ulong* quotient)
+    {
+        Status status = zkvm_u256_le_sdiv(a, b, quotient);
+
+        ThrowIfFailed(status, nameof(zkvm_u256_le_sdiv));
+    }
+
+    /// <summary>
+    /// Computes the signed <c>a mod b</c> for 256-bit two's-complement integers, with the sign of <paramref name="a"/>.
+    /// </summary>
+    /// <remarks>EVM semantics: a zero divisor gives zero. Otherwise as <see cref="Div256"/>.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static unsafe void SMod256(ulong* a, ulong* b, ulong* remainder)
+    {
+        Status status = zkvm_u256_le_smod(a, b, remainder);
+
+        ThrowIfFailed(status, nameof(zkvm_u256_le_smod));
+    }
+
+    /// <inheritdoc cref="Sha256"/>
+    /// <remarks>Runs ZisK's own SHA-256 library routine.</remarks>
+    public static void ZiskSha256(ReadOnlySpan<byte> data, Span<byte> output)
+    {
+        ArgumentOutOfRangeException.ThrowIfNotEqual(output.Length, 32, nameof(output));
+
+        Status status = zisklib_sha256(data, (nuint)data.Length, output);
+
+        ThrowIfFailed(status, nameof(zisklib_sha256));
+    }
+
+    /// <inheritdoc cref="ModExp"/>
+    /// <remarks>Runs ZisK's own modular exponentiation library routine.</remarks>
+    public static void ZiskModExp(ReadOnlySpan<byte> @base, ReadOnlySpan<byte> exp, ReadOnlySpan<byte> modulus, Span<byte> output)
+    {
+        ArgumentOutOfRangeException.ThrowIfNotEqual(output.Length, modulus.Length, nameof(output));
+
+        Status status = zisklib_modexp(@base, (nuint)@base.Length, exp, (nuint)exp.Length, modulus, (nuint)modulus.Length, output);
+
+        ThrowIfFailed(status, nameof(zisklib_modexp));
+    }
+
+    /// <inheritdoc cref="Ripemd160"/>
+    /// <remarks>Runs ZisK's own RIPEMD-160 library routine.</remarks>
+    public static void ZiskRipemd160(ReadOnlySpan<byte> data, Span<byte> output)
+    {
+        ArgumentOutOfRangeException.ThrowIfNotEqual(output.Length, 32, nameof(output));
+
+        Status status = zisklib_ripemd160(data, (nuint)data.Length, output);
+
+        ThrowIfFailed(status, nameof(zisklib_ripemd160));
+    }
+
+    /// <summary>
     /// Computes the Keccak-256 hash of <paramref name="length"/> bytes at <paramref name="data"/> into the 32 bytes at
     /// <paramref name="output"/>.
     /// </summary>

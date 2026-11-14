@@ -16,6 +16,7 @@ using Nethermind.Core.Test.Encoding;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -200,7 +201,7 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
         _blockTree.FindBlockHash(oldBlock.Number).Returns(oldBlock.Hash);
         if (throwsDuringLoad)
         {
-            _blockStore.GetReceiptRecoveryBlock(oldBlock.Number, oldBlock.Hash).Returns(_ => throw new RlpException("malformed block"));
+            _blockStore.GetReceiptRecoveryBlock(oldBlock.Number, oldBlock.Hash).Returns(_ => throw new RlpReaderException("malformed block"));
         }
         else
         {

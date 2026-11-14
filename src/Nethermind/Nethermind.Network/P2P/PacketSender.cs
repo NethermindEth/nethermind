@@ -10,6 +10,7 @@ using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P;
@@ -57,7 +58,7 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
         {
             // DotNetty allocators return array-backed buffers, the direct ones included.
             Span<byte> packet = buffer.Array.AsSpan(buffer.ArrayOffset + buffer.WriterIndex, length);
-            RlpWriter writer = new(packet);
+            RlpWriter writer = RlpWriter.ContentWriter(packet);
             writer.Encode(message.AdaptivePacketType);
             serializationService.Serialize(message, packet[packetTypeLength..]);
             buffer.SetWriterIndex(buffer.WriterIndex + length);

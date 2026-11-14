@@ -69,6 +69,7 @@ namespace Nethermind.Trie
         public TrieStats Stats { get; } = new();
 
         public bool IsFullDbScan => true;
+        public bool IsRangeScan => true;
         public void VisitTree(in Context nodeContext, in ValueHash256 rootHash)
         {
         }

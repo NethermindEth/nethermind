@@ -25,6 +25,10 @@ public partial class ParityLikeTxTracer : IFrameTxReceiptTracer
         _frameTx?.ReportFrameEnd(frameIndex, error);
 
     /// <inheritdoc/>
+    void IFrameTxReceiptTracer.ReportFrameCodelessTarget() =>
+        _frameTx?.ReportFrameCodelessTarget();
+
+    /// <inheritdoc/>
     void IFrameTxReceiptTracer.ReportFrameTxReceipt(Address payer, TxFrameReceipt[] frameReceipts) =>
         _frameTx?.ReportFrameTxReceipt(frameReceipts);
 
@@ -53,6 +57,7 @@ public partial class ParityLikeTxTracer : IFrameTxReceiptTracer
         private EvmExceptionType?[]? _frameErrors;
         private TxFrameReceipt[]? _frameReceipts;
         private bool _framesOrdered;
+        private bool _targetCodeless;
 
         public void EnsureRoot()
         {
@@ -110,6 +115,13 @@ public partial class ParityLikeTxTracer : IFrameTxReceiptTracer
             if (!IsFrame(action) || !tracer.IsTracingInstructions) return;
             // A frame is not an operation of its caller, so no call's gas carries over to the next frame's first one.
             tracer._treatGasParityStyle = false;
+            if (_targetCodeless)
+            {
+                _targetCodeless = false;
+                DropLastFrameOperation();
+                return;
+            }
+
             // The gas the VM left until a receipt reports the frame's spend: a frame that halted exceptionally has no
             // result and consumed all its gas; a reverted one keeps its result.
             _lastFrameOperation?.Used = action.Result is null ? 0 : action.Gas - action.Result.GasUsed;
@@ -117,15 +129,28 @@ public partial class ParityLikeTxTracer : IFrameTxReceiptTracer
 
         private bool IsFrame(ParityTraceAction action) => _root is not null && action.TraceAddress.Length == 1;
 
+        /// <summary>A frame whose target has no code has no operation; one that delegates to an account without code
+        /// or halts on its first instruction keeps it.</summary>
+        public void ReportFrameCodelessTarget() => _targetCodeless = true;
+
+        private void DropLastFrameOperation()
+        {
+            List<ParityVmOperationTrace> ops = tracer._currentVmTrace.Ops;
+            ops.Remove(_lastFrameOperation!);
+            _lastFrameOperation = null;
+            tracer._currentOperation = ops.Count == 0 ? null : ops[^1];
+        }
+
         private void AddFrameOperation(ParityTraceAction frame)
         {
-            _lastFrameOperation = new ParityVmOperationTrace { Pc = frame.TraceAddress.AsSpan()[0], Cost = frame.Gas };
+            _lastFrameOperation = new ParityVmOperationTrace { Pc = frame.TraceAddress.AsSpan()[0], Cost = frame.Gas, Push = [] };
             tracer._currentVmTrace.Ops.Add(_lastFrameOperation);
             tracer._currentOperation = _lastFrameOperation;
         }
 
         public void ReportFrameEnd(int frameIndex, EvmExceptionType? error)
         {
+            _targetCodeless = false;
             if ((uint)frameIndex >= (uint)_frames.Length) return;
 
             _frameActions ??= new ParityTraceAction?[_frames.Length];
@@ -136,7 +161,8 @@ public partial class ParityLikeTxTracer : IFrameTxReceiptTracer
             if (_lastFrameOperation is not null)
             {
                 _lastFrameOperation.Pc = frameIndex;
-                _lastFrameOperation.Cost = _frames[frameIndex].GasLimit;
+                _lastFrameOperation.Cost = _frames[frameIndex].ExecutionGasLimit;
+                _lastFrameOperation.Op = _frames[frameIndex].Mode is FrameMode.Verify or FrameMode.Assert ? Instruction.STATICCALL : Instruction.CALL;
                 _frameOperations ??= new ParityVmOperationTrace?[_frames.Length];
                 _frameOperations[frameIndex] = _lastFrameOperation;
                 _lastFrameOperation = null;
@@ -157,11 +183,11 @@ public partial class ParityLikeTxTracer : IFrameTxReceiptTracer
             for (int i = 0; i < frameCount; i++)
             {
                 ParityTraceAction action = _frameActions?[i] ?? BuildUndispatchedFrameAction(_frames[i], frameReceipts[i], _frameErrors?[i]);
-                action.Gas = _frames[i].GasLimit;
-                action.Result?.GasUsed = frameReceipts[i].GasUsed;
+                action.Gas = _frames[i].ExecutionGasLimit;
+                action.Result?.GasUsed = frameReceipts[i].ExecutionGasUsed;
                 if (_frameOperations?[i] is { } operation)
                 {
-                    operation.Used = operation.Cost > frameReceipts[i].GasUsed ? operation.Cost - frameReceipts[i].GasUsed : 0;
+                    operation.Used = operation.Cost > frameReceipts[i].ExecutionGasUsed ? operation.Cost - frameReceipts[i].ExecutionGasUsed : 0;
                 }
 
                 MoveToFramePosition(action, i);

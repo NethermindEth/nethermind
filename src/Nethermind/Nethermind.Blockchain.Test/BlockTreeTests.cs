@@ -229,7 +229,7 @@ public class BlockTreeTests
         using MemoryManager<byte>? missingBal = blockAccessListStore.GetRlp(block.Number, block.Hash!);
         Assert.That(missingBal, Is.Null);
 
-        byte[] encodedBal = Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes;
+        byte[] encodedBal = Rlp.Encode(new ReadOnlyBlockAccessList());
         block.GeneratedBlockAccessList = new GeneratedBlockAccessList();
         block.EncodedBlockAccessList = encodedBal;
         block.Header.BlockAccessListHash = new Hash256(ValueKeccak.Compute(encodedBal).Bytes);
@@ -683,7 +683,7 @@ public class BlockTreeTests
         blockTree.SuggestBlock(block0);
 
         Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
-        byte[] encodedBal = Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes;
+        byte[] encodedBal = Rlp.Encode(new ReadOnlyBlockAccessList());
         block1.EncodedBlockAccessList = encodedBal;
         block1.Header.BlockAccessListHash = new Hash256(ValueKeccak.Compute(encodedBal).Bytes);
         if (bodyAlreadyStored)
@@ -715,7 +715,7 @@ public class BlockTreeTests
         blockTree.SuggestBlock(block0);
 
         Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
-        byte[] encodedBal = Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes;
+        byte[] encodedBal = Rlp.Encode(new ReadOnlyBlockAccessList());
         block1.Header.BlockAccessListHash = new Hash256(ValueKeccak.Compute(encodedBal).Bytes);
         blockTree.Insert(block1.Header);
         blockTree.SuggestBlock(block1); // the bodies feed lands first, carrying no access list
@@ -831,12 +831,12 @@ public class BlockTreeTests
         _headersDb = new TestMemDb();
         TestMemDb blocksInfosDb = new();
 
-        Rlp chainLevel = Rlp.Encode(new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, 1)));
+        byte[] chainLevel = Rlp.Encode(new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, 1)));
         blocksInfosDb.ReadFunc = (key) =>
         {
             if (!Bytes.AreEqual(key, BlockTree.DeletePointerAddressInDb.Bytes))
             {
-                return chainLevel.Bytes;
+                return chainLevel;
             }
 
             return null!;
@@ -1908,14 +1908,14 @@ public class BlockTreeTests
         blockStore.Insert(genesisBlock);
 
         TestMemDb headersDb = new();
-        headersDb.Set(genesisBlock.Hash!, Rlp.Encode(genesisBlock.Header).Bytes);
+        headersDb.Set(genesisBlock.Hash!, Rlp.Encode(genesisBlock.Header));
 
         TestMemDb blockInfosDb = new();
         blockInfosDb.Set(Keccak.Zero, genesisBlock.Hash!.Bytes);
         ChainLevelInfo level = new(true, new BlockInfo(headBlock.Hash!, headBlock.Difficulty));
         level.BlockInfos[0].WasProcessed = true;
 
-        blockInfosDb.Set(0, Rlp.Encode(level).Bytes);
+        blockInfosDb.Set(0, Rlp.Encode(level));
 
         BlockTree blockTree = Build.A.BlockTree()
             .WithoutSettingHead
@@ -2111,7 +2111,7 @@ public class BlockTreeTests
         tree.SuggestBlock(block0);
         foreach (Block block in new[] { block1, block2, block3 })
         {
-            block.EncodedBlockAccessList = Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes;
+            block.EncodedBlockAccessList = Rlp.Encode(new ReadOnlyBlockAccessList());
             tree.SuggestBlock(block);
         }
 
@@ -2555,7 +2555,7 @@ public class BlockTreeTests
     public void Loads_best_head_up_to_best_persisted_state()
     {
         MemDb metadataDb = new();
-        metadataDb.Set(MetadataDbKeys.BeaconSyncPivotNumber, Rlp.Encode(51).Bytes);
+        metadataDb.Set(MetadataDbKeys.BeaconSyncPivotNumber, Rlp.Encode(51));
 
         SyncConfig syncConfig = new()
         {
@@ -3383,7 +3383,7 @@ public class BlockTreeTests
     }
 
     [Test]
-    public void On_restart_loads_already_processed_genesis_block([Values] bool wereProcessed)
+    public void On_restart_loads_genesis_only_if_processed([Values] bool wasProcessed)
     {
         TestMemDb blocksDb = new();
         TestMemDb headersDb = new();
@@ -3413,13 +3413,13 @@ public class BlockTreeTests
                 timestamp: 1695902100,
                 extraData: [])
             {
-                Hash = new Hash256("0xb5f7f912443c940f21fd611f12828d75b534364ed9e95ca4e307729a4661bde4"),
                 Bloom = Core.Bloom.Empty,
                 StateRoot = Keccak.EmptyTreeHash,
                 TxRoot = Keccak.EmptyTreeHash,
                 ReceiptsRoot = Keccak.EmptyTreeHash,
                 MixHash = Keccak.Zero
             });
+            genesis.Header.Hash = genesis.Header.CalculateHash();
 
             // Second block
             Block second = new(new(
@@ -3432,13 +3432,13 @@ public class BlockTreeTests
                 timestamp: genesis.Header.Timestamp + 100,
                 extraData: [])
             {
-                Hash = new Hash256("0x1111111111111111111111111111111111111111111111111111111111111111"),
                 Bloom = Core.Bloom.Empty,
                 StateRoot = genesis.Header.Hash,
                 TxRoot = Keccak.EmptyTreeHash,
                 ReceiptsRoot = Keccak.EmptyTreeHash,
                 MixHash = Keccak.Zero
             });
+            second.Header.Hash = second.Header.CalculateHash();
 
             // Third block
             Block third = new(new(
@@ -3451,18 +3451,18 @@ public class BlockTreeTests
                 timestamp: second.Header.Timestamp + 100,
                 extraData: [])
             {
-                Hash = new Hash256("0x2222222222222222222222222222222222222222222222222222222222222222"),
                 Bloom = Core.Bloom.Empty,
                 StateRoot = genesis.Header.Hash,
                 TxRoot = Keccak.EmptyTreeHash,
                 ReceiptsRoot = Keccak.EmptyTreeHash,
                 MixHash = Keccak.Zero
             });
+            third.Header.Hash = third.Header.CalculateHash();
 
             tree.SuggestBlock(genesis);
             Assert.That(tree.Genesis, Is.Not.Null);
 
-            tree.TryUpdateMainChain(genesis.Header, wereProcessed, preloadedBlocks: [genesis]);
+            tree.TryUpdateMainChain(genesis.Header, wasProcessed, preloadedBlocks: [genesis]);
 
             tree.SuggestBlock(second);
             tree.SuggestBlock(third);
@@ -3478,7 +3478,7 @@ public class BlockTreeTests
                 .WithoutSettingHead
                 .TestObject;
 
-            Assert.That(tree.Genesis, Is.Not.Null);
+            Assert.That(tree.Genesis, wasProcessed ? Is.Not.Null : Is.Null);
         }
     }
 

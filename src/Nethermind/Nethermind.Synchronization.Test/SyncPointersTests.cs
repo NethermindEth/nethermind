@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Db;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -35,8 +36,8 @@ public class SyncPointersTests
     public void Reads_body_and_block_access_list_pointers_from_metadata_db()
     {
         IDb metadataDb = new TestMemDb();
-        metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(33).Bytes);
-        metadataDb.Set(MetadataDbKeys.LowestInsertedBlockAccessListBlockNumber, Rlp.Encode(44).Bytes);
+        metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(33));
+        metadataDb.Set(MetadataDbKeys.LowestInsertedBlockAccessListBlockNumber, Rlp.Encode(44));
 
         SyncPointers pointers = CreateSyncPointers(metadataDb);
 
@@ -52,7 +53,7 @@ public class SyncPointersTests
     {
         IDb metadataDb = new TestMemDb();
         IDb blocksDb = new TestMemDb();
-        blocksDb.Set(LegacyLowestInsertedBodyNumberDbEntryAddress, Rlp.Encode(55).Bytes);
+        blocksDb.Set(LegacyLowestInsertedBodyNumberDbEntryAddress, Rlp.Encode(55));
 
         SyncPointers pointers = CreateSyncPointers(metadataDb, blocksDb: blocksDb);
 
@@ -69,8 +70,8 @@ public class SyncPointersTests
     {
         IDb metadataDb = new TestMemDb();
         IDb blocksDb = new TestMemDb();
-        metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(66).Bytes);
-        blocksDb.Set(LegacyLowestInsertedBodyNumberDbEntryAddress, Rlp.Encode(77).Bytes);
+        metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(66));
+        blocksDb.Set(LegacyLowestInsertedBodyNumberDbEntryAddress, Rlp.Encode(77));
 
         SyncPointers pointers = CreateSyncPointers(metadataDb, blocksDb: blocksDb);
 
@@ -97,5 +98,5 @@ public class SyncPointersTests
         new(blocksDb ?? new TestMemDb(), new TestMemColumnsDb<ReceiptsColumns>(), metadataDb, receiptConfig ?? new ReceiptConfig());
 
     private static long DecodePointer(byte[] pointerBytes) =>
-        new RlpReader(pointerBytes).DecodeLong();
+        RlpCodec.Read(pointerBytes, static (ref RlpReader r) => r.DecodeLong());
 }

@@ -14,6 +14,7 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.TxPool;
 
@@ -259,9 +260,9 @@ internal sealed class McpDiagnosisTools(McpToolExecutor executor, IMcpConfig con
         UInt256? nextBase = null;
         UInt256? nextBlob = null;
         UInt256?[] percentiles = new UInt256?[3];
-        using (ResultWrapper<FeeHistoryResults> result = eth.eth_feeHistory(20, BlockParameter.Latest, [25, 50, 75]))
+        using (ResultWrapper<FeeHistoryResults>? result = TryReadFeeHistory(eth))
         {
-            if (result.Result.ResultType == ResultType.Success && result.Data is { } history)
+            if (result?.Result.ResultType == ResultType.Success && result.Data is { } history)
             {
                 // FeeHistoryOracle appends the next-block estimates after the sampled block fees.
                 if (history.BaseFeePerGas.Count > 1) nextBase = history.BaseFeePerGas[^1];
@@ -295,6 +296,19 @@ internal sealed class McpDiagnosisTools(McpToolExecutor executor, IMcpConfig con
             if (fallback.Result.ResultType == ResultType.Success) nextBlob = fallback.Data;
         }
         return new FeeSnapshot(nextBase, nextBlob, percentiles[0], percentiles[1], percentiles[2], blobIsNext, [.. notes]);
+    }
+
+    /// <returns><c>null</c> when the node's limit on concurrent fee history reads is reached; the caller then falls back as for a failed read.</returns>
+    private static ResultWrapper<FeeHistoryResults>? TryReadFeeHistory(IEthRpcModule eth)
+    {
+        try
+        {
+            return eth.eth_feeHistory(20, BlockParameter.Latest, [25, 50, 75]);
+        }
+        catch (LimitExceededException)
+        {
+            return null;
+        }
     }
 
     internal static JsonObject Diagnose(LegacyTransactionForRpc tx, ulong latest, ulong firstMissing, FeeSnapshot snapshot, Hash256? hash = null, BlockingTransaction? blockedBy = null, JsonArray? nonceGaps = null, int nonceGapsOmitted = 0)

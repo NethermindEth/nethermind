@@ -17,6 +17,7 @@ using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using NUnit.Framework;
@@ -164,7 +165,7 @@ public class ChainLevelInfoRepositoryTests
         ChainLevelInfo cached = CreateBatchLevel(1);
         ChainLevelInfo replacement = CreateBatchLevel(2);
         repository.PersistLevel(1, cached);
-        db.PutSpan(1UL.ToBigEndianSpanWithoutLeadingZeros(out _), Rlp.Encode(replacement).Bytes);
+        db.PutSpan(1UL.ToBigEndianSpanWithoutLeadingZeros(out _), Rlp.Encode(replacement));
         Assert.That(repository.LoadLevel(1), Is.SameAs(cached), "precondition: the single-key cache still has the old level");
 
         using ArrayPoolListRef<ulong> numbers = new(1, 1UL);
@@ -183,7 +184,7 @@ public class ChainLevelInfoRepositoryTests
         repository.PersistLevel(1, CreateBatchLevel(1));
         db.PutSpan(secondNumber.ToBigEndianSpanWithoutLeadingZeros(out _), [0x01]);
 
-        Assert.Throws<RlpException>(() =>
+        Assert.Throws<RlpReaderException>(() =>
         {
             using ArrayPoolListRef<ulong> invalid = new(2, 1UL, secondNumber);
             using IOwnedReadOnlyList<ChainLevelInfo> ignored = repository.MultiLoadLevel(invalid);

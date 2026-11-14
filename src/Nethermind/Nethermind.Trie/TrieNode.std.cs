@@ -11,7 +11,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie
@@ -201,13 +201,13 @@ namespace Nethermind.Trie
             {
                 ResolveUnknownNode(tree, path, readFlags, bufferPool);
             }
-            catch (RlpException rlpException)
+            catch (RlpReaderException rlpException)
             {
                 ThrowDecodingError(rlpException, path);
             }
 
             [DoesNotReturn, StackTraceHidden]
-            void ThrowDecodingError(RlpException rlpException, in TreePath path) => throw new TrieNodeException($"Error when decoding node {Keccak}", path,
+            void ThrowDecodingError(RlpReaderException rlpException, in TreePath path) => throw new TrieNodeException($"Error when decoding node {Keccak}", path,
                     Keccak ?? Nethermind.Core.Crypto.Keccak.Zero, rlpException);
         }
 
@@ -246,6 +246,16 @@ namespace Nethermind.Trie
         /// <summary>Rents the buffer the encoding of the branch at <paramref name="path"/> is written into: from <paramref name="pool"/>.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static CappedArray<byte> RentBranchRlp(ICappedArrayPool? pool, int length, in TreePath path) => pool.SafeRent(length);
+
+        /// <summary>Rents the buffer a full branch re-encoded from <paramref name="previousRlp"/> is patched into: from <paramref name="pool"/>.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static CappedArray<byte> RentPatchedBranchRlp(ICappedArrayPool? pool, ReadOnlySpan<byte> previousRlp, in TreePath path) =>
+            pool.SafeRent(previousRlp.Length);
+
+        /// <summary>Called as a full branch is patched into <paramref name="rlp"/>; nothing to do on the host, which compares
+        /// nothing when it hashes.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void NoteFullBranchPatched(Span<byte> rlp, int unchanged) { }
 
         /// <summary>Returns <paramref name="rlp"/>, a branch encoding, in a buffer the node can keep: the one it is in.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -299,5 +309,27 @@ namespace Nethermind.Trie
         /// <summary>The child hash <paramref name="hash"/>, read from its parent's RLP.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static Hash256 ReadChildHash(ReadOnlySpan<byte> hash) => new(MemoryMarshal.Read<ValueHash256>(hash));
+
+        /// <remarks>Only to a resolver that observes such nodes, a node inlined in its parent being visited without a load.</remarks>
+        partial void OnEmbeddedNodeResolving(ITrieNodeResolver tree, in TreePath path, CappedArray<byte> rlp)
+        {
+            if (tree is IEmbeddedNodeObserver observer) observer.OnEmbeddedNodeResolving(path, rlp.AsSpan());
+        }
+
+        private partial class TrieNodeDecoder
+        {
+            /// <summary>Patches the hashes of the children from <paramref name="group"/> to <paramref name="end"/> into <paramref name="destination"/>, a full branch encoding.</summary>
+            /// <returns>Whether every slot is empty or patched; <see langword="false"/> if the branch is no longer a full one.</returns>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            private static bool TryPatchFullBranchChildren(ITrieNodeResolver tree, ref TreePath path, ref object? group, ref object? end,
+                ushort taken, Span<byte> destination, ref int unchanged, ICappedArrayPool? bufferPool, bool canBeParallel)
+            {
+                for (; Unsafe.IsAddressLessThan(ref group, ref end) && (!TracksTakenChildren || taken != 0); group = ref Unsafe.Add(ref group, 1), taken >>= 1)
+                {
+                    if (!TryPatchFullBranchChild(tree, ref path, ref group, 0, ref end, taken, destination, ref unchanged, bufferPool, canBeParallel)) return false;
+                }
+                return true;
+            }
+        }
     }
 }

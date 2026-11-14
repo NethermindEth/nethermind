@@ -6,6 +6,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
@@ -24,6 +25,7 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Repositories;
@@ -71,10 +73,12 @@ namespace Nethermind.Blockchain
         public BlockHeader? LowestInsertedHeader
         {
             get => _lowestInsertedHeader;
+            [SkipLocalsInit]
             set
             {
                 _lowestInsertedHeader = value;
-                _metadataDb.Set(MetadataDbKeys.LowestInsertedFastHeaderHash, Rlp.Encode(value?.Hash ?? value?.CalculateHash()).Bytes);
+                Span<byte> buffer = stackalloc byte[Rlp.LengthOfKeccakRlp];
+                _metadataDb.PutSpan(MetadataDbKeys.LowestInsertedFastHeaderHash, Rlp.Encode(value?.Hash ?? value?.CalculateHash(), buffer));
             }
         }
 
@@ -87,10 +91,12 @@ namespace Nethermind.Blockchain
         public BlockHeader? LowestInsertedBeaconHeader
         {
             get => _lowestInsertedBeaconHeader;
+            [SkipLocalsInit]
             set
             {
                 _lowestInsertedBeaconHeader = value;
-                _metadataDb.Set(MetadataDbKeys.LowestInsertedBeaconHeaderHash, Rlp.Encode(value?.Hash ?? value?.CalculateHash()).Bytes);
+                Span<byte> buffer = stackalloc byte[Rlp.LengthOfKeccakRlp];
+                _metadataDb.PutSpan(MetadataDbKeys.LowestInsertedBeaconHeaderHash, Rlp.Encode(value?.Hash ?? value?.CalculateHash(), buffer));
             }
         }
 
@@ -1431,7 +1437,7 @@ namespace Nethermind.Blockchain
                 if (Logger.IsTrace) Logger.Trace($"Sync pivot updated from {SyncPivot} to {value}");
 
                 Span<byte> pivotData = stackalloc byte[38]; //1 byte (prefix) + 4 bytes (long) + 1 byte (prefix) + 32 bytes (Keccak)
-                RlpWriter writer = new(pivotData);
+                RlpWriter writer = RlpWriter.ContentWriter(pivotData);
                 writer.Encode(value.BlockNumber);
                 writer.Encode(value.BlockHash);
                 _metadataDb.PutSpan(((long)MetadataDbKeys.UpdatedPivotData).ToBigEndianSpanWithoutLeadingZeros(out _), pivotData);
@@ -2183,18 +2189,19 @@ namespace Nethermind.Blockchain
         /// Caller holds <see cref="_forkChoiceLock"/>. The pair is forgotten before each attempt, so a failed or uncertain
         /// commit is retried on the next call.
         /// </remarks>
+        [SkipLocalsInit]
         private void PersistForkChoice(Hash256? finalizedBlockHash, Hash256? safeBlockHash)
         {
             (Hash256? Finalized, Hash256? Safe) requested = (finalizedBlockHash, safeBlockHash);
             if (_persistedForkChoice == requested) return;
 
-            byte[] finalizedRlp = Rlp.Encode(finalizedBlockHash).Bytes;
-            byte[] safeRlp = Rlp.Encode(safeBlockHash).Bytes;
+            Span<byte> finalizedRlp = Rlp.Encode(finalizedBlockHash, stackalloc byte[Rlp.LengthOfKeccakRlp]);
+            Span<byte> safeRlp = Rlp.Encode(safeBlockHash, stackalloc byte[Rlp.LengthOfKeccakRlp]);
             _persistedForkChoice = null;
             using (IWriteBatch batch = _metadataDb.StartWriteBatch())
             {
-                batch.Set(MetadataDbKeys.FinalizedBlockHash, finalizedRlp);
-                batch.Set(MetadataDbKeys.SafeBlockHash, safeRlp);
+                batch.PutSpan(MetadataDbKeys.FinalizedBlockHash, finalizedRlp);
+                batch.PutSpan(MetadataDbKeys.SafeBlockHash, safeRlp);
             }
 
             _persistedForkChoice = requested;

@@ -22,6 +22,7 @@ using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
@@ -95,7 +96,7 @@ namespace Nethermind.TxPool.Test
         {
             Transaction tx = BuildBlobTxDeclaringNoBlobs(null).TestObject;
 
-            Assert.That(() => TxDecoder.Instance.Encode(tx), Throws.TypeOf<RlpException>()
+            Assert.That(() => TxDecoder.Instance.Encode(tx), Throws.TypeOf<RlpReaderException>()
                 .With.Message.Contains($"{nameof(Transaction.BlobVersionedHashes)} is required"));
         }
 

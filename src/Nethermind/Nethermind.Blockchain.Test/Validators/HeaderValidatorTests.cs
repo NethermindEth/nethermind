@@ -130,7 +130,7 @@ public class HeaderValidatorTests
             new OneLoggerLogManager(new(_testLogger)));
 
         ReadOnlyBlockAccessList emptyBal = new();
-        byte[] emptyEncodedBal = Rlp.Encode(emptyBal).Bytes;
+        byte[] emptyEncodedBal = Rlp.Encode(emptyBal);
         _parentBlock = Build.A.Block
             .WithNumber(5)
             .WithSlotNumber(10)

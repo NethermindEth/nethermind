@@ -66,8 +66,14 @@ namespace Nethermind.Facade.Filters
 
         private void OnElapsed(object? sender, EventArgs e)
         {
-            CleanupStaleFilters();
-            _timer.Enabled = true;
+            try
+            {
+                CleanupStaleFilters();
+            }
+            finally
+            {
+                _timer.Enabled = true;
+            }
         }
 
         private void CleanupStaleFilters()

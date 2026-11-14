@@ -16,6 +16,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
 
@@ -453,7 +454,7 @@ public class BatchedTrieVisitor<TNodeContext>
                         TNodeContext childContext = nodeContext.Add(node.Key!);
 
                         RlpReader decoderContext = new(node.Value.AsSpan());
-                        if (!_accountDecoder.TryDecodeStruct(ref decoderContext, out AccountStruct account))
+                        if (!_accountDecoder.TryDecodeStruct<OffFlag>(ref decoderContext, out AccountStruct account))
                         {
                             throw new InvalidDataException("Non storage leaf should be an account");
                         }

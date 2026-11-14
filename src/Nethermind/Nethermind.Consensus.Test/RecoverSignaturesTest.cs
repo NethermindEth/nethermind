@@ -269,7 +269,7 @@ public class RecoverSignaturesTest
     {
         // Decoded as a payload is: hashed on the first read.
         Transaction[] txs = TxsDecoder.DecodeTxs(
-            [.. SignedTransactions(count).Select(static tx => Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes)], skipErrors: false).Transactions;
+            [.. SignedTransactions(count).Select(static tx => Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping))], skipErrors: false).Transactions;
         Assert.That(txs.Select(static tx => tx.IsHashCalculated), Is.All.False, "precondition: decoding leaves the hashes to the first read");
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         RecoverSignatures sut = new(_ecdsa, specProvider, Substitute.For<ILogManager>());
@@ -448,7 +448,7 @@ public class RecoverSignaturesTest
         }
     }
 
-    private static byte[] Encode(Transaction tx) => TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
+    private static byte[] Encode(Transaction tx) => TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping);
 
     private static byte[] EncodeTampered(Transaction tx) =>
         Encode(Build.A.Transaction.WithType(tx.Type).WithChainId(tx.ChainId).WithNonce(tx.Nonce + 2).WithSignature(tx.Signature!).TestObject);

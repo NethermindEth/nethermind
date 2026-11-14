@@ -4,6 +4,7 @@
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Logging;
 using System;
@@ -106,15 +107,17 @@ namespace Nethermind.Network.Rlpx
                     {
                         contentLength += Rlp.LengthOf(totalPayloadSize);
                     }
-                    output.EnsureWritable(Rlp.LengthOfSequence(contentLength));
-                    ByteBufferRlpWriter writer = new(output);
-                    writer.StartSequence(contentLength);
+                    int headerDataLength = Rlp.LengthOfSequence(contentLength);
+                    RlpWriter writer = output.StartRlpWrite(headerDataLength);
+                    RlpSequence sequence = writer.StartSequence(contentLength);
                     writer.Encode(0);
                     writer.Encode(_contextId);
                     if (i == 0)
                     {
                         writer.Encode(totalPayloadSize);
                     }
+                    writer.EndSequence(sequence);
+                    output.CompleteRlpWrite(in writer, headerDataLength);
                     output.WriteZero(Frame.HeaderSize - Rlp.LengthOfSequence(contentLength) - 3);
                 }
 

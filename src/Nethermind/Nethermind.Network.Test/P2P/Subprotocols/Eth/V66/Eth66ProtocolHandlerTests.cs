@@ -20,6 +20,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.Messages;
@@ -308,17 +309,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             ReserveAllButOneMessage(scheduler, reservations);
             const int count = 16;
             byte[] transaction = malformed ? [0xc0] : [0xc9, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x1b, 0x01, 0x01];
-            int contentLength = count * transaction.Length;
             using DisposableByteBuffer packet = Unpooled.Buffer(256).AsDisposable();
-            ByteBufferRlpWriter writer = new(packet);
+            byte[] transactions = RlpTestHelper.EncodeSequence(Enumerable.Repeat(transaction, count).ToArray());
             if (pooledResponse)
             {
                 long requestId = RequestTransaction(Build.A.Transaction.SignedAndResolved().TestObject);
-                writer.StartSequence(Rlp.LengthOf(requestId) + Rlp.LengthOfSequence(contentLength));
-                writer.Encode(requestId);
+                transactions = RlpTestHelper.EncodeSequence(Rlp.Encode(requestId), transactions);
             }
-            writer.StartSequence(contentLength);
-            for (int i = 0; i < count; i++) packet.WriteBytes(transaction);
+            packet.WriteBytes(transactions);
 
             Assert.That(() => _handler.HandleMessage(new NettyBufferPacket(packet)
             {

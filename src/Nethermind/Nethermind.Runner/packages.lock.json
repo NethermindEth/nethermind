@@ -706,7 +706,7 @@
           "Microsoft.IdentityModel.JsonWebTokens": "[8.23.0, )",
           "Nethermind.Crypto.SecP256k1": "[0.8.0.42, )",
           "Nethermind.Logging": "[2.3.0-preview, )",
-          "Nethermind.Numerics.Int256": "[1.12.0, )",
+          "Nethermind.Numerics.Int256": "[1.14.0, )",
           "Nethermind.Serialization.Ssz": "[2.3.0-preview, )",
           "NonBlocking": "[2.1.2, )",
           "Testably.Abstractions": "[10.4.0, )"
@@ -1110,6 +1110,13 @@
           "Nethermind.Config": "[2.3.0-preview, )"
         }
       },
+      "nethermind.serialization.fluentrlp": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.Numerics.Int256": "[1.14.0, )"
+        }
+      },
       "nethermind.serialization.json": {
         "type": "Project",
         "dependencies": {
@@ -1122,13 +1129,14 @@
         "dependencies": {
           "Ckzg.Bindings": "[2.1.8.1680, )",
           "Nethermind.Core": "[2.3.0-preview, )",
-          "Nethermind.DotNetty.Buffers": "[0.8.0.11, )"
+          "Nethermind.DotNetty.Buffers": "[0.8.0.11, )",
+          "Nethermind.Serialization.FluentRlp": "[2.3.0-preview, )"
         }
       },
       "nethermind.serialization.ssz": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Numerics.Int256": "[1.12.0, )"
+          "Nethermind.Numerics.Int256": "[1.14.0, )"
         }
       },
       "nethermind.shutter": {
@@ -1222,6 +1230,13 @@
           "Nethermind.Trie": "[2.3.0-preview, )"
         }
       },
+      "nethermind.stateless.executor": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Consensus": "[2.3.0-preview, )",
+          "Nethermind.Serialization.Ssz": "[2.3.0-preview, )"
+        }
+      },
       "nethermind.synchronization": {
         "type": "Project",
         "dependencies": {
@@ -1257,6 +1272,13 @@
           "Nethermind.Db": "[2.3.0-preview, )",
           "Nethermind.Serialization.Rlp": "[2.3.0-preview, )",
           "NonBlocking": "[2.1.2, )"
+        }
+      },
+      "nethermind.trustedinput": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Merge.Plugin": "[2.3.0-preview, )",
+          "Nethermind.Stateless.Executor": "[2.3.0-preview, )"
         }
       },
       "nethermind.txpool": {
@@ -1623,11 +1645,11 @@
       },
       "Nethermind.Numerics.Int256": {
         "type": "CentralTransitive",
-        "requested": "[1.12.0, )",
-        "resolved": "1.12.0",
-        "contentHash": "nHl3l2Y2OEaK8H22vGYUd6SFzwzmSpdi75HgP9C2m3/1YqP89nBaapMs5F+30fKbLIFBTG4ZbrSBbuJFNvt8AA==",
+        "requested": "[1.14.0, )",
+        "resolved": "1.14.0",
+        "contentHash": "LmGOarUM21sE+hQ7IByswF/lOOy1+g5YAkv4OtqDfpem6ZIWih1waZI4W6vC1l90WGjdZv9aKex1aT+C4xl3mQ==",
         "dependencies": {
-          "System.IO.Hashing": "10.0.10"
+          "System.IO.Hashing": "10.0.13"
         }
       },
       "Nethermind.RocksDbBindings": {

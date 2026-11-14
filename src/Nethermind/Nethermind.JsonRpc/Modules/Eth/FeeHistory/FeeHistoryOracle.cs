@@ -17,6 +17,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Exceptions;
 using NonBlocking;
 
 namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
@@ -33,13 +34,18 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         private readonly IBlockTree _blockTree;
         private readonly IReceiptStorage _receiptStorage;
         private readonly ISpecProvider _specProvider;
+        private readonly ulong _maxBlockCount;
+        private readonly int _maxUncachedRequests;
+        private int _uncachedRequests;
 
-        public FeeHistoryOracle(IBlockTree blockTree, IReceiptStorage receiptStorage, ISpecProvider specProvider, ulong? maxDistanceFromHead = null)
+        public FeeHistoryOracle(IBlockTree blockTree, IReceiptStorage receiptStorage, ISpecProvider specProvider, IJsonRpcConfig jsonRpcConfig, ulong? maxDistanceFromHead = null)
         {
             _blockTree = blockTree;
             _receiptStorage = receiptStorage;
             _specProvider = specProvider;
             _oldestBlockDistanceFromHeadAllowedInCache = maxDistanceFromHead ?? MaxBlockCount + 4;
+            _maxBlockCount = jsonRpcConfig.FeeHistoryMaxBlockCount > 0 ? (ulong)Math.Min(jsonRpcConfig.FeeHistoryMaxBlockCount, MaxBlockCount) : MaxBlockCount;
+            _maxUncachedRequests = jsonRpcConfig.FeeHistoryMaxConcurrentRequests ?? Math.Max(1, Environment.ProcessorCount / 4);
             blockTree.BlockAddedToMain += OnBlockAddedToMain;
         }
 
@@ -89,14 +95,42 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                                                                      BlockTreeLookupOptions.TotalDifficultyNotNeeded |
                                                                      BlockTreeLookupOptions.DoNotCreateLevelIfMissing;
 
-        private BlockFeeHistorySearchInfo? GetHistorySearchInfo(BlockParameter blockParameter, bool withRewards)
+        private BlockFeeHistorySearchInfo? GetHistorySearchInfo(BlockParameter blockParameter, bool hashUnchecked, bool withRewards, ref UncachedRequestSlot uncachedRequestSlot, out bool headerFound)
         {
-            Hash256? hash = blockParameter.Type == BlockParameterType.BlockHash
+            Hash256? hash = hashUnchecked
                 ? blockParameter.BlockHash
                 : _blockTree.FindHeader(blockParameter)?.Hash;
+            headerFound = hash is not null;
             if (hash is not null && _feeHistoryCache.TryGetValue(hash, out BlockFeeHistorySearchInfo i))
             {
                 return i;
+            }
+
+            // The head is held in memory, so a new head the cache has not taken in yet needs no read;
+            // its rewards are filled like those of any cached block.
+            if (_blockTree.Head is { } head && head.Hash == hash)
+            {
+                return SaveHistorySearchInfo(head, withRewards: false);
+            }
+
+            // An unknown hash, or one that is not canonical when that is required, is reported without taking a slot, as an
+            // unknown block number is.
+            if (blockParameter.Type is BlockParameterType.BlockHash
+                && (hash is null || hashUnchecked && _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded) is null))
+            {
+                headerFound = false;
+                return null;
+            }
+
+            if (hash is not null)
+            {
+                uncachedRequestSlot.EnsureAcquired();
+            }
+            else if (!uncachedRequestSlot.TryAcquire())
+            {
+                // A newest block whose header is not found is looked up only with a free slot; at the limit it is reported
+                // as not found.
+                return null;
             }
 
             Block block = _blockTree.FindBlock(blockParameter);
@@ -104,23 +138,30 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 ? null
                 : _feeHistoryCache.TryGetValue(block.Hash!, out BlockFeeHistorySearchInfo info)
                     ? info
-                    : SaveHistorySearchInfo(block, withRewards);
+                    : SaveHistorySearchInfo(block, withRewards, CanCache(block, hashUnchecked));
         }
 
-        private BlockFeeHistorySearchInfo? GetHistorySearchInfo(Hash256 blockHash, ulong blockNumber, bool withRewards)
+        private BlockFeeHistorySearchInfo? GetHistorySearchInfo(Hash256 blockHash, ulong blockNumber, bool hashUnchecked, bool withRewards, ref UncachedRequestSlot uncachedRequestSlot)
         {
             if (!_feeHistoryCache.TryGetValue(blockHash, out BlockFeeHistorySearchInfo info))
             {
+                uncachedRequestSlot.EnsureAcquired();
                 Block? block = _blockTree.FindBlock(blockHash, AncestorLookupOptions, blockNumber);
-                return block is null ? null : SaveHistorySearchInfo(block, withRewards);
+                return block is null ? null : SaveHistorySearchInfo(block, withRewards, CanCache(block, hashUnchecked));
             }
 
             return info;
         }
 
+        /// <remarks>
+        /// A block reached through an unchecked hash, directly or as an ancestor, can be stored but not processed yet, so its
+        /// rewards would fall back to the tx gas limits and stay cached once it is canonical; it is cached only while canonical.
+        /// </remarks>
+        private bool CanCache(Block block, bool hashUnchecked) => !hashUnchecked || _blockTree.IsMainChain(block.Header);
+
         // only saves block younger than the Oldest Block From the Head Allowed In Cache.
         // As time passes and the head progresses only older least used blocks are auto removed from the cache
-        private BlockFeeHistorySearchInfo? SaveHistorySearchInfo(Block block, bool withRewards)
+        private BlockFeeHistorySearchInfo? SaveHistorySearchInfo(Block block, bool withRewards, bool cache = true)
         {
             BlockFeeHistorySearchInfo BlockFeeHistorySearchInfoFromBlock(Block b)
             {
@@ -154,7 +195,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             BlockFeeHistorySearchInfo historyInfo = BlockFeeHistorySearchInfoFromBlock(block);
 
             // Keeps an entry already cached for the hash, so its filled rewards are not dropped.
-            return ShouldCache(block) ? _feeHistoryCache.GetOrAdd(block.Hash!, historyInfo) : historyInfo;
+            return cache && ShouldCache(block) ? _feeHistoryCache.GetOrAdd(block.Hash!, historyInfo) : historyInfo;
         }
 
         private bool ShouldCache(Block block) =>
@@ -166,24 +207,48 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             double[] rewardPercentiles)
         {
             ArgumentNullException.ThrowIfNull(rewardPercentiles);
-            if (blockCount > MaxBlockCount)
-                blockCount = MaxBlockCount;
+            if (blockCount > _maxBlockCount)
+                blockCount = _maxBlockCount;
 
-            ResultWrapper<FeeHistoryResults> initialCheckResult = Validate(blockCount, newestBlock, rewardPercentiles);
+            ResultWrapper<FeeHistoryResults> initialCheckResult = Validate(blockCount, rewardPercentiles);
             if (initialCheckResult.Result.ResultType == ResultType.Failure)
             {
                 return initialCheckResult;
             }
 
+            UncachedRequestSlot uncachedRequestSlot = new(this);
+            try
+            {
+                return GetFeeHistory(blockCount, newestBlock, rewardPercentiles, ref uncachedRequestSlot);
+            }
+            finally
+            {
+                uncachedRequestSlot.Dispose();
+            }
+        }
+
+        private ResultWrapper<FeeHistoryResults> GetFeeHistory(
+            ulong blockCount,
+            BlockParameter newestBlock,
+            double[] rewardPercentiles,
+            ref UncachedRequestSlot uncachedRequestSlot)
+        {
             bool withRewards = rewardPercentiles.Length > 0;
-            BlockFeeHistorySearchInfo? historyInfo = GetHistorySearchInfo(newestBlock, withRewards);
+            bool hashUnchecked = newestBlock is { Type: BlockParameterType.BlockHash, RequireCanonical: false };
+            BlockFeeHistorySearchInfo? historyInfo = GetHistorySearchInfo(newestBlock, hashUnchecked, withRewards, ref uncachedRequestSlot, out bool headerFound);
 
             if (historyInfo is null)
             {
-                BlockHeader? header = _blockTree.FindHeader(newestBlock);
-                return header is null
-                    ? ResultWrapper<FeeHistoryResults>.Fail("request beyond head block", ErrorCodes.ResourceNotFound)
-                    : ResultWrapper<FeeHistoryResults>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable);
+                if (headerFound && _blockTree.FindHeader(newestBlock) is not null)
+                {
+                    return ResultWrapper<FeeHistoryResults>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable);
+                }
+
+                // EIP-1898: a known block that is not canonical is reported apart from an unknown one.
+                return newestBlock is { Type: BlockParameterType.BlockHash, RequireCanonical: true, BlockHash: { } hash }
+                       && _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded) is not null
+                    ? ResultWrapper<FeeHistoryResults>.Fail($"{hash} block is not canonical", ErrorCodes.InvalidInput)
+                    : ResultWrapper<FeeHistoryResults>.Fail("request beyond head block", ErrorCodes.ResourceNotFound);
             }
 
             BlockFeeHistorySearchInfo info = historyInfo.Value;
@@ -203,28 +268,41 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             baseFeePerGas[effectiveBlockCount] = info.BaseFeePerGasEst;
             baseFeePerBlobGas[effectiveBlockCount] = info.BaseFeePerBlobGasEst;
 
-            while (historyInfo is not null && effectiveBlockCount-- > 0)
+            try
             {
-                info = historyInfo.Value;
-                if (rewards is not null)
+                while (historyInfo is not null && effectiveBlockCount-- > 0)
                 {
-                    // A cached block whose body is gone by the time its rewards are needed ends the walk like an unavailable ancestor.
-                    if (CalculateRewardsPercentiles(info, rewardPercentiles) is not { } rewardsInBlock)
+                    info = historyInfo.Value;
+                    if (rewards is not null)
                     {
-                        effectiveBlockCount++;
-                        historyInfo = null;
-                        break;
-                    }
+                        // A cached block whose body is gone by the time its rewards are needed ends the walk like an unavailable ancestor.
+                        if (CalculateRewardsPercentiles(info, rewardPercentiles) is not { } rewardsInBlock)
+                        {
+                            effectiveBlockCount++;
+                            historyInfo = null;
+                            break;
+                        }
 
-                    rewards[effectiveBlockCount] = rewardsInBlock;
+                        rewards[effectiveBlockCount] = rewardsInBlock;
+                    }
+                    oldestBlockNumber = info.BlockNumber;
+                    baseFeePerGas[effectiveBlockCount] = info.BlockBaseFeePerGas;
+                    baseFeePerBlobGas[effectiveBlockCount] = info.BaseFeePerBlobGas;
+                    gasUsedRatio[effectiveBlockCount] = info.GasUsedRatio;
+                    blobGasUsedRatio[effectiveBlockCount] = info.BlobGasUsedRatio;
+                    // The oldest requested block needs no parent.
+                    historyInfo = effectiveBlockCount == 0 || info.ParentHash is null ? null : GetHistorySearchInfo(info.ParentHash, info.BlockNumber - 1, hashUnchecked, withRewards, ref uncachedRequestSlot);
                 }
-                oldestBlockNumber = info.BlockNumber;
-                baseFeePerGas[effectiveBlockCount] = info.BlockBaseFeePerGas;
-                baseFeePerBlobGas[effectiveBlockCount] = info.BaseFeePerBlobGas;
-                gasUsedRatio[effectiveBlockCount] = info.GasUsedRatio;
-                blobGasUsedRatio[effectiveBlockCount] = info.BlobGasUsedRatio;
-                // The oldest requested block needs no parent.
-                historyInfo = effectiveBlockCount == 0 || info.ParentHash is null ? null : GetHistorySearchInfo(info.ParentHash, info.BlockNumber - 1, withRewards);
+            }
+            catch
+            {
+                // The walk throws when a block outside the cache is reached while all slots are taken, or when a read fails.
+                baseFeePerGas.Dispose();
+                baseFeePerBlobGas.Dispose();
+                gasUsedRatio.Dispose();
+                blobGasUsedRatio.Dispose();
+                rewards?.DisposeRecursive();
+                throw;
             }
 
             // An unavailable ancestor ends the walk early; the leading slots were never filled,
@@ -241,6 +319,52 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             TryRunCleanup();
 
             return ResultWrapper<FeeHistoryResults>.Success(new(oldestBlockNumber, baseFeePerGas, gasUsedRatio, baseFeePerBlobGas, blobGasUsedRatio, rewards));
+        }
+
+        /// <summary>
+        /// One of the limited slots for a request that needs a block missing from the fee cache.
+        /// </summary>
+        /// <remarks>
+        /// Building the fee data of a block not in the cache reads its body, and its receipts when rewards are asked for,
+        /// which costs far more than serving cached data, so the number of such requests running at once is capped.
+        /// The slot is taken right before the first such read and held until the request ends, so requests served
+        /// entirely from the cache take no slot. That includes the reward data of a cached block: one successful fill is
+        /// shared by the requests that ask for it.
+        /// </remarks>
+        private struct UncachedRequestSlot(FeeHistoryOracle oracle) : IDisposable
+        {
+            private bool _acquired;
+
+            /// <exception cref="LimitExceededException">All slots are taken.</exception>
+            public void EnsureAcquired()
+            {
+                if (!TryAcquire())
+                {
+                    throw new LimitExceededException($"Too many concurrent eth_feeHistory requests for blocks outside the cache. Limit: {oracle._maxUncachedRequests}.");
+                }
+            }
+
+            /// <returns><c>false</c> when all slots are taken.</returns>
+            public bool TryAcquire()
+            {
+                if (_acquired || oracle._maxUncachedRequests <= 0) return true;
+
+                if (Interlocked.Increment(ref oracle._uncachedRequests) > oracle._maxUncachedRequests)
+                {
+                    Interlocked.Decrement(ref oracle._uncachedRequests);
+                    return false;
+                }
+
+                _acquired = true;
+                return true;
+            }
+
+            public void Dispose()
+            {
+                if (!_acquired) return;
+                _acquired = false;
+                Interlocked.Decrement(ref oracle._uncachedRequests);
+            }
         }
 
         private static void DropLeading<T>(ArrayPoolList<T> list, int count)
@@ -287,12 +411,21 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         private BlockRewards? GetRewards(BlockFeeHistorySearchInfo blockInfo)
         {
             StrongBox<BlockRewards?> rewards = blockInfo.Rewards;
-            if (rewards.Value is null && _blockTree.FindBlock(blockInfo.BlockHash, AncestorLookupOptions, blockInfo.BlockNumber) is { } block)
+            if (Volatile.Read(ref rewards.Value) is { } filled)
             {
-                rewards.Value = GetRewardsInBlock(block, _specProvider.GetSpec(block.Header));
+                return filled;
             }
 
-            return rewards.Value;
+            // Concurrent requests for the same cached block wait for one read of its body and receipts.
+            lock (rewards)
+            {
+                if (rewards.Value is null && _blockTree.FindBlock(blockInfo.BlockHash, AncestorLookupOptions, blockInfo.BlockNumber) is { } block)
+                {
+                    Volatile.Write(ref rewards.Value, GetRewardsInBlock(block, _specProvider.GetSpec(block.Header)));
+                }
+
+                return rewards.Value;
+            }
         }
 
         private BlockRewards GetRewardsInBlock(Block block, IReleaseSpec spec)
@@ -386,13 +519,8 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             return percentileValues;
         }
 
-        private static ResultWrapper<FeeHistoryResults> Validate(ulong blockCount, BlockParameter newestBlock, double[] rewardPercentiles)
+        private static ResultWrapper<FeeHistoryResults> Validate(ulong blockCount, double[] rewardPercentiles)
         {
-            if (newestBlock.Type == BlockParameterType.BlockHash)
-            {
-                return ResultWrapper<FeeHistoryResults>.Fail("newestBlock: Is not correct block number", ErrorCodes.InvalidParams);
-            }
-
             if (blockCount < 1)
             {
                 return ResultWrapper<FeeHistoryResults>.Fail($"blockCount: Value {blockCount} is less than 1", ErrorCodes.InvalidParams);

@@ -159,11 +159,11 @@ public class MessageDecodingCompatibilityTests
         yield return new TestCaseData(receipts63, "", true).SetName("eth63 empty receipts");
         yield return new TestCaseData(receipts63, "c0", true).SetName("eth63 empty receipts list");
         yield return new TestCaseData(receipts63, "c000", false).SetName("eth63 empty receipts list with a trailing byte");
-        yield return new TestCaseData(blockBodies62, "c0c0", true).SetName("eth62 bodies counted past their list");
-        yield return new TestCaseData(getBlockHeaders62, "c301018080", true).SetName("eth62 header request with a short list length");
-        yield return new TestCaseData(blockRangeUpdate69, $"e20102a0{new string('0', 64)}", true).SetName("eth69 block range update with a short list length");
-        yield return new TestCaseData(getByteCodes, "c201c00a", true).SetName("snap bytecodes request with a short list length");
-        yield return new TestCaseData(byteCodes, "c201c180", true).SetName("snap bytecodes with a short list length");
+        yield return new TestCaseData(blockBodies62, "c0c0", false).SetName("eth62 bodies counted past their list");
+        yield return new TestCaseData(getBlockHeaders62, "c301018080", false).SetName("eth62 header request with a short list length");
+        yield return new TestCaseData(blockRangeUpdate69, $"e20102a0{new string('0', 64)}", false).SetName("eth69 block range update with a short list length");
+        yield return new TestCaseData(getByteCodes, "c201c00a", false).SetName("snap bytecodes request with a short list length");
+        yield return new TestCaseData(byteCodes, "c201c180", false).SetName("snap bytecodes with a short list length");
         yield return new TestCaseData(blockAccessLists, "c201c1c0", false).SetName("snap block access lists with a short list length");
     }
 

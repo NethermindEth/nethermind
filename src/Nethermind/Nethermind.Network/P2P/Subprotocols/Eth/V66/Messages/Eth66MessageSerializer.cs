@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Network.P2P.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
@@ -19,10 +20,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
 
         public int Serialize(Span<byte> destination, TEth66Message message)
         {
-            RlpWriter writer = new(destination);
-            writer.StartSequence(Rlp.LengthOf(message.RequestId) + _ethMessageSerializer.GetLength(message.EthMessage));
+            // The wrapped message writes itself, so only the prefix and the request id go through this writer.
+            int position = Rlp.StartSequence(destination, 0, Rlp.LengthOf(message.RequestId) + _ethMessageSerializer.GetLength(message.EthMessage));
+            RlpWriter writer = RlpWriter.ContentWriter(destination[position..]);
             writer.Encode(message.RequestId);
-            return writer.Position + _ethMessageSerializer.Serialize(destination[writer.Position..], message.EthMessage);
+            position += writer.Length;
+            return position + _ethMessageSerializer.Serialize(destination[position..], message.EthMessage);
         }
 
         public TEth66Message Deserialize(ReadOnlySpan<byte> data)
@@ -45,23 +48,23 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
         /// Reads the request id of a message that is exactly the list in <paramref name="data"/>.
         /// </summary>
         /// <param name="ethMessageStart">The position of the wrapped message, which takes the rest of the list.</param>
-        /// <exception cref="RlpException">The list does not take all of <paramref name="data"/>.</exception>
+        /// <exception cref="RlpReaderException">The list does not take all of <paramref name="data"/>.</exception>
         public static long ReadRequestId(ReadOnlySpan<byte> data, out int ethMessageStart)
         {
-            RlpReader ctx = new(data);
-            int sequenceLength = ctx.ReadSequenceLength();
-            if (ctx.Position + sequenceLength != data.Length)
+            RlpReader reader = new(data);
+            RlpReader ctx = reader.EnterSequence(out int itemLength);
+            if (itemLength != data.Length)
             {
                 ThrowListLengthMismatch();
             }
 
             long requestId = ctx.DecodeLong();
-            ethMessageStart = ctx.Position;
+            ethMessageStart = data.Length - ctx.Remaining;
             return requestId;
         }
 
         [DoesNotReturn, StackTraceHidden]
         private static void ThrowListLengthMismatch() =>
-            throw new RlpException("The eth66 message list does not end where its data does");
+            throw new RlpReaderException("The eth66 message list does not end where its data does");
     }
 }

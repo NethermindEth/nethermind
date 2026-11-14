@@ -28,6 +28,7 @@ using Nethermind.Logging;
 using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Find;
 using Nethermind.Serialization.Json;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -142,7 +143,7 @@ public class LogFinderTests
         ReceiptStorageDecoder decoder = new();
         byte[] receiptRlp = decoder.Encode(
             receipt,
-            RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts).Bytes;
+            RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
         receiptRlp = HeaderRlpTestHelper.ReplaceFieldEncoding(
             receiptRlp,
             fieldIndex: 9,
@@ -150,7 +151,7 @@ public class LogFinderTests
         receiptRlp = HeaderRlpTestHelper.ReplaceFieldEncoding(
             receiptRlp,
             fieldIndex: 10,
-            Rlp.Encode(Rlp.OfEmptyList, Rlp.Encode(validLog)).Bytes);
+            RlpTestHelper.EncodeSequence(RlpTestHelper.OfEmptyList, Rlp.Encode(validLog)));
         int receiptsContentLength = receiptRlp.Length * 2 + 1;
         byte[] receiptsRlp = new byte[Rlp.LengthOfSequence(receiptsContentLength)];
         int receiptPosition = Rlp.StartSequence(receiptsRlp, 0, receiptsContentLength);
@@ -691,7 +692,7 @@ public class LogFinderTests
             .WithTransactionHash(block.Transactions[0].Hash)
             .WithLogs(rejected, accepted)
             .TestObject;
-        byte[] encoded = new ReceiptArrayStorageDecoder(compact).Encode([receipt], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts).Bytes;
+        byte[] encoded = new ReceiptArrayStorageDecoder(compact).Encode([receipt], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
         IReceiptRefDecoder decoder = compact ? CompactReceiptStorageDecoder.Instance : new ReceiptStorageDecoder();
         ReceiptsRecovery recovery = new(Substitute.For<IEthereumEcdsa>(), _specProvider);
         LegacyReceiptFinder receiptFinder = new(encoded, decoder,
@@ -732,7 +733,7 @@ public class LogFinderTests
             .WithTransactionHash(block.Transactions[0].Hash)
             .WithLogs(new LogEntry(TestItem.AddressA, [], [TestItem.KeccakA]))
             .TestObject;
-        byte[] encoded = new ReceiptArrayStorageDecoder(true).Encode([receipt], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts).Bytes;
+        byte[] encoded = new ReceiptArrayStorageDecoder(true).Encode([receipt], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
         LogFinder finder = new(_blockTree, new LegacyReceiptFinder(encoded, CompactReceiptStorageDecoder.Instance), _receiptStorage,
             LimboLogs.Instance, _receiptsRecovery, _specProvider!);
         LogFilter filter = FilterBuilder.New().FromBlock(1).ToBlock(1).WithAddress(TestItem.AddressA).Build();
@@ -802,8 +803,8 @@ public class LogFinderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(() => finder.FindLogs(filter).ToArray(), Throws.InstanceOf<RlpException>());
-            Assert.That(() => FoundLogs.Serialize(finder.FindLogs(filter)).ToArray(), Throws.InstanceOf<RlpException>());
+            Assert.That(() => finder.FindLogs(filter).ToArray(), Throws.InstanceOf<RlpReaderException>());
+            Assert.That(() => FoundLogs.Serialize(finder.FindLogs(filter)).ToArray(), Throws.InstanceOf<RlpReaderException>());
         }
     }
 
@@ -816,7 +817,7 @@ public class LogFinderTests
             .WithTransactionHash(block.Transactions[0].Hash)
             .WithLogs(logEntries)
             .TestObject;
-        return new ReceiptArrayStorageDecoder(compact).Encode([receipt], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts).Bytes;
+        return new ReceiptArrayStorageDecoder(compact).Encode([receipt], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
     }
 
     private LogFinder CreateEncodedLogFinder(Block block, byte[] encoded, IReceiptRefDecoder decoder, bool indexed, out ILogIndexStorage? index)
@@ -1175,10 +1176,10 @@ public class LogFinderTests
         public void DecodeLogEntryStructRef(scoped ref RlpReader decoderContext, RlpBehaviors none, out LogEntryStructRef current) =>
             Decoder.DecodeLogEntryStructRef(ref decoderContext, none, out current);
 
-        public Hash256[] DecodeTopics(RlpReader reader)
+        public Hash256[] DecodeTopics(RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             Interlocked.Increment(ref _decodeTopicsCalls);
-            return Decoder.DecodeTopics(reader);
+            return Decoder.DecodeTopics(reader, rlpBehaviors);
         }
 
         public bool CanDecodeBloom => Decoder.CanDecodeBloom;
@@ -1186,7 +1187,7 @@ public class LogFinderTests
 
     private sealed class TopicStreamingCountingDecoder(IReceiptRefTopicDecoder decoder) : TopicCountingDecoder(decoder), IReceiptRefTopicDecoder
     {
-        public int StartDecodingTopics(ref RlpReader reader) => Decoder.StartDecodingTopics(ref reader);
+        public RlpReader StartDecodingTopics(scoped ref RlpReader reader) => Decoder.StartDecodingTopics(ref reader);
 
         public void DecodeTopic(ref RlpReader reader, int index, scoped Span<byte> topic) => Decoder.DecodeTopic(ref reader, index, topic);
     }

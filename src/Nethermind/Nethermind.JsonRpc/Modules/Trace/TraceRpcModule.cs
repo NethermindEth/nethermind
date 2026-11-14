@@ -23,6 +23,7 @@ using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -309,7 +310,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 }
                 return TraceTx(tx, traceTypes, blockFinder.SearchForHeader(BlockParameter.Latest), isSigned: true);
             }
-            catch (RlpException)
+            catch (RlpReaderException)
             {
                 return ResultWrapper<ParityTxTraceFromReplay>.Fail("Invalid RLP.", ErrorCodes.TransactionRejected);
             }

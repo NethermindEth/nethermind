@@ -219,7 +219,7 @@ public class InclusionListTxSourceTests
             ]));
     }
 
-    private static byte[] Encode(Transaction tx) => TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
+    private static byte[] Encode(Transaction tx) => TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping);
 
     private sealed class CountingEcdsa(IEthereumEcdsa inner) : IEthereumEcdsa
     {

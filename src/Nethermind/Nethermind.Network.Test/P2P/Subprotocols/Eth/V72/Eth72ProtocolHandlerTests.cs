@@ -36,6 +36,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V72;
 using Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.Stats;
@@ -425,7 +426,7 @@ public class Eth72ProtocolHandlerTests
         // Peers compare the announced size with the decoded typed transaction envelope, excluding the enclosing
         // PooledTransactions list element's RLP string prefix.
         byte[] servedTxBytes = TxDecoder.Instance
-            .Encode(elidedTx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping).Bytes;
+            .Encode(elidedTx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping);
 
         using (Assert.EnterMultipleScope())
         {
@@ -621,7 +622,7 @@ public class Eth72ProtocolHandlerTests
 
         HandleIncomingStatusMessage();
 
-        Assert.That(() => HandleZeroMessage(message, Eth72MessageCode.NewPooledTransactionHashes), Throws.TypeOf<RlpException>());
+        Assert.That(() => HandleZeroMessage(message, Eth72MessageCode.NewPooledTransactionHashes), Throws.TypeOf<RlpReaderException>());
     }
 
     [Test]
@@ -2631,7 +2632,7 @@ public class Eth72ProtocolHandlerTests
         _sparseBlobPoolPeerRegistry.RecordAnnouncement(otherPeer, tx.Hash!, requestedMask);
         using CellsMessage72 response = new(GetLastGetCellsRequestId(tx.Hash!, requestedMask), [tx.Hash!], [[]], BlobCellMask.Empty.ToBytes());
 
-        Assert.That(() => HandleZeroMessage(response, Eth72MessageCode.Cells), Throws.TypeOf<RlpException>());
+        Assert.That(() => HandleZeroMessage(response, Eth72MessageCode.Cells), Throws.TypeOf<RlpReaderException>());
         Assert.That(otherPeer.CellRequests, Has.Count.EqualTo(1));
         Assert.That(otherPeer.CellRequests[0], Is.EqualTo((tx.Hash!, requestedMask)));
     }
@@ -2693,7 +2694,7 @@ public class Eth72ProtocolHandlerTests
         _sparseBlobPoolPeerRegistry.RecordAnnouncement(otherPeer, tx.Hash!, requestedMask);
         using CellsMessage72 response = new(GetLastGetCellsRequestId(tx.Hash!, requestedMask), [tx.Hash!], [], requestedMask.ToBytes());
 
-        Assert.That(() => HandleZeroMessage(response, Eth72MessageCode.Cells), Throws.TypeOf<RlpException>());
+        Assert.That(() => HandleZeroMessage(response, Eth72MessageCode.Cells), Throws.TypeOf<RlpReaderException>());
         Assert.That(otherPeer.CellRequests, Has.Count.EqualTo(1));
         Assert.That(otherPeer.CellRequests[0], Is.EqualTo((tx.Hash!, requestedMask)));
     }
@@ -2722,7 +2723,7 @@ public class Eth72ProtocolHandlerTests
         _sparseBlobPoolPeerRegistry.RecordAnnouncement(otherPeer, tx.Hash!, requestedMask);
         using CellsMessage72 response = new(GetLastGetCellsRequestId(tx.Hash!, requestedMask), [tx.Hash!], [[]], [1, 2]);
 
-        Assert.That(() => HandleZeroMessage(response, Eth72MessageCode.Cells), Throws.TypeOf<RlpException>());
+        Assert.That(() => HandleZeroMessage(response, Eth72MessageCode.Cells), Throws.TypeOf<RlpReaderException>());
         Assert.That(otherPeer.CellRequests, Has.Count.EqualTo(1));
         Assert.That(otherPeer.CellRequests[0], Is.EqualTo((tx.Hash!, requestedMask)));
     }
@@ -2756,7 +2757,7 @@ public class Eth72ProtocolHandlerTests
         packet.WriteByte(0);
         packet.ReadByte();
 
-        Assert.That(() => _handler.HandleMessage(new NettyBufferPacket(packet) { PacketType = Eth72MessageCode.Cells }), Throws.TypeOf<RlpException>());
+        Assert.That(() => _handler.HandleMessage(new NettyBufferPacket(packet) { PacketType = Eth72MessageCode.Cells }), Throws.TypeOf<RlpReaderException>());
         Assert.That(otherPeer.CellRequests, Has.Count.EqualTo(1));
         Assert.That(otherPeer.CellRequests[0], Is.EqualTo((tx.Hash!, requestedMask)));
     }
@@ -2792,7 +2793,7 @@ public class Eth72ProtocolHandlerTests
         using CellsMessage72 response = new(GetLastGetCellsRequestId(tx.Hash!, requestedMask), [tx.Hash!], [responseCells], requestedMask.ToBytes());
         pendingTransactionAvailable = true;
 
-        Assert.That(() => HandleZeroMessage(response, Eth72MessageCode.Cells), Throws.TypeOf<RlpException>());
+        Assert.That(() => HandleZeroMessage(response, Eth72MessageCode.Cells), Throws.TypeOf<RlpReaderException>());
         _transactionPool.DidNotReceive().MergeBlobCells(Arg.Any<Hash256>(), Arg.Any<BlobCellMask>(), Arg.Any<byte[][]>());
     }
 
@@ -2827,7 +2828,7 @@ public class Eth72ProtocolHandlerTests
         using CellsMessage72 response = new(GetLastGetCellsRequestId(tx.Hash!, requestedMask), [tx.Hash!], [responseCells], requestedMask.ToBytes());
         pendingTransactionAvailable = true;
 
-        Assert.That(() => HandleZeroMessage(response, Eth72MessageCode.Cells), Throws.TypeOf<RlpException>());
+        Assert.That(() => HandleZeroMessage(response, Eth72MessageCode.Cells), Throws.TypeOf<RlpReaderException>());
         _transactionPool.DidNotReceive().MergeBlobCells(Arg.Any<Hash256>(), Arg.Any<BlobCellMask>(), Arg.Any<byte[][]>());
     }
 
