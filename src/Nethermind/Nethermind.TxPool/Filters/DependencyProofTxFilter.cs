@@ -17,7 +17,7 @@ internal sealed class DependencyProofTxFilter(LeanProofStore? proofStore) : IInc
 
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        if (state.HeadSpec.IsEip8288Enabled && Eip8288Dependencies.RecursiveStarkGas(tx) != 0)
+        if (state.HeadSpec.IsEip8288Enabled && Eip8288Dependencies.IsDependencyBearing(tx))
         {
             if (!FrameTxValidation.IsWellFormed(tx, state.HeadSpec, out string? error))
                 return AcceptTxResult.Invalid.WithMessage(error!);

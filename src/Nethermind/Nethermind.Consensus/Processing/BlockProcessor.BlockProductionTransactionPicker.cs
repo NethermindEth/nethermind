@@ -137,7 +137,7 @@ namespace Nethermind.Consensus.Processing
                     }
                 }
 
-                if (spec.IsEip8288Enabled && Eip8288Dependencies.RecursiveStarkGas(currentTx) != 0)
+                if (spec.IsEip8288Enabled && Eip8288Dependencies.IsDependencyBearing(currentTx))
                 {
                     List<FrameDependency> required = Eip8288Dependencies.ForTransaction(currentTx, FrameTxSigHash.ComputeValue);
                     BlockToProduce? producing = block as BlockToProduce;

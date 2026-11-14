@@ -154,7 +154,7 @@ public static class Eip8288Dependencies
     /// activation (ethereum/EIPs#12664), when <paramref name="batchedEnabled"/>, it charges
     /// <see cref="Eip8288Constants.RecursiveProofShareGas"/> instead, and neither batch claims nor leaf payments pay it: their frame
     /// charges replace it.</remarks>
-    public static ulong RecursiveStarkGas(Transaction tx, bool batchedEnabled = false)
+    public static ulong RecursiveStarkGas(Transaction tx, bool batchedEnabled)
     {
         TxFrame[]? frames = tx.Frames;
         if (frames is null) return 0;
