@@ -198,9 +198,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         {
             // Started before TryGetBlock so recovery overlaps the background transactions-root job it waits for.
             StartSenderRecovery(request, senderRecoveryCancellation.Token);
-            if (request is ExecutionPayloadV3 { StarkProof: not null } withProof)
-                withProof.IsEipBatchedDependencyPricingEnabled = _specProvider.GetSpec(new ForkActivation(request.BlockNumber, request.Timestamp)).IsEipBatchedDependencyPricingEnabled;
-            decodingResult = preparation.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
+            decodingResult = preparation.TryGetBlock(_specProvider.GetSpec(new ForkActivation(request.BlockNumber, request.Timestamp)),
+                _poSSwitcher.FinalTotalDifficulty);
         }
         if (decodingResult.IsError)
         {

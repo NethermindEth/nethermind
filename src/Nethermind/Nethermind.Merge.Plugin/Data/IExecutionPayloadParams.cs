@@ -228,6 +228,8 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
                 return ValidationResult.Invalid;
             }
 
+            ExecutionPayloadV3.CommitDependencies(reconstructedBlock.Data, spec);
+
             if (reconstructedBlock.Data.CalculateHash() == executionPayload.BlockHash)
             {
                 error = "Block access list must not be set before engine_newPayloadV5";

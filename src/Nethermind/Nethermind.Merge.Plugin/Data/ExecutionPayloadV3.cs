@@ -77,7 +77,7 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
             }
 
             block.StarkProof = StarkProof;
-            block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(StarkProof), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue, IsEipBatchedDependencyPricingEnabled)));
+            block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(StarkProof), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
         }
 
         return baseResult;
@@ -110,9 +110,15 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public byte[]? StarkProof { get; set; }
 
-    /// <summary>Whether the payload's fork enables batched generic proof dependencies (ethereum/EIPs#12664), whose
-    /// scheme-inclusive digest <see cref="TryGetBlock"/> derives the dependency commitment with.</summary>
-    /// <remarks>Not on the wire: the receiving handler sets it from the payload's fork.</remarks>
-    [JsonIgnore]
-    public bool IsEipBatchedDependencyPricingEnabled { get; set; }
+    /// <summary>Recommits a decoded <paramref name="block"/>'s proof to its dependencies under the digest <paramref name="spec"/>
+    /// fixes.</summary>
+    /// <remarks><see cref="TryGetBlock"/> cannot know the payload's fork and commits with EIP-8288's digest; from the activation of
+    /// batched generic proof dependencies (ethereum/EIPs#12664) the commitment, and so the block hash, uses the scheme-inclusive
+    /// digest instead. Callers that check the block hash of a payload that may carry a proof call this first.</remarks>
+    public static void CommitDependencies(Block block, IReleaseSpec spec)
+    {
+        if (block.StarkProof is null || block.Header.RecursiveStark is not { } commitment || !spec.IsEipBatchedDependencyPricingEnabled) return;
+        block.Header.RecursiveStark = new RecursiveStarkCommitment(commitment.StarkProofHash,
+            new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue, batchedEnabled: true)));
+    }
 }

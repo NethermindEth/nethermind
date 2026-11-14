@@ -15,9 +15,12 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp.Eip7928;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 using ValidationResult = Nethermind.Merge.Plugin.Data.ValidationResult;
 
@@ -262,6 +265,50 @@ public class ExecutionPayloadV4Tests
         // were dropped, since it is part of the header hash).
         Block reRoundTripped = ExecutionPayloadV4.Create(block).TryGetBlock().Data!;
         Assert.That(reRoundTripped.Header.CalculateHash(), Is.EqualTo(block.Header.CalculateHash()));
+    }
+
+    // The commitment, and so the block hash, follows the payload's fork wherever a payload is decoded: newPayload's preparation and
+    // any decoder that recommits through ExecutionPayloadV3.CommitDependencies agree, and flag-off decoding stays EIP-8288's.
+    [Test]
+    public void Recursive_stark_commitment_follows_the_payloads_fork([Values] bool batched)
+    {
+        FrameDependency dependency = new(Eip8288Constants.LeanStarkScheme, Keccak.Compute("data"), Keccak.Compute("key"));
+        IReleaseSpec spec = new OverridableReleaseSpec(Eip8288Prototype.Instance) { IsEipBatchedDependencyPricingEnabled = batched };
+        ExecutionPayloadV4 Payload()
+        {
+            ExecutionPayloadV4 payload = new()
+            {
+                BlockNumber = 1,
+                GasLimit = 30_000_000,
+                ReceiptsRoot = Keccak.EmptyTreeHash,
+                StateRoot = Keccak.EmptyTreeHash,
+                BlobGasUsed = 0,
+                ExcessBlobGas = 0,
+                SlotNumber = 0,
+                StarkProof = [1, 2, 3],
+            };
+            payload.SetTransactions(new Transaction
+            {
+                Type = TxType.FrameTx,
+                ChainId = 1,
+                SenderAddress = TestItem.AddressA,
+                Frames = [new TxFrame(FrameMode.DepVerify, 0, null, 100_000, 0, Eip8288Dependencies.Serialize([dependency]))]
+            });
+            return payload;
+        }
+
+        using ExecutionPayloadPreparation preparation = new(Payload());
+        Block prepared = preparation.TryGetBlock(spec).Data!;
+        Block recommitted = Payload().TryGetBlock().Data!;
+        ExecutionPayloadV3.CommitDependencies(recommitted, spec);
+        Block unrecommitted = Payload().TryGetBlock().Data!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(prepared.Header.RecursiveStark!.BlockDepsHash.ValueHash256, Is.EqualTo(Eip8288Dependencies.ComputeDepsHash([dependency], batched)));
+            Assert.That(recommitted.Header.CalculateHash(), Is.EqualTo(prepared.Header.CalculateHash()));
+            Assert.That(unrecommitted.Header.CalculateHash() == prepared.Header.CalculateHash(), Is.EqualTo(!batched));
+        }
     }
 
     [Test]
