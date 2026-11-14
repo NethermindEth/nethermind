@@ -1008,6 +1008,7 @@ public class ProofWrapperServiceTests
     [TestCase(64, false, false, 0UL, 3, false, true, TestName = "A second wrapper at the same head reuses the pool scan")]
     [TestCase(64, false, false, 0UL, 3, false, true, true, TestName = "A candidate whose nonce gap was filled since the scan is kept")]
     [TestCase(64, false, false, 0UL, 1, false, false, false, "gap", TestName = "A candidate whose nonce gap admission filled is kept and the admission rolled back")]
+    [TestCase(64, false, false, 0UL, 1, false, false, false, "gap-interrupted", TestName = "An interrupted admission that is rolled back reports no pooled transactions")]
     [TestCase(64, false, false, 0UL, 0, false, false, false, "unpinned", TestName = "Admitting only transactions whose witnesses fit evicts nothing")]
     [TestCase(64, false, false, 0UL, 0, false, false, false, "foreign", TestName = "Witnesses staged beyond capacity are out of other admissions' reach")]
     [TestCase(64, false, false, 0UL, 2, false, false, false, "drain", TestName = "An excess left over is drained before admitting beyond capacity")]
@@ -1020,6 +1021,9 @@ public class ProofWrapperServiceTests
         bool gapFilled = false, string? incoming = null)
     {
         const int pinnedCount = 64;
+        bool gap = incoming is "gap" or "gap-interrupted";
+        using CancellationTokenSource cancellation = new();
+        Transaction? firstSubmitted = null;
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         object poolOwner = new();
         static Transaction Transaction(FrameDependency dependency, Address sender, ulong timestamp = 0, ulong nonce = 0, bool awaitsBlobs = false)
@@ -1084,8 +1088,11 @@ public class ProofWrapperServiceTests
         ITxPool pool = Substitute.For<ITxPool>();
         pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(call =>
         {
-            if (incoming == "gap") filled.Add(oldest.SenderAddress!);
+            if (gap) filled.Add(oldest.SenderAddress!);
             Transaction submitted = call.Arg<Transaction>();
+            firstSubmitted ??= submitted;
+            // Cancelled before the wrapper's second transaction, once the first is pooled.
+            if (incoming == "gap-interrupted") cancellation.Cancel();
             if (incoming == "foreign")
             {
                 // Another admission of the same witness would reuse its record and pin it for its own transaction.
@@ -1141,24 +1148,32 @@ public class ProofWrapperServiceTests
         }
 
         Transaction first = Incoming("incoming", Address.Zero);
-        ProofWrapperAcceptance result = await service.AcceptOwnedDetailedAsync(incoming == "unpinned" ? Wrapper(first, existing) : Wrapper(first));
+        byte[] wrapper = incoming switch
+        {
+            "unpinned" => Wrapper(first, existing),
+            // A second transaction on the same witness, so only one is staged.
+            "gap-interrupted" => Wrapper(first, Incoming("incoming", Address.SystemUser)),
+            _ => Wrapper(first)
+        };
+        ProofWrapperAcceptance result = await service.AcceptOwnedDetailedAsync(wrapper, cancellation.Token);
+        if (incoming == "gap-interrupted") first = firstSubmitted!;
         if (gapFilled) filled.Add(pinned[2].SenderAddress!);
         if (secondWrapper)
             Assert.That((await service.AcceptOwnedDetailedAsync(Wrapper(Incoming("second", Address.SystemUser)))).Status,
                 Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted));
 
         ProofWrapperAcceptanceStatus expected = incoming is "simulation" or "known" or "quota" or "unpinned" or "foreign" or "drain" ? ProofWrapperAcceptanceStatus.PoolRejected
-            : removed != 0 && incoming != "gap" ? ProofWrapperAcceptanceStatus.Accepted : ProofWrapperAcceptanceStatus.LocalFailure;
+            : removed != 0 && !gap ? ProofWrapperAcceptanceStatus.Accepted : ProofWrapperAcceptanceStatus.LocalFailure;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(expected), result.Result.Error);
             pool.Received(removed).RemoveTransaction(Arg.Any<Hash256?>());
             if (secondWrapper) pool.Received(1).GetPendingTransactionsBySender();
             if (secondWrapper) pool.Received(gapFilled ? 0 : 1).RemoveTransaction(pinned[2].Hash);
-            pool.Received(removed != 0 && !oldestSharedWithExecutable && !localVictims && incoming != "gap" ? 1 : 0).RemoveTransaction(oldest.Hash);
-            pool.Received(expected != ProofWrapperAcceptanceStatus.LocalFailure || incoming == "gap" ? 1 : 0)
+            pool.Received(removed != 0 && !oldestSharedWithExecutable && !localVictims && !gap ? 1 : 0).RemoveTransaction(oldest.Hash);
+            pool.Received(expected != ProofWrapperAcceptanceStatus.LocalFailure || gap ? 1 : 0)
                 .SubmitTx(Arg.Is<Transaction>(tx => tx.Hash == first.Hash), Arg.Any<TxHandlingOptions>());
-            pool.Received(incoming == "gap" ? 1 : 0).RemoveTransaction(first.Hash);
+            pool.Received(gap ? 1 : 0).RemoveTransaction(first.Hash);
             blobAdmission.DidNotReceive().Admit(Arg.Any<Transaction>(), Arg.Any<object?>(), Arg.Any<IDisposable>());
             Assert.That(store.Covers(first), Is.EqualTo(expected == ProofWrapperAcceptanceStatus.Accepted));
             if (incoming == "unpinned") Assert.That(store.Covers(existing), Is.True);

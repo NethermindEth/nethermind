@@ -317,6 +317,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             IDisposable? scope;
             List<Transaction> admittedTransactions = [];
             int pooled = 0, admitted = 0;
+            // Reported only after the scope is disposed, which may roll the pooled transactions back.
+            ProofWrapperAcceptance? interrupted = null;
             lock (_commitLock)
             {
                 if (RefreshVerifier() != verifier) return ProofWrapperAcceptance.LocalFailure(VerifierChangedDuringAdmission);
@@ -340,7 +342,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                             entered = false;
                             ExitAdmission(queue);
                             if (!(entered = await EnterAdmissionAsync(queue, cancellationToken)))
-                                return pooled == 0 ? AdmissionBusy() : Interrupted(pooled, transactions.Count);
+                            {
+                                interrupted = pooled == 0 ? AdmissionBusy() : Interrupted(pooled, transactions.Count);
+                                break;
+                            }
                             Eip8288Verifier? refreshed = RefreshVerifier();
                             if (refreshed != verifier)
                             {
@@ -355,7 +360,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested && pooled != 0)
                 {
-                    return Interrupted(pooled, transactions.Count);
+                    interrupted = Interrupted(pooled, transactions.Count);
                 }
                 finally
                 {
@@ -365,6 +370,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             }
             if (scope is CapacityRestoringScope { RolledBack: true })
                 return ProofWrapperAcceptance.LocalFailure("Proof witness capacity is full; retry later.");
+            if (interrupted is { } stopped) return stopped;
             // A verifier change during pool insertion purged before this admission committed; purge its leftovers.
             if (RefreshVerifier() is { } current && current != verifier) Purge(current);
             // Already pending transactions are free to include, so only newly admitted ones may carry rejected ones, at most one each.
