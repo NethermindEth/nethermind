@@ -31,11 +31,12 @@ public readonly record struct Eip8288Verifier(ValueHash256 AggregatedVk)
 
     /// <summary>The identifier of the verification parameters for <paramref name="scheme"/>, or the zero hash for a scheme this
     /// verifier does not know.</summary>
-    /// <remarks>The backend pins one parameter set per scheme, so a fork can change only <see cref="AggregatedVk"/>.</remarks>
+    /// <remarks>The backend pins one parameter set per scheme, except that the batch-pricing guest (ethereum/EIPs#12664) takes a
+    /// direct leanSTARK witness on <c>get_claim_hash(claim)</c> rather than the bare claim.</remarks>
     public ValueHash256 SchemeParams(byte scheme) => scheme switch
     {
         Eip8288Constants.LeanSphincsScheme => SchemeParameters.LeanSphincs,
-        Eip8288Constants.LeanStarkScheme => SchemeParameters.LeanStark,
+        Eip8288Constants.LeanStarkScheme => AggregatedVk == BatchedAggregatedVk ? SchemeParameters.BatchedLeanStark : SchemeParameters.LeanStark,
         _ => default
     };
 
@@ -44,6 +45,7 @@ public readonly record struct Eip8288Verifier(ValueHash256 AggregatedVk)
     {
         internal static readonly ValueHash256 LeanSphincs = ValueKeccak.Compute("ethereum/8288/leanSPHINCS/pinned-keccak-sphincs"u8);
         internal static readonly ValueHash256 LeanStark = ValueKeccak.Compute("ethereum/8288/leanSTARK/pinned-generic-cpu"u8);
+        internal static readonly ValueHash256 BatchedLeanStark = ValueKeccak.Compute("ethereum/8288/leanSTARK/pinned-generic-cpu/claim-hash"u8);
     }
 
     public override string ToString() => $"AGGREGATED_VK {AggregatedVk.ToShortString()}";

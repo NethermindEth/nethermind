@@ -70,6 +70,26 @@ public class InclusionListProofsTests
         }
     }
 
+    // ethereum/EIPs#12664 Test Case: activation with old verdicts cached. The batch-pricing guest takes a direct leanSTARK witness
+    // on get_claim_hash(claim), so a verdict under EIP-8288's key does not answer for it; a leanSPHINCS verdict carries over.
+    [Test]
+    public void Direct_leanstark_verdicts_do_not_carry_into_the_batch_pricing_guest([Values] bool leanStark)
+    {
+        FakeLeanProofVerifier verifier = new(true);
+        FrameDependency dependency = new(leanStark ? Eip8288Constants.LeanStarkScheme : Eip8288Constants.LeanSphincsScheme,
+            ValueKeccak.Compute("activation"), default);
+        Eip8288Verifier batched = new(Eip8288Verifier.BatchedAggregatedVk);
+        byte[] bytes = [9];
+        ProofVerdictCache cache = ProofVerdictCache.For(verifier);
+        Assert.That(ProofVerdictCache.VerifyDirect(verifier, Eip8288Verifier.Pinned, dependency, bytes), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.TryGetDirectVerdict(dependency, ValueKeccak.Compute(bytes), batched), leanStark ? Is.Null : Is.True);
+            Assert.That(ProofVerdictCache.VerifyDirect(verifier, batched, dependency, bytes), Is.True);
+            Assert.That(verifier.VerificationCalls, Is.EqualTo(leanStark ? 2 : 1));
+        }
+    }
+
     [Test]
     public void Verdict_cache_is_bounded()
     {

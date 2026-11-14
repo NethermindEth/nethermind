@@ -55,10 +55,13 @@ public class NativeBatchLeafTests
             Assert.That(transactions.Select(static tx => FrameTxSigHash.ComputeValue(tx)), Is.EqualTo(signatureHashes));
             Assert.That(Native.VerifyRecursiveStark(depsHash, Eip8288Constants.AggregatedVk, batched), Is.False);
             Assert.That(() => Native.ProveRecursiveStark(depsHash, Eip8288Constants.AggregatedVk, new() { BatchLeaves = [leaf] }),
-                Throws.InvalidOperationException);
-            // Mode 0 stays singleton: the leaf is no direct proof of either claim, nor is one singleton enough for both.
-            Assert.That(Native.VerifyLeanStark(claims[0], key, leaf.Proof.Span), Is.False);
-            Assert.That(Native.VerifyLeanStark(claims[0], key, singletons[0].Span), Is.True);
+                Throws.ArgumentException);
+            // Mode 0 stays singleton: the leaf is no direct proof of either claim, nor is one singleton enough for both. EIP-8288's
+            // guest takes a direct proof of the bare claim, not of get_claim_hash(claim).
+            Assert.That(Native.VerifyLeanStark(claims[0], key, leaf.Proof.Span, Eip8288Constants.BatchedAggregatedVk), Is.False);
+            Assert.That(Native.VerifyLeanStark(claims[0], key, singletons[0].Span, Eip8288Constants.BatchedAggregatedVk), Is.True);
+            Assert.That(Native.VerifyLeanStark(claims[0], key, singletons[0].Span, Eip8288Constants.AggregatedVk), Is.False);
+            Assert.That(Native.VerifyLeanStark(claims[0], key, singletons[0].Span), Is.False);
             Assert.That(() => Native.ProveRecursiveStark(depsHash, Eip8288Constants.BatchedAggregatedVk,
                 new() { Deps = deps[..1], Witnesses = singletons[..1] }), Throws.InvalidOperationException);
             Assert.That(() => Native.ProveRecursiveStark(depsHash, Eip8288Constants.BatchedAggregatedVk,
@@ -96,7 +99,7 @@ public class NativeBatchLeafTests
                 Assert.That(Native.VerifyRecursiveStark(Eip8288Dependencies.ComputeDepsHash(deps), Eip8288Constants.BatchedAggregatedVk, proof),
                     Is.False, "a finalized proof is no plain one");
                 Assert.That(() => Native.ProveRecursiveStark(depsHash, Eip8288Constants.AggregatedVk, new() { BatchLeaves = [leaf] }),
-                    Throws.InvalidOperationException);
+                    Throws.ArgumentException);
             }
         }
 

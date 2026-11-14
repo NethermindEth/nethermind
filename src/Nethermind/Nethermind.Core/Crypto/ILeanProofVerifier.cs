@@ -17,6 +17,13 @@ public interface ILeanProofVerifier
     /// <summary>Verifies a leanSTARK proof for public-inputs hash <paramref name="dataHash"/> under <paramref name="verificationKey"/>.</summary>
     bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness);
 
+    /// <summary>Verifies a direct leanSTARK witness for claim <paramref name="dataHash"/> as the recursive guest of
+    /// <paramref name="aggregatedVk"/> takes one.</summary>
+    /// <remarks>EIP-8288's guest takes a proof of the bare claim; the batch-pricing guest (ethereum/EIPs#12664) one of
+    /// <c>get_claim_hash(claim)</c>.</remarks>
+    bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness, ReadOnlySpan<byte> aggregatedVk) =>
+        VerifyLeanStark(in dataHash, in verificationKey, witness);
+
     /// <summary>Verifies a recursive STARK for dependency commitment <paramref name="depsHash"/> under the aggregated verification key.</summary>
     /// <remarks>The native backend accepts only its pinned guest key; it does not verify arbitrary recursive programs.</remarks>
     bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof);

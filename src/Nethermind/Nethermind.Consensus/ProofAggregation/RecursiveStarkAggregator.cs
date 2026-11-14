@@ -240,7 +240,7 @@ public static class RecursiveStarkAggregator
                     bool valid = dependency.Scheme switch
                     {
                         Eip8288Constants.LeanSphincsScheme => verifier.VerifyLeanSphincs(dependency.DataHash, dependency.VerificationKey, input.Witnesses[offset].Span),
-                        Eip8288Constants.LeanStarkScheme => verifier.VerifyLeanStark(dependency.DataHash, dependency.VerificationKey, input.Witnesses[offset].Span),
+                        Eip8288Constants.LeanStarkScheme => verifier.VerifyLeanStark(dependency.DataHash, dependency.VerificationKey, input.Witnesses[offset].Span, aggregatedVk),
                         _ => false
                     };
                     if (!valid) throw new InvalidOperationException("Invalid direct dependency witness.");

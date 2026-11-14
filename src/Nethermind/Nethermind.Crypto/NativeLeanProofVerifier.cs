@@ -20,7 +20,7 @@ namespace Nethermind.Crypto;
 public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
 {
     private const string Library = "nethermind_lean";
-    private const uint ExpectedAbiVersion = 15;
+    private const uint ExpectedAbiVersion = 16;
     // The ABI's guests: EIP-8288's, and the one with batch pricing (ethereum/EIPs#12664).
     private const uint BaseGuest = 0;
     private const uint BatchedGuest = 1;
@@ -99,7 +99,15 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
     }
 
     /// <inheritdoc/>
-    public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness)
+    /// <remarks>Verifies as EIP-8288's guest takes the witness, on the bare claim.</remarks>
+    public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) =>
+        VerifyLeanStark(in dataHash, in verificationKey, witness, BaseGuest);
+
+    /// <inheritdoc/>
+    public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness, ReadOnlySpan<byte> aggregatedVk) =>
+        VerifyLeanStark(in dataHash, in verificationKey, witness, GuestOf(aggregatedVk));
+
+    private static bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness, uint guest)
     {
         if (witness.IsEmpty || witness.Length > MaxProofBytes) return false;
         try
@@ -107,7 +115,7 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
             fixed (byte* d = dataHash.Bytes)
             fixed (byte* v = verificationKey.Bytes)
             fixed (byte* w = witness)
-                return Verdict(AbiVersion != ExpectedAbiVersion ? -1 : nlean_verify_leanstark(d, v, w, (nuint)witness.Length));
+                return Verdict(AbiVersion != ExpectedAbiVersion ? -1 : nlean_verify_leanstark(guest, d, v, w, (nuint)witness.Length));
         }
         catch (Exception e) when (IsUnavailable(e)) { throw new InvalidOperationException("Native Lean backend unavailable", e); }
     }
@@ -359,7 +367,7 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
     private static partial int nlean_verify_leansphincs(byte* dataHash, byte* vk, byte* witness, nuint witnessLen);
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    private static partial int nlean_verify_leanstark(byte* dataHash, byte* vk, byte* witness, nuint witnessLen);
+    private static partial int nlean_verify_leanstark(uint guest, byte* dataHash, byte* vk, byte* witness, nuint witnessLen);
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     private static partial int nlean_verify_recursive(uint guest, byte* depsHash, byte* vk, nuint vkLen, byte* proof, nuint proofLen);

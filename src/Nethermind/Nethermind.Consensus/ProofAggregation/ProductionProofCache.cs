@@ -93,6 +93,9 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
     public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) =>
         verifier.VerifyLeanStark(in dataHash, in verificationKey, witness);
     /// <inheritdoc/>
+    public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness, ReadOnlySpan<byte> aggregatedVk) =>
+        verifier.VerifyLeanStark(in dataHash, in verificationKey, witness, aggregatedVk);
+    /// <inheritdoc/>
     /// <remarks>
     /// A recursive proof that verified once is accepted again without the native call: a produced block is otherwise
     /// verified when produced and again on import, and identical proofs arrive repeatedly in wrappers and blocks.
