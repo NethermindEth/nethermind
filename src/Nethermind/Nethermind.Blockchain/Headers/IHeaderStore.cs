@@ -37,6 +37,7 @@ public interface IHeaderStore : IHeaderFinder
         return found && bloomMatches(header!.Bloom!.Bytes) ? header : null;
     }
 
+    /// <inheritdoc cref="GetIfBloomMatches(Hash256, ulong, Func{ReadOnlySpan{byte}, bool}, out bool)"/>
     BlockHeader? GetIfBloomMatches(in ValueHash256 blockHash, ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found) =>
         GetIfBloomMatches(new Hash256(in blockHash), blockNumber, bloomMatches, out found);
     void Cache(BlockHeader header);

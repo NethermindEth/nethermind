@@ -76,6 +76,7 @@ namespace Nethermind.Serialization.Rlp
             return new ChainLevelInfo(hasMainChainBlock, blockInfos);
         }
 
+        /// <summary>Reads the main chain block of an encoded level without decoding the level; <see langword="false"/> when only a full decode can tell, and <paramref name="hasMainChainBlock"/> is <see langword="false"/> when the level has no main chain block.</summary>
         public static bool TryReadMainChainBlock(ReadOnlySpan<byte> rlp, out bool hasMainChainBlock, out ValueHash256 blockHash, out UInt256 totalDifficulty)
         {
             blockHash = default;

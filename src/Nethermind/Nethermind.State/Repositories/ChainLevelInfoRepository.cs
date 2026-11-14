@@ -121,11 +121,11 @@ namespace Nethermind.State.Repositories
         public bool TryGetMainChainBlockWithoutCaching(ulong number, out ValueHash256 blockHash, out UInt256 totalDifficulty)
         {
             LevelNumber key = new(number);
-            if (_blockInfoCache.TryGetNoRefresh(in key, out ChainLevelInfo? level)) return TryGetMainChainBlock(level, out blockHash, out totalDifficulty);
+            if (_blockInfoCache.TryGetNoRefresh(in key, out ChainLevelInfo? level)) return IChainLevelInfoRepository.TryGetMainChainBlock(level, out blockHash, out totalDifficulty);
 
             bool found = ReadMainChainBlock(number, out blockHash, out totalDifficulty);
             return _blockInfoCache.TryGetNoRefresh(in key, out ChainLevelInfo? cached)
-                ? TryGetMainChainBlock(cached, out blockHash, out totalDifficulty)
+                ? IChainLevelInfoRepository.TryGetMainChainBlock(cached, out blockHash, out totalDifficulty)
                 : found;
         }
 
@@ -135,7 +135,7 @@ namespace Nethermind.State.Repositories
             if (_blockInfoDb is IReadOnlyNativeKeyValueStore native)
             {
                 ReadOnlySpan<byte> slice = native.GetNativeSlice(key, out IntPtr handle);
-                if (slice.IsNull()) return TryGetMainChainBlock(null, out blockHash, out totalDifficulty);
+                if (slice.IsNull()) return IChainLevelInfoRepository.TryGetMainChainBlock(null, out blockHash, out totalDifficulty);
 
                 try
                 {
@@ -148,7 +148,7 @@ namespace Nethermind.State.Repositories
             }
 
             Span<byte> data = _blockInfoDb.GetSpan(key);
-            if (data.IsNull()) return TryGetMainChainBlock(null, out blockHash, out totalDifficulty);
+            if (data.IsNull()) return IChainLevelInfoRepository.TryGetMainChainBlock(null, out blockHash, out totalDifficulty);
 
             try
             {
@@ -162,25 +162,11 @@ namespace Nethermind.State.Repositories
 
         private bool ReadMainChainBlock(ReadOnlySpan<byte> rlp, out ValueHash256 blockHash, out UInt256 totalDifficulty)
         {
-            if (rlp.Length == 0) return TryGetMainChainBlock(null, out blockHash, out totalDifficulty);
+            if (rlp.Length == 0) return IChainLevelInfoRepository.TryGetMainChainBlock(null, out blockHash, out totalDifficulty);
             if (ChainLevelDecoder.TryReadMainChainBlock(rlp, out bool hasMainChainBlock, out blockHash, out totalDifficulty)) return hasMainChainBlock;
 
             RlpReader reader = new(rlp);
-            return TryGetMainChainBlock(_decoder.Decode(ref reader, RlpBehaviors.AllowExtraBytes | RlpBehaviors.TrustedInput), out blockHash, out totalDifficulty);
-        }
-
-        private static bool TryGetMainChainBlock(ChainLevelInfo? level, out ValueHash256 blockHash, out UInt256 totalDifficulty)
-        {
-            if (level?.MainChainBlock is { } block)
-            {
-                blockHash = block.BlockHash.ValueHash256;
-                totalDifficulty = block.TotalDifficulty;
-                return true;
-            }
-
-            blockHash = default;
-            totalDifficulty = default;
-            return false;
+            return IChainLevelInfoRepository.TryGetMainChainBlock(_decoder.Decode(ref reader, RlpBehaviors.AllowExtraBytes | RlpBehaviors.TrustedInput), out blockHash, out totalDifficulty);
         }
 
         public IOwnedReadOnlyList<ChainLevelInfo?> MultiLoadLevel(in ArrayPoolListRef<ulong> blockNumbers)
