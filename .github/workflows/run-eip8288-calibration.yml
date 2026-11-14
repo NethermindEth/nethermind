@@ -95,6 +95,8 @@ jobs:
           [[ $MACHINE_TYPE =~ ^[a-z][a-z0-9]*-[a-z0-9-]+$ ]] || fail "machine_type is not a GCE machine type"
           # The runner image and actions/runner download are x86-64 only.
           case $MACHINE_TYPE in c4a-*|t2a-*|n4a-*|a4x-*) fail "$MACHINE_TYPE is Arm; the GCP runner is x86-64 only" ;; esac
+          # -lssd types bundle local SSDs, which the runner's provisioning rejects when it requests none.
+          case $MACHINE_TYPE in *-lssd) fail "$MACHINE_TYPE bundles local SSDs; this workflow requests none" ;; esac
           [[ $REF =~ ^$name$ ]] || fail "lean_bindings_ref must be a branch, tag or commit"
           [[ $LEANVM_REVS =~ ^($name(,$name)*)?$ ]] || fail "leanvm_revs must be comma-separated revisions"
           if [[ ! $TIMEOUT_MINUTES =~ ^[1-9][0-9]{0,2}$ ]] || (( TIMEOUT_MINUTES > 360 )); then fail "timeout_minutes must be 1-360"; fi
@@ -203,8 +205,12 @@ jobs:
           budget=900000
           for report in "$scratch"/out/*/report.md; do
             if (( budget <= 0 )); then echo "_Further reports omitted; see the artifact._" >> "$GITHUB_STEP_SUMMARY"; break; fi
-            { echo "## $(basename "$(dirname "$report")")"; head -c "$budget" "$report"; echo; } >> "$GITHUB_STEP_SUMMARY"
-            budget=$(( budget - $(wc -c < "$report") ))
+            size=$(wc -c < "$report")
+            {
+              echo "## $(basename "$(dirname "$report")")"; head -c "$budget" "$report"; echo
+              if (( size > budget )); then echo "_Truncated; see the artifact._"; fi
+            } >> "$GITHUB_STEP_SUMMARY"
+            budget=$(( budget - size ))
           done
 
       - name: Upload results
