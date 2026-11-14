@@ -99,7 +99,7 @@ public class EezSnapBootstrapTests
             Assert.That(_sync.PivotNumber, Is.EqualTo(_pivot.Number), "the configured pivot must remain readable with synchronization disabled");
             Assert.That(_sync.PivotHash, Is.EqualTo(_pivot.Hash!.ToString()));
         }
-        _source.GetRawBlock(_pivot.Hash!, Arg.Any<CancellationToken>()).Returns(Rlp.Encode(_pivot).Bytes);
+        _source.GetRawBlock(_pivot.Hash!, Arg.Any<CancellationToken>()).Returns(Rlp.Encode(_pivot));
         _l1.GetChainId(Arg.Any<CancellationToken>()).Returns(10200UL);
         _l1.GetBlockByNumber(1, Arg.Any<CancellationToken>()).Returns(new EezL1Block
         { Number = 1, Hash = TestItem.KeccakA, Timestamp = 100, MixHash = TestItem.KeccakB });
@@ -309,7 +309,7 @@ public class EezSnapBootstrapTests
         _blocks.SyncPivot = (authorized.Number, authorized.Hash!);
         _settlements = [Settlement(authorized.Hash!, 0)];
         Block wrong = new(authorized.Header, new BlockBody([Build.A.Transaction.SignedAndResolved().TestObject], [], []));
-        _source.GetRawBlock(authorized.Hash!, Arg.Any<CancellationToken>()).Returns(Rlp.Encode(wrong).Bytes);
+        _source.GetRawBlock(authorized.Hash!, Arg.Any<CancellationToken>()).Returns(Rlp.Encode(wrong));
 
         await Assert.ThrowsAsync<EezFollowerException>(() => _bootstrap.Prepare(CancellationToken.None));
         Assert.That(_blocks.Head!.Number, Is.Zero);
@@ -334,7 +334,7 @@ public class EezSnapBootstrapTests
         _sync.PivotNumber = missing.Number;
         _sync.PivotHash = missing.Hash!.ToString();
         _blocks.SyncPivot = (missing.Number, missing.Hash!);
-        _source.GetRawBlock(missing.Hash!, Arg.Any<CancellationToken>()).Returns(Rlp.Encode(missing).Bytes);
+        _source.GetRawBlock(missing.Hash!, Arg.Any<CancellationToken>()).Returns(Rlp.Encode(missing));
         _settlements = [Settlement(missing.Hash!, 0)];
 
         await Assert.ThrowsAsync<EezFollowerException>(() => _bootstrap.Prepare(CancellationToken.None));

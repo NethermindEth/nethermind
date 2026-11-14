@@ -99,7 +99,7 @@ internal sealed partial class NativeTransactions
                     EezCalldata.EncodeLoadExecutionTable(table), rules);
                 if (position >= transactions.Length || transactions[position].IsEezSystemTransaction() ||
                     transactions[position].SenderAddress == rules.SystemAddress ||
-                    !TxDecoder.Instance.Encode(transactions[position], RlpBehaviors.SkipTypedWrapping).Bytes.AsSpan().SequenceEqual(user))
+                    !TxDecoder.Instance.Encode(transactions[position], RlpBehaviors.SkipTypedWrapping).AsSpan().SequenceEqual(user))
                     throw NativeCallTree.Invalid("native outbound group differs from its original signed user transaction");
                 position++;
             }

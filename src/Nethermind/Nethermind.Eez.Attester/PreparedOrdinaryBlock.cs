@@ -24,14 +24,14 @@ internal sealed class PreparedOrdinaryBlock
         ParentHash = result.Block.ParentHash!;
         PreStateRoot = result.PreStateRoot;
         PostStateRoot = result.PostStateRoot;
-        _block = Rlp.Encode(result.Block).Bytes;
-        _parent = Rlp.Encode(result.Parent).Bytes;
+        _block = Rlp.Encode(result.Block);
+        _parent = Rlp.Encode(result.Parent);
         _receipts = new byte[result.Receipts.Length][];
         _senders = new Address[result.Block.Transactions.Length];
         RetainedBytes = 1024L + _block.Length + _parent.Length + 96L * _senders.Length;
         for (int i = 0; i < _receipts.Length; i++)
         {
-            _receipts[i] = Rlp.Encode(result.Receipts[i], RlpBehaviors.Eip658Receipts).Bytes;
+            _receipts[i] = Rlp.Encode(result.Receipts[i], RlpBehaviors.Eip658Receipts);
             RetainedBytes += 32L + _receipts[i].Length;
         }
         for (int i = 0; i < _senders.Length; i++)

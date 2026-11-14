@@ -230,7 +230,7 @@ public partial class EezL2SystemCallsTests
             Hash256 randao = index switch { 0 => TestItem.KeccakA, 1 => TestItem.KeccakB, _ => TestItem.KeccakC };
             BlockHeader l1 = Build.A.BlockHeader.WithNumber(99 + index).WithTimestamp(108UL + (ulong)index * 6)
                 .WithParentHash(parent).WithMixHash(randao).TestObject;
-            byte[] raw = Rlp.Encode(l1).Bytes;
+            byte[] raw = Rlp.Encode(l1);
             chain.Append([raw], new NativeL1HeaderRules(null, null, null, null, null));
             parent = new Hash256(chain.Endpoint.Hash);
         }

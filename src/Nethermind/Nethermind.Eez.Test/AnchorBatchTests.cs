@@ -52,7 +52,7 @@ public class AnchorBatchTests
         StatelessFixtures.ReadJson(Window, "blocks.json").EnumerateArray()
             .Select(static entry => Rlp.Decode<Block>(StatelessFixtures.ReadBlock(Window, $"block-{entry.GetProperty("number").GetUInt64()}.rlp.hex"))!)
             .Select(static block => new DaBlock(block.Beneficiary!, block.Header.ExtraData,
-                block.Transactions.Select(static t => TxDecoder.Instance.Encode(t, RlpBehaviors.SkipTypedWrapping).Bytes).ToArray()))
+                block.Transactions.Select(static t => TxDecoder.Instance.Encode(t, RlpBehaviors.SkipTypedWrapping)).ToArray()))
             .ToArray();
 
     private static ValueHash256 Hash(JsonElement oracle, string property) => new(oracle.GetProperty(property).GetString()!);

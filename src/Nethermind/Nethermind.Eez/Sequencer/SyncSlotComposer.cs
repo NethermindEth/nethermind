@@ -280,7 +280,7 @@ public sealed class SyncSlotComposer(
         for (int i = 0; i < span.Count; i++)
         {
             Block block = span[i];
-            proved[i] = new ProvedBlock(block.Number, block.Hash!, block.ParentHash!, Rlp.Encode(block).Bytes, witnesses.Get(parent, block));
+            proved[i] = new ProvedBlock(block.Number, block.Hash!, block.ParentHash!, Rlp.Encode(block), witnesses.Get(parent, block));
             parent = block.Header;
         }
     }

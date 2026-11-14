@@ -30,7 +30,8 @@ public static partial class GenericEqualityComparer
 
     // Returns null on JIT/CoreCLR so collection constructors fall back to EqualityComparer<T>.Default
     // (which the JIT recognizes via [Intrinsic] and devirtualizes at its own call sites).
-    // On bflat/AOT, returns our reflection-free fallback since EqualityComparer<T>.Default is unavailable.
+    // On bflat/AOT, returns null for value types, which call their own GetHashCode/Equals, and our
+    // reflection-free fallback for reference types, since EqualityComparer<T>.Default is unavailable.
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public static partial IEqualityComparer<T>? GetOptimized<T>() where T : IEquatable<T>?;
 }

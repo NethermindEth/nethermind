@@ -100,7 +100,7 @@ internal static class RollupXSettlementVerifier
             Transaction user = terminal.Block.Transactions[_transaction + 1];
             if (nativeRules is null && !load.Value.IsZero) throw Invalid("Outbound load must carry zero native value.");
             if (user.IsEezSystemTransaction() || user.SenderAddress == _system ||
-                !TxDecoder.Instance.Encode(user, RlpBehaviors.SkipTypedWrapping).Bytes.AsSpan().SequenceEqual(start.TxData.Span))
+                !TxDecoder.Instance.Encode(user, RlpBehaviors.SkipTypedWrapping).AsSpan().SequenceEqual(start.TxData.Span))
                 throw Invalid("Native outbound transaction bytes differ from canonical execution.");
             ExecutionEntry expected = _l1.Entries[_entry - 1];
             VerifySystem(load, _transaction, NativeValue.Funding(source.Entries), EezCalldata.EncodeLoadExecutionTable(source));

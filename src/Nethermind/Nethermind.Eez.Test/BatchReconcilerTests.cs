@@ -257,9 +257,9 @@ public class BatchReconcilerTests
                 GasLimit = EezChainRules.RollupXSystemTxGasCap,
                 Data = EezCalldata.EncodeExecuteIncomingCrossChainCall(new IncomingCrossChainCall([], []))
             };
-            byte[] historyBytes = TxDecoder.Instance.Encode(history, RlpBehaviors.SkipTypedWrapping).Bytes;
-            byte[] richerBytes = TxDecoder.Instance.Encode(richerHistory, RlpBehaviors.SkipTypedWrapping).Bytes;
-            byte[] suffix = TxDecoder.Instance.Encode(native, RlpBehaviors.SkipTypedWrapping).Bytes;
+            byte[] historyBytes = TxDecoder.Instance.Encode(history, RlpBehaviors.SkipTypedWrapping);
+            byte[] richerBytes = TxDecoder.Instance.Encode(richerHistory, RlpBehaviors.SkipTypedWrapping);
+            byte[] suffix = TxDecoder.Instance.Encode(native, RlpBehaviors.SkipTypedWrapping);
             Block accepted = NativeResumeExecutor.Build(_genesis, new DerivedBlock(Beneficiary, [], [historyBytes, suffix])
             { PrevRandao = TestItem.KeccakA });
             Block canonical = NativeResumeExecutor.Build(_genesis, new DerivedBlock(Beneficiary, [], [richerBytes, suffix])
@@ -375,7 +375,7 @@ public class BatchReconcilerTests
             Block block = DerivedChain.Child(parent, derived.Beneficiary, derived.ExtraData,
                 derived.Transactions.Select(SyncSettlementFixture.Decode).ToArray());
             block.Header.MixHash = derived.PrevRandao;
-            block.Header.Hash = Keccak.Compute(Rlp.Encode(block.Header).Bytes);
+            block.Header.Hash = Keccak.Compute(Rlp.Encode(block.Header));
             return block;
         }
 

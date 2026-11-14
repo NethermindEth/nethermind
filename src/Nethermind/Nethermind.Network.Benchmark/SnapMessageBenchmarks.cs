@@ -103,7 +103,7 @@ public class SnapMessageBenchmarks
                 {
                     ArrayPoolList<PathWithStorageSlot> accountSlots = new(128);
                     foreach (Hash256 hash in Hashes(128))
-                        accountSlots.Add(new PathWithStorageSlot(hash.ValueHash256, Rlp.Encode(hash.Bytes[..20]).Bytes));
+                        accountSlots.Add(new PathWithStorageSlot(hash.ValueHash256, Rlp.Encode(hash.Bytes[..20])));
                     slots.Add(accountSlots);
                 }
                 SetUp(service, new Snap1.StorageRangeMessage { RequestId = RequestId, Slots = slots, Proofs = Nodes(8, 532) });
@@ -133,7 +133,7 @@ public class SnapMessageBenchmarks
             case Message.BlockAccessLists:
                 ArrayPoolList<byte[]> blockAccessLists = new(16);
                 for (int i = 0; i < 16; i++)
-                    blockAccessLists.Add(Rlp.Encode(new byte[16 * 1024]).Bytes);
+                    blockAccessLists.Add(Rlp.Encode(new byte[16 * 1024]));
                 SetUp(service, new Snap2.BlockAccessListsMessage(new ByteArrayListAdapter(blockAccessLists)) { RequestId = RequestId });
                 break;
         }

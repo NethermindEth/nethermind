@@ -143,7 +143,7 @@ public class LogFinderTests
         ReceiptStorageDecoder decoder = new();
         byte[] receiptRlp = decoder.Encode(
             receipt,
-            RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts).Bytes;
+            RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
         receiptRlp = HeaderRlpTestHelper.ReplaceFieldEncoding(
             receiptRlp,
             fieldIndex: 9,
@@ -151,7 +151,7 @@ public class LogFinderTests
         receiptRlp = HeaderRlpTestHelper.ReplaceFieldEncoding(
             receiptRlp,
             fieldIndex: 10,
-            Rlp.Encode(Rlp.OfEmptyList, Rlp.Encode(validLog)).Bytes);
+            RlpTestHelper.EncodeSequence(RlpTestHelper.OfEmptyList, Rlp.Encode(validLog)));
         int receiptsContentLength = receiptRlp.Length * 2 + 1;
         byte[] receiptsRlp = new byte[Rlp.LengthOfSequence(receiptsContentLength)];
         int receiptPosition = Rlp.StartSequence(receiptsRlp, 0, receiptsContentLength);
@@ -692,7 +692,7 @@ public class LogFinderTests
             .WithTransactionHash(block.Transactions[0].Hash)
             .WithLogs(rejected, accepted)
             .TestObject;
-        byte[] encoded = new ReceiptArrayStorageDecoder(compact).Encode([receipt], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts).Bytes;
+        byte[] encoded = new ReceiptArrayStorageDecoder(compact).Encode([receipt], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
         IReceiptRefDecoder decoder = compact ? CompactReceiptStorageDecoder.Instance : new ReceiptStorageDecoder();
         ReceiptsRecovery recovery = new(Substitute.For<IEthereumEcdsa>(), _specProvider);
         LegacyReceiptFinder receiptFinder = new(encoded, decoder,
@@ -733,7 +733,7 @@ public class LogFinderTests
             .WithTransactionHash(block.Transactions[0].Hash)
             .WithLogs(new LogEntry(TestItem.AddressA, [], [TestItem.KeccakA]))
             .TestObject;
-        byte[] encoded = new ReceiptArrayStorageDecoder(true).Encode([receipt], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts).Bytes;
+        byte[] encoded = new ReceiptArrayStorageDecoder(true).Encode([receipt], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
         LogFinder finder = new(_blockTree, new LegacyReceiptFinder(encoded, CompactReceiptStorageDecoder.Instance), _receiptStorage,
             LimboLogs.Instance, _receiptsRecovery, _specProvider!);
         LogFilter filter = FilterBuilder.New().FromBlock(1).ToBlock(1).WithAddress(TestItem.AddressA).Build();
@@ -817,7 +817,7 @@ public class LogFinderTests
             .WithTransactionHash(block.Transactions[0].Hash)
             .WithLogs(logEntries)
             .TestObject;
-        return new ReceiptArrayStorageDecoder(compact).Encode([receipt], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts).Bytes;
+        return new ReceiptArrayStorageDecoder(compact).Encode([receipt], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
     }
 
     private LogFinder CreateEncodedLogFinder(Block block, byte[] encoded, IReceiptRefDecoder decoder, bool indexed, out ILogIndexStorage? index)

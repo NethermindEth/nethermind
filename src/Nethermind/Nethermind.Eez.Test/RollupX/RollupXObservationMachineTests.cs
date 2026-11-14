@@ -25,7 +25,7 @@ public class RollupXObservationMachineTests
             .WithParentHash(change == "parent" ? TestItem.KeccakA : parent.Hash!).TestObject;
         int count = change switch { "empty" => 0, "oversized" => 257, _ => 1 };
         ArrayPoolList<byte[]> headers = new(count);
-        for (int i = 0; i < count; i++) headers.Add(Rlp.Encode(parent.Header).Bytes);
+        for (int i = 0; i < count; i++) headers.Add(Rlp.Encode(parent.Header));
         using Witness witness = new()
         {
             Headers = headers,

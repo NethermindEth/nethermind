@@ -53,7 +53,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
             {
                 if (txReceipts is null)
                 {
-                    writer.Encode(Rlp.OfEmptyList);
+                    writer.EncodeNullObject();
                     continue;
                 }
 
@@ -112,7 +112,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
             {
                 TxReceipt[]? txReceipts = txReceiptsSpan[i];
                 contentLength += txReceipts is null
-                    ? Rlp.OfEmptyList.Length
+                    ? Rlp.LengthOfNull
                     : Rlp.LengthOfSequence(GetInnerLength(txReceipts));
             }
 

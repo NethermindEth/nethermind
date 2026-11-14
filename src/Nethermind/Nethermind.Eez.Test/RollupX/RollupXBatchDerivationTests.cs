@@ -487,7 +487,7 @@ public partial class RollupXBatchDerivationTests
     private static StreamMessage[] Outbound(params StreamMessage[] calls)
     {
         byte[] user = TxDecoder.Instance.Encode(Build.A.Transaction.WithType(TxType.EIP1559).WithChainId(ChainId)
-            .WithSignature(new Signature(1, 2, 27)).TestObject, RlpBehaviors.SkipTypedWrapping).Bytes;
+            .WithSignature(new Signature(1, 2, 27)).TestObject, RlpBehaviors.SkipTypedWrapping);
         return [new StreamMessage.Initiate(RollupId, user), .. calls, new StreamMessage.Finish()];
     }
 

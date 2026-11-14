@@ -58,7 +58,7 @@ internal sealed class Rollup0ParentAuthorizer
         if (parent.Number != predecessor.AnchorNumber || parent.Hash is null || parent.StateRoot is null ||
             !parent.Hash.Bytes.SequenceEqual(predecessor.AnchorHash.Span) ||
             !parent.StateRoot.Bytes.SequenceEqual(predecessor.AnchorStateRoot.Span) ||
-            !Rlp.Encode(parent).Bytes.AsSpan().SequenceEqual(parentRlp))
+            !Rlp.Encode(parent).AsSpan().SequenceEqual(parentRlp))
             throw Rejected();
 
         L1AuthorizationSnapshot snapshot = await ReadSnapshot("latest", cancellation).ConfigureAwait(false);

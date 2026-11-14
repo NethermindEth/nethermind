@@ -82,7 +82,7 @@ internal sealed class NativeProver
             ByteString encoded = header.ParentProvenance?.ParentHeaderRlp ?? ByteString.Empty;
             BlockHeader parent = Rlp.Decode<BlockHeader>(encoded.ToByteArray()) ?? throw WindowAssembler.Invalid("native predecessor missing");
             if (parent.Number == ulong.MaxValue || parent.Number + 1 != header.FromBlock || parent.Hash is null || parent.StateRoot is null ||
-                !Rlp.Encode(parent).Bytes.AsSpan().SequenceEqual(encoded.Span))
+                !Rlp.Encode(parent).AsSpan().SequenceEqual(encoded.Span))
                 throw WindowAssembler.Invalid("native predecessor differs from window");
             return new V2.Begin
             {
@@ -100,7 +100,8 @@ internal sealed class NativeProver
 
     internal static ByteString ValidationIdentity(AttesterOptions options, StreamingOptions settings, EezSettlementContext context)
     {
-        byte[] identity = Rlp.Encode(
+        byte[][] fields =
+        [
             Rlp.Encode(Encoding.UTF8.GetBytes("nethermind.eez.native-inline-v1/1")),
             Rlp.Encode(typeof(NativeProver).Module.ModuleVersionId.ToByteArray()),
             Rlp.Encode(typeof(EezSettlementContext).Module.ModuleVersionId.ToByteArray()),
@@ -109,7 +110,15 @@ internal sealed class NativeProver
             Rlp.Encode(context.RollupId), Rlp.Encode(context.ChainId), Rlp.Encode(context.BlockTimeSeconds), Rlp.Encode(context.GasLimit),
             Rlp.Encode(context.ProofSystem.Bytes), Rlp.Encode(context.VerificationKey.Bytes),
             Rlp.Encode(settings.L1ChainId), Rlp.Encode(settings.Registry!.Bytes), Rlp.Encode(settings.Manager!.Bytes),
-            Rlp.Encode(settings.L2GenesisHash!.Bytes)).Bytes;
+            Rlp.Encode(settings.L2GenesisHash!.Bytes),
+        ];
+        int length = 0;
+        foreach (byte[] field in fields) length += field.Length;
+        byte[] identity = new byte[Rlp.LengthOfSequence(length)];
+        RlpWriter writer = RlpWriter.ContentWriter(identity);
+        RlpSequence sequence = writer.StartSequence(length);
+        foreach (byte[] field in fields) writer.WriteEncoded(field);
+        writer.EndSequence(sequence);
         return ByteString.CopyFrom(Keccak.Compute(identity).Bytes);
     }
 }

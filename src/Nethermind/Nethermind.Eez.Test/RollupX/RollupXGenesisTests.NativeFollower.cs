@@ -107,7 +107,7 @@ public partial class RollupXGenesisTests
                 Assert.That(executed.Transactions.Length, Is.EqualTo(import ? 1 : 0));
                 Assert.That(executed.Header.TxRoot, Is.EqualTo(TxTrie.CalculateRoot(executed.Transactions)));
                 if (import)
-                    Assert.That(TxDecoder.Instance.Encode(executed.Transactions[0], RlpBehaviors.SkipTypedWrapping).Bytes,
+                    Assert.That(TxDecoder.Instance.Encode(executed.Transactions[0], RlpBehaviors.SkipTypedWrapping),
                         Is.EqualTo(ordinary[0].ToArray()), "execution must preserve the original dedicated history wire envelope");
             }
         }
@@ -130,7 +130,7 @@ public partial class RollupXGenesisTests
             Transaction app = Build.A.Transaction.WithChainId(1).WithTo(TestItem.AddressB).WithGasLimit(100_000).WithValue(0)
                 .WithGasPrice(2).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             byte[] history = NativeHistoryEnvelope.CreateBlocks(1, [new(1, source.Headers[1].Hash!.ValueHash256)]).Encode();
-            byte[] appBytes = TxDecoder.Instance.Encode(app, RlpBehaviors.SkipTypedWrapping).Bytes;
+            byte[] appBytes = TxDecoder.Instance.Encode(app, RlpBehaviors.SkipTypedWrapping);
             byte[] operations = OperationsPayload.Encode([
                 new OperationsRun(1, Address.Zero, ReadOnlyMemory<byte>.Empty, new ReadOnlyMemory<byte>[] { history }),
                 new OperationsRun(1, Address.Zero, ReadOnlyMemory<byte>.Empty, new ReadOnlyMemory<byte>[] { appBytes }),
@@ -174,8 +174,8 @@ public partial class RollupXGenesisTests
             Transaction app = Build.A.Transaction.WithChainId(1).WithTo(TestItem.AddressB).WithNonce(1).WithValue(0)
                 .WithGasLimit(100_000).WithGasPrice(2).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             byte[] operations = OperationsPayload.Encode([
-                new OperationsRun(1, Address.Zero, ReadOnlyMemory<byte>.Empty, new ReadOnlyMemory<byte>[] { TxDecoder.Instance.Encode(reset, RlpBehaviors.SkipTypedWrapping).Bytes }),
-                new OperationsRun(1, Address.Zero, ReadOnlyMemory<byte>.Empty, new ReadOnlyMemory<byte>[] { TxDecoder.Instance.Encode(app, RlpBehaviors.SkipTypedWrapping).Bytes }),
+                new OperationsRun(1, Address.Zero, ReadOnlyMemory<byte>.Empty, new ReadOnlyMemory<byte>[] { TxDecoder.Instance.Encode(reset, RlpBehaviors.SkipTypedWrapping) }),
+                new OperationsRun(1, Address.Zero, ReadOnlyMemory<byte>.Empty, new ReadOnlyMemory<byte>[] { TxDecoder.Instance.Encode(app, RlpBehaviors.SkipTypedWrapping) }),
                 new OperationsRun(4, Address.Zero, ReadOnlyMemory<byte>.Empty, [])]);
             DecodedBatch batch = container.Resolve<IBatchDerivation>().Decode(NativeStream.Encode(1, operations, []));
             L1Anchor anchor = source.Anchor(3) with { ParentHash = source.Headers[3].ParentHash };
@@ -421,8 +421,8 @@ public partial class RollupXGenesisTests
         TxDecoder.Instance.RegisterDecoder(EezTxType.CreateDecoder(rules));
         try
         {
-            byte[] template = TxDecoder.Instance.Encode(native, RlpBehaviors.SkipTypedWrapping).Bytes;
-            DerivedBlock derived = new(Address.Zero, [], [TxDecoder.Instance.Encode(ordinary, RlpBehaviors.SkipTypedWrapping).Bytes, template])
+            byte[] template = TxDecoder.Instance.Encode(native, RlpBehaviors.SkipTypedWrapping);
+            DerivedBlock derived = new(Address.Zero, [], [TxDecoder.Instance.Encode(ordinary, RlpBehaviors.SkipTypedWrapping), template])
             { PrevRandao = parent.MixHash!, NativeEffectsStart = 1 };
             IWorldStateScopeProvider provider = container.Resolve<IWorldStateManager>().CreateResettableWorldState();
             using (ILifetimeScope raw = container.BeginLifetimeScope(b => b.AddScoped(provider)))
@@ -431,7 +431,7 @@ public partial class RollupXGenesisTests
                     "raw validation must reject a wire budget larger than the actual remaining block gas");
             using IDerivedBlockSession session = container.Resolve<IDerivedBlockExecutor>().BeginSession();
             Block block = await session.ExecuteAsync(parent, derived);
-            byte[] final = TxDecoder.Instance.Encode(block.Transactions[1], RlpBehaviors.SkipTypedWrapping).Bytes;
+            byte[] final = TxDecoder.Instance.Encode(block.Transactions[1], RlpBehaviors.SkipTypedWrapping);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(block.Transactions[0].BlockGasUsed, Is.EqualTo(14021000UL), "Osaka calldata floor: 21000 + 350000 * 40");
@@ -546,7 +546,7 @@ public partial class RollupXGenesisTests
         BlockHeader parent = Build.A.BlockHeader.WithNumber(number).WithTimestamp(rules.Schedule!.Timestamp(number)!.Value)
             .WithGasLimit(EezChainRules.RollupXBlockGasLimit).WithMixHash(source.Headers[importedEndpoint ?? 0].MixHash!).WithStateRoot(root).TestObject;
         parent.BaseFeePerGas = 1;
-        parent.Hash = Keccak.Compute(Rlp.Encode(parent).Bytes);
+        parent.Hash = Keccak.Compute(Rlp.Encode(parent));
         return parent;
     }
 }

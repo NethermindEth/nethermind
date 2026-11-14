@@ -49,7 +49,7 @@ internal sealed class NativeDerivedTransactionsExecutor(
             {
                 transaction.Hash = null;
                 transaction.GasLimit = gas;
-                transaction.Hash = Keccak.Compute(TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes);
+                transaction.Hash = Keccak.Compute(TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping));
                 _changed = true;
             }
         }

@@ -148,7 +148,7 @@ public class OptimismEthRpcModuleTest
         Transaction tx = Build.A.Transaction
             .Signed(ecdsa: ethereumEcdsa, privateKey: TestItem.PrivateKeyA)
             .TestObject;
-        string serialized = await rpcBlockchain.TestEthRpc("eth_sendRawTransaction", Rlp.Encode(item: tx, behaviors: RlpBehaviors.None).Bytes.ToHexString());
+        string serialized = await rpcBlockchain.TestEthRpc("eth_sendRawTransaction", Rlp.Encode(item: tx, behaviors: RlpBehaviors.None).ToHexString());
 
         await txSender.Received().SendTransaction(tx: Arg.Any<Transaction>(), txHandlingOptions: TxHandlingOptions.PersistentBroadcast);
         Assert.That(serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","result":"{{TestItem.KeccakA.Bytes.ToHexString(withZeroX: true)}}","id":67}"""));
@@ -181,7 +181,7 @@ public class OptimismEthRpcModuleTest
             .Build();
 
         Transaction tx = Build.A.Transaction.Signed(TestItem.PrivateKeyA).TestObject;
-        string serialized = await rpcBlockchain.TestEthRpc("eth_sendRawTransaction", Rlp.Encode(item: tx, behaviors: RlpBehaviors.None).Bytes.ToHexString());
+        string serialized = await rpcBlockchain.TestEthRpc("eth_sendRawTransaction", Rlp.Encode(item: tx, behaviors: RlpBehaviors.None).ToHexString());
 
         Assert.That(serialized, Is.EqualTo(expected));
     }

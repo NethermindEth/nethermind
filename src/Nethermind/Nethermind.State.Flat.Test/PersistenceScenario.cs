@@ -368,7 +368,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
             ReadOnlySpan<byte> stripped = ((ReadOnlySpan<byte>)storageValue).WithoutLeadingZeros();
-            writer.SetStorageRawEncoded(addrHash, slotHash, Rlp.Encode(stripped).Bytes);
+            writer.SetStorageRawEncoded(addrHash, slotHash, Rlp.Encode(stripped));
         }
 
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())

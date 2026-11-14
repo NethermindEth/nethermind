@@ -524,7 +524,7 @@ public class StreamingFinalizerTests(string fixture, int from, int to, bool live
                         selected = recorded;
                     }
                     else Assert.That((l2, parameters[0].GetString()), Is.EqualTo((true, (ExpectedParentHash ?? parent.Hash!).ToString())), "raw parent headers come from the configured L2 source");
-                    byte[] rlp = Rlp.Encode(selected).Bytes;
+                    byte[] rlp = Rlp.Encode(selected);
                     result = (Mutation == "trailing" ? [.. rlp, 0] : rlp).ToHexString(true);
                     break;
                 case "eth_getBlockByNumber":

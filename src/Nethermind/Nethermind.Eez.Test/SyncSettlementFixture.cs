@@ -133,7 +133,7 @@ public sealed class SyncSettlementFixture
         return data;
     }
 
-    public static byte[] Encode(Transaction transaction) => TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes;
+    public static byte[] Encode(Transaction transaction) => TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping);
 
     public static Transaction Decode(byte[] encoded) => TxDecoder.Instance.Decode(encoded, RlpBehaviors.SkipTypedWrapping)!;
 }

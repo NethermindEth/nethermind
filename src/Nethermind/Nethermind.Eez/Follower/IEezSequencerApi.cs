@@ -54,7 +54,7 @@ public sealed class EezSequencerApi(IJsonRpcClient rpcClient) : IEezSequencerApi
             decoded.CopyTo(transactions, first);
         }
         Block block = new(header, new BlockBody(transactions, [], source.Withdrawals));
-        byte[] result = Rlp.Encode(block).Bytes;
+        byte[] result = Rlp.Encode(block);
         _useStandardRpc = true;
         return result;
     }

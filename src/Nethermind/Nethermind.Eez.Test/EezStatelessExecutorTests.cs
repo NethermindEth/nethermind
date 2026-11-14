@@ -143,7 +143,7 @@ public partial class EezStatelessExecutorTests
     {
         Block block = Rlp.Decode<Block>(rlp)!;
         block.Header.StateRoot = Keccak.Compute("tampered");
-        return Rlp.Encode(block).Bytes;
+        return Rlp.Encode(block);
     }
 
     private static Witness StripState(EezStatelessBlock block) => new()

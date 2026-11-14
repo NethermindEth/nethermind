@@ -260,7 +260,7 @@ public partial class SequencerHeadTests
         SequencerGossipValidator validator = CreateGossipValidator(tracker);
         Message first = new() { Topic = _codec.Topic, Data = ByteString.CopyFrom(Compressed) };
         Assert.That(validator.Validate(first), Is.EqualTo(MessageValidity.Accepted));
-        Rlp[] header = HeaderFields();
+        byte[][] header = HeaderFields();
         header[12] = Rlp.Encode("conflict"u8);
         Message conflict = new() { Topic = _codec.Topic, Data = ByteString.CopyFrom(EncodeBlock(header)) };
         MessageValidity verdict = validator.Validate(conflict);

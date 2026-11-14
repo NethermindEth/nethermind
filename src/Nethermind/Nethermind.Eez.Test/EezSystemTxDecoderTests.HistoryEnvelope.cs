@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Text.Json;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Eez.Execution.Settlement.RollupX;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
@@ -111,26 +112,26 @@ public partial class EezSystemTxDecoderTests
     [Test]
     public void Decode_InvalidOrNoncanonicalEnvelope_Rejects([ValueSource(nameof(InvalidHistoryEnvelopeFields))] string field)
     {
-        Rlp encodedHash = Rlp.Encode(RepeatedHash(1).Bytes);
-        Rlp[] hashes = [encodedHash];
+        byte[] encodedHash = Rlp.Encode(RepeatedHash(1).Bytes);
+        byte[][] hashes = [encodedHash];
         if (field == "empty") hashes = [];
         if (field == "zero") hashes = [Rlp.Encode(new byte[Hash256.Size])];
         if (field == "short-hash") hashes = [Rlp.Encode(new byte[31])];
         if (field == "long-hash") hashes = [Rlp.Encode(new byte[33])];
-        if (field == "count") { hashes = new Rlp[65]; Array.Fill(hashes, encodedHash); }
-        Rlp version = field == "version-long" ? new Rlp([0x81, 0x01]) : Rlp.Encode(field == "version" ? 2UL : 1UL);
-        Rlp chain = field switch
+        if (field == "count") { hashes = new byte[65][]; Array.Fill(hashes, encodedHash); }
+        byte[] version = field == "version-long" ? [0x81, 0x01] : Rlp.Encode(field == "version" ? 2UL : 1UL);
+        byte[] chain = field switch
         {
-            "chain-zero" => new Rlp([0x82, 0x00, 0x01]),
+            "chain-zero" => [0x82, 0x00, 0x01],
             "chain-wide" => Rlp.Encode(new byte[] { 1, 1, 1, 1, 1, 1, 1, 1, 1 }),
             _ => Rlp.Encode(901UL)
         };
-        Rlp list = field == "hash-list" ? Rlp.Encode(new byte[33]) : Rlp.Encode(hashes);
-        if (field == "list-long") list = new Rlp([0xf8, 0x21, .. encodedHash.Bytes]);
-        Rlp payload = field == "extra-field" ? Rlp.Encode(version, chain, list, Rlp.Encode(0UL)) : Rlp.Encode(version, chain, list);
-        byte[] encoded = [field == "type" ? (byte)0x45 : (byte)0x46, .. payload.Bytes];
+        byte[] list = field == "hash-list" ? Rlp.Encode(new byte[33]) : RlpTestHelper.EncodeSequence(hashes);
+        if (field == "list-long") list = [0xf8, 0x21, .. encodedHash];
+        byte[] payload = field == "extra-field" ? RlpTestHelper.EncodeSequence(version, chain, list, Rlp.Encode(0UL)) : RlpTestHelper.EncodeSequence(version, chain, list);
+        byte[] encoded = [field == "type" ? (byte)0x45 : (byte)0x46, .. payload];
         if (field == "trailing") encoded = [.. encoded, 0];
-        if (field == "outer-long") encoded = [0x46, 0xf8, (byte)(payload.Bytes.Length - 1), .. payload.Bytes.AsSpan(1)];
+        if (field == "outer-long") encoded = [0x46, 0xf8, (byte)(payload.Length - 1), .. payload.AsSpan(1)];
         Assert.That(() => NativeHistoryEnvelope.Decode(encoded), Throws.TypeOf<RlpReaderException>());
     }
 

@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -30,7 +31,7 @@ public partial class EezSystemTxDecoderTests
     {
         Transaction tx = SystemTransactions.Create(chainId: 1, data: [1, 2, 3, 4]);
 
-        byte[] encoded = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
+        byte[] encoded = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping);
 
         using (Assert.EnterMultipleScope())
         {
@@ -51,7 +52,7 @@ public partial class EezSystemTxDecoderTests
             Assert.That(tx.Signature, Is.Null, "a system transaction is unsigned");
             Assert.That((tx.ChainId, tx.Nonce, tx.Value, tx.Data.ToArray()), Is.EqualTo((1UL, 0UL, UInt256.Zero, new byte[] { 1, 2, 3, 4 })),
                 "the body fields are chain id, nonce, target, value and input in that order");
-            Assert.That(TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes, Is.EqualTo(CanonicalVector),
+            Assert.That(TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping), Is.EqualTo(CanonicalVector),
                 "re-encoding a decoded transaction reproduces the wire bytes");
         }
     }
@@ -97,7 +98,7 @@ public partial class EezSystemTxDecoderTests
     public void Decode_ContractCreation_IsRejected()
     {
         byte[] encoded = Bytes.Concat((byte)EezConstants.SystemTxType,
-            Rlp.Encode(Rlp.Encode(1UL), Rlp.Encode(0UL), Rlp.Encode(Array.Empty<byte>()), Rlp.Encode(UInt256.Zero), Rlp.Encode(Array.Empty<byte>())).Bytes);
+            RlpTestHelper.EncodeSequence(Rlp.Encode(1UL), Rlp.Encode(0UL), Rlp.Encode(Array.Empty<byte>()), Rlp.Encode(UInt256.Zero), Rlp.Encode(Array.Empty<byte>())));
 
         Assert.That(() => Decode(encoded), Throws.InstanceOf<RlpReaderException>(), "the wire format has no contract creation");
     }
@@ -106,8 +107,8 @@ public partial class EezSystemTxDecoderTests
     public void Decode_WithSignatureFields_IsRejected()
     {
         byte[] encoded = Bytes.Concat((byte)EezConstants.SystemTxType,
-            Rlp.Encode(Rlp.Encode(1UL), Rlp.Encode(0UL), Rlp.Encode(EezConstants.Eezl2Address.Bytes), Rlp.Encode(UInt256.Zero),
-                Rlp.Encode(Array.Empty<byte>()), Rlp.Encode(1UL), Rlp.Encode(TestItem.KeccakA.BytesToArray()), Rlp.Encode(TestItem.KeccakB.BytesToArray())).Bytes);
+            RlpTestHelper.EncodeSequence(Rlp.Encode(1UL), Rlp.Encode(0UL), Rlp.Encode(EezConstants.Eezl2Address.Bytes), Rlp.Encode(UInt256.Zero),
+                Rlp.Encode(Array.Empty<byte>()), Rlp.Encode(1UL), Rlp.Encode(TestItem.KeccakA.BytesToArray()), Rlp.Encode(TestItem.KeccakB.BytesToArray())));
 
         Assert.That(() => Decode(encoded), Throws.InstanceOf<RlpReaderException>().With.Message.Contains("trailing fields"),
             "the wire format has no signature");
@@ -130,7 +131,7 @@ public partial class EezSystemTxDecoderTests
     {
         NativeDecoder decoder = new();
         Transaction tx = DecodeNative(encoded);
-        byte[] actual = decoder.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
+        byte[] actual = decoder.Encode(tx, RlpBehaviors.SkipTypedWrapping);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(actual, Is.EqualTo(encoded));
@@ -147,7 +148,7 @@ public partial class EezSystemTxDecoderTests
         Transaction tx = DecodeNative(encoded);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(new NativeDecoder().Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes, Is.EqualTo(encoded));
+            Assert.That(new NativeDecoder().Encode(tx, RlpBehaviors.SkipTypedWrapping), Is.EqualTo(encoded));
             Assert.That((tx.ChainId, tx.GasLimit, tx.To, tx.Value, tx.Data.ToArray()),
                 Is.EqualTo((1UL, EezChainRules.RollupXSystemTxGasCap, EezConstants.RollupXEezl2Address, UInt256.Zero, new byte[] { 1, 2, 3, 4 })));
         }
@@ -226,7 +227,7 @@ public partial class EezSystemTxDecoderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tx.Value, Is.EqualTo((UInt256)value));
-            Assert.That(new NativeDecoder().Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes, Is.EqualTo(encoded));
+            Assert.That(new NativeDecoder().Encode(tx, RlpBehaviors.SkipTypedWrapping), Is.EqualTo(encoded));
         }
     }
 
@@ -266,9 +267,9 @@ public partial class EezSystemTxDecoderTests
 
     private static byte[] EncodeNativeFields(byte[][] fields)
     {
-        Rlp[] encoded = new Rlp[fields.Length];
+        byte[][] encoded = new byte[fields.Length][];
         for (int i = 0; i < fields.Length; i++) encoded[i] = Rlp.Encode(fields[i]);
-        return Bytes.Concat((byte)EezConstants.NativeSystemTxType, Rlp.Encode(encoded).Bytes);
+        return Bytes.Concat((byte)EezConstants.NativeSystemTxType, RlpTestHelper.EncodeSequence(encoded));
     }
 
     private static Transaction DecodeNative(byte[] encoded, RlpBehaviors behaviors = RlpBehaviors.None)

@@ -20,6 +20,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.Messages;
@@ -309,13 +310,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             const int count = 16;
             byte[] transaction = malformed ? [0xc0] : [0xc9, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x1b, 0x01, 0x01];
             using DisposableByteBuffer packet = Unpooled.Buffer(256).AsDisposable();
-            Rlp transactions = Rlp.Encode(Enumerable.Repeat(new Rlp(transaction), count).ToArray());
+            byte[] transactions = RlpTestHelper.EncodeSequence(Enumerable.Repeat(transaction, count).ToArray());
             if (pooledResponse)
             {
                 long requestId = RequestTransaction(Build.A.Transaction.SignedAndResolved().TestObject);
-                transactions = Rlp.Encode(Rlp.Encode(requestId), transactions);
+                transactions = RlpTestHelper.EncodeSequence(Rlp.Encode(requestId), transactions);
             }
-            packet.WriteBytes(transactions.Bytes);
+            packet.WriteBytes(transactions);
 
             Assert.That(() => _handler.HandleMessage(new NettyBufferPacket(packet)
             {

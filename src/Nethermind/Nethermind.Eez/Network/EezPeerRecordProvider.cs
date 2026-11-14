@@ -50,7 +50,7 @@ internal sealed class EezPeerRecordProvider(INodeRecordProvider inner, IEezConfi
         }
     }
 
-    private sealed class PortEntry(int port) : EnrContentEntry<byte[]>(Rlp.Encode(port).Bytes)
+    private sealed class PortEntry(int port) : EnrContentEntry<byte[]>(Rlp.Encode(port))
     {
         public override string Key => "eez";
         protected override int GetRlpLengthOfValue() => Value.Length;

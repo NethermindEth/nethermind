@@ -42,8 +42,8 @@ public partial class EezStatelessExecutorTests
                 Transaction expected = input.Execution.Block.Transactions[first + index];
                 if (actual.Type == EezConstants.NativeSystemTxType)
                     actual.GasLimit = expected.GasLimit;
-                Assert.That(TxDecoder.Instance.Encode(actual, RlpBehaviors.SkipTypedWrapping).Bytes,
-                    Is.EqualTo(TxDecoder.Instance.Encode(expected, RlpBehaviors.SkipTypedWrapping).Bytes),
+                Assert.That(TxDecoder.Instance.Encode(actual, RlpBehaviors.SkipTypedWrapping),
+                    Is.EqualTo(TxDecoder.Instance.Encode(expected, RlpBehaviors.SkipTypedWrapping)),
                     "only position-dependent gas is left for the derived execution scope");
             }
     }
@@ -272,7 +272,7 @@ public partial class EezStatelessExecutorTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(execution.Hash.ValueHash256, Is.EqualTo(new ValueHash256(terminal.Hash.Span)), "precondition: replay matches the original sealed terminal block");
-                Assert.That(Rlp.Encode(execution.Block).Bytes, Is.EqualTo(terminal.Rlp.ToByteArray()), "precondition: original consensus bytes remain unchanged");
+                Assert.That(Rlp.Encode(execution.Block), Is.EqualTo(terminal.Rlp.ToByteArray()), "precondition: original consensus bytes remain unchanged");
             }
             return new NativeGroupCase(groups, source, genesis.Rules, execution);
         }

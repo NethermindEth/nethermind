@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -34,10 +35,9 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 _currentBeaconPivot = value;
                 if (value is not null)
                 {
-                    _metadataDb.Set(MetadataDbKeys.BeaconSyncPivotHash,
-                        Rlp.Encode(value.GetOrCalculateHash()).Bytes);
-                    _metadataDb.Set(MetadataDbKeys.BeaconSyncPivotNumber,
-                        Rlp.Encode(value.Number).Bytes);
+                    Span<byte> buffer = stackalloc byte[Rlp.LengthOfKeccakRlp];
+                    _metadataDb.PutSpan(MetadataDbKeys.BeaconSyncPivotHash, Rlp.Encode(value.GetOrCalculateHash(), buffer));
+                    _metadataDb.PutSpan(MetadataDbKeys.BeaconSyncPivotNumber, Rlp.Encode(value.Number, buffer));
                 }
                 else _metadataDb.Delete(MetadataDbKeys.BeaconSyncPivotHash);
             }

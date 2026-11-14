@@ -23,6 +23,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -102,13 +103,13 @@ internal sealed class RollupXStreamingServer : IAsyncDisposable
             NativeGenesisSnapshot nativeGenesis = NativeGenesisSnapshot.Load(File.ReadAllBytes(chainPath), rules.NativeFormat);
             NativeL1Rules nativeL1 = NativeL1Rules.LoadEthereum(File.ReadAllBytes(Path.Combine(_directory.Path, "l1.json")));
             NativeOfflineProfile.Inputs network = nativeL1.Profile(nativeGenesis);
-            byte[] preimage = Rlp.Encode(
+            byte[] preimage = RlpTestHelper.EncodeSequence(
                 Rlp.Encode("eez.validation-identity"u8), Rlp.Encode(network.ValidationVersion == 7 ? 9UL : network.ValidationVersion), Rlp.Encode(context.RollupId), Rlp.Encode(specs.ChainId),
                 Rlp.Encode(new Address(identity.RootElement.GetProperty("l2_system_address").GetString()!).Bytes),
                 Rlp.Encode(EezConstants.RollupXEezl2Address.Bytes), Rlp.Encode(nativeGenesis.SourceDigest.Bytes),
                 Rlp.Encode(NativeOfflineProfile.Compute(in network, nativeL1.RuleTimes).Bytes),
                 Rlp.Encode(new Address(identity.RootElement.GetProperty("registry_address").GetString()!).Bytes),
-                Rlp.Encode(new Address(identity.RootElement.GetProperty("rollup_manager_address").GetString()!).Bytes)).Bytes;
+                Rlp.Encode(new Address(identity.RootElement.GetProperty("rollup_manager_address").GetString()!).Bytes));
             ExpectedValidationIdentity = ByteString.CopyFrom(Keccak.Compute(preimage).Bytes);
         }
         if (!offline) await KzgPolynomialCommitments.InitializeAsync();
@@ -289,7 +290,7 @@ internal sealed class RollupXStreamingServer : IAsyncDisposable
         internal object Read(string method, JsonElement parameters, bool l2) => method switch
         {
             "eth_chainId" => Quantity(l2 ? _context.ChainId : _schedule.L1Reference.ChainId),
-            "debug_getRawHeader" when l2 => Rlp.Encode(_headers[new Hash256(parameters[0].GetString()!)]).Bytes.ToHexString(true),
+            "debug_getRawHeader" when l2 => Rlp.Encode(_headers[new Hash256(parameters[0].GetString()!)]).ToHexString(true),
             "eth_getBlockByNumber" when !l2 => Header(Convert.ToUInt64(parameters[0].GetString(), 16)),
             "eth_call" when !l2 => Call(parameters),
             "eth_getLogs" when !l2 => Array.Empty<object>(),

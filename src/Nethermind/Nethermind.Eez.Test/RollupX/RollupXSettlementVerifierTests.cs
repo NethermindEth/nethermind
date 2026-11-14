@@ -194,7 +194,7 @@ public partial class RollupXSettlementVerifierTests
         ExecutionEntry l1 = new([update], default, [Encoded(root, 1)], [l1Row], l1Final, 1, true, []);
         Transaction user = User();
         Transaction load = System((UInt256)(uint)callbackValue, EezCalldata.EncodeLoadExecutionTable(new ExecutionTable([l2], [])));
-        StreamMessage[] messages = [new StreamMessage.Initiate(1, TxDecoder.Instance.Encode(user, RlpBehaviors.SkipTypedWrapping).Bytes),
+        StreamMessage[] messages = [new StreamMessage.Initiate(1, TxDecoder.Instance.Encode(user, RlpBehaviors.SkipTypedWrapping)),
             root, child, grandchild, Result(0x33), Result(0x22), Result(0x11), new StreamMessage.Finish()];
         return Assemble([load, user], [], l1, messages, [Event(rootHash), Event(grandchildHash)], 2);
     }
@@ -209,7 +209,7 @@ public partial class RollupXSettlementVerifierTests
         ExecutionEntry l1 = new([update], default, [Encoded(root, 1)], [], rolling, 1, true, []);
         Transaction user = User();
         Transaction load = System(0, EezCalldata.EncodeLoadExecutionTable(new ExecutionTable([l2], [])));
-        StreamMessage[] messages = [new StreamMessage.Initiate(1, TxDecoder.Instance.Encode(user, RlpBehaviors.SkipTypedWrapping).Bytes),
+        StreamMessage[] messages = [new StreamMessage.Initiate(1, TxDecoder.Instance.Encode(user, RlpBehaviors.SkipTypedWrapping)),
             root, new StreamMessage.Return(false, new byte[] { 0xef }), new StreamMessage.Finish()];
         return Assemble([load, user], [], l1, messages, [], 2);
     }
@@ -228,7 +228,7 @@ public partial class RollupXSettlementVerifierTests
             new(TransactionIndex: 1, StateRoot: TestItem.KeccakD, BlockHash: block.Hash!)];
         EezStatelessBlockResult result = new(block, block.Header, receipts, checkpoints);
         ReadOnlyMemory<byte>[] encoded = new ReadOnlyMemory<byte>[ordinary.Length];
-        for (int i = 0; i < ordinary.Length; i++) encoded[i] = TxDecoder.Instance.Encode(ordinary[i], RlpBehaviors.SkipTypedWrapping).Bytes;
+        for (int i = 0; i < ordinary.Length; i++) encoded[i] = TxDecoder.Instance.Encode(ordinary[i], RlpBehaviors.SkipTypedWrapping);
         byte[] operations = OperationsPayload.Encode([new OperationsRun(1, TestItem.AddressA, new byte[] { 0x42 }, encoded)]);
         return new Fixture(batch, new NativeStream(operations, messages), result);
     }

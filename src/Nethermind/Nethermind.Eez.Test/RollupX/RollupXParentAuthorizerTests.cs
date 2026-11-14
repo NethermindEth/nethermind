@@ -52,7 +52,7 @@ public class RollupXParentAuthorizerTests
         RollupXAuthorization result = await Authorizer().Authorize(_source.Begin(), _source.Target(), CancellationToken.None);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.ParentHeader.ToByteArray(), Is.EqualTo(Rlp.Encode(_source.Parent).Bytes), "the owned parent is the exact selected raw header");
+            Assert.That(result.ParentHeader.ToByteArray(), Is.EqualTo(Rlp.Encode(_source.Parent)), "the owned parent is the exact selected raw header");
             Assert.That((result.L1ParentNumber, result.Target.Timestamp, result.Target.ParentHash, result.DescendantSeed),
                 Is.EqualTo((105UL, 1030UL, _source.Blocks[105].Hash, _source.Blocks[101].MixHash)), "a live endpoint refreshes descendants even when a later catch-up repeats it");
             Assert.That(result.RegistryRoot, Is.EqualTo(_source.RegistryRoot), "registry root is returned as evidence without approving a consumed prefix");
@@ -457,9 +457,9 @@ public class RollupXParentAuthorizerTests
         if (later) _source.AddBatch(104, 0, _source.Parent.Hash!);
         Nethermind.Eez.Prove.ParentProvenance provenance = new()
         {
-            ParentHeaderRlp = ByteString.CopyFrom(Rlp.Encode(_source.Parent).Bytes),
+            ParentHeaderRlp = ByteString.CopyFrom(Rlp.Encode(_source.Parent)),
             AcceptedL1Number = later ? 104UL : 101UL,
-            LiveSlotEndpointHeadersRlp = { ByteString.CopyFrom(Rlp.Encode(_source.Parent).Bytes) },
+            LiveSlotEndpointHeadersRlp = { ByteString.CopyFrom(Rlp.Encode(_source.Parent)) },
         };
 
         RollupXAuthorization result = await Authorizer().Authorize(_source.Begin(), _source.Target(), CancellationToken.None, provenance);
@@ -485,9 +485,9 @@ public class RollupXParentAuthorizerTests
         _source.AddBatch(101, 0, _source.Parent.Hash!, next.Hash!);
         Nethermind.Eez.Prove.ParentProvenance provenance = new()
         {
-            ParentHeaderRlp = ByteString.CopyFrom(Rlp.Encode(_source.Parent).Bytes),
+            ParentHeaderRlp = ByteString.CopyFrom(Rlp.Encode(_source.Parent)),
             AcceptedL1Number = 101,
-            LiveSlotEndpointHeadersRlp = { ByteString.CopyFrom(Rlp.Encode(next).Bytes) },
+            LiveSlotEndpointHeadersRlp = { ByteString.CopyFrom(Rlp.Encode(next)) },
         };
         // One native batch contributes its final endpoint. A second accepted
         // batch makes endpoint ordering independently observable.
@@ -497,7 +497,7 @@ public class RollupXParentAuthorizerTests
         Assert.That(unchanged.ParentHeader, Is.EqualTo(provenance.ParentHeaderRlp), "precondition: complete unmodified two-endpoint provenance is accepted");
         switch (mutation)
         {
-            case "parent": provenance.ParentHeaderRlp = ByteString.CopyFrom(Rlp.Encode(next).Bytes); break;
+            case "parent": provenance.ParentHeaderRlp = ByteString.CopyFrom(Rlp.Encode(next)); break;
             case "acceptance": provenance.AcceptedL1Number = 102; break;
             case "future": provenance.AcceptedL1Number = 106; break;
             case "missing": provenance.LiveSlotEndpointHeadersRlp.RemoveAt(0); break;
@@ -521,7 +521,7 @@ public class RollupXParentAuthorizerTests
         _source.AddBatch(102, 0, _source.Parent.Hash!);
         Nethermind.Eez.Prove.ParentProvenance provenance = new()
         {
-            ParentHeaderRlp = ByteString.CopyFrom(Rlp.Encode(_source.Parent).Bytes),
+            ParentHeaderRlp = ByteString.CopyFrom(Rlp.Encode(_source.Parent)),
             AcceptedL1Number = 102,
         };
 
@@ -604,7 +604,7 @@ public class RollupXParentAuthorizerTests
         }
         internal void ReplaceParent(BlockHeader parent)
         {
-            parent.Hash = Keccak.Compute(Rlp.Encode(parent).Bytes);
+            parent.Hash = Keccak.Compute(Rlp.Encode(parent));
             Parent = parent;
             Headers[parent.Hash] = parent;
             ClearBatch(101);
@@ -630,7 +630,7 @@ public class RollupXParentAuthorizerTests
                 case "eth_chainId": return Mutation == (l2 ? "l2chain" : "l1chain") ? "0x2" : l2 ? Hex(Context.ChainId) : Hex(10200);
                 case "debug_getRawHeader":
                     BlockHeader header = Headers[new Hash256(parameters[0].GetString()!)];
-                    byte[] raw = Rlp.Encode(Mutation == "rawhash" ? Genesis : header).Bytes;
+                    byte[] raw = Rlp.Encode(Mutation == "rawhash" ? Genesis : header);
                     return (Mutation == "rawtrailing" ? [.. raw, 0] : raw).ToHexString(true);
                 case "eth_getBlockByNumber":
                     string selector = parameters[0].GetString()!;
@@ -806,7 +806,7 @@ public class RollupXParentAuthorizerTests
             header.RequestsHash = ExecutionRequestExtensions.EmptyRequestsHash;
             header.BlobGasUsed = 0;
             header.ExcessBlobGas = 0;
-            header.Hash = Keccak.Compute(Rlp.Encode(header).Bytes);
+            header.Hash = Keccak.Compute(Rlp.Encode(header));
             return header;
         }
 

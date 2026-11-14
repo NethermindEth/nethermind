@@ -86,7 +86,7 @@ public static class SyncBlock
             Value = value,
             Data = calldata,
         };
-        return TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes;
+        return TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping);
     }
 
     private static ulong NextNonce(ref ulong nonce) =>

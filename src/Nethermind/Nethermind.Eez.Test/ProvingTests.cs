@@ -171,11 +171,14 @@ public class ProvingTests
     [Test]
     public void WitnessStore_PutThenFind_ReadsBackEveryList()
     {
-        WitnessStore store = new(new MemDb());
+        using MemDb db = new();
+        WitnessStore store = new(db);
         BlockHeader header = Build.A.BlockHeader.WithNumber(5).TestObject;
         using Witness stored = Witness([0x01, 0x02], [0x03], [0x04], [0x05, 0x06]);
         store.Put(header, stored);
 
+        Assert.That(db[db.GetAllKeys().Single()], Is.EqualTo(Convert.FromHexString("ccc3820102c103c104c3820506")),
+            "the persisted witness retains the existing four-list encoding");
         using Witness found = store.Find(5, header.Hash!)!;
 
         Assert.That((found.State.ToArray(), found.Codes.ToArray(), found.Keys.ToArray(), found.Headers.ToArray()),

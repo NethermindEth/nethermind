@@ -44,7 +44,7 @@ public static class AnchorBatch
             byte[][] transactions = new byte[block.Transactions.Length][];
             for (int j = 0; j < transactions.Length; j++)
             {
-                transactions[j] = TxDecoder.Instance.Encode(block.Transactions[j], RlpBehaviors.SkipTypedWrapping).Bytes;
+                transactions[j] = TxDecoder.Instance.Encode(block.Transactions[j], RlpBehaviors.SkipTypedWrapping);
             }
 
             da[i] = new DaBlock(block.Beneficiary!, block.Header.ExtraData, transactions);

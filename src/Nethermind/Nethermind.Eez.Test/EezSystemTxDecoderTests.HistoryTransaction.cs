@@ -41,7 +41,7 @@ public partial class EezSystemTxDecoderTests
             Assert.That(history.SourceHash, Is.Null);
             Assert.That(history.HasWireFields, Is.True);
             Assert.That(reader.BytesRead, Is.EqualTo(wire.Length));
-            Assert.That(output, Is.EqualTo(wrapped ? Rlp.Encode(wire).Bytes : wire));
+            Assert.That(output, Is.EqualTo(wrapped ? Rlp.Encode(wire) : wire));
             Assert.That(() => decoder.GetLength(history, RlpBehaviors.None, forSigning: true), Throws.TypeOf<RlpReaderException>());
         }
     }

@@ -407,7 +407,7 @@ namespace Ethereum.Test.Base
                 TransitionForkActivation = testJson.TransitionForkActivation,
                 TransitionTerminalTotalDifficulty = testJson.TransitionTerminalTotalDifficulty,
                 LastBlockHash = new Hash256(testJson.LastBlockHash),
-                GenesisRlp = testJson.GenesisRlp is null ? null : new Rlp(Bytes.FromHexString(testJson.GenesisRlp)),
+                GenesisRlp = testJson.GenesisRlp is null ? null : Bytes.FromHexString(testJson.GenesisRlp),
                 GenesisBlockHeader = testJson.GenesisBlockHeader,
                 Blocks = testJson.Blocks,
                 EngineNewPayloads = testJson.EngineNewPayloads,

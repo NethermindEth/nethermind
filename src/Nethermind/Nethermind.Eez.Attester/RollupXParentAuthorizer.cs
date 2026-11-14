@@ -81,7 +81,7 @@ internal sealed class RollupXParentAuthorizer
         if (parent.Number != selected.AnchorNumber || !parent.StateRoot!.Bytes.SequenceEqual(selected.AnchorStateRoot.Span) ||
             parent.Timestamp != _schedule.Timestamp(parent.Number)) throw RollupXAuthorizationEvidence.Rejected();
 
-        if (provenance is not null && !Rlp.Encode(parent).Bytes.AsSpan().SequenceEqual(provenance.ParentHeaderRlp.Span))
+        if (provenance is not null && !Rlp.Encode(parent).AsSpan().SequenceEqual(provenance.ParentHeaderRlp.Span))
             throw RollupXAuthorizationEvidence.Rejected();
         List<ByteString> endpointHeaders = [];
         CanonicalL1Header? accepted = null;
@@ -100,7 +100,7 @@ internal sealed class RollupXParentAuthorizer
             {
                 BlockHeader endpoint = await _evidence.L2Header(hash, cancellation).ConfigureAwait(false);
                 ValidateEndpoint(endpoint);
-                if (provenance is not null) endpointHeaders.Add(ByteString.CopyFrom(Rlp.Encode(endpoint).Bytes));
+                if (provenance is not null) endpointHeaders.Add(ByteString.CopyFrom(Rlp.Encode(endpoint)));
                 RollupXAnchorKind kind = _schedule.AnchorKind(endpoint.Number, liveSlot!.Timestamp) ?? throw RollupXAuthorizationEvidence.Rejected();
                 if (endpoint.Number == parent.Number && kind == RollupXAnchorKind.Live) seed = liveSlot.MixHash;
             }
@@ -136,7 +136,7 @@ internal sealed class RollupXParentAuthorizer
         await _deployment.ValidateVerifier(l1Parent.Snapshot, cancellation).ConfigureAwait(false);
         snapshots.Remove(l1Parent);
         snapshots.Add(l1Parent);
-        RollupXAuthorization result = new(this, _deployment.Context, _deployment.Signer, ByteString.CopyFrom(Rlp.Encode(parent).Bytes),
+        RollupXAuthorization result = new(this, _deployment.Context, _deployment.Signer, ByteString.CopyFrom(Rlp.Encode(parent)),
             new L1PostingTarget(target.TargetTimestamp, l1Parent.Hash), l1Parent.Number, registryRoot, seed, [.. snapshots]);
         await RecheckCore(result, cancellation).ConfigureAwait(false);
         cancellation.ThrowIfCancellationRequested();

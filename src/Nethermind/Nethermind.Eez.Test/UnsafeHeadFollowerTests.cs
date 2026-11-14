@@ -98,7 +98,7 @@ public class UnsafeHeadFollowerTests
     {
         Block[] ahead = Branch(_heads.Safe, 1, extraData: 0xee);
         _sequencer.GetLatestBlock(Arg.Any<CancellationToken>()).Returns(new EezL1Block { Hash = Keccak.Compute("claimed"), Number = ahead[0].Number });
-        _sequencer.GetRawBlock(Arg.Any<Hash256>(), Arg.Any<CancellationToken>()).Returns(Rlp.Encode(ahead[0]).Bytes);
+        _sequencer.GetRawBlock(Arg.Any<Hash256>(), Arg.Any<CancellationToken>()).Returns(Rlp.Encode(ahead[0]));
 
         await _follower.Advance(_heads, CancellationToken.None);
 
@@ -276,7 +276,7 @@ public class UnsafeHeadFollowerTests
         Block[] ahead = Serve(Branch(_heads.Safe, UnsafeHeadFollower.MaxBlocksPerAdvance, extraData: 0xb8));
         IUnsafeBlockPreparation preparation = Substitute.For<IUnsafeBlockPreparation>();
         _follower = new UnsafeHeadFollower(_sequencer, _chain, _engine, new Rollup0HeaderRules(DerivedChain.SpecProvider, DerivedChain.Context), LimboLogs.Instance, preparation);
-        Dictionary<Hash256, byte[]> encoded = ahead.ToDictionary(static block => block.Hash!, static block => Rlp.Encode(block).Bytes);
+        Dictionary<Hash256, byte[]> encoded = ahead.ToDictionary(static block => block.Hash!, static block => Rlp.Encode(block));
         Hash256 safe = _heads.Safe.Hash!, finalized = _heads.Finalized.Hash!;
         for (int poll = 0; poll < 3; poll++)
         {
@@ -349,7 +349,7 @@ public class UnsafeHeadFollowerTests
         _sequencer.GetLatestBlock(Arg.Any<CancellationToken>()).Returns(new EezL1Block { Hash = blocks[^1].Hash!, Number = blocks[^1].Number });
         foreach (Block block in blocks)
         {
-            _sequencer.GetRawBlock(block.Hash!, Arg.Any<CancellationToken>()).Returns(Rlp.Encode(block).Bytes);
+            _sequencer.GetRawBlock(block.Hash!, Arg.Any<CancellationToken>()).Returns(Rlp.Encode(block));
             _sequencer.GetBlockByNumber(block.Number, Arg.Any<CancellationToken>()).Returns(new EezL1Block { Number = block.Number, Hash = block.Hash! });
         }
 

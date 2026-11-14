@@ -215,7 +215,7 @@ namespace Nethermind.Facade
 
             if (checkTxnPool && txPool.TryGetPendingTransaction(txHash, out Transaction? transaction))
             {
-                result = new TransactionLookupResult(transaction, new(specProvider.ChainId));
+                result = new TransactionLookupResult(transaction, TransactionForRpcContext.ForPending(specProvider, blockTree.Head?.Header, blocksConfig.SecondsPerSlot));
                 return true;
             }
 
@@ -926,7 +926,7 @@ namespace Nethermind.Facade
         /// <summary>Whether a legacy signature's own chain id recovers the sender, as the receipts recovery does.</summary>
         private bool UsesSignatureChainId(BlockHeader header) => !specProvider.GetSpec(header).ValidateChainId;
 
-        private Address? RecoverTxSender(Transaction tx, bool useSignatureChainId) =>
+        public Address? RecoverTxSender(Transaction tx, bool useSignatureChainId) =>
             ecdsa.TryRecoverAddress(tx, out Address? senderAddress, useSignatureChainId) ? senderAddress : null;
 
         public ArrayPoolList<Hash256> GetPendingTransactionFilterChanges(int filterId) =>
@@ -1027,6 +1027,8 @@ namespace Nethermind.Facade
                     .AddScoped<SingleCallRequestState>()
                     .BindScoped<IBlobBaseFeeOverrideProvider, SingleCallRequestState>()
                     .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
+                    // Geth's eth_call, unlike its debug_traceCall, does not serve the base block's hash to its successor.
+                    .AddDecorator<IBlockhashProvider>((ctx, inner) => new BlockNumberOverrideBlockhashProvider(inner, ctx.Resolve<IBlockFinder>(), servesBaseToSuccessor: false))
                     // Resolved code is remembered across the restored re-runs of estimateGas and createAccessList; the
                     // processor decorator drops it after any transaction that keeps its changes.
                     .AddScoped<ResolvedCodeMemo>()

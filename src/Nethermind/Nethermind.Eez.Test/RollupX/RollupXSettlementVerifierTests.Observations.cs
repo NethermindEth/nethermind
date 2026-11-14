@@ -159,5 +159,5 @@ public partial class RollupXSettlementVerifierTests
 
     private static byte[] ObservationOperations(Block block) => OperationsPayload.Encode(
         [new OperationsRun(1, block.Header.Beneficiary!, block.Header.ExtraData,
-            [TxDecoder.Instance.Encode(block.Transactions[0], RlpBehaviors.SkipTypedWrapping).Bytes])]);
+            [TxDecoder.Instance.Encode(block.Transactions[0], RlpBehaviors.SkipTypedWrapping)])]);
 }

@@ -319,7 +319,7 @@ internal class BlobSender
             throw new InvalidOperationException($"Signer {signer.Address} could not sign blob transaction.");
 
         string txRlp = Hex.ToHexString(txDecoder
-            .Encode(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping).Bytes);
+            .Encode(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping));
 
         string? result = await _rpcClient.SendRawTransactionAsync($"0x{txRlp}");
 

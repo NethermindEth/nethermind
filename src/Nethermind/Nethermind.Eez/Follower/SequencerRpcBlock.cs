@@ -40,7 +40,7 @@ internal sealed class SequencerRpcBlock : BlockHeaderForRpc
             BlockAccessListHash = BlockAccessListHash,
             SlotNumber = SlotNumber,
         };
-        if (Keccak.Compute(Rlp.Encode(header).Bytes) != expected)
+        if (Keccak.Compute(Rlp.Encode(header)) != expected)
             throw new L1SourceIncompleteException(header.Number, "The sequencer header fields do not match its hash.");
         return header;
     }

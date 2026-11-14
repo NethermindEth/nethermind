@@ -69,7 +69,7 @@ internal sealed class StreamingBlockExecutor
             ByteString.CopyFrom(result.Parent.Hash!.Bytes), ByteString.CopyFrom(result.PreStateRoot.Bytes), ByteString.CopyFrom(result.PostStateRoot.Bytes), history)
         { Timestamp = result.Block.Timestamp };
         if (executed.Number != block.Number || executed.Hash != block.Hash || executed.ParentHash != block.ParentHash ||
-            executed.PreStateRoot != operation.PreStateRoot || !Rlp.Encode(result.Block).Bytes.AsSpan().SequenceEqual(block.Rlp.Span))
+            executed.PreStateRoot != operation.PreStateRoot || !Rlp.Encode(result.Block).AsSpan().SequenceEqual(block.Rlp.Span))
         {
             throw new RpcException(new Status(StatusCode.FailedPrecondition, "executed block differs from admitted block"));
         }

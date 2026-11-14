@@ -71,18 +71,37 @@ public sealed class WitnessStore([KeyFilter(WitnessStore.DbName)] IDb db) : IWit
         return key;
     }
 
-    private static byte[] Encode(Witness witness) =>
-        Rlp.Encode(EncodeList(witness.State), EncodeList(witness.Codes), EncodeList(witness.Keys), EncodeList(witness.Headers)).Bytes;
-
-    private static Rlp EncodeList(IReadOnlyList<byte[]> items)
+    private static byte[] Encode(Witness witness)
     {
-        Rlp[] encoded = new Rlp[items.Count];
-        for (int i = 0; i < encoded.Length; i++)
-        {
-            encoded[i] = Rlp.Encode(items[i]);
-        }
+        int stateLength = ContentLength(witness.State);
+        int codesLength = ContentLength(witness.Codes);
+        int keysLength = ContentLength(witness.Keys);
+        int headersLength = ContentLength(witness.Headers);
+        int length = Rlp.LengthOfSequence(stateLength) + Rlp.LengthOfSequence(codesLength) +
+            Rlp.LengthOfSequence(keysLength) + Rlp.LengthOfSequence(headersLength);
+        byte[] bytes = new byte[Rlp.LengthOfSequence(length)];
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
+        RlpSequence sequence = writer.StartSequence(length);
+        EncodeList(ref writer, witness.State, stateLength);
+        EncodeList(ref writer, witness.Codes, codesLength);
+        EncodeList(ref writer, witness.Keys, keysLength);
+        EncodeList(ref writer, witness.Headers, headersLength);
+        writer.EndSequence(sequence);
+        return bytes;
+    }
 
-        return Rlp.Encode(encoded);
+    private static int ContentLength(IReadOnlyList<byte[]> items)
+    {
+        int length = 0;
+        foreach (byte[] item in items) length += Rlp.LengthOf(item);
+        return length;
+    }
+
+    private static void EncodeList(ref RlpWriter writer, IReadOnlyList<byte[]> items, int length)
+    {
+        RlpSequence sequence = writer.StartSequence(length);
+        foreach (byte[] item in items) writer.Encode(item);
+        writer.EndSequence(sequence);
     }
 
     private static Witness Decode(byte[] value)

@@ -38,7 +38,7 @@ internal sealed partial class NativeL1Rules
         if (genesis.BaseFeePerGas > ulong.MaxValue) throw Invalid("genesis base fee exceeds the supported L1 header range");
         if (config.LondonBlock is not 0) genesis.BaseFeePerGas = 0;
         GenesisHash = EezGenesisHash.Compute(spec).ValueHash256;
-        _ = NativeL1Header.Decode(Rlp.Encode(genesis).Bytes, Headers);
+        _ = NativeL1Header.Decode(Rlp.Encode(genesis), Headers);
         SortedSet<ulong> times = [0];
         JsonObject forks = Forks(config, times, out _lastBlockFork);
         JsonObject blobs = BlobRules(config, times, spec, out ulong maximum);

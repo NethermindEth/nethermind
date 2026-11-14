@@ -64,7 +64,7 @@ internal sealed class RollupXAuthorizationEvidence(SettlementRpcReader l1, Settl
         {
             BlockHeader header = Rlp.Decode<BlockHeader>(bytes) ?? throw SettlementRpcReader.Unavailable();
             if (header.Hash != hash || header.StateRoot is null || header.MixHash is null ||
-                !Rlp.Encode(header).Bytes.AsSpan().SequenceEqual(bytes)) throw SettlementRpcReader.Unavailable();
+                !Rlp.Encode(header).AsSpan().SequenceEqual(bytes)) throw SettlementRpcReader.Unavailable();
             return header;
         }
         catch (Exception exception) when (exception is RlpReaderException or ArgumentException or IndexOutOfRangeException)

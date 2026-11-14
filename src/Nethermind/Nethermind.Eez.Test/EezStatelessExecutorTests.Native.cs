@@ -68,7 +68,7 @@ public partial class EezStatelessExecutorTests
                     Assert.That(result.Hash.ValueHash256, Is.EqualTo(new ValueHash256(input.Hash.Span)), $"block {input.Number}: independently sealed hash");
                     Assert.That(result.Parent.Hash!.ValueHash256, Is.EqualTo(new ValueHash256(parentHash.Span)), $"block {input.Number}: exact predecessor");
                     Assert.That(result.PreStateRoot.ValueHash256, Is.EqualTo(new ValueHash256(preState.Span)), $"block {input.Number}: authenticated pre-state");
-                    Assert.That(Rlp.Encode(result.Block).Bytes, Is.EqualTo(input.Rlp.ToByteArray()), $"block {input.Number}: unchanged consensus bytes");
+                    Assert.That(Rlp.Encode(result.Block), Is.EqualTo(input.Rlp.ToByteArray()), $"block {input.Number}: unchanged consensus bytes");
                 }
                 foreach (Transaction tx in result.Block.Transactions)
                 {

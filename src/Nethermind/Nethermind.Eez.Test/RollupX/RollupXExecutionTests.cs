@@ -101,7 +101,7 @@ public class RollupXExecutionTests
     [Test]
     public void Decode_RollupXTarget_TakesTheCapAndOnlyRollupXAcceptsIt()
     {
-        byte[] encoded = TxDecoder.Instance.Encode(SystemTransaction(EezConstants.RollupXEezl2Address), RlpBehaviors.SkipTypedWrapping).Bytes;
+        byte[] encoded = TxDecoder.Instance.Encode(SystemTransaction(EezConstants.RollupXEezl2Address), RlpBehaviors.SkipTypedWrapping);
 
         Transaction decoded = TxDecoder.Instance.Decode(encoded, RlpBehaviors.SkipTypedWrapping)!;
 
@@ -119,7 +119,7 @@ public class RollupXExecutionTests
     {
         Transaction transaction = SystemTransaction(EezConstants.RollupXEezl2Address);
         transaction.To = TestItem.AddressA;
-        byte[] encoded = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes;
+        byte[] encoded = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping);
 
         Assert.Throws<RlpReaderException>(() => TxDecoder.Instance.Decode(encoded, RlpBehaviors.SkipTypedWrapping));
     }

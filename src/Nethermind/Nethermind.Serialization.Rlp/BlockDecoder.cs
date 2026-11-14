@@ -50,7 +50,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (item is null)
             {
-                return Rlp.OfEmptyList.Length;
+                return Rlp.LengthOfNull;
             }
 
             return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
@@ -76,11 +76,11 @@ namespace Nethermind.Serialization.Rlp
             };
         }
 
-        public override Rlp Encode(Block? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override byte[] Encode(Block? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
-                return Rlp.OfEmptyList;
+                return [Rlp.EmptyListByte];
             }
 
             (int Total, int Txs, int Uncles, int? Withdrawals) lengths = GetContentLength(item, rlpBehaviors);
@@ -88,7 +88,7 @@ namespace Nethermind.Serialization.Rlp
             RlpWriter writer = RlpWriter.ContentWriter(bytes);
             EncodeContent(ref writer, item, lengths, rlpBehaviors);
             Rlp.CheckLength(in writer, bytes.Length);
-            return new(bytes);
+            return bytes;
         }
 
         public ArrayPoolSpan<byte> EncodeToArrayPoolSpan(Block block, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

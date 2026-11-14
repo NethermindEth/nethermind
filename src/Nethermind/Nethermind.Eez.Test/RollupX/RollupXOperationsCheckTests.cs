@@ -158,7 +158,7 @@ public class RollupXOperationsCheckTests
         for (int i = 0; i < transactions.Length; i++)
         {
             Assert.That(transactions[i].Signature, Is.Not.Null, "precondition: ordinary DA inputs contain signed transaction envelopes");
-            encoded[i] = TxDecoder.Instance.Encode(transactions[i], RlpBehaviors.SkipTypedWrapping).Bytes;
+            encoded[i] = TxDecoder.Instance.Encode(transactions[i], RlpBehaviors.SkipTypedWrapping);
         }
         return new OperationsRun(1, TestItem.AddressA, new byte[] { 0x42 }, encoded);
     }

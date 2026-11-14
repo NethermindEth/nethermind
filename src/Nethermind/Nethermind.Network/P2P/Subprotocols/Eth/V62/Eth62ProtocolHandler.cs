@@ -248,8 +248,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             };
 
             Session.IsNetworkIdMatched = SyncServer.NetworkId == status.NetworkId;
-            HeadHash = status.BestHash;
             TotalDifficulty = status.TotalDifficulty;
+            HeadHash = status.BestHash;
             NotifyProtocolInitialized(eventArgs);
         }
 

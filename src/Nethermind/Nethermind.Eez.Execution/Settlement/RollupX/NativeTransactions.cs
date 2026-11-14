@@ -95,7 +95,7 @@ internal sealed partial class NativeTransactions
             throw NativeCallTree.Invalid($"user transaction does not decode: {e.Message}");
         }
 
-        byte[] canonical = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes;
+        byte[] canonical = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping);
         if (!canonical.AsSpan().SequenceEqual(encoded.Span) || transaction.Type is TxType.Blob || transaction.Type == EezConstants.SystemTxType
             || transaction.ChainId is { } id && id != chainId)
         {

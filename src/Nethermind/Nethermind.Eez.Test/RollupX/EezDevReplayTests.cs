@@ -130,18 +130,18 @@ public class EezDevReplayTests
         {
             Block block = _chain.FindBlock(number, BlockTreeLookupOptions.RequireCanonical)!;
             Witness witness = _witnesses[number];
-            EezStatelessBlockResult result = stateless.Execute([new EezStatelessBlock(Rlp.Encode(block).Bytes, witness)], [EezTransactionCheckpoint.PreExecution])[0];
+            EezStatelessBlockResult result = stateless.Execute([new EezStatelessBlock(Rlp.Encode(block), witness)], [EezTransactionCheckpoint.PreExecution])[0];
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(result.Hash, Is.EqualTo(_expected[number]), $"stateless RollupX block {number} matches the independent testnet hash");
                 Assert.That(result.Checkpoints[0].TransactionIndex, Is.EqualTo(EezTransactionCheckpoint.PreExecution));
             }
-            StreamingBlockExecutorTests.AssertRecordedBlock(new EezStatelessBlock(Rlp.Encode(block).Bytes, witness), result, _expected[number], spec, rules);
+            StreamingBlockExecutorTests.AssertRecordedBlock(new EezStatelessBlock(Rlp.Encode(block), witness), result, _expected[number], spec, rules);
             if (number == 1)
             {
-                Block wrongProfile = Rlp.Decode<Block>(Rlp.Encode(block).Bytes)!;
+                Block wrongProfile = Rlp.Decode<Block>(Rlp.Encode(block))!;
                 wrongProfile.Header.GasLimit--;
-                Assert.That(() => stateless.Execute([new EezStatelessBlock(Rlp.Encode(wrongProfile).Bytes, witness)], []),
+                Assert.That(() => stateless.Execute([new EezStatelessBlock(Rlp.Encode(wrongProfile), witness)], []),
                     Throws.TypeOf<EezStatelessException>().With.Message.Contains("gas limit"), "an Ethereum-valid gas-limit change still violates the RollupX profile");
             }
         }

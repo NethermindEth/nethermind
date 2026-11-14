@@ -287,7 +287,7 @@ public sealed class OperationsPayload
             throw DaReader.Invalid($"transaction {index} does not decode: {e.Message}");
         }
 
-        if (!TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes.AsSpan().SequenceEqual(encoded.Span))
+        if (!TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).AsSpan().SequenceEqual(encoded.Span))
         {
             throw DaReader.Invalid($"transaction {index} is not canonically encoded");
         }

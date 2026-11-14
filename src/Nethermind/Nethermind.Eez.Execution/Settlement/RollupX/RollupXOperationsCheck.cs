@@ -49,7 +49,7 @@ internal static class RollupXOperationsCheck
             if (!IsHistory(transaction, i, nativeRules) && (transaction.IsEezSystemTransaction() || transaction.SenderAddress ==
                 (nativeRules?.SystemAddress ?? EezConstants.SystemAddress)))
                 throw new EezSettlementException($"Ordinary transaction {i} of block {block.Number} uses the reserved system identity.");
-            if (!TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes.AsSpan().SequenceEqual(run.Transactions[i].Span))
+            if (!TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).AsSpan().SequenceEqual(run.Transactions[i].Span))
                 throw new EezSettlementException($"The operations do not publish transaction {i} of block {block.Number}.");
         }
     }

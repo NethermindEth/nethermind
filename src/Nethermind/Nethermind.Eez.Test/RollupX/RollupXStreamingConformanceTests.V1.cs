@@ -148,7 +148,7 @@ public partial class RollupXStreamingConformanceTests
             ToBlock = selection.ToBlock,
             PostBatch = batch,
             ExpectedValidationIdentity = identity,
-            ParentProvenance = new ParentProvenance { ParentHeaderRlp = ByteString.CopyFrom(Rlp.Encode(parent).Bytes) },
+            ParentProvenance = new ParentProvenance { ParentHeaderRlp = ByteString.CopyFrom(Rlp.Encode(parent)) },
         };
         List<ProveChunk> chunks = [new ProveChunk { Header = header }];
         chunks.AddRange(blocks.Select(static block => new ProveChunk { Block = block }));

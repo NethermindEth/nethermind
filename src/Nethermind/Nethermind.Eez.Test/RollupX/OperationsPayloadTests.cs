@@ -233,7 +233,7 @@ public class OperationsPayloadTests
         .WithNonce(nonce)
         .WithGasLimit(21_000)
         .WithSignature(new Signature(1, 2, 27))
-        .TestObject, RlpBehaviors.SkipTypedWrapping).Bytes;
+        .TestObject, RlpBehaviors.SkipTypedWrapping);
 
     private static byte[] Varint(int value)
     {

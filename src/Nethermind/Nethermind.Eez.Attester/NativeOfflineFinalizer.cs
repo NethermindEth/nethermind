@@ -146,7 +146,7 @@ internal sealed class NativeOfflineFinalizer
             Hash256 parentState = index == 0 ? new Hash256(predecessor.AnchorStateRoot.Span) : executed[index - 1].PostStateRoot;
             if (result.Block.Number != window.FromBlock + (ulong)index || result.Hash != window.Claims[index].Hash ||
                 result.Block.ParentHash != parentHash || result.PreStateRoot != parentState ||
-                !Rlp.Encode(result.Block).Bytes.AsSpan().SequenceEqual(window.Blocks[index].Rlp)) throw Rejected();
+                !Rlp.Encode(result.Block).AsSpan().SequenceEqual(window.Blocks[index].Rlp)) throw Rejected();
             executed[index] = result;
         }
         return executed;

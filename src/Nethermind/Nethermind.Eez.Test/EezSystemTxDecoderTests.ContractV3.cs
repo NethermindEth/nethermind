@@ -33,7 +33,7 @@ public partial class EezSystemTxDecoderTests
         JsonElement fields = vector.GetProperty("fields");
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(new ContractV3Decoder().Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes, Is.EqualTo(bytes));
+            Assert.That(new ContractV3Decoder().Encode(tx, RlpBehaviors.SkipTypedWrapping), Is.EqualTo(bytes));
             Assert.That(tx.Hash, Is.EqualTo(new Hash256(vector.GetProperty("expectedKeccak256").GetString()!)));
             Assert.That(tx.Type, Is.EqualTo(EezConstants.NativeSystemTxType));
             Assert.That(tx.ChainId, Is.EqualTo(901));
@@ -88,7 +88,7 @@ public partial class EezSystemTxDecoderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tx.ChainId, Is.EqualTo(chainId));
-            Assert.That(new ContractV3Decoder().Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes, Is.EqualTo(bytes));
+            Assert.That(new ContractV3Decoder().Encode(tx, RlpBehaviors.SkipTypedWrapping), Is.EqualTo(bytes));
         }
     }
 

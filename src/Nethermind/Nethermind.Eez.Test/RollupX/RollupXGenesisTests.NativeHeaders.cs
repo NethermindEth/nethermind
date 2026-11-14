@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Eez.Execution.Settlement.RollupX;
 using Nethermind.Serialization.Rlp;
@@ -328,9 +329,9 @@ public partial class RollupXGenesisTests
         return raw;
     }
 
-    private static byte[] L1HeaderBytes(ulong number, ulong timestamp, ValueHash256 parent, int fields = 15, int replace = -1, Rlp? value = null)
+    private static byte[] L1HeaderBytes(ulong number, ulong timestamp, ValueHash256 parent, int fields = 15, int replace = -1, byte[]? value = null)
     {
-        Rlp[] parts =
+        byte[][] parts =
         [
             Rlp.Encode(parent.Bytes), Rlp.Encode(Keccak.OfAnEmptySequenceRlp.Bytes), Rlp.Encode(new byte[20]),
             Rlp.Encode(Keccak.EmptyTreeHash.Bytes), Rlp.Encode(Keccak.EmptyTreeHash.Bytes), Rlp.Encode(Keccak.EmptyTreeHash.Bytes),
@@ -340,6 +341,6 @@ public partial class RollupXGenesisTests
             Rlp.Encode(Keccak.Zero.Bytes), Rlp.Encode(Keccak.Zero.Bytes), Rlp.Encode(Keccak.Zero.Bytes), Rlp.Encode(0UL),
         ];
         if (replace >= 0) parts[replace] = value!;
-        return Rlp.Encode(parts[..fields]).Bytes;
+        return RlpTestHelper.EncodeSequence(parts[..fields]);
     }
 }

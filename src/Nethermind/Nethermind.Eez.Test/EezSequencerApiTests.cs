@@ -36,7 +36,7 @@ public class EezSequencerApiTests
         {
             Block block = Sample(native);
             IJsonRpcClient rpc = Client(block, out _);
-            byte[] expected = Rlp.Encode(block).Bytes;
+            byte[] expected = Rlp.Encode(block);
             if (debug) rpc.Post<byte[]?>("debug_getRawBlock", block.Hash!.ToString()).Returns(expected);
             using IContainer container = Container(rpc);
             IEezSequencerApi source = container.Resolve<IEezSequencerApi>();
@@ -66,7 +66,7 @@ public class EezSequencerApiTests
             case "transaction":
                 Transaction other = Build.A.Transaction.WithNonce(3).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
                 rpc.Post<byte[]?>("eth_getRawTransactionByHash", block.Transactions[0].Hash!.ToString())
-                    .Returns(TxDecoder.Instance.Encode(other, RlpBehaviors.SkipTypedWrapping).Bytes);
+                    .Returns(TxDecoder.Instance.Encode(other, RlpBehaviors.SkipTypedWrapping));
                 break;
             case "invalid-rlp":
                 byte[] malformed = [0xc0];
@@ -129,11 +129,11 @@ public class EezSequencerApiTests
             else
             {
                 for (int index = 7; index >= 0; index--)
-                    pending[index].SetResult(TxDecoder.Instance.Encode(block.Transactions[index], RlpBehaviors.SkipTypedWrapping).Bytes);
+                    pending[index].SetResult(TxDecoder.Instance.Encode(block.Transactions[index], RlpBehaviors.SkipTypedWrapping));
                 await ninth.Task.WaitAsync(TimeSpan.FromSeconds(10));
                 for (int index = pending.Length - 1; index >= 8; index--)
-                    pending[index].SetResult(TxDecoder.Instance.Encode(block.Transactions[index], RlpBehaviors.SkipTypedWrapping).Bytes);
-                Assert.That(await result.WaitAsync(TimeSpan.FromSeconds(10)), Is.EqualTo(Rlp.Encode(block).Bytes));
+                    pending[index].SetResult(TxDecoder.Instance.Encode(block.Transactions[index], RlpBehaviors.SkipTypedWrapping));
+                Assert.That(await result.WaitAsync(TimeSpan.FromSeconds(10)), Is.EqualTo(Rlp.Encode(block)));
             }
         }
         finally
@@ -170,7 +170,7 @@ public class EezSequencerApiTests
         rpc.Post<byte[]?>("debug_getRawBlock", block.Hash!.ToString()).Returns((byte[]?)null);
         rpc.Post<SequencerRpcBlock?>("eth_getBlockByHash", block.Hash!.ToString(), false).Returns(wire);
         foreach (Transaction transaction in block.Transactions)
-            rpc.Post<byte[]?>("eth_getRawTransactionByHash", transaction.Hash!.ToString()).Returns(TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes);
+            rpc.Post<byte[]?>("eth_getRawTransactionByHash", transaction.Hash!.ToString()).Returns(TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping));
         return rpc;
     }
 
@@ -182,7 +182,7 @@ public class EezSequencerApiTests
                 ? new NativeHistoryTransaction(NativeHistoryEnvelope.CreateBlocks(1, [new(1, TestItem.KeccakA.ValueHash256)]))
                 : Build.A.Transaction.WithNonce((ulong)index + 2).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         foreach (Transaction transaction in transactions)
-            transaction.Hash ??= Keccak.Compute(TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes);
+            transaction.Hash ??= Keccak.Compute(TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping));
         Block block = Build.A.Block.WithNumber(7).WithTransactions(transactions).WithWithdrawals([]).TestObject;
         BlockHeader header = block.Header;
         header.BaseFeePerGas = 7;
@@ -192,7 +192,7 @@ public class EezSequencerApiTests
         header.RequestsHash = TestItem.KeccakC;
         header.BlockAccessListHash = TestItem.KeccakD;
         header.SlotNumber = 42;
-        header.Hash = Keccak.Compute(Rlp.Encode(header).Bytes);
+        header.Hash = Keccak.Compute(Rlp.Encode(header));
         return block;
     }
 }

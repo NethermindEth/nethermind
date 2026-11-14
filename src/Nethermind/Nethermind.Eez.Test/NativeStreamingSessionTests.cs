@@ -87,7 +87,7 @@ public sealed class NativeStreamingSessionTests(int version)
             foreach (Transaction transaction in block.Transactions)
                 if (transaction is NativeHistoryTransaction)
                 {
-                    envelope = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes;
+                    envelope = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping);
                     break;
                 }
             if (envelope.Length != 0) break;

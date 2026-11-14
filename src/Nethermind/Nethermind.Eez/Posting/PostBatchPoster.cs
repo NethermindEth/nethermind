@@ -102,7 +102,7 @@ public sealed class PostBatchPoster(
         }
 
         _lastSigned = (nonce, tip, maxFee);
-        byte[] raw = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes;
+        byte[] raw = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping);
         return new SignedPostBatch(raw, Keccak.Compute(raw), nonce);
     }
 

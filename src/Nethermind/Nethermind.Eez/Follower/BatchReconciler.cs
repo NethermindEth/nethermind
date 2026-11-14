@@ -321,7 +321,7 @@ public sealed class BatchReconciler(
         byte[][] encoded = new byte[block.Transactions.Length][];
         for (int i = 0; i < encoded.Length; i++)
         {
-            encoded[i] = TxDecoder.Instance.Encode(block.Transactions[i], RlpBehaviors.SkipTypedWrapping).Bytes;
+            encoded[i] = TxDecoder.Instance.Encode(block.Transactions[i], RlpBehaviors.SkipTypedWrapping);
         }
 
         return encoded;

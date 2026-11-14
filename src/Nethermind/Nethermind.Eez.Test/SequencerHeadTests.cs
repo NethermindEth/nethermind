@@ -8,6 +8,7 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -72,7 +73,7 @@ public partial class SequencerHeadTests
         reader.SkipItem();
         reader.SkipItem();
         byte[] block = reader.DecodeByteArray();
-        byte[] encoded = Rlp.Encode(EncodeClaim(Claim), Rlp.Encode(signature), Rlp.Encode(block)).Bytes;
+        byte[] encoded = RlpTestHelper.EncodeSequence(EncodeClaim(Claim), Rlp.Encode(signature), Rlp.Encode(block));
         Assert.That(_codec.TryDecode(Snappy.CompressToArray(encoded), out _), Is.False);
     }
 
@@ -130,8 +131,8 @@ public partial class SequencerHeadTests
         byte[] signature = reader.DecodeByteArray();
         byte[] block = reader.DecodeByteArray();
         byte[][] invalid = [
-            Rlp.Encode(EncodeClaim(Claim), Rlp.Encode(signature), Rlp.OfEmptyByteArray).Bytes,
-            Rlp.Encode(EncodeClaim(Claim), Rlp.Encode(signature), Rlp.Encode(block), Rlp.OfZero).Bytes,
+            RlpTestHelper.EncodeSequence(EncodeClaim(Claim), Rlp.Encode(signature), RlpTestHelper.OfEmptyByteArray),
+            RlpTestHelper.EncodeSequence(EncodeClaim(Claim), Rlp.Encode(signature), Rlp.Encode(block), Rlp.Encode(0UL)),
             [.. Envelope, 0],
         ];
         using (Assert.EnterMultipleScope())
@@ -148,9 +149,9 @@ public partial class SequencerHeadTests
         reader.SkipItem();
         byte[] signature = reader.DecodeByteArray();
         byte[] block = reader.DecodeByteArray();
-        Rlp claim = Rlp.Encode(new Rlp([0x81, 1]), Rlp.Encode(Claim.Number), Rlp.Encode(Claim.BlockHash),
+        byte[] claim = RlpTestHelper.EncodeSequence([0x81, 1], Rlp.Encode(Claim.Number), Rlp.Encode(Claim.BlockHash),
             Rlp.Encode(Claim.ParentHash), Rlp.Encode(Claim.EpochMs), Rlp.Encode(Claim.Counter));
-        byte[] encoded = Rlp.Encode(claim, Rlp.Encode(signature), Rlp.Encode(block)).Bytes;
+        byte[] encoded = RlpTestHelper.EncodeSequence(claim, Rlp.Encode(signature), Rlp.Encode(block));
         Assert.That(_codec.TryDecode(Snappy.CompressToArray(encoded), out _), Is.False);
     }
 
@@ -160,7 +161,7 @@ public partial class SequencerHeadTests
         VerifiedSequencerHead head = Decode(Compressed);
         head.Block.Header.TxRoot = TestItem.KeccakA;
         SequencerHeadClaim claim = Claim with { BlockHash = head.Block.Header.CalculateHash() };
-        byte[] bytes = SignEnvelope(claim, Rlp.Encode(head.Block).Bytes);
+        byte[] bytes = SignEnvelope(claim, Rlp.Encode(head.Block));
         Assert.That(_codec.TryDecode(Snappy.CompressToArray(bytes), out _), Is.False);
     }
 
@@ -174,29 +175,29 @@ public partial class SequencerHeadTests
             "parent" => Claim with { ParentHash = TestItem.KeccakA },
             _ => Claim with { BlockHash = TestItem.KeccakA },
         };
-        byte[] bytes = SignEnvelope(claim, Rlp.Encode(head.Block).Bytes);
+        byte[] bytes = SignEnvelope(claim, Rlp.Encode(head.Block));
         Assert.That(_codec.TryDecode(Snappy.CompressToArray(bytes), out _), Is.False);
     }
 
     [Test]
     public void Accepts_every_optional_header_prefix([Range(15, 23)] int fields)
     {
-        Rlp[] header = HeaderFields();
-        header[15] = Rlp.OfZero;
-        byte[] encoded = EncodeBlock(header[..fields], withdrawals: fields >= 17 ? Rlp.OfEmptyList : null);
+        byte[][] header = HeaderFields();
+        header[15] = Rlp.Encode(0UL);
+        byte[] encoded = EncodeBlock(header[..fields], withdrawals: fields >= 17 ? RlpTestHelper.OfEmptyList : null);
         VerifiedSequencerHead head = Decode(encoded);
-        Assert.That(head.Block.Hash, Is.EqualTo(Keccak.Compute(Rlp.Encode(header[..fields]).Bytes)));
+        Assert.That(head.Block.Hash, Is.EqualTo(Keccak.Compute(RlpTestHelper.EncodeSequence(header[..fields]))));
     }
 
     [Test]
     public void Accepts_large_header_with_an_explicit_limit_without_changing_shared_default()
     {
-        Rlp[] header = HeaderFields();
+        byte[][] header = HeaderFields();
         header[12] = Rlp.Encode(new byte[5 * 1024 * 1024]);
-        Rlp encodedHeader = Rlp.Encode(header);
+        byte[] encodedHeader = RlpTestHelper.EncodeSequence(header);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(() => new HeaderDecoder().DecodeComplete(encodedHeader.Bytes), Throws.TypeOf<RlpLimitException>());
+            Assert.That(() => new HeaderDecoder().DecodeComplete(encodedHeader), Throws.TypeOf<RlpLimitException>());
             Assert.That(_codec.TryDecode(EncodeBlock(header), out _), Is.True);
         }
     }
@@ -204,7 +205,7 @@ public partial class SequencerHeadTests
     [Test]
     public void Accepts_exact_decompressed_limit_and_literal_compression_above_that_limit()
     {
-        Rlp[] header = HeaderFields();
+        byte[][] header = HeaderFields();
         header[12] = Rlp.Encode(new byte[SequencerHeadCodec.MaxMessageSize - 1024]);
         byte[] first = Snappy.DecompressToArray(EncodeBlock(header));
         int payloadLength = SequencerHeadCodec.MaxMessageSize - 1024 + SequencerHeadCodec.MaxMessageSize - first.Length;
@@ -237,7 +238,7 @@ public partial class SequencerHeadTests
     [Test]
     public void Rejects_validly_signed_ommer_and_withdrawal_root_mismatches([Values(1, 16)] int field)
     {
-        Rlp[] header = HeaderFields();
+        byte[][] header = HeaderFields();
         header[field] = Rlp.Encode(TestItem.KeccakA);
         Assert.That(_codec.TryDecode(EncodeBlock(header), out _), Is.False);
     }
@@ -245,11 +246,11 @@ public partial class SequencerHeadTests
     [Test]
     public void Accepts_zero_base_fee_ommer_headers_without_changing_their_shape()
     {
-        Rlp[] uncle = HeaderFields()[..16];
-        uncle[15] = Rlp.OfZero;
-        Rlp uncles = Rlp.Encode([Rlp.Encode(uncle)]);
-        Rlp[] header = HeaderFields();
-        header[1] = Rlp.Encode(Keccak.Compute(uncles.Bytes));
+        byte[][] uncle = HeaderFields()[..16];
+        uncle[15] = Rlp.Encode(0UL);
+        byte[] uncles = RlpTestHelper.EncodeSequence([RlpTestHelper.EncodeSequence(uncle)]);
+        byte[][] header = HeaderFields();
+        header[1] = Rlp.Encode(Keccak.Compute(uncles));
         Assert.That(_codec.TryDecode(EncodeBlock(header, uncles: uncles), out _), Is.True);
     }
 
@@ -258,15 +259,15 @@ public partial class SequencerHeadTests
     {
         Transaction transaction = Build.A.Transaction.WithType(TxType.EIP1559).WithChainId(1337)
             .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-        Rlp[] header = HeaderFields();
+        byte[][] header = HeaderFields();
         header[4] = Rlp.Encode(TxTrie.CalculateRoot([transaction]));
-        Rlp wrapped = TxDecoder.Instance.Encode(transaction);
-        VerifiedSequencerHead head = Decode(EncodeBlock(header, transactions: Rlp.Encode([wrapped])));
-        Rlp unwrapped = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping);
+        byte[] wrapped = TxDecoder.Instance.Encode(transaction);
+        VerifiedSequencerHead head = Decode(EncodeBlock(header, transactions: RlpTestHelper.EncodeSequence([wrapped])));
+        byte[] unwrapped = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(head.Block.Transactions[0].Hash, Is.EqualTo(transaction.Hash));
-            Assert.That(_codec.TryDecode(EncodeBlock(header, transactions: Rlp.Encode([unwrapped])), out _), Is.False);
+            Assert.That(_codec.TryDecode(EncodeBlock(header, transactions: RlpTestHelper.EncodeSequence([unwrapped])), out _), Is.False);
         }
     }
 
@@ -274,13 +275,13 @@ public partial class SequencerHeadTests
     public void Rejects_a_system_transaction_to_the_other_profile_destination()
     {
         Transaction transaction = SystemTransactions.Create(chainId: 1337, data: [1]);
-        Rlp[] header = HeaderFields();
+        byte[][] header = HeaderFields();
         header[4] = Rlp.Encode(TxTrie.CalculateRoot([transaction]));
-        Assert.That(_codec.TryDecode(EncodeBlock(header, transactions: Rlp.Encode([TxDecoder.Instance.Encode(transaction)])), out _), Is.True);
+        Assert.That(_codec.TryDecode(EncodeBlock(header, transactions: RlpTestHelper.EncodeSequence([TxDecoder.Instance.Encode(transaction)])), out _), Is.True);
         transaction.To = EezConstants.RollupXEezl2Address;
         transaction.Hash = null;
         header[4] = Rlp.Encode(TxTrie.CalculateRoot([transaction]));
-        Assert.That(_codec.TryDecode(EncodeBlock(header, transactions: Rlp.Encode([TxDecoder.Instance.Encode(transaction)])), out _), Is.False);
+        Assert.That(_codec.TryDecode(EncodeBlock(header, transactions: RlpTestHelper.EncodeSequence([TxDecoder.Instance.Encode(transaction)])), out _), Is.False);
     }
 
     [Test]
@@ -294,40 +295,40 @@ public partial class SequencerHeadTests
             Frames = [new TxFrame(FrameMode.Default, FrameFlags.None, TestItem.AddressB, 100000, 0, UInt256.Zero, ReadOnlyMemory<byte>.Empty)],
             FrameSignatures = [],
         };
-        Rlp encoded = TxDecoder.Instance.Encode(transaction);
-        RlpReader reader = new(encoded.Bytes);
+        byte[] encoded = TxDecoder.Instance.Encode(transaction);
+        RlpReader reader = new(encoded);
         Transaction decoded = TxDecoder.Instance.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipPooledTransactions | RlpBehaviors.ExcludeHashes);
-        Rlp[] header = HeaderFields();
+        byte[][] header = HeaderFields();
         header[4] = Rlp.Encode(TxTrie.CalculateRoot([transaction]));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(decoded.Type, Is.EqualTo(TxType.FrameTx));
-            Assert.That(_codec.TryDecode(EncodeBlock(header, transactions: Rlp.Encode([encoded])), out _), Is.False);
+            Assert.That(_codec.TryDecode(EncodeBlock(header, transactions: RlpTestHelper.EncodeSequence([encoded])), out _), Is.False);
         }
     }
 
     [Test]
     public void Accepts_a_nonempty_withdrawal_list_with_the_matching_root()
     {
-        Rlp withdrawal = Rlp.Encode(Rlp.Encode(1UL), Rlp.Encode(2UL), Rlp.Encode(TestItem.AddressA.Bytes), Rlp.Encode(3UL));
-        Withdrawal item = new WithdrawalDecoder().DecodeCompleteNotNull(withdrawal.Bytes);
-        Rlp[] header = HeaderFields();
+        byte[] withdrawal = RlpTestHelper.EncodeSequence(Rlp.Encode(1UL), Rlp.Encode(2UL), Rlp.Encode(TestItem.AddressA.Bytes), Rlp.Encode(3UL));
+        Withdrawal item = new WithdrawalDecoder().DecodeCompleteNotNull(withdrawal);
+        byte[][] header = HeaderFields();
         header[16] = Rlp.Encode(WithdrawalTrie.CalculateRoot([item]));
-        VerifiedSequencerHead head = Decode(EncodeBlock(header, withdrawals: Rlp.Encode([withdrawal])));
+        VerifiedSequencerHead head = Decode(EncodeBlock(header, withdrawals: RlpTestHelper.EncodeSequence([withdrawal])));
         Assert.That(head.Block.Withdrawals, Has.Length.EqualTo(1));
     }
 
     [Test]
     public void Rejects_unsigned_body_changes_before_transaction_allocations()
     {
-        Rlp[] transactions = new Rlp[100000];
-        Array.Fill(transactions, new Rlp(Bytes.FromHexString("c98080808080801b0101")));
-        Rlp block = Rlp.Encode(Rlp.Encode(HeaderFields()[..21]), Rlp.Encode(transactions), Rlp.OfEmptyList, Rlp.OfEmptyList);
+        byte[][] transactions = new byte[100000][];
+        Array.Fill(transactions, Bytes.FromHexString("c98080808080801b0101"));
+        byte[] block = RlpTestHelper.EncodeSequence(RlpTestHelper.EncodeSequence(HeaderFields()[..21]), RlpTestHelper.EncodeSequence(transactions), RlpTestHelper.OfEmptyList, RlpTestHelper.OfEmptyList);
         RlpReader outer = new(Envelope);
         RlpReader reader = outer.EnterSequence(out _);
         reader.SkipItem();
         byte[] signature = reader.DecodeByteArray();
-        byte[] message = Snappy.CompressToArray(Rlp.Encode(EncodeClaim(Claim), Rlp.Encode(signature), Rlp.Encode(block.Bytes)).Bytes);
+        byte[] message = Snappy.CompressToArray(RlpTestHelper.EncodeSequence(EncodeClaim(Claim), Rlp.Encode(signature), Rlp.Encode(block)));
         Decode(Compressed);
         long before = GC.GetAllocatedBytesForCurrentThread();
         bool accepted = _codec.TryDecode(message, out _);
@@ -342,8 +343,8 @@ public partial class SequencerHeadTests
     [Test]
     public void Rejects_empty_optional_header_hashes([Values(19, 20, 21)] int field)
     {
-        Rlp[] header = HeaderFields();
-        header[field] = Rlp.OfEmptyByteArray;
+        byte[][] header = HeaderFields();
+        header[field] = RlpTestHelper.OfEmptyByteArray;
         Assert.That(_codec.TryDecode(EncodeBlock(header), out _), Is.False);
     }
 
@@ -435,17 +436,17 @@ public partial class SequencerHeadTests
         return head!;
     }
 
-    private byte[] EncodeBlock(Rlp[] header, Rlp? transactions = null, Rlp? uncles = null, Rlp? withdrawals = null)
+    private byte[] EncodeBlock(byte[][] header, byte[]? transactions = null, byte[]? uncles = null, byte[]? withdrawals = null)
     {
-        Rlp encodedHeader = Rlp.Encode(header);
-        Rlp block = header.Length >= 17
-            ? Rlp.Encode(encodedHeader, transactions ?? Rlp.OfEmptyList, uncles ?? Rlp.OfEmptyList, withdrawals ?? Rlp.OfEmptyList)
-            : Rlp.Encode(encodedHeader, transactions ?? Rlp.OfEmptyList, uncles ?? Rlp.OfEmptyList);
-        SequencerHeadClaim claim = Claim with { BlockHash = Keccak.Compute(encodedHeader.Bytes) };
-        return Snappy.CompressToArray(SignEnvelope(claim, block.Bytes));
+        byte[] encodedHeader = RlpTestHelper.EncodeSequence(header);
+        byte[] block = header.Length >= 17
+            ? RlpTestHelper.EncodeSequence(encodedHeader, transactions ?? RlpTestHelper.OfEmptyList, uncles ?? RlpTestHelper.OfEmptyList, withdrawals ?? RlpTestHelper.OfEmptyList)
+            : RlpTestHelper.EncodeSequence(encodedHeader, transactions ?? RlpTestHelper.OfEmptyList, uncles ?? RlpTestHelper.OfEmptyList);
+        SequencerHeadClaim claim = Claim with { BlockHash = Keccak.Compute(encodedHeader) };
+        return Snappy.CompressToArray(SignEnvelope(claim, block));
     }
 
-    private static Rlp[] HeaderFields()
+    private static byte[][] HeaderFields()
     {
         RlpReader outer = new(Envelope);
         RlpReader envelope = outer.EnterSequence(out _);
@@ -454,14 +455,14 @@ public partial class SequencerHeadTests
         RlpReader blockOuter = new(envelope.DecodeByteArraySpan());
         RlpReader block = blockOuter.EnterSequence(out _);
         RlpReader header = block.EnterSequence(out _);
-        List<Rlp> fields = [];
-        while (header.HasNext) fields.Add(new Rlp(header.ReadEncodedItem().ToArray()));
+        List<byte[]> fields = [];
+        while (header.HasNext) fields.Add(header.ReadEncodedItem().ToArray());
         fields.Add(Rlp.Encode(Keccak.Zero));
-        fields.Add(Rlp.OfZero);
+        fields.Add(Rlp.Encode(0UL));
         return fields.ToArray();
     }
 
-    private static Rlp EncodeClaim(in SequencerHeadClaim claim) => Rlp.Encode(
+    private static byte[] EncodeClaim(in SequencerHeadClaim claim) => RlpTestHelper.EncodeSequence(
         Rlp.Encode(claim.RollupId), Rlp.Encode(claim.Number), Rlp.Encode(claim.BlockHash),
         Rlp.Encode(claim.ParentHash), Rlp.Encode(claim.EpochMs), Rlp.Encode(claim.Counter));
 
@@ -470,7 +471,7 @@ public partial class SequencerHeadTests
         using PrivateKey key = new("ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80");
         Signature signature = new Ecdsa().Sign(key, _codec.SigningHash(claim).ValueHash256);
         byte[] bytes = [.. signature.Bytes, (byte)signature.V];
-        return Rlp.Encode(EncodeClaim(claim), Rlp.Encode(bytes), Rlp.Encode(block)).Bytes;
+        return RlpTestHelper.EncodeSequence(EncodeClaim(claim), Rlp.Encode(bytes), Rlp.Encode(block));
     }
 
     private static byte[] InvalidMessageId(byte[] data)

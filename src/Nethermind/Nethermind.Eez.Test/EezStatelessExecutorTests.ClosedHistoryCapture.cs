@@ -68,7 +68,7 @@ public partial class EezStatelessExecutorTests
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(result.Hash.ValueHash256, Is.EqualTo(new ValueHash256(input.Hash.Span)));
-                    Assert.That(Rlp.Encode(result.Block).Bytes, Is.EqualTo(input.Rlp.ToByteArray()));
+                    Assert.That(Rlp.Encode(result.Block), Is.EqualTo(input.Rlp.ToByteArray()));
                     if (terminal)
                     {
                         Assert.That(result.Checkpoints[^1].StateRoot, Is.EqualTo(result.PostStateRoot));

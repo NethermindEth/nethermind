@@ -230,7 +230,7 @@ public class RollupXSettlementInputTests
     public void Decode_StreamAcrossPhysicalBlobBoundary_PreservesTheWholeOperation()
     {
         Transaction transaction = Build.A.Transaction.WithData(new byte[BlobStream.DataBytesPerBlob + 100]).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-        byte[] encoded = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes;
+        byte[] encoded = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping);
         byte[] operations = OperationsPayload.Encode([new OperationsRun(1, TestItem.AddressA, ReadOnlyMemory<byte>.Empty, [encoded])]);
         SettlementInput input = StreamInput(NativeStream.Encode(_context.RollupId, operations, []));
         Assert.That(input.Blobs.Count, Is.EqualTo(2), "precondition: one operations message spans two physical blobs");

@@ -229,7 +229,7 @@ public class BlockTreeTests
         using MemoryManager<byte>? missingBal = blockAccessListStore.GetRlp(block.Number, block.Hash!);
         Assert.That(missingBal, Is.Null);
 
-        byte[] encodedBal = Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes;
+        byte[] encodedBal = Rlp.Encode(new ReadOnlyBlockAccessList());
         block.GeneratedBlockAccessList = new GeneratedBlockAccessList();
         block.EncodedBlockAccessList = encodedBal;
         block.Header.BlockAccessListHash = new Hash256(ValueKeccak.Compute(encodedBal).Bytes);
@@ -683,7 +683,7 @@ public class BlockTreeTests
         blockTree.SuggestBlock(block0);
 
         Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
-        byte[] encodedBal = Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes;
+        byte[] encodedBal = Rlp.Encode(new ReadOnlyBlockAccessList());
         block1.EncodedBlockAccessList = encodedBal;
         block1.Header.BlockAccessListHash = new Hash256(ValueKeccak.Compute(encodedBal).Bytes);
         if (bodyAlreadyStored)
@@ -715,7 +715,7 @@ public class BlockTreeTests
         blockTree.SuggestBlock(block0);
 
         Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
-        byte[] encodedBal = Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes;
+        byte[] encodedBal = Rlp.Encode(new ReadOnlyBlockAccessList());
         block1.Header.BlockAccessListHash = new Hash256(ValueKeccak.Compute(encodedBal).Bytes);
         blockTree.Insert(block1.Header);
         blockTree.SuggestBlock(block1); // the bodies feed lands first, carrying no access list
@@ -831,12 +831,12 @@ public class BlockTreeTests
         _headersDb = new TestMemDb();
         TestMemDb blocksInfosDb = new();
 
-        Rlp chainLevel = Rlp.Encode(new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, 1)));
+        byte[] chainLevel = Rlp.Encode(new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, 1)));
         blocksInfosDb.ReadFunc = (key) =>
         {
             if (!Bytes.AreEqual(key, BlockTree.DeletePointerAddressInDb.Bytes))
             {
-                return chainLevel.Bytes;
+                return chainLevel;
             }
 
             return null!;
@@ -1908,14 +1908,14 @@ public class BlockTreeTests
         blockStore.Insert(genesisBlock);
 
         TestMemDb headersDb = new();
-        headersDb.Set(genesisBlock.Hash!, Rlp.Encode(genesisBlock.Header).Bytes);
+        headersDb.Set(genesisBlock.Hash!, Rlp.Encode(genesisBlock.Header));
 
         TestMemDb blockInfosDb = new();
         blockInfosDb.Set(Keccak.Zero, genesisBlock.Hash!.Bytes);
         ChainLevelInfo level = new(true, new BlockInfo(headBlock.Hash!, headBlock.Difficulty));
         level.BlockInfos[0].WasProcessed = true;
 
-        blockInfosDb.Set(0, Rlp.Encode(level).Bytes);
+        blockInfosDb.Set(0, Rlp.Encode(level));
 
         BlockTree blockTree = Build.A.BlockTree()
             .WithoutSettingHead
@@ -2111,7 +2111,7 @@ public class BlockTreeTests
         tree.SuggestBlock(block0);
         foreach (Block block in new[] { block1, block2, block3 })
         {
-            block.EncodedBlockAccessList = Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes;
+            block.EncodedBlockAccessList = Rlp.Encode(new ReadOnlyBlockAccessList());
             tree.SuggestBlock(block);
         }
 
@@ -2555,7 +2555,7 @@ public class BlockTreeTests
     public void Loads_best_head_up_to_best_persisted_state()
     {
         MemDb metadataDb = new();
-        metadataDb.Set(MetadataDbKeys.BeaconSyncPivotNumber, Rlp.Encode(51).Bytes);
+        metadataDb.Set(MetadataDbKeys.BeaconSyncPivotNumber, Rlp.Encode(51));
 
         SyncConfig syncConfig = new()
         {
