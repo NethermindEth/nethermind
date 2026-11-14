@@ -205,6 +205,26 @@ public class RlpxHostIntegrationTests
     }
 
     [Test]
+    [CancelAfter(30_000)]
+    public async Task Shutdown_ReturnsOnlyAfterEventLoopsTerminate()
+    {
+        // The worker group uses the close timeout as its quiet period. After the accepted connection it waits about 6 seconds to stop.
+        int port = GetAvailablePort();
+        await using IContainer container = CreateListenerContainer(null, IPAddress.Loopback, port, shutdownCloseTimeoutMs: 6_000);
+        RlpxHost host = container.Resolve<RlpxHost>();
+        TaskCompletionSource sessionCreated = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        host.SessionCreated += (_, _) => sessionCreated.TrySetResult();
+        await host.Init();
+        using Socket client = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        await client.ConnectAsync(new IPEndPoint(IPAddress.Loopback, port));
+        await sessionCreated.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        await host.Shutdown();
+
+        Assert.That(host.EventLoopsTerminated, Is.True);
+    }
+
+    [Test]
     public async Task DefaultListener_UsesSupportedFamiliesAndNormalizesIpv4Session()
     {
         int port = GetAvailablePort();
@@ -911,7 +931,8 @@ public class RlpxHostIntegrationTests
         NetworkListenerState? listenerState = null,
         IChannelFactory? channelFactory = null,
         IPrivilegedIpProvider? privilegedIpProvider = null,
-        ILogManager? logManager = null)
+        ILogManager? logManager = null,
+        long shutdownCloseTimeoutMs = 100)
     {
         NetworkConfig networkConfig = new()
         {
@@ -919,7 +940,7 @@ public class RlpxHostIntegrationTests
             P2PPort = port,
             LocalIp = localIpConfig,
             MaxActivePeers = 50,
-            RlpxHostShutdownCloseTimeoutMs = 100
+            RlpxHostShutdownCloseTimeoutMs = shutdownCloseTimeoutMs
         };
         IIPResolver ipResolver = Substitute.For<IIPResolver>();
         ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(

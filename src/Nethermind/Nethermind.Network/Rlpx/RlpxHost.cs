@@ -585,6 +585,9 @@ namespace Nethermind.Network.Rlpx
 
         string IStoppableService.Description => "rlpx host";
 
+        internal bool EventLoopsTerminated =>
+            (_bossGroup?.IsTerminated ?? true) && (_workerGroup?.IsTerminated ?? true) && _group.IsTerminated;
+
         public async Task Shutdown()
         {
             lock (_dialLock)
