@@ -113,6 +113,26 @@ public class BlockBodyDecoderTests
         Assert.That(BlockBodyDecoder.Instance.DecodeWithEncodedTransactions(RlpTestHelper.OfEmptyList), Is.Null);
 
     [Test, NonParallelizable]
+    public void Decode_with_encoded_transactions_rejects_uncles_not_in_canonical_encoding()
+    {
+        // A trailing zero base fee decodes, but the header encoder leaves it out, so the uncles hash computed from the
+        // decoded uncle does not cover these bytes.
+        byte[] uncle = new HeaderDecoder().Encode(Build.A.BlockHeader.TestObject);
+        RlpReader fields = new RlpReader(uncle).EnterSequence(out _);
+        byte[] nonCanonicalUncle = RlpTestHelper.EncodeSequence(fields.ReadRaw(fields.Remaining).ToArray(), RlpTestHelper.OfEmptyByteArray);
+        byte[] transaction = Rlp.Encode(Build.A.Transaction.Signed().TestObject);
+        byte[] body = RlpTestHelper.EncodeSequence(RlpTestHelper.EncodeSequence([transaction]), RlpTestHelper.EncodeSequence([nonCanonicalUncle]));
+        RlpReader reader = new(body);
+        Assert.That(BlockBodyDecoder.Instance.Decode(ref reader, RlpBehaviors.SkipPooledTransactions)!.Uncles, Has.Length.EqualTo(1),
+            "the full decode accepts the uncle, so this must assert the extra check");
+        HashSet<Transaction> pooled = TransactionPoolTestHelper.Refill();
+
+        Assert.Throws<RlpReaderException>(() => BlockBodyDecoder.Instance.DecodeWithEncodedTransactions(body));
+
+        TransactionPoolTestHelper.AssertAllReturned(pooled);
+    }
+
+    [Test, NonParallelizable]
     public void Decode_with_encoded_transactions_failure_returns_owned_transactions(
         [Values("empty-envelope", "legacy-envelope", "wrapped-legacy", "null-transaction", "uncles", "withdrawals", "trailing")] string malformedField)
     {

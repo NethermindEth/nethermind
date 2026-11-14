@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Serialization.FluentRlp;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -192,7 +193,9 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
     /// </para>
     /// <para>
     /// The fields inside a transaction are not checked, so compare the transaction root with the header before the
-    /// body is trusted. All other items get the checks of the full decode.
+    /// body is trusted. All other items get the checks of the full decode, and the uncles must be in the encoding
+    /// that <see cref="IHeaderDecoder"/> writes: the uncles hash is computed from that encoding, so a body kept as
+    /// received is covered by it only then.
     /// </para>
     /// </remarks>
     /// <param name="body">The encoded body with its sequence prefix. The transactions refer to these bytes.</param>
@@ -204,10 +207,13 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
         BlockBody? result = null;
         if (content.HasNext)
         {
-            Transaction[] transactions = ReadEncodedTransactions(ref content, body[(itemLength - content.Remaining)..]);
+            Memory<byte> contentSource = body[(itemLength - content.Remaining)..];
+            Transaction[] transactions = ReadEncodedTransactions(ref content, contentSource);
             try
             {
+                int unclesStart = content.BytesRead;
                 BlockHeader[] uncles = _headerDecoder.DecodeNonNullArray(ref content, RlpBehaviors.None, UnclesCountLimit);
+                CheckCanonicalUncles(contentSource.Span[unclesStart..content.BytesRead], uncles);
                 Withdrawal[]? withdrawals = content.HasNext ? DecodeWithdrawals<OnFlag>(ref content, RlpBehaviors.None) : null;
                 result = new BlockBody(transactions, uncles, withdrawals);
                 reader.ExitSequence(in content, itemLength);
@@ -225,6 +231,19 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
         reader.ExitSequence(in content, itemLength);
         reader.CheckEnd();
         return null;
+    }
+
+    private void CheckCanonicalUncles(ReadOnlySpan<byte> encodedUncles, BlockHeader[] uncles)
+    {
+        if (uncles.Length == 0) return;
+
+        int length = GetUnclesLength(uncles);
+        using ArrayPoolSpan<byte> canonical = new(Rlp.LengthOfSequence(length));
+        RlpWriter writer = RlpWriter.ContentWriter(canonical);
+        RlpSequence sequence = writer.StartSequence(length);
+        foreach (BlockHeader uncle in uncles) _headerDecoder.Encode(ref writer, uncle);
+        writer.EndSequence(sequence);
+        if (!encodedUncles.SequenceEqual(canonical)) throw new RlpReaderException("Uncles are not in their canonical encoding");
     }
 
     /// <param name="reader">Reader whose next item is the transaction sequence.</param>
