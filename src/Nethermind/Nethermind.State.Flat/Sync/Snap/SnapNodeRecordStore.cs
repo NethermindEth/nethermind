@@ -107,15 +107,15 @@ internal sealed class SnapNodeRecordStore(IPersistence.IPersistenceReader reader
 
     /// <summary>Rents the buffer of a range of <paramref name="entryCount"/> entries from the pool of its <see cref="SizeCategory"/>.</summary>
     /// <remarks>
-    /// An entry writes some 200 bytes of records, its leaf and a share of the branches above it, besides up to some 16 KiB of proof.
-    /// A larger range spills into more generations, which a returned buffer frees, so a pooled one keeps only its first.
+    /// A storage slot writes some 165 to 200 bytes of records, its leaf and a share of the branches above it, so the first generation of
+    /// a category holds its largest range without a proof: 16 slots take at most some 3.4 KiB, 4096 some 810 KiB. A proof, up to some
+    /// 16 KiB, or a larger range spills into more generations, which a returned buffer frees, so a pooled one keeps only its first.
     /// </remarks>
     private PrivateNodeRecordBuffer RentBuffer(int entryCount)
     {
         (_sizeCategory, int generationBytes) = entryCount switch
         {
-            <= 16 => (SizeCategory.Tiny, 32 * 1024),
-            <= 256 => (SizeCategory.Small, 128 * 1024),
+            <= 16 => (SizeCategory.Tiny, 4 * 1024),
             <= 4096 => (SizeCategory.Medium, 1024 * 1024),
             _ => (SizeCategory.Large, 4 * 1024 * 1024),
         };
@@ -278,7 +278,6 @@ internal sealed class SnapNodeRecordStore(IPersistence.IPersistenceReader reader
     private enum SizeCategory
     {
         Tiny,
-        Small,
         Medium,
         Large,
     }
