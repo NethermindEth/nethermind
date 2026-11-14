@@ -205,7 +205,6 @@ public class RlpxHostIntegrationTests
     }
 
     [Test]
-    [CancelAfter(30_000)]
     public async Task Shutdown_ReturnsOnlyAfterEventLoopsTerminate()
     {
         // The worker group uses the close timeout as its quiet period. After the accepted connection it waits about 6 seconds to stop.
@@ -219,7 +218,7 @@ public class RlpxHostIntegrationTests
         await client.ConnectAsync(new IPEndPoint(IPAddress.Loopback, port));
         await sessionCreated.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-        await host.Shutdown();
+        await host.Shutdown().WaitAsync(TimeSpan.FromSeconds(30));
 
         Assert.That(host.EventLoopsTerminated, Is.True);
     }

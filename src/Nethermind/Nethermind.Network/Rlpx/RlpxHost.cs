@@ -606,10 +606,22 @@ namespace Nethermind.Network.Rlpx
 
             if (_logger.IsDebug) _logger.Debug("Closed _bootstrapChannel");
 
-            await Task.WhenAll(
+            Task closingTask = Task.WhenAll(
                 _bossGroup is not null ? _bossGroup.ShutdownGracefullyAsync(_shutdownQuietPeriod, _shutdownCloseTimeout) : Task.CompletedTask,
                 _workerGroup is not null ? _workerGroup.ShutdownGracefullyAsync(_shutdownCloseTimeout, _shutdownCloseTimeout) : Task.CompletedTask,
                 _group.ShutdownGracefullyAsync(_shutdownQuietPeriod, _shutdownCloseTimeout));
+
+            // A loop stops within its close timeout unless one of its tasks does not return; report that case and keep waiting.
+            TimeSpan warningDelay = _shutdownCloseTimeout * 2 + TimeSpan.FromSeconds(1);
+            try
+            {
+                await closingTask.WaitAsync(warningDelay);
+            }
+            catch (TimeoutException)
+            {
+                if (_logger.IsWarn) _logger.Warn($"RLPx event loops have not stopped after {warningDelay.TotalSeconds} seconds. Waiting for them to stop.");
+                await closingTask;
+            }
 
             // Detach subscriptions and dispose any sessions that weren't disconnected during shutdown.
             // Sessions whose Disconnected event fired are already disposed via OnDisconnected.
