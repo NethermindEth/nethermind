@@ -144,10 +144,10 @@ public class HeaderStoreTests
     }
 
     [Test]
-    public void Malformed_block_number_entry([Values] bool cached)
+    public void Malformed_block_number_entry([Values] bool cached, [Values(7, 9)] int length)
     {
         using HeaderStoreFixture context = new(persisted: true, cached: cached);
-        context.BlockNumberDb.Set(context.Header.Hash!, new byte[7]);
+        context.BlockNumberDb.Set(context.Header.Hash!, new byte[length]);
 
         using (Assert.EnterMultipleScope())
         {
