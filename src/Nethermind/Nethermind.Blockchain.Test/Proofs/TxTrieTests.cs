@@ -36,8 +36,34 @@ public class TxTrieTests(bool useEip2718)
 
     private static readonly int[] RootCounts = [0, 1, 2, 7, 8, 9, 15, 16, 17, 18, 19, 20, 21, 22, 23, 31, 32, 33, 63, 64, 65, 79, 80, 81, 127, 128, 129, 143, 144, 145, 255, 256, 257, 271, 272, 273, 4096];
 
+    private static readonly int[] MixedLengths = [124, 2, 125, 2164, 31, 2165, 1, 32, 300, 136, 8192, 100, 261, 2163, 33, 123, 262];
+
     [Test]
-    public void Sequential_multi_block_batch_requires_all_items_to_be_eligible(
+    public void Mixed_size_leaves_match_mutable_trie(
+        [Values(8, 15, 16, 17, 33, 63, 64, 65, 127, 128, 129, 143, 144, 257)] int count, [Values] bool multiBlock,
+        [Values] bool canBeParallel, [Values(16, 64)] int minItemsForParallel)
+    {
+        byte[][] values = new byte[count][];
+        Random random = new(count);
+        using TrackingCappedArrayPool pool = new();
+        TxTrie expected = new(ReadOnlySpan<Transaction>.Empty, bufferPool: pool, canBeParallel: false);
+        for (int i = 0; i < count; i++)
+        {
+            byte[] value = new byte[MixedLengths[(i * 7 + count) % MixedLengths.Length]];
+            random.NextBytes(value);
+            values[i] = value;
+            expected.Set(Rlp.Encode(i), value);
+        }
+        expected.UpdateRootHash(canBeParallel: false);
+
+        Hash256 actual = new IndexedTrieRoot.Calculator<byte[], TestValueEncoder>(values, new(multiBlock))
+            .Calculate(canBeParallel, minItemsForParallel);
+
+        Assert.That(actual, Is.EqualTo(expected.RootHash));
+    }
+
+    [Test]
+    public void Sequential_batch_requires_all_items_to_be_eligible(
         [Values(8, 17, 40, 64)] int count, [Values(124, 125, 2164, 2165)] int otherLength,
         [Values] bool multiBlock)
     {
@@ -45,8 +71,7 @@ public class TxTrieTests(bool useEip2718)
         Array.Fill(values, new byte[otherLength]);
         values[1] = new byte[500];
         IndexedTrieRoot.Calculator<byte[], TestValueEncoder> calculator = new(values, new(multiBlock));
-        Assert.That(calculator.TryGetMultiBlockLengths(new int[count]),
-            Is.EqualTo(otherLength is > 124 and <= 2164));
+        Assert.That(calculator.TryGetBatchLengths(new int[count]), Is.EqualTo(otherLength <= 2164));
 
         using TrackingCappedArrayPool pool = new();
         TxTrie expected = new(ReadOnlySpan<Transaction>.Empty, bufferPool: pool, canBeParallel: false);
@@ -94,7 +119,7 @@ public class TxTrieTests(bool useEip2718)
         using (Assert.EnterMultipleScope())
         {
             if (multiBlock || outlierIndex < 0) Assert.That(lengthCalls, Is.All.EqualTo(1));
-            else Assert.That(lengthCalls, Is.All.LessThanOrEqualTo(1).And.Some.EqualTo(1));
+            else Assert.That(lengthCalls, Is.All.LessThanOrEqualTo(1));
             Assert.That(actual, Is.EqualTo(expected.RootHash));
         }
     }

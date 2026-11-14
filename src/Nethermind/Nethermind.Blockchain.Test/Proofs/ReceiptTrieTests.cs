@@ -54,6 +54,25 @@ public class ReceiptTrieTests
         AssertRootMatches(spec, receipts, new ReceiptMessageDecoder(skipStateAndStatus));
     }
 
+    [Test]
+    public void Direct_root_matches_with_mixed_receipt_sizes(
+        [Values(8, 16, 17, 33, 64, 65, 127, 128, 129, 257)] int count, [Values(0, 2)] int workers)
+    {
+        using ParallelUnbalancedWork.WorkerScope? scope = workers == 0 ? null : ParallelUnbalancedWork.BeginWorkerScope(workers);
+        TxReceipt[] receipts = new TxReceipt[count];
+        Random random = new(count);
+        for (int i = 0; i < count; i++)
+        {
+            if (i % 11 == 5) continue;
+            byte[] data = new byte[i % 3 == 0 ? i % 40 : 1700 + i * 37 % 700];
+            random.NextBytes(data);
+            receipts[i] = Build.A.Receipt.WithAllFieldsFilled.WithGasUsedTotal((ulong)(i + 1) * 21000)
+                .WithLogs(new LogEntry(TestItem.AddressA, data, [TestItem.KeccakA])).TestObject;
+        }
+
+        AssertRootMatches(Osaka.Instance, receipts, _decoder);
+    }
+
     [Test, NonParallelizable]
     public void Direct_root_matches_at_three_byte_index_boundary([Values(65535, 65536, 65537)] int count)
     {
