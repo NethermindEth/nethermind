@@ -51,7 +51,7 @@ public readonly record struct Eip8288Verifier(ValueHash256 AggregatedVk)
     {
         internal static readonly ValueHash256 LeanSphincs = ValueKeccak.Compute("ethereum/8288/leanSPHINCS/pinned-keccak-sphincs"u8);
         internal static readonly ValueHash256 LeanStark = ValueKeccak.Compute("ethereum/8288/leanSTARK/pinned-generic-cpu"u8);
-        internal static readonly ValueHash256 BatchedLeanStark = ValueKeccak.Compute("ethereum/8288/leanSTARK/pinned-generic-cpu/claim-hash"u8);
+        internal static readonly ValueHash256 BatchedLeanStark = ValueKeccak.Compute("ethereum/8288/leanSTARK/pinned-generic-cpu/claim-hash/vk-hash"u8);
     }
 
     public override string ToString() => $"AGGREGATED_VK {AggregatedVk.ToShortString()}";

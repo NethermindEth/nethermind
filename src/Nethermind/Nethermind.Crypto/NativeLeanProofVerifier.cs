@@ -20,7 +20,7 @@ namespace Nethermind.Crypto;
 public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
 {
     private const string Library = "nethermind_lean";
-    private const uint ExpectedAbiVersion = 16;
+    private const uint ExpectedAbiVersion = 17;
     // The ABI's guests: EIP-8288's, and the one with batch pricing (ethereum/EIPs#12664).
     private const uint BaseGuest = 0;
     private const uint BatchedGuest = 1;

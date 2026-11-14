@@ -134,13 +134,13 @@ public static class Eip8288Constants
     /// <summary>Fiat-Shamir key of EIP-8288's recursive guest in the pinned Nethermind.Crypto.Lean package.</summary>
     public static ReadOnlySpan<byte> AggregatedVk => _aggregatedVk;
 
-    /// <summary>Fiat-Shamir key of the package's recursive guest with batch pricing (ethereum/EIPs#12664), which forks enabling
+    /// <summary>Fiat-Shamir key of the package's recursive guest with batched generic proof dependencies (ethereum/EIPs#12664), which forks enabling
     /// <see cref="Specs.IReleaseSpec.IsEipBatchedDependencyPricingEnabled"/> verify with.</summary>
     /// <remarks>It takes leaves of up to <see cref="MaxClaimsPerBatchLeaf"/> claims, a direct leanSTARK witness as a proof of
-    /// <c>get_claim_hash(claim)</c>, and commits to the scheme-inclusive digest of
+    /// <c>get_claim_hash(claim)</c> under <c>get_vk_hash(program_commitment)</c>, and commits to the scheme-inclusive digest of
     /// <see cref="Eip8288Dependencies.ComputeDepsHash(System.Collections.Generic.IReadOnlyList{FrameDependency}, bool)"/>.</remarks>
     public static ReadOnlySpan<byte> BatchedAggregatedVk => _batchedAggregatedVk;
 
     private static readonly byte[] _aggregatedVk = Convert.FromHexString("f6f37690cf7241c9ea24392f349867acc1c8e06034e8ce149e2f11a25eec56f9");
-    private static readonly byte[] _batchedAggregatedVk = Convert.FromHexString("ed44310d2b59ac7308d964cb622e32dc966b1e2e9b6f201fcdc350b1bbd705ff");
+    private static readonly byte[] _batchedAggregatedVk = Convert.FromHexString("3f87249262b6fc9c5776514d9d2ba8bca372ad169b22b39d426d416446fd5a5e");
 }
