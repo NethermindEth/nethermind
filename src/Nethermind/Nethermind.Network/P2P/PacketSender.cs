@@ -80,6 +80,8 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
     {
         private IByteBufferAllocator? _allocator;
         private int _packetType;
+        // The packet type that GetSpan writes ahead of the content, committed with the content on Advance.
+        private int _uncommittedLength;
 
         public IByteBuffer? Buffer { get; private set; }
 
@@ -101,20 +103,24 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
             if (Buffer is not null)
                 throw new InvalidOperationException($"{nameof(PacketWriter)} takes the content in a single span.");
 
-            int packetTypeLength = Rlp.LengthOf(_packetType);
-            int length = packetTypeLength + sizeHint;
+            int packetTypeLength = _uncommittedLength = Rlp.LengthOf(_packetType);
+            // IBufferWriter requires a non-empty span when no size is requested.
+            int length = packetTypeLength + Math.Max(sizeHint, 1);
             IByteBuffer buffer = Buffer = _allocator!.Buffer(length);
             // DotNetty allocators return array-backed buffers, the direct ones included.
             Span<byte> packet = buffer.Array.AsSpan(buffer.ArrayOffset + buffer.WriterIndex, length);
             RlpWriter writer = RlpWriter.ContentWriter(packet);
             writer.Encode(_packetType);
-            buffer.SetWriterIndex(buffer.WriterIndex + packetTypeLength);
             return packet[packetTypeLength..];
         }
 
         public Memory<byte> GetMemory(int sizeHint = 0) => throw new NotSupportedException();
 
-        public void Advance(int count) => Buffer!.SetWriterIndex(Buffer.WriterIndex + count);
+        public void Advance(int count)
+        {
+            Buffer!.SetWriterIndex(Buffer.WriterIndex + _uncommittedLength + count);
+            _uncommittedLength = 0;
+        }
     }
 
     private void SendBuffer(IByteBuffer buffer)

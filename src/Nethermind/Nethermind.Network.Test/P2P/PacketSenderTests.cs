@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Autofac;
@@ -136,10 +137,27 @@ namespace Nethermind.Network.Test.P2P
             catch (InvalidOperationException) when (earlierLengthError != 0) { }
             earlier?.SafeRelease();
             (_, IMessageSerializationService serializer, _) = SetupChannel(isActive: true, contentLength: 2);
+            TestMessage laterMessage = new() { AdaptivePacketType = 0x80 };
 
-            using DisposableByteBuffer packet = PacketSender.Serialize(serializer, testMessage, UnpooledByteBufferAllocator.Default).AsDisposable();
+            using DisposableByteBuffer packet = PacketSender.Serialize(serializer, laterMessage, UnpooledByteBufferAllocator.Default).AsDisposable();
 
-            Assert.That(packet.ReadableBytes, Is.EqualTo(3));
+            Assert.That(packet.ReadAllHex(), Is.EqualTo("81800000"));
+        }
+
+        [Test]
+        public void Gives_a_non_empty_span_when_no_size_is_requested()
+        {
+            IMessageSerializationService service = Substitute.For<IMessageSerializationService>();
+            service.When(s => s.Serialize(Arg.Any<TestMessage>(), Arg.Any<IBufferWriter<byte>>())).Do(call =>
+            {
+                IBufferWriter<byte> writer = call.Arg<IBufferWriter<byte>>();
+                writer.GetSpan()[0] = 0xc0;
+                writer.Advance(1);
+            });
+
+            using DisposableByteBuffer packet = PacketSender.Serialize(service, new TestMessage(), UnpooledByteBufferAllocator.Default).AsDisposable();
+
+            Assert.That(packet.ReadAllHex(), Is.EqualTo("80c0"));
         }
 
         [Test]
