@@ -98,8 +98,8 @@ internal sealed class WrapperTestNode : IDisposable
         Raw = rawWitnesses
             ? new(Pool, Substitute.For<IChainHeadInfoProvider>(), new TxPoolConfig { RecognizedPrograms = ["slhdsa-shake128s-pure-v1"] })
             : null;
-        Wrappers = new ProofWrapperService(Pool, specs, Tree, ProofStore, Verifier, new ForwardingBlobAdmission(this), Raw,
-            rawWitnesses ? Substitute.For<IRecognizedProgramVerifier>() : null);
+        Recognized = rawWitnesses ? Substitute.For<IRecognizedProgramVerifier>() : null;
+        Wrappers = new ProofWrapperService(Pool, specs, Tree, ProofStore, Verifier, new ForwardingBlobAdmission(this), Raw, Recognized);
         Transport = new ProofWrapperTransport(Wrappers, LimboLogs.Instance, Time);
     }
 
@@ -113,6 +113,9 @@ internal sealed class WrapperTestNode : IDisposable
 
     /// <summary>The raw candidates, when the node recognizes a program.</summary>
     public RawWitnessPool? Raw { get; }
+
+    /// <summary>The recognized programs' native checks, when the node recognizes a program.</summary>
+    public IRecognizedProgramVerifier? Recognized { get; }
     public ProofWrapperTransport Transport { get; }
 
     /// <summary>Where validated wrappers hand their blob-carrying transactions; none refuses them.</summary>

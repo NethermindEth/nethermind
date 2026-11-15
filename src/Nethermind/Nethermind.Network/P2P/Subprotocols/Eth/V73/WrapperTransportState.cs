@@ -316,6 +316,9 @@ internal sealed class WrappersRequest(long id, long created, long reserved, Wrap
     /// <summary>Response bytes reserved against the peer and global budgets until the response arrives.</summary>
     public long Reserved { get; } = reserved;
     public WrapperFetch[] Fetches { get; } = fetches;
+
+    /// <summary>Whether the request is for mode-2 wrappers, which a request never mixes with others.</summary>
+    public bool Raw => Fetches.Length != 0 && Fetches[0].Announcement.Mode == MempoolWrapper.ModeRaw;
 }
 
 /// <summary>A wanted wrapper from its first announcement until it is validated or abandoned.</summary>

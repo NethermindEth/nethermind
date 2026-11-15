@@ -48,6 +48,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
     private readonly CancellationTokenSource _stop = new();
     private readonly ITimer? _timer;
     private long _chargedBytes;
+    private long _rawChargedBytes;
     private int _validationWorkers;
     private int _nextPeer;
     private int _rawFetches;
@@ -81,6 +82,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
     internal int FetchCount { get { lock (_gate) return _fetches.Count; } }
     internal int StoredObjects { get { lock (_gate) return _store.Count; } }
     internal long ChargedBytes { get { lock (_gate) return _chargedBytes; } }
+    internal long RawChargedBytes { get { lock (_gate) return _rawChargedBytes; } }
     internal long CachedEncodingBytes => _encodingBudget.Used;
     internal bool IsStored(in ValueHash256 wrapperHash) { lock (_gate) return _store.Contains(wrapperHash); }
     internal bool IsOffered(in ValueHash256 wrapperHash) { lock (_gate) return TryGetOffered(wrapperHash, out _); }
@@ -189,23 +191,27 @@ public sealed partial class ProofWrapperTransport : IDisposable
     /// <summary>Releases an outstanding request's reservation; its wanted wrappers go back to the queue.</summary>
     private void Abandon(WrapperPeer peer, WrappersRequest request)
     {
-        Release(peer, request.Reserved);
+        Release(peer, request.Reserved, request.Raw);
         foreach (WrapperFetch fetch in request.Fetches) fetch.Requested = false;
     }
 
-    private bool TryCharge(WrapperPeer peer, long bytes)
+    /// <param name="raw">Whether the bytes are mode-2 traffic, also held to <see cref="WrapperTransportLimits.MaxRawInFlightBytes"/>.</param>
+    private bool TryCharge(WrapperPeer peer, long bytes, bool raw)
     {
         if (bytes < 0 || bytes > WrapperTransportLimits.MaxGlobalBytes - _chargedBytes
-            || bytes > WrapperTransportLimits.MaxPeerBytes - peer.ChargedBytes) return false;
+            || bytes > WrapperTransportLimits.MaxPeerBytes - peer.ChargedBytes
+            || raw && bytes > WrapperTransportLimits.MaxRawInFlightBytes - _rawChargedBytes) return false;
         _chargedBytes += bytes;
         peer.ChargedBytes += bytes;
+        if (raw) _rawChargedBytes += bytes;
         return true;
     }
 
-    private void Release(WrapperPeer peer, long bytes)
+    private void Release(WrapperPeer peer, long bytes, bool raw)
     {
         _chargedBytes -= bytes;
         peer.ChargedBytes -= bytes;
+        if (raw) _rawChargedBytes -= bytes;
     }
 
     /// <summary>Malformed transport data or a protocol violation: the contribution is discarded and the peer disconnected.</summary>

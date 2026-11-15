@@ -261,6 +261,27 @@ public class RawWitnessTests
         }
     }
 
+    // EIP-8437: a failed witness invalidates the whole received wrapper, not just its transaction.
+    [Test]
+    public async Task Failed_witness_invalidates_the_whole_wrapper()
+    {
+        Node node = CreateNode();
+        RawSignature good = Signature(1), bad = new([1], ValueKeccak.Compute("m"), [0, 1]);
+        FrameDependency goodDep = RawDependency(good), badDep = RawDependency(bad);
+        Transaction valid = Transaction(0, goodDep), invalid = Transaction(1, badDep);
+        byte[] wrapper = Encode(RawWrapper(new() { [goodDep] = good, [badDep] = bad }, valid, invalid));
+
+        ProofWrapperAcceptance result = await node.Service.AcceptOwnedDetailedAsync(wrapper);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.Error, Is.EqualTo(MempoolWrapperValidator.InvalidRawWitness));
+            Assert.That(node.Raw.Holds(valid.Hash!.ValueHash256), Is.False);
+            Assert.That(node.Raw.IsKnownInvalid(ValueKeccak.Compute(wrapper), Eip8288Verifier.For(Batched)), Is.True);
+            Assert.That(node.Relayed, Is.Empty);
+        }
+    }
+
     // EIP-8437: raw entries do not consume the direct generic-proof allowance; mode 0's per-scheme limits apply to the rest.
     [TestCase(1, true)]
     [TestCase(2, false)]
@@ -774,26 +795,32 @@ public class RawWitnessTests
         }
     }
 
-    // The prover proves the held transactions only, and only their dependencies.
+    // EIP-8437: accept A and locally reject B. The original wrapper is relayed unchanged and stored at its full size; only A is held
+    // and proved, and A's new wrapper keeps the dependency it shares with B but not B's own.
     [Test]
     public async Task Prover_proves_only_held_transactions()
     {
         Node node = CreateNode();
         SetNonce(node, 1);
-        RawSignature stale = Signature(1), fresh = Signature(2);
-        FrameDependency staleDep = RawDependency(stale), freshDep = RawDependency(fresh);
-        Transaction staleTx = Transaction(0, staleDep), freshTx = Transaction(1, freshDep);
-        await node.Service.AcceptOwnedDetailedAsync(Encode(RawWrapper(new() { [staleDep] = stale, [freshDep] = fresh }, staleTx, freshTx)));
+        RawSignature shared = Signature(1);
+        FrameDependency sharedDep = RawDependency(shared), exclusiveDep = SphincsDependency("rejected only");
+        Transaction rejected = Transaction(0, sharedDep, exclusiveDep), accepted = Transaction(1, sharedDep);
+        byte[] wrapper = Encode(RawWrapper(new() { [sharedDep] = shared }, rejected, accepted));
+        await node.Service.AcceptOwnedDetailedAsync(wrapper);
         using RawWitnessProver prover = new(node.Service, node.Raw, node.Recognized, new ProductionProofCache(node.Verifier),
             new TxPoolConfig { RawWitnessMaxClaimsPerLeaf = 2 }, LimboLogs.Instance);
+        long storedBytes = node.Raw.Bytes;
 
         ProofWrapperAcceptance? result = await prover.ProveOnceAsync();
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(node.Relayed[0], Is.EqualTo(wrapper), "relayed unchanged, rejected transaction and witness included");
+            Assert.That(storedBytes, Is.EqualTo(wrapper.Length));
             Assert.That(result?.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted), result?.Result.Error);
-            Assert.That(node.Verifier.LastInput!.BatchLeaves.Single().Dependencies, Is.EqualTo(new[] { freshDep }));
-            Assert.That(node.Pool.GetPendingTransactions().Select(static t => t.Hash), Is.EqualTo(new[] { freshTx.Hash }));
+            Assert.That(node.Verifier.LastInput!.BatchLeaves.Single().Dependencies, Is.EqualTo(new[] { sharedDep }));
+            Assert.That(node.Verifier.LastInput!.Deps, Is.Empty, "the rejected transaction's own witness is dropped");
+            Assert.That(node.Pool.GetPendingTransactions().Select(static t => t.Hash), Is.EqualTo(new[] { accepted.Hash }));
         }
     }
 

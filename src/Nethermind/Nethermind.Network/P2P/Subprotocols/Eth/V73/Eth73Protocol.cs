@@ -125,6 +125,10 @@ public static class WrapperTransportLimits
     /// <summary>Bytes charged across all peers.</summary>
     public const long MaxGlobalBytes = 64L * 1024 * 1024;
 
+    /// <summary>The share of <see cref="MaxGlobalBytes"/> mode-2 requests and bodies may hold, so in-flight raw traffic never
+    /// crowds out proof-backed fetches (EIP-8437).</summary>
+    public const long MaxRawInFlightBytes = MaxGlobalBytes / 4;
+
     public const int MaxValidationWorkers = MaxRequestsPerPeer;
     public const long MaxStoreBytes = 128L * 1024 * 1024;
     public const int MaxStoreObjects = 256;
@@ -137,6 +141,10 @@ public static class WrapperTransportLimits
     /// <summary>The share of <see cref="MaxPendingAnnouncements"/> mode-2 announcements may hold, so raw traffic never crowds
     /// proof-backed wrappers out of the pending cache.</summary>
     public const int MaxPendingRawAnnouncements = MaxPendingAnnouncements / 4;
+
+    /// <summary>The share of <see cref="MaxRequestsPerPeer"/> outstanding mode-2 requests may take, leaving proof-backed fetches
+    /// request slots of their own.</summary>
+    public const int MaxRawRequestsPerPeer = MaxRequestsPerPeer / 2;
 
     /// <summary>Held wrappers announced to a newly connected peer, most recent first.</summary>
     public const int MaxConnectAnnouncements = Eth73Protocol.MaxAnnouncements;

@@ -136,10 +136,17 @@ public sealed partial class ProofWrapperTransport
     {
         List<WrapperFetch> batch = [];
         long bytes = 0;
+        bool? raw = null;
+        int rawRequests = 0;
+        foreach (WrappersRequest outstanding in peer.Requests.Values) if (outstanding.Raw) rawRequests++;
+        bool rawAllowed = rawRequests < WrapperTransportLimits.MaxRawRequestsPerPeer;
         for (; next < queued.Count && batch.Count < Eth73Protocol.MaxWrappersPerRequest; next++)
         {
             WrapperFetch fetch = queued[next];
             if (fetch.Requested || fetch.Wrapper is not null) continue;
+            // A request carries mode-2 wrappers or others, never both, so its bytes are charged to one budget; the rest wait their turn.
+            bool isRaw = fetch.Announcement.Mode == MempoolWrapper.ModeRaw;
+            if (isRaw && !rawAllowed || (raw ??= isRaw) != isRaw) continue;
             int length = EntryLength(fetch.LengthFrom(peer));
             if (batch.Count > 0 && bytes + length > Eth73Protocol.SoftResponseLimit) break;
             batch.Add(fetch);
@@ -147,7 +154,7 @@ public sealed partial class ProofWrapperTransport
         }
         // Requests are batched within the soft limit, so a response carries at most the requested bytes.
         long reserved = Math.Min(bytes + Eth73Protocol.ResponseFramingBytes, Eth73Protocol.LocalMaxResponseBytes);
-        if (batch.Count == 0 || peer.LastIssued == long.MaxValue || !TryCharge(peer, reserved)) return false;
+        if (batch.Count == 0 || peer.LastIssued == long.MaxValue || !TryCharge(peer, reserved, raw == true)) return false;
         ValueHash256[] ids = new ValueHash256[batch.Count];
         for (int i = 0; i < ids.Length; i++)
         {
@@ -201,7 +208,7 @@ public sealed partial class ProofWrapperTransport
                 outbox.Flush();
                 return;
             }
-            Release(peer, request.Reserved);
+            Release(peer, request.Reserved, request.Raw);
             WrapperFetch[] fetches = request.Fetches;
             int[] matched = new int[entries.Length];
             int cursor = 0;
@@ -250,7 +257,7 @@ public sealed partial class ProofWrapperTransport
                         continue;
                     }
                     if (fetch.Removed || fetch.Wrapper is not null) continue;
-                    if (!TryCharge(peer, item.Charge))
+                    if (!TryCharge(peer, item.Charge, fetch.Announcement.Mode == MempoolWrapper.ModeRaw))
                     {
                         WrapperMetrics.Record(WrapperEvent.BudgetDropped);
                         if (_logger.IsDebug) _logger.Debug($"eth/73 dropped {fetch.Announcement} from {peer}: byte budget exhausted");
@@ -383,7 +390,7 @@ public sealed partial class ProofWrapperTransport
     {
         if (fetch.Removed) return;
         fetch.Removed = true;
-        if (fetch.Server is { } server && fetch.ChargedBytes != 0) Release(server, fetch.ChargedBytes);
+        if (fetch.Server is { } server && fetch.ChargedBytes != 0) Release(server, fetch.ChargedBytes, fetch.Announcement.Mode == MempoolWrapper.ModeRaw);
         fetch.ChargedBytes = 0;
         fetch.Wrapper = null;
     }
@@ -432,7 +439,7 @@ public sealed partial class ProofWrapperTransport
         {
             fetch.Processing?.Dispose();
             fetch.Processing = null;
-            Release(server, fetch.ChargedBytes);
+            Release(server, fetch.ChargedBytes, fetch.Announcement.Mode == MempoolWrapper.ModeRaw);
             fetch.ChargedBytes = 0;
             fetch.Wrapper = null;
             fetch.Server = null;

@@ -4,12 +4,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth.V73;
 using Nethermind.Network.P2P.Subprotocols.Eth.V73.Messages;
 using Nethermind.Serialization.Rlp;
+using NSubstitute;
 using NUnit.Framework;
 using static Nethermind.Network.Test.P2P.Subprotocols.Eth.V73.WrapperTestObjects;
 
@@ -202,6 +204,80 @@ public class RawWitnessTransportTests
 
         if (parses) Assert.That(WrapperBodies.ParseWrapper(body), Has.Length.EqualTo(transactions));
         else Assert.That(() => WrapperBodies.ParseWrapper(body), Throws.InstanceOf<RlpException>());
+    }
+
+    // EIP-8437: a body breaking mode 2's transaction count, raw-entry count or per-entry byte bound is malformed although its
+    // announced length is valid, and is rejected before any signature or proof is verified.
+    [TestCase("transaction count")]
+    [TestCase("raw-entry count")]
+    [TestCase("raw-entry bytes")]
+    public async Task Over_limit_mode_2_bodies_are_malformed_before_any_verification(string scenario)
+    {
+        (int transactions, int entries, int signatureBytes) = scenario switch
+        {
+            "transaction count" => (MempoolWrapper.MaxRawTransactions + 1, 1, 8),
+            "raw-entry count" => (MempoolWrapper.MaxRawEntries + 1, MempoolWrapper.MaxRawEntries + 1, 8),
+            _ => (1, 1, MempoolWrapper.MaxRawWitnessBytes),
+        };
+        byte[] body = RawBody(transactions, entries, signatureBytes);
+        Assert.That(body.Length, Is.LessThanOrEqualTo(Eth73Protocol.MaxWrapperBytes), "the announced length is valid");
+        using WrapperTestNode node = new(rawWitnesses: true);
+        FakeWrapperLink link = new();
+        WrapperPeer peer = node.Connect(link);
+
+        node.Transport.OnAnnounce(peer, new([Announcement(MempoolWrapper.ModeRaw, body.Length, ValueKeccak.Compute(body))]));
+        node.Transport.OnProofWrappers(peer, new ProofWrappersMessage(link.Sent<GetProofWrappersMessage>().Single().RequestId, [Entry(body)]));
+        await WrapperTestNode.Until(() => node.Transport.FetchCount == 0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(link.Penalties, Is.Not.Empty, "malformed, not merely invalid");
+            Assert.That(node.Verifier.Calls, Is.Zero);
+            node.Recognized!.DidNotReceiveWithAnyArgs().Verify(default, default!, out _);
+            Assert.That(node.Transport.IsStored(ValueKeccak.Compute(body)), Is.False);
+        }
+    }
+
+    // EIP-8437: mode-2 traffic leaves proof-backed fetches request slots and in-flight bytes of their own.
+    [Test]
+    public void Mode_2_requests_leave_proof_backed_fetches_room()
+    {
+        using WrapperTestNode node = new(rawWitnesses: true);
+        FakeWrapperLink link = new();
+        WrapperPeer peer = node.Connect(link);
+        int rawAnnouncements = (WrapperTransportLimits.MaxRawRequestsPerPeer + 1) * Eth73Protocol.MaxWrappersPerRequest;
+        WrapperAnnouncement[] raw = [.. Enumerable.Range(0, rawAnnouncements)
+            .Select(static i => Announcement(MempoolWrapper.ModeRaw, 1024, ValueKeccak.Compute(BitConverter.GetBytes(i)),
+                new WrapperCoverage(ValueKeccak.Compute(BitConverter.GetBytes(-i)), ValueKeccak.Compute(BitConverter.GetBytes(i))))).OrderBy(static a => a.Hash)];
+        node.Transport.OnAnnounce(peer, new([.. raw.Take(Eth73Protocol.MaxAnnouncements)]));
+        node.Transport.OnAnnounce(peer, new([.. raw.Skip(Eth73Protocol.MaxAnnouncements)]));
+        byte[] proven = Wrapper(64, FrameTransaction(1));
+
+        node.Transport.OnAnnounce(peer, new([Describe(proven)]));
+
+        GetProofWrappersMessage[] requests = link.Sent<GetProofWrappersMessage>();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(requests.Count(r => r.Hashes.Any(h => raw.Any(a => a.Hash == h))), Is.EqualTo(WrapperTransportLimits.MaxRawRequestsPerPeer));
+            Assert.That(requests.Any(r => r.Hashes.Contains(Describe(proven).Hash)), Is.True, "the proof-backed wrapper still gets a request slot");
+            Assert.That(requests.All(r => r.Hashes.All(h => raw.Any(a => a.Hash == h)) || r.Hashes.All(h => raw.All(a => a.Hash != h))), Is.True,
+                "a request never mixes modes");
+            Assert.That(node.Transport.RawChargedBytes, Is.InRange(1, WrapperTransportLimits.MaxRawInFlightBytes));
+        }
+    }
+
+    /// <summary>A mode-2 body of <paramref name="transactions"/> transactions sharing <paramref name="entries"/> leanSTARK dependencies
+    /// round-robin, each with a raw entry carrying a signature of <paramref name="signatureBytes"/>.</summary>
+    private static byte[] RawBody(int transactions, int entries, int signatureBytes)
+    {
+        FrameDependency[] deps = [.. Enumerable.Range(0, entries).Select(static i => new FrameDependency(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute(BitConverter.GetBytes(i)), default))];
+        Transaction[] txs = [.. Enumerable.Range(0, transactions).Select(i => Declaring(i, deps[i % deps.Length]))];
+        List<FrameDependency> canonical = Eip8288Dependencies.Canonicalize(deps);
+        return Rlp.Encode(
+            Rlp.Encode([.. txs.OrderBy(static t => t.Hash!.ToString()).Select(static t => Rlp.Encode(Envelope(t)))]),
+            Rlp.Encode(MempoolWrapper.ModeRaw),
+            Rlp.Encode(Rlp.Encode([.. canonical.Select(static d => { byte[] b = new byte[Eip8288Constants.DependencyTripleLength]; d.WriteTo(b); return Rlp.Encode(b); })]),
+                Rlp.Encode([.. canonical.Select(_ => Rlp.Encode(Rlp.Encode(new byte[] { 1 }), Rlp.Encode(new byte[32]), Rlp.Encode(new byte[signatureBytes])))]))).Bytes;
     }
 
     /// <summary>A frame transaction, distinct by <paramref name="seed"/>, declaring <paramref name="dependency"/>.</summary>
