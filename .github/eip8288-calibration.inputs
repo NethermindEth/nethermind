@@ -1,8 +1,8 @@
 # Inputs for eip8288-gas-calibration.yml. Edit and push to re-run.
 # RUNNER: a GCE machine type (an ephemeral VM via .github/actions/gcp-runner), or `box-amd64` / `box-arm64` for the
 # shared reproducible-benchmarks runners.
-RUNNER=c3-highmem-22
+RUNNER=n2-standard-8
 PROVISIONING_MODEL=SPOT
-LEAN_BINDINGS_REF=76d4bc87f4289a5e61ed9e451f17be9473c1e904
-SCENARIOS=gcp-f128-block
-TIMEOUT_MINUTES=300
+LEAN_BINDINGS_REF=0965433b02db64d426f26eb9c643d821fe9b738e
+SCENARIOS=gcp-f128-n2
+TIMEOUT_MINUTES=240
