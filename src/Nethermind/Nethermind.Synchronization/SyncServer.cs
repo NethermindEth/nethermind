@@ -492,7 +492,7 @@ namespace Nethermind.Synchronization
 
         private readonly struct EncodedHeaderSource(IHeaderStore headerStore, IHeaderDecoder decoder, ArrayPoolList<byte> headers) : IHeaderWalkSource<Range>
         {
-            public bool TryGet(in ValueHash256 hash, ulong number, out Range item, out ValueHash256 parentHash)
+            public bool TryGet(in ValueHash256 hash, Hash256? hashObject, ulong number, out Range item, out ValueHash256 parentHash)
             {
                 int start = headers.Count;
                 if (!headerStore.TryAppendRlp(in hash, number, decoder, headers))

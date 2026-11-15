@@ -13,8 +13,9 @@ namespace Nethermind.Blockchain.Headers;
 public interface IHeaderWalkSource<TItem>
 {
     /// <summary>Reads the header of <paramref name="hash"/> at <paramref name="number"/>.</summary>
+    /// <param name="hashObject">The same hash as <paramref name="hash"/> when the walk already has it as an object, else <see langword="null"/>.</param>
     /// <returns><see langword="false"/> when the header is not stored.</returns>
-    bool TryGet(in ValueHash256 hash, ulong number, [MaybeNullWhen(false)] out TItem item, out ValueHash256 parentHash);
+    bool TryGet(in ValueHash256 hash, Hash256? hashObject, ulong number, [MaybeNullWhen(false)] out TItem item, out ValueHash256 parentHash);
 }
 
 /// <summary>Finds the headers of a <c>GetBlockHeaders</c> request.</summary>
@@ -55,7 +56,7 @@ public static class HeaderWalk
     private static void Fill<TItem, TSource>(IBlockTree blockTree, ref TSource source, Span<TItem> items, in ValueHash256 hash, ulong number, int skip, bool reverse)
         where TSource : struct, IHeaderWalkSource<TItem>
     {
-        if (items.Length == 0 || !source.TryGet(in hash, number, out TItem start, out ValueHash256 parentHash)) return;
+        if (items.Length == 0 || !source.TryGet(in hash, null, number, out TItem start, out ValueHash256 parentHash)) return;
 
         if (skip == 0 && items.Length > 1)
         {
@@ -67,7 +68,7 @@ public static class HeaderWalk
             }
 
             ulong endNumber = number + (ulong)(items.Length - 1);
-            if (blockTree.FindHash(endNumber) is { } endHash && source.TryGet(in endHash.ValueHash256, endNumber, out TItem end, out ValueHash256 endParentHash))
+            if (blockTree.FindHash(endNumber) is { } endHash && source.TryGet(in endHash.ValueHash256, endHash, endNumber, out TItem end, out ValueHash256 endParentHash))
             {
                 items[^1] = end;
                 int firstIndex = FillAncestors(ref source, items, items.Length - 1, -1, in endHash.ValueHash256, endNumber, endParentHash, out ValueHash256 firstHash);
@@ -87,7 +88,7 @@ public static class HeaderWalk
             if (reverse && number < offset) break;
 
             ulong nextNumber = reverse ? number - offset : number + offset;
-            if (blockTree.FindHash(nextNumber) is not { } nextHash || !source.TryGet(in nextHash.ValueHash256, nextNumber, out TItem next, out ValueHash256 nextParentHash)) break;
+            if (blockTree.FindHash(nextNumber) is not { } nextHash || !source.TryGet(in nextHash.ValueHash256, nextHash, nextNumber, out TItem next, out ValueHash256 nextParentHash)) break;
 
             if (!reverse && (skip == 0
                     ? nextParentHash != previousHash
@@ -113,7 +114,7 @@ public static class HeaderWalk
     {
         lastHash = hash;
         while (number > 0 && (uint)(index + ancestorStep) < (uint)items.Length
-               && source.TryGet(in parentHash, --number, out TItem parent, out ValueHash256 grandparentHash))
+               && source.TryGet(in parentHash, null, --number, out TItem parent, out ValueHash256 grandparentHash))
         {
             index += ancestorStep;
             items[index] = parent;

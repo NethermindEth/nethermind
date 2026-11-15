@@ -780,11 +780,11 @@ namespace Nethermind.Blockchain
             // The walk mostly asks for the parent of the last header found, so its hash object is reused
             private Hash256? _parentHash;
 
-            public bool TryGet(in ValueHash256 hash, ulong number, [MaybeNullWhen(false)] out BlockHeader header, out ValueHash256 parentHash)
+            public bool TryGet(in ValueHash256 hash, Hash256? hashObject, ulong number, [MaybeNullWhen(false)] out BlockHeader header, out ValueHash256 parentHash)
             {
                 header = hash == startHeader.Hash
                     ? startHeader
-                    : tree.FindHeader(hash == _parentHash ? _parentHash : new Hash256(in hash), BlockTreeLookupOptions.TotalDifficultyNotNeeded, number);
+                    : tree.FindHeader(hashObject ?? (hash == _parentHash ? _parentHash : new Hash256(in hash)), BlockTreeLookupOptions.TotalDifficultyNotNeeded, number);
                 _parentHash = header?.ParentHash;
                 parentHash = _parentHash;
                 return header is not null;
