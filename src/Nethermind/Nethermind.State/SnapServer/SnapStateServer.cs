@@ -193,32 +193,29 @@ public class SnapStateServer : ISnapStateServer
             : new StateTree(_storeWithReadFlag, _logManager);
 
         EncodedStorageRanges responseNodes = new(accounts.Count);
-        for (int i = 0; i < accounts.Count; i++)
+        try
         {
-            if (responseSize > byteLimit || cancellationToken.IsCancellationRequested)
+            for (int i = 0; i < accounts.Count; i++)
             {
-                break;
-            }
+                if (responseSize > byteLimit || cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
 
-            if (responseSize > 1 && (byteLimit - responseSize) < 10000)
-            {
-                break;
-            }
+                if (responseSize > 1 && (byteLimit - responseSize) < 10000)
+                {
+                    break;
+                }
 
-            Hash256? storageRoot = GetStorageRootByPath(tree, rootHash, accounts[i].Path.Bytes);
-            if (storageRoot is null)
-            {
-                break;
-            }
+                Hash256? storageRoot = GetStorageRootByPath(tree, rootHash, accounts[i].Path.Bytes);
+                if (storageRoot is null)
+                {
+                    break;
+                }
 
-            Hash256? storagePath = accounts[i].Path.ToCommitment();
+                Hash256? storagePath = accounts[i].Path.ToCommitment();
 
-            long innerResponseSize;
-            IOwnedReadOnlyList<byte[]> proofs;
-            bool stoppedEarly;
-            try
-            {
-                (innerResponseSize, proofs, stoppedEarly) = GetNodesFromTrieVisitor(
+                (long innerResponseSize, IOwnedReadOnlyList<byte[]> proofs, bool stoppedEarly) = GetNodesFromTrieVisitor(
                     rootHash,
                     startingHash1,
                     limitHash1,
@@ -227,26 +224,26 @@ public class SnapStateServer : ISnapStateServer
                     storageRoot,
                     responseNodes.Collector,
                     cancellationToken);
-            }
-            catch
-            {
-                responseNodes.Dispose();
-                throw;
-            }
 
-            if (!responseNodes.TryCompleteAccount())
-            {
-                //return proof of absence
-                return (responseNodes, new ByteArrayListAdapter(proofs));
-            }
+                if (!responseNodes.TryCompleteAccount())
+                {
+                    //return proof of absence
+                    return (responseNodes, new ByteArrayListAdapter(proofs));
+                }
 
-            if (stoppedEarly || startingHash1 != Keccak.Zero)
-            {
-                return (responseNodes, new ByteArrayListAdapter(proofs));
-            }
+                if (stoppedEarly || startingHash1 != Keccak.Zero)
+                {
+                    return (responseNodes, new ByteArrayListAdapter(proofs));
+                }
 
-            proofs.Dispose();
-            responseSize += innerResponseSize;
+                proofs.Dispose();
+                responseSize += innerResponseSize;
+            }
+        }
+        catch
+        {
+            responseNodes.Dispose();
+            throw;
         }
 
         return (responseNodes, EmptyByteArrayList.Instance);

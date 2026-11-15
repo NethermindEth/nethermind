@@ -1,8 +1,8 @@
 using System;
-using System.Buffers;
 using System.Collections.Generic;
-using System.Diagnostics.Tracing;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -573,38 +573,6 @@ public class SnapStateServerTests
     }
 
     [Test]
-    public void RangeRequests_ReturnPooledEntries_WhenTraversalThrows([Values] bool storageRanges)
-    {
-        using ISnapServerContext context = CreateContext();
-        PathWithAccount[] accounts = [];
-        if (storageRanges)
-        {
-            // The first account fills a large slot buffer; the storage trie of the second account is missing.
-            FillAccountWithStorage(context, 10_000);
-            context.SetRawAccount(TestItem.KeccakH, AccountDecoder.Instance.Encode(Build.An.Account.WithBalance(1).WithStorageRoot(TestItem.KeccakA).TestObject));
-            accounts = [new(TestItem.Tree.AccountAddress0, null), new(TestItem.KeccakH, null)];
-        }
-        else
-        {
-            FillMultipleAccounts(context, 100);
-            context.SetRawAccount(Keccak.MaxValue, [0xc0]);
-        }
-
-        using SharedByteBufferRentals rentals = new(minimumLength: 1 << 19);
-        Assert.That(() =>
-        {
-            if (storageRanges) context.Server.GetStorageRanges(context.RootHash, accounts, null, null, ISnapStateServer.HardResponseByteLimit, CancellationToken.None);
-            else context.Server.GetAccountRanges(context.RootHash, Keccak.Zero, null, ISnapStateServer.HardResponseByteLimit, CancellationToken.None);
-        }, Throws.Exception);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(rentals.RentCount, Is.Positive, "the collector rents a buffer of the response size");
-            Assert.That(rentals.Outstanding, Is.Empty, "the collected entries go back to the pool");
-        }
-    }
-
-    [Test]
     public void GetStorageRanges_OfManyAccounts_UseOneBufferThatDisposeReturns()
     {
         const int accountCount = 100;
@@ -626,51 +594,45 @@ public class SnapStateServerTests
             context.Server.GetStorageRanges(context.RootHash, accounts, null, null, ISnapStateServer.HardResponseByteLimit, CancellationToken.None);
         proofs?.Dispose();
         byte[][] values = [.. served.Select(static slots => slots.Single().SlotRlpValue)];
+        bool adjacent = AreAdjacent(served);
         served.DisposeRecursive();
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(values, Is.EqualTo(Enumerable.Range(1, accountCount).Select(static i => Rlp.Encode(new[] { (byte)i }))));
-            Assert.That(rentals.RentCount, Is.LessThan(accountCount / 4), "the accounts share the buffer of the response");
+            Assert.That(adjacent, Is.True, "the accounts share the buffer of the response");
             Assert.That(rentals.Outstanding, Is.Empty, "the buffer goes back to the pool");
+        }
+
+        static bool AreAdjacent(IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> lists)
+        {
+            for (int i = 1; i < lists.Count; i++)
+            {
+                ReadOnlySpan<byte> previous = ((EncodedSnapEntries<PathWithStorageSlot>)lists[i - 1]).Encoded;
+                ReadOnlySpan<byte> next = ((EncodedSnapEntries<PathWithStorageSlot>)lists[i]).Encoded;
+                if (!Unsafe.AreSame(ref Unsafe.Add(ref MemoryMarshal.GetReference(previous), previous.Length), ref MemoryMarshal.GetReference(next))) return false;
+            }
+
+            return true;
         }
     }
 
-    /// <summary>Records the buffers of at least <paramref name="minimumLength"/> bytes that this thread rents from <see cref="ArrayPool{T}.Shared"/> and does not return.</summary>
-    private sealed class SharedByteBufferRentals(int minimumLength) : EventListener
+    [Test]
+    public void EncodedStorageRanges_SlotListsAreEmptyAfterDispose([Values] bool recursive)
     {
-        private readonly int _threadId = Environment.CurrentManagedThreadId;
-        private readonly int _poolId = ArrayPool<byte>.Shared.GetHashCode();
-
-        public HashSet<int> Outstanding { get; } = [];
-        public int RentCount { get; private set; }
-
-        protected override void OnEventSourceCreated(EventSource eventSource)
+        EncodedStorageRanges ranges = new(2);
+        foreach (Hash256 path in (Hash256[])[TestItem.KeccakA, TestItem.KeccakB])
         {
-            if (eventSource.Name == "System.Buffers.ArrayPoolEventSource") EnableEvents(eventSource, EventLevel.Verbose);
+            ranges.Collector.Collect(path.ValueHash256, [1]);
+            ranges.TryCompleteAccount();
         }
 
-        protected override void OnEventWritten(EventWrittenEventArgs eventData)
-        {
-            if (Environment.CurrentManagedThreadId != _threadId
-                || eventData.Payload is not [int bufferId, int bufferSize, int poolId, ..]
-                || poolId != _poolId
-                || bufferSize < minimumLength)
-            {
-                return;
-            }
+        IOwnedReadOnlyList<PathWithStorageSlot>[] slotLists = [.. ranges];
+        if (recursive) ranges.DisposeRecursive();
+        else ranges.Dispose();
 
-            switch (eventData.EventName)
-            {
-                case "BufferRented":
-                    RentCount++;
-                    Outstanding.Add(bufferId);
-                    break;
-                case "BufferReturned":
-                    Outstanding.Remove(bufferId);
-                    break;
-            }
-        }
+        Assert.That(slotLists.Select(static slots => (slots.Count, ((EncodedSnapEntries<PathWithStorageSlot>)slots).Encoded.Length, slots.AsSpan().Length)),
+            Is.All.EqualTo((0, 0, 0)));
     }
 
     [Test]
@@ -703,7 +665,7 @@ public class SnapStateServerTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(served, Is.Not.Empty);
+            Assert.That(served, Is.TypeOf<EncodedSnapEntries<PathWithAccount>>().And.Not.Empty, "the serializer copies only encoded entries as they are");
             Assert.That(Serialize(serializer, servedMessage), Is.EqualTo(Serialize(serializer, decodedMessage)));
             Assert.That(served.Select(static a => (a.Path, a.Account)), Is.EqualTo(decodedMessage.PathsWithAccounts.Select(static a => (a.Path, a.Account))));
         }
@@ -751,7 +713,7 @@ public class SnapStateServerTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(served, Has.Count.EqualTo(servedAccounts));
+            Assert.That(served, Has.Count.EqualTo(servedAccounts).And.All.TypeOf<EncodedSnapEntries<PathWithStorageSlot>>(), "the serializer copies only encoded entries as they are");
             for (int i = 0; i < served.Count - 1; i++) Assert.That(served[i], Has.Count.EqualTo(slotCounts[i]), $"account {i}");
             Assert.That(served[^1], lastPartial ? Has.Count.InRange(1, slotCounts[served.Count - 1] - 1) : Has.Count.EqualTo(slotCounts[served.Count - 1]), "last account");
             Assert.That(Serialize(serializer, servedMessage), Is.EqualTo(Serialize(serializer, decodedMessage)));

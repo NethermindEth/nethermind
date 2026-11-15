@@ -71,12 +71,17 @@ public sealed class EncodedStorageRanges(int accountCapacity) : IOwnedReadOnlyLi
         return slotLists;
     }
 
-    /// <remarks>Also releases the memory of the slot lists.</remarks>
+    /// <remarks>Also releases the memory of the slot lists, which then read as empty.</remarks>
     public void Dispose()
     {
+        if (_slotLists is not null)
+        {
+            foreach (IOwnedReadOnlyList<PathWithStorageSlot> slots in _slotLists) slots.Dispose();
+            _slotLists = null;
+        }
+
         _accounts.Dispose();
         _buffer.Dispose();
-        _slotLists = null;
     }
 
     private readonly record struct AccountEntries(int Start, int Length, int Count);

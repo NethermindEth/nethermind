@@ -196,32 +196,29 @@ public class SnapFlatStateServer(
                 : new StateTree(trieStore, logManager);
 
             EncodedStorageRanges responseNodes = new(accounts.Count);
-            for (int i = 0; i < accounts.Count; i++)
+            try
             {
-                if (responseSize > byteLimit || cancellationToken.IsCancellationRequested)
+                for (int i = 0; i < accounts.Count; i++)
                 {
-                    break;
-                }
+                    if (responseSize > byteLimit || cancellationToken.IsCancellationRequested)
+                    {
+                        break;
+                    }
 
-                if (responseSize > 1 && (byteLimit - responseSize) < 10000)
-                {
-                    break;
-                }
+                    if (responseSize > 1 && (byteLimit - responseSize) < 10000)
+                    {
+                        break;
+                    }
 
-                Hash256? storageRoot = GetStorageRootByPath(tree, stateId.StateRoot.ToCommitment(), accounts[i].Path.Bytes);
-                if (storageRoot is null)
-                {
-                    break;
-                }
+                    Hash256? storageRoot = GetStorageRootByPath(tree, stateId.StateRoot.ToCommitment(), accounts[i].Path.Bytes);
+                    if (storageRoot is null)
+                    {
+                        break;
+                    }
 
-                ValueHash256 storagePath = accounts[i].Path;
+                    ValueHash256 storagePath = accounts[i].Path;
 
-                long innerResponseSize;
-                IByteArrayList proofs;
-                bool stoppedEarly;
-                try
-                {
-                    (innerResponseSize, proofs, stoppedEarly) = GetNodesFromTrieVisitor(
+                    (long innerResponseSize, IByteArrayList proofs, bool stoppedEarly) = GetNodesFromTrieVisitor(
                         bundle,
                         stateId.StateRoot,
                         startingHash1,
@@ -231,26 +228,26 @@ public class SnapFlatStateServer(
                         storageRoot,
                         responseNodes.Collector,
                         cancellationToken);
-                }
-                catch
-                {
-                    responseNodes.Dispose();
-                    throw;
-                }
 
-                if (!responseNodes.TryCompleteAccount())
-                {
-                    // return proof of absence
-                    return (responseNodes, proofs);
-                }
+                    if (!responseNodes.TryCompleteAccount())
+                    {
+                        // return proof of absence
+                        return (responseNodes, proofs);
+                    }
 
-                if (stoppedEarly || startingHash1 != Keccak.Zero)
-                {
-                    return (responseNodes, proofs);
-                }
+                    if (stoppedEarly || startingHash1 != Keccak.Zero)
+                    {
+                        return (responseNodes, proofs);
+                    }
 
-                proofs.Dispose();
-                responseSize += innerResponseSize;
+                    proofs.Dispose();
+                    responseSize += innerResponseSize;
+                }
+            }
+            catch
+            {
+                responseNodes.Dispose();
+                throw;
             }
 
             return (responseNodes, EmptyByteArrayList.Instance);

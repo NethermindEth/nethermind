@@ -36,7 +36,7 @@ public sealed class EncodedSnapEntries<T>(RefRlpReaderFunc<T> decodeEntry, int c
     }
 
     /// <summary>The encoded entries one after the other, without the prefix of the list.</summary>
-    public ReadOnlySpan<byte> Encoded => _owner is null ? _buffer.AsSpan(0, _length) : _owner.Encoded.Slice(_start, _length);
+    public ReadOnlySpan<byte> Encoded => _owner is null ? _buffer.AsSpan(0, _length) : _length == 0 ? default : _owner.Encoded.Slice(_start, _length);
 
     public int Count { get; private set; }
 
