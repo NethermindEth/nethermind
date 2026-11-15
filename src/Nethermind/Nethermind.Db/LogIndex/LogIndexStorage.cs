@@ -982,6 +982,7 @@ namespace Nethermind.Db.LogIndex
             try
             {
                 compressed.CopyTo(input);
+                input.Slice(compressed.Length, CompressionAlgorithm.CompressedDataOverread).Clear();
                 _ = algorithm.Decompress(input, (nuint)len, buffer);
             }
             finally
