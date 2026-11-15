@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using Autofac;
 using BenchmarkDotNet.Attributes;
+using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -16,14 +17,12 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
-using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Collections;
-using Testably.Abstractions;
 
 namespace Nethermind.Benchmarks.TxPool;
 
@@ -37,7 +36,7 @@ public class BlobTxServingBenchmarks
     private const int TransactionCount = 16;
 
     private TempPath _directory = null!;
-    private IColumnsDb<BlobTxsColumns> _db = null!;
+    private IContainer _container = null!;
     private PersistentBlobTxDistinctSortedPool _pool = null!;
     private ValueHash256[] _hashes = null!;
 
@@ -48,16 +47,17 @@ public class BlobTxServingBenchmarks
     public void Setup()
     {
         _directory = TempPath.GetTempDirectory();
-        using (IContainer configs = new ContainerBuilder().AddModule(new TestNethermindModule()).Build())
-        {
-            _db = new RocksDbFactory(configs.Resolve<IRocksDbConfigFactory>(), configs.Resolve<IDbConfig>(),
-                    new HyperClockCacheWrapper(), new RealFileSystem(), LimboLogs.Instance, _directory.Path)
-                .CreateColumnsDb<BlobTxsColumns>(new DbSettings(DbNames.BlobTransactions, "blobs"));
-        }
-
         // A cache of one keeps only the transaction inserted last, which is not requested, so every read misses it.
-        TxPoolConfig config = new() { BlobCacheSize = 1, PersistentBlobStorageSize = TransactionCount + 1 };
-        _pool = new PersistentBlobTxDistinctSortedPool(new BlobTxStorage(_db), config,
+        _container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(
+                new InitConfig { BaseDbPath = _directory.Path },
+                new TxPoolConfig { BlobCacheSize = 1, PersistentBlobStorageSize = TransactionCount + 1 }))
+            // The test modules keep every database in memory; put them back on RocksDB.
+            .AddSingleton<IDbFactory, RocksDbFactory>()
+            .Build();
+
+        // TxPool builds the blob pool itself, so DI does not register it.
+        _pool = new PersistentBlobTxDistinctSortedPool(_container.Resolve<IBlobTxStorage>(), _container.Resolve<ITxPoolConfig>(),
             Comparer<Transaction>.Create(static (x, y) => x.Hash!.CompareTo(y.Hash!)), LimboLogs.Instance);
 
         Transaction template = Build.A.Transaction.WithShardBlobTxTypeAndFields(BlobsPerTransaction, spec: Osaka.Instance).TestObject;
@@ -90,7 +90,7 @@ public class BlobTxServingBenchmarks
     public void Cleanup()
     {
         _pool.Dispose();
-        _db.Dispose();
+        _container.Dispose();
         _directory.Dispose();
     }
 
@@ -125,8 +125,8 @@ public class BlobTxServingBenchmarks
         int contentLength = 0;
         for (int i = 0; i < encodings.Length; i++)
         {
-            if (!_pool.TryGetNetworkFormFromStorage(_hashes[i], out encodings[i])) throw new InvalidOperationException("Transaction not found.");
-            contentLength += TxDecoder.GetWrappedTxLength(TxType.Blob, encodings[i].Count);
+            if (!_pool.TryGetAvailableCellMask(_hashes[i], out _, out encodings[i])) throw new InvalidOperationException("Transaction not found.");
+            contentLength += TxDecoder.GetWrappedTxLength(TxType.Blob, encodings[i]!.Count);
         }
 
         int length = global::Nethermind.Serialization.Rlp.Rlp.LengthOfSequence(contentLength);
