@@ -315,7 +315,7 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
         ArrayPoolList<byte> destination)
     {
         // For each receipt its content length, logs length and status, then the content length of each log, so
-        // the logs are read once for the lengths and once for the writes.
+        // the logs are read once for the lengths and once for the writes, and once more for each bloom.
         using ArrayPoolList<int> lengths = new(64);
         int contentLength = 0;
         try

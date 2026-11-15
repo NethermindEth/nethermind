@@ -201,13 +201,23 @@ public class NetworkReceiptTests
         TxReceipt[] receipts = CreateReceipts(eip658);
         // Recovery takes a failed receipt with logs as successful.
         receipts[1].Logs = [Build.A.LogEntry.WithAddress(TestItem.AddressD).WithTopics(TestItem.KeccakD).WithData([0x7f]).TestObject];
-        receipts[3].Logs = [Build.A.LogEntry.WithAddress(TestItem.AddressE).WithData([0x80]).TestObject];
+        receipts[3].Logs =
+        [
+            Build.A.LogEntry.WithAddress(TestItem.AddressE).WithData([0x80]).TestObject,
+            Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics().WithData([0]).TestObject,
+        ];
         receipts[2].Logs = [Build.A.LogEntry.WithAddress(TestItem.AddressF).WithData([.. new byte[300], 1, 2]).TestObject];
         Block block = Build.A.Block.WithNumber(1)
             .WithTransactions([.. receipts.Select(static receipt => CreateTransaction(receipt.TxType))]).TestObject;
         byte[] encodedBlock = new BlockDecoder().Encode(block);
         RlpBehaviors storageBehaviors = RlpBehaviors.Storage | (eip658 ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None);
         byte[] stored = ReceiptArrayStorageDecoder.Instance.Encode(receipts, storageBehaviors);
+
+        // The compact form can also store the data [0x00] as a zero prefix of one and no data, which the decoder reads.
+        int zeroData = stored.AsSpan().IndexOf((byte[])[.. TestItem.AddressA.Bytes, Rlp.EmptyListByte, Rlp.EmptyByteArrayByte, 0]) + Address.Size + 1;
+        Assert.That(zeroData, Is.GreaterThan(Address.Size + 1));
+        stored[zeroData] = 1;
+        stored[zeroData + 1] = Rlp.EmptyByteArrayByte;
 
         TxReceipt[] decoded = ReceiptArrayStorageDecoder.Instance.Decode(stored, eip7668 ? RlpBehaviors.Eip7668Receipts : RlpBehaviors.None);
         new ReceiptsRecovery(new EthereumEcdsa(BlockchainIds.Mainnet), MainnetSpecProvider.Instance).TryRecover(new ReceiptRecoveryBlock(block), decoded, forceRecoverSender: false);
