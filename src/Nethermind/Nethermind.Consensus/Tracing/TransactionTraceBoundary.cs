@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -51,10 +52,24 @@ public sealed class TransactionTraceBoundary : IBlockTracer
         transactionHash is null || tracer.IsTracingRewards ? tracer : new TransactionTraceBoundary(tracer, transactionHash, seeds);
 
     /// <summary><see cref="Wrap"/> for a target whose position in the block the caller already knows.</summary>
+    /// <param name="tracer">The tracer to forward callbacks to; reward tracing retains full replay.</param>
+    /// <param name="transactionHash">The transaction to stop after, or null for unrestricted replay.</param>
     /// <param name="index">The target's index in the block. An index that does not hold the target falls back to the
     /// lookup by hash.</param>
-    internal static IBlockTracer WrapAt(IBlockTracer tracer, Hash256? transactionHash, int index, IPrefixStateSeedSource? seeds = null) =>
+    /// <param name="seeds">Where the state before the target may come from instead of replaying the prefix.</param>
+    /// <returns>The original tracer for a null hash or reward tracing; otherwise a completion boundary.</returns>
+    public static IBlockTracer WrapAt(IBlockTracer tracer, Hash256? transactionHash, int index, IPrefixStateSeedSource? seeds = null) =>
         transactionHash is null || tracer.IsTracingRewards ? tracer : new TransactionTraceBoundary(tracer, transactionHash, seeds) { KnownIndex = index };
+
+    /// <summary>The index of the target for <see cref="WrapAt"/> from the stored receipts of <paramref name="block"/>,
+    /// when <paramref name="seeds"/> may skip the prefix of that block that would otherwise be hashed to find it.</summary>
+    /// <param name="receipts">The finder of the stored receipts of <paramref name="block"/>.</param>
+    /// <param name="seeds">The seed source the trace is given, or null when it replays the prefix.</param>
+    /// <param name="block">The block containing the transaction.</param>
+    /// <param name="transactionHash">The hash of the transaction.</param>
+    /// <returns>The index, or -1 to find the target by hash: a replayed prefix hashes its transactions anyway.</returns>
+    public static int FindIndex(IReceiptFinder receipts, IPrefixStateSeedSource? seeds, Block block, Hash256 transactionHash) =>
+        seeds is not null && seeds.MayCover(block) ? receipts.FindTransactionIndex(block, transactionHash) : -1;
 
     /// <summary>Wraps a tracer that wants only what comes after the transactions: the seed for the end of the block
     /// stays armed through the rewards and withdrawals, so they are applied and traced on the state the last
