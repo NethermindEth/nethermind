@@ -195,7 +195,7 @@ public class SnapFlatStateServer(
                 ? new StateTree(new CachedTrieStore(trieStore), logManager)
                 : new StateTree(trieStore, logManager);
 
-            ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>> responseNodes = new(accounts.Count);
+            EncodedStorageRanges responseNodes = new(accounts.Count);
             for (int i = 0; i < accounts.Count; i++)
             {
                 if (responseSize > byteLimit || cancellationToken.IsCancellationRequested)
@@ -216,7 +216,7 @@ public class SnapFlatStateServer(
 
                 ValueHash256 storagePath = accounts[i].Path;
 
-                PathWithStorageCollector pathWithStorageCollector = new();
+                PathWithStorageCollector pathWithStorageCollector = responseNodes.StartAccount();
                 long innerResponseSize;
                 IByteArrayList proofs;
                 bool stoppedEarly;
@@ -235,8 +235,7 @@ public class SnapFlatStateServer(
                 }
                 catch
                 {
-                    pathWithStorageCollector.Slots.Dispose();
-                    responseNodes.DisposeRecursive();
+                    responseNodes.Dispose();
                     throw;
                 }
 

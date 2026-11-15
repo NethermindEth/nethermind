@@ -192,7 +192,7 @@ public class SnapStateServer : ISnapStateServer
             ? new StateTree(new CachedTrieStore(_storeWithReadFlag), _logManager)
             : new StateTree(_storeWithReadFlag, _logManager);
 
-        ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>> responseNodes = new(accounts.Count);
+        EncodedStorageRanges responseNodes = new(accounts.Count);
         for (int i = 0; i < accounts.Count; i++)
         {
             if (responseSize > byteLimit || cancellationToken.IsCancellationRequested)
@@ -213,7 +213,7 @@ public class SnapStateServer : ISnapStateServer
 
             Hash256? storagePath = accounts[i].Path.ToCommitment();
 
-            PathWithStorageCollector pathWithStorageCollector = new();
+            PathWithStorageCollector pathWithStorageCollector = responseNodes.StartAccount();
             long innerResponseSize;
             IOwnedReadOnlyList<byte[]> proofs;
             bool stoppedEarly;
@@ -231,8 +231,7 @@ public class SnapStateServer : ISnapStateServer
             }
             catch
             {
-                pathWithStorageCollector.Slots.Dispose();
-                responseNodes.DisposeRecursive();
+                responseNodes.Dispose();
                 throw;
             }
 

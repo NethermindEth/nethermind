@@ -11,9 +11,10 @@ using Nethermind.Trie;
 namespace Nethermind.State.SnapServer;
 
 /// <summary>Collects storage leaves as the encoded <c>[path, slot value]</c> entries of a storage range response.</summary>
-public class PathWithStorageCollector : RangeQueryVisitor.ILeafValueCollector
+/// <param name="slots">The list that receives the entries, or <see langword="null"/> for a new list.</param>
+public class PathWithStorageCollector(EncodedSnapEntries<PathWithStorageSlot>? slots = null) : RangeQueryVisitor.ILeafValueCollector
 {
-    public EncodedSnapEntries<PathWithStorageSlot> Slots { get; } = new(DecodeEntry);
+    public EncodedSnapEntries<PathWithStorageSlot> Slots { get; } = slots ?? new(DecodeEntry);
 
     public int Collect(in ValueHash256 path, ReadOnlySpan<byte> value)
     {
@@ -26,7 +27,7 @@ public class PathWithStorageCollector : RangeQueryVisitor.ILeafValueCollector
         return 32 + value.Length;
     }
 
-    private static PathWithStorageSlot DecodeEntry(scoped ref RlpReader reader)
+    internal static PathWithStorageSlot DecodeEntry(scoped ref RlpReader reader)
     {
         RlpReader entry = reader.EnterSequence(out int length);
         ValueHash256 path = entry.DecodeValueKeccakNonNull();
