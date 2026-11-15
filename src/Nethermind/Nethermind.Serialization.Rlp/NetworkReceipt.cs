@@ -173,7 +173,8 @@ public readonly ref struct NetworkReceipt
             log.ExitSequence(in topics, topicsLength);
             if (!log.HasNext || log.IsNextSequence) return false;
             int dataLength = log.ReadBytes().Length;
-            if (log.HasNext) return false;
+            // Longer data is left to the decoder, which rejects it as the stored form would
+            if (dataLength > RlpLimit.DefaultLimit.Limit || log.HasNext) return false;
             items.ExitSequence(in log, logLength);
 
             logsGas = checked(logsGas + GasCostOf.Log + (ulong)topicCount * GasCostOf.LogTopic + (ulong)dataLength * GasCostOf.LogData);
