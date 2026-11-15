@@ -16,6 +16,9 @@ namespace Nethermind.Blockchain.Receipts
         void Insert(Block block, TxReceipt[]? txReceipts, bool ensureCanonical, WriteFlags writeFlags = WriteFlags.None, ulong? lastBlockNumber = null);
         void Insert(Block block, TxReceipt[]? txReceipts, IReleaseSpec spec, bool ensureCanonical, WriteFlags writeFlags = WriteFlags.None, ulong? lastBlockNumber = null);
 
+        /// <summary>Starts a batch that inserts the receipts of several canonical blocks in one write.</summary>
+        IReceiptsInsertBatch StartInsertBatch() => new ImmediateReceiptsInsertBatch(this);
+
         /// <summary>
         /// Inserts receipts for a freshly processed block, deferring the durable write off the
         /// block-processing path when the implementation supports it.

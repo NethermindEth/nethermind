@@ -1083,8 +1083,21 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        [SkipLocalsInit]
         private void InsertCore(Block block, TxReceipt[]? txReceipts, IReleaseSpec spec, bool ensureCanonical, WriteFlags writeFlags, ulong? lastBlockNumber, bool storeBody = true)
+        {
+            txReceipts = WriteBody(block, txReceipts, spec, storeBody ? _receiptsDb : null, writeFlags);
+            CacheInserted(block, txReceipts);
+
+            if (ensureCanonical)
+            {
+                EnsureCanonical(block, lastBlockNumber);
+            }
+
+            ReceiptsInserted?.Invoke(this, new(block.Header, txReceipts));
+        }
+
+        [SkipLocalsInit]
+        private TxReceipt[] WriteBody(Block block, TxReceipt[]? txReceipts, IReleaseSpec spec, IWriteOnlyKeyValueStore? bodies, WriteFlags writeFlags)
         {
             txReceipts ??= [];
             int txReceiptsLength = txReceipts.Length;
@@ -1102,25 +1115,95 @@ namespace Nethermind.Blockchain.Receipts
             ulong blockNumber = block.Number;
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
 
-            if (storeBody)
+            if (bodies is not null)
             {
                 using ArrayPoolSpan<byte> rlp = _storageDecoder.EncodeToArrayPoolSpan(txReceipts, behaviors);
                 Span<byte> blockNumPrefixed = stackalloc byte[40];
                 GetBlockNumPrefixedKey(blockNumber, block.Hash!, blockNumPrefixed);
 
-                _receiptsDb.PutSpan(blockNumPrefixed, rlp, writeFlags);
+                bodies.PutSpan(blockNumPrefixed, rlp, writeFlags);
             }
 
+            return txReceipts;
+        }
+
+        private void CacheInserted(Block block, TxReceipt[] txReceipts)
+        {
             // Sync and era import insert blocks decoded from the database, whose creations then get no contract address.
             if (HasAllSenders(block)) _receiptsCache.Set(block.Hash, txReceipts);
             else _receiptsCache.Delete(block.Hash);
+        }
 
-            if (ensureCanonical)
+        public IReceiptsInsertBatch StartInsertBatch() => new ReceiptsInsertBatch(this);
+
+        private sealed class ReceiptsInsertBatch : IReceiptsInsertBatch
+        {
+            private readonly PersistentReceiptStorage _storage;
+            private readonly IColumnsWriteBatch<ReceiptsColumns> _batch;
+            private readonly IWriteBatch _bodies;
+            private readonly IWriteBatch _transactions;
+            private readonly ArrayPoolList<(BlockHeader Header, TxReceipt[]? Receipts, bool Cache)> _inserted = new(16);
+            private ulong _lowestBlockNumber = ulong.MaxValue;
+            private bool _disposed;
+
+            public ReceiptsInsertBatch(PersistentReceiptStorage storage)
             {
-                EnsureCanonical(block, lastBlockNumber);
+                _storage = storage;
+                _batch = storage._database.StartWriteBatch();
+                _bodies = _batch.GetColumnBatch(ReceiptsColumns.Blocks);
+                _transactions = _batch.GetColumnBatch(ReceiptsColumns.Transactions);
             }
 
-            ReceiptsInserted?.Invoke(this, new(block.Header, txReceipts));
+            public void Insert(Block block, TxReceipt[]? receipts)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                TxReceipt[] written = _storage.WriteBody(block, receipts, _storage._specProvider.GetSpec(block.Header), _bodies, WriteFlags.None);
+                _storage.EnsureCanonical(block, null, _transactions);
+                _inserted.Add((block.Header, written, HasAllSenders(block)));
+                _lowestBlockNumber = Math.Min(_lowestBlockNumber, block.Number);
+            }
+
+            public bool TryInsertNetworkReceipts(Block block, ReadOnlyMemory<byte> blockReceipts, bool withBloom)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                if (!_storage._storageDecoder.CanEncodeNetworkReceipts) return false;
+
+                TxReceipt[]? receipts = _storage.WriteNetworkReceipts(block, blockReceipts, withBloom, _bodies);
+                _storage.EnsureCanonical(block, null, _transactions);
+                _inserted.Add((block.Header, receipts, false));
+                _lowestBlockNumber = Math.Min(_lowestBlockNumber, block.Number);
+                return true;
+            }
+
+            public void Dispose()
+            {
+                if (_disposed) return;
+                _disposed = true;
+
+                try
+                {
+                    bool lowersMigratedBlockNumber = _lowestBlockNumber < _storage._migratedBlockNumber;
+                    if (lowersMigratedBlockNumber)
+                    {
+                        _batch.GetColumnBatch(ReceiptsColumns.Default).PutSpan(MigrationBlockNumberKey.Bytes, _lowestBlockNumber.ToBigEndianSpanWithoutLeadingZeros(out _));
+                    }
+
+                    _batch.Dispose();
+                    if (lowersMigratedBlockNumber) _storage._migratedBlockNumber = _lowestBlockNumber;
+
+                    foreach ((BlockHeader header, TxReceipt[]? receipts, bool cache) in _inserted)
+                    {
+                        if (cache && receipts is not null) _storage._receiptsCache.Set(header.Hash, receipts);
+                        else _storage._receiptsCache.Delete(header.Hash);
+
+                        if (receipts is not null) _storage.ReceiptsInserted?.Invoke(_storage, new(header, receipts));
+                    }
+                }
+                finally
+                {
+                    _inserted.Dispose();
+                }
+            }
         }
 
         /// <inheritdoc/>
@@ -1128,18 +1211,28 @@ namespace Nethermind.Blockchain.Receipts
         /// Stores the receipts as <see cref="Insert(Block, TxReceipt[], IReleaseSpec, bool, WriteFlags, ulong?)"/> stores them
         /// once decoded. Only the compact form takes them, as it stores no field recovered from the transactions but their hashes.
         /// </remarks>
-        [SkipLocalsInit]
         public bool TryInsertNetworkReceipts(Block block, ReadOnlyMemory<byte> blockReceipts, bool withBloom, bool ensureCanonical)
         {
             if (!_storageDecoder.CanEncodeNetworkReceipts) return false;
 
+            TxReceipt[]? insertedReceipts = WriteNetworkReceipts(block, blockReceipts, withBloom, _receiptsDb);
+            _receiptsCache.Delete(block.Hash);
+            if (ensureCanonical) EnsureCanonical(block, null);
+            if (block.Number < MigratedBlockNumber) MigratedBlockNumber = block.Number;
+            if (insertedReceipts is not null) ReceiptsInserted?.Invoke(this, new(block.Header, insertedReceipts));
+            return true;
+        }
+
+        [SkipLocalsInit]
+        private TxReceipt[]? WriteNetworkReceipts(Block block, ReadOnlyMemory<byte> blockReceipts, bool withBloom, IWriteOnlyKeyValueStore bodies)
+        {
             IReleaseSpec spec = _specProvider.GetSpec(block.Header);
             TxReceipt[]? insertedReceipts = null;
             using (ArrayPoolSpan<byte> rlp = _storageDecoder.EncodeNetworkReceipts(blockReceipts.Span, withBloom, spec.IsEip658Enabled, block.Transactions))
             {
                 Span<byte> blockNumPrefixed = stackalloc byte[40];
                 GetBlockNumPrefixedKey(block.Number, block.Hash!, blockNumPrefixed);
-                _receiptsDb.PutSpan(blockNumPrefixed, rlp, WriteFlags.None);
+                bodies.PutSpan(blockNumPrefixed, rlp, WriteFlags.None);
 
                 if (ReceiptsInserted is not null)
                 {
@@ -1150,11 +1243,7 @@ namespace Nethermind.Blockchain.Receipts
                 }
             }
 
-            _receiptsCache.Delete(block.Hash);
-            if (ensureCanonical) EnsureCanonical(block, null);
-            if (block.Number < MigratedBlockNumber) MigratedBlockNumber = block.Number;
-            if (insertedReceipts is not null) ReceiptsInserted?.Invoke(this, new(block.Header, insertedReceipts));
-            return true;
+            return insertedReceipts;
         }
 
         private static bool HasAllSenders(Block block)

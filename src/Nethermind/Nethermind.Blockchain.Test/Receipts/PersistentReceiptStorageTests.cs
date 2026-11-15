@@ -1801,6 +1801,47 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Insert_batch_stores_its_blocks_and_the_migrated_block_number_in_one_write()
+    {
+        _storage.MigratedBlockNumber = ulong.MaxValue;
+        (Block high, TxReceipt[] highReceipts) = PrepareBlock(BuildBlock(6, nonce: 0));
+        (Block low, TxReceipt[] lowReceipts) = PrepareBlock(BuildBlock(5, nonce: 1));
+        (Block mismatched, _) = PrepareBlock(BuildBlock(4, nonce: 2));
+        int writeBatches = _receiptsDb.WriteBatchCount;
+
+        using (IReceiptsInsertBatch batch = _storage.StartInsertBatch())
+        {
+            batch.Insert(high, highReceipts);
+            batch.Insert(low, lowReceipts);
+            Assert.Throws<InvalidDataException>(() => batch.Insert(mismatched, []));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_storage.HasBlock(high.Number, high.Hash!), Is.False);
+                Assert.That(_storage.MigratedBlockNumber, Is.EqualTo(ulong.MaxValue));
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_receiptsDb.WriteBatchCount - writeBatches, Is.EqualTo(1));
+            Assert.That(_storage.HasBlock(high.Number, high.Hash!), Is.True);
+            Assert.That(_storage.HasBlock(low.Number, low.Hash!), Is.True);
+            Assert.That(_storage.HasBlock(mismatched.Number, mismatched.Hash!), Is.False);
+            Assert.That(_storage.FindBlockHash(lowReceipts[0].TxHash!), Is.EqualTo(low.Hash));
+            Assert.That(_storage.MigratedBlockNumber, Is.EqualTo(low.Number));
+            Assert.That(_receiptsDb.GetColumnDb(ReceiptsColumns.Default).Get(Keccak.Compute(nameof(PersistentReceiptStorage.MigratedBlockNumber)))!
+                .ToULongFromBigEndianByteArrayWithoutLeadingZeros(), Is.EqualTo(low.Number));
+        }
+
+        static Block BuildBlock(ulong number, ulong nonce) => Build.A.Block
+            .WithNumber(number)
+            .WithTransactions(Build.A.Transaction.WithNonce(nonce).SignedAndResolved().TestObject)
+            .WithReceiptsRoot(TestItem.KeccakA)
+            .TestObject;
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Deriving_from_state_skips_bodies_on_the_processing_path()
     {
         _receiptConfig.DeriveFromState = true;

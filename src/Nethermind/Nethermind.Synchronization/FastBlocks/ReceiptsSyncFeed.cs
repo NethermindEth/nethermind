@@ -269,13 +269,13 @@ namespace Nethermind.Synchronization.FastBlocks
 
         /// <returns><see langword="false"/> when the receipt store does not take encoded receipts.</returns>
         /// <exception cref="InvalidDataException">The receipts do not fit the block.</exception>
-        private bool TryInsertKeptEncoded(BlockHeader header, MemoryManager<byte> blockRlp, NetworkBlockReceipts receipts, int index)
+        private bool TryInsertKeptEncoded(IReceiptsInsertBatch insertBatch, BlockHeader header, MemoryManager<byte> blockRlp, NetworkBlockReceipts receipts, int index)
         {
             Transaction[] transactions = BlockBodyDecoder.DecodeEncodedTransactionsOfBlock(blockRlp.Memory);
             try
             {
-                return _receiptStorageTakesEncoded = _receiptStorage.TryInsertNetworkReceipts(
-                    new Block(header, new BlockBody(transactions, [])), receipts.GetEncoded(index), receipts.WithBloom, ensureCanonical: true);
+                return _receiptStorageTakesEncoded = insertBatch.TryInsertNetworkReceipts(
+                    new Block(header, new BlockBody(transactions, [])), receipts.GetEncoded(index), receipts.WithBloom);
             }
             finally
             {
@@ -322,6 +322,25 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private int InsertReceipts(ReceiptsSyncBatch batch)
         {
+            using ArrayPoolList<ulong> insertedBlocks = new(batch.Infos.Length);
+            int validResponsesCount;
+            using (IReceiptsInsertBatch insertBatch = _receiptStorage.StartInsertBatch())
+            {
+                validResponsesCount = AddReceipts(batch, insertBatch, insertedBlocks);
+            }
+
+            foreach (ulong blockNumber in insertedBlocks)
+            {
+                _syncStatusList.MarkInserted(blockNumber);
+            }
+
+            UpdateSyncReport();
+            LogPostProcessingBatchInfo(batch, validResponsesCount);
+            return validResponsesCount;
+        }
+
+        private int AddReceipts(ReceiptsSyncBatch batch, IReceiptsInsertBatch insertBatch, ArrayPoolList<ulong> insertedBlocks)
+        {
             bool hasBreachedProtocol = false;
             int validResponsesCount = 0;
             MissedBlocks missingHeaders = new();
@@ -361,16 +380,16 @@ namespace Nethermind.Synchronization.FastBlocks
                         {
                             try
                             {
-                                if (blockRlp is null || !TryInsertKeptEncoded(prepared.Header!, blockRlp, (NetworkBlockReceipts)batch.Response!, i))
+                                if (blockRlp is null || !TryInsertKeptEncoded(insertBatch, prepared.Header!, blockRlp, (NetworkBlockReceipts)batch.Response!, i))
                                 {
                                     block ??= FindBlock(blockInfo) ?? throw new InvalidDataException($"Block {blockInfo.BlockNumber} ({blockInfo.BlockHash}) is not stored.");
                                     TxReceipt[] receipts = keptEncoded
                                         ? DecodeKeptEncoded(prepared.Header!, (NetworkBlockReceipts)batch.Response!, i)
                                         : prepared.Receipts!;
-                                    _receiptStorage.Insert(block, receipts, ensureCanonical: true);
+                                    insertBatch.Insert(block, receipts);
                                 }
 
-                                _syncStatusList.MarkInserted(blockInfo.BlockNumber);
+                                insertedBlocks.Add(blockInfo.BlockNumber);
                                 validResponsesCount++;
                             }
                             catch (InvalidDataException)
@@ -413,8 +432,6 @@ namespace Nethermind.Synchronization.FastBlocks
                 if (missingBlocks.Count > 0) _logger.Warn($"Could not find {missingBlocks}");
             }
 
-            UpdateSyncReport();
-            LogPostProcessingBatchInfo(batch, validResponsesCount);
             return validResponsesCount;
         }
 

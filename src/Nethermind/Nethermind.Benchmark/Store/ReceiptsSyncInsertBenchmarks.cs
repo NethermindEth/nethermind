@@ -108,6 +108,10 @@ public class ReceiptsSyncInsertBenchmarks
         CheckStored();
         InsertEncodedBlocks();
         CheckStored();
+        InsertBlocksInOneBatch();
+        CheckStored();
+        InsertEncodedBlocksInOneBatch();
+        CheckStored();
     }
 
     private void CheckStored()
@@ -142,6 +146,37 @@ public class ReceiptsSyncInsertBenchmarks
         {
             if (!_storage.TryInsertNetworkReceipts(_blocksWithEncodedTransactions[i], _networkReceipts[i], withBloom: true, ensureCanonical: true))
                 throw new InvalidOperationException("The receipt storage does not take encoded receipts.");
+        }
+
+        return _storage.MigratedBlockNumber;
+    }
+
+    [Benchmark]
+    public ulong InsertBlocksInOneBatch()
+    {
+        _storage.MigratedBlockNumber = ulong.MaxValue;
+        using (IReceiptsInsertBatch batch = _storage.StartInsertBatch())
+        {
+            for (int i = 0; i < _blocks.Length; i++)
+            {
+                batch.Insert(_blocks[i], _receipts[i]);
+            }
+        }
+
+        return _storage.MigratedBlockNumber;
+    }
+
+    [Benchmark]
+    public ulong InsertEncodedBlocksInOneBatch()
+    {
+        _storage.MigratedBlockNumber = ulong.MaxValue;
+        using (IReceiptsInsertBatch batch = _storage.StartInsertBatch())
+        {
+            for (int i = 0; i < _blocksWithEncodedTransactions.Length; i++)
+            {
+                if (!batch.TryInsertNetworkReceipts(_blocksWithEncodedTransactions[i], _networkReceipts[i], withBloom: true))
+                    throw new InvalidOperationException("The receipt storage does not take encoded receipts.");
+            }
         }
 
         return _storage.MigratedBlockNumber;
