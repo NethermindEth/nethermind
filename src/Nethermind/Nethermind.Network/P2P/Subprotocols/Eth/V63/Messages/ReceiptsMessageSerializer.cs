@@ -44,13 +44,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         public int Serialize(Span<byte> destination, ReceiptsMessage message)
         {
             RlpWriter writer = RlpWriter.ContentWriter(destination);
-            Serialize(ref writer, message);
+            Serialize(ref writer, message, MessageSequence.GetContentLength(destination.Length));
             return writer.Length;
         }
 
-        internal void Serialize(ref RlpWriter writer, ReceiptsMessage message)
+        internal void Serialize(ref RlpWriter writer, ReceiptsMessage message) =>
+            Serialize(ref writer, message, GetContentLength(message));
+
+        private void Serialize(ref RlpWriter writer, ReceiptsMessage message, int contentLength)
         {
-            RlpSequence sequence = writer.StartSequence(GetContentLength(message));
+            RlpSequence sequence = writer.StartSequence(contentLength);
 
             if (GetEncodedInThisForm(message) is { } encoded)
             {

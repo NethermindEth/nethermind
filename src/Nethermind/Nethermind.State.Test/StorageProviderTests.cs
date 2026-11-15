@@ -586,6 +586,42 @@ public partial class StorageProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Restored_call_that_grew_the_round_caches_leaves_no_freed_entries_to_enumerate()
+    {
+        const int Count = 2_048;
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        using IDisposable scope = provider.BeginScope(IWorldState.PreGenesis);
+        provider.CreateAccount(ctx.Address1, 1);
+        provider.Commit(Osaka.Instance, NullStateTracer.Instance, commitRoots: false);
+
+        provider.TakeSnapshot(newTransactionStart: true);
+        Snapshot beforeCall = provider.TakeSnapshot();
+        for (int i = 0; i < Count; i++)
+        {
+            StorageCell cell = new(ctx.Address1, (UInt256)i);
+            provider.Set(in cell, UInt256.One);
+            provider.SetTransientState(in cell, UInt256.One);
+        }
+
+        provider.Restore(beforeCall);
+        StorageCell kept = new(ctx.Address1, (UInt256)Count);
+        provider.Set(in kept, UInt256.One);
+        provider.SetTransientState(in kept, UInt256.One);
+        provider.Commit(Osaka.Instance, NullStateTracer.Instance, commitRoots: false);
+
+        object transientStorage = GetPrivateField(provider, "_transientStorageProvider");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(GetEntriesInUse(GetPrivateField(provider._persistentStorageProvider, "_intraBlockCache")), Is.Zero);
+            Assert.That(GetEntriesInUse(GetPrivateField(transientStorage, "_intraBlockCache")), Is.Zero);
+        }
+
+        provider.Get(in kept, out UInt256 value);
+        Assert.That(value, Is.EqualTo(UInt256.One));
+    }
+
+    [Test]
     public void Large_map_pool_reuses_the_largest_nearby_map([Values] bool returnLargestFirst)
     {
         PersistentStorageProvider.LargeMapPool<UInt256, int> pool = new(UInt256Comparer.Instance, minRetainedCapacity: 1024);
@@ -758,6 +794,19 @@ public partial class StorageProviderTests(bool useFlat)
             "_dictionary",
             BindingFlags.Instance | BindingFlags.NonPublic)!;
         return dictionaryField.GetValue(collection)!;
+    }
+
+    private static int GetEntriesInUse(object dictionary)
+    {
+        Type type = dictionary.GetType();
+        FieldInfo countField = type.GetField("_count", BindingFlags.Instance | BindingFlags.NonPublic);
+        while (countField is null)
+        {
+            type = type.BaseType!;
+            countField = type.GetField("_count", BindingFlags.Instance | BindingFlags.NonPublic);
+        }
+
+        return (int)countField.GetValue(dictionary)!;
     }
 
     private static object GetPrivateField(object owner, string fieldName) =>

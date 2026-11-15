@@ -34,6 +34,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
     public abstract class SyncPeerProtocolHandlerBase : ZeroProtocolHandlerBase, ISyncPeer
     {
         protected const int MaxReceiptsLookups = 2 * NethermindSyncLimits.MaxReceiptFetch;
+        private static readonly int MaxRequestIdLength = Rlp.LengthOf(ulong.MaxValue);
 
         internal static ulong SoftOutgoingMessageSizeLimit = 2UL.MiB;
         internal static ulong HardOutgoingReceiptsMessageSizeLimit = 10UL.MiB;
@@ -444,7 +445,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     if (!SyncServer.TryAppendReceipts(blockHash, decoder, copyStored, withBloom, buffer)) break;
 
                     // Cap the message size; return the prefix (receipts match request hashes positionally).
-                    if ((ulong)buffer.Count > HardOutgoingReceiptsMessageSizeLimit)
+                    if (GetMaxReceiptsResponseSize((ulong)buffer.Count) > HardOutgoingReceiptsMessageSizeLimit)
                     {
                         // An empty prefix means the block alone does not fit, so this peer can never get it from us.
                         if (blocks.Count == 0 && Logger.IsDebug) Logger.Debug($"Cannot serve receipts of {blockHash} to {Node?.ToString("c"):hide}: {buffer.Count - start} bytes exceeds the {HardOutgoingReceiptsMessageSizeLimit} bytes limit.");
@@ -474,6 +475,11 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         private static readonly RefRlpReaderFunc<TxReceipt[]> DecodeReceipts69 = static (ref RlpReader reader) =>
             reader.DecodeNonNullArray(static (ref RlpReader receipt) => ReceiptDecoder69.Decode(ref receipt)!);
+
+        internal static ulong GetMaxReceiptsResponseSize(ulong receiptsContentSize) =>
+            receiptsContentSize > int.MaxValue / 2
+                ? ulong.MaxValue
+                : (ulong)Rlp.LengthOfSequence(MaxRequestIdLength + Rlp.LengthOfSequence((int)receiptsContentSize));
 
         private static IOwnedReadOnlyList<BlockHeader> TruncateHeadersAtFirstMissing(IOwnedReadOnlyList<BlockHeader> headers)
         {

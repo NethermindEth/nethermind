@@ -22,7 +22,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public int Serialize(Span<byte> destination, BlockBodiesMessage message)
         {
             RlpWriter writer = RlpWriter.ContentWriter(destination);
-            RlpSequence sequence = writer.StartSequence(GetContentLength(message));
+            RlpSequence sequence = writer.StartSequence(MessageSequence.GetContentLength(destination.Length));
             OwnedBlockBodies bodies = message.Bodies;
             for (int i = 0; i < bodies.Count; i++)
             {

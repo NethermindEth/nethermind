@@ -20,7 +20,9 @@ using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
@@ -29,6 +31,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -184,6 +187,72 @@ public class Eth69ProtocolHandlerTests
             byte[] serialized = new byte[serializer.GetLength(message)];
             serializer.Serialize(serialized, message);
             return serialized;
+        }
+    }
+
+    [Test]
+    public void Should_size_receipts_without_bloom_for_soft_message_size_limit()
+    {
+        const int count = 512;
+        using GetReceiptsMessage66 msg = new(1111, new(Enumerable.Repeat(Keccak.Zero, count).ToPooledList(count)));
+        TxReceipt[] receipts = SoftLimitTestHelper.CreateLogHeavyReceipts(100);
+        int expectedCount = SoftLimitTestHelper.CountReceiptBlocksWithinSoftLimit(
+            ReceiptsServingTestHelper.Encode(receipts, new ReceiptMessageDecoder69(), _specProvider).Length, count);
+        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(receipts);
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(msg, Eth63MessageCode.GetReceipts);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expectedCount, Is.GreaterThan(SoftLimitTestHelper.CountReceiptBlocksWithinSoftLimit(
+                ReceiptsServingTestHelper.Encode(receipts, Rlp.GetDecoderOrThrow<TxReceipt>(), _specProvider).Length, count)));
+            _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage69>(r => r.EthMessage.TxReceipts.Count == expectedCount));
+        }
+    }
+
+    [Test]
+    public void Should_not_calculate_bloom_when_serving_receipts()
+    {
+        TxReceipt receipt = SoftLimitTestHelper.CreateLogHeavyReceipts(1)[0];
+        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns([receipt]);
+
+        using IOwnedReadOnlyList<TxReceipt[]?> response = RequestReceipts(Keccak.Zero);
+        receipt.Logs = [];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response, Has.Count.EqualTo(1));
+            Assert.That(receipt.Bloom, Is.EqualTo(Bloom.Empty));
+        }
+    }
+
+    [Test]
+    public void Should_keep_receipts_response_envelope_within_hard_message_size_limit()
+    {
+        TxReceipt[] receipts = new TxReceipt[8];
+        for (int i = 0; i < receipts.Length; i++)
+        {
+            byte[] logData = new byte[i == 0 ? 1_310_679 : 1_310_674];
+            receipts[i] = new TxReceipt { StatusCode = 1, GasUsedTotal = (ulong)(i + 1) * 14_000_000, Logs = [new LogEntry(TestItem.AddressA, logData, [])] };
+        }
+
+        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(receipts);
+        using GetReceiptsMessage66 msg = new(long.MaxValue, new(new[] { Keccak.Zero }.ToPooledList()));
+        ReceiptsMessage69? response = null;
+        _session.When(session => session.DeliverMessage(Arg.Any<ReceiptsMessage69>()))
+            .Do(call => response = (ReceiptsMessage69)call[0]);
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(msg, Eth63MessageCode.GetReceipts);
+
+        IMessageSerializer<ReceiptsMessage69> serializer = new ReceiptsMessageSerializer69(MainnetSpecProvider.Instance);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((ulong)ReceiptsServingTestHelper.Encode(receipts, new ReceiptMessageDecoder69(), MainnetSpecProvider.Instance).Length,
+                Is.EqualTo(SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit));
+            Assert.That(response, Is.Not.Null);
+            Assert.That((ulong)serializer.GetLength(response!), Is.LessThanOrEqualTo(SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit));
         }
     }
 
