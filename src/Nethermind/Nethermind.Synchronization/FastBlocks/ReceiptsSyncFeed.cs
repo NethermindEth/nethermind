@@ -323,15 +323,19 @@ namespace Nethermind.Synchronization.FastBlocks
         private int InsertReceipts(ReceiptsSyncBatch batch)
         {
             using ArrayPoolList<ulong> insertedBlocks = new(batch.Infos.Length);
+            IReceiptsInsertBatch insertBatch = _receiptStorage.StartInsertBatch();
             int validResponsesCount;
-            using (IReceiptsInsertBatch insertBatch = _receiptStorage.StartInsertBatch())
+            try
             {
                 validResponsesCount = AddReceipts(batch, insertBatch, insertedBlocks);
             }
-
-            foreach (ulong blockNumber in insertedBlocks)
+            finally
             {
-                _syncStatusList.MarkInserted(blockNumber);
+                insertBatch.Dispose();
+                foreach (ulong blockNumber in insertedBlocks)
+                {
+                    _syncStatusList.MarkInserted(blockNumber);
+                }
             }
 
             UpdateSyncReport();

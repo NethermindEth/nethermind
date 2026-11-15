@@ -107,8 +107,10 @@ public class ReceiptSyncFeedTests
         using ReceiptsSyncBatch req = (await _feed.PrepareRequest())!;
         req.Response = req.Infos.Take(8).Select(info => _syncingFromReceiptStore.Get(info!.BlockHash)).ToPooledList(8)!;
 
-        _receiptStorage
-            .When((it) => it.Insert(Arg.Any<Block>(), Arg.Any<TxReceipt[]?>(), Arg.Any<bool>()))
+        IReceiptsInsertBatch insertBatch = Substitute.For<IReceiptsInsertBatch>();
+        _receiptStorage.StartInsertBatch().Returns(insertBatch);
+        insertBatch
+            .When((it) => it.Insert(Arg.Any<Block>(), Arg.Any<TxReceipt[]?>()))
             .Do((callInfo) =>
             {
                 Block block = (Block)callInfo[0];
@@ -119,6 +121,7 @@ public class ReceiptSyncFeedTests
         Assert.That(act, Throws.TypeOf<Exception>());
         using ReceiptsSyncBatch req2 = (await _feed.PrepareRequest())!;
         Assert.That(req2.Infos[0]!.BlockNumber, Is.EqualTo(95));
+        insertBatch.Received(1).Dispose();
     }
 
     [Test]
