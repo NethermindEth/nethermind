@@ -141,20 +141,20 @@ public class Eth69ReceiptsServingBenchmarks
 
     private sealed class ReceiptsSyncServer(Dictionary<Hash256, TxReceipt[]> receipts) : ISyncServer
     {
-        public TxReceipt[]? GetReceipts(Hash256 blockHashes) => receipts.GetValueOrDefault(blockHashes);
+        public TxReceipt[] GetReceipts(Hash256 blockHashes) => receipts.GetValueOrDefault(blockHashes);
         public void HintBlock(Hash256 hash, ulong number, ISyncPeer receivedFrom) { }
         public void AddNewBlock(Block block, ISyncPeer node) { }
         public void StopNotifyingPeersAboutNewBlocks() { }
-        public MemoryManager<byte>? GetBlockAccessListRlp(Hash256 blockHash) => null;
-        public Block? Find(Hash256 hash) => null;
-        public BlockHeader? FindHeader(Hash256 hash) => null;
-        public Hash256? FindHash(ulong number) => null;
+        public MemoryManager<byte> GetBlockAccessListRlp(Hash256 blockHash) => null;
+        public Block Find(Hash256 hash) => null;
+        public BlockHeader FindHeader(Hash256 hash) => null;
+        public Hash256 FindHash(ulong number) => null;
         public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse) => throw new NotSupportedException();
         public IByteArrayList GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.Code | NodeDataType.State) => throw new NotSupportedException();
         public int GetPeerCount() => 0;
         public ulong NetworkId => 1;
         public BlockHeader Genesis => throw new NotSupportedException();
-        public BlockHeader? Head => null;
+        public BlockHeader Head => null;
         public ulong LowestBlock => 0;
         public void Dispose() { }
     }
