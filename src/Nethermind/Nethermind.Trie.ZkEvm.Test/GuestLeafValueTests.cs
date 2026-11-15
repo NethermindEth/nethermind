@@ -12,8 +12,8 @@ public class GuestLeafValueTests
 {
     private static readonly int[] ValueLengths = [1, 2, 32, 33, 55, 56, 70, 110];
 
-    [TestCaseSource(nameof(ValueLengths))]
-    public void Decoded_leaf_value_span_equals_the_encoded_value(int valueLength)
+    [Test]
+    public void Decoded_leaf_value_span_equals_the_encoded_value([ValueSource(nameof(ValueLengths))] int valueLength)
     {
         byte[] value = Bytes(valueLength, 0x5A);
         TrieNode leaf = DecodedLeaf(Key(), value);
@@ -25,8 +25,8 @@ public class GuestLeafValueTests
         }
     }
 
-    [TestCaseSource(nameof(ValueLengths))]
-    public void Value_read_copies_the_value_out_of_the_rlp(int valueLength)
+    [Test]
+    public void Value_read_copies_the_value_out_of_the_rlp([ValueSource(nameof(ValueLengths))] int valueLength)
     {
         byte[] value = Bytes(valueLength, 0x5A);
         TrieNode leaf = DecodedLeaf(Key(), value);
@@ -68,8 +68,8 @@ public class GuestLeafValueTests
         }
     }
 
-    [TestCaseSource(nameof(ValueLengths))]
-    public void Raw_key_read_returns_the_value_of_a_decoded_leaf(int valueLength)
+    [Test]
+    public void Raw_key_read_returns_the_value_of_a_decoded_leaf([ValueSource(nameof(ValueLengths))] int valueLength)
     {
         byte[] rawKey = new byte[32];
         for (int i = 0; i < rawKey.Length; i++) rawKey[i] = (byte)(i * 37 + 5);
