@@ -108,6 +108,9 @@ jobs:
           ref: ${{ job.workflow_sha || env.TOOLS_REF }}
           persist-credentials: false
 
+      - name: Set up .NET
+        uses: ./.github/actions/setup-dotnet
+
       - name: Validate and resolve
         id: resolve
         env:
@@ -121,7 +124,7 @@ jobs:
           GUESTS: ${{ inputs.guests }}
           FORMATS: ${{ inputs.formats }}
           GH_TOKEN: ${{ github.token }}
-        run: .github/zkvm-ab/resolve.sh
+        run: dotnet run --file .github/zkvm-ab/resolve.cs
 
       - name: Upload candidate packages
         if: steps.resolve.outputs.candidate == 'true'
