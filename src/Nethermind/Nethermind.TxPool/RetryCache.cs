@@ -64,8 +64,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
     private long _overflowEpoch = 0;
     private int _overflowRequestsInUse = 0;
     private long _overflowGenerationStartedAt;
-    private int _activeOperations = 0;
-    private int _disposeState = 0;
+    private readonly OperationGate _operations = new();
     private readonly TaskCompletionSource _disposeCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource _disposeReachedOperationBarrier = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly AssociativeKeyCache<TResourceId> _requestingResources;
@@ -530,7 +529,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
     public AnnounceResult Announced(in TResourceId resourceId, IMessageHandler<TMessage> handler)
     {
-        if (!TryEnterOperation())
+        if (!_operations.TryEnter(out int operationSlot))
         {
             return AnnounceResult.RequestRequired;
         }
@@ -541,7 +540,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         }
         finally
         {
-            ExitOperation();
+            _operations.Exit(operationSlot);
         }
     }
 
@@ -704,7 +703,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
     public void Received(in TResourceId resourceId)
     {
-        if (!TryEnterOperation())
+        if (!_operations.TryEnter(out int operationSlot))
         {
             return;
         }
@@ -715,7 +714,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         }
         finally
         {
-            ExitOperation();
+            _operations.Exit(operationSlot);
         }
     }
 
@@ -728,7 +727,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
     /// case the caller treats it as received.</returns>
     internal bool TryDefer(in TResourceId resourceId)
     {
-        if (!TryEnterOperation())
+        if (!_operations.TryEnter(out int operationSlot))
         {
             return false;
         }
@@ -741,7 +740,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         }
         finally
         {
-            ExitOperation();
+            _operations.Exit(operationSlot);
         }
     }
 
@@ -750,7 +749,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
     /// <returns><see langword="false"/> when it is already requested or cannot be tracked: treat it as received.</returns>
     internal bool TryAwaitAnnouncement(in TResourceId resourceId)
     {
-        if (!TryEnterOperation())
+        if (!_operations.TryEnter(out int operationSlot))
         {
             return false;
         }
@@ -761,14 +760,14 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         }
         finally
         {
-            ExitOperation();
+            _operations.Exit(operationSlot);
         }
     }
 
     /// <summary>Lets <paramref name="handler"/> make the request an unclaimed entry waits for; true means request it.</summary>
     internal bool TryClaimUnrequested(in TResourceId resourceId, IMessageHandler<TMessage> handler)
     {
-        if (!MayHaveUnclaimed() || !TryEnterOperation())
+        if (!MayHaveUnclaimed() || !_operations.TryEnter(out int operationSlot))
         {
             return false;
         }
@@ -782,14 +781,14 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         }
         finally
         {
-            ExitOperation();
+            _operations.Exit(operationSlot);
         }
     }
 
     /// <summary>Whether an unclaimed entry waits for <paramref name="resourceId"/>; a resend must not consume it.</summary>
     internal bool IsAwaitingAnnouncement(in TResourceId resourceId)
     {
-        if (!MayHaveUnclaimed() || !TryEnterOperation())
+        if (!MayHaveUnclaimed() || !_operations.TryEnter(out int operationSlot))
         {
             return false;
         }
@@ -800,7 +799,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         }
         finally
         {
-            ExitOperation();
+            _operations.Exit(operationSlot);
         }
     }
 
@@ -915,7 +914,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        if (Interlocked.CompareExchange(ref _disposeState, 1, 0) != 0)
+        if (!_operations.TryClose())
         {
             await _disposeCompletion.Task;
             return;
@@ -939,7 +938,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         }
         finally
         {
-            while (Volatile.Read(ref _activeOperations) != 0)
+            while (_operations.HasActiveOperations())
             {
                 await Task.Yield();
             }
@@ -966,7 +965,6 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
             _lifetimeCancellation.Dispose();
 
-            Volatile.Write(ref _disposeState, 2);
             if (disposeException is null)
             {
                 _disposeCompletion.TrySetResult();
@@ -1351,25 +1349,6 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
         return locks;
     }
-
-    private bool TryEnterOperation()
-    {
-        if (Volatile.Read(ref _disposeState) != 0)
-        {
-            return false;
-        }
-
-        Interlocked.Increment(ref _activeOperations);
-        if (Volatile.Read(ref _disposeState) == 0)
-        {
-            return true;
-        }
-
-        Interlocked.Decrement(ref _activeOperations);
-        return false;
-    }
-
-    private void ExitOperation() => Interlocked.Decrement(ref _activeOperations);
 
     private bool TryRemove(TResourceId resourceId, RetryRequestEntry entry)
     {

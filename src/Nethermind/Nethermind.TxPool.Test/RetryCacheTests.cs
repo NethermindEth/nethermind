@@ -2017,6 +2017,62 @@ public class RetryCacheTests
     }
 
     [Test]
+    public async Task Dispose_WaitsForEveryActiveOperationAcrossThreads()
+    {
+        const int Operations = 8;
+        BlockingHashState[] states = new BlockingHashState[Operations];
+        Task[] receipts = new Task[Operations];
+        RetryCache<BlockingRequestMessage, BlockingResourceId> cache = new(
+            TestLogManager.Instance,
+            TimeProvider.System,
+            timeoutMs: AssertTimeoutMs,
+            maxPendingResourcesPerHandler: 0,
+            overflowRequestLimit: 1);
+
+        Task disposal = Task.CompletedTask;
+        try
+        {
+            for (int i = 0; i < Operations; i++)
+            {
+                BlockingHashState state = states[i] = new BlockingHashState();
+                BlockingResourceId resourceId = new(i, state);
+                cache.Announced(resourceId, new BlockingHandler());
+                state.Block();
+                receipts[i] = Task.Factory.StartNew(() => cache.Received(resourceId), CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            }
+
+            for (int i = 0; i < Operations; i++)
+            {
+                Assert.That(states[i].Entered.Wait(AssertTimeoutMs), Is.True);
+            }
+
+            disposal = cache.DisposeAsync().AsTask();
+            await cache.DisposalReachedOperationBarrier.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs));
+            for (int i = 0; i < Operations; i++)
+            {
+                Assert.That(disposal.IsCompleted, Is.False, $"disposal completed with {Operations - i} operations in flight");
+                states[i].Continue.Set();
+                await receipts[i].WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs));
+            }
+
+            await disposal.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs));
+        }
+        finally
+        {
+            foreach (BlockingHashState state in states)
+            {
+                state?.Continue.Set();
+            }
+
+            await Task.WhenAll(receipts.Where(static receipt => receipt is not null)).WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs));
+            foreach (BlockingHashState state in states)
+            {
+                state?.Dispose();
+            }
+        }
+    }
+
+    [Test]
     public async Task Announced_SameAlternateHandler_DoesNotExceedPendingResourceLimit()
     {
         ManualTimeProvider timeProvider = new();
