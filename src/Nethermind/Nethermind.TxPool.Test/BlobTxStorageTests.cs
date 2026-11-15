@@ -503,10 +503,7 @@ public class BlobTxStorageTests
         blobTxStorage.Add(tx);
         if (trailer is StoredCellTrailer.None)
         {
-            byte[] key = new byte[64];
-            tx.Timestamp.WriteBigEndian(key);
-            tx.Hash!.Bytes.CopyTo(key.AsSpan(32));
-            columnsDb.GetColumnDb(BlobTxsColumns.FullBlobTxs).Set(key, TxDecoder.Instance.Encode(tx, RlpBehaviors.InMempoolForm));
+            StoreFullRecord(columnsDb, tx, TxDecoder.Instance.Encode(tx, RlpBehaviors.InMempoolForm));
         }
 
         Assert.That(blobTxStorage.TryGet(tx.Hash!, tx.SenderAddress!, tx.Timestamp, out Transaction decoded), Is.True);
@@ -527,11 +524,22 @@ public class BlobTxStorageTests
         Cells
     }
 
+    /// <param name="editNetworkItems">
+    /// When set, stores a hand-built record made of the network items of <paramref name="tx"/> that it returns.
+    /// </param>
     [TestCaseSource(nameof(RecordsNotServedAsNetworkForm))]
-    public void TryGetNetworkForm_should_miss_for_a_record_it_does_not_serve(Transaction tx, bool stored)
+    public void TryGetNetworkForm_should_miss_for_a_record_it_does_not_serve(Transaction tx, bool stored, Func<byte[][], byte[][]> editNetworkItems)
     {
-        BlobTxStorage blobTxStorage = new();
-        if (stored) blobTxStorage.Add(tx);
+        MemColumnsDb<BlobTxsColumns> columnsDb = new();
+        BlobTxStorage blobTxStorage = new(columnsDb);
+        if (editNetworkItems is not null)
+        {
+            StoreFullRecord(columnsDb, tx, BuildFullRecord(editNetworkItems(ReadNetworkItems(tx))));
+        }
+        else if (stored)
+        {
+            blobTxStorage.Add(tx);
+        }
 
         using (Assert.EnterMultipleScope())
         {
@@ -542,9 +550,50 @@ public class BlobTxStorageTests
 
     private static IEnumerable<TestCaseData> RecordsNotServedAsNetworkForm()
     {
-        yield return new TestCaseData(CreateBlobTransaction(), false).SetArgDisplayNames("missing record");
-        yield return new TestCaseData(CreateV1BlobTransactions(1)[0], true).SetArgDisplayNames("sparse blobs");
-        yield return new TestCaseData(BuildBlobCarryingFrameTx(blobCount: 2, ProofVersion.V1), true).SetArgDisplayNames("frame transaction");
+        yield return new TestCaseData(CreateBlobTransaction(), false, null).SetArgDisplayNames("missing record");
+        yield return new TestCaseData(CreateV1BlobTransactions(1)[0], true, null).SetArgDisplayNames("sparse blobs");
+        yield return new TestCaseData(BuildBlobCarryingFrameTx(blobCount: 2, ProofVersion.V1), true, null).SetArgDisplayNames("frame transaction");
+
+        Transaction v0Tx = CreateBlobTransaction(TestItem.PrivateKeyA, blobCount: 2, spec: Cancun.Instance);
+        yield return new TestCaseData(v0Tx, true, (Func<byte[][], byte[][]>)(static items => [items[0], [0x00], .. items[1..]]))
+            .SetArgDisplayNames("explicit 0x00 V0 version byte");
+
+        // The items of a V1 record are the transaction fields, the version byte, blobs, commitments and proofs.
+        Transaction v1Tx = CreateBlobTransaction(TestItem.PrivateKeyA, blobCount: 2, spec: Osaka.Instance);
+        yield return new TestCaseData(v1Tx, true, WithBlobsItem([0x80])).SetArgDisplayNames("blobs as an empty byte array");
+        yield return new TestCaseData(v1Tx, true, WithBlobsItem([0xc0])).SetArgDisplayNames("empty blob list");
+        yield return new TestCaseData(v1Tx, true, WithBlobsItem([0xc1, 0x80])).SetArgDisplayNames("empty blob entry");
+
+        static Func<byte[][], byte[][]> WithBlobsItem(byte[] blobs) => items => [items[0], items[1], blobs, .. items[3..]];
+    }
+
+    private static byte[][] ReadNetworkItems(Transaction tx)
+    {
+        byte[] typedTx = TxDecoder.Instance.Encode(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping);
+        RlpReader reader = new RlpReader(typedTx.AsSpan(1)).EnterSequence(out _);
+        List<byte[]> items = [];
+        while (reader.HasNext) items.Add(reader.ReadEncodedItem().ToArray());
+        return [.. items];
+    }
+
+    private static byte[] BuildFullRecord(byte[][] networkItems)
+    {
+        int contentLength = networkItems.Sum(static item => item.Length);
+        byte[] typedTx = new byte[1 + Rlp.LengthOfSequence(contentLength)];
+        typedTx[0] = (byte)TxType.Blob;
+        RlpWriter writer = RlpWriter.ContentWriter(typedTx.AsSpan(1));
+        RlpSequence sequence = writer.StartSequence(contentLength);
+        foreach (byte[] item in networkItems) writer.WriteEncoded(item);
+        writer.EndSequence(sequence);
+        return Rlp.Encode(typedTx);
+    }
+
+    private static void StoreFullRecord(MemColumnsDb<BlobTxsColumns> columnsDb, Transaction tx, byte[] record)
+    {
+        byte[] key = new byte[64];
+        tx.Timestamp.WriteBigEndian(key);
+        tx.Hash!.Bytes.CopyTo(key.AsSpan(32));
+        columnsDb.GetColumnDb(BlobTxsColumns.FullBlobTxs).Set(key, record);
     }
 
     // Persisted through the same InMempoolForm as a type-3, so the type and sidecar both have to survive.
