@@ -557,7 +557,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         {
             if (!NetworkReceipt.TryRead(ref receipts, withBloom: false, out NetworkReceipt receipt))
                 throw new SubprotocolException("Unexpected receipt shape in encoded receipts");
-            facts.Add(new ReceiptFacts((ulong)receipt.GetMessageLength(eip658), receipt.GasUsedTotal, receipt.LogsGas));
+            facts.Add(new ReceiptFacts((ulong)receipt.GetEth69MessageLength(eip658), receipt.GasUsedTotal, receipt.LogsGas));
         }
 
         return facts;

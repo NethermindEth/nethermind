@@ -23,6 +23,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth;
 public class NetworkReceiptTests
 {
     private static readonly ReceiptMessageDecoder Decoder = new();
+    private static readonly ReceiptMessageDecoder69 Eth69Decoder = new();
 
     [Test]
     public void Root_and_sizes_match_the_decoded_receipts([Values] bool withBloom, [Values] bool eip658, [Values] bool eip7668)
@@ -44,7 +45,7 @@ public class NetworkReceiptTests
                 Assert.That(read.GasUsedTotal, Is.EqualTo(receipt.GasUsedTotal));
                 Assert.That(read.LogsGas, Is.EqualTo(receipt.Logs!.Aggregate(0UL, static (gas, log) =>
                     gas + GasCostOf.Log + (ulong)log.Topics.Length * GasCostOf.LogTopic + (ulong)log.Data.Length * GasCostOf.LogData)));
-                Assert.That(read.GetMessageLength(eip658), Is.EqualTo(Decoder.GetLength(receipt, behaviors)));
+                Assert.That(read.GetEth69MessageLength(eip658), Is.EqualTo(Eth69Decoder.GetLength(receipt, behaviors)));
             }
         }
     }

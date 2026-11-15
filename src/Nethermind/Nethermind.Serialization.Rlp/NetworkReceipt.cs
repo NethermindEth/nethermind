@@ -183,16 +183,15 @@ public readonly ref struct NetworkReceipt
         return true;
     }
 
-    /// <summary>The length that <see cref="ReceiptMessageDecoder"/> gives the decoded receipt, bloom and typed wrapping included.</summary>
+    /// <summary>The length that the eth/69 receipt decoder gives the decoded receipt: one sequence of the type, the status or state, the gas used and the logs, with no bloom.</summary>
     /// <remarks>
     /// The decoder writes a status after EIP-658 and a post-transaction state before it, so the first field takes
     /// one byte unless it is a state written before EIP-658.
     /// </remarks>
-    public int GetMessageLength(bool eip658)
+    public int GetEth69MessageLength(bool eip658)
     {
         int statusOrStateLength = !eip658 && StatusOrState.Length == PostTransactionStateItemLength ? PostTransactionStateItemLength : 1;
-        int payloadLength = Rlp.LengthOfSequence(statusOrStateLength + GasUsedTotalItem.Length + BloomItemLength + Logs.Length);
-        return Type == TxType.Legacy ? payloadLength : Rlp.LengthOfSequence(1 + payloadLength);
+        return Rlp.LengthOfSequence(1 + statusOrStateLength + GasUsedTotalItem.Length + Logs.Length);
     }
 
     /// <summary>The length of the value the receipt trie stores for this receipt.</summary>
