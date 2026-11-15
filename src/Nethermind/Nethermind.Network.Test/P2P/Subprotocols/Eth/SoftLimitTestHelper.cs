@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Serialization.Rlp;
@@ -30,14 +31,17 @@ internal static class SoftLimitTestHelper
         return blocks.Count;
     }
 
-    public static int CountReceiptBlocksWithinSoftLimit(TxReceipt[] receipts, int requestedCount)
+    public static int CountReceiptBlocksWithinSoftLimit(TxReceipt[] receipts, int requestedCount) =>
+        CountReceiptBlocksWithinSoftLimit(receipts, requestedCount, Rlp.GetDecoderOrThrow<TxReceipt>());
+
+    public static int CountReceiptBlocksWithinSoftLimit(TxReceipt[] receipts, int requestedCount, IRlpDecoder<TxReceipt> decoder)
     {
-        ulong receiptBlockSize = MessageSizeEstimator.EstimateSize(receipts);
+        ulong receiptBlockSize = MessageSizeEstimator.EstimateSize(receipts, decoder);
         ulong sizeEstimate = 0;
         for (int i = 0; i < requestedCount; i++)
         {
             // A block that does not fit under the hard cap is not served at all.
-            if (sizeEstimate + receiptBlockSize > SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit)
+            if (SyncPeerProtocolHandlerBase.GetMaxReceiptsResponseSize(sizeEstimate + receiptBlockSize) > SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit)
             {
                 return i;
             }
@@ -51,5 +55,22 @@ internal static class SoftLimitTestHelper
         }
 
         return requestedCount;
+    }
+
+    public static TxReceipt[] CreateLogHeavyReceipts(int receiptCount)
+    {
+        TxReceipt[] receipts = new TxReceipt[receiptCount];
+        for (int i = 0; i < receiptCount; i++)
+        {
+            LogEntry[] logs = new LogEntry[4];
+            for (int j = 0; j < logs.Length; j++)
+            {
+                logs[j] = new LogEntry(TestItem.Addresses[j], new byte[32], [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC]);
+            }
+
+            receipts[i] = new TxReceipt { StatusCode = 1, GasUsedTotal = (ulong)(i + 1) * 50_000, Logs = logs };
+        }
+
+        return receipts;
     }
 }

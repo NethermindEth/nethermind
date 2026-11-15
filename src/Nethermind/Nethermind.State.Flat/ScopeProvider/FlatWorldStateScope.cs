@@ -3,6 +3,7 @@
 
 using System.Buffers;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
@@ -787,16 +788,25 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         private readonly FlatWorldStateScope _scope;
         private readonly ILogger _logger;
+        [ThreadStatic] private static Dictionary<AddressAsKey, Account?>? _spareDirtyAccounts;
+        [ThreadStatic] private static ConcurrentQueue<(AddressAsKey, Hash256)>? _spareDirtyStorageTrees;
+
         private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts;
-        private readonly ConcurrentQueue<(AddressAsKey, Hash256)> _dirtyStorageTree = new();
+        private readonly ConcurrentQueue<(AddressAsKey, Hash256)> _dirtyStorageTree;
         // One delegate for every storage batch of the block.
         private readonly Action<Address, Hash256> _markDirty;
+        private bool _disposed;
+        private bool _collectionsReleased;
 
         public WriteBatch(FlatWorldStateScope scope, int estimatedAccountCount, ILogger logger)
         {
             _scope = scope;
             _logger = logger;
-            _dirtyAccounts = new(estimatedAccountCount);
+            _dirtyAccounts = _spareDirtyAccounts ?? new(estimatedAccountCount);
+            _spareDirtyAccounts = null;
+            _dirtyAccounts.EnsureCapacity(estimatedAccountCount);
+            _dirtyStorageTree = _spareDirtyStorageTrees ?? new();
+            _spareDirtyStorageTrees = null;
             _markDirty = MarkDirty;
         }
 
@@ -804,6 +814,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         public void Set(Address key, Account? account)
         {
+            Debug.Assert(!_disposed);
             _dirtyAccounts[key] = account;
 
             if (account is null)
@@ -830,11 +841,17 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     estimatedEntries: estimatedEntries,
                     onRootUpdated: _markDirty);
 
-        private void MarkDirty(Address address, Hash256 storageTreeRootHash) =>
+        private void MarkDirty(Address address, Hash256 storageTreeRootHash)
+        {
+            Debug.Assert(!_collectionsReleased);
             _dirtyStorageTree.Enqueue((address, storageTreeRootHash));
+        }
 
         public void Dispose()
         {
+            if (_disposed) return;
+            _disposed = true;
+
             try
             {
                 while (_dirtyStorageTree.TryDequeue(out (AddressAsKey, Hash256) entry))
@@ -873,7 +890,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             }
             finally
             {
-                _dirtyAccounts.Clear();
+                _dirtyAccounts.ClearAndTrim();
+                _collectionsReleased = true;
+                _spareDirtyAccounts = _dirtyAccounts;
+                if (_dirtyStorageTree.IsEmpty) _spareDirtyStorageTrees = _dirtyStorageTree;
 
                 Interlocked.Increment(ref _scope._hintSequenceId);
             }

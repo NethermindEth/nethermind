@@ -15,7 +15,7 @@ namespace Nethermind.Evm.Precompiles;
 using static Mcl;
 
 [SkipLocalsInit]
-internal static unsafe class BN254
+internal static unsafe partial class BN254
 {
     internal const int PairSize = 192;
     private const int MaxStackPairCount = 32;
@@ -291,6 +291,11 @@ internal static unsafe class BN254
             return null;
         }
 
+        bool cached = false;
+        LoadValidatedG2(data, ref point, ref cached);
+        if (cached)
+            return null;
+
         // Input layout: x_im, x_re, y_im, y_re (each 32 bytes, big-endian)
         // MCL Fp2 layout: d0 = re, d1 = im
         byte* tmp = stackalloc byte[chunkSize];
@@ -320,8 +325,16 @@ internal static unsafe class BN254
         if (mclBnG2_isValid(point) == 0)
             return Errors.Bn254NotOnCurve;
 
-        return IsInG2(point) ? null : Errors.Bn254NotInSubgroup;
+        if (!IsInG2(point))
+            return Errors.Bn254NotInSubgroup;
+
+        StoreValidatedG2(data, point);
+        return null;
     }
+
+    static partial void LoadValidatedG2(byte* data, ref mclBnG2 point, ref bool cached);
+
+    static partial void StoreValidatedG2(byte* data, in mclBnG2 point);
 
     /// <summary>Whether a point on the twist lies in G2, the subgroup of order r.</summary>
     /// <remarks>
