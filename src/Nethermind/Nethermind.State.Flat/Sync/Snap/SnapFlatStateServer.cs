@@ -196,33 +196,32 @@ public class SnapFlatStateServer(
                 : new StateTree(trieStore, logManager);
 
             ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>> responseNodes = new(accounts.Count);
-            for (int i = 0; i < accounts.Count; i++)
+            EncodedSnapEntries<PathWithStorageSlot>? collecting = null;
+            try
             {
-                if (responseSize > byteLimit || cancellationToken.IsCancellationRequested)
+                for (int i = 0; i < accounts.Count; i++)
                 {
-                    break;
-                }
+                    if (responseSize > byteLimit || cancellationToken.IsCancellationRequested)
+                    {
+                        break;
+                    }
 
-                if (responseSize > 1 && (byteLimit - responseSize) < 10000)
-                {
-                    break;
-                }
+                    if (responseSize > 1 && (byteLimit - responseSize) < 10000)
+                    {
+                        break;
+                    }
 
-                Hash256? storageRoot = GetStorageRootByPath(tree, stateId.StateRoot.ToCommitment(), accounts[i].Path.Bytes);
-                if (storageRoot is null)
-                {
-                    break;
-                }
+                    Hash256? storageRoot = GetStorageRootByPath(tree, stateId.StateRoot.ToCommitment(), accounts[i].Path.Bytes);
+                    if (storageRoot is null)
+                    {
+                        break;
+                    }
 
-                ValueHash256 storagePath = accounts[i].Path;
+                    ValueHash256 storagePath = accounts[i].Path;
 
-                PathWithStorageCollector pathWithStorageCollector = new();
-                long innerResponseSize;
-                IByteArrayList proofs;
-                bool stoppedEarly;
-                try
-                {
-                    (innerResponseSize, proofs, stoppedEarly) = GetNodesFromTrieVisitor(
+                    PathWithStorageCollector pathWithStorageCollector = new();
+                    collecting = pathWithStorageCollector.Slots;
+                    (long innerResponseSize, IByteArrayList proofs, bool stoppedEarly) = GetNodesFromTrieVisitor(
                         bundle,
                         stateId.StateRoot,
                         startingHash1,
@@ -232,28 +231,29 @@ public class SnapFlatStateServer(
                         storageRoot,
                         pathWithStorageCollector,
                         cancellationToken);
-                }
-                catch
-                {
-                    pathWithStorageCollector.Slots.Dispose();
-                    responseNodes.DisposeRecursive();
-                    throw;
-                }
 
-                if (pathWithStorageCollector.Slots.Count == 0)
-                {
-                    // return proof of absence
-                    return (responseNodes, proofs);
-                }
+                    if (pathWithStorageCollector.Slots.Count == 0)
+                    {
+                        // return proof of absence
+                        return (responseNodes, proofs);
+                    }
 
-                responseNodes.Add(pathWithStorageCollector.Slots);
-                if (stoppedEarly || startingHash1 != Keccak.Zero)
-                {
-                    return (responseNodes, proofs);
-                }
+                    responseNodes.Add(pathWithStorageCollector.Slots);
+                    collecting = null;
+                    if (stoppedEarly || startingHash1 != Keccak.Zero)
+                    {
+                        return (responseNodes, proofs);
+                    }
 
-                proofs.Dispose();
-                responseSize += innerResponseSize;
+                    proofs.Dispose();
+                    responseSize += innerResponseSize;
+                }
+            }
+            catch
+            {
+                collecting?.Dispose();
+                responseNodes.DisposeRecursive();
+                throw;
             }
 
             return (responseNodes, EmptyByteArrayList.Instance);

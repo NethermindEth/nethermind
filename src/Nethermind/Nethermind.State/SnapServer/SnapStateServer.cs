@@ -193,33 +193,32 @@ public class SnapStateServer : ISnapStateServer
             : new StateTree(_storeWithReadFlag, _logManager);
 
         ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>> responseNodes = new(accounts.Count);
-        for (int i = 0; i < accounts.Count; i++)
+        EncodedSnapEntries<PathWithStorageSlot>? collecting = null;
+        try
         {
-            if (responseSize > byteLimit || cancellationToken.IsCancellationRequested)
+            for (int i = 0; i < accounts.Count; i++)
             {
-                break;
-            }
+                if (responseSize > byteLimit || cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
 
-            if (responseSize > 1 && (byteLimit - responseSize) < 10000)
-            {
-                break;
-            }
+                if (responseSize > 1 && (byteLimit - responseSize) < 10000)
+                {
+                    break;
+                }
 
-            Hash256? storageRoot = GetStorageRootByPath(tree, rootHash, accounts[i].Path.Bytes);
-            if (storageRoot is null)
-            {
-                break;
-            }
+                Hash256? storageRoot = GetStorageRootByPath(tree, rootHash, accounts[i].Path.Bytes);
+                if (storageRoot is null)
+                {
+                    break;
+                }
 
-            Hash256? storagePath = accounts[i].Path.ToCommitment();
+                Hash256? storagePath = accounts[i].Path.ToCommitment();
 
-            PathWithStorageCollector pathWithStorageCollector = new();
-            long innerResponseSize;
-            IOwnedReadOnlyList<byte[]> proofs;
-            bool stoppedEarly;
-            try
-            {
-                (innerResponseSize, proofs, stoppedEarly) = GetNodesFromTrieVisitor(
+                PathWithStorageCollector pathWithStorageCollector = new();
+                collecting = pathWithStorageCollector.Slots;
+                (long innerResponseSize, IOwnedReadOnlyList<byte[]> proofs, bool stoppedEarly) = GetNodesFromTrieVisitor(
                     rootHash,
                     startingHash1,
                     limitHash1,
@@ -228,28 +227,29 @@ public class SnapStateServer : ISnapStateServer
                     storageRoot,
                     pathWithStorageCollector,
                     cancellationToken);
-            }
-            catch
-            {
-                pathWithStorageCollector.Slots.Dispose();
-                responseNodes.DisposeRecursive();
-                throw;
-            }
 
-            if (pathWithStorageCollector.Slots.Count == 0)
-            {
-                //return proof of absence
-                return (responseNodes, new ByteArrayListAdapter(proofs));
-            }
+                if (pathWithStorageCollector.Slots.Count == 0)
+                {
+                    //return proof of absence
+                    return (responseNodes, new ByteArrayListAdapter(proofs));
+                }
 
-            responseNodes.Add(pathWithStorageCollector.Slots);
-            if (stoppedEarly || startingHash1 != Keccak.Zero)
-            {
-                return (responseNodes, new ByteArrayListAdapter(proofs));
-            }
+                responseNodes.Add(pathWithStorageCollector.Slots);
+                collecting = null;
+                if (stoppedEarly || startingHash1 != Keccak.Zero)
+                {
+                    return (responseNodes, new ByteArrayListAdapter(proofs));
+                }
 
-            proofs.Dispose();
-            responseSize += innerResponseSize;
+                proofs.Dispose();
+                responseSize += innerResponseSize;
+            }
+        }
+        catch
+        {
+            collecting?.Dispose();
+            responseNodes.DisposeRecursive();
+            throw;
         }
 
         return (responseNodes, EmptyByteArrayList.Instance);
