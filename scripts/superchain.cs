@@ -393,11 +393,10 @@ static JsonObject Runner(string chainName, string l1, JsonNode chain)
         {
             ["Enabled"] = true
         },
-        // OptimismEthModuleFactory parses any non-null SequencerUrl as a URI, so omit an empty one.
-        ["Optimism"] = WithoutNulls(new JsonObject
+        ["Optimism"] = new JsonObject
         {
-            ["SequencerUrl"] = Lookup(chain, "sequencer_rpc") is { } url && url.GetValue<string>() is not "" ? url : null
-        })
+            ["SequencerUrl"] = Lookup(chain, "sequencer_rpc")
+        }
     };
     if (chainName == "op" && l1 == "mainnet")
     {
