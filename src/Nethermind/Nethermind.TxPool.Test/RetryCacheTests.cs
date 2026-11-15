@@ -1981,47 +1981,11 @@ public class RetryCacheTests
     }
 
     [Test]
-    public async Task Dispose_WaitsForActiveReceiptBeforeDisposingLock()
+    public async Task Dispose_WaitsForActiveReceiptBeforeDisposingLock([Values(1, 8)] int operations)
     {
-        using BlockingHashState state = new();
-        BlockingResourceId resourceId = new(1, state);
-        RetryCache<BlockingRequestMessage, BlockingResourceId> cache = new(
-            TestLogManager.Instance,
-            TimeProvider.System,
-            timeoutMs: AssertTimeoutMs,
-            maxPendingResourcesPerHandler: 0,
-            overflowRequestLimit: 1);
-
-        cache.Announced(resourceId, new BlockingHandler());
-        state.Block();
-        Task receipt = Task.Run(() => cache.Received(resourceId));
-        Task disposal = Task.CompletedTask;
-        try
-        {
-            Assert.That(state.Entered.Wait(AssertTimeoutMs), Is.True);
-            disposal = cache.DisposeAsync().AsTask();
-            await cache.DisposalReachedOperationBarrier.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs));
-            Assert.That(disposal.IsCompleted, Is.False);
-        }
-        finally
-        {
-            state.Continue.Set();
-        }
-
-        await Task.WhenAll(receipt, disposal).WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(cache.Announced(resourceId, new BlockingHandler()), Is.EqualTo(AnnounceResult.RequestRequired));
-            Assert.That(cache.OverflowRetainedCapacity, Is.Zero);
-        }
-    }
-
-    [Test]
-    public async Task Dispose_WaitsForEveryActiveOperationAcrossThreads()
-    {
-        const int Operations = 8;
-        BlockingHashState[] states = new BlockingHashState[Operations];
-        Task[] receipts = new Task[Operations];
+        BlockingHashState[] states = new BlockingHashState[operations];
+        BlockingResourceId[] resourceIds = new BlockingResourceId[operations];
+        Task[] receipts = new Task[operations];
         RetryCache<BlockingRequestMessage, BlockingResourceId> cache = new(
             TestLogManager.Instance,
             TimeProvider.System,
@@ -2032,30 +1996,35 @@ public class RetryCacheTests
         Task disposal = Task.CompletedTask;
         try
         {
-            for (int i = 0; i < Operations; i++)
+            for (int i = 0; i < operations; i++)
             {
                 BlockingHashState state = states[i] = new BlockingHashState();
-                BlockingResourceId resourceId = new(i, state);
+                BlockingResourceId resourceId = resourceIds[i] = new(i, state);
                 cache.Announced(resourceId, new BlockingHandler());
                 state.Block();
                 receipts[i] = Task.Factory.StartNew(() => cache.Received(resourceId), CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
             }
 
-            for (int i = 0; i < Operations; i++)
+            for (int i = 0; i < operations; i++)
             {
                 Assert.That(states[i].Entered.Wait(AssertTimeoutMs), Is.True);
             }
 
             disposal = cache.DisposeAsync().AsTask();
             await cache.DisposalReachedOperationBarrier.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs));
-            for (int i = 0; i < Operations; i++)
+            for (int i = 0; i < operations; i++)
             {
-                Assert.That(disposal.IsCompleted, Is.False, $"disposal completed with {Operations - i} operations in flight");
+                Assert.That(disposal.IsCompleted, Is.False, $"disposal completed with {operations - i} operations in flight");
                 states[i].Continue.Set();
                 await receipts[i].WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs));
             }
 
             await disposal.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(cache.Announced(resourceIds[0], new BlockingHandler()), Is.EqualTo(AnnounceResult.RequestRequired));
+                Assert.That(cache.OverflowRetainedCapacity, Is.Zero);
+            }
         }
         finally
         {

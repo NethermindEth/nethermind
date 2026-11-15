@@ -11,7 +11,8 @@ namespace Nethermind.TxPool;
 
 internal sealed class OperationGate
 {
-    private const int SlotStride = 32;
+    private const int CacheLineSize = 128;
+    private const int SlotStride = CacheLineSize / sizeof(int);
     private static readonly int s_slotMask = (int)BitOperations.RoundUpToPowerOf2((uint)Environment.ProcessorCount) - 1;
 
     private readonly int[] _slots = new int[(s_slotMask + 2) * SlotStride];
