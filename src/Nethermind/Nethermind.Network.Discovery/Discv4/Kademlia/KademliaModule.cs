@@ -1,11 +1,15 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Net;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Kademlia;
+using Nethermind.Logging;
+using Nethermind.Network;
+using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Stats.Model;
 
@@ -20,6 +24,33 @@ namespace Nethermind.Network.Discovery.Discv4.Kademlia;
 /// <param name="bootNodes"></param>
 public sealed class KademliaModule(Node currentNode, IReadOnlyList<Node> bootNodes) : DiscoveryKademliaModuleBase(currentNode, bootNodes, DbNames.DiscoveryNodes)
 {
+    protected override void Load(ContainerBuilder builder)
+    {
+        base.Load(builder);
+
+        builder.AddDecorator<INodeHealthTracker<Node>>((ctx, inner) =>
+        {
+            INetworkConfig networkConfig = ctx.Resolve<INetworkConfig>();
+            IDiscoveryConfig discoveryConfig = ctx.Resolve<IDiscoveryConfig>();
+            IPAddress? currentIp = IPAddress.TryParse(networkConfig.ExternalIp ?? networkConfig.LocalIp, out IPAddress? ip) ? ip : null;
+            int filterSize = Math.Max(networkConfig.MaxActivePeers, discoveryConfig.MaxNodeLifecycleManagersCount);
+            NodeFilter filter = NodeFilter.Create(
+                filterSize,
+                networkConfig.FilterDiscoveryNodesByRecentIp,
+                networkConfig.FilterDiscoveryNodesBySameSubnet,
+                currentIp);
+
+            return new FilteringNodeHealthTracker(
+                inner,
+                ctx.Resolve<IRoutingTable<Node, ValueHash256>>(),
+                ctx.Resolve<KademliaConfig<Node>>(),
+                filter,
+                networkConfig.FilterDiscoveryNodesByRecentIp,
+                ctx.ResolveKeyed<INetworkStorage>(DbNames.DiscoveryNodes),
+                ctx.Resolve<ILogManager>());
+        });
+    }
+
     protected override void RegisterProtocolServices(ContainerBuilder builder) => builder
             // This two class contains the actual `INodeSource` logic. As in finding nodes within the network.
             .AddSingleton<IKademliaNodeSource, NodeSource>()

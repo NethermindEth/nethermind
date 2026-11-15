@@ -22,6 +22,7 @@ using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv4.Kademlia;
 using Nethermind.Network.Discovery.Discv4.Kademlia.Handlers;
 using Nethermind.Network.Discovery.Discv4.Messages;
+using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Enr;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test;
@@ -151,7 +152,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             _adapter = CreateAdapter(FailsafeRequestTimeoutMs);
         }
 
-        private KademliaAdapter CreateAdapter(int requestTimeoutMs, NetworkListenerState? listenerState = null, int bondWaitTime = 1, IEcdsa? ecdsa = null, int maxOutgoingMessagePerSecond = 500)
+        private KademliaAdapter CreateAdapter(int requestTimeoutMs, NetworkListenerState? listenerState = null, int bondWaitTime = 1, IEcdsa? ecdsa = null, int maxOutgoingMessagePerSecond = 500, INodeHealthTracker<Node>? nodeHealthTracker = null)
         {
             if (listenerState is null)
             {
@@ -163,7 +164,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             return new KademliaAdapter(
                 new Lazy<IKademlia<PublicKey, Node>>(() => _kademliaMessageReceiver),
                 _routingTable,
-                new Lazy<INodeHealthTracker<Node>>(() => _nodeHealthTracker),
+                new Lazy<INodeHealthTracker<Node>>(() => nodeHealthTracker ?? _nodeHealthTracker),
                 new DiscoveryConfig
                 {
                     EnrTimeout = requestTimeoutMs,
@@ -1075,6 +1076,69 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             await _adapter.OnIncomingMsg(response);
 
             _nodeHealthTracker.DidNotReceive().OnIncomingMessageFrom(Arg.Is<Node>(n => n.Id.Equals(_receiver.Id)));
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task OnPingMessage_FromFilteredIp_IsIgnored()
+        {
+            INodeHealthTracker<Node> admitted = Substitute.For<INodeHealthTracker<Node>>();
+            INetworkStorage storage = Substitute.For<INetworkStorage>();
+            storage.GetPersistedNodes().Returns([]);
+            NodeFilter filter = NodeFilter.Create(100, filterEnabled: true, subnetBucketing: true, IPAddress.Parse("198.51.100.1"));
+            FilteringNodeHealthTracker filteringTracker = new(
+                admitted,
+                _routingTable,
+                _kademliaConfig,
+                filter,
+                enabled: true,
+                storage,
+                _logManager);
+
+            await _adapter.DisposeAsync();
+            _adapter = CreateAdapter(FailsafeRequestTimeoutMs, nodeHealthTracker: filteringTracker);
+
+            Queue<PublicKey> pendingPongs = new([TestItem.PublicKeyC, TestItem.PublicKeyD]);
+            _msgSender.SendMsg(Arg.Any<PingMsg>()).Returns(ci =>
+            {
+                PingMsg sent = (PingMsg)ci[0]!;
+                // Serialization assigns the ping MDC that the pong handler matching keys on.
+                _receiverSerializationManager.SerializeToArray(sent);
+                PongMsg pong = new(
+                    pendingPongs.Dequeue(),
+                    _timestamper.UnixTime.SecondsLong + 1,
+                    sent.Mdc!.Value,
+                    enrSequence: null);
+                pong.FarAddress = sent.FarAddress;
+                return _adapter.OnIncomingMsg(pong);
+            });
+
+            IPEndPoint address = new(IPAddress.Parse("203.0.113.50"), 30303);
+            await _adapter.OnIncomingMsg(CreatePing(TestItem.PublicKeyC, address));
+            await _adapter.OnIncomingMsg(CreatePing(TestItem.PublicKeyD, address));
+
+            Node[] receivedNodes = admitted.ReceivedCalls()
+                .Select(call => (Node)call.GetArguments()[0]!)
+                .ToArray();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(receivedNodes.Select(node => node.Id), Does.Contain(TestItem.PublicKeyC),
+                    $"received: {string.Join(", ", receivedNodes.Select(node => $"{node.Id}@{node.Address}"))}");
+                Assert.That(receivedNodes.Select(node => node.Id), Does.Not.Contain(TestItem.PublicKeyD));
+            }
+        }
+
+        private PingMsg CreatePing(PublicKey publicKey, IPEndPoint address)
+        {
+            PingMsg ping = new(
+                publicKey,
+                _timestamper.UnixTime.SecondsLong + 20,
+                address,
+                _kademliaConfig.CurrentNodeId.Address,
+                new byte[32]);
+            ping.FarAddress = address;
+            return ping;
         }
 
         [Test]

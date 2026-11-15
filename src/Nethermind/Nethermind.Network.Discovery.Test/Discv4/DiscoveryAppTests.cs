@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -17,6 +18,7 @@ using Nethermind.Crypto;
 using Nethermind.Init.Modules;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
+using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Enr;
@@ -287,6 +289,81 @@ public class DiscoveryAppTests
             node.DiscoveryAddress.Address.Equals(IPAddress.Parse("2001:4860:4860::8888"))));
         kademlia.DidNotReceive().AddOrRefresh(Arg.Any<Node>());
     }
+
+    [TestCase("203.0.113.50", true, true, false, TestName = "AddNodeToDiscovery: same IP, filter on")]
+    [TestCase("203.0.113.51", true, true, false, TestName = "AddNodeToDiscovery: same /24, bucketing on")]
+    [TestCase("203.0.113.51", false, true, true, TestName = "AddNodeToDiscovery: same /24, bucketing off")]
+    [TestCase("203.0.113.51", true, false, true, TestName = "AddNodeToDiscovery: filter off")]
+    [TestCase("203.0.114.51", true, true, true, TestName = "AddNodeToDiscovery: different /24")]
+    public async Task AddNodeToDiscovery_applies_configured_filter(
+        string secondIp,
+        bool subnetBucketing,
+        bool filterEnabled,
+        bool expectSecondAccepted)
+    {
+        await using IContainer container = CreateDiscoveryAppContainer(filterEnabled, subnetBucketing, out NetworkListenerState listenerState);
+        listenerState.SetDiscoveryAddress(IPAddress.Any);
+        await using DiscoveryApp app = container.Resolve<DiscoveryApp>();
+        IRoutingTable<Node, ValueHash256> routingTable = ResolveDiscv4<IRoutingTable<Node, ValueHash256>>(app);
+
+        Node first = CreateNode(TestItem.PublicKeyA, "203.0.113.50");
+        Node second = CreateNode(TestItem.PublicKeyB, secondIp);
+
+        app.AddNodeToDiscovery(first);
+        app.AddNodeToDiscovery(second);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(routingTable.TryGet(first.Id.Hash.ValueHash256, out _), Is.True);
+            Assert.That(routingTable.TryGet(second.Id.Hash.ValueHash256, out _), Is.EqualTo(expectSecondAccepted));
+        }
+    }
+
+    private static IContainer CreateDiscoveryAppContainer(
+        bool filterEnabled,
+        bool subnetBucketing,
+        out NetworkListenerState listenerState)
+    {
+        NetworkConfig networkConfig = new()
+        {
+            ExternalIp = "8.8.8.8",
+            LocalIp = "0.0.0.0",
+            FilterDiscoveryNodesByRecentIp = filterEnabled,
+            FilterDiscoveryNodesBySameSubnet = subnetBucketing,
+        };
+        DiscoveryConfig discoveryConfig = new();
+        IIPResolver ipResolver = new FixedIpResolver(networkConfig);
+        listenerState = new NetworkListenerState(IPAddress.Any, IPAddress.IPv6Any, LimboLogs.Instance);
+
+        InitConfig initConfig = new() { DiscoveryEnabled = true, DiagnosticMode = DiagnosticMode.MemDb };
+        ContainerBuilder builder = new();
+        builder.RegisterModule(new DiscoveryModule(initConfig, networkConfig));
+        builder.RegisterInstance(initConfig).As<IInitConfig>();
+        builder.RegisterInstance(new ChainSpec());
+        builder.RegisterInstance(LimboLogs.Instance).As<ILogManager>();
+        builder.RegisterInstance(networkConfig).As<INetworkConfig>();
+        builder.RegisterInstance(discoveryConfig).As<IDiscoveryConfig>();
+        builder.RegisterInstance(ipResolver).As<IIPResolver>();
+        builder.RegisterInstance(listenerState);
+        builder.RegisterInstance(new ProcessExitSource(CancellationToken.None)).As<IProcessExitSource>();
+        builder.RegisterInstance<IEcdsa>(new EthereumEcdsa(0));
+        builder.RegisterInstance(Timestamper.Default).As<ITimestamper>();
+        builder.RegisterInstance(Substitute.For<IForkInfo>());
+        builder.RegisterInstance(Substitute.For<INodeRecordProvider>());
+        builder.RegisterInstance(Substitute.For<INodeStatsManager>());
+        builder.RegisterInstance(new Enode(TestItem.PrivateKeyF.PublicKey, IPAddress.Parse("8.8.8.8"), 30303, 30303)).As<IEnode>();
+        return builder.Build();
+    }
+
+    private static T ResolveDiscv4<T>(DiscoveryApp app) where T : notnull
+    {
+        FieldInfo field = typeof(DiscoveryApp).GetField("_discv4Services", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("DiscoveryApp no longer stores its discv4 lifetime scope.");
+        ILifetimeScope scope = (ILifetimeScope)field.GetValue(app)!;
+        return scope.Resolve<T>();
+    }
+
+    private static Node CreateNode(PublicKey id, string host) => new(id, host, 30303, 30303);
 
     private static NodeRecord CreateAsymmetricDualStackRecord() =>
         TestEnrBuilder.BuildSigned(
