@@ -147,18 +147,26 @@ public class SnapStateServer : ISnapStateServer
         byteLimit = Math.Max(Math.Min(byteLimit, ISnapStateServer.HardResponseByteLimit), 1);
 
         AccountCollector accounts = new(byteLimit);
-        (long _, IOwnedReadOnlyList<byte[]> proofs, _) = GetNodesFromTrieVisitor(
-            rootHash,
-            startingHash,
-            limitHash?.ToCommitment() ?? Keccak.MaxValue,
-            byteLimit,
-            null,
-            null,
-            accounts,
-            cancellationToken);
+        try
+        {
+            (long _, IOwnedReadOnlyList<byte[]> proofs, _) = GetNodesFromTrieVisitor(
+                rootHash,
+                startingHash,
+                limitHash?.ToCommitment() ?? Keccak.MaxValue,
+                byteLimit,
+                null,
+                null,
+                accounts,
+                cancellationToken);
 
-        EncodedSnapEntries<PathWithAccount> nodes = accounts.Accounts;
-        return (nodes, new ByteArrayListAdapter(proofs));
+            EncodedSnapEntries<PathWithAccount> nodes = accounts.Accounts;
+            return (nodes, new ByteArrayListAdapter(proofs));
+        }
+        catch
+        {
+            accounts.Accounts.Dispose();
+            throw;
+        }
     }
 
     public (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>>, IByteArrayList?) GetStorageRanges(
@@ -206,15 +214,27 @@ public class SnapStateServer : ISnapStateServer
             Hash256? storagePath = accounts[i].Path.ToCommitment();
 
             PathWithStorageCollector pathWithStorageCollector = new();
-            (long innerResponseSize, IOwnedReadOnlyList<byte[]> proofs, bool stoppedEarly) = GetNodesFromTrieVisitor(
-                rootHash,
-                startingHash1,
-                limitHash1,
-                byteLimit - responseSize,
-                storagePath,
-                storageRoot,
-                pathWithStorageCollector,
-                cancellationToken);
+            long innerResponseSize;
+            IOwnedReadOnlyList<byte[]> proofs;
+            bool stoppedEarly;
+            try
+            {
+                (innerResponseSize, proofs, stoppedEarly) = GetNodesFromTrieVisitor(
+                    rootHash,
+                    startingHash1,
+                    limitHash1,
+                    byteLimit - responseSize,
+                    storagePath,
+                    storageRoot,
+                    pathWithStorageCollector,
+                    cancellationToken);
+            }
+            catch
+            {
+                pathWithStorageCollector.Slots.Dispose();
+                responseNodes.DisposeRecursive();
+                throw;
+            }
 
             if (pathWithStorageCollector.Slots.Count == 0)
             {

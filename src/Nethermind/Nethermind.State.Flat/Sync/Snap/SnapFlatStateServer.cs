@@ -143,19 +143,27 @@ public class SnapFlatStateServer(
             byteLimit = Math.Max(Math.Min(byteLimit, ISnapStateServer.HardResponseByteLimit), 1);
 
             AccountCollector accounts = new(byteLimit);
-            (long _, IByteArrayList proofs, _) = GetNodesFromTrieVisitor(
-                bundle,
-                stateId.StateRoot,
-                startingHash,
-                limitHash?.ToCommitment() ?? Keccak.MaxValue,
-                byteLimit,
-                null,
-                null,
-                accounts,
-                cancellationToken);
+            try
+            {
+                (long _, IByteArrayList proofs, _) = GetNodesFromTrieVisitor(
+                    bundle,
+                    stateId.StateRoot,
+                    startingHash,
+                    limitHash?.ToCommitment() ?? Keccak.MaxValue,
+                    byteLimit,
+                    null,
+                    null,
+                    accounts,
+                    cancellationToken);
 
-            EncodedSnapEntries<PathWithAccount> nodes = accounts.Accounts;
-            return (nodes, proofs);
+                EncodedSnapEntries<PathWithAccount> nodes = accounts.Accounts;
+                return (nodes, proofs);
+            }
+            catch
+            {
+                accounts.Accounts.Dispose();
+                throw;
+            }
         }
     }
 
@@ -209,16 +217,28 @@ public class SnapFlatStateServer(
                 ValueHash256 storagePath = accounts[i].Path;
 
                 PathWithStorageCollector pathWithStorageCollector = new();
-                (long innerResponseSize, IByteArrayList proofs, bool stoppedEarly) = GetNodesFromTrieVisitor(
-                    bundle,
-                    stateId.StateRoot,
-                    startingHash1,
-                    limitHash1,
-                    byteLimit - responseSize,
-                    storagePath,
-                    storageRoot,
-                    pathWithStorageCollector,
-                    cancellationToken);
+                long innerResponseSize;
+                IByteArrayList proofs;
+                bool stoppedEarly;
+                try
+                {
+                    (innerResponseSize, proofs, stoppedEarly) = GetNodesFromTrieVisitor(
+                        bundle,
+                        stateId.StateRoot,
+                        startingHash1,
+                        limitHash1,
+                        byteLimit - responseSize,
+                        storagePath,
+                        storageRoot,
+                        pathWithStorageCollector,
+                        cancellationToken);
+                }
+                catch
+                {
+                    pathWithStorageCollector.Slots.Dispose();
+                    responseNodes.DisposeRecursive();
+                    throw;
+                }
 
                 if (pathWithStorageCollector.Slots.Count == 0)
                 {

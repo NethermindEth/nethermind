@@ -1,5 +1,7 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
+using System.Diagnostics.Tracing;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -567,6 +569,75 @@ public class SnapStateServerTests
             Assert.That(accounts.Count, Is.Zero);
             Assert.That(accounts.Encoded.Length, Is.Zero);
             Assert.That(accounts.AsSpan().Length, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void RangeRequests_ReturnPooledEntries_WhenTraversalThrows([Values] bool storageRanges)
+    {
+        using ISnapServerContext context = CreateContext();
+        PathWithAccount[] accounts = [];
+        if (storageRanges)
+        {
+            // The first account fills a large slot buffer; the storage trie of the second account is missing.
+            FillAccountWithStorage(context, 10_000);
+            context.SetRawAccount(TestItem.KeccakH, AccountDecoder.Instance.Encode(Build.An.Account.WithBalance(1).WithStorageRoot(TestItem.KeccakA).TestObject));
+            accounts = [new(TestItem.Tree.AccountAddress0, null), new(TestItem.KeccakH, null)];
+        }
+        else
+        {
+            FillMultipleAccounts(context, 100);
+            context.SetRawAccount(Keccak.MaxValue, [0xc0]);
+        }
+
+        using SharedByteBufferRentals rentals = new(minimumLength: 1 << 19);
+        Assert.That(() =>
+        {
+            if (storageRanges) context.Server.GetStorageRanges(context.RootHash, accounts, null, null, ISnapStateServer.HardResponseByteLimit, CancellationToken.None);
+            else context.Server.GetAccountRanges(context.RootHash, Keccak.Zero, null, ISnapStateServer.HardResponseByteLimit, CancellationToken.None);
+        }, Throws.Exception);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rentals.RentCount, Is.Positive, "the collector rents a buffer of the response size");
+            Assert.That(rentals.Outstanding, Is.Empty, "the collected entries go back to the pool");
+        }
+    }
+
+    /// <summary>Records the buffers of at least <paramref name="minimumLength"/> bytes that this thread rents from <see cref="ArrayPool{T}.Shared"/> and does not return.</summary>
+    private sealed class SharedByteBufferRentals(int minimumLength) : EventListener
+    {
+        private readonly int _threadId = Environment.CurrentManagedThreadId;
+        private readonly int _poolId = ArrayPool<byte>.Shared.GetHashCode();
+
+        public HashSet<int> Outstanding { get; } = [];
+        public int RentCount { get; private set; }
+
+        protected override void OnEventSourceCreated(EventSource eventSource)
+        {
+            if (eventSource.Name == "System.Buffers.ArrayPoolEventSource") EnableEvents(eventSource, EventLevel.Verbose);
+        }
+
+        protected override void OnEventWritten(EventWrittenEventArgs eventData)
+        {
+            if (Environment.CurrentManagedThreadId != _threadId
+                || eventData.Payload is not [int bufferId, int bufferSize, int poolId, ..]
+                || poolId != _poolId
+                || bufferSize < minimumLength)
+            {
+                return;
+            }
+
+            switch (eventData.EventName)
+            {
+                case "BufferRented":
+                    RentCount++;
+                    Outstanding.Add(bufferId);
+                    break;
+                case "BufferReturned":
+                    Outstanding.Remove(bufferId);
+                    break;
+            }
         }
     }
 
