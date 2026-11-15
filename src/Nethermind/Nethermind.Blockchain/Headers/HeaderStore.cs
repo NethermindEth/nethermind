@@ -184,11 +184,18 @@ public class HeaderStore : IHeaderStore, IClearableCache
     }
 
     /// <inheritdoc/>
+    public BlockHeader? GetIfBloomMatches(Hash256 blockHash, ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found) =>
+        GetIfBloomMatches(in blockHash.ValueHash256, blockHash, blockNumber, bloomMatches, out found);
+
+    /// <inheritdoc/>
+    public BlockHeader? GetIfBloomMatches(in ValueHash256 blockHash, ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found) =>
+        GetIfBloomMatches(in blockHash, null, blockNumber, bloomMatches, out found);
+
     [SkipLocalsInit]
-    public BlockHeader? GetIfBloomMatches(Hash256 blockHash, ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
+    private BlockHeader? GetIfBloomMatches(in ValueHash256 blockHash, Hash256? hash, ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
     {
-        BlockHeader? header = _headerCache.Get(in blockHash.ValueHash256);
-        if (header is null && _pending is not null) _pending.TryGet(blockHash, out header);
+        BlockHeader? header = _headerCache.Get(in blockHash);
+        if (header is null && _pending is not null) _pending.TryGet(in blockHash, out header);
         if (header is not null)
         {
             found = true;
@@ -197,11 +204,11 @@ public class HeaderStore : IHeaderStore, IClearableCache
 
         Span<byte> key = stackalloc byte[NumberPrefixedKeyLength];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, key);
-        header = ReadIfBloomMatches(key, blockHash, bloomMatches, out found);
-        return found ? header : ReadIfBloomMatches(blockHash.Bytes, blockHash, bloomMatches, out found);
+        header = ReadIfBloomMatches(key, in blockHash, hash, bloomMatches, out found);
+        return found ? header : ReadIfBloomMatches(blockHash.Bytes, in blockHash, hash, bloomMatches, out found);
     }
 
-    private BlockHeader? ReadIfBloomMatches(ReadOnlySpan<byte> key, Hash256 blockHash, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
+    private BlockHeader? ReadIfBloomMatches(ReadOnlySpan<byte> key, in ValueHash256 blockHash, Hash256? hash, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
     {
         if (_headerDb is IReadOnlyNativeKeyValueStore native)
         {
@@ -214,7 +221,7 @@ public class HeaderStore : IHeaderStore, IClearableCache
 
             try
             {
-                return DecodeIfBloomMatches(slice, blockHash, bloomMatches, out found);
+                return DecodeIfBloomMatches(slice, in blockHash, hash, bloomMatches, out found);
             }
             finally
             {
@@ -231,7 +238,7 @@ public class HeaderStore : IHeaderStore, IClearableCache
 
         try
         {
-            return DecodeIfBloomMatches(data, blockHash, bloomMatches, out found);
+            return DecodeIfBloomMatches(data, in blockHash, hash, bloomMatches, out found);
         }
         finally
         {
@@ -239,7 +246,7 @@ public class HeaderStore : IHeaderStore, IClearableCache
         }
     }
 
-    private BlockHeader? DecodeIfBloomMatches(ReadOnlySpan<byte> rlp, Hash256 blockHash, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
+    private BlockHeader? DecodeIfBloomMatches(ReadOnlySpan<byte> rlp, in ValueHash256 blockHash, Hash256? hash, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
     {
         found = rlp.Length != 0;
         if (!found) return null;
@@ -251,7 +258,7 @@ public class HeaderStore : IHeaderStore, IClearableCache
         RlpReader reader = new(rlp);
         BlockHeader? header = _headerDecoder.Decode(ref reader, RlpBehaviors.AllowExtraBytes | RlpBehaviors.TrustedInput | RlpBehaviors.ExcludeHashes);
         found = header is not null;
-        if (found) header!.Hash = blockHash;
+        if (found) header!.Hash = hash ?? new Hash256(in blockHash);
         return found && (bloomTested || bloomMatches(header!.Bloom!.Bytes)) ? header : null;
     }
 

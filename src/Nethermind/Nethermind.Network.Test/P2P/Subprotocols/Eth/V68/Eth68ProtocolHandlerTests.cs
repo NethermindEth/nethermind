@@ -1093,6 +1093,21 @@ public class Eth68ProtocolHandlerTests
         }
     }
 
+    [Test]
+    public void Should_size_receipts_with_bloom_for_soft_message_size_limit()
+    {
+        const int count = 512;
+        using GetReceiptsMessage msg = new(1111, new(Enumerable.Repeat(Keccak.Zero, count).ToPooledList(count)));
+        TxReceipt[] receipts = SoftLimitTestHelper.CreateLogHeavyReceipts(100);
+        int expectedCount = SoftLimitTestHelper.CountReceiptBlocksWithinSoftLimit(receipts, count);
+        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(receipts);
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(msg, Eth66MessageCode.GetReceipts);
+
+        _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage>(r => r.EthMessage.TxReceipts.Count == expectedCount));
+    }
+
     private void HandleIncomingStatusMessage()
     {
         StatusMessage statusMsg = new();

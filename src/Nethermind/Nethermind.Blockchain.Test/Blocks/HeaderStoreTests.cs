@@ -170,7 +170,7 @@ public class HeaderStoreTests
 
     [Test]
     public void GetIfBloomMatches_decodes_only_a_header_whose_bloom_matches(
-        [Values] bool cached, [Values] bool legacyKey, [Values] bool matches)
+        [Values] bool cached, [Values] bool legacyKey, [Values] bool matches, [Values] bool byValueHash)
     {
         CountingHeaderDecoder decoder = new();
         MemDb headerDb = new();
@@ -183,7 +183,10 @@ public class HeaderStoreTests
         if (cached) store.Cache(header);
         Address address = matches ? TestItem.AddressA : TestItem.AddressB;
 
-        BlockHeader? result = store.GetIfBloomMatches(header.Hash!, header.Number, b => new BloomStructRef(b).Matches(address.Bytes), out bool found);
+        Func<ReadOnlySpan<byte>, bool> bloomMatches = b => new BloomStructRef(b).Matches(address.Bytes);
+        BlockHeader? result = byValueHash
+            ? store.GetIfBloomMatches(in header.Hash!.ValueHash256, header.Number, bloomMatches, out bool found)
+            : store.GetIfBloomMatches(header.Hash!, header.Number, bloomMatches, out found);
 
         using (Assert.EnterMultipleScope())
         {

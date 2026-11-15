@@ -598,10 +598,10 @@ namespace Nethermind.Blockchain
         /// <remarks>A level outside the cached window is read without caching it, as long scans read many.</remarks>
         public BlockHeader? FindCanonicalHeaderIfBloomMatches(ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
         {
+            if (!ShouldCache(blockNumber)) return FindUncachedCanonicalHeaderIfBloomMatches(blockNumber, bloomMatches, out found);
+
             long deletions = Volatile.Read(ref _deletions);
-            bool shouldCache = ShouldCache(blockNumber);
-            ChainLevelInfo? level = shouldCache ? LoadLevel(blockNumber) : _chainLevelInfoRepository.LoadLevelWithoutCaching(blockNumber);
-            if (level?.MainChainBlock is not { } blockInfo || blockInfo.BlockHash == Keccak.Zero)
+            if (LoadLevel(blockNumber)?.MainChainBlock is not { } blockInfo || blockInfo.BlockHash == Keccak.Zero)
             {
                 found = false;
                 return null;
@@ -611,12 +611,28 @@ namespace Nethermind.Blockchain
             if (header is not null)
             {
                 header.Hash ??= blockInfo.BlockHash;
-                SetTotalDifficultyFromBlockInfo(header, blockInfo);
-                if (shouldCache)
-                {
-                    _headerStore.Cache(header);
-                    if (OverlappedDeletion(deletions)) (_headerStore as IClearableCache)?.ClearCache();
-                }
+                SetTotalDifficultyFromBlockInfo(header, blockInfo.TotalDifficulty);
+                _headerStore.Cache(header);
+                if (OverlappedDeletion(deletions)) (_headerStore as IClearableCache)?.ClearCache();
+            }
+
+            return header;
+        }
+
+        private BlockHeader? FindUncachedCanonicalHeaderIfBloomMatches(ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
+        {
+            if (!_chainLevelInfoRepository.TryGetMainChainBlockWithoutCaching(blockNumber, out ValueHash256 blockHash, out UInt256 totalDifficulty)
+                || blockHash == Keccak.Zero.ValueHash256)
+            {
+                found = false;
+                return null;
+            }
+
+            BlockHeader? header = _headerStore.GetIfBloomMatches(in blockHash, blockNumber, bloomMatches, out found);
+            if (header is not null)
+            {
+                header.Hash ??= new Hash256(in blockHash);
+                SetTotalDifficultyFromBlockInfo(header, totalDifficulty);
             }
 
             return header;
@@ -675,7 +691,7 @@ namespace Nethermind.Blockchain
                 }
                 else
                 {
-                    SetTotalDifficultyFromBlockInfo(header, blockInfo);
+                    SetTotalDifficultyFromBlockInfo(header, blockInfo.TotalDifficulty);
                 }
 
                 if (requiresCanonical)
@@ -1746,7 +1762,7 @@ namespace Nethermind.Blockchain
                 }
                 else
                 {
-                    SetTotalDifficultyFromBlockInfo(block.Header, blockInfo);
+                    SetTotalDifficultyFromBlockInfo(block.Header, blockInfo.TotalDifficulty);
                 }
 
                 if (requiresCanonical)
@@ -1791,7 +1807,7 @@ namespace Nethermind.Blockchain
             // We also checking TTD is zero to ensure that block after genesis have zero difficulty
             Genesis?.Difficulty == 0 && SpecProvider.TerminalTotalDifficulty == 0;
 
-        private void SetTotalDifficultyFromBlockInfo(BlockHeader header, BlockInfo blockInfo)
+        private void SetTotalDifficultyFromBlockInfo(BlockHeader header, in UInt256 totalDifficulty)
         {
             if (header.IsGenesis)
             {
@@ -1799,9 +1815,9 @@ namespace Nethermind.Blockchain
                 return;
             }
 
-            if (blockInfo.TotalDifficulty != UInt256.Zero)
+            if (totalDifficulty != UInt256.Zero)
             {
-                header.TotalDifficulty = blockInfo.TotalDifficulty;
+                header.TotalDifficulty = totalDifficulty;
                 return;
             }
 

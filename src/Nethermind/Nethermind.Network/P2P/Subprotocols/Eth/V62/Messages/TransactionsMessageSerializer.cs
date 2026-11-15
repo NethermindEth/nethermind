@@ -58,7 +58,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         {
             RlpWriter writer = RlpWriter.ContentWriter(destination);
 
-            RlpSequence sequence = writer.StartSequence(GetContentLength(message));
+            RlpSequence sequence = writer.StartSequence(MessageSequence.GetContentLength(destination.Length));
             foreach (Transaction tx in message.Transactions.AsSpan())
             {
                 TxDecoder.Encode(ref writer, tx, RlpBehaviors.InMempoolForm);
