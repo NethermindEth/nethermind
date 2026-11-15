@@ -61,7 +61,8 @@ public sealed partial class ProofWrapperTransport
                 // they never serve cannot crowd out the others. Announcements are not repeated, so excess ones are lost.
                 if (peer.PendingFetches >= share) continue;
                 bool raw = announcement.Mode == MempoolWrapper.ModeRaw;
-                if (raw && _rawFetches >= WrapperTransportLimits.MaxPendingRawAnnouncements) continue;
+                // Mode 2 is never requested from a deprioritized peer, so its announcement would only hold a pending slot.
+                if (raw && (peer.IsDeprioritized || _rawFetches >= WrapperTransportLimits.MaxPendingRawAnnouncements)) continue;
                 if (_fetches.Count >= WrapperTransportLimits.MaxPendingAnnouncements && (!evictable || !EvictPending(peer, share)))
                 {
                     // Nothing becomes evictable while the rest of the message is handled.

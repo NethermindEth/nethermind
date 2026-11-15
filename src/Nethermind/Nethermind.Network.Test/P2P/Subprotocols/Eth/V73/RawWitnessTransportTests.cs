@@ -295,7 +295,8 @@ public class RawWitnessTransportTests
         }
     }
 
-    // A proof-backed wrapper queued after a mode-2 one is requested in the same pass; a failing peer's only slot never goes to mode 2.
+    // A proof-backed wrapper queued after a mode-2 one is requested in the same pass; a failing peer's mode-2 announcements are
+    // neither requested nor kept pending.
     [Test]
     public void Proof_backed_fetches_skipped_by_a_mode_2_request_are_requested_in_the_same_pass([Values] bool failing)
     {
@@ -316,6 +317,7 @@ public class RawWitnessTransportTests
         {
             Assert.That(requests.Any(r => r.Hashes.Contains(proven.Hash)), Is.True);
             Assert.That(requests.Any(r => r.Hashes.Contains(raw.Hash)), Is.EqualTo(!failing));
+            Assert.That(node.Transport.FetchCount, Is.EqualTo(failing ? 1 : 2), "a failing peer's mode-2 announcement holds no pending slot");
         }
     }
 
