@@ -176,8 +176,7 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
         RlpReader receipts = new RlpReader(blockReceipts).EnterSequence(out _);
         while (receipts.HasNext)
         {
-            if (!NetworkReceipt.TryRead(ref receipts, withBloom, out NetworkReceipt receipt))
-                throw new ArgumentException("A receipt has a shape left to the receipt decoder.", nameof(blockReceipts));
+            NetworkReceipt receipt = NetworkReceipt.ReadValidated(ref receipts, withBloom);
             contentLength += Rlp.LengthOfSequence(AddCompactLengths(lengths, in receipt, eip658));
             count++;
         }

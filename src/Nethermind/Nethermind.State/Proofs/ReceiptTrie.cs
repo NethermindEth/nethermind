@@ -87,11 +87,11 @@ public sealed partial class ReceiptTrie : PatriciaTrie<TxReceipt>
     /// The trie values are the ones <see cref="NetworkReceipt.WriteTrieLeaf"/> writes, which equal the ones
     /// <see cref="ReceiptMessageDecoder"/> writes for the decoded receipts when the message holds them in canonical form.
     /// </remarks>
-    /// <param name="blockReceipts">The encoded sequence of the block's receipts.</param>
+    /// <param name="blockReceipts">The encoded sequence of the block's receipts, each one <see cref="NetworkReceipt.TryRead"/> reads.</param>
     /// <param name="withBloom">Whether the receipts have blooms: the eth/63 to eth/68 form.</param>
     /// <param name="root">The receipts root.</param>
-    /// <returns><see langword="false"/> when a receipt has a shape <see cref="NetworkReceipt"/> leaves to the decoder.</returns>
-    /// <exception cref="RlpReaderException">The receipts are not valid RLP.</exception>
+    /// <returns><see langword="false"/> when a receipt has a zero-length bloom before EIP-7668, which the decoder takes as received.</returns>
+    /// <exception cref="RlpReaderException">A receipt is not one <see cref="NetworkReceipt.TryRead"/> reads.</exception>
     public static bool TryCalculateRoot(IReceiptSpec spec, ReadOnlySpan<byte> blockReceipts, bool withBloom, out Hash256 root)
     {
         bool eip7668 = spec.IsEip7668Enabled;
@@ -101,7 +101,8 @@ public sealed partial class ReceiptTrie : PatriciaTrie<TxReceipt>
         RlpReader receipts = new RlpReader(blockReceipts).EnterSequence(out _);
         while (receipts.HasNext)
         {
-            if (!NetworkReceipt.TryRead(ref receipts, withBloom, out NetworkReceipt receipt)) return false;
+            NetworkReceipt receipt = NetworkReceipt.ReadValidated(ref receipts, withBloom);
+            if (withBloom && !eip7668 && receipt.Bloom.IsEmpty) return false;
             totalLength = checked(totalLength + receipt.GetTrieLeafLength(eip7668));
             count++;
         }

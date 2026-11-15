@@ -86,6 +86,56 @@ public class NetworkReceiptTests
         Assert.That(NetworkReceipt.TryRead(ref reader, withBloom, out _), Is.EqualTo(topicCount <= 4));
     }
 
+    [TestCase(null, true, TestName = "Valid receipt")]
+    [TestCase("extra field", false)]
+    [TestCase("trailing payload bytes", false)]
+    [TestCase("status byte", false)]
+    [TestCase("address length", false)]
+    [TestCase("topic length", false)]
+    public void Reads_only_receipts_in_the_form_the_decoder_writes(string? malformation, bool expected)
+    {
+        byte[] log = RlpTestHelper.EncodeSequence(
+            Rlp.Encode(new byte[malformation == "address length" ? Address.Size - 1 : Address.Size]),
+            RlpTestHelper.EncodeSequence(Rlp.Encode(new byte[malformation == "topic length" ? Hash256.Size - 1 : Hash256.Size])),
+            Rlp.Encode(new byte[] { 1, 2 }));
+        byte[][] fields =
+        [
+            malformation == "status byte" ? [0x02] : [0x01],
+            Rlp.Encode(21_000UL),
+            Rlp.Encode(new byte[Bloom.ByteLength]),
+            RlpTestHelper.EncodeSequence(log),
+            .. malformation == "extra field" ? new[] { RlpTestHelper.OfEmptyByteArray } : [],
+        ];
+        byte[] payload = [(byte)TxType.EIP1559, .. RlpTestHelper.EncodeSequence(fields), .. malformation == "trailing payload bytes" ? new byte[] { 0x00 } : []];
+        byte[] item = Rlp.Encode(payload);
+        byte[] message = RlpTestHelper.EncodeSequence(item);
+        RlpReader reader = new RlpReader(message).EnterSequence(out _);
+
+        bool read;
+        try
+        {
+            read = NetworkReceipt.TryRead(ref reader, withBloom: true, out _);
+        }
+        catch (RlpReaderException)
+        {
+            read = false;
+        }
+
+        Assert.That(read, Is.EqualTo(expected));
+        if (expected) Assert.That(Decoder.Decode(item).Logs, Has.Length.EqualTo(1));
+    }
+
+    [Test]
+    public void Root_takes_zero_length_blooms_only_under_eip7668([Values] bool eip7668)
+    {
+        ReleaseSpec spec = new() { IsEip658Enabled = true, IsEip7668Enabled = eip7668 };
+        TxReceipt[] receipts = CreateReceipts(eip658: true);
+        byte[] message = RlpTestHelper.EncodeSequence([.. receipts.Select(static receipt => Decoder.Encode(receipt, RlpBehaviors.Eip658Receipts | RlpBehaviors.Eip7668Receipts))]);
+
+        Assert.That(ReceiptTrie.TryCalculateRoot(spec, message, withBloom: true, out Hash256 root) ? root : null,
+            Is.EqualTo(eip7668 ? ReceiptTrie.CalculateRoot(spec, receipts, Decoder) : null));
+    }
+
     [Test]
     public void Root_uses_the_bloom_of_the_logs_when_the_message_has_a_zero_one()
     {
@@ -115,8 +165,12 @@ public class NetworkReceiptTests
     public void Leaves_deposit_receipts_to_the_decoder([Values] bool withBloom)
     {
         TxReceipt[] receipts = [Build.A.Receipt.WithTxType(TxType.DepositTx).WithStatusCode(1).WithCalculatedBloom().TestObject];
+        byte[] message = RlpTestHelper.EncodeSequence(Encode(receipts, withBloom, eip658: true));
 
-        Assert.That(ReceiptTrie.TryCalculateRoot(new ReleaseSpec { IsEip658Enabled = true }, Encode(receipts, withBloom, eip658: true), withBloom, out _), Is.False);
+        using NetworkBlockReceipts? kept = NetworkBlockReceipts.TryCreate(message, withBloom, static (ref RlpReader _) => [],
+            RlpLimit.For<TxReceipt[]>(16, "blocks"), RlpLimit.For<TxReceipt>(16, "receipts"), allowZeroLengthBloom: false);
+
+        Assert.That(kept, Is.Null);
     }
 
     [Test]
