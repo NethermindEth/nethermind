@@ -545,6 +545,75 @@ public class BlobTxStorageTests
         }
     }
 
+    [Test]
+    public void TryGetNetworkForm_should_release_the_pinned_record_after_the_copy([Values] bool malformed)
+    {
+        PinnedColumnsDb db = new();
+        BlobTxStorage blobTxStorage = new(db);
+        IBlobTxNetworkFormStorage storage = blobTxStorage;
+        Transaction tx = CreateBlobTransaction(TestItem.PrivateKeyA, blobCount: 2, spec: Osaka.Instance);
+        if (malformed)
+        {
+            StoreFullRecord(db, tx, [0xc1, 0x80]);
+            Assert.That(() => storage.TryGetNetworkForm(tx.Hash!, tx.Timestamp, out _), Throws.InstanceOf<RlpReaderException>());
+        }
+        else
+        {
+            blobTxStorage.Add(tx);
+            Assert.That(storage.TryGetNetworkForm(tx.Hash!, tx.Timestamp, out IOwnedReadOnlyList<byte> networkForm), Is.True);
+            using (networkForm)
+            {
+                // The released slice is overwritten, so equal bytes show that the copy ran before the release.
+                Assert.That(networkForm.AsSpan().ToArray(), Is.EqualTo(TxDecoder.Instance.Encode(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping)));
+            }
+        }
+
+        Assert.That(storage.TryGetNetworkForm(TestItem.KeccakC, tx.Timestamp, out _), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db.FullTxs.NativeReads, Is.EqualTo(2));
+            Assert.That(db.FullTxs.LiveHandles, Is.Zero);
+        }
+    }
+
+    /// <summary>Lends copies of the full records as native slices and overwrites each copy when it is released.</summary>
+    private sealed class PinnedMemDb : TestMemDb, IReadOnlyNativeKeyValueStore
+    {
+        private readonly Dictionary<nint, byte[]> _pins = [];
+        private nint _lastHandle;
+        public int NativeReads { get; private set; }
+        public int LiveHandles => _pins.Count;
+
+        public ReadOnlySpan<byte> GetNativeSlice(scoped ReadOnlySpan<byte> key, out nint handle, ReadFlags flags = ReadFlags.None)
+        {
+            NativeReads++;
+            handle = 0;
+            if (Get(key, flags) is not { } value) return null;
+            byte[] copy = (byte[])value.Clone();
+            handle = ++_lastHandle;
+            _pins.Add(handle, copy);
+            return copy;
+        }
+
+        public void DangerousReleaseHandle(nint handle)
+        {
+            if (!_pins.Remove(handle, out byte[] copy)) throw new InvalidOperationException("Native handle released twice.");
+            copy.AsSpan().Fill(0xff);
+        }
+    }
+
+    private sealed class PinnedColumnsDb : IColumnsDb<BlobTxsColumns>
+    {
+        private readonly MemColumnsDb<BlobTxsColumns> _columns = new();
+        public PinnedMemDb FullTxs { get; } = new();
+        public IDb GetColumnDb(BlobTxsColumns key) => key is BlobTxsColumns.FullBlobTxs ? FullTxs : _columns.GetColumnDb(key);
+        public IEnumerable<BlobTxsColumns> ColumnKeys => _columns.ColumnKeys;
+        public IColumnsWriteBatch<BlobTxsColumns> StartWriteBatch() => new InMemoryColumnWriteBatch<BlobTxsColumns>(this);
+        public IColumnDbSnapshot<BlobTxsColumns> CreateSnapshot() => throw new NotSupportedException();
+        public void Flush(bool onlyWal = false) { }
+        public void Dispose() => FullTxs.Dispose();
+    }
+
     public enum StoredCellTrailer
     {
         None,
@@ -591,6 +660,8 @@ public class BlobTxStorageTests
         yield return new TestCaseData(v1Tx, true, WithBlobsItem([0x80])).SetArgDisplayNames("blobs as an empty byte array");
         yield return new TestCaseData(v1Tx, true, WithBlobsItem([0xc0])).SetArgDisplayNames("empty blob list");
         yield return new TestCaseData(v1Tx, true, WithBlobsItem([0xc1, 0x80])).SetArgDisplayNames("empty blob entry");
+        yield return new TestCaseData(v1Tx, true, (Func<byte[][], byte[][]>)(static items => [items[0], [0x02], .. items[2..]]))
+            .SetArgDisplayNames("version byte above the latest");
 
         static Func<byte[][], byte[][]> WithBlobsItem(byte[] blobs) => items => [items[0], items[1], blobs, .. items[3..]];
     }
@@ -616,7 +687,7 @@ public class BlobTxStorageTests
         return Rlp.Encode(typedTx);
     }
 
-    private static void StoreFullRecord(MemColumnsDb<BlobTxsColumns> columnsDb, Transaction tx, byte[] record)
+    private static void StoreFullRecord(IColumnsDb<BlobTxsColumns> columnsDb, Transaction tx, byte[] record)
     {
         byte[] key = new byte[64];
         tx.Timestamp.WriteBigEndian(key);
