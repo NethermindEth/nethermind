@@ -15,8 +15,8 @@ GUEST_ARCH := riscv32
 # manifest, so the download is checked against AIRBENDER_SHA256 instead.
 # AIRBENDER_LIB_DIR names another libairbender build.
 BFLAT_IMAGE := nethermindeth/bflat-riscv64-11-riscv32:80f97933b93f86c20aad5a5edbfc08cb9cd9b2b4@sha256:1631e9d15ed9dc446e514c498e17c1fc9546cec36a9ab2c1baec2300f1d1f378
-AIRBENDER_VERSION := v1.0.3
-AIRBENDER_SHA256 := 9b6bce0271fca9d4f2f0c55a1c5a28530f99f5cefab8087e33b858bf369483ec
+AIRBENDER_VERSION := v1.0.5
+AIRBENDER_SHA256 := ecabf7f2d1e5a7ddb4473906a45a9c75adcece564a83ea19e1f8bffbd6cd9db2
 AIRBENDER_LIB_DIR ?= $(GUEST_DIR)/obj/libairbender-$(AIRBENDER_VERSION)
 BFLAT_DOCKER_ARGS = --mount type=bind,source="$(AIRBENDER_LIB_DIR)",target=/airbender,readonly
 GUEST_EXTLIB := /airbender/libairbender.bflat.manifest
@@ -27,6 +27,11 @@ GUEST_EXTLIB := /airbender/libairbender.bflat.manifest
 # patch reads them.
 OPT_FLAGS := -Os
 TRIM_FLAGS := --no-stacktrace-data
+# The compact Int256: its large arithmetic primitives stay out of line, which
+# on RV32 saves hundreds of kilobytes of ROM. Its DLL has the same size and
+# timestamp as the default variant's, so MSBuild would keep a default DLL left
+# in the output by an earlier build; the copy is forced.
+GUEST_DOTNET_FLAGS := -p:Int256ZkEvmCompact=true -p:SkipCopyUnchangedFiles=false
 
 # BIN_DIR must be set before the include - BFLAT_REFS expands it.
 include $(MAKEFILE_DIR)/../Nethermind.Stateless.Guest/build.mk

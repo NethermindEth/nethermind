@@ -51,7 +51,7 @@ public static partial class Accelerators
     [SuppressGCTransition]
     private static unsafe partial void reduce_mod256_c(ulong* a, ulong* modulus, ulong* result);
 
-    // ZisK runs the C library's memmove, memset and memcmp as DMA precompiles. Pointers rather than refs:
+    // ZisK runs the C library's memmove and memset as DMA precompiles. Pointers rather than refs:
     // ref arguments make the stub pin them in a stack frame.
     [LibraryImport("__Internal")]
     [SuppressGCTransition]
@@ -60,10 +60,6 @@ public static partial class Accelerators
     [LibraryImport("__Internal")]
     [SuppressGCTransition]
     private static unsafe partial void* memset(void* s, int c, nuint n);
-
-    [LibraryImport("__Internal")]
-    [SuppressGCTransition]
-    private static unsafe partial int memcmp(void* s1, void* s2, nuint n);
 
     // ZisK 1.4's own library routines (definitions/src/zkvmcall.rs), each a call thunk in the runtime that the
     // transpiler turns into a jump to the routine. The zisklib_ ones take the C ABI of the standard zkvm_ imports
