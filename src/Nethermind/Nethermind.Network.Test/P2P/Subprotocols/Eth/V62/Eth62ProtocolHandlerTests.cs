@@ -270,7 +270,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.GetBlockHeaders);
 
-            _syncManager.Received().FindHeaders(TestItem.KeccakA, 3, 1, true);
+            _syncManager.Received().FindHeadersRlp(TestItem.KeccakA, 3, 1, true);
         }
 
         [Test]
@@ -290,15 +290,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
-        public void Get_headers_when_blocks_are_missing_at_the_end()
+        public void Get_headers_sends_the_encoded_headers_as_found()
         {
-            BlockHeader[] headers = new BlockHeader[5];
-            headers[0] = Build.A.BlockHeader.TestObject;
-            headers[1] = Build.A.BlockHeader.TestObject;
-            headers[2] = Build.A.BlockHeader.TestObject;
+            BlockHeader[] headers = [Build.A.BlockHeader.WithNumber(100).TestObject, Build.A.BlockHeader.WithNumber(98).TestObject];
+            HeaderDecoder decoder = new();
+            ArrayPoolList<byte> encoded = new(0);
+            foreach (BlockHeader header in headers) encoded.AddRange(decoder.Encode(header));
 
             _syncManager.FindHash(100).Returns(TestItem.KeccakA);
-            _syncManager.FindHeaders(TestItem.KeccakA, 5, 1, true).Returns(headers.ToPooledList());
+            _syncManager.FindHeadersRlp(TestItem.KeccakA, 5, 1, true).Returns(encoded);
             _syncManager.Head.Returns(_genesisBlock.Header);
             _syncManager.Genesis.Returns(_genesisBlock.Header);
 
@@ -308,11 +308,21 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             msg.Skip = 1;
             msg.Reverse = 1;
 
+            BlockHeadersMessageSerializer serializer = new();
+            byte[]? sent = null;
+            _session.When(static s => s.DeliverMessage(Arg.Any<BlockHeadersMessage>())).Do(c =>
+            {
+                BlockHeadersMessage message = c.Arg<BlockHeadersMessage>();
+                sent = new byte[serializer.GetLength(message)];
+                serializer.Serialize(sent, message);
+            });
+
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.GetBlockHeaders);
 
-            _session.Received().DeliverMessage(Arg.Is<BlockHeadersMessage>(static bhm => bhm.BlockHeaders.Count == 3));
-            _syncManager.Received().FindHash(100);
+            Assert.That(sent, Is.Not.Null);
+            using BlockHeadersMessage decoded = serializer.Deserialize(sent);
+            Assert.That(decoded.BlockHeaders!.Select(static h => h.Hash), Is.EqualTo(headers.Select(static h => h.Hash)));
         }
 
         [Test]
@@ -320,41 +330,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             HandleIncomingStatusMessage();
             Assert.Throws<SubprotocolException>(HandleIncomingStatusMessage);
-        }
-
-        [Test]
-        public void Get_headers_stops_at_first_missing_block([Values] bool missingTail)
-        {
-            BlockHeader[] headers = new BlockHeader[5];
-            headers[0] = Build.A.BlockHeader.TestObject;
-            headers[1] = Build.A.BlockHeader.TestObject;
-            headers[2] = null;
-            headers[3] = Build.A.BlockHeader.TestObject;
-            headers[4] = Build.A.BlockHeader.TestObject;
-            if (missingTail)
-            {
-                headers[3] = null;
-                headers[4] = null;
-            }
-
-            _syncManager.FindHash(100).Returns(TestItem.KeccakA);
-            _syncManager.FindHeaders(TestItem.KeccakA, 5, 1, true)
-                .Returns(headers.ToPooledList());
-
-            _syncManager.Head.Returns(_genesisBlock.Header);
-            _syncManager.Genesis.Returns(_genesisBlock.Header);
-
-            using GetBlockHeadersMessage msg = new();
-            msg.StartBlockNumber = 100;
-            msg.MaxHeaders = 5;
-            msg.Skip = 1;
-            msg.Reverse = 1;
-
-            HandleIncomingStatusMessage();
-            HandleZeroMessage(msg, Eth62MessageCode.GetBlockHeaders);
-
-            _session.Received().DeliverMessage(Arg.Is<BlockHeadersMessage>(static bhm => bhm.BlockHeaders.Count == 2));
-            _syncManager.Received().FindHash(100);
         }
 
         [Test]

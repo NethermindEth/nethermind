@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -723,113 +724,24 @@ namespace Nethermind.Blockchain
                 return ArrayPoolList<BlockHeader>.Empty();
             }
 
-            if (blockHash is null)
-            {
-                return new ArrayPoolList<BlockHeader>(numberOfBlocks, numberOfBlocks);
-            }
-
-            BlockHeader startHeader = FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            BlockHeader? startHeader = blockHash is null ? null : FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             if (startHeader is null)
             {
                 return new ArrayPoolList<BlockHeader>(numberOfBlocks, numberOfBlocks);
             }
 
-            if (numberOfBlocks == 1)
+            HeaderSource source = new(this);
+            return HeaderWalk.FindHeaders<BlockHeader, HeaderSource>(this, ref source, blockHash, startHeader.Number, numberOfBlocks, skip, reverse);
+        }
+
+        private readonly struct HeaderSource(BlockTree tree) : IHeaderWalkSource<BlockHeader>
+        {
+            public bool TryGet(Hash256 hash, ulong number, [MaybeNullWhen(false)] out BlockHeader header, [MaybeNullWhen(false)] out Hash256 parentHash)
             {
-                return new ArrayPoolList<BlockHeader>(1) { startHeader };
+                header = tree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, number);
+                parentHash = header?.ParentHash;
+                return header is not null;
             }
-
-            if (skip == 0)
-            {
-                static ArrayPoolList<BlockHeader> FindHeadersReversedFast(BlockTree tree, BlockHeader startHeader, int numberOfBlocks, bool reverse = false)
-                {
-                    ArgumentNullException.ThrowIfNull(startHeader);
-                    if (numberOfBlocks == 1)
-                    {
-                        return new ArrayPoolList<BlockHeader>(1) { startHeader };
-                    }
-
-                    ArrayPoolList<BlockHeader> result = new(numberOfBlocks, numberOfBlocks);
-
-                    BlockHeader current = startHeader;
-                    int responseIndex = reverse ? 0 : numberOfBlocks - 1;
-                    int step = reverse ? 1 : -1;
-                    do
-                    {
-                        result[responseIndex] = current;
-                        responseIndex += step;
-                        if (responseIndex < 0)
-                        {
-                            break;
-                        }
-
-                        current = tree.FindParentHeader(current, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                    } while (current is not null && responseIndex < numberOfBlocks);
-
-                    return result;
-                }
-
-                /* if we do not skip and we have the last block then we can assume that all the blocks are there
-                   and we can use the fact that we can use parent hash and that searching by hash is much faster
-                   as it does not require the step of resolving number -> hash */
-                if (reverse)
-                {
-                    return FindHeadersReversedFast(this, startHeader, numberOfBlocks, true);
-                }
-                else
-                {
-                    BlockHeader endHeader = FindHeader(startHeader.Number + (ulong)(numberOfBlocks - 1), BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                    if (endHeader is not null)
-                    {
-                        ArrayPoolList<BlockHeader> headers = FindHeadersReversedFast(this, endHeader, numberOfBlocks);
-                        if (headers[0] is null || headers[0].Hash == startHeader.Hash)
-                        {
-                            return headers;
-                        }
-
-                        // The end level resolved to a branch the origin is not on, so fall back to the by-number walk below
-                        headers.Dispose();
-                    }
-                }
-            }
-
-            ArrayPoolList<BlockHeader> result = new(numberOfBlocks, numberOfBlocks);
-            BlockHeader current = startHeader;
-            int responseIndex = 0;
-            do
-            {
-                result[responseIndex] = current;
-                responseIndex++;
-                ulong offset = (ulong)responseIndex * ((ulong)skip + 1ul);
-                ulong nextNumber;
-                if (reverse)
-                {
-                    if (startHeader.Number < offset)
-                    {
-                        break;
-                    }
-                    nextNumber = startHeader.Number - offset;
-                }
-                else
-                {
-                    nextNumber = startHeader.Number + offset;
-                }
-
-                BlockHeader previous = current;
-                current = FindHeader(nextNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-
-                // Later headers are resolved by number, so check at every step that the next header still descends from the previous one,
-                // like geth: by parent hash when contiguous, otherwise by the previous header still being the block its number resolves to
-                // and the next header being on the main chain
-                if (!reverse && current is not null && (skip == 0
-                        ? current.ParentHash != previous.Hash
-                        : GetBlockHashOnMainOrBestDifficultyHash(previous.Number) != previous.Hash || !IsMainChain(current)))
-                {
-                    break;
-                }
-            } while (current is not null && responseIndex < numberOfBlocks);
-
-            return result;
         }
 
         private Hash256? GetBlockHashOnMainOrBestDifficultyHash(ulong blockNumber)

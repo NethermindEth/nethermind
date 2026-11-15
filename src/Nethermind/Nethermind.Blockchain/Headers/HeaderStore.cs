@@ -116,6 +116,74 @@ public class HeaderStore : IHeaderStore, IClearableCache
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// A header read from the database is copied as it is stored when <paramref name="decoder"/> is the decoder of
+    /// this store, or both are a plain <see cref="HeaderDecoder"/>. A cached or pending header is encoded.
+    /// </remarks>
+    [SkipLocalsInit]
+    public bool TryAppendRlp(Hash256 blockHash, ulong blockNumber, IHeaderDecoder decoder, ArrayPoolList<byte> destination)
+    {
+        BlockHeader? header = _headerCache.Get(in blockHash.ValueHash256);
+        if (header is null && _pending is not null) _pending.TryGet(blockHash, out header);
+        if (header is null && EncodesAsStored(decoder))
+        {
+            Span<byte> key = stackalloc byte[NumberPrefixedKeyLength];
+            KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, key);
+            return TryAppendStored(key, destination) || TryAppendStored(blockHash.Bytes, destination);
+        }
+
+        header ??= Get(blockHash, shouldCache: false, blockNumber);
+        if (header is null) return false;
+
+        using ArrayPoolSpan<byte> rlp = decoder.EncodeToArrayPoolSpan(header);
+        destination.AddRange(rlp);
+        return true;
+    }
+
+    private bool EncodesAsStored(IHeaderDecoder decoder) =>
+        ReferenceEquals(decoder, _headerDecoder)
+        || (decoder.GetType() == typeof(HeaderDecoder) && _headerDecoder.GetType() == typeof(HeaderDecoder));
+
+    private bool TryAppendStored(ReadOnlySpan<byte> key, ArrayPoolList<byte> destination)
+    {
+        if (_headerDb is IReadOnlyNativeKeyValueStore native)
+        {
+            ReadOnlySpan<byte> slice = native.GetNativeSlice(key, out IntPtr handle);
+            if (slice.IsNull()) return false;
+
+            try
+            {
+                return TryAppendFirstItem(slice, destination);
+            }
+            finally
+            {
+                native.DangerousReleaseHandle(handle);
+            }
+        }
+
+        Span<byte> data = _headerDb.GetSpan(key);
+        if (data.IsNull()) return false;
+
+        try
+        {
+            return TryAppendFirstItem(data, destination);
+        }
+        finally
+        {
+            _headerDb.DangerousReleaseMemory(data);
+        }
+    }
+
+    private static bool TryAppendFirstItem(ReadOnlySpan<byte> stored, ArrayPoolList<byte> destination)
+    {
+        if (stored.Length == 0) return false;
+
+        RlpReader reader = new(stored);
+        destination.AddRange(reader.ReadEncodedItem<OffFlag>());
+        return true;
+    }
+
+    /// <inheritdoc/>
     [SkipLocalsInit]
     public BlockHeader? GetIfBloomMatches(Hash256 blockHash, ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
     {

@@ -335,14 +335,12 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             Hash256 startingHash = msg.StartBlockHash;
             startingHash ??= SyncServer.FindHash(msg.StartBlockNumber);
 
-            IOwnedReadOnlyList<BlockHeader> headers =
+            IOwnedReadOnlyList<byte> headers =
                 startingHash is null || cancellationToken.IsCancellationRequested
-                    ? ArrayPoolList<BlockHeader>.Empty()
-                    : SyncServer.FindHeaders(startingHash, (int)msg.MaxHeaders, (int)msg.Skip, msg.Reverse == 1);
+                    ? ArrayPoolList<byte>.Empty()
+                    : SyncServer.FindHeadersRlp(startingHash, (int)msg.MaxHeaders, (int)msg.Skip, msg.Reverse == 1);
 
-            headers = TruncateHeadersAtFirstMissing(headers);
-
-            return Task.FromResult(new BlockHeadersMessage(headers));
+            return Task.FromResult(new BlockHeadersMessage { EncodedHeaders = headers });
         }
 
         protected async Task<BlockBodiesMessage> Handle(GetBlockBodiesMessage request, CancellationToken cancellationToken)
@@ -453,36 +451,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             }
 
             return Task.FromResult(new ReceiptsMessage(txReceipts));
-        }
-
-        private static IOwnedReadOnlyList<BlockHeader> TruncateHeadersAtFirstMissing(IOwnedReadOnlyList<BlockHeader> headers)
-        {
-            ReadOnlySpan<BlockHeader> headersSpan = headers.AsSpan();
-            int toTake = headersSpan.Length;
-            for (int i = 0; i < headersSpan.Length; i++)
-            {
-                if (headersSpan[i] is null)
-                {
-                    toTake = i;
-                    break;
-                }
-            }
-
-            if (toTake != headersSpan.Length)
-            {
-                if (headers is ArrayPoolList<BlockHeader> asArrayPoolList)
-                {
-                    asArrayPoolList.Truncate(toTake);
-                    return headers;
-                }
-
-                ArrayPoolList<BlockHeader> newList = new(toTake);
-                newList.AddRange(headersSpan[..toTake]);
-                headers.Dispose();
-                return newList;
-            }
-
-            return headers;
         }
 
 

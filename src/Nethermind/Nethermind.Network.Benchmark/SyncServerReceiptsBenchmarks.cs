@@ -5,6 +5,7 @@ using System;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
@@ -19,6 +20,7 @@ using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.History;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
@@ -140,6 +142,8 @@ public class SyncServerReceiptsBenchmarks
             Substitute.For<IWorldStateManager>(),
             new MemDb(),
             blockTree,
+            Substitute.For<IHeaderStore>(),
+            new HeaderDecoder(),
             new FullInfoReceiptFinder(storage, new ReceiptsRecovery(ecdsa, specProvider), blockTree),
             Substitute.For<IBlockAccessListStore>(),
             Always.Valid,

@@ -228,6 +228,62 @@ public class HeaderStoreTests
         }
     }
 
+    public enum HeaderSource { NumberedKey, HashKey, Cache }
+
+    /// <param name="storeDecoder">Whether the decoder asked for is the store decoder, so that the stored encoding is copied.</param>
+    [Test]
+    public void TryAppendRlp_appends_the_encoding_whose_hash_is_the_block_hash(
+        [Values] HeaderSource source,
+        [Values] bool prague,
+        [Values] bool storeDecoder)
+    {
+        MemDb headerDb = new();
+        CountingHeaderDecoder decoder = new();
+        HeaderStore store = new(headerDb, new MemDb(), decoder);
+        BlockHeaderBuilder builder = Build.A.BlockHeader.WithNumber(100);
+        BlockHeader header = prague
+            ? builder.WithBaseFee(7).WithWithdrawalsRoot(TestItem.KeccakA).WithBlobGasUsed(131072).WithExcessBlobGas(0)
+                .WithParentBeaconBlockRoot(TestItem.KeccakB).WithRequestsHash(TestItem.KeccakC).TestObject
+            : builder.TestObject;
+        switch (source)
+        {
+            case HeaderSource.NumberedKey:
+                store.Insert(header);
+                break;
+            case HeaderSource.HashKey:
+                headerDb.Set(header.Hash!, decoder.Encode(header));
+                break;
+            case HeaderSource.Cache:
+                store.Cache(header);
+                break;
+        }
+
+        using ArrayPoolList<byte> rlp = new(0);
+        bool found = store.TryAppendRlp(header.Hash!, header.Number, storeDecoder ? decoder : new HeaderDecoder(), rlp);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(Keccak.Compute(rlp.AsSpan()), Is.EqualTo(header.Hash));
+            Assert.That(rlp.AsSpan().ToArray(), Is.EqualTo(new HeaderDecoder().Encode(header)));
+            Assert.That(decoder.Decodes, Is.EqualTo(storeDecoder || source == HeaderSource.Cache ? 0 : 1));
+        }
+    }
+
+    [Test]
+    public void TryAppendRlp_appends_nothing_for_a_missing_header([Values] bool storeDecoder)
+    {
+        HeaderDecoder decoder = new();
+        HeaderStore store = new(new MemDb(), new MemDb(), decoder);
+        using ArrayPoolList<byte> rlp = new(0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.TryAppendRlp(TestItem.KeccakA, 100, storeDecoder ? decoder : new CountingHeaderDecoder(), rlp), Is.False);
+            Assert.That(rlp.Count, Is.Zero);
+        }
+    }
+
     private sealed class CountingHeaderDecoder : HeaderDecoder
     {
         public int Decodes { get; private set; }
