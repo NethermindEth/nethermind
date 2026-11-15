@@ -15,6 +15,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.EventArg;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
@@ -49,6 +50,7 @@ public class Eth69ProtocolHandler(
         static (message, size) => (message.EthMessage.TxReceipts, size);
     private static readonly Action<ReadOnlySpan<byte>, GetReceiptsMessage> ValidateReceipts =
         static (content, request) => ThrowIfReceiptsExceedRequest(content, 1, request.EthMessage);
+    private static readonly ReceiptMessageDecoder69 ReceiptSizeDecoder = new();
 
     public override string Name => "eth69";
 
@@ -147,6 +149,9 @@ public class Eth69ProtocolHandler(
         ReceiptsMessage message = await base.Handle(getReceiptsMessage, cancellationToken);
         return new(message.RequestId, message.EthMessage);
     }
+
+    protected override ulong EstimateReceiptsSize(TxReceipt[] receipts) =>
+        MessageSizeEstimator.EstimateSize(receipts, ReceiptSizeDecoder);
 
     protected override void NotifyOfStatus(BlockHeader head)
     {

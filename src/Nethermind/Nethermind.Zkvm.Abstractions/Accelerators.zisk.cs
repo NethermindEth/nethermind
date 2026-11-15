@@ -192,24 +192,6 @@ public static partial class Accelerators
         memset(destination, value, length);
 
     /// <summary>
-    /// Compares <paramref name="length"/> bytes at <paramref name="left"/> with those at <paramref name="right"/>.
-    /// </summary>
-    /// <param name="left">The first buffer.</param>
-    /// <param name="right">The second buffer.</param>
-    /// <param name="length">The number of bytes to compare.</param>
-    /// <returns>
-    /// Zero if the bytes are equal; otherwise negative or positive as the first differing byte, taken as unsigned,
-    /// is lower or higher in <paramref name="left"/>.
-    /// </returns>
-    /// <remarks>
-    /// Calls ZisK's <c>memcmp</c> precompile directly. Unchecked, with the caller's contract of
-    /// <see cref="Memmove(void*, void*, nuint)"/>.
-    /// </remarks>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static unsafe int Memcmp(void* left, void* right, nuint length) =>
-        memcmp(left, right, length);
-
-    /// <summary>
     /// Computes <c>(a * b) mod modulus</c> for 256-bit integers, with the product taken over 512 bits.
     /// </summary>
     /// <param name="a">The multiplicand.</param>

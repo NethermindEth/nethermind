@@ -5,7 +5,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 
 namespace Nethermind.Db.LogIndex;
 
@@ -19,7 +18,8 @@ public partial class LogIndexStorage
         private readonly int _from;
         private readonly int _to;
         private readonly IReverseSortedView _view;
-        private ArrayPoolList<int>? _value;
+        private int[]? _value;
+        private int _count;
         private int _index;
 
         private ReverseLogIndexEnumerator(IReverseSortedView view, CompressionAlgorithm compressionAlgorithm, byte[] key, int from, int to)
@@ -63,7 +63,7 @@ public partial class LogIndexStorage
                 // The forward transient key sorts last regardless of the block numbers it contains.
                 if (_view.CurrentKey.SequenceCompareTo(cursorKey) > 0 && !_view.CurrentKey.EndsWith(Postfix.ForwardMerge)) continue;
                 SetValue();
-                int index = _value!.AsSpan().BinarySearch(_to);
+                int index = _value.AsSpan(0, _count).BinarySearch(_to);
                 _index = index >= 0 ? index : ~index - 1;
                 if (_index >= 0) return Current >= _from || Complete();
             }
@@ -78,32 +78,18 @@ public partial class LogIndexStorage
             return false;
         }
 
-        private void SetValue()
-        {
-            _value?.Dispose();
-            ReadOnlySpan<byte> viewValue = _view.CurrentValue;
-            if (IsCompressed(viewValue, out int length))
-            {
-                _value = new(capacity: length + CompressionAlgorithm.DecompressionOverrun, count: length);
-                DecompressDbValue(_compressionAlgorithm, viewValue, _value.UnsafeGetInternalArray());
-            }
-            else
-            {
-                length = viewValue.Length / BlockNumberSize;
-                _value = new(capacity: length, count: length);
-                ReadBlockNumbers(viewValue, _value.AsSpan());
-            }
-            ReverseBlocksIfNeeded(_value.AsSpan());
-        }
+        private void SetValue() => _count = ReadDbValue(_compressionAlgorithm, _view.CurrentValue, ref _value);
 
         public void Reset() => throw new NotSupportedException($"{nameof(ReverseLogIndexEnumerator)} can not be reset.");
-        public int Current => _value is not null && _index >= 0 && _index < _value.Count ? _value[_index] : -1;
+        public int Current => _value is not null && _index >= 0 && _index < _count ? _value[_index] : -1;
         object? IEnumerator.Current => Current;
 
         public void Dispose()
         {
             _view.Dispose();
-            _value?.Dispose();
+            _index = CompletedIndex;
+            ReturnDbValueBuffer(_value);
+            _value = null;
         }
     }
 }

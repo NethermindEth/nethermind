@@ -991,6 +991,38 @@ namespace Nethermind.Db.LogIndex
             }
         }
 
+        /// <summary>
+        /// Reads the ascending block numbers of a stored value into <paramref name="buffer"/>, which is reused across
+        /// values and replaced by a larger pooled array only when it is too small.
+        /// </summary>
+        /// <returns>The number of block numbers read.</returns>
+        private static int ReadDbValue(CompressionAlgorithm algorithm, ReadOnlySpan<byte> value, ref int[]? buffer)
+        {
+            bool compressed = IsCompressed(value, out int length);
+            if (!compressed) length = value.Length / BlockNumberSize;
+
+            int capacity = compressed ? length + CompressionAlgorithm.DecompressionOverrun : length;
+            buffer ??= [];
+            if (buffer.Length < capacity)
+            {
+                int[] larger = SafeArrayPool<int>.Shared.Rent(capacity);
+                ReturnDbValueBuffer(buffer);
+                buffer = larger;
+            }
+
+            Span<int> blocks = buffer.AsSpan(0, length);
+            if (compressed) DecompressDbValue(algorithm, value, buffer.AsSpan(0, capacity));
+            else ReadBlockNumbers(value, blocks);
+
+            ReverseBlocksIfNeeded(blocks);
+            return length;
+        }
+
+        private static void ReturnDbValueBuffer(int[]? buffer)
+        {
+            if (buffer is { Length: > 0 }) SafeArrayPool<int>.Shared.Return(buffer);
+        }
+
         private Span<byte> RemoveReorgableBlocks(Span<byte> data)
         {
             if (GetLastReorgableBlockNumber() is not { } lastCompressBlock)

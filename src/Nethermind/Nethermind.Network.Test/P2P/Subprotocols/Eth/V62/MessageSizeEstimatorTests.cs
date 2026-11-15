@@ -9,6 +9,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
@@ -109,6 +110,22 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             // The outgoing size caps are only sound if a block's estimate covers every byte the
             // serializer writes for that block, framing included.
             Assert.That(MessageSizeEstimator.EstimateSize(receipts), Is.EqualTo((ulong)contentLength));
+        }
+
+        [Test]
+        public void Estimate_eth69_receipts_matches_serialized_block_size()
+        {
+            TxReceipt[] receipts = SoftLimitTestHelper.CreateLogHeavyReceipts(100);
+
+            using ReceiptsInnerMessage69 message = new(new ArrayPoolList<TxReceipt[]>(1) { receipts });
+            RlpReader encoded = new(new ReceiptsMessageInnerSerializer69(MainnetSpecProvider.Instance).SerializeToArray(message));
+            int contentLength = encoded.EnterSequence(out _).Remaining;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(MessageSizeEstimator.EstimateSize(receipts, new ReceiptMessageDecoder69()), Is.EqualTo((ulong)contentLength));
+                Assert.That(MessageSizeEstimator.EstimateSize(receipts), Is.GreaterThan((ulong)contentLength));
+            }
         }
 
         [Test]
