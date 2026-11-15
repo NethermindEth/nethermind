@@ -1048,6 +1048,34 @@ public class Eth68ProtocolHandlerTests
     }
 
     [Test]
+    public async Task Should_serve_full_blob_tx_from_memory_when_it_has_no_stored_encoding()
+    {
+        Transaction blobTx = BuildFullBlobTransaction();
+        _transactionPool.TryGetPendingBlobCellMaskAndNetworkForm(blobTx.Hash!, out Arg.Any<BlobCellMask>(), out Arg.Any<IOwnedReadOnlyList<byte>>())
+            .Returns(x =>
+            {
+                x[1] = BlobCellMask.Full;
+                x[2] = null;
+                return true;
+            });
+        _transactionPool.TryGetPendingTransaction(blobTx.Hash!, out Arg.Any<Transaction>())
+            .Returns(x =>
+            {
+                x[1] = blobTx;
+                return true;
+            });
+
+        using Eth65GetPooledTransactionsMessage request = new(new ArrayPoolList<ValueHash256>(1) { blobTx.Hash! });
+        using Eth65PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Transactions, Is.EqualTo(new[] { blobTx }));
+            Assert.That(response.EncodedTransactions, Is.Null);
+        }
+    }
+
+    [Test]
     public async Task Should_count_stored_blob_tx_encodings_against_the_soft_limit()
     {
         const int transactionCount = 32;

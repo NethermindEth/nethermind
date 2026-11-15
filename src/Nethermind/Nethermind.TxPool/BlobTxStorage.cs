@@ -20,6 +20,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.TxDecoders;
 
 namespace Nethermind.TxPool;
 
@@ -80,77 +81,35 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
 
     /// <inheritdoc/>
     /// <remarks>
-    /// The record is the <see cref="RlpBehaviors.Storage"/> form, which appends the sparse cell mask and cells to the
-    /// sidecar. The network form keeps the transaction and sidecar items as they are stored and drops the rest, so
-    /// only the type byte and the sequence prefix are written again.
+    /// <see cref="BlobTxDecoder.TryGetNetworkForm"/> writes the network form. A database that pins its values gives
+    /// the record without a copy.
     /// </remarks>
     bool IBlobTxNetworkFormStorage.TryGetNetworkForm(in ValueHash256 hash, in UInt256 timestamp, [NotNullWhen(true)] out IOwnedReadOnlyList<byte>? networkForm)
     {
         Span<byte> txHashPrefixed = stackalloc byte[FullTxKeyLength];
         GetHashPrefixedByTimestamp(timestamp, hash, txHashPrefixed);
 
+        if (_fullBlobTxsDb is IReadOnlyNativeKeyValueStore native)
+        {
+            ReadOnlySpan<byte> pinned = native.GetNativeSlice(txHashPrefixed, out IntPtr handle);
+            try
+            {
+                return BlobTxDecoder.TryGetNetworkForm(pinned, out networkForm);
+            }
+            finally
+            {
+                if (handle != 0) native.DangerousReleaseHandle(handle);
+            }
+        }
+
         ReadOnlySpan<byte> record = _fullBlobTxsDb.GetSpan(txHashPrefixed);
         try
         {
-            return TryGetNetworkForm(record, out networkForm);
+            return BlobTxDecoder.TryGetNetworkForm(record, out networkForm);
         }
         finally
         {
             _fullBlobTxsDb.DangerousReleaseMemory(record);
-        }
-    }
-
-    private static bool TryGetNetworkForm(ReadOnlySpan<byte> record, [NotNullWhen(true)] out IOwnedReadOnlyList<byte>? networkForm)
-    {
-        networkForm = null;
-        if (record.IsEmpty) return false;
-
-        ReadOnlySpan<byte> typedTx = new RlpReader(record).ReadBytes();
-        if (typedTx.IsEmpty || typedTx[0] != (byte)TxType.Blob) return false;
-
-        RlpReader items = new RlpReader(typedTx[1..]).EnterSequence(out _);
-        RlpReader all = items;
-        ReadOnlySpan<byte> storedItems = all.ReadRaw(all.Remaining);
-
-        items.SkipItem();
-        // An explicit 0x00 for V0 would not be written again by the encoder, so such a record is decoded instead.
-        if (!items.IsNextSequence)
-        {
-            if (items.PeekByte() != (byte)ProofVersion.V1) return false;
-            items.SkipItem();
-        }
-
-        if (!HasFullBlobs(items)) return false;
-
-        // Blobs, commitments and proofs; the storage-only items after them are dropped.
-        items.SkipItem();
-        items.SkipItem();
-        items.SkipItem();
-        ReadOnlySpan<byte> networkItems = storedItems[..items.BytesRead];
-
-        int length = 1 + Rlp.LengthOfSequence(networkItems.Length);
-        ArrayPoolList<byte> encoded = new(SafeArrayPool<byte>.Shared, length, length, clearFirst: false);
-        RlpWriter writer = RlpWriter.ContentWriter(encoded.AsSpan());
-        writer.WriteByte((byte)TxType.Blob);
-        RlpSequence sequence = writer.StartSequence(networkItems.Length);
-        writer.WriteEncoded(networkItems);
-        writer.EndSequence(sequence);
-        networkForm = encoded;
-        return true;
-
-        static bool HasFullBlobs(RlpReader items)
-        {
-            if (!items.IsNextSequence) return false;
-
-            RlpReader blobs = items.EnterSequence(out _);
-            if (!blobs.HasNext) return false;
-            while (blobs.HasNext)
-            {
-                if (blobs.IsNextItemEmptyByteArray()) return false;
-                blobs.SkipItem();
-            }
-
-            return true;
         }
     }
 

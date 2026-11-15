@@ -485,12 +485,14 @@ public class BlobTxStorageTests
 
     [Test]
     public void TryGetNetworkForm_should_match_the_mempool_encoding_of_the_decoded_record(
-        [Values(ProofVersion.V0, ProofVersion.V1)] ProofVersion version,
+        [Values] ProofVersion version,
         [Values] StoredCellTrailer trailer)
     {
         MemColumnsDb<BlobTxsColumns> columnsDb = new();
         BlobTxStorage blobTxStorage = new(columnsDb);
-        Transaction tx = CreateBlobTransaction(TestItem.PrivateKeyA, blobCount: 2, spec: version is ProofVersion.V1 ? Osaka.Instance : Cancun.Instance);
+        Transaction tx = CreateBlobTransaction(TestItem.PrivateKeyA, blobCount: 2, spec: version is ProofVersion.V0 ? Cancun.Instance : Osaka.Instance);
+        // Every version, so a new one fails here until the transcoder serves it.
+        tx.NetworkWrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper! with { Version = version };
         if (trailer is StoredCellTrailer.Cells)
         {
             tx.NetworkWrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper! with
@@ -514,6 +516,32 @@ public class BlobTxStorageTests
             Assert.That(found, Is.True);
             Assert.That(networkForm.AsSpan().ToArray(), Is.EqualTo(TxDecoder.Instance.Encode(decoded, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping)));
             Assert.That(networkForm.Count, Is.EqualTo(decoded.GetLength()));
+        }
+    }
+
+    [Test]
+    public void TryGetNetworkForm_should_read_a_pinned_record_from_RocksDb()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using IContainer configs = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
+        using IColumnsDb<BlobTxsColumns> db = new RocksDbFactory(configs.Resolve<IRocksDbConfigFactory>(), configs.Resolve<IDbConfig>(),
+                new HyperClockCacheWrapper(), new RealFileSystem(), LimboLogs.Instance, directory.Path)
+            .CreateColumnsDb<BlobTxsColumns>(new DbSettings(DbNames.BlobTransactions, "blobs"));
+        Assert.That(db.GetColumnDb(BlobTxsColumns.FullBlobTxs), Is.InstanceOf<IReadOnlyNativeKeyValueStore>());
+
+        BlobTxStorage blobTxStorage = new(db);
+        Transaction tx = CreateBlobTransaction(TestItem.PrivateKeyA, blobCount: 2, spec: Osaka.Instance);
+        blobTxStorage.Add(tx);
+        db.Flush();
+
+        IBlobTxNetworkFormStorage storage = blobTxStorage;
+        bool found = storage.TryGetNetworkForm(tx.Hash!, tx.Timestamp, out IOwnedReadOnlyList<byte> networkForm);
+        using (networkForm)
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(networkForm.AsSpan().ToArray(), Is.EqualTo(TxDecoder.Instance.Encode(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping)));
+            Assert.That(storage.TryGetNetworkForm(TestItem.KeccakC, tx.Timestamp, out _), Is.False);
         }
     }
 

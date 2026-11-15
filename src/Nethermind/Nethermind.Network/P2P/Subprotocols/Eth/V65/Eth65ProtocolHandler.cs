@@ -138,7 +138,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
         internal ValueTask<PooledTransactionsMessage> FulfillPooledTransactionsRequest(GetPooledTransactionsMessage msg, CancellationToken cancellationToken)
         {
-            ArrayPoolList<Transaction> txsToSend = new(Math.Min(msg.Hashes.Count, MaxNumberOfTxsInOneMsg));
+            int maxResponseCount = Math.Min(msg.Hashes.Count, MaxNumberOfTxsInOneMsg);
+            ArrayPoolList<Transaction> txsToSend = new(maxResponseCount);
             ArrayPoolList<PooledTransactionsMessage.EncodedTransaction>? encodedTxsToSend = null;
 
             // Once a response is non-empty, enforce the eth spec's 256-hash soft limit. If the
@@ -193,7 +194,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                     }
                     else
                     {
-                        (encodedTxsToSend ??= new(1)).Add(new(txsToSend.Count, encodedTx));
+                        (encodedTxsToSend ??= new(maxResponseCount)).Add(new(txsToSend.Count, encodedTx));
                     }
 
                     responseCount++;
