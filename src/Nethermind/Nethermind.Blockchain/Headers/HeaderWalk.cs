@@ -14,7 +14,7 @@ public interface IHeaderWalkSource<TItem>
 {
     /// <summary>Reads the header of <paramref name="hash"/> at <paramref name="number"/>.</summary>
     /// <returns><see langword="false"/> when the header is not stored.</returns>
-    bool TryGet(Hash256 hash, ulong number, [MaybeNullWhen(false)] out TItem item, [MaybeNullWhen(false)] out Hash256 parentHash);
+    bool TryGet(in ValueHash256 hash, ulong number, [MaybeNullWhen(false)] out TItem item, out ValueHash256 parentHash);
 }
 
 /// <summary>Finds the headers of a <c>GetBlockHeaders</c> request.</summary>
@@ -36,13 +36,13 @@ public static class HeaderWalk
     /// to and the next header being on the main chain.
     /// </remarks>
     public static ArrayPoolList<TItem> FindHeaders<TItem, TSource>(
-        IBlockTree blockTree, ref TSource source, Hash256 hash, ulong number, int numberOfBlocks, int skip, bool reverse)
+        IBlockTree blockTree, ref TSource source, in ValueHash256 hash, ulong number, int numberOfBlocks, int skip, bool reverse)
         where TSource : struct, IHeaderWalkSource<TItem>
     {
         ArrayPoolList<TItem> result = new(numberOfBlocks, numberOfBlocks);
         try
         {
-            Fill(blockTree, ref source, result.AsSpan(), hash, number, skip, reverse);
+            Fill(blockTree, ref source, result.AsSpan(), in hash, number, skip, reverse);
             return result;
         }
         catch
@@ -52,25 +52,25 @@ public static class HeaderWalk
         }
     }
 
-    private static void Fill<TItem, TSource>(IBlockTree blockTree, ref TSource source, Span<TItem> items, Hash256 hash, ulong number, int skip, bool reverse)
+    private static void Fill<TItem, TSource>(IBlockTree blockTree, ref TSource source, Span<TItem> items, in ValueHash256 hash, ulong number, int skip, bool reverse)
         where TSource : struct, IHeaderWalkSource<TItem>
     {
-        if (items.Length == 0 || !source.TryGet(hash, number, out TItem start, out Hash256 parentHash)) return;
+        if (items.Length == 0 || !source.TryGet(in hash, number, out TItem start, out ValueHash256 parentHash)) return;
 
         if (skip == 0 && items.Length > 1)
         {
             if (reverse)
             {
                 items[0] = start;
-                FillAncestors(ref source, items, 0, 1, hash, number, parentHash, out _);
+                FillAncestors(ref source, items, 0, 1, in hash, number, parentHash, out _);
                 return;
             }
 
             ulong endNumber = number + (ulong)(items.Length - 1);
-            if (blockTree.FindHash(endNumber) is { } endHash && source.TryGet(endHash, endNumber, out TItem end, out Hash256 endParentHash))
+            if (blockTree.FindHash(endNumber) is { } endHash && source.TryGet(in endHash.ValueHash256, endNumber, out TItem end, out ValueHash256 endParentHash))
             {
                 items[^1] = end;
-                int firstIndex = FillAncestors(ref source, items, items.Length - 1, -1, endHash, endNumber, endParentHash, out Hash256 firstHash);
+                int firstIndex = FillAncestors(ref source, items, items.Length - 1, -1, in endHash.ValueHash256, endNumber, endParentHash, out ValueHash256 firstHash);
                 if (firstIndex != 0 || firstHash == hash) return;
 
                 // The last number resolved to a branch that the start header is not on
@@ -79,7 +79,7 @@ public static class HeaderWalk
         }
 
         items[0] = start;
-        Hash256 previousHash = hash;
+        ValueHash256 previousHash = hash;
         ulong previousNumber = number;
         for (int responseIndex = 1; responseIndex < items.Length; responseIndex++)
         {
@@ -87,7 +87,7 @@ public static class HeaderWalk
             if (reverse && number < offset) break;
 
             ulong nextNumber = reverse ? number - offset : number + offset;
-            if (blockTree.FindHash(nextNumber) is not { } nextHash || !source.TryGet(nextHash, nextNumber, out TItem next, out Hash256 nextParentHash)) break;
+            if (blockTree.FindHash(nextNumber) is not { } nextHash || !source.TryGet(in nextHash.ValueHash256, nextNumber, out TItem next, out ValueHash256 nextParentHash)) break;
 
             if (!reverse && (skip == 0
                     ? nextParentHash != previousHash
@@ -97,7 +97,7 @@ public static class HeaderWalk
             }
 
             items[responseIndex] = next;
-            previousHash = nextHash;
+            previousHash = nextHash.ValueHash256;
             previousNumber = nextNumber;
         }
     }
@@ -108,12 +108,12 @@ public static class HeaderWalk
     /// </summary>
     /// <returns>The index of the last header put, with its hash in <paramref name="lastHash"/>.</returns>
     private static int FillAncestors<TItem, TSource>(
-        ref TSource source, Span<TItem> items, int index, int ancestorStep, Hash256 hash, ulong number, Hash256 parentHash, out Hash256 lastHash)
+        ref TSource source, Span<TItem> items, int index, int ancestorStep, in ValueHash256 hash, ulong number, ValueHash256 parentHash, out ValueHash256 lastHash)
         where TSource : struct, IHeaderWalkSource<TItem>
     {
         lastHash = hash;
         while (number > 0 && (uint)(index + ancestorStep) < (uint)items.Length
-               && source.TryGet(parentHash, --number, out TItem parent, out Hash256 grandparentHash))
+               && source.TryGet(in parentHash, --number, out TItem parent, out ValueHash256 grandparentHash))
         {
             index += ancestorStep;
             items[index] = parent;

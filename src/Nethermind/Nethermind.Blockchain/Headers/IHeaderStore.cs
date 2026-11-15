@@ -25,9 +25,9 @@ public interface IHeaderStore : IHeaderFinder
     /// <summary>Appends the header of <paramref name="blockHash"/>, encoded by <paramref name="decoder"/>, to <paramref name="destination"/>.</summary>
     /// <returns><see langword="false"/> when the header is not stored.</returns>
     /// <remarks>An implementation can copy the stored encoding without a decode when the store encodes as <paramref name="decoder"/> does.</remarks>
-    bool TryAppendRlp(Hash256 blockHash, ulong blockNumber, IHeaderDecoder decoder, ArrayPoolList<byte> destination)
+    bool TryAppendRlp(in ValueHash256 blockHash, ulong blockNumber, IHeaderDecoder decoder, ArrayPoolList<byte> destination)
     {
-        if (Get(blockHash, shouldCache: false, blockNumber) is not { } header) return false;
+        if (Get(new Hash256(in blockHash), shouldCache: false, blockNumber) is not { } header) return false;
 
         using ArrayPoolSpan<byte> rlp = decoder.EncodeToArrayPoolSpan(header);
         destination.AddRange(rlp);

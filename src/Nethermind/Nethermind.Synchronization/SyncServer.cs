@@ -4,7 +4,6 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Text;
 using System.Threading;
@@ -451,7 +450,7 @@ namespace Nethermind.Synchronization
             try
             {
                 EncodedHeaderSource source = new(_headerStore, _headerDecoder, headers);
-                using ArrayPoolList<Range> items = HeaderWalk.FindHeaders<Range, EncodedHeaderSource>(_blockTree, ref source, hash, number, numberOfBlocks, skip, reverse);
+                using ArrayPoolList<Range> items = HeaderWalk.FindHeaders<Range, EncodedHeaderSource>(_blockTree, ref source, in hash.ValueHash256, number, numberOfBlocks, skip, reverse);
                 return InResponseOrder(headers, items.AsSpan());
             }
             catch
@@ -493,20 +492,20 @@ namespace Nethermind.Synchronization
 
         private readonly struct EncodedHeaderSource(IHeaderStore headerStore, IHeaderDecoder decoder, ArrayPoolList<byte> headers) : IHeaderWalkSource<Range>
         {
-            public bool TryGet(Hash256 hash, ulong number, out Range item, [MaybeNullWhen(false)] out Hash256 parentHash)
+            public bool TryGet(in ValueHash256 hash, ulong number, out Range item, out ValueHash256 parentHash)
             {
                 int start = headers.Count;
-                if (!headerStore.TryAppendRlp(hash, number, decoder, headers))
+                if (!headerStore.TryAppendRlp(in hash, number, decoder, headers))
                 {
                     item = default;
-                    parentHash = null;
+                    parentHash = default;
                     return false;
                 }
 
                 item = start..headers.Count;
                 RlpReader reader = new(headers.AsSpan()[start..]);
                 RlpReader fields = reader.EnterSequence<OffFlag>(out _);
-                parentHash = fields.DecodeKeccak();
+                parentHash = fields.DecodeValueKeccakNonNull();
                 return true;
             }
         }

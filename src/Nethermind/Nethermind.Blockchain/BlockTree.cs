@@ -772,15 +772,21 @@ namespace Nethermind.Blockchain
             }
 
             HeaderSource source = new(this, startHeader);
-            return HeaderWalk.FindHeaders<BlockHeader, HeaderSource>(this, ref source, blockHash, startHeader.Number, numberOfBlocks, skip, reverse);
+            return HeaderWalk.FindHeaders<BlockHeader, HeaderSource>(this, ref source, in blockHash.ValueHash256, startHeader.Number, numberOfBlocks, skip, reverse);
         }
 
-        private readonly struct HeaderSource(BlockTree tree, BlockHeader startHeader) : IHeaderWalkSource<BlockHeader>
+        private struct HeaderSource(BlockTree tree, BlockHeader startHeader) : IHeaderWalkSource<BlockHeader>
         {
-            public bool TryGet(Hash256 hash, ulong number, [MaybeNullWhen(false)] out BlockHeader header, [MaybeNullWhen(false)] out Hash256 parentHash)
+            // The walk mostly asks for the parent of the last header found, so its hash object is reused
+            private Hash256? _parentHash;
+
+            public bool TryGet(in ValueHash256 hash, ulong number, [MaybeNullWhen(false)] out BlockHeader header, out ValueHash256 parentHash)
             {
-                header = hash == startHeader.Hash ? startHeader : tree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, number);
-                parentHash = header?.ParentHash;
+                header = hash == startHeader.Hash
+                    ? startHeader
+                    : tree.FindHeader(hash == _parentHash ? _parentHash : new Hash256(in hash), BlockTreeLookupOptions.TotalDifficultyNotNeeded, number);
+                _parentHash = header?.ParentHash;
+                parentHash = _parentHash;
                 return header is not null;
             }
         }

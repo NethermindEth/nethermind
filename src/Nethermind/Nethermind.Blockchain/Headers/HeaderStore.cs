@@ -121,10 +121,10 @@ public class HeaderStore : IHeaderStore, IClearableCache
     /// this store, or both are a plain <see cref="HeaderDecoder"/>. A cached or pending header is encoded.
     /// </remarks>
     [SkipLocalsInit]
-    public bool TryAppendRlp(Hash256 blockHash, ulong blockNumber, IHeaderDecoder decoder, ArrayPoolList<byte> destination)
+    public bool TryAppendRlp(in ValueHash256 blockHash, ulong blockNumber, IHeaderDecoder decoder, ArrayPoolList<byte> destination)
     {
-        BlockHeader? header = _headerCache.Get(in blockHash.ValueHash256);
-        if (header is null && _pending is not null) _pending.TryGet(blockHash, out header);
+        BlockHeader? header = _headerCache.Get(in blockHash);
+        if (header is null && _pending is not null) _pending.TryGet(in blockHash, out header);
         if (header is null && EncodesAsStored(decoder))
         {
             Span<byte> key = stackalloc byte[NumberPrefixedKeyLength];
@@ -132,7 +132,7 @@ public class HeaderStore : IHeaderStore, IClearableCache
             return TryAppendStored(key, destination) || TryAppendStored(blockHash.Bytes, destination);
         }
 
-        header ??= Get(blockHash, shouldCache: false, blockNumber);
+        header ??= Get(new Hash256(in blockHash), shouldCache: false, blockNumber);
         if (header is null) return false;
 
         int length = decoder.GetLength(header);
