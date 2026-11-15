@@ -98,7 +98,8 @@ jobs:
       candidate_arm: ${{ steps.resolve.outputs.candidate_arm }}
       keys: ${{ steps.resolve.outputs.keys }}
       openvm: ${{ steps.resolve.outputs.openvm }}
-      build_matrix: ${{ steps.resolve.outputs.build_matrix }}
+      base_build_matrix: ${{ steps.resolve.outputs.base_build_matrix }}
+      head_build_matrix: ${{ steps.resolve.outputs.head_build_matrix }}
       measure_matrix: ${{ steps.resolve.outputs.measure_matrix }}
     steps:
       - name: Check out scripts
@@ -246,14 +247,17 @@ jobs:
           path: openvm-cost.tar.gz
           key: ${{ steps.key.outputs.key }}
 
-  build:
-    name: Build ${{ matrix.vm }} ${{ matrix.arm }}
+  # No head code runs before seal-base finishes: a job step can read the runtime token from the
+  # runner and write cache entries or replace artifacts of this run, so every base cache save and
+  # base artifact comes first, and the summary checks the base rows against the seal
+  build-base:
+    name: Build ${{ matrix.vm }} base
     needs: resolve
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.resolve.outputs.build_matrix) }}
+      matrix: ${{ fromJSON(needs.resolve.outputs.base_build_matrix) }}
     env:
       EXTLIB_PATH: ${{ matrix.extlib }}
     steps:
@@ -267,13 +271,12 @@ jobs:
       # The emulators are deterministic and the key covers every input of the base build
       - name: Restore base binaries
         id: cache
-        if: matrix.arm == 'base'
         uses: actions/cache/restore@v5
         with:
           path: zkab-elf
           key: zkab-elf-${{ matrix.vm }}-${{ fromJSON(needs.resolve.outputs.keys)[matrix.vm] }}-${{ hashFiles('.github/zkvm-ab/build.sh') }}
 
-      - name: Check out ${{ matrix.arm }}
+      - name: Check out base
         if: steps.cache.outputs.cache-hit != 'true'
         uses: actions/checkout@v7
         with:
@@ -311,7 +314,7 @@ jobs:
         run: .github/zkvm-ab/build.sh "$VM" "$PROJECT" arm zkab-elf
 
       - name: Save base binaries
-        if: matrix.arm == 'base' && steps.cache.outputs.cache-hit != 'true'
+        if: steps.cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v5
         with:
           path: zkab-elf
@@ -320,14 +323,14 @@ jobs:
       - name: Upload guest binaries
         uses: actions/upload-artifact@v7
         with:
-          name: zkab-elf-${{ matrix.vm }}-${{ matrix.arm }}
+          name: zkab-elf-${{ matrix.vm }}-base
           path: zkab-elf
           if-no-files-found: error
           retention-days: 3
 
-  measure:
-    name: Measure ${{ matrix.vm }} ${{ matrix.format }}
-    needs: [resolve, inputs, openvm-runner, build]
+  measure-base:
+    name: Measure ${{ matrix.vm }} ${{ matrix.format }} base
+    needs: [resolve, inputs, openvm-runner, build-base]
     # A failed build or OpenVM runner fails only the legs of its guest
     if: ${{ !cancelled() && needs.inputs.result == 'success' }}
     runs-on: ubuntu-latest
@@ -382,6 +385,7 @@ jobs:
           path: base/${{ env.GUEST }}/bin
 
       - name: Restore inputs
+        if: steps.cache.outputs.cache-hit != 'true'
         uses: actions/cache/restore@v5
         with:
           path: zkab-inputs
@@ -389,7 +393,7 @@ jobs:
           fail-on-cache-miss: true
 
       - name: Restore OpenVM cost runner
-        if: matrix.vm == 'openvm'
+        if: steps.cache.outputs.cache-hit != 'true' && matrix.vm == 'openvm'
         uses: actions/cache/restore@v5
         with:
           path: openvm-cost.tar.gz
@@ -397,7 +401,7 @@ jobs:
           fail-on-cache-miss: true
 
       - name: Load OpenVM cost runner
-        if: matrix.vm == 'openvm'
+        if: steps.cache.outputs.cache-hit != 'true' && matrix.vm == 'openvm'
         run: gunzip -c openvm-cost.tar.gz | docker load
 
       - name: Measure base
@@ -421,8 +425,6 @@ jobs:
           path: zkab-base
           key: ${{ steps.key.outputs.key }}
 
-      # The head steps below run the head Makefile, so the base rows leave this job before them and
-      # the summary reads them only from this artifact
       - name: Upload base results
         uses: actions/upload-artifact@v7
         with:
@@ -430,6 +432,133 @@ jobs:
           path: zkab-base
           if-no-files-found: error
           retention-days: 7
+
+  seal-base:
+    name: Seal base results
+    needs: [resolve, measure-base]
+    if: ${{ !cancelled() && needs.resolve.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      sums: ${{ steps.seal.outputs.sums }}
+    steps:
+      - name: Download base results
+        uses: actions/download-artifact@v8
+        with:
+          pattern: zkab-base-*
+          path: base
+
+      # A job output cannot change after its job ends, unlike an artifact
+      - name: Seal
+        id: seal
+        run: |
+          set -euo pipefail
+          mkdir -p base
+          {
+            echo 'sums<<ZKAB_SUMS'
+            find base -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum
+            echo ZKAB_SUMS
+          } >> "$GITHUB_OUTPUT"
+
+  build-head:
+    name: Build ${{ matrix.vm }} head
+    needs: [resolve, seal-base]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve.outputs.head_build_matrix) }}
+    env:
+      EXTLIB_PATH: ${{ matrix.extlib }}
+    steps:
+      - name: Check out scripts
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository || 'NethermindEth/nethermind' }}
+          ref: ${{ job.workflow_sha || env.TOOLS_REF }}
+          persist-credentials: false
+
+      - name: Check out head
+        uses: actions/checkout@v7
+        with:
+          repository: NethermindEth/nethermind
+          ref: ${{ matrix.sha }}
+          path: arm
+          persist-credentials: false
+
+      - name: Free disk
+        run: sudo rm -rf /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+
+      - name: Set up .NET
+        uses: ./.github/actions/setup-dotnet
+        with:
+          global-json-file: arm/global.json
+
+      - name: Download candidate packages
+        if: env.EXTLIB_PATH != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: zkab-candidate
+          path: ${{ runner.temp }}/candidate
+
+      - name: Build guest
+        env:
+          FORMATS: ${{ needs.resolve.outputs.formats }}
+          BFLAT_IMAGE: ${{ matrix.image }}
+          BFLAT_FLAGS: ${{ matrix.flags }}
+          CANDIDATE_DIR: ${{ runner.temp }}/candidate
+          VM: ${{ matrix.vm }}
+          PROJECT: ${{ matrix.project }}
+        run: .github/zkvm-ab/build.sh "$VM" "$PROJECT" arm zkab-elf
+
+      - name: Upload guest binaries
+        uses: actions/upload-artifact@v7
+        with:
+          name: zkab-elf-${{ matrix.vm }}-head
+          path: zkab-elf
+          if-no-files-found: error
+          retention-days: 3
+
+  measure-head:
+    name: Measure ${{ matrix.vm }} ${{ matrix.format }} head
+    needs: [resolve, inputs, openvm-runner, build-head]
+    # A failed build or OpenVM runner fails only the legs of its guest
+    if: ${{ !cancelled() && needs.inputs.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve.outputs.measure_matrix) }}
+    env:
+      VM: ${{ matrix.vm }}
+      FORMAT: ${{ matrix.format }}
+      GUEST: src/Nethermind/${{ matrix.project }}
+    steps:
+      - name: Check out scripts
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository || 'NethermindEth/nethermind' }}
+          ref: ${{ job.workflow_sha || env.TOOLS_REF }}
+          persist-credentials: false
+
+      - name: Restore inputs
+        uses: actions/cache/restore@v5
+        with:
+          path: zkab-inputs
+          key: ${{ needs.inputs.outputs.key }}
+          fail-on-cache-miss: true
+
+      - name: Restore OpenVM cost runner
+        if: matrix.vm == 'openvm'
+        uses: actions/cache/restore@v5
+        with:
+          path: openvm-cost.tar.gz
+          key: ${{ needs.openvm-runner.outputs.key }}
+          fail-on-cache-miss: true
+
+      - name: Load OpenVM cost runner
+        if: matrix.vm == 'openvm'
+        run: gunzip -c openvm-cost.tar.gz | docker load
 
       - name: Check out head
         uses: actions/checkout@v7
@@ -465,7 +594,7 @@ jobs:
 
   summary:
     name: Summary
-    needs: [resolve, measure]
+    needs: [resolve, seal-base, measure-head]
     if: ${{ !cancelled() && needs.resolve.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -491,6 +620,20 @@ jobs:
         with:
           pattern: zkab-results-*
           path: head
+
+      - name: Check base results
+        env:
+          BASE_SUMS: ${{ needs.seal-base.outputs.sums }}
+        run: |
+          set -euo pipefail
+          mkdir -p base
+          find base -type f | LC_ALL=C sort > "$RUNNER_TEMP/found"
+          printf '%s' "$BASE_SUMS" | sed -n 's/^[0-9a-f]\{64\}  //p' | LC_ALL=C sort > "$RUNNER_TEMP/sealed"
+          if ! cmp -s "$RUNNER_TEMP/found" "$RUNNER_TEMP/sealed" || \
+            { [ -n "$BASE_SUMS" ] && ! printf '%s\n' "$BASE_SUMS" | sha256sum --quiet --strict -c -; }; then
+            echo "::error::the base results differ from the ones sealed before any head code ran"
+            exit 1
+          fi
 
       - name: Summarize
         env:

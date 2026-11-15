@@ -116,7 +116,7 @@ try
 
     var formatList = string.Join(',', selectedFormats);
     var keys = new JsonObject();
-    var build = new JsonArray();
+    var builds = new Dictionary<string, JsonArray> { ["base"] = [], ["head"] = [] };
     var measure = new JsonArray();
     foreach (var guest in selectedGuests)
     {
@@ -133,7 +133,7 @@ try
                 var hash = SHA256.HashData(Encoding.UTF8.GetBytes($"base={baseSha}\nimage={armImage}\nflags={armFlags}\nextlib={extlibKey}\nformats={formatList}\n"));
                 keys[guest] = Convert.ToHexStringLower(hash)[..40];
             }
-            build.Add(new JsonObject
+            builds[arm].Add(new JsonObject
             {
                 ["vm"] = guest,
                 ["project"] = projects[guest],
@@ -159,7 +159,8 @@ try
         $"keys={keys.ToJsonString(json)}",
         $"candidate={(extlibs.Count > 0 ? "true" : "false")}",
         $"openvm={(wanted.Contains("openvm") ? "true" : "false")}",
-        $"build_matrix={new JsonObject { ["include"] = build }.ToJsonString(json)}",
+        $"base_build_matrix={new JsonObject { ["include"] = builds["base"] }.ToJsonString(json)}",
+        $"head_build_matrix={new JsonObject { ["include"] = builds["head"] }.ToJsonString(json)}",
         $"measure_matrix={new JsonObject { ["include"] = measure }.ToJsonString(json)}",
     }.Select(line => line + "\n")));
     return 0;

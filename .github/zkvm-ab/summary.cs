@@ -8,7 +8,7 @@
 // format. Exits with 1 when a block is missing, a run failed or the arms disagree on an output.
 // Each directory holds one artifact per guest and format (zkab-base-<guest>-<format>,
 // zkab-results-<guest>-<format>). A row counts only in the artifact of its own arm, guest and
-// format, so the head code cannot write base rows or the rows of another leg.
+// format. The workflow checks the base artifacts against the seal taken before any head code ran.
 using System.Globalization;
 using System.Text;
 using System.Text.Encodings.Web;
