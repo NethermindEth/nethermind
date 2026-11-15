@@ -572,14 +572,14 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public TxReceipt[] Decode(in Span<byte> receiptsData) => Decode(in receiptsData, RlpBehaviors.None);
+    public TxReceipt[] Decode(in ReadOnlySpan<byte> receiptsData) => Decode(in receiptsData, RlpBehaviors.None);
 
     /// <param name="receiptsData">The stored receipts.</param>
     /// <param name="compactBehaviors">
     /// Extra behaviors for the compact encoding, e.g. <see cref="RlpBehaviors.Eip7668Receipts"/>.
     /// <see cref="RlpBehaviors.TrustedInput"/> applies to every encoding.
     /// </param>
-    public TxReceipt[] Decode(in Span<byte> receiptsData, RlpBehaviors compactBehaviors)
+    public TxReceipt[] Decode(in ReadOnlySpan<byte> receiptsData, RlpBehaviors compactBehaviors)
     {
         if (receiptsData.Length == 0 || receiptsData[0] == Rlp.EmptyListByte)
         {
@@ -606,9 +606,9 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
         }
     }
 
-    /// <inheritdoc cref="Decode(in Span{byte}, RlpBehaviors)"/>
+    /// <inheritdoc cref="Decode(in ReadOnlySpan{byte}, RlpBehaviors)"/>
     /// <param name="rlpBehaviors"><see cref="RlpBehaviors.TrustedInput"/> applies; the other behaviors are set by the encoding.</param>
-    public TxReceipt?[] DecodeAllowingMissing(in Span<byte> receiptsData, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public TxReceipt?[] DecodeAllowingMissing(in ReadOnlySpan<byte> receiptsData, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (receiptsData.Length == 0 || receiptsData[0] == Rlp.EmptyListByte)
         {
@@ -690,7 +690,7 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
         return Array.ConvertAll(receipts[..missingIndex], static receipt => receipt!);
     }
 
-    public TxReceipt DeserializeReceiptObsolete(Hash256 hash, Span<byte> receiptData)
+    public TxReceipt DeserializeReceiptObsolete(Hash256 hash, ReadOnlySpan<byte> receiptData)
     {
         RlpReader context = new(receiptData);
         try
@@ -708,7 +708,7 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
         }
     }
 
-    public static bool IsCompactEncoding(Span<byte> receiptsData) =>
+    public static bool IsCompactEncoding(ReadOnlySpan<byte> receiptsData) =>
         receiptsData.Length > 0 && receiptsData[0] is CompactEncoding or CompactEncodingWithTxHashes;
 
     /// <summary>Whether the value is compact and does not carry the transaction hashes yet.</summary>

@@ -716,6 +716,65 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             _receiptConfig, _decoder, writer, barrier, _logManager);
     }
 
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Receipt_reads_from_a_native_store_decode_before_releasing_the_pinned_value()
+    {
+        PinnedReadDb blocks = new();
+        IColumnsDb<ReceiptsColumns> columns = Substitute.For<IColumnsDb<ReceiptsColumns>>();
+        columns.GetColumnDb(Arg.Any<ReceiptsColumns>()).Returns(call =>
+            call.Arg<ReceiptsColumns>() == ReceiptsColumns.Blocks ? blocks : _receiptsDb.GetColumnDb(call.Arg<ReceiptsColumns>()));
+        columns.StartWriteBatch().Returns(_ => _receiptsDb.StartWriteBatch());
+        PersistentReceiptStorage storage = new(columns, _specProvider, _receiptsRecovery, _blockTree, _blockStore,
+            _receiptConfig, _decoder, logManager: _logManager)
+        { MigratedBlockNumber = 0 };
+        (Block block, TxReceipt[] receipts) = PrepareBlock();
+        storage.Insert(block, receipts);
+        storage.ClearCache();
+
+        TxReceipt?[] migrated = ((IReceiptMigrationStore)storage).GetForMigration(block.Number, block.Hash!);
+        bool found = storage.TryGetReceipt(new ReceiptRecoveryBlock(block), receipts[0].TxHash!, out TxReceipt? single, out _, out _);
+        TxReceipt[] read = storage.Get(block);
+        TxReceipt[] missing = storage.Get(Build.A.Block.WithNumber(9).WithReceiptsRoot(TestItem.KeccakA).TestObject);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(migrated.Single()!.GasUsedTotal, Is.EqualTo(receipts[0].GasUsedTotal));
+            Assert.That(found, Is.EqualTo(useCompactReceipts));
+            Assert.That(single?.GasUsedTotal, Is.EqualTo(useCompactReceipts ? receipts[0].GasUsedTotal : null));
+            Assert.That(read.Single().GasUsedTotal, Is.EqualTo(receipts[0].GasUsedTotal));
+            Assert.That(missing, Is.Empty);
+            Assert.That(blocks.Lent, Is.EqualTo(3));
+            Assert.That(blocks.Outstanding, Is.Zero);
+        }
+    }
+
+    private sealed class PinnedReadDb : TestMemDb, IReadOnlyNativeKeyValueStore
+    {
+        private readonly Dictionary<nint, byte[]> _borrowed = [];
+        public int Lent { get; private set; }
+        public int Outstanding => _borrowed.Count;
+
+        public ReadOnlySpan<byte> GetNativeSlice(scoped ReadOnlySpan<byte> key, out nint handle, ReadFlags flags = ReadFlags.None)
+        {
+            byte[]? value = Get(key, flags)?.ToArray();
+            if (value is null)
+            {
+                handle = 0;
+                return null;
+            }
+
+            handle = ++Lent;
+            _borrowed.Add(handle, value);
+            return value;
+        }
+
+        public void DangerousReleaseHandle(nint handle)
+        {
+            Assert.That(_borrowed.Remove(handle, out byte[]? value), Is.True);
+            value.AsSpan().Fill(0xff);
+        }
+    }
+
     private sealed class IndexReadDb : TestMemDb, IReadOnlyKeyValueStore
     {
         private byte[]? _borrowed;
@@ -774,7 +833,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         using ArrayPoolSpan<byte> encoded = _decoder.EncodeToArrayPoolSpan(legacyReceipts, RlpBehaviors.Storage);
         Hash256 blockHash = block.Hash ?? throw new AssertionException("Test block hash is missing.");
         byte[] encodedBytes = ((ReadOnlySpan<byte>)encoded).ToArray();
-        Span<byte> encodedSpan = encodedBytes;
+        ReadOnlySpan<byte> encodedSpan = encodedBytes;
         Assert.That(_decoder.DecodeAllowingMissing(in encodedSpan), Has.Length.EqualTo(2));
 
         _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[blockHash.Bytes] = encodedBytes;

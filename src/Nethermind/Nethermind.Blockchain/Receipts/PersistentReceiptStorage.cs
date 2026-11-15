@@ -343,19 +343,25 @@ namespace Nethermind.Blockchain.Receipts
                 return pendingHash;
             }
 
-            Span<byte> blockHashData = _transactionDb.GetSpan(txHash);
-            try
+            TxIndexEntry entry = default;
+            if (!_transactionDb.TryGet(txHash.Bytes, ReadFlags.None, static (value, target) => target[0] = TxIndexEntry.Decode(value), new Span<TxIndexEntry>(ref entry))
+                || !entry.Found)
             {
-                if (blockHashData.IsNull()) return FindReceiptObsolete(txHash)?.BlockHash;
-                if (blockHashData.Length == Hash256.Size) return new Hash256(blockHashData);
-
-                RlpReader blockNumReader = new(blockHashData);
-                ulong blockNum = blockNumReader.DecodeULong<OffFlag>();
-                return _blockTree.FindBlockHash(blockNum);
+                return FindReceiptObsolete(txHash)?.BlockHash;
             }
-            finally
+
+            return entry.BlockHash ?? _blockTree.FindBlockHash(entry.BlockNumber);
+        }
+
+        private readonly record struct TxIndexEntry(bool Found, Hash256? BlockHash, ulong BlockNumber)
+        {
+            public static TxIndexEntry Decode(ReadOnlySpan<byte> value)
             {
-                _transactionDb.DangerousReleaseMemory(blockHashData);
+                if (value.IsEmpty) return default;
+                if (value.Length == Hash256.Size) return new TxIndexEntry(true, new Hash256(value), 0);
+
+                RlpReader blockNumReader = new(value);
+                return new TxIndexEntry(true, null, blockNumReader.DecodeULong<OffFlag>());
             }
         }
 
@@ -402,18 +408,18 @@ namespace Nethermind.Blockchain.Receipts
             // The legacy column shares its keyspace with these metadata entries; neither key is a transaction hash.
             if (hash == LowestInsertedReceiptBlockKey || hash == MigrationBlockNumberKey) return null;
 
-            Span<byte> receiptData = _defaultColumn.GetSpan(hash);
+            ReadOnlySpan<byte> receiptData = ReadPinned(_defaultColumn, hash.Bytes, out nint handle);
             try
             {
                 return DeserializeReceiptObsolete(hash, receiptData);
             }
             finally
             {
-                _defaultColumn.DangerousReleaseMemory(receiptData);
+                ReleasePinned(_defaultColumn, handle);
             }
         }
 
-        private TxReceipt DeserializeReceiptObsolete(Hash256 hash, Span<byte> receiptData)
+        private TxReceipt DeserializeReceiptObsolete(Hash256 hash, ReadOnlySpan<byte> receiptData)
         {
             if (!receiptData.IsNullOrEmpty())
             {
@@ -442,7 +448,7 @@ namespace Nethermind.Blockchain.Receipts
                 return pending.Receipts;
             }
 
-            Span<byte> receiptsData = GetReceiptData(block.Number, blockHash);
+            ReadOnlySpan<byte> receiptsData = GetReceiptData(block.Number, blockHash, out nint handle);
 
             try
             {
@@ -472,7 +478,7 @@ namespace Nethermind.Blockchain.Receipts
             }
             finally
             {
-                _receiptsDb.DangerousReleaseMemory(receiptsData);
+                ReleasePinned(_receiptsDb, handle);
             }
         }
 
@@ -503,7 +509,7 @@ namespace Nethermind.Blockchain.Receipts
             // A repeat lookup in one block, e.g. a backfill of all its transactions, is cheaper from the receipts cache Get fills.
             if (_defaultReceiptsRecovery is null || !_singleReceiptBlocks.Set(blockHash)) return false;
 
-            Span<byte> receiptsData = GetReceiptData(header.Number, blockHash);
+            ReadOnlySpan<byte> receiptsData = GetReceiptData(header.Number, blockHash, out nint handle);
             try
             {
                 RlpReader reader = new(receiptsData);
@@ -573,7 +579,7 @@ namespace Nethermind.Blockchain.Receipts
             }
             finally
             {
-                _receiptsDb.DangerousReleaseMemory(receiptsData);
+                ReleasePinned(_receiptsDb, handle);
             }
         }
 
@@ -650,7 +656,7 @@ namespace Nethermind.Blockchain.Receipts
 
         TxReceipt?[] IReceiptMigrationStore.GetForMigration(ulong blockNumber, Hash256 blockHash)
         {
-            Span<byte> receiptsData = GetReceiptData(blockNumber, blockHash);
+            ReadOnlySpan<byte> receiptsData = GetReceiptData(blockNumber, blockHash, out nint handle);
             try
             {
                 return receiptsData.IsNullOrEmpty()
@@ -659,12 +665,37 @@ namespace Nethermind.Blockchain.Receipts
             }
             finally
             {
-                _receiptsDb.DangerousReleaseMemory(receiptsData);
+                ReleasePinned(_receiptsDb, handle);
             }
         }
 
         [SkipLocalsInit]
-        private unsafe Span<byte> GetReceiptData(ulong blockNumber, Hash256 blockHash)
+        private ReadOnlySpan<byte> GetReceiptData(ulong blockNumber, Hash256 blockHash, out nint handle)
+        {
+            Span<byte> blockNumPrefixed = stackalloc byte[40];
+            GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
+            ReadOnlySpan<byte> receiptsData = ReadPinned(_receiptsDb, _legacyHashKey ? blockHash.Bytes : blockNumPrefixed, out handle);
+            if (!receiptsData.IsEmpty) return receiptsData;
+
+            ReleasePinned(_receiptsDb, handle);
+            return ReadPinned(_receiptsDb, _legacyHashKey ? blockNumPrefixed : blockHash.Bytes, out handle);
+        }
+
+        private static ReadOnlySpan<byte> ReadPinned(IDb db, scoped ReadOnlySpan<byte> key, out nint handle)
+        {
+            if (db is IReadOnlyNativeKeyValueStore native) return native.GetNativeSlice(key, out handle);
+
+            handle = 0;
+            return db.Get(key);
+        }
+
+        private static void ReleasePinned(IDb db, nint handle)
+        {
+            if (handle != 0) ((IReadOnlyNativeKeyValueStore)db).DangerousReleaseHandle(handle);
+        }
+
+        [SkipLocalsInit]
+        private unsafe Span<byte> GetOwnedReceiptData(ulong blockNumber, Hash256 blockHash)
         {
             Span<byte> blockNumPrefixed = stackalloc byte[40];
             if (_legacyHashKey)
@@ -743,7 +774,7 @@ namespace Nethermind.Blockchain.Receipts
 
             if (_receiptsCache.TryGet(blockHash, out TxReceipt[]? cached)) return cached ?? [];
 
-            Span<byte> receiptsData = GetReceiptData(header.Number, blockHash);
+            ReadOnlySpan<byte> receiptsData = GetReceiptData(header.Number, blockHash, out nint handle);
             try
             {
                 if (receiptsData.IsNullOrEmpty() || ReceiptArrayStorageDecoder.IsCompactEncoding(receiptsData)) return [];
@@ -751,7 +782,7 @@ namespace Nethermind.Blockchain.Receipts
             }
             finally
             {
-                _receiptsDb.DangerousReleaseMemory(receiptsData);
+                ReleasePinned(_receiptsDb, handle);
             }
         }
 
@@ -760,7 +791,7 @@ namespace Nethermind.Blockchain.Receipts
         /// compute it lazily, so every bloom is set to <see cref="Bloom.ZeroLength"/>. A chain that never schedules
         /// the EIP skips the spec lookup.
         /// </remarks>
-        private TxReceipt[] Decode(in Span<byte> receiptsData, BlockHeader header)
+        private TxReceipt[] Decode(in ReadOnlySpan<byte> receiptsData, BlockHeader header)
         {
             if (!_eip7668EverEnabled || !_specProvider.GetSpec(header).IsEip7668Enabled) return _storageDecoder.Decode(in receiptsData, RlpBehaviors.TrustedInput);
 
@@ -792,7 +823,7 @@ namespace Nethermind.Blockchain.Receipts
                 return false;
             }
 
-            Span<byte> receiptsData = GetReceiptData(blockNumber, blockHash);
+            Span<byte> receiptsData = GetOwnedReceiptData(blockNumber, blockHash);
             IReceiptRefDecoder refDecoder = _storageDecoder.GetRefDecoder(receiptsData);
             if (_defaultReceiptsRecovery is not null && ReceiptArrayStorageDecoder.IsCompactEncoding(receiptsData))
             {
