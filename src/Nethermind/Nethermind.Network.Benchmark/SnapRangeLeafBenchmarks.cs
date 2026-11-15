@@ -77,25 +77,33 @@ public class SnapRangeLeafBenchmarks
     [Benchmark]
     public int StorageRange()
     {
-        PathWithStorageCollector collector = new();
+        EncodedStorageRanges ranges = new(1);
+        PathWithStorageCollector collector = ranges.Collector;
         for (int i = 0; i < _slotLeaves.Length; i++) collector.Collect(_slotPaths[i], _slotLeaves[i]);
-        using StorageRangeMessage message = new() { Slots = new ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(1) { collector.Slots }, Proofs = EmptyByteArrayList.Instance };
+        ranges.TryCompleteAccount();
+        using StorageRangeMessage message = new() { Slots = ranges, Proofs = EmptyByteArrayList.Instance };
         return _storageSerializer.Serialize(_destination, message);
     }
 
-    /// <summary>A storage range response with the slots of many accounts, one to three slots each.</summary>
+    /// <summary>A storage range response with the slots of 1,200 accounts, the most that the snap client asks for in one request.</summary>
     [Benchmark]
     public int StorageRangeManyAccounts()
     {
-        EncodedStorageRanges ranges = new(LeafCount);
-        for (int i = 0; i < _slotLeaves.Length;)
+        int accountCount = Math.Min(_slotLeaves.Length, 1_200);
+        EncodedStorageRanges ranges = new(accountCount);
+        for (int account = 0; account < accountCount; account++)
         {
-            PathWithStorageCollector collector = ranges.StartAccount();
-            for (int end = Math.Min(i + i % 3 + 1, _slotLeaves.Length); i < end; i++) collector.Collect(_slotPaths[i], _slotLeaves[i]);
-            ranges.Add(collector.Slots);
+            int start = account * _slotLeaves.Length / accountCount;
+            CollectSlots(ranges.Collector, _slotPaths.AsSpan(start..((account + 1) * _slotLeaves.Length / accountCount)), _slotLeaves.AsSpan(start));
+            ranges.TryCompleteAccount();
         }
 
         using StorageRangeMessage message = new() { Slots = ranges, Proofs = EmptyByteArrayList.Instance };
         return _storageSerializer.Serialize(_destination, message);
+    }
+
+    private static void CollectSlots(PathWithStorageCollector collector, ReadOnlySpan<ValueHash256> paths, ReadOnlySpan<byte[]> leaves)
+    {
+        for (int i = 0; i < paths.Length; i++) collector.Collect(paths[i], leaves[i]);
     }
 }

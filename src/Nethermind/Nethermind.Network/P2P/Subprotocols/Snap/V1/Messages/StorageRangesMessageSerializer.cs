@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
+using Nethermind.State.SnapServer;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 {
@@ -33,15 +34,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             else
             {
                 RlpSequence allSlots = writer.StartSequence(allSlotsLength);
-                ReadOnlySpan<IOwnedReadOnlyList<PathWithStorageSlot>> slotsSpan = message.Slots.AsSpan();
+                EncodedStorageRanges? encoded = message.Slots as EncodedStorageRanges;
+                ReadOnlySpan<IOwnedReadOnlyList<PathWithStorageSlot>> slotsSpan = encoded is null ? message.Slots.AsSpan() : default;
 
-                for (int i = 0; i < slotsSpan.Length; i++)
+                for (int i = 0; i < message.Slots.Count; i++)
                 {
                     RlpSequence accountSequence = writer.StartSequence(accountSlotsLengths[i]);
 
-                    if (slotsSpan[i] is EncodedSnapEntries<PathWithStorageSlot> encoded)
+                    if (encoded is not null)
                     {
-                        writer.WriteEncoded(encoded.Encoded);
+                        writer.WriteEncoded(encoded.GetEncoded(i));
                     }
                     else
                     {
@@ -132,14 +134,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             {
                 if (slots is not null && slotsCount != 0)
                 {
-                    ReadOnlySpan<IOwnedReadOnlyList<PathWithStorageSlot>> slotsSpan = slots.AsSpan();
-                    for (int i = 0; i < slotsSpan.Length; i++)
+                    EncodedStorageRanges? encoded = slots as EncodedStorageRanges;
+                    ReadOnlySpan<IOwnedReadOnlyList<PathWithStorageSlot>> slotsSpan = encoded is null ? slots.AsSpan() : default;
+                    for (int i = 0; i < slotsCount; i++)
                     {
                         int accountSlotsLength = 0;
 
-                        if (slotsSpan[i] is EncodedSnapEntries<PathWithStorageSlot> encoded)
+                        if (encoded is not null)
                         {
-                            accountSlotsLength = encoded.Encoded.Length;
+                            accountSlotsLength = encoded.GetEncoded(i).Length;
                         }
                         else
                         {

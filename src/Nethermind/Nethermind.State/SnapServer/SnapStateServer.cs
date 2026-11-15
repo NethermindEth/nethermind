@@ -213,7 +213,6 @@ public class SnapStateServer : ISnapStateServer
 
             Hash256? storagePath = accounts[i].Path.ToCommitment();
 
-            PathWithStorageCollector pathWithStorageCollector = responseNodes.StartAccount();
             long innerResponseSize;
             IOwnedReadOnlyList<byte[]> proofs;
             bool stoppedEarly;
@@ -226,7 +225,7 @@ public class SnapStateServer : ISnapStateServer
                     byteLimit - responseSize,
                     storagePath,
                     storageRoot,
-                    pathWithStorageCollector,
+                    responseNodes.Collector,
                     cancellationToken);
             }
             catch
@@ -235,13 +234,12 @@ public class SnapStateServer : ISnapStateServer
                 throw;
             }
 
-            if (pathWithStorageCollector.Slots.Count == 0)
+            if (!responseNodes.TryCompleteAccount())
             {
                 //return proof of absence
                 return (responseNodes, new ByteArrayListAdapter(proofs));
             }
 
-            responseNodes.Add(pathWithStorageCollector.Slots);
             if (stoppedEarly || startingHash1 != Keccak.Zero)
             {
                 return (responseNodes, new ByteArrayListAdapter(proofs));

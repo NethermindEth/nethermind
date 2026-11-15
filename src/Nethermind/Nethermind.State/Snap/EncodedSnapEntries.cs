@@ -25,15 +25,14 @@ public sealed class EncodedSnapEntries<T>(RefRlpReaderFunc<T> decodeEntry, int c
     private readonly EncodedSnapEntries<T>? _owner;
     private readonly int _start;
 
-    /// <summary>Creates entries that are added to the end of <paramref name="owner"/>, which holds their memory.</summary>
-    /// <remarks>
-    /// Many small lists can so share one pooled buffer. Only the list made last on <paramref name="owner"/> can add
-    /// entries, and the entries are valid until <paramref name="owner"/> is disposed.
-    /// </remarks>
-    internal EncodedSnapEntries(RefRlpReaderFunc<T> decodeEntry, EncodedSnapEntries<T> owner) : this(decodeEntry)
+    /// <summary>Creates a read-only view of <paramref name="count"/> entries in <paramref name="owner"/>, which holds their memory.</summary>
+    /// <remarks>The entries are valid until <paramref name="owner"/> is disposed.</remarks>
+    internal EncodedSnapEntries(RefRlpReaderFunc<T> decodeEntry, EncodedSnapEntries<T> owner, int start, int length, int count) : this(decodeEntry)
     {
         _owner = owner;
-        _start = owner._length;
+        _start = start;
+        _length = length;
+        Count = count;
     }
 
     /// <summary>The encoded entries one after the other, without the prefix of the list.</summary>
@@ -43,10 +42,13 @@ public sealed class EncodedSnapEntries<T>(RefRlpReaderFunc<T> decodeEntry, int c
 
     /// <summary>Adds an entry of <paramref name="length"/> bytes.</summary>
     /// <returns>The memory that the caller fills with the encoded entry.</returns>
+    /// <exception cref="InvalidOperationException">These entries are a view of other entries.</exception>
     public Span<byte> Add(int length)
     {
+        if (_owner is not null) throw new InvalidOperationException("A view of encoded snap entries is read-only.");
+
         int newLength = _length + length;
-        if (_owner is null && newLength > _buffer.Length)
+        if (newLength > _buffer.Length)
         {
             byte[] buffer = ArrayPool<byte>.Shared.Rent(Math.Max(newLength, Math.Max(_buffer.Length * 2, capacity)));
             Encoded.CopyTo(buffer);
@@ -54,7 +56,7 @@ public sealed class EncodedSnapEntries<T>(RefRlpReaderFunc<T> decodeEntry, int c
             _buffer = buffer;
         }
 
-        Span<byte> entry = _owner is null ? _buffer.AsSpan(_length, length) : _owner.Add(length);
+        Span<byte> entry = _buffer.AsSpan(_length, length);
         _length = newLength;
         _decoded = null;
         Count++;

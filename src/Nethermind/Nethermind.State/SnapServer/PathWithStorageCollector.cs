@@ -11,10 +11,10 @@ using Nethermind.Trie;
 namespace Nethermind.State.SnapServer;
 
 /// <summary>Collects storage leaves as the encoded <c>[path, slot value]</c> entries of a storage range response.</summary>
-/// <param name="slots">The list that receives the entries, or <see langword="null"/> for a new list.</param>
-public class PathWithStorageCollector(EncodedSnapEntries<PathWithStorageSlot>? slots = null) : RangeQueryVisitor.ILeafValueCollector
+/// <param name="slots">The list that receives the entries.</param>
+public class PathWithStorageCollector(EncodedSnapEntries<PathWithStorageSlot> slots) : RangeQueryVisitor.ILeafValueCollector
 {
-    public EncodedSnapEntries<PathWithStorageSlot> Slots { get; } = slots ?? new(DecodeEntry);
+    public EncodedSnapEntries<PathWithStorageSlot> Slots { get; } = slots;
 
     public int Collect(in ValueHash256 path, ReadOnlySpan<byte> value)
     {

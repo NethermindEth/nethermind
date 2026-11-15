@@ -216,7 +216,6 @@ public class SnapFlatStateServer(
 
                 ValueHash256 storagePath = accounts[i].Path;
 
-                PathWithStorageCollector pathWithStorageCollector = responseNodes.StartAccount();
                 long innerResponseSize;
                 IByteArrayList proofs;
                 bool stoppedEarly;
@@ -230,7 +229,7 @@ public class SnapFlatStateServer(
                         byteLimit - responseSize,
                         storagePath,
                         storageRoot,
-                        pathWithStorageCollector,
+                        responseNodes.Collector,
                         cancellationToken);
                 }
                 catch
@@ -239,13 +238,12 @@ public class SnapFlatStateServer(
                     throw;
                 }
 
-                if (pathWithStorageCollector.Slots.Count == 0)
+                if (!responseNodes.TryCompleteAccount())
                 {
                     // return proof of absence
                     return (responseNodes, proofs);
                 }
 
-                responseNodes.Add(pathWithStorageCollector.Slots);
                 if (stoppedEarly || startingHash1 != Keccak.Zero)
                 {
                     return (responseNodes, proofs);
