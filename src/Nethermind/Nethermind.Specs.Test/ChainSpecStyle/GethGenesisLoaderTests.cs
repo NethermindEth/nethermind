@@ -687,6 +687,23 @@ public class GethGenesisLoaderTests
         }
     }
 
+    // Geth-genesis devnets (Kurtosis) schedule ethereum/EIPs#12664 batching, whose guest takes recognized signature leaves.
+    [Test]
+    public void Geth_genesis_schedules_batched_dependency_pricing_and_its_guest()
+    {
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra:
+            $"{ForksThroughShanghaiAtGenesis}, \"eip8288PrototypeTime\": 15, \"eipBatchedDependencyPricingTimestamp\": 30");
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Parameters.EipBatchedDependencyPricingTransitionTimestamp, Is.EqualTo(30UL));
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(29)).IsEipBatchedDependencyPricingEnabled, Is.False);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(29)).Eip8288AggregatedVk, Is.EqualTo(Eip8288Verifier.PinnedAggregatedVk));
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(30)).IsEipBatchedDependencyPricingEnabled, Is.True);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(30)).Eip8288AggregatedVk, Is.EqualTo(Eip8288Verifier.BatchedAggregatedVk));
+        }
+    }
+
     [Test]
     public void Eip8288_prototype_genesis_keeps_an_earlier_frames_activation()
     {

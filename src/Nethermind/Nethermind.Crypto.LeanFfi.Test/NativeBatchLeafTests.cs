@@ -124,7 +124,7 @@ public class NativeBatchLeafTests
         else Assert.Throws<ArgumentException>(() => NativeLeanProofVerifier.SerializeInput(input, batchedGuest: true));
     }
 
-    private static Transaction DependentTransaction(int nonce, FrameDependency dependency)
+    internal static Transaction DependentTransaction(int nonce, FrameDependency dependency)
     {
         TxFrame[] frames = [FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas),
             new(FrameMode.DepVerify, FrameFlags.None, null, dependency.VerificationGas,

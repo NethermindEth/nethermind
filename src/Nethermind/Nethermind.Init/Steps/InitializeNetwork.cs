@@ -9,6 +9,7 @@ using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
@@ -82,7 +83,8 @@ public class InitializeNetwork : IStep
         FlatStateActivationPolicy flatStateActivationPolicy,
         ILogManager logManager,
         ProofWrapperTransport proofWrapperTransport, // Resolved so wrappers validated before the first eth/73 session are offered
-        ProofWrapperGossip? proofWrapperGossip = null
+        ProofWrapperGossip? proofWrapperGossip = null,
+        RawWitnessProver? rawWitnessProver = null // Resolved so its proving cycle runs
     )
     {
         _synchronizer = synchronizer;

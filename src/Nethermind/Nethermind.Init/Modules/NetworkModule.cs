@@ -6,6 +6,7 @@ using Autofac;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Timers;
@@ -45,6 +46,7 @@ public class NetworkModule(IConfigProvider configProvider) : Module
         base.Load(builder);
         // Without the aggregator, received wrappers are still verified, admitted and relayed by the transport.
         if (configProvider.GetConfig<ITxPoolConfig>().AggregateProofs) builder.AddSingleton<V73.ProofWrapperGossip>();
+        if (configProvider.GetConfig<ITxPoolConfig>().RawWitnessProverEnabled) builder.AddSingleton<RawWitnessProver>();
         builder
             .AddModule(new SynchronizerModule(configProvider.GetConfig<ISyncConfig>()))
             .AddSingleton<SyncedTxGossipPolicy>()

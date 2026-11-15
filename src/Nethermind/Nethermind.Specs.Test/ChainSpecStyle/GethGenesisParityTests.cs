@@ -79,7 +79,6 @@ public class GethGenesisParityTests
         [nameof(ChainSpecParamsJson.Eip8131TransitionTimestamp)] = StandaloneEip,
         [nameof(ChainSpecParamsJson.Eip8279TransitionTimestamp)] = StandaloneEip,
         [nameof(ChainSpecParamsJson.Eip8360TransitionTimestamp)] = StandaloneEip,
-        [nameof(ChainSpecParamsJson.EipBatchedDependencyPricingTransitionTimestamp)] = "draft EIP without a number (ethereum/EIPs#12664) extending EIP-8288",
     };
 
     private const string StandaloneEip = "standalone EIP, not in a named fork";
@@ -92,6 +91,7 @@ public class GethGenesisParityTests
         [nameof(GethGenesisConfigJson.Eip155Block)] = "Parity's eip155Transition",
         [nameof(GethGenesisConfigJson.Eip158Block)] = "Parity's eip161abcTransition and eip161dTransition",
         [nameof(GethGenesisConfigJson.Eip8288AggregatedVkTimestamp)] = "Parity's eip8288AggregatedVkTransitionTimestamp",
+        [nameof(GethGenesisConfigJson.EipBatchedDependencyPricingTimestamp)] = "Parity's eipBatchedDependencyPricingTransitionTimestamp",
     };
 
     /// <summary>
@@ -217,7 +217,7 @@ public class GethGenesisParityTests
     {
         // Every geth timestamp label at once; whatever ends up unset is unreachable from a geth genesis.
         string labels = string.Join(", ", GethTimeKeysByFork.Value.Values.Select(k => $"\"{k}\": {ForkTime}"));
-        labels += $", \"eip8288AggregatedVkTimestamp\": {ForkTime}";
+        labels += $", \"eip8288AggregatedVkTimestamp\": {ForkTime}, \"eipBatchedDependencyPricingTimestamp\": {ForkTime}";
         ChainParameters parameters = LoadGeth(BuildGethGenesisJson(labels, blobSchedule: "")).Parameters;
 
         List<string> unreachable = [];

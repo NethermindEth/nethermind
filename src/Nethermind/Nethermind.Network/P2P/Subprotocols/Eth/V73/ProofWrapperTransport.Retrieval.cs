@@ -45,7 +45,7 @@ public sealed partial class ProofWrapperTransport
                 ValueHash256 wrapperHash = announcement.Hash;
                 peer.Known.Add(wrapperHash);
                 peer.Exchanged.Add(wrapperHash);
-                if (!enabled || _store.Contains(wrapperHash)
+                if (!enabled || !SupportsMode(announcement.Mode) || _store.Contains(wrapperHash)
                     || IsTombstoned(wrapperHash, now)) continue;
                 if (_fetches.TryGetValue(wrapperHash, out WrapperFetch? existing))
                 {
@@ -60,6 +60,9 @@ public sealed partial class ProofWrapperTransport
                 // The pending cache is bounded, and each peer holds at most an equal share of it, so peers announcing wrappers
                 // they never serve cannot crowd out the others. Announcements are not repeated, so excess ones are lost.
                 if (peer.PendingFetches >= share) continue;
+                bool raw = announcement.Mode == MempoolWrapper.ModeRaw;
+                // Mode 2 is never requested from a deprioritized peer, so its announcement would only hold a pending slot.
+                if (raw && (peer.IsDeprioritized || _rawFetches >= WrapperTransportLimits.MaxPendingRawAnnouncements)) continue;
                 if (_fetches.Count >= WrapperTransportLimits.MaxPendingAnnouncements && (!evictable || !EvictPending(peer, share)))
                 {
                     // Nothing becomes evictable while the rest of the message is handled.
@@ -68,6 +71,7 @@ public sealed partial class ProofWrapperTransport
                 }
                 WrapperFetch fetch = new(announcement, now) { Announcer = peer };
                 peer.PendingFetches++;
+                if (raw) _rawFetches++;
                 fetch.AddSource(peer, announcement);
                 _fetches.Add(wrapperHash, fetch);
             }
@@ -133,10 +137,24 @@ public sealed partial class ProofWrapperTransport
     {
         List<WrapperFetch> batch = [];
         long bytes = 0;
+        bool? raw = null;
+        int rawRequests = 0;
+        foreach (WrappersRequest outstanding in peer.Requests.Values) if (outstanding.Raw) rawRequests++;
+        // A failing peer's single request slot stays with proof-backed traffic.
+        bool rawAllowed = !peer.IsDeprioritized && rawRequests < WrapperTransportLimits.MaxRawRequestsPerPeer;
+        int skipped = -1;
         for (; next < queued.Count && batch.Count < Eth73Protocol.MaxWrappersPerRequest; next++)
         {
             WrapperFetch fetch = queued[next];
             if (fetch.Requested || fetch.Wrapper is not null) continue;
+            // A request carries mode-2 wrappers or others, never both, so its bytes are charged to one budget; the next request
+            // starts from the first one skipped.
+            bool isRaw = fetch.ModeFrom(peer) == MempoolWrapper.ModeRaw;
+            if (isRaw && !rawAllowed || (raw ??= isRaw) != isRaw)
+            {
+                if (skipped < 0) skipped = next;
+                continue;
+            }
             int length = EntryLength(fetch.LengthFrom(peer));
             if (batch.Count > 0 && bytes + length > Eth73Protocol.SoftResponseLimit) break;
             batch.Add(fetch);
@@ -144,7 +162,8 @@ public sealed partial class ProofWrapperTransport
         }
         // Requests are batched within the soft limit, so a response carries at most the requested bytes.
         long reserved = Math.Min(bytes + Eth73Protocol.ResponseFramingBytes, Eth73Protocol.LocalMaxResponseBytes);
-        if (batch.Count == 0 || peer.LastIssued == long.MaxValue || !TryCharge(peer, reserved)) return false;
+        if (skipped >= 0) next = skipped;
+        if (batch.Count == 0 || peer.LastIssued == long.MaxValue || !TryCharge(peer, reserved, raw == true)) return false;
         ValueHash256[] ids = new ValueHash256[batch.Count];
         for (int i = 0; i < ids.Length; i++)
         {
@@ -158,7 +177,7 @@ public sealed partial class ProofWrapperTransport
         // References are useful only once this node holds encodings the peer sent in full; a wrapper whose compact form
         // referenced an evicted encoding is fetched complete.
         bool compact = !peer.Received.IsEmpty && batch.TrueForAll(static fetch => !fetch.RequiresComplete);
-        WrappersRequest request = new(++peer.LastIssued, now, reserved, [.. batch], compact);
+        WrappersRequest request = new(++peer.LastIssued, now, reserved, [.. batch], compact, raw == true);
         peer.Requests.Add(request.Id, request);
         outbox.Send(peer, new GetProofWrappersMessage(request.Id, compact, ids));
         WrapperMetrics.Record(WrapperEvent.Requested, ids.Length);
@@ -198,7 +217,7 @@ public sealed partial class ProofWrapperTransport
                 outbox.Flush();
                 return;
             }
-            Release(peer, request.Reserved);
+            Release(peer, request.Reserved, request.Raw);
             WrapperFetch[] fetches = request.Fetches;
             int[] matched = new int[entries.Length];
             int cursor = 0;
@@ -247,7 +266,8 @@ public sealed partial class ProofWrapperTransport
                         continue;
                     }
                     if (fetch.Removed || fetch.Wrapper is not null) continue;
-                    if (!TryCharge(peer, item.Charge))
+                    bool chargedRaw = fetch.ModeFrom(peer) == MempoolWrapper.ModeRaw;
+                    if (!TryCharge(peer, item.Charge, chargedRaw))
                     {
                         WrapperMetrics.Record(WrapperEvent.BudgetDropped);
                         if (_logger.IsDebug) _logger.Debug($"eth/73 dropped {fetch.Announcement} from {peer}: byte budget exhausted");
@@ -255,6 +275,7 @@ public sealed partial class ProofWrapperTransport
                     }
                     fetch.Wrapper = wrapper;
                     fetch.ChargedBytes = item.Charge;
+                    fetch.ChargedRaw = chargedRaw;
                     fetch.Server = peer;
                     fetch.AddSource(peer, item.Mode, wrapper.Length, item.Coverage ?? default);
                     Enqueue(fetch);
@@ -369,6 +390,7 @@ public sealed partial class ProofWrapperTransport
         {
             _fetches.Remove(fetch.Announcement.Hash);
             if (fetch.Announcer is { } announcer) announcer.PendingFetches--;
+            if (fetch.Announcement.Mode == MempoolWrapper.ModeRaw) _rawFetches--;
         }
         Drop(fetch);
         if (_logger.IsTrace) _logger.Trace($"eth/73 stopped fetching {fetch.Announcement}: {reason}");
@@ -379,7 +401,7 @@ public sealed partial class ProofWrapperTransport
     {
         if (fetch.Removed) return;
         fetch.Removed = true;
-        if (fetch.Server is { } server && fetch.ChargedBytes != 0) Release(server, fetch.ChargedBytes);
+        if (fetch.Server is { } server && fetch.ChargedBytes != 0) Release(server, fetch.ChargedBytes, fetch.ChargedRaw);
         fetch.ChargedBytes = 0;
         fetch.Wrapper = null;
     }
@@ -428,7 +450,7 @@ public sealed partial class ProofWrapperTransport
         {
             fetch.Processing?.Dispose();
             fetch.Processing = null;
-            Release(server, fetch.ChargedBytes);
+            Release(server, fetch.ChargedBytes, fetch.ChargedRaw);
             fetch.ChargedBytes = 0;
             fetch.Wrapper = null;
             fetch.Server = null;
@@ -506,7 +528,7 @@ public sealed partial class ProofWrapperTransport
             return;
         }
         (Verdict verdict, string? error, Eip8288Verifier? verifier) =
-            await VerifyAsync(token => _wrappers.AcceptOwnedDetailedAsync(wrapper, token, fetch.Server?.Link), cancellation).ConfigureAwait(false);
+            await VerifyAsync(token => _wrappers.AcceptOwnedDetailedAsync(wrapper, token, fetch.Server?.Link, fetch.Server?.Link.NodeId), cancellation).ConfigureAwait(false);
         // Encodings received in full within a validated wrapper resolve the server's later references.
         if (verdict is Verdict.Valid or Verdict.PoolRejected && fetch.Server is { Closed: false } server)
             foreach ((ValueHash256 hash, byte[] encoding) in WrapperCompaction.Encodings(wrapper)) server.Received.Add(hash, encoding);

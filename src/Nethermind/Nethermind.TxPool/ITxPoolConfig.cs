@@ -128,4 +128,19 @@ public interface ITxPoolConfig : IConfig
     [ConfigItem(DefaultValue = "0",
         Description = "The minimum priority fee in wei for blob transactions to be accepted into the transaction pool.")]
     UInt256 MinBlobTxPriorityFee { get; set; }
+
+    [ConfigItem(DefaultValue = "[]",
+        Description = "EIP-8437 mode 2: the recognized signature programs whose raw signatures this node verifies natively and relays for proving, by profile name: `mldsa44-pure-v1`, `falcon512-padded-v1`, `slhdsa-shake128s-pure-v1`. Empty disables mode 2.",
+        HiddenFromDocs = true)]
+    string[] RecognizedPrograms { get; set; }
+
+    [ConfigItem(DefaultValue = "false",
+        Description = "EIP-8437 mode 2: whether this node proves leaves for held raw signatures and publishes their mode-1 coverage. Proving needs gigabytes of memory per leaf.",
+        HiddenFromDocs = true)]
+    bool RawWitnessProverEnabled { get; set; }
+
+    [ConfigItem(DefaultValue = "1",
+        Description = "EIP-8437 mode 2: the most raw signatures, of one recognized program, one proved leaf covers. Proving memory grows with the count.",
+        HiddenFromDocs = true)]
+    int RawWitnessMaxClaimsPerLeaf { get; set; }
 }

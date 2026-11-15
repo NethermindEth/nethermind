@@ -3,18 +3,35 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Consensus.ProofAggregation;
 
 /// <summary>
 /// EIP-8288 mempool wrapper <c>[transactions, mode, content]</c>: full frame transactions with either their direct
-/// dependency proofs (mode 0) or a single recursive STARK over all of them (mode 1). Not a valid transaction; used to move
-/// transactions and their proofs between mempool actors.
+/// dependency proofs (mode 0), a single recursive STARK over all of them (mode 1), or EIP-8437's raw signatures for recognized
+/// leaf programs alongside direct proofs (mode 2). Not a valid transaction; used to move transactions and their proofs between
+/// mempool actors.
 /// </summary>
 public sealed class MempoolWrapper
 {
     public const byte ModeDirect = 0;
     public const byte ModeRecursive = 1;
+    public const byte ModeRaw = 2;
+
+    /// <summary>EIP-8437's bound on one raw entry's complete RLP encoding.</summary>
+    public const int MaxRawWitnessBytes = 16 * 1024;
+
+    /// <summary>The longest raw message: ML-DSA-44's in the recognized programs, which take 32-byte messages otherwise.</summary>
+    /// <remarks>Marchhill/EIPs#14 fixes the message at 32 bytes; a longer one lets an account sign WebAuthn's
+    /// <c>authenticatorData ‖ sha256(clientDataJSON)</c> directly.</remarks>
+    public const int MaxRawMessageBytes = 1024;
+
+    /// <summary>EIP-8437's bound on a mode-2 wrapper's raw entries.</summary>
+    public const int MaxRawEntries = 16;
+
+    /// <summary>EIP-8437's bound on a mode-2 wrapper's transactions, counting those sharing a dependency.</summary>
+    public const int MaxRawTransactions = 64;
 
     /// <summary>Full EIP-8141 transactions in their pooled network form, in strictly ascending transaction-hash order.</summary>
     /// <remarks>Each <see cref="Transaction.Hash"/> is the consensus hash, which excludes any blob network wrapper.</remarks>
@@ -24,8 +41,12 @@ public sealed class MempoolWrapper
     /// <summary>Sorted, deduplicated union of wrapped transaction dependencies.</summary>
     public required IReadOnlyList<FrameDependency> Deps { get; init; }
 
-    /// <summary>Mode 0: one proof per dependency in <see cref="Deps"/>.</summary>
+    /// <summary>Modes 0 and 2: one proof per dependency in <see cref="Deps"/>; empty where mode 2 carries a raw witness.</summary>
     public IReadOnlyList<byte[]>? Proofs { get; init; }
+
+    /// <summary>Mode 2: one entry per dependency in <see cref="Deps"/>, the raw witness where there is one and null where
+    /// <see cref="Proofs"/> holds an ordinary witness.</summary>
+    public IReadOnlyList<RawSignature?>? RawWitnesses { get; init; }
 
     /// <summary>Mode 1: a single recursive STARK over all dependencies, with public input <c>hash(deps)</c>.</summary>
     public RecursiveStark? RecursiveStark { get; init; }

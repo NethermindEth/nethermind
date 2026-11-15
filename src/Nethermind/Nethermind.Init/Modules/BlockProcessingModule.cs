@@ -48,6 +48,9 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
         builder.AddSingleton<ILeanProofVerifier, Nethermind.Crypto.NativeLeanProofVerifier>()
             .AddDecorator<ILeanProofVerifier, ProductionProofCache>()
             .AddSingleton<LeanProofStore>(static _ => new LeanProofStore(FrameTxSigHash.ComputeValue))
+            // EIP-8437 mode 2: recognized programs are local policy; without any, raw witnesses are ignored.
+            .AddSingleton<IRecognizedProgramVerifier, ITxPoolConfig>(static config => new Nethermind.Crypto.NativeRecognizedProgramVerifier(config.RecognizedPrograms))
+            .AddSingleton<RawWitnessPool>()
             .AddSingleton<ProofWrapperService>()
             .AddSingleton<InclusionListProofService>();
 

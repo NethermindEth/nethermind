@@ -48,8 +48,10 @@ public sealed partial class ProofWrapperTransport : IDisposable
     private readonly CancellationTokenSource _stop = new();
     private readonly ITimer? _timer;
     private long _chargedBytes;
+    private long _rawChargedBytes;
     private int _validationWorkers;
     private int _nextPeer;
+    private int _rawFetches;
     private bool _disposed;
     private Eip8288Verifier? _verifier;
 
@@ -71,10 +73,16 @@ public sealed partial class ProofWrapperTransport : IDisposable
     /// <summary>Whether the head activates EIP-8288; the transport is inert otherwise.</summary>
     public bool IsEnabled => _wrappers.IsEnabled;
 
+    /// <summary>Whether this node fetches announced wrappers of <paramref name="mode"/>: modes 0 and 1, and EIP-8437's mode 2 when
+    /// it recognizes any program.</summary>
+    private bool SupportsMode(int mode) => mode is MempoolWrapper.ModeDirect or MempoolWrapper.ModeRecursive
+        || mode == MempoolWrapper.ModeRaw && _wrappers.AcceptsRawWitnesses;
+
     internal int PeerCount { get { lock (_gate) return _peers.Count; } }
     internal int FetchCount { get { lock (_gate) return _fetches.Count; } }
     internal int StoredObjects { get { lock (_gate) return _store.Count; } }
     internal long ChargedBytes { get { lock (_gate) return _chargedBytes; } }
+    internal long RawChargedBytes { get { lock (_gate) return _rawChargedBytes; } }
     internal long CachedEncodingBytes => _encodingBudget.Used;
     internal bool IsStored(in ValueHash256 wrapperHash) { lock (_gate) return _store.Contains(wrapperHash); }
     internal bool IsOffered(in ValueHash256 wrapperHash) { lock (_gate) return TryGetOffered(wrapperHash, out _); }
@@ -125,13 +133,13 @@ public sealed partial class ProofWrapperTransport : IDisposable
                 peer.RestoreFailureScore(departed.Score, departed.At);
             _peers.Add(peer);
             // Peers announce the wrappers they offer on connection, most recent first, within the announcement rate limit.
-            // A wrapper none of whose transactions is still pending is dropped instead of being replayed to every new peer.
+            // A wrapper none of whose transactions is still pending, or held raw, is dropped instead of being replayed to every new peer.
             List<ValueHash256>? stale = null;
             foreach (WrapperStore.Entry entry in _store.Recent())
             {
                 if (peer.ToAnnounce.Count == WrapperTransportLimits.MaxConnectAnnouncements) break;
                 if (entry.Verifier != _verifier) continue;
-                if (_wrappers.IsAnyPending(entry.Hashes)) peer.ToAnnounce.Add(entry.Announcement);
+                if (_wrappers.IsAnyPendingOrHeld(entry.Hashes)) peer.ToAnnounce.Add(entry.Announcement);
                 else (stale ??= []).Add(entry.Announcement.Hash);
             }
             foreach (ValueHash256 wrapperHash in stale ?? []) _store.Remove(wrapperHash);
@@ -183,23 +191,27 @@ public sealed partial class ProofWrapperTransport : IDisposable
     /// <summary>Releases an outstanding request's reservation; its wanted wrappers go back to the queue.</summary>
     private void Abandon(WrapperPeer peer, WrappersRequest request)
     {
-        Release(peer, request.Reserved);
+        Release(peer, request.Reserved, request.Raw);
         foreach (WrapperFetch fetch in request.Fetches) fetch.Requested = false;
     }
 
-    private bool TryCharge(WrapperPeer peer, long bytes)
+    /// <param name="raw">Whether the bytes are mode-2 traffic, also held to <see cref="WrapperTransportLimits.MaxRawInFlightBytes"/>.</param>
+    private bool TryCharge(WrapperPeer peer, long bytes, bool raw)
     {
         if (bytes < 0 || bytes > WrapperTransportLimits.MaxGlobalBytes - _chargedBytes
-            || bytes > WrapperTransportLimits.MaxPeerBytes - peer.ChargedBytes) return false;
+            || bytes > WrapperTransportLimits.MaxPeerBytes - peer.ChargedBytes
+            || raw && bytes > WrapperTransportLimits.MaxRawInFlightBytes - _rawChargedBytes) return false;
         _chargedBytes += bytes;
         peer.ChargedBytes += bytes;
+        if (raw) _rawChargedBytes += bytes;
         return true;
     }
 
-    private void Release(WrapperPeer peer, long bytes)
+    private void Release(WrapperPeer peer, long bytes, bool raw)
     {
         _chargedBytes -= bytes;
         peer.ChargedBytes -= bytes;
+        if (raw) _rawChargedBytes -= bytes;
     }
 
     /// <summary>Malformed transport data or a protocol violation: the contribution is discarded and the peer disconnected.</summary>
@@ -488,6 +500,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
             foreach (ValueHash256 wrapperHash in _store.Listing(transaction))
                 if (wrapperHash != entry.Announcement.Hash && !candidates.ContainsKey(wrapperHash)
                     && _store.TryGet(wrapperHash, out WrapperStore.Entry candidate) && candidate.Verifier == entry.Verifier
+                    && (candidate.Shape.Mode != MempoolWrapper.ModeRaw || entry.Shape.Mode == MempoolWrapper.ModeRaw)
                     && peer.Exchanged.Contains(wrapperHash, now))
                     candidates[wrapperHash] = candidate;
         if (candidates.Count == 0) return false;
