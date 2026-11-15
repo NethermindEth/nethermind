@@ -71,13 +71,18 @@ on:
       formats:
         type: string
         default: ssz,trusted
+      tools_ref:
+        description: NethermindEth/nethermind ref of the A/B scripts, used only when job.workflow_sha is not set (empty = master)
+        type: string
+        default: ''
 
 permissions:
   contents: read
 
 env:
-  # The scripts measure both arms, so they come from this workflow's revision, not from either arm
-  TOOLS_REF: ${{ github.repository == 'NethermindEth/nethermind' && github.sha || 'master' }}
+  # The scripts measure both arms, so they come from this workflow's revision, not from either arm.
+  # A called workflow sees the caller in github.*, so the checkouts read job.workflow_* first.
+  TOOLS_REF: ${{ inputs.tools_ref || (github.repository == 'NethermindEth/nethermind' && github.sha) || 'master' }}
   OPENVM_RUNNER_SHA: 3ff11ea29497a1dbeb1eb5c563b31022f285c688
 
 jobs:
@@ -99,8 +104,8 @@ jobs:
       - name: Check out scripts
         uses: actions/checkout@v7
         with:
-          repository: NethermindEth/nethermind
-          ref: ${{ env.TOOLS_REF }}
+          repository: ${{ job.workflow_repository || 'NethermindEth/nethermind' }}
+          ref: ${{ job.workflow_sha || env.TOOLS_REF }}
           persist-credentials: false
 
       - name: Validate and resolve
@@ -138,8 +143,8 @@ jobs:
       - name: Check out scripts
         uses: actions/checkout@v7
         with:
-          repository: NethermindEth/nethermind
-          ref: ${{ env.TOOLS_REF }}
+          repository: ${{ job.workflow_repository || 'NethermindEth/nethermind' }}
+          ref: ${{ job.workflow_sha || env.TOOLS_REF }}
           persist-credentials: false
 
       - name: Cache key
@@ -198,8 +203,8 @@ jobs:
       - name: Check out scripts
         uses: actions/checkout@v7
         with:
-          repository: NethermindEth/nethermind
-          ref: ${{ env.TOOLS_REF }}
+          repository: ${{ job.workflow_repository || 'NethermindEth/nethermind' }}
+          ref: ${{ job.workflow_sha || env.TOOLS_REF }}
           persist-credentials: false
 
       - name: Cache key
@@ -252,8 +257,8 @@ jobs:
       - name: Check out scripts
         uses: actions/checkout@v7
         with:
-          repository: NethermindEth/nethermind
-          ref: ${{ env.TOOLS_REF }}
+          repository: ${{ job.workflow_repository || 'NethermindEth/nethermind' }}
+          ref: ${{ job.workflow_sha || env.TOOLS_REF }}
           persist-credentials: false
 
       # The emulators are deterministic and the key covers every input of the base build
@@ -335,8 +340,8 @@ jobs:
       - name: Check out scripts
         uses: actions/checkout@v7
         with:
-          repository: NethermindEth/nethermind
-          ref: ${{ env.TOOLS_REF }}
+          repository: ${{ job.workflow_repository || 'NethermindEth/nethermind' }}
+          ref: ${{ job.workflow_sha || env.TOOLS_REF }}
           persist-credentials: false
 
       - name: Cache key
@@ -465,8 +470,8 @@ jobs:
       - name: Check out scripts
         uses: actions/checkout@v7
         with:
-          repository: NethermindEth/nethermind
-          ref: ${{ env.TOOLS_REF }}
+          repository: ${{ job.workflow_repository || 'NethermindEth/nethermind' }}
+          ref: ${{ job.workflow_sha || env.TOOLS_REF }}
           persist-credentials: false
 
       - name: Download base results
