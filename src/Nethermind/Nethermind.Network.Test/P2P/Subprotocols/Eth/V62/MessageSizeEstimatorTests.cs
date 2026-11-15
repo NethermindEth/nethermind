@@ -28,6 +28,22 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             Assert.That(MessageSizeEstimator.EstimateSize(header), Is.EqualTo(512));
         }
 
+        [TestCase(0UL, -1)]
+        [TestCase(511UL, -1)]
+        [TestCase(512UL, 0)]
+        [TestCase(1_512UL, 1_000)]
+        [TestCase(ulong.MaxValue, int.MaxValue)]
+        public void Max_transactions_length_is_the_largest_that_fits_the_limit(ulong sizeLimit, int expected)
+        {
+            int maxTransactionsLength = MessageSizeEstimator.MaxTransactionsLength(sizeLimit);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(maxTransactionsLength, Is.EqualTo(expected));
+                if (maxTransactionsLength >= 0) Assert.That(MessageSizeEstimator.EstimateBlockSize(maxTransactionsLength), Is.LessThanOrEqualTo(sizeLimit));
+                if (maxTransactionsLength < int.MaxValue) Assert.That(MessageSizeEstimator.EstimateBlockSize(maxTransactionsLength + 1), Is.GreaterThan(sizeLimit));
+            }
+        }
+
         [Test]
         public void Estimate_null_header_size() => Assert.That(MessageSizeEstimator.EstimateSize((BlockHeader)null), Is.EqualTo(0));
 

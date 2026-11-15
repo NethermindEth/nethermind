@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Serialization.FluentRlp;
+using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 
@@ -114,8 +115,8 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
     /// after all consumers finish. Pass false for retained blocks.
     /// </param>
     /// <param name="rlpBehaviors">Only <see cref="RlpBehaviors.TrustedInput"/> applies, also to the nested items.</param>
-    /// <remarks>The JSON-RPC <c>HashesOnlyBlockReader</c> reads the same layout without this decoder and leaves any block
-    /// it does not recognise to it; a body field added here needs adding there to keep that fast path.</remarks>
+    /// <remarks>The JSON-RPC <c>HashesOnlyBlockReader</c> and <see cref="BlockDecoder.TryCopyBodyTo"/> read the same layout without
+    /// this decoder; a body field added here needs adding to both, or the reader loses its fast path and the copy throws.</remarks>
     public BlockBody DecodeUnwrapped(ref RlpReader reader, bool usePooledTransactions, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         => rlpBehaviors.IsTrustedInput()
             ? DecodeUnwrapped<OffFlag>(ref reader, rlpBehaviors, usePooledTransactions)
@@ -212,16 +213,17 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
         Encode(ref writer, body, GetBodyComponentLength(body));
     }
 
-    /// <summary>Appends the encoded <paramref name="body"/> to <paramref name="destination"/>.</summary>
+    /// <summary>Appends the encoded <paramref name="body"/> to <paramref name="destination"/> when its transactions payload is at most <paramref name="maxTransactionsLength"/> bytes.</summary>
     /// <returns>The payload length of the transactions sequence of the body.</returns>
-    public int EncodeTo(ArrayPoolList<byte> destination, BlockBody body)
+    public int EncodeTo(ArrayPoolList<byte> destination, BlockBody body, int maxTransactionsLength = int.MaxValue)
     {
         (int Txs, int Uncles, int? Withdrawals) lengths = GetBodyComponentLength(body);
-        using ArrayPoolSpan<byte> buffer = new(Rlp.LengthOfSequence(GetBodyLength(lengths)));
+        if (lengths.Txs > maxTransactionsLength) return lengths.Txs;
+
+        Span<byte> buffer = destination.AddUninitialized(Rlp.LengthOfSequence(GetBodyLength(lengths)));
         RlpWriter writer = RlpWriter.ContentWriter(buffer);
         Encode(ref writer, body, lengths);
         Rlp.CheckLength(in writer, buffer.Length);
-        destination.AddRange(buffer);
         return lengths.Txs;
     }
 

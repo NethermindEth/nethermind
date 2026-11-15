@@ -174,13 +174,13 @@ namespace Nethermind.Blockchain
 
         ChainLevelInfo? FindLevel(ulong number);
 
-        /// <summary>Appends the body of the block with <paramref name="blockHash"/> to <paramref name="destination"/> as one network block body item.</summary>
+        /// <summary>Appends the body of the block with <paramref name="blockHash"/> to <paramref name="destination"/> as one network block body item when its transactions payload is at most <paramref name="maxTransactionsLength"/> bytes.</summary>
         /// <param name="transactionsLength">The payload length of the transactions sequence of the body.</param>
         /// <returns>Whether the block was found.</returns>
-        bool TryCopyBlockBodyTo(Hash256 blockHash, ArrayPoolList<byte> destination, out int transactionsLength)
+        bool TryCopyBlockBodyTo(Hash256 blockHash, ArrayPoolList<byte> destination, int maxTransactionsLength, out int transactionsLength)
         {
             Block? block = FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.ExcludeTxHashes);
-            transactionsLength = block is null ? 0 : BlockBodyDecoder.Instance.EncodeTo(destination, block.Body);
+            transactionsLength = block is null ? 0 : BlockBodyDecoder.Instance.EncodeTo(destination, block.Body, maxTransactionsLength);
             return block is not null;
         }
 

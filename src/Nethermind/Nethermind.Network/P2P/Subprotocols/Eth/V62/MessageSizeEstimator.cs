@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Serialization.Rlp;
 
@@ -22,6 +23,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         /// <summary>Returns the size estimate of a block whose transactions sequence has a payload of <paramref name="transactionsLength"/> bytes.</summary>
         public static ulong EstimateBlockSize(int transactionsLength) => HeaderSizeEstimate + (ulong)transactionsLength;
+
+        /// <summary>Returns the longest transactions payload whose block size estimate is at most <paramref name="sizeLimit"/>, or -1 when no block fits.</summary>
+        public static int MaxTransactionsLength(ulong sizeLimit) =>
+            sizeLimit < HeaderSizeEstimate ? -1 : (int)Math.Min(sizeLimit - HeaderSizeEstimate, int.MaxValue);
 
         public static ulong EstimateSize(Transaction tx)
         {

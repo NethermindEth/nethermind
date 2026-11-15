@@ -168,12 +168,12 @@ namespace Nethermind.Serialization.Rlp
             writer.EndSequence(sequence);
         }
 
-        /// <summary>Appends the body of a stored block to <paramref name="destination"/> as one network block body item.</summary>
+        /// <summary>Appends the body of a stored block to <paramref name="destination"/> as one network block body item when its transactions payload is at most <paramref name="maxTransactionsLength"/> bytes.</summary>
         /// <param name="blockRlp">A block as this node stores it.</param>
         /// <param name="destination">The buffer that receives the body item.</param>
         /// <param name="transactionsLength">The payload length of the transactions sequence of the body.</param>
         /// <returns><see langword="false"/> when <paramref name="blockRlp"/> holds no block.</returns>
-        public static bool TryCopyBodyTo(ReadOnlySpan<byte> blockRlp, ArrayPoolList<byte> destination, out int transactionsLength)
+        public static bool TryCopyBodyTo(ReadOnlySpan<byte> blockRlp, ArrayPoolList<byte> destination, int maxTransactionsLength, out int transactionsLength)
         {
             transactionsLength = 0;
             RlpReader reader = new(blockRlp);
@@ -192,6 +192,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             fields.CheckEnd();
+            if (transactionsLength > maxTransactionsLength) return true;
 
             ReadOnlySpan<byte> body = blockRlp.Slice(contentStart + bodyStart, fields.BytesRead - bodyStart);
             Span<byte> prefix = stackalloc byte[1 + sizeof(int)];

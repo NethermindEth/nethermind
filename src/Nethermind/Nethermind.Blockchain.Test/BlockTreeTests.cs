@@ -62,11 +62,11 @@ public class BlockTreeTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(tree.TryCopyBlockBodyTo(block.Hash!, destination, out int transactionsLength), Is.True);
+            Assert.That(tree.TryCopyBlockBodyTo(block.Hash!, destination, int.MaxValue, out int transactionsLength), Is.True);
             Assert.That(destination.AsSpan().ToArray(), Is.EqualTo(BlockBodyDecoder.Instance.Encode(block.Body)));
             Assert.That(transactionsLength, Is.Zero);
-            Assert.That(tree.TryCopyBlockBodyTo(TestItem.KeccakA, destination, out _), Is.False);
-            Assert.That(tree.TryCopyBlockBodyTo(Keccak.Zero, destination, out _), Is.False);
+            Assert.That(tree.TryCopyBlockBodyTo(TestItem.KeccakA, destination, int.MaxValue, out _), Is.False);
+            Assert.That(tree.TryCopyBlockBodyTo(Keccak.Zero, destination, int.MaxValue, out _), Is.False);
             Assert.That(destination.Count, Is.EqualTo(BlockBodyDecoder.Instance.Encode(block.Body).Length));
         }
     }

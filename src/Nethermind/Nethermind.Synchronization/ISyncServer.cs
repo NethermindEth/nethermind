@@ -23,13 +23,13 @@ namespace Nethermind.Synchronization
         MemoryManager<byte>? GetBlockAccessListRlp(Hash256 blockHash);
         Block? Find(Hash256 hash);
 
-        /// <summary>Appends the body of the block with <paramref name="hash"/> to <paramref name="destination"/> as one network block body item.</summary>
+        /// <summary>Appends the body of the block with <paramref name="hash"/> to <paramref name="destination"/> as one network block body item when its transactions payload is at most <paramref name="maxTransactionsLength"/> bytes.</summary>
         /// <param name="transactionsLength">The payload length of the transactions sequence of the body.</param>
         /// <returns>Whether the block was found.</returns>
-        bool TryCopyBlockBodyTo(Hash256 hash, ArrayPoolList<byte> destination, out int transactionsLength)
+        bool TryCopyBlockBodyTo(Hash256 hash, ArrayPoolList<byte> destination, int maxTransactionsLength, out int transactionsLength)
         {
             Block? block = Find(hash);
-            transactionsLength = block is null ? 0 : BlockBodyDecoder.Instance.EncodeTo(destination, block.Body);
+            transactionsLength = block is null ? 0 : BlockBodyDecoder.Instance.EncodeTo(destination, block.Body, maxTransactionsLength);
             return block is not null;
         }
 

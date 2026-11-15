@@ -1798,13 +1798,13 @@ namespace Nethermind.Blockchain
 
         /// <inheritdoc/>
         /// <remarks>Reads the stored body without decoding the block, and does not cache it.</remarks>
-        public bool TryCopyBlockBodyTo(Hash256 blockHash, ArrayPoolList<byte> destination, out int transactionsLength)
+        public bool TryCopyBlockBodyTo(Hash256 blockHash, ArrayPoolList<byte> destination, int maxTransactionsLength, out int transactionsLength)
         {
             transactionsLength = 0;
             if (blockHash == Keccak.Zero) return false;
 
             ulong? blockNumber = _headerStore.GetBlockNumber(blockHash);
-            return blockNumber is not null && _blockStore.TryCopyBodyTo(blockNumber.Value, blockHash, destination, out transactionsLength);
+            return blockNumber is not null && _blockStore.TryCopyBodyTo(blockNumber.Value, blockHash, destination, maxTransactionsLength, out transactionsLength);
         }
 
         public Block? FindBlock(Hash256? blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null)

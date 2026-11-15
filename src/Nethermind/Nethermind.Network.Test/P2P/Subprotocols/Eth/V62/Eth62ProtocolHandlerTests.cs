@@ -75,7 +75,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _genesisBlock = Build.A.Block.Genesis.TestObject;
             _syncManager.Head.Returns(_genesisBlock.Header);
             _syncManager.Genesis.Returns(_genesisBlock.Header);
-            _syncManager.TryCopyBlockBodyTo(Arg.Any<Hash256>(), Arg.Any<ArrayPoolList<byte>>(), out Arg.Any<int>()).Returns(CopyBodyOfFoundBlock);
+            _syncManager.TryCopyBlockBodyTo(Arg.Any<Hash256>(), Arg.Any<ArrayPoolList<byte>>(), Arg.Any<int>(), out Arg.Any<int>()).Returns(CopyBodyOfFoundBlock);
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             _gossipPolicy = Substitute.For<IGossipPolicy>();
             _gossipPolicy.CanGossipBlocks.Returns(true);
@@ -538,6 +538,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _syncManager.Find(TestItem.KeccakB).Returns(second);
 
             Assert.That(RequestBlockBodies(TestItem.KeccakA, TestItem.KeccakB), Is.EqualTo(EncodeBodies(first)));
+            ulong firstSize = MessageSizeEstimator.EstimateBlockSize(TxDecoder.Instance.GetLength(first.Transactions[0], RlpBehaviors.None));
+            int expectedMax = MessageSizeEstimator.MaxTransactionsLength(SyncPeerProtocolHandlerBase.HardOutgoingBodiesMessageSizeLimit - firstSize);
+            _syncManager.Received(1).TryCopyBlockBodyTo(TestItem.KeccakB, Arg.Any<ArrayPoolList<byte>>(), expectedMax, out Arg.Any<int>());
         }
 
         [Test]
@@ -1231,7 +1234,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             Block? block = _syncManager.Find(call.ArgAt<Hash256>(0));
             if (block is null) return false;
-            call[2] = BlockBodyDecoder.Instance.EncodeTo(call.ArgAt<ArrayPoolList<byte>>(1), block.Body);
+            call[3] = BlockBodyDecoder.Instance.EncodeTo(call.ArgAt<ArrayPoolList<byte>>(1), block.Body, call.ArgAt<int>(2));
             return true;
         }
 

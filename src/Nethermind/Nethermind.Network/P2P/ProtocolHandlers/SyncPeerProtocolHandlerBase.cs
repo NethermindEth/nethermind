@@ -36,6 +36,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         internal static ulong SoftOutgoingMessageSizeLimit = 2UL.MiB;
         internal static ulong HardOutgoingReceiptsMessageSizeLimit = 10UL.MiB;
         internal static ulong HardOutgoingBodiesMessageSizeLimit = 15UL.MiB;
+        private const ulong ExpectedBlockBodySize = 64 * 1024;
         public Node Node => Session.Node;
         public string? ClientId => Node.ClientId;
         public virtual UInt256? TotalDifficulty { get; set; } = UInt256.Zero; // for compatibility with old code, which relies on 0 being the default value
@@ -363,7 +364,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected Task<BlockBodiesMessage> FulfillBlockBodiesRequest(GetBlockBodiesMessage getBlockBodiesMessage, CancellationToken cancellationToken)
         {
             IReadOnlyList<Hash256> hashes = getBlockBodiesMessage.BlockHashes;
-            ArrayPoolList<byte> encodedBodies = new(0);
+            ArrayPoolList<byte> encodedBodies = new((int)Math.Min((ulong)hashes.Count * ExpectedBlockBodySize, SoftOutgoingMessageSizeLimit));
             try
             {
                 int count = 0;
@@ -375,8 +376,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                         break;
                     }
 
-                    int bodyStart = encodedBodies.Count;
-                    if (!SyncServer.TryCopyBlockBodyTo(hashes[i], encodedBodies, out int transactionsLength))
+                    int maxTransactionsLength = MessageSizeEstimator.MaxTransactionsLength(HardOutgoingBodiesMessageSizeLimit - sizeEstimate);
+                    if (!SyncServer.TryCopyBlockBodyTo(hashes[i], encodedBodies, maxTransactionsLength, out int transactionsLength))
                     {
                         continue;
                     }
@@ -386,7 +387,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     // Cap the message size; return the prefix (bodies match request hashes positionally).
                     if (sizeEstimate + blockSize > HardOutgoingBodiesMessageSizeLimit)
                     {
-                        encodedBodies.Truncate(bodyStart);
                         break;
                     }
 

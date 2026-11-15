@@ -345,7 +345,7 @@ public class BlockStoreTests
         int releasedBefore = (db as PinnedTestDb)?.Released ?? 0;
         using ArrayPoolList<byte> destination = new(0);
         destination.AddRange([0xab, 0xcd]);
-        bool found = store.TryCopyBodyTo(block.Number, block.Hash!, destination, out int transactionsLength);
+        bool found = store.TryCopyBodyTo(block.Number, block.Hash!, destination, int.MaxValue, out int transactionsLength);
 
         using (Assert.EnterMultipleScope())
         {
@@ -406,7 +406,7 @@ public class BlockStoreTests
         }
 
         using ArrayPoolList<byte> destination = new(0);
-        bool found = store.TryCopyBodyTo(block.Number, block.Hash!, destination, out int transactionsLength);
+        bool found = store.TryCopyBodyTo(block.Number, block.Hash!, destination, int.MaxValue, out int transactionsLength);
 
         using (Assert.EnterMultipleScope())
         {
@@ -432,7 +432,7 @@ public class BlockStoreTests
         db[NumberedKey(block)] = malformed;
 
         using ArrayPoolList<byte> destination = new(0);
-        Assert.That(() => store.TryCopyBodyTo(block.Number, block.Hash!, destination, out _), Throws.InstanceOf<RlpReaderException>());
+        Assert.That(() => store.TryCopyBodyTo(block.Number, block.Hash!, destination, int.MaxValue, out _), Throws.InstanceOf<RlpReaderException>());
         using (Assert.EnterMultipleScope())
         {
             Assert.That(db.Released, Is.EqualTo(1));
@@ -452,7 +452,7 @@ public class BlockStoreTests
         else store.Cache(block);
 
         using ArrayPoolList<byte> destination = new(0);
-        bool found = store.TryCopyBodyTo(block.Number, block.Hash!, destination, out int transactionsLength);
+        bool found = store.TryCopyBodyTo(block.Number, block.Hash!, destination, int.MaxValue, out int transactionsLength);
 
         using (Assert.EnterMultipleScope())
         {
@@ -460,6 +460,33 @@ public class BlockStoreTests
             Assert.That(destination.AsSpan().ToArray(), Is.EqualTo(BlockBodyDecoder.Instance.Encode(block.Body)));
             Assert.That(transactionsLength, Is.EqualTo(TxDecoder.Instance.GetLength(block.Transactions[0], RlpBehaviors.None)));
             Assert.That(db.NativeReads, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void TryCopyBodyTo_copies_nothing_when_the_transactions_are_longer_than_the_limit([Values] bool cached, [Values] bool native)
+    {
+        using TestMemDb db = native ? new PinnedTestDb() : new TestMemDb();
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject).WithWithdrawals(1).TestObject;
+        new BlockStore(db).Insert(block);
+        BlockStore store = new(db);
+        if (cached) store.Cache(block);
+        int length = TxDecoder.Instance.GetLength(block.Transactions[0], RlpBehaviors.None);
+
+        using ArrayPoolList<byte> destination = new(0);
+        bool tooLong = store.TryCopyBodyTo(block.Number, block.Hash!, destination, length - 1, out int skippedLength);
+        int countAfterSkip = destination.Count;
+        bool fits = store.TryCopyBodyTo(block.Number, block.Hash!, destination, length, out int copiedLength);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tooLong, Is.True);
+            Assert.That(skippedLength, Is.EqualTo(length));
+            Assert.That(countAfterSkip, Is.Zero);
+            Assert.That(fits, Is.True);
+            Assert.That(copiedLength, Is.EqualTo(length));
+            Assert.That(destination.AsSpan().ToArray(), Is.EqualTo(BlockBodyDecoder.Instance.Encode(block.Body)));
+            if (db is PinnedTestDb pinned) Assert.That(pinned.LiveHandles, Is.Zero);
         }
     }
 

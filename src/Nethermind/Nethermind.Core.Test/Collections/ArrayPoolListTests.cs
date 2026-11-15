@@ -61,6 +61,21 @@ public class ArrayPoolListTests
     }
 
     [Test]
+    public void AddUninitialized_grows_the_list_and_keeps_the_existing_items()
+    {
+        using ArrayPoolList<int> list = new(2) { 1, 2 };
+        Span<int> added = list.AddUninitialized(1000);
+        for (int i = 0; i < added.Length; i++) added[i] = i + 3;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(added.Length, Is.EqualTo(1000));
+            Assert.That(list.Count, Is.EqualTo(1002));
+            Assert.That(list, Is.EqualTo(Enumerable.Range(1, 1002)));
+        }
+    }
+
+    [Test]
     public void Clear_should_clear()
     {
         using ArrayPoolList<int> list = new(4);

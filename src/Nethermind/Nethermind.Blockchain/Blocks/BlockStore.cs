@@ -233,35 +233,35 @@ public class BlockStore : IBlockStore, IClearableCache
 
     /// <inheritdoc/>
     /// <remarks>Copies the stored body bytes without decoding the block. A cached or pending block is encoded instead.</remarks>
-    public bool TryCopyBodyTo(ulong blockNumber, Hash256 blockHash, ArrayPoolList<byte> destination, out int transactionsLength)
+    public bool TryCopyBodyTo(ulong blockNumber, Hash256 blockHash, ArrayPoolList<byte> destination, int maxTransactionsLength, out int transactionsLength)
     {
         ValueHash256 cacheKey = blockHash.ValueHash256;
         if (_blockCache.TryGet(in cacheKey, out Block? cachedBlock))
         {
-            transactionsLength = BlockBodyDecoder.Instance.EncodeTo(destination, cachedBlock.Body);
+            transactionsLength = BlockBodyDecoder.Instance.EncodeTo(destination, cachedBlock.Body, maxTransactionsLength);
             return true;
         }
 
         if (_pending is not null && _pending.TryGet(blockHash, out Block? pendingBlock))
         {
-            transactionsLength = BlockBodyDecoder.Instance.EncodeTo(destination, pendingBlock.Body);
+            transactionsLength = BlockBodyDecoder.Instance.EncodeTo(destination, pendingBlock.Body, maxTransactionsLength);
             return true;
         }
 
         Span<byte> keyWithBlockNumber = stackalloc byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, keyWithBlockNumber);
-        return TryCopyStoredBodyTo(keyWithBlockNumber, destination, out transactionsLength)
-            || TryCopyStoredBodyTo(blockHash.Bytes, destination, out transactionsLength);
+        return TryCopyStoredBodyTo(keyWithBlockNumber, destination, maxTransactionsLength, out transactionsLength)
+            || TryCopyStoredBodyTo(blockHash.Bytes, destination, maxTransactionsLength, out transactionsLength);
     }
 
-    private bool TryCopyStoredBodyTo(ReadOnlySpan<byte> key, ArrayPoolList<byte> destination, out int transactionsLength)
+    private bool TryCopyStoredBodyTo(ReadOnlySpan<byte> key, ArrayPoolList<byte> destination, int maxTransactionsLength, out int transactionsLength)
     {
         if (_blockDb is IReadOnlyNativeKeyValueStore native)
         {
             ReadOnlySpan<byte> slice = native.GetNativeSlice(key, out nint handle);
             try
             {
-                return BlockDecoder.TryCopyBodyTo(slice, destination, out transactionsLength);
+                return BlockDecoder.TryCopyBodyTo(slice, destination, maxTransactionsLength, out transactionsLength);
             }
             finally
             {
@@ -272,7 +272,7 @@ public class BlockStore : IBlockStore, IClearableCache
         Span<byte> value = _blockDb.GetSpan(key);
         try
         {
-            return BlockDecoder.TryCopyBodyTo(value, destination, out transactionsLength);
+            return BlockDecoder.TryCopyBodyTo(value, destination, maxTransactionsLength, out transactionsLength);
         }
         finally
         {
