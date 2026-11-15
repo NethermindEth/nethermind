@@ -24,6 +24,7 @@ public class HeaderStore : IHeaderStore, IClearableCache
     public const int CacheSize = 256 + 16;
 
     private const int NumberPrefixedKeyLength = sizeof(ulong) + Hash256.Size;
+    private const int BlockNumberLength = sizeof(ulong);
 
     private readonly IDb _headerDb;
     private readonly IDb _blockNumberDb;
@@ -248,23 +249,27 @@ public class HeaderStore : IHeaderStore, IClearableCache
         return Get(blockHash)?.Number;
     }
 
+    [SkipLocalsInit]
     private ulong? GetBlockNumberFromBlockNumberDb(Hash256 blockHash)
     {
-        Span<byte> numberSpan = _blockNumberDb.GetSpan(blockHash);
-        if (numberSpan.IsNullOrEmpty()) return null;
+        Span<byte> numberSpan = stackalloc byte[BlockNumberLength];
+        int length;
         try
         {
-            if (numberSpan.Length != 8)
-            {
-                throw new InvalidDataException($"Unexpected number span length: {numberSpan.Length}");
-            }
-
-            return BinaryPrimitives.ReadUInt64BigEndian(numberSpan);
+            length = _blockNumberDb.Get(blockHash.Bytes, numberSpan);
         }
-        finally
+        catch (ArgumentException e)
         {
-            _blockNumberDb.DangerousReleaseMemory(numberSpan);
+            throw new InvalidDataException($"Block number entry is longer than {BlockNumberLength} bytes", e);
         }
+
+        if (length == 0) return null;
+        if (length != BlockNumberLength)
+        {
+            throw new InvalidDataException($"Unexpected number span length: {length}");
+        }
+
+        return BinaryPrimitives.ReadUInt64BigEndian(numberSpan);
     }
 
     public Dictionary<ValueHash256, BlockHeader> PrefetchByNumberRange(ulong fromInclusive, ulong toExclusive) =>
