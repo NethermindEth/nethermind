@@ -305,7 +305,7 @@ internal sealed class WrapperPeer(IWrapperLink link, TimeProvider clock, Wrapper
 }
 
 /// <summary>An outstanding GetProofWrappers request; its wanted wrappers in request order.</summary>
-internal sealed class WrappersRequest(long id, long created, long reserved, WrapperFetch[] fetches, bool compact)
+internal sealed class WrappersRequest(long id, long created, long reserved, WrapperFetch[] fetches, bool compact, bool raw)
 {
     public long Id { get; } = id;
 
@@ -317,8 +317,9 @@ internal sealed class WrappersRequest(long id, long created, long reserved, Wrap
     public long Reserved { get; } = reserved;
     public WrapperFetch[] Fetches { get; } = fetches;
 
-    /// <summary>Whether the request is for mode-2 wrappers, which a request never mixes with others.</summary>
-    public bool Raw => Fetches.Length != 0 && Fetches[0].Announcement.Mode == MempoolWrapper.ModeRaw;
+    /// <summary>Whether the request is for wrappers the peer announced in mode 2, which a request never mixes with others; its
+    /// reservation is charged and released against the mode-2 budget accordingly.</summary>
+    public bool Raw { get; } = raw;
 }
 
 /// <summary>A wanted wrapper from its first announcement until it is validated or abandoned.</summary>
@@ -350,6 +351,9 @@ internal sealed class WrapperFetch(WrapperAnnouncement announcement, long now)
     public WrapperPeer? Server { get; set; }
     public byte[]? Wrapper { get; set; }
     public long ChargedBytes { get; set; }
+
+    /// <summary>Whether <see cref="ChargedBytes"/> were charged against the mode-2 budget, by the mode <see cref="Server"/> announced.</summary>
+    public bool ChargedRaw { get; set; }
     public bool Removed { get; set; }
 
     /// <summary>Cancels validation at the fetch deadline or shutdown.</summary>

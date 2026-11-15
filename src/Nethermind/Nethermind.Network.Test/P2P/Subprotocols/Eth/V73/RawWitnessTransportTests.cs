@@ -266,6 +266,35 @@ public class RawWitnessTransportTests
         }
     }
 
+    // A wrapper announced in different modes is charged to the mode-2 reservation by the mode its serving peer announced, and
+    // released from the budget it was charged to.
+    [Test]
+    public void Requests_are_charged_by_the_serving_peers_announced_mode()
+    {
+        using WrapperTestNode node = new(rawWitnesses: true);
+        FakeWrapperLink first = new(), second = new();
+        WrapperPeer proofBacked = node.Connect(first), raw = node.Connect(second);
+        ValueHash256 hash = ValueKeccak.Compute("wrapper");
+        WrapperCoverage coverage = new(ValueKeccak.Compute("deps"), ValueKeccak.Compute("txs"));
+        node.Transport.OnAnnounce(proofBacked, new([Announcement(MempoolWrapper.ModeRecursive, 1024, hash, coverage)]));
+        node.Transport.OnAnnounce(raw, new([Announcement(MempoolWrapper.ModeRaw, 1024, hash, coverage)]));
+        Assert.That(node.Transport.RawChargedBytes, Is.Zero, "the first request goes to the proof-backed announcer");
+
+        node.Tick(WrapperTransportLimits.RequestTimeout + TimeSpan.FromSeconds(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(second.Sent<GetProofWrappersMessage>(), Has.Length.EqualTo(1));
+            Assert.That(node.Transport.RawChargedBytes, Is.EqualTo(node.Transport.ChargedBytes).And.Positive);
+        }
+
+        node.Tick(WrapperTransportLimits.RequestTimeout + TimeSpan.FromSeconds(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.Transport.RawChargedBytes, Is.Zero);
+            Assert.That(node.Transport.ChargedBytes, Is.Zero);
+        }
+    }
+
     /// <summary>A mode-2 body of <paramref name="transactions"/> transactions sharing <paramref name="entries"/> leanSTARK dependencies
     /// round-robin, each with a raw entry carrying a signature of <paramref name="signatureBytes"/>.</summary>
     private static byte[] RawBody(int transactions, int entries, int signatureBytes)

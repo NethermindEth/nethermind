@@ -145,7 +145,7 @@ public sealed partial class ProofWrapperTransport
             WrapperFetch fetch = queued[next];
             if (fetch.Requested || fetch.Wrapper is not null) continue;
             // A request carries mode-2 wrappers or others, never both, so its bytes are charged to one budget; the rest wait their turn.
-            bool isRaw = fetch.Announcement.Mode == MempoolWrapper.ModeRaw;
+            bool isRaw = fetch.ModeFrom(peer) == MempoolWrapper.ModeRaw;
             if (isRaw && !rawAllowed || (raw ??= isRaw) != isRaw) continue;
             int length = EntryLength(fetch.LengthFrom(peer));
             if (batch.Count > 0 && bytes + length > Eth73Protocol.SoftResponseLimit) break;
@@ -168,7 +168,7 @@ public sealed partial class ProofWrapperTransport
         // References are useful only once this node holds encodings the peer sent in full; a wrapper whose compact form
         // referenced an evicted encoding is fetched complete.
         bool compact = !peer.Received.IsEmpty && batch.TrueForAll(static fetch => !fetch.RequiresComplete);
-        WrappersRequest request = new(++peer.LastIssued, now, reserved, [.. batch], compact);
+        WrappersRequest request = new(++peer.LastIssued, now, reserved, [.. batch], compact, raw == true);
         peer.Requests.Add(request.Id, request);
         outbox.Send(peer, new GetProofWrappersMessage(request.Id, compact, ids));
         WrapperMetrics.Record(WrapperEvent.Requested, ids.Length);
@@ -257,7 +257,8 @@ public sealed partial class ProofWrapperTransport
                         continue;
                     }
                     if (fetch.Removed || fetch.Wrapper is not null) continue;
-                    if (!TryCharge(peer, item.Charge, fetch.Announcement.Mode == MempoolWrapper.ModeRaw))
+                    bool chargedRaw = fetch.ModeFrom(peer) == MempoolWrapper.ModeRaw;
+                    if (!TryCharge(peer, item.Charge, chargedRaw))
                     {
                         WrapperMetrics.Record(WrapperEvent.BudgetDropped);
                         if (_logger.IsDebug) _logger.Debug($"eth/73 dropped {fetch.Announcement} from {peer}: byte budget exhausted");
@@ -265,6 +266,7 @@ public sealed partial class ProofWrapperTransport
                     }
                     fetch.Wrapper = wrapper;
                     fetch.ChargedBytes = item.Charge;
+                    fetch.ChargedRaw = chargedRaw;
                     fetch.Server = peer;
                     fetch.AddSource(peer, item.Mode, wrapper.Length, item.Coverage ?? default);
                     Enqueue(fetch);
@@ -390,7 +392,7 @@ public sealed partial class ProofWrapperTransport
     {
         if (fetch.Removed) return;
         fetch.Removed = true;
-        if (fetch.Server is { } server && fetch.ChargedBytes != 0) Release(server, fetch.ChargedBytes, fetch.Announcement.Mode == MempoolWrapper.ModeRaw);
+        if (fetch.Server is { } server && fetch.ChargedBytes != 0) Release(server, fetch.ChargedBytes, fetch.ChargedRaw);
         fetch.ChargedBytes = 0;
         fetch.Wrapper = null;
     }
@@ -439,7 +441,7 @@ public sealed partial class ProofWrapperTransport
         {
             fetch.Processing?.Dispose();
             fetch.Processing = null;
-            Release(server, fetch.ChargedBytes, fetch.Announcement.Mode == MempoolWrapper.ModeRaw);
+            Release(server, fetch.ChargedBytes, fetch.ChargedRaw);
             fetch.ChargedBytes = 0;
             fetch.Wrapper = null;
             fetch.Server = null;
