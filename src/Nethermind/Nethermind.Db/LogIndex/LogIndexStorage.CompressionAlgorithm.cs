@@ -22,6 +22,28 @@ partial class LogIndexStorage
         public delegate nuint CompressFunc(ReadOnlySpan<int> @in, nuint n, Span<byte> @out);
         public delegate nuint DecompressFunc(ReadOnlySpan<byte> @in, nuint n, Span<int> @out);
 
+        /// <summary>
+        /// Number of values a decoder can write after the last decoded value.
+        /// </summary>
+        /// <remarks>
+        /// TurboPFor adds the exceptions of the last, partial block with 4-value SIMD stores.
+        /// </remarks>
+        public const int DecompressionOverrun = 3;
+
+        /// <summary>
+        /// Number of bytes a decoder can read after the end of the compressed data.
+        /// </summary>
+        public const int CompressedDataOverread = 3;
+
+        /// <summary>
+        /// Returns the largest number of bytes an encoder can write for <paramref name="count"/> values.
+        /// </summary>
+        /// <remarks>
+        /// TurboPFor's <c>p4nbound128v32</c>, which is not smaller than <c>p4nbound256v32</c>,
+        /// plus one byte: the first value is stored in 5 bytes when it is 2^28 or larger.
+        /// </remarks>
+        public static int GetMaxCompressedLength(int count) => count * sizeof(int) + (count + 127) / 128 + 1;
+
         private static readonly Dictionary<string, CompressionAlgorithm> SupportedMap = [];
 
         public static IReadOnlyDictionary<string, CompressionAlgorithm> Supported => SupportedMap;
