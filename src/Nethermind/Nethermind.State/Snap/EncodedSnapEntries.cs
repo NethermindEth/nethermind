@@ -68,6 +68,8 @@ public sealed class EncodedSnapEntries<T>(RefRlpReaderFunc<T> decodeEntry) : IOw
         ReturnBuffer();
         _buffer = [];
         _length = 0;
+        _decoded = null;
+        Count = 0;
     }
 
     private void ReturnBuffer()

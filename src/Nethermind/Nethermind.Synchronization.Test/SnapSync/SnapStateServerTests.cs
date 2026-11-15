@@ -543,6 +543,24 @@ public class SnapStateServerTests
     }
 
     [Test]
+    public void EncodedSnapEntries_AreEmptyAfterDispose()
+    {
+        AccountCollector collector = new();
+        EncodedSnapEntries<PathWithAccount> accounts = collector.Accounts;
+        collector.Collect(TestItem.KeccakC.ValueHash256, AccountDecoder.Instance.Encode(AccountShapes[0]));
+        Assert.That(accounts.AsSpan().Length, Is.EqualTo(1));
+
+        accounts.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accounts.Count, Is.Zero);
+            Assert.That(accounts.Encoded.Length, Is.Zero);
+            Assert.That(accounts.AsSpan().Length, Is.Zero);
+        }
+    }
+
+    [Test]
     public void GetAccountRanges_SerializesAsDecodedAccounts([Values(1, 2000, 10_000_000)] int byteLimit)
     {
         using ISnapServerContext context = CreateContext();
