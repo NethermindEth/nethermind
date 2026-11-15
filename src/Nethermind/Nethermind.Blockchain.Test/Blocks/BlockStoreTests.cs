@@ -222,6 +222,34 @@ public class BlockStoreTests
     }
 
     [Test]
+    public void Test_getOwnedRlp_returns_the_stored_block_and_releases_it([Values] bool native, [Values] bool legacy)
+    {
+        using TestMemDb db = native ? new PinnedTestDb() : new TestMemDb();
+        BlockStore store = new(db);
+        Block block = Build.A.Block.WithNumber(1)
+            .WithTransactions(3, MainnetSpecProvider.Instance)
+            .TestObject;
+        byte[] expected = new BlockDecoder().Encode(block);
+
+        if (legacy) db[block.Hash!.Bytes] = expected;
+        else store.Insert(block);
+
+        using (MemoryManager<byte>? owned = store.GetOwnedRlp(block.Number, block.Hash!))
+        {
+            Assert.That(owned?.Memory.ToArray(), Is.EqualTo(expected));
+        }
+
+        if (db is PinnedTestDb pinned)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pinned.NativeReads, Is.EqualTo(legacy ? 2 : 1));
+                Assert.That(pinned.LiveHandles, Is.Zero);
+            }
+        }
+    }
+
+    [Test]
     public void Test_getReceiptRecoveryBlock_returns_null_when_block_not_in_db([Values] bool native, [Values] bool empty)
     {
         using TestMemDb db = native ? new PinnedTestDb() : new TestMemDb();
