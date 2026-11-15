@@ -220,7 +220,7 @@ namespace Nethermind.Network.P2P
             }
 
             zeroPacket.PacketType = (byte)messageId;
-            IProtocolHandler protocolHandler = route!.Handler ?? _protocols[protocol];
+            IProtocolHandler protocolHandler = route!.Handler;
             if (protocolHandler is IZeroProtocolHandler zeroProtocolHandler)
             {
                 zeroProtocolHandler.HandleMessage(zeroPacket);
@@ -783,8 +783,6 @@ namespace Nethermind.Network.P2P
             MessageRoute?[] outgoing = routes.Outgoing;
             return (uint)adaptivePacketType < (uint)outgoing.Length
                 && outgoing[adaptivePacketType] is { IsCurrent: true } route
-                && route.MessageId == packetType
-                && route.Protocol == protocol
                 ? route
                 : routes.CreateOutgoingRoute(adaptivePacketType, protocol, packetType);
         }
@@ -853,7 +851,7 @@ namespace Nethermind.Network.P2P
             public string Protocol { get; }
             public int MessageId { get; }
             public IProtocolHandler? Handler { get; }
-            public bool IsCurrent => Handler is null || Handler.ProtocolVersion == _version;
+            public bool IsCurrent => Handler.ProtocolVersion == _version;
 
             public void Record(int size)
             {
