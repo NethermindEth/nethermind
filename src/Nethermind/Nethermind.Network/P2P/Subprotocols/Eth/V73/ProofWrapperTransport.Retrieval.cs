@@ -139,14 +139,21 @@ public sealed partial class ProofWrapperTransport
         bool? raw = null;
         int rawRequests = 0;
         foreach (WrappersRequest outstanding in peer.Requests.Values) if (outstanding.Raw) rawRequests++;
-        bool rawAllowed = rawRequests < WrapperTransportLimits.MaxRawRequestsPerPeer;
+        // A failing peer's single request slot stays with proof-backed traffic.
+        bool rawAllowed = !peer.IsDeprioritized && rawRequests < WrapperTransportLimits.MaxRawRequestsPerPeer;
+        int skipped = -1;
         for (; next < queued.Count && batch.Count < Eth73Protocol.MaxWrappersPerRequest; next++)
         {
             WrapperFetch fetch = queued[next];
             if (fetch.Requested || fetch.Wrapper is not null) continue;
-            // A request carries mode-2 wrappers or others, never both, so its bytes are charged to one budget; the rest wait their turn.
+            // A request carries mode-2 wrappers or others, never both, so its bytes are charged to one budget; the next request
+            // starts from the first one skipped.
             bool isRaw = fetch.ModeFrom(peer) == MempoolWrapper.ModeRaw;
-            if (isRaw && !rawAllowed || (raw ??= isRaw) != isRaw) continue;
+            if (isRaw && !rawAllowed || (raw ??= isRaw) != isRaw)
+            {
+                if (skipped < 0) skipped = next;
+                continue;
+            }
             int length = EntryLength(fetch.LengthFrom(peer));
             if (batch.Count > 0 && bytes + length > Eth73Protocol.SoftResponseLimit) break;
             batch.Add(fetch);
@@ -154,6 +161,7 @@ public sealed partial class ProofWrapperTransport
         }
         // Requests are batched within the soft limit, so a response carries at most the requested bytes.
         long reserved = Math.Min(bytes + Eth73Protocol.ResponseFramingBytes, Eth73Protocol.LocalMaxResponseBytes);
+        if (skipped >= 0) next = skipped;
         if (batch.Count == 0 || peer.LastIssued == long.MaxValue || !TryCharge(peer, reserved, raw == true)) return false;
         ValueHash256[] ids = new ValueHash256[batch.Count];
         for (int i = 0; i < ids.Length; i++)

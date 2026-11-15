@@ -295,6 +295,30 @@ public class RawWitnessTransportTests
         }
     }
 
+    // A proof-backed wrapper queued after a mode-2 one is requested in the same pass; a failing peer's only slot never goes to mode 2.
+    [Test]
+    public void Proof_backed_fetches_skipped_by_a_mode_2_request_are_requested_in_the_same_pass([Values] bool failing)
+    {
+        using WrapperTestNode node = new(rawWitnesses: true);
+        FakeWrapperLink link = new();
+        WrapperPeer peer = node.Connect(link);
+        if (failing) peer.RecordFailure(WrapperTransportLimits.DeprioritizedFailureScore + 1);
+        WrapperAnnouncement proven = Describe(Wrapper(64, FrameTransaction(1)));
+        WrapperAnnouncement raw = Enumerable.Range(0, 64)
+            .Select(static i => Announcement(MempoolWrapper.ModeRaw, 1024, ValueKeccak.Compute(BitConverter.GetBytes(i)),
+                new WrapperCoverage(ValueKeccak.Compute(BitConverter.GetBytes(-i)), ValueKeccak.Compute(BitConverter.GetBytes(i)))))
+            .First(a => a.Hash.CompareTo(proven.Hash) < 0);
+
+        node.Transport.OnAnnounce(peer, new([raw, proven]));
+
+        GetProofWrappersMessage[] requests = link.Sent<GetProofWrappersMessage>();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(requests.Any(r => r.Hashes.Contains(proven.Hash)), Is.True);
+            Assert.That(requests.Any(r => r.Hashes.Contains(raw.Hash)), Is.EqualTo(!failing));
+        }
+    }
+
     /// <summary>A mode-2 body of <paramref name="transactions"/> transactions sharing <paramref name="entries"/> leanSTARK dependencies
     /// round-robin, each with a raw entry carrying a signature of <paramref name="signatureBytes"/>.</summary>
     private static byte[] RawBody(int transactions, int entries, int signatureBytes)

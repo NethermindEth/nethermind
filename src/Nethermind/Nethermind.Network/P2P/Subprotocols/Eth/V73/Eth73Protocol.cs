@@ -143,7 +143,7 @@ public static class WrapperTransportLimits
     public const int MaxPendingRawAnnouncements = MaxPendingAnnouncements / 4;
 
     /// <summary>The share of <see cref="MaxRequestsPerPeer"/> outstanding mode-2 requests may take, leaving proof-backed fetches
-    /// request slots of their own.</summary>
+    /// request slots of their own; a deprioritized peer gets none.</summary>
     public const int MaxRawRequestsPerPeer = MaxRequestsPerPeer / 2;
 
     /// <summary>Held wrappers announced to a newly connected peer, most recent first.</summary>
