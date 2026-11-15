@@ -231,6 +231,32 @@ public class SnapRangeServingTests
         Assert.That(pool.Outstanding, Is.Zero);
     }
 
+    [Test]
+    public void Account_slots_throw_when_read_after_their_parent_is_disposed()
+    {
+        StorageSlotRanges slots = new(2);
+        for (int account = 0; account < 2; account++)
+        {
+            slots.AddSlot(Keccak.Compute(BitConverter.GetBytes(account)), [0x82, (byte)account, 1]);
+            slots.TryCompleteAccount();
+        }
+
+        StorageSlotRanges.AccountSlots materialized = (StorageSlotRanges.AccountSlots)slots[0];
+        PathWithStorageSlot copy = materialized[0];
+        StorageSlotRanges.AccountSlots view = (StorageSlotRanges.AccountSlots)slots[1];
+        slots.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => view.GetValue(0).Length, Throws.InstanceOf<ObjectDisposedException>());
+            Assert.That(() => view.GetPath(0), Throws.InstanceOf<ObjectDisposedException>());
+            Assert.That(() => view[0], Throws.InstanceOf<ObjectDisposedException>());
+            Assert.That(() => view.AsSpan().Length, Throws.InstanceOf<ObjectDisposedException>());
+            Assert.That(materialized[0].SlotRlpValue, Is.SameAs(copy.SlotRlpValue));
+            Assert.That(materialized[0].SlotRlpValue, Is.EqualTo(new byte[] { 0x82, 0, 1 }));
+        }
+    }
+
     private byte[] Serialize(AccountRangeMessage message)
     {
         byte[] bytes = new byte[_accountSerializer.GetLength(message)];
