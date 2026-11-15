@@ -16,19 +16,14 @@ public class AccountCollector : RangeQueryVisitor.ILeafValueCollector
 {
     public EncodedSnapEntries<PathWithAccount> Accounts { get; } = new(DecodeEntry);
 
+    /// <remarks>
+    /// The slim account is encoded here from <see cref="AccountStruct"/>, so it must stay byte-identical with the
+    /// encoding of <see cref="AccountDecoder.Slim"/>. Tests check this.
+    /// </remarks>
+    /// <exception cref="TrieException">The leaf value is not an account.</exception>
     public int Collect(in ValueHash256 path, ReadOnlySpan<byte> value)
     {
-        if (value.IsEmpty)
-        {
-            RlpWriter empty = RlpWriter.ContentWriter(Accounts.Add(Rlp.LengthOfSequence(Rlp.LengthOfKeccakRlp + 1)));
-            RlpSequence emptyEntry = empty.StartSequence(Rlp.LengthOfKeccakRlp + 1);
-            empty.Encode(path);
-            empty.EncodeNullObject();
-            empty.EndSequence(emptyEntry);
-            return 32 + 1;
-        }
-
-        if (!AccountDecoder.Instance.TryDecodeStruct<OffFlag>(value, out AccountStruct account))
+        if (value.IsEmpty || !AccountDecoder.Instance.TryDecodeStruct<OffFlag>(value, out AccountStruct account))
         {
             throw new TrieException("An account leaf must contain a decodable account value.");
         }
@@ -59,7 +54,7 @@ public class AccountCollector : RangeQueryVisitor.ILeafValueCollector
     {
         RlpReader entry = reader.EnterSequence(out int length);
         ValueHash256 path = entry.DecodeValueKeccakNonNull();
-        Account? account = entry.IsNextItemEmptyList() ? null : AccountDecoder.Slim.Decode(ref entry, RlpBehaviors.TrustedInput);
+        Account? account = AccountDecoder.Slim.Decode(ref entry, RlpBehaviors.TrustedInput);
         reader.ExitSequence(entry, length);
         return new PathWithAccount(path, account);
     }

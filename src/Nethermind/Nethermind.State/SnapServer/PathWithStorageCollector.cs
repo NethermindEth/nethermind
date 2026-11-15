@@ -23,7 +23,7 @@ public class PathWithStorageCollector : RangeQueryVisitor.ILeafValueCollector
         writer.Encode(path);
         writer.Write(value);
         writer.EndSequence(entry);
-        return Hash256.Size + value.Length;
+        return 32 + value.Length;
     }
 
     private static PathWithStorageSlot DecodeEntry(scoped ref RlpReader reader)

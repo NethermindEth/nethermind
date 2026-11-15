@@ -543,6 +543,16 @@ public class SnapStateServerTests
     }
 
     [Test]
+    public void AccountCollector_RejectsEmptyLeaf()
+    {
+        AccountCollector collector = new();
+        using EncodedSnapEntries<PathWithAccount> accounts = collector.Accounts;
+
+        Assert.That(() => collector.Collect(TestItem.KeccakC.ValueHash256, ReadOnlySpan<byte>.Empty), Throws.TypeOf<TrieException>());
+        Assert.That(accounts, Is.Empty);
+    }
+
+    [Test]
     public void EncodedSnapEntries_AreEmptyAfterDispose()
     {
         AccountCollector collector = new();
