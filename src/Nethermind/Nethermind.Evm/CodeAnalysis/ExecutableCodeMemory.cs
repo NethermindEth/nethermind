@@ -81,6 +81,12 @@ public static class ExecutableCodeMemory
         return new FixedManager((byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(codeAndPadding)), codeLength, padded: true).Memory;
     }
 
+    internal static ReadOnlyMemory<byte> FromExecutionBuffer(byte[] codeAndPadding, int codeLength)
+    {
+        codeAndPadding.AsSpan(codeLength).Clear();
+        return new Manager(codeAndPadding, codeLength).Memory;
+    }
+
     /// <summary>Gets whether <paramref name="code"/> is the whole of a <see cref="Place"/> or <see cref="PlacePadded"/> result.</summary>
     internal static bool IsPlaced(ReadOnlyMemory<byte> code) =>
         MemoryMarshal.TryGetMemoryManager(code, out FixedManager? manager, out int start, out int length)
@@ -107,13 +113,25 @@ public static class ExecutableCodeMemory
         protected override void Dispose(bool disposing) { }
     }
 
-    private sealed class Manager(int codeLength) : MemoryManager<byte>
+    private sealed class Manager : MemoryManager<byte>
     {
-        public byte[] Buffer { get; } = CodeInfo.CreateExecutionBuffer(codeLength);
+        public Manager(int codeLength)
+        {
+            CodeLength = codeLength;
+            Buffer = CodeInfo.CreateExecutionBuffer(codeLength);
+        }
 
-        public int CodeLength => codeLength;
+        public Manager(byte[] buffer, int codeLength)
+        {
+            CodeLength = codeLength;
+            Buffer = buffer;
+        }
 
-        public override Span<byte> GetSpan() => Buffer.AsSpan(0, codeLength);
+        public byte[] Buffer { get; }
+
+        public int CodeLength { get; }
+
+        public override Span<byte> GetSpan() => Buffer.AsSpan(0, CodeLength);
 
         /// <remarks>
         /// <paramref name="elementIndex"/> is an offset into the code, from 0 to its length. The returned handle owns the
@@ -121,7 +139,7 @@ public static class ExecutableCodeMemory
         /// </remarks>
         public override unsafe MemoryHandle Pin(int elementIndex = 0)
         {
-            ArgumentOutOfRangeException.ThrowIfGreaterThan((uint)elementIndex, (uint)codeLength, nameof(elementIndex));
+            ArgumentOutOfRangeException.ThrowIfGreaterThan((uint)elementIndex, (uint)CodeLength, nameof(elementIndex));
             GCHandle handle = GCHandle.Alloc(Buffer, GCHandleType.Pinned);
             return new MemoryHandle(Unsafe.Add<byte>((void*)handle.AddrOfPinnedObject(), elementIndex), handle);
         }

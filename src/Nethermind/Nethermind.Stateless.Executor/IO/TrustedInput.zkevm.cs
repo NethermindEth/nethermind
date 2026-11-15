@@ -29,14 +29,26 @@ public static partial class TrustedInput
 
     private static partial ReadOnlyMemory<byte> Code(ReadOnlySpan<byte> data, int start, int length)
     {
-        if (!AirbenderFlag.IsActive && !FirstTouchMemoryFlag.IsActive && !OpenVmFlag.IsActive)
-            return ExecutableCodeMemory.Copy(data.Slice(start, length));
+        if (AirbenderFlag.IsActive)
+        {
+            Span<byte> codeAndPadding = MemoryMarshal.CreateSpan(
+                ref Unsafe.Add(ref MemoryMarshal.GetReference(data), start), length + CodeInfo.ExecutionPadding);
+            return ExecutableCodeMemory.PlacePadded(codeAndPadding, length);
+        }
 
-        ref byte first = ref Unsafe.Add(ref MemoryMarshal.GetReference(data), start);
-        if (!AirbenderFlag.IsActive && !IsAligned(ref first)) return ExecutableCodeMemory.Copy(data.Slice(start, length));
+        if (FirstTouchMemoryFlag.IsActive || OpenVmFlag.IsActive)
+        {
+            ref byte first = ref Unsafe.Add(ref MemoryMarshal.GetReference(data), start);
+            if (IsAligned(ref first))
+            {
+                if (OpenVmFlag.IsActive)
+                    return ExecutableCodeMemory.FromExecutionBuffer(ArrayAt(ref first, length + CodeInfo.ExecutionPadding), length);
 
-        Span<byte> codeAndPadding = MemoryMarshal.CreateSpan(ref first, length + CodeInfo.ExecutionPadding);
-        return ExecutableCodeMemory.PlacePadded(codeAndPadding, length);
+                return ExecutableCodeMemory.PlacePadded(MemoryMarshal.CreateSpan(ref first, length + CodeInfo.ExecutionPadding), length);
+            }
+        }
+
+        return ExecutableCodeMemory.Copy(data.Slice(start, length));
     }
 
     private static unsafe bool IsAligned(ref byte first) => ((nuint)Unsafe.AsPointer(ref first) & 7) == 0;
