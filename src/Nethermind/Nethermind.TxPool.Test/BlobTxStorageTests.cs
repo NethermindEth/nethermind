@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
@@ -24,6 +25,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
 using Testably.Abstractions;
@@ -479,6 +481,70 @@ public class BlobTxStorageTests
 
         Action act = () => blobTxStorage.Add(tx);
         Assert.That(act, Throws.TypeOf<ArgumentNullException>());
+    }
+
+    [Test]
+    public void TryGetNetworkForm_should_match_the_mempool_encoding_of_the_decoded_record(
+        [Values(ProofVersion.V0, ProofVersion.V1)] ProofVersion version,
+        [Values] StoredCellTrailer trailer)
+    {
+        MemColumnsDb<BlobTxsColumns> columnsDb = new();
+        BlobTxStorage blobTxStorage = new(columnsDb);
+        Transaction tx = CreateBlobTransaction(TestItem.PrivateKeyA, blobCount: 2, spec: version is ProofVersion.V1 ? Osaka.Instance : Cancun.Instance);
+        if (trailer is StoredCellTrailer.Cells)
+        {
+            tx.NetworkWrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper! with
+            {
+                CellMask = BlobCellMask.FromIndices([1, 3]),
+                Cells = [[1], [2]]
+            };
+        }
+
+        blobTxStorage.Add(tx);
+        if (trailer is StoredCellTrailer.None)
+        {
+            byte[] key = new byte[64];
+            tx.Timestamp.WriteBigEndian(key);
+            tx.Hash!.Bytes.CopyTo(key.AsSpan(32));
+            columnsDb.GetColumnDb(BlobTxsColumns.FullBlobTxs).Set(key, TxDecoder.Instance.Encode(tx, RlpBehaviors.InMempoolForm));
+        }
+
+        Assert.That(blobTxStorage.TryGet(tx.Hash!, tx.SenderAddress!, tx.Timestamp, out Transaction decoded), Is.True);
+        bool found = ((IBlobTxNetworkFormStorage)blobTxStorage).TryGetNetworkForm(tx.Hash!, tx.Timestamp, out IOwnedReadOnlyList<byte> networkForm);
+        using (networkForm)
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(networkForm.AsSpan().ToArray(), Is.EqualTo(TxDecoder.Instance.Encode(decoded, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping)));
+            Assert.That(networkForm.Count, Is.EqualTo(decoded.GetLength()));
+        }
+    }
+
+    public enum StoredCellTrailer
+    {
+        None,
+        EmptyCells,
+        Cells
+    }
+
+    [TestCaseSource(nameof(RecordsNotServedAsNetworkForm))]
+    public void TryGetNetworkForm_should_miss_for_a_record_it_does_not_serve(Transaction tx, bool stored)
+    {
+        BlobTxStorage blobTxStorage = new();
+        if (stored) blobTxStorage.Add(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(((IBlobTxNetworkFormStorage)blobTxStorage).TryGetNetworkForm(tx.Hash!, tx.Timestamp, out IOwnedReadOnlyList<byte> networkForm), Is.False);
+            Assert.That(networkForm, Is.Null);
+        }
+    }
+
+    private static IEnumerable<TestCaseData> RecordsNotServedAsNetworkForm()
+    {
+        yield return new TestCaseData(CreateBlobTransaction(), false).SetArgDisplayNames("missing record");
+        yield return new TestCaseData(CreateV1BlobTransactions(1)[0], true).SetArgDisplayNames("sparse blobs");
+        yield return new TestCaseData(BuildBlobCarryingFrameTx(blobCount: 2, ProofVersion.V1), true).SetArgDisplayNames("frame transaction");
     }
 
     // Persisted through the same InMempoolForm as a type-3, so the type and sidecar both have to survive.
@@ -1091,8 +1157,8 @@ public class BlobTxStorageTests
         }
     }
 
-    private static Transaction CreateBlobTransaction(PrivateKey signer, int nonce = 0, int blobCount = 1) => Build.A.Transaction
-        .WithShardBlobTxTypeAndFields(blobCount)
+    private static Transaction CreateBlobTransaction(PrivateKey signer, int nonce = 0, int blobCount = 1, IReleaseSpec spec = null) => Build.A.Transaction
+        .WithShardBlobTxTypeAndFields(blobCount, spec: spec)
         .WithNonce(nonce)
         .WithMaxFeePerGas(1.GWei)
         .WithMaxPriorityFeePerGas(1.GWei)

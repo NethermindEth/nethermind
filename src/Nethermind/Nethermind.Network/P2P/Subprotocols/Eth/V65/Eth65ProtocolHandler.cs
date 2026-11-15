@@ -139,6 +139,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         internal ValueTask<PooledTransactionsMessage> FulfillPooledTransactionsRequest(GetPooledTransactionsMessage msg, CancellationToken cancellationToken)
         {
             ArrayPoolList<Transaction> txsToSend = new(Math.Min(msg.Hashes.Count, MaxNumberOfTxsInOneMsg));
+            ArrayPoolList<PooledTransactionsMessage.EncodedTransaction>? encodedTxsToSend = null;
 
             // Once a response is non-empty, enforce the eth spec's 256-hash soft limit. If the
             // first 256 hashes miss, keep scanning without growing the deduplication set.
@@ -149,11 +150,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                 int packetSizeLeft = ProtocolVersion >= EthVersions.Eth68
                     ? PooledTransactionsResponseSoftLimit
                     : TransactionsMessage.MaxPacketSize;
+                int responseCount = 0;
                 foreach (ref readonly ValueHash256 hash in msg.Hashes.AsSpan())
                 {
                     if (cancellationToken.IsCancellationRequested) break;
 
-                    if (seenHashes.Count >= MaxNumberOfTxsInOneMsg && txsToSend.Count > 0)
+                    if (seenHashes.Count >= MaxNumberOfTxsInOneMsg && responseCount > 0)
                     {
                         break;
                     }
@@ -163,27 +165,50 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                         continue;
                     }
 
-                    if (TryGetPooledTransactionToServe(hash, out Transaction tx) && CanServePooledTransaction(tx))
+                    int txSize;
+                    Transaction? responseTx = null;
+                    if (TryGetEncodedPooledTransactionToServe(hash, out IOwnedReadOnlyList<byte>? encodedTx))
                     {
-                        Transaction responseTx = PreparePooledTransactionForResponse(tx);
-                        int txSize = responseTx.GetLength();
-
-                        if (txSize > packetSizeLeft && txsToSend.Count > 0)
-                        {
-                            break;
-                        }
-
-                        txsToSend.Add(responseTx);
-                        packetSizeLeft -= txSize;
-                        TxPool.Metrics.PendingTransactionsSent++;
+                        txSize = encodedTx.Count;
                     }
+                    else if (TryGetPooledTransactionToServe(hash, out Transaction tx) && CanServePooledTransaction(tx))
+                    {
+                        responseTx = PreparePooledTransactionForResponse(tx);
+                        txSize = responseTx.GetLength();
+                    }
+                    else
+                    {
+                        continue;
+                    }
+
+                    if (txSize > packetSizeLeft && responseCount > 0)
+                    {
+                        encodedTx?.Dispose();
+                        break;
+                    }
+
+                    if (encodedTx is null)
+                    {
+                        txsToSend.Add(responseTx!);
+                    }
+                    else
+                    {
+                        (encodedTxsToSend ??= new(1)).Add(new(txsToSend.Count, encodedTx));
+                    }
+
+                    responseCount++;
+                    packetSizeLeft -= txSize;
+                    TxPool.Metrics.PendingTransactionsSent++;
                 }
 
-                return new ValueTask<PooledTransactionsMessage>(CreatePooledTransactionsMessage(txsToSend));
+                PooledTransactionsMessage response = CreatePooledTransactionsMessage(txsToSend);
+                response.EncodedTransactions = encodedTxsToSend;
+                return new ValueTask<PooledTransactionsMessage>(response);
             }
             catch
             {
                 txsToSend.Dispose();
+                PooledTransactionsMessage.DisposeEncodedTransactions(encodedTxsToSend);
                 throw;
             }
             finally
@@ -199,6 +224,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         /// </summary>
         protected virtual bool TryGetPooledTransactionToServe(in ValueHash256 hash, [NotNullWhen(true)] out Transaction? tx)
             => _txPool.TryGetPendingTransaction(hash, out tx);
+
+        /// <summary>Gets the network encoding of a pooled transaction that is served without decoding it.</summary>
+        /// <remarks>
+        /// Tried before <see cref="TryGetPooledTransactionToServe"/>, which serves the transaction when this misses.
+        /// </remarks>
+        /// <param name="encodedTx">The encoding without the typed envelope. The caller disposes it.</param>
+        private protected virtual bool TryGetEncodedPooledTransactionToServe(in ValueHash256 hash, [NotNullWhen(true)] out IOwnedReadOnlyList<byte>? encodedTx)
+            => _txPool.TryGetPendingBlobTransactionNetworkForm(hash, out encodedTx);
 
         protected virtual Transaction PreparePooledTransactionForResponse(Transaction tx) => tx;
 

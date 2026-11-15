@@ -77,7 +77,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public int GetLength(TransactionsMessage message) => Rlp.LengthOfSequence(GetContentLength(message));
 
-        private static int GetContentLength(TransactionsMessage message)
+        internal static int GetContentLength(TransactionsMessage message)
         {
             int contentLength = 0;
             for (int i = 0; i < message.Transactions.Count; i++)

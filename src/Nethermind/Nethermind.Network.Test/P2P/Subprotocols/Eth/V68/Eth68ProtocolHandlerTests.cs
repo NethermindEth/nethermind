@@ -32,6 +32,7 @@ using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using Eth65GetPooledTransactionsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages.GetPooledTransactionsMessage;
 using Eth65PooledTransactionsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages.PooledTransactionsMessage;
+using Eth65PooledTransactionsMessageSerializer = Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages.PooledTransactionsMessageSerializer;
 using NSubstitute;
 using NUnit.Framework;
 using System;
@@ -988,6 +989,80 @@ public class Eth68ProtocolHandlerTests
         using Eth65PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
 
         Assert.That(response.Transactions.Count, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task Should_serve_stored_blob_tx_encoding_as_the_decoded_tx_in_request_order([Values(0, 1, 2)] int blobTxIndex)
+    {
+        Transaction blobTx = BuildFullBlobTransaction();
+        Transaction[] txs = new Transaction[3];
+        for (int i = 0; i < txs.Length; i++)
+        {
+            txs[i] = i == blobTxIndex ? blobTx : Build.A.Transaction.WithNonce((ulong)i + 1).SignedAndResolved().TestObject;
+        }
+
+        ReturnStoredEncoding(blobTx);
+        _transactionPool.TryGetPendingTransaction(Arg.Any<ValueHash256>(), out Arg.Any<Transaction>())
+            .Returns(x =>
+            {
+                x[1] = txs.First(tx => tx.Hash!.ValueHash256 == x.ArgAt<ValueHash256>(0));
+                return true;
+            });
+
+        using Eth65GetPooledTransactionsMessage request = new(txs.Select(static tx => tx.Hash!.ValueHash256).ToArray().ToPooledList());
+        using Eth65PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
+        using Eth65PooledTransactionsMessage decodedResponse = new(txs.ToPooledList());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Transactions, Has.Count.EqualTo(txs.Length - 1));
+            Assert.That(response.EncodedTransactions, Has.Count.EqualTo(1));
+            Assert.That(Serialize(response), Is.EqualTo(Serialize(decodedResponse)));
+        }
+    }
+
+    [Test]
+    public async Task Should_count_stored_blob_tx_encodings_against_the_soft_limit()
+    {
+        const int transactionCount = 32;
+        Transaction blobTx = BuildFullBlobTransaction();
+        ReturnStoredEncoding(blobTx, forAnyHash: true);
+
+        ArrayPoolList<ValueHash256> hashes = new(transactionCount);
+        for (int i = 0; i < transactionCount; i++)
+        {
+            hashes.Add(new Hash256(i.ToString("X64")));
+        }
+
+        using Eth65GetPooledTransactionsMessage request = new(hashes);
+        using Eth65PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Transactions, Is.Empty);
+            Assert.That(response.EncodedTransactions, Has.Count.EqualTo((int)(2.MiB / blobTx.GetLength())));
+            _transactionPool.DidNotReceive().TryGetPendingTransaction(Arg.Any<ValueHash256>(), out Arg.Any<Transaction>());
+        }
+    }
+
+    private void ReturnStoredEncoding(Transaction blobTx, bool forAnyHash = false)
+    {
+        byte[] encoding = TxDecoder.Instance.Encode(blobTx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping);
+        _transactionPool.TryGetPendingBlobTransactionNetworkForm(Arg.Any<ValueHash256>(), out Arg.Any<IOwnedReadOnlyList<byte>>())
+            .Returns(x =>
+            {
+                bool found = forAnyHash || x.ArgAt<ValueHash256>(0) == blobTx.Hash!.ValueHash256;
+                x[1] = found ? new ArrayPoolList<byte>(encoding) : null;
+                return found;
+            });
+    }
+
+    private static byte[] Serialize(Eth65PooledTransactionsMessage message)
+    {
+        Eth65PooledTransactionsMessageSerializer serializer = new();
+        byte[] bytes = new byte[serializer.GetLength(message)];
+        Assert.That(serializer.Serialize(bytes, message), Is.EqualTo(bytes.Length));
+        return bytes;
     }
 
     [Test]

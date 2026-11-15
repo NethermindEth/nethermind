@@ -189,6 +189,15 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         return false;
     }
 
+    /// <summary>Gets the network form of a full type-3 transaction that only persistent storage holds, without decoding it.</summary>
+    /// <param name="networkForm">The encoding <see cref="IBlobTxNetworkFormStorage.TryGetNetworkForm"/> writes. The caller disposes it.</param>
+    /// <returns><see langword="false"/> when the transaction is absent, sparse, or held in memory.</returns>
+    internal virtual bool TryGetNetworkFormFromStorage(ValueHash256 hash, [NotNullWhen(true)] out IOwnedReadOnlyList<byte>? networkForm)
+    {
+        networkForm = null;
+        return false;
+    }
+
     /// <summary>
     /// Gets the cell availability mask of a pooled blob transaction without touching blob payloads,
     /// the blob cache, or persistent storage.
