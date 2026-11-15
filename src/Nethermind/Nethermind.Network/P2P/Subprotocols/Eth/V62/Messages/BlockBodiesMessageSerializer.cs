@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using Nethermind.Core;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
@@ -9,6 +10,10 @@ using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
+    /// <remarks>
+    /// The bodies are not decoded here: each stays encoded until a consumer decodes it, so a consumer that only
+    /// stores bodies does not decode their transactions.
+    /// </remarks>
     public class BlockBodiesMessageSerializer(BlockBodyDecoder blockBodyDecoder = null) : IMessageSerializer<BlockBodiesMessage>
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<BlockBodiesMessage>(NethermindSyncLimits.MaxBodyFetch, nameof(BlockBodiesMessage.Bodies));
@@ -18,16 +23,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         {
             RlpWriter writer = RlpWriter.ContentWriter(destination);
             RlpSequence sequence = writer.StartSequence(MessageSequence.GetContentLength(destination.Length));
-            foreach (BlockBody? body in message.Bodies.Bodies)
+            OwnedBlockBodies bodies = message.Bodies;
+            for (int i = 0; i < bodies.Count; i++)
             {
-                if (body is null)
-                {
-                    writer.EncodeNullObject();
-                }
-                else
-                {
-                    _blockBodyDecoder.Encode(ref writer, body);
-                }
+                writer.WriteEncoded(bodies.GetEncoded(i).Span);
             }
 
             writer.EndSequence(sequence);
@@ -36,16 +35,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public int GetLength(BlockBodiesMessage message) => Rlp.LengthOfSequence(GetContentLength(message));
 
-        private int GetContentLength(BlockBodiesMessage message)
+        private static int GetContentLength(BlockBodiesMessage message)
         {
+            OwnedBlockBodies bodies = message.Bodies;
             int length = 0;
-            foreach (BlockBody? body in message.Bodies.Bodies)
+            for (int i = 0; i < bodies.Count; i++)
             {
-                length += body switch
-                {
-                    null => Rlp.LengthOfNull,
-                    _ => Rlp.LengthOfSequence(_blockBodyDecoder.GetBodyLength(body))
-                };
+                length += bodies.GetEncoded(i).Length;
             }
 
             return length;
@@ -53,26 +49,23 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public BlockBodiesMessage Deserialize(ReadOnlySpan<byte> data)
         {
-            OwnedBlockBodies? ownedBodies = null;
-
             RlpReader ctx = new(data);
-            try
+            RlpReader items = ctx.EnterSequence(out int itemLength);
+            int itemsStart = itemLength - items.Remaining;
+            Range[] encodedBodies = new Range[items.CountItems(RlpLimit)];
+            for (int i = 0; i < encodedBodies.Length; i++)
             {
-                RlpReader items = ctx.EnterSequence(out int itemLength);
-                int count = items.CountItems(RlpLimit);
-                BlockBody?[] bodies = new BlockBody?[count];
-                ownedBodies = new(bodies, ownsPooledTransactions: true);
-                for (int i = 0; i < count; i++) bodies[i] = _blockBodyDecoder.Decode(ref items);
-                ctx.ExitSequence(items, itemLength);
-                ctx.CheckEnd();
+                if (!items.IsNextSequence) throw new RlpReaderException($"Block body {i} is not a sequence");
+                int start = itemsStart + items.BytesRead;
+                encodedBodies[i] = new Range(start, start + items.ReadEncodedItem().Length);
+            }
 
-                return new() { Bodies = ownedBodies };
-            }
-            catch
-            {
-                ownedBodies?.Dispose();
-                throw;
-            }
+            ctx.ExitSequence(items, itemLength);
+            ctx.CheckEnd();
+
+            IMemoryOwner<byte> memory = MemoryPool<byte>.Shared.Rent(data.Length);
+            data.CopyTo(memory.Memory.Span);
+            return new() { Bodies = new OwnedBlockBodies(memory, encodedBodies, _blockBodyDecoder) };
         }
     }
 }

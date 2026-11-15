@@ -11,6 +11,8 @@ using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
+using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
@@ -41,6 +43,8 @@ namespace Nethermind.Synchronization
     public class SyncServer : ISyncServer
     {
         private readonly IBlockTree _blockTree;
+        private readonly IBlockStore _blockStore;
+        private readonly IHeaderStore _headerStore;
         private readonly ILogger _logger;
         private readonly ISyncPeerPool _pool;
         private readonly ISyncModeSelector _syncModeSelector;
@@ -74,6 +78,8 @@ namespace Nethermind.Synchronization
             IWorldStateManager worldStateManager,
             [KeyFilter(DbNames.Code)] IReadOnlyKeyValueStore codeDb,
             IBlockTree blockTree,
+            IBlockStore blockStore,
+            IHeaderStore headerStore,
             IReceiptFinder receiptFinder,
             IBlockAccessListStore blockAccessListStore,
             IBlockValidator blockValidator,
@@ -98,6 +104,8 @@ namespace Nethermind.Synchronization
             _stateDb = worldStateManager.HashServer;
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
+            _headerStore = headerStore ?? throw new ArgumentNullException(nameof(headerStore));
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _blockAccessListStore = blockAccessListStore ?? throw new ArgumentNullException(nameof(blockAccessListStore));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
@@ -467,6 +475,12 @@ namespace Nethermind.Synchronization
         }
 
         public Block Find(Hash256 hash) => _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.ExcludeTxHashes);
+
+        public MemoryManager<byte>? FindBlockRlp(Hash256 hash)
+        {
+            ulong? number = _headerStore.GetBlockNumber(hash);
+            return number is null ? null : _blockStore.GetOwnedRlp(number.Value, hash);
+        }
 
         public BlockHeader? FindHeader(Hash256 hash) => _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
 

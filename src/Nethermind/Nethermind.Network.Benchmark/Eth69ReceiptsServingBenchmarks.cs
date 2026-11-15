@@ -147,6 +147,7 @@ public class Eth69ReceiptsServingBenchmarks
         public void StopNotifyingPeersAboutNewBlocks() { }
         public MemoryManager<byte> GetBlockAccessListRlp(Hash256 blockHash) => null;
         public Block Find(Hash256 hash) => null;
+        public MemoryManager<byte> FindBlockRlp(Hash256 hash) => null;
         public BlockHeader FindHeader(Hash256 hash) => null;
         public Hash256 FindHash(ulong number) => null;
         public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse) => throw new NotSupportedException();

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
@@ -13,6 +14,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -69,6 +71,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _session.Node.Returns(node);
             _session.When(s => s.DeliverMessage(Arg.Any<P2PMessage>())).Do(c => c.Arg<P2PMessage>().AddTo(_disposables));
             _syncManager = Substitute.For<ISyncServer>();
+            _syncManager.FindBlockRlp(Arg.Any<Hash256>()).Returns((MemoryManager<byte>?)null);
             _transactionPool = Substitute.For<ITxPool>();
             _genesisBlock = Build.A.Block.Genesis.TestObject;
             _syncManager.Head.Returns(_genesisBlock.Header);
@@ -484,13 +487,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         public void Should_omit_unknown_hashes_from_get_block_bodies()
         {
             Block block = Build.A.Block.TestObject;
-            _syncManager.Find(Keccak.Zero).Returns((Block?)null);
-            _syncManager.Find(TestItem.KeccakA).Returns(block);
+            ServeBlock(TestItem.KeccakA, block);
 
             BlockBody?[] bodies = RequestBlockBodies(Keccak.Zero, TestItem.KeccakA);
 
-            Assert.That(bodies, Has.Length.EqualTo(1));
-            Assert.That(bodies[0], Is.SameAs(block.Body));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bodies, Has.Length.EqualTo(1));
+                Assert.That(BlockBodyDecoder.Instance.Encode(bodies[0]), Is.EqualTo(BlockBodyDecoder.Instance.Encode(block.Body)));
+            }
         }
 
         [Test]
@@ -498,17 +503,16 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             Block firstBlock = Build.A.Block.WithNonce(1).TestObject;
             Block thirdBlock = Build.A.Block.WithNonce(3).TestObject;
-            _syncManager.Find(TestItem.KeccakA).Returns(firstBlock);
-            _syncManager.Find(TestItem.KeccakB).Returns((Block?)null);
-            _syncManager.Find(TestItem.KeccakC).Returns(thirdBlock);
+            ServeBlock(TestItem.KeccakA, firstBlock);
+            ServeBlock(TestItem.KeccakC, thirdBlock);
 
             BlockBody?[] bodies = RequestBlockBodies(TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC);
 
             Assert.That(bodies, Has.Length.EqualTo(2));
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(bodies[0], Is.SameAs(firstBlock.Body));
-                Assert.That(bodies[1], Is.SameAs(thirdBlock.Body));
+                Assert.That(BlockBodyDecoder.Instance.Encode(bodies[0]), Is.EqualTo(BlockBodyDecoder.Instance.Encode(firstBlock.Body)));
+                Assert.That(BlockBodyDecoder.Instance.Encode(bodies[1]), Is.EqualTo(BlockBodyDecoder.Instance.Encode(thirdBlock.Body)));
             }
         }
 
@@ -528,7 +532,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                     blocks.Add(Build.A.Block.WithTransactions(transactions).WithParent(blocks[^1]).TestObject);
                 }
 
-                _syncManager.Find(blocks[^1].Hash).Returns(blocks[^1]);
+                ServeBlock(blocks[^1].Hash, blocks[^1]);
             }
 
             using GetBlockBodiesMessage msg = new(blocks.Select(block => block.Hash).ToArray());
@@ -540,13 +544,59 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             HandleZeroMessage(msg, Eth62MessageCode.GetBlockBodies);
 
             Assert.That(response, Is.Not.Null);
-            BlockBody[]? bodies = response.Bodies.Bodies;
-            Assert.That(bodies, Has.Length.EqualTo(SoftLimitTestHelper.CountBlocksWithinSoftLimit(blocks)));
-            foreach (BlockBody responseBody in bodies)
-            {
-                Assert.That(responseBody, Is.Not.Null);
-            }
+            Assert.That(response.Bodies.Count, Is.EqualTo(SoftLimitTestHelper.CountBlocksWithinSoftLimit(blocks)));
             response.Dispose();
+        }
+
+        [Test]
+        public void Disposes_every_served_block_lease_including_the_one_over_the_hard_limit()
+        {
+            Block[] blocks = [Build.A.Block.WithNonce(1).TestObject, Build.A.Block.WithNonce(2).TestObject, Build.A.Block.WithNonce(3).TestObject];
+            List<TrackedLease> leases = [];
+            foreach (Block block in blocks)
+            {
+                byte[] encoded = new BlockDecoder().Encode(block);
+                _syncManager.FindBlockRlp(block.Hash!).Returns(_ =>
+                {
+                    TrackedLease lease = new(encoded);
+                    leases.Add(lease);
+                    return lease;
+                });
+            }
+
+            ulong hardLimit = SyncPeerProtocolHandlerBase.HardOutgoingBodiesMessageSizeLimit;
+            SyncPeerProtocolHandlerBase.HardOutgoingBodiesMessageSizeLimit = (ulong)new BlockDecoder().Encode(blocks[0]).Length + 1;
+            try
+            {
+                BlockBody?[] bodies = RequestBlockBodies(blocks.Select(static block => block.Hash!).ToArray());
+
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(bodies, Has.Length.EqualTo(1));
+                    Assert.That(leases, Has.Count.EqualTo(2), "the second block is read, then dropped over the hard limit");
+                    Assert.That(leases.Select(static lease => lease.IsDisposed), Is.All.True);
+                }
+            }
+            finally
+            {
+                SyncPeerProtocolHandlerBase.HardOutgoingBodiesMessageSizeLimit = hardLimit;
+            }
+        }
+
+        private void ServeBlock(Hash256 hash, Block block) =>
+            _syncManager.FindBlockRlp(hash).Returns(ArrayMemoryManager.From(new BlockDecoder().Encode(block)));
+
+        private sealed class TrackedLease(byte[] array) : MemoryManager<byte>
+        {
+            public bool IsDisposed { get; private set; }
+
+            protected override void Dispose(bool disposing) => IsDisposed = true;
+
+            public override Span<byte> GetSpan() => IsDisposed ? throw new ObjectDisposedException(nameof(TrackedLease)) : array;
+
+            public override MemoryHandle Pin(int elementIndex = 0) => default;
+
+            public override void Unpin() { }
         }
 
         [Test]

@@ -2758,6 +2758,26 @@ public class BlockTreeTests
         {
             Assert.Throws<InvalidOperationException>(() => tree.Insert(genesis));
             Assert.Throws<InvalidOperationException>(() => tree.Insert(genesis.Header));
+            Assert.Throws<InvalidOperationException>(() => tree.Insert(genesis.Header, BlockBodyDecoder.Instance.Encode(genesis.Body)));
+        }
+    }
+
+    [Test]
+    public void Insert_of_encoded_body_stores_the_block_and_its_number([Values] bool saveHeader)
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(1);
+        BlockTree tree = builder.TestObject;
+        Block block = Build.A.Block.WithParent(tree.Genesis!).WithTransactions(Build.A.Transaction.Signed().TestObjectNTimes(2)).TestObject;
+
+        AddBlockResult result = tree.Insert(block.Header, BlockBodyDecoder.Instance.Encode(block.Body),
+            saveHeader ? BlockTreeInsertBlockOptions.SaveHeader : BlockTreeInsertBlockOptions.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(AddBlockResult.Added));
+            Assert.That(tree.FindHeader(block.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded) is not null, Is.EqualTo(saveHeader));
+            Assert.That(builder.HeaderStore.GetBlockNumber(block.Hash!), Is.EqualTo(block.Number));
+            Assert.That(tree.FindBlock(block.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded)?.Transactions, Has.Length.EqualTo(2));
         }
     }
 
