@@ -12,11 +12,14 @@ public static partial class TrustedInput
 {
     /// <summary>Whether the guest uses the items where they lie in its input.</summary>
     /// <remarks>
-    /// Only where the input is read into writable memory, nothing ever moves or collects an object, and storing a
-    /// reference is a plain store, so that an array whose header is written into the input is as good as any other:
-    /// Airbender, which copies its input into RAM and whose runtime wraps every write barrier into a bare store.
+    /// Only where the input is read into writable memory that outlives the run, nothing ever moves or collects an
+    /// object, and storing a reference to an object outside the managed heap is sound, so that an array whose header is
+    /// written into the input is as good as any other: Airbender, which copies its input into RAM and whose runtime wraps
+    /// every write barrier into a bare store; SP1, whose stateless input keeps its state nodes in the input as such
+    /// arrays already; and OpenVM, which reads its input into a buffer it never frees and runs the same runtime as SP1.
+    /// Not ZisK, whose input region is read-only.
     /// </remarks>
-    private static bool UsesItemsInPlace => AirbenderFlag.IsActive;
+    private static bool UsesItemsInPlace => AirbenderFlag.IsActive || FirstTouchMemoryFlag.IsActive || OpenVmFlag.IsActive;
 
     private static partial byte[] Item(ReadOnlySpan<byte> data, int start, int length)
     {
@@ -26,10 +29,11 @@ public static partial class TrustedInput
 
     private static partial ReadOnlyMemory<byte> Code(ReadOnlySpan<byte> data, int start, int length)
     {
-        if (!UsesItemsInPlace) return ExecutableCodeMemory.Copy(data.Slice(start, length));
+        ref byte first = ref Unsafe.Add(ref MemoryMarshal.GetReference(data), start);
+        if (!UsesItemsInPlace || !AirbenderFlag.IsActive && !IsAligned(ref first))
+            return ExecutableCodeMemory.Copy(data.Slice(start, length));
 
-        Span<byte> codeAndPadding = MemoryMarshal.CreateSpan(
-            ref Unsafe.Add(ref MemoryMarshal.GetReference(data), start), length + CodeInfo.ExecutionPadding);
+        Span<byte> codeAndPadding = MemoryMarshal.CreateSpan(ref first, length + CodeInfo.ExecutionPadding);
         return ExecutableCodeMemory.PlacePadded(codeAndPadding, length);
     }
 

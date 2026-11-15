@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Stateless;
@@ -139,6 +140,39 @@ public class TrustedInputTests
             byte[] input = TrustedInput.Write(specProvider.ChainId, block, witness);
 
             Assert.That(Execute(input).IsSuccess, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task Input_in_memory_that_never_moves_validates_as_the_array_does([Values(0, 4)] int misalignment)
+    {
+        (byte[] input, Block block) = await CreateInput(amsterdam: false);
+        StatelessValidationResult expected = Execute(input);
+        StatelessValidationResult actual = ExecuteInNativeMemory(input, misalignment);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expected.IsSuccess, Is.True);
+            Assert.That(actual.IsSuccess, Is.EqualTo(expected.IsSuccess));
+            Assert.That(actual.NewPayloadRequestRoot, Is.EqualTo(block.Hash));
+            Assert.That(actual.ChainId, Is.EqualTo(expected.ChainId));
+            Assert.That(actual.SchemaId, Is.EqualTo(expected.SchemaId));
+        }
+    }
+
+    private static unsafe StatelessValidationResult ExecuteInNativeMemory(byte[] input, int misalignment)
+    {
+        byte* memory = (byte*)NativeMemory.AlignedAlloc((nuint)(input.Length + misalignment), sizeof(ulong));
+        try
+        {
+            Span<byte> data = new(memory + misalignment, input.Length);
+            input.CopyTo(data);
+            StatelessValidationResult.Decode(StatelessExecutor.ExecuteTrusted(data), out StatelessValidationResult result);
+            return result;
+        }
+        finally
+        {
+            NativeMemory.AlignedFree(memory);
         }
     }
 
