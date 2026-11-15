@@ -231,6 +231,55 @@ public class BlockStore : IBlockStore, IClearableCache
         }
     }
 
+    /// <inheritdoc/>
+    /// <remarks>Copies the stored body bytes without decoding the block. A cached or pending block is encoded instead.</remarks>
+    public bool TryCopyBodyTo(ulong blockNumber, Hash256 blockHash, ArrayPoolList<byte> destination, out int transactionsLength)
+    {
+        ValueHash256 cacheKey = blockHash.ValueHash256;
+        if (_blockCache.TryGet(in cacheKey, out Block? cachedBlock))
+        {
+            transactionsLength = BlockBodyDecoder.Instance.EncodeTo(destination, cachedBlock.Body);
+            return true;
+        }
+
+        if (_pending is not null && _pending.TryGet(blockHash, out Block? pendingBlock))
+        {
+            transactionsLength = BlockBodyDecoder.Instance.EncodeTo(destination, pendingBlock.Body);
+            return true;
+        }
+
+        Span<byte> keyWithBlockNumber = stackalloc byte[40];
+        KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, keyWithBlockNumber);
+        return TryCopyStoredBodyTo(keyWithBlockNumber, destination, out transactionsLength)
+            || TryCopyStoredBodyTo(blockHash.Bytes, destination, out transactionsLength);
+    }
+
+    private bool TryCopyStoredBodyTo(ReadOnlySpan<byte> key, ArrayPoolList<byte> destination, out int transactionsLength)
+    {
+        if (_blockDb is IReadOnlyNativeKeyValueStore native)
+        {
+            ReadOnlySpan<byte> slice = native.GetNativeSlice(key, out nint handle);
+            try
+            {
+                return BlockDecoder.TryCopyBodyTo(slice, destination, out transactionsLength);
+            }
+            finally
+            {
+                if (handle != 0) native.DangerousReleaseHandle(handle);
+            }
+        }
+
+        Span<byte> value = _blockDb.GetSpan(key);
+        try
+        {
+            return BlockDecoder.TryCopyBodyTo(value, destination, out transactionsLength);
+        }
+        finally
+        {
+            _blockDb.DangerousReleaseMemory(value);
+        }
+    }
+
     private MemoryManager<byte>? ReadRecoveryBlockMemory(ReadOnlySpan<byte> key)
     {
         if (_blockDb is not IReadOnlyNativeKeyValueStore native) return _blockDb.GetOwnedMemory(key);

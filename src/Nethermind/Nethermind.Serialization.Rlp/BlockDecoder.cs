@@ -168,6 +168,38 @@ namespace Nethermind.Serialization.Rlp
             writer.EndSequence(sequence);
         }
 
+        /// <summary>Appends the body of a stored block to <paramref name="destination"/> as one network block body item.</summary>
+        /// <param name="blockRlp">A block as this node stores it.</param>
+        /// <param name="destination">The buffer that receives the body item.</param>
+        /// <param name="transactionsLength">The payload length of the transactions sequence of the body.</param>
+        /// <returns><see langword="false"/> when <paramref name="blockRlp"/> holds no block.</returns>
+        public static bool TryCopyBodyTo(ReadOnlySpan<byte> blockRlp, ArrayPoolList<byte> destination, out int transactionsLength)
+        {
+            transactionsLength = 0;
+            RlpReader reader = new(blockRlp);
+            if (!reader.HasNext || reader.TryReadEmptySequence()) return false;
+
+            RlpReader fields = reader.EnterSequence<OffFlag>(out int itemLength);
+            int contentStart = itemLength - fields.Remaining;
+            fields.SkipItem<OffFlag>();
+            int bodyStart = fields.BytesRead;
+            transactionsLength = fields.EnterSequence<OffFlag>(out _).Remaining;
+            fields.SkipItem<OffFlag>();
+            fields.SkipItem<OffFlag>();
+            if (fields.HasNext)
+            {
+                fields.SkipItem<OffFlag>();
+            }
+
+            fields.CheckEnd();
+
+            ReadOnlySpan<byte> body = blockRlp.Slice(contentStart + bodyStart, fields.BytesRead - bodyStart);
+            Span<byte> prefix = stackalloc byte[1 + sizeof(int)];
+            destination.AddRange(prefix[..Rlp.StartSequence(prefix, 0, body.Length)]);
+            destination.AddRange(body);
+            return true;
+        }
+
         public ReceiptRecoveryBlock? DecodeToReceiptRecoveryBlock(MemoryManager<byte>? memoryManager, Memory<byte> memory, RlpBehaviors rlpBehaviors)
             => rlpBehaviors.IsTrustedInput()
                 ? DecodeToReceiptRecoveryBlock<OffFlag>(memoryManager, memory, rlpBehaviors)

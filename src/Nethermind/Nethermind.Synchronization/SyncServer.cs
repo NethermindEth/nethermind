@@ -468,6 +468,9 @@ namespace Nethermind.Synchronization
 
         public Block Find(Hash256 hash) => _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.ExcludeTxHashes);
 
+        public bool TryCopyBlockBodyTo(Hash256 hash, ArrayPoolList<byte> destination, out int transactionsLength) =>
+            _blockTree.TryCopyBlockBodyTo(hash, destination, out transactionsLength);
+
         public BlockHeader? FindHeader(Hash256 hash) => _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
 
         public Hash256? FindHash(ulong number)

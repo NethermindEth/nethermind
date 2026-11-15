@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
@@ -37,6 +38,17 @@ public interface IBlockStore
     Block? Get(ulong blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true);
     byte[]? GetRlp(ulong blockNumber, Hash256 blockHash);
     ReceiptRecoveryBlock? GetReceiptRecoveryBlock(ulong blockNumber, Hash256 blockHash);
+
+    /// <summary>Appends the body of a block to <paramref name="destination"/> as one network block body item.</summary>
+    /// <param name="transactionsLength">The payload length of the transactions sequence of the body.</param>
+    /// <returns>Whether the block was found.</returns>
+    bool TryCopyBodyTo(ulong blockNumber, Hash256 blockHash, ArrayPoolList<byte> destination, out int transactionsLength)
+    {
+        Block? block = Get(blockNumber, blockHash, RlpBehaviors.ExcludeHashes, shouldCache: false);
+        transactionsLength = block is null ? 0 : BlockBodyDecoder.Instance.EncodeTo(destination, block.Body);
+        return block is not null;
+    }
+
     void Cache(Block block);
 
     /// <summary>Whether the block is stored, or queued for a write that will store it.</summary>

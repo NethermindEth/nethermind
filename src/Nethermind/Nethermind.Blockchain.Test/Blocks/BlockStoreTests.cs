@@ -9,6 +9,8 @@ using Autofac;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -324,6 +326,140 @@ public class BlockStoreTests
         finally
         {
             recovery.Dispose();
+        }
+    }
+
+    [TestCaseSource(nameof(BodyShapes))]
+    public void TryCopyBodyTo_writes_the_body_encoding_of_the_stored_block(Block block, bool native, bool legacy)
+    {
+        using TestMemDb db = native ? new PinnedTestDb() : new TestMemDb();
+        BlockStore store = new(db);
+        if (legacy) db[block.Hash!.Bytes] = new BlockDecoder().Encode(block);
+        else store.Insert(block);
+
+        Block decoded = new BlockStore(db).Get(block.Number, block.Hash!, RlpBehaviors.ExcludeHashes)!;
+        byte[] expected = BlockBodyDecoder.Instance.Encode(decoded.Body);
+        int expectedTransactionsLength = 0;
+        foreach (Transaction tx in decoded.Transactions) expectedTransactionsLength += TxDecoder.Instance.GetLength(tx, RlpBehaviors.None);
+
+        int releasedBefore = (db as PinnedTestDb)?.Released ?? 0;
+        using ArrayPoolList<byte> destination = new(0);
+        destination.AddRange([0xab, 0xcd]);
+        bool found = store.TryCopyBodyTo(block.Number, block.Hash!, destination, out int transactionsLength);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(destination.AsSpan()[..2].ToArray(), Is.EqualTo(new byte[] { 0xab, 0xcd }));
+            Assert.That(destination.AsSpan()[2..].ToArray(), Is.EqualTo(expected));
+            Assert.That(transactionsLength, Is.EqualTo(expectedTransactionsLength));
+            if (db is PinnedTestDb pinned)
+            {
+                Assert.That(pinned.Released - releasedBefore, Is.EqualTo(1));
+                Assert.That(pinned.LiveHandles, Is.Zero);
+            }
+        }
+    }
+
+    private static IEnumerable<TestCaseData> BodyShapes()
+    {
+        Block parent = Build.A.Block.WithNumber(1).TestObject;
+        Transaction[] transactions =
+        [
+            Build.A.Transaction.WithNonce(0).WithData([1, 2, 3]).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+            Build.A.Transaction.WithNonce(1).WithType(TxType.AccessList).WithAccessList(new AccessList.Builder().AddAddress(TestItem.AddressB).AddStorage(1).Build()).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+            Build.A.Transaction.WithNonce(2).WithType(TxType.EIP1559).WithMaxFeePerGas(10).WithMaxPriorityFeePerGas(1).WithData(new byte[300]).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+            Build.A.Transaction.WithNonce(3).WithShardBlobTxTypeAndFields(2, isMempoolTx: false).WithMaxFeePerGas(10).WithMaxPriorityFeePerGas(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+            Build.A.Transaction.WithNonce(4).WithType(TxType.SetCode).WithAuthorizationCodeIfAuthorizationListTx().WithMaxFeePerGas(10).WithMaxPriorityFeePerGas(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+        ];
+        BlockHeader uncle = Build.A.BlockHeader.WithNumber(1).WithExtraData([7]).TestObject;
+
+        foreach ((string name, Block block) in new (string, Block)[]
+        {
+            ("empty pre-Shanghai", Build.A.Block.WithNumber(2).WithParent(parent).TestObject),
+            ("pre-Shanghai with transactions and uncle", Build.A.Block.WithNumber(2).WithParent(parent).WithTransactions(transactions[..3]).WithUncles(uncle).TestObject),
+            ("Shanghai with no withdrawals", Build.A.Block.WithNumber(2).WithParent(parent).WithTransactions(transactions[..1]).WithWithdrawals(0).TestObject),
+            ("Shanghai with withdrawals and every transaction type", Build.A.Block.WithNumber(2).WithParent(parent).WithTransactions(transactions).WithWithdrawals(16).TestObject),
+            ("large body", Build.A.Block.WithNumber(2).WithParent(parent).WithTransactions(Build.A.Transaction.WithData(new byte[70_000]).SignedAndResolved().TestObject).WithWithdrawals(1).TestObject),
+        })
+        {
+            foreach (bool native in new[] { false, true })
+            {
+                foreach (bool legacy in new[] { false, true })
+                {
+                    yield return new TestCaseData(block, native, legacy).SetName($"{name}, native: {native}, legacy key: {legacy}");
+                }
+            }
+        }
+    }
+
+    [Test]
+    public void TryCopyBodyTo_returns_false_for_a_missing_or_empty_block([Values] bool native, [Values] bool empty)
+    {
+        using TestMemDb db = native ? new PinnedTestDb() : new TestMemDb();
+        BlockStore store = new(db);
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        if (empty)
+        {
+            db[NumberedKey(block)] = [0xc0];
+            db[block.Hash!.Bytes] = [];
+        }
+
+        using ArrayPoolList<byte> destination = new(0);
+        bool found = store.TryCopyBodyTo(block.Number, block.Hash!, destination, out int transactionsLength);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.False);
+            Assert.That(transactionsLength, Is.Zero);
+            Assert.That(destination.Count, Is.Zero);
+            if (db is PinnedTestDb pinned) Assert.That(pinned.LiveHandles, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void TryCopyBodyTo_releases_the_native_handle_when_the_stored_block_is_malformed()
+    {
+        using PinnedTestDb db = new();
+        BlockStore store = new(db);
+        Block block = Build.A.Block.WithNumber(1).WithWithdrawals(1).TestObject;
+        byte[] encoded = new BlockDecoder().Encode(block);
+        RlpReader reader = new(encoded);
+        int contentLength = reader.EnterSequence(out int itemLength).Remaining;
+        byte[] content = [.. encoded.AsSpan(itemLength - contentLength), Rlp.EmptyListByte];
+        byte[] malformed = new byte[Rlp.LengthOfSequence(content.Length)];
+        content.CopyTo(malformed.AsSpan(Rlp.StartSequence(malformed, 0, content.Length)));
+        db[NumberedKey(block)] = malformed;
+
+        using ArrayPoolList<byte> destination = new(0);
+        Assert.That(() => store.TryCopyBodyTo(block.Number, block.Hash!, destination, out _), Throws.InstanceOf<RlpReaderException>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db.Released, Is.EqualTo(1));
+            Assert.That(db.LiveHandles, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task TryCopyBodyTo_encodes_a_cached_or_pending_block_without_reading_the_db([Values] bool pending)
+    {
+        using PinnedTestDb db = new();
+        StatePersistenceBarrier barrier = new();
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter(barrier);
+        BlockStore store = new(db, deferredWriter: writer, persistenceBarrier: barrier);
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject).WithWithdrawals(2).TestObject;
+        if (pending) store.InsertDeferred(block);
+        else store.Cache(block);
+
+        using ArrayPoolList<byte> destination = new(0);
+        bool found = store.TryCopyBodyTo(block.Number, block.Hash!, destination, out int transactionsLength);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(destination.AsSpan().ToArray(), Is.EqualTo(BlockBodyDecoder.Instance.Encode(block.Body)));
+            Assert.That(transactionsLength, Is.EqualTo(TxDecoder.Instance.GetLength(block.Transactions[0], RlpBehaviors.None)));
+            Assert.That(db.NativeReads, Is.Zero);
         }
     }
 

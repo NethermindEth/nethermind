@@ -9,6 +9,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.FastSync;
 
 namespace Nethermind.Synchronization
@@ -21,6 +22,17 @@ namespace Nethermind.Synchronization
         TxReceipt[]? GetReceipts(Hash256 blockHashes);
         MemoryManager<byte>? GetBlockAccessListRlp(Hash256 blockHash);
         Block? Find(Hash256 hash);
+
+        /// <summary>Appends the body of the block with <paramref name="hash"/> to <paramref name="destination"/> as one network block body item.</summary>
+        /// <param name="transactionsLength">The payload length of the transactions sequence of the body.</param>
+        /// <returns>Whether the block was found.</returns>
+        bool TryCopyBlockBodyTo(Hash256 hash, ArrayPoolList<byte> destination, out int transactionsLength)
+        {
+            Block? block = Find(hash);
+            transactionsLength = block is null ? 0 : BlockBodyDecoder.Instance.EncodeTo(destination, block.Body);
+            return block is not null;
+        }
+
         BlockHeader? FindHeader(Hash256 hash);
         Hash256? FindHash(ulong number);
         IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse);

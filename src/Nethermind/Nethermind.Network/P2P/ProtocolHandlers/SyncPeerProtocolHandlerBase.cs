@@ -363,41 +363,50 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected Task<BlockBodiesMessage> FulfillBlockBodiesRequest(GetBlockBodiesMessage getBlockBodiesMessage, CancellationToken cancellationToken)
         {
             IReadOnlyList<Hash256> hashes = getBlockBodiesMessage.BlockHashes;
-            using ArrayPoolList<Block> blocks = new(hashes.Count);
-
-            ulong sizeEstimate = 0;
-            for (int i = 0; i < hashes.Count; i++)
+            ArrayPoolList<byte> encodedBodies = new(0);
+            try
             {
-                if (cancellationToken.IsCancellationRequested)
+                int count = 0;
+                ulong sizeEstimate = 0;
+                for (int i = 0; i < hashes.Count; i++)
                 {
-                    break;
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        break;
+                    }
+
+                    int bodyStart = encodedBodies.Count;
+                    if (!SyncServer.TryCopyBlockBodyTo(hashes[i], encodedBodies, out int transactionsLength))
+                    {
+                        continue;
+                    }
+
+                    ulong blockSize = MessageSizeEstimator.EstimateBlockSize(transactionsLength);
+
+                    // Cap the message size; return the prefix (bodies match request hashes positionally).
+                    if (sizeEstimate + blockSize > HardOutgoingBodiesMessageSizeLimit)
+                    {
+                        encodedBodies.Truncate(bodyStart);
+                        break;
+                    }
+
+                    count++;
+                    sizeEstimate += blockSize;
+
+                    // Soft limit keeps the common-case response small.
+                    if (sizeEstimate > SoftOutgoingMessageSizeLimit)
+                    {
+                        break;
+                    }
                 }
 
-                Block? block = SyncServer.Find(hashes[i]);
-                if (block is null)
-                {
-                    continue;
-                }
-
-                ulong blockSize = MessageSizeEstimator.EstimateSize(block);
-
-                // Cap the message size; return the prefix (bodies match request hashes positionally).
-                if (sizeEstimate + blockSize > HardOutgoingBodiesMessageSizeLimit)
-                {
-                    break;
-                }
-
-                blocks.Add(block);
-                sizeEstimate += blockSize;
-
-                // Soft limit keeps the common-case response small.
-                if (sizeEstimate > SoftOutgoingMessageSizeLimit)
-                {
-                    break;
-                }
+                return Task.FromResult(new BlockBodiesMessage(encodedBodies, count));
             }
-
-            return Task.FromResult(new BlockBodiesMessage(blocks));
+            catch
+            {
+                encodedBodies.Dispose();
+                throw;
+            }
         }
 
         protected void Handle(BlockHeadersMessage message, long size) => _headersRequests.Handle(message.BlockHeaders, size);

@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain
 {
@@ -172,6 +173,16 @@ namespace Nethermind.Blockchain
         Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken);
 
         ChainLevelInfo? FindLevel(ulong number);
+
+        /// <summary>Appends the body of the block with <paramref name="blockHash"/> to <paramref name="destination"/> as one network block body item.</summary>
+        /// <param name="transactionsLength">The payload length of the transactions sequence of the body.</param>
+        /// <returns>Whether the block was found.</returns>
+        bool TryCopyBlockBodyTo(Hash256 blockHash, ArrayPoolList<byte> destination, out int transactionsLength)
+        {
+            Block? block = FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.ExcludeTxHashes);
+            transactionsLength = block is null ? 0 : BlockBodyDecoder.Instance.EncodeTo(destination, block.Body);
+            return block is not null;
+        }
 
         BlockInfo? FindCanonicalBlockInfo(ulong blockNumber);
 

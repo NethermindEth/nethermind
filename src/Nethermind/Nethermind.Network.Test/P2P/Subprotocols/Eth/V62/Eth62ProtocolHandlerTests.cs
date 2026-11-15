@@ -15,6 +15,7 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -34,6 +35,7 @@ using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using NSubstitute;
+using NSubstitute.Core;
 using NUnit.Framework;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
@@ -73,6 +75,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _genesisBlock = Build.A.Block.Genesis.TestObject;
             _syncManager.Head.Returns(_genesisBlock.Header);
             _syncManager.Genesis.Returns(_genesisBlock.Header);
+            _syncManager.TryCopyBlockBodyTo(Arg.Any<Hash256>(), Arg.Any<ArrayPoolList<byte>>(), out Arg.Any<int>()).Returns(CopyBodyOfFoundBlock);
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             _gossipPolicy = Substitute.For<IGossipPolicy>();
             _gossipPolicy.CanGossipBlocks.Returns(true);
@@ -487,10 +490,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _syncManager.Find(Keccak.Zero).Returns((Block?)null);
             _syncManager.Find(TestItem.KeccakA).Returns(block);
 
-            BlockBody?[] bodies = RequestBlockBodies(Keccak.Zero, TestItem.KeccakA);
-
-            Assert.That(bodies, Has.Length.EqualTo(1));
-            Assert.That(bodies[0], Is.SameAs(block.Body));
+            Assert.That(RequestBlockBodies(Keccak.Zero, TestItem.KeccakA), Is.EqualTo(EncodeBodies(block)));
         }
 
         [Test]
@@ -502,14 +502,42 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _syncManager.Find(TestItem.KeccakB).Returns((Block?)null);
             _syncManager.Find(TestItem.KeccakC).Returns(thirdBlock);
 
-            BlockBody?[] bodies = RequestBlockBodies(TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC);
+            Assert.That(RequestBlockBodies(TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC), Is.EqualTo(EncodeBodies(firstBlock, thirdBlock)));
+        }
 
-            Assert.That(bodies, Has.Length.EqualTo(2));
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(bodies[0], Is.SameAs(firstBlock.Body));
-                Assert.That(bodies[1], Is.SameAs(thirdBlock.Body));
-            }
+        [Test]
+        public void Block_bodies_reply_matches_the_encoding_of_every_body_shape()
+        {
+            Transaction[] transactions =
+            [
+                Build.A.Transaction.WithNonce(0).WithData([1, 2, 3]).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                Build.A.Transaction.WithNonce(1).WithType(TxType.AccessList).WithAccessList(new AccessList.Builder().AddAddress(TestItem.AddressB).AddStorage(1).Build()).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                Build.A.Transaction.WithNonce(2).WithType(TxType.EIP1559).WithMaxFeePerGas(10).WithMaxPriorityFeePerGas(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                Build.A.Transaction.WithNonce(3).WithShardBlobTxTypeAndFields(2, isMempoolTx: false).WithMaxFeePerGas(10).WithMaxPriorityFeePerGas(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                Build.A.Transaction.WithNonce(4).WithType(TxType.SetCode).WithAuthorizationCodeIfAuthorizationListTx().WithMaxFeePerGas(10).WithMaxPriorityFeePerGas(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+            ];
+            Block[] blocks =
+            [
+                Build.A.Block.WithNonce(1).TestObject,
+                Build.A.Block.WithNonce(2).WithTransactions(transactions[..3]).WithUncles(Build.A.BlockHeader.WithExtraData([7]).TestObject).TestObject,
+                Build.A.Block.WithNonce(3).WithTransactions(transactions[..1]).WithWithdrawals(0).TestObject,
+                Build.A.Block.WithNonce(4).WithTransactions(transactions).WithWithdrawals(16).TestObject,
+            ];
+            Hash256[] hashes = [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC, TestItem.KeccakD];
+            for (int i = 0; i < blocks.Length; i++) _syncManager.Find(hashes[i]).Returns(blocks[i]);
+
+            Assert.That(RequestBlockBodies(hashes), Is.EqualTo(EncodeBodies(blocks)));
+        }
+
+        [Test]
+        public void Block_bodies_reply_leaves_out_the_body_that_crosses_the_hard_limit()
+        {
+            Block first = Build.A.Block.WithNonce(1).WithTransactions(Build.A.Transaction.WithData(new byte[1_990_000]).TestObject).TestObject;
+            Block second = Build.A.Block.WithNonce(2).WithTransactions(Build.A.Transaction.WithData(new byte[14_000_000]).TestObject).TestObject;
+            _syncManager.Find(TestItem.KeccakA).Returns(first);
+            _syncManager.Find(TestItem.KeccakB).Returns(second);
+
+            Assert.That(RequestBlockBodies(TestItem.KeccakA, TestItem.KeccakB), Is.EqualTo(EncodeBodies(first)));
         }
 
         [Test]
@@ -540,11 +568,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             HandleZeroMessage(msg, Eth62MessageCode.GetBlockBodies);
 
             Assert.That(response, Is.Not.Null);
-            BlockBody[]? bodies = response.Bodies.Bodies;
-            Assert.That(bodies, Has.Length.EqualTo(SoftLimitTestHelper.CountBlocksWithinSoftLimit(blocks)));
-            foreach (BlockBody responseBody in bodies)
+            int expectedCount = SoftLimitTestHelper.CountBlocksWithinSoftLimit(blocks);
+            using (Assert.EnterMultipleScope())
             {
-                Assert.That(responseBody, Is.Not.Null);
+                Assert.That(response.EncodedBodyCount, Is.EqualTo(expectedCount));
+                Assert.That(Serialize(response), Is.EqualTo(EncodeBodies([.. blocks.Take(expectedCount)])));
             }
             response.Dispose();
         }
@@ -1185,7 +1213,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         private void HandleZeroMessage(IByteBuffer msg, int messageCode) =>
             _handler.HandleMessage(new NettyBufferPacket(msg) { PacketType = (byte)messageCode });
 
-        private BlockBody?[] RequestBlockBodies(params Hash256[] hashes)
+        private byte[] RequestBlockBodies(params Hash256[] hashes)
         {
             using GetBlockBodiesMessage msg = new(hashes);
             BlockBodiesMessage? response = null;
@@ -1196,11 +1224,29 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             HandleZeroMessage(msg, Eth62MessageCode.GetBlockBodies);
 
             Assert.That(response, Is.Not.Null);
-#pragma warning disable NUnit2045 // The nullable value must be checked before accessing its contents.
-            Assert.That(response!.Bodies, Is.Not.Null);
-#pragma warning restore NUnit2045
-            Assert.That(response.Bodies!.Bodies, Is.Not.Null);
-            return response.Bodies.Bodies!;
+            return Serialize(response!);
+        }
+
+        private bool CopyBodyOfFoundBlock(CallInfo call)
+        {
+            Block? block = _syncManager.Find(call.ArgAt<Hash256>(0));
+            if (block is null) return false;
+            call[2] = BlockBodyDecoder.Instance.EncodeTo(call.ArgAt<ArrayPoolList<byte>>(1), block.Body);
+            return true;
+        }
+
+        private static byte[] EncodeBodies(params Block[] blocks)
+        {
+            using BlockBodiesMessage message = new(blocks);
+            return Serialize(message);
+        }
+
+        private static byte[] Serialize(BlockBodiesMessage message)
+        {
+            BlockBodiesMessageSerializer serializer = new();
+            byte[] bytes = new byte[serializer.GetLength(message)];
+            serializer.Serialize(bytes, message);
+            return bytes;
         }
 
         [Test]

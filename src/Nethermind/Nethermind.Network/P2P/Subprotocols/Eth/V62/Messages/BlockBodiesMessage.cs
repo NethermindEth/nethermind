@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Network.P2P.Messages;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
@@ -31,12 +32,25 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public BlockBodiesMessage(BlockBody?[] bodies) => Bodies = new OwnedBlockBodies(bodies);
 
+        /// <summary>Creates a message from <paramref name="count"/> bodies already encoded back to back, and takes ownership of the buffer.</summary>
+        public BlockBodiesMessage(ArrayPoolList<byte> encodedBodies, int count)
+        {
+            EncodedBodies = encodedBodies;
+            EncodedBodyCount = count;
+        }
+
+        /// <summary>The bodies in their network encoding, back to back, when the message was built for sending.</summary>
+        public ArrayPoolList<byte>? EncodedBodies { get; }
+
+        public int EncodedBodyCount { get; }
+
         public override void Dispose()
         {
             base.Dispose();
             Bodies?.Dispose();
+            EncodedBodies?.Dispose();
         }
 
-        public override string ToString() => $"{nameof(BlockBodiesMessage)}({Bodies?.Bodies?.Length ?? 0})";
+        public override string ToString() => $"{nameof(BlockBodiesMessage)}({Bodies?.Bodies?.Length ?? EncodedBodyCount})";
     }
 }

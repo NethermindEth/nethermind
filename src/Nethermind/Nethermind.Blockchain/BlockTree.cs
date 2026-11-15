@@ -1796,6 +1796,17 @@ namespace Nethermind.Blockchain
 
         public event EventHandler<FinalizeEventArgs>? BlocksFinalized;
 
+        /// <inheritdoc/>
+        /// <remarks>Reads the stored body without decoding the block, and does not cache it.</remarks>
+        public bool TryCopyBlockBodyTo(Hash256 blockHash, ArrayPoolList<byte> destination, out int transactionsLength)
+        {
+            transactionsLength = 0;
+            if (blockHash == Keccak.Zero) return false;
+
+            ulong? blockNumber = _headerStore.GetBlockNumber(blockHash);
+            return blockNumber is not null && _blockStore.TryCopyBodyTo(blockNumber.Value, blockHash, destination, out transactionsLength);
+        }
+
         public Block? FindBlock(Hash256? blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null)
         {
             if (blockHash is null || blockHash == Keccak.Zero)

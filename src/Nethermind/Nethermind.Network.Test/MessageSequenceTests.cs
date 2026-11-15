@@ -74,6 +74,14 @@ public class MessageSequenceTests
 
         yield return new TestCaseData((Action)(static () =>
         {
+            ArrayPoolList<byte> encoded = new(0);
+            BlockBodyDecoder.Instance.EncodeTo(encoded, new BlockBody([Build.A.Transaction.Signed().TestObject], []));
+            using BlockBodiesMessage bodies = new(encoded, 1);
+            SerializeIntoLongerDestination(new BlockBodiesMessageSerializer(), bodies);
+        })).SetName("EncodedBlockBodies");
+
+        yield return new TestCaseData((Action)(static () =>
+        {
             using ReceiptsMessage receipts = new(new ArrayPoolList<TxReceipt[]>(1) { new[] { Build.A.Receipt.WithAllFieldsFilled.TestObject } });
             SerializeIntoLongerDestination(new ReceiptsMessageSerializer(MainnetSpecProvider.Instance), receipts);
         })).SetName("Receipts");

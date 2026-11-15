@@ -8,6 +8,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 {
     public static class MessageSizeEstimator
     {
+        private const ulong HeaderSizeEstimate = 512; // rough knowledge about the size of a header
+
         public static ulong EstimateSize(BlockHeader blockHeader)
         {
             if (blockHeader is null)
@@ -15,8 +17,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 return 0;
             }
 
-            return 512; // rough knowledge about the size of a header
+            return HeaderSizeEstimate;
         }
+
+        /// <summary>Returns the size estimate of a block whose transactions sequence has a payload of <paramref name="transactionsLength"/> bytes.</summary>
+        public static ulong EstimateBlockSize(int transactionsLength) => HeaderSizeEstimate + (ulong)transactionsLength;
 
         public static ulong EstimateSize(Transaction tx)
         {

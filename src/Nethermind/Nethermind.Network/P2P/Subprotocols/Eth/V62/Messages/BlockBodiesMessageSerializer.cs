@@ -18,6 +18,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         {
             RlpWriter writer = RlpWriter.ContentWriter(destination);
             RlpSequence sequence = writer.StartSequence(MessageSequence.GetContentLength(destination.Length));
+            if (message.EncodedBodies is not null)
+            {
+                writer.WriteEncoded(message.EncodedBodies.AsSpan());
+                writer.EndSequence(sequence);
+                return writer.Length;
+            }
+
             foreach (BlockBody? body in message.Bodies.Bodies)
             {
                 if (body is null)
@@ -38,6 +45,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         private int GetContentLength(BlockBodiesMessage message)
         {
+            if (message.EncodedBodies is not null)
+            {
+                return message.EncodedBodies.Count;
+            }
+
             int length = 0;
             foreach (BlockBody? body in message.Bodies.Bodies)
             {

@@ -54,6 +54,24 @@ public class BlockTreeTests
     }
 
     [Test]
+    public void TryCopyBlockBodyTo_writes_the_body_of_a_known_block_and_skips_unknown_hashes()
+    {
+        BlockTree tree = Build.A.BlockTree().OfChainLength(3).TestObject;
+        Block block = tree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical)!;
+        using ArrayPoolList<byte> destination = new(0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.TryCopyBlockBodyTo(block.Hash!, destination, out int transactionsLength), Is.True);
+            Assert.That(destination.AsSpan().ToArray(), Is.EqualTo(BlockBodyDecoder.Instance.Encode(block.Body)));
+            Assert.That(transactionsLength, Is.Zero);
+            Assert.That(tree.TryCopyBlockBodyTo(TestItem.KeccakA, destination, out _), Is.False);
+            Assert.That(tree.TryCopyBlockBodyTo(Keccak.Zero, destination, out _), Is.False);
+            Assert.That(destination.Count, Is.EqualTo(BlockBodyDecoder.Instance.Encode(block.Body).Length));
+        }
+    }
+
+    [Test]
     public void IsKnownBlock_does_not_accept_an_unknown_hash_above_the_progress_bound()
     {
         BlockTree tree = Build.A.BlockTree().OfChainLength(3).TestObject;

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Serialization.FluentRlp;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -208,7 +209,24 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
             return;
         }
 
+        Encode(ref writer, body, GetBodyComponentLength(body));
+    }
+
+    /// <summary>Appends the encoded <paramref name="body"/> to <paramref name="destination"/>.</summary>
+    /// <returns>The payload length of the transactions sequence of the body.</returns>
+    public int EncodeTo(ArrayPoolList<byte> destination, BlockBody body)
+    {
         (int Txs, int Uncles, int? Withdrawals) lengths = GetBodyComponentLength(body);
+        using ArrayPoolSpan<byte> buffer = new(Rlp.LengthOfSequence(GetBodyLength(lengths)));
+        RlpWriter writer = RlpWriter.ContentWriter(buffer);
+        Encode(ref writer, body, lengths);
+        Rlp.CheckLength(in writer, buffer.Length);
+        destination.AddRange(buffer);
+        return lengths.Txs;
+    }
+
+    private void Encode(ref RlpWriter writer, BlockBody body, (int Txs, int Uncles, int? Withdrawals) lengths)
+    {
         RlpSequence sequence = writer.StartSequence(GetBodyLength(lengths));
         RlpSequence txs = writer.StartSequence(lengths.Txs);
         foreach (Transaction? txn in body.Transactions)
