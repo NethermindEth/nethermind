@@ -39,18 +39,25 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
                 {
                     RlpSequence accountSequence = writer.StartSequence(accountSlotsLengths[i]);
 
-                    ReadOnlySpan<PathWithStorageSlot> accountSlots = slotsSpan[i].AsSpan();
-
-                    for (int j = 0; j < accountSlots.Length; j++)
+                    if (slotsSpan[i] is EncodedSnapEntries<PathWithStorageSlot> encoded)
                     {
-                        PathWithStorageSlot slot = accountSlots[j];
+                        writer.WriteEncoded(encoded.Encoded);
+                    }
+                    else
+                    {
+                        ReadOnlySpan<PathWithStorageSlot> accountSlots = slotsSpan[i].AsSpan();
 
-                        int itemLength = Rlp.LengthOf(slot.Path) + Rlp.LengthOf(slot.SlotRlpValue);
+                        for (int j = 0; j < accountSlots.Length; j++)
+                        {
+                            PathWithStorageSlot slot = accountSlots[j];
 
-                        RlpSequence slotSequence = writer.StartSequence(itemLength);
-                        writer.Encode(slot.Path);
-                        writer.Encode(slot.SlotRlpValue);
-                        writer.EndSequence(slotSequence);
+                            int itemLength = Rlp.LengthOf(slot.Path) + Rlp.LengthOf(slot.SlotRlpValue);
+
+                            RlpSequence slotSequence = writer.StartSequence(itemLength);
+                            writer.Encode(slot.Path);
+                            writer.Encode(slot.SlotRlpValue);
+                            writer.EndSequence(slotSequence);
+                        }
                     }
 
                     writer.EndSequence(accountSequence);
@@ -130,12 +137,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
                     {
                         int accountSlotsLength = 0;
 
-                        ReadOnlySpan<PathWithStorageSlot> accountSlots = slotsSpan[i].AsSpan();
-                        for (int j = 0; j < accountSlots.Length; j++)
+                        if (slotsSpan[i] is EncodedSnapEntries<PathWithStorageSlot> encoded)
                         {
-                            PathWithStorageSlot slot = accountSlots[j];
-                            int slotLength = Rlp.LengthOf(slot.Path) + Rlp.LengthOf(slot.SlotRlpValue);
-                            accountSlotsLength += Rlp.LengthOfSequence(slotLength);
+                            accountSlotsLength = encoded.Encoded.Length;
+                        }
+                        else
+                        {
+                            ReadOnlySpan<PathWithStorageSlot> accountSlots = slotsSpan[i].AsSpan();
+                            for (int j = 0; j < accountSlots.Length; j++)
+                            {
+                                PathWithStorageSlot slot = accountSlots[j];
+                                int slotLength = Rlp.LengthOf(slot.Path) + Rlp.LengthOf(slot.SlotRlpValue);
+                                accountSlotsLength += Rlp.LengthOfSequence(slotLength);
+                            }
                         }
 
                         accountSlotsLengths[i] = accountSlotsLength;

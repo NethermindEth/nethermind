@@ -154,7 +154,7 @@ public class SnapFlatStateServer(
                 accounts,
                 cancellationToken);
 
-            ArrayPoolList<PathWithAccount> nodes = accounts.Accounts;
+            EncodedSnapEntries<PathWithAccount> nodes = accounts.Accounts;
             return (nodes, proofs);
         }
     }

@@ -17,6 +17,8 @@ using Nethermind.Core.Test.Encoding;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Network;
+using Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
@@ -517,6 +519,112 @@ public class SnapStateServerTests
         accountProofs.Dispose();
         proofs?.Dispose();
         storageSlots.DisposeRecursive();
+    }
+
+    private static readonly Account[] AccountShapes =
+    [
+        new(0, 1),
+        new(0x7f, 0x80),
+        new(ulong.MaxValue, UInt256.MaxValue),
+        new(5, 10, TestItem.KeccakA, Keccak.OfAnEmptyString),
+        new(5, 10, Keccak.EmptyTreeHash, TestItem.KeccakB),
+        new(5, 10, TestItem.KeccakA, TestItem.KeccakB)
+    ];
+
+    [Test]
+    public void AccountCollector_CountsPathAndSlimAccountBytes([ValueSource(nameof(AccountShapes))] Account account)
+    {
+        AccountCollector collector = new();
+        using EncodedSnapEntries<PathWithAccount> accounts = collector.Accounts;
+
+        int size = collector.Collect(TestItem.KeccakC.ValueHash256, AccountDecoder.Instance.Encode(account));
+
+        Assert.That(size, Is.EqualTo(Hash256.Size + AccountDecoder.Slim.GetLength(account)));
+    }
+
+    [Test]
+    public void GetAccountRanges_SerializesAsDecodedAccounts([Values(1, 2000, 10_000_000)] int byteLimit)
+    {
+        using ISnapServerContext context = CreateContext();
+        List<PathWithAccount> expected = [];
+        using (IWriteBatch batch = context.BeginWriteBatch())
+        {
+            for (int i = 0; i < 100; i++)
+            {
+                Hash256 path = Keccak.Compute(i.ToBigEndianByteArray());
+                batch.SetAccount(path, AccountShapes[i % AccountShapes.Length]);
+                expected.Add(new PathWithAccount(path, AccountShapes[i % AccountShapes.Length]));
+            }
+        }
+
+        expected.Sort(static (a, b) => a.Path.CompareTo(b.Path));
+        (IOwnedReadOnlyList<PathWithAccount> served, IByteArrayList proofs) =
+            context.Server.GetAccountRanges(context.RootHash, Keccak.Zero, null, byteLimit, CancellationToken.None);
+        using IByteArrayList servedProofs = proofs;
+        using AccountRangeMessage servedMessage = new() { RequestId = 1, PathsWithAccounts = served, Proofs = EmptyByteArrayList.Instance };
+        using AccountRangeMessage decodedMessage = new()
+        {
+            RequestId = 1,
+            PathsWithAccounts = new ArrayPoolList<PathWithAccount>(served.Count, expected.Take(served.Count)),
+            Proofs = EmptyByteArrayList.Instance
+        };
+        AccountRangeMessageSerializer serializer = new();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(served, Is.Not.Empty);
+            Assert.That(Serialize(serializer, servedMessage), Is.EqualTo(Serialize(serializer, decodedMessage)));
+            Assert.That(served.Select(static a => (a.Path, a.Account)), Is.EqualTo(decodedMessage.PathsWithAccounts.Select(static a => (a.Path, a.Account))));
+        }
+    }
+
+    [Test]
+    public void GetStorageRanges_SerializesAsDecodedSlots([Values(1, 2000, 10_000_000)] int byteLimit)
+    {
+        using ISnapServerContext context = CreateContext();
+        Hash256[] accountPaths = [TestItem.Tree.AccountAddress0, TestItem.KeccakH];
+        List<PathWithStorageSlot>[] expected = [[], []];
+        using (IWriteBatch batch = context.BeginWriteBatch())
+        {
+            for (int account = 0; account < accountPaths.Length; account++)
+            {
+                for (int i = 0; i < 50; i++)
+                {
+                    Hash256 slot = Keccak.Compute((account * 50 + i).ToBigEndianByteArray());
+                    byte[] value = slot.Bytes[..(i % Hash256.Size + 1)].ToArray();
+                    value[0] = i % 2 == 0 ? (byte)0x01 : (byte)0x80;
+                    batch.SetSlot(accountPaths[account], slot, value);
+                    expected[account].Add(new PathWithStorageSlot(slot, Rlp.Encode(value)));
+                }
+
+                batch.SetAccount(accountPaths[account], Build.An.Account.WithBalance(1).TestObject);
+                expected[account].Sort(static (a, b) => a.Path.CompareTo(b.Path));
+            }
+        }
+
+        PathWithAccount[] accounts = [.. accountPaths.Select(static path => new PathWithAccount(path, null))];
+        (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> served, IByteArrayList? proofs) =
+            context.Server.GetStorageRanges(context.RootHash, accounts, null, null, byteLimit, CancellationToken.None);
+        using IByteArrayList? servedProofs = proofs;
+        using StorageRangeMessage servedMessage = new() { RequestId = 1, Slots = served, Proofs = EmptyByteArrayList.Instance };
+        ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>> decoded = new(served.Count);
+        for (int i = 0; i < served.Count; i++) decoded.Add(new ArrayPoolList<PathWithStorageSlot>(served[i].Count, expected[i].Take(served[i].Count)));
+        using StorageRangeMessage decodedMessage = new() { RequestId = 1, Slots = decoded, Proofs = EmptyByteArrayList.Instance };
+        StorageRangesMessageSerializer serializer = new();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(served, Is.Not.Empty);
+            Assert.That(Serialize(serializer, servedMessage), Is.EqualTo(Serialize(serializer, decodedMessage)));
+            Assert.That(served.SelectMany(static s => s).Select(static s => (s.Path, s.SlotRlpValue)),
+                Is.EqualTo(decoded.SelectMany(static s => s).Select(static s => (s.Path, s.SlotRlpValue))));
+        }
+    }
+
+    private static byte[] Serialize<T>(IMessageSerializer<T> serializer, T message) where T : MessageBase
+    {
+        byte[] bytes = new byte[serializer.GetLength(message)];
+        return bytes[..serializer.Serialize(bytes, message)];
     }
 
     [Test]

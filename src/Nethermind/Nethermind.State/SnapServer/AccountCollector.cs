@@ -3,7 +3,6 @@
 
 using System;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
@@ -12,22 +11,56 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.SnapServer;
 
+/// <summary>Collects account leaves as the encoded <c>[path, slim account]</c> entries of an account range response.</summary>
 public class AccountCollector : RangeQueryVisitor.ILeafValueCollector
 {
-    public ArrayPoolList<PathWithAccount> Accounts { get; } = new(0);
+    public EncodedSnapEntries<PathWithAccount> Accounts { get; } = new(DecodeEntry);
 
     public int Collect(in ValueHash256 path, ReadOnlySpan<byte> value)
     {
         if (value.IsEmpty)
         {
-            Accounts.Add(new PathWithAccount(path, null));
+            RlpWriter empty = RlpWriter.ContentWriter(Accounts.Add(Rlp.LengthOfSequence(Rlp.LengthOfKeccakRlp + 1)));
+            RlpSequence emptyEntry = empty.StartSequence(Rlp.LengthOfKeccakRlp + 1);
+            empty.Encode(path);
+            empty.EncodeNullObject();
+            empty.EndSequence(emptyEntry);
             return 32 + 1;
         }
 
-        RlpReader ctx = new(value);
-        Account accnt = AccountDecoder.Instance.Decode(ref ctx, RlpBehaviors.TrustedInput)
-            ?? throw new TrieException("An account leaf must contain a decodable account value.");
-        Accounts.Add(new PathWithAccount(path, accnt));
-        return 32 + AccountDecoder.Slim.GetLength(accnt);
+        if (!AccountDecoder.Instance.TryDecodeStruct<OffFlag>(value, out AccountStruct account))
+        {
+            throw new TrieException("An account leaf must contain a decodable account value.");
+        }
+
+        int contentLength = Rlp.LengthOf(account.Nonce)
+            + Rlp.LengthOf(account.Balance)
+            + (account.HasStorage ? Rlp.LengthOfKeccakRlp : 1)
+            + (account.HasCode ? Rlp.LengthOfKeccakRlp : 1);
+        int accountLength = Rlp.LengthOfSequence(contentLength);
+
+        RlpWriter writer = RlpWriter.ContentWriter(Accounts.Add(Rlp.LengthOfSequence(Rlp.LengthOfKeccakRlp + accountLength)));
+        RlpSequence entry = writer.StartSequence(Rlp.LengthOfKeccakRlp + accountLength);
+        writer.Encode(path);
+        RlpSequence slimAccount = writer.StartSequence(contentLength);
+        writer.Encode(account.Nonce);
+        writer.Encode(account.Balance);
+        if (account.HasStorage) writer.Encode(account.StorageRoot);
+        else writer.EncodeEmptyByteArray();
+        if (account.HasCode) writer.Encode(account.CodeHash);
+        else writer.EncodeEmptyByteArray();
+        writer.EndSequence(slimAccount);
+        writer.EndSequence(entry);
+
+        return 32 + accountLength;
+    }
+
+    private static PathWithAccount DecodeEntry(scoped ref RlpReader reader)
+    {
+        RlpReader entry = reader.EnterSequence(out int length);
+        ValueHash256 path = entry.DecodeValueKeccakNonNull();
+        Account? account = entry.IsNextItemEmptyList() ? null : AccountDecoder.Slim.Decode(ref entry, RlpBehaviors.TrustedInput);
+        reader.ExitSequence(entry, length);
+        return new PathWithAccount(path, account);
     }
 }

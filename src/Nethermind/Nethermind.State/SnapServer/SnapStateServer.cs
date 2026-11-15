@@ -157,7 +157,7 @@ public class SnapStateServer : ISnapStateServer
             accounts,
             cancellationToken);
 
-        ArrayPoolList<PathWithAccount> nodes = accounts.Accounts;
+        EncodedSnapEntries<PathWithAccount> nodes = accounts.Accounts;
         return (nodes, new ByteArrayListAdapter(proofs));
     }
 
