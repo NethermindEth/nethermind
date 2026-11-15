@@ -493,6 +493,143 @@ public class HeaderDecoderTests
         }
     }
 
+    public static IEnumerable<TestCaseData> LinkageHeaderSource()
+    {
+        yield return new TestCaseData(Build.A.BlockHeader.WithNumber(7).WithParentHash(TestItem.KeccakC).TestObject).SetName("Legacy header");
+        yield return new TestCaseData(Build.A.BlockHeader.WithNumber(ulong.MaxValue).WithBaseFee(7).TestObject).SetName("Header with base fee");
+        yield return new TestCaseData(FullHeader()).SetName("Header with every optional field");
+        foreach (TestCaseData data in OptionalHashRoundtripSource()) yield return data;
+    }
+
+    [TestCaseSource(nameof(LinkageHeaderSource))]
+    public void Linkage_decode_keeps_the_hash_number_and_parent_hash_of_the_full_decode(BlockHeader header)
+    {
+        byte[] rlp = Rlp.Encode(header);
+        RlpReader full = new(rlp);
+        RlpReader linkage = new(rlp);
+
+        BlockHeader expected = new HeaderDecoder().Decode(ref full)!;
+        BlockHeader actual = new HeaderDecoder().DecodeLinkage(ref linkage)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.Hash, Is.EqualTo(expected.Hash));
+            Assert.That(actual.Number, Is.EqualTo(expected.Number));
+            Assert.That(actual.ParentHash, Is.EqualTo(expected.ParentHash));
+            Assert.That(linkage.BytesRead, Is.EqualTo(full.BytesRead));
+        }
+    }
+
+    [Test]
+    public void Linkage_decode_reads_an_empty_sequence_as_no_header()
+    {
+        RlpReader reader = new([0xc0]);
+        Assert.That(new HeaderDecoder().DecodeLinkage(ref reader), Is.Null);
+    }
+
+    public enum LinkageDecoder { SpecLess, Eip7668Inactive, Eip7668Active }
+
+    [Test]
+    public void Linkage_decode_rejects_exactly_what_the_full_decode_rejects([Values] LinkageDecoder kind, [Values(0x00, 0x01, 0x7f, 0x80, 0x81, 0xa0, 0xb8, 0xc0, 0xf8, 0xff)] int value)
+    {
+        HeaderDecoder decoder = kind switch
+        {
+            LinkageDecoder.SpecLess => new HeaderDecoder(),
+            LinkageDecoder.Eip7668Inactive => new HeaderDecoder(new TestSingleReleaseSpecProvider(Bogota.Instance)),
+            _ => new HeaderDecoder(new TestSingleReleaseSpecProvider(new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = true }))
+        };
+        byte[] valid = Rlp.Encode(FullHeader());
+        AssertLinkageDecodeMatches(decoder, valid);
+
+        for (int position = 0; position < valid.Length; position++)
+        {
+            byte[] mutated = (byte[])valid.Clone();
+            mutated[position] = (byte)value;
+            AssertLinkageDecodeMatches(decoder, mutated);
+            AssertLinkageDecodeMatches(decoder, valid.AsSpan(0, position).ToArray());
+        }
+
+        for (int field = 0; field < 21; field++)
+        {
+            foreach (byte[] crafted in (byte[][])[[0x80], [0x00], [0x81, 0x00], [0x82, 0x00, 0x01], [0xc0], [(byte)value], [0xa0, .. new byte[33]], [0xa1, .. new byte[33]]])
+                AssertLinkageDecodeMatches(decoder, HeaderRlpTestHelper.ReplaceFieldEncoding(valid, field, crafted));
+        }
+
+        AssertLinkageDecodeMatches(decoder, AppendField(valid, [(byte)value]));
+        AssertLinkageDecodeMatches(decoder, [.. valid, (byte)value]);
+    }
+
+    private static void AssertLinkageDecodeMatches(HeaderDecoder decoder, byte[] rlp)
+    {
+        RlpReader full = new(rlp);
+        RlpReader linkage = new(rlp);
+        BlockHeader? expected = null;
+        BlockHeader? actual = null;
+        Type? expectedError = null;
+        Type? actualError = null;
+        try
+        {
+            expected = decoder.Decode(ref full);
+        }
+        catch (Exception e)
+        {
+            expectedError = e.GetType();
+        }
+
+        try
+        {
+            actual = decoder.DecodeLinkage(ref linkage);
+        }
+        catch (Exception e)
+        {
+            actualError = e.GetType();
+        }
+
+        string input = rlp.ToHexString();
+        Assert.That(actualError, Is.EqualTo(expectedError), input);
+        if (expectedError is not null) return;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual is null, Is.EqualTo(expected is null), input);
+            Assert.That(actual?.Hash, Is.EqualTo(expected?.Hash), input);
+            Assert.That(actual?.Number, Is.EqualTo(expected?.Number), input);
+            Assert.That(actual?.ParentHash, Is.EqualTo(expected?.ParentHash), input);
+            Assert.That(linkage.BytesRead, Is.EqualTo(full.BytesRead), input);
+        }
+    }
+
+    private static byte[] AppendField(byte[] headerRlp, byte[] field)
+    {
+        RlpReader outer = new(headerRlp);
+        RlpReader reader = outer.EnterSequence(out int itemLength);
+        int contentLength = reader.Remaining;
+        int craftedContentLength = contentLength + field.Length;
+        byte[] result = new byte[Rlp.LengthOfSequence(craftedContentLength)];
+        RlpWriter writer = RlpWriter.ContentWriter(result);
+        writer.StartSequence(craftedContentLength);
+        int start = writer.Length;
+        headerRlp.AsSpan(itemLength - contentLength, contentLength).CopyTo(result.AsSpan(start));
+        field.CopyTo(result.AsSpan(start + contentLength));
+        return result;
+    }
+
+    private static BlockHeader FullHeader() => Build.A.BlockHeader
+        .WithNumber(1_000_000)
+        .WithParentHash(TestItem.KeccakA)
+        .WithDifficulty(0)
+        .WithExtraData([1, 2, 3])
+        .WithTimestamp(1_700_000_000)
+        .WithBaseFee(7)
+        .WithWithdrawalsRoot(TestItem.KeccakB)
+        .WithBlobGasUsed(131072)
+        .WithExcessBlobGas(0)
+        .WithParentBeaconBlockRoot(TestItem.KeccakC)
+        .WithRequestsHash(TestItem.KeccakD)
+        .WithBlockAccessListHash(TestItem.KeccakE)
+        .WithSlotNumber(42)
+        .TestObject;
+
     private static BlockHeader DecodeHeader(byte[] rlp) =>
         Rlp.Decode<BlockHeader>(rlp) ?? throw new InvalidOperationException("Header decoding returned null.");
 

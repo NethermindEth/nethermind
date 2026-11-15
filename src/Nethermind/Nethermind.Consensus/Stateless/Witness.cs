@@ -29,7 +29,7 @@ public class Witness : IDisposable
     }
 }
 
-public static class WitnessExtensions
+public static partial class WitnessExtensions
 {
     // Resolved per use, not cached at static-init: a consensus plugin (e.g. AuRa) may register its
     // header decoder after this type is first touched, and caching would pin the base decoder.
@@ -76,7 +76,7 @@ public static class WitnessExtensions
                 {
                     RlpReader reader = new(headersSpan[i]);
 
-                    decodedHeaders[i] = Decoder.Decode(ref reader)
+                    decodedHeaders[i] = DecodeHeader(ref reader, isParent: i + 1 == headersSpan.Length)
                         ?? throw new InvalidOperationException($"No header decoded at index {i}");
                     reader.CheckEnd();
 
@@ -100,4 +100,6 @@ public static class WitnessExtensions
             }
         }
     }
+
+    private static partial BlockHeader? DecodeHeader(ref RlpReader reader, bool isParent);
 }

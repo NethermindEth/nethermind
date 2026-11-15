@@ -11,7 +11,9 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Serialization.FluentRlp;
@@ -53,6 +55,65 @@ public class WitnessTests
             using ArrayPoolList<BlockHeader> decoded = witness.DecodeHeaders();
             Assert.That(decoded.Count, Is.EqualTo(count));
             Assert.That(decoded[^1].Hash, Is.EqualTo(parent));
+        }
+    }
+
+    [Test]
+    public void Malformed_header_is_rejected_wherever_it_lies_in_the_chain([Values(0, 1, 2)] int malformed)
+    {
+        ArrayPoolList<byte[]> encoded = new(3);
+        Hash256 parent = Keccak.Zero;
+        for (int i = 0; i < 3; i++)
+        {
+            byte[] bytes = Rlp.Encode(Build.A.BlockHeader.WithNumber(i).WithParentHash(parent).TestObject);
+            if (i == malformed) bytes = HeaderRlpTestHelper.ReplaceFieldEncoding(bytes, 7, [0x81, 0x00]);
+            encoded.Add(bytes);
+            parent = Keccak.Compute(bytes);
+        }
+
+        using Witness witness = new()
+        {
+            Headers = encoded,
+            Codes = IOwnedReadOnlyList<byte[]>.Empty,
+            State = IOwnedReadOnlyList<byte[]>.Empty,
+            Keys = IOwnedReadOnlyList<byte[]>.Empty
+        };
+
+        Assert.That(() => witness.DecodeHeaders(), Throws.TypeOf<RlpReaderException>());
+    }
+
+    [Test]
+    public void Decoded_headers_keep_the_parent_whole_and_every_hash_number_and_parent_hash([Values(1, 3)] int count)
+    {
+        ArrayPoolList<byte[]> encoded = new(count);
+        Hash256 parent = Keccak.Zero;
+        for (int i = 0; i < count; i++)
+        {
+            byte[] bytes = Rlp.Encode(Build.A.BlockHeader.WithNumber(i + 10).WithParentHash(parent).WithGasLimit(30_000_000).WithTimestamp(12 * (ulong)i).TestObject);
+            encoded.Add(bytes);
+            parent = Keccak.Compute(bytes);
+        }
+
+        using Witness witness = new()
+        {
+            Headers = encoded,
+            Codes = IOwnedReadOnlyList<byte[]>.Empty,
+            State = IOwnedReadOnlyList<byte[]>.Empty,
+            Keys = IOwnedReadOnlyList<byte[]>.Empty
+        };
+        using ArrayPoolList<BlockHeader> decoded = witness.DecodeHeaders();
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < count; i++)
+            {
+                BlockHeader full = Rlp.Decode<BlockHeader>(encoded[i])!;
+                Assert.That(decoded[i].Hash, Is.EqualTo(full.Hash));
+                Assert.That(decoded[i].Number, Is.EqualTo(full.Number));
+                Assert.That(decoded[i].ParentHash, Is.EqualTo(full.ParentHash));
+            }
+
+            Assert.That(decoded[^1], Is.EqualTo(Rlp.Decode<BlockHeader>(encoded[^1])).UsingBlockHeaderComparer());
         }
     }
 

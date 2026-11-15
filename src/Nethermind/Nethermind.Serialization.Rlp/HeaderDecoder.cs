@@ -84,6 +84,69 @@ namespace Nethermind.Serialization.Rlp
             return blockHeader;
         }
 
+        /// <summary>Checks a header exactly as <see cref="RlpDecoder{T}.Decode"/> does, keeping only its hash, number and parent hash.</summary>
+        public BlockHeader? DecodeLinkage(ref RlpReader reader)
+        {
+            try
+            {
+                return DecodeLinkageInternal(ref reader);
+            }
+            catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
+            {
+                ThrowRlpException(e);
+                return null;
+            }
+        }
+
+        private BlockHeader? DecodeLinkageInternal(ref RlpReader reader)
+        {
+            if (GetType() != typeof(HeaderDecoder)) return DecodeInternal(ref reader);
+
+            if (reader.TryReadEmptySequence()) return null;
+
+            RlpReader fields = reader.EnterSequence<OnFlag>(out int itemLength);
+            RlpReader item = reader;
+            ReadOnlySpan<byte> headerRlp = item.ReadRaw(itemLength);
+
+            ValueHash256 parentHash = fields.DecodeValueKeccakNonNull();
+            fields.DecodeValueKeccakNonNull();
+            fields.DecodeAddressStructRefNonNull(out _);
+            fields.DecodeValueKeccakNonNull();
+            fields.DecodeValueKeccakNonNull();
+            fields.DecodeValueKeccakNonNull();
+            bool zeroLengthBloom = _specProvider is null
+                ? fields.ReadBytes(Bloom.ByteLength).IsEmpty
+                : fields.DecodeBloomOrZeroLength().IsZeroLength;
+            fields.DecodeUInt256<OnFlag>();
+            ulong number = fields.DecodeULong<OnFlag>();
+            fields.DecodeULong<OnFlag>();
+            fields.DecodeULong<OnFlag>();
+            ulong timestamp = fields.DecodeULong<OnFlag>();
+            if (zeroLengthBloom && !_specProvider!.GetSpec(new ForkActivation(number, timestamp)).IsEip7668Enabled)
+            {
+                throw new RlpReaderException($"Expected collection count of {Bloom.ByteLength}, got 0");
+            }
+
+            fields.DecodeByteArraySpan<OnFlag>();
+            fields.DecodeValueKeccakNonNull();
+            fields.ReadBytes(NonceLength);
+
+            if (fields.HasNext) fields.DecodeUInt256<OnFlag>();
+            if (fields.HasNext) fields.DecodeValueKeccakNonNull();
+            if (fields.HasNext) fields.DecodeULong<OnFlag>();
+            if (fields.HasNext) fields.DecodeULong<OnFlag>();
+            if (fields.HasNext) fields.DecodeValueKeccak();
+            if (fields.HasNext) fields.DecodeValueKeccak();
+            if (fields.HasNext) fields.DecodeValueKeccak();
+            if (fields.HasNext) fields.DecodeULong<OnFlag>();
+
+            reader.ExitSequence(in fields, itemLength, RlpBehaviors.None);
+            return new BlockHeader(new Hash256(in parentHash), Keccak.Zero, Address.Zero, UInt256.Zero, number, 0, 0, [])
+            {
+                Hash = new Hash256(ValueKeccak.Compute(headerRlp))
+            };
+        }
+
         /// <summary>
         /// Decodes the seal section of the header and materialises the header instance.
         /// </summary>
