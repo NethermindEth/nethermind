@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -592,14 +594,45 @@ public class SnapStateServerTests
             context.Server.GetStorageRanges(context.RootHash, accounts, null, null, ISnapStateServer.HardResponseByteLimit, CancellationToken.None);
         proofs?.Dispose();
         byte[][] values = [.. served.Select(static slots => slots.Single().SlotRlpValue)];
+        bool adjacent = AreAdjacent(served);
         served.DisposeRecursive();
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(values, Is.EqualTo(Enumerable.Range(1, accountCount).Select(static i => Rlp.Encode(new[] { (byte)i }))));
-            Assert.That(rentals.RentCount, Is.LessThan(accountCount / 4), "the accounts share the buffer of the response");
+            Assert.That(adjacent, Is.True, "the accounts share the buffer of the response");
             Assert.That(rentals.Outstanding, Is.Empty, "the buffer goes back to the pool");
         }
+
+        static bool AreAdjacent(IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> lists)
+        {
+            for (int i = 1; i < lists.Count; i++)
+            {
+                ReadOnlySpan<byte> previous = ((EncodedSnapEntries<PathWithStorageSlot>)lists[i - 1]).Encoded;
+                ReadOnlySpan<byte> next = ((EncodedSnapEntries<PathWithStorageSlot>)lists[i]).Encoded;
+                if (!Unsafe.AreSame(ref Unsafe.Add(ref MemoryMarshal.GetReference(previous), previous.Length), ref MemoryMarshal.GetReference(next))) return false;
+            }
+
+            return true;
+        }
+    }
+
+    [Test]
+    public void EncodedStorageRanges_SlotListsAreEmptyAfterDispose()
+    {
+        EncodedStorageRanges ranges = new(2);
+        foreach (Hash256 path in (Hash256[])[TestItem.KeccakA, TestItem.KeccakB])
+        {
+            PathWithStorageCollector collector = ranges.StartAccount();
+            collector.Collect(path.ValueHash256, [1]);
+            ranges.Add(collector.Slots);
+        }
+
+        IOwnedReadOnlyList<PathWithStorageSlot>[] slotLists = [.. ranges];
+        ranges.DisposeRecursive();
+
+        Assert.That(slotLists.Select(static slots => (slots.Count, ((EncodedSnapEntries<PathWithStorageSlot>)slots).Encoded.Length, slots.AsSpan().Length)),
+            Is.All.EqualTo((0, 0, 0)));
     }
 
     [Test]

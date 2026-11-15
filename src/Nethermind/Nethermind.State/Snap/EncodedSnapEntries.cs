@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using Nethermind.Core.Collections;
 using Nethermind.Serialization.FluentRlp;
 
@@ -37,7 +38,7 @@ public sealed class EncodedSnapEntries<T>(RefRlpReaderFunc<T> decodeEntry, int c
     }
 
     /// <summary>The encoded entries one after the other, without the prefix of the list.</summary>
-    public ReadOnlySpan<byte> Encoded => _owner is null ? _buffer.AsSpan(0, _length) : _owner.Encoded.Slice(_start, _length);
+    public ReadOnlySpan<byte> Encoded => _owner is null ? _buffer.AsSpan(0, _length) : _length == 0 ? default : _owner.Encoded.Slice(_start, _length);
 
     public int Count { get; private set; }
 
@@ -46,6 +47,7 @@ public sealed class EncodedSnapEntries<T>(RefRlpReaderFunc<T> decodeEntry, int c
     public Span<byte> Add(int length)
     {
         int newLength = _length + length;
+        Debug.Assert(_owner is null || _owner._length == _start + _length, "Only the list made last on the owner can add entries.");
         if (_owner is null && newLength > _buffer.Length)
         {
             byte[] buffer = ArrayPool<byte>.Shared.Rent(Math.Max(newLength, Math.Max(_buffer.Length * 2, capacity)));
