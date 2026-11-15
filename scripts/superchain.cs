@@ -41,7 +41,7 @@ try
     {
         var identifier = entry!["identifier"]!.GetValue<string>().Split('/');
         var l1 = identifier[0]; var name = identifier[1];
-        if (name is "arena-z-testnet" or "creator-chain-testnet" or "rehearsal-0-bn-0" or "rehearsal-0-bn-1" or "celo" or "radius_testnet" or "silent-data-mainnet" || l1 is "sepolia-dev-0" or "sepolia-devnet-2" or "sepolia-devnet-3")
+        if (name is "arena-z-testnet" or "creator-chain-testnet" or "rehearsal-0-bn-0" or "rehearsal-0-bn-1" or "celo" or "radius_testnet" or "silent-data-mainnet" || l1 is not ("mainnet" or "sepolia"))
         {
             Console.WriteLine($"[INFO] Ignoring `{name}-{l1}`");
             continue;
@@ -393,10 +393,11 @@ static JsonObject Runner(string chainName, string l1, JsonNode chain)
         {
             ["Enabled"] = true
         },
-        ["Optimism"] = new JsonObject
+        // OptimismEthModuleFactory parses any non-null SequencerUrl as a URI, so omit an empty one.
+        ["Optimism"] = WithoutNulls(new JsonObject
         {
-            ["SequencerUrl"] = Lookup(chain, "sequencer_rpc")
-        }
+            ["SequencerUrl"] = Lookup(chain, "sequencer_rpc") is { } url && url.GetValue<string>() is not "" ? url : null
+        })
     };
     if (chainName == "op" && l1 == "mainnet")
     {
