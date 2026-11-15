@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
+using Nethermind.State.SnapServer;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 {
@@ -17,6 +18,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 
         public int Serialize(Span<byte> destination, StorageRangeMessage message)
         {
+            if (message.Slots is StorageSlotRanges servedSlots)
+            {
+                return SerializeServed(destination, message, servedSlots);
+            }
+
             (int contentLength, int allSlotsLength, ArrayPoolSpan<int> accountSlotsLengths) = CalculateLengths(message);
             using ArrayPoolSpan<int> returnAccountSlotsLengths = accountSlotsLengths;
 
@@ -65,6 +71,51 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             return writer.Length;
         }
 
+        private static int SerializeServed(Span<byte> destination, StorageRangeMessage message, StorageSlotRanges slots)
+        {
+            RlpWriter writer = RlpWriter.ContentWriter(destination);
+            RlpSequence sequence = writer.StartSequence(GetServedContentLength(message, slots));
+
+            writer.Encode(message.RequestId);
+
+            if (slots.Count == 0)
+            {
+                writer.EncodeNullObject();
+            }
+            else
+            {
+                RlpSequence allSlots = writer.StartSequence(slots.AccountsLength);
+                ReadOnlySpan<IOwnedReadOnlyList<PathWithStorageSlot>> accounts = slots.AsSpan();
+
+                for (int i = 0; i < accounts.Length; i++)
+                {
+                    StorageSlotRanges.AccountSlots accountSlots = (StorageSlotRanges.AccountSlots)accounts[i];
+                    RlpSequence accountSequence = writer.StartSequence(accountSlots.SlotsLength);
+
+                    for (int j = 0; j < accountSlots.Count; j++)
+                    {
+                        ReadOnlySpan<byte> value = accountSlots.GetValue(j);
+                        RlpSequence slotSequence = writer.StartSequence(Rlp.LengthOfKeccakRlp + Rlp.LengthOf(value));
+                        writer.Encode(in accountSlots.GetPath(j));
+                        writer.Encode(value);
+                        writer.EndSequence(slotSequence);
+                    }
+
+                    writer.EndSequence(accountSequence);
+                }
+
+                writer.EndSequence(allSlots);
+            }
+
+            writer.WriteByteArrayList(message.Proofs);
+
+            writer.EndSequence(sequence);
+            return writer.Length;
+        }
+
+        private static int GetServedContentLength(StorageRangeMessage message, StorageSlotRanges slots) =>
+            Rlp.LengthOf(message.RequestId) + Rlp.LengthOfSequence(slots.AccountsLength) + Rlp.LengthOfByteArrayList(message.Proofs);
+
         /// <remarks>Copies <paramref name="data"/>, which the message would otherwise keep referencing.</remarks>
         public StorageRangeMessage Deserialize(ReadOnlySpan<byte> data) => Deserialize(OwnedMemory.Copy(data, out Memory<byte> memory), memory);
 
@@ -108,6 +159,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 
         public int GetLength(StorageRangeMessage message)
         {
+            if (message.Slots is StorageSlotRanges servedSlots)
+            {
+                return Rlp.LengthOfSequence(GetServedContentLength(message, servedSlots));
+            }
+
             (int contentLength, _, ArrayPoolSpan<int> accountSlotsLengths) = CalculateLengths(message);
             accountSlotsLengths.Dispose();
             return Rlp.LengthOfSequence(contentLength);

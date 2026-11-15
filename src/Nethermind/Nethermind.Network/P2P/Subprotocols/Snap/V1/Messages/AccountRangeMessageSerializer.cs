@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
+using Nethermind.State.SnapServer;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 {
@@ -26,6 +27,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             if (message.PathsWithAccounts is null || message.PathsWithAccounts.Count == 0)
             {
                 writer.EncodeNullObject();
+            }
+            else if (message.PathsWithAccounts is SlimAccountRange slimAccounts)
+            {
+                WriteSlimAccounts(ref writer, slimAccounts, pwasLength);
             }
             else
             {
@@ -51,6 +56,21 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 
             writer.EndSequence(sequence);
             return writer.Length;
+        }
+
+        private static void WriteSlimAccounts(ref RlpWriter writer, SlimAccountRange accounts, int length)
+        {
+            RlpSequence pwas = writer.StartSequence(length);
+            for (int i = 0; i < accounts.Count; i++)
+            {
+                ReadOnlySpan<byte> account = accounts.GetAccountRlp(i);
+                RlpSequence pwaSequence = writer.StartSequence(Rlp.LengthOfKeccakRlp + account.Length);
+                writer.Encode(in accounts.GetPath(i));
+                writer.WriteEncoded(account);
+                writer.EndSequence(pwaSequence);
+            }
+
+            writer.EndSequence(pwas);
         }
 
         /// <remarks>Copies <paramref name="data"/>, which the message would otherwise keep referencing.</remarks>
@@ -107,7 +127,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             int contentLength = Rlp.LengthOf(message.RequestId);
 
             int pwasLength = 0;
-            if (message.PathsWithAccounts is not null && message.PathsWithAccounts.Count > 0)
+            if (message.PathsWithAccounts is SlimAccountRange slimAccounts)
+            {
+                pwasLength = slimAccounts.EntriesLength;
+            }
+            else if (message.PathsWithAccounts is not null && message.PathsWithAccounts.Count > 0)
             {
                 ReadOnlySpan<PathWithAccount> pathsWithAccounts = message.PathsWithAccounts.AsSpan();
                 for (int i = 0; i < pathsWithAccounts.Length; i++)

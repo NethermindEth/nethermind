@@ -2,20 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.State.Snap;
 using Nethermind.Trie;
 
 namespace Nethermind.State.SnapServer;
 
-public class PathWithStorageCollector : RangeQueryVisitor.ILeafValueCollector
+public class PathWithStorageCollector(StorageSlotRanges slots) : RangeQueryVisitor.ILeafValueCollector
 {
-    public ArrayPoolList<PathWithStorageSlot> Slots { get; } = new(0);
-
     public int Collect(in ValueHash256 path, ReadOnlySpan<byte> value)
     {
-        Slots.Add(new PathWithStorageSlot(in path, value.ToArray()));
+        slots.AddSlot(in path, value);
         return 32 + value.Length;
     }
 }

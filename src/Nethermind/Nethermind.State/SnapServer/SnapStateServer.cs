@@ -147,18 +147,25 @@ public class SnapStateServer : ISnapStateServer
         byteLimit = Math.Max(Math.Min(byteLimit, ISnapStateServer.HardResponseByteLimit), 1);
 
         AccountCollector accounts = new();
-        (long _, IOwnedReadOnlyList<byte[]> proofs, _) = GetNodesFromTrieVisitor(
-            rootHash,
-            startingHash,
-            limitHash?.ToCommitment() ?? Keccak.MaxValue,
-            byteLimit,
-            null,
-            null,
-            accounts,
-            cancellationToken);
+        try
+        {
+            (long _, IOwnedReadOnlyList<byte[]> proofs, _) = GetNodesFromTrieVisitor(
+                rootHash,
+                startingHash,
+                limitHash?.ToCommitment() ?? Keccak.MaxValue,
+                byteLimit,
+                null,
+                null,
+                accounts,
+                cancellationToken);
 
-        ArrayPoolList<PathWithAccount> nodes = accounts.Accounts;
-        return (nodes, new ByteArrayListAdapter(proofs));
+            return (accounts.Accounts, new ByteArrayListAdapter(proofs));
+        }
+        catch
+        {
+            accounts.Accounts.Dispose();
+            throw;
+        }
     }
 
     public (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>>, IByteArrayList?) GetStorageRanges(
@@ -184,55 +191,62 @@ public class SnapStateServer : ISnapStateServer
             ? new StateTree(new CachedTrieStore(_storeWithReadFlag), _logManager)
             : new StateTree(_storeWithReadFlag, _logManager);
 
-        ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>> responseNodes = new(accounts.Count);
-        for (int i = 0; i < accounts.Count; i++)
+        StorageSlotRanges responseNodes = new(accounts.Count);
+        PathWithStorageCollector pathWithStorageCollector = new(responseNodes);
+        try
         {
-            if (responseSize > byteLimit || cancellationToken.IsCancellationRequested)
+            for (int i = 0; i < accounts.Count; i++)
             {
-                break;
+                if (responseSize > byteLimit || cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+
+                if (responseSize > 1 && (byteLimit - responseSize) < 10000)
+                {
+                    break;
+                }
+
+                Hash256? storageRoot = GetStorageRootByPath(tree, rootHash, accounts[i].Path.Bytes);
+                if (storageRoot is null)
+                {
+                    break;
+                }
+
+                Hash256? storagePath = accounts[i].Path.ToCommitment();
+
+                (long innerResponseSize, IOwnedReadOnlyList<byte[]> proofs, bool stoppedEarly) = GetNodesFromTrieVisitor(
+                    rootHash,
+                    startingHash1,
+                    limitHash1,
+                    byteLimit - responseSize,
+                    storagePath,
+                    storageRoot,
+                    pathWithStorageCollector,
+                    cancellationToken);
+
+                if (!responseNodes.TryCompleteAccount())
+                {
+                    //return proof of absence
+                    return (responseNodes, new ByteArrayListAdapter(proofs));
+                }
+
+                if (stoppedEarly || startingHash1 != Keccak.Zero)
+                {
+                    return (responseNodes, new ByteArrayListAdapter(proofs));
+                }
+
+                proofs.Dispose();
+                responseSize += innerResponseSize;
             }
 
-            if (responseSize > 1 && (byteLimit - responseSize) < 10000)
-            {
-                break;
-            }
-
-            Hash256? storageRoot = GetStorageRootByPath(tree, rootHash, accounts[i].Path.Bytes);
-            if (storageRoot is null)
-            {
-                break;
-            }
-
-            Hash256? storagePath = accounts[i].Path.ToCommitment();
-
-            PathWithStorageCollector pathWithStorageCollector = new();
-            (long innerResponseSize, IOwnedReadOnlyList<byte[]> proofs, bool stoppedEarly) = GetNodesFromTrieVisitor(
-                rootHash,
-                startingHash1,
-                limitHash1,
-                byteLimit - responseSize,
-                storagePath,
-                storageRoot,
-                pathWithStorageCollector,
-                cancellationToken);
-
-            if (pathWithStorageCollector.Slots.Count == 0)
-            {
-                //return proof of absence
-                return (responseNodes, new ByteArrayListAdapter(proofs));
-            }
-
-            responseNodes.Add(pathWithStorageCollector.Slots);
-            if (stoppedEarly || startingHash1 != Keccak.Zero)
-            {
-                return (responseNodes, new ByteArrayListAdapter(proofs));
-            }
-
-            proofs.Dispose();
-            responseSize += innerResponseSize;
+            return (responseNodes, EmptyByteArrayList.Instance);
         }
-
-        return (responseNodes, EmptyByteArrayList.Instance);
+        catch
+        {
+            responseNodes.Dispose();
+            throw;
+        }
     }
 
     private (long bytesSize, IOwnedReadOnlyList<byte[]> proofs, bool stoppedEarly) GetNodesFromTrieVisitor(
