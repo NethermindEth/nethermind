@@ -84,7 +84,20 @@ public static class ExecutableCodeMemory
     internal static ReadOnlyMemory<byte> FromExecutionBuffer(byte[] codeAndPadding, int codeLength)
     {
         codeAndPadding.AsSpan(codeLength).Clear();
-        return new Manager(codeAndPadding, codeLength).Memory;
+        return new BufferManager(codeAndPadding, codeLength).Memory;
+    }
+
+    internal static bool TryGetFromExecutionBuffer(ReadOnlyMemory<byte> code, [NotNullWhen(true)] out byte[]? buffer)
+    {
+        if (MemoryMarshal.TryGetMemoryManager(code, out BufferManager? manager, out int start, out int length)
+            && start == 0 && length == manager.CodeLength)
+        {
+            buffer = manager.Buffer;
+            return true;
+        }
+
+        buffer = null;
+        return false;
     }
 
     /// <summary>Gets whether <paramref name="code"/> is the whole of a <see cref="Place"/> or <see cref="PlacePadded"/> result.</summary>
@@ -113,25 +126,13 @@ public static class ExecutableCodeMemory
         protected override void Dispose(bool disposing) { }
     }
 
-    private sealed class Manager : MemoryManager<byte>
+    private sealed class Manager(int codeLength) : MemoryManager<byte>
     {
-        public Manager(int codeLength)
-        {
-            CodeLength = codeLength;
-            Buffer = CodeInfo.CreateExecutionBuffer(codeLength);
-        }
+        public byte[] Buffer { get; } = CodeInfo.CreateExecutionBuffer(codeLength);
 
-        public Manager(byte[] buffer, int codeLength)
-        {
-            CodeLength = codeLength;
-            Buffer = buffer;
-        }
+        public int CodeLength => codeLength;
 
-        public byte[] Buffer { get; }
-
-        public int CodeLength { get; }
-
-        public override Span<byte> GetSpan() => Buffer.AsSpan(0, CodeLength);
+        public override Span<byte> GetSpan() => Buffer.AsSpan(0, codeLength);
 
         /// <remarks>
         /// <paramref name="elementIndex"/> is an offset into the code, from 0 to its length. The returned handle owns the
@@ -139,8 +140,28 @@ public static class ExecutableCodeMemory
         /// </remarks>
         public override unsafe MemoryHandle Pin(int elementIndex = 0)
         {
-            ArgumentOutOfRangeException.ThrowIfGreaterThan((uint)elementIndex, (uint)CodeLength, nameof(elementIndex));
+            ArgumentOutOfRangeException.ThrowIfGreaterThan((uint)elementIndex, (uint)codeLength, nameof(elementIndex));
             GCHandle handle = GCHandle.Alloc(Buffer, GCHandleType.Pinned);
+            return new MemoryHandle(Unsafe.Add<byte>((void*)handle.AddrOfPinnedObject(), elementIndex), handle);
+        }
+
+        public override void Unpin() { }
+
+        protected override void Dispose(bool disposing) { }
+    }
+
+    private sealed class BufferManager(byte[] buffer, int codeLength) : MemoryManager<byte>
+    {
+        public byte[] Buffer => buffer;
+
+        public int CodeLength => codeLength;
+
+        public override Span<byte> GetSpan() => buffer.AsSpan(0, codeLength);
+
+        public override unsafe MemoryHandle Pin(int elementIndex = 0)
+        {
+            ArgumentOutOfRangeException.ThrowIfGreaterThan((uint)elementIndex, (uint)codeLength, nameof(elementIndex));
+            GCHandle handle = GCHandle.Alloc(buffer, GCHandleType.Pinned);
             return new MemoryHandle(Unsafe.Add<byte>((void*)handle.AddrOfPinnedObject(), elementIndex), handle);
         }
 
