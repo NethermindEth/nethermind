@@ -398,15 +398,24 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     }
 
     [Test]
-    public void Stored_receipts_are_served_encoded_as_the_recovered_ones()
+    public void Stored_receipts_are_served_encoded_as_the_recovered_ones([Values] bool eip658)
     {
+        if (!eip658) _specProvider.NextForkSpec = SpuriousDragon.Instance;
         Block block = Build.A.Block.WithNumber(1).WithTransactions(
             Build.A.Transaction.WithNonce(0).SignedAndResolved().TestObject,
             Build.A.Transaction.WithNonce(1).WithType(TxType.EIP1559).SignedAndResolved().TestObject).WithReceiptsRoot(TestItem.KeccakA).TestObject;
-        _storage.Insert(block, CreateReceipts());
+        TxReceipt[] receipts = CreateReceipts();
+        if (!eip658)
+        {
+            receipts[0].PostTransactionState = TestItem.KeccakC;
+            receipts[1].PostTransactionState = TestItem.KeccakD;
+        }
+
+        _storage.Insert(block, receipts);
         _blockStore.GetOwnedRlp(block.Number, block.Hash!).Returns(_ => ArrayMemoryManager.From(new BlockDecoder().Encode(block)));
         ReceiptMessageDecoder decoder = new();
-        byte[] expected = RlpTestHelper.EncodeSequence([.. _storage.Get(block).Select(receipt => decoder.Encode(receipt, RlpBehaviors.Eip658Receipts))]);
+        RlpBehaviors behaviors = eip658 ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
+        byte[] expected = RlpTestHelper.EncodeSequence([.. _storage.Get(block).Select(receipt => decoder.Encode(receipt, behaviors))]);
 
         using ArrayPoolList<byte> encoded = new(0);
 
@@ -416,6 +425,8 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         {
             Assert.That(served, Is.EqualTo(useCompactReceipts));
             Assert.That(encoded.AsSpan().ToArray(), Is.EqualTo(served ? expected : []));
+            // Receipts that are not compact are left to the decoders without a read of the block.
+            _blockStore.Received(useCompactReceipts ? 1 : 0).GetOwnedRlp(block.Number, block.Hash!);
         }
     }
 

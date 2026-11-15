@@ -661,14 +661,17 @@ namespace Nethermind.Blockchain.Receipts
         /// <remarks>Gives the compact values only; the block's receipts not yet written are left to <see cref="Get(Hash256, bool)"/>.</remarks>
         public bool TryAppendNetworkReceipts(BlockHeader header, bool withBloom, ArrayPoolList<byte> destination)
         {
-            Hash256 blockHash = header.Hash!;
-            using MemoryManager<byte>? block = _blockStore.GetOwnedRlp(header.Number, blockHash);
-            if (block is null) return false;
+            if (!_storageDecoder.CanEncodeNetworkReceipts) return false;
 
+            Hash256 blockHash = header.Hash!;
             Span<byte> receiptsData = GetReceiptData(header.Number, blockHash);
             try
             {
-                return ReceiptArrayStorageDecoder.TryAppendNetworkReceipts(receiptsData, block.Memory.Span, withBloom,
+                // Pending and non-compact receipts are left to the decoders before the block is read.
+                if (receiptsData.IsEmpty || receiptsData[0] is not (ReceiptArrayStorageDecoder.CompactEncoding or ReceiptArrayStorageDecoder.CompactEncodingWithTxHashes)) return false;
+
+                using MemoryManager<byte>? block = _blockStore.GetOwnedRlp(header.Number, blockHash);
+                return block is not null && ReceiptArrayStorageDecoder.TryAppendNetworkReceipts(receiptsData, block.Memory.Span, withBloom,
                     _specProvider.GetReceiptSpec(header.Number).IsEip658Enabled,
                     _eip7668EverEnabled && _specProvider.GetSpec(header).IsEip7668Enabled,
                     destination);
