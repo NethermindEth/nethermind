@@ -1068,7 +1068,11 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject).TestObject;
         PrepareBlock(block);
 
-        Assert.That(_storage.FindTransactionIndex(block, block.Transactions[0].Hash!), Is.EqualTo(-1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_storage.FindTransactionIndex(block, block.Transactions[0].Hash!), Is.EqualTo(-1));
+            _logger.DidNotReceive().Warn(Arg.Any<string>());
+        }
     }
 
     [Test]

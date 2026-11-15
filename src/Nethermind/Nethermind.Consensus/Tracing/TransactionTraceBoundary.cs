@@ -58,7 +58,7 @@ public sealed class TransactionTraceBoundary : IBlockTracer
     /// lookup by hash.</param>
     /// <param name="seeds">Where the state before the target may come from instead of replaying the prefix.</param>
     /// <returns>The original tracer for a null hash or reward tracing; otherwise a completion boundary.</returns>
-    public static IBlockTracer WrapAt(IBlockTracer tracer, Hash256? transactionHash, int index, IPrefixStateSeedSource? seeds = null) =>
+    internal static IBlockTracer WrapAt(IBlockTracer tracer, Hash256? transactionHash, int index, IPrefixStateSeedSource? seeds = null) =>
         transactionHash is null || tracer.IsTracingRewards ? tracer : new TransactionTraceBoundary(tracer, transactionHash, seeds) { KnownIndex = index };
 
     /// <summary>The index of the target for <see cref="WrapAt"/> from the stored receipts of <paramref name="block"/>,
@@ -68,7 +68,7 @@ public sealed class TransactionTraceBoundary : IBlockTracer
     /// <param name="block">The block containing the transaction.</param>
     /// <param name="transactionHash">The hash of the transaction.</param>
     /// <returns>The index, or -1 to find the target by hash: a replayed prefix hashes its transactions anyway.</returns>
-    public static int FindIndex(IReceiptFinder receipts, IPrefixStateSeedSource? seeds, Block block, Hash256 transactionHash) =>
+    internal static int FindIndex(IReceiptFinder receipts, IPrefixStateSeedSource? seeds, Block block, Hash256 transactionHash) =>
         seeds is not null && seeds.MayCover(block) ? receipts.FindTransactionIndex(block, transactionHash) : -1;
 
     /// <summary>Wraps a tracer that wants only what comes after the transactions: the seed for the end of the block

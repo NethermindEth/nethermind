@@ -95,7 +95,6 @@ public class TransactionTraceBoundaryTests
         Assert.That(((TransactionTraceBoundary)TransactionTraceBoundary.WrapAt(NullBlockTracer.Instance, hash, index)).IndexOf(block), Is.EqualTo(target));
     }
 
-    [Test]
     /// <remarks>The finder is substituted to count its reads; the seed source to state its coverage of the block.</remarks>
     [TestCase(null, TestName = "NoSeedSource")]
     [TestCase(false, TestName = "BlockNotCovered")]

@@ -600,6 +600,8 @@ namespace Nethermind.Blockchain.Receipts
             }
 
             Span<byte> receiptsData = GetReceiptData(blockNumber, blockHash);
+            if (receiptsData.IsEmpty) return -1;
+
             try
             {
                 RlpReader reader = new(receiptsData);
