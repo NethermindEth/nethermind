@@ -26,6 +26,10 @@ check_ref() {
   [[ $2 =~ $REF_RE && $2 != *..* && $2 != -* && $2 != /* && $2 != */ ]] || fail "$1 must be a branch name or a full commit SHA"
 }
 
+BASE_REF=${BASE_REF:-master}
+GUESTS=${GUESTS:-zisk,sp1,openvm,airbender}
+FORMATS=${FORMATS:-ssz,trusted}
+
 check_ref base_ref "$BASE_REF"
 check_ref head_ref "$HEAD_REF"
 for name in BFLAT_IMAGE BFLAT_RISCV32_IMAGE; do
