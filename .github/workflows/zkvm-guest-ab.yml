@@ -325,8 +325,8 @@ jobs:
   measure:
     name: Measure ${{ matrix.vm }} ${{ matrix.format }}
     needs: [resolve, inputs, openvm-runner, build]
-    # A failed build fails only the legs of its guest
-    if: ${{ !cancelled() && needs.inputs.result == 'success' && needs.openvm-runner.result != 'failure' }}
+    # A failed build or OpenVM runner fails only the legs of its guest
+    if: ${{ !cancelled() && needs.inputs.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     strategy:
