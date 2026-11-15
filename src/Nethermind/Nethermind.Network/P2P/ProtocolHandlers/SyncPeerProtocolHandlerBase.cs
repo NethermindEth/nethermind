@@ -432,7 +432,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             bool withBloom = ProtocolVersion < EthVersions.Eth69;
             // Before eth/69 the message encodes receipts with the registered decoder, which a plugin can replace.
             IRlpDecoder<TxReceipt> decoder = withBloom ? Rlp.GetDecoderOrThrow<TxReceipt>() : ReceiptDecoder69;
-            bool copyStored = !withBloom || decoder is ReceiptMessageDecoder;
             ArrayPoolList<byte> buffer = new(0);
             using ArrayPoolList<Range> blocks = new(hashes.Length);
             try
@@ -442,7 +441,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     if (cancellationToken.IsCancellationRequested) break;
 
                     int start = buffer.Count;
-                    if (!SyncServer.TryAppendReceipts(blockHash, decoder, copyStored, withBloom, buffer)) break;
+                    if (!SyncServer.TryAppendReceipts(blockHash, decoder, withBloom, buffer)) break;
 
                     // Cap the message size; return the prefix (receipts match request hashes positionally).
                     if (GetMaxReceiptsResponseSize((ulong)buffer.Count) > HardOutgoingReceiptsMessageSizeLimit)

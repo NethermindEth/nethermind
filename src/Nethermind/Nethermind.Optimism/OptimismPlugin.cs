@@ -114,6 +114,7 @@ public class OptimismModule(ChainSpec chainSpec, IOptimismConfig optimismConfig)
             .AddSingleton<IHeaderValidator, OptimismHeaderValidator>()
             .AddSingleton<IUnclesValidator>(Always.Valid)
             .AddSingleton<IReceiptsRootCalculator, OptimismReceiptsRootCalculator>()
+            .AddDecorator<IReceiptFinder, OptimismReceiptFinder>()
 
             // Block processing
             .AddScoped<ITransactionProcessor, OptimismTransactionProcessor>()

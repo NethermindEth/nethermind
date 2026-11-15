@@ -210,7 +210,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             ServeReceipts([]);
 
             _ctx.SyncServer.Received(2 * NethermindSyncLimits.MaxReceiptFetch)
-                .TryAppendReceipts(Arg.Any<Hash256>(), Arg.Any<IRlpDecoder<TxReceipt>>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<ArrayPoolList<byte>>());
+                .TryAppendReceipts(Arg.Any<Hash256>(), Arg.Any<IRlpDecoder<TxReceipt>>(), Arg.Any<bool>(), Arg.Any<ArrayPoolList<byte>>());
         }
 
         private ReceiptsMessage ServeReceipts(TxReceipt[] receipts)

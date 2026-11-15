@@ -145,7 +145,7 @@ public class Eth69ReceiptsServingBenchmarks
     {
         public TxReceipt[] GetReceipts(Hash256 blockHashes) => receipts.GetValueOrDefault(blockHashes);
 
-        public bool TryAppendReceipts(Hash256 blockHash, IRlpDecoder<TxReceipt> decoder, bool copyStored, bool withBloom, ArrayPoolList<byte> destination)
+        public bool TryAppendReceipts(Hash256 blockHash, IRlpDecoder<TxReceipt> decoder, bool withBloom, ArrayPoolList<byte> destination)
         {
             if (!receipts.TryGetValue(blockHash, out TxReceipt[] blockReceipts)) return false;
 

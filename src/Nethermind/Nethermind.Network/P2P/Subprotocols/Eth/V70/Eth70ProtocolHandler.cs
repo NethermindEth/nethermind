@@ -110,7 +110,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                 if (cancellationToken.IsCancellationRequested) break;
 
                 int blockStart = buffer.Count;
-                if (!SyncServer.TryAppendReceipts(hashes[blockIndex], ReceiptMessageDecoder, copyStored: true, withBloom: false, buffer)) break;
+                if (!SyncServer.TryAppendReceipts(hashes[blockIndex], ReceiptMessageDecoder, withBloom: false, buffer)) break;
 
                 // The receipts content, and where each receipt starts in it, with its end as the last entry.
                 RlpReader receiptsReader = new RlpReader(buffer.AsSpan()[blockStart..]).EnterSequence(out int listLength);

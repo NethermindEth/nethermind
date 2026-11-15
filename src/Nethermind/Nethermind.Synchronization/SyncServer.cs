@@ -421,12 +421,12 @@ namespace Nethermind.Synchronization
             return receipts.Length == 0 ? null : receipts;
         }
 
-        public bool TryAppendReceipts(Hash256 blockHash, IRlpDecoder<TxReceipt> decoder, bool copyStored, bool withBloom, ArrayPoolList<byte> destination)
+        public bool TryAppendReceipts(Hash256 blockHash, IRlpDecoder<TxReceipt> decoder, bool withBloom, ArrayPoolList<byte> destination)
         {
             BlockHeader? header = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             if (header is null) return false;
             bool hasTransactions = header.TxRoot != Keccak.EmptyTreeHash;
-            if (hasTransactions && copyStored && _receiptFinder.TryAppendNetworkReceipts(header, withBloom, destination)) return true;
+            if (hasTransactions && _receiptFinder.TryAppendNetworkReceipts(header, withBloom, destination)) return true;
             if (!_blockTree.HasBlock(header.Number, blockHash)) return false;
             if (!hasTransactions)
             {

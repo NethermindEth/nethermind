@@ -107,15 +107,38 @@ public class SyncServerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(server.GetReceipts(TestItem.KeccakA), Is.Null);
-            Assert.That(server.TryAppendReceipts(TestItem.KeccakA, new ReceiptMessageDecoder(), copyStored: true, withBloom: true, destination), Is.False);
+            Assert.That(server.TryAppendReceipts(TestItem.KeccakA, new ReceiptMessageDecoder(), withBloom: true, destination), Is.False);
             Assert.That(destination, Is.Empty);
             receiptFinder.DidNotReceiveWithAnyArgs().Get(Arg.Any<Hash256>());
         }
     }
 
     [Test]
+    public void Appended_receipts_of_a_block_without_transactions_are_an_empty_list_when_its_body_is_stored([Values] bool bodyStored)
+    {
+        Context ctx = new();
+        BlockHeader header = Build.A.BlockHeader.WithTransactionsRoot(Keccak.EmptyTreeHash).TestObject;
+        Hash256 hash = header.Hash!;
+        ctx.BlockTree.FindHeader(hash, Arg.Any<BlockTreeLookupOptions>()).Returns(header);
+        ctx.BlockTree.HasBlock(header.Number, hash).Returns(bodyStored);
+        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+        // The receipt store keeps no receipts for a block without transactions.
+        receiptFinder.Get(hash).Returns([]);
+        SyncServer server = ctx.CreateSyncServer(ctx.BlockTree, receiptFinder: receiptFinder);
+        using ArrayPoolList<byte> destination = new(0);
+
+        bool appended = server.TryAppendReceipts(hash, new ReceiptMessageDecoder(), withBloom: true, destination);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(appended, Is.EqualTo(bodyStored));
+            Assert.That(destination.AsSpan().ToArray(), Is.EqualTo(bodyStored ? new[] { Rlp.EmptyListByte } : Array.Empty<byte>()));
+        }
+    }
+
+    [Test]
     public void Appended_receipts_are_the_stored_copy_or_encoded_as_receipts_messages_encode_them(
-        [Values] bool withBloom, [Values] bool copyStored, [Values] bool storedFormReadable, [Values(1UL, 4_370_000UL)] ulong number)
+        [Values] bool withBloom, [Values] bool storedFormReadable, [Values(1UL, 4_370_000UL)] ulong number)
     {
         Context ctx = new();
         BlockHeader header = Build.A.BlockHeader.WithNumber(number).WithTransactionsRoot(TestItem.KeccakB).TestObject;
@@ -140,14 +163,14 @@ public class SyncServerTests
         IRlpDecoder<TxReceipt> decoder = withBloom ? new ReceiptMessageDecoder() : new ReceiptMessageDecoder69();
         using ArrayPoolList<byte> destination = new(1) { 0xff };
 
-        bool appended = server.TryAppendReceipts(hash, decoder, copyStored, withBloom, destination);
+        bool appended = server.TryAppendReceipts(hash, decoder, withBloom, destination);
 
-        byte[] expected = copyStored && storedFormReadable ? storedCopy : EncodeAsReceiptsMessage(receipts, withBloom);
+        byte[] expected = storedFormReadable ? storedCopy : EncodeAsReceiptsMessage(receipts, withBloom);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(appended, Is.True);
             Assert.That(destination.AsSpan().ToArray(), Is.EqualTo((byte[])[0xff, .. expected]));
-            receiptFinder.Received(copyStored ? 1 : 0).TryAppendNetworkReceipts(header, withBloom, Arg.Any<ArrayPoolList<byte>>());
+            receiptFinder.Received(1).TryAppendNetworkReceipts(header, withBloom, Arg.Any<ArrayPoolList<byte>>());
         }
     }
 

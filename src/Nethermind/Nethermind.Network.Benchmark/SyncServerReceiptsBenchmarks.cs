@@ -210,22 +210,14 @@ public class SyncServerReceiptsBenchmarks
     [Benchmark(OperationsPerInvoke = ServedBlocks)]
     [Arguments(true)]
     [Arguments(false)]
-    public int Encoded(bool withBloom) => Append(withBloom, copyStored: true);
-
-    /// <summary>Serves each block from its decoded and recovered receipts, encoded straight into the message buffer.</summary>
-    [Benchmark(OperationsPerInvoke = ServedBlocks)]
-    [Arguments(true)]
-    [Arguments(false)]
-    public int DecodedAppended(bool withBloom) => Append(withBloom, copyStored: false);
-
-    private int Append(bool withBloom, bool copyStored)
+    public int Encoded(bool withBloom)
     {
         IRlpDecoder<TxReceipt> decoder = withBloom ? ReceiptDecoder : ReceiptDecoder69;
         int length = 0;
         foreach (Hash256 hash in _servedHashes)
         {
             ArrayPoolList<byte> buffer = new(0);
-            if (!_server.TryAppendReceipts(hash, decoder, copyStored, withBloom, buffer))
+            if (!_server.TryAppendReceipts(hash, decoder, withBloom, buffer))
                 throw new InvalidOperationException($"Block {hash} has no receipts.");
 
             using ReceiptsMessage message = new(NetworkBlockReceipts.FromBuffer(buffer, [new Range(0, buffer.Count)], withBloom, static (ref RlpReader _) => []));

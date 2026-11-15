@@ -771,7 +771,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(response, Is.EqualTo(serializer.SerializeToArray(decoded)));
-                _syncManager.Received(1).TryAppendReceipts(storedBlock.Hash!, Arg.Any<IRlpDecoder<TxReceipt>>(), true, true, Arg.Any<ArrayPoolList<byte>>());
+                _syncManager.Received(1).TryAppendReceipts(storedBlock.Hash!, Arg.Any<IRlpDecoder<TxReceipt>>(), true, Arg.Any<ArrayPoolList<byte>>());
             }
         }
 

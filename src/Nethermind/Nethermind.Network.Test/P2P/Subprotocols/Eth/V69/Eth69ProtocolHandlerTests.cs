@@ -179,7 +179,7 @@ public class Eth69ProtocolHandlerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(response, Is.EqualTo(Serialize(serializer, decoded)));
-            _syncManager.Received(1).TryAppendReceipts(storedBlock.Hash!, Arg.Any<IRlpDecoder<TxReceipt>>(), true, false, Arg.Any<ArrayPoolList<byte>>());
+            _syncManager.Received(1).TryAppendReceipts(storedBlock.Hash!, Arg.Any<IRlpDecoder<TxReceipt>>(), false, Arg.Any<ArrayPoolList<byte>>());
         }
 
         static byte[] Serialize(IMessageSerializer<ReceiptsMessage69> serializer, ReceiptsMessage69 message)

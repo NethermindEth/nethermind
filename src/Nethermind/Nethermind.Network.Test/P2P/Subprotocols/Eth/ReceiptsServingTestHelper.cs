@@ -24,21 +24,21 @@ internal static class ReceiptsServingTestHelper
     /// Makes <see cref="ISyncServer.TryAppendReceipts"/> of <paramref name="syncServer"/> serve the receipts its
     /// <see cref="ISyncServer.GetReceipts"/> gives, encoded as the receipts messages encode decoded receipts.
     /// </summary>
-    /// <param name="storedBlock">The block whose receipts are copied from their stored form when the caller allows it.</param>
+    /// <param name="storedBlock">The block whose receipts are copied from their stored form.</param>
     public static void ServeReceipts(this ISyncServer syncServer, ISpecProvider specProvider, Block? storedBlock = null) =>
-        syncServer.TryAppendReceipts(Arg.Any<Hash256>(), Arg.Any<IRlpDecoder<TxReceipt>>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<ArrayPoolList<byte>>())
+        syncServer.TryAppendReceipts(Arg.Any<Hash256>(), Arg.Any<IRlpDecoder<TxReceipt>>(), Arg.Any<bool>(), Arg.Any<ArrayPoolList<byte>>())
             .Returns(call =>
             {
                 Hash256 blockHash = call.ArgAt<Hash256>(0);
                 TxReceipt[]? receipts = syncServer.GetReceipts(blockHash);
                 if (receipts is null) return false;
 
-                ArrayPoolList<byte> destination = call.ArgAt<ArrayPoolList<byte>>(4);
-                if (storedBlock is not null && blockHash == storedBlock.Hash && call.ArgAt<bool>(2))
+                ArrayPoolList<byte> destination = call.ArgAt<ArrayPoolList<byte>>(3);
+                if (storedBlock is not null && blockHash == storedBlock.Hash)
                 {
                     bool eip658 = specProvider.GetReceiptSpec(storedBlock.Number).IsEip658Enabled;
                     byte[] stored = ReceiptArrayStorageDecoder.Instance.Encode(receipts, RlpBehaviors.Storage | (eip658 ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None));
-                    Assert.That(ReceiptArrayStorageDecoder.TryAppendNetworkReceipts(stored, BlockDecoder.Encode(storedBlock), call.ArgAt<bool>(3), eip658, eip7668: false, destination), Is.True);
+                    Assert.That(ReceiptArrayStorageDecoder.TryAppendNetworkReceipts(stored, BlockDecoder.Encode(storedBlock), call.ArgAt<bool>(2), eip658, eip7668: false, destination), Is.True);
                     return true;
                 }
 
