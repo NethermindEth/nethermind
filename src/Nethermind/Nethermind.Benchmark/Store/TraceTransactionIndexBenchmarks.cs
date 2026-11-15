@@ -35,7 +35,7 @@ public class TraceTransactionIndexBenchmarks
     private Hash256 _target = null!;
     private PersistentReceiptStorage _receipts = null!;
     private Func<Transaction[], Hash256, int> _indexOf = null!;
-    private Func<IReceiptFinder, IPrefixStateSeedSource?, Block, Hash256, int> _findIndex = null!;
+    private Func<IReceiptFinder, IPrefixStateSeedSource, Block, Hash256, int> _findIndex = null!;
     private readonly IPrefixStateSeedSource _seeds = new CoveringSeeds();
 
     [Params(16, 200)]
@@ -68,7 +68,7 @@ public class TraceTransactionIndexBenchmarks
         _indexOf = typeof(TransactionTraceBoundary).GetMethod("IndexOf", BindingFlags.NonPublic | BindingFlags.Static)!
             .CreateDelegate<Func<Transaction[], Hash256, int>>();
         _findIndex = typeof(TransactionTraceBoundary).GetMethod("FindIndex", BindingFlags.NonPublic | BindingFlags.Static)!
-            .CreateDelegate<Func<IReceiptFinder, IPrefixStateSeedSource?, Block, Hash256, int>>();
+            .CreateDelegate<Func<IReceiptFinder, IPrefixStateSeedSource, Block, Hash256, int>>();
 
         if (HashPrefix() != StoredReceipts()) throw new InvalidOperationException("The two lookups disagree.");
     }
