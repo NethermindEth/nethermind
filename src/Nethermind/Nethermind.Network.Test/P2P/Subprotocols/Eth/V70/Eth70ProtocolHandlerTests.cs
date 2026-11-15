@@ -68,6 +68,7 @@ public class Eth70ProtocolHandlerTests
         _syncManager.FindBlockRlp(Arg.Any<Hash256>()).Returns((MemoryManager<byte>?)null);
         _transactionPool = Substitute.For<ITxPool>();
         _specProvider = Substitute.For<IChainHeadSpecProvider>();
+        _syncManager.ServeReceipts(_specProvider);
         _gossipPolicy = Substitute.For<IGossipPolicy>();
         _genesisBlock = Build.A.Block.Genesis.TestObject;
         _syncManager.Head.Returns(_genesisBlock.Header);
@@ -1559,13 +1560,14 @@ public class Eth70ProtocolHandlerTests
     [TestCase(3L, 2_000_000UL, 10_000_000UL, TestName = "First block from its end")]
     [TestCase(0L, 1_000UL, 10_000_000UL, TestName = "Soft limit")]
     [TestCase(0L, 1_000UL, 3_000UL, TestName = "Hard limit splits a block")]
-    public void Serves_stored_receipts_encoded_as_decoded_ones(long firstBlockReceiptIndex, ulong softLimit, ulong hardLimit)
+    public void Serves_stored_receipts_as_decoded_ones(long firstBlockReceiptIndex, ulong softLimit, ulong hardLimit)
     {
         SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = softLimit;
         SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit = hardLimit;
+        (Block storedBlock, TxReceipt[] storedReceipts) = ReceiptsServingTestHelper.CreateStoredBlock(_specProvider, 3);
         Dictionary<Hash256, TxReceipt[]> blocks = new()
         {
-            [TestItem.KeccakA] = BuildSequentialReceipts(3),
+            [storedBlock.Hash!] = storedReceipts,
             [TestItem.KeccakB] = [],
             [TestItem.KeccakC] = [.. Enumerable.Range(1, 40).Select(static i => BuildReceiptWithLogData(GasCostOf.Transaction * (ulong)i, 100))],
             [TestItem.KeccakD] = BuildSequentialReceipts(2),
@@ -1573,29 +1575,20 @@ public class Eth70ProtocolHandlerTests
         Hash256[] hashes = [.. blocks.Keys];
         _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(call => blocks[call.Arg<Hash256>()]);
         ReceiptsMessageSerializer70 serializer = new(_specProvider);
-        List<(byte[] Message, bool LastBlockIncomplete, bool Encoded)> responses = [];
+        List<(byte[] Message, bool LastBlockIncomplete)> responses = [];
         _session.When(session => session.DeliverMessage(Arg.Any<ReceiptsMessage70>()))
             .Do(call =>
             {
                 ReceiptsMessage70 response = (ReceiptsMessage70)call[0];
                 byte[] message = new byte[serializer.GetLength(response)];
                 serializer.Serialize(message, response);
-                responses.Add((message, response.LastBlockIncomplete, response.TxReceipts is NetworkBlockReceipts));
+                responses.Add((message, response.LastBlockIncomplete));
             });
         HandleIncomingStatusMessage();
 
-        foreach (bool encoded in new[] { false, true })
+        foreach (bool stored in new[] { false, true })
         {
-            _syncManager.TryGetNetworkReceipts(Arg.Any<Hash256>(), false, out Arg.Any<ArrayPoolSpan<byte>>())
-                .Returns(call =>
-                {
-                    if (!encoded) return false;
-                    byte[] blockReceipts = RlpTestHelper.EncodeSequence([.. blocks[call.Arg<Hash256>()].Select(static receipt => new ReceiptMessageDecoder69().Encode(receipt))]);
-                    ArrayPoolSpan<byte> span = new(blockReceipts.Length);
-                    blockReceipts.CopyTo((Span<byte>)span);
-                    call[2] = span;
-                    return true;
-                });
+            _syncManager.ServeReceipts(_specProvider, stored ? storedBlock : null);
             using GetReceiptsMessage70 request = new(1111, firstBlockReceiptIndex, hashes.ToPooledList());
             HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
         }
@@ -1605,7 +1598,6 @@ public class Eth70ProtocolHandlerTests
         {
             Assert.That(responses[1].Message, Is.EqualTo(responses[0].Message));
             Assert.That(responses[1].LastBlockIncomplete, Is.EqualTo(responses[0].LastBlockIncomplete));
-            Assert.That(responses.Select(static response => response.Encoded), Is.EqualTo(new[] { false, true }));
         }
     }
 

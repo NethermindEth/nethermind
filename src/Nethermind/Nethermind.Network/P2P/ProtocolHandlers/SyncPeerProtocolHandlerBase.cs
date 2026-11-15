@@ -428,95 +428,38 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected Task<ReceiptsMessage> FulfillReceiptsRequest(GetReceiptsMessage getReceiptsMessage, CancellationToken cancellationToken)
         {
             ReadOnlySpan<Hash256> hashes = getReceiptsMessage.Hashes.AsSpan();
-            // Before eth/69 the message encodes receipts with the registered decoder, which a plugin can replace.
+            hashes = hashes[..Math.Min(hashes.Length, MaxReceiptsLookups)];
             bool withBloom = ProtocolVersion < EthVersions.Eth69;
-            if ((!withBloom || Rlp.GetDecoder<TxReceipt>() is ReceiptMessageDecoder)
-                && TryFulfillEncodedReceiptsRequest(hashes[..Math.Min(hashes.Length, MaxReceiptsLookups)], withBloom, cancellationToken) is { } encoded)
-            {
-                return Task.FromResult(encoded);
-            }
-
-            ArrayPoolList<TxReceipt[]> txReceipts = new(Math.Min(hashes.Length, MaxReceiptsLookups));
-
-            ulong sizeEstimate = 0;
-            for (int i = 0; i < hashes.Length && i < MaxReceiptsLookups; i++)
-            {
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    break;
-                }
-
-                Hash256 blockHash = hashes[i];
-                TxReceipt[]? blockTxReceipts = SyncServer.GetReceipts(blockHash);
-                if (blockTxReceipts is null)
-                {
-                    break;
-                }
-
-                ulong blockSize = MessageSizeEstimator.EstimateSize(blockTxReceipts);
-
-                // Cap the message size; return the prefix (receipts match request hashes positionally).
-                if (sizeEstimate + blockSize > HardOutgoingReceiptsMessageSizeLimit)
-                {
-                    // An empty prefix means the block alone does not fit, so this peer can never get it from us.
-                    if (txReceipts.Count == 0 && Logger.IsDebug) Logger.Debug($"Cannot serve receipts of {blockHash} to {Node?.ToString("c"):hide}: estimated {blockSize} bytes exceeds the {HardOutgoingReceiptsMessageSizeLimit} bytes limit.");
-                    break;
-                }
-
-                txReceipts.Add(blockTxReceipts);
-                sizeEstimate += blockSize;
-
-                // Soft limit keeps the common-case response small.
-                if (sizeEstimate > SoftOutgoingMessageSizeLimit)
-                {
-                    break;
-                }
-            }
-
-            return Task.FromResult(new ReceiptsMessage(txReceipts));
-        }
-
-        /// <summary>Builds the receipts response from the stored receipts without decoding them.</summary>
-        /// <returns><see langword="null"/> when a block's receipts are in a form left to <see cref="ISyncServer.GetReceipts"/>.</returns>
-        private ReceiptsMessage? TryFulfillEncodedReceiptsRequest(ReadOnlySpan<Hash256> hashes, bool withBloom, CancellationToken cancellationToken)
-        {
+            // Before eth/69 the message encodes receipts with the registered decoder, which a plugin can replace.
+            IRlpDecoder<TxReceipt> decoder = withBloom ? Rlp.GetDecoderOrThrow<TxReceipt>() : ReceiptDecoder69;
+            bool copyStored = !withBloom || decoder is ReceiptMessageDecoder;
             ArrayPoolList<byte> buffer = new(0);
             using ArrayPoolList<Range> blocks = new(hashes.Length);
             try
             {
-                ulong size = 0;
                 foreach (Hash256 blockHash in hashes)
                 {
                     if (cancellationToken.IsCancellationRequested) break;
 
-                    if (!SyncServer.TryGetNetworkReceipts(blockHash, withBloom, out ArrayPoolSpan<byte> blockReceipts))
-                    {
-                        // The decode path serves the request from its first block, so only a later block is looked up here.
-                        if (blocks.Count > 0 && SyncServer.GetReceipts(blockHash) is null) break;
+                    int start = buffer.Count;
+                    if (!SyncServer.TryAppendReceipts(blockHash, decoder, copyStored, withBloom, buffer)) break;
 
-                        buffer.Dispose();
-                        return null;
+                    // Cap the message size; return the prefix (receipts match request hashes positionally).
+                    if ((ulong)buffer.Count > HardOutgoingReceiptsMessageSizeLimit)
+                    {
+                        // An empty prefix means the block alone does not fit, so this peer can never get it from us.
+                        if (blocks.Count == 0 && Logger.IsDebug) Logger.Debug($"Cannot serve receipts of {blockHash} to {Node?.ToString("c"):hide}: {buffer.Count - start} bytes exceeds the {HardOutgoingReceiptsMessageSizeLimit} bytes limit.");
+                        buffer.Truncate(start);
+                        break;
                     }
 
-                    using (blockReceipts)
-                    {
-                        ulong blockSize = (ulong)blockReceipts.Length;
-                        if (size + blockSize > HardOutgoingReceiptsMessageSizeLimit)
-                        {
-                            if (blocks.Count == 0 && Logger.IsDebug) Logger.Debug($"Cannot serve receipts of {blockHash} to {Node?.ToString("c"):hide}: {blockSize} bytes exceeds the {HardOutgoingReceiptsMessageSizeLimit} bytes limit.");
-                            break;
-                        }
+                    blocks.Add(new Range(start, buffer.Count));
 
-                        int start = buffer.Count;
-                        buffer.AddRange(blockReceipts);
-                        blocks.Add(new Range(start, buffer.Count));
-                        size += blockSize;
-                    }
-
-                    if (size > SoftOutgoingMessageSizeLimit) break;
+                    // Soft limit keeps the common-case response small.
+                    if ((ulong)buffer.Count > SoftOutgoingMessageSizeLimit) break;
                 }
 
-                return new ReceiptsMessage(NetworkBlockReceipts.FromBuffer(buffer, blocks.AsSpan().ToArray(), withBloom, withBloom ? DecodeReceipts : DecodeReceipts69));
+                return Task.FromResult(new ReceiptsMessage(NetworkBlockReceipts.FromBuffer(buffer, blocks.AsSpan().ToArray(), withBloom, withBloom ? DecodeReceipts : DecodeReceipts69)));
             }
             catch
             {

@@ -212,12 +212,14 @@ public class NetworkReceiptTests
         TxReceipt[] decoded = ReceiptArrayStorageDecoder.Instance.Decode(stored, eip7668 ? RlpBehaviors.Eip7668Receipts : RlpBehaviors.None);
         new ReceiptsRecovery(new EthereumEcdsa(BlockchainIds.Mainnet), MainnetSpecProvider.Instance).TryRecover(new ReceiptRecoveryBlock(block), decoded, forceRecoverSender: false);
 
-        bool encoded = ReceiptArrayStorageDecoder.TryEncodeAsNetworkReceipts(stored, encodedBlock, withBloom, eip658, eip7668, out ArrayPoolSpan<byte> network);
+        // The receipts are added after what the list already holds.
+        using ArrayPoolList<byte> network = new(1) { 0xff };
+        bool encoded = ReceiptArrayStorageDecoder.TryAppendNetworkReceipts(stored, encodedBlock, withBloom, eip658, eip7668, network);
 
-        Assert.That(encoded, Is.True);
-        using (network)
+        using (Assert.EnterMultipleScope())
         {
-            Assert.That(network.ToArray(), Is.EqualTo(Encode(decoded, withBloom, eip658)));
+            Assert.That(encoded, Is.True);
+            Assert.That(network.AsSpan().ToArray(), Is.EqualTo((byte[])[0xff, .. Encode(decoded, withBloom, eip658)]));
         }
     }
 
@@ -235,7 +237,13 @@ public class NetworkReceiptTests
         byte[] encodedBlock = RlpTestHelper.EncodeSequence([Rlp.EmptyListByte], RlpTestHelper.EncodeSequence(transactions));
         byte[] stored = ReceiptArrayStorageDecoder.Instance.Encode(receipts, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
 
-        Assert.That(ReceiptArrayStorageDecoder.TryEncodeAsNetworkReceipts(stored, encodedBlock, withBloom: false, eip658: true, eip7668: false, out _), Is.False);
+        using ArrayPoolList<byte> destination = new(0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReceiptArrayStorageDecoder.TryAppendNetworkReceipts(stored, encodedBlock, withBloom: false, eip658: true, eip7668: false, destination), Is.False);
+            Assert.That(destination, Is.Empty);
+        }
     }
 
     private static Transaction CreateTransaction(TxType type) => type switch

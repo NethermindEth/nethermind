@@ -40,8 +40,6 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
     private static readonly Action<ReadOnlySpan<byte>, GetReceiptsMessage70> ValidateReceipts =
         static (content, request) => ReceiptsResponseBudget.ThrowIfExceeded(content, 2, request.RequestedBlocks, request.MaxReceiptsPerBlock.Span, request.FirstBlockReceiptIndex);
 
-    /// <summary>Sentinel for <c>lastBlockNumber</c> meaning no receipt block has been seen yet.</summary>
-    private const ulong NoBlockSeen = ulong.MaxValue;
     // Before EIP-3529, refunds could reduce gas used by at most half.
     private const ulong MinimumSupportedTransactionGas = GasCostOf.Transaction / 2;
 
@@ -98,81 +96,68 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 
     private ReceiptsResponse FulfillReceiptsRequest(GetReceiptsMessage70 getReceiptsMessage, CancellationToken cancellationToken)
     {
-        if (TryFulfillEncodedReceiptsRequest(getReceiptsMessage, cancellationToken) is { } encoded) return encoded;
-
         ReadOnlySpan<Hash256> hashes = getReceiptsMessage.Hashes.AsSpan();
-        ArrayPoolList<TxReceipt[]> txReceipts = new(Math.Min(hashes.Length, MaxReceiptsLookups));
+        ArrayPoolList<byte> buffer = new(0);
+        using ArrayPoolList<Range> blocks = new(Math.Min(hashes.Length, MaxReceiptsLookups));
+        using ArrayPoolList<int> receiptStarts = new(0);
         bool lastBlockIncomplete = false;
-
         try
         {
             ulong responseReceiptsContentSize = 0;
             bool hasNonEmptyReceiptBlock = false;
             for (int blockIndex = 0; blockIndex < hashes.Length && blockIndex < MaxReceiptsLookups; blockIndex++)
             {
-                if (cancellationToken.IsCancellationRequested)
+                if (cancellationToken.IsCancellationRequested) break;
+
+                int blockStart = buffer.Count;
+                if (!SyncServer.TryAppendReceipts(hashes[blockIndex], ReceiptMessageDecoder, copyStored: true, withBloom: false, buffer)) break;
+
+                // The receipts content, and where each receipt starts in it, with its end as the last entry.
+                RlpReader receiptsReader = new RlpReader(buffer.AsSpan()[blockStart..]).EnterSequence(out int listLength);
+                int contentStart = blockStart + listLength - receiptsReader.Remaining;
+                int contentLength = buffer.Count - contentStart;
+                receiptStarts.Clear();
+                while (receiptsReader.HasNext)
                 {
-                    break;
+                    receiptStarts.Add(receiptsReader.BytesRead);
+                    receiptsReader.SkipItem();
                 }
 
-                Hash256 blockHash = hashes[blockIndex];
-                TxReceipt[]? receipts = SyncServer.GetReceipts(blockHash);
-                if (receipts is null)
-                {
-                    break;
-                }
+                int receiptCount = receiptStarts.Count;
+                receiptStarts.Add(contentLength);
 
                 long requestedStartIndex = blockIndex == 0 ? getReceiptsMessage.FirstBlockReceiptIndex : 0;
-                if (requestedStartIndex < 0 || requestedStartIndex > receipts.Length)
+                if (requestedStartIndex < 0 || requestedStartIndex > receiptCount)
                 {
-                    throw new SubprotocolException($"Invalid firstBlockReceiptIndex {requestedStartIndex} for block receipts length {receipts.Length}");
+                    throw new SubprotocolException($"Invalid firstBlockReceiptIndex {requestedStartIndex} for block receipts length {receiptCount}");
                 }
 
                 int startIndex = (int)requestedStartIndex;
-
-                if (receipts.Length == 0)
+                if (receiptCount == 0 || startIndex == receiptCount)
                 {
                     ulong emptyBlockSize = GetBlockReceiptsSize(0);
-                    ulong responseSize = GetEth70ReceiptsResponseSize(
-                        responseReceiptsContentSize + emptyBlockSize,
-                        getReceiptsMessage.RequestId);
-                    if (responseSize > SoftOutgoingMessageSizeLimit && responseReceiptsContentSize > 0)
+                    if (GetEth70ReceiptsResponseSize(responseReceiptsContentSize + emptyBlockSize, getReceiptsMessage.RequestId) > SoftOutgoingMessageSizeLimit
+                        && responseReceiptsContentSize > 0)
                     {
+                        buffer.Truncate(blockStart);
                         break;
                     }
 
-                    if (startIndex != 0)
+                    if (receiptCount == 0 && startIndex != 0)
                     {
                         throw new SubprotocolException($"Invalid firstBlockReceiptIndex {startIndex} for empty receipts block");
                     }
 
-                    txReceipts.Add([]);
+                    KeepReceipts(buffer, blocks, blockStart, buffer.Count, 0);
                     responseReceiptsContentSize += emptyBlockSize;
                     continue;
                 }
 
-                if (startIndex == receipts.Length)
+                int startOffset = receiptStarts[startIndex];
+                ulong remainingBlockSize = GetBlockReceiptsSize((ulong)(contentLength - startOffset));
+                if (GetEth70ReceiptsResponseSize(responseReceiptsContentSize + remainingBlockSize, getReceiptsMessage.RequestId) <= SoftOutgoingMessageSizeLimit)
                 {
-                    ulong emptyBlockSize = GetBlockReceiptsSize(0);
-                    ulong responseSize = GetEth70ReceiptsResponseSize(
-                        responseReceiptsContentSize + emptyBlockSize,
-                        getReceiptsMessage.RequestId);
-                    if (responseSize > SoftOutgoingMessageSizeLimit && responseReceiptsContentSize > 0)
-                    {
-                        break;
-                    }
-
-                    txReceipts.Add([]);
-                    responseReceiptsContentSize += emptyBlockSize;
-                    continue;
-                }
-
-                ulong remainingBlockSize = GetBlockReceiptsSize(receipts, startIndex);
-                if (GetEth70ReceiptsResponseSize(
-                    responseReceiptsContentSize + remainingBlockSize,
-                    getReceiptsMessage.RequestId) <= SoftOutgoingMessageSizeLimit)
-                {
-                    txReceipts.Add(CopyReceipts(receipts, startIndex, receipts.Length - startIndex));
+                    KeepReceipts(buffer, blocks, blockStart, contentStart + startOffset, contentLength - startOffset);
                     responseReceiptsContentSize += remainingBlockSize;
                     hasNonEmptyReceiptBlock = true;
                     continue;
@@ -180,37 +165,29 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 
                 if (hasNonEmptyReceiptBlock)
                 {
+                    buffer.Truncate(blockStart);
                     break;
                 }
 
                 if (GetEth70ReceiptsResponseSize(responseReceiptsContentSize + remainingBlockSize, getReceiptsMessage.RequestId) <= HardOutgoingReceiptsMessageSizeLimit)
                 {
-                    txReceipts.Add(CopyReceipts(receipts, startIndex, receipts.Length - startIndex));
+                    KeepReceipts(buffer, blocks, blockStart, contentStart + startOffset, contentLength - startOffset);
                     hasNonEmptyReceiptBlock = true;
                     break;
                 }
 
-                ulong blockReceiptsContentSize = 0;
                 int taken = 0;
-                ulong lastBlockNumber = NoBlockSeen;
-                RlpBehaviors behaviors = RlpBehaviors.None;
-                for (int receiptIndex = startIndex; receiptIndex < receipts.Length; receiptIndex++)
+                for (int receiptIndex = startIndex; receiptIndex < receiptCount; receiptIndex++)
                 {
-                    ulong receiptSize = GetReceiptSize(receipts[receiptIndex], ref lastBlockNumber, ref behaviors);
-                    ulong nextBlockReceiptsContentSize = blockReceiptsContentSize + receiptSize;
-                    ulong nextBlockSize = GetBlockReceiptsSize(nextBlockReceiptsContentSize);
+                    ulong nextBlockSize = GetBlockReceiptsSize((ulong)(receiptStarts[receiptIndex + 1] - startOffset));
                     if (GetEth70ReceiptsResponseSize(responseReceiptsContentSize + nextBlockSize, getReceiptsMessage.RequestId) > HardOutgoingReceiptsMessageSizeLimit)
                     {
                         break;
                     }
 
                     taken++;
-                    blockReceiptsContentSize = nextBlockReceiptsContentSize;
 
-                    if (cancellationToken.IsCancellationRequested)
-                    {
-                        break;
-                    }
+                    if (cancellationToken.IsCancellationRequested) break;
                 }
 
                 if (taken == 0)
@@ -218,19 +195,34 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                     throw new SubprotocolException($"Single receipt exceeds hard eth/70 receipts response size limit ({HardOutgoingReceiptsMessageSizeLimit} bytes)");
                 }
 
-                lastBlockIncomplete = startIndex + taken < receipts.Length;
-                txReceipts.Add(CopyReceipts(receipts, startIndex, taken));
+                lastBlockIncomplete = startIndex + taken < receiptCount;
+                KeepReceipts(buffer, blocks, blockStart, contentStart + startOffset, receiptStarts[startIndex + taken] - startOffset);
                 hasNonEmptyReceiptBlock = true;
                 break;
             }
 
-            return new ReceiptsResponse(txReceipts, lastBlockIncomplete);
+            NetworkBlockReceipts receipts = NetworkBlockReceipts.FromBuffer(buffer, blocks.AsSpan().ToArray(), withBloom: false, DecodeReceiptsBlock);
+            return new ReceiptsResponse(receipts, lastBlockIncomplete);
         }
         catch
         {
-            txReceipts.Dispose();
+            buffer.Dispose();
             throw;
         }
+    }
+
+    /// <summary>Keeps the receipts at <paramref name="receiptsStart"/> of the block added at <paramref name="blockStart"/> as that block's receipt sequence.</summary>
+    /// <remarks>The kept receipts move back over the block's sequence prefix and the receipts left out before them.</remarks>
+    private static void KeepReceipts(ArrayPoolList<byte> buffer, ArrayPoolList<Range> blocks, int blockStart, int receiptsStart, int receiptsLength)
+    {
+        Span<byte> prefix = stackalloc byte[1 + sizeof(int)];
+        int prefixLength = Rlp.StartSequence(prefix, 0, receiptsLength);
+        int keptStart = blockStart + prefixLength;
+        Span<byte> bufferSpan = buffer.AsSpan();
+        if (receiptsStart != keptStart) bufferSpan.Slice(receiptsStart, receiptsLength).CopyTo(bufferSpan[keptStart..]);
+        prefix[..prefixLength].CopyTo(bufferSpan[blockStart..]);
+        buffer.Truncate(keptStart + receiptsLength);
+        blocks.Add(new Range(blockStart, buffer.Count));
     }
 
     public override async Task<IOwnedReadOnlyList<TxReceipt[]>> GetReceipts(IReadOnlyList<Hash256> blockHashes, ReadOnlyMemory<int> expectedReceiptCounts, CancellationToken token)
@@ -571,26 +563,6 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         return facts;
     }
 
-    private static TxReceipt[] CopyReceipts(TxReceipt[] receipts, int startIndex, int count)
-    {
-        TxReceipt[] copy = new TxReceipt[count];
-        Array.Copy(receipts, startIndex, copy, 0, count);
-        return copy;
-    }
-
-    private ulong GetBlockReceiptsSize(TxReceipt[] receipts, int startIndex)
-    {
-        ulong receiptsContentSize = 0;
-        ulong lastBlockNumber = NoBlockSeen;
-        RlpBehaviors behaviors = RlpBehaviors.None;
-        for (int i = startIndex; i < receipts.Length; i++)
-        {
-            receiptsContentSize += GetReceiptSize(receipts[i], ref lastBlockNumber, ref behaviors);
-        }
-
-        return GetBlockReceiptsSize(receiptsContentSize);
-    }
-
     private static ulong GetBlockReceiptsSize(ulong receiptsContentSize) =>
         GetRlpSequenceSize(receiptsContentSize);
 
@@ -603,18 +575,6 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
             receiptsMessageSize;
 
         return GetRlpSequenceSize(responseContentSize);
-    }
-
-    private ulong GetReceiptSize(TxReceipt receipt, ref ulong lastBlockNumber, ref RlpBehaviors behaviors)
-    {
-        if (receipt.BlockNumber != lastBlockNumber)
-        {
-            lastBlockNumber = receipt.BlockNumber;
-            IReceiptSpec receiptSpec = _specProvider.GetReceiptSpec(lastBlockNumber);
-            behaviors = receiptSpec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
-        }
-
-        return (ulong)ReceiptMessageDecoder.GetLength(receipt, behaviors);
     }
 
     private static ulong GetRlpSequenceSize(ulong contentSize) =>
@@ -636,138 +596,6 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 
         ReceiptsMessage70 response = await HandleResponse(request, TransferSpeedType.Receipts, static _ => nameof(GetReceiptsMessage70), token);
         return (response, (ulong)request.ResponseSize);
-    }
-
-    /// <summary>Builds the receipts response as <see cref="FulfillReceiptsRequest"/> does, from the stored receipts without decoding them.</summary>
-    /// <returns><see langword="null"/> when a block's receipts are in a form left to <see cref="ISyncServer.GetReceipts"/>.</returns>
-    private ReceiptsResponse? TryFulfillEncodedReceiptsRequest(GetReceiptsMessage70 getReceiptsMessage, CancellationToken cancellationToken)
-    {
-        ReadOnlySpan<Hash256> hashes = getReceiptsMessage.Hashes.AsSpan();
-        ArrayPoolList<byte> buffer = new(0);
-        using ArrayPoolList<Range> blocks = new(Math.Min(hashes.Length, MaxReceiptsLookups));
-        using ArrayPoolList<int> receiptStarts = new(0);
-        bool lastBlockIncomplete = false;
-        try
-        {
-            ulong responseReceiptsContentSize = 0;
-            bool hasNonEmptyReceiptBlock = false;
-            for (int blockIndex = 0; blockIndex < hashes.Length && blockIndex < MaxReceiptsLookups; blockIndex++)
-            {
-                if (cancellationToken.IsCancellationRequested) break;
-
-                Hash256 blockHash = hashes[blockIndex];
-                if (!SyncServer.TryGetNetworkReceipts(blockHash, withBloom: false, out ArrayPoolSpan<byte> blockReceipts))
-                {
-                    // The decode path serves the request from its first block, so only a later block is looked up here.
-                    if (blocks.Count > 0 && SyncServer.GetReceipts(blockHash) is null) break;
-
-                    buffer.Dispose();
-                    return null;
-                }
-
-                using (blockReceipts)
-                {
-                    // The receipts content, and where each receipt starts in it, with its end as the last entry.
-                    RlpReader receiptsReader = new RlpReader(blockReceipts).EnterSequence(out int listLength);
-                    ReadOnlySpan<byte> content = ((ReadOnlySpan<byte>)blockReceipts)[(listLength - receiptsReader.Remaining)..];
-                    receiptStarts.Clear();
-                    while (receiptsReader.HasNext)
-                    {
-                        receiptStarts.Add(receiptsReader.BytesRead);
-                        receiptsReader.SkipItem();
-                    }
-
-                    int receiptCount = receiptStarts.Count;
-                    receiptStarts.Add(content.Length);
-
-                    long requestedStartIndex = blockIndex == 0 ? getReceiptsMessage.FirstBlockReceiptIndex : 0;
-                    if (requestedStartIndex < 0 || requestedStartIndex > receiptCount)
-                    {
-                        throw new SubprotocolException($"Invalid firstBlockReceiptIndex {requestedStartIndex} for block receipts length {receiptCount}");
-                    }
-
-                    int startIndex = (int)requestedStartIndex;
-                    if (receiptCount == 0 || startIndex == receiptCount)
-                    {
-                        ulong emptyBlockSize = GetBlockReceiptsSize(0);
-                        if (GetEth70ReceiptsResponseSize(responseReceiptsContentSize + emptyBlockSize, getReceiptsMessage.RequestId) > SoftOutgoingMessageSizeLimit
-                            && responseReceiptsContentSize > 0)
-                        {
-                            break;
-                        }
-
-                        if (receiptCount == 0 && startIndex != 0)
-                        {
-                            throw new SubprotocolException($"Invalid firstBlockReceiptIndex {startIndex} for empty receipts block");
-                        }
-
-                        AddEncodedBlock(buffer, blocks, []);
-                        responseReceiptsContentSize += emptyBlockSize;
-                        continue;
-                    }
-
-                    int startOffset = receiptStarts[startIndex];
-                    ulong remainingBlockSize = GetBlockReceiptsSize((ulong)(content.Length - startOffset));
-                    if (GetEth70ReceiptsResponseSize(responseReceiptsContentSize + remainingBlockSize, getReceiptsMessage.RequestId) <= SoftOutgoingMessageSizeLimit)
-                    {
-                        AddEncodedBlock(buffer, blocks, content[startOffset..]);
-                        responseReceiptsContentSize += remainingBlockSize;
-                        hasNonEmptyReceiptBlock = true;
-                        continue;
-                    }
-
-                    if (hasNonEmptyReceiptBlock) break;
-
-                    if (GetEth70ReceiptsResponseSize(responseReceiptsContentSize + remainingBlockSize, getReceiptsMessage.RequestId) <= HardOutgoingReceiptsMessageSizeLimit)
-                    {
-                        AddEncodedBlock(buffer, blocks, content[startOffset..]);
-                        hasNonEmptyReceiptBlock = true;
-                        break;
-                    }
-
-                    int taken = 0;
-                    for (int receiptIndex = startIndex; receiptIndex < receiptCount; receiptIndex++)
-                    {
-                        ulong nextBlockSize = GetBlockReceiptsSize((ulong)(receiptStarts[receiptIndex + 1] - startOffset));
-                        if (GetEth70ReceiptsResponseSize(responseReceiptsContentSize + nextBlockSize, getReceiptsMessage.RequestId) > HardOutgoingReceiptsMessageSizeLimit)
-                        {
-                            break;
-                        }
-
-                        taken++;
-
-                        if (cancellationToken.IsCancellationRequested) break;
-                    }
-
-                    if (taken == 0)
-                    {
-                        throw new SubprotocolException($"Single receipt exceeds hard eth/70 receipts response size limit ({HardOutgoingReceiptsMessageSizeLimit} bytes)");
-                    }
-
-                    lastBlockIncomplete = startIndex + taken < receiptCount;
-                    AddEncodedBlock(buffer, blocks, content[startOffset..receiptStarts[startIndex + taken]]);
-                    hasNonEmptyReceiptBlock = true;
-                    break;
-                }
-            }
-
-            NetworkBlockReceipts receipts = NetworkBlockReceipts.FromBuffer(buffer, blocks.AsSpan().ToArray(), withBloom: false, DecodeReceiptsBlock);
-            return new ReceiptsResponse(receipts, lastBlockIncomplete);
-        }
-        catch
-        {
-            buffer.Dispose();
-            throw;
-        }
-    }
-
-    private static void AddEncodedBlock(ArrayPoolList<byte> buffer, ArrayPoolList<Range> blocks, ReadOnlySpan<byte> receiptsContent)
-    {
-        Span<byte> prefix = stackalloc byte[1 + sizeof(int)];
-        int start = buffer.Count;
-        buffer.AddRange(prefix[..Rlp.StartSequence(prefix, 0, receiptsContent.Length)]);
-        buffer.AddRange(receiptsContent);
-        blocks.Add(new Range(start, buffer.Count));
     }
 
     private static readonly RefRlpReaderFunc<TxReceipt[]> DecodeReceiptsBlock = static (ref RlpReader reader) =>

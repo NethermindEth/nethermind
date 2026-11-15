@@ -659,9 +659,8 @@ namespace Nethermind.Blockchain.Receipts
 
         /// <inheritdoc/>
         /// <remarks>Gives the compact values only; the block's receipts not yet written are left to <see cref="Get(Hash256, bool)"/>.</remarks>
-        public bool TryGetNetworkReceipts(BlockHeader header, bool withBloom, out ArrayPoolSpan<byte> encoded)
+        public bool TryAppendNetworkReceipts(BlockHeader header, bool withBloom, ArrayPoolList<byte> destination)
         {
-            encoded = default;
             Hash256 blockHash = header.Hash!;
             using MemoryManager<byte>? block = _blockStore.GetOwnedRlp(header.Number, blockHash);
             if (block is null) return false;
@@ -669,10 +668,10 @@ namespace Nethermind.Blockchain.Receipts
             Span<byte> receiptsData = GetReceiptData(header.Number, blockHash);
             try
             {
-                return ReceiptArrayStorageDecoder.TryEncodeAsNetworkReceipts(receiptsData, block.Memory.Span, withBloom,
+                return ReceiptArrayStorageDecoder.TryAppendNetworkReceipts(receiptsData, block.Memory.Span, withBloom,
                     _specProvider.GetReceiptSpec(header.Number).IsEip658Enabled,
                     _eip7668EverEnabled && _specProvider.GetSpec(header).IsEip7668Enabled,
-                    out encoded);
+                    destination);
             }
             finally
             {

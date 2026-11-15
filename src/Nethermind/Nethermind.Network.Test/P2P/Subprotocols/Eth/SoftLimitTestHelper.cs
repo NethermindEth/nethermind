@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Network.P2P.ProtocolHandlers;
-using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth;
@@ -30,9 +29,9 @@ internal static class SoftLimitTestHelper
         return blocks.Count;
     }
 
-    public static int CountReceiptBlocksWithinSoftLimit(TxReceipt[] receipts, int requestedCount)
+    public static int CountReceiptBlocksWithinSoftLimit(int encodedBlockLength, int requestedCount)
     {
-        ulong receiptBlockSize = MessageSizeEstimator.EstimateSize(receipts);
+        ulong receiptBlockSize = (ulong)encodedBlockLength;
         ulong sizeEstimate = 0;
         for (int i = 0; i < requestedCount; i++)
         {

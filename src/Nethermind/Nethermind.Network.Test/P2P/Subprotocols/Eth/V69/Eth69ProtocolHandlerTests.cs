@@ -64,6 +64,7 @@ public class Eth69ProtocolHandlerTests
         _syncManager = Substitute.For<ISyncServer>();
         _transactionPool = Substitute.For<ITxPool>();
         _specProvider = Substitute.For<IChainHeadSpecProvider>();
+        _syncManager.ServeReceipts(_specProvider);
         _gossipPolicy = Substitute.For<IGossipPolicy>();
         _genesisBlock = Build.A.Block.Genesis.TestObject;
         _syncManager.Head.Returns(_genesisBlock.Header);
@@ -141,7 +142,8 @@ public class Eth69ProtocolHandlerTests
         const int count = 512;
         using GetReceiptsMessage66 msg = new(1111, new(Enumerable.Repeat(Keccak.Zero, count).ToPooledList(count)));
         TxReceipt[] receipts = Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, count).ToArray();
-        int expectedCount = SoftLimitTestHelper.CountReceiptBlocksWithinSoftLimit(receipts, count);
+        int expectedCount = SoftLimitTestHelper.CountReceiptBlocksWithinSoftLimit(
+            ReceiptsServingTestHelper.Encode(receipts, new ReceiptMessageDecoder69(), _specProvider).Length, count);
         _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(receipts);
 
         HandleIncomingStatusMessage();
@@ -151,54 +153,38 @@ public class Eth69ProtocolHandlerTests
     }
 
     [Test]
-    public void Serves_stored_receipts_encoded_as_decoded_ones([Values] bool lastBlockUnknown)
+    public void Serves_stored_and_decoded_receipts_as_decoded_ones([Values] bool lastBlockUnknown)
     {
-        TxReceipt[][] blocks =
-        [
-            [Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject],
-            [],
-            [Build.A.Receipt.WithAllFieldsFilled.TestObject],
-        ];
-        Hash256[] hashes = [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC];
-        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(call =>
+        (Block storedBlock, TxReceipt[] storedReceipts) = ReceiptsServingTestHelper.CreateStoredBlock(_specProvider, 3);
+        TxReceipt[][] blocks = [storedReceipts, [], [Build.A.Receipt.WithAllFieldsFilled.TestObject]];
+        Hash256[] hashes = [storedBlock.Hash!, TestItem.KeccakB, TestItem.KeccakC];
+        for (int i = 0; i < hashes.Length; i++)
         {
-            int index = Array.IndexOf(hashes, call.Arg<Hash256>());
-            return lastBlockUnknown && index == hashes.Length - 1 ? null : blocks[index];
-        });
-        ReceiptsMessageSerializer69 serializer = new(_specProvider);
-        List<(byte[] Message, bool Encoded)> responses = [];
-        _session.When(session => session.DeliverMessage(Arg.Any<ReceiptsMessage69>()))
-            .Do(call =>
-            {
-                ReceiptsMessage69 response = (ReceiptsMessage69)call[0];
-                byte[] message = new byte[((IMessageSerializer<ReceiptsMessage69>)serializer).GetLength(response)];
-                ((IMessageSerializer<ReceiptsMessage69>)serializer).Serialize(message, response);
-                responses.Add((message, response.EthMessage.TxReceipts is NetworkBlockReceipts));
-            });
-        HandleIncomingStatusMessage();
-
-        foreach (bool encoded in new[] { false, true })
-        {
-            _syncManager.TryGetNetworkReceipts(Arg.Any<Hash256>(), false, out Arg.Any<ArrayPoolSpan<byte>>())
-                .Returns(call =>
-                {
-                    int index = Array.IndexOf(hashes, call.Arg<Hash256>());
-                    if (!encoded || (lastBlockUnknown && index == hashes.Length - 1)) return false;
-                    byte[] blockReceipts = RlpTestHelper.EncodeSequence([.. blocks[index].Select(static receipt => new ReceiptMessageDecoder69().Encode(receipt))]);
-                    ArrayPoolSpan<byte> span = new(blockReceipts.Length);
-                    blockReceipts.CopyTo((Span<byte>)span);
-                    call[2] = span;
-                    return true;
-                });
-            using GetReceiptsMessage66 request = new(1111, new(hashes.ToPooledList()));
-            HandleZeroMessage(request, Eth63MessageCode.GetReceipts);
+            _syncManager.GetReceipts(hashes[i]).Returns(lastBlockUnknown && i == hashes.Length - 1 ? null : blocks[i]);
         }
 
-        Assert.That(responses, Has.Count.EqualTo(2));
+        _syncManager.ServeReceipts(_specProvider, storedBlock);
+        IMessageSerializer<ReceiptsMessage69> serializer = new ReceiptsMessageSerializer69(_specProvider);
+        byte[]? response = null;
+        _session.When(session => session.DeliverMessage(Arg.Any<ReceiptsMessage69>()))
+            .Do(call => response = Serialize(serializer, (ReceiptsMessage69)call[0]));
+        HandleIncomingStatusMessage();
+
+        using GetReceiptsMessage66 request = new(1111, new(hashes.ToPooledList()));
+        HandleZeroMessage(request, Eth63MessageCode.GetReceipts);
+
+        using ReceiptsMessage69 decoded = new(1111, new(blocks[..(lastBlockUnknown ? 2 : 3)].ToPooledList()));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(responses[1].Message, Is.EqualTo(responses[0].Message));
-            Assert.That(responses.Select(static response => response.Encoded), Is.EqualTo(new[] { false, true }));
+            Assert.That(response, Is.EqualTo(Serialize(serializer, decoded)));
+            _syncManager.Received(1).TryAppendReceipts(storedBlock.Hash!, Arg.Any<IRlpDecoder<TxReceipt>>(), true, false, Arg.Any<ArrayPoolList<byte>>());
+        }
+
+        static byte[] Serialize(IMessageSerializer<ReceiptsMessage69> serializer, ReceiptsMessage69 message)
+        {
+            byte[] serialized = new byte[serializer.GetLength(message)];
+            serializer.Serialize(serialized, message);
+            return serialized;
         }
     }
 
@@ -320,8 +306,12 @@ public class Eth69ProtocolHandlerTests
 
         IOwnedReadOnlyList<TxReceipt[]?> response = RequestReceipts(Keccak.Zero, TestItem.KeccakA, TestItem.KeccakB);
 
-        Assert.That(response, Has.Count.EqualTo(1));
-        Assert.That(response[0], Is.SameAs(blockReceipts));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response, Has.Count.EqualTo(1));
+            Assert.That(((NetworkBlockReceipts)response).GetEncoded(0).ToArray(),
+                Is.EqualTo(ReceiptsServingTestHelper.Encode(blockReceipts, new ReceiptMessageDecoder69(), _specProvider)));
+        }
     }
 
     [Test]

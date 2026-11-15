@@ -13,8 +13,8 @@ namespace Nethermind.Serialization.Rlp;
 
 /// <summary>The receipts of several blocks as receipts messages carry them, decoded on the first read.</summary>
 /// <remarks>
-/// Every receipt is one <see cref="NetworkReceipt.TryRead"/> reads, so a consumer that stores the receipts without
-/// using them can read <see cref="GetEncoded"/> and skip decoding the logs.
+/// Every receipt that <see cref="TryCreate"/> takes is one <see cref="NetworkReceipt.TryRead"/> reads, so a consumer that
+/// stores received receipts without using them can read <see cref="GetEncoded"/> and skip decoding the logs.
 /// </remarks>
 /// <param name="memory">Memory holding the encoded receipts, released on disposal.</param>
 /// <param name="blocks">Where the encoded receipt sequence of each block is in <paramref name="memory"/>.</param>
@@ -73,7 +73,7 @@ public sealed class NetworkBlockReceipts(IMemoryOwner<byte> memory, Range[] bloc
     }
 
     /// <summary>Takes the encoded receipt sequences of blocks from <paramref name="buffer"/>, which it then owns.</summary>
-    /// <param name="buffer">The blocks' encoded receipt sequences, each holding receipts <see cref="NetworkReceipt.TryRead"/> reads.</param>
+    /// <param name="buffer">The blocks' encoded receipt sequences, each as the receipts message carries it.</param>
     /// <param name="blocks">Where the receipt sequence of each block is in <paramref name="buffer"/>.</param>
     /// <param name="withBloom">Whether the receipts have blooms: the eth/63 to eth/68 form.</param>
     /// <param name="decodeBlock">Decodes the receipt sequence of one block.</param>

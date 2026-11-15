@@ -408,13 +408,14 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         ReceiptMessageDecoder decoder = new();
         byte[] expected = RlpTestHelper.EncodeSequence([.. _storage.Get(block).Select(receipt => decoder.Encode(receipt, RlpBehaviors.Eip658Receipts))]);
 
-        bool served = _storage.TryGetNetworkReceipts(block.Header, withBloom: true, out ArrayPoolSpan<byte> encoded);
+        using ArrayPoolList<byte> encoded = new(0);
 
-        Assert.That(served, Is.EqualTo(useCompactReceipts));
-        if (!served) return;
-        using (encoded)
+        bool served = _storage.TryAppendNetworkReceipts(block.Header, withBloom: true, encoded);
+
+        using (Assert.EnterMultipleScope())
         {
-            Assert.That(encoded.ToArray(), Is.EqualTo(expected));
+            Assert.That(served, Is.EqualTo(useCompactReceipts));
+            Assert.That(encoded.AsSpan().ToArray(), Is.EqualTo(served ? expected : []));
         }
     }
 

@@ -48,8 +48,8 @@ namespace Nethermind.Blockchain.Receipts
 
         public bool CanGetReceiptsByHash(ulong blockNumber) => _receiptStorage.CanGetReceiptsByHash(blockNumber);
         public bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator) => _receiptStorage.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
-        public bool TryGetNetworkReceipts(BlockHeader header, bool withBloom, out ArrayPoolSpan<byte> encoded) =>
-            _receiptStorage.TryGetNetworkReceipts(header, withBloom, out encoded);
+        public bool TryAppendNetworkReceipts(BlockHeader header, bool withBloom, ArrayPoolList<byte> destination) =>
+            _receiptStorage.TryAppendNetworkReceipts(header, withBloom, destination);
         public bool TryGetReceipt(ReceiptRecoveryBlock block, Hash256 txHash, [NotNullWhen(true)] out TxReceipt? receipt, out int txIndex, out int logIndexStart) =>
             _receiptStorage.TryGetReceipt(block, txHash, out receipt, out txIndex, out logIndexStart);
     }

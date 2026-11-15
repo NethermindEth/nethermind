@@ -309,12 +309,11 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
     /// <param name="withBloom">Whether to write blooms: the eth/63 to eth/68 form; otherwise the eth/69 form.</param>
     /// <param name="eip658">Whether the receipts have a status rather than a post-transaction state.</param>
     /// <param name="eip7668">Whether the receipts have a zero-length bloom.</param>
-    /// <param name="encoded">The encoded sequence of the receipts, which the caller disposes.</param>
-    /// <returns><see langword="false"/> when the value has a form left to the decoders.</returns>
-    public static bool TryEncodeAsNetworkReceipts(ReadOnlySpan<byte> receiptsData, ReadOnlySpan<byte> block, bool withBloom, bool eip658, bool eip7668,
-        out ArrayPoolSpan<byte> encoded)
+    /// <param name="destination">The list that the encoded sequence of the receipts is added to.</param>
+    /// <returns><see langword="false"/> when the value has a form left to the decoders; nothing is then added.</returns>
+    public static bool TryAppendNetworkReceipts(ReadOnlySpan<byte> receiptsData, ReadOnlySpan<byte> block, bool withBloom, bool eip658, bool eip7668,
+        ArrayPoolList<byte> destination)
     {
-        encoded = default;
         // For each receipt its content length, logs length and status, then the content length of each log, so
         // the logs are read once for the lengths and once for the writes.
         using ArrayPoolList<int> lengths = new(64);
@@ -341,24 +340,32 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
         }
 
         int length = Rlp.LengthOfSequence(contentLength);
-        encoded = new ArrayPoolSpan<byte>(length);
-        scoped RlpWriter writer = RlpWriter.ContentWriter(encoded);
-        writer.WriteSequencePrefix(contentLength);
-        RlpReader storedReceipts = new(receiptsData);
-        TrySkipCompactPrefix(ref storedReceipts, out _);
-        storedReceipts = EnterCompactReceiptList(ref storedReceipts);
-        RlpReader blockTransactions = EnterTransactions(block);
-        ReadOnlySpan<int> lengthsSpan = lengths.AsSpan();
-        int lengthIndex = 0;
-        Bloom? bloom = withBloom && !eip7668 ? new Bloom() : null;
-        while (storedReceipts.HasNext)
+        int start = destination.Count;
+        try
         {
-            TryReadStoredReceipt(ref storedReceipts, out StoredReceipt receipt);
-            WriteNetworkReceipt(ref writer, ReadTransactionType(ref blockTransactions), in receipt, withBloom, bloom, lengthsSpan, ref lengthIndex);
-        }
+            scoped RlpWriter writer = RlpWriter.ContentWriter(destination.AddUninitialized(length));
+            writer.WriteSequencePrefix(contentLength);
+            RlpReader storedReceipts = new(receiptsData);
+            TrySkipCompactPrefix(ref storedReceipts, out _);
+            storedReceipts = EnterCompactReceiptList(ref storedReceipts);
+            RlpReader blockTransactions = EnterTransactions(block);
+            ReadOnlySpan<int> lengthsSpan = lengths.AsSpan();
+            int lengthIndex = 0;
+            Bloom? bloom = withBloom && !eip7668 ? new Bloom() : null;
+            while (storedReceipts.HasNext)
+            {
+                TryReadStoredReceipt(ref storedReceipts, out StoredReceipt receipt);
+                WriteNetworkReceipt(ref writer, ReadTransactionType(ref blockTransactions), in receipt, withBloom, bloom, lengthsSpan, ref lengthIndex);
+            }
 
-        Rlp.CheckLength(in writer, length);
-        return true;
+            Rlp.CheckLength(in writer, length);
+            return true;
+        }
+        catch
+        {
+            destination.Truncate(start);
+            throw;
+        }
     }
 
     private const int BloomItemLength = 3 + Bloom.ByteLength;
