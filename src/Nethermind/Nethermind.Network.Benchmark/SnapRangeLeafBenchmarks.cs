@@ -14,13 +14,14 @@ using Nethermind.State.SnapServer;
 
 namespace Nethermind.Network.Benchmarks;
 
-/// <summary>Collects the trie leaves of a full snap range response and serializes the response, as a snap server does.</summary>
+/// <summary>Collects the trie leaves of a snap range response and serializes the response, as a snap server does.</summary>
 /// <remarks>The trie walk is left out, so that only the per-leaf work of the collectors and the serializers is measured.</remarks>
 [MemoryDiagnoser]
 public class SnapRangeLeafBenchmarks
 {
-    private const int AccountCount = 40_000;
-    private const int SlotCount = 40_000;
+    /// <summary>The leaves of one response: 40,000 fill about 2 MB, the hard response byte limit.</summary>
+    [Params(100, 40_000)]
+    public int LeafCount { get; set; }
 
     private ValueHash256[] _accountPaths = null!;
     private byte[][] _accountLeaves = null!;
@@ -34,9 +35,9 @@ public class SnapRangeLeafBenchmarks
     public void Setup()
     {
         Random random = new(1);
-        _accountPaths = new ValueHash256[AccountCount];
-        _accountLeaves = new byte[AccountCount][];
-        for (int i = 0; i < AccountCount; i++)
+        _accountPaths = new ValueHash256[LeafCount];
+        _accountLeaves = new byte[LeafCount][];
+        for (int i = 0; i < LeafCount; i++)
         {
             _accountPaths[i] = Keccak.Compute(BitConverter.GetBytes(i)).ValueHash256;
             ulong nonce = (ulong)random.Next(0, 2000);
@@ -49,11 +50,11 @@ public class SnapRangeLeafBenchmarks
         }
 
         Array.Sort(_accountPaths);
-        _slotPaths = new ValueHash256[SlotCount];
-        _slotLeaves = new byte[SlotCount][];
-        for (int i = 0; i < SlotCount; i++)
+        _slotPaths = new ValueHash256[LeafCount];
+        _slotLeaves = new byte[LeafCount][];
+        for (int i = 0; i < LeafCount; i++)
         {
-            _slotPaths[i] = Keccak.Compute(BitConverter.GetBytes(i + AccountCount)).ValueHash256;
+            _slotPaths[i] = Keccak.Compute(BitConverter.GetBytes(i + LeafCount)).ValueHash256;
             byte[] value = new byte[random.Next(1, 33)];
             random.NextBytes(value);
             value[0] |= 1;
@@ -67,7 +68,7 @@ public class SnapRangeLeafBenchmarks
     [Benchmark]
     public int AccountRange()
     {
-        AccountCollector collector = new();
+        AccountCollector collector = new(ISnapStateServer.HardResponseByteLimit);
         for (int i = 0; i < _accountLeaves.Length; i++) collector.Collect(_accountPaths[i], _accountLeaves[i]);
         using AccountRangeMessage message = new() { PathsWithAccounts = collector.Accounts, Proofs = EmptyByteArrayList.Instance };
         return _accountSerializer.Serialize(_destination, message);

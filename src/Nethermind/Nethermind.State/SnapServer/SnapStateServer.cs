@@ -146,7 +146,7 @@ public class SnapStateServer : ISnapStateServer
         if (IsRootMissing(rootHash)) return (ArrayPoolList<PathWithAccount>.Empty(), EmptyByteArrayList.Instance);
         byteLimit = Math.Max(Math.Min(byteLimit, ISnapStateServer.HardResponseByteLimit), 1);
 
-        AccountCollector accounts = new();
+        AccountCollector accounts = new(byteLimit);
         (long _, IOwnedReadOnlyList<byte[]> proofs, _) = GetNodesFromTrieVisitor(
             rootHash,
             startingHash,

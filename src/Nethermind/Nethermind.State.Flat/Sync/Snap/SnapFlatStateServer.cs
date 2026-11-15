@@ -142,7 +142,7 @@ public class SnapFlatStateServer(
         {
             byteLimit = Math.Max(Math.Min(byteLimit, ISnapStateServer.HardResponseByteLimit), 1);
 
-            AccountCollector accounts = new();
+            AccountCollector accounts = new(byteLimit);
             (long _, IByteArrayList proofs, _) = GetNodesFromTrieVisitor(
                 bundle,
                 stateId.StateRoot,

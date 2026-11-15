@@ -16,7 +16,8 @@ namespace Nethermind.State.Snap;
 /// served entries are not decoded to objects and encoded again. The first read of the entries decodes all of them.
 /// </remarks>
 /// <param name="decodeEntry">Decodes one entry and moves the reader past it.</param>
-public sealed class EncodedSnapEntries<T>(RefRlpReaderFunc<T> decodeEntry) : IOwnedReadOnlyList<T>
+/// <param name="capacity">The length in bytes of the first buffer, so that the expected entries fit without a copy.</param>
+public sealed class EncodedSnapEntries<T>(RefRlpReaderFunc<T> decodeEntry, int capacity = 0) : IOwnedReadOnlyList<T>
 {
     private byte[] _buffer = [];
     private int _length;
@@ -34,7 +35,7 @@ public sealed class EncodedSnapEntries<T>(RefRlpReaderFunc<T> decodeEntry) : IOw
         int newLength = _length + length;
         if (newLength > _buffer.Length)
         {
-            byte[] buffer = ArrayPool<byte>.Shared.Rent(Math.Max(newLength, _buffer.Length * 2));
+            byte[] buffer = ArrayPool<byte>.Shared.Rent(Math.Max(newLength, Math.Max(_buffer.Length * 2, capacity)));
             Encoded.CopyTo(buffer);
             ReturnBuffer();
             _buffer = buffer;

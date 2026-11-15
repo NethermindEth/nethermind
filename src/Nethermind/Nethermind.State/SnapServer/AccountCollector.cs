@@ -12,9 +12,13 @@ using Nethermind.Trie;
 namespace Nethermind.State.SnapServer;
 
 /// <summary>Collects account leaves as the encoded <c>[path, slim account]</c> entries of an account range response.</summary>
-public class AccountCollector : RangeQueryVisitor.ILeafValueCollector
+/// <param name="byteLimit">The byte limit of the response, used to size the buffer for a full response at once.</param>
+public class AccountCollector(long byteLimit = 0) : RangeQueryVisitor.ILeafValueCollector
 {
-    public EncodedSnapEntries<PathWithAccount> Accounts { get; } = new(DecodeEntry);
+    // An entry encodes to at most 3 bytes more than the 37 or more bytes that Collect counts for it, and the
+    // visitor stops only after the entry that reaches the limit.
+    public EncodedSnapEntries<PathWithAccount> Accounts { get; } =
+        new(DecodeEntry, (int)(Math.Min(byteLimit, ISnapStateServer.HardResponseByteLimit) * 9 / 8 + 256));
 
     /// <remarks>
     /// The slim account is encoded here from <see cref="AccountStruct"/>, so it must stay byte-identical with the
