@@ -4,7 +4,9 @@
 
 # Fetches candidate runtime packages into <dest>/<guest> and prints "<guest> <key> <manifest path>"
 # for each, the path relative to <dest>. An entry is <guest>=run:<run id> (an artifact of a
-# successful same-repo run of the package repository) or <guest>=<release asset URL> there.
+# successful same-repo run of the package repository) or <guest>=<release asset URL> there. A
+# .tar.gz URL may end with #<manifest>, as for the bflat-ts suite; the fragment is dropped here,
+# since the one runtime manifest of the package is found below.
 set -euo pipefail
 
 fail() { echo "::error::$*" >&2; exit 1; }
@@ -37,11 +39,12 @@ for entry in "${entries[@]}"; do
     read -r head_repo path conclusion < <(gh api "repos/$repo/actions/runs/$run" \
       --jq '[.head_repository.full_name, .path, .conclusion] | @tsv')
     [ "$head_repo" = "$repo" ] || fail "run $run of $repo was not built from $repo"
-    [ "$path" = "${workflows[$guest]}" ] || fail "run $run of $repo is not ${workflows[$guest]}"
+    [ "${path%%@*}" = "${workflows[$guest]}" ] || fail "run $run of $repo is not ${workflows[$guest]}"
     [ "$conclusion" = success ] || fail "run $run of $repo did not succeed"
     gh run download "$run" -R "$repo" -n "${artifacts[$guest]}" -D "$dir/fetched" >&2
-  elif [[ $source =~ ^https://github\.com/${repo}/releases/download/[A-Za-z0-9._+-]{1,128}/[A-Za-z0-9._+-]{1,128}\.(nupkg|tar\.gz)$ ]]; then
-    curl --retry 3 -fsSL "$source" -o "$dir/fetched/${source##*/}"
+  elif [[ $source =~ ^https://github\.com/${repo}/releases/download/[A-Za-z0-9._+-]{1,128}/[A-Za-z0-9._+-]{1,128}\.(nupkg|tar\.gz(#[A-Za-z0-9._/-]{1,200})?)$ ]]; then
+    url=${source%%#*}
+    curl --retry 3 -fsSL "$url" -o "$dir/fetched/${url##*/}"
   else
     fail "extlib $guest must be run:<id> or a release asset URL of $repo"
   fi

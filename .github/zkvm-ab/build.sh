@@ -4,7 +4,8 @@
 
 # Builds the guest of <checkout> for every format and copies the binaries to <out>.
 # Usage: build.sh <guest> <project> <checkout> <out>
-# Environment: FORMATS, BFLAT_IMAGE, BFLAT_RISCV32_IMAGE, BFLAT_FLAGS, EXTLIB_PATH, CANDIDATE_DIR.
+# Environment: FORMATS, BFLAT_IMAGE (the image of this guest and arm), BFLAT_FLAGS, EXTLIB_PATH,
+# CANDIDATE_DIR.
 set -euo pipefail
 
 guest=$1
@@ -12,12 +13,10 @@ dir="$(realpath "$3")/src/Nethermind/$2"
 out=$(realpath -m "$4")
 args=()
 
-image=$BFLAT_IMAGE
-[ "$guest" != airbender ] || image=$BFLAT_RISCV32_IMAGE
-[ -z "$image" ] || args+=("BFLAT_IMAGE=$image")
+[ -z "$BFLAT_IMAGE" ] || args+=("BFLAT_IMAGE=$BFLAT_IMAGE")
 flags=$BFLAT_FLAGS
 extlib=$EXTLIB_PATH
-unset BFLAT_IMAGE BFLAT_RISCV32_IMAGE BFLAT_FLAGS EXTLIB_PATH
+unset BFLAT_IMAGE BFLAT_FLAGS EXTLIB_PATH
 
 if [ -n "$flags" ]; then
   grep -q '^BFLAT_EXTRA_FLAGS ?=' "$dir/../Nethermind.Stateless.Guest/build.mk" || \

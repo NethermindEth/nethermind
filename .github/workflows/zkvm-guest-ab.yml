@@ -24,9 +24,16 @@ on:
         type: string
         default: ''
       codegenopt:
-        description: bflat --codegenopt values for both arms, Name=Value, comma-separated, at most 8
+        description: bflat --codegenopt values, Name=Value, comma-separated, at most 8
         type: string
         default: ''
+      candidate_arm:
+        description: Arms that take bflat_image, bflat_riscv32_image, extlib and codegenopt (head = test them against the base at the same commit)
+        type: choice
+        options:
+          - both
+          - head
+        default: both
       guests:
         description: Guests to measure
         type: string
@@ -55,6 +62,9 @@ on:
       codegenopt:
         type: string
         default: ''
+      candidate_arm:
+        type: string
+        default: both
       guests:
         type: string
         default: zisk,sp1,openvm,airbender
@@ -80,9 +90,8 @@ jobs:
       head_sha: ${{ steps.resolve.outputs.head_sha }}
       guests: ${{ steps.resolve.outputs.guests }}
       formats: ${{ steps.resolve.outputs.formats }}
-      bflat_flags: ${{ steps.resolve.outputs.bflat_flags }}
+      candidate_arm: ${{ steps.resolve.outputs.candidate_arm }}
       keys: ${{ steps.resolve.outputs.keys }}
-      extlib: ${{ steps.resolve.outputs.extlib }}
       openvm: ${{ steps.resolve.outputs.openvm }}
       build_matrix: ${{ steps.resolve.outputs.build_matrix }}
       measure_matrix: ${{ steps.resolve.outputs.measure_matrix }}
@@ -103,6 +112,7 @@ jobs:
           BFLAT_RISCV32_IMAGE: ${{ inputs.bflat_riscv32_image }}
           EXTLIB: ${{ inputs.extlib }}
           CODEGENOPT: ${{ inputs.codegenopt }}
+          CANDIDATE_ARM: ${{ inputs.candidate_arm }}
           GUESTS: ${{ inputs.guests }}
           FORMATS: ${{ inputs.formats }}
           GH_TOKEN: ${{ github.token }}
@@ -237,7 +247,7 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.resolve.outputs.build_matrix) }}
     env:
-      EXTLIB_PATH: ${{ fromJSON(needs.resolve.outputs.extlib)[matrix.vm] }}
+      EXTLIB_PATH: ${{ matrix.extlib }}
     steps:
       - name: Check out scripts
         uses: actions/checkout@v7
@@ -285,9 +295,8 @@ jobs:
         if: steps.cache.outputs.cache-hit != 'true'
         env:
           FORMATS: ${{ needs.resolve.outputs.formats }}
-          BFLAT_IMAGE: ${{ inputs.bflat_image }}
-          BFLAT_RISCV32_IMAGE: ${{ inputs.bflat_riscv32_image }}
-          BFLAT_FLAGS: ${{ needs.resolve.outputs.bflat_flags }}
+          BFLAT_IMAGE: ${{ matrix.image }}
+          BFLAT_FLAGS: ${{ matrix.flags }}
           CANDIDATE_DIR: ${{ runner.temp }}/candidate
           VM: ${{ matrix.vm }}
           PROJECT: ${{ matrix.project }}
@@ -404,6 +413,16 @@ jobs:
           path: zkab-base
           key: ${{ steps.key.outputs.key }}
 
+      # The head steps below run the head Makefile, so the base rows leave this job before them and
+      # the summary reads them only from this artifact
+      - name: Upload base results
+        uses: actions/upload-artifact@v7
+        with:
+          name: zkab-base-${{ matrix.vm }}-${{ matrix.format }}
+          path: zkab-base
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Check out head
         uses: actions/checkout@v7
         with:
@@ -427,7 +446,6 @@ jobs:
           set -euo pipefail
           mkdir -p zkab-results
           .github/zkvm-ab/measure.sh "$VM" "$FORMAT" head "head/$GUEST" zkab-inputs zkab-results/head.tsv
-          cp zkab-base/results.tsv zkab-results/base.tsv
 
       - name: Upload results
         uses: actions/upload-artifact@v7
@@ -451,11 +469,17 @@ jobs:
           ref: ${{ env.TOOLS_REF }}
           persist-credentials: false
 
-      - name: Download results
+      - name: Download base results
+        uses: actions/download-artifact@v8
+        with:
+          pattern: zkab-base-*
+          path: base
+
+      - name: Download head results
         uses: actions/download-artifact@v8
         with:
           pattern: zkab-results-*
-          path: results
+          path: head
 
       - name: Summarize
         env:
@@ -469,10 +493,11 @@ jobs:
           BFLAT_RISCV32_IMAGE: ${{ inputs.bflat_riscv32_image }}
           EXTLIB: ${{ inputs.extlib }}
           CODEGENOPT: ${{ inputs.codegenopt }}
+          CANDIDATE_ARM: ${{ needs.resolve.outputs.candidate_arm }}
         run: |
           mkdir -p zkvm-ab-summary
           rc=0
-          python3 .github/zkvm-ab/summary.py results zkvm-ab-summary/summary.md zkvm-ab-summary/summary.json > /dev/null || rc=$?
+          python3 .github/zkvm-ab/summary.py base head zkvm-ab-summary/summary.md zkvm-ab-summary/summary.json > /dev/null || rc=$?
           cat zkvm-ab-summary/summary.md >> "$GITHUB_STEP_SUMMARY"
           exit $rc
 

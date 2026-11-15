@@ -4,6 +4,8 @@
 
 # Validates the A/B inputs, resolves both refs to commits on a NethermindEth/nethermind branch,
 # fetches the candidate packages and writes the job matrices and cache keys to GITHUB_OUTPUT.
+# CANDIDATE_ARM=both gives the image, extlib and codegenopt inputs to both arms; head gives them
+# to the head arm only, so that base and head at the same commit measure the candidate alone.
 set -euo pipefail
 
 fail() { echo "::error::$*" >&2; exit 1; }
@@ -12,7 +14,7 @@ REPO_URL=https://github.com/NethermindEth/nethermind.git
 SHA_RE='^[0-9a-f]{40}$'
 REF_RE='^[A-Za-z0-9._/-]{1,200}$'
 IMAGE_RE='^[a-z0-9][a-z0-9._/-]{0,199}(:[A-Za-z0-9._-]{1,128})?@sha256:[0-9a-f]{64}$'
-OPT_RE='^[A-Za-z][A-Za-z0-9_]{0,63}=[A-Za-z0-9*._-]{1,64}$'
+OPT_RE='^[A-Za-z][A-Za-z0-9_]{0,63}=[A-Za-z0-9._:+-]{1,64}$'
 ALL_GUESTS=(zisk sp1 openvm airbender)
 declare -A projects=(
   [zisk]=Nethermind.Stateless.ZiskGuest
@@ -26,9 +28,16 @@ check_ref() {
   [[ $2 =~ $REF_RE && $2 != *..* && $2 != -* && $2 != /* && $2 != */ ]] || fail "$1 must be a branch name or a full commit SHA"
 }
 
+# A line break in an input could add lines to GITHUB_OUTPUT; read -a would also drop what follows it
+for name in BASE_REF HEAD_REF BFLAT_IMAGE BFLAT_RISCV32_IMAGE EXTLIB CODEGENOPT GUESTS FORMATS CANDIDATE_ARM; do
+  [[ ${!name:-} != *[$'\n\r']* ]] || fail "${name,,} must not contain a line break"
+done
+
 BASE_REF=${BASE_REF:-master}
 GUESTS=${GUESTS:-zisk,sp1,openvm,airbender}
 FORMATS=${FORMATS:-ssz,trusted}
+CANDIDATE_ARM=${CANDIDATE_ARM:-both}
+[[ $CANDIDATE_ARM =~ ^(both|head)$ ]] || fail "candidate_arm must be both or head"
 
 check_ref base_ref "$BASE_REF"
 check_ref head_ref "$HEAD_REF"
@@ -114,21 +123,33 @@ fi
 
 format_list=$(IFS=,; echo "${selected_formats[*]}")
 keys='{}'
-extlib='{}'
 build='[]'
 measure='[]'
 for guest in "${selected_guests[@]}"; do
   image=$BFLAT_IMAGE
   [ "$guest" != airbender ] || image=$BFLAT_RISCV32_IMAGE
-  key=$(printf 'base=%s\nimage=%s\nflags=%s\nextlib=%s\nformats=%s\n' \
-    "$base_sha" "$image" "$flags" "${extlib_keys[$guest]:-}" "$format_list" | sha256sum | cut -c1-40)
-  keys=$(jq -c --arg g "$guest" --arg k "$key" '. + {($g): $k}' <<< "$keys")
-  extlib=$(jq -c --arg g "$guest" --arg p "${extlib_paths[$guest]:-}" '. + {($g): $p}' <<< "$extlib")
   for arm in base head; do
     sha=$base_sha
     [ "$arm" = base ] || sha=$head_sha
+    arm_image=$image
+    arm_flags=$flags
+    arm_extlib_key=${extlib_keys[$guest]:-}
+    arm_extlib_path=${extlib_paths[$guest]:-}
+    if [ "$arm" = base ] && [ "$CANDIDATE_ARM" = head ]; then
+      arm_image=
+      arm_flags=
+      arm_extlib_key=
+      arm_extlib_path=
+    fi
+    # The base binaries and results are cached under the settings that the base arm really builds with
+    if [ "$arm" = base ]; then
+      key=$(printf 'base=%s\nimage=%s\nflags=%s\nextlib=%s\nformats=%s\n' \
+        "$base_sha" "$arm_image" "$arm_flags" "$arm_extlib_key" "$format_list" | sha256sum | cut -c1-40)
+      keys=$(jq -c --arg g "$guest" --arg k "$key" '. + {($g): $k}' <<< "$keys")
+    fi
     build=$(jq -c --arg g "$guest" --arg p "${projects[$guest]}" --arg a "$arm" --arg s "$sha" \
-      '. + [{vm: $g, project: $p, arm: $a, sha: $s}]' <<< "$build")
+      --arg i "$arm_image" --arg f "$arm_flags" --arg e "$arm_extlib_path" \
+      '. + [{vm: $g, project: $p, arm: $a, sha: $s, image: $i, flags: $f, extlib: $e}]' <<< "$build")
   done
   for format in "${selected_formats[@]}"; do
     measure=$(jq -c --arg g "$guest" --arg p "${projects[$guest]}" --arg f "$format" \
@@ -141,9 +162,8 @@ done
   echo "head_sha=$head_sha"
   echo "formats=$format_list"
   echo "guests=$(IFS=,; echo "${selected_guests[*]}")"
-  echo "bflat_flags=$flags"
+  echo "candidate_arm=$CANDIDATE_ARM"
   echo "keys=$keys"
-  echo "extlib=$extlib"
   echo "candidate=$([ "${#extlib_keys[@]}" -gt 0 ] && echo true || echo false)"
   echo "openvm=$([ -n "${wanted[openvm]:-}" ] && echo true || echo false)"
   echo "build_matrix=$(jq -c '{include: .}' <<< "$build")"

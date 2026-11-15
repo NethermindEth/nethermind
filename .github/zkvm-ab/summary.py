@@ -2,9 +2,12 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
-# Usage: summary.py <results dir> <markdown out> <json out>
+# Usage: summary.py <base results dir> <head results dir> <markdown out> <json out>
 # Reads the rows that measure.sh wrote for both arms and renders head against base per guest and
 # format. Exits with 1 when a block is missing, a run failed or the arms disagree on an output.
+# Each directory holds one artifact per guest and format (zkab-base-<guest>-<format>,
+# zkab-results-<guest>-<format>). A row counts only in the artifact of its own arm, guest and
+# format, so the head code cannot write base rows or the rows of another leg.
 import collections
 import glob
 import json
@@ -16,13 +19,17 @@ GUESTS = [guest for guest in os.environ.get("GUESTS", "").split(",") if guest in
 FORMATS = [fmt for fmt in os.environ.get("FORMATS", "").split(",") if fmt]
 
 rows = collections.defaultdict(dict)
-for path in sorted(glob.glob(os.path.join(sys.argv[1], "**", "*.tsv"), recursive=True)):
-    with open(path) as file:
-        for line in file:
-            parts = line.rstrip("\n").split("\t")
-            if len(parts) == 8 and parts[2] in ("base", "head"):
-                vm, fmt, arm, block, metric, cost, got, ok = parts
-                rows[(vm, fmt)][(arm, block)] = {"metric": metric, "cost": cost, "output": got, "ok": ok == "OK"}
+for arm, directory, prefix in (("base", sys.argv[1], "zkab-base"), ("head", sys.argv[2], "zkab-results")):
+    for vm in GUESTS:
+        for fmt in FORMATS:
+            leg = os.path.join(directory, f"{prefix}-{vm}-{fmt}")
+            for path in sorted(glob.glob(os.path.join(leg, "*.tsv"))):
+                with open(path) as file:
+                    for line in file:
+                        parts = line.rstrip("\n").split("\t")
+                        if len(parts) == 8 and parts[:3] == [vm, fmt, arm]:
+                            block, metric, cost, got, ok = parts[3:]
+                            rows[(vm, fmt)][(arm, block)] = {"metric": metric, "cost": cost, "output": got, "ok": ok == "OK"}
 
 
 def num(value):
@@ -52,6 +59,7 @@ report = {
     "base": {"ref": os.environ.get("BASE_REF", ""), "sha": os.environ.get("BASE_SHA", "")},
     "head": {"ref": os.environ.get("HEAD_REF", ""), "sha": os.environ.get("HEAD_SHA", "")},
     "config": {name.lower(): os.environ.get(name, "") for name in ("BFLAT_IMAGE", "BFLAT_RISCV32_IMAGE", "EXTLIB", "CODEGENOPT")},
+    "candidate_arm": os.environ.get("CANDIDATE_ARM", "") or "both",
     "results": [],
 }
 lines = [
@@ -60,6 +68,8 @@ lines = [
     f"head `{report['head']['ref']}` ({short(report['head']['sha'])}) against base `{report['base']['ref']}` ({short(report['base']['sha'])}). "
     "Negative deltas mean the head does less work.",
 ]
+if any(report["config"].values()):
+    lines += ["", f"Candidate settings ({'head arm only' if report['candidate_arm'] == 'head' else 'both arms'}):"]
 for name, value in report["config"].items():
     if value:
         lines.append(f"- {name}: `{value}`")
@@ -134,9 +144,9 @@ lines += ["", "### Output check", ""] + verdicts
 report["ok"] = ok
 markdown = "\n".join(lines) + "\n"
 print(markdown)
-with open(sys.argv[2], "w") as file:
-    file.write(markdown)
 with open(sys.argv[3], "w") as file:
+    file.write(markdown)
+with open(sys.argv[4], "w") as file:
     json.dump(report, file, indent=2)
     file.write("\n")
 sys.exit(0 if ok else 1)
