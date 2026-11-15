@@ -86,16 +86,46 @@ public class SyncPointersTests
     [Test]
     public void WhenReceiptNotStore_SetLowestInsertedReceiptTo0()
     {
+        TestMemColumnsDb<ReceiptsColumns> receiptsDb = new();
         SyncPointers pointers = CreateSyncPointers(new TestMemDb(), new ReceiptConfig()
         {
             StoreReceipts = false
-        });
+        }, receiptsDb: receiptsDb);
 
         Assert.That(pointers.LowestInsertedReceiptBlockNumber, Is.EqualTo(0));
+
+        pointers.LowestInsertedReceiptBlockNumber = 0;
+
+        ((TestMemDb)receiptsDb.GetColumnDb(ReceiptsColumns.Default)).KeyWasWritten(PersistentReceiptStorage.LowestInsertedReceiptBlockKey.BytesToArray());
     }
 
-    private static SyncPointers CreateSyncPointers(IDb metadataDb, ReceiptConfig? receiptConfig = null, IDb? blocksDb = null) =>
-        new(blocksDb ?? new TestMemDb(), new TestMemColumnsDb<ReceiptsColumns>(), metadataDb, receiptConfig ?? new ReceiptConfig());
+    [Test]
+    public void Writes_a_pointer_only_when_its_value_changes()
+    {
+        TestMemDb metadataDb = new();
+        TestMemColumnsDb<ReceiptsColumns> receiptsDb = new();
+        SyncPointers pointers = CreateSyncPointers(metadataDb, receiptsDb: receiptsDb);
+
+        foreach (ulong value in new ulong[] { 30, 30, 30, 20, 20 })
+        {
+            pointers.LowestInsertedBodyNumber = value;
+            pointers.LowestInsertedReceiptBlockNumber = value;
+            pointers.LowestInsertedBlockAccessListBlockNumber = value;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            metadataDb.KeyWasWritten(MetadataKey(MetadataDbKeys.LowestInsertedBodyNumber), 2);
+            metadataDb.KeyWasWritten(MetadataKey(MetadataDbKeys.LowestInsertedBlockAccessListBlockNumber), 2);
+            ((TestMemDb)receiptsDb.GetColumnDb(ReceiptsColumns.Default)).KeyWasWritten(PersistentReceiptStorage.LowestInsertedReceiptBlockKey.BytesToArray(), 2);
+            Assert.That(DecodePointer(metadataDb.Get(MetadataDbKeys.LowestInsertedBodyNumber)!), Is.EqualTo(20));
+        }
+    }
+
+    private static SyncPointers CreateSyncPointers(IDb metadataDb, ReceiptConfig? receiptConfig = null, IDb? blocksDb = null, IColumnsDb<ReceiptsColumns>? receiptsDb = null) =>
+        new(blocksDb ?? new TestMemDb(), receiptsDb ?? new TestMemColumnsDb<ReceiptsColumns>(), metadataDb, receiptConfig ?? new ReceiptConfig());
+
+    private static byte[] MetadataKey(int key) => ((long)key).ToBigEndianByteArrayWithoutLeadingZeros();
 
     private static long DecodePointer(byte[] pointerBytes) =>
         RlpCodec.Read(pointerBytes, static (ref RlpReader r) => r.DecodeLong());

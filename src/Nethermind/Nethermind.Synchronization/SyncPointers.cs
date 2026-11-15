@@ -26,12 +26,14 @@ public class SyncPointers : ISyncPointers
         [SkipLocalsInit]
         set
         {
+            if (value == _lowestInsertedBodyNumber) return;
             _lowestInsertedBodyNumber = value;
             if (value.HasValue) _metadataDb.PutSpan(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(value.Value, stackalloc byte[Rlp.MaxLengthOfUInt64Rlp]));
         }
     }
 
     private ulong? _lowestInsertedReceiptBlock;
+    private ulong? _storedLowestInsertedReceiptBlock;
 
     public ulong? LowestInsertedReceiptBlockNumber
     {
@@ -40,9 +42,10 @@ public class SyncPointers : ISyncPointers
         set
         {
             _lowestInsertedReceiptBlock = value;
-            if (value.HasValue)
+            if (value.HasValue && value != _storedLowestInsertedReceiptBlock)
             {
                 _defaultReceiptDbColumn.PutSpan(PersistentReceiptStorage.LowestInsertedReceiptBlockKey.Bytes, Rlp.Encode(value.Value, stackalloc byte[Rlp.MaxLengthOfUInt64Rlp]));
+                _storedLowestInsertedReceiptBlock = value;
             }
         }
     }
@@ -55,6 +58,7 @@ public class SyncPointers : ISyncPointers
         [SkipLocalsInit]
         set
         {
+            if (value == _lowestInsertedBlockAccessListBlock) return;
             _lowestInsertedBlockAccessListBlock = value;
             if (value.HasValue)
             {
@@ -81,6 +85,7 @@ public class SyncPointers : ISyncPointers
 
         byte[] lowestBytes = _defaultReceiptDbColumn.Get(PersistentReceiptStorage.LowestInsertedReceiptBlockKey);
         _lowestInsertedReceiptBlock = lowestBytes is null ? (ulong?)null : DecodePointer(lowestBytes);
+        _storedLowestInsertedReceiptBlock = _lowestInsertedReceiptBlock;
 
         _lowestInsertedBlockAccessListBlock =
             ReadPointer(_metadataDb, MetadataDbKeys.LowestInsertedBlockAccessListBlockNumber);
