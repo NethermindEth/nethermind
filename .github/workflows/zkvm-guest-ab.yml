@@ -474,6 +474,9 @@ jobs:
           ref: ${{ job.workflow_sha || env.TOOLS_REF }}
           persist-credentials: false
 
+      - name: Set up .NET
+        uses: ./.github/actions/setup-dotnet
+
       - name: Download base results
         uses: actions/download-artifact@v8
         with:
@@ -502,7 +505,7 @@ jobs:
         run: |
           mkdir -p zkvm-ab-summary
           rc=0
-          python3 .github/zkvm-ab/summary.py base head zkvm-ab-summary/summary.md zkvm-ab-summary/summary.json > /dev/null || rc=$?
+          dotnet run --file .github/zkvm-ab/summary.cs -- base head zkvm-ab-summary/summary.md zkvm-ab-summary/summary.json || rc=$?
           cat zkvm-ab-summary/summary.md >> "$GITHUB_STEP_SUMMARY"
           exit $rc
 
