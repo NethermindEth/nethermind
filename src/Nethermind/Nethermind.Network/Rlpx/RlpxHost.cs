@@ -59,6 +59,8 @@ namespace Nethermind.Network.Rlpx
         private readonly IPrivilegedIpProvider _privilegedIpProvider;
         private readonly NetworkListenerState _listenerState;
         private readonly ConcurrentDictionary<Guid, SessionActivitySubscription> _sessionActivitySubscriptions = new();
+        private readonly ConcurrentDictionary<IChannel, byte> _activeChannels = new();
+        private readonly Action<Task, object?> _untrackChannel;
         private readonly TimeSpan _shutdownQuietPeriod;
         private readonly TimeSpan _shutdownCloseTimeout;
         private CancellationTokenSource? _shutdownCts = new();
@@ -109,6 +111,7 @@ namespace Nethermind.Network.Rlpx
             _disconnectConnectedChannel = DisconnectConnectedChannel;
             _onChannelCloseCompleted = OnChannelCloseCompleted;
             _markDisconnectedAfterCloseDelay = MarkDisconnectedAfterCloseDelay;
+            _untrackChannel = UntrackChannel;
             _shutdownQuietPeriod = TimeSpan.FromMilliseconds(Math.Min(networkConfig.RlpxHostShutdownCloseTimeoutMs, 100));
             _shutdownCloseTimeout = TimeSpan.FromMilliseconds(networkConfig.RlpxHostShutdownCloseTimeoutMs);
             _privilegedIpProvider = privilegedIpProvider;
@@ -466,8 +469,36 @@ namespace Nethermind.Network.Rlpx
             return false;
         }
 
+        private void TrackChannel(IChannel channel)
+        {
+            _activeChannels.TryAdd(channel, 0);
+            _ = channel.CloseCompletion.ContinueWith(_untrackChannel, channel, CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        }
+
+        private void UntrackChannel(Task _, object? state) => _activeChannels.TryRemove((IChannel)state!, out byte _);
+
+        private async Task CloseActiveChannelsAsync()
+        {
+            List<Task> closing = new(_activeChannels.Count);
+            foreach (KeyValuePair<IChannel, byte> entry in _activeChannels)
+            {
+                closing.Add(entry.Key.CloseAsync());
+            }
+
+            try
+            {
+                await Task.WhenAll(closing);
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Closing peer channels on shutdown failed: {e.Message}");
+            }
+        }
+
         private void InitializeChannel(IChannel channel, ISession session, IPAddress? inboundRemoteIp)
         {
+            TrackChannel(channel);
             Metrics.IncomingConnections++;
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Initializing {session:hide} channel");
 
@@ -483,6 +514,7 @@ namespace Nethermind.Network.Rlpx
 
         private void InitializeOutboundChannel(IChannel channel, ISession session, ConnectionAttempt attempt)
         {
+            TrackChannel(channel);
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Initializing {session:hide} channel");
             SetTcpSocketOptions(channel);
             channel.Pipeline.AddLast("out-session-activation", new OutboundSessionActivationHandler(this, session, attempt));
@@ -585,6 +617,8 @@ namespace Nethermind.Network.Rlpx
 
         string IStoppableService.Description => "rlpx host";
 
+        internal int ActiveChannelCount => _activeChannels.Count;
+
         internal bool EventLoopsTerminated =>
             (_bossGroup?.IsTerminated ?? true) && (_workerGroup?.IsTerminated ?? true) && _group.IsTerminated;
 
@@ -605,6 +639,8 @@ namespace Nethermind.Network.Rlpx
             }) ?? Task.CompletedTask);
 
             if (_logger.IsDebug) _logger.Debug("Closed _bootstrapChannel");
+
+            await CloseActiveChannelsAsync();
 
             Task closingTask = Task.WhenAll(
                 _bossGroup is not null ? _bossGroup.ShutdownGracefullyAsync(_shutdownQuietPeriod, _shutdownCloseTimeout) : Task.CompletedTask,

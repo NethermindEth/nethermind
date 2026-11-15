@@ -217,10 +217,17 @@ public class RlpxHostIntegrationTests
         using Socket client = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
         await client.ConnectAsync(new IPEndPoint(IPAddress.Loopback, port));
         await sessionCreated.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.That(host.ActiveChannelCount, Is.EqualTo(1));
 
         await host.Shutdown().WaitAsync(TimeSpan.FromSeconds(30));
 
-        Assert.That(host.EventLoopsTerminated, Is.True);
+        int received = await client.ReceiveAsync(new byte[1], SocketFlags.None).WaitAsync(TimeSpan.FromSeconds(5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(host.EventLoopsTerminated, Is.True);
+            Assert.That(host.ActiveChannelCount, Is.Zero);
+            Assert.That(received, Is.Zero);
+        }
     }
 
     [Test]
