@@ -22,7 +22,7 @@ public class NativeRecognizedProgramTests
     private static readonly ILeanProofVerifier Native = NativeLeanProofVerifier.Instance;
     private static readonly NativeRecognizedProgramVerifier Recognized = new(NativeRecognizedProgramVerifier.Profiles.Keys);
 
-    private sealed record Vector(uint Profile, string Label, RawSignature Signature, ValueHash256? Claim);
+    private sealed record Vector(uint Profile, string Label, RawSignature Signature, ValueHash256? Claim, string Leaf);
 
     private static readonly Lazy<(Dictionary<uint, ValueHash256> Keys, Vector[] Vectors)> Vectors = new(static () =>
     {
@@ -33,7 +33,8 @@ public class NativeRecognizedProgramTests
         Vector[] vectors = [.. json.RootElement.GetProperty("vectors").EnumerateArray().Select(static v => new Vector(
             v.GetProperty("profile").GetUInt32(), v.GetProperty("label").GetString()!,
             new RawSignature(Hex(v.GetProperty("publicKey")), new ValueHash256(Hex(v.GetProperty("message"))), Hex(v.GetProperty("signature"))),
-            v.GetProperty("claim").ValueKind == JsonValueKind.Null ? (ValueHash256?)null : new ValueHash256(Hex(v.GetProperty("claim")))))];
+            v.GetProperty("claim").ValueKind == JsonValueKind.Null ? (ValueHash256?)null : new ValueHash256(Hex(v.GetProperty("claim"))),
+            v.GetProperty("leaf").GetString()!))];
         return (keys, vectors);
     });
 
@@ -52,7 +53,7 @@ public class NativeRecognizedProgramTests
         }
     }
 
-    // EIP-8437: conformance vectors establish that the native check accepts what the leaf program does and produces its claim.
+    // EIP-8437: conformance vectors establish that the native check accepts only what the leaf program proves, with its claim.
     [Test]
     public void Native_checks_reach_every_vector_verdict_and_claim()
     {
@@ -65,6 +66,7 @@ public class NativeRecognizedProgramTests
                 bool valid = Recognized.Verify(Vectors.Value.Keys[vector.Profile], vector.Signature, out ValueHash256 claim);
                 Assert.That(valid, Is.EqualTo(vector.Claim is not null), $"{vector.Profile}: {vector.Label}");
                 if (vector.Claim is { } expected) Assert.That(claim, Is.EqualTo(expected), vector.Label);
+                if (valid) Assert.That(vector.Leaf, Is.EqualTo("proves"), vector.Label);
                 // A key of another program never recognizes the signature.
                 uint other = vector.Profile % 3 + 1;
                 Assert.That(Recognized.Verify(Vectors.Value.Keys[other], vector.Signature, out _), Is.False, $"{vector.Label} under profile {other}");

@@ -676,9 +676,9 @@
   },
   {
     "pname": "Nethermind.Crypto.Lean",
-    "version": "0.18.0-feature-eip8437-raw-verify.88",
-    "hash": "sha256-L6QxvPbyPU0zhjamp2+RJw/K2QiNo4gEO00dWfKo7Ko=",
-    "url": "https://apiint.nugettest.org/v3-flatcontainer/nethermind.crypto.lean/0.18.0-feature-eip8437-raw-verify.88/nethermind.crypto.lean.0.18.0-feature-eip8437-raw-verify.88.nupkg"
+    "version": "0.18.0-feature-eip8437-raw-verify.90",
+    "hash": "sha256-OxMcSqmnOfBgOdegeiTxiOYwVvauUfETBCMbjN4qA1E=",
+    "url": "https://apiint.nugettest.org/v3-flatcontainer/nethermind.crypto.lean/0.18.0-feature-eip8437-raw-verify.90/nethermind.crypto.lean.0.18.0-feature-eip8437-raw-verify.90.nupkg"
   },
   {
     "pname": "Nethermind.Crypto.SecP256k1",
