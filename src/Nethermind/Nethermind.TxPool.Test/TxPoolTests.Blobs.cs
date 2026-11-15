@@ -4068,25 +4068,31 @@ namespace Nethermind.TxPool.Test
 
             AcceptTxResult storedResult = _txPool.SubmitTx(storedTx, TxHandlingOptions.None);
             AcceptTxResult cachedResult = _txPool.SubmitTx(cachedTx, TxHandlingOptions.None);
-            bool cachedFound = _txPool.TryGetPendingBlobTransactionNetworkForm(cachedTx.Hash!, out _);
-            bool plainFound = _txPool.TryGetPendingBlobTransactionNetworkForm(plainTx.Hash!, out _);
+            bool cachedFound = _txPool.TryGetPendingBlobCellMaskAndNetworkForm(cachedTx.Hash!, out BlobCellMask cachedMask, out IOwnedReadOnlyList<byte> cachedForm);
+            bool plainFound = _txPool.TryGetPendingBlobCellMaskAndNetworkForm(plainTx.Hash!, out _, out IOwnedReadOnlyList<byte> plainForm);
 
-            bool storedFound = _txPool.TryGetPendingBlobTransactionNetworkForm(storedTx.Hash!, out IOwnedReadOnlyList<byte> networkForm);
+            bool storedFound = _txPool.TryGetPendingBlobCellMaskAndNetworkForm(storedTx.Hash!, out BlobCellMask storedMask, out IOwnedReadOnlyList<byte> networkForm);
             using (networkForm)
             {
                 // Decoding puts the transaction in the cache, so a later read is served from memory.
                 bool decodedFound = _txPool.TryGetPendingTransaction(storedTx.Hash!, out Transaction decoded);
+                bool foundAfterDecoding = _txPool.TryGetPendingBlobCellMaskAndNetworkForm(storedTx.Hash!, out _, out IOwnedReadOnlyList<byte> formAfterDecoding);
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(storedResult, Is.EqualTo(AcceptTxResult.Accepted));
                     Assert.That(cachedResult, Is.EqualTo(AcceptTxResult.Accepted));
-                    Assert.That(cachedFound, Is.False, "cached");
+                    Assert.That(cachedFound, Is.True, "cached");
+                    Assert.That(cachedMask.IsFull, Is.True, "cached mask");
+                    Assert.That(cachedForm, Is.Null, "cached");
                     Assert.That(plainFound, Is.False, "not in the blob pool");
+                    Assert.That(plainForm, Is.Null, "not in the blob pool");
                     Assert.That(storedFound, Is.True, "stored");
+                    Assert.That(storedMask.IsFull, Is.True, "stored mask");
                     Assert.That(decodedFound, Is.True);
-                    Assert.That(networkForm.AsSpan().ToArray(),
+                    Assert.That(networkForm?.AsSpan().ToArray(),
                         Is.EqualTo(TxDecoder.Instance.Encode(decoded, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping)));
-                    Assert.That(_txPool.TryGetPendingBlobTransactionNetworkForm(storedTx.Hash!, out _), Is.False, "decoded");
+                    Assert.That(foundAfterDecoding, Is.True, "decoded");
+                    Assert.That(formAfterDecoding, Is.Null, "decoded");
                 }
             }
         }

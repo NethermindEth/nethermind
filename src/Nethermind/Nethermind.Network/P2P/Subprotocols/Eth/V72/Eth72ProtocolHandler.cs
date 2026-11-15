@@ -565,9 +565,10 @@ public class Eth72ProtocolHandler(
     protected override bool CanServePooledTransaction(Transaction tx) => true;
 
     /// <remarks>Always misses: the stored encoding carries the type-3 blobs that eth/72 strips.</remarks>
-    private protected override bool TryGetEncodedPooledTransactionToServe(in ValueHash256 hash, [NotNullWhen(true)] out IOwnedReadOnlyList<byte>? encodedTx)
+    private protected override bool TryGetEncodedPooledTransactionToServe(in ValueHash256 hash, [NotNullWhen(true)] out IOwnedReadOnlyList<byte>? encodedTx, out bool unservable)
     {
         encodedTx = null;
+        unservable = false;
         return false;
     }
 

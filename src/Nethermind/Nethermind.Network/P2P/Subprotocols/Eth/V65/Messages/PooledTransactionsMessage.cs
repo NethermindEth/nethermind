@@ -20,7 +20,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages
         /// </remarks>
         internal IOwnedReadOnlyList<EncodedTransaction>? EncodedTransactions { get; set; }
 
-        public override string ToString() => $"{nameof(PooledTransactionsMessage)}({Transactions?.Count})";
+        public override string ToString() => $"{nameof(PooledTransactionsMessage)}({Transactions?.Count + (EncodedTransactions?.Count ?? 0)})";
 
         public override void Dispose()
         {

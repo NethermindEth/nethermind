@@ -189,13 +189,19 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         return false;
     }
 
-    /// <summary>Gets the network form of a full type-3 transaction that only persistent storage holds, without decoding it.</summary>
-    /// <param name="networkForm">The encoding <see cref="IBlobTxNetworkFormStorage.TryGetNetworkForm"/> writes. The caller disposes it.</param>
-    /// <returns><see langword="false"/> when the transaction is absent, sparse, or held in memory.</returns>
-    internal virtual bool TryGetNetworkFormFromStorage(ValueHash256 hash, [NotNullWhen(true)] out IOwnedReadOnlyList<byte>? networkForm)
+    /// <summary>
+    /// Gets the cell availability mask of a pooled blob transaction and, for a full type-3 transaction that only
+    /// persistent storage holds, its network form, without decoding it.
+    /// </summary>
+    /// <param name="networkForm">
+    /// The encoding <see cref="IBlobTxNetworkFormStorage.TryGetNetworkForm"/> writes, or <see langword="null"/> when the
+    /// transaction is not a full type-3 transaction or is held in memory. The caller disposes it.
+    /// </param>
+    /// <returns><see langword="true"/> when the transaction is present in the blob pool.</returns>
+    internal virtual bool TryGetAvailableCellMask(ValueHash256 hash, out BlobCellMask availableMask, out IOwnedReadOnlyList<byte>? networkForm)
     {
         networkForm = null;
-        return false;
+        return TryGetAvailableCellMask(hash, out availableMask);
     }
 
     /// <summary>
@@ -221,12 +227,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
             return false;
         }
 
-        availableMask = blobTx switch
-        {
-            LightTransaction lightTx => lightTx.BlobCellMask,
-            { NetworkWrapper: ShardBlobNetworkWrapper wrapper } => wrapper.GetAvailableCellMask(),
-            _ => default
-        };
+        availableMask = GetAvailableCellMask(blobTx);
         blobCount = blobTx.BlobVersionedHashes?.Length ?? 0;
         int materializedCellsPerBlob = blobTx switch
         {
@@ -237,6 +238,13 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         materializationWork = checked(blobCount * materializedCellsPerBlob);
         return true;
     }
+
+    private protected static BlobCellMask GetAvailableCellMask(Transaction blobTx) => blobTx switch
+    {
+        LightTransaction lightTx => lightTx.BlobCellMask,
+        { NetworkWrapper: ShardBlobNetworkWrapper wrapper } => wrapper.GetAvailableCellMask(),
+        _ => default
+    };
 
     public virtual bool TryGetCells(ValueHash256 hash, BlobCellMask requestedMask, out BlobCellMask availableMask, out byte[][]? cells)
     {

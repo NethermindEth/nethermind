@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -617,10 +618,11 @@ public class Eth68ProtocolHandlerTests
         }
 
         BlobCellMask sparseMask = BlobCellMask.FromIndices([0]);
-        _transactionPool.TryGetPendingBlobCellMask(Arg.Any<ValueHash256>(), out Arg.Any<BlobCellMask>())
+        _transactionPool.TryGetPendingBlobCellMaskAndNetworkForm(Arg.Any<ValueHash256>(), out Arg.Any<BlobCellMask>(), out Arg.Any<IOwnedReadOnlyList<byte>>())
             .Returns(x =>
             {
                 x[1] = sparseMask;
+                x[2] = null;
                 return true;
             });
 
@@ -629,7 +631,8 @@ public class Eth68ProtocolHandlerTests
             await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
 
         Assert.That(response.Transactions, Is.Empty);
-        _transactionPool.Received(hashCount).TryGetPendingBlobCellMask(Arg.Any<ValueHash256>(), out Arg.Any<BlobCellMask>());
+        _transactionPool.Received(hashCount).TryGetPendingBlobCellMaskAndNetworkForm(Arg.Any<ValueHash256>(), out Arg.Any<BlobCellMask>(), out Arg.Any<IOwnedReadOnlyList<byte>>());
+        _transactionPool.DidNotReceive().TryGetPendingBlobCellMask(Arg.Any<ValueHash256>(), out Arg.Any<BlobCellMask>());
         _transactionPool.DidNotReceive().TryGetPendingTransaction(Arg.Any<ValueHash256>(), out Arg.Any<Transaction>());
     }
 
@@ -1017,7 +1020,30 @@ public class Eth68ProtocolHandlerTests
         {
             Assert.That(response.Transactions, Has.Count.EqualTo(txs.Length - 1));
             Assert.That(response.EncodedTransactions, Has.Count.EqualTo(1));
+            Assert.That(response.ToString(), Is.EqualTo($"PooledTransactionsMessage({txs.Length})"));
             Assert.That(Serialize(response), Is.EqualTo(Serialize(decodedResponse)));
+        }
+    }
+
+    [Test]
+    public async Task Should_look_up_the_blob_pool_once_for_each_requested_hash()
+    {
+        Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
+        _transactionPool.TryGetPendingTransaction(tx.Hash!, out Arg.Any<Transaction>())
+            .Returns(x =>
+            {
+                x[1] = tx;
+                return true;
+            });
+
+        using Eth65GetPooledTransactionsMessage request = new(new ArrayPoolList<ValueHash256>(1) { tx.Hash! });
+        using Eth65PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Transactions, Has.Count.EqualTo(1));
+            _transactionPool.Received(1).TryGetPendingBlobCellMaskAndNetworkForm(tx.Hash!, out Arg.Any<BlobCellMask>(), out Arg.Any<IOwnedReadOnlyList<byte>>());
+            _transactionPool.DidNotReceive().TryGetPendingBlobCellMask(Arg.Any<ValueHash256>(), out Arg.Any<BlobCellMask>());
         }
     }
 
@@ -1026,7 +1052,8 @@ public class Eth68ProtocolHandlerTests
     {
         const int transactionCount = 32;
         Transaction blobTx = BuildFullBlobTransaction();
-        ReturnStoredEncoding(blobTx, forAnyHash: true);
+        List<ArrayPoolList<byte>> encodings = ReturnStoredEncoding(blobTx, forAnyHash: true);
+        int servedCount = (int)(2.MiB / blobTx.GetLength());
 
         ArrayPoolList<ValueHash256> hashes = new(transactionCount);
         for (int i = 0; i < transactionCount; i++)
@@ -1035,26 +1062,39 @@ public class Eth68ProtocolHandlerTests
         }
 
         using Eth65GetPooledTransactionsMessage request = new(hashes);
-        using Eth65PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
+        Eth65PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
 
+        // A disposed ArrayPoolList returns its array and reports no items. The encoding that does not fit is read,
+        // then dropped, and the lookup stops there.
+        using (response)
         using (Assert.EnterMultipleScope())
         {
             Assert.That(response.Transactions, Is.Empty);
-            Assert.That(response.EncodedTransactions, Has.Count.EqualTo((int)(2.MiB / blobTx.GetLength())));
+            Assert.That(response.EncodedTransactions, Has.Count.EqualTo(servedCount));
+            Assert.That(encodings, Has.Count.EqualTo(servedCount + 1));
+            Assert.That(encodings.Take(servedCount).Select(static e => e.Count), Has.All.Not.Zero, "served encodings are not disposed");
+            Assert.That(encodings[^1].Count, Is.Zero, "encoding over the soft limit is disposed");
             _transactionPool.DidNotReceive().TryGetPendingTransaction(Arg.Any<ValueHash256>(), out Arg.Any<Transaction>());
         }
+
+        Assert.That(encodings.Select(static e => e.Count), Has.All.Zero, "served encodings are disposed with the response");
     }
 
-    private void ReturnStoredEncoding(Transaction blobTx, bool forAnyHash = false)
+    private List<ArrayPoolList<byte>> ReturnStoredEncoding(Transaction blobTx, bool forAnyHash = false)
     {
         byte[] encoding = TxDecoder.Instance.Encode(blobTx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping);
-        _transactionPool.TryGetPendingBlobTransactionNetworkForm(Arg.Any<ValueHash256>(), out Arg.Any<IOwnedReadOnlyList<byte>>())
+        List<ArrayPoolList<byte>> encodings = [];
+        _transactionPool.TryGetPendingBlobCellMaskAndNetworkForm(Arg.Any<ValueHash256>(), out Arg.Any<BlobCellMask>(), out Arg.Any<IOwnedReadOnlyList<byte>>())
             .Returns(x =>
             {
                 bool found = forAnyHash || x.ArgAt<ValueHash256>(0) == blobTx.Hash!.ValueHash256;
-                x[1] = found ? new ArrayPoolList<byte>(encoding) : null;
+                ArrayPoolList<byte>? networkForm = found ? new ArrayPoolList<byte>(encoding) : null;
+                if (networkForm is not null) encodings.Add(networkForm);
+                x[1] = found ? BlobCellMask.Full : default;
+                x[2] = networkForm;
                 return found;
             });
+        return encodings;
     }
 
     private static byte[] Serialize(Eth65PooledTransactionsMessage message)

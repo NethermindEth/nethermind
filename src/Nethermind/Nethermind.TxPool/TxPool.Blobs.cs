@@ -68,8 +68,8 @@ namespace Nethermind.TxPool
             => _blobTransactions.TryGetAvailableCellMask(hash, out availableMask);
 
         /// <inheritdoc/>
-        public bool TryGetPendingBlobTransactionNetworkForm(in ValueHash256 hash, [NotNullWhen(true)] out IOwnedReadOnlyList<byte>? networkForm)
-            => _blobTransactions.TryGetNetworkFormFromStorage(hash, out networkForm);
+        public bool TryGetPendingBlobCellMaskAndNetworkForm(in ValueHash256 hash, out BlobCellMask availableMask, out IOwnedReadOnlyList<byte>? networkForm)
+            => _blobTransactions.TryGetAvailableCellMask(hash, out availableMask, out networkForm);
 
         public bool TryGetPendingBlobCellMetadata(
             Hash256 hash,

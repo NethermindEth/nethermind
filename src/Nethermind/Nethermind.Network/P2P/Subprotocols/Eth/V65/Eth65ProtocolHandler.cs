@@ -167,11 +167,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
                     int txSize;
                     Transaction? responseTx = null;
-                    if (TryGetEncodedPooledTransactionToServe(hash, out IOwnedReadOnlyList<byte>? encodedTx))
+                    if (TryGetEncodedPooledTransactionToServe(hash, out IOwnedReadOnlyList<byte>? encodedTx, out bool unservable))
                     {
                         txSize = encodedTx.Count;
                     }
-                    else if (TryGetPooledTransactionToServe(hash, out Transaction tx) && CanServePooledTransaction(tx))
+                    else if (!unservable && TryGetPooledTransactionToServe(hash, out Transaction tx) && CanServePooledTransaction(tx))
                     {
                         responseTx = PreparePooledTransactionForResponse(tx);
                         txSize = responseTx.GetLength();
@@ -217,6 +217,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             }
         }
 
+        /// <summary>Whether a pooled transaction that <see cref="TryGetPooledTransactionToServe"/> gives is served.</summary>
+        /// <remarks>
+        /// Not called for a transaction that <see cref="TryGetEncodedPooledTransactionToServe"/> serves. An override that
+        /// rejects such a transaction must also override that method.
+        /// </remarks>
         protected virtual bool CanServePooledTransaction(Transaction tx) => true;
 
         /// <summary>
@@ -227,12 +232,25 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
         /// <summary>Gets the network encoding of a pooled transaction that is served without decoding it.</summary>
         /// <remarks>
-        /// Tried before <see cref="TryGetPooledTransactionToServe"/>, which serves the transaction when this misses.
+        /// Tried before <see cref="TryGetPooledTransactionToServe"/>, which serves the transaction when this misses and
+        /// <paramref name="unservable"/> is <see langword="false"/>. The encoding is served as it is:
+        /// <see cref="CanServePooledTransaction"/> and <see cref="PreparePooledTransactionForResponse"/> do not see it, so
+        /// a version that overrides either of them must also override this method. This version serves no encodings.
         /// </remarks>
         /// <param name="encodedTx">The encoding without the typed envelope. The caller disposes it.</param>
-        private protected virtual bool TryGetEncodedPooledTransactionToServe(in ValueHash256 hash, [NotNullWhen(true)] out IOwnedReadOnlyList<byte>? encodedTx)
-            => _txPool.TryGetPendingBlobTransactionNetworkForm(hash, out encodedTx);
+        /// <param name="unservable">Whether the transaction is not served at all, so it is not looked up again.</param>
+        private protected virtual bool TryGetEncodedPooledTransactionToServe(in ValueHash256 hash, [NotNullWhen(true)] out IOwnedReadOnlyList<byte>? encodedTx, out bool unservable)
+        {
+            encodedTx = null;
+            unservable = false;
+            return false;
+        }
 
+        /// <summary>Gets the transaction that the response carries for a pooled transaction.</summary>
+        /// <remarks>
+        /// Not called for a transaction that <see cref="TryGetEncodedPooledTransactionToServe"/> serves. An override that
+        /// changes such a transaction must also override that method.
+        /// </remarks>
         protected virtual Transaction PreparePooledTransactionForResponse(Transaction tx) => tx;
 
         /// <summary>Builds the response to a <see cref="GetPooledTransactionsMessage"/>.</summary>

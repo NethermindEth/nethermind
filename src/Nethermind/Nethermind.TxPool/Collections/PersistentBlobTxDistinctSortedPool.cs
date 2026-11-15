@@ -185,16 +185,26 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
     /// A transaction held in the cache or by a pending update is served from memory instead, as
     /// <see cref="TryGetValueNonLocked"/> does. Unlike that read, this one does not add the transaction to the cache.
     /// </remarks>
-    internal override bool TryGetNetworkFormFromStorage(ValueHash256 hash, [NotNullWhen(true)] out IOwnedReadOnlyList<byte>? networkForm)
+    internal override bool TryGetAvailableCellMask(ValueHash256 hash, out BlobCellMask availableMask, out IOwnedReadOnlyList<byte>? networkForm)
     {
         networkForm = null;
         using McsLock.Disposable lockRelease = Lock.Acquire();
-        return base.TryGetValueNonLocked(hash, out Transaction? lightTx)
-            && lightTx is LightTransaction { Type: TxType.Blob, BlobCellMask.IsFull: true }
+        if (!base.TryGetValueNonLocked(hash, out Transaction? lightTx))
+        {
+            availableMask = default;
+            return false;
+        }
+
+        availableMask = GetAvailableCellMask(lightTx);
+        if (lightTx is LightTransaction { Type: TxType.Blob, BlobCellMask.IsFull: true }
             && !(_pendingBlobUpdates.TryGetValue(hash, out PendingBlobUpdate? pendingUpdate) && pendingUpdate.Transaction is not null)
             && !_blobTxCache.Contains(hash)
-            && _blobTxStorage is IBlobTxNetworkFormStorage storage
-            && storage.TryGetNetworkForm(hash, lightTx.Timestamp, out networkForm);
+            && _blobTxStorage is IBlobTxNetworkFormStorage storage)
+        {
+            storage.TryGetNetworkForm(hash, lightTx.Timestamp, out networkForm);
+        }
+
+        return true;
     }
 
     /// <inheritdoc/>
