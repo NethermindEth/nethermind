@@ -76,6 +76,17 @@ internal class EraReaderTests
     }
 
     [Test, NonParallelizable]
+    public void Archive_body_with_uncles_not_in_canonical_encoding_is_rejected([Values] BodyForm form)
+    {
+        // A trailing item decodes, but the header encoder leaves it out, so the uncles hash does not cover these bytes.
+        byte[] uncle = RlpTestHelper.WithTrailingItem(new HeaderDecoder().Encode(Build.A.BlockHeader.TestObject));
+        byte[] transaction = Rlp.Encode(Build.A.Transaction.Signed().TestObject);
+        byte[] body = RlpTestHelper.EncodeSequence(RlpTestHelper.EncodeSequence([transaction]), RlpTestHelper.EncodeSequence([uncle]));
+
+        Assert.Throws<RlpReaderException>(() => ArchiveBodyDecoder.Decode(body, form, BlockBodyDecoder.Instance));
+    }
+
+    [Test, NonParallelizable]
     public async Task VerifyContent_returns_transactions_when_validation_fails([Values] bool throwFromValidator)
     {
         Transaction source = Build.A.Transaction.WithType(TxType.EIP1559).Signed().TestObject;
