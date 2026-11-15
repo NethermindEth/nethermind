@@ -1,9 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -143,4 +148,51 @@ public class BN254PairingCheckPrecompileTests : PrecompileTests<BN254PairingChec
     [TestCase(G1Generator + G2OfOrder10069, "point is not in correct subgroup")]
     [TestCase(G1Generator + G2ShiftedByOrder10069, "point is not in correct subgroup")]
     public void Rejects_input_with_the_go_ethereum_reason(string input, string error) => RunFailureTest(input, error);
+
+    [TestCase(TwoPairsProductOne, ResultOne)]
+    [TestCase(OnePairNotOne, ResultNotOne)]
+    [TestCase(OnePairNotOne + TwoPairsProductOne, ResultNotOne)]
+    [TestCase(G1Infinity + "198e9393920d483a7260bfb731fb5d25f1aa493335a9e71297e485b7aef312c21800deef121f1e76426a00665e5c4479674322d4f75edadd46debd5cd992f6ed090689d0585ff075ec9e99ad690c3395bc4b313370b38ef355acdadcd122975b12c85ea5db8c6deb4aab71808dcb408fe3d1e7690c43d37b4ce6cc0166fa7daa" + TwoPairsProductOne, ResultOne)]
+    public void Repeated_g2_points_give_the_same_result(string input, string output)
+    {
+        for (int i = 0; i < 3; i++)
+            RunTest(input, output, true);
+    }
+
+    [TestCase(G1Generator + G2NotInSubgroup)]
+    [TestCase(G1Infinity + G2NotInSubgroup)]
+    [TestCase(G1Generator + G2OfOrder10069)]
+    [TestCase(TwoPairsProductOne + G1Generator + G2ShiftedByOrder10069)]
+    public void Invalid_g2_point_stays_rejected_on_repeat(string input)
+    {
+        for (int i = 0; i < 3; i++)
+            RunFailureTest(input, "point is not in correct subgroup");
+    }
+
+    [Test]
+    public void Concurrent_callers_get_the_same_results()
+    {
+        (byte[] Input, byte[]? Output)[] cases =
+        [
+            (Convert.FromHexString(TwoPairsProductOne), Convert.FromHexString(ResultOne)),
+            (Convert.FromHexString(OnePairNotOne), Convert.FromHexString(ResultNotOne)),
+            (Convert.FromHexString(TwoPairsProductOne + OnePairNotOne + InfinityPairs(1)), Convert.FromHexString(ResultNotOne)),
+            (Convert.FromHexString(G1Generator + G2NotInSubgroup), null),
+            (Convert.FromHexString(OnePairNotOne + G1Generator + G2OfOrder10069), null),
+        ];
+
+        int mismatches = 0;
+        Parallel.For(0, 2048, new ParallelOptions { MaxDegreeOfParallelism = Math.Max(4, Environment.ProcessorCount) }, i =>
+        {
+            (byte[] input, byte[]? output) = cases[i % cases.Length];
+            Result<byte[]> result = Instance.Run(input, Prague.Instance);
+            bool matches = output is null
+                ? !result.IsSuccess
+                : result.IsSuccess && result.Data.AsSpan().SequenceEqual(output);
+            if (!matches)
+                Interlocked.Increment(ref mismatches);
+        });
+
+        Assert.That(mismatches, Is.Zero);
+    }
 }
