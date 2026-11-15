@@ -74,8 +74,8 @@ namespace Nethermind.Synchronization
 
         private const int NewHeadBlockRangeUpdateFrequency = 32;
         internal const int NodeDataSoftResponseByteLimit = 2 * MemorySizes.MiB;
-        // A Prague mainnet header is about 650 bytes long
-        private const int HeaderRlpLengthEstimate = 680;
+        // An Amsterdam mainnet header is about 700 bytes long
+        private const int HeaderRlpLengthEstimate = 720;
 
         public SyncServer(
             IWorldStateManager worldStateManager,
@@ -438,14 +438,14 @@ namespace Nethermind.Synchronization
         /// </remarks>
         public IOwnedReadOnlyList<byte> FindHeadersRlp(Hash256 hash, int numberOfBlocks, int skip, bool reverse)
         {
+            if (numberOfBlocks == 0 || _headerStore.GetBlockNumber(hash) is not { } number)
+            {
+                return ArrayPoolList<byte>.Empty();
+            }
+
             ArrayPoolList<byte> headers = new(numberOfBlocks * HeaderRlpLengthEstimate);
             try
             {
-                if (numberOfBlocks == 0 || _headerStore.GetBlockNumber(hash) is not { } number)
-                {
-                    return headers;
-                }
-
                 EncodedHeaderSource source = new(_headerStore, _headerDecoder, headers);
                 using ArrayPoolList<Range> items = HeaderWalk.FindHeaders<Range, EncodedHeaderSource>(_blockTree, ref source, hash, number, numberOfBlocks, skip, reverse);
                 return InResponseOrder(headers, items.AsSpan());

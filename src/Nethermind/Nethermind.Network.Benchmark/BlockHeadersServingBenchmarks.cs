@@ -3,27 +3,21 @@
 
 using System;
 using System.Buffers;
+using Autofac;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.BlockAccessLists;
-using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
+using Nethermind.Core.Test.Modules;
 using Nethermind.History;
-using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
-using Nethermind.Serialization.Rlp;
-using Nethermind.Specs;
-using Nethermind.State;
+using Nethermind.Specs.Forks;
 using Nethermind.Synchronization;
-using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.Test;
 using NSubstitute;
 
 namespace Nethermind.Network.Benchmarks;
@@ -41,8 +35,9 @@ public class BlockHeadersServingBenchmarks
     private const int NewerBlocks = 200;
 
     private readonly BlockHeadersMessageSerializer _serializer = new();
-    private BlockTree _blockTree = null!;
-    private SyncServer _server = null!;
+    private IContainer _container = null!;
+    private IBlockTree _blockTree = null!;
+    private ISyncServer _server = null!;
     private Hash256 _startHash = null!;
 
     [Params(192, 1024)]
@@ -54,9 +49,16 @@ public class BlockHeadersServingBenchmarks
     [GlobalSetup]
     public void Setup()
     {
-        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(1);
-        _blockTree = builder.TestObject;
-        Block parent = _blockTree.Head!;
+        _container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(Prague.Instance))
+            .AddSingleton<IHistoryPruner>(Substitute.For<IHistoryPruner>())
+            .AddSingleton<IBlockValidator>(Always.Valid)
+            .AddSingleton<ISealValidator>(Always.Valid)
+            .Build();
+        _blockTree = _container.Resolve<IBlockTree>();
+
+        Block parent = Build.A.Block.Genesis.TestObject;
+        _blockTree.SuggestBlock(parent);
         for (int i = 0; i < MaxCount + NewerBlocks; i++)
         {
             Block block = Build.A.Block
@@ -74,30 +76,14 @@ public class BlockHeadersServingBenchmarks
         }
 
         _startHash = _blockTree.FindHash(Reverse ? (ulong)Count : 1)!;
-        ((IClearableCache)builder.HeaderStore).ClearCache();
-        _server = new SyncServer(
-            Substitute.For<IWorldStateManager>(),
-            new MemDb(),
-            _blockTree,
-            builder.HeaderStore,
-            new HeaderDecoder(),
-            NullReceiptStorage.Instance,
-            Substitute.For<IBlockAccessListStore>(),
-            Always.Valid,
-            Always.Valid,
-            Substitute.For<ISyncPeerPool>(),
-            StaticSelector.Full,
-            new TestSyncConfig(),
-            Policy.FullGossip,
-            Substitute.For<IHistoryPruner>(),
-            MainnetSpecProvider.Instance,
-            LimboLogs.Instance);
+        ((IClearableCache)_container.Resolve<IHeaderStore>()).ClearCache();
+        _server = _container.Resolve<ISyncServer>();
 
         if (Decoded() != Encoded()) throw new InvalidOperationException("The two paths serve different responses.");
     }
 
     [GlobalCleanup]
-    public void Cleanup() => _server.Dispose();
+    public void Cleanup() => _container.Dispose();
 
     /// <summary>Decodes each stored header and encodes it again, as serving did before.</summary>
     [Benchmark(Baseline = true)]

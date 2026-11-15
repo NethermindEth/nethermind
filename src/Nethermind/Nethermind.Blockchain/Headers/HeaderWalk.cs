@@ -40,34 +40,48 @@ public static class HeaderWalk
         where TSource : struct, IHeaderWalkSource<TItem>
     {
         ArrayPoolList<TItem> result = new(numberOfBlocks, numberOfBlocks);
-        if (numberOfBlocks == 0 || !source.TryGet(hash, number, out TItem start, out Hash256 parentHash)) return result;
-
-        if (skip == 0 && numberOfBlocks > 1)
+        try
         {
-            Span<TItem> items = result.AsSpan();
+            Fill(blockTree, ref source, result.AsSpan(), hash, number, skip, reverse);
+            return result;
+        }
+        catch
+        {
+            result.Dispose();
+            throw;
+        }
+    }
+
+    private static void Fill<TItem, TSource>(IBlockTree blockTree, ref TSource source, Span<TItem> items, Hash256 hash, ulong number, int skip, bool reverse)
+        where TSource : struct, IHeaderWalkSource<TItem>
+    {
+        if (items.Length == 0 || !source.TryGet(hash, number, out TItem start, out Hash256 parentHash)) return;
+
+        if (skip == 0 && items.Length > 1)
+        {
             if (reverse)
             {
                 items[0] = start;
                 FillAncestors(ref source, items, 0, 1, hash, number, parentHash, out _);
-                return result;
+                return;
             }
 
-            ulong endNumber = number + (ulong)(numberOfBlocks - 1);
+            ulong endNumber = number + (ulong)(items.Length - 1);
             if (blockTree.FindHash(endNumber) is { } endHash && source.TryGet(endHash, endNumber, out TItem end, out Hash256 endParentHash))
             {
                 items[^1] = end;
                 int firstIndex = FillAncestors(ref source, items, items.Length - 1, -1, endHash, endNumber, endParentHash, out Hash256 firstHash);
-                if (firstIndex != 0 || firstHash == hash) return result;
+                if (firstIndex != 0 || firstHash == hash) return;
 
                 // The last number resolved to a branch that the start header is not on
                 items.Clear();
             }
         }
 
-        result[0] = start;
+        items[0] = start;
         Hash256 previousHash = hash;
         ulong previousNumber = number;
-        for (int responseIndex = 1; responseIndex < numberOfBlocks; responseIndex++)
+        for (int responseIndex = 1; responseIndex < items.Length; responseIndex++)
         {
             ulong offset = (ulong)responseIndex * ((ulong)skip + 1ul);
             if (reverse && number < offset) break;
@@ -82,12 +96,10 @@ public static class HeaderWalk
                 break;
             }
 
-            result[responseIndex] = next;
+            items[responseIndex] = next;
             previousHash = nextHash;
             previousNumber = nextNumber;
         }
-
-        return result;
     }
 
     /// <summary>

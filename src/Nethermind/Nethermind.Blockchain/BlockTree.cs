@@ -730,15 +730,15 @@ namespace Nethermind.Blockchain
                 return new ArrayPoolList<BlockHeader>(numberOfBlocks, numberOfBlocks);
             }
 
-            HeaderSource source = new(this);
+            HeaderSource source = new(this, startHeader);
             return HeaderWalk.FindHeaders<BlockHeader, HeaderSource>(this, ref source, blockHash, startHeader.Number, numberOfBlocks, skip, reverse);
         }
 
-        private readonly struct HeaderSource(BlockTree tree) : IHeaderWalkSource<BlockHeader>
+        private readonly struct HeaderSource(BlockTree tree, BlockHeader startHeader) : IHeaderWalkSource<BlockHeader>
         {
             public bool TryGet(Hash256 hash, ulong number, [MaybeNullWhen(false)] out BlockHeader header, [MaybeNullWhen(false)] out Hash256 parentHash)
             {
-                header = tree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, number);
+                header = hash == startHeader.Hash ? startHeader : tree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, number);
                 parentHash = header?.ParentHash;
                 return header is not null;
             }
