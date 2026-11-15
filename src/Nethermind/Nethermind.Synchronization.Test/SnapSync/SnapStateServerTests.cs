@@ -606,19 +606,25 @@ public class SnapStateServerTests
         }
     }
 
-    [Test]
-    public void GetStorageRanges_SerializesAsDecodedSlots([Values(1, 2000, 10_000_000)] int byteLimit)
+    // The first account has about 2,500 bytes of slots and the second about 25,000. The second account is served only
+    // when at least 10,000 bytes of the limit remain.
+    [TestCase(1, 1, true)]
+    [TestCase(2000, 1, true)]
+    [TestCase(20_000, 2, true)]
+    [TestCase(10_000_000, 2, false)]
+    public void GetStorageRanges_SerializesAsDecodedSlots(int byteLimit, int servedAccounts, bool lastPartial)
     {
         using ISnapServerContext context = CreateContext();
         Hash256[] accountPaths = [TestItem.Tree.AccountAddress0, TestItem.KeccakH];
+        int[] slotCounts = [50, 500];
         List<PathWithStorageSlot>[] expected = [[], []];
         using (IWriteBatch batch = context.BeginWriteBatch())
         {
             for (int account = 0; account < accountPaths.Length; account++)
             {
-                for (int i = 0; i < 50; i++)
+                for (int i = 0; i < slotCounts[account]; i++)
                 {
-                    Hash256 slot = Keccak.Compute((account * 50 + i).ToBigEndianByteArray());
+                    Hash256 slot = Keccak.Compute((account * 1000 + i).ToBigEndianByteArray());
                     byte[] value = slot.Bytes[..(i % Hash256.Size + 1)].ToArray();
                     value[0] = i % 2 == 0 ? (byte)0x01 : (byte)0x80;
                     batch.SetSlot(accountPaths[account], slot, value);
@@ -642,7 +648,9 @@ public class SnapStateServerTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(served, Is.Not.Empty);
+            Assert.That(served, Has.Count.EqualTo(servedAccounts));
+            for (int i = 0; i < served.Count - 1; i++) Assert.That(served[i], Has.Count.EqualTo(slotCounts[i]), $"account {i}");
+            Assert.That(served[^1], lastPartial ? Has.Count.InRange(1, slotCounts[served.Count - 1] - 1) : Has.Count.EqualTo(slotCounts[served.Count - 1]), "last account");
             Assert.That(Serialize(serializer, servedMessage), Is.EqualTo(Serialize(serializer, decodedMessage)));
             Assert.That(served.SelectMany(static s => s).Select(static s => (s.Path, s.SlotRlpValue)),
                 Is.EqualTo(decoded.SelectMany(static s => s).Select(static s => (s.Path, s.SlotRlpValue))));
