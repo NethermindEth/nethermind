@@ -43,8 +43,7 @@ BFLAT_IMAGE ?= nethermindeth/bflat-riscv64-11:dd05dd8af0a14065a9974492007dd5e568
 # --error-on-float-binary checks that no F/D instruction is in the image.
 ISA_GATES ?= --error-on-float-binary --error-on-compressed --error-on-atomic
 
-# Extra bflat options given on the command line, such as --codegenopt values that an A/B
-# run applies to both arms.
+# Extra bflat options, such as --codegenopt Name=Value.
 BFLAT_EXTRA_FLAGS ?=
 
 # The guest has no instruction cache, so favouring speed over size is near free.
