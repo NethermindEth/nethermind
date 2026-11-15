@@ -46,7 +46,7 @@ public class NativeLeanProofVerifierTests
         NativeLeanProofVerifier.Instance.EnsureAvailable();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(12u));
+            Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(20u));
             Assert.That(NativeLeanProofVerifier.AggregatedVerificationKey, Is.EqualTo(Eip8288Constants.AggregatedVk.ToArray()));
         }
     }

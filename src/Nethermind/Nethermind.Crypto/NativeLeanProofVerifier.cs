@@ -20,7 +20,7 @@ namespace Nethermind.Crypto;
 public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
 {
     private const string Library = "nethermind_lean";
-    private const uint ExpectedAbiVersion = 12;
+    private const uint ExpectedAbiVersion = 20;
     private const int MaxRecursiveInputs = 16;
     private static readonly Lazy<bool> BackendAvailable = new(CheckBackend);
     public const int MaxProofBytes = Eip8288Constants.MaxProofBytes;

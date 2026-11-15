@@ -44,7 +44,7 @@ public static class Eip8288Constants
     /// guest, including a private recursive input, in blocks, wrappers and inclusion lists alike, checked before proof decoding
     /// or verification.</summary>
     /// <remarks>Not an EIP-8288 constant: the EIP no longer bounds <c>stark_proof</c> and leaves its size to the proof system.
-    /// This is a pinned-prover limit with margin above the guest's measured 265–326 KB root proofs; a guest or key change
+    /// This is a pinned-prover limit with margin above the guest's measured 254–323 KB root proofs; a guest or key change
     /// must revisit it.</remarks>
     public const int MaxAggregateProofBytes = 1_310_720;
 
@@ -102,5 +102,5 @@ public static class Eip8288Constants
     /// <summary>Fiat-Shamir key of the recursive guest in the pinned Nethermind.Crypto.Lean package.</summary>
     public static ReadOnlySpan<byte> AggregatedVk => _aggregatedVk;
 
-    private static readonly byte[] _aggregatedVk = Convert.FromHexString("f6f37690cf7241c9ea24392f349867acc1c8e06034e8ce149e2f11a25eec56f9");
+    private static readonly byte[] _aggregatedVk = Convert.FromHexString("b3a5a9b6773f76829132e11fa436d24bdac562014d2821396657fdf5dd081084");
 }
