@@ -20,6 +20,7 @@ using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.History;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
@@ -143,6 +144,7 @@ public class SyncServerReceiptsBenchmarks
             blockTree,
             blockStore,
             headerStore,
+            new HeaderDecoder(),
             new FullInfoReceiptFinder(storage, new ReceiptsRecovery(ecdsa, specProvider), blockTree),
             Substitute.For<IBlockAccessListStore>(),
             Always.Valid,
