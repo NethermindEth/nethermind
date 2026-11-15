@@ -195,8 +195,7 @@ public class SnapFlatStateServer(
                 ? new StateTree(new CachedTrieStore(trieStore), logManager)
                 : new StateTree(trieStore, logManager);
 
-            ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>> responseNodes = new(accounts.Count);
-            EncodedSnapEntries<PathWithStorageSlot>? collecting = null;
+            EncodedStorageRanges responseNodes = new(accounts.Count);
             try
             {
                 for (int i = 0; i < accounts.Count; i++)
@@ -219,8 +218,7 @@ public class SnapFlatStateServer(
 
                     ValueHash256 storagePath = accounts[i].Path;
 
-                    PathWithStorageCollector pathWithStorageCollector = new();
-                    collecting = pathWithStorageCollector.Slots;
+                    PathWithStorageCollector pathWithStorageCollector = responseNodes.StartAccount();
                     (long innerResponseSize, IByteArrayList proofs, bool stoppedEarly) = GetNodesFromTrieVisitor(
                         bundle,
                         stateId.StateRoot,
@@ -239,7 +237,6 @@ public class SnapFlatStateServer(
                     }
 
                     responseNodes.Add(pathWithStorageCollector.Slots);
-                    collecting = null;
                     if (stoppedEarly || startingHash1 != Keccak.Zero)
                     {
                         return (responseNodes, proofs);
@@ -251,8 +248,7 @@ public class SnapFlatStateServer(
             }
             catch
             {
-                collecting?.Dispose();
-                responseNodes.DisposeRecursive();
+                responseNodes.Dispose();
                 throw;
             }
 

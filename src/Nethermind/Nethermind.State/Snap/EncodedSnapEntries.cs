@@ -22,9 +22,22 @@ public sealed class EncodedSnapEntries<T>(RefRlpReaderFunc<T> decodeEntry, int c
     private byte[] _buffer = [];
     private int _length;
     private T[]? _decoded;
+    private readonly EncodedSnapEntries<T>? _owner;
+    private readonly int _start;
+
+    /// <summary>Creates entries that are added to the end of <paramref name="owner"/>, which holds their memory.</summary>
+    /// <remarks>
+    /// Many small lists can so share one pooled buffer. Only the list made last on <paramref name="owner"/> can add
+    /// entries, and the entries are valid until <paramref name="owner"/> is disposed.
+    /// </remarks>
+    internal EncodedSnapEntries(RefRlpReaderFunc<T> decodeEntry, EncodedSnapEntries<T> owner) : this(decodeEntry)
+    {
+        _owner = owner;
+        _start = owner._length;
+    }
 
     /// <summary>The encoded entries one after the other, without the prefix of the list.</summary>
-    public ReadOnlySpan<byte> Encoded => _buffer.AsSpan(0, _length);
+    public ReadOnlySpan<byte> Encoded => _owner is null ? _buffer.AsSpan(0, _length) : _owner.Encoded.Slice(_start, _length);
 
     public int Count { get; private set; }
 
@@ -33,7 +46,7 @@ public sealed class EncodedSnapEntries<T>(RefRlpReaderFunc<T> decodeEntry, int c
     public Span<byte> Add(int length)
     {
         int newLength = _length + length;
-        if (newLength > _buffer.Length)
+        if (_owner is null && newLength > _buffer.Length)
         {
             byte[] buffer = ArrayPool<byte>.Shared.Rent(Math.Max(newLength, Math.Max(_buffer.Length * 2, capacity)));
             Encoded.CopyTo(buffer);
@@ -41,7 +54,7 @@ public sealed class EncodedSnapEntries<T>(RefRlpReaderFunc<T> decodeEntry, int c
             _buffer = buffer;
         }
 
-        Span<byte> entry = _buffer.AsSpan(_length, length);
+        Span<byte> entry = _owner is null ? _buffer.AsSpan(_length, length) : _owner.Add(length);
         _length = newLength;
         _decoded = null;
         Count++;

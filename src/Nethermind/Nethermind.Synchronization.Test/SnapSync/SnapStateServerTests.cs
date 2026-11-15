@@ -571,6 +571,38 @@ public class SnapStateServerTests
     }
 
     [Test]
+    public void GetStorageRanges_OfManyAccounts_UseOneBufferThatDisposeReturns()
+    {
+        const int accountCount = 100;
+        using ISnapServerContext context = CreateContext();
+        PathWithAccount[] accounts = new PathWithAccount[accountCount];
+        using (IWriteBatch batch = context.BeginWriteBatch())
+        {
+            for (int i = 0; i < accountCount; i++)
+            {
+                Hash256 path = Keccak.Compute(i.ToBigEndianByteArray());
+                batch.SetSlot(path, TestItem.KeccakA, [(byte)(i + 1)]);
+                batch.SetAccount(path, Build.An.Account.WithBalance(1).TestObject);
+                accounts[i] = new PathWithAccount(path, null);
+            }
+        }
+
+        using SharedByteBufferRentals rentals = new(minimumLength: 0);
+        (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> served, IByteArrayList? proofs) =
+            context.Server.GetStorageRanges(context.RootHash, accounts, null, null, ISnapStateServer.HardResponseByteLimit, CancellationToken.None);
+        proofs?.Dispose();
+        byte[][] values = [.. served.Select(static slots => slots.Single().SlotRlpValue)];
+        served.DisposeRecursive();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(values, Is.EqualTo(Enumerable.Range(1, accountCount).Select(static i => Rlp.Encode(new[] { (byte)i }))));
+            Assert.That(rentals.RentCount, Is.LessThan(accountCount / 4), "the accounts share the buffer of the response");
+            Assert.That(rentals.Outstanding, Is.Empty, "the buffer goes back to the pool");
+        }
+    }
+
+    [Test]
     public void GetAccountRanges_SerializesAsDecodedAccounts([Values(1, 2000, 10_000_000)] int byteLimit)
     {
         using ISnapServerContext context = CreateContext();

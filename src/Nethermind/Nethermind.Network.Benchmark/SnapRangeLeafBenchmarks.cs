@@ -82,4 +82,20 @@ public class SnapRangeLeafBenchmarks
         using StorageRangeMessage message = new() { Slots = new ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(1) { collector.Slots }, Proofs = EmptyByteArrayList.Instance };
         return _storageSerializer.Serialize(_destination, message);
     }
+
+    /// <summary>A storage range response with the slots of many accounts, one to three slots each.</summary>
+    [Benchmark]
+    public int StorageRangeManyAccounts()
+    {
+        EncodedStorageRanges ranges = new(LeafCount);
+        for (int i = 0; i < _slotLeaves.Length;)
+        {
+            PathWithStorageCollector collector = ranges.StartAccount();
+            for (int end = Math.Min(i + i % 3 + 1, _slotLeaves.Length); i < end; i++) collector.Collect(_slotPaths[i], _slotLeaves[i]);
+            ranges.Add(collector.Slots);
+        }
+
+        using StorageRangeMessage message = new() { Slots = ranges, Proofs = EmptyByteArrayList.Instance };
+        return _storageSerializer.Serialize(_destination, message);
+    }
 }
