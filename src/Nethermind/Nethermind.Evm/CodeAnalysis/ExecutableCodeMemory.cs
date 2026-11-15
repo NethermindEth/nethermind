@@ -81,15 +81,15 @@ public static class ExecutableCodeMemory
         return new FixedManager((byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(codeAndPadding)), codeLength, padded: true).Memory;
     }
 
-    internal static ReadOnlyMemory<byte> FromExecutionBuffer(byte[] codeAndPadding, int codeLength)
+    internal static ReadOnlyMemory<byte> WrapInputBuffer(byte[] codeAndPadding, int codeLength)
     {
         codeAndPadding.AsSpan(codeLength).Clear();
-        return new BufferManager(codeAndPadding, codeLength).Memory;
+        return new InputBufferManager(codeAndPadding, codeLength).Memory;
     }
 
-    internal static bool TryGetFromExecutionBuffer(ReadOnlyMemory<byte> code, [NotNullWhen(true)] out byte[]? buffer)
+    internal static bool TryGetInputBuffer(ReadOnlyMemory<byte> code, [NotNullWhen(true)] out byte[]? buffer)
     {
-        if (MemoryMarshal.TryGetMemoryManager(code, out BufferManager? manager, out int start, out int length)
+        if (MemoryMarshal.TryGetMemoryManager(code, out InputBufferManager? manager, out int start, out int length)
             && start == 0 && length == manager.CodeLength)
         {
             buffer = manager.Buffer;
@@ -150,7 +150,7 @@ public static class ExecutableCodeMemory
         protected override void Dispose(bool disposing) { }
     }
 
-    private sealed class BufferManager(byte[] buffer, int codeLength) : MemoryManager<byte>
+    private sealed class InputBufferManager(byte[] buffer, int codeLength) : MemoryManager<byte>
     {
         public byte[] Buffer => buffer;
 

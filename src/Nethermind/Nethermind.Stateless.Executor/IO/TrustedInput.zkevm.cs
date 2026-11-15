@@ -42,7 +42,7 @@ public static partial class TrustedInput
             if (IsAligned(ref first))
             {
                 if (OpenVmFlag.IsActive)
-                    return ExecutableCodeMemory.FromExecutionBuffer(ArrayAt(ref first, length + CodeInfo.ExecutionPadding), length);
+                    return ExecutableCodeMemory.WrapInputBuffer(ArrayAt(ref first, length + CodeInfo.ExecutionPadding), length);
 
                 return ExecutableCodeMemory.PlacePadded(MemoryMarshal.CreateSpan(ref first, length + CodeInfo.ExecutionPadding), length);
             }
