@@ -72,7 +72,7 @@ jobs:
           local_ssd_count: 0
           boot_disk_size: 200
           provisioning_model: ${{ needs.resolve.outputs.model }}
-          max_run_duration: 3h30m
+          max_run_duration: 6h
           zones: ${{ vars.GCP_ZONES }}
           project_id: ${{ vars.GCP_PROJECT_ID }}
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
@@ -83,7 +83,7 @@ jobs:
     needs: [resolve, create_a_runner]
     if: always() && needs.resolve.result == 'success' && (needs.resolve.outputs.gcp != 'true' || needs.create_a_runner.result == 'success')
     runs-on: ${{ needs.resolve.outputs.gcp == 'true' && fromJSON(format('["{0}"]', needs.create_a_runner.outputs.runner_label)) || (needs.resolve.outputs.runner == 'box-arm64' && fromJSON('["self-hosted","reproducible-benchmarks-arm"]') || fromJSON('["self-hosted","reproducible-benchmarks"]')) }}
-    timeout-minutes: 180
+    timeout-minutes: 330
     env:
       RUN_DIR: eip8288-calibration-${{ github.run_id }}
     steps:
