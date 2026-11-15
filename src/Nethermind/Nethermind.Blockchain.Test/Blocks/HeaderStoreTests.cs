@@ -234,13 +234,15 @@ public class HeaderStoreTests
     public enum HeaderSource { NumberedKey, HashKey, Cache }
 
     /// <param name="storeDecoder">Whether the decoder asked for is the store decoder, so that the stored encoding is copied.</param>
+    /// <param name="native">Whether the database serves native slices, as RocksDB does.</param>
     [Test]
     public void TryAppendRlp_appends_the_encoding_whose_hash_is_the_block_hash(
         [Values] HeaderSource source,
         [Values] bool prague,
-        [Values] bool storeDecoder)
+        [Values] bool storeDecoder,
+        [Values] bool native)
     {
-        MemDb headerDb = new();
+        using TestMemDb headerDb = native ? new PinnedTestDb() : new TestMemDb();
         CountingHeaderDecoder decoder = new();
         HeaderStore store = new(headerDb, new MemDb(), decoder);
         BlockHeaderBuilder builder = Build.A.BlockHeader.WithNumber(100);
@@ -270,6 +272,11 @@ public class HeaderStoreTests
             Assert.That(Keccak.Compute(rlp.AsSpan()), Is.EqualTo(header.Hash));
             Assert.That(rlp.AsSpan().ToArray(), Is.EqualTo(new HeaderDecoder().Encode(header)));
             Assert.That(decoder.Decodes, Is.EqualTo(storeDecoder || source == HeaderSource.Cache ? 0 : 1));
+            if (headerDb is PinnedTestDb pinned)
+            {
+                Assert.That(pinned.Released, Is.EqualTo(source == HeaderSource.Cache ? 0 : 1));
+                Assert.That(pinned.LiveHandles, Is.Zero);
+            }
         }
     }
 

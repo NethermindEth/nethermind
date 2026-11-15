@@ -135,8 +135,10 @@ public class HeaderStore : IHeaderStore, IClearableCache
         header ??= Get(blockHash, shouldCache: false, blockNumber);
         if (header is null) return false;
 
-        using ArrayPoolSpan<byte> rlp = decoder.EncodeToArrayPoolSpan(header);
-        destination.AddRange(rlp);
+        int length = decoder.GetLength(header);
+        RlpWriter writer = RlpWriter.ContentWriter(destination.AddUninitialized(length));
+        decoder.Encode(ref writer, header);
+        Rlp.CheckLength(in writer, length);
         return true;
     }
 

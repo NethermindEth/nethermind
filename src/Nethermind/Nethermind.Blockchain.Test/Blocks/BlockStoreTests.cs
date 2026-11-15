@@ -3,8 +3,6 @@
 
 using System;
 using System.Buffers;
-using System.Collections.Generic;
-using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Blocks;
@@ -352,42 +350,6 @@ public class BlockStoreTests
     }
 
     private static byte[] NumberedKey(Block block) => Bytes.Concat(block.Number.ToBigEndianByteArray(), block.Hash!.BytesToArray());
-
-    private sealed class PinnedTestDb : TestMemDb, IReadOnlyNativeKeyValueStore, IDisposable
-    {
-        private readonly Dictionary<nint, byte[]> _pins = [];
-        public int NativeReads { get; private set; }
-        public int Released { get; private set; }
-        public int LiveHandles => _pins.Count;
-
-        public ReadOnlySpan<byte> GetNativeSlice(scoped ReadOnlySpan<byte> key, out nint handle, ReadFlags flags = ReadFlags.None)
-        {
-            NativeReads++;
-            handle = 0;
-            byte[]? value = Get(key, flags);
-            if (value is null) return null;
-            byte[] bytes = (byte[])value.Clone();
-            GCHandle pin = GCHandle.Alloc(bytes, GCHandleType.Pinned);
-            handle = GCHandle.ToIntPtr(pin);
-            _pins.Add(handle, bytes);
-            return bytes;
-        }
-
-        public void DangerousReleaseHandle(nint handle)
-        {
-            if (!_pins.Remove(handle, out byte[]? bytes)) throw new InvalidOperationException("Native handle released twice.");
-            bytes.AsSpan().Fill(0xff);
-            GCHandle.FromIntPtr(handle).Free();
-            Released++;
-        }
-
-        public new void Dispose()
-        {
-            foreach (nint handle in _pins.Keys) GCHandle.FromIntPtr(handle).Free();
-            _pins.Clear();
-            base.Dispose();
-        }
-    }
 
     [Test]
     public void Test_DeleteRanges_takes_every_range_and_keeps_the_heights_between()
