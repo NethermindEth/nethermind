@@ -10,7 +10,7 @@ namespace Nethermind.Stateless.Execution.IO;
 
 public static partial class TrustedInput
 {
-    /// <summary>Whether the guest uses the items where they lie in its input.</summary>
+    /// <summary>Uses the item where it lies in the input when the guest allows it, else copies it.</summary>
     /// <remarks>
     /// Only where the input is read into writable memory that outlives the run, nothing ever moves or collects an
     /// object, and storing a reference to an object outside the managed heap is sound, so that an array whose header is
@@ -19,19 +19,21 @@ public static partial class TrustedInput
     /// arrays already; and OpenVM, which reads its input into a buffer it never frees and runs the same runtime as SP1.
     /// Not ZisK, whose input region is read-only.
     /// </remarks>
-    private static bool UsesItemsInPlace => AirbenderFlag.IsActive || FirstTouchMemoryFlag.IsActive || OpenVmFlag.IsActive;
-
     private static partial byte[] Item(ReadOnlySpan<byte> data, int start, int length)
     {
         ref byte first = ref Unsafe.Add(ref MemoryMarshal.GetReference(data), start);
-        return UsesItemsInPlace && IsAligned(ref first) ? ArrayAt(ref first, length) : data.Slice(start, length).ToArray();
+        return (AirbenderFlag.IsActive || FirstTouchMemoryFlag.IsActive || OpenVmFlag.IsActive) && IsAligned(ref first)
+            ? ArrayAt(ref first, length)
+            : data.Slice(start, length).ToArray();
     }
 
     private static partial ReadOnlyMemory<byte> Code(ReadOnlySpan<byte> data, int start, int length)
     {
-        ref byte first = ref Unsafe.Add(ref MemoryMarshal.GetReference(data), start);
-        if (!UsesItemsInPlace || !AirbenderFlag.IsActive && !IsAligned(ref first))
+        if (!AirbenderFlag.IsActive && !FirstTouchMemoryFlag.IsActive && !OpenVmFlag.IsActive)
             return ExecutableCodeMemory.Copy(data.Slice(start, length));
+
+        ref byte first = ref Unsafe.Add(ref MemoryMarshal.GetReference(data), start);
+        if (!AirbenderFlag.IsActive && !IsAligned(ref first)) return ExecutableCodeMemory.Copy(data.Slice(start, length));
 
         Span<byte> codeAndPadding = MemoryMarshal.CreateSpan(ref first, length + CodeInfo.ExecutionPadding);
         return ExecutableCodeMemory.PlacePadded(codeAndPadding, length);
