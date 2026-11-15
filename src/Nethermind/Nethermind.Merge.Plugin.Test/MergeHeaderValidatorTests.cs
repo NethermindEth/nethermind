@@ -156,6 +156,7 @@ public class MergeHeaderValidatorTests
         IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
         poSSwitcher.TerminalTotalDifficulty.Returns((UInt256?)new UInt256(ttd));
         poSSwitcher.IsPostMerge(Arg.Any<BlockHeader>()).Returns(true);
+        poSSwitcher.GetBlockConsensusInfo(Arg.Any<BlockHeader>()).Returns((false, true));
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         MergeHeaderValidator validator = new(poSSwitcher, Substitute.For<IHeaderValidator>(), blockTree, MainnetSpecProvider.Instance, Always.Valid, LimboLogs.Instance);
         BlockHeader parent = Build.A.BlockHeader.WithDifficulty(0).TestObject;
@@ -173,9 +174,10 @@ public class MergeHeaderValidatorTests
         IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
         poSSwitcher.TerminalTotalDifficulty.Returns((UInt256?)new UInt256(10));
         poSSwitcher.IsPostMerge(Arg.Any<BlockHeader>()).Returns(true);
+        poSSwitcher.GetBlockConsensusInfo(Arg.Any<BlockHeader>()).Returns((false, true));
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         MergeHeaderValidator validator = new(poSSwitcher, Substitute.For<IHeaderValidator>(), blockTree, MainnetSpecProvider.Instance, Always.Valid, LimboLogs.Instance);
-        BlockHeader header = Build.A.BlockHeader.WithDifficulty(0).TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithDifficulty(0).WithNonce(0).TestObject;
 
         using (Assert.EnterMultipleScope())
         {
