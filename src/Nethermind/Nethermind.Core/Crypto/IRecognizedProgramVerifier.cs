@@ -6,7 +6,8 @@ using System.Collections.Generic;
 namespace Nethermind.Core.Crypto;
 
 /// <summary>An EIP-8437 mode-2 raw witness <c>[public-key, message, signature]</c> for a recognized leaf program.</summary>
-public sealed record RawSignature(byte[] PublicKey, ValueHash256 Message, byte[] Signature);
+/// <remarks>The message is at most <c>MempoolWrapper.MaxRawMessageBytes</c> bytes; which lengths a program takes is its native check's call.</remarks>
+public sealed record RawSignature(byte[] PublicKey, byte[] Message, byte[] Signature);
 
 /// <summary>Native checks and leaf proving for the recognized signature programs this node enables (EIP-8437 mode 2).</summary>
 /// <remarks>Recognition is local policy: the enabled programs and their keys are fixed for the process, so a raw verdict never

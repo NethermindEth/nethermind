@@ -241,7 +241,7 @@ internal static class WrapperTestObjects
             Deps = deps,
             Mode = MempoolWrapper.ModeRaw,
             Proofs = [.. deps.Select(d => Raw(d) ? [] : new byte[] { 1 })],
-            RawWitnesses = [.. deps.Select(d => Raw(d) ? new RawSignature([1], d.DataHash, new byte[signatureBytes]) : null)],
+            RawWitnesses = [.. deps.Select(d => Raw(d) ? new RawSignature([1], d.DataHash.ToByteArray(), new byte[signatureBytes]) : null)],
         }).Bytes;
     }
 

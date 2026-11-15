@@ -141,6 +141,6 @@ public static class Eip8288Constants
     /// <see cref="Eip8288Dependencies.ComputeDepsHash(System.Collections.Generic.IReadOnlyList{FrameDependency}, bool)"/>.</remarks>
     public static ReadOnlySpan<byte> BatchedAggregatedVk => _batchedAggregatedVk;
 
-    private static readonly byte[] _aggregatedVk = Convert.FromHexString("f6f37690cf7241c9ea24392f349867acc1c8e06034e8ce149e2f11a25eec56f9");
-    private static readonly byte[] _batchedAggregatedVk = Convert.FromHexString("3f87249262b6fc9c5776514d9d2ba8bca372ad169b22b39d426d416446fd5a5e");
+    private static readonly byte[] _aggregatedVk = Convert.FromHexString("b3a5a9b6773f76829132e11fa436d24bdac562014d2821396657fdf5dd081084");
+    private static readonly byte[] _batchedAggregatedVk = Convert.FromHexString("6a2e13dab57ca0558170a9a047039221ce10ebdcd94beb53cf75f7d89ce65af9");
 }

@@ -22,6 +22,11 @@ public sealed class MempoolWrapper
     /// <summary>EIP-8437's bound on one raw entry's complete RLP encoding.</summary>
     public const int MaxRawWitnessBytes = 16 * 1024;
 
+    /// <summary>The longest raw message: ML-DSA-44's in the recognized programs, which take 32-byte messages otherwise.</summary>
+    /// <remarks>Marchhill/EIPs#14 fixes the message at 32 bytes; a longer one lets an account sign WebAuthn's
+    /// <c>authenticatorData ‖ sha256(clientDataJSON)</c> directly.</remarks>
+    public const int MaxRawMessageBytes = 1024;
+
     /// <summary>EIP-8437's bound on a mode-2 wrapper's raw entries.</summary>
     public const int MaxRawEntries = 16;
 

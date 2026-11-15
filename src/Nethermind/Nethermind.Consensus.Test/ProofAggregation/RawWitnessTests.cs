@@ -59,7 +59,12 @@ public class RawWitnessTests
 
     private static ValueHash256 ClaimOf(RawSignature signature) => ValueKeccak.Compute(signature.Signature);
 
-    private static RawSignature Signature(byte seed) => new([seed, 2, 3], ValueKeccak.Compute([seed]), [seed, 5, 6]);
+    private static RawSignature Signature(byte seed, int messageLength = ValueHash256.MemorySize)
+    {
+        byte[] message = new byte[messageLength];
+        message.AsSpan().Fill(seed);
+        return new([seed, 2, 3], message, [seed, 5, 6]);
+    }
 
     private static FrameDependency RawDependency(RawSignature signature) => new(Eip8288Constants.LeanStarkScheme, ClaimOf(signature), ProgramKey);
 
@@ -148,9 +153,9 @@ public class RawWitnessTests
     private static void SetNonce(Node node, ulong nonce) => node.Head.ReadOnlyStateProvider.GetNonce(TestItem.AddressA).Returns(nonce);
 
     [Test]
-    public void Mode_2_round_trips_raw_and_ordinary_entries()
+    public void Mode_2_round_trips_raw_and_ordinary_entries([Values(0, ValueHash256.MemorySize, MempoolWrapper.MaxRawMessageBytes)] int messageLength)
     {
-        RawSignature signature = Signature(1);
+        RawSignature signature = Signature(1, messageLength);
         FrameDependency raw = RawDependency(signature);
         MempoolWrapper wrapper = RawWrapper(new() { [raw] = signature }, Transaction(0, raw, SphincsDependency("a")));
 
@@ -168,15 +173,16 @@ public class RawWitnessTests
     }
 
     private static bool SameRaw(RawSignature a, RawSignature b) =>
-        a.PublicKey.AsSpan().SequenceEqual(b.PublicKey) && a.Message == b.Message && a.Signature.AsSpan().SequenceEqual(b.Signature);
+        a.PublicKey.AsSpan().SequenceEqual(b.PublicKey) && a.Message.AsSpan().SequenceEqual(b.Message) && a.Signature.AsSpan().SequenceEqual(b.Signature);
 
     // EIP-8437 Test Cases: a raw entry in mode 0, mode 2 with no raw entry, the wrong tuple shape or an entry over 16 KiB is
-    // malformed; so is a raw entry for a non-generic dependency or an entry count that differs from the dependencies'.
+    // malformed; so is a raw entry for a non-generic dependency or an entry count that differs from the dependencies'. A message
+    // over MaxRawMessageBytes is too, where the EIP fixes it at 32 bytes.
     [TestCase("raw entry in mode 0")]
     [TestCase("no raw entry")]
     [TestCase("two fields")]
     [TestCase("four fields")]
-    [TestCase("31-byte message")]
+    [TestCase("message over 1,024 bytes")]
     [TestCase("entry over 16 KiB")]
     [TestCase("raw entry for leanSPHINCS")]
     [TestCase("missing entry")]
@@ -188,17 +194,17 @@ public class RawWitnessTests
         Transaction transaction = Transaction(0, raw, sphincs);
         List<FrameDependency> deps = Eip8288Dependencies.Canonicalize([raw, sphincs]);
         Rlp RawEntry(params byte[][] fields) => Rlp.Encode([.. fields.Select(static f => Rlp.Encode(f))]);
-        Rlp good = RawEntry(signature.PublicKey, signature.Message.ToByteArray(), signature.Signature);
+        Rlp good = RawEntry(signature.PublicKey, signature.Message, signature.Signature);
         Rlp ordinary = Rlp.Encode(new byte[] { 1 });
         Rlp Entry(FrameDependency d, Rlp rawEntry) => d.Equals(raw) ? rawEntry : ordinary;
         (byte Mode, Rlp[] Entries) framing = scenario switch
         {
             "raw entry in mode 0" => (MempoolWrapper.ModeDirect, deps.Select(d => Entry(d, good)).ToArray()),
             "no raw entry" => (MempoolWrapper.ModeRaw, deps.Select(_ => ordinary).ToArray()),
-            "two fields" => (MempoolWrapper.ModeRaw, deps.Select(d => Entry(d, RawEntry(signature.PublicKey, signature.Message.ToByteArray()))).ToArray()),
-            "four fields" => (MempoolWrapper.ModeRaw, deps.Select(d => Entry(d, RawEntry(signature.PublicKey, signature.Message.ToByteArray(), signature.Signature, [9]))).ToArray()),
-            "31-byte message" => (MempoolWrapper.ModeRaw, deps.Select(d => Entry(d, RawEntry(signature.PublicKey, new byte[31], signature.Signature))).ToArray()),
-            "entry over 16 KiB" => (MempoolWrapper.ModeRaw, deps.Select(d => Entry(d, RawEntry(signature.PublicKey, signature.Message.ToByteArray(), new byte[MempoolWrapper.MaxRawWitnessBytes]))).ToArray()),
+            "two fields" => (MempoolWrapper.ModeRaw, deps.Select(d => Entry(d, RawEntry(signature.PublicKey, signature.Message))).ToArray()),
+            "four fields" => (MempoolWrapper.ModeRaw, deps.Select(d => Entry(d, RawEntry(signature.PublicKey, signature.Message, signature.Signature, [9]))).ToArray()),
+            "message over 1,024 bytes" => (MempoolWrapper.ModeRaw, deps.Select(d => Entry(d, RawEntry(signature.PublicKey, new byte[MempoolWrapper.MaxRawMessageBytes + 1], signature.Signature))).ToArray()),
+            "entry over 16 KiB" => (MempoolWrapper.ModeRaw, deps.Select(d => Entry(d, RawEntry(signature.PublicKey, signature.Message, new byte[MempoolWrapper.MaxRawWitnessBytes]))).ToArray()),
             "raw entry for leanSPHINCS" => (MempoolWrapper.ModeRaw, deps.Select(d => d.Equals(sphincs) ? good : ordinary).ToArray()),
             "missing entry" => (MempoolWrapper.ModeRaw, new[] { good }),
             _ => throw new ArgumentOutOfRangeException(nameof(scenario))
@@ -210,6 +216,16 @@ public class RawWitnessTests
                 Rlp.Encode(framing.Entries))).Bytes;
 
         Assert.That(() => Decode(encoded), Throws.InstanceOf<RlpException>());
+    }
+
+    [Test]
+    public void Encoding_refuses_a_raw_message_over_the_cap()
+    {
+        RawSignature signature = Signature(1, MempoolWrapper.MaxRawMessageBytes + 1);
+        FrameDependency raw = RawDependency(signature);
+        MempoolWrapper wrapper = RawWrapper(new() { [raw] = signature }, Transaction(0, raw));
+
+        Assert.That(() => Encode(wrapper), Throws.InstanceOf<RlpException>().With.Message.EqualTo(MempoolWrapperDecoder.MalformedRawWitness));
     }
 
     [Test]
@@ -240,7 +256,7 @@ public class RawWitnessTests
     [TestCase("bad ordinary witness", MempoolWrapperValidator.InvalidProof)]
     public void Raw_witness_failures_are_invalid(string scenario, string expected)
     {
-        RawSignature signature = scenario == "bad signature" ? new([1], ValueKeccak.Compute("m"), [0, 1]) : Signature(1);
+        RawSignature signature = scenario == "bad signature" ? new([1], ValueKeccak.Compute("m").ToByteArray(), [0, 1]) : Signature(1);
         FrameDependency raw = scenario switch
         {
             "unrecognized key" => new(Eip8288Constants.LeanStarkScheme, ClaimOf(signature), ValueKeccak.Compute("other program")),
@@ -266,7 +282,7 @@ public class RawWitnessTests
     public async Task Failed_witness_invalidates_the_whole_wrapper()
     {
         Node node = CreateNode();
-        RawSignature good = Signature(1), bad = new([1], ValueKeccak.Compute("m"), [0, 1]);
+        RawSignature good = Signature(1), bad = new([1], ValueKeccak.Compute("m").ToByteArray(), [0, 1]);
         FrameDependency goodDep = RawDependency(good), badDep = RawDependency(bad);
         Transaction valid = Transaction(0, goodDep), invalid = Transaction(1, badDep);
         byte[] wrapper = Encode(RawWrapper(new() { [goodDep] = good, [badDep] = bad }, valid, invalid));
@@ -319,7 +335,7 @@ public class RawWitnessTests
             Rlp.Encode([.. txs.OrderBy(static t => t.Hash!.ToString()).Select(static t => Rlp.Encode(MempoolWrapperDecoder.EncodeTransaction(t)))]),
             Rlp.Encode(MempoolWrapper.ModeRaw),
             Rlp.Encode(Rlp.Encode([.. canonical.Select(static d => { byte[] b = new byte[Eip8288Constants.DependencyTripleLength]; d.WriteTo(b); return Rlp.Encode(b); })]),
-                Rlp.Encode([.. canonical.Select(d => Rlp.Encode(Rlp.Encode(raws[d].PublicKey), Rlp.Encode(raws[d].Message.ToByteArray()), Rlp.Encode(raws[d].Signature)))]))).Bytes;
+                Rlp.Encode([.. canonical.Select(d => Rlp.Encode(Rlp.Encode(raws[d].PublicKey), Rlp.Encode(raws[d].Message), Rlp.Encode(raws[d].Signature)))]))).Bytes;
 
         if (decodes) Assert.That(Decode(encoded).Transactions, Has.Count.EqualTo(transactions));
         else Assert.That(() => Decode(encoded), Throws.InstanceOf<RlpException>().With.Message.EqualTo(MempoolWrapperDecoder.TooManyRawItems));
@@ -434,7 +450,7 @@ public class RawWitnessTests
     public async Task Repeated_wrappers_are_not_validated_again()
     {
         Node node = CreateNode();
-        RawSignature signature = Signature(1), bad = new([1], ValueKeccak.Compute("m"), [0]);
+        RawSignature signature = Signature(1), bad = new([1], ValueKeccak.Compute("m").ToByteArray(), [0]);
         FrameDependency raw = RawDependency(signature);
         FrameDependency badDep = new(Eip8288Constants.LeanStarkScheme, ClaimOf(bad), ProgramKey);
         byte[] held = Encode(RawWrapper(new() { [raw] = signature }, Transaction(0, raw)));
@@ -735,7 +751,7 @@ public class RawWitnessTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(node.Recognized.Proved, Has.Count.EqualTo(count), "the peer's budget allows a minute's worth; the local one is separate");
-            Assert.That(node.Recognized.Proved.Any(r => r.Message == localSignature.Message), Is.True);
+            Assert.That(node.Recognized.Proved.Any(r => r.Message.AsSpan().SequenceEqual(localSignature.Message)), Is.True);
         }
     }
 
@@ -987,7 +1003,7 @@ public class RawWitnessTests
     public void Held_raw_wrapper_revalidates_under_the_same_verifier_only_when_its_raw_witnesses_pass()
     {
         Node node = CreateNode();
-        RawSignature signature = Signature(1), bad = new([1], ValueKeccak.Compute("m"), [0]);
+        RawSignature signature = Signature(1), bad = new([1], ValueKeccak.Compute("m").ToByteArray(), [0]);
         FrameDependency raw = RawDependency(signature);
         FrameDependency badDep = new(Eip8288Constants.LeanStarkScheme, ClaimOf(bad), ProgramKey);
 

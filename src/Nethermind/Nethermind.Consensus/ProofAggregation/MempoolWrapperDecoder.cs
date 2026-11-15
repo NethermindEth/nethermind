@@ -22,7 +22,8 @@ namespace Nethermind.Consensus.ProofAggregation;
 /// triples of a defined scheme and, in modes 0 and 2, one witness per dependency (EIP-8437). Dependency and proof rules, including
 /// the dependency list's order and the mode-0 limits, are left to <see cref="MempoolWrapperValidator"/>, so EIP-8437 discards a
 /// wrapper breaking them without penalizing its sender. Mode 2's framing is encoding: raw entries only for leanSTARK dependencies,
-/// each within <see cref="MempoolWrapper.MaxRawWitnessBytes"/> with a 32-byte message, at least one and at most
+/// each within <see cref="MempoolWrapper.MaxRawWitnessBytes"/> with a message of at most <see cref="MempoolWrapper.MaxRawMessageBytes"/>
+/// bytes, at least one and at most
 /// <see cref="MempoolWrapper.MaxRawEntries"/> of them, and at most <see cref="MempoolWrapper.MaxRawTransactions"/> transactions.</remarks>
 public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
 {
@@ -145,10 +146,10 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
             byte[] message = decoderContext.DecodeByteArray(limit);
             byte[] signature = decoderContext.DecodeByteArray(limit);
             decoderContext.Check(entryCheck);
-            if (message.Length != ValueHash256.MemorySize) throw new RlpException(MalformedRawWitness);
+            if (message.Length > MempoolWrapper.MaxRawMessageBytes) throw new RlpException(MalformedRawWitness);
             if (++rawCount > MempoolWrapper.MaxRawEntries) throw new RlpException(TooManyRawItems);
             proofs.Add([]);
-            raws.Add(new RawSignature(publicKey, new ValueHash256(message), signature));
+            raws.Add(new RawSignature(publicKey, message, signature));
         }
         decoderContext.Check(proofsCheck);
         if (proofs.Count != deps.Count) throw new RlpException(WitnessCountMismatch);
@@ -209,7 +210,7 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
                 {
                     writer.StartSequence(RawContentLength(raw));
                     writer.Encode(raw.PublicKey);
-                    writer.Encode(raw.Message.Bytes);
+                    writer.Encode(raw.Message);
                     writer.Encode(raw.Signature);
                 }
                 else writer.Encode(item.Proofs[i]);
@@ -287,7 +288,7 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
     }
 
     private static int RawContentLength(RawSignature raw) =>
-        Rlp.LengthOf(raw.PublicKey) + Rlp.LengthOfByteString(ValueHash256.MemorySize, 0) + Rlp.LengthOf(raw.Signature);
+        Rlp.LengthOf(raw.PublicKey) + Rlp.LengthOf(raw.Message) + Rlp.LengthOf(raw.Signature);
 
     /// <summary>The content length of a mode-2 entry list, checking the framing the decoder enforces.</summary>
     private static int RawInnerLength(MempoolWrapper item)
@@ -304,7 +305,8 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
             if (raws[i] is { } raw)
             {
                 int entry = Rlp.LengthOfSequence(RawContentLength(raw));
-                if (entry > MempoolWrapper.MaxRawWitnessBytes || item.Deps[i].Scheme != Eip8288Constants.LeanStarkScheme)
+                if (entry > MempoolWrapper.MaxRawWitnessBytes || raw.Message.Length > MempoolWrapper.MaxRawMessageBytes
+                    || item.Deps[i].Scheme != Eip8288Constants.LeanStarkScheme)
                     throw new RlpException(MalformedRawWitness);
                 length += entry;
                 if (++rawCount > MempoolWrapper.MaxRawEntries) throw new RlpException(TooManyRawItems);

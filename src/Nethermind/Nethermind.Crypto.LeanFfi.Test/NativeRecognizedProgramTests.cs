@@ -32,7 +32,7 @@ public class NativeRecognizedProgramTests
             .ToDictionary(static p => p.GetProperty("id").GetUInt32(), static p => new ValueHash256(Hex(p.GetProperty("key"))));
         Vector[] vectors = [.. json.RootElement.GetProperty("vectors").EnumerateArray().Select(static v => new Vector(
             v.GetProperty("profile").GetUInt32(), v.GetProperty("label").GetString()!,
-            new RawSignature(Hex(v.GetProperty("publicKey")), new ValueHash256(Hex(v.GetProperty("message"))), Hex(v.GetProperty("signature"))),
+            new RawSignature(Hex(v.GetProperty("publicKey")), Hex(v.GetProperty("message")), Hex(v.GetProperty("signature"))),
             v.GetProperty("claim").ValueKind == JsonValueKind.Null ? (ValueHash256?)null : new ValueHash256(Hex(v.GetProperty("claim"))),
             v.GetProperty("leaf").GetString()!))];
         return (keys, vectors);

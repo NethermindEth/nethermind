@@ -82,7 +82,7 @@ public class LeanProofCapacityTests
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Convert.ToHexStringLower(Eip8288Constants.AggregatedVk), Is.EqualTo("f6f37690cf7241c9ea24392f349867acc1c8e06034e8ce149e2f11a25eec56f9"));
+            Assert.That(Convert.ToHexStringLower(Eip8288Constants.AggregatedVk), Is.EqualTo("b3a5a9b6773f76829132e11fa436d24bdac562014d2821396657fdf5dd081084"));
             Assert.That(Nethermind.Specs.Forks.Eip8288Prototype.Instance.IsEipBatchedDependencyPricingEnabled, Is.False);
             Assert.That(Eip8288Verifier.For(Nethermind.Specs.Forks.Eip8288Prototype.Instance).AggregatedVk, Is.EqualTo(Eip8288Verifier.PinnedAggregatedVk));
             Assert.That(new[] { Eip8288Constants.MaxProofBytes, Eip8288Constants.MaxProofDependencies, Eip8288Constants.BaseMaxRecursiveInputs,

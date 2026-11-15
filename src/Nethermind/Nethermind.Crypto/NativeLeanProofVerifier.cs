@@ -20,7 +20,7 @@ namespace Nethermind.Crypto;
 public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
 {
     private const string Library = "nethermind_lean";
-    private const uint ExpectedAbiVersion = 18;
+    private const uint ExpectedAbiVersion = 19;
     // The ABI's guests: EIP-8288's, and the one with batch pricing (ethereum/EIPs#12664).
     private const uint BaseGuest = 0;
     private const uint BatchedGuest = 1;
@@ -369,7 +369,7 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
     private static partial int nlean_recognized_key(uint profile, byte* output);
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    private static partial int nlean_verify_raw(uint profile, byte* pk, nuint pkLen, byte* message, byte* signature, nuint signatureLen, byte* claim);
+    private static partial int nlean_verify_raw(uint profile, byte* pk, nuint pkLen, byte* message, nuint messageLen, byte* signature, nuint signatureLen, byte* claim);
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     private static partial int nlean_prove_raw_leaf(uint profile, byte* input, nuint inputLen, byte** output, nuint* outputLen);

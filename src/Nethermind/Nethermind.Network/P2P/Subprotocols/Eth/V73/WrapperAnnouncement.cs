@@ -170,7 +170,7 @@ public static class WrapperBodies
 
     /// <summary>Checks EIP-8437 mode-2 framing: one entry per dependency, each an ordinary witness or a raw
     /// <c>[public-key, message, signature]</c> of a leanSTARK dependency within <see cref="MempoolWrapper.MaxRawWitnessBytes"/> and
-    /// with a 32-byte message, at least one of them raw.</summary>
+    /// with a message of at most <see cref="MempoolWrapper.MaxRawMessageBytes"/> bytes, at least one of them raw.</summary>
     /// <returns>The entries' bytes; their verification work is the dependencies', which the caller already counted.</returns>
     private static int ParseRawEntries(Eth73RlpReader entries, byte[] dependencyEntries, int dependencyCount)
     {
@@ -190,7 +190,7 @@ public static class WrapperBodies
                 throw new RlpException("Invalid mode 2 raw witness");
             Eth73RlpReader raw = new Eth73RlpReader(item).ReadList();
             raw.ReadBytes();
-            if (raw.ReadBytes().Length != ValueHash256.MemorySize) throw new RlpException("Invalid mode 2 raw witness");
+            if (raw.ReadBytes().Length > MempoolWrapper.MaxRawMessageBytes) throw new RlpException("Invalid mode 2 raw witness");
             raw.ReadBytes();
             raw.End();
             bytes += item.Length;

@@ -371,8 +371,9 @@ public class RawWitnessTransportTests
     }
 
     // EIP-8437: a raw entry for a non-generic dependency, an entry count other than the dependencies' or no raw entry is
-    // malformed.
+    // malformed; so is a message over MaxRawMessageBytes.
     [TestCase("raw entry for leanSPHINCS")]
+    [TestCase("message over 1,024 bytes")]
     [TestCase("no raw entry")]
     [TestCase("extra entry")]
     [TestCase("missing entry")]
@@ -382,12 +383,13 @@ public class RawWitnessTransportTests
         byte[] body = RawWrapper(64, generic, sphincs);
         RlpReader reader = new(body);
         MempoolWrapper decoded = MempoolWrapperDecoder.Instance.Decode(ref reader)!;
-        static Rlp Raw() => Rlp.Encode(Rlp.Encode(new byte[] { 1 }), Rlp.Encode(new byte[32]), Rlp.Encode(new byte[64]));
+        static Rlp Raw(int messageLength = 32) => Rlp.Encode(Rlp.Encode(new byte[] { 1 }), Rlp.Encode(new byte[messageLength]), Rlp.Encode(new byte[64]));
         Rlp[] entries = scenario switch
         {
             "raw entry for leanSPHINCS" => [.. decoded.Deps.Select(static _ => Raw())],
             "no raw entry" => [.. decoded.Deps.Select(static _ => Rlp.Encode(new byte[] { 1 }))],
             "missing entry" => [Raw()],
+            "message over 1,024 bytes" => [.. decoded.Deps.Select(static d => d.Scheme == Eip8288Constants.LeanStarkScheme ? Raw(MempoolWrapper.MaxRawMessageBytes + 1) : Rlp.Encode(new byte[] { 1 }))],
             _ => [.. decoded.Deps.Select(d => d.Scheme == Eip8288Constants.LeanStarkScheme ? Raw() : Rlp.Encode(new byte[] { 1 })), Rlp.Encode(new byte[] { 1 })],
         };
         byte[] malformed = Rlp.Encode(

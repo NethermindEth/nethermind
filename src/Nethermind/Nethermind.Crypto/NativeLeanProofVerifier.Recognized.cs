@@ -35,11 +35,11 @@ public sealed unsafe partial class NativeLeanProofVerifier
         try
         {
             fixed (byte* pk = signature.PublicKey)
-            fixed (byte* m = signature.Message.Bytes)
+            fixed (byte* m = signature.Message)
             fixed (byte* s = signature.Signature)
             fixed (byte* c = output)
-                valid = Verdict(AbiVersion != ExpectedAbiVersion ? -1 : nlean_verify_raw(profile, pk, (nuint)signature.PublicKey.Length, m, s,
-                    (nuint)signature.Signature.Length, c));
+                valid = Verdict(AbiVersion != ExpectedAbiVersion ? -1 : nlean_verify_raw(profile, pk, (nuint)signature.PublicKey.Length, m,
+                    (nuint)signature.Message.Length, s, (nuint)signature.Signature.Length, c));
         }
         catch (Exception e) when (IsUnavailable(e)) { throw new InvalidOperationException("Native Lean backend unavailable", e); }
         claim = valid ? new ValueHash256(output) : default;
@@ -52,24 +52,27 @@ public sealed unsafe partial class NativeLeanProofVerifier
     {
         if (signatures.Count is 0 or > Eip8288Constants.MaxClaimsPerBatchLeaf) throw new ArgumentException("Invalid raw leaf size", nameof(signatures));
         int length = sizeof(uint);
-        foreach (RawSignature signature in signatures) length += 2 * sizeof(uint) + signature.PublicKey.Length + ValueHash256.MemorySize + signature.Signature.Length;
+        foreach (RawSignature signature in signatures) length += 3 * sizeof(uint) + signature.PublicKey.Length + signature.Message.Length + signature.Signature.Length;
         byte[] input = new byte[length];
         Span<byte> at = input;
         BinaryPrimitives.WriteUInt32LittleEndian(at, (uint)signatures.Count);
         at = at[sizeof(uint)..];
         foreach (RawSignature signature in signatures)
         {
-            BinaryPrimitives.WriteUInt32LittleEndian(at, (uint)signature.PublicKey.Length);
-            signature.PublicKey.CopyTo(at[sizeof(uint)..]);
-            at = at[(sizeof(uint) + signature.PublicKey.Length)..];
-            signature.Message.Bytes.CopyTo(at);
-            BinaryPrimitives.WriteUInt32LittleEndian(at[ValueHash256.MemorySize..], (uint)signature.Signature.Length);
-            signature.Signature.CopyTo(at[(ValueHash256.MemorySize + sizeof(uint))..]);
-            at = at[(ValueHash256.MemorySize + sizeof(uint) + signature.Signature.Length)..];
+            at = WritePart(at, signature.PublicKey);
+            at = WritePart(at, signature.Message);
+            at = WritePart(at, signature.Signature);
         }
         if (AbiVersion != ExpectedAbiVersion) throw new InvalidOperationException("Incompatible Lean verifier ABI");
         try { return ProverThread.Run(() => ProveRawLeafNative(profile, input)); }
         catch (Exception e) when (IsUnavailable(e)) { throw new InvalidOperationException("Native Lean backend unavailable", e); }
+    }
+
+    private static Span<byte> WritePart(Span<byte> at, byte[] part)
+    {
+        BinaryPrimitives.WriteUInt32LittleEndian(at, (uint)part.Length);
+        part.CopyTo(at[sizeof(uint)..]);
+        return at[(sizeof(uint) + part.Length)..];
     }
 
     private static byte[] ProveRawLeafNative(uint profile, byte[] input)
