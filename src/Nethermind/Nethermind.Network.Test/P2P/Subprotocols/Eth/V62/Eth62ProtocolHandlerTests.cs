@@ -548,8 +548,56 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             response.Dispose();
         }
 
+        [Test]
+        public void Disposes_every_served_block_lease_including_the_one_over_the_hard_limit()
+        {
+            Block[] blocks = [Build.A.Block.WithNonce(1).TestObject, Build.A.Block.WithNonce(2).TestObject, Build.A.Block.WithNonce(3).TestObject];
+            List<TrackedLease> leases = [];
+            foreach (Block block in blocks)
+            {
+                byte[] encoded = new BlockDecoder().Encode(block);
+                _syncManager.FindBlockRlp(block.Hash!).Returns(_ =>
+                {
+                    TrackedLease lease = new(encoded);
+                    leases.Add(lease);
+                    return lease;
+                });
+            }
+
+            ulong hardLimit = SyncPeerProtocolHandlerBase.HardOutgoingBodiesMessageSizeLimit;
+            SyncPeerProtocolHandlerBase.HardOutgoingBodiesMessageSizeLimit = (ulong)new BlockDecoder().Encode(blocks[0]).Length + 1;
+            try
+            {
+                BlockBody?[] bodies = RequestBlockBodies(blocks.Select(static block => block.Hash!).ToArray());
+
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(bodies, Has.Length.EqualTo(1));
+                    Assert.That(leases, Has.Count.EqualTo(2), "the second block is read, then dropped over the hard limit");
+                    Assert.That(leases.Select(static lease => lease.IsDisposed), Is.All.True);
+                }
+            }
+            finally
+            {
+                SyncPeerProtocolHandlerBase.HardOutgoingBodiesMessageSizeLimit = hardLimit;
+            }
+        }
+
         private void ServeBlock(Hash256 hash, Block block) =>
             _syncManager.FindBlockRlp(hash).Returns(ArrayMemoryManager.From(new BlockDecoder().Encode(block)));
+
+        private sealed class TrackedLease(byte[] array) : MemoryManager<byte>
+        {
+            public bool IsDisposed { get; private set; }
+
+            protected override void Dispose(bool disposing) => IsDisposed = true;
+
+            public override Span<byte> GetSpan() => IsDisposed ? throw new ObjectDisposedException(nameof(TrackedLease)) : array;
+
+            public override MemoryHandle Pin(int elementIndex = 0) => default;
+
+            public override void Unpin() { }
+        }
 
         [Test]
         public void Can_handle_transactions([Values(true, false)] bool canGossipTransactions)

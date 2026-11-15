@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -398,9 +399,9 @@ public class ReceiptsSyncFeedTests
             .ReturnsForAnyArgs(ci =>
                 scenario.BlocksByHash.TryGetValue(ci.Arg<Hash256>(), out Block? value) ? value : null);
 
-        _blockStore.GetRlp(default, Keccak.Zero)
+        _blockStore.GetOwnedRlp(default, Keccak.Zero)
             .ReturnsForAnyArgs(ci =>
-                scenario.BlocksByHash.TryGetValue(ci.Arg<Hash256>(), out Block? value) ? BlockDecoder.Encode(value) : null);
+                scenario.BlocksByHash.TryGetValue(ci.Arg<Hash256>(), out Block? value) ? new ArrayMemoryManager(BlockDecoder.Encode(value)) : null);
 
         _blockTree.FindHeader(Keccak.Zero, BlockTreeLookupOptions.None)
             .ReturnsForAnyArgs(ci =>
@@ -514,26 +515,67 @@ public class ReceiptsSyncFeedTests
         batch.Response = response;
     }
 
+    /// <summary>Gives each block of the batch its own receipts, which its header's receipts root matches.</summary>
+    private void FillBatchResponsesThatDifferByBlock(ReceiptsSyncBatch batch, Scenario scenario)
+    {
+        _blockTree.FindHeader(Keccak.Zero, BlockTreeLookupOptions.None).ReturnsForAnyArgs(ci =>
+        {
+            BlockHeader header = scenario.BlocksByHash[ci.Arg<Hash256>()].Header.Clone();
+            header.ReceiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(ReceiptsOf(header.Number), _specProvider.GenesisSpec, null);
+            return header;
+        });
+
+        ArrayPoolList<TxReceipt[]?> response = new(batch.Infos.Length, batch.Infos.Length);
+        for (int i = 0; i < response.Count; i++)
+        {
+            response[i] = ReceiptsOf(batch.Infos[i]!.BlockNumber);
+        }
+
+        batch.Response = response;
+    }
+
+    private static TxReceipt[] ReceiptsOf(ulong blockNumber) => [Build.A.Receipt.WithGasUsedTotal(blockNumber).TestObject];
+
     [Test]
     public async Task Stores_receipts_kept_encoded_as_received([Values] bool storeTakesEncoded)
     {
         LoadScenario(_1024BodiesWithOneTxEach);
-        _receiptStorage.TryInsertNetworkReceipts(default!, default, default, default).ReturnsForAnyArgs(storeTakesEncoded);
+        List<(ulong BlockNumber, ulong GasUsedTotal)> stored = [];
+        _receiptStorage.TryInsertNetworkReceipts(default!, default, default, default).ReturnsForAnyArgs(ci =>
+        {
+            if (storeTakesEncoded)
+            {
+                RlpReader receipts = new RlpReader(ci.Arg<ReadOnlyMemory<byte>>().Span).EnterSequence(out _);
+                NetworkReceipt.TryRead(ref receipts, withBloom: true, out NetworkReceipt receipt);
+                stored.Add((ci.Arg<Block>().Number, receipt.GasUsedTotal));
+            }
+
+            return storeTakesEncoded;
+        });
+        _receiptStorage.When(static s => s.Insert(Arg.Any<Block>(), Arg.Any<TxReceipt[]>(), true))
+            .Do(ci => stored.Add((ci.Arg<Block>().Number, ci.Arg<TxReceipt[]>()[0].GasUsedTotal)));
 
         using ReceiptsSyncBatch? batch = await _feed.PrepareRequest();
-        FillBatchResponses(batch!);
+        FillBatchResponsesThatDifferByBlock(batch!, _1024BodiesWithOneTxEach);
         using (IOwnedReadOnlyList<TxReceipt[]?> decoded = batch!.Response!)
         {
             batch.Response = Encode(decoded)!;
         }
 
         int requested = batch.Infos.Length;
+        // A store that does not take encoded receipts is asked once only.
+        int encodedInserts = storeTakesEncoded ? requested : 1;
 
         SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch);
 
-        Assert.That(handlingResult, Is.EqualTo(SyncResponseHandlingResult.OK));
-        _receiptStorage.ReceivedWithAnyArgs(requested).TryInsertNetworkReceipts(default!, default, default, default);
-        _receiptStorage.Received(storeTakesEncoded ? 0 : requested).Insert(Arg.Any<Block>(), Arg.Any<TxReceipt[]>(), true);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(handlingResult, Is.EqualTo(SyncResponseHandlingResult.OK));
+            Assert.That(stored, Is.EqualTo(batch.Infos.Select(static info => (info!.BlockNumber, info.BlockNumber))));
+        }
+
+        _receiptStorage.ReceivedWithAnyArgs(encodedInserts).TryInsertNetworkReceipts(default!, default, default, default);
+        _blockStore.ReceivedWithAnyArgs(encodedInserts).GetOwnedRlp(default, default!);
     }
 
     [Test]

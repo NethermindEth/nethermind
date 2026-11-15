@@ -889,13 +889,16 @@ public class Eth70ProtocolHandlerTests
     [TestCase(false, false, 1, 2, "Block gas used exceeds header value", true)]
     [TestCase(false, false, 2, 1, "Block gas used mismatch between receipts and header", true)]
     [TestCase(false, false, 2, 2, null, true)]
+    // Deposit receipts are not kept encoded, so the block takes the decoded checks.
+    [TestCase(false, false, 1, 2, "Block gas used exceeds header value", false, TxType.DepositTx)]
     public async Task Should_validate_receipt_cumulative_against_header_gas_used_by_spec(
         bool isEip7778Enabled,
         bool isEip8037Enabled,
         int headerGasUsedMultiplier,
         int receiptGasUsedMultiplier,
         string? expectedException,
-        bool isEip8116Enabled = false)
+        bool isEip8116Enabled = false,
+        TxType receiptType = TxType.Legacy)
     {
         Hash256 blockHash = TestItem.KeccakA;
         BlockHeader header = Build.A.BlockHeader
@@ -915,7 +918,7 @@ public class Eth70ProtocolHandlerTests
         for (int i = 0; i < receipts.Length; i++)
         {
             // EIP-8116 receipts hold each transaction's own gas rather than the running total.
-            receipts[i] = new TxReceipt { GasUsedTotal = GasCostOf.Transaction * (isEip8116Enabled ? 1 : (ulong)(i + 1)), Logs = [] };
+            receipts[i] = new TxReceipt { TxType = receiptType, GasUsedTotal = GasCostOf.Transaction * (isEip8116Enabled ? 1 : (ulong)(i + 1)), Logs = [] };
         }
 
         _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>

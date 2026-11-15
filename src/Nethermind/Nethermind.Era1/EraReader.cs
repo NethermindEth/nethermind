@@ -77,12 +77,13 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
         using ArrayPoolList<(Hash256, UInt256)> blockHashes = new(blockCount, blockCount);
 
         ConcurrentQueue<ulong> blockNumbers = new(EnumerateBlockNumber());
+        BodyForm bodyForm = validateTransactions ? BodyForm.Decoded : BodyForm.EncodedTransactions;
 
         using ArrayPoolList<Task> workers = Enumerable.Range(0, verifyConcurrency).Select((_) => Task.Run(async () =>
         {
             while (blockNumbers.TryDequeue(out ulong blockNumber))
             {
-                EntryReadResult? result = await ReadBlockAndReceipts(blockNumber, true, validateTransactions ? BodyForm.Decoded : BodyForm.EncodedTransactions, cancellation);
+                EntryReadResult? result = await ReadBlockAndReceipts(blockNumber, true, bodyForm, cancellation);
                 EntryReadResult err = result.Value;
 
                 try
@@ -113,7 +114,7 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
                 }
                 finally
                 {
-                    ArchiveBodyDecoder.Release(err.Block.Body, err.EncodedBody, BodyForm.EncodedTransactions);
+                    ArchiveBodyDecoder.Release(err.Block.Body, err.EncodedBody, bodyForm);
                 }
             }
         }, cancellation)).ToPooledList(verifyConcurrency);

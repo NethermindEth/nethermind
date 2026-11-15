@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -60,6 +61,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly IHistoryPruner _historyPruner;
         private readonly ReceiptDownloadStrategy _receiptDownloadStrategy;
+        private bool _receiptStorageTakesEncoded = true;
 
         private SyncStatusList _syncStatusList;
 
@@ -260,34 +262,33 @@ namespace Nethermind.Synchronization.FastBlocks
 
             // EIP-7668 roots ignore receipt blooms, so there is nothing to normalize.
             if (!releaseSpec.IsEip7668Enabled) NormalizeZeroBlooms(receipts);
-            // TODO: Optimism use op root calculator
             return _receiptsRootCalculator.GetReceiptsRoot(receipts, releaseSpec, header.ReceiptsRoot) == header.ReceiptsRoot
                 ? new(ReceiptPreparationOutcome.Decoded, header, receipts)
                 : new(ReceiptPreparationOutcome.Invalid);
         }
 
-        /// <exception cref="InvalidDataException">The receipts do not fit the block, or the block is gone.</exception>
-        private void InsertKeptEncoded(BlockInfo blockInfo, BlockHeader header, byte[] blockRlp, NetworkBlockReceipts receipts, int index)
+        /// <returns><see langword="false"/> when the receipt store does not take encoded receipts.</returns>
+        /// <exception cref="InvalidDataException">The receipts do not fit the block.</exception>
+        private bool TryInsertKeptEncoded(BlockHeader header, MemoryManager<byte> blockRlp, NetworkBlockReceipts receipts, int index)
         {
-            Transaction[] transactions = BlockBodyDecoder.DecodeEncodedTransactionsOfBlock(blockRlp);
+            Transaction[] transactions = BlockBodyDecoder.DecodeEncodedTransactionsOfBlock(blockRlp.Memory);
             try
             {
-                if (_receiptStorage.TryInsertNetworkReceipts(new Block(header, new BlockBody(transactions, [])), receipts.GetEncoded(index), receipts.WithBloom, ensureCanonical: true))
-                {
-                    return;
-                }
+                return _receiptStorageTakesEncoded = _receiptStorage.TryInsertNetworkReceipts(
+                    new Block(header, new BlockBody(transactions, [])), receipts.GetEncoded(index), receipts.WithBloom, ensureCanonical: true);
             }
             finally
             {
                 foreach (Transaction transaction in transactions) TxDecoder.TxObjectPool.Return(transaction);
             }
+        }
 
+        private TxReceipt[] DecodeKeptEncoded(BlockHeader header, NetworkBlockReceipts receipts, int index)
+        {
             TxReceipt[] decoded = receipts[index];
             // The encoded root check takes the bloom of the logs for an all-zero one, so the decoded receipts need it too.
             if (!_specProvider.GetSpec(header).IsEip7668Enabled) NormalizeZeroBlooms(decoded);
-            Block block = _blockTree.FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: blockInfo.BlockNumber)
-                ?? throw new InvalidDataException($"Block {blockInfo.BlockNumber} ({blockInfo.BlockHash}) is not stored.");
-            _receiptStorage.Insert(block, decoded, ensureCanonical: true);
+            return decoded;
         }
 
         /// <remarks>A root that differs is checked again on the decoded receipts, which the root calculator may normalize.</remarks>
@@ -316,6 +317,9 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
+        private Block? FindBlock(BlockInfo blockInfo) =>
+            _blockTree.FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: blockInfo.BlockNumber);
+
         private int InsertReceipts(ReceiptsSyncBatch batch)
         {
             bool hasBreachedProtocol = false;
@@ -341,8 +345,8 @@ namespace Nethermind.Synchronization.FastBlocks
                         bool keptEncoded = prepared.Outcome == ReceiptPreparationOutcome.Encoded;
                         // Receipts kept encoded need the block's transaction hashes only; the decoded ones go through
                         // receipt recovery, which reads the transactions' recipients.
-                        byte[]? blockRlp = keptEncoded ? _blockStore.GetRlp(blockInfo.BlockNumber, blockInfo.BlockHash) : null;
-                        Block? block = keptEncoded ? null : _blockTree.FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: blockInfo.BlockNumber);
+                        using MemoryManager<byte>? blockRlp = keptEncoded && _receiptStorageTakesEncoded ? _blockStore.GetOwnedRlp(blockInfo.BlockNumber, blockInfo.BlockHash) : null;
+                        Block? block = blockRlp is null ? FindBlock(blockInfo) : null;
                         if (blockRlp is null && block is null)
                         {
                             if (blockInfo.BlockNumber >= _barrier)
@@ -357,13 +361,13 @@ namespace Nethermind.Synchronization.FastBlocks
                         {
                             try
                             {
-                                if (block is not null)
+                                if (blockRlp is null || !TryInsertKeptEncoded(prepared.Header!, blockRlp, (NetworkBlockReceipts)batch.Response!, i))
                                 {
-                                    _receiptStorage.Insert(block, prepared.Receipts, ensureCanonical: true);
-                                }
-                                else
-                                {
-                                    InsertKeptEncoded(blockInfo, prepared.Header!, blockRlp!, (NetworkBlockReceipts)batch.Response!, i);
+                                    block ??= FindBlock(blockInfo) ?? throw new InvalidDataException($"Block {blockInfo.BlockNumber} ({blockInfo.BlockHash}) is not stored.");
+                                    TxReceipt[] receipts = keptEncoded
+                                        ? DecodeKeptEncoded(prepared.Header!, (NetworkBlockReceipts)batch.Response!, i)
+                                        : prepared.Receipts!;
+                                    _receiptStorage.Insert(block, receipts, ensureCanonical: true);
                                 }
 
                                 _syncStatusList.MarkInserted(blockInfo.BlockNumber);
