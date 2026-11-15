@@ -364,24 +364,6 @@ jobs:
           name: zkab-elf-${{ matrix.vm }}-base
           path: base/${{ env.GUEST }}/bin
 
-      - name: Check out head
-        uses: actions/checkout@v7
-        with:
-          repository: NethermindEth/nethermind
-          ref: ${{ needs.resolve.outputs.head_sha }}
-          path: head
-          persist-credentials: false
-          sparse-checkout: |
-            src/Nethermind/Nethermind.Stateless.Guest
-            src/Nethermind/Nethermind.Stateless.ZiskGuest
-            src/Nethermind/${{ matrix.project }}
-
-      - name: Download head binaries
-        uses: actions/download-artifact@v8
-        with:
-          name: zkab-elf-${{ matrix.vm }}-head
-          path: head/${{ env.GUEST }}/bin
-
       - name: Restore inputs
         uses: actions/cache/restore@v5
         with:
@@ -401,24 +383,19 @@ jobs:
         if: matrix.vm == 'openvm'
         run: gunzip -c openvm-cost.tar.gz | docker load
 
-      - name: Measure
+      - name: Measure base
         id: measure
-        env:
-          BASE_HIT: ${{ steps.cache.outputs.cache-hit }}
+        if: steps.cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          mkdir -p zkab-base zkab-results
-          if [ "$BASE_HIT" != true ]; then
-            : > zkab-base/results.tsv
-            .github/zkvm-ab/measure.sh "$VM" "$FORMAT" base "base/$GUEST" zkab-inputs zkab-base/results.tsv
-            expected=$(awk -F'\t' -v f="$FORMAT" '$1 == f' zkab-inputs/expected.tsv | wc -l)
-            if [ "$(wc -l < zkab-base/results.tsv)" = "$expected" ] && \
-              [ -z "$(awk -F'\t' '$8 != "OK" || $5 == "-"' zkab-base/results.tsv)" ]; then
-              echo "base_ok=true" >> "$GITHUB_OUTPUT"
-            fi
+          mkdir -p zkab-base
+          : > zkab-base/results.tsv
+          .github/zkvm-ab/measure.sh "$VM" "$FORMAT" base "base/$GUEST" zkab-inputs zkab-base/results.tsv
+          expected=$(awk -F'\t' -v f="$FORMAT" '$1 == f' zkab-inputs/expected.tsv | wc -l)
+          if [ "$(wc -l < zkab-base/results.tsv)" = "$expected" ] && \
+            [ -z "$(awk -F'\t' '$8 != "OK" || $5 == "-"' zkab-base/results.tsv)" ]; then
+            echo "base_ok=true" >> "$GITHUB_OUTPUT"
           fi
-          .github/zkvm-ab/measure.sh "$VM" "$FORMAT" head "head/$GUEST" zkab-inputs zkab-results/head.tsv
-          cp zkab-base/results.tsv zkab-results/base.tsv
 
       - name: Save base results
         if: steps.cache.outputs.cache-hit != 'true' && steps.measure.outputs.base_ok == 'true'
@@ -426,6 +403,31 @@ jobs:
         with:
           path: zkab-base
           key: ${{ steps.key.outputs.key }}
+
+      - name: Check out head
+        uses: actions/checkout@v7
+        with:
+          repository: NethermindEth/nethermind
+          ref: ${{ needs.resolve.outputs.head_sha }}
+          path: head
+          persist-credentials: false
+          sparse-checkout: |
+            src/Nethermind/Nethermind.Stateless.Guest
+            src/Nethermind/Nethermind.Stateless.ZiskGuest
+            src/Nethermind/${{ matrix.project }}
+
+      - name: Download head binaries
+        uses: actions/download-artifact@v8
+        with:
+          name: zkab-elf-${{ matrix.vm }}-head
+          path: head/${{ env.GUEST }}/bin
+
+      - name: Measure head
+        run: |
+          set -euo pipefail
+          mkdir -p zkab-results
+          .github/zkvm-ab/measure.sh "$VM" "$FORMAT" head "head/$GUEST" zkab-inputs zkab-results/head.tsv
+          cp zkab-base/results.tsv zkab-results/base.tsv
 
       - name: Upload results
         uses: actions/upload-artifact@v7
