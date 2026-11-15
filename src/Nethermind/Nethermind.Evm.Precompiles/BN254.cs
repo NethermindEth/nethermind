@@ -152,22 +152,31 @@ internal static unsafe partial class BN254
     private static string? CheckPairingSingle(byte* data, out bool isOne)
     {
         isOne = false;
-        string? error = DeserializeG1(data, out mclBnG1 g1, out bool g1IsZero);
-        if (error is not null)
-            return error;
-
-        error = DeserializeG2(data + 64, out mclBnG2 g2, out bool g2IsZero);
-        if (error is not null)
-            return error;
-
-        if (g1IsZero || g2IsZero)
+        Unsafe.SkipInit(out mclBnGT acc);
+        bool cached = false;
+        bool repeated = false;
+        LoadPairMillerLoop(data, ref acc, ref cached, ref repeated);
+        if (!cached)
         {
-            isOne = true;
-            return null;
+            string? error = DeserializeG1(data, out mclBnG1 g1, out bool g1IsZero);
+            if (error is not null)
+                return error;
+
+            error = DeserializeG2(data + 64, out mclBnG2 g2, out bool g2IsZero);
+            if (error is not null)
+                return error;
+
+            if (g1IsZero || g2IsZero)
+            {
+                isOne = true;
+                return null;
+            }
+
+            mclBn_millerLoop(ref acc, g1, g2);
+            if (repeated)
+                StorePairMillerLoop(data, acc);
         }
 
-        Unsafe.SkipInit(out mclBnGT acc);
-        mclBn_millerLoop(ref acc, g1, g2);
         mclBn_finalExp(ref acc, acc);
 
         isOne = mclBnGT_isOne(acc) == 1;
@@ -199,18 +208,35 @@ internal static unsafe partial class BN254
 
             for (int i = chunkStart; i < chunkEnd; i++)
             {
-                int inputOffset = i * PairSize;
+                byte* pair = data + i * PairSize;
 
-                string? error = DeserializeG1(data + inputOffset, out mclBnG1 g1, out bool g1IsZero);
+                bool cached = false;
+                bool repeated = false;
+                LoadPairMillerLoop(pair, ref ml, ref cached, ref repeated);
+                if (cached)
+                {
+                    MultiplyInto(ref acc, ml, ref hasMl);
+                    continue;
+                }
+
+                string? error = DeserializeG1(pair, out mclBnG1 g1, out bool g1IsZero);
                 if (error is not null)
                     return error;
 
-                error = DeserializeG2(data + inputOffset + 64, out mclBnG2 g2, out bool g2IsZero);
+                error = DeserializeG2(pair + 64, out mclBnG2 g2, out bool g2IsZero);
                 if (error is not null)
                     return error;
 
                 if (g1IsZero || g2IsZero)
                     continue;
+
+                if (repeated)
+                {
+                    mclBn_millerLoop(ref ml, g1, g2);
+                    StorePairMillerLoop(pair, ml);
+                    MultiplyInto(ref acc, ml, ref hasMl);
+                    continue;
+                }
 
                 Unsafe.AsRef<mclBnG1>(g1Bytes + nonZeroInChunk * sizeof(mclBnG1)) = g1;
                 Unsafe.AsRef<mclBnG2>(g2Bytes + nonZeroInChunk * sizeof(mclBnG2)) = g2;
@@ -247,6 +273,19 @@ internal static unsafe partial class BN254
 
         isOne = mclBnGT_isOne(acc) == 1;
         return null;
+    }
+
+    private static void MultiplyInto(ref mclBnGT acc, in mclBnGT value, ref bool hasValue)
+    {
+        if (hasValue)
+        {
+            mclBnGT_mul(ref acc, acc, value);
+        }
+        else
+        {
+            acc = value;
+            hasValue = true;
+        }
     }
 
     private static string? DeserializeG1(byte* data, out mclBnG1 point, out bool isZero)
@@ -335,6 +374,10 @@ internal static unsafe partial class BN254
     static partial void LoadValidatedG2(byte* data, ref mclBnG2 point, ref bool cached);
 
     static partial void StoreValidatedG2(byte* data, in mclBnG2 point);
+
+    static partial void LoadPairMillerLoop(byte* pair, ref mclBnGT value, ref bool cached, ref bool repeated);
+
+    static partial void StorePairMillerLoop(byte* pair, in mclBnGT value);
 
     /// <summary>Whether a point on the twist lies in G2, the subgroup of order r.</summary>
     /// <remarks>
