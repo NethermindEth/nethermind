@@ -48,32 +48,24 @@ public class LogIndexCompressionTests
     [TestCase(128, 514)]
     [TestCase(129, 519)]
     [TestCase(256, 1_027)]
-    public void Max_compressed_length_is_the_codec_bound_plus_one(int count, int expected) =>
-        Assert.That(CompressionAlgorithm.GetMaxCompressedLength(count), Is.EqualTo(expected));
+    public void Max_compressed_length_is_the_codec_bound_plus_one_and_the_overwrite(int count, int expected) =>
+        Assert.That(CompressionAlgorithm.GetMaxCompressedLength(count), Is.EqualTo(expected + CompressionAlgorithm.CompressedDataOverwrite));
 
     [Test]
     [Platform("Linux,MacOsX")]
-    public void Codec_stays_inside_three_values_and_three_bytes_past_the_end([ValueSource(nameof(Algorithms))] string algorithmName)
+    public void Codec_stays_inside_the_value_overrun_and_the_input_overread([ValueSource(nameof(Algorithms))] string algorithmName)
     {
-        // The probed worst case of the shipped native library: 4n + ceil(n / 128) + 1 bytes written by the encoder,
-        // n + 3 values written and 3 bytes read past the input by the decoder.
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(CompressionAlgorithm.DecompressionOverrun, Is.GreaterThanOrEqualTo(3));
-            Assert.That(CompressionAlgorithm.CompressedDataOverread, Is.GreaterThanOrEqualTo(3));
-        }
-
         CompressionAlgorithm algorithm = CompressionAlgorithm.Supported[algorithmName];
         for (int count = 1; count <= 600; count++)
         {
             foreach (int[] blocks in Patterns(count))
             {
-                using GuardedMemory encoded = new(count * sizeof(int) + (count + 127) / 128 + 1);
+                using GuardedMemory encoded = new(CompressionAlgorithm.GetMaxCompressedLength(count));
                 int length = (int)algorithm.Compress(blocks, (nuint)count, encoded.Bytes);
 
-                using GuardedMemory input = new(length + 3);
+                using GuardedMemory input = new(length + CompressionAlgorithm.CompressedDataOverread);
                 encoded.Bytes[..length].CopyTo(input.Bytes);
-                using GuardedMemory output = new((count + 3) * sizeof(int));
+                using GuardedMemory output = new((count + CompressionAlgorithm.DecompressionOverrun) * sizeof(int));
                 Span<int> decompressed = MemoryMarshal.Cast<byte, int>(output.Bytes);
                 algorithm.Decompress(input.Bytes, (nuint)count, decompressed);
 
@@ -94,7 +86,7 @@ public class LogIndexCompressionTests
                 using GuardedMemory output = new(CompressionAlgorithm.GetMaxCompressedLength(count));
                 int length = (int)algorithm.Compress(blocks, (nuint)count, output.Bytes);
 
-                Assert.That(length, Is.LessThanOrEqualTo(output.Bytes.Length));
+                Assert.That(length, Is.LessThanOrEqualTo(output.Bytes.Length - CompressionAlgorithm.CompressedDataOverwrite));
             }
         }
     }
@@ -139,6 +131,11 @@ public class LogIndexCompressionTests
         yield return gaps;
         yield return exceptions;
         yield return Incompressible(count, seed: -count);
+
+        if (count == 3) yield return [20_000_002, 21_341_774, 21_341_775];
+        if (count == 3) yield return [1 << 28, (1 << 28) + 1, int.MaxValue];
+        if (count == 5) yield return [20_000_002, 20_000_479, 20_000_482, 20_000_486, 20_000_490];
+        if (count == 9) yield return [20_000_002, 20_000_003, 20_000_004, 20_000_005, 20_000_006, 20_000_007, 20_000_008, 20_000_009, 20_000_210];
     }
 
     private static int[] Incompressible(int count, int seed)

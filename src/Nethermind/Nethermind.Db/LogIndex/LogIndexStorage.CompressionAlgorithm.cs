@@ -33,16 +33,28 @@ partial class LogIndexStorage
         /// <summary>
         /// Number of bytes a decoder can read after the end of the compressed data.
         /// </summary>
-        public const int CompressedDataOverread = 3;
+        /// <remarks>
+        /// TurboPFor reads the exception bitmap of the last, partial block with an 8-byte load that starts inside the data.
+        /// </remarks>
+        public const int CompressedDataOverread = 8;
+
+        /// <summary>
+        /// Number of bytes an encoder can write after the end of the compressed data.
+        /// </summary>
+        /// <remarks>
+        /// TurboPFor writes the exception bitmap of the last, partial block with an 8-byte store that starts inside the data.
+        /// </remarks>
+        public const int CompressedDataOverwrite = 8;
 
         /// <summary>
         /// Returns the largest number of bytes an encoder can write for <paramref name="count"/> values.
         /// </summary>
         /// <remarks>
         /// TurboPFor's <c>p4nbound128v32</c>, which is not smaller than <c>p4nbound256v32</c>,
-        /// plus one byte: the first value is stored in 5 bytes when it is 2^28 or larger.
+        /// plus one byte: the first value is stored in 5 bytes when it is 2^28 or larger,
+        /// plus <see cref="CompressedDataOverwrite"/>.
         /// </remarks>
-        public static int GetMaxCompressedLength(int count) => count * sizeof(int) + (count + 127) / 128 + 1;
+        public static int GetMaxCompressedLength(int count) => count * sizeof(int) + (count + 127) / 128 + 1 + CompressedDataOverwrite;
 
         private static readonly Dictionary<string, CompressionAlgorithm> SupportedMap = [];
 
