@@ -93,6 +93,8 @@ public class EraWriter : IDisposable
     {
         if (_firstBlock)
             throw new EraException("Finalize was called, but no blocks have been added yet.");
+        if (_finalized)
+            throw new EraException("Finalize has already been called.");
 
         ValueHash256 root = _accumulatorCalculator.ComputeRoot();
         _totalWritten += await _e2StoreWriter.WriteEntry(EntryTypes.Accumulator, root.ToByteArray(), cancellation);
