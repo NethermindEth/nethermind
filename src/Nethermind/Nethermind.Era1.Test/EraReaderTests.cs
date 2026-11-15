@@ -13,6 +13,7 @@ using Nethermind.Era1.Exceptions;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
+using Nethermind.State.Proofs;
 using NSubstitute;
 
 namespace Nethermind.Era1.Test;
@@ -72,6 +73,39 @@ internal class EraReaderTests
         }
 
         public void Dispose() => _tmpFile.Dispose();
+    }
+
+    [Test, NonParallelizable]
+    public void Archive_body_with_uncles_not_in_canonical_encoding_is_rejected([Values] BodyForm form)
+    {
+        // A trailing item decodes, but the header encoder leaves it out, so the uncles hash does not cover these bytes.
+        byte[] uncle = RlpTestHelper.WithTrailingItem(new HeaderDecoder().Encode(Build.A.BlockHeader.TestObject));
+        byte[] transaction = Rlp.Encode(Build.A.Transaction.Signed().TestObject);
+        byte[] body = RlpTestHelper.EncodeSequence(RlpTestHelper.EncodeSequence([transaction]), RlpTestHelper.EncodeSequence([uncle]));
+
+        Assert.Throws<RlpReaderException>(() => ArchiveBodyDecoder.Decode(body, form, BlockBodyDecoder.Instance));
+    }
+
+    [Test, NonParallelizable]
+    public async Task VerifyContent_returns_transactions_when_validation_fails([Values] bool throwFromValidator)
+    {
+        Transaction source = Build.A.Transaction.WithType(TxType.EIP1559).Signed().TestObject;
+        using PopulatedTestFile file = await PopulatedTestFile.Create(source);
+        Transaction? decoded = null;
+        IBlockValidator validator = Substitute.For<IBlockValidator>();
+        validator.ValidateBodyAgainstHeader(Arg.Any<BlockHeader>(), Arg.Any<BlockBody>(), out Arg.Any<string?>())
+            .Returns(call =>
+            {
+                decoded = call.Arg<BlockBody>().Transactions[0];
+                if (throwFromValidator) throw new OperationCanceledException();
+                return false;
+            });
+
+        using EraReader reader = new(file.FilePath);
+        Assert.That(() => reader.VerifyContent(Substitute.For<ISpecProvider>(), validator, verifyConcurrency: 1, validateTransactions: false),
+            throwFromValidator ? Throws.InstanceOf<OperationCanceledException>() : Throws.TypeOf<EraVerificationException>());
+        Assert.That(decoded, Is.Not.Null);
+        Assert.That(decoded!.Type, Is.EqualTo(TxType.Legacy), "Returning to the pool resets the transaction type.");
     }
 
     [Test, NonParallelizable]
@@ -135,6 +169,22 @@ internal class EraReaderTests
         using EraReader sut = new(tmpFile.FilePath);
         ValueHash256 fileRoot = await sut.VerifyContent(Substitute.For<ISpecProvider>(), Always.Valid, default);
         Assert.That(root, Is.EqualTo(fileRoot));
+    }
+
+    [Test]
+    public async Task VerifyContent_DecodesTransactionsOnlyToValidateThem([Values] bool validateTransactions)
+    {
+        using PopulatedTestFile tmpFile = await PopulatedTestFile.Create(Build.A.Transaction.Signed().TestObject);
+        IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
+        // The root is computed while the call runs, as the transactions of an encoded body go back to the pool after it.
+        blockValidator.ValidateBodyAgainstHeader(Arg.Any<BlockHeader>(), Arg.Any<BlockBody>(), out Arg.Any<string?>())
+            .Returns(call => TxTrie.CalculateRoot(call.Arg<BlockBody>().Transactions) == call.Arg<BlockHeader>().TxRoot);
+        blockValidator.ValidateOrphanedBlock(Arg.Any<Block>(), out Arg.Any<string?>()).Returns(true);
+
+        using EraReader sut = new(tmpFile.FilePath);
+        await sut.VerifyContent(Substitute.For<ISpecProvider>(), blockValidator, validateTransactions: validateTransactions);
+
+        blockValidator.Received(validateTransactions ? tmpFile.AddedContents.Count : 0).ValidateOrphanedBlock(Arg.Any<Block>(), out Arg.Any<string?>());
     }
 
     [Test]

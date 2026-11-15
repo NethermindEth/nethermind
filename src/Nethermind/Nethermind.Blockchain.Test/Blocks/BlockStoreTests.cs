@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
@@ -53,6 +54,29 @@ public class BlockStoreTests
 
         byte[] key = Bytes.Concat(block.Number.ToBigEndianByteArray(), block.Hash!.BytesToArray());
         db.KeyWasWrittenWithFlags(key, WriteFlags.DisableWAL);
+    }
+
+    [Test]
+    public void Test_insert_of_encoded_body_stores_the_encoded_block([Values] bool withWithdrawals)
+    {
+        TestMemDb db = new();
+        BlockStore store = new(db);
+        Block block = Build.A.Block.WithNumber(1)
+            .WithTransactions(Build.A.Transaction.Signed().TestObjectNTimes(2))
+            .WithUncles(Build.A.BlockHeader.TestObject)
+            .WithWithdrawals(withWithdrawals ? [Build.A.Withdrawal.TestObject] : null)
+            .TestObject;
+
+        store.Insert(block.Header, BlockBodyDecoder.Instance.Encode(block.Body), WriteFlags.DisableWAL);
+
+        byte[] expected = new BlockDecoder().Encode(block);
+        using MemoryManager<byte>? owned = store.GetOwnedRlp(block.Number, block.Hash!);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.GetRlp(block.Number, block.Hash!), Is.EqualTo(expected));
+            Assert.That(owned?.Memory.ToArray(), Is.EqualTo(expected));
+        }
+        db.KeyWasWrittenWithFlags(Bytes.Concat(block.Number.ToBigEndianByteArray(), block.Hash!.BytesToArray()), WriteFlags.DisableWAL);
     }
 
     [Test]

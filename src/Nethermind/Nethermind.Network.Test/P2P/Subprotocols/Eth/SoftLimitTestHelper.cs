@@ -12,12 +12,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth;
 
 internal static class SoftLimitTestHelper
 {
+    private static readonly BlockDecoder BlockDecoder = new();
+
     public static int CountBlocksWithinSoftLimit(IReadOnlyList<Block> blocks)
     {
         ulong sizeEstimate = 0;
         for (int i = 0; i < blocks.Count; i++)
         {
-            sizeEstimate += MessageSizeEstimator.EstimateSize(blocks[i]);
+            // Bodies are served from the stored blocks, so each counts with its encoded length.
+            sizeEstimate += (ulong)BlockDecoder.GetLength(blocks[i], RlpBehaviors.None);
             if (sizeEstimate > SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit)
             {
                 // The block crossing the soft limit is still served.

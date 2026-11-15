@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
@@ -361,41 +362,49 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected Task<BlockBodiesMessage> FulfillBlockBodiesRequest(GetBlockBodiesMessage getBlockBodiesMessage, CancellationToken cancellationToken)
         {
             IReadOnlyList<Hash256> hashes = getBlockBodiesMessage.BlockHashes;
-            using ArrayPoolList<Block> blocks = new(hashes.Count);
-
-            ulong sizeEstimate = 0;
-            for (int i = 0; i < hashes.Count; i++)
+            using ArrayPoolList<MemoryManager<byte>> owners = new(hashes.Count);
+            using ArrayPoolList<ReadOnlyMemory<byte>> blocks = new(hashes.Count);
+            try
             {
-                if (cancellationToken.IsCancellationRequested)
+                ulong sizeEstimate = 0;
+                for (int i = 0; i < hashes.Count; i++)
                 {
-                    break;
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        break;
+                    }
+
+                    MemoryManager<byte>? block = SyncServer.FindBlockRlp(hashes[i]);
+                    if (block is null)
+                    {
+                        continue;
+                    }
+
+                    owners.Add(block);
+                    ulong blockSize = (ulong)block.Memory.Length;
+
+                    // Cap the message size; return the prefix (bodies match request hashes positionally).
+                    if (sizeEstimate + blockSize > HardOutgoingBodiesMessageSizeLimit)
+                    {
+                        break;
+                    }
+
+                    blocks.Add(block.Memory);
+                    sizeEstimate += blockSize;
+
+                    // Soft limit keeps the common-case response small.
+                    if (sizeEstimate > SoftOutgoingMessageSizeLimit)
+                    {
+                        break;
+                    }
                 }
 
-                Block? block = SyncServer.Find(hashes[i]);
-                if (block is null)
-                {
-                    continue;
-                }
-
-                ulong blockSize = MessageSizeEstimator.EstimateSize(block);
-
-                // Cap the message size; return the prefix (bodies match request hashes positionally).
-                if (sizeEstimate + blockSize > HardOutgoingBodiesMessageSizeLimit)
-                {
-                    break;
-                }
-
-                blocks.Add(block);
-                sizeEstimate += blockSize;
-
-                // Soft limit keeps the common-case response small.
-                if (sizeEstimate > SoftOutgoingMessageSizeLimit)
-                {
-                    break;
-                }
+                return Task.FromResult(new BlockBodiesMessage { Bodies = OwnedBlockBodies.FromEncodedBlocks(blocks) });
             }
-
-            return Task.FromResult(new BlockBodiesMessage(blocks));
+            finally
+            {
+                foreach (IMemoryOwner<byte> owner in owners) owner.Dispose();
+            }
         }
 
         protected void Handle(BlockHeadersMessage message, long size) => _headersRequests.Handle(message.BlockHeaders, size);

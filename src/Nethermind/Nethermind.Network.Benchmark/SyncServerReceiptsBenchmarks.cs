@@ -5,8 +5,8 @@ using System;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
-using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
@@ -115,7 +115,7 @@ public class SyncServerReceiptsBenchmarks
         }
 
         // Check every served block through a throwaway server, so nothing the check caches reaches the measured one.
-        using (SyncServer check = CreateServer(blockTree, blockStore, receiptsDb, specProvider, ecdsa))
+        using (SyncServer check = CreateServer(blockTree, blockStore, builder.HeaderStore, receiptsDb, specProvider, ecdsa))
         {
             foreach (Hash256 hash in _servedHashes)
             {
@@ -128,11 +128,11 @@ public class SyncServerReceiptsBenchmarks
         // hold some of them, so start from an empty one. A fresh receipt storage starts with an empty receipts cache.
         IClearableCache blockCache = blockStore;
         blockCache.ClearCache();
-        _server = CreateServer(blockTree, blockStore, receiptsDb, specProvider, ecdsa);
+        _server = CreateServer(blockTree, blockStore, builder.HeaderStore, receiptsDb, specProvider, ecdsa);
     }
 
     private static SyncServer CreateServer(
-        BlockTree blockTree, BlockStore blockStore, IColumnsDb<ReceiptsColumns> receiptsDb, TestSpecProvider specProvider, EthereumEcdsa ecdsa)
+        BlockTree blockTree, BlockStore blockStore, IHeaderStore headerStore, IColumnsDb<ReceiptsColumns> receiptsDb, TestSpecProvider specProvider, EthereumEcdsa ecdsa)
     {
         PersistentReceiptStorage storage = new(
             receiptsDb, specProvider, new ReceiptsRecovery(ecdsa, specProvider), blockTree, blockStore, new ReceiptConfig())
@@ -142,7 +142,8 @@ public class SyncServerReceiptsBenchmarks
             Substitute.For<IWorldStateManager>(),
             new MemDb(),
             blockTree,
-            Substitute.For<IHeaderStore>(),
+            blockStore,
+            headerStore,
             new HeaderDecoder(),
             new FullInfoReceiptFinder(storage, new ReceiptsRecovery(ecdsa, specProvider), blockTree),
             Substitute.For<IBlockAccessListStore>(),

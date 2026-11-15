@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -133,6 +134,21 @@ public class SyncServerTests
         ctx.BlockTree.Received().FindBlock(Arg.Any<Hash256>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.ExcludeTxHashes);
     }
 
+    [Test]
+    public void Finds_stored_block_rlp_by_its_block_number([Values] bool headerKnown)
+    {
+        Context ctx = new();
+        byte[] blockRlp = [0xc0];
+        if (headerKnown)
+        {
+            ctx.HeaderStore.GetBlockNumber(TestItem.KeccakA).Returns(5UL);
+        }
+        ctx.BlockStore.GetOwnedRlp(5, TestItem.KeccakA).Returns(ArrayMemoryManager.From(blockRlp));
+
+        using MemoryManager<byte>? found = ctx.SyncServer.FindBlockRlp(TestItem.KeccakA);
+        Assert.That(found?.Memory.ToArray(), Is.EqualTo(headerKnown ? blockRlp : null));
+    }
+
     [TestCase(true, true, true)]
     [TestCase(false, true, false)]
     [TestCase(true, false, false)]
@@ -241,6 +257,7 @@ public class SyncServerTests
             ctx.WorldStateManager,
             new MemDb(),
             localBlockTree,
+            Substitute.For<IBlockStore>(),
             Substitute.For<IHeaderStore>(),
             new HeaderDecoder(),
             NullReceiptStorage.Instance,
@@ -468,6 +485,7 @@ public class SyncServerTests
             ctx.WorldStateManager,
             new MemDb(),
             localBlockTree,
+            Substitute.For<IBlockStore>(),
             Substitute.For<IHeaderStore>(),
             new HeaderDecoder(),
             NullReceiptStorage.Instance,
@@ -756,6 +774,7 @@ public class SyncServerTests
             Substitute.For<IWorldStateManager>(),
             new MemDb(),
             blockTree,
+            Substitute.For<IBlockStore>(),
             Substitute.For<IHeaderStore>(),
             new HeaderDecoder(),
             NullReceiptStorage.Instance,
@@ -896,6 +915,7 @@ public class SyncServerTests
             worldStateManager,
             new MemDb(),
             localBlockTree,
+            Substitute.For<IBlockStore>(),
             Substitute.For<IHeaderStore>(),
             new HeaderDecoder(),
             NullReceiptStorage.Instance,
@@ -1047,6 +1067,7 @@ public class SyncServerTests
             Substitute.For<IWorldStateManager>(),
             new MemDb(),
             blockTree,
+            Substitute.For<IBlockStore>(),
             Substitute.For<IHeaderStore>(),
             new HeaderDecoder(),
             NullReceiptStorage.Instance,
@@ -1193,6 +1214,8 @@ public class SyncServerTests
             PeerPool = Substitute.For<ISyncPeerPool>();
 
             BlockTree = Substitute.For<IBlockTree>();
+            BlockStore = Substitute.For<IBlockStore>();
+            HeaderStore = Substitute.For<IHeaderStore>();
             WorldStateManager = Substitute.For<IWorldStateManager>();
             HistoryPruner = Substitute.For<IHistoryPruner>();
             SyncPointers = Substitute.For<ISyncPointers>();
@@ -1202,7 +1225,8 @@ public class SyncServerTests
                 WorldStateManager,
                 new MemDb(),
                 BlockTree,
-                Substitute.For<IHeaderStore>(),
+                BlockStore,
+                HeaderStore,
                 new HeaderDecoder(),
                 NullReceiptStorage.Instance,
                 Substitute.For<IBlockAccessListStore>(),
@@ -1229,6 +1253,10 @@ public class SyncServerTests
         public IBlockTree LocalBlockTree { get; set; } = null!;
         public ISyncPeer NodeWhoSentTheBlock { get; }
 
+        public IBlockStore BlockStore { get; }
+
+        public IHeaderStore HeaderStore { get; }
+
         public SyncServer CreateSyncServer(
             IBlockTree localBlockTree,
             IBlockValidator? blockValidator = null,
@@ -1241,6 +1269,7 @@ public class SyncServerTests
                 WorldStateManager,
                 new MemDb(),
                 localBlockTree,
+                Substitute.For<IBlockStore>(),
                 headerStore ?? Substitute.For<IHeaderStore>(),
                 new HeaderDecoder(),
                 receiptFinder ?? NullReceiptStorage.Instance,
@@ -1260,6 +1289,7 @@ public class SyncServerTests
                 WorldStateManager,
                 new MemDb(),
                 BlockTree,
+                Substitute.For<IBlockStore>(),
                 Substitute.For<IHeaderStore>(),
                 new HeaderDecoder(),
                 NullReceiptStorage.Instance,

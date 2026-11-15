@@ -14,6 +14,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core;
 using Nethermind.Db;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Blocks;
@@ -23,6 +24,7 @@ public class BlockStore : IBlockStore, IClearableCache
     public const int CacheSize = 128 + 32;
 
     private readonly IDb _blockDb;
+    private readonly IHeaderDecoder _headerDecoder;
     private readonly BlockDecoder _blockDecoder;
     // A block body is a re-execution input, so the persistence barrier must make it durable before state. Null when off.
     // Holds a sanitized header+body snapshot (not the live block, not encoded bytes): the body RLP depends only
@@ -39,7 +41,8 @@ public class BlockStore : IBlockStore, IClearableCache
         IStatePersistenceBarrier? persistenceBarrier = null)
     {
         _blockDb = blockDb;
-        _blockDecoder = new(headerDecoder ?? new HeaderDecoder());
+        _headerDecoder = headerDecoder ?? new HeaderDecoder();
+        _blockDecoder = new(_headerDecoder);
 
         if (deferredWriter is { Enabled: true })
         {
@@ -76,6 +79,28 @@ public class BlockStore : IBlockStore, IClearableCache
 
         using ArrayPoolSpan<byte> rlp = _blockDecoder.EncodeToArrayPoolSpan(block);
         _blockDb.Set(block.Number, block.Hash, rlp, writeFlags);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>The body is written as it is, so its transactions are not decoded.</remarks>
+    public void Insert(BlockHeader header, ReadOnlySpan<byte> body, WriteFlags writeFlags = WriteFlags.None)
+    {
+        if (header.Hash is null)
+        {
+            throw new InvalidOperationException("An attempt to store a block with a null hash.");
+        }
+
+        RlpReader reader = new(body);
+        RlpReader bodyItems = reader.EnterSequence(out _);
+        ReadOnlySpan<byte> bodyContent = bodyItems.ReadRaw(bodyItems.Remaining);
+        int contentLength = _headerDecoder.GetLength(header, RlpBehaviors.None) + bodyContent.Length;
+        using ArrayPoolSpan<byte> rlp = new(Rlp.LengthOfSequence(contentLength));
+        RlpWriter writer = RlpWriter.ContentWriter(rlp);
+        RlpSequence sequence = writer.StartSequence(contentLength);
+        _headerDecoder.Encode(ref writer, header);
+        writer.WriteEncoded(bodyContent);
+        writer.EndSequence(sequence);
+        _blockDb.Set(header.Number, header.Hash, rlp, writeFlags);
     }
 
     public void InsertDeferred(Block block)
@@ -198,6 +223,19 @@ public class BlockStore : IBlockStore, IClearableCache
         return _blockDb.Get(blockHash);
     }
 
+    /// <inheritdoc/>
+    public MemoryManager<byte>? GetOwnedRlp(ulong blockNumber, Hash256 blockHash)
+    {
+        if (_pending is not null && _pending.TryGet(blockHash, out Block? pendingBlock))
+        {
+            return ArrayMemoryManager.From(_blockDecoder.Encode(pendingBlock));
+        }
+
+        Span<byte> dbKey = stackalloc byte[40];
+        KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, dbKey);
+        return ReadBlockMemory(dbKey) ?? ReadBlockMemory(blockHash.Bytes);
+    }
+
     public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(ulong blockNumber, Hash256 blockHash)
     {
         ValueHash256 cacheKey = blockHash.ValueHash256;
@@ -214,8 +252,8 @@ public class BlockStore : IBlockStore, IClearableCache
         Span<byte> keyWithBlockNumber = stackalloc byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, keyWithBlockNumber);
 
-        MemoryManager<byte>? memoryOwner = ReadRecoveryBlockMemory(keyWithBlockNumber);
-        memoryOwner ??= ReadRecoveryBlockMemory(blockHash.Bytes);
+        MemoryManager<byte>? memoryOwner = ReadBlockMemory(keyWithBlockNumber);
+        memoryOwner ??= ReadBlockMemory(blockHash.Bytes);
         if (memoryOwner is null) return null;
 
         ReceiptRecoveryBlock? block = null;
@@ -231,7 +269,7 @@ public class BlockStore : IBlockStore, IClearableCache
         }
     }
 
-    private MemoryManager<byte>? ReadRecoveryBlockMemory(ReadOnlySpan<byte> key)
+    private MemoryManager<byte>? ReadBlockMemory(ReadOnlySpan<byte> key)
     {
         if (_blockDb is not IReadOnlyNativeKeyValueStore native) return _blockDb.GetOwnedMemory(key);
 
@@ -251,7 +289,7 @@ public class BlockStore : IBlockStore, IClearableCache
         }
     }
 
-    // Only the recovery decoder reads this memory; a nonzero native lease keeps the pointer valid until disposal.
+    // A nonzero native lease keeps the pointer valid until disposal.
     private sealed unsafe class PinnedBlockMemory(IReadOnlyNativeKeyValueStore db, nint handle, ReadOnlySpan<byte> bytes) : MemoryManager<byte>
     {
         private nint _handle = handle;
