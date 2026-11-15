@@ -52,6 +52,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         {
             RlpSequence sequence = writer.StartSequence(GetContentLength(message));
 
+            if (GetEncodedInThisForm(message) is { } encoded)
+            {
+                for (int i = 0; i < encoded.Count; i++) writer.WriteEncoded(encoded.GetEncoded(i).Span);
+                writer.EndSequence(sequence);
+                return;
+            }
+
             ulong lastBlockNumber = NoBlockSeenYet;
             RlpBehaviors behaviors = RlpBehaviors.None;
 
@@ -121,9 +128,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 
         public int GetLength(ReceiptsMessage message) => Rlp.LengthOfSequence(GetContentLength(message));
 
+        /// <summary>The receipts of <paramref name="message"/> when they are encoded in the form this serializer writes.</summary>
+        private NetworkBlockReceipts? GetEncodedInThisForm(ReceiptsMessage message) =>
+            message.TxReceipts is NetworkBlockReceipts encoded && encoded.WithBloom == _withBloom ? encoded : null;
+
         private int GetContentLength(ReceiptsMessage message)
         {
             int contentLength = 0;
+            if (GetEncodedInThisForm(message) is { } encoded)
+            {
+                for (int i = 0; i < encoded.Count; i++) contentLength += encoded.GetEncoded(i).Length;
+                return contentLength;
+            }
 
             ReadOnlySpan<TxReceipt[]?> txReceiptsSpan = message.TxReceipts.AsSpan();
             for (int i = 0; i < txReceiptsSpan.Length; i++)

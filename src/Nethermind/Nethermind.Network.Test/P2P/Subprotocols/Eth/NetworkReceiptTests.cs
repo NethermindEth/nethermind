@@ -3,11 +3,13 @@
 
 using System;
 using System.Linq;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Encoding;
+using Nethermind.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
@@ -138,6 +140,56 @@ public class NetworkReceiptTests
 
         Assert.That(stored.ToArray(), Is.EqualTo(storageDecoder.Encode(receipts, behaviors)));
     }
+
+    [Test]
+    public void Stored_receipts_encode_as_the_decoded_and_recovered_ones([Values] bool withBloom, [Values] bool eip658, [Values] bool eip7668)
+    {
+        TxReceipt[] receipts = CreateReceipts(eip658);
+        // Recovery takes a failed receipt with logs as successful.
+        receipts[1].Logs = [Build.A.LogEntry.WithAddress(TestItem.AddressD).WithTopics(TestItem.KeccakD).WithData([0x7f]).TestObject];
+        receipts[3].Logs = [Build.A.LogEntry.WithAddress(TestItem.AddressE).WithData([0x80]).TestObject];
+        receipts[2].Logs = [Build.A.LogEntry.WithAddress(TestItem.AddressF).WithData([.. new byte[300], 1, 2]).TestObject];
+        Block block = Build.A.Block.WithNumber(1)
+            .WithTransactions([.. receipts.Select(static receipt => CreateTransaction(receipt.TxType))]).TestObject;
+        byte[] encodedBlock = new BlockDecoder().Encode(block);
+        RlpBehaviors storageBehaviors = RlpBehaviors.Storage | (eip658 ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None);
+        byte[] stored = ReceiptArrayStorageDecoder.Instance.Encode(receipts, storageBehaviors);
+
+        TxReceipt[] decoded = ReceiptArrayStorageDecoder.Instance.Decode(stored, eip7668 ? RlpBehaviors.Eip7668Receipts : RlpBehaviors.None);
+        new ReceiptsRecovery(new EthereumEcdsa(BlockchainIds.Mainnet), MainnetSpecProvider.Instance).TryRecover(new ReceiptRecoveryBlock(block), decoded, forceRecoverSender: false);
+
+        bool encoded = ReceiptArrayStorageDecoder.TryEncodeAsNetworkReceipts(stored, encodedBlock, withBloom, eip658, eip7668, out ArrayPoolSpan<byte> network);
+
+        Assert.That(encoded, Is.True);
+        using (network)
+        {
+            Assert.That(network.ToArray(), Is.EqualTo(Encode(decoded, withBloom, eip658)));
+        }
+    }
+
+    [Test]
+    [TestCase(-1, TxType.Legacy, TestName = "Fewer transactions")]
+    [TestCase(1, TxType.Legacy, TestName = "More transactions")]
+    [TestCase(0, TxType.DepositTx, TestName = "Deposit transaction")]
+    public void Leaves_stored_receipts_that_do_not_match_the_block_to_the_decoder(int extraTransactions, TxType firstType)
+    {
+        TxReceipt[] receipts = CreateReceipts(eip658: true);
+        // Only the transaction types are read, so each transaction is its type alone.
+        byte[][] transactions = [.. Enumerable.Range(0, receipts.Length + extraTransactions)
+            .Select(i => i == 0 ? firstType : i < receipts.Length ? receipts[i].TxType : TxType.Legacy)
+            .Select(static type => type == TxType.Legacy ? [Rlp.EmptyListByte] : Rlp.Encode(new byte[] { (byte)type, Rlp.EmptyListByte }))];
+        byte[] encodedBlock = RlpTestHelper.EncodeSequence([Rlp.EmptyListByte], RlpTestHelper.EncodeSequence(transactions));
+        byte[] stored = ReceiptArrayStorageDecoder.Instance.Encode(receipts, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
+
+        Assert.That(ReceiptArrayStorageDecoder.TryEncodeAsNetworkReceipts(stored, encodedBlock, withBloom: false, eip658: true, eip7668: false, out _), Is.False);
+    }
+
+    private static Transaction CreateTransaction(TxType type) => type switch
+    {
+        TxType.Blob => Build.A.Transaction.WithShardBlobTxTypeAndFields(isMempoolTx: false).TestObject,
+        TxType.SetCode => Build.A.Transaction.WithType(TxType.SetCode).WithAuthorizationCodeIfAuthorizationListTx().TestObject,
+        _ => Build.A.Transaction.WithType(type).TestObject,
+    };
 
     private static TxReceipt[] CreateReceipts(bool eip658)
     {

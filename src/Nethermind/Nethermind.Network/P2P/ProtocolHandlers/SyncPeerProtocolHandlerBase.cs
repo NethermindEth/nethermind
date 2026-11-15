@@ -16,9 +16,13 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
+using Nethermind.Serialization.FluentRlp;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Stats.SyncLimits;
@@ -424,6 +428,14 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected Task<ReceiptsMessage> FulfillReceiptsRequest(GetReceiptsMessage getReceiptsMessage, CancellationToken cancellationToken)
         {
             ReadOnlySpan<Hash256> hashes = getReceiptsMessage.Hashes.AsSpan();
+            // Before eth/69 the message encodes receipts with the registered decoder, which a plugin can replace.
+            bool withBloom = ProtocolVersion < EthVersions.Eth69;
+            if ((!withBloom || Rlp.GetDecoder<TxReceipt>() is ReceiptMessageDecoder)
+                && TryFulfillEncodedReceiptsRequest(hashes[..Math.Min(hashes.Length, MaxReceiptsLookups)], withBloom, cancellationToken) is { } encoded)
+            {
+                return Task.FromResult(encoded);
+            }
+
             ArrayPoolList<TxReceipt[]> txReceipts = new(Math.Min(hashes.Length, MaxReceiptsLookups));
 
             ulong sizeEstimate = 0;
@@ -463,6 +475,63 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
             return Task.FromResult(new ReceiptsMessage(txReceipts));
         }
+
+        /// <summary>Builds the receipts response from the stored receipts without decoding them.</summary>
+        /// <returns><see langword="null"/> when a block's receipts are in a form left to <see cref="ISyncServer.GetReceipts"/>.</returns>
+        private ReceiptsMessage? TryFulfillEncodedReceiptsRequest(ReadOnlySpan<Hash256> hashes, bool withBloom, CancellationToken cancellationToken)
+        {
+            ArrayPoolList<byte> buffer = new(0);
+            using ArrayPoolList<Range> blocks = new(hashes.Length);
+            try
+            {
+                ulong size = 0;
+                foreach (Hash256 blockHash in hashes)
+                {
+                    if (cancellationToken.IsCancellationRequested) break;
+
+                    if (!SyncServer.TryGetNetworkReceipts(blockHash, withBloom, out ArrayPoolSpan<byte> blockReceipts))
+                    {
+                        // The decode path serves the request from its first block, so only a later block is looked up here.
+                        if (blocks.Count > 0 && SyncServer.GetReceipts(blockHash) is null) break;
+
+                        buffer.Dispose();
+                        return null;
+                    }
+
+                    using (blockReceipts)
+                    {
+                        ulong blockSize = (ulong)blockReceipts.Length;
+                        if (size + blockSize > HardOutgoingReceiptsMessageSizeLimit)
+                        {
+                            if (blocks.Count == 0 && Logger.IsDebug) Logger.Debug($"Cannot serve receipts of {blockHash} to {Node?.ToString("c"):hide}: {blockSize} bytes exceeds the {HardOutgoingReceiptsMessageSizeLimit} bytes limit.");
+                            break;
+                        }
+
+                        int start = buffer.Count;
+                        buffer.AddRange(blockReceipts);
+                        blocks.Add(new Range(start, buffer.Count));
+                        size += blockSize;
+                    }
+
+                    if (size > SoftOutgoingMessageSizeLimit) break;
+                }
+
+                return new ReceiptsMessage(NetworkBlockReceipts.FromBuffer(buffer, blocks.AsSpan().ToArray(), withBloom, withBloom ? DecodeReceipts : DecodeReceipts69));
+            }
+            catch
+            {
+                buffer.Dispose();
+                throw;
+            }
+        }
+
+        private static readonly RefRlpReaderFunc<TxReceipt[]> DecodeReceipts = static (ref RlpReader reader) =>
+            reader.DecodeNonNullArray(static (ref RlpReader receipt) => Rlp.GetDecoderOrThrow<TxReceipt>().Decode(ref receipt)!);
+
+        private static readonly ReceiptMessageDecoder69 ReceiptDecoder69 = new();
+
+        private static readonly RefRlpReaderFunc<TxReceipt[]> DecodeReceipts69 = static (ref RlpReader reader) =>
+            reader.DecodeNonNullArray(static (ref RlpReader receipt) => ReceiptDecoder69.Decode(ref receipt)!);
 
         private static IOwnedReadOnlyList<BlockHeader> TruncateHeadersAtFirstMissing(IOwnedReadOnlyList<BlockHeader> headers)
         {

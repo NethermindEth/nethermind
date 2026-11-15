@@ -420,6 +420,19 @@ namespace Nethermind.Synchronization
             return receipts.Length == 0 ? null : receipts;
         }
 
+        public bool TryGetNetworkReceipts(Hash256 blockHash, bool withBloom, out ArrayPoolSpan<byte> encoded)
+        {
+            encoded = default;
+            BlockHeader? header = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            if (header is null) return false;
+            if (header.TxRoot != Keccak.EmptyTreeHash) return _receiptFinder.TryGetNetworkReceipts(header, withBloom, out encoded);
+            if (!_blockTree.HasBlock(header.Number, blockHash)) return false;
+
+            encoded = new ArrayPoolSpan<byte>(1);
+            encoded[0] = Rlp.EmptyListByte;
+            return true;
+        }
+
         public MemoryManager<byte>? GetBlockAccessListRlp(Hash256 blockHash)
         {
             BlockHeader? header = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);

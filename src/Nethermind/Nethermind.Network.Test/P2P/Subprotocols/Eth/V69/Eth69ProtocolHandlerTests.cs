@@ -15,6 +15,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
@@ -28,6 +29,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V69;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -146,6 +148,58 @@ public class Eth69ProtocolHandlerTests
         HandleZeroMessage(msg, Eth63MessageCode.GetReceipts);
 
         _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage69>(r => r.EthMessage.TxReceipts.Count == expectedCount));
+    }
+
+    [Test]
+    public void Serves_stored_receipts_encoded_as_decoded_ones([Values] bool lastBlockUnknown)
+    {
+        TxReceipt[][] blocks =
+        [
+            [Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject],
+            [],
+            [Build.A.Receipt.WithAllFieldsFilled.TestObject],
+        ];
+        Hash256[] hashes = [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC];
+        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(call =>
+        {
+            int index = Array.IndexOf(hashes, call.Arg<Hash256>());
+            return lastBlockUnknown && index == hashes.Length - 1 ? null : blocks[index];
+        });
+        ReceiptsMessageSerializer69 serializer = new(_specProvider);
+        List<(byte[] Message, bool Encoded)> responses = [];
+        _session.When(session => session.DeliverMessage(Arg.Any<ReceiptsMessage69>()))
+            .Do(call =>
+            {
+                ReceiptsMessage69 response = (ReceiptsMessage69)call[0];
+                byte[] message = new byte[((IMessageSerializer<ReceiptsMessage69>)serializer).GetLength(response)];
+                ((IMessageSerializer<ReceiptsMessage69>)serializer).Serialize(message, response);
+                responses.Add((message, response.EthMessage.TxReceipts is NetworkBlockReceipts));
+            });
+        HandleIncomingStatusMessage();
+
+        foreach (bool encoded in new[] { false, true })
+        {
+            _syncManager.TryGetNetworkReceipts(Arg.Any<Hash256>(), false, out Arg.Any<ArrayPoolSpan<byte>>())
+                .Returns(call =>
+                {
+                    int index = Array.IndexOf(hashes, call.Arg<Hash256>());
+                    if (!encoded || (lastBlockUnknown && index == hashes.Length - 1)) return false;
+                    byte[] blockReceipts = RlpTestHelper.EncodeSequence([.. blocks[index].Select(static receipt => new ReceiptMessageDecoder69().Encode(receipt))]);
+                    ArrayPoolSpan<byte> span = new(blockReceipts.Length);
+                    blockReceipts.CopyTo((Span<byte>)span);
+                    call[2] = span;
+                    return true;
+                });
+            using GetReceiptsMessage66 request = new(1111, new(hashes.ToPooledList()));
+            HandleZeroMessage(request, Eth63MessageCode.GetReceipts);
+        }
+
+        Assert.That(responses, Has.Count.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(responses[1].Message, Is.EqualTo(responses[0].Message));
+            Assert.That(responses.Select(static response => response.Encoded), Is.EqualTo(new[] { false, true }));
+        }
     }
 
     [Test]

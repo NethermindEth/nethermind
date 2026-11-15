@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
@@ -654,6 +655,29 @@ namespace Nethermind.Blockchain.Receipts
             Block? block = _blockTree.FindBlock(blockHash);
             if (block is not null) return Get(block, recover, false);
             return GetRetainedWithoutBody(blockHash);
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>Gives the compact values only; the block's receipts not yet written are left to <see cref="Get(Hash256, bool)"/>.</remarks>
+        public bool TryGetNetworkReceipts(BlockHeader header, bool withBloom, out ArrayPoolSpan<byte> encoded)
+        {
+            encoded = default;
+            Hash256 blockHash = header.Hash!;
+            using MemoryManager<byte>? block = _blockStore.GetOwnedRlp(header.Number, blockHash);
+            if (block is null) return false;
+
+            Span<byte> receiptsData = GetReceiptData(header.Number, blockHash);
+            try
+            {
+                return ReceiptArrayStorageDecoder.TryEncodeAsNetworkReceipts(receiptsData, block.Memory.Span, withBloom,
+                    _specProvider.GetReceiptSpec(header.Number).IsEip658Enabled,
+                    _eip7668EverEnabled && _specProvider.GetSpec(header).IsEip7668Enabled,
+                    out encoded);
+            }
+            finally
+            {
+                _receiptsDb.DangerousReleaseMemory(receiptsData);
+            }
         }
 
         /// <summary>Serves a block whose body was pruned but whose receipts were retained self-describing: the
