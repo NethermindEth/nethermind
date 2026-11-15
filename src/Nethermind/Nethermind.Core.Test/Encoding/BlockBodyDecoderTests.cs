@@ -134,7 +134,8 @@ public class BlockBodyDecoderTests
 
     [Test, NonParallelizable]
     public void Decode_with_encoded_transactions_failure_returns_owned_transactions(
-        [Values("empty-envelope", "legacy-envelope", "wrapped-legacy", "null-transaction", "uncles", "withdrawals", "trailing")] string malformedField)
+        [Values("empty-envelope", "legacy-envelope", "wrapped-legacy", "null-transaction", "long-form-transactions", "uncles", "withdrawals",
+            "withdrawal-amount", "trailing")] string malformedField)
     {
         byte[] transaction = Rlp.Encode(Build.A.Transaction.Signed().TestObject);
         byte[] transactions = RlpTestHelper.EncodeSequence([transaction]);
@@ -144,8 +145,12 @@ public class BlockBodyDecoderTests
             "legacy-envelope" => BodyWithTransactions(transaction, [0x82, (byte)TxType.Legacy, 0xc0]),
             "wrapped-legacy" => BodyWithTransactions(transaction, Rlp.Encode(transaction)),
             "null-transaction" => BodyWithTransactions(transaction, RlpTestHelper.OfEmptyList),
+            // The transaction root does not cover the list prefix, so only the canonical check rejects the long form.
+            "long-form-transactions" => RlpTestHelper.EncodeSequence([0xf8, 0x00], RlpTestHelper.OfEmptyList),
             "uncles" => RlpTestHelper.EncodeSequence(transactions, RlpTestHelper.OfEmptyByteArray),
             "withdrawals" => RlpTestHelper.EncodeSequence(transactions, RlpTestHelper.OfEmptyList, RlpTestHelper.OfEmptyByteArray),
+            "withdrawal-amount" => RlpTestHelper.EncodeSequence(transactions, RlpTestHelper.OfEmptyList,
+                RlpTestHelper.EncodeSequence([WithdrawalWithLeadingZeroAmount()])),
             _ => RlpTestHelper.EncodeSequence(transactions, RlpTestHelper.OfEmptyList, RlpTestHelper.OfEmptyList, RlpTestHelper.OfEmptyByteArray)
         };
         HashSet<Transaction> pooled = TransactionPoolTestHelper.Refill();
@@ -156,6 +161,14 @@ public class BlockBodyDecoderTests
 
         static byte[] BodyWithTransactions(byte[] valid, byte[] malformed) =>
             RlpTestHelper.EncodeSequence(RlpTestHelper.EncodeSequence([valid, malformed]), RlpTestHelper.OfEmptyList);
+
+        // The withdrawals root is computed from the decoded withdrawals, so only the canonical check rejects this form.
+        static byte[] WithdrawalWithLeadingZeroAmount()
+        {
+            RlpReader fields = new RlpReader(new WithdrawalDecoder().Encode(Build.A.Withdrawal.WithAmount(1).TestObject)).EnterSequence(out _);
+            byte[][] items = [fields.ReadEncodedItem().ToArray(), fields.ReadEncodedItem().ToArray(), fields.ReadEncodedItem().ToArray(), [0x82, 0x00, 0x01]];
+            return RlpTestHelper.EncodeSequence(items);
+        }
     }
 
     // check for RlpLimitException specifically, which should fire before decoding, so 0xC0 placeholders are fine here.

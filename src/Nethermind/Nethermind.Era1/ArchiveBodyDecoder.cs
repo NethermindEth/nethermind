@@ -8,17 +8,22 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Era1;
 
-internal enum BodyForm
+/// <summary>How an archive reader returns a block body.</summary>
+public enum BodyForm
 {
+    /// <summary>The fully decoded body only.</summary>
     Decoded,
+    /// <summary>The fully decoded body and a copy of its encoding.</summary>
     DecodedAndEncoded,
+    /// <summary>The body with encoded transactions, from <see cref="BlockBodyDecoder.DecodeWithEncodedTransactions"/>, and the encoding they refer to.</summary>
     EncodedTransactions,
 }
 
-internal static class ArchiveBodyDecoder
+/// <summary>Decodes the block bodies of the Era1 and EraE archives.</summary>
+public static class ArchiveBodyDecoder
 {
     // Archive entry buffers are reused after decoding, so retained encodings need their own copy.
-    internal static (BlockBody, ArrayPoolList<byte>?) Decode(Memory<byte> buffer, BodyForm form, IRlpDecoder<BlockBody> decoder)
+    public static (BlockBody, ArrayPoolList<byte>?) Decode(Memory<byte> buffer, BodyForm form, IRlpDecoder<BlockBody> decoder)
     {
         if (form == BodyForm.EncodedTransactions && decoder is BlockBodyDecoder bodyDecoder)
         {
@@ -41,7 +46,7 @@ internal static class ArchiveBodyDecoder
         return (body, form == BodyForm.DecodedAndEncoded ? new ArrayPoolList<byte>(buffer.Span) : null);
     }
 
-    internal static void Release(BlockBody body, ArrayPoolList<byte>? encoded, BodyForm form)
+    public static void Release(BlockBody body, ArrayPoolList<byte>? encoded, BodyForm form)
     {
         if (encoded is null) return;
         if (form == BodyForm.EncodedTransactions) BlockBodyDecoder.ReturnTransactions(body);
