@@ -13,7 +13,6 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
@@ -65,6 +64,9 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             .AddSingleton<IBlockTree>(overrideBlockTree)
             .AddSingleton<BlockTreeOverlay>(overrideBlockTree)
             .AddSingleton<IHeaderStore>(tmpHeaderStore)
+            .AddSingleton(tmpHeaderStore)
+            .AddSingleton(tmpBlockStore)
+            .AddSingleton(tmpChainLevelInfoRepository)
             .AddSingleton<IHeaderFinder>(c => c.Resolve<IHeaderStore>())
             .AddSingleton<IBlockhashCache, BlockhashCache>()
             .AddModule(validationModules)
@@ -92,16 +94,14 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
         envLifetimeScope.Disposer.AddInstanceForDisposal(editableDbProvider);
 
         SimulateReadOnlyBlocksProcessingEnv env = envLifetimeScope.Resolve<SimulateReadOnlyBlocksProcessingEnv>();
-        return new DisposableSimulateReadOnlyBlocksProcessingEnv(
-            env, envLifetimeScope, [tmpHeaderStore, tmpBlockStore, tmpChainLevelInfoRepository]);
+        return new DisposableSimulateReadOnlyBlocksProcessingEnv(env, envLifetimeScope);
     }
 
     private sealed class DisposableSimulateReadOnlyBlocksProcessingEnv(
         SimulateReadOnlyBlocksProcessingEnv inner,
-        ILifetimeScope scope,
-        IClearableCache[] requestStores) : ISimulateReadOnlyBlocksProcessingEnv, IDisposable
+        ILifetimeScope scope) : ISimulateReadOnlyBlocksProcessingEnv, IDisposable
     {
-        public SimulateReadOnlyBlocksProcessingScope Begin(BlockHeader? baseBlock) => inner.Begin(baseBlock, requestStores);
+        public SimulateReadOnlyBlocksProcessingScope Begin(BlockHeader? baseBlock) => inner.Begin(baseBlock);
 
         public void Dispose() => scope.Dispose();
     }

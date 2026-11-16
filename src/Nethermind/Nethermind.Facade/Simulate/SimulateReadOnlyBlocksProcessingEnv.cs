@@ -11,6 +11,7 @@ using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.State.OverridableEnv;
+using Nethermind.State.Repositories;
 
 namespace Nethermind.Facade.Simulate;
 
@@ -28,17 +29,20 @@ public class SimulateReadOnlyBlocksProcessingEnv(
     IBlockProcessor blockProcessor,
     BlockTreeOverlay blockTreeOverlay,
     IOverridableEnv overridableEnv,
-    IReadOnlyDbProvider readOnlyDbProvider
+    IReadOnlyDbProvider readOnlyDbProvider,
+    SimulateDictionaryHeaderStore headerStore,
+    SimulateDictionaryBlockStore blockStore,
+    ChainLevelInfoRepository chainLevelInfoRepository
 ) : ISimulateReadOnlyBlocksProcessingEnv
 {
-    public SimulateReadOnlyBlocksProcessingScope Begin(BlockHeader? baseBlock) => Begin(baseBlock, []);
+    private readonly IClearableCache[] _requestStores = [headerStore, blockStore, chainLevelInfoRepository];
 
-    public SimulateReadOnlyBlocksProcessingScope Begin(BlockHeader? baseBlock, IClearableCache[] requestStores)
+    public SimulateReadOnlyBlocksProcessingScope Begin(BlockHeader? baseBlock)
     {
         blockTreeOverlay.ResetMainChain();
         IDisposable envDisposer = overridableEnv.BuildAndOverride(baseBlock);
         return new SimulateReadOnlyBlocksProcessingScope(
-            worldState, specProvider, blockTree, codeInfoRepository, simulateState, blockProcessor, readOnlyDbProvider, envDisposer, requestStores
+            worldState, specProvider, blockTree, codeInfoRepository, simulateState, blockProcessor, readOnlyDbProvider, envDisposer, _requestStores
         );
     }
 }
