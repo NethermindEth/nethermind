@@ -70,7 +70,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         Address address = new("0x00000000000000000000000000000000deadbeef");
         if (exists)
             TestState.CreateAccount(address, (UInt256)balance);
-        Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript.Db db = new(TestState);
+        Db db = new(TestState);
         Assert.That(db.exists(address.Bytes.ToArray()), Is.EqualTo(exists));
     }
 
