@@ -2,13 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
+using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Messages;
+using Nethermind.Serialization.FluentRlp;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P;
 
@@ -35,13 +39,88 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
             return 0;
         }
 
-        IByteBuffer buffer = _messageSerializationService.ZeroSerialize(message, allocator: _context.Allocator);
+        IByteBuffer buffer = Serialize(_messageSerializationService, message, _context.Allocator);
         int length = buffer.ReadableBytes;
 
         // Running in background
         SendBuffer(buffer);
 
         return length;
+    }
+
+    // Messages are enqueued from any thread, so each thread reuses its own writer.
+    [ThreadStatic]
+    private static PacketWriter? t_writer;
+
+    /// <summary>Serializes a message into a new buffer as its packet type followed by its content.</summary>
+    internal static IByteBuffer Serialize<T>(IMessageSerializationService serializationService, T message, IByteBufferAllocator allocator)
+        where T : P2PMessage
+    {
+        PacketWriter writer = t_writer ??= new();
+        writer.Start(allocator, message.AdaptivePacketType);
+        try
+        {
+            serializationService.Serialize(message, writer);
+            return writer.Buffer ?? throw new InvalidOperationException($"{nameof(IMessageSerializationService)} did not request a span for the message.");
+        }
+        catch
+        {
+            writer.Buffer?.SafeRelease();
+            throw;
+        }
+        finally
+        {
+            writer.Clear();
+        }
+    }
+
+    /// <summary>Writes a packet into a single buffer from an allocator: its packet type, then its content.</summary>
+    /// <remarks>Allocates the buffer on the one <see cref="GetSpan"/> call for the content, so it holds exactly the packet.</remarks>
+    private sealed class PacketWriter : IBufferWriter<byte>
+    {
+        private IByteBufferAllocator? _allocator;
+        private int _packetType;
+        // The packet type that GetSpan writes ahead of the content, committed with the content on Advance.
+        private int _uncommittedLength;
+
+        public IByteBuffer? Buffer { get; private set; }
+
+        public void Start(IByteBufferAllocator allocator, int packetType)
+        {
+            _allocator = allocator;
+            _packetType = packetType;
+        }
+
+        // Keeps an idle thread's writer from holding on to the last buffer and allocator.
+        public void Clear()
+        {
+            _allocator = null;
+            Buffer = null;
+        }
+
+        public Span<byte> GetSpan(int sizeHint = 0)
+        {
+            if (Buffer is not null)
+                throw new InvalidOperationException($"{nameof(PacketWriter)} takes the content in a single span.");
+
+            int packetTypeLength = _uncommittedLength = Rlp.LengthOf(_packetType);
+            // IBufferWriter requires a non-empty span when no size is requested.
+            int length = packetTypeLength + Math.Max(sizeHint, 1);
+            IByteBuffer buffer = Buffer = _allocator!.Buffer(length);
+            // DotNetty allocators return array-backed buffers, the direct ones included.
+            Span<byte> packet = buffer.Array.AsSpan(buffer.ArrayOffset + buffer.WriterIndex, length);
+            RlpWriter writer = RlpWriter.ContentWriter(packet);
+            writer.Encode(_packetType);
+            return packet[packetTypeLength..];
+        }
+
+        public Memory<byte> GetMemory(int sizeHint = 0) => throw new NotSupportedException();
+
+        public void Advance(int count)
+        {
+            Buffer!.SetWriterIndex(Buffer.WriterIndex + _uncommittedLength + count);
+            _uncommittedLength = 0;
+        }
     }
 
     private void SendBuffer(IByteBuffer buffer)

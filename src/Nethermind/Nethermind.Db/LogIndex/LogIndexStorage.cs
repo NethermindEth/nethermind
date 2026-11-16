@@ -163,6 +163,7 @@ namespace Nethermind.Db.LogIndex
         public const int BlockNumberSize = sizeof(int);
         private const int MaxKeyLength = Hash256.Size + 1; // Math.Max(Address.Size, Hash256.Size)
         private const int MaxDbKeyLength = MaxKeyLength + BlockNumberSize;
+        private const int MaxStackDecompressionInput = 1024;
 
         private static readonly ArrayPool<byte> Pool = ArrayPool<byte>.Shared;
 
@@ -886,13 +887,6 @@ namespace Nethermind.Db.LogIndex
             return index < 0 ? ~index : index;
         }
 
-        private ReadOnlySpan<byte> Compress(Span<byte> data, Span<byte> buffer)
-        {
-            ReadOnlySpan<int> blockNumbers = MemoryMarshal.Cast<byte, int>(data);
-            int length = (int)_compressionAlgorithm.Compress(blockNumbers, (nuint)blockNumbers.Length, buffer);
-            return buffer[..length];
-        }
-
         private static int ReadCompressionMarker(ReadOnlySpan<byte> source) => -BinaryPrimitives.ReadInt32LittleEndian(source);
         private static void WriteCompressionMarker(Span<byte> source, int len) => BinaryPrimitives.WriteInt32LittleEndian(source, -len);
 
@@ -939,19 +933,22 @@ namespace Nethermind.Db.LogIndex
 
         private static IDb GetMetaDb(IColumnsDb<LogIndexColumns> rootDb) => rootDb.GetColumnDb(LogIndexColumns.Meta);
 
-        private byte[] CompressDbValue(ReadOnlySpan<byte> key, Span<byte> data)
+        private byte[] CompressDbValue(ReadOnlySpan<byte> key, Span<byte> data) => CompressDbValue(_compressionAlgorithm, key, data);
+
+        internal static byte[] CompressDbValue(CompressionAlgorithm algorithm, ReadOnlySpan<byte> key, Span<byte> data)
         {
             if (IsCompressed(data, out _))
                 throw new LogIndexStateException("Attempt to compress already compressed data.", key);
             if (data.Length % BlockNumberSize != 0)
                 throw new LogIndexStateException($"Invalid length of data to compress: {data.Length}.", key);
 
-            byte[] buffer = Pool.Rent(data.Length + BlockNumberSize);
+            ReadOnlySpan<int> blockNumbers = MemoryMarshal.Cast<byte, int>(data);
+            byte[] buffer = Pool.Rent(BlockNumberSize + CompressionAlgorithm.GetMaxCompressedLength(blockNumbers.Length));
 
             try
             {
-                WriteCompressionMarker(buffer, data.Length / BlockNumberSize);
-                int compressedLen = Compress(data, buffer.AsSpan(BlockNumberSize..)).Length;
+                WriteCompressionMarker(buffer, blockNumbers.Length);
+                int compressedLen = (int)algorithm.Compress(blockNumbers, (nuint)blockNumbers.Length, buffer.AsSpan(BlockNumberSize..));
                 return buffer[..(BlockNumberSize + compressedLen)];
             }
             finally
@@ -960,18 +957,34 @@ namespace Nethermind.Db.LogIndex
             }
         }
 
-        private static void DecompressDbValue(CompressionAlgorithm algorithm, ReadOnlySpan<byte> data, Span<int> buffer)
+        [SkipLocalsInit]
+        internal static void DecompressDbValue(CompressionAlgorithm algorithm, ReadOnlySpan<byte> data, Span<int> buffer)
         {
             if (!IsCompressed(data, out int len))
                 throw new ValidationException("Data is not compressed");
 
-            if (buffer.Length < len)
+            if (buffer.Length < len + CompressionAlgorithm.DecompressionOverrun)
                 throw new ArgumentException($"Buffer is too small to decompress {len} block numbers.", nameof(buffer));
 
-            _ = algorithm.Decompress(data[BlockNumberSize..], (nuint)len, buffer);
-        }
+            // The decoder reads past the end of its input, and the value read from the database has no padding.
+            ReadOnlySpan<byte> compressed = data[BlockNumberSize..];
+            int inputLength = compressed.Length + CompressionAlgorithm.CompressedDataOverread;
+            byte[]? rented = null;
+            Span<byte> input = inputLength <= MaxStackDecompressionInput
+                ? stackalloc byte[MaxStackDecompressionInput]
+                : rented = Pool.Rent(inputLength);
 
-        private void DecompressDbValue(ReadOnlySpan<byte> data, Span<int> buffer) => DecompressDbValue(_compressionAlgorithm, data, buffer);
+            try
+            {
+                compressed.CopyTo(input);
+                input.Slice(compressed.Length, CompressionAlgorithm.CompressedDataOverread).Clear();
+                _ = algorithm.Decompress(input, (nuint)len, buffer);
+            }
+            finally
+            {
+                if (rented is not null) Pool.Return(rented);
+            }
+        }
 
         /// <summary>
         /// Reads the ascending block numbers of a stored value into <paramref name="buffer"/>, which is reused across
@@ -983,8 +996,7 @@ namespace Nethermind.Db.LogIndex
             bool compressed = IsCompressed(value, out int length);
             if (!compressed) length = value.Length / BlockNumberSize;
 
-            // +1 fixes TurboPFor reading outside of array bounds
-            int capacity = compressed ? length + 1 : length;
+            int capacity = compressed ? length + CompressionAlgorithm.DecompressionOverrun : length;
             buffer ??= [];
             if (buffer.Length < capacity)
             {
@@ -994,7 +1006,7 @@ namespace Nethermind.Db.LogIndex
             }
 
             Span<int> blocks = buffer.AsSpan(0, length);
-            if (compressed) DecompressDbValue(algorithm, value, blocks);
+            if (compressed) DecompressDbValue(algorithm, value, buffer.AsSpan(0, capacity));
             else ReadBlockNumbers(value, blocks);
 
             ReverseBlocksIfNeeded(blocks);

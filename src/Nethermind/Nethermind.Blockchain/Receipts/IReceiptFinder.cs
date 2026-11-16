@@ -40,5 +40,13 @@ namespace Nethermind.Blockchain.Receipts
             logIndexStart = 0;
             return false;
         }
+
+        /// <summary>Gets the index of a transaction in its block from the transaction hashes its stored receipts carry,
+        /// without hashing the transactions before it.</summary>
+        /// <param name="block">The block containing the transaction.</param>
+        /// <param name="txHash">The hash of the transaction.</param>
+        /// <returns>The index, confirmed against the transaction at that index in <paramref name="block"/>, or -1 when
+        /// the finder cannot give it without hashing the transactions before it.</returns>
+        int FindTransactionIndex(Block block, Hash256 txHash) => -1;
     }
 }

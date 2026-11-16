@@ -199,7 +199,7 @@ namespace Nethermind.Db.Test.LogIndex
 
         private void WritePostingChunk(IDb db, byte[] suffix, int[] blocks, bool compressed)
         {
-            byte[] value = new byte[blocks.Length * sizeof(int) + 64];
+            byte[] value = new byte[sizeof(int) + CompressionAlgorithm.GetMaxCompressedLength(blocks.Length)];
             if (compressed)
             {
                 BinaryPrimitives.WriteInt32LittleEndian(value, -blocks.Length);
