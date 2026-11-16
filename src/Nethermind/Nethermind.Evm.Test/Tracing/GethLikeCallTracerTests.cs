@@ -971,7 +971,8 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
                 yield return new TestCaseData(activation, Instruction.CREATE, length, false);
             }
         }
-        int oversize = checked((int)Osaka.Instance.MaxCodeSize + 1);
+        IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec(MainnetSpecProvider.OsakaActivation);
+        int oversize = checked((int)spec.MaxCodeSize + 1);
         yield return new TestCaseData(MainnetSpecProvider.OsakaActivation, Instruction.CREATE, oversize, false);
         yield return new TestCaseData(MainnetSpecProvider.OsakaActivation, Instruction.CREATE2, oversize, false);
         yield return new TestCaseData(MainnetSpecProvider.OsakaActivation, Instruction.CREATE2, 1, false);
