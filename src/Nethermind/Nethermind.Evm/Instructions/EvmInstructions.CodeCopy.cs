@@ -292,7 +292,7 @@ public static partial class EvmInstructions
             ReadOnlySpan<byte> externalCode = codeInfo.CodeSpan;
             // A precompile's code info carries no code, but the account at its address may hold some.
             if (externalCode.IsEmpty && codeInfo.IsPrecompile)
-                externalCode = GetCodeAtPrecompileAddress(vm.WorldState, address).Span;
+                externalCode = GetCodeAtPrecompileAddress(vm.WorldState, address);
 
             vm.VmState.Memory.CopyFromZeroExtendedAfterGas(in a, externalCode, in b, (int)result);
 
@@ -452,11 +452,11 @@ public static partial class EvmInstructions
     /// reaches it.
     /// </remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static ReadOnlyMemory<byte> GetCodeAtPrecompileAddress(IWorldState state, Address address)
+    private static ReadOnlySpan<byte> GetCodeAtPrecompileAddress(IWorldState state, Address address)
     {
         ValueHash256 codeHash = state.GetCodeHash(address);
         return codeHash == ValueKeccak.OfAnEmptyString
-            ? ReadOnlyMemory<byte>.Empty
-            : CodeInfoRepository.GetCodeInfo(state, address, in codeHash).Code;
+            ? default
+            : CodeInfoRepository.GetCodeInfo(state, address, in codeHash).CodeSpan;
     }
 }
