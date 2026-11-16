@@ -199,9 +199,10 @@
     "eip6780Transition": 71551800,
     "eip7516Transition": 71551800,
 
-    "eip2935Transition": 83600000,
-    "eip7623Transition": 83600000,
-    "eip7702Transition": 83600000,
+    "eip2537Transition": 84333000,
+    "eip2935Transition": 84333000,
+    "eip7623Transition": 84333000,
+    "eip7702Transition": 84333000,
 
     "MaxCodeSizeTransition": 3,
     "MaxCodeSize": 24576

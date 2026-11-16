@@ -73,6 +73,7 @@ public class XdcModule : Module
             .AddSingleton<IBlockStore, XdcBlockStore>()
             .AddSingleton<IBlockTree, XdcBlockTree>()
             .AddDecorator<IBlockhashStore, XdcBlockhashStore>()
+            .AddDecorator<IBlockhashStore, XdcMulticall3Installer>()
 
             // Sys contracts
             //TODO this might not be wired correctly

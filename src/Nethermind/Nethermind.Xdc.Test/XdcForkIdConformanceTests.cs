@@ -38,7 +38,9 @@ public class XdcForkIdConformanceTests
     [TestCase(23779191ul, 0x6c07b5cfu, 56828700ul, TestName = "denylist")]
     [TestCase(56828700ul, 0x07a2b1b8u, 61290000ul, TestName = "XDPoS 2.0 switch")]
     [TestCase(66825000ul, 0x6e0b9072u, 71550000ul, TestName = "tipXDCXReceiverDisable")]
-    [TestCase(83600000ul, 0x7fcfc8b0u, 0ul, TestName = "prague")]
+    [TestCase(83600000ul, 0x7fcfc8b0u, 84333000ul, TestName = "tipUpgradeReward")]
+    [TestCase(84333000ul, 0xe9d53101u, 84733000ul, TestName = "prague",
+        Ignore = "TIPProportionalRewardBlock (84733000) is not in the XDC fork schedule yet")]
     public void Apothem_fork_ids_match_the_reference_client(ulong head, uint expectedChecksum, ulong expectedNext) =>
         AssertForkId("xdc-testnet.json", TestnetGenesisHash, head, expectedChecksum, expectedNext);
 

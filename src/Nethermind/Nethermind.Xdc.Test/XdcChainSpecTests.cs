@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
@@ -72,6 +73,28 @@ public class XdcChainSpecTests
         IXdcReleaseSpec spec = specProvider.GetXdcSpec(engineParameters.SwitchBlock + 1, latestRound);
 
         Assert.That(spec.LimitPenaltyEpoch, Is.EqualTo(expectedLimitPenaltyEpoch));
+    }
+
+    // The reference client's TestnetChainConfig.PragueBlock; its PrecompiledContractsPrague adds EIP-2537 at 0x0b-0x11.
+    [Test]
+    public void Apothem_Prague_activates_at_the_reference_block([Values(84_332_999UL, 84_333_000UL)] ulong block)
+    {
+        ChainSpec chainSpec = LoadChainSpec("xdc-testnet.json");
+        XdcChainSpecBasedSpecProvider specProvider = new(chainSpec, EngineParameters(chainSpec), LimboLogs.Instance);
+        IReleaseSpec spec = specProvider.GetXdcSpec(block);
+        bool prague = block >= 84_333_000;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.IsEip2537Enabled, Is.EqualTo(prague));
+            Assert.That(spec.IsEip2935Enabled, Is.EqualTo(prague));
+            Assert.That(spec.IsEip7623Enabled, Is.EqualTo(prague));
+            Assert.That(spec.IsEip7702Enabled, Is.EqualTo(prague));
+            for (byte precompile = 0x0b; precompile <= 0x11; precompile++)
+            {
+                Assert.That(spec.IsPrecompile(new Address($"0x{precompile:x40}")), Is.EqualTo(prague), $"precompile 0x{precompile:x2}");
+            }
+        }
     }
 
     private static ChainSpec LoadChainSpec(string chainSpecFile) =>
