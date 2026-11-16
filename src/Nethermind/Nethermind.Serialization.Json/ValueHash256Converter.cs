@@ -4,11 +4,9 @@
 #nullable enable
 using System;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Json;
 
@@ -48,14 +46,6 @@ public class ValueHash256Converter(bool strictHexFormat = false) : JsonConverter
     public override ValueHash256 ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
         Read(ref reader, typeToConvert, options);
 
-    [SkipLocalsInit]
-    public override void WriteAsPropertyName(Utf8JsonWriter writer, ValueHash256 value, JsonSerializerOptions options)
-    {
-        Unsafe.SkipInit(out HexWriter.HexBuffer72 hashBuffer);
-        Span<byte> hashBytes = MemoryMarshal.AsBytes((Span<ulong>)hashBuffer);
-        hashBytes[0] = (byte)'0';
-        hashBytes[1] = (byte)'x';
-        HexEncoder.Encode32Bytes(ref hashBytes[2], ref MemoryMarshal.GetReference(value.Bytes));
-        writer.WritePropertyName(hashBytes[..(ValueHash256.MemorySize * 2 + 2)]);
-    }
+    public override void WriteAsPropertyName(Utf8JsonWriter writer, ValueHash256 value, JsonSerializerOptions options) =>
+        HexWriter.WriteFixed32HexPropertyName(writer, value.Bytes);
 }
