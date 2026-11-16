@@ -340,8 +340,11 @@ public partial class BlockProcessor(
     private const int MaxExtensionCandidates = 4;
 
     /// <summary>Estimated cost (<see cref="RecursiveStarkAggregator.EstimatedCost"/>) above which a scheduled statement is cut to
-    /// a nonce-ordered prefix of the body: two recursive merges and a four-signature leaf, about 50 s at the measured costs.</summary>
-    internal const long MaxScheduledStatementCost = 2 * RecursiveStarkAggregator.MergeCost + 4 * RecursiveStarkAggregator.SignatureCost;
+    /// a nonce-ordered prefix of the body: two recursive merges and one whole direct leaf.</summary>
+    /// <remarks>Kept to that shape, not to its former value, as <see cref="RecursiveStarkAggregator.DirectBatchSize"/> widened:
+    /// a merge and a full leaf cost roughly the same wall time either way, so the bound still stands for about the same work.</remarks>
+    internal const long MaxScheduledStatementCost = 2 * RecursiveStarkAggregator.MergeCost
+        + RecursiveStarkAggregator.DirectBatchSize * RecursiveStarkAggregator.SignatureCost;
 
     /// <summary>Offers the verified recursive proofs of the inclusion lists as reusable statements.</summary>
     /// <remarks>

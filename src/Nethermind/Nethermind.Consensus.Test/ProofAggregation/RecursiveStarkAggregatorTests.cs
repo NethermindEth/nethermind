@@ -431,15 +431,15 @@ public class RecursiveStarkAggregatorTests
     }
 
     [Test]
-    public void Recursive_generic_coverage_avoids_direct_reproving([Values(1, 2, 3)] int directWitnessBytes)
+    public void Recursive_generic_coverage_avoids_direct_reproving([Values(1, 2, 3)] int directWitnessBytes, [Values(1, 2, 3, 4, 5)] int directCount)
     {
         FrameDependency dependency = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("generic-source-tie"), default);
         byte[] parent = LeanProofTestEnvelope.Create([dependency], 2);
         byte[] directWitness = new byte[directWitnessBytes];
         AggregationInput input = new()
         {
-            Deps = [dependency, dependency, dependency, dependency, dependency],
-            Witnesses = [directWitness, directWitness, directWitness, directWitness, directWitness],
+            Deps = [.. Enumerable.Repeat(dependency, directCount)],
+            Witnesses = [.. Enumerable.Repeat<ReadOnlyMemory<byte>>(directWitness, directCount)],
             RecursiveProofs = [new([dependency], parent)]
         };
         EnvelopeBoundedVerifier verifier = new();
@@ -461,6 +461,83 @@ public class RecursiveStarkAggregatorTests
             Assert.That(parentPrunes, Is.EqualTo(0));
             Assert.That(verifier.DirectStarkVerifications, Is.EqualTo(input.Deps.Count), "omitted direct witnesses still require authentication");
             Assert.That(verifier.VerifiedProofs, Does.Contain(ValueKeccak.Compute(parent)));
+        }
+    }
+
+    [Test]
+    public void Covered_direct_dependency_leaves_the_rest_on_the_one_call_path([Values] bool generic)
+    {
+        byte scheme = generic ? Eip8288Constants.LeanStarkScheme : Eip8288Constants.LeanSphincsScheme;
+        FrameDependency a = new(scheme, ValueKeccak.Compute("covered-a"), default);
+        FrameDependency b = new(scheme, ValueKeccak.Compute("covered-b"), default);
+        FrameDependency c = new(scheme, ValueKeccak.Compute("fresh-c"), default);
+        AggregationInput input = new()
+        {
+            Deps = [a, c],
+            Witnesses = [new byte[] { 1 }, new byte[] { 1 }],
+            RecursiveProofs = [new(Eip8288Dependencies.Canonicalize([a, b]), LeanProofTestEnvelope.Create(Eip8288Dependencies.Canonicalize([a, b]), 2))]
+        };
+        EnvelopeBoundedVerifier verifier = new();
+        ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(Eip8288Dependencies.Canonicalize([a, b, c]));
+
+        byte[] result = RecursiveStarkAggregator.Prove(input, verifier, Eip8288Verifier.Pinned, hash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verifier.VerifyRecursiveStark(hash, Eip8288Constants.AggregatedVk, result), Is.True);
+            Assert.That(verifier.ProvingInputs, Has.Count.EqualTo(1));
+            Assert.That(verifier.ProvingInputs[0].Deps, Is.EqualTo(new[] { c }));
+            Assert.That(verifier.ProvingInputs[0].RecursiveProofs, Has.Count.EqualTo(1));
+            Assert.That(verifier.DirectStarkVerifications, Is.EqualTo(generic ? 2 : 0), "the covered witness is authenticated besides the proven one");
+        }
+    }
+
+    [Test]
+    public void Covered_direct_dependencies_do_not_block_reuse_of_an_unchanged_child()
+    {
+        FrameDependency a = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("reuse-a"), default);
+        FrameDependency b = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("reuse-b"), default);
+        List<FrameDependency> statement = Eip8288Dependencies.Canonicalize([a, b]);
+        byte[] child = LeanProofTestEnvelope.Create(statement, 2);
+        EnvelopeBoundedVerifier verifier = new();
+        ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(statement);
+
+        byte[] result = RecursiveStarkAggregator.Prove(new()
+        {
+            Deps = [a],
+            Witnesses = [new byte[] { 1 }],
+            RecursiveProofs = [new(statement, child)]
+        }, verifier, Eip8288Verifier.Pinned, hash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(child));
+            Assert.That(verifier.ProvingInputs, Is.Empty);
+            Assert.That(verifier.DirectStarkVerifications, Is.EqualTo(1), "the covered witness is still authenticated");
+        }
+    }
+
+    [Test]
+    public void A_leaf_with_leanStark_stays_four_wide([Values(0, 3, 16)] int signatures, [Range(1, 16)] int generics)
+    {
+        List<FrameDependency> dependencies = Eip8288Dependencies.Canonicalize([
+            .. Enumerable.Range(0, signatures).Select(static i => Sphincs($"leaf-sig:{i}")),
+            .. Enumerable.Range(0, generics).Select(static i => new FrameDependency(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute($"leaf:{i}"), default))]);
+        EnvelopeBoundedVerifier verifier = new();
+        ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(dependencies);
+
+        byte[] proof = RecursiveStarkAggregator.Prove(new()
+        {
+            Deps = dependencies,
+            Witnesses = [.. dependencies.Select(static _ => (ReadOnlyMemory<byte>)new byte[] { 1 })]
+        }, verifier, Eip8288Verifier.Pinned, hash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verifier.VerifyRecursiveStark(hash, Eip8288Constants.AggregatedVk, proof), Is.True);
+            Assert.That(verifier.ProvingInputs.Where(static i => Eip8288Dependencies.CountLeanStark(i.Deps) != 0).Select(static i => i.Deps.Count),
+                Has.All.LessThanOrEqualTo(RecursiveStarkAggregator.GenericDirectBatchSize));
+            Assert.That(verifier.ProvingInputs.Select(static i => i.Deps.Count), Has.All.LessThanOrEqualTo(RecursiveStarkAggregator.DirectBatchSize));
         }
     }
 
