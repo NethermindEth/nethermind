@@ -706,6 +706,8 @@ public partial class EthRpcModuleTests
         const string sender = "0xc300000000000000000000000000000000000000";
         // Without fails: return slot 0, then write 1 to it. With fails: INVALID.
         string code = fails ? "0xfe" : "0x600054600160005560005260206000f3";
+        // With overridesState, the block has STOP, so a run that loses the override fails the assertions.
+        string genesisCode = overridesState ? "0x00" : code;
         // 100,000 gas at 1 gwei costs 1e14 wei.
         UInt256 balance = 150_000_000_000_000;
         using Context ctx = await Context.Create(new TestSpecProvider(Osaka.Instance), configurer: builder => builder
@@ -713,7 +715,7 @@ public partial class EthRpcModuleTests
             {
                 state.CreateAccount(new Address(sender), balance);
                 state.CreateAccount(new Address(contract), UInt256.Zero);
-                state.InsertCode(new Address(contract), Bytes.FromHexString(code), Osaka.Instance);
+                state.InsertCode(new Address(contract), Bytes.FromHexString(genesisCode), Osaka.Instance);
             }));
         object? transaction = JsonSerializer.Deserialize<object>(
             $$"""{"from":"{{sender}}","to":"{{contract}}","gas":"0x186a0","gasPrice":"0x3b9aca00"}""");
