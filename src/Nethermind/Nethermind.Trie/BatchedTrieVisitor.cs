@@ -59,7 +59,7 @@ public class BatchedTrieVisitor<TNodeContext>
 
     private long _activeJobs;
     private long _queuedJobs;
-    private bool _failed;
+    private volatile bool _failed;
     private long _currentPointer;
     private readonly long _readAheadThreshold;
 
@@ -148,7 +148,7 @@ public class BatchedTrieVisitor<TNodeContext>
         try
         {
             using ArrayPoolListRef<Task> tasks = Enumerable.Range(0, trieVisitContext.MaxDegreeOfParallelism)
-                .Select(_ => Task.Run(BatchedThread))
+                .Select(_ => Task.Run(RunWorker))
                 .ToPooledListRef(trieVisitContext.MaxDegreeOfParallelism);
 
             Task.WaitAll(tasks.AsSpan());
@@ -304,6 +304,27 @@ public class BatchedTrieVisitor<TNodeContext>
         Interlocked.Decrement(ref _activeJobs);
     }
 
+    /// <summary>
+    /// Runs one worker and, when it throws, tells the other workers to stop.
+    /// </summary>
+    /// <remarks>
+    /// A worker that throws leaves the jobs it took counted in <see cref="_activeJobs"/>, so the count never reaches zero.
+    /// Without <see cref="_failed"/> the other workers would wait for those jobs forever and <see cref="Start"/> would never
+    /// rethrow.
+    /// </remarks>
+    private void RunWorker()
+    {
+        try
+        {
+            BatchedThread();
+        }
+        catch (Exception)
+        {
+            _failed = true;
+            throw;
+        }
+    }
+
     private void BatchedThread()
     {
         ArrayPoolListRef<(TrieNode, TNodeContext, SmallTrieVisitContext)> nextToProcesses = new(_maxBatchSize);
@@ -370,9 +391,10 @@ public class BatchedTrieVisitor<TNodeContext>
                         nextToProcesses.Clear();
                         if (nodeToResolve.FullRlp.IsNull)
                         {
-                            // Still need to decrement counter
+                            // Missing node, already reported through VisitMissingNode above. It has no children to
+                            // queue, but its own job still has to be counted down; the rest of the batch goes on.
                             QueueNextNodes(ref nextToProcesses);
-                            return; // missing node
+                            continue;
                         }
 
                         AcceptResolvedNode(nodeToResolve, nodeContext, _resolver, ctx, ref nextToProcesses);
