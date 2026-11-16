@@ -27,6 +27,7 @@ namespace Nethermind.Blockchain.Receipts
         private IReceiptsRecovery.IRecoveryContext? _recoveryContext;
         private IReceiptsRecovery.ISelectiveLogRecoveryContext? _selectiveLogRecoveryContext;
         private readonly IReceiptsRecovery.IDeferredLogRecoveryContext? _deferredRecoveryContext;
+        // 0 until the first log recovery, as _receiptIndex is at least 1 after TryGetNext.
         private int _logRecoveryReceiptIndex;
         private ValueHash256 _logRecoveryTransactionHash;
         private readonly IReceiptRefDecoder _receiptRefDecoder;
