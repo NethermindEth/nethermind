@@ -95,9 +95,25 @@ internal sealed class ContainerRouter : IAsyncDisposable
             try
             {
                 McpClient client = await sidecar.Value.WaitAsync(cancellationToken);
+                string? warning = null;
                 if (DebuggingLibraries.AreNeededBy(call.Name, arguments))
-                    await _provideDebuggingLibraries(dockerHost, key.Item2, cancellationToken);
-                return await client.CallToolAsync(new CallToolRequestParams { Name = call.Name, Arguments = arguments }, cancellationToken);
+                {
+                    try
+                    {
+                        await _provideDebuggingLibraries(dockerHost, key.Item2, cancellationToken);
+                    }
+                    catch (Exception e) when (call.Name == "write_dump" && e is not OperationCanceledException)
+                    {
+                        // A dump cannot be taken again later, so it is written anyway; the DAC is supplied again when the dump is read.
+                        warning = $"WARNING: the debugging library (DAC) for reading this dump could not be supplied ({e.Message}). " +
+                                  "The dump is written; reading it needs the DAC, which is supplied again then, but only while a process of the same .NET version runs.";
+                    }
+                }
+
+                CallToolResult result = await client.CallToolAsync(new CallToolRequestParams { Name = call.Name, Arguments = arguments }, cancellationToken);
+                if (warning is not null)
+                    result.Content.Add(new TextContentBlock { Text = warning });
+                return result;
             }
             catch (Exception e) when (e is not OperationCanceledException && IsGone(sidecar.Value))
             {

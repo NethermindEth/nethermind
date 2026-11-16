@@ -127,6 +127,8 @@ public static class NativeSampler
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
+            // stdout carries the MCP protocol.
+            Console.Error.WriteLine($"Cannot read the environment of process {pid}, so its perf map is looked for at the default path: {e.Message}");
         }
 
         return environment;

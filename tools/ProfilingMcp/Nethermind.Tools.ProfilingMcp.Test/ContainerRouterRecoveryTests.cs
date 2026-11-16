@@ -82,6 +82,23 @@ public class ContainerRouterRecoveryTests
         }
     }
 
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Writes_a_dump_even_when_its_dac_cannot_be_supplied(CancellationToken cancellationToken)
+    {
+        ContainerRouter router = new((_, _) => StartSidecarAsync(), provideDebuggingLibraries: static (_, _, _) => throw new InvalidOperationException("nuget.org is unreachable"));
+        McpRequestHandler<CallToolRequestParams, CallToolResult> route = router.Route(static (_, _) => throw new AssertionException("the call should be routed"));
+
+        CallToolResult dump = await route(Call("write_dump"), cancellationToken);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(dump.IsError, Is.Not.True);
+            Assert.That(dump.Content.OfType<TextContentBlock>().Select(static c => c.Text), Has.Some.EqualTo("ok").And.Some.Contains("nuget.org is unreachable"));
+            Assert.That(async () => await route(Call("native_memory"), cancellationToken), Throws.InvalidOperationException, "a tool that loads the DAC itself still fails");
+        }
+    }
+
     private RequestContext<CallToolRequestParams> Call(string tool, string container = "node") =>
         new(_sidecars.FirstOrDefault()?.Server ?? Sidecar.Placeholder, new JsonRpcRequest { Method = RequestMethods.ToolsCall },
             new CallToolRequestParams { Name = tool, Arguments = new Dictionary<string, JsonElement> { [ContainerRouter.ContainerArgument] = JsonSerializer.SerializeToElement(container) } });
@@ -110,7 +127,15 @@ public class ContainerRouterRecoveryTests
         {
             Sidecar sidecar = new();
             sidecar.Server = McpServer.Create(new StreamServerTransport(sidecar._toServer.Reader.AsStream(), sidecar._toClient.Writer.AsStream()),
-                new McpServerOptions { ToolCollection = [McpServerTool.Create(static () => "ok", new McpServerToolCreateOptions { Name = "echo" })] });
+                new McpServerOptions
+                {
+                    ToolCollection =
+                    [
+                        McpServerTool.Create(static () => "ok", new McpServerToolCreateOptions { Name = "echo" }),
+                        McpServerTool.Create(static () => "ok", new McpServerToolCreateOptions { Name = "write_dump" }),
+                        McpServerTool.Create(static () => "ok", new McpServerToolCreateOptions { Name = "native_memory" }),
+                    ],
+                });
             sidecar._running = sidecar.Server.RunAsync(sidecar._stop.Token);
             sidecar.Client = await McpClient.CreateAsync(new StreamClientTransport(sidecar._toServer.Writer.AsStream(), sidecar._toClient.Reader.AsStream()));
             return sidecar;

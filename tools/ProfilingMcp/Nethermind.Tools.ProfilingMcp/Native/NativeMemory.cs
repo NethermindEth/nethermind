@@ -222,6 +222,8 @@ public static class NativeMemory
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
+            // stdout carries the MCP protocol.
+            Console.Error.WriteLine($"Cannot read the memory of process {pid}, so blocks malloc mapped on its own are not told apart from other anonymous memory: {e.Message}");
         }
 
         return ranges;

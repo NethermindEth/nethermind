@@ -142,9 +142,12 @@ internal static partial class DebuggingLibraries
     /// <exception cref="InvalidOperationException">The target loaded musl's dynamic loader.</exception>
     public static void RequireGlibc(IEnumerable<string> modules)
     {
-        if (modules.Any(static m => m.Contains("/ld-musl-", StringComparison.Ordinal)))
-            throw new InvalidOperationException("The target runs on musl libc (an Alpine-based image). The sidecar is a glibc image and cannot load a musl runtime's " +
-                                                "debugging library, so native_memory's managed breakdown and dump analysis are not available for it; the other tools are.");
+        foreach (string module in modules)
+        {
+            if (module.Contains("/ld-musl-", StringComparison.Ordinal))
+                throw new InvalidOperationException("The target runs on musl libc (an Alpine-based image). The sidecar is a glibc image and cannot load a musl runtime's " +
+                                                    "debugging library, so native_memory's managed breakdown and dump analysis are not available for it; the other tools are.");
+        }
     }
 
     /// <summary>Takes the DAC out of Microsoft's runtime pack for <paramref name="rid"/> and <paramref name="version"/>, caching it under <paramref name="cacheRoot"/>.</summary>
