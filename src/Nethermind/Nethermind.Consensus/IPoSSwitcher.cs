@@ -60,12 +60,15 @@ namespace Nethermind.Consensus
         /// A set flag is kept, and a zero difficulty stays post-merge on every chain. Otherwise the chain's switcher
         /// decides, as it does for block processing: Taiko, for one, keeps a nonzero difficulty in post-merge headers.
         /// Switchers write the flag of the header they are given, so never pass a header shared with the block tree.
-        /// Call it before block overrides, so that the source block is classified. This is not a consensus rule; block
-        /// processing must not use it.
+        /// Call it before block overrides, so that the source block is classified. Block 0 keeps the zero-difficulty
+        /// rule whatever its flag, as geth's calls do: a genesis runs no transactions, so no block execution decides it.
+        /// This is not a consensus rule; block processing must not use it.
         /// </remarks>
         public static void RestorePostMergeForCall(this IPoSSwitcher poSSwitcher, BlockHeader callHeader)
         {
-            if (!callHeader.IsPostMerge)
+            if (callHeader.IsGenesis)
+                callHeader.IsPostMerge = callHeader.Difficulty.IsZero;
+            else if (!callHeader.IsPostMerge)
                 callHeader.IsPostMerge = callHeader.Difficulty.IsZero || poSSwitcher.IsPostMerge(callHeader);
         }
     }
