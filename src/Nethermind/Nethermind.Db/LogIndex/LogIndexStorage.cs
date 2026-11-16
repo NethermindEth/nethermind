@@ -606,38 +606,30 @@ namespace Nethermind.Db.LogIndex
             long timestamp = Stopwatch.GetTimestamp();
 
             LogIndexAggregate aggregate = new(batch, isBackwardSync);
-            foreach ((int blockNumber, TxReceipt[] receipts) in batch)
+            Dictionary<AddressAsKey, List<int>>.AlternateLookup<ReadOnlySpan<byte>> addresses = aggregate.Address.GetAlternateLookup<ReadOnlySpan<byte>>();
+            Dictionary<ValueHash256, List<int>>[] topics = aggregate.Topic;
+            foreach (BlockReceipts block in batch)
             {
+                int blockNumber = block.BlockNumber;
                 if (!IsBlockNewer(blockNumber, isBackwardSync))
                     continue;
 
                 stats?.IncrementBlocks();
-                stats?.IncrementTx(receipts.Length);
+                stats?.IncrementTx(block.TxCount);
 
-                foreach (TxReceipt receipt in receipts)
+                BlockReceipts.LogReader logs = block.ReadLogs();
+                while (logs.TryGetNext(out ReadOnlySpan<byte> address, out ReadOnlySpan<byte> logTopics))
                 {
-                    if (receipt.Logs is null)
-                        continue;
+                    stats?.IncrementLogs();
 
-                    foreach (LogEntry log in receipt.Logs)
+                    AddBlock(ref CollectionsMarshal.GetValueRefOrAddDefault(addresses, address, out _), blockNumber);
+
+                    for (int topicIndex = 0; topicIndex < logTopics.Length / Hash256.Size; topicIndex++)
                     {
-                        stats?.IncrementLogs();
+                        stats?.IncrementTopics();
 
-                        List<int> addressBlocks = aggregate.Address.GetOrAdd(log.Address, static _ => new(1));
-
-                        if (addressBlocks.Count == 0 || addressBlocks[^1] != blockNumber)
-                            addressBlocks.Add(blockNumber);
-
-                        int topicsLength = Math.Min(log.Topics.Length, MaxTopics);
-                        for (byte topicIndex = 0; topicIndex < topicsLength; topicIndex++)
-                        {
-                            stats?.IncrementTopics();
-
-                            List<int> topicBlocks = aggregate.Topic[topicIndex].GetOrAdd(log.Topics[topicIndex], static _ => new(1));
-
-                            if (topicBlocks.Count == 0 || topicBlocks[^1] != blockNumber)
-                                topicBlocks.Add(blockNumber);
-                        }
+                        ValueHash256 topic = new(logTopics.Slice(topicIndex * Hash256.Size, Hash256.Size));
+                        AddBlock(ref CollectionsMarshal.GetValueRefOrAddDefault(topics[topicIndex], topic, out _), blockNumber);
                     }
                 }
             }
@@ -646,6 +638,13 @@ namespace Nethermind.Db.LogIndex
             stats?.Aggregating.Include(Stopwatch.GetElapsedTime(timestamp));
 
             return aggregate;
+
+            static void AddBlock(ref List<int>? blocks, int blockNumber)
+            {
+                blocks ??= new(1);
+                if (blocks.Count == 0 || blocks[^1] != blockNumber)
+                    blocks.Add(blockNumber);
+            }
         }
 
         private async ValueTask LockRunAsync(SemaphoreSlim semaphore)
@@ -686,20 +685,16 @@ namespace Nethermind.Db.LogIndex
             Span<byte> keyBuffer = stackalloc byte[MaxDbKeyLength];
             Span<byte> dbValue = MergeOps.Create(MergeOp.Reorg, block.BlockNumber, stackalloc byte[MergeOps.Size]);
 
-            foreach (TxReceipt receipt in block.Receipts)
+            BlockReceipts.LogReader logs = block.ReadLogs();
+            while (logs.TryGetNext(out ReadOnlySpan<byte> address, out ReadOnlySpan<byte> topics))
             {
-                foreach (LogEntry log in receipt.Logs ?? [])
-                {
-                    ReadOnlySpan<byte> addressKey = CreateMergeDbKey(log.Address.Bytes, keyBuffer, isBackwardSync: false);
-                    batches.Address.Merge(addressKey, dbValue);
+                ReadOnlySpan<byte> addressKey = CreateMergeDbKey(address, keyBuffer, isBackwardSync: false);
+                batches.Address.Merge(addressKey, dbValue);
 
-                    int topicsLength = Math.Min(log.Topics.Length, MaxTopics);
-                    for (int topicIndex = 0; topicIndex < topicsLength; topicIndex++)
-                    {
-                        Hash256 topic = log.Topics[topicIndex];
-                        ReadOnlySpan<byte> topicKey = CreateMergeDbKey(topic.Bytes, keyBuffer, isBackwardSync: false);
-                        batches.Topics[topicIndex].Merge(topicKey, dbValue);
-                    }
+                for (int topicIndex = 0; topicIndex < topics.Length / Hash256.Size; topicIndex++)
+                {
+                    ReadOnlySpan<byte> topicKey = CreateMergeDbKey(topics.Slice(topicIndex * Hash256.Size, Hash256.Size), keyBuffer, isBackwardSync: false);
+                    batches.Topics[topicIndex].Merge(topicKey, dbValue);
                 }
             }
 
@@ -774,17 +769,17 @@ namespace Nethermind.Db.LogIndex
                     timestamp = Stopwatch.GetTimestamp();
 
                     // Add addresses
-                    foreach ((Address address, List<int> blocks) in aggregate.Address)
+                    foreach ((AddressAsKey address, List<int> blocks) in aggregate.Address)
                     {
-                        MergeBlockNumbers(batches.Address, address.Bytes, blocks, isBackwardSync, stats);
+                        MergeBlockNumbers(batches.Address, address.Value.Bytes, blocks, isBackwardSync, stats);
                     }
 
                     // Add topics
                     for (int topicIndex = 0; topicIndex < aggregate.Topic.Length; topicIndex++)
                     {
-                        Dictionary<Hash256, List<int>> topics = aggregate.Topic[topicIndex];
+                        Dictionary<ValueHash256, List<int>> topics = aggregate.Topic[topicIndex];
 
-                        foreach ((Hash256 topic, List<int> blocks) in topics)
+                        foreach ((ValueHash256 topic, List<int> blocks) in topics)
                         {
                             MergeBlockNumbers(batches.Topics[topicIndex], topic.Bytes, blocks, isBackwardSync, stats);
                         }

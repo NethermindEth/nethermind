@@ -14,8 +14,8 @@ namespace Nethermind.Db.LogIndex;
 /// </summary>
 public struct LogIndexAggregate(int firstBlockNum, int lastBlockNum, bool isBackwardSync)
 {
-    private Dictionary<Address, List<int>>? _address;
-    private Dictionary<Hash256, List<int>>[]? _topic;
+    private Dictionary<AddressAsKey, List<int>>? _address;
+    private Dictionary<ValueHash256, List<int>>[]? _topic;
 
     public int FirstBlockNum { get; } = firstBlockNum;
     public int LastBlockNum { get; } = lastBlockNum;
@@ -25,10 +25,10 @@ public struct LogIndexAggregate(int firstBlockNum, int lastBlockNum, bool isBack
     /// wrong writer.</summary>
     public bool IsBackwardSync { get; } = isBackwardSync;
 
-    public Dictionary<Address, List<int>> Address => _address ??= [];
+    public Dictionary<AddressAsKey, List<int>> Address => _address ??= new(AddressAsKeyComparer.Instance);
 
-    public Dictionary<Hash256, List<int>>[] Topic => _topic ??= Enumerable.Range(0, LogIndexStorage.MaxTopics)
-        .Select(static _ => new Dictionary<Hash256, List<int>>())
+    public Dictionary<ValueHash256, List<int>>[] Topic => _topic ??= Enumerable.Range(0, LogIndexStorage.MaxTopics)
+        .Select(static _ => new Dictionary<ValueHash256, List<int>>())
         .ToArray();
 
     public bool IsEmpty => (_address is null || _address.Count == 0) && (_topic is null || _topic[0].Count == 0);

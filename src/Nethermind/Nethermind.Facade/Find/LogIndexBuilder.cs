@@ -13,6 +13,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Synchronization;
@@ -20,6 +21,8 @@ using Nethermind.Db;
 using Nethermind.Db.LogIndex;
 using Nethermind.History;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
+using Nethermind.Serialization.Rlp;
 using Timer = System.Timers.Timer;
 using static System.Threading.Tasks.TaskCreationOptions;
 
@@ -284,8 +287,10 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         if (number is 0)
             return false;
 
-        if (!TryGetBlockReceipts(number, out _, fabricateReclaimed: false))
+        if (!TryGetBlockReceipts(number, out BlockReceipts pivotReceipts, fabricateReclaimed: false))
             return false;
+
+        pivotReceipts.Dispose();
 
         if (!_pivotSource.TrySetResult(number))
             return false;
@@ -407,7 +412,13 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         }
     }
 
-    private LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isForward) => _logIndexStorage.Aggregate(batch, !isForward, _stats);
+    private LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isForward)
+    {
+        LogIndexAggregate aggregate = _logIndexStorage.Aggregate(batch, !isForward, _stats);
+        foreach (BlockReceipts blockReceipts in batch)
+            blockReceipts.Dispose();
+        return aggregate;
+    }
 
     private async Task AddReceiptsAsync(LogIndexAggregate aggregate, bool isForward)
     {
@@ -616,7 +627,13 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         });
 
         int endIndex = Array.IndexOf(buffer, default);
-        return endIndex < 0 ? buffer : buffer.AsSpan(..endIndex);
+        if (endIndex < 0)
+            return buffer;
+
+        foreach (BlockReceipts afterGap in buffer.AsSpan(endIndex))
+            afterGap.Dispose();
+
+        return buffer.AsSpan(..endIndex);
     }
 
     // TODO: move to IReceiptStorage?
@@ -624,7 +641,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     {
         blockReceipts = default;
 
-        if (_blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.ExcludeTxHashes | BlockTreeLookupOptions.RequireCanonical) is not { Hash: not null } block)
+        if (_blockTree.FindHeader(blockNumber, BlockTreeLookupOptions.RequireCanonical) is not { Hash: { } blockHash } header
+            || !_blockTree.HasBlock(blockNumber, blockHash))
         {
             // A height absent below the published boundary and above the lowest downloaded body was reclaimed -
             // not late, not undownloaded - so an empty entry is the truth. A boundary persisted by an older
@@ -639,20 +657,62 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
             return false;
         }
 
-        if (!block.Header.HasTransactions)
+        if (!header.HasTransactions)
         {
             blockReceipts = new((int)blockNumber, []);
             return true;
         }
 
-        TxReceipt[] receipts = _receiptStorage.Get(block) ?? [];
+        return TryReadLogs(blockNumber, blockHash, out blockReceipts);
+    }
 
-        if (receipts.Length == 0)
+    /// <remarks>Reads the stored receipts without recovering them and without filling the receipts cache, as only log addresses and topics are indexed.</remarks>
+    [SkipLocalsInit]
+    private bool TryReadLogs(ulong blockNumber, Hash256 blockHash, out BlockReceipts blockReceipts)
+    {
+        blockReceipts = default;
+        if (!_receiptStorage.TryGetReceiptsIterator(blockNumber, blockHash, out ReceiptsIterator iterator))
+            return false;
+
+        BlockLogsWriter writer = new();
+        int txCount = 0;
+        try
         {
+            Span<byte> topic = stackalloc byte[Hash256.Size];
+            while (iterator.TryGetNext(out TxReceiptStructRef receipt))
+            {
+                txCount++;
+                LogEntriesIterator logs = iterator.IterateLogs(receipt);
+                while (logs.TryGetNext(out LogEntryStructRef log))
+                {
+                    writer.AddLog(log.Address.Bytes);
+                    if (log.Topics is null && iterator.TryIterateTopics(log.TopicsRlp, out LogTopicsIterator encoded))
+                    {
+                        while (encoded.TryGetNext(topic) && writer.TryAddTopic(topic)) { }
+                    }
+                    else
+                    {
+                        foreach (Hash256 decoded in log.Topics ?? iterator.DecodeTopics(new RlpReader(log.TopicsRlp)))
+                        {
+                            if (!writer.TryAddTopic(decoded.Bytes))
+                                break;
+                        }
+                    }
+                }
+            }
+        }
+        finally
+        {
+            iterator.Dispose();
+        }
+
+        if (txCount == 0)
+        {
+            writer.Dispose();
             return false; // block should have transactions but nothing in storage
         }
 
-        blockReceipts = new((int)blockNumber, receipts);
+        blockReceipts = writer.Build((int)blockNumber, txCount);
         return true;
     }
 

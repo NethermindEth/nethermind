@@ -1369,19 +1369,17 @@ namespace Nethermind.Db.Test.LogIndex
 
                 foreach (BlockReceipts block in blocks)
                 {
-                    foreach (TxReceipt txReceipt in block.Receipts)
+                    BlockReceipts.LogReader logs = block.ReadLogs();
+                    while (logs.TryGetNext(out ReadOnlySpan<byte> logAddress, out ReadOnlySpan<byte> logTopics))
                     {
-                        foreach (LogEntry log in txReceipt.Logs!)
-                        {
-                            HashSet<int> addressMap = address.GetOrAdd(log.Address, static _ => []);
-                            addressMap.Add(block.BlockNumber);
+                        HashSet<int> addressMap = address.GetOrAdd(new Address(logAddress), static _ => []);
+                        addressMap.Add(block.BlockNumber);
 
-                            for (int i = 0; i < log.Topics.Length; i++)
-                            {
-                                Dictionary<Hash256, HashSet<int>> topicI = topic.GetOrAdd(i, static _ => []);
-                                HashSet<int> topicMap = topicI.GetOrAdd(log.Topics[i], static _ => []);
-                                topicMap.Add(block.BlockNumber);
-                            }
+                        for (int i = 0; i < logTopics.Length / Hash256.Size; i++)
+                        {
+                            Dictionary<Hash256, HashSet<int>> topicI = topic.GetOrAdd(i, static _ => []);
+                            HashSet<int> topicMap = topicI.GetOrAdd(new Hash256(logTopics.Slice(i * Hash256.Size, Hash256.Size)), static _ => []);
+                            topicMap.Add(block.BlockNumber);
                         }
                     }
                 }

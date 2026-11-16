@@ -24,6 +24,7 @@ using Nethermind.Facade.Find;
 using Nethermind.History;
 using Nethermind.Logging;
 using NSubstitute;
+using NSubstitute.Core;
 using NUnit.Framework;
 using NUnit.Framework.Constraints;
 
@@ -120,7 +121,7 @@ public class LogIndexBuilderTests
         public override LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null)
         {
             foreach (BlockReceipts blockReceipts in batch)
-                _receiptCounts[blockReceipts.BlockNumber] = blockReceipts.Receipts.Length;
+                _receiptCounts[blockReceipts.BlockNumber] = blockReceipts.TxCount;
             return base.Aggregate(batch, isBackwardSync, stats);
         }
     }
@@ -165,17 +166,13 @@ public class LogIndexBuilderTests
         _config = new LogIndexConfig { Enabled = true, MaxReorgDepth = MaxReorgDepth, MaxBatchSize = BatchSize };
         _blockTree = Build.A.BlockTree().OfChainLength(MaxBlock + 1).BlockTree;
         _syncConfig = new SyncConfig { FastSync = true, SnapSync = true };
-        _receiptStorage = Substitute.For<IReceiptStorage>();
+        _receiptStorage = new InMemoryReceiptStorage();
         _logManager = new TestLogManager();
         _testDisposables = [];
 
         Block head = _blockTree.Head!;
         _blockTree.SyncPivot = (head.Number, head.Hash);
         _syncConfig.PivotNumber = _blockTree.SyncPivot.BlockNumber;
-
-        _receiptStorage
-            .Get(Arg.Any<Block>())
-            .Returns(c => []);
     }
 
     [TearDown]
@@ -304,9 +301,7 @@ public class LogIndexBuilderTests
 
             return (ulong)barrier;
         });
-        prunedTree
-            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
-            .Returns(ci =>
+        ReturnBlocks(prunedTree, ci =>
             {
                 ulong number = ci.ArgAt<ulong>(0);
                 return number == (ulong)storedMax + 1 ? null : realTree.FindBlock(number, ci.ArgAt<BlockTreeLookupOptions>(1));
@@ -353,9 +348,7 @@ public class LogIndexBuilderTests
             polledEmptyBatch.TrySetResult();
             return 0UL;
         });
-        tree
-            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
-            .Returns(ci =>
+        ReturnBlocks(tree, ci =>
             {
                 Block? block = realTree.FindBlock(ci.ArgAt<ulong>(0), ci.ArgAt<BlockTreeLookupOptions>(1));
                 if (block is not null && !realTree.IsMainChain(block.Header))
@@ -379,6 +372,7 @@ public class LogIndexBuilderTests
     {
         const int inserted = MaxBlock / 2;
         int downloadedTo = 0;
+        _receiptStorage = Substitute.For<IReceiptStorage>();
 
         IBlockTree realTree = _blockTree;
         IBlockTree tree = Substitute.For<IBlockTree>();
@@ -387,9 +381,7 @@ public class LogIndexBuilderTests
         // A beacon header that is not on the main chain yet, so the canonical lookup of it fails.
         tree.FinalizedHash.Returns(TestItem.KeccakA);
         tree.FindHeader(TestItem.KeccakA, BlockTreeLookupOptions.None, Arg.Any<ulong?>()).Returns(realTree.FindHeader(90UL, BlockTreeLookupOptions.None));
-        tree
-            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
-            .Returns(ci => ci.ArgAt<ulong>(0) <= (ulong)Volatile.Read(ref downloadedTo)
+        ReturnBlocks(tree, ci => ci.ArgAt<ulong>(0) <= (ulong)Volatile.Read(ref downloadedTo)
                 ? realTree.FindBlock(ci.ArgAt<ulong>(0), ci.ArgAt<BlockTreeLookupOptions>(1))
                 : null);
 
@@ -476,9 +468,7 @@ public class LogIndexBuilderTests
         prunedTree.SyncPivot.Returns(realTree.SyncPivot);
         prunedTree.Head.Returns(realTree.Head);
         prunedTree.GetLowestBlock().Returns((ulong)oldestStored);
-        prunedTree
-            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
-            .Returns(ci => ci.ArgAt<ulong>(0) < oldestStored
+        ReturnBlocks(prunedTree, ci => ci.ArgAt<ulong>(0) < oldestStored
                 ? null
                 : realTree.FindBlock(ci.ArgAt<ulong>(0), ci.ArgAt<BlockTreeLookupOptions>(1)));
 
@@ -519,9 +509,7 @@ public class LogIndexBuilderTests
         tree.SyncPivot.Returns(realTree.SyncPivot);
         tree.Head.Returns(realTree.Head);
         tree.GetLowestBlock().Returns(_syncConfig.AncientBodiesBarrierCalc);
-        tree
-            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
-            .Returns(ci => ci.ArgAt<ulong>(0) < expectedMin
+        ReturnBlocks(tree, ci => ci.ArgAt<ulong>(0) < expectedMin
                 ? null
                 : realTree.FindBlock(ci.ArgAt<ulong>(0), ci.ArgAt<BlockTreeLookupOptions>(1)));
 
@@ -564,24 +552,25 @@ public class LogIndexBuilderTests
         _syncConfig.AncientReceiptsBarrier = 1;
 
         IBlockTree realTree = _blockTree;
+        Block[] islands = [BlockWithTransaction(islandLow), BlockWithTransaction(islandHigh)];
+        InMemoryReceiptStorage receiptStorage = new();
+        foreach (Block island in islands)
+            receiptStorage.Insert(island, [new TxReceipt { Logs = [] }], ensureCanonical: false);
+        _receiptStorage = receiptStorage;
+
         IBlockTree prunedTree = Substitute.For<IBlockTree>();
         prunedTree.SyncPivot.Returns(realTree.SyncPivot);
         prunedTree.Head.Returns(realTree.Head);
         prunedTree.GetLowestBlock().Returns((ulong)oldestStored);
-        prunedTree
-            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
-            .Returns(ci =>
+        ReturnBlocks(prunedTree, ci =>
             {
                 ulong number = ci.ArgAt<ulong>(0);
                 if (number is islandLow or islandHigh)
-                    return Build.A.Block.WithNumber(number).WithTransactions(Build.A.Transaction.TestObject).TestObject;
+                    return islands[number - islandLow];
 
                 bool pruned = number < oldestStored;
                 return pruned ? null : realTree.FindBlock(number, ci.ArgAt<BlockTreeLookupOptions>(1));
             });
-        _receiptStorage
-            .Get(Arg.Is<Block>(b => b.Number == islandLow || b.Number == islandHigh))
-            .Returns([new TxReceipt()]);
 
         RecordingLogIndexStorage storage = new();
         LogIndexBuilder builder = GetService(
@@ -618,26 +607,23 @@ public class LogIndexBuilderTests
         _syncConfig.AncientReceiptsBarrier = 1;
 
         IBlockTree realTree = _blockTree;
+        Block stalledBlock = BlockWithTransaction(stalledHeight);
+        InMemoryReceiptStorage receiptStorage = new();
+        _receiptStorage = receiptStorage;
+
         IBlockTree prunedTree = Substitute.For<IBlockTree>();
         prunedTree.SyncPivot.Returns(realTree.SyncPivot);
         prunedTree.Head.Returns(realTree.Head);
         prunedTree.GetLowestBlock().Returns((ulong)oldestStored);
-        prunedTree
-            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
-            .Returns(ci =>
+        ReturnBlocks(prunedTree, ci =>
             {
                 ulong number = ci.ArgAt<ulong>(0);
                 if (number is stalledHeight)
-                    return Build.A.Block.WithNumber(number).WithTransactions(Build.A.Transaction.TestObject).TestObject;
+                    return stalledBlock;
 
                 bool pruned = number < oldestStored;
                 return pruned ? null : realTree.FindBlock(number, ci.ArgAt<BlockTreeLookupOptions>(1));
             });
-
-        bool reclaimed = false;
-        _receiptStorage
-            .Get(Arg.Is<Block>(b => b.Number == stalledHeight))
-            .Returns(_ => Volatile.Read(ref reclaimed) ? [new TxReceipt()] : []);
 
         RecordingLogIndexStorage storage = new();
         LogIndexBuilder builder = GetService(
@@ -654,7 +640,7 @@ public class LogIndexBuilderTests
         Assert.That(builder.BackwardSyncCompletion.IsCompleted, Is.False,
             "a below-boundary height with a body but no readable receipts is either mid-reclaim or a retained height that lost its data - the descent must wait, not complete and not fabricate an empty entry");
 
-        Volatile.Write(ref reclaimed, true);
+        receiptStorage.Insert(stalledBlock, [new TxReceipt { Logs = [] }], ensureCanonical: false);
 
         Task completion = WaitMinBlockAsync(storage, 0, cancellation);
         await completion;
@@ -681,9 +667,7 @@ public class LogIndexBuilderTests
         prunedTree.SyncPivot.Returns(realTree.SyncPivot);
         prunedTree.Head.Returns(realTree.Head);
         prunedTree.GetLowestBlock().Returns((ulong)oldestStored);
-        prunedTree
-            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
-            .Returns(ci =>
+        ReturnBlocks(prunedTree, ci =>
             {
                 ulong number = ci.ArgAt<ulong>(0);
                 return number < oldestStored ? null : realTree.FindBlock(number, ci.ArgAt<BlockTreeLookupOptions>(1));
@@ -728,9 +712,7 @@ public class LogIndexBuilderTests
         downloadingTree.SyncPivot.Returns(realTree.SyncPivot);
         downloadingTree.Head.Returns(realTree.Head);
         downloadingTree.GetLowestBlock().Returns(_ => (ulong)Volatile.Read(ref publishedBoundary));
-        downloadingTree
-            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
-            .Returns(ci =>
+        ReturnBlocks(downloadingTree, ci =>
             {
                 ulong number = ci.ArgAt<ulong>(0);
                 return number >= (ulong)Volatile.Read(ref frontier)
@@ -788,9 +770,7 @@ public class LogIndexBuilderTests
         latchedTree.SyncPivot.Returns(realTree.SyncPivot);
         latchedTree.Head.Returns(realTree.Head);
         latchedTree.GetLowestBlock().Returns((ulong)latchedBoundary);
-        latchedTree
-            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
-            .Returns(ci =>
+        ReturnBlocks(latchedTree, ci =>
             {
                 ulong number = ci.ArgAt<ulong>(0);
                 return number >= (ulong)Volatile.Read(ref frontier)
@@ -833,9 +813,7 @@ public class LogIndexBuilderTests
         prunedTree.SyncPivot.Returns(realTree.SyncPivot);
         prunedTree.Head.Returns(realTree.Head);
         prunedTree.GetLowestBlock().Returns((ulong)oldestStored);
-        prunedTree
-            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
-            .Returns(ci =>
+        ReturnBlocks(prunedTree, ci =>
             {
                 ulong number = ci.ArgAt<ulong>(0);
                 return number < oldestStored ? null : realTree.FindBlock(number, ci.ArgAt<BlockTreeLookupOptions>(1));
@@ -876,9 +854,7 @@ public class LogIndexBuilderTests
         prunedTree.SyncPivot.Returns(realTree.SyncPivot);
         prunedTree.Head.Returns(realTree.Head);
         prunedTree.GetLowestBlock().Returns((ulong)oldestStored);
-        prunedTree
-            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
-            .Returns(ci =>
+        ReturnBlocks(prunedTree, ci =>
             {
                 ulong number = ci.ArgAt<ulong>(0);
                 if (number is stalledHeight)
@@ -909,7 +885,7 @@ public class LogIndexBuilderTests
         }
     }
 
-    // FindBlock must succeed for the single pivot-setup lookup in StartAsync, then throw on
+    // FindHeader must succeed for the single pivot-setup lookup in StartAsync, then throw on
     // the later lookups issued by DoQueueBlocks — that is the self-await deadlock path.
     private IBlockTree CreateFailingBlockTree(Exception exception)
     {
@@ -919,13 +895,21 @@ public class LogIndexBuilderTests
         IBlockTree throwingTree = Substitute.For<IBlockTree>();
         throwingTree.SyncPivot.Returns(realTree.SyncPivot);
         throwingTree.Head.Returns(realTree.Head);
-        throwingTree
-            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
-            .Returns(ci => Interlocked.Increment(ref findCalls) == 1
+        ReturnBlocks(throwingTree, ci => Interlocked.Increment(ref findCalls) == 1
                 ? realTree.FindBlock(ci.ArgAt<ulong>(0), ci.ArgAt<BlockTreeLookupOptions>(1))
                 : throw exception);
 
         return throwingTree;
+    }
+
+    private static Block BlockWithTransaction(ulong number) =>
+        Build.A.Block.WithNumber(number).WithTransactions(Build.A.Transaction.TestObject).TestObject;
+
+    /// <summary>Serves each canonical block the builder reads by number: <paramref name="findBlock"/> returns null for a block the tree lacks.</summary>
+    private static void ReturnBlocks(IBlockTree tree, Func<CallInfo, Block?> findBlock)
+    {
+        tree.FindHeader(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>()).Returns(ci => findBlock(ci)?.Header);
+        tree.HasBlock(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(true);
     }
 
     private static Task WaitMaxBlockAsync(TestLogIndexStorage storage, int blockNumber, CancellationToken cancellation)
