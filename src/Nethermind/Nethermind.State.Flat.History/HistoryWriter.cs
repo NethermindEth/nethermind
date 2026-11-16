@@ -859,8 +859,6 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         IWriteBatch accountBatch = columns.AccountHistory;
         IWriteBatch storageBatch = columns.StorageHistory;
 
-        Span<byte> keyBuffer = stackalloc byte[BaseFlatPersistence.StorageKeyLength];
-
         int accountCount = pending.Accounts.Count;
         KeyValuePair<ValueHash256, ulong>[] accounts = ArrayPool<KeyValuePair<ValueHash256, ulong>>.Shared.Rent(accountCount);
         ((ICollection<KeyValuePair<ValueHash256, ulong>>)pending.Accounts).CopyTo(accounts, 0);
@@ -870,10 +868,10 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         for (int offset = 0; offset < accountCount; offset += PreValueMultiGetChunkSize)
         {
             int count = Math.Min(PreValueMultiGetChunkSize, accountCount - offset);
-            byte[][] keys = count == accountChunkKeys.Length ? accountChunkKeys : new byte[count][];
+            byte[][] keys = count == accountChunkKeys.Length ? accountChunkKeys : accountChunkKeys[..count];
             for (int i = 0; i < count; i++)
             {
-                keys[i] = HistoryKeyLayout.ToFlatStateKey(accounts[offset + i].Key.Bytes).ToArray();
+                HistoryKeyLayout.ToFlatStateKey(accounts[offset + i].Key.Bytes).CopyTo(keys[i] ??= new byte[BaseFlatPersistence.AccountKeyLength]);
             }
 
             KeyValuePair<byte[], byte[]?>[] preValues = _persistedAccounts[keys];
@@ -894,10 +892,10 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         for (int offset = 0; offset < storageCount; offset += PreValueMultiGetChunkSize)
         {
             int count = Math.Min(PreValueMultiGetChunkSize, storageCount - offset);
-            byte[][] keys = count == storageChunkKeys.Length ? storageChunkKeys : new byte[count][];
+            byte[][] keys = count == storageChunkKeys.Length ? storageChunkKeys : storageChunkKeys[..count];
             for (int i = 0; i < count; i++)
             {
-                keys[i] = BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(keyBuffer, storages[offset + i].Key.AddrPath, storages[offset + i].Key.SlotHash).ToArray();
+                BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(keys[i] ??= new byte[BaseFlatPersistence.StorageKeyLength], storages[offset + i].Key.AddrPath, storages[offset + i].Key.SlotHash);
             }
 
             KeyValuePair<byte[], byte[]?>[] preValues = _persistedStorage[keys];
