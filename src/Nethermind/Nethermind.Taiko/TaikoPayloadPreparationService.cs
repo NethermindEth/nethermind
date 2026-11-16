@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
@@ -167,14 +168,44 @@ public class TaikoPayloadPreparationService(
         RlpReader ctx = reader.EnterSequence(out int transactionsLength);
 
         Transaction[] transactions = new Transaction[ctx.CountItems(RlpLimit.DefaultLimit)];
-        for (int txIndex = 0; txIndex < transactions.Length; txIndex++)
+        int decodedCount = 0;
+        for (int itemIndex = 0; itemIndex < transactions.Length; itemIndex++)
         {
-            transactions[txIndex] = txDecoder.DecodeGuardNotNull(ref ctx);
+            RlpReader item = new(ctx.ReadEncodedItem());
+            if (itemIndex == 0)
+            {
+                transactions[decodedCount++] = txDecoder.DecodeGuardNotNull(ref item);
+            }
+            else if (TryDecodeProposedTransaction(ref item, itemIndex, out Transaction? transaction))
+            {
+                transactions[decodedCount++] = transaction;
+            }
         }
 
         reader.ExitSequence(in ctx, transactionsLength);
 
+        if (decodedCount < transactions.Length)
+        {
+            Array.Resize(ref transactions, decodedCount);
+        }
+
         return transactions;
+    }
+
+    private bool TryDecodeProposedTransaction(ref RlpReader item, int itemIndex, [NotNullWhen(true)] out Transaction? transaction)
+    {
+        try
+        {
+            transaction = txDecoder.DecodeGuardNotNull(ref item);
+        }
+        catch (RlpReaderException e)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Skipping proposed transaction {itemIndex} that cannot be decoded: {e.Message}");
+            transaction = null;
+            return false;
+        }
+
+        return true;
     }
 
     private Block BuildBlock(BlockHeader parentHeader, TaikoPayloadAttributes payloadAttributes)
