@@ -156,6 +156,6 @@ public interface INetworkConfig : IConfig
     [ConfigItem(DefaultValue = "true", Description = "Reject discovery nodes whose IP key was seen recently (time-windowed), using the peer IP filter.")]
     bool FilterDiscoveryNodesByRecentIp { get; set; }
 
-    [ConfigItem(DefaultValue = "true", Description = "When filtering discovery nodes by recent IP, bucket discovery node IPs by subnet (e.g., IPv4 /24, IPv6 /64) so multiple discovery node IPs in the same subnet share a single entry. If false, use exact IP addresses only.")]
+    [ConfigItem(DefaultValue = "true", Description = "When filtering discovery nodes by recent IP, bucket discovery node IPs by subnet (e.g., IPv4 /24, IPv6 /64) so only one discovery node per subnet is admitted at a time. The subnet stays reserved while that node remains active and is released once its recent-IP window expires. If false, use exact IP addresses only.")]
     bool FilterDiscoveryNodesBySameSubnet { get; set; }
 }

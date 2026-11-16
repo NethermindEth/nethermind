@@ -50,8 +50,10 @@ internal sealed class DiscoveryNodeAdmission(
     /// Records the node's address on first contact and returns whether it may be handled.
     /// </summary>
     /// <remarks>
-    /// Idempotent per node id, so both the adapter gate and the routing-table decorator may call it for the
-    /// same message. Self, exempt, and already-known nodes bypass the filter without consuming IP capacity.
+    /// Safe to call from both the adapter gate and the routing-table decorator for the same message: a node
+    /// admitted by the first call is recognized as known by the second. Self and exempt nodes bypass the
+    /// filter without consuming IP capacity. Already-known nodes refresh their address window through
+    /// <see cref="Touch"/>, so the subnet stays reserved for as long as the node remains active.
     /// </remarks>
     public bool TryAdmit(Node node)
     {
@@ -154,6 +156,9 @@ internal sealed class DiscoveryNodeAdmission(
             exempt.Add(bootNode.Id);
         }
 
+        // Nodes persisted before the upgrade keep their exemption. Filtering them at load could empty a
+        // node's routing table on the first restart, which hurts bootstrapping more than the subnet
+        // concentration this filter addresses.
         foreach (NetworkNode persistedNode in discoveryStorage.GetPersistedNodes())
         {
             exempt.Add(persistedNode.NodeId);
