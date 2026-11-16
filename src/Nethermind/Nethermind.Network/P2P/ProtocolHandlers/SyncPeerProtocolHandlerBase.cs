@@ -16,7 +16,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
@@ -423,11 +422,18 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             return resp;
         }
 
+        /// <summary>Whether the receipts message of this protocol carries the bloom of each receipt.</summary>
+        /// <remarks>
+        /// Set by the message format, not by <see cref="ProtocolVersion"/>: XDC protocols have versions above eth/69
+        /// but use the eth/63 receipts message.
+        /// </remarks>
+        protected virtual bool ReceiptsWithBloom => true;
+
         protected Task<ReceiptsMessage> FulfillReceiptsRequest(GetReceiptsMessage getReceiptsMessage, CancellationToken cancellationToken)
         {
             ReadOnlySpan<Hash256> hashes = getReceiptsMessage.Hashes.AsSpan();
             hashes = hashes[..Math.Min(hashes.Length, MaxReceiptsLookups)];
-            bool withBloom = ProtocolVersion < EthVersions.Eth69;
+            bool withBloom = ReceiptsWithBloom;
             // Before eth/69 the message encodes receipts with the registered decoder, which a plugin can replace.
             // Stored receipts are copied without this decoder, so such a plugin must also decorate IReceiptFinder.
             IRlpDecoder<TxReceipt> decoder = withBloom ? Rlp.GetDecoderOrThrow<TxReceipt>() : ReceiptDecoder69;
