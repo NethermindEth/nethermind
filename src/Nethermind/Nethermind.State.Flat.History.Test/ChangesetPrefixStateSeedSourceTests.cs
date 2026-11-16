@@ -40,6 +40,16 @@ public class ChangesetPrefixStateSeedSourceTests
     [TearDown]
     public void TearDown() => _columns.Dispose();
 
+    [TestCase(6UL, false)]
+    [TestCase(7UL, true)]
+    [TestCase(8UL, false)]
+    public void MayCover_FollowsTheIndexCoverage(ulong number, bool expected)
+    {
+        ChangesetPrefixStateSeedSource seeds = new(_index);
+
+        Assert.That(seeds.MayCover(Build.A.Block.WithNumber(number).TestObject), Is.EqualTo(expected), "only block 7 is claimed");
+    }
+
     [Test]
     public void SingleTransactionOnlyProvider_DefaultsToWholeBlockRefusal()
     {
