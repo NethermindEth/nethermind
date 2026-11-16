@@ -43,9 +43,8 @@ public class StateSyncTestHelpersTests : StateSyncFeedTestsBase
         await Assert.ThatAsync(() => ActivateAndWait(container.Resolve<SafeContext>()), expected);
     }
 
-    [TestCase("END")]
-    [TestCase("BEFORE SYNC")]
-    public async Task CompareTrees_fails_on_different_trees_at_any_stage(string stage)
+    [Test]
+    public async Task CompareTrees_fails_on_different_trees_at_any_stage([Values("END", "BEFORE SYNC")] string stage)
     {
         RemoteDbContext remote = new(_logManager);
         remote.StateTree.Set(TestItem.KeccakA, Build.An.Account.TestObject);
@@ -76,9 +75,9 @@ public class StateSyncTestHelpersTests : StateSyncFeedTestsBase
         local.SetAccountsAndCommit((TestItem.KeccakA, contract));
         Assert.That(local.RootHash, Is.EqualTo(remote.StateTree.RootHash));
 
-        // MissingNodes counts missing code too, so both of the collector's assertions fail here.
+        // MissingNodes counts missing code too, so both of the collector's assertions must fail here.
         MultipleAssertException? failure = Assert.Throws<MultipleAssertException>(() => local.CompareTrees(remote, _logger, stage));
-        Assert.That(failure, Has.Message.Contain("MissingCode"));
+        Assert.That(failure, Has.Message.Contain("MissingCode").And.Message.Contain("MissingNodes"));
 
         // With the code in place, the same comparison passes: the failure above was about the code only.
         container.ResolveNamed<IDb>(DbNames.Code).Set(codeHash, TrieScenarios.Code0);
