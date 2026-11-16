@@ -79,7 +79,7 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
 
     void IJsonOnDeserialized.OnDeserialized() => _isDeserializing = false;
 
-    internal bool HasConflictingCalldata => _data is not null && _input is not null && !_input.AsSpan().SequenceEqual(_data);
+    internal override bool HasConflictingCalldata => _data is not null && _input is not null && !_input.AsSpan().SequenceEqual(_data);
 
     internal override string? GetSubmissionDataError(string? conversionError = null)
     {

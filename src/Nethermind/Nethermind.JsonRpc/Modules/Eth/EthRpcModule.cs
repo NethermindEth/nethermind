@@ -391,7 +391,7 @@ public partial class EthRpcModule(
     /// </remarks>
     protected async Task<ResultWrapper<Hash256>?> CheckAndFillSendTransaction(SignableTransactionForRpc rpcTx)
     {
-        if (rpcTx is LegacyTransactionForRpc { HasConflictingCalldata: true })
+        if (rpcTx.HasConflictingCalldata)
             return ResultWrapper<Hash256>.Fail(RpcTransactionErrors.DataAndInputDiffer, ErrorCodes.InvalidInput);
 
         if (!rpcTx.ShouldCheckFeesBeforeConversion() || _blockFinder.Head?.Header is not { } head)
@@ -488,7 +488,7 @@ public partial class EthRpcModule(
         if (!_rpcConfig.EnableEthSignTransaction)
             return ResultWrapper<SignTransactionResult>.Fail("eth_signTransaction is disabled", ErrorCodes.MethodNotFound);
 
-        if (rpcTx is LegacyTransactionForRpc { HasConflictingCalldata: true })
+        if (rpcTx.HasConflictingCalldata)
             return ResultWrapper<SignTransactionResult>.Fail(RpcTransactionErrors.DataAndInputDiffer, ErrorCodes.InvalidInput);
 
         // With the signing fields present, fees are checked before the rest of the request; a request carrying
@@ -588,7 +588,7 @@ public partial class EthRpcModule(
         if (head is null)
             return ResultWrapper<FillTransactionResult>.Fail("No head block available", ErrorCodes.ResourceUnavailable);
 
-        if (rpcTx is LegacyTransactionForRpc { HasConflictingCalldata: true })
+        if (rpcTx.HasConflictingCalldata)
             return ResultWrapper<FillTransactionResult>.Fail(RpcTransactionErrors.DataAndInputDiffer, ErrorCodes.InvalidInput);
 
         IReleaseSpec spec = _specProvider.GetSpec(head);

@@ -29,6 +29,8 @@ public abstract class SignableTransactionForRpc : TransactionForRpc
     protected SignableTransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData)
         : base(transaction, extraData) { }
 
+    internal virtual bool HasConflictingCalldata => false;
+
     internal virtual bool ShouldCheckFeesBeforeConversion() => true;
 
     internal virtual bool ShouldFillDefaultsOnSend() => true;
