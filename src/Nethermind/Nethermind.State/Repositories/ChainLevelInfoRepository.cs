@@ -174,6 +174,49 @@ namespace Nethermind.State.Repositories
             int count = blockNumbers.Count;
             if (count == 0) return ArrayPoolList<ChainLevelInfo?>.Empty();
 
+            ArrayPoolList<ChainLevelInfo?> levels = new(count, count);
+            try
+            {
+                using ArrayPoolListRef<ulong> missingNumbers = new(count);
+                using ArrayPoolListRef<int> missingIndexes = new(count);
+                for (int i = 0; i < count; i++)
+                {
+                    if (_blockInfoCache.TryGetNoRefresh(new LevelNumber(blockNumbers[i]), out ChainLevelInfo? cached))
+                    {
+                        levels[i] = cached;
+                    }
+                    else
+                    {
+                        missingNumbers.Add(blockNumbers[i]);
+                        missingIndexes.Add(i);
+                    }
+                }
+
+                if (missingNumbers.Count > 0)
+                {
+                    using IOwnedReadOnlyList<ChainLevelInfo?> read = ReadLevels(missingNumbers);
+                    for (int i = 0; i < missingNumbers.Count; i++)
+                    {
+                        // A level persisted while this read ran is newer than the one read.
+                        levels[missingIndexes[i]] = _blockInfoCache.TryGetNoRefresh(new LevelNumber(missingNumbers[i]), out ChainLevelInfo? cached)
+                            ? cached
+                            : read[i];
+                    }
+                }
+
+                return levels;
+            }
+            catch
+            {
+                levels.Dispose();
+                throw;
+            }
+        }
+
+        private IOwnedReadOnlyList<ChainLevelInfo?> ReadLevels(in ArrayPoolListRef<ulong> blockNumbers)
+        {
+            int count = blockNumbers.Count;
+
             int keyLength = GetKeyLength(blockNumbers[0]);
             for (int i = 1; i < count; i++)
             {
