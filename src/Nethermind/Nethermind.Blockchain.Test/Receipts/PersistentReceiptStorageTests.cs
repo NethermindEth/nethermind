@@ -720,9 +720,16 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     public void Receipt_reads_from_a_native_store_decode_before_releasing_the_pinned_value()
     {
         PinnedReadDb blocks = new();
+        PinnedReadDb legacy = new();
+        TxReceipt legacyReceipt = Build.A.Receipt.WithBlockHash(TestItem.KeccakB).WithTransactionHash(TestItem.KeccakA).TestObject;
+        legacy.Set(TestItem.KeccakA, new ReceiptStorageDecoder().Encode(legacyReceipt, RlpBehaviors.Storage));
         IColumnsDb<ReceiptsColumns> columns = Substitute.For<IColumnsDb<ReceiptsColumns>>();
-        columns.GetColumnDb(Arg.Any<ReceiptsColumns>()).Returns(call =>
-            call.Arg<ReceiptsColumns>() == ReceiptsColumns.Blocks ? blocks : _receiptsDb.GetColumnDb(call.Arg<ReceiptsColumns>()));
+        columns.GetColumnDb(Arg.Any<ReceiptsColumns>()).Returns(call => call.Arg<ReceiptsColumns>() switch
+        {
+            ReceiptsColumns.Blocks => blocks,
+            ReceiptsColumns.Default => legacy,
+            _ => _receiptsDb.GetColumnDb(call.Arg<ReceiptsColumns>())
+        });
         columns.StartWriteBatch().Returns(_ => _receiptsDb.StartWriteBatch());
         PersistentReceiptStorage storage = new(columns, _specProvider, _receiptsRecovery, _blockTree, _blockStore,
             _receiptConfig, _decoder, logManager: _logManager)
@@ -730,7 +737,12 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         (Block block, TxReceipt[] receipts) = PrepareBlock();
         storage.Insert(block, receipts);
         storage.ClearCache();
+        _blockTree.FindBlock(block.Hash!).Returns((Block?)null);
+        _blockTree.FindHeader(block.Hash!, Arg.Any<BlockTreeLookupOptions>()).Returns(block.Header);
 
+        Hash256? legacyBlockHash = storage.FindBlockHash(TestItem.KeccakA);
+        TxReceipt[] retained = storage.Get(block.Hash!);
+        _blockTree.FindBlock(block.Hash!).Returns(block);
         TxReceipt?[] migrated = ((IReceiptMigrationStore)storage).GetForMigration(block.Number, block.Hash!);
         bool found = storage.TryGetReceipt(new ReceiptRecoveryBlock(block), receipts[0].TxHash!, out TxReceipt? single, out _, out _);
         TxReceipt[] read = storage.Get(block);
@@ -743,8 +755,12 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             Assert.That(single?.GasUsedTotal, Is.EqualTo(useCompactReceipts ? receipts[0].GasUsedTotal : null));
             Assert.That(read.Single().GasUsedTotal, Is.EqualTo(receipts[0].GasUsedTotal));
             Assert.That(missing, Is.Empty);
-            Assert.That(blocks.Lent, Is.EqualTo(3));
+            Assert.That(legacyBlockHash, Is.EqualTo(TestItem.KeccakB));
+            Assert.That(retained.SingleOrDefault()?.GasUsedTotal, Is.EqualTo(useCompactReceipts ? null : receipts[0].GasUsedTotal));
+            Assert.That(blocks.Lent, Is.EqualTo(4));
             Assert.That(blocks.Outstanding, Is.Zero);
+            Assert.That(legacy.Lent, Is.EqualTo(1));
+            Assert.That(legacy.Outstanding, Is.Zero);
         }
     }
 
