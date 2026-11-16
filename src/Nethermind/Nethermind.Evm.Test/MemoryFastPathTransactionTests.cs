@@ -28,6 +28,8 @@ namespace Nethermind.Evm.Test;
 /// Each table runs on a chain of its own with the same history, and every transaction's status, gas, output, logs and
 /// storage must agree. <see cref="HostMemoryFastPathTests"/> drives one frame; this reaches memory across frames:
 /// pooled frames and arrays reused with stale bytes, call input and output, return data, copies, logs and creation.
+/// The reference also traces memory, which initializes the active memory before every instruction, so it does not
+/// share the lazy clearing of the tables it checks.
 /// </remarks>
 [Parallelizable(ParallelScope.All)]
 public class MemoryFastPathTransactionTests
@@ -232,6 +234,7 @@ public class MemoryFastPathTransactionTests
         {
             IsTracingReceipt = true;
             IsTracingInstructions = table == Table.Traced;
+            IsTracingMemory = table == Table.Traced;
             _cancelable = table == Table.NoTraceCancelable;
         }
 
