@@ -4,14 +4,17 @@
 using System;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Clique;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
 using Nethermind.Trie;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
@@ -76,6 +79,30 @@ public class SnapshotManagerTests
 
         Assert.Throws<InvalidOperationException>(() => snapshotManager.GetOrCreateSnapshot(CliqueConfig.Default.Epoch, block4Hash));
         Assert.That(snapshotDb.Keys, Is.Empty);
+    }
+
+    [Test]
+    public void Header_validation_rejects_a_wrong_number_before_the_seal_creates_a_snapshot()
+    {
+        using MemDb snapshotDb = new();
+        SnapshotManager snapshotManager = new(CliqueConfig.Default, snapshotDb, _blockTree, NullEthereumEcdsa.Instance, LimboLogs.Instance);
+        CliqueSealValidator sealValidator = new(CliqueConfig.Default, snapshotManager, LimboLogs.Instance);
+        HeaderValidator headerValidator = new(_blockTree, sealValidator,
+            new TestSingleReleaseSpecProvider(new ReleaseSpec { MaximumExtraDataSize = 1024 }), LimboLogs.Instance);
+        BlockHeader parent = _blockTree.FindHeader(4, BlockTreeLookupOptions.None)!;
+        BlockHeader header = Rlp.Decode<Block>(Bytes.FromHexString(Block5Rlp)).Header;
+        header.Number = CliqueConfig.Default.Epoch + 1;
+        header.Hash = header.CalculateHash();
+
+        bool valid = headerValidator.Validate(header, parent, false, out string error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.False);
+            Assert.That(error, Is.EqualTo(BlockErrorMessages.InvalidBlockNumber));
+            Assert.That(snapshotDb.Keys, Is.Empty);
+            Assert.That(() => snapshotManager.GetOrCreateSnapshot(CliqueConfig.Default.Epoch, parent.Hash!), Throws.InvalidOperationException);
+        }
     }
 
     [Test]
