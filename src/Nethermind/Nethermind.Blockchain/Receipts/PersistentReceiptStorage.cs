@@ -606,11 +606,11 @@ namespace Nethermind.Blockchain.Receipts
                 return IndexOf(pending.Receipts, pending.Receipts.Length, txHash);
             }
 
-            Span<byte> receiptsData = GetReceiptData(blockNumber, blockHash);
-            if (receiptsData.IsEmpty) return -1;
-
+            ReadOnlySpan<byte> receiptsData = GetReceiptData(blockNumber, blockHash, out nint handle);
             try
             {
+                if (receiptsData.IsEmpty) return -1;
+
                 RlpReader reader = new(receiptsData);
                 return ReceiptArrayStorageDecoder.TrySkipCompactPrefix(ref reader, out ReadOnlySpan<byte> txHashes) ? IndexOf(txHashes, txHash) : -1;
             }
@@ -622,7 +622,7 @@ namespace Nethermind.Blockchain.Receipts
             }
             finally
             {
-                _receiptsDb.DangerousReleaseMemory(receiptsData);
+                ReleasePinned(_receiptsDb, handle);
             }
         }
 
@@ -746,7 +746,7 @@ namespace Nethermind.Blockchain.Receipts
             if (!_storageDecoder.CanEncodeNetworkReceipts) return false;
 
             Hash256 blockHash = header.Hash!;
-            Span<byte> receiptsData = GetReceiptData(header.Number, blockHash);
+            ReadOnlySpan<byte> receiptsData = GetReceiptData(header.Number, blockHash, out nint handle);
             try
             {
                 // Pending and non-compact receipts are left to the decoders before the block is read.
@@ -760,7 +760,7 @@ namespace Nethermind.Blockchain.Receipts
             }
             finally
             {
-                _receiptsDb.DangerousReleaseMemory(receiptsData);
+                ReleasePinned(_receiptsDb, handle);
             }
         }
 
