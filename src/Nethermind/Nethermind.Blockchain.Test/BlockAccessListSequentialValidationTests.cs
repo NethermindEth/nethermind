@@ -23,6 +23,7 @@ using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
 using System;
+using System.Collections.Generic;
 using System.Threading;
 
 namespace Nethermind.Blockchain.Test;
@@ -127,13 +128,14 @@ public class BlockAccessListSequentialValidationTests
         Assert.DoesNotThrow(() => RunSequentialValidation(tampered, processingOptions));
     }
 
-    [TestCase(ProcessingOptions.NoValidation)]
-    [TestCase(ProcessingOptions.ForceSequentialBlockAccessList)]
-    public void Sequential_validation_hashes_the_generated_bal_when_rows_were_not_validated(ProcessingOptions processingOptions)
+    [Test]
+    public void Sequential_validation_hashes_the_generated_bal_when_rows_were_not_validated(
+        [Values(ProcessingOptions.NoValidation, ProcessingOptions.ForceSequentialBlockAccessList)] ProcessingOptions processingOptions,
+        [Values] bool verifySequentialBlocks)
     {
         ReadOnlyBlockAccessList suggested = WithExtraAccount(GenerateBlockAccessList(), TestItem.AddressC);
 
-        (BlockAccessListManager balManager, Block block) = RunSequentialValidation(suggested, processingOptions);
+        (BlockAccessListManager balManager, Block block) = RunSequentialValidation(suggested, processingOptions, verifySequentialBlocks);
 
         using (Assert.EnterMultipleScope())
         {
@@ -159,6 +161,72 @@ public class BlockAccessListSequentialValidationTests
             Assert.That(systemAccount.StorageChanges, Is.Empty);
             Assert.That(systemAccount.StorageReads, Is.Empty);
         }
+    }
+
+    [TestCaseSource(nameof(SuggestedBlockAccessLists))]
+    public void Sequential_verify_only_gives_the_verdict_of_the_generated_bal_without_building_it(
+        Func<ReadOnlyBlockAccessList, ReadOnlyBlockAccessList> suggest, bool expectedAccepted)
+    {
+        ReadOnlyBlockAccessList suggested = suggest(GenerateBlockAccessList());
+
+        bool generatedAccepted = Accepts(suggested, verifySequentialBlocks: false, out _, out Block generatedBlock)
+            && generatedBlock.Header.BlockAccessListHash == suggested.WireHash;
+        bool verifiedAccepted = Accepts(suggested, verifySequentialBlocks: true, out BlockAccessListManager balManager, out Block verifiedBlock);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(generatedAccepted, Is.EqualTo(expectedAccepted), "generated");
+            Assert.That(verifiedAccepted, Is.EqualTo(expectedAccepted), "verify-only");
+            Assert.That(balManager.GeneratedBlockAccessList.AccountChanges.Count, Is.Zero);
+            Assert.That(verifiedBlock.GeneratedBlockAccessList, Is.Null);
+            Assert.That(verifiedBlock.Header.BlockAccessListHash, Is.EqualTo(suggested.WireHash));
+        }
+    }
+
+    private static IEnumerable<TestCaseData> SuggestedBlockAccessLists()
+    {
+        yield return Case(static bal => bal, true, "Valid");
+        yield return Case(static bal => WithExtraAccount(bal, TestItem.AddressC), false, "Extra account");
+        yield return Case(static bal => WithWireHash(new ReadOnlyBlockAccessList(
+            Array.FindAll(bal.AccountChanges.AsSpan().ToArray(), static account => account.Address != TestItem.AddressB), 0)), false, "Missing account");
+        yield return Case(static bal => WithRecipient(bal, []), false, "Missing read");
+        yield return Case(static bal => WithRecipient(bal, [ReadSlot + 1]), false, "Different read");
+        yield return Case(static bal => WithRecipient(bal, [ReadSlot, ReadSlot + 1]), false, "Extra read");
+        yield return Case(static bal => WithRecipient(bal, [ReadSlot],
+            Array.ConvertAll(bal.GetAccountChanges(TestItem.AddressB)!.BalanceChanges, static change => new BalanceChange(change.Index, change.Value + 1))), false, "Wrong balance");
+
+        static TestCaseData Case(Func<ReadOnlyBlockAccessList, ReadOnlyBlockAccessList> suggest, bool accepted, string name)
+            => new TestCaseData(suggest, accepted).SetName(name);
+    }
+
+    /// <summary>Runs <paramref name="suggested"/> through sequential validation of a block whose header declares its hash.</summary>
+    private static bool Accepts(ReadOnlyBlockAccessList suggested, bool verifySequentialBlocks, out BlockAccessListManager balManager, out Block block)
+    {
+        (IWorldState stateProvider, balManager) = CreateFundedAmsterdamSetup(verifySequentialBlocks);
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        FundSender(stateProvider);
+
+        block = BuildBlock();
+        block.Header.BlockAccessListHash = suggested.WireHash;
+        try
+        {
+            RunSequential(stateProvider, balManager, block, suggested);
+            return true;
+        }
+        catch (BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException)
+        {
+            return false;
+        }
+    }
+
+    private static ReadOnlyBlockAccessList WithRecipient(ReadOnlyBlockAccessList bal, ulong[] reads, BalanceChange[]? balanceChanges = null)
+    {
+        ReadOnlyAccountChanges recipient = bal.GetAccountChanges(TestItem.AddressB)!;
+        return WithWireHash(Build.A.BlockAccessList
+            .WithAccountChanges([.. bal.AccountChanges.AsSpan()])
+            .WithAccountChanges(new ReadOnlyAccountChanges(recipient.Address, recipient.StorageChanges,
+                Array.ConvertAll(reads, static slot => (UInt256)slot), balanceChanges ?? recipient.BalanceChanges, recipient.NonceChanges, recipient.CodeChanges))
+            .TestObject);
     }
 
     /// <summary>
@@ -192,9 +260,10 @@ public class BlockAccessListSequentialValidationTests
 
     private static (BlockAccessListManager, Block) RunSequentialValidation(
         ReadOnlyBlockAccessList suggested,
-        ProcessingOptions processingOptions = ProcessingOptions.None)
+        ProcessingOptions processingOptions = ProcessingOptions.None,
+        bool verifySequentialBlocks = false)
     {
-        (IWorldState stateProvider, BlockAccessListManager balManager) = CreateFundedAmsterdamSetup();
+        (IWorldState stateProvider, BlockAccessListManager balManager) = CreateFundedAmsterdamSetup(verifySequentialBlocks);
         using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
         FundSender(stateProvider);
 
@@ -233,7 +302,7 @@ public class BlockAccessListSequentialValidationTests
         balManager.SetBlockAccessList(block);
     }
 
-    private static (IWorldState, BlockAccessListManager) CreateFundedAmsterdamSetup()
+    private static (IWorldState, BlockAccessListManager) CreateFundedAmsterdamSetup(bool verifySequentialBlocks = false)
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         TestSingleReleaseSpecProvider specProvider = new(Amsterdam.Instance);
@@ -242,7 +311,10 @@ public class BlockAccessListSequentialValidationTests
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), specProvider, LimboLogs.Instance));
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), specProvider, LimboLogs.Instance))
+        {
+            VerifySequentialBlocks = verifySequentialBlocks
+        };
         return (stateProvider, balManager);
     }
 

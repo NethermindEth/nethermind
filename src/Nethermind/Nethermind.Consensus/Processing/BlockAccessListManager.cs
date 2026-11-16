@@ -116,6 +116,16 @@ public partial class BlockAccessListManager(
     /// </summary>
     public bool ForceConstructGeneratedBlockAccessList { get; set; }
 
+    /// <summary>
+    /// Whether a sequentially executed block with a suggested access list is only verified against it, as on the
+    /// parallel path, instead of building <see cref="GeneratedBlockAccessList"/>.
+    /// </summary>
+    /// <remarks>
+    /// The stateless executor turns it on: it runs every block sequentially and needs only the verdict, never the
+    /// constructed list.
+    /// </remarks>
+    internal bool VerifySequentialBlocks { get; init; }
+
     // Non-null when the manager is constructing the per-block aggregate (always points at
     // GeneratedBlockAccessList itself in that case); null on the verify-only path where the
     // column-index validator stands in for the constructed list. Drives both the per-tx
@@ -154,11 +164,20 @@ public partial class BlockAccessListManager(
         if (Enabled)
         {
             Reset();
-            _currentGeneratedBlockAccessList = (ParallelExecutionEnabled && !ForceConstructGeneratedBlockAccessList) ? null : GeneratedBlockAccessList;
+            // Verify-only checks only the post-execution row at the end, so a sequential block needs the executor
+            // to validate every earlier row, which it skips for these options.
+            bool verifyOnly = ParallelExecutionEnabled
+                || (VerifySequentialBlocks
+                    && !_isBuilding
+                    && suggestedBlock.BlockAccessList is not null
+                    && !options.ContainsFlag(ProcessingOptions.NoValidation)
+                    && !options.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList));
+            _currentGeneratedBlockAccessList = (verifyOnly && !ForceConstructGeneratedBlockAccessList) ? null : GeneratedBlockAccessList;
             // A valid block generates the accounts its access list holds.
             if (suggestedBlock.BlockAccessList is { } suggestedAccess)
                 _currentGeneratedBlockAccessList?.EnsureCapacity(suggestedAccess.AccountChanges.Count);
-            if (VerifyOnly && suggestedBlock.BlockAccessList is { TotalStorageReads: > 0 } bal)
+            // Read coverage needs the BAL-backed world state of parallel execution.
+            if (VerifyOnly && ParallelExecutionEnabled && suggestedBlock.BlockAccessList is { TotalStorageReads: > 0 } bal)
                 _readPlan = new BalReadStoragePlan(bal);
             // Build the column-oriented validation index once per block; per-tx ChangesEqual
             // then collapses to row-aligned span compares. Tally suggested chargeable storage
