@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 
 namespace Nethermind.JsonRpc.Modules;
@@ -35,5 +37,30 @@ internal static class StateOverrideValidation
         }
 
         return lowest is null ? null : GetStorageConflictError(lowest, overrides[lowest]);
+    }
+
+    /// <summary>
+    /// Returns the error of the lowest address in <paramref name="overrides"/> with an invalid precompile move or a
+    /// storage conflict, or <see langword="null"/> if there is none.
+    /// </summary>
+    /// <remarks>Geth applies overrides in ascending address order and checks the move of an account before its storage.</remarks>
+    public static string? GetError(Dictionary<Address, AccountOverride>? overrides, IReleaseSpec spec)
+    {
+        if (overrides is null) return null;
+
+        Address[] addresses = [.. overrides.Keys];
+        Array.Sort(addresses);
+        foreach (Address address in addresses)
+        {
+            AccountOverride? accountOverride = overrides[address];
+            if (accountOverride?.MovePrecompileToAddress is { } destination
+                && StateOverridesExtensions.GetPrecompileMoveError(address, destination, spec.IsPrecompile(address), overrides) is { } moveError)
+                return moveError;
+
+            if (GetStorageConflictError(address, accountOverride) is { } storageError)
+                return storageError;
+        }
+
+        return null;
     }
 }

@@ -49,8 +49,23 @@ public sealed class BlockchainProcessorFacade
         _executorRecoversTraceSenders = executorRecoversTraceSenders;
     }
 
-    public Block? Process(Block block, ProcessingOptions options, IBlockTracer tracer, CancellationToken token = default)
+    public Block? Process(Block block, ProcessingOptions options, IBlockTracer tracer, CancellationToken token = default) =>
+        Process(block, options, tracer, ownsTransactions: false, token);
+
+    /// <param name="ownsTransactions">
+    /// Whether the transactions of <paramref name="block"/> are already copies the caller made with
+    /// <see cref="BlockReplayExtensions.WithOwnTransactions(Block)"/>, as a caller that replays one block many times does.
+    /// </param>
+    internal Block? Process(Block block, ProcessingOptions options, IBlockTracer tracer, bool ownsTransactions, CancellationToken token)
     {
+        // A replay that loads nonces from state writes them into the transactions it runs, along with the senders it
+        // recovers and the gas they spend. The block can be the block tree's, so the replay runs on copies, made before
+        // the preprocessor steps recover any sender.
+        if (!ownsTransactions && options.ContainsFlag(ProcessingOptions.LoadNonceFromState))
+        {
+            block = block.WithOwnTransactions();
+        }
+
         bool executorRecoversSenders = _executorRecoversTraceSenders && TransactionTraceBoundary.Get(tracer, options) is not null;
         for (int i = 0; i < _preprocessorSteps.Count; i++)
         {

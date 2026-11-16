@@ -21,7 +21,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
         public int Serialize(Span<byte> destination, TEth66Message message)
         {
             // The wrapped message writes itself, so only the prefix and the request id go through this writer.
-            int position = Rlp.StartSequence(destination, 0, Rlp.LengthOf(message.RequestId) + _ethMessageSerializer.GetLength(message.EthMessage));
+            int position = Rlp.StartSequence(destination, 0, MessageSequence.GetContentLength(destination.Length));
             RlpWriter writer = RlpWriter.ContentWriter(destination[position..]);
             writer.Encode(message.RequestId);
             position += writer.Length;

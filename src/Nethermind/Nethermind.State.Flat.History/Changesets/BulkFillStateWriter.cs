@@ -3,6 +3,7 @@
 
 using System.Buffers.Binary;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.State;
@@ -33,7 +34,11 @@ internal sealed class BulkFillStateWriter(IColumnsDb<Columns> db, IColumnsWriteB
             accounts.Remove(path.Bytes);
             new StorageWriter(batch, path, block, rlpWrappedSlots, clears).Clear();
         }
-        else accounts.Set(path.Bytes, AccountDecoder.Slim.EncodeAsBytes(account));
+        else
+        {
+            using ArrayPoolSpan<byte> rlp = AccountDecoder.Slim.EncodeToArrayPoolSpan(account);
+            accounts.PutSpan(path.Bytes, rlp);
+        }
     }
 
     public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries) =>

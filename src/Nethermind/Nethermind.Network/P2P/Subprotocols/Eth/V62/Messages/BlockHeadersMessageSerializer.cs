@@ -19,6 +19,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             RlpWriter writer = RlpWriter.ContentWriter(destination);
 
             RlpSequence sequence = writer.StartSequence(GetContentLength(message));
+            if (message.EncodedHeaders is { } encodedHeaders)
+            {
+                writer.WriteEncoded(encodedHeaders.AsSpan());
+                writer.EndSequence(sequence);
+                return writer.Length;
+            }
+
             ReadOnlySpan<BlockHeader> blockHeaders = message.BlockHeaders.AsSpan();
             for (int i = 0; i < blockHeaders.Length; i++)
             {
@@ -39,6 +46,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         private int GetContentLength(BlockHeadersMessage message)
         {
+            if (message.EncodedHeaders is { } encodedHeaders) return encodedHeaders.Count;
+
             int contentLength = 0;
             ReadOnlySpan<BlockHeader> blockHeaders = message.BlockHeaders.AsSpan();
             for (int i = 0; i < blockHeaders.Length; i++)
