@@ -100,7 +100,7 @@ public class SnapStorageRangesBenchmark
         (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> slots, IByteArrayList proofs) =
             _server.GetStorageRanges(_rootHash, _accounts, null, null, ISnapStateServer.HardResponseByteLimit, CancellationToken.None);
         int count = slots.Count;
-        slots.DisposeRecursive();
+        slots.Dispose();
         proofs?.Dispose();
         return count;
     }
