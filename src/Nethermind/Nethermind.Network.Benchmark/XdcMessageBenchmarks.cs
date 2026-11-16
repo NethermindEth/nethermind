@@ -11,6 +11,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Network.Test;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.P2P;
 using Nethermind.Xdc.Test.Helpers;

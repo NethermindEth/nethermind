@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections;
 using System.Collections.Generic;
@@ -10,7 +11,6 @@ using System.Net;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Buffers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
@@ -5763,7 +5763,7 @@ public class Eth72ProtocolHandlerTests
         _handler.HandleMessage(new NettyBufferPacket(statusPacket) { PacketType = 0 });
     }
 
-    private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
+    private void HandleZeroMessage<T>(T msg, int messageCode) where T : P2PMessage
     {
         using DisposableByteBuffer packet = _svc.ZeroSerialize(msg).AsDisposable();
         packet.ReadByte();
@@ -6345,8 +6345,8 @@ public class Eth72ProtocolHandlerTests
         public ArrayPoolSpan<byte> Serialize<T>(T message)
             where T : MessageBase => inner.Serialize(message);
 
-        public IByteBuffer ZeroSerialize<T>(T message, IByteBufferAllocator? allocator = null)
-            where T : MessageBase => inner.ZeroSerialize(message, allocator);
+        public void Serialize<T>(T message, IBufferWriter<byte> writer)
+            where T : MessageBase => inner.Serialize(message, writer);
 
         public T Deserialize<T>(ArraySegment<byte> bytes)
             where T : MessageBase => GetOverride<T>() ?? inner.Deserialize<T>(bytes);
