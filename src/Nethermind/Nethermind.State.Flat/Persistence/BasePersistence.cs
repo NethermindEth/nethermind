@@ -578,7 +578,7 @@ public static class BasePersistence
         public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath);
 
         public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp);
-        public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp);
+        public void SetStorageTrieNode(in ValueHash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp);
         public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to);
         public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to);
     }
@@ -966,7 +966,7 @@ public static class BasePersistence
         public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) =>
             _trieWriteBatch.SetStateTrieNode(path, rlp);
 
-        public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) =>
+        public void SetStorageTrieNode(in ValueHash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) =>
             _trieWriteBatch.SetStorageTrieNode(address, path, rlp);
 
         public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) =>

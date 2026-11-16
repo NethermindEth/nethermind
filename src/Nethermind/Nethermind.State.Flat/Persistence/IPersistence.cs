@@ -105,7 +105,7 @@ public interface IPersistence
         void SetAccount(Address addr, Account? account);
         void SetStorage(Address addr, in UInt256 slot, in UInt256? value);
         void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp);
-        void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp);
+        void SetStorageTrieNode(in ValueHash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp);
 
         /// <summary>
         /// Writes a slot whose value is already the trie-leaf RLP byte string (<c>RLP(stripped)</c>), as produced

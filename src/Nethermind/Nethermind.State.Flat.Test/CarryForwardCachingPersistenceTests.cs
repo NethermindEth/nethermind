@@ -1067,7 +1067,7 @@ public class CarryForwardCachingPersistenceTests
             }
 
             public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) { }
-            public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) { }
+            public void SetStorageTrieNode(in ValueHash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) { }
             public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) { }
             public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) { }
 

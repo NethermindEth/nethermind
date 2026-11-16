@@ -331,7 +331,7 @@ internal sealed class FakeWriteBatch : IPersistence.IWriteBatch
     public List<(Address Addr, Account? Account)> SetAccountCalls { get; } = [];
     public List<(Address Addr, UInt256 Slot, UInt256? Value)> SetStorageCalls { get; } = [];
     public List<(TreePath Path, byte[] Rlp)> SetStateTrieNodeCalls { get; } = [];
-    public List<(Hash256 Address, TreePath Path, byte[] Rlp)> SetStorageTrieNodeCalls { get; } = [];
+    public List<(ValueHash256 Address, TreePath Path, byte[] Rlp)> SetStorageTrieNodeCalls { get; } = [];
     public List<(ValueHash256 AddrHash, ValueHash256 SlotHash, byte[] RlpValue)> SetStorageRawEncodedCalls { get; } = [];
     public List<(ValueHash256 AddrHash, Account Account)> SetAccountRawCalls { get; } = [];
     public List<(ValueHash256 FromPath, ValueHash256 ToPath)> DeleteAccountRangeCalls { get; } = [];
@@ -348,7 +348,7 @@ internal sealed class FakeWriteBatch : IPersistence.IWriteBatch
     public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) =>
         SetStateTrieNodeCalls.Add((path, rlp.ToArray()));
 
-    public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) =>
+    public void SetStorageTrieNode(in ValueHash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) =>
         SetStorageTrieNodeCalls.Add((address, path, rlp.ToArray()));
 
     public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) =>
