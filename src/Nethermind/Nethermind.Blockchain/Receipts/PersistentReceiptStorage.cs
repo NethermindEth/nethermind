@@ -1136,7 +1136,7 @@ namespace Nethermind.Blockchain.Receipts
             private readonly IColumnsWriteBatch<ReceiptsColumns> _batch;
             private readonly IWriteBatch _bodies;
             private readonly IWriteBatch _transactions;
-            private readonly ArrayPoolList<(BlockHeader Header, TxReceipt[]? Receipts, bool Cache)> _inserted = new(16);
+            private readonly ArrayPoolList<(BlockHeader Header, TxReceipt[]? Receipts, bool Cache)> _inserted = [with(16)];
             private ulong _lowestBlockNumber = ulong.MaxValue;
             private bool _disposed;
 
