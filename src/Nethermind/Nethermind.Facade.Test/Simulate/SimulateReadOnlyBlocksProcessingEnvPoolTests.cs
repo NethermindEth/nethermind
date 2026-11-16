@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Facade.Simulate;
@@ -129,6 +130,17 @@ public class SimulateReadOnlyBlocksProcessingEnvPoolTests
         }
     }
 
+    [Test]
+    public void Release_ClearsRequestStores()
+    {
+        FakeEnvFactory factory = new();
+        using SimulateReadOnlyBlocksProcessingEnvPool pool = new(factory.Create, maxConcurrent: 1);
+
+        pool.Begin(null).Dispose();
+
+        factory.Envs[0].RequestStore.Received(1).ClearCache();
+    }
+
     private sealed class FakeEnvFactory(bool throwOnBegin = false)
     {
         private bool _throwOnBegin = throwOnBegin;
@@ -162,6 +174,7 @@ public class SimulateReadOnlyBlocksProcessingEnvPoolTests
     {
         public bool IsDisposed { get; private set; }
         public int BeginCount { get; private set; }
+        public IClearableCache RequestStore { get; } = Substitute.For<IClearableCache>();
 
         public SimulateReadOnlyBlocksProcessingScope Begin(BlockHeader? baseBlock)
         {
@@ -170,7 +183,8 @@ public class SimulateReadOnlyBlocksProcessingEnvPoolTests
             return new SimulateReadOnlyBlocksProcessingScope(
                 null!, null!, null!, null!, null!, null!,
                 Substitute.For<IReadOnlyDbProvider>(),
-                new NoopDisposable());
+                new NoopDisposable(),
+                [RequestStore]);
         }
 
         public void Dispose() => IsDisposed = true;

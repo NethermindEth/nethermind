@@ -5,6 +5,7 @@ using System;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm;
@@ -30,12 +31,14 @@ public class SimulateReadOnlyBlocksProcessingEnv(
     IReadOnlyDbProvider readOnlyDbProvider
 ) : ISimulateReadOnlyBlocksProcessingEnv
 {
-    public SimulateReadOnlyBlocksProcessingScope Begin(BlockHeader? baseBlock)
+    public SimulateReadOnlyBlocksProcessingScope Begin(BlockHeader? baseBlock) => Begin(baseBlock, []);
+
+    public SimulateReadOnlyBlocksProcessingScope Begin(BlockHeader? baseBlock, IClearableCache[] requestStores)
     {
         blockTreeOverlay.ResetMainChain();
         IDisposable envDisposer = overridableEnv.BuildAndOverride(baseBlock);
         return new SimulateReadOnlyBlocksProcessingScope(
-            worldState, specProvider, blockTree, codeInfoRepository, simulateState, blockProcessor, readOnlyDbProvider, envDisposer
+            worldState, specProvider, blockTree, codeInfoRepository, simulateState, blockProcessor, readOnlyDbProvider, envDisposer, requestStores
         );
     }
 }
@@ -48,7 +51,8 @@ public class SimulateReadOnlyBlocksProcessingScope(
     SimulateRequestState simulateState,
     IBlockProcessor blockProcessor,
     IReadOnlyDbProvider readOnlyDbProvider,
-    IDisposable overridableWorldStateCloser
+    IDisposable overridableWorldStateCloser,
+    IClearableCache[] requestStores
 ) : IDisposable
 {
     public IWorldState WorldState => worldState;
@@ -60,6 +64,11 @@ public class SimulateReadOnlyBlocksProcessingScope(
 
     public void Dispose()
     {
+        foreach (IClearableCache store in requestStores)
+        {
+            store.ClearCache();
+        }
+
         overridableWorldStateCloser.Dispose();
         readOnlyDbProvider.ClearTempChanges(); // For blocktree. The read only db has a buffer that need to be cleared.
     }

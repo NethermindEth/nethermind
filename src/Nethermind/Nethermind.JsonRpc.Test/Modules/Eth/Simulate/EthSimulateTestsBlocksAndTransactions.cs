@@ -21,6 +21,8 @@ using Nethermind.Core.Test.Encoding;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
@@ -789,6 +791,24 @@ public class EthSimulateTestsBlocksAndTransactions
             Assert.That(simulated.Number, Is.EqualTo(side.Number + 1));
             Assert.That(simulated.ParentHash, Is.EqualTo(side.Hash));
             Assert.That(new Hash256(simulated.Calls.Single().ReturnData!), Is.EqualTo(side.Hash));
+        }
+    }
+
+    [Test]
+    public async Task Test_eth_simulateV1_does_not_keep_execution_requests_of_simulated_blocks()
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(Prague.Instance);
+        BlockRecordingSimulateTracer tracer = new(chain.SpecProvider);
+        SimulatePayload<TransactionForRpc> payload = new() { BlockStateCalls = [new(), new()] };
+
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, chain.RpcConfig, chain.SpecProvider, new FixedTracerFactory(tracer));
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((bool)result.Result, Is.True, result.Result.ToString());
+            Assert.That(tracer.Blocks, Has.Count.EqualTo(2));
+            Assert.That(tracer.Blocks.Select(static block => block.ExecutionRequests), Is.All.Null, "simulated blocks are not kept with their execution requests");
         }
     }
 
@@ -3492,5 +3512,21 @@ public class EthSimulateTestsBlocksAndTransactions
         }
 
         return await BuildAmsterdamBalChain();
+    }
+
+    private sealed class BlockRecordingSimulateTracer(ISpecProvider specProvider) : SimulateBlockTracer(false, specProvider)
+    {
+        public List<Block> Blocks { get; } = [];
+
+        public override void StartNewBlockTrace(Block block)
+        {
+            Blocks.Add(block);
+            base.StartNewBlockTrace(block);
+        }
+    }
+
+    private sealed class FixedTracerFactory(IBlockTracer<SimulateCallResult> tracer) : ISimulateBlockTracerFactory<SimulateCallResult>
+    {
+        public IBlockTracer<SimulateCallResult> CreateSimulateBlockTracer(bool isTracingLogs, IWorldState worldState, ISpecProvider spec, BlockHeader block) => tracer;
     }
 }

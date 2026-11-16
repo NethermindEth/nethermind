@@ -93,23 +93,15 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
 
         SimulateReadOnlyBlocksProcessingEnv env = envLifetimeScope.Resolve<SimulateReadOnlyBlocksProcessingEnv>();
         return new DisposableSimulateReadOnlyBlocksProcessingEnv(
-            env, envLifetimeScope, tmpHeaderStore, tmpBlockStore, tmpChainLevelInfoRepository);
+            env, envLifetimeScope, [tmpHeaderStore, tmpBlockStore, tmpChainLevelInfoRepository]);
     }
 
     private sealed class DisposableSimulateReadOnlyBlocksProcessingEnv(
         SimulateReadOnlyBlocksProcessingEnv inner,
         ILifetimeScope scope,
-        IClearableCache tmpHeaderStore,
-        IClearableCache tmpBlockStore,
-        IClearableCache tmpChainLevelInfoRepository) : ISimulateReadOnlyBlocksProcessingEnv, IDisposable
+        IClearableCache[] requestStores) : ISimulateReadOnlyBlocksProcessingEnv, IDisposable
     {
-        public SimulateReadOnlyBlocksProcessingScope Begin(BlockHeader? baseBlock)
-        {
-            tmpHeaderStore.ClearCache();
-            tmpBlockStore.ClearCache();
-            tmpChainLevelInfoRepository.ClearCache();
-            return inner.Begin(baseBlock);
-        }
+        public SimulateReadOnlyBlocksProcessingScope Begin(BlockHeader? baseBlock) => inner.Begin(baseBlock, requestStores);
 
         public void Dispose() => scope.Dispose();
     }

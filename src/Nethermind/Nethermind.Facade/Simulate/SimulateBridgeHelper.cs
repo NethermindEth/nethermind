@@ -139,6 +139,8 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                     spec,
                     cancellationToken);
 
+                processedBlock.ExecutionRequests = null;
+
                 if (spec.IsEip1559Enabled && processedBlock.Header.BaseFeePerGas.IsZero)
                 {
                     EncodeZeroBaseFee(processedBlock);
