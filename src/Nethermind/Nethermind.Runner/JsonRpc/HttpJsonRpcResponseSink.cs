@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
@@ -21,7 +22,8 @@ internal sealed class HttpJsonRpcResponseSink(
     IJsonRpcConfig jsonRpcConfig,
     IJsonRpcLocalStats jsonRpcLocalStats,
     ILogger logger,
-    long requestStartTimestamp) : IJsonRpcResponseSink
+    long requestStartTimestamp,
+    UnsentResponseCounter? unsentResponses = null) : IJsonRpcResponseSink
 {
     private const string JsonContentType = "application/json";
     private const int BufferedResponseInitialCapacity = 16 * 1024;
@@ -32,6 +34,10 @@ internal sealed class HttpJsonRpcResponseSink(
     private RecyclableMemoryStream? _bufferedStream;
     private bool _isFirstBatchItem = true;
     private bool _completed;
+    private long _accountedBytes;
+    private bool _hasReservation;
+    private bool _overLimit;
+    private volatile bool _evicted;
 
     public long BytesWritten => _writer?.WrittenCount ?? 0;
     public bool StopRequested { get; private set; }
@@ -44,6 +50,7 @@ internal sealed class HttpJsonRpcResponseSink(
 
     private ValueTask WriteStartedAsync(JsonRpcResponse response, RpcReport report, bool isBatch, CancellationToken cancellationToken)
     {
+        bool keepsBytes = _bufferedStream is not null || response is not JsonRpcSuccessResponse { Result: IStreamableResult };
         ValueTask writeTask;
         try
         {
@@ -59,6 +66,7 @@ internal sealed class HttpJsonRpcResponseSink(
         if (writeTask.IsCompletedSuccessfully)
         {
             writeTask.GetAwaiter().GetResult();
+            ReserveWrittenBytes(keepsBytes);
             CompleteWrite(response, report, isBatch);
             return ValueTask.CompletedTask;
         }
@@ -66,11 +74,11 @@ internal sealed class HttpJsonRpcResponseSink(
         // Only a deferred result can be replaced while it is written, so any other response is reported as is and
         // its continuation does not need to keep the response.
         return response.Streaming is null
-            ? WriteAfterWriteAsync(writeTask, JsonRpcResponseWriteOutcome.Of(response).ApplyTo(report), isBatch)
-            : WriteDeferredAfterWriteAsync(writeTask, response, report, isBatch);
+            ? WriteAfterWriteAsync(writeTask, JsonRpcResponseWriteOutcome.Of(response).ApplyTo(report), isBatch, keepsBytes)
+            : WriteDeferredAfterWriteAsync(writeTask, response, report, isBatch, keepsBytes);
     }
 
-    private async ValueTask WriteAfterWriteAsync(ValueTask writeTask, RpcReport report, bool isBatch)
+    private async ValueTask WriteAfterWriteAsync(ValueTask writeTask, RpcReport report, bool isBatch, bool keepsBytes)
     {
         try
         {
@@ -81,10 +89,11 @@ internal sealed class HttpJsonRpcResponseSink(
             ReportWrite(report with { Success = false }, isBatch);
             throw;
         }
+        ReserveWrittenBytes(keepsBytes);
         ReportWrite(report, isBatch);
     }
 
-    private async ValueTask WriteDeferredAfterWriteAsync(ValueTask writeTask, JsonRpcResponse response, RpcReport report, bool isBatch)
+    private async ValueTask WriteDeferredAfterWriteAsync(ValueTask writeTask, JsonRpcResponse response, RpcReport report, bool isBatch, bool keepsBytes)
     {
         try
         {
@@ -95,7 +104,47 @@ internal sealed class HttpJsonRpcResponseSink(
             ReportWrite(report with { Success = false }, isBatch);
             throw;
         }
+        ReserveWrittenBytes(keepsBytes);
         CompleteWrite(response, report, isBatch);
+    }
+
+    private void ReserveWrittenBytes(bool keepsBytes)
+    {
+        long written = BytesWritten;
+        long bytes = written - _accountedBytes;
+        _accountedBytes = written;
+        if (unsentResponses is null || _overLimit || _evicted || !keepsBytes || bytes <= 0)
+        {
+            return;
+        }
+
+        if (unsentResponses.TryReserve(this, bytes, jsonRpcConfig.MaxUnsentResponsesSize))
+        {
+            _hasReservation = true;
+            return;
+        }
+
+        _overLimit = true;
+        StopRequested = true;
+    }
+
+    private void ReleaseReservedBytes()
+    {
+        if (!_hasReservation)
+        {
+            return;
+        }
+
+        unsentResponses!.Release(this);
+        _hasReservation = false;
+    }
+
+    internal void Evict()
+    {
+        _evicted = true;
+        StopRequested = true;
+        if (logger.IsDebug) logger.Debug($"Aborted a JSON-RPC response with the most unsent bytes, unsent responses are above JsonRpc.{nameof(jsonRpcConfig.MaxUnsentResponsesSize)} = {jsonRpcConfig.MaxUnsentResponsesSize}");
+        context.Abort();
     }
 
     private void CompleteWrite(JsonRpcResponse response, RpcReport report, bool isBatch)
@@ -183,6 +232,13 @@ internal sealed class HttpJsonRpcResponseSink(
             return ValueTask.CompletedTask;
         }
 
+        if (_overLimit || _evicted)
+        {
+            if (logger.IsDebug) logger.Debug($"Aborted a JSON-RPC response of {BytesWritten} bytes, unsent responses are above JsonRpc.{nameof(jsonRpcConfig.MaxUnsentResponsesSize)} = {jsonRpcConfig.MaxUnsentResponsesSize}");
+            Abort(abortTransport: true);
+            return ValueTask.CompletedTask;
+        }
+
         _completed = true;
         if (_bufferedStream is null &&
             HttpProtocol.IsHttp11(context.Request.Protocol) &&
@@ -192,9 +248,35 @@ internal sealed class HttpJsonRpcResponseSink(
         }
 
         ValueTask writerCompleteTask = _writer.CompleteAsync();
-        return writerCompleteTask.IsCompletedSuccessfully
+        ValueTask completion = writerCompleteTask.IsCompletedSuccessfully
             ? CompleteResponseAsync(cancellationToken)
             : CompleteAfterWriterAsync(writerCompleteTask, cancellationToken);
+        if (completion.IsCompleted || unsentResponses is null)
+        {
+            ReleaseReservedBytes();
+            return completion;
+        }
+
+        return CompleteWithinTimeoutAsync(completion);
+    }
+
+    private async ValueTask CompleteWithinTimeoutAsync(ValueTask completion)
+    {
+        using CancellationTokenSource timeout = new(jsonRpcConfig.Timeout > 0 ? jsonRpcConfig.Timeout : Timeout.Infinite);
+        CancellationTokenRegistration abortOnTimeout = timeout.Token.UnsafeRegister(static state => ((HttpContext)state!).Abort(), context);
+        try
+        {
+            await completion;
+        }
+        catch (Exception e) when (timeout.IsCancellationRequested || _evicted)
+        {
+            if (logger.IsDebug) logger.Debug($"Aborted a JSON-RPC response of {BytesWritten} bytes not sent within JsonRpc.{nameof(jsonRpcConfig.Timeout)} = {jsonRpcConfig.Timeout} ms: {e.Message}");
+        }
+        finally
+        {
+            await abortOnTimeout.DisposeAsync();
+            ReleaseReservedBytes();
+        }
     }
 
     /// <summary>Discards an incomplete response and optionally aborts the transport.</summary>
@@ -202,6 +284,7 @@ internal sealed class HttpJsonRpcResponseSink(
     {
         if (_completed) return;
         _completed = true;
+        ReleaseReservedBytes();
         if (abortTransport) context.Abort();
 
         if (_bufferedStream is not null)

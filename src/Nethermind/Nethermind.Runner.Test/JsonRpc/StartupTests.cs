@@ -1086,6 +1086,127 @@ public class StartupTests
     }
 
     [Test]
+    public async Task ProcessJsonRpcRequest_AbortsResponseNotSentWithinTimeout()
+    {
+        Startup startup = CreateStartup(NoAuthentication.Instance, rpcConfig: new JsonRpcConfig { EnabledModules = [ModuleType.Engine], Timeout = 100 });
+        (DefaultHttpContext unread, TaskCompletionSource sent) = CreateUnreadContext();
+
+        await startup.ProcessJsonRpcRequestCoreAsync(unread, UnauthenticatedEngineUrl).WaitAsync(TimeSpan.FromSeconds(10));
+        (string response, int status) = await ProcessJsonRpcRequestWithStatus(CreateJsonRpcRequest(), startup: startup);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sent.Task.IsFaulted, Is.True);
+            Assert.That(status, Is.EqualTo(StatusCodes.Status200OK));
+        }
+        AssertArrayResultResponse(response);
+    }
+
+    [Test]
+    public async Task ProcessJsonRpcRequest_ServesOtherCallersWhileAResponseIsUnsent()
+    {
+        Startup startup = CreateStartup(NoAuthentication.Instance, rpcConfig: new JsonRpcConfig { EnabledModules = [ModuleType.Engine], Timeout = 60_000 });
+        (DefaultHttpContext unread, TaskCompletionSource sent) = CreateUnreadContext();
+
+        Task unreadProcessing = startup.ProcessJsonRpcRequestCoreAsync(unread, UnauthenticatedEngineUrl);
+        (string response, int status) = await ProcessJsonRpcRequestWithStatus(CreateJsonRpcRequest(), startup: startup);
+        bool unreadPending = !unreadProcessing.IsCompleted;
+        sent.SetResult();
+        await unreadProcessing.WaitAsync(TimeSpan.FromSeconds(10));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(unreadPending, Is.True);
+            Assert.That(status, Is.EqualTo(StatusCodes.Status200OK));
+        }
+        AssertArrayResultResponse(response);
+    }
+
+    [Test]
+    public async Task ProcessJsonRpcRequest_AbortsResponseThatTakesUnsentResponsesAboveLimit()
+    {
+        (string single, _) = await ProcessJsonRpcRequestWithStatus(CreateJsonRpcRequest());
+        int responseSize = Encoding.UTF8.GetByteCount(single);
+        Startup startup = CreateStartup(NoAuthentication.Instance, rpcConfig: new JsonRpcConfig
+        {
+            EnabledModules = [ModuleType.Engine],
+            Timeout = 60_000,
+            MaxUnsentResponsesSize = responseSize + responseSize / 2
+        });
+        (DefaultHttpContext first, TaskCompletionSource firstSent) = CreateUnreadContext();
+        (DefaultHttpContext second, TaskCompletionSource secondSent) = CreateUnreadContext();
+
+        Task firstProcessing = startup.ProcessJsonRpcRequestCoreAsync(first, UnauthenticatedEngineUrl);
+        await startup.ProcessJsonRpcRequestCoreAsync(second, UnauthenticatedEngineUrl).WaitAsync(TimeSpan.FromSeconds(10));
+        (_, int authenticatedStatus) = await ProcessJsonRpcRequestWithStatus(CreateJsonRpcRequest(), startup: startup, isAuthenticated: true);
+        bool firstPending = !firstProcessing.IsCompleted;
+        firstSent.SetResult();
+        await firstProcessing.WaitAsync(TimeSpan.FromSeconds(10));
+        (string response, int status) = await ProcessJsonRpcRequestWithStatus(CreateJsonRpcRequest(), startup: startup);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstPending, Is.True);
+            Assert.That(secondSent.Task.IsFaulted, Is.True);
+            Assert.That(authenticatedStatus, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(status, Is.EqualTo(StatusCodes.Status200OK));
+        }
+        AssertArrayResultResponse(response);
+    }
+
+    [Test]
+    public async Task ProcessJsonRpcRequest_AbortsTheLargestUnsentResponseToServeANewCaller()
+    {
+        string batch = $"[{CreateJsonRpcRequest(idJson: "1")},{CreateJsonRpcRequest(idJson: "2")},{CreateJsonRpcRequest(idJson: "3")}]";
+        (string batchResponse, _) = await ProcessJsonRpcRequestWithStatus(batch);
+        (string single, _) = await ProcessJsonRpcRequestWithStatus(CreateJsonRpcRequest());
+        Startup startup = CreateStartup(NoAuthentication.Instance, rpcConfig: new JsonRpcConfig
+        {
+            EnabledModules = [ModuleType.Engine],
+            Timeout = 60_000,
+            MaxUnsentResponsesSize = Encoding.UTF8.GetByteCount(batchResponse) + Encoding.UTF8.GetByteCount(single) / 2
+        });
+        (DefaultHttpContext stalled, TaskCompletionSource stalledSent) = CreateUnreadContext(batch);
+
+        Task stalledProcessing = startup.ProcessJsonRpcRequestCoreAsync(stalled, UnauthenticatedEngineUrl);
+        bool stalledPending = !stalledProcessing.IsCompleted;
+        (string response, int status) = await ProcessJsonRpcRequestWithStatus(CreateJsonRpcRequest(), startup: startup);
+        await stalledProcessing.WaitAsync(TimeSpan.FromSeconds(10));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stalledPending, Is.True);
+            Assert.That(stalledSent.Task.IsFaulted, Is.True);
+            Assert.That(status, Is.EqualTo(StatusCodes.Status200OK));
+        }
+        AssertArrayResultResponse(response);
+    }
+
+    private static readonly JsonRpcUrl UnauthenticatedEngineUrl = new("http", "127.0.0.1", 0, RpcEndpoint.Http, false, [ModuleType.Engine]);
+
+    private static (DefaultHttpContext Context, TaskCompletionSource Sent) CreateUnreadContext(string? requestJson = null)
+    {
+        TaskCompletionSource sent = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        byte[] request = Encoding.UTF8.GetBytes(requestJson ?? CreateJsonRpcRequest());
+        DefaultHttpContext context = new();
+        context.Request.Method = "POST";
+        context.Request.ContentType = "application/json";
+        context.Request.Body = new MemoryStream(request);
+        context.Request.ContentLength = request.Length;
+        context.Request.Protocol = "HTTP/1.1";
+        MemoryStream body = new();
+        IHttpResponseBodyFeature bodyFeature = Substitute.For<IHttpResponseBodyFeature>();
+        bodyFeature.Stream.Returns(body);
+        bodyFeature.Writer.Returns(PipeWriter.Create(body, new StreamPipeWriterOptions(leaveOpen: true)));
+        bodyFeature.CompleteAsync().Returns(sent.Task);
+        context.Features.Set(bodyFeature);
+        IHttpRequestLifetimeFeature lifetime = Substitute.For<IHttpRequestLifetimeFeature>();
+        lifetime.When(static feature => feature.Abort()).Do(_ => sent.TrySetException(new IOException("aborted")));
+        context.Features.Set(lifetime);
+        return (context, sent);
+    }
+
+    [Test]
     public async Task Aborted_queued_request_is_neither_executed_nor_answered([Values] bool batch, [Values] bool bufferResponses, [Values] bool isAuthenticated)
     {
         using QueuedRentalFixture fixture = new(new JsonRpcConfig { BufferResponses = bufferResponses });
