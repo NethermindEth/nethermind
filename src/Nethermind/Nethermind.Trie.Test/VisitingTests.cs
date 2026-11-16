@@ -96,11 +96,13 @@ public class VisitingTests
 
 
         StateTree stateTree = new(trieStore, LimboLogs.Instance);
+        List<Hash256> accountPaths = [];
 
         for (int i = 0; i < 64; i++)
         {
             ValueHash256 stateKey = default;
             stateKey.BytesAsSpan[i / 2] = (byte)(1 << (4 * (1 - i % 2)));
+            accountPaths.Add(stateKey.ToCommitment());
 
             stateTree.Set(stateKey,
                 new Account(10UL, (ulong)(10_000_000 + i), stateRootHash, Keccak.OfAnEmptySequenceRlp));
@@ -135,6 +137,10 @@ public class VisitingTests
         }
 
         Assert.That(totalPath, Is.EqualTo(4160));
+
+        StorageAddressCollector storageAddresses = new();
+        stateTree.Accept(storageAddresses, stateTree.RootHash, options);
+        Assert.That(storageAddresses.Addresses, Is.EquivalentTo(accountPaths));
 
         return;
 
@@ -362,7 +368,7 @@ public class VisitingTests
                 return new PathGatheringContext(@new);
             }
 
-            public PathGatheringContext AddStorage(in ValueHash256 storage) => this;
+            public PathGatheringContext AddStorage(Hash256? storage) => this;
         }
 
         public bool IsFullDbScan => true;

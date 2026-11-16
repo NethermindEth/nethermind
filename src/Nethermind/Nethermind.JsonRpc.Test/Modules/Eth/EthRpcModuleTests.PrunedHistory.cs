@@ -292,7 +292,7 @@ public partial class EthRpcModuleTests
         // History pruning deletes the receipts before the body and leaves the index entries. A compact entry of a
         // transaction reorganised out of this height resolves to the block now canonical there.
         test.ReceiptStorage.RemoveReceipts(number, block.Hash!);
-        if (!inTheBody) TransactionIndex(test).Set(txHash, Rlp.Encode(number).Bytes);
+        if (!inTheBody) TransactionIndex(test).Set(txHash, Rlp.Encode(number));
         test.BlockTree.UpdateLowestServedBlock(number + 1);
         EvictBlocks(test);
         using (Assert.EnterMultipleScope())

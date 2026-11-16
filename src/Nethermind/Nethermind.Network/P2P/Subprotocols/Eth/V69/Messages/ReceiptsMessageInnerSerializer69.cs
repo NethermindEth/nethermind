@@ -12,7 +12,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 /// while <see cref="ReceiptsMessageSerializer69"/> "wraps" it after, similar to eth/66 version.
 /// </remarks>
 public class ReceiptsMessageInnerSerializer69(ISpecProvider specProvider) :
-    ReceiptsMessageSerializer(specProvider, new ReceiptMessageDecoder69()),
+    ReceiptsMessageSerializer(specProvider, new ReceiptMessageDecoder69(), withBloom: false),
     IMessageSerializer<ReceiptsInnerMessage69>
 {
     int IMessageSerializer<ReceiptsInnerMessage69>.GetLength(ReceiptsInnerMessage69 message) =>

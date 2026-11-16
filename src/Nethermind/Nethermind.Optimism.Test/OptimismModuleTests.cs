@@ -9,6 +9,7 @@ using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
@@ -120,6 +121,32 @@ public class OptimismModuleTests
         using IContainer container = builder.Build();
 
         Assert.That(container.Resolve<IProofRpcModule>(), Is.TypeOf<OptimismProofRpcModule>());
+    }
+
+    [Test]
+    public void Receipt_finder_gives_no_stored_receipts_as_a_receipts_message_carries_them()
+    {
+        ChainSpec chainSpec = new()
+        {
+            EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(new OptimismChainSpecEngineParameters())
+        };
+        IReceiptFinder inner = Substitute.For<IReceiptFinder>();
+        inner.TryAppendNetworkReceipts(Arg.Any<BlockHeader>(), Arg.Any<bool>(), Arg.Any<ArrayPoolList<byte>>()).Returns(true);
+        TxReceipt[] receipts = [Build.A.Receipt.TestObject];
+        inner.Get(TestItem.KeccakA).Returns(receipts);
+        ContainerBuilder builder = new();
+        builder.RegisterInstance(inner).As<IReceiptFinder>();
+        builder.RegisterModule(new OptimismModule(chainSpec, new OptimismConfig()));
+        using IContainer container = builder.Build();
+        IReceiptFinder receiptFinder = container.Resolve<IReceiptFinder>();
+        using ArrayPoolList<byte> destination = new(0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receiptFinder.TryAppendNetworkReceipts(Build.A.BlockHeader.TestObject, withBloom: false, destination), Is.False);
+            Assert.That(receiptFinder.Get(TestItem.KeccakA), Is.SameAs(receipts));
+            inner.DidNotReceiveWithAnyArgs().TryAppendNetworkReceipts(Arg.Any<BlockHeader>(), Arg.Any<bool>(), Arg.Any<ArrayPoolList<byte>>());
+        }
     }
 
     [Test]

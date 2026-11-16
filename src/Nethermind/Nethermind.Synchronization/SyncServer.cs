@@ -426,6 +426,45 @@ namespace Nethermind.Synchronization
             return receipts.Length == 0 ? null : receipts;
         }
 
+        public bool TryAppendReceipts(Hash256 blockHash, IRlpDecoder<TxReceipt> decoder, bool withBloom, ArrayPoolList<byte> destination)
+        {
+            BlockHeader? header = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            if (header is null) return false;
+            bool hasTransactions = header.TxRoot != Keccak.EmptyTreeHash;
+            if (hasTransactions && _receiptFinder.TryAppendNetworkReceipts(header, withBloom, destination)) return true;
+            if (!_blockTree.HasBlock(header.Number, blockHash)) return false;
+            if (!hasTransactions)
+            {
+                destination.Add(Rlp.EmptyListByte);
+                return true;
+            }
+
+            TxReceipt[] receipts = _receiptFinder.Get(blockHash);
+            if (receipts.Length == 0) return false;
+
+            // The behaviors that the receipts messages encode decoded receipts with.
+            RlpBehaviors behaviors = _specProvider.GetReceiptSpec(header.Number).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
+            int contentLength = 0;
+            foreach (TxReceipt receipt in receipts) contentLength += decoder.GetLength(receipt, behaviors);
+
+            int length = Rlp.LengthOfSequence(contentLength);
+            int start = destination.Count;
+            try
+            {
+                RlpWriter writer = RlpWriter.ContentWriter(destination.AddUninitialized(length));
+                RlpSequence sequence = writer.StartSequence(contentLength);
+                foreach (TxReceipt receipt in receipts) decoder.Encode(ref writer, receipt, behaviors);
+                writer.EndSequence(sequence);
+                Rlp.CheckLength(in writer, length);
+                return true;
+            }
+            catch
+            {
+                destination.Truncate(start);
+                throw;
+            }
+        }
+
         public MemoryManager<byte>? GetBlockAccessListRlp(Hash256 blockHash)
         {
             BlockHeader? header = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
@@ -553,8 +592,6 @@ namespace Nethermind.Synchronization
                 ? EmptyByteArrayList.Instance
                 : new RlpByteArrayList(builder.ToRlpItemList());
         }
-
-        public Block Find(Hash256 hash) => _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.ExcludeTxHashes);
 
         public MemoryManager<byte>? FindBlockRlp(Hash256 hash)
         {
