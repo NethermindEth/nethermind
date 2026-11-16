@@ -1284,10 +1284,10 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void noop_tracer_legacy()
+    public void noop_tracer_legacy([Values("noopTracer_legacy", "noopTracerLegacy")] string name)
     {
         using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
-                GetTracer("noopTracer_legacy"),
+                GetTracer(name),
                 MStore(),
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
@@ -1317,10 +1317,10 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void prestate_tracer()
+    public void prestate_tracer([Values("prestateTracer_legacy", "prestateTracerLegacy")] string name)
     {
         using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
-                GetTracer("prestateTracer_legacy"),
+                GetTracer(name),
                 NestedCalls(),
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
@@ -1329,10 +1329,10 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void call_tracer()
+    public void call_tracer([Values("callTracer_legacy", "callTracerLegacy")] string name)
     {
         using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
-                GetTracer("callTracer_legacy"),
+                GetTracer(name),
                 NestedCalls(),
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
@@ -1341,10 +1341,10 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void _4byte_tracer_legacy()
+    public void _4byte_tracer_legacy([Values("4byteTracer_legacy", "4byteTracerLegacy")] string name)
     {
         using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
-                GetTracer("4byteTracer_legacy"),
+                GetTracer(name),
                 CallWithInput(),
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
