@@ -24,8 +24,9 @@ jobs:
       - name: Free up disk space
         if: github.event.repository.private
         # It starts with ~15 GB free and a full build needs ~33 GB; these hold over 25 GB the job never uses.
+        # /opt/hostedtoolcache/CodeQL stays: codeql-action/init uses that bundle and would download it again.
         run: |
-          sudo rm -rf /usr/local/lib/android /usr/local/.ghcup /opt/ghc /opt/hostedtoolcache/CodeQL /usr/share/swift /usr/local/share/powershell /usr/lib/jvm /opt/az /usr/local/share/chromium /opt/google
+          sudo rm -rf /usr/local/lib/android /usr/local/.ghcup /opt/ghc /usr/share/swift /usr/local/share/powershell /usr/lib/jvm /opt/az /usr/local/share/chromium /opt/google
           docker image prune -af > /dev/null
           df -h /
 
