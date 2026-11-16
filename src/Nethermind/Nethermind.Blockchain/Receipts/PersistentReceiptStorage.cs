@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
@@ -707,6 +708,31 @@ namespace Nethermind.Blockchain.Receipts
             return GetRetainedWithoutBody(blockHash);
         }
 
+        /// <inheritdoc/>
+        /// <remarks>Gives the compact values only; the block's receipts not yet written are left to <see cref="Get(Hash256, bool)"/>.</remarks>
+        public bool TryAppendNetworkReceipts(BlockHeader header, bool withBloom, ArrayPoolList<byte> destination)
+        {
+            if (!_storageDecoder.CanEncodeNetworkReceipts) return false;
+
+            Hash256 blockHash = header.Hash!;
+            Span<byte> receiptsData = GetReceiptData(header.Number, blockHash);
+            try
+            {
+                // Pending and non-compact receipts are left to the decoders before the block is read.
+                if (receiptsData.IsEmpty || receiptsData[0] is not (ReceiptArrayStorageDecoder.CompactEncoding or ReceiptArrayStorageDecoder.CompactEncodingWithTxHashes)) return false;
+
+                using MemoryManager<byte>? block = _blockStore.GetOwnedRlp(header.Number, blockHash);
+                return block is not null && ReceiptArrayStorageDecoder.TryAppendNetworkReceipts(receiptsData, block.Memory.Span, withBloom,
+                    _specProvider.GetReceiptSpec(header.Number).IsEip658Enabled,
+                    _eip7668EverEnabled && _specProvider.GetSpec(header).IsEip7668Enabled,
+                    destination);
+            }
+            finally
+            {
+                _receiptsDb.DangerousReleaseMemory(receiptsData);
+            }
+        }
+
         /// <summary>Serves a block whose body was pruned but whose receipts were retained self-describing: the
         /// encoding carries everything recovery would otherwise derive from the body, so it decodes standalone.
         /// A compact (body-dependent) record cannot be decoded any more and reports empty.</summary>
@@ -1077,6 +1103,40 @@ namespace Nethermind.Blockchain.Receipts
             }
 
             ReceiptsInserted?.Invoke(this, new(block.Header, txReceipts));
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Stores the receipts as <see cref="Insert(Block, TxReceipt[], IReleaseSpec, bool, WriteFlags, ulong?)"/> stores them
+        /// once decoded. Only the compact form takes them, as it stores no field recovered from the transactions but their hashes.
+        /// </remarks>
+        [SkipLocalsInit]
+        public bool TryInsertNetworkReceipts(Block block, ReadOnlyMemory<byte> blockReceipts, bool withBloom, bool ensureCanonical)
+        {
+            if (!_storageDecoder.CanEncodeNetworkReceipts) return false;
+
+            IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+            TxReceipt[]? insertedReceipts = null;
+            using (ArrayPoolSpan<byte> rlp = _storageDecoder.EncodeNetworkReceipts(blockReceipts.Span, withBloom, spec.IsEip658Enabled, block.Transactions))
+            {
+                Span<byte> blockNumPrefixed = stackalloc byte[40];
+                GetBlockNumPrefixedKey(block.Number, block.Hash!, blockNumPrefixed);
+                _receiptsDb.PutSpan(blockNumPrefixed, rlp, WriteFlags.None);
+
+                if (ReceiptsInserted is not null)
+                {
+                    insertedReceipts = _storageDecoder.Decode(rlp, RlpBehaviors.TrustedInput);
+                    // The block may hold the transaction hashes only, and recovery reads the recipients.
+                    _receiptsRecovery.TryRecover(_blockStore.Get(block.Number, block.Hash!, shouldCache: false) ?? block, insertedReceipts, false);
+                    if (spec.IsEip7668Enabled) insertedReceipts.SetZeroLengthBlooms();
+                }
+            }
+
+            _receiptsCache.Delete(block.Hash);
+            if (ensureCanonical) EnsureCanonical(block, null);
+            if (block.Number < MigratedBlockNumber) MigratedBlockNumber = block.Number;
+            if (insertedReceipts is not null) ReceiptsInserted?.Invoke(this, new(block.Header, insertedReceipts));
+            return true;
         }
 
         private static bool HasAllSenders(Block block)

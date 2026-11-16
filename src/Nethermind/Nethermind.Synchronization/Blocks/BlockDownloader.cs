@@ -640,7 +640,21 @@ namespace Nethermind.Synchronization.Blocks
                     continue;
                 }
 
-                TxReceipt[]? receipts = response.Receipts[i];
+                TxReceipt[]? receipts;
+                try
+                {
+                    receipts = response.Receipts[i];
+                }
+                // Receipts kept encoded decode on this first read, so a failure comes from the bytes the peer sent.
+                catch (Exception e)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Invalid receipts from {peer:hide} for block {header.ToString(BlockHeader.Format.Short)}: {e.Message}");
+                    if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, "invalid receipts received");
+                    result = SyncResponseHandlingResult.LesserQuality;
+                    entry.RetryReceiptRequest();
+                    continue;
+                }
+
                 if (receipts is null)
                 {
                     entry.RecordMissingReceipt();
