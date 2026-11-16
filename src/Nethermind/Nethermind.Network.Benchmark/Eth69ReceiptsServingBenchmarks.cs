@@ -165,7 +165,7 @@ public class Eth69ReceiptsServingBenchmarks
         public MemoryManager<byte> FindBlockRlp(Hash256 hash) => null;
         public BlockHeader FindHeader(Hash256 hash) => null;
         public Hash256 FindHash(ulong number) => null;
-        public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse) => throw new NotSupportedException();
+        public IOwnedReadOnlyList<byte> FindHeadersRlp(Hash256 hash, int numberOfBlocks, int skip, bool reverse) => throw new NotSupportedException();
         public IByteArrayList GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.Code | NodeDataType.State) => throw new NotSupportedException();
         public int GetPeerCount() => 0;
         public ulong NetworkId => 1;

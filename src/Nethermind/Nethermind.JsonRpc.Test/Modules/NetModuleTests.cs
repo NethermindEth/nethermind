@@ -19,6 +19,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.History;
 using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
@@ -57,6 +58,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 blockTree,
                 Substitute.For<IBlockStore>(),
                 Substitute.For<IHeaderStore>(),
+                new HeaderDecoder(),
                 Substitute.For<IReceiptFinder>(),
                 Substitute.For<IBlockAccessListStore>(),
                 Substitute.For<IBlockValidator>(),

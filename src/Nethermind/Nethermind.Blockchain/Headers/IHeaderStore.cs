@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Headers;
 
@@ -20,6 +21,18 @@ public interface IHeaderStore : IHeaderFinder
     void InsertDeferred(BlockHeader header) => Insert(header);
     void BulkInsert(IReadOnlyList<BlockHeader> headers);
     BlockHeader? Get(Hash256 blockHash, bool shouldCache, ulong? blockNumber = null);
+
+    /// <summary>Appends the header of <paramref name="blockHash"/>, encoded by <paramref name="decoder"/>, to <paramref name="destination"/>.</summary>
+    /// <returns><see langword="false"/> when the header is not stored.</returns>
+    /// <remarks>An implementation can copy the stored encoding without a decode when the store encodes as <paramref name="decoder"/> does.</remarks>
+    bool TryAppendRlp(in ValueHash256 blockHash, ulong blockNumber, IHeaderDecoder decoder, ArrayPoolList<byte> destination)
+    {
+        if (Get(new Hash256(in blockHash), shouldCache: false, blockNumber) is not { } header) return false;
+
+        using ArrayPoolSpan<byte> rlp = decoder.EncodeToArrayPoolSpan(header);
+        destination.AddRange(rlp);
+        return true;
+    }
 
     /// <summary>
     /// Gets the header of <paramref name="blockHash"/> if <paramref name="bloomMatches"/> accepts its logs bloom, which

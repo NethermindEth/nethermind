@@ -89,19 +89,22 @@ public class OptimismModuleTests
     }
 
     // The eth_sendTransaction tests wire their forwarding node the same way.
-    [Test]
-    public void Node_that_forwards_to_the_sequencer_has_no_transaction_pool()
+    [TestCase("http://localhost:8545", true, TestName = "Node that forwards to the sequencer has no transaction pool")]
+    [TestCase("", false, TestName = "Empty sequencer URL keeps the transaction pool")]
+    [TestCase(" ", false, TestName = "Blank sequencer URL keeps the transaction pool")]
+    public void Sequencer_url_decides_whether_the_node_has_a_transaction_pool(string sequencerUrl, bool forwardsToSequencer)
     {
         ChainSpec chainSpec = new()
         {
             EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(new OptimismChainSpecEngineParameters())
         };
+        ITxPool txPool = Substitute.For<ITxPool>();
         ContainerBuilder builder = new();
-        builder.RegisterInstance(Substitute.For<ITxPool>()).As<ITxPool>();
-        builder.RegisterModule(new OptimismModule(chainSpec, new OptimismConfig { SequencerUrl = "http://localhost:8545" }));
+        builder.RegisterInstance(txPool).As<ITxPool>();
+        builder.RegisterModule(new OptimismModule(chainSpec, new OptimismConfig { SequencerUrl = sequencerUrl }));
         using IContainer container = builder.Build();
 
-        Assert.That(container.Resolve<ITxPool>(), Is.SameAs(NullTxPool.Instance));
+        Assert.That(container.Resolve<ITxPool>(), Is.SameAs(forwardsToSequencer ? NullTxPool.Instance : txPool));
     }
 
     [Test]

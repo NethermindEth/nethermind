@@ -24,6 +24,7 @@ public class HeaderStore : IHeaderStore, IClearableCache
     public const int CacheSize = 256 + 16;
 
     private const int NumberPrefixedKeyLength = sizeof(ulong) + Hash256.Size;
+    private const int BlockNumberLength = sizeof(ulong);
 
     private readonly IDb _headerDb;
     private readonly IDb _blockNumberDb;
@@ -113,6 +114,76 @@ public class HeaderStore : IHeaderStore, IClearableCache
         header.Hash = blockHash;
         if (shouldCache) _headerCache.Set(in blockHash.ValueHash256, header);
         return header;
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// A header read from the database is copied as it is stored when <paramref name="decoder"/> is the decoder of
+    /// this store, or both are a plain <see cref="HeaderDecoder"/>. A cached or pending header is encoded.
+    /// </remarks>
+    [SkipLocalsInit]
+    public bool TryAppendRlp(in ValueHash256 blockHash, ulong blockNumber, IHeaderDecoder decoder, ArrayPoolList<byte> destination)
+    {
+        BlockHeader? header = _headerCache.Get(in blockHash);
+        if (header is null && _pending is not null) _pending.TryGet(in blockHash, out header);
+        if (header is null && EncodesAsStored(decoder))
+        {
+            Span<byte> key = stackalloc byte[NumberPrefixedKeyLength];
+            KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, key);
+            return TryAppendStored(key, destination) || TryAppendStored(blockHash.Bytes, destination);
+        }
+
+        header ??= Get(new Hash256(in blockHash), shouldCache: false, blockNumber);
+        if (header is null) return false;
+
+        int length = decoder.GetLength(header);
+        RlpWriter writer = RlpWriter.ContentWriter(destination.AddUninitialized(length));
+        decoder.Encode(ref writer, header);
+        Rlp.CheckLength(in writer, length);
+        return true;
+    }
+
+    private bool EncodesAsStored(IHeaderDecoder decoder) =>
+        ReferenceEquals(decoder, _headerDecoder)
+        || (decoder.GetType() == typeof(HeaderDecoder) && _headerDecoder.GetType() == typeof(HeaderDecoder));
+
+    private bool TryAppendStored(ReadOnlySpan<byte> key, ArrayPoolList<byte> destination)
+    {
+        if (_headerDb is IReadOnlyNativeKeyValueStore native)
+        {
+            ReadOnlySpan<byte> slice = native.GetNativeSlice(key, out IntPtr handle);
+            if (slice.IsNull()) return false;
+
+            try
+            {
+                return TryAppendFirstItem(slice, destination);
+            }
+            finally
+            {
+                native.DangerousReleaseHandle(handle);
+            }
+        }
+
+        Span<byte> data = _headerDb.GetSpan(key);
+        if (data.IsNull()) return false;
+
+        try
+        {
+            return TryAppendFirstItem(data, destination);
+        }
+        finally
+        {
+            _headerDb.DangerousReleaseMemory(data);
+        }
+    }
+
+    private static bool TryAppendFirstItem(ReadOnlySpan<byte> stored, ArrayPoolList<byte> destination)
+    {
+        if (stored.Length == 0) return false;
+
+        RlpReader reader = new(stored);
+        destination.AddRange(reader.ReadEncodedItem<OffFlag>());
+        return true;
     }
 
     /// <inheritdoc/>
@@ -248,23 +319,27 @@ public class HeaderStore : IHeaderStore, IClearableCache
         return Get(blockHash)?.Number;
     }
 
+    [SkipLocalsInit]
     private ulong? GetBlockNumberFromBlockNumberDb(Hash256 blockHash)
     {
-        Span<byte> numberSpan = _blockNumberDb.GetSpan(blockHash);
-        if (numberSpan.IsNullOrEmpty()) return null;
+        Span<byte> numberSpan = stackalloc byte[BlockNumberLength];
+        int length;
         try
         {
-            if (numberSpan.Length != 8)
-            {
-                throw new InvalidDataException($"Unexpected number span length: {numberSpan.Length}");
-            }
-
-            return BinaryPrimitives.ReadUInt64BigEndian(numberSpan);
+            length = _blockNumberDb.Get(blockHash.Bytes, numberSpan);
         }
-        finally
+        catch (ArgumentException e)
         {
-            _blockNumberDb.DangerousReleaseMemory(numberSpan);
+            throw new InvalidDataException($"Block number entry is longer than {BlockNumberLength} bytes", e);
         }
+
+        if (length == 0) return null;
+        if (length != BlockNumberLength)
+        {
+            throw new InvalidDataException($"Unexpected number span length: {length}");
+        }
+
+        return BinaryPrimitives.ReadUInt64BigEndian(numberSpan);
     }
 
     public Dictionary<ValueHash256, BlockHeader> PrefetchByNumberRange(ulong fromInclusive, ulong toExclusive) =>

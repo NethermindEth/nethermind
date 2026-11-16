@@ -164,6 +164,7 @@ public class SyncServerReceiptsBenchmarks
             blockTree,
             blockStore,
             headerStore,
+            new HeaderDecoder(),
             new FullInfoReceiptFinder(storage, new ReceiptsRecovery(ecdsa, specProvider), blockTree),
             Substitute.For<IBlockAccessListStore>(),
             Always.Valid,
