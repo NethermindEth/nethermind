@@ -18,7 +18,7 @@ namespace Nethermind.Evm.Test;
 /// <summary>
 /// A VM keeps its child call frames from one transaction to the next, with the access tracker and the inline memory
 /// their last user left. Two transactions on one VM, under different tracers, must each see what fresh frames would.
-/// <see cref="CallFrameCacheTests"/> covers the reuse within a transaction.
+/// <see cref="CallFrameCacheTests"/> covers what a reused frame observes within a transaction.
 /// </summary>
 public class CallFrameCacheTransactionTests : VirtualMachineTestsBase
 {
@@ -65,9 +65,10 @@ public class CallFrameCacheTransactionTests : VirtualMachineTestsBase
     }
 
     /// <summary>
-    /// EIP-2929: a reverted call's accesses are rolled back, except under access tracing (<c>eth_createAccessList</c>),
-    /// which keeps them for the list. The frame both transactions reuse must follow each one's tracing, and with
-    /// <paramref name="sameTrackedState"/> off it must also take the tracked state of the second transaction.
+    /// EIP-2929: a reverted call's accesses are rolled back, except under access tracing (<c>eth_createAccessList</c>
+    /// with <c>optimize: false</c>), which keeps them for the list. The frame both transactions reuse must follow each
+    /// one's tracing, and with <paramref name="sameTrackedState"/> off it must also take the tracked state of the second
+    /// transaction.
     /// </summary>
     [Test]
     public void Reused_frame_follows_the_access_tracing_of_each_transaction([Values] bool accessListFirst, [Values] bool sameTrackedState)

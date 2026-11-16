@@ -29,7 +29,8 @@ namespace Nethermind.Evm.Test;
 /// storage must agree. <see cref="HostMemoryFastPathTests"/> drives one frame; this reaches memory across frames:
 /// pooled frames and arrays reused with stale bytes, call input and output, return data, copies, logs and creation.
 /// The reference also traces memory, which initializes the active memory before every instruction, so it does not
-/// share the lazy clearing of the tables it checks.
+/// share the lazy clearing of memory below the active size with the tables it checks; an instruction that grows memory
+/// still clears the new gap with the same code.
 /// </remarks>
 [Parallelizable(ParallelScope.All)]
 public class MemoryFastPathTransactionTests
