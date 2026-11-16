@@ -558,6 +558,23 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             }
         }
 
+        [Test]
+        public void Releases_the_block_lease_when_a_stored_block_does_not_decode()
+        {
+            TrackedLease lease = new([0x01]);
+            _syncManager.FindBlockRlp(TestItem.KeccakA).Returns(lease);
+            using GetBlockBodiesMessage msg = new([TestItem.KeccakA]);
+
+            HandleIncomingStatusMessage();
+            HandleZeroMessage(msg, Eth62MessageCode.GetBlockBodies);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(lease.IsDisposed);
+                _session.DidNotReceive().DeliverMessage(Arg.Any<BlockBodiesMessage>());
+            }
+        }
+
         private void ServeBlock(Hash256 hash, Block block) =>
             _syncManager.FindBlockRlp(hash).Returns(ArrayMemoryManager.From(new BlockDecoder().Encode(block)));
 
