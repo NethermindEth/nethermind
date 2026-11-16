@@ -40,6 +40,9 @@ public class SnapBlockAccessListsServingBenchmark
     [Params(2_000, 30_000)]
     public int AccessListSize { get; set; }
 
+    [Params(4_096, ISnapStateServer.HardResponseByteLimit)]
+    public long ByteLimit { get; set; }
+
     [GlobalSetup]
     public void Setup()
     {
@@ -76,7 +79,7 @@ public class SnapBlockAccessListsServingBenchmark
         }
 
         _server = _container.Resolve<ISnapServer>();
-        using IByteArrayList lists = _server.GetBlockAccessLists(_requests[0], ISnapStateServer.HardResponseByteLimit, CancellationToken.None);
+        using IByteArrayList lists = _server.GetBlockAccessLists(_requests[0], ByteLimit, CancellationToken.None);
         if (lists.Count == 0 || lists[0].Length == 0) throw new InvalidOperationException("No access list was served.");
     }
 
@@ -84,7 +87,7 @@ public class SnapBlockAccessListsServingBenchmark
     public int ServeBlockAccessLists()
     {
         ValueHash256[] request = _requests[_nextRequest++ % _requests.Length];
-        using IByteArrayList lists = _server.GetBlockAccessLists(request, ISnapStateServer.HardResponseByteLimit, CancellationToken.None);
+        using IByteArrayList lists = _server.GetBlockAccessLists(request, ByteLimit, CancellationToken.None);
         return lists.Count;
     }
 

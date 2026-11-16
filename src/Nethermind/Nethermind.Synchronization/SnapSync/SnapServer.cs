@@ -106,12 +106,14 @@ public sealed class SnapServer(
         Span<ulong> knownNumbers = stackalloc ulong[AccessListReadChunkSize];
         Span<Range?> ranges = stackalloc Range?[AccessListReadChunkSize];
 
-        // A chunk is read whole even past the byte limit, so its size bounds the over-read.
-        for (int start = 0; start < blockHashes.Count; start += AccessListReadChunkSize)
+        // A chunk is read whole even past the byte limit, which a peer sets. Chunks start at one list and
+        // double, so a chunk never reads more lists past the limit than were read before it.
+        int chunkSize = 1;
+        for (int start = 0; start < blockHashes.Count; start += chunkSize, chunkSize = Math.Min(chunkSize * 2, AccessListReadChunkSize))
         {
             if (currentByteCount > byteLimit || cancellationToken.IsCancellationRequested) break;
 
-            int count = Math.Min(AccessListReadChunkSize, blockHashes.Count - start);
+            int count = Math.Min(chunkSize, blockHashes.Count - start);
             for (int i = 0; i < count; i++)
             {
                 hashes[i] = blockHashes[start + i];

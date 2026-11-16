@@ -21,7 +21,7 @@ namespace Nethermind.Synchronization.Test.SnapSync;
 public class SnapServerTests
 {
     private TestMemDb _codeDb = null!;
-    private TestMemDb _balDb = null!;
+    private ReadCountingDb _balDb = null!;
     private HeaderStore _headerStore = null!;
     private BlockAccessListStore _balStore = null!;
     private SnapServer _server = null!;
@@ -30,7 +30,7 @@ public class SnapServerTests
     public void SetUp()
     {
         _codeDb = new TestMemDb();
-        _balDb = new TestMemDb();
+        _balDb = new ReadCountingDb();
         _headerStore = new HeaderStore(new TestMemDb(), new TestMemDb());
         _balStore = new BlockAccessListStore(_balDb);
         _server = new SnapServer(NoopSnapServer.Instance, _codeDb, _headerStore, _balStore);
@@ -225,6 +225,38 @@ public class SnapServerTests
             {
                 Assert.That(result[i], Is.SequenceEqualTo(expected[i]), $"block {i}");
             }
+        }
+    }
+
+    [TestCase(1, 1, 1)]
+    [TestCase(150, 16, 31)]
+    public void GetBlockAccessLists_reads_little_past_the_byte_limit(long byteLimit, int served, int maxReads)
+    {
+        List<ValueHash256> request = [];
+        for (int i = 0; i < 40; i++)
+        {
+            Hash256 hash = Keccak.Compute(BitConverter.GetBytes(i));
+            GivenBlock(hash, (ulong)i, new byte[10]);
+            request.Add(hash.ValueHash256);
+        }
+
+        using IByteArrayList result = _server.GetBlockAccessLists(request, byteLimit, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Count, Is.EqualTo(served));
+            Assert.That(_balDb.Reads, Is.InRange(served, maxReads));
+        }
+    }
+
+    private sealed class ReadCountingDb : TestMemDb
+    {
+        public int Reads { get; private set; }
+
+        public override byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            Reads++;
+            return base.Get(key, flags);
         }
     }
 
