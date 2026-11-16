@@ -33,8 +33,9 @@ public partial class BlockAccessListManager
         uint postExecutionIndex = (uint)(block.Transactions.Length + 1);
         if (VerifyOnly)
         {
-            // Nothing else binds rows 0..txCount to the suggested list, so a row the executor skipped must not pass.
-            if (_validatedRowCount != postExecutionIndex)
+            // On the sequential route nothing else binds rows 0..txCount to the suggested list, so a row the executor
+            // skipped must not pass. On the parallel route IncrementalValidation checks every row.
+            if (!ParallelExecutionEnabled && _validatedRowCount != postExecutionIndex)
                 throw new InvalidOperationException($"Verify-only block access list validation covered {_validatedRowCount} of {postExecutionIndex} rows.");
 
             // IncrementalValidation only covered indices 0..txCount; the post-execution row
