@@ -102,9 +102,12 @@ public partial class DebugRpcModuleTests
     [TestCase(null, "0x0", 5, false, true, true)]
     // The source block is classified before the overrides, so a number override of 0 does not make the copy a genesis.
     [TestCase("0x9", null, 5, false, true, true, "0x0")]
+    // An indexed call classifies its own copy too, so the block tree's head keeps its flag. Its PREVRANDAO comes from
+    // block processing, which this fixture runs without merge recovery, so the value is not checked (null).
+    [TestCase("0x9", null, 5, false, null, true, null, "0x0")]
     public async Task Debug_traceCall_blob_fee_override_reads_prevrandao_or_difficulty(
-        string? blobBaseFee, string? maxFeePerBlobGas, int difficulty, bool isPostMerge, bool expectMixHash, bool chainIsPostMerge = false,
-        string? number = null)
+        string? blobBaseFee, string? maxFeePerBlobGas, int difficulty, bool isPostMerge, bool? expectMixHash, bool chainIsPostMerge = false,
+        string? number = null, string? txIndex = null)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(builder =>
         {
@@ -122,6 +125,7 @@ public partial class DebugRpcModuleTests
         {
             ["stateOverrides"] = new Dictionary<string, object> { [address] = new { code = "0x4460005260206000f3" } }
         };
+        if (txIndex is not null) options["txIndex"] = txIndex;
         if (blobBaseFee is not null) options["blockOverrides"] = number is null ? new { blobBaseFee } : new { blobBaseFee, number };
         if (maxFeePerBlobGas is not null)
         {
@@ -134,8 +138,11 @@ public partial class DebugRpcModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(JToken.Parse(response)["result"]!["failed"]!.Value<bool>(), Is.False, response);
-            Assert.That(ParseReturnValue(response),
-                Is.EqualTo(expectMixHash ? TestItem.KeccakH.Bytes.ToArray() : head.Difficulty.ToBigEndian()));
+            if (expectMixHash is { } mixHash)
+            {
+                Assert.That(ParseReturnValue(response),
+                    Is.EqualTo(mixHash ? TestItem.KeccakH.Bytes.ToArray() : head.Difficulty.ToBigEndian()));
+            }
             Assert.That(head.IsPostMerge, Is.EqualTo(isPostMerge), "the head keeps its flag");
         }
     }

@@ -72,16 +72,7 @@ public class BlockchainBridgeTests
 
         _stateReader.HasStateForBlock(Arg.Any<BlockHeader?>()).Returns(true);
 
-        _container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule())
-            .AddSingleton(_blockTree)
-            .AddSingleton<IReceiptFinder>(_receiptStorage)
-            .AddSingleton(_timestamper)
-            .AddSingleton(Substitute.For<ILogFinder>())
-            .AddSingleton<IMiningConfig>(new MiningConfig { Enabled = false })
-            .AddScoped(_transactionProcessor)
-            .AddSingleton(_stateReader)
-            .Build();
+        _container = CreateContainerBuilder().Build();
 
         _specProvider = _container.Resolve<ISpecProvider>();
         _blockchainBridge = _container.Resolve<IBlockchainBridge>();
@@ -90,6 +81,17 @@ public class BlockchainBridgeTests
 
     [TearDown]
     public void TearDown() => _container.Dispose();
+
+    /// <summary>The fixture's registrations; a test that adds services builds its own container from them.</summary>
+    private ContainerBuilder CreateContainerBuilder() => new ContainerBuilder()
+        .AddModule(new TestNethermindModule())
+        .AddSingleton(_blockTree)
+        .AddSingleton<IReceiptFinder>(_receiptStorage)
+        .AddSingleton(_timestamper)
+        .AddSingleton(Substitute.For<ILogFinder>())
+        .AddSingleton<IMiningConfig>(new MiningConfig { Enabled = false })
+        .AddScoped(_transactionProcessor)
+        .AddSingleton(_stateReader);
 
     [Test]
     public void get_transaction_returns_null_when_transaction_not_found()
@@ -837,15 +839,7 @@ public class BlockchainBridgeTests
             classifiedNumbers.Add(info.Arg<BlockHeader>().Number);
             return info.Arg<BlockHeader>().IsPostMerge = switcherSays;
         });
-        ContainerBuilder builder = new ContainerBuilder()
-            .AddModule(new TestNethermindModule())
-            .AddSingleton(_blockTree)
-            .AddSingleton<IReceiptFinder>(_receiptStorage)
-            .AddSingleton(Substitute.For<ILogFinder>())
-            .AddSingleton<IMiningConfig>(new MiningConfig { Enabled = false })
-            .AddScoped(_transactionProcessor)
-            .AddSingleton(_stateReader)
-            .AddSingleton(poSSwitcher);
+        ContainerBuilder builder = CreateContainerBuilder().AddSingleton(poSSwitcher);
         if (call == "EstimateFrameGas") builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Eip8141Prototype.Instance));
         using IContainer container = builder.Build();
         IBlockchainBridge bridge = container.Resolve<IBlockchainBridge>();
