@@ -325,7 +325,7 @@ public abstract class SubstitutablePersistenceReader : IPersistence.IPersistence
 /// (NSubstitute's backing) throws <c>InvalidProgramException</c> when proxying methods with ref-struct parameters
 /// such as <c>scoped ReadOnlySpan&lt;byte&gt;</c>.
 /// </summary>
-internal sealed class FakeWriteBatch : IPersistence.IWriteBatch
+public sealed class FakeWriteBatch : IPersistence.IWriteBatch
 {
     public List<Address> SelfDestructCalls { get; } = [];
     public List<(Address Addr, Account? Account)> SetAccountCalls { get; } = [];
