@@ -15,6 +15,11 @@ namespace Nethermind.Tools.ProfilingMcp.Native;
 /// native libraries built without them show shortened stacks. For a .NET target the runtime is asked over its diagnostics port to write a perf map
 /// for the duration, which names JIT-compiled methods; no restart is needed.
 /// </remarks>
+/// <param name="PerfMap">Where the runtime's perf map was read, or null for a process without a .NET diagnostics port.</param>
+/// <param name="JitMethods">How many JIT-compiled methods the perf map named.</param>
+/// <param name="KernelError">Why kernel code was not sampled, or null when it was.</param>
+public sealed record NativeSample(string? PerfMap, int JitMethods, string? KernelError);
+
 public static class NativeSampler
 {
     public const int Hz = 1000;
@@ -26,12 +31,11 @@ public static class NativeSampler
     private static readonly TimeSpan LockTimeout = TimeSpan.FromMinutes(15);
 
     /// <summary>Records <paramref name="pid"/> for <paramref name="duration"/> and writes its stacks to <paramref name="output"/>.</summary>
-    /// <returns>Where the runtime's perf map was read and how many JIT-compiled methods it named; null for a process without a .NET diagnostics port.</returns>
     /// <remarks>
     /// Samples of one process are serialized across sessions, since each turns the perf map on and off. A map that was on before, because the
     /// process was started with <c>DOTNET_PerfMapEnabled</c> or someone else enabled it, is left on and its files are kept.
     /// </remarks>
-    public static async Task<(string PerfMap, int Methods)?> CollectAsync(int pid, TimeSpan duration, string output, CancellationToken cancellationToken)
+    public static async Task<NativeSample> CollectAsync(int pid, TimeSpan duration, string output, CancellationToken cancellationToken)
     {
         if (!OperatingSystem.IsLinux())
             throw new PlatformNotSupportedException("native_sample needs perf, which runs on Linux only; profile a container or a Linux host.");
@@ -45,19 +49,40 @@ public static class NativeSampler
         try
         {
             // Build ids are skipped: perf script reads each library by path, from the target's mount namespace.
-            await RunPerfAsync(["record", "--quiet", "--no-buildid", "--no-buildid-cache", "-e", "cpu-clock", "-F", Hz.ToString(CultureInfo.InvariantCulture), "-g", "-p", pid.ToString(CultureInfo.InvariantCulture),
-                "-o", data, "--", "sleep", duration.TotalSeconds.ToString(CultureInfo.InvariantCulture)], stdout: null, cancellationToken);
+            string? kernelError = await RecordAsync(events => RunPerfAsync(["record", "--quiet", "--no-buildid", "--no-buildid-cache", "-e", events, "-F", Hz.ToString(CultureInfo.InvariantCulture), "-g",
+                "-p", pid.ToString(CultureInfo.InvariantCulture), "-o", data, "--", "sleep", duration.TotalSeconds.ToString(CultureInfo.InvariantCulture)], stdout: null, cancellationToken), cancellationToken);
 
             JitMap jit = isDotNet ? JitMap.Load(perfMap) : JitMap.Empty;
             PerfScriptFolder folder = new(jit);
             await RunPerfAsync(["script", "--input", data, "-F", "comm,tid,ip,sym,dso"], folder.Add, cancellationToken);
             await File.WriteAllLinesAsync(output, folder.Fold(), cancellationToken);
-            return isDotNet ? (perfMap, jit.Count) : null;
+            return new NativeSample(isDotNet ? perfMap : null, jit.Count, kernelError);
         }
         finally
         {
             File.Delete(data);
             DisablePerfMap(runtime, perfMap);
+        }
+    }
+
+    /// <summary>Records kernel and user code, or user code only when perf cannot record the kernel.</summary>
+    /// <param name="record">Runs <c>perf record</c> for the given event, throwing <see cref="InvalidOperationException"/> when it fails.</param>
+    /// <returns>Why kernel code was not recorded, or null when it was.</returns>
+    /// <remarks>
+    /// Some kernels refuse kernel sampling to the sidecar, as Docker Desktop's does under load with an error about kernel symbols,
+    /// while user-space sampling (<c>:u</c>) still works.
+    /// </remarks>
+    internal static async Task<string?> RecordAsync(Func<string, Task> record, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await record("cpu-clock");
+            return null;
+        }
+        catch (InvalidOperationException e) when (!cancellationToken.IsCancellationRequested)
+        {
+            await record("cpu-clock:u");
+            return e.Message;
         }
     }
 

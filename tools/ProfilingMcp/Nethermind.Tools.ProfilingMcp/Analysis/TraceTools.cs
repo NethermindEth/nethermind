@@ -74,17 +74,19 @@ public sealed class TraceTools(NetTraceReader netTrace, WorkspacePaths paths)
         CancellationToken cancellationToken = default)
     {
         string stacks = Path.Combine(paths.Snapshots, WorkspacePaths.NewFileName($"pid{pid}-native", NativeSampler.Extension));
-        (string PerfMap, int Methods)? jit = await NativeSampler.CollectAsync(pid, ToolArguments.Window(seconds), stacks, cancellationToken);
+        NativeSample sample = await NativeSampler.CollectAsync(pid, ToolArguments.Window(seconds), stacks, cancellationToken);
         IReadOnlyList<FunctionStat> functions = FoldedStacks.Read(File.ReadLines(stacks));
 
         StringBuilder sb = new();
         sb.Append($"Stacks saved: {paths.ForPerson(stacks)}\n");
-        sb.Append(jit switch
+        sb.Append(sample switch
         {
-            null => "JIT-compiled code is unnamed ([memfd:doublemapper] or [unknown]): the process is not .NET, or its diagnostics port is unavailable.\n",
-            ({ } map, 0) => $"JIT-compiled code is unnamed: the runtime wrote no perf map at {map}.\n",
-            (_, int methods) => $"JIT-compiled code is named from the runtime's perf map ({methods:N0} methods).\n",
+            { PerfMap: null } => "JIT-compiled code is unnamed ([memfd:doublemapper] or [unknown]): the process is not .NET, or its diagnostics port is unavailable.\n",
+            { JitMethods: 0 } => $"JIT-compiled code is unnamed: the runtime wrote no perf map at {sample.PerfMap}.\n",
+            _ => $"JIT-compiled code is named from the runtime's perf map ({sample.JitMethods:N0} methods).\n",
         });
+        if (sample.KernelError is not null)
+            sb.Append($"Only user-space code was sampled, so CPU time in the kernel (system calls, page faults) is missing: perf could not sample the kernel ({sample.KernelError}).\n");
 
         List<FunctionStat> threads = [];
         foreach (FunctionStat f in functions)
@@ -115,17 +117,24 @@ public sealed class TraceTools(NetTraceReader netTrace, WorkspacePaths paths)
         [Description("Number of rows.")] int top = 30,
         [Description("Only methods whose full name matches this regex, e.g. ^Nethermind\\.")] string? include = null,
         [Description("Hide methods whose full name matches this regex, e.g. ^System\\.")] string? exclude = null,
-        [Description("Hide methods where threads block (Monitor.Wait, semaphore and socket waits, Thread.Sleep) and compute percentages over the remaining time. " +
-                     "EventPipe sampling measures wall time, so on a mostly idle process these dominate.")] bool hideWaits = true)
+        [Description("Hide methods where threads block (Monitor.Wait, semaphore and socket waits, Thread.Sleep, waiting for a contended lock or for a GC to finish) " +
+                     "and compute percentages over the remaining time. EventPipe sampling measures wall time, so on a mostly idle process or under load these dominate; " +
+                     "the time hidden in lock and GC waits is reported separately.")] bool hideWaits = true)
     {
         IReadOnlyList<FunctionStat> functions = ReadSampled(snapshot);
         double totalOwn = 0;
         double waitOwn = 0;
+        double lockOwn = 0;
+        double gcOwn = 0;
         foreach (FunctionStat f in functions)
         {
             totalOwn += f.OwnTime;
             if (BlockingWait.IsMatch(f.Name))
                 waitOwn += f.OwnTime;
+            if (LockWait.IsMatch(f.Name))
+                lockOwn += f.OwnTime;
+            else if (GcWait.IsMatch(f.Name))
+                gcOwn += f.OwnTime;
         }
 
         bool byTotal = sortBy.Equals("total", StringComparison.OrdinalIgnoreCase);
@@ -143,17 +152,36 @@ public sealed class TraceTools(NetTraceReader netTrace, WorkspacePaths paths)
         }
 
         string waits = hideWaits
-            ? $" Hidden: {Ms(waitOwn)} ms ({Percent(waitOwn, totalOwn)}) blocked in waits; own % is relative to the remaining {Ms(basis)} ms."
+            ? $" Hidden: {Ms(waitOwn)} ms ({Percent(waitOwn, totalOwn)}) blocked in waits{WaitBreakdown(lockOwn, gcOwn)}; own % is relative to the remaining {Ms(basis)} ms."
             : "";
         string totals = byTotal && hideWaits ? " Total times still include waits in callees." : "";
         return $"{functions.Count} methods; own time over all threads: {Ms(totalOwn)} ms.{waits} Sorted by {(byTotal ? "total" : "own")} time.{totals}\n{table}";
     }
 
+    /// <summary>A thread waiting for a lock another thread holds; the runtime spins briefly, then blocks.</summary>
+    private const string LockWaits = @"System\.Threading\.(Monitor\.Enter_Slowpath|Lock\.TryEnterSlow)";
+
+    /// <summary>A thread stopped at a safe point until another thread's GC finishes; under allocation load many threads wait here at once.</summary>
+    private const string GcWaits = @"System\.Threading\.Thread\.<PollGC>g__PollGCWorker\|\d+_\d+";
+
+    private static readonly Regex LockWait = new($"^({LockWaits})$", RegexOptions.CultureInvariant);
+    private static readonly Regex GcWait = new($"^({GcWaits})$", RegexOptions.CultureInvariant);
+
     private static readonly Regex BlockingWait = new(
         @"^(System\.Threading\.(Monitor\.Wait|LowLevelLifoSemaphore\.WaitForSignal|LowLevelMonitor\.Wait|SemaphoreSlim\.(WaitUntilCountOrTimeout|WaitCore)|WaitHandle\.WaitOne\w*|WaitHandle\.WaitMultiple\w*|Thread\.Sleep|ManualResetEventSlim\.Wait)" +
+        $"|{LockWaits}|{GcWaits}" +
         @"|System\.GC\.RunFinalizers|System\.Net\.Sockets\.SocketAsyncEngine\.EventLoop" +
         @"|Interop\+Sys\.(Read|WaitForSocketEvents|Poll)|Interop\+Kernel32\.(GetQueuedCompletionStatus\w*|WaitFor\w+))$",
         RegexOptions.CultureInvariant);
+
+    /// <remarks>Waits for locks and GCs are hidden like other waits, since they take no CPU, but named, since they still delay the work.</remarks>
+    private static string WaitBreakdown(double lockOwn, double gcOwn) => (lockOwn > 0, gcOwn > 0) switch
+    {
+        (true, true) => $", of which {Ms(lockOwn)} ms waiting for locks (lock contention) and {Ms(gcOwn)} ms waiting for GCs to finish",
+        (true, false) => $", of which {Ms(lockOwn)} ms waiting for locks (lock contention)",
+        (false, true) => $", of which {Ms(gcOwn)} ms waiting for GCs to finish",
+        _ => "",
+    };
 
     [McpServerTool(Name = "trace_callstacks", Title = "Show call stacks reaching a method", ReadOnly = true, Idempotent = true, OpenWorld = false)]
     [Description("Shows the distinct call stacks (outermost caller first) that reach methods matching a regex, ranked by time, to find which callers make a hotspot expensive.")]

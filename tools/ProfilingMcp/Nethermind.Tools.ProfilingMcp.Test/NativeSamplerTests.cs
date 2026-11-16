@@ -3,6 +3,7 @@
 
 using Microsoft.Diagnostics.NETCore.Client;
 using Nethermind.Tools.ProfilingMcp.Analysis;
+using Nethermind.Tools.ProfilingMcp.EventPipe;
 using Nethermind.Tools.ProfilingMcp.Native;
 using NUnit.Framework;
 
@@ -145,12 +146,12 @@ public class NativeSamplerTests
         string? perfMap = null;
         try
         {
-            (string PerfMap, int Methods)? jit = await NativeSampler.CollectAsync(Environment.ProcessId, TimeSpan.FromSeconds(1), output, cancellationToken);
-            perfMap = jit?.PerfMap;
+            NativeSample sample = await NativeSampler.CollectAsync(Environment.ProcessId, TimeSpan.FromSeconds(1), output, cancellationToken);
+            perfMap = sample.PerfMap;
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(jit?.Methods, Is.GreaterThan(0));
+                Assert.That(sample.JitMethods, Is.GreaterThan(0));
                 Assert.That(perfMap, Does.Exist);
             }
         }
@@ -160,6 +161,51 @@ public class NativeSamplerTests
             File.Delete(output);
             if (perfMap is not null)
                 File.Delete(perfMap);
+        }
+    }
+
+    [TestCase(false, ExpectedResult = "cpu-clock")]
+    [TestCase(true, ExpectedResult = "cpu-clock, cpu-clock:u")]
+    public async Task<string> Samples_user_code_only_when_perf_cannot_sample_the_kernel(bool kernelRefused)
+    {
+        List<string> recorded = [];
+        string? kernelError = await NativeSampler.RecordAsync(events =>
+        {
+            recorded.Add(events);
+            return kernelRefused && events == "cpu-clock" ? throw new InvalidOperationException("perf record failed with exit code 255") : Task.CompletedTask;
+        }, CancellationToken.None);
+
+        Assert.That(kernelError, kernelRefused ? Does.Contain("exit code 255") : Is.Null);
+        return string.Join(", ", recorded);
+    }
+
+    [Test]
+    public void Hides_lock_and_gc_waits_from_hotspots_but_names_them()
+    {
+        string root = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}");
+        string stacks = Path.Combine(root, $"waits{NativeSampler.Extension}");
+        Directory.CreateDirectory(root);
+        File.WriteAllLines(stacks,
+        [
+            "[thread a];Main;System.Threading.Monitor.Enter_Slowpath 20",
+            "[thread b];Main;System.Threading.Lock.TryEnterSlow 5",
+            "[thread c];Main;System.Threading.Thread.<PollGC>g__PollGCWorker|67_0 35",
+            "[thread d];Main;Work 40",
+        ]);
+        try
+        {
+            string hotspots = new TraceTools(new NetTraceReader(), WorkspacePaths.At(root)).Hotspots(stacks, exclude: @"^\[thread ");
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(hotspots, Does.Contain("Hidden: 60.0 ms").And.Contain("25.0 ms waiting for locks").And.Contain("35.0 ms waiting for GCs"));
+                Assert.That(hotspots, Does.Not.Contain("Enter_Slowpath").And.Not.Contain("TryEnterSlow").And.Not.Contain("PollGCWorker"));
+                Assert.That(hotspots, Does.Contain("100.0 %").And.Contain("Work"), "the only remaining own time is the work");
+            }
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
         }
     }
 
