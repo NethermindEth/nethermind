@@ -59,7 +59,9 @@ echo "== missed slots after the fork"
 head_slot=$(curl -sf $CL/eth/v1/beacon/headers/head | jq -r .data.header.message.slot)
 head_number=$(curl -sf $CL/eth/v2/beacon/blocks/head | jq -r .data.message.body.execution_payload.block_number)
 fork_number=$(curl -sf $CL/eth/v2/beacon/blocks/$FORK_SLOT | jq -r .data.message.body.execution_payload.block_number)
-echo "slots $FORK_SLOT..$head_slot, EL blocks $fork_number..$head_number, missed $(( head_slot - FORK_SLOT - (head_number - fork_number) ))"
+missed=$(( head_slot - FORK_SLOT - (head_number - fork_number) ))
+echo "slots $FORK_SLOT..$head_slot, EL blocks $fork_number..$head_number, missed $missed"
+(( missed <= ${MISSED_SLOTS_MAX:-0} )) || fail "$missed slots missed after the fork (MISSED_SLOTS_MAX=${MISSED_SLOTS_MAX:-0})"
 
 echo "== errors"
 echo "nethermind: $(logs $EL_CONTAINER | grep -ciE 'invalid block|rejected|exception') invalid/rejected/exception lines"

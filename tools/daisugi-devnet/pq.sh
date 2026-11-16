@@ -2,7 +2,6 @@
 set -euo pipefail
 
 KIT="$(cd "$(dirname "$0")" && pwd)"
-ROOT="$(cd "$KIT/../.." && pwd)"
 : "${PQ_KEY:?set PQ_KEY to the private key of a premined account}"
 : "${CHAIN_ID:?set CHAIN_ID}"
 : "${OUT:?set OUT to a fresh output dir}"
@@ -17,13 +16,9 @@ die() { echo "FAIL: $*" >&2; exit 1; }
 [ ! -e "$OUT" ] || die "$OUT exists; use a fresh OUT"
 mkdir -p "$OUT"
 
-# FX can be the signer the Nethermind.Crypto.Lean package ships in testing/runtimes/<rid>/native; otherwise build it.
-if [ -z "${FX:-}" ]; then
-  [ "${PQ_SCHEME:-sphincs}" = sphincs ] || die "PQ_SCHEME=$PQ_SCHEME needs FX: only the package signer proves leanSTARK"
-  FX=$ROOT/tools/lean-ffi/target/release/examples/fixtures
-  (cd "$ROOT/tools/lean-ffi" && cargo build -q --release --locked --example fixtures) > "$OUT/fixtures.build.log" 2>&1 \
-    || die "fixtures build failed: $(tail -20 "$OUT/fixtures.build.log")"
-fi
+# FX is the signer the Nethermind.Crypto.Lean package ships in testing/runtimes/<rid>/native: its keys, witnesses and
+# leanSTARK proofs must match the node's backend, so it comes from the same package version.
+: "${FX:?set FX to the fixtures signer of the Nethermind.Crypto.Lean package the node runs}"
 dotnet build --disable-build-servers -c release "$KIT/pq-tx.cs" > "$OUT/pq-tx.build.log" 2>&1 \
   || die "pq-tx build failed: $(tail -20 "$OUT/pq-tx.build.log")"
 [ -x "$FX" ] || die "$FX is not an executable fixtures signer"

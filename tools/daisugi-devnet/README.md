@@ -32,7 +32,8 @@ To test your own consensus-layer changes, build your Lighthouse image and pass i
 
 | Component | Source | Revision |
 | --- | --- | --- |
-| Nethermind | `NethermindEth/nethermind` `feature/eip8288-lean` (#15829 merged), native Lean backend from `Nethermind.Crypto.Lean` 0.12.0.21 (nugettest) | `3dc22c25502774fcf3d8c4ea7a773092caf34a95` |
+| Nethermind | `NethermindEth/nethermind` `feature/eip8288-lean` `757b7eabed` plus #15955 (F128 leanVM, native ABI 21, leanSPHINCS key `PK.seed \|\| PK.root`), native Lean backend from `Nethermind.Crypto.Lean` 0.21.0.110 (nugettest) | `fe94447c770f7eedfb31336c47a824df69aeaf53` |
+| Native Lean backend | `Nethermind.Crypto.Lean` 0.21.0.110, from `NethermindEth/lean-bindings` `1209c17b42f5c5756cb5f4913e0b8b414b381f44` | nupkg sha256 `daecd150e646cdbc1ecaffb0fa118dff780c8a928a2ff705a7c3362fddd51ac2`; linux-x64 `libnethermind_lean.so` `aad07d8fa0f106457ef1719eadd1685a98e39fe6df3ab27308022e14637b8f00`; `AGGREGATED_VK` `e09e5acfcfe87832f337eb42acac98246d160bb915b55c55fbd8118b203cbb81` |
 | Lighthouse | `sigp/lighthouse` v8.2.2 | `e423a66763bb1bd780492d635123f208d80c3538`, archive sha256 `3f3193218d8f7228889505eb508c6176ea60a964fcfb072eb248787c1e242d4c` |
 | Lighthouse patch series | `asanso/AA-PQ` PR #10, `aggregation/frames/consensus/eip8288-lean` | `0ba239eeb277fdfb8bae29bcfa16081977c91d72` |
 | Genesis generator | `ethpandaops/ethereum-genesis-generator` | `sha256:287f596b9a4ee72ae2aff194682f854650a8861542e489259adf0975cc0c9a54` |
@@ -41,7 +42,7 @@ To test your own consensus-layer changes, build your Lighthouse image and pass i
 
 - Linux x86_64 (the only validated platform), Docker with Compose 2.24 or later (`!reset`/`!override` tags).
 - `jq`, `curl`, `openssl`, `python3`, `git`.
-- For `proof.sh` and `pq.sh`: .NET SDK from `global.json` (10.0.300+). `pq.sh` takes the package's prebuilt signer through `FX`; without it, Rust via `rustup` builds one from `tools/lean-ffi`.
+- For `proof.sh` and `pq.sh`: .NET SDK from `global.json` (10.0.300+). `pq.sh` needs the package's prebuilt signer in `FX` (see below); no Rust.
 
 ## 1. Build the images
 
@@ -50,8 +51,20 @@ From the repository root.
 Nethermind, from a checkout of the pinned revision with its stock `Dockerfile`; it restores the native Lean library from `Nethermind.Crypto.Lean` and builds no Rust:
 
 ```bash
-git worktree add ../nethermind-el 3dc22c25502774fcf3d8c4ea7a773092caf34a95
-docker build --build-arg COMMIT_HASH=3dc22c25502774fcf3d8c4ea7a773092caf34a95 -t daisugi/nethermind:3dc22c2550 ../nethermind-el
+git worktree add ../nethermind-el fe94447c770f7eedfb31336c47a824df69aeaf53
+docker build --build-arg COMMIT_HASH=fe94447c770f7eedfb31336c47a824df69aeaf53 -t daisugi/nethermind:fe94447c77 ../nethermind-el
+```
+
+- Expected `/nethermind/libnethermind_lean.so` sha256 in the image: `aad07d8fa0f106457ef1719eadd1685a98e39fe6df3ab27308022e14637b8f00`.
+
+The PQ signer `FX` for `pq.sh`, from the same package:
+
+```bash
+B=tools/daisugi-devnet/build; V=0.21.0.110; mkdir -p $B
+curl -fsSL -o $B/lean.nupkg https://apiint.nugettest.org/v3-flatcontainer/nethermind.crypto.lean/$V/nethermind.crypto.lean.$V.nupkg
+echo "daecd150e646cdbc1ecaffb0fa118dff780c8a928a2ff705a7c3362fddd51ac2  $B/lean.nupkg" | sha256sum -c
+unzip -oq -d $B/lean $B/lean.nupkg testing/runtimes/linux-x64/native/fixtures
+export FX=$PWD/$B/lean/testing/runtimes/linux-x64/native/fixtures && chmod +x $FX
 ```
 
 Lighthouse, from the pinned archive plus the AA-PQ patch series:
@@ -76,7 +89,7 @@ Set this in every shell that runs the scripts:
 ```bash
 cd tools/daisugi-devnet
 export COMPOSE_FILE=docker-compose.yml:lighthouse-distroless.override.yml
-NM=daisugi/nethermind:3dc22c2550 LH=daisugi/lighthouse:eip8288-lean
+NM=daisugi/nethermind:fe94447c77 LH=daisugi/lighthouse:eip8288-lean
 ```
 
 ## 2. Genesis and fork schedule
@@ -184,25 +197,25 @@ until curl -s -X POST -H 'content-type: application/json' --data "{\"jsonrpc\":\
 tools/daisugi-devnet/kurtosis/run.sh daisugi
 ```
 
-- Needs Kurtosis, the two images from step 1 (`daisugi/nethermind:3dc22c2550`, `daisugi/lighthouse:eip8288-lean`), plus .NET SDK as for `pq.sh`. The Docker host must be no Swarm node: Kurtosis matches its network by the name `bridge` and fails on `docker_gwbridge`. Its engine binds host port 8081.
+- Needs Kurtosis, the two images from step 1 (`daisugi/nethermind:fe94447c77`, `daisugi/lighthouse:eip8288-lean`), plus .NET SDK as for `pq.sh`. The Docker host must be no Swarm node: Kurtosis matches its network by the name `bridge` and fails on `docker_gwbridge`. Its engine binds host port 8081.
 - `network_params.yaml`: Nethermind and Lighthouse images, 64 validators, 2 s slots, chain ID 1337, Electra at genesis, the 8141 verifier and 8250 nonce manager predeploys, and `DAISUGI_FORK_EPOCH` 3.
 - `genesis.Dockerfile` wraps the pinned genesis generator. After it runs, the wrapper sets `eip8141PrototypeTime` to genesis, sets `eip8288PrototypeTime` to the Daisugi fork slot, drops the Osaka/Amsterdam/Bogota times, appends `DAISUGI_FORK_VERSION` `0xd0000038`, and removes `SECONDS_PER_SLOT`. Lighthouse rejects `SECONDS_PER_SLOT` together with `SLOT_DURATION_MS`.
 - `lighthouse.Dockerfile` adds `/bin/sh` to the distroless Lighthouse image and clears its `ENTRYPOINT`. ethereum-package starts the beacon node with `sh -c` itself, and the validator client runs `lighthouse vc ...` with the image entrypoint.
 - `run.sh` writes `NETHERMIND_IMAGE` into a copy of `network_params.yaml` under `kurtosis/run/`. It finds ports and containers by the enclave's UUID and stops when any of them is missing or the beacon API is not up within 120 s.
 - The PQ key defaults to the first account ethereum-package prefunds from its default mnemonic.
-- Env: `PACKAGE` (pinned ethereum-package commit), `NETHERMIND_IMAGE`, `LIGHTHOUSE_IMAGE`, `NODES` (`1`), `PQ_SERIES` (`3`), `PQ_KEY`, `KEEP`.
+- Env: `PACKAGE` (pinned ethereum-package commit), `NETHERMIND_IMAGE`, `LIGHTHOUSE_IMAGE`, `NODES` (`1`), `PQ_SERIES` (`3`), `PQ_SCHEMES` (`sphincs`; `"sphincs stark mixed"` sends one series per scheme), `FX` (required), `PQ_KEY`, `KEEP`, `MISSED_SLOTS_MAX` (`0`, for `check.sh`).
 - `kurtosis/sync.sh <enclave>` (after `KEEP=1`, with `NODES` 2 or more: a single-node enclave's beacon runs `--target-peers=0`): a late-joining Nethermind + Lighthouse pair on the enclave's network, the Compose `genesis` sync pair of step 6, peered only with node 1. Then compare it with the enclave nodes: `EL_RPC_PORTS="<node ELs> 28547" CL_HTTP_PORTS="<node beacon APIs> 25053" ./sync-check.sh <proof block>...` (the enclave's dynamic ports, node 1 first).
 
 ### PQ transaction series
 
-`pq.sh` uses the leanSig signer `FX` (the `testing/runtimes/linux-x64/native/fixtures` binary of the `Nethermind.Crypto.Lean` package, or else the `tools/lean-ffi` example `fixtures` it builds; key from seed `[42; 32]`, test-only) and `pq-tx.cs`, which encodes frame transactions against this tree. One series, all through `eth_sendProofWrapper`:
+`pq.sh` uses the leanSig signer `FX` (the `testing/runtimes/linux-x64/native/fixtures` binary of the same `Nethermind.Crypto.Lean` package as the node, sha256 `fc25affec68cbafacd35a728a7f665bd6aa75cbe0e59b7fc0775d4f47386b982` in 0.21.0.110; key from seed `[42; 32]`, test-only) and `pq-tx.cs`, which encodes frame transactions against this tree. One series, all through `eth_sendProofWrapper`:
 
 1. A frame transaction with a leanSig dependency on nonce key 0. Its corrupted wrapper is rejected, the valid one is included.
 2. The same on a random nonce key, sequence 0. Before it is sent, a sequence 1 transaction is rejected as `keyed nonce sequence not current`. After sequence 0 is included, sequence 1 is sent and included.
 3. A byte-identical resend of sequence 0 is rejected as `already known`; a new transaction on sequence 0 as `keyed nonce sequence not current`.
 
 - Every included receipt must have status `0x1`. Expected last line: `PASS pq: blocks <b0> <b1> <b2>`.
-- Env: `PQ_KEY`, `CHAIN_ID`, `OUT` (fresh directory) are required; `PORT` (`8545`), `FX`, `PQ_SCHEME` (`sphincs`; `stark` or `mixed` need the package signer in `FX`), `TO`, `NONCE`, `NONCE_KEY`, `RECEIPT_TRIES` (`60`).
+- Env: `PQ_KEY`, `CHAIN_ID`, `OUT` (fresh directory) and `FX` are required; `PORT` (`8545`), `PQ_SCHEME` (`sphincs`, `stark` or `mixed`), `TO`, `NONCE`, `NONCE_KEY`, `RECEIPT_TRIES` (`60`).
 
 ## Environment variables
 
