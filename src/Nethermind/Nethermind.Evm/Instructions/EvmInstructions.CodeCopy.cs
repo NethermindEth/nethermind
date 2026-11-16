@@ -288,11 +288,11 @@ public static partial class EvmInstructions
             CodeInfo codeInfo = vm.CodeInfoRepository
                 .GetCachedCodeInfo(address, followDelegation: false, spec, out _);
 
-            // Get the external code from the repository.
-            ReadOnlySpan<byte> externalCode = codeInfo.CodeSpan;
-            // A precompile's code info carries no code, but the account at its address may hold some.
-            if (externalCode.IsEmpty && codeInfo.IsPrecompile)
-                externalCode = GetCodeAtPrecompileAddress(vm.WorldState, address);
+            // Get the external code from the repository. A precompile's code info carries no code, but the account at
+            // its address may hold some.
+            ReadOnlySpan<byte> externalCode = codeInfo.IsPrecompile
+                ? GetCodeAtPrecompileAddress(vm.WorldState, address)
+                : codeInfo.CodeSpan;
 
             vm.VmState.Memory.CopyFromZeroExtendedAfterGas(in a, externalCode, in b, (int)result);
 
@@ -432,11 +432,11 @@ public static partial class EvmInstructions
         // No optimization applied: load the account's code from storage.
         CodeInfo codeInfo = vm.CodeInfoRepository
             .GetCachedCodeInfo(address, followDelegation: false, spec, out _);
-        int codeLength = codeInfo.CodeSpan.Length;
         // A precompile's code info carries no code, but the account at its address may hold some, which the
         // contract check above sees.
-        if (codeLength == 0 && codeInfo.IsPrecompile)
-            codeLength = GetCodeAtPrecompileAddress(vm.WorldState, address).Length;
+        int codeLength = codeInfo.IsPrecompile
+            ? GetCodeAtPrecompileAddress(vm.WorldState, address).Length
+            : codeInfo.CodeSpan.Length;
         return new OpcodeResult(programCounter, stack.PushUInt32<TTracingInst, OnFlag>((uint)codeLength));
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
