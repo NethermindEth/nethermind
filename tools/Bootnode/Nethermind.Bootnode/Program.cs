@@ -166,8 +166,9 @@ Option<bool> writeAddressOption = new("--write-address")
     DefaultValueFactory = _ => true
 };
 
-RootCommand rootCommand = new("Nethermind standalone discovery bootnode")
-{
+RootCommand rootCommand =
+[
+    with("Nethermind standalone discovery bootnode"),
     dataDirOption,
     discoveryPortOption,
     addrOption,
@@ -193,7 +194,7 @@ RootCommand rootCommand = new("Nethermind standalone discovery bootnode")
     privateKeyFileOption,
     genKeyOption,
     writeAddressOption
-};
+];
 
 rootCommand.SetAction(async (parseResult, cancellationToken) =>
 {
@@ -543,7 +544,7 @@ static BootnodeStatus CreateStatus(BootnodeOptions options, BootnodeIdentity ide
 
 static BootnodeDiscoverySource[] ResolveDiscoverySources(IContainer container, DiscoveryVersion discoveryVersion)
 {
-    List<BootnodeDiscoverySource> sources = new(2);
+    List<BootnodeDiscoverySource> sources = [with(2)];
     if ((discoveryVersion & DiscoveryVersion.V4) != 0)
     {
         sources.Add(new BootnodeDiscoverySource("discv4", container.Resolve<DiscoveryApp>()));
