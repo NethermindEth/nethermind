@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using BenchmarkDotNet.Attributes;
@@ -37,6 +38,10 @@ public class FlatHistoryAccountBenchmarks
 
     [Params(false, true)]
     public bool Windowed { get; set; }
+
+    /// <summary>Drops history rows instead of copying them into the in-memory database, so only the capture code allocates.</summary>
+    [Params(false, true)]
+    public bool DiscardRows { get; set; }
 
     private string _directory = null!;
     private ArenaManager _arena = null!;
@@ -84,7 +89,7 @@ public class FlatHistoryAccountBenchmarks
     [IterationSetup]
     public void CreateHistory()
     {
-        SnapshotableMemColumnsDb<FlatHistoryColumns> history = new();
+        IColumnsDb<FlatHistoryColumns> history = DiscardRows ? new RowDiscardingHistoryDb() : new SnapshotableMemColumnsDb<FlatHistoryColumns>();
         HistoryAvailability availability = new(history.GetColumnDb(FlatHistoryColumns.AvailableBlocks));
         _writer = new HistoryWriter(_db, history, _config, availability, HistoryRowFormat.Resolve(availability, _config), NullLogManager.Instance, commitments: null);
     }
@@ -113,6 +118,41 @@ public class FlatHistoryAccountBenchmarks
 
         scope.Commit(blockNumber: 0);
         return commitTarget.LastSnapshot ?? throw new InvalidOperationException("The commit produced no snapshot");
+    }
+
+    /// <summary>Keeps block markers, but drops account, storage and clear rows the way a native write batch takes them: without a managed copy.</summary>
+    private sealed class RowDiscardingHistoryDb : IColumnsDb<FlatHistoryColumns>
+    {
+        private readonly SnapshotableMemColumnsDb<FlatHistoryColumns> _inner = new();
+
+        public IDb GetColumnDb(FlatHistoryColumns key) => _inner.GetColumnDb(key);
+        public IEnumerable<FlatHistoryColumns> ColumnKeys => _inner.ColumnKeys;
+        public IColumnsWriteBatch<FlatHistoryColumns> StartWriteBatch() => new Batch(_inner.StartWriteBatch());
+        public IColumnDbSnapshot<FlatHistoryColumns> CreateSnapshot() => _inner.CreateSnapshot();
+        public void Flush(bool onlyWal = false) => _inner.Flush(onlyWal);
+        public void Dispose() => _inner.Dispose();
+
+        private sealed class Batch(IColumnsWriteBatch<FlatHistoryColumns> inner) : IColumnsWriteBatch<FlatHistoryColumns>
+        {
+            public IWriteBatch GetColumnBatch(FlatHistoryColumns key) =>
+                key is FlatHistoryColumns.AccountHistory or FlatHistoryColumns.StorageHistory or FlatHistoryColumns.StorageClears
+                    ? DiscardingWriteBatch.Instance
+                    : inner.GetColumnBatch(key);
+
+            public void Clear() => inner.Clear();
+            public void Dispose() => inner.Dispose();
+        }
+
+        private sealed class DiscardingWriteBatch : IWriteBatch
+        {
+            public static readonly DiscardingWriteBatch Instance = new();
+
+            public void Set(ReadOnlySpan<byte> key, byte[] value, WriteFlags flags = WriteFlags.None) { }
+            public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) { }
+            public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) { }
+            public void Clear() { }
+            public void Dispose() { }
+        }
     }
 }
 
