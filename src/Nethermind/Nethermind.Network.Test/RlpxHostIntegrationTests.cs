@@ -715,6 +715,37 @@ public class RlpxHostIntegrationTests
     }
 
     [Test]
+    public async Task ConnectAsync_ReleasesChannelWhenConnectFailsAsynchronously()
+    {
+        AsyncRefusingClientChannelFactory channelFactory = new();
+        await using IContainer container = CreateListenerContainer(
+            null,
+            IPAddress.Loopback,
+            GetAvailablePort(),
+            channelFactory: channelFactory);
+        RlpxHost host = container.Resolve<RlpxHost>();
+
+        try
+        {
+            await host.Init();
+
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
+            Assert.That(await host.ConnectAsync(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303)), Is.False);
+#pragma warning restore NUnit2045
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(channelFactory.CreatedClientChannels, Is.EqualTo(1));
+                Assert.That(() => channelFactory.ClientChannel!.Open, Is.False.After(5000, 10));
+                Assert.That(() => host.ActiveChannelCount, Is.Zero.After(5000, 10));
+            }
+        }
+        finally
+        {
+            await host.Shutdown();
+        }
+    }
+
+    [Test]
     public async Task ConnectAsync_PrimarySuccessDoesNotDialAlternate()
     {
         if (!Socket.OSSupportsIPv6)
@@ -1262,6 +1293,28 @@ public class RlpxHostIntegrationTests
     {
         protected override bool DoConnect(EndPoint remoteAddress, EndPoint localAddress) =>
             throw new SocketException((int)SocketError.ConnectionRefused);
+    }
+
+    private sealed class AsyncRefusingClientChannelFactory : ClientChannelFactory
+    {
+        public IChannel? ClientChannel { get; private set; }
+
+        public override IChannel CreateClient()
+        {
+            CreatedClientChannels++;
+            return ClientChannel = new AsyncRefusingTcpSocketChannel();
+        }
+    }
+
+    private sealed class AsyncRefusingTcpSocketChannel : TcpSocketChannel
+    {
+        protected override bool DoConnect(EndPoint remoteAddress, EndPoint localAddress)
+        {
+            SocketChannelAsyncOperation operation = new(this, false) { SocketError = SocketError.ConnectionRefused };
+            AbstractSocketUnsafe socketUnsafe = (AbstractSocketUnsafe)Unsafe;
+            EventLoop.Execute(() => socketUnsafe.FinishConnect(operation));
+            return false;
+        }
     }
 
     private sealed class StubHandshakeService : IHandshakeService

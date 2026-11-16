@@ -877,6 +877,16 @@ namespace Nethermind.Network.Rlpx
 
                 base.ChannelActive(context);
             }
+
+            public override Task ConnectAsync(IChannelHandlerContext context, EndPoint remoteAddress, EndPoint localAddress)
+            {
+                Task connect = context.ConnectAsync(remoteAddress, localAddress);
+                _ = connect.ContinueWith(CloseChannel, context.Channel, CancellationToken.None,
+                    TaskContinuationOptions.NotOnRanToCompletion | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+                return connect;
+            }
+
+            private static void CloseChannel(Task _, object? state) => _ = ((IChannel)state!).CloseAsync();
         }
 
         public ISessionMonitor SessionMonitor => _sessionMonitor;
