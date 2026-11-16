@@ -89,14 +89,17 @@ public partial class EthRpcModuleTests
     public async Task FrameGas_rejects_unsupported_overrides_before_frame_validation(
         [Values("eth_call", "eth_estimateGas")] string method,
         [Values("beaconRoot", "withdrawals", "both", "null")] string field,
-        [Values] bool conflictingStorage)
+        [Values("none", "conflictingStorage", "invalidMove")] string stateOverrideKind)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
         FrameTransactionForRpc request = FrameGasRequest();
         request.Frames![1].Mode = byte.MaxValue;
-        object? stateOverride = conflictingStorage
-            ? new Dictionary<string, object> { [TestItem.AddressD.ToString()] = new { state = new { }, stateDiff = new { } } }
-            : null;
+        object? stateOverride = stateOverrideKind switch
+        {
+            "conflictingStorage" => new Dictionary<string, object> { [TestItem.AddressD.ToString()] = new { state = new { }, stateDiff = new { } } },
+            "invalidMove" => new Dictionary<string, object> { [TestItem.AddressD.ToString()] = new { movePrecompileToAddress = TestItem.AddressE.ToString() } },
+            _ => null
+        };
         object blockOverride = JsonSerializer.Deserialize<object>(field switch
         {
             "beaconRoot" => $"{{\"beaconRoot\":\"{Hash256.Zero}\"}}",
@@ -109,7 +112,8 @@ public partial class EthRpcModuleTests
         string expectedMessage = field switch
         {
             "withdrawals" => BlockOverride.WithdrawalsNotSupported,
-            "null" when conflictingStorage => $"account {TestItem.AddressD.ToString(withEip55Checksum: true)} has both 'state' and 'stateDiff'",
+            "null" when stateOverrideKind == "conflictingStorage" => $"account {TestItem.AddressD.ToString(withEip55Checksum: true)} has both 'state' and 'stateDiff'",
+            "null" when stateOverrideKind == "invalidMove" => $"account {TestItem.AddressD.ToString(withEip55Checksum: true)} is not a precompile",
             "null" => FrameTxValidation.InvalidMode,
             _ => BlockOverride.BeaconRootNotSupported
         };

@@ -2,18 +2,18 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
-namespace Nethermind.Core.ZkEvm.Test.Encoding;
+namespace Nethermind.Core.Test.Encoding;
 
 /// <summary>
-/// Covers the guest's one-pass encoding of receipts for the receipts root, which the host suite cannot reach.
+/// Covers the one-pass encoding of receipts for the receipts root, in the host and in the guest.
 /// </summary>
 /// <remarks>The logs, data and gas reach every prefix width.</remarks>
-public class GuestReceiptEncodingTests
+public class ReceiptOnePassEncodingTests
 {
     private static readonly ReceiptMessageDecoder Decoder = new();
 
@@ -29,28 +29,30 @@ public class GuestReceiptEncodingTests
         for (int i = 0; i < 40; i++)
         {
             TxReceipt receipt = CreateReceipt(random, type);
-            Assert.That(Decoder.EncodeNew(receipt, trie), Is.EqualTo(EncodeGeneric(receipt, trie)));
+            Assert.That(Decoder.EncodeNew(receipt, trie), Is.EqualTo(EncodeReference(receipt, eip7668)));
         }
     }
 
+    /// <summary>Encodes the receipt field by field, as the generic encoder does.</summary>
     /// <remarks>
-    /// The one-pass encoding takes only an <see cref="RlpWriter"/>, so a byte-buffer writer gets the generic encoding,
-    /// which measures neither through the one-pass length nor into a buffer sized by it.
+    /// The decoder takes the one-pass path for every receipt here, both to measure and to write, so the expected bytes
+    /// must not come from it.
     /// </remarks>
-    private static byte[] EncodeGeneric(TxReceipt receipt, RlpBehaviors behaviors)
-    {
-        IByteBuffer buffer = Unpooled.Buffer();
-        try
+    private static byte[] EncodeReference(TxReceipt receipt, bool eip7668) =>
+        RlpCodec.Write((receipt, eip7668), static (ref RlpWriter writer, (TxReceipt Receipt, bool Eip7668) ctx) =>
         {
-            ByteBufferRlpWriter writer = new(buffer);
-            Decoder.Encode(ref writer, receipt, behaviors);
-            return buffer.ReadAllBytesAsArray();
-        }
-        finally
-        {
-            buffer.Release();
-        }
-    }
+            if (ctx.Receipt.TxType != TxType.Legacy) writer.WriteByte((byte)ctx.Receipt.TxType);
+            writer.WriteSequence(ctx, static (ref RlpWriter fields, (TxReceipt Receipt, bool Eip7668) ctx) =>
+            {
+                fields.Encode(ctx.Receipt.StatusCode);
+                fields.Encode(ctx.Receipt.GasUsedTotal);
+                fields.Encode(ctx.Eip7668 ? Bloom.ZeroLength : ctx.Receipt.Bloom);
+                fields.WriteSequence(ctx.Receipt.Logs!, static (ref RlpWriter logs, LogEntry[] entries) =>
+                {
+                    foreach (LogEntry log in entries) LogEntryDecoder.Instance.Encode(ref logs, log);
+                });
+            });
+        });
 
     private static TxReceipt CreateReceipt(Random random, TxType type)
     {
@@ -59,14 +61,15 @@ public class GuestReceiptEncodingTests
         {
             Hash256[] topics = new Hash256[random.Next(0, 5)];
             for (int t = 0; t < topics.Length; t++) topics[t] = new Hash256(RandomBytes(random, Hash256.Size));
-            logs[i] = new LogEntry(new Address(RandomBytes(random, Address.Size)), RandomData(random), topics);
+            Address address = random.Next(10) == 0 ? null! : new Address(RandomBytes(random, Address.Size));
+            logs[i] = random.Next(10) == 0 ? null! : new LogEntry(address, RandomData(random), topics);
         }
 
         byte[] bloom = RandomBytes(random, Bloom.ByteLength);
         return new TxReceipt
         {
             TxType = type,
-            StatusCode = (byte)random.Next(2),
+            StatusCode = random.Next(8) == 0 ? (byte)random.Next(0x80, 0x100) : (byte)random.Next(2),
             GasUsedTotal = random.Next(6) switch
             {
                 0 => 0,

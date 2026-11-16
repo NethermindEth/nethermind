@@ -4,8 +4,10 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
@@ -24,6 +26,7 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Repositories;
@@ -71,10 +74,12 @@ namespace Nethermind.Blockchain
         public BlockHeader? LowestInsertedHeader
         {
             get => _lowestInsertedHeader;
+            [SkipLocalsInit]
             set
             {
                 _lowestInsertedHeader = value;
-                _metadataDb.Set(MetadataDbKeys.LowestInsertedFastHeaderHash, Rlp.Encode(value?.Hash ?? value?.CalculateHash()).Bytes);
+                Span<byte> buffer = stackalloc byte[Rlp.LengthOfKeccakRlp];
+                _metadataDb.PutSpan(MetadataDbKeys.LowestInsertedFastHeaderHash, Rlp.Encode(value?.Hash ?? value?.CalculateHash(), buffer));
             }
         }
 
@@ -87,10 +92,12 @@ namespace Nethermind.Blockchain
         public BlockHeader? LowestInsertedBeaconHeader
         {
             get => _lowestInsertedBeaconHeader;
+            [SkipLocalsInit]
             set
             {
                 _lowestInsertedBeaconHeader = value;
-                _metadataDb.Set(MetadataDbKeys.LowestInsertedBeaconHeaderHash, Rlp.Encode(value?.Hash ?? value?.CalculateHash()).Bytes);
+                Span<byte> buffer = stackalloc byte[Rlp.LengthOfKeccakRlp];
+                _metadataDb.PutSpan(MetadataDbKeys.LowestInsertedBeaconHeaderHash, Rlp.Encode(value?.Hash ?? value?.CalculateHash(), buffer));
             }
         }
 
@@ -378,27 +385,52 @@ namespace Nethermind.Blockchain
                 if (Logger.IsTrace) Logger.Trace($"Block tree in cannot accept new blocks mode. SkipCanAcceptNewBlocks: {skipCanAcceptNewBlocks}, Block {block}");
             }
 
-            if (!CanAcceptNewBlocks && !skipCanAcceptNewBlocks)
-            {
-                return AddBlockResult.CannotAccept;
-            }
-
-            if (block.Number == _genesisBlockNumber)
-            {
-                throw new InvalidOperationException("Genesis block should not be inserted.");
-            }
+            if (!CanInsertBlock(block.Header, insertBlockOptions)) return AddBlockResult.CannotAccept;
 
             _blockStore.Insert(block, writeFlags: blockWriteFlags);
             _headerStore.InsertBlockNumber(block.Hash, block.Number);
             _balStore.InsertFromBlock(block);
 
-            bool saveHeader = (insertBlockOptions & BlockTreeInsertBlockOptions.SaveHeader) != 0;
-            if (saveHeader)
-            {
-                Insert(block.Header, insertHeaderOptions);
-            }
+            InsertHeaderIfRequested(block.Header, insertBlockOptions, insertHeaderOptions);
 
             return AddBlockResult.Added;
+        }
+
+        /// <inheritdoc/>
+        public AddBlockResult Insert(BlockHeader header, ReadOnlySpan<byte> body, BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None,
+            BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None, WriteFlags bodiesWriteFlags = WriteFlags.None)
+        {
+            if (!CanInsertBlock(header, insertBlockOptions)) return AddBlockResult.CannotAccept;
+
+            _blockStore.Insert(header, body, bodiesWriteFlags);
+            _headerStore.InsertBlockNumber(header.Hash!, header.Number);
+
+            InsertHeaderIfRequested(header, insertBlockOptions, insertHeaderOptions);
+
+            return AddBlockResult.Added;
+        }
+
+        private bool CanInsertBlock(BlockHeader header, BlockTreeInsertBlockOptions options)
+        {
+            if (!CanAcceptNewBlocks && (options & BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks) == 0)
+            {
+                return false;
+            }
+
+            if (header.Number == _genesisBlockNumber)
+            {
+                throw new InvalidOperationException("Genesis block should not be inserted.");
+            }
+
+            return true;
+        }
+
+        private void InsertHeaderIfRequested(BlockHeader header, BlockTreeInsertBlockOptions blockOptions, BlockTreeInsertHeaderOptions headerOptions)
+        {
+            if ((blockOptions & BlockTreeInsertBlockOptions.SaveHeader) != 0)
+            {
+                Insert(header, headerOptions);
+            }
         }
 
         protected virtual AddBlockResult Suggest(Block? block, BlockHeader header, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
@@ -591,10 +623,10 @@ namespace Nethermind.Blockchain
         /// <remarks>A level outside the cached window is read without caching it, as long scans read many.</remarks>
         public BlockHeader? FindCanonicalHeaderIfBloomMatches(ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
         {
+            if (!ShouldCache(blockNumber)) return FindUncachedCanonicalHeaderIfBloomMatches(blockNumber, bloomMatches, out found);
+
             long deletions = Volatile.Read(ref _deletions);
-            bool shouldCache = ShouldCache(blockNumber);
-            ChainLevelInfo? level = shouldCache ? LoadLevel(blockNumber) : _chainLevelInfoRepository.LoadLevelWithoutCaching(blockNumber);
-            if (level?.MainChainBlock is not { } blockInfo || blockInfo.BlockHash == Keccak.Zero)
+            if (LoadLevel(blockNumber)?.MainChainBlock is not { } blockInfo || blockInfo.BlockHash == Keccak.Zero)
             {
                 found = false;
                 return null;
@@ -604,12 +636,28 @@ namespace Nethermind.Blockchain
             if (header is not null)
             {
                 header.Hash ??= blockInfo.BlockHash;
-                SetTotalDifficultyFromBlockInfo(header, blockInfo);
-                if (shouldCache)
-                {
-                    _headerStore.Cache(header);
-                    if (OverlappedDeletion(deletions)) (_headerStore as IClearableCache)?.ClearCache();
-                }
+                SetTotalDifficultyFromBlockInfo(header, blockInfo.TotalDifficulty);
+                _headerStore.Cache(header);
+                if (OverlappedDeletion(deletions)) (_headerStore as IClearableCache)?.ClearCache();
+            }
+
+            return header;
+        }
+
+        private BlockHeader? FindUncachedCanonicalHeaderIfBloomMatches(ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
+        {
+            if (!_chainLevelInfoRepository.TryGetMainChainBlockWithoutCaching(blockNumber, out ValueHash256 blockHash, out UInt256 totalDifficulty)
+                || blockHash == Keccak.Zero.ValueHash256)
+            {
+                found = false;
+                return null;
+            }
+
+            BlockHeader? header = _headerStore.GetIfBloomMatches(in blockHash, blockNumber, bloomMatches, out found);
+            if (header is not null)
+            {
+                header.Hash ??= new Hash256(in blockHash);
+                SetTotalDifficultyFromBlockInfo(header, totalDifficulty);
             }
 
             return header;
@@ -668,7 +716,7 @@ namespace Nethermind.Blockchain
                 }
                 else
                 {
-                    SetTotalDifficultyFromBlockInfo(header, blockInfo);
+                    SetTotalDifficultyFromBlockInfo(header, blockInfo.TotalDifficulty);
                 }
 
                 if (requiresCanonical)
@@ -717,113 +765,30 @@ namespace Nethermind.Blockchain
                 return ArrayPoolList<BlockHeader>.Empty();
             }
 
-            if (blockHash is null)
-            {
-                return new ArrayPoolList<BlockHeader>(numberOfBlocks, numberOfBlocks);
-            }
-
-            BlockHeader startHeader = FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            BlockHeader? startHeader = blockHash is null ? null : FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             if (startHeader is null)
             {
                 return new ArrayPoolList<BlockHeader>(numberOfBlocks, numberOfBlocks);
             }
 
-            if (numberOfBlocks == 1)
+            HeaderSource source = new(this, startHeader);
+            return HeaderWalk.FindHeaders<BlockHeader, HeaderSource>(this, ref source, in blockHash.ValueHash256, startHeader.Number, numberOfBlocks, skip, reverse);
+        }
+
+        private struct HeaderSource(BlockTree tree, BlockHeader startHeader) : IHeaderWalkSource<BlockHeader>
+        {
+            // The walk mostly asks for the parent of the last header found, so its hash object is reused
+            private Hash256? _parentHash;
+
+            public bool TryGet(in ValueHash256 hash, Hash256? hashObject, ulong number, [MaybeNullWhen(false)] out BlockHeader header, out ValueHash256 parentHash)
             {
-                return new ArrayPoolList<BlockHeader>(1) { startHeader };
+                header = hash == startHeader.Hash
+                    ? startHeader
+                    : tree.FindHeader(hashObject ?? (hash == _parentHash ? _parentHash : new Hash256(in hash)), BlockTreeLookupOptions.TotalDifficultyNotNeeded, number);
+                _parentHash = header?.ParentHash;
+                parentHash = _parentHash;
+                return header is not null;
             }
-
-            if (skip == 0)
-            {
-                static ArrayPoolList<BlockHeader> FindHeadersReversedFast(BlockTree tree, BlockHeader startHeader, int numberOfBlocks, bool reverse = false)
-                {
-                    ArgumentNullException.ThrowIfNull(startHeader);
-                    if (numberOfBlocks == 1)
-                    {
-                        return new ArrayPoolList<BlockHeader>(1) { startHeader };
-                    }
-
-                    ArrayPoolList<BlockHeader> result = new(numberOfBlocks, numberOfBlocks);
-
-                    BlockHeader current = startHeader;
-                    int responseIndex = reverse ? 0 : numberOfBlocks - 1;
-                    int step = reverse ? 1 : -1;
-                    do
-                    {
-                        result[responseIndex] = current;
-                        responseIndex += step;
-                        if (responseIndex < 0)
-                        {
-                            break;
-                        }
-
-                        current = tree.FindParentHeader(current, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                    } while (current is not null && responseIndex < numberOfBlocks);
-
-                    return result;
-                }
-
-                /* if we do not skip and we have the last block then we can assume that all the blocks are there
-                   and we can use the fact that we can use parent hash and that searching by hash is much faster
-                   as it does not require the step of resolving number -> hash */
-                if (reverse)
-                {
-                    return FindHeadersReversedFast(this, startHeader, numberOfBlocks, true);
-                }
-                else
-                {
-                    BlockHeader endHeader = FindHeader(startHeader.Number + (ulong)(numberOfBlocks - 1), BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                    if (endHeader is not null)
-                    {
-                        ArrayPoolList<BlockHeader> headers = FindHeadersReversedFast(this, endHeader, numberOfBlocks);
-                        if (headers[0] is null || headers[0].Hash == startHeader.Hash)
-                        {
-                            return headers;
-                        }
-
-                        // The end level resolved to a branch the origin is not on, so fall back to the by-number walk below
-                        headers.Dispose();
-                    }
-                }
-            }
-
-            ArrayPoolList<BlockHeader> result = new(numberOfBlocks, numberOfBlocks);
-            BlockHeader current = startHeader;
-            int responseIndex = 0;
-            do
-            {
-                result[responseIndex] = current;
-                responseIndex++;
-                ulong offset = (ulong)responseIndex * ((ulong)skip + 1ul);
-                ulong nextNumber;
-                if (reverse)
-                {
-                    if (startHeader.Number < offset)
-                    {
-                        break;
-                    }
-                    nextNumber = startHeader.Number - offset;
-                }
-                else
-                {
-                    nextNumber = startHeader.Number + offset;
-                }
-
-                BlockHeader previous = current;
-                current = FindHeader(nextNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-
-                // Later headers are resolved by number, so check at every step that the next header still descends from the previous one,
-                // like geth: by parent hash when contiguous, otherwise by the previous header still being the block its number resolves to
-                // and the next header being on the main chain
-                if (!reverse && current is not null && (skip == 0
-                        ? current.ParentHash != previous.Hash
-                        : GetBlockHashOnMainOrBestDifficultyHash(previous.Number) != previous.Hash || !IsMainChain(current)))
-                {
-                    break;
-                }
-            } while (current is not null && responseIndex < numberOfBlocks);
-
-            return result;
         }
 
         private Hash256? GetBlockHashOnMainOrBestDifficultyHash(ulong blockNumber)
@@ -1431,7 +1396,7 @@ namespace Nethermind.Blockchain
                 if (Logger.IsTrace) Logger.Trace($"Sync pivot updated from {SyncPivot} to {value}");
 
                 Span<byte> pivotData = stackalloc byte[38]; //1 byte (prefix) + 4 bytes (long) + 1 byte (prefix) + 32 bytes (Keccak)
-                RlpWriter writer = new(pivotData);
+                RlpWriter writer = RlpWriter.ContentWriter(pivotData);
                 writer.Encode(value.BlockNumber);
                 writer.Encode(value.BlockHash);
                 _metadataDb.PutSpan(((long)MetadataDbKeys.UpdatedPivotData).ToBigEndianSpanWithoutLeadingZeros(out _), pivotData);
@@ -1828,7 +1793,7 @@ namespace Nethermind.Blockchain
                 }
                 else
                 {
-                    SetTotalDifficultyFromBlockInfo(block.Header, blockInfo);
+                    SetTotalDifficultyFromBlockInfo(block.Header, blockInfo.TotalDifficulty);
                 }
 
                 if (requiresCanonical)
@@ -1873,7 +1838,7 @@ namespace Nethermind.Blockchain
             // We also checking TTD is zero to ensure that block after genesis have zero difficulty
             Genesis?.Difficulty == 0 && SpecProvider.TerminalTotalDifficulty == 0;
 
-        private void SetTotalDifficultyFromBlockInfo(BlockHeader header, BlockInfo blockInfo)
+        private void SetTotalDifficultyFromBlockInfo(BlockHeader header, in UInt256 totalDifficulty)
         {
             if (header.IsGenesis)
             {
@@ -1881,9 +1846,9 @@ namespace Nethermind.Blockchain
                 return;
             }
 
-            if (blockInfo.TotalDifficulty != UInt256.Zero)
+            if (totalDifficulty != UInt256.Zero)
             {
-                header.TotalDifficulty = blockInfo.TotalDifficulty;
+                header.TotalDifficulty = totalDifficulty;
                 return;
             }
 
@@ -2183,18 +2148,19 @@ namespace Nethermind.Blockchain
         /// Caller holds <see cref="_forkChoiceLock"/>. The pair is forgotten before each attempt, so a failed or uncertain
         /// commit is retried on the next call.
         /// </remarks>
+        [SkipLocalsInit]
         private void PersistForkChoice(Hash256? finalizedBlockHash, Hash256? safeBlockHash)
         {
             (Hash256? Finalized, Hash256? Safe) requested = (finalizedBlockHash, safeBlockHash);
             if (_persistedForkChoice == requested) return;
 
-            byte[] finalizedRlp = Rlp.Encode(finalizedBlockHash).Bytes;
-            byte[] safeRlp = Rlp.Encode(safeBlockHash).Bytes;
+            Span<byte> finalizedRlp = Rlp.Encode(finalizedBlockHash, stackalloc byte[Rlp.LengthOfKeccakRlp]);
+            Span<byte> safeRlp = Rlp.Encode(safeBlockHash, stackalloc byte[Rlp.LengthOfKeccakRlp]);
             _persistedForkChoice = null;
             using (IWriteBatch batch = _metadataDb.StartWriteBatch())
             {
-                batch.Set(MetadataDbKeys.FinalizedBlockHash, finalizedRlp);
-                batch.Set(MetadataDbKeys.SafeBlockHash, safeRlp);
+                batch.PutSpan(MetadataDbKeys.FinalizedBlockHash, finalizedRlp);
+                batch.PutSpan(MetadataDbKeys.SafeBlockHash, safeRlp);
             }
 
             _persistedForkChoice = requested;

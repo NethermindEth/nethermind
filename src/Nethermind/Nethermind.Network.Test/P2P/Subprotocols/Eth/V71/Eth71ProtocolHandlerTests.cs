@@ -18,6 +18,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
@@ -182,9 +183,9 @@ public class Eth71ProtocolHandlerTests
         Hash256[] hashes = [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC];
         byte[][] entries =
         [
-            Rlp.Encode([Rlp.Encode(new byte[oversizedFirstEntry ? softLimit + 1 : softLimit / 2 + 1])]).Bytes,
-            Rlp.Encode([Rlp.Encode(new byte[softLimit / 2])]).Bytes,
-            Rlp.Encode([Rlp.Encode(new byte[1024])]).Bytes
+            RlpTestHelper.EncodeSequence([Rlp.Encode(new byte[oversizedFirstEntry ? softLimit + 1 : softLimit / 2 + 1])]),
+            RlpTestHelper.EncodeSequence([Rlp.Encode(new byte[softLimit / 2])]),
+            RlpTestHelper.EncodeSequence([Rlp.Encode(new byte[1024])])
         ];
         for (int i = 0; i < entries.Length; i++)
         {
@@ -300,7 +301,7 @@ public class Eth71ProtocolHandlerTests
         _handler.HandleMessage(new NettyBufferPacket(statusPacket) { PacketType = 0 });
     }
 
-    private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
+    private void HandleZeroMessage<T>(T msg, int messageCode) where T : P2PMessage
     {
         IByteBuffer packet = _svc.ZeroSerialize(msg);
         packet.ReadByte();

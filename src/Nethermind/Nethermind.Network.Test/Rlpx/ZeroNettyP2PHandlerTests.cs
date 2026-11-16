@@ -25,6 +25,7 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 using NSubstitute;
@@ -69,7 +70,7 @@ public class ZeroNettyP2PHandlerTests
 
     private static IEnumerable<TestCaseData> ExpectedCommunicationExceptions()
     {
-        yield return new TestCaseData(new RlpException("malformed message")).SetName("RLP_exception_is_logged_at_trace");
+        yield return new TestCaseData(new RlpReaderException("malformed message")).SetName("RLP_exception_is_logged_at_trace");
         yield return new TestCaseData(ReadTimeoutException.Instance).SetName("Read_timeout_is_logged_at_trace");
     }
 
@@ -434,7 +435,7 @@ public class ZeroNettyP2PHandlerTests
             GasLimit = 21000,
             Signature = new Signature(1, 2, 27)
         };
-        Hash256 expectedHash = Keccak.Compute(TxDecoder.Instance.Encode(source).Bytes);
+        Hash256 expectedHash = Keccak.Compute(TxDecoder.Instance.Encode(source));
         TransactionsMessageSerializer serializer = new();
         using TransactionsMessage message = new(new ArrayPoolList<Transaction>(1) { source });
         using DisposableByteBuffer encoded = detector.Allocator.Buffer(256).AsDisposable();

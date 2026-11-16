@@ -15,6 +15,7 @@ using Nethermind.Logging;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Rlpx.TestWrappers;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
@@ -65,14 +66,18 @@ public class ZeroNettyFrameMergerTests
             headerContentLength += Rlp.LengthOf(totalPacketSize.Value);
         }
 
-        ByteBufferRlpWriter writer = new(output);
-        writer.StartSequence(headerContentLength);
+        int headerLength = Rlp.LengthOfSequence(headerContentLength);
+        RlpWriter writer = output.StartRlpWrite(headerLength);
+        RlpSequence sequence = writer.StartSequence(headerContentLength);
         writer.Encode(0);
         writer.Encode(contextId);
         if (totalPacketSize.HasValue)
         {
             writer.Encode(totalPacketSize.Value);
         }
+
+        writer.EndSequence(sequence);
+        output.CompleteRlpWrite(writer, headerLength);
 
         output.WriteZero(Frame.HeaderSize - output.WriterIndex);
         output.WriteBytes(payload);

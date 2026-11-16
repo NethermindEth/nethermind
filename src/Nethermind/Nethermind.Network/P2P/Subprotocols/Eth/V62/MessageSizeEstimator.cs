@@ -8,47 +8,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 {
     public static class MessageSizeEstimator
     {
-        public static ulong EstimateSize(BlockHeader blockHeader)
+        public static ulong EstimateSize(TxReceipt[] receipts) =>
+            EstimateSize(receipts, Rlp.GetDecoderOrThrow<TxReceipt>());
+
+        /// <summary>Returns the encoded size of one block's receipts list in the wire format of <paramref name="decoder"/>.</summary>
+        public static ulong EstimateSize(TxReceipt[] receipts, IRlpDecoder<TxReceipt> decoder)
         {
-            if (blockHeader is null)
-            {
-                return 0;
-            }
-
-            return 512; // rough knowledge about the size of a header
-        }
-
-        public static ulong EstimateSize(Transaction tx)
-        {
-            if (tx is null)
-            {
-                return 0;
-            }
-
-            // Exact encoded length so access/authorization lists aren't under-counted.
-            return (ulong)TxDecoder.Instance.GetLength(tx, RlpBehaviors.None);
-        }
-
-        public static ulong EstimateSize(Block? block)
-        {
-            if (block is null)
-            {
-                return 0;
-            }
-
-            ulong estimate = EstimateSize(block.Header);
-            Transaction[] transactions = block.Transactions;
-            for (int i = 0; i < transactions.Length; i++)
-            {
-                estimate += EstimateSize(transactions[i]);
-            }
-
-            return estimate;
-        }
-
-        public static ulong EstimateSize(TxReceipt[] receipts)
-        {
-            IRlpDecoder<TxReceipt> decoder = Rlp.GetDecoderOrThrow<TxReceipt>();
             ulong estimate = 0;
 
             for (int i = 0; i < receipts.Length; i++)

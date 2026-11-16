@@ -7,8 +7,8 @@ extension methods, or generated for records with `[RlpSerializable]`.
 [RlpSerializable]
 public record AccessListItem(Address Address, List<StorageKey> StorageKeys);
 
-byte[] rlp = Rlp.Write(item, static (ref RlpWriter w, AccessListItem item) => w.Write(item));
-AccessListItem decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadAccessListItem());
+byte[] rlp = RlpCodec.Write(item, static (ref RlpWriter w, AccessListItem item) => w.Write(item));
+AccessListItem decoded = RlpCodec.Read(rlp, static (scoped ref RlpReader r) => r.ReadAccessListItem());
 ```
 
 ## Decoding rules
@@ -21,15 +21,20 @@ AccessListItem decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.Read
 - Unread items in a sequence, and trailing bytes after the top-level item.
 - Nesting that is too deep for the remaining stack.
 
+For bytes that are known to be canonical, such as bytes that the node stored itself, the reads with a
+`TCanonicalChecks` type parameter (`ReadBytes<OffFlag>()`, `EnterSequence<OffFlag>(out _)` and others) skip the
+checks of the canonical form in the first three items above. They keep every bounds check, so truncated input still
+throws. The reads without the type parameter, and `OnFlag`, do all the checks.
+
 `Optional` returns `null` only at the end of the input. `Choice` catches only `RlpReaderException`.
 
 ## Encoding
 
-`Rlp.Write(value, action)` runs the write action once. It writes to a per-thread buffer and inserts the long sequence
+`RlpCodec.Write(value, action)` runs the write action once. It writes to a per-thread buffer and inserts the long sequence
 prefixes when it copies the buffer to the output.
 
 A converter that also implements `IRlpLengthConverter<T>` computes the encoded length first. Then
-`Rlp.Write<TConverter, T>(value)` allocates the exact output and writes it in one pass, without a buffer or a copy.
+`RlpCodec.Write<TConverter, T>(value)` allocates the exact output and writes it in one pass, without a buffer or a copy.
 Hand-written code gets the same with `RlpWriter.StartSequence(payloadLength)` and `EndSequence`, which check the
 declared length. `RlpReader.ReadBytes(length)` reads a byte string of an exact length, and `UInt256RlpConverter`
 has `ReadFixed` and `WriteFixed` for 32-byte values.

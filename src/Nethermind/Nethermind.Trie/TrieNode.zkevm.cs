@@ -35,6 +35,8 @@ namespace Nethermind.Trie
         /// </remarks>
         public bool IsLeaf => _nodeData is LeafData;
 
+        internal ReadOnlySpan<byte> ValueSpan => _nodeData is LeafData data ? data.ValueSpan : default;
+
         /// <summary>Whether this node is an extension.</summary>
         /// <remarks><inheritdoc cref="IsLeaf" path="/remarks"/></remarks>
         public bool IsExtension => _nodeData is ExtensionData;
@@ -439,7 +441,7 @@ namespace Nethermind.Trie
             int keyPrefix = previousRlp[keyStart];
             int keyItemLength = keyPrefix < 0x80 ? 1 : 1 + keyPrefix - 0x80;
             ReadOnlySpan<byte> keyItem = previousRlp.Slice(keyStart, keyItemLength);
-            ReadOnlySpan<byte> value = node.Value.AsSpan();
+            ReadOnlySpan<byte> value = node.ValueSpan;
 
             int contentLength = keyItemLength + Rlp.LengthOf(value);
             rlp = pool.SafeRent(Rlp.LengthOfSequence(contentLength));
@@ -461,7 +463,7 @@ namespace Nethermind.Trie
                 return false;
             }
 
-            ReadOnlySpan<byte> value = leaf.Value.AsSpan();
+            ReadOnlySpan<byte> value = leaf.ValueSpan;
             int contentLength = Rlp.LengthOf(compactKey) + Rlp.LengthOf(value);
             rlp = pool.SafeRent(Rlp.LengthOfSequence(contentLength));
             Span<byte> destination = rlp.AsSpan();
@@ -484,9 +486,9 @@ namespace Nethermind.Trie
             }
 
             ReadOnlySpan<byte> span = rlp.AsSpan();
-            int itemsStart = SecuredTrieNodeValidator.Validate(span, depth, isHashed: Keccak is not null);
+            nint itemsStart = SecuredTrieNodeValidator.Validate(span, depth, isHashed: Keccak is not null);
             if (itemsStart == 0) _nodeData = new BranchData();
-            else DecodeLeafOrExtension(span, itemsStart, null);
+            else DecodeLeafOrExtension(span, (int)itemsStart, null);
         }
 
         /// <summary>Resolves child <paramref name="i"/> from an RLP other than a full branch's, most often a branch with empty slots.</summary>
@@ -531,8 +533,8 @@ namespace Nethermind.Trie
         /// <remarks>The key stays in the RLP until read: an RLP array is never written once a node holds it here, as the
         /// guest's buffer pool hands out fresh arrays and takes none back.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private LeafData CreateLeafData(ReadOnlySpan<byte> compactKey, int compactKeyEnd, CappedArray<byte> value) =>
-            new(_rlpArray!, compactKeyEnd - compactKey.Length, compactKey.Length, value);
+        private LeafData CreateLeafData(ReadOnlySpan<byte> compactKey, int compactKeyEnd, ReadOnlySpan<byte> value, int valueEnd, ICappedArrayPool? bufferPool) =>
+            new(_rlpArray!, compactKeyEnd - compactKey.Length, compactKey.Length, valueEnd - value.Length, value.Length);
 
         /// <summary>Deepens <paramref name="path"/> by one level for a child of the node being encoded, leaving its nibbles alone.</summary>
         /// <remarks>
@@ -590,6 +592,36 @@ namespace Nethermind.Trie
             Unsafe.Add(ref merged, 6) = (words[6] >> right) | (words[7] << left);
             Unsafe.Add(ref merged, 7) = (words[7] >> right) | (words[8] << left);
             return keccak;
+        }
+
+        private partial class TrieNodeDecoder
+        {
+            /// <summary>Patches the hashes of the children from <paramref name="group"/> to <paramref name="end"/> into <paramref name="destination"/>, a full branch encoding.</summary>
+            /// <returns>Whether every slot is empty or patched; <see langword="false"/> if the branch is no longer a full one.</returns>
+            /// <remarks>Eight slots a step: most slots are empty, and an empty slot then costs one load and one branch.
+            /// Measured on ZisK only.</remarks>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            private static bool TryPatchFullBranchChildren(ITrieNodeResolver tree, ref TreePath path, ref object? group, ref object? end,
+                ushort taken, Span<byte> destination, ref int unchanged, ICappedArrayPool? bufferPool, bool canBeParallel)
+            {
+                const int slotsPerStep = 8;
+                for (; Unsafe.IsAddressLessThan(ref group, ref end) && (!TracksTakenChildren || taken != 0);
+                    group = ref Unsafe.Add(ref group, slotsPerStep), taken >>= slotsPerStep)
+                {
+                    if (!TryPatchFullBranchChild(tree, ref path, ref group, 0, ref end, taken, destination, ref unchanged, bufferPool, canBeParallel)
+                        || !TryPatchFullBranchChild(tree, ref path, ref group, 1, ref end, taken, destination, ref unchanged, bufferPool, canBeParallel)
+                        || !TryPatchFullBranchChild(tree, ref path, ref group, 2, ref end, taken, destination, ref unchanged, bufferPool, canBeParallel)
+                        || !TryPatchFullBranchChild(tree, ref path, ref group, 3, ref end, taken, destination, ref unchanged, bufferPool, canBeParallel)
+                        || !TryPatchFullBranchChild(tree, ref path, ref group, 4, ref end, taken, destination, ref unchanged, bufferPool, canBeParallel)
+                        || !TryPatchFullBranchChild(tree, ref path, ref group, 5, ref end, taken, destination, ref unchanged, bufferPool, canBeParallel)
+                        || !TryPatchFullBranchChild(tree, ref path, ref group, 6, ref end, taken, destination, ref unchanged, bufferPool, canBeParallel)
+                        || !TryPatchFullBranchChild(tree, ref path, ref group, 7, ref end, taken, destination, ref unchanged, bufferPool, canBeParallel))
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }
         }
     }
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections;
 using System.Collections.Generic;
@@ -10,7 +11,6 @@ using System.Net;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Buffers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
@@ -37,6 +37,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V72;
 using Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.Stats;
@@ -100,6 +101,7 @@ public class Eth72ProtocolHandlerTests
         _gossipPolicy = Substitute.For<IGossipPolicy>();
         _txPoolConfig = Substitute.For<ITxPoolConfig>();
         _txPoolConfig.BlobsSupport.Returns(BlobsSupportMode.InMemory);
+        _txPoolConfig.InMemoryBlobPoolSize.Returns(new TxPoolConfig().InMemoryBlobPoolSize);
         _txPoolConfig.SparseBlobProviderProbabilityPercent.Returns(15);
         _genesisBlock = Build.A.Block.Genesis.TestObject;
         _syncManager.Head.Returns(_genesisBlock.Header);
@@ -379,6 +381,30 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
+    public void should_remember_announced_blob_masks_up_to_blob_pool_capacity([Values] bool exceedCapacity)
+    {
+        const int blobPoolSize = 2;
+        _txPoolConfig.InMemoryBlobPoolSize.Returns(blobPoolSize);
+        Transaction[] txs = Enumerable.Range(0, exceedCapacity ? blobPoolSize + 1 : blobPoolSize)
+            .Select(static nonce => Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithNonce((ulong)nonce)
+                .SignedAndResolved()
+                .TestObject)
+            .ToArray();
+
+        foreach (Transaction tx in txs)
+        {
+            _handler.SendNewTransaction(tx);
+        }
+
+        _session.ClearReceivedCalls();
+        _handler.SendNewTransaction(txs[0]);
+
+        _session.Received(exceedCapacity ? 1 : 0).DeliverMessage(Arg.Any<NewPooledTransactionHashesMessage72>());
+    }
+
+    [Test]
     public void should_batch_blob_announcements_with_same_cell_mask()
     {
         Transaction first = BuildBlobTransaction(fullProvider: true);
@@ -426,7 +452,7 @@ public class Eth72ProtocolHandlerTests
         // Peers compare the announced size with the decoded typed transaction envelope, excluding the enclosing
         // PooledTransactions list element's RLP string prefix.
         byte[] servedTxBytes = TxDecoder.Instance
-            .Encode(elidedTx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping).Bytes;
+            .Encode(elidedTx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping);
 
         using (Assert.EnterMultipleScope())
         {
@@ -622,7 +648,7 @@ public class Eth72ProtocolHandlerTests
 
         HandleIncomingStatusMessage();
 
-        Assert.That(() => HandleZeroMessage(message, Eth72MessageCode.NewPooledTransactionHashes), Throws.TypeOf<RlpException>());
+        Assert.That(() => HandleZeroMessage(message, Eth72MessageCode.NewPooledTransactionHashes), Throws.TypeOf<RlpReaderException>());
     }
 
     [Test]
@@ -1175,6 +1201,7 @@ public class Eth72ProtocolHandlerTests
 
         _transactionPool.Received(1).TryGetPendingTransactionWithoutBlobs(tx.Hash!, out Arg.Any<Transaction>());
         _transactionPool.DidNotReceive().TryGetPendingTransaction(Arg.Any<ValueHash256>(), out Arg.Any<Transaction>());
+        _transactionPool.DidNotReceive().TryGetPendingBlobCellMaskAndNetworkForm(Arg.Any<ValueHash256>(), out Arg.Any<BlobCellMask>(), out Arg.Any<IOwnedReadOnlyList<byte>>());
         _session.Received(1).DeliverMessage(Arg.Is<PooledTransactionsMessage>(m =>
             IsElidedBlobResponse(m, fullTxLength, ProofVersion.V1)));
     }
@@ -2632,7 +2659,7 @@ public class Eth72ProtocolHandlerTests
         _sparseBlobPoolPeerRegistry.RecordAnnouncement(otherPeer, tx.Hash!, requestedMask);
         using CellsMessage72 response = new(GetLastGetCellsRequestId(tx.Hash!, requestedMask), [tx.Hash!], [[]], BlobCellMask.Empty.ToBytes());
 
-        Assert.That(() => HandleZeroMessage(response, Eth72MessageCode.Cells), Throws.TypeOf<RlpException>());
+        Assert.That(() => HandleZeroMessage(response, Eth72MessageCode.Cells), Throws.TypeOf<RlpReaderException>());
         Assert.That(otherPeer.CellRequests, Has.Count.EqualTo(1));
         Assert.That(otherPeer.CellRequests[0], Is.EqualTo((tx.Hash!, requestedMask)));
     }
@@ -2694,7 +2721,7 @@ public class Eth72ProtocolHandlerTests
         _sparseBlobPoolPeerRegistry.RecordAnnouncement(otherPeer, tx.Hash!, requestedMask);
         using CellsMessage72 response = new(GetLastGetCellsRequestId(tx.Hash!, requestedMask), [tx.Hash!], [], requestedMask.ToBytes());
 
-        Assert.That(() => HandleZeroMessage(response, Eth72MessageCode.Cells), Throws.TypeOf<RlpException>());
+        Assert.That(() => HandleZeroMessage(response, Eth72MessageCode.Cells), Throws.TypeOf<RlpReaderException>());
         Assert.That(otherPeer.CellRequests, Has.Count.EqualTo(1));
         Assert.That(otherPeer.CellRequests[0], Is.EqualTo((tx.Hash!, requestedMask)));
     }
@@ -2723,7 +2750,7 @@ public class Eth72ProtocolHandlerTests
         _sparseBlobPoolPeerRegistry.RecordAnnouncement(otherPeer, tx.Hash!, requestedMask);
         using CellsMessage72 response = new(GetLastGetCellsRequestId(tx.Hash!, requestedMask), [tx.Hash!], [[]], [1, 2]);
 
-        Assert.That(() => HandleZeroMessage(response, Eth72MessageCode.Cells), Throws.TypeOf<RlpException>());
+        Assert.That(() => HandleZeroMessage(response, Eth72MessageCode.Cells), Throws.TypeOf<RlpReaderException>());
         Assert.That(otherPeer.CellRequests, Has.Count.EqualTo(1));
         Assert.That(otherPeer.CellRequests[0], Is.EqualTo((tx.Hash!, requestedMask)));
     }
@@ -2757,7 +2784,7 @@ public class Eth72ProtocolHandlerTests
         packet.WriteByte(0);
         packet.ReadByte();
 
-        Assert.That(() => _handler.HandleMessage(new NettyBufferPacket(packet) { PacketType = Eth72MessageCode.Cells }), Throws.TypeOf<RlpException>());
+        Assert.That(() => _handler.HandleMessage(new NettyBufferPacket(packet) { PacketType = Eth72MessageCode.Cells }), Throws.TypeOf<RlpReaderException>());
         Assert.That(otherPeer.CellRequests, Has.Count.EqualTo(1));
         Assert.That(otherPeer.CellRequests[0], Is.EqualTo((tx.Hash!, requestedMask)));
     }
@@ -2793,7 +2820,7 @@ public class Eth72ProtocolHandlerTests
         using CellsMessage72 response = new(GetLastGetCellsRequestId(tx.Hash!, requestedMask), [tx.Hash!], [responseCells], requestedMask.ToBytes());
         pendingTransactionAvailable = true;
 
-        Assert.That(() => HandleZeroMessage(response, Eth72MessageCode.Cells), Throws.TypeOf<RlpException>());
+        Assert.That(() => HandleZeroMessage(response, Eth72MessageCode.Cells), Throws.TypeOf<RlpReaderException>());
         _transactionPool.DidNotReceive().MergeBlobCells(Arg.Any<Hash256>(), Arg.Any<BlobCellMask>(), Arg.Any<byte[][]>());
     }
 
@@ -2828,7 +2855,7 @@ public class Eth72ProtocolHandlerTests
         using CellsMessage72 response = new(GetLastGetCellsRequestId(tx.Hash!, requestedMask), [tx.Hash!], [responseCells], requestedMask.ToBytes());
         pendingTransactionAvailable = true;
 
-        Assert.That(() => HandleZeroMessage(response, Eth72MessageCode.Cells), Throws.TypeOf<RlpException>());
+        Assert.That(() => HandleZeroMessage(response, Eth72MessageCode.Cells), Throws.TypeOf<RlpReaderException>());
         _transactionPool.DidNotReceive().MergeBlobCells(Arg.Any<Hash256>(), Arg.Any<BlobCellMask>(), Arg.Any<byte[][]>());
     }
 
@@ -5762,7 +5789,7 @@ public class Eth72ProtocolHandlerTests
         _handler.HandleMessage(new NettyBufferPacket(statusPacket) { PacketType = 0 });
     }
 
-    private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
+    private void HandleZeroMessage<T>(T msg, int messageCode) where T : P2PMessage
     {
         using DisposableByteBuffer packet = _svc.ZeroSerialize(msg).AsDisposable();
         packet.ReadByte();
@@ -6344,8 +6371,8 @@ public class Eth72ProtocolHandlerTests
         public ArrayPoolSpan<byte> Serialize<T>(T message)
             where T : MessageBase => inner.Serialize(message);
 
-        public IByteBuffer ZeroSerialize<T>(T message, IByteBufferAllocator? allocator = null)
-            where T : MessageBase => inner.ZeroSerialize(message, allocator);
+        public void Serialize<T>(T message, IBufferWriter<byte> writer)
+            where T : MessageBase => inner.Serialize(message, writer);
 
         public T Deserialize<T>(ArraySegment<byte> bytes)
             where T : MessageBase => GetOverride<T>() ?? inner.Deserialize<T>(bytes);

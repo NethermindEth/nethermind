@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
@@ -22,7 +23,9 @@ using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
 using Testably.Abstractions;
@@ -41,7 +44,7 @@ public class BlobTxStorageTests
         BlobTxStorage blobTxStorage = new(columnsDb);
         Transaction[] transactions = CreateBlobTransactions(txCount);
 
-        byte[] legacyEntry = TxDecoder.Instance.Encode(transactions, RlpBehaviors.InMempoolForm).Bytes;
+        byte[] legacyEntry = TxDecoder.Instance.Encode(transactions, RlpBehaviors.InMempoolForm);
         columnsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs)
             .Set(blockNumber.ToBigEndianSpanWithoutLeadingZeros(out _), legacyEntry);
 
@@ -58,7 +61,7 @@ public class BlobTxStorageTests
         BlobTxStorage blobTxStorage = new(columnsDb);
         Transaction[] transactions = CreateV1BlobTransactions(txCount);
 
-        byte[] storageEntry = TxDecoder.Instance.Encode(transactions, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage).Bytes;
+        byte[] storageEntry = TxDecoder.Instance.Encode(transactions, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage);
         columnsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs)
             .Set(blockNumber.ToBigEndianSpanWithoutLeadingZeros(out _), storageEntry);
 
@@ -254,7 +257,7 @@ public class BlobTxStorageTests
         Transaction[] transactions = CreateBlobTransactions(2);
         db.GetColumnDb(BlobTxsColumns.ProcessedTxs).Set(
             358UL.ToBigEndianSpanWithoutLeadingZeros(out _),
-            TxDecoder.Instance.Encode(transactions, RlpBehaviors.InMempoolForm).Bytes);
+            TxDecoder.Instance.Encode(transactions, RlpBehaviors.InMempoolForm));
 
         Assert.That(((IProcessedBlobTxStorage)storage).TryGetProcessedTransaction(358, 0, out _), Is.False);
     }
@@ -478,6 +481,218 @@ public class BlobTxStorageTests
 
         Action act = () => blobTxStorage.Add(tx);
         Assert.That(act, Throws.TypeOf<ArgumentNullException>());
+    }
+
+    [Test]
+    public void TryGetNetworkForm_should_match_the_mempool_encoding_of_the_decoded_record(
+        [Values] ProofVersion version,
+        [Values] StoredCellTrailer trailer)
+    {
+        MemColumnsDb<BlobTxsColumns> columnsDb = new();
+        BlobTxStorage blobTxStorage = new(columnsDb);
+        Transaction tx = CreateBlobTransaction(TestItem.PrivateKeyA, blobCount: 2, spec: version is ProofVersion.V0 ? Cancun.Instance : Osaka.Instance);
+        // Every version, so a new one fails here until the transcoder serves it.
+        tx.NetworkWrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper! with { Version = version };
+        if (trailer is StoredCellTrailer.Cells)
+        {
+            tx.NetworkWrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper! with
+            {
+                CellMask = BlobCellMask.FromIndices([1, 3]),
+                Cells = [[1], [2]]
+            };
+        }
+
+        blobTxStorage.Add(tx);
+        if (trailer is StoredCellTrailer.None)
+        {
+            StoreFullRecord(columnsDb, tx, TxDecoder.Instance.Encode(tx, RlpBehaviors.InMempoolForm));
+        }
+
+        Assert.That(blobTxStorage.TryGet(tx.Hash!, tx.SenderAddress!, tx.Timestamp, out Transaction decoded), Is.True);
+        bool found = ((IBlobTxNetworkFormStorage)blobTxStorage).TryGetNetworkForm(tx.Hash!, tx.Timestamp, out IOwnedReadOnlyList<byte> networkForm);
+        using (networkForm)
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(networkForm.AsSpan().ToArray(), Is.EqualTo(TxDecoder.Instance.Encode(decoded, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping)));
+            Assert.That(networkForm.Count, Is.EqualTo(decoded.GetLength()));
+        }
+    }
+
+    [Test]
+    public void TryGetNetworkForm_should_read_a_pinned_record_from_RocksDb()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using IContainer configs = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
+        using IColumnsDb<BlobTxsColumns> db = new RocksDbFactory(configs.Resolve<IRocksDbConfigFactory>(), configs.Resolve<IDbConfig>(),
+                new HyperClockCacheWrapper(), new RealFileSystem(), LimboLogs.Instance, directory.Path)
+            .CreateColumnsDb<BlobTxsColumns>(new DbSettings(DbNames.BlobTransactions, "blobs"));
+        Assert.That(db.GetColumnDb(BlobTxsColumns.FullBlobTxs), Is.InstanceOf<IReadOnlyNativeKeyValueStore>());
+
+        BlobTxStorage blobTxStorage = new(db);
+        Transaction tx = CreateBlobTransaction(TestItem.PrivateKeyA, blobCount: 2, spec: Osaka.Instance);
+        blobTxStorage.Add(tx);
+        db.Flush();
+
+        IBlobTxNetworkFormStorage storage = blobTxStorage;
+        bool found = storage.TryGetNetworkForm(tx.Hash!, tx.Timestamp, out IOwnedReadOnlyList<byte> networkForm);
+        using (networkForm)
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(networkForm.AsSpan().ToArray(), Is.EqualTo(TxDecoder.Instance.Encode(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping)));
+            Assert.That(storage.TryGetNetworkForm(TestItem.KeccakC, tx.Timestamp, out _), Is.False);
+        }
+    }
+
+    [Test]
+    public void TryGetNetworkForm_should_release_the_pinned_record_after_the_copy([Values] bool malformed)
+    {
+        PinnedColumnsDb db = new();
+        BlobTxStorage blobTxStorage = new(db);
+        IBlobTxNetworkFormStorage storage = blobTxStorage;
+        Transaction tx = CreateBlobTransaction(TestItem.PrivateKeyA, blobCount: 2, spec: Osaka.Instance);
+        if (malformed)
+        {
+            StoreFullRecord(db, tx, [0xc1, 0x80]);
+            Assert.That(() => storage.TryGetNetworkForm(tx.Hash!, tx.Timestamp, out _), Throws.InstanceOf<RlpReaderException>());
+        }
+        else
+        {
+            blobTxStorage.Add(tx);
+            Assert.That(storage.TryGetNetworkForm(tx.Hash!, tx.Timestamp, out IOwnedReadOnlyList<byte> networkForm), Is.True);
+            using (networkForm)
+            {
+                // The released slice is overwritten, so equal bytes show that the copy ran before the release.
+                Assert.That(networkForm.AsSpan().ToArray(), Is.EqualTo(TxDecoder.Instance.Encode(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping)));
+            }
+        }
+
+        Assert.That(storage.TryGetNetworkForm(TestItem.KeccakC, tx.Timestamp, out _), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db.FullTxs.NativeReads, Is.EqualTo(2));
+            Assert.That(db.FullTxs.LiveHandles, Is.Zero);
+        }
+    }
+
+    /// <summary>Lends copies of the full records as native slices and overwrites each copy when it is released.</summary>
+    private sealed class PinnedMemDb : TestMemDb, IReadOnlyNativeKeyValueStore
+    {
+        private readonly Dictionary<nint, byte[]> _pins = [];
+        private nint _lastHandle;
+        public int NativeReads { get; private set; }
+        public int LiveHandles => _pins.Count;
+
+        public ReadOnlySpan<byte> GetNativeSlice(scoped ReadOnlySpan<byte> key, out nint handle, ReadFlags flags = ReadFlags.None)
+        {
+            NativeReads++;
+            handle = 0;
+            if (Get(key, flags) is not { } value) return null;
+            byte[] copy = (byte[])value.Clone();
+            handle = ++_lastHandle;
+            _pins.Add(handle, copy);
+            return copy;
+        }
+
+        public void DangerousReleaseHandle(nint handle)
+        {
+            if (!_pins.Remove(handle, out byte[] copy)) throw new InvalidOperationException("Native handle released twice.");
+            copy.AsSpan().Fill(0xff);
+        }
+    }
+
+    private sealed class PinnedColumnsDb : IColumnsDb<BlobTxsColumns>
+    {
+        private readonly MemColumnsDb<BlobTxsColumns> _columns = new();
+        public PinnedMemDb FullTxs { get; } = new();
+        public IDb GetColumnDb(BlobTxsColumns key) => key is BlobTxsColumns.FullBlobTxs ? FullTxs : _columns.GetColumnDb(key);
+        public IEnumerable<BlobTxsColumns> ColumnKeys => _columns.ColumnKeys;
+        public IColumnsWriteBatch<BlobTxsColumns> StartWriteBatch() => new InMemoryColumnWriteBatch<BlobTxsColumns>(this);
+        public IColumnDbSnapshot<BlobTxsColumns> CreateSnapshot() => throw new NotSupportedException();
+        public void Flush(bool onlyWal = false) { }
+        public void Dispose() => FullTxs.Dispose();
+    }
+
+    public enum StoredCellTrailer
+    {
+        None,
+        EmptyCells,
+        Cells
+    }
+
+    /// <param name="editNetworkItems">
+    /// When set, stores a hand-built record made of the network items of <paramref name="tx"/> that it returns.
+    /// </param>
+    [TestCaseSource(nameof(RecordsNotServedAsNetworkForm))]
+    public void TryGetNetworkForm_should_miss_for_a_record_it_does_not_serve(Transaction tx, bool stored, Func<byte[][], byte[][]> editNetworkItems)
+    {
+        MemColumnsDb<BlobTxsColumns> columnsDb = new();
+        BlobTxStorage blobTxStorage = new(columnsDb);
+        if (editNetworkItems is not null)
+        {
+            StoreFullRecord(columnsDb, tx, BuildFullRecord(editNetworkItems(ReadNetworkItems(tx))));
+        }
+        else if (stored)
+        {
+            blobTxStorage.Add(tx);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(((IBlobTxNetworkFormStorage)blobTxStorage).TryGetNetworkForm(tx.Hash!, tx.Timestamp, out IOwnedReadOnlyList<byte> networkForm), Is.False);
+            Assert.That(networkForm, Is.Null);
+        }
+    }
+
+    private static IEnumerable<TestCaseData> RecordsNotServedAsNetworkForm()
+    {
+        yield return new TestCaseData(CreateBlobTransaction(), false, null).SetArgDisplayNames("missing record");
+        yield return new TestCaseData(CreateV1BlobTransactions(1)[0], true, null).SetArgDisplayNames("sparse blobs");
+        yield return new TestCaseData(BuildBlobCarryingFrameTx(blobCount: 2, ProofVersion.V1), true, null).SetArgDisplayNames("frame transaction");
+
+        Transaction v0Tx = CreateBlobTransaction(TestItem.PrivateKeyA, blobCount: 2, spec: Cancun.Instance);
+        yield return new TestCaseData(v0Tx, true, (Func<byte[][], byte[][]>)(static items => [items[0], [0x00], .. items[1..]]))
+            .SetArgDisplayNames("explicit 0x00 V0 version byte");
+
+        // The items of a V1 record are the transaction fields, the version byte, blobs, commitments and proofs.
+        Transaction v1Tx = CreateBlobTransaction(TestItem.PrivateKeyA, blobCount: 2, spec: Osaka.Instance);
+        yield return new TestCaseData(v1Tx, true, WithBlobsItem([0x80])).SetArgDisplayNames("blobs as an empty byte array");
+        yield return new TestCaseData(v1Tx, true, WithBlobsItem([0xc0])).SetArgDisplayNames("empty blob list");
+        yield return new TestCaseData(v1Tx, true, WithBlobsItem([0xc1, 0x80])).SetArgDisplayNames("empty blob entry");
+        yield return new TestCaseData(v1Tx, true, (Func<byte[][], byte[][]>)(static items => [items[0], [0x02], .. items[2..]]))
+            .SetArgDisplayNames("version byte above the latest");
+
+        static Func<byte[][], byte[][]> WithBlobsItem(byte[] blobs) => items => [items[0], items[1], blobs, .. items[3..]];
+    }
+
+    private static byte[][] ReadNetworkItems(Transaction tx)
+    {
+        byte[] typedTx = TxDecoder.Instance.Encode(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping);
+        RlpReader reader = new RlpReader(typedTx.AsSpan(1)).EnterSequence(out _);
+        List<byte[]> items = [];
+        while (reader.HasNext) items.Add(reader.ReadEncodedItem().ToArray());
+        return [.. items];
+    }
+
+    private static byte[] BuildFullRecord(byte[][] networkItems)
+    {
+        int contentLength = networkItems.Sum(static item => item.Length);
+        byte[] typedTx = new byte[1 + Rlp.LengthOfSequence(contentLength)];
+        typedTx[0] = (byte)TxType.Blob;
+        RlpWriter writer = RlpWriter.ContentWriter(typedTx.AsSpan(1));
+        RlpSequence sequence = writer.StartSequence(contentLength);
+        foreach (byte[] item in networkItems) writer.WriteEncoded(item);
+        writer.EndSequence(sequence);
+        return Rlp.Encode(typedTx);
+    }
+
+    private static void StoreFullRecord(IColumnsDb<BlobTxsColumns> columnsDb, Transaction tx, byte[] record)
+    {
+        byte[] key = new byte[64];
+        tx.Timestamp.WriteBigEndian(key);
+        tx.Hash!.Bytes.CopyTo(key.AsSpan(32));
+        columnsDb.GetColumnDb(BlobTxsColumns.FullBlobTxs).Set(key, record);
     }
 
     // Persisted through the same InMempoolForm as a type-3, so the type and sidecar both have to survive.
@@ -993,23 +1208,20 @@ public class BlobTxStorageTests
     }
 
     /// <remarks>
-    /// A corrupt light record surfaces as one of three unrelated exception roots, so each case pins the one it
-    /// exercises: <see cref="RlpReader"/> slices without bounds checks, which turns truncation into
-    /// <see cref="ArgumentOutOfRangeException"/> or <see cref="IndexOutOfRangeException"/> rather than <see cref="RlpException"/>.
+    /// Each case pins the exception of the decode failure mode it exercises. Light records are read without the checks
+    /// of the canonical form, so a non-canonical scalar is not one of them.
     /// </remarks>
     private static IEnumerable<TestCaseData> CorruptLightTxRecords()
     {
-        yield return new TestCaseData((Func<byte[], byte[]>)(valid => valid[..2]), typeof(ArgumentOutOfRangeException))
+        yield return new TestCaseData((Func<byte[], byte[]>)(valid => valid[..2]), typeof(RlpReaderException))
             .SetName("GetAll_skips_unreadable_record(truncated)");
-        yield return new TestCaseData((Func<byte[], byte[]>)(_ => []), typeof(IndexOutOfRangeException))
+        yield return new TestCaseData((Func<byte[], byte[]>)(_ => []), typeof(RlpReaderException))
             .SetName("GetAll_skips_unreadable_record(empty)");
-        yield return new TestCaseData((Func<byte[], byte[]>)(valid => [0x82, 0x00, 0x01, .. valid[1..]]), typeof(RlpException))
-            .SetName("GetAll_skips_unreadable_record(non_canonical_scalar)");
-        yield return new TestCaseData((Func<byte[], byte[]>)(_ => [0xff, 0xff, 0xff, 0xff]), typeof(RlpException))
+        yield return new TestCaseData((Func<byte[], byte[]>)(_ => [0xff, 0xff, 0xff, 0xff]), typeof(RlpReaderException))
             .SetName("GetAll_skips_unreadable_record(garbage)");
         // A record written by a newer version carrying one optional field beyond this build's set: every record
         // fails after a downgrade. Two elements, since EIP-8141 records already read one more than a blob record.
-        yield return new TestCaseData((Func<byte[], byte[]>)(valid => [.. valid, 0x01, 0x01]), typeof(RlpException))
+        yield return new TestCaseData((Func<byte[], byte[]>)(valid => [.. valid, 0x01, 0x01]), typeof(RlpReaderException))
             .SetName("GetAll_skips_unreadable_record(extra_optional_field)");
     }
 
@@ -1093,8 +1305,8 @@ public class BlobTxStorageTests
         }
     }
 
-    private static Transaction CreateBlobTransaction(PrivateKey signer, int nonce = 0, int blobCount = 1) => Build.A.Transaction
-        .WithShardBlobTxTypeAndFields(blobCount)
+    private static Transaction CreateBlobTransaction(PrivateKey signer, int nonce = 0, int blobCount = 1, IReleaseSpec spec = null) => Build.A.Transaction
+        .WithShardBlobTxTypeAndFields(blobCount, spec: spec)
         .WithNonce(nonce)
         .WithMaxFeePerGas(1.GWei)
         .WithMaxPriorityFeePerGas(1.GWei)

@@ -6,30 +6,22 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 
 namespace Nethermind.Serialization.Rlp;
 
 /// <remarks>
-/// The guest encodes every receipt of a block for its receipts root. The generic encoder measures the logs again for
-/// each receipt it writes and hands every field to the writer on its own, so the guest measures them once and writes the
-/// receipt straight into the writer's buffer. Each write returns the reference past the bytes it wrote, which stays in a
-/// register where a position held by reference would not.
+/// Every receipt of a block is encoded for its receipts root. The generic encoder measures the logs again for each
+/// receipt it writes and hands every field to the writer on its own, so the one-pass encoder measures them once and
+/// writes the receipt straight into the writer's buffer. Each write returns the reference past the bytes it wrote,
+/// which stays in a register where a position held by reference would not.
 /// </remarks>
 public sealed partial class ReceiptMessageDecoder
 {
-    partial void GetLengthInOnePass(TxReceipt item, RlpBehaviors rlpBehaviors, ref int length)
+    private void EncodeInOnePass(ref RlpWriter writer, TxReceipt item, RlpBehaviors rlpBehaviors)
     {
-        if (IsOnePass(item, rlpBehaviors))
-            length = GetOnePassLength(item, rlpBehaviors, out _, out _);
-    }
-
-    partial void EncodeInOnePass<TWriter>(ref TWriter writer, TxReceipt item, RlpBehaviors rlpBehaviors, ref bool encoded)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
-    {
-        if (typeof(TWriter) != typeof(RlpWriter) || !IsOnePass(item, rlpBehaviors)) return;
-
         int length = GetOnePassLength(item, rlpBehaviors, out int contentLength, out int logsLength);
-        ref byte destination = ref MemoryMarshal.GetReference(Unsafe.As<TWriter, RlpWriter>(ref writer).Reserve(length));
+        ref byte destination = ref MemoryMarshal.GetReference(writer.ReserveEncoded(length));
 
         if (item.TxType != TxType.Legacy) destination = ref WriteByte(ref destination, (byte)item.TxType);
         destination = ref WriteSequencePrefix(ref destination, contentLength);
@@ -39,13 +31,14 @@ public sealed partial class ReceiptMessageDecoder
         destination = ref WriteSequencePrefix(ref destination, logsLength);
         foreach (LogEntry log in item.Logs!)
             destination = ref WriteLog(ref destination, log);
-
-        encoded = true;
     }
 
-    /// <summary>Whether the receipt takes the one-pass encoding: an EIP-658 receipt of a transaction other than a frame one, unwrapped.</summary>
-    private static bool IsOnePass(TxReceipt item, RlpBehaviors rlpBehaviors) =>
-        item.TxType != TxType.FrameTx && item.Logs is not null &&
+    /// <summary>
+    /// Whether the receipt takes the one-pass encoding: an EIP-658 receipt with its status and bloom, of a transaction
+    /// other than a frame one, unwrapped.
+    /// </summary>
+    private bool IsOnePass(TxReceipt item, RlpBehaviors rlpBehaviors) =>
+        !skipStateAndStatus && !skipBloom && item.TxType != TxType.FrameTx && item.Logs is not null &&
         (rlpBehaviors & RlpBehaviors.Eip658Receipts) != 0 &&
         (item.TxType == TxType.Legacy || (rlpBehaviors & RlpBehaviors.SkipTypedWrapping) != 0);
 
@@ -127,7 +120,7 @@ public sealed partial class ReceiptMessageDecoder
         int length = data.Length;
         if (length == 1 && data[0] < 0x80) return ref WriteByte(ref destination, data[0]);
 
-        if (length < RlpHelpers.SmallPrefixBarrier)
+        if (length < Rlp.SmallPrefixBarrier)
         {
             destination = ref WriteByte(ref destination, (byte)(0x80 + length));
         }
@@ -144,7 +137,7 @@ public sealed partial class ReceiptMessageDecoder
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ref byte WriteSequencePrefix(ref byte destination, int contentLength)
     {
-        if (contentLength < RlpHelpers.SmallPrefixBarrier) return ref WriteByte(ref destination, (byte)(0xc0 + contentLength));
+        if (contentLength < Rlp.SmallPrefixBarrier) return ref WriteByte(ref destination, (byte)(0xc0 + contentLength));
 
         int lengthOfLength = Rlp.LengthOfLength(contentLength);
         destination = ref WriteByte(ref destination, (byte)(0xf7 + lengthOfLength));

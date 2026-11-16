@@ -22,6 +22,7 @@ using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
@@ -95,7 +96,7 @@ namespace Nethermind.TxPool.Test
         {
             Transaction tx = BuildBlobTxDeclaringNoBlobs(null).TestObject;
 
-            Assert.That(() => TxDecoder.Instance.Encode(tx), Throws.TypeOf<RlpException>()
+            Assert.That(() => TxDecoder.Instance.Encode(tx), Throws.TypeOf<RlpReaderException>()
                 .With.Message.Contains($"{nameof(Transaction.BlobVersionedHashes)} is required"));
         }
 
@@ -4036,6 +4037,63 @@ namespace Nethermind.TxPool.Test
                 Assert.That(found, Is.EqualTo(0));
                 Assert.That(blobs[0], Is.Null);
                 Assert.That(proofs[0].IsEmpty, Is.True);
+            }
+        }
+
+        [Test]
+        public void should_read_network_form_only_for_a_blob_tx_held_in_storage_alone()
+        {
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                BlobCacheSize = 1,
+                Size = 10
+            };
+            _txPool = CreatePool(txPoolConfig, GetOsakaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
+
+            Transaction storedTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction cachedTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .With(tx => ReplaceBlobSidecar(tx, firstBlobByte: 2))
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
+            Transaction plainTx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyC).TestObject;
+
+            AcceptTxResult storedResult = _txPool.SubmitTx(storedTx, TxHandlingOptions.None);
+            AcceptTxResult cachedResult = _txPool.SubmitTx(cachedTx, TxHandlingOptions.None);
+            bool cachedFound = _txPool.TryGetPendingBlobCellMaskAndNetworkForm(cachedTx.Hash!, out BlobCellMask cachedMask, out IOwnedReadOnlyList<byte> cachedForm);
+            bool plainFound = _txPool.TryGetPendingBlobCellMaskAndNetworkForm(plainTx.Hash!, out _, out IOwnedReadOnlyList<byte> plainForm);
+
+            bool storedFound = _txPool.TryGetPendingBlobCellMaskAndNetworkForm(storedTx.Hash!, out BlobCellMask storedMask, out IOwnedReadOnlyList<byte> networkForm);
+            using (networkForm)
+            {
+                // Decoding puts the transaction in the cache, so a later read is served from memory.
+                bool decodedFound = _txPool.TryGetPendingTransaction(storedTx.Hash!, out Transaction decoded);
+                bool foundAfterDecoding = _txPool.TryGetPendingBlobCellMaskAndNetworkForm(storedTx.Hash!, out _, out IOwnedReadOnlyList<byte> formAfterDecoding);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(storedResult, Is.EqualTo(AcceptTxResult.Accepted));
+                    Assert.That(cachedResult, Is.EqualTo(AcceptTxResult.Accepted));
+                    Assert.That(cachedFound, Is.True, "cached");
+                    Assert.That(cachedMask.IsFull, Is.True, "cached mask");
+                    Assert.That(cachedForm, Is.Null, "cached");
+                    Assert.That(plainFound, Is.False, "not in the blob pool");
+                    Assert.That(plainForm, Is.Null, "not in the blob pool");
+                    Assert.That(storedFound, Is.True, "stored");
+                    Assert.That(storedMask.IsFull, Is.True, "stored mask");
+                    Assert.That(decodedFound, Is.True);
+                    Assert.That(networkForm?.AsSpan().ToArray(),
+                        Is.EqualTo(TxDecoder.Instance.Encode(decoded, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping)));
+                    Assert.That(foundAfterDecoding, Is.True, "decoded");
+                    Assert.That(formAfterDecoding, Is.Null, "decoded");
+                }
             }
         }
 

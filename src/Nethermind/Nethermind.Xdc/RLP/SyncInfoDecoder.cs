@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
 
@@ -13,39 +14,22 @@ internal class SyncInfoDecoder : RlpDecoder<SyncInfo>
 
     protected override SyncInfo DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemEmptyList())
+        if (decoderContext.TryReadEmptySequence())
         {
-            decoderContext.ReadByte();
             return null;
         }
 
-        int sequenceLength = decoderContext.ReadSequenceLength();
-        int endPosition = decoderContext.Position + sequenceLength;
+        RlpReader fields = decoderContext.EnterSequence(out int itemLength);
 
-        QuorumCertificate highestQuorumCert = _quorumCertificateDecoder.Decode(ref decoderContext, rlpBehaviors);
-        TimeoutCertificate highestTimeoutCert = _timeoutCertificateDecoder.Decode(ref decoderContext, rlpBehaviors);
+        QuorumCertificate highestQuorumCert = _quorumCertificateDecoder.Decode(ref fields, rlpBehaviors);
+        TimeoutCertificate highestTimeoutCert = _timeoutCertificateDecoder.Decode(ref fields, rlpBehaviors);
 
-        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-        {
-            decoderContext.Check(endPosition);
-        }
+        decoderContext.ExitSequence(in fields, itemLength, rlpBehaviors);
 
         return new SyncInfo(highestQuorumCert, highestTimeoutCert);
     }
 
-    public override Rlp Encode(SyncInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (item is null)
-            return Rlp.OfEmptyList;
-
-        byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
-        RlpWriter writer = new(bytes);
-        Encode(ref writer, item, rlpBehaviors);
-
-        return new Rlp(bytes);
-    }
-
-    public override void Encode<TWriter>(ref TWriter writer, SyncInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(ref RlpWriter writer, SyncInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -53,9 +37,10 @@ internal class SyncInfoDecoder : RlpDecoder<SyncInfo>
             return;
         }
 
-        writer.StartSequence(GetContentLength(item, rlpBehaviors));
+        RlpSequence sequence = writer.StartSequence(GetContentLength(item, rlpBehaviors));
         _quorumCertificateDecoder.Encode(ref writer, item.HighestQuorumCert, rlpBehaviors);
         _timeoutCertificateDecoder.Encode(ref writer, item.HighestTimeoutCert, rlpBehaviors);
+        writer.EndSequence(sequence);
     }
 
     public override int GetLength(SyncInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));

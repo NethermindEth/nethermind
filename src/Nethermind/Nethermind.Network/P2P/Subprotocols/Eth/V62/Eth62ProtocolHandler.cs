@@ -20,6 +20,7 @@ using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -247,8 +248,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             };
 
             Session.IsNetworkIdMatched = SyncServer.NetworkId == status.NetworkId;
-            HeadHash = status.BestHash;
             TotalDifficulty = status.TotalDifficulty;
+            HeadHash = status.BestHash;
             NotifyProtocolInitialized(eventArgs);
         }
 
@@ -259,10 +260,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             RlpReader ctx = new(packet.Content.Span);
             if (typeof(T) == typeof(V66.Messages.PooledTransactionsMessage))
             {
-                ctx.ReadSequenceLength();
+                ctx = ctx.EnterSequence(out _);
                 ctx.DecodeLong();
             }
-            int transactionCount = TransactionsMessageSerializer.ReadTransactionCount(ref ctx, out _);
+            int transactionCount = TransactionsMessageSerializer.ReadTransactionCount(ref ctx);
             InboundTransactionBudget.Reservation? reservation = _transactionBudget.TryReserve(packet.Content.Length, transactionCount);
             if (reservation is null)
             {

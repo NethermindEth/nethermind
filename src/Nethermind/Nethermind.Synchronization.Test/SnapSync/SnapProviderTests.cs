@@ -29,6 +29,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Flat;
@@ -1703,7 +1704,7 @@ public class SnapProviderTests
         {
             ValueHash256 slotKey = Keccak.Compute(i.ToBigEndianByteArray());
             byte[] value = (i + 1).ToBigEndianByteArray();
-            byte[] rlpValue = Rlp.Encode(value).Bytes;
+            byte[] rlpValue = Rlp.Encode(value);
             storageTree.Set(slotKey, rlpValue, false);
             slots[i] = new PathWithStorageSlot(slotKey, rlpValue);
         }

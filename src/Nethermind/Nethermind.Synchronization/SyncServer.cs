@@ -11,6 +11,8 @@ using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
+using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
@@ -27,6 +29,7 @@ using Nethermind.Db;
 using Nethermind.History;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Synchronization.FastSync;
@@ -41,6 +44,9 @@ namespace Nethermind.Synchronization
     public class SyncServer : ISyncServer
     {
         private readonly IBlockTree _blockTree;
+        private readonly IBlockStore _blockStore;
+        private readonly IHeaderStore _headerStore;
+        private readonly IHeaderDecoder _headerDecoder;
         private readonly ILogger _logger;
         private readonly ISyncPeerPool _pool;
         private readonly ISyncModeSelector _syncModeSelector;
@@ -69,11 +75,16 @@ namespace Nethermind.Synchronization
 
         private const int NewHeadBlockRangeUpdateFrequency = 32;
         internal const int NodeDataSoftResponseByteLimit = 2 * MemorySizes.MiB;
+        // An Amsterdam mainnet header is about 700 bytes long
+        private const int HeaderRlpLengthEstimate = 720;
 
         public SyncServer(
             IWorldStateManager worldStateManager,
             [KeyFilter(DbNames.Code)] IReadOnlyKeyValueStore codeDb,
             IBlockTree blockTree,
+            IBlockStore blockStore,
+            IHeaderStore headerStore,
+            IHeaderDecoder headerDecoder,
             IReceiptFinder receiptFinder,
             IBlockAccessListStore blockAccessListStore,
             IBlockValidator blockValidator,
@@ -98,6 +109,9 @@ namespace Nethermind.Synchronization
             _stateDb = worldStateManager.HashServer;
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
+            _headerStore = headerStore ?? throw new ArgumentNullException(nameof(headerStore));
+            _headerDecoder = headerDecoder ?? throw new ArgumentNullException(nameof(headerDecoder));
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _blockAccessListStore = blockAccessListStore ?? throw new ArgumentNullException(nameof(blockAccessListStore));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
@@ -420,7 +434,81 @@ namespace Nethermind.Synchronization
                 : _blockAccessListStore.GetRlp(header.Number, blockHash);
         }
 
-        public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse) => _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Walks the chain with <see cref="HeaderWalk"/>, as <see cref="IBlockTree.FindHeaders"/> does, but copies each
+        /// header as the header store holds it and reads the parent hash from that encoding, so no header is decoded.
+        /// </remarks>
+        public IOwnedReadOnlyList<byte> FindHeadersRlp(Hash256 hash, int numberOfBlocks, int skip, bool reverse)
+        {
+            if (numberOfBlocks == 0 || _headerStore.GetBlockNumber(hash) is not { } number)
+            {
+                return ArrayPoolList<byte>.Empty();
+            }
+
+            ArrayPoolList<byte> headers = new(numberOfBlocks * HeaderRlpLengthEstimate);
+            try
+            {
+                EncodedHeaderSource source = new(_headerStore, _headerDecoder, headers);
+                using ArrayPoolList<Range> items = HeaderWalk.FindHeaders<Range, EncodedHeaderSource>(_blockTree, ref source, in hash.ValueHash256, number, numberOfBlocks, skip, reverse);
+                return InResponseOrder(headers, items.AsSpan());
+            }
+            catch
+            {
+                headers.Dispose();
+                throw;
+            }
+        }
+
+        /// <summary>Returns the headers at <paramref name="items"/> up to the first one not found, in their order.</summary>
+        /// <remarks><paramref name="headers"/> is returned as it is when it already holds them in that order, otherwise it is disposed.</remarks>
+        private static ArrayPoolList<byte> InResponseOrder(ArrayPoolList<byte> headers, ReadOnlySpan<Range> items)
+        {
+            int count = 0;
+            int end = 0;
+            bool inOrder = true;
+            for (; count < items.Length && !items[count].Equals(default); count++)
+            {
+                inOrder &= items[count].Start.Value == end;
+                end = items[count].End.Value;
+            }
+
+            if (inOrder)
+            {
+                headers.Truncate(end);
+                return headers;
+            }
+
+            ArrayPoolList<byte> ordered = new(headers.Count);
+            ReadOnlySpan<byte> encoded = headers.AsSpan();
+            foreach (Range item in items[..count])
+            {
+                ordered.AddRange(encoded[item]);
+            }
+
+            headers.Dispose();
+            return ordered;
+        }
+
+        private readonly struct EncodedHeaderSource(IHeaderStore headerStore, IHeaderDecoder decoder, ArrayPoolList<byte> headers) : IHeaderWalkSource<Range>
+        {
+            public bool TryGet(in ValueHash256 hash, Hash256? hashObject, ulong number, out Range item, out ValueHash256 parentHash)
+            {
+                int start = headers.Count;
+                if (!headerStore.TryAppendRlp(in hash, number, decoder, headers))
+                {
+                    item = default;
+                    parentHash = default;
+                    return false;
+                }
+
+                item = start..headers.Count;
+                RlpReader reader = new(headers.AsSpan()[start..]);
+                RlpReader fields = reader.EnterSequence<OffFlag>(out _);
+                parentHash = fields.DecodeValueKeccakNonNull();
+                return true;
+            }
+        }
 
         public IByteArrayList GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
         {
@@ -467,6 +555,12 @@ namespace Nethermind.Synchronization
         }
 
         public Block Find(Hash256 hash) => _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.ExcludeTxHashes);
+
+        public MemoryManager<byte>? FindBlockRlp(Hash256 hash)
+        {
+            ulong? number = _headerStore.GetBlockNumber(hash);
+            return number is null ? null : _blockStore.GetOwnedRlp(number.Value, hash);
+        }
 
         public BlockHeader? FindHeader(Hash256 hash) => _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
 
