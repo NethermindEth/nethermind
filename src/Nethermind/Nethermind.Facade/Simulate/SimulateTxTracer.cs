@@ -54,8 +54,11 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
         _logIndexStart = logIndexStart;
         _isTracingTransfers = isTracingTransfers;
         IsTracingReceipt = true;
-        IsTracingLogs = true;
-        IsTracingActions = true;
+        // Call tracing turns off EVM fast paths, so it is kept only where the result needs it: synthetic transfer
+        // logs, frame results, and creations, whose address collision fails with no action to report its error.
+        bool isTracingCalls = isTracingTransfers || tx.SupportsFrames || tx.IsContractCreation;
+        IsTracingLogs = isTracingCalls;
+        IsTracingActions = isTracingCalls;
         _logs = [];
     }
 
@@ -158,15 +161,21 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
 
     private void TruncateLogs(int count) => _logs.RemoveRange(count, _logs.Count - count);
 
-    public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) => TraceResult = new SimulateCallResult
+    public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
-        GasUsed = gasSpent.SpentGas,
-        MaxUsedGas = gasSpent.EffectiveMaxUsedGas,
-        ReturnData = _frameResults is { Length: > 0 } ? _frameResults[^1].ReturnData : output,
-        FrameResults = _frameResults,
-        Status = StatusCode.Success,
-        Logs = _frameTxLogs ?? BuildLogs()
-    };
+        // The receipt logs exclude the logs of reverted call frames, as the reported logs do once their frames end.
+        if (!IsTracingLogs) _logs.AddRange(logs);
+
+        TraceResult = new SimulateCallResult
+        {
+            GasUsed = gasSpent.SpentGas,
+            MaxUsedGas = gasSpent.EffectiveMaxUsedGas,
+            ReturnData = _frameResults is { Length: > 0 } ? _frameResults[^1].ReturnData : output,
+            FrameResults = _frameResults,
+            Status = StatusCode.Success,
+            Logs = _frameTxLogs ?? BuildLogs()
+        };
+    }
 
     public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
@@ -179,7 +188,7 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
             {
                 Message = FailureMessage(error),
                 // A frame transaction fails for the frame that failed, not for whichever call last errored.
-                EvmException = _frameError ?? _exceptionType,
+                EvmException = _frameError ?? (IsTracingActions ? _exceptionType : TopLevelException(output, error)),
                 // The processor reports no output for a frame transaction, so the revert data is the frame's own.
                 Data = _frameError is null ? output : failedFrameOutput
             },
@@ -194,6 +203,17 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
     private string FailureMessage(string? error) => _frameError is { } frameError && frameError != EvmExceptionType.Revert
         ? frameError.GetEvmExceptionDescription() ?? frameError.ToString()
         : error is TransactionSubstate.Revert ? "execution reverted" : "execution reverted: " + error;
+
+    /// <summary>The exception that failed the top-level call, read from the failure the processor reports.</summary>
+    /// <remarks>
+    /// For a transaction traced without actions. A revert reports its output, or no output and the
+    /// <see cref="TransactionSubstate.Revert"/> error. An exceptional halt reports no output and the
+    /// <see cref="EvmExceptionTypeExtensions.FastToString"/> name of its exception.
+    /// </remarks>
+    private static EvmExceptionType TopLevelException(byte[] output, string? error) =>
+        output.Length > 0 || error is TransactionSubstate.Revert ? EvmExceptionType.Revert
+        : Enum.TryParse(error, out EvmExceptionType exceptionType) ? exceptionType
+        : EvmExceptionType.None;
 
     private List<Log> BuildLogs()
     {
