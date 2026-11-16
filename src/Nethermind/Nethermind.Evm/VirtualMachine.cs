@@ -1962,11 +1962,27 @@ public partial class VirtualMachine<TGasPolicy>(
         // Cost calculation changes Size, so diagnostics must not consume the execution's expansion.
         EvmPooledMemory memory = VmState.Memory;
         ulong memoryCost = memory.CalculateMemoryCost(in position, in length, out bool overflow);
+        if (overflow)
+            overflow = !TryGetUncappedMemoryCost(memory.Size, in position, in length, out memoryCost);
         if (!overflow && memoryCost <= ulong.MaxValue - additionalGas)
         {
             TraceOperationGasCost(additionalGas + memoryCost);
             TraceOperationReady(additionalGas + memoryCost);
         }
+    }
+
+    /// <summary>Prices an expansion past the allocation cap, up to the size whose cost Geth computes before running out of gas.</summary>
+    private static bool TryGetUncappedMemoryCost(ulong currentSize, in UInt256 position, in UInt256 length, out ulong cost)
+    {
+        // Geth rejects larger sizes as a gas overflow; at this size the squared word count still fits in 64 bits.
+        const ulong MaxPricedSize = 0x1FFFFFFFE0;
+        cost = 0;
+        if (!position.IsUint64 || !length.IsUint64 || length.u0 > MaxPricedSize || position.u0 > MaxPricedSize - length.u0)
+            return false;
+
+        ulong words = (position.u0 + length.u0 + EvmPooledMemory.WordSize - 1) / EvmPooledMemory.WordSize;
+        cost = EvmPooledMemory.ExpansionCost(currentSize / EvmPooledMemory.WordSize, words);
+        return true;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

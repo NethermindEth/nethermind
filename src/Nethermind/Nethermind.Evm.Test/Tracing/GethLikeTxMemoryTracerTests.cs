@@ -911,6 +911,13 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
     public void Undefined_opcode_step_name(byte opcode, string expectedName) =>
         AssertFailedStep(TraceStructLogs([opcode], MainnetSpecProvider.CancunActivation), expectedName, null);
 
+    /// <remarks>Geth prices memory up to 0x1FFFFFFFE0 bytes, beyond Nethermind's allocation cap, before running out of gas.</remarks>
+    [TestCase("63ffffffff51", "MLOAD", 35184775266310UL)]
+    [TestCase("5f63ffffffff52", "MSTORE", 35184775266310UL)]
+    [TestCase("602063fffffffff3", "RETURN", 35184775266307UL)]
+    public void Huge_memory_expansion_step_gas_cost(string code, string expectedOpcode, ulong expectedGasCost) =>
+        AssertFailedStep(TraceStructLogs(Bytes.FromHexString(code), MainnetSpecProvider.CancunActivation), expectedOpcode, "out of gas", expectedGasCost: expectedGasCost);
+
     /// <summary>Traces <paramref name="code"/> with the in-memory and the streaming struct logger.</summary>
     private (string Tracer, JsonElement[] Entries)[] TraceStructLogs(byte[] code, ForkActivation activation)
     {
