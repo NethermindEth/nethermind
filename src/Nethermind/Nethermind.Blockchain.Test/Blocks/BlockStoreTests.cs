@@ -94,6 +94,33 @@ public class BlockStoreTests
     }
 
     [Test]
+    public async Task GetRlps_reads_each_block_as_GetRlp_does([Values] bool batching)
+    {
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
+        MemDb db = batching ? new BatchReadMemDb() : new MemDb();
+        BlockStore store = new(db, deferredWriter: writer);
+        BlockDecoder decoder = new();
+        Block stored = Build.A.Block.WithNumber(1).TestObject;
+        Block hashKeyed = Build.A.Block.WithNumber(2).TestObject;
+        Block pending = Build.A.Block.WithNumber(3).TestObject;
+        Block missing = Build.A.Block.WithNumber(4).TestObject;
+        store.Insert(stored);
+        db[hashKeyed.Hash!.Bytes] = decoder.Encode(hashKeyed);
+        store.InsertDeferred(pending);
+
+        byte[]?[] rlps = new byte[]?[5];
+        store.GetRlps(
+            [(missing.Number, missing.Hash!), (stored.Number, stored.Hash!), (pending.Number, pending.Hash!), (hashKeyed.Number, hashKeyed.Hash!), (stored.Number, stored.Hash!)],
+            rlps);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rlps, Is.EqualTo(new[] { null, decoder.Encode(stored), decoder.Encode(pending), decoder.Encode(hashKeyed), decoder.Encode(stored) }));
+            if (db is BatchReadMemDb batch) Assert.That(batch.BatchReads, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
     public void Test_cached_block_that_was_never_written_is_not_reported_as_stored()
     {
         TestMemDb db = new();

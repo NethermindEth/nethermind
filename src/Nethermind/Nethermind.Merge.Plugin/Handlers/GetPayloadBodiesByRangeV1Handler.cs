@@ -6,13 +6,16 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Core.Collections;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.State.Repositories;
+using static Nethermind.Merge.Plugin.Handlers.PayloadBodiesHandlerHelper;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public sealed class GetPayloadBodiesByRangeV1Handler(IBlockTree blockTree, IBlockStore blockStore, ILogManager logManager)
+public sealed class GetPayloadBodiesByRangeV1Handler(IBlockTree blockTree, IChainLevelInfoRepository chainLevels, IBlockStore blockStore, ILogManager logManager)
     : IGetPayloadBodiesByRangeV1Handler
 {
     private readonly ILogger _logger = logManager.GetClassLogger(typeof(GetPayloadBodiesByRangeV1Handler));
@@ -42,14 +45,7 @@ public sealed class GetPayloadBodiesByRangeV1Handler(IBlockTree blockTree, IBloc
         ulong end = Math.Min(start + count - 1, headNumber);
         if (end < start) return new PayloadBodiesV1DirectResponse(Array.Empty<PayloadBodiesV1DirectResponse.PayloadBody?>());
 
-        PayloadBodiesV1DirectResponse.PayloadBody?[] results = new PayloadBodiesV1DirectResponse.PayloadBody?[end - start + 1];
-        for (ulong i = start; i <= end; i++)
-        {
-            results[i - start] = PayloadBodiesHandlerHelper.CreatePayloadBodyV1(
-                blockStore,
-                blockTree.FindHeader(i, PayloadBodiesHandlerHelper.RangeLookupOptions));
-        }
-
-        return new PayloadBodiesV1DirectResponse(results);
+        using ArrayPoolList<StoredBlock?> blocks = ReadCanonicalBlocks(chainLevels, blockStore, start, end);
+        return new PayloadBodiesV1DirectResponse(CreatePayloadBodiesV1(blocks));
     }
 }

@@ -22,6 +22,7 @@ namespace Nethermind.Blockchain.Blocks;
 public class BlockStore : IBlockStore, IClearableCache
 {
     public const int CacheSize = 128 + 32;
+    private const int NumberPrefixedKeyLength = sizeof(ulong) + Hash256.Size;
 
     private readonly IDb _blockDb;
     private readonly IHeaderDecoder _headerDecoder;
@@ -221,6 +222,41 @@ public class BlockStore : IBlockStore, IClearableCache
         byte[] b = _blockDb.Get(dbKey);
         if (b is not null) return b;
         return _blockDb.Get(blockHash);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>Reads the number-prefixed keys in one batch. Pending blocks are taken before the batch, as
+    /// <see cref="GetRlp"/> does, so a block whose write lands during the batch is not missed. A block missing from the
+    /// batch is read under its bare hash, as a database predating the block-number prefix stores it.</remarks>
+    public void GetRlps(ReadOnlySpan<(ulong Number, Hash256 Hash)> blocks, Span<byte[]?> rlps)
+    {
+        ArgumentOutOfRangeException.ThrowIfNotEqual(rlps.Length, blocks.Length);
+        using ArrayPoolListRef<(int Index, byte[] Rlp)> pending = new(0);
+        if (_pending is not null)
+        {
+            for (int i = 0; i < blocks.Length; i++)
+            {
+                if (_pending.TryGet(blocks[i].Hash, out Block? pendingBlock)) pending.Add((i, _blockDecoder.Encode(pendingBlock)));
+            }
+        }
+
+        using ArrayPoolSpan<byte> keys = new(blocks.Length * NumberPrefixedKeyLength);
+        for (int i = 0; i < blocks.Length; i++)
+        {
+            KeyValueStoreExtensions.GetBlockNumPrefixedKey(blocks[i].Number, blocks[i].Hash, keys.Slice(i * NumberPrefixedKeyLength, NumberPrefixedKeyLength));
+        }
+
+        _blockDb.GetMany(keys, NumberPrefixedKeyLength, rlps, default(ArrayDecoder));
+        foreach ((int index, byte[] rlp) in pending.AsSpan()) rlps[index] = rlp;
+        for (int i = 0; i < rlps.Length; i++)
+        {
+            rlps[i] ??= _blockDb.Get(blocks[i].Hash);
+        }
+    }
+
+    private readonly struct ArrayDecoder : IValueDecoder<byte[]?>
+    {
+        public byte[]? Decode(ReadOnlySpan<byte> buffer) => buffer.ToArray();
     }
 
     /// <inheritdoc/>

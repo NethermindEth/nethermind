@@ -7,13 +7,17 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Core.Collections;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.State.Repositories;
+using static Nethermind.Merge.Plugin.Handlers.PayloadBodiesHandlerHelper;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public sealed class GetPayloadBodiesByRangeV2Handler(IBlockTree blockTree, ILogManager logManager, IBlockAccessListStore balStore, IBlockStore blockStore)
+public sealed class GetPayloadBodiesByRangeV2Handler(
+    IBlockTree blockTree, IChainLevelInfoRepository chainLevels, ILogManager logManager, IBlockAccessListStore balStore, IBlockStore blockStore)
     : IGetPayloadBodiesByRangeV2Handler
 {
     private readonly ILogger _logger = logManager.GetClassLogger(typeof(GetPayloadBodiesByRangeV2Handler));
@@ -43,23 +47,7 @@ public sealed class GetPayloadBodiesByRangeV2Handler(IBlockTree blockTree, ILogM
         ulong end = Math.Min(start + count - 1, headNumber);
         if (end < start) return new PayloadBodiesV2DirectResponse([]);
 
-        PayloadBodiesV2DirectResponse.PayloadBody?[] results = new PayloadBodiesV2DirectResponse.PayloadBody?[end - start + 1];
-        try
-        {
-            for (ulong i = start; i <= end; i++)
-            {
-                results[i - start] = PayloadBodiesHandlerHelper.CreatePayloadBodyV2(
-                    blockStore,
-                    balStore,
-                    blockTree.FindHeader(i, PayloadBodiesHandlerHelper.RangeLookupOptions));
-            }
-        }
-        catch
-        {
-            PayloadBodiesV2DirectResponse.DisposeItems(results);
-            throw;
-        }
-
-        return new PayloadBodiesV2DirectResponse(results);
+        using ArrayPoolList<StoredBlock?> blocks = ReadCanonicalBlocks(chainLevels, blockStore, start, end);
+        return new PayloadBodiesV2DirectResponse(CreatePayloadBodiesV2(balStore, blocks));
     }
 }

@@ -169,6 +169,37 @@ public class HeaderStoreTests
     }
 
     [Test]
+    public void GetBlockNumbers_finds_each_number_as_GetBlockNumber_does([Values] bool batching)
+    {
+        MemDb headerDb = new();
+        MemDb blockNumberDb = batching ? new BatchReadMemDb() : new MemDb();
+        HeaderStore store = new(headerDb, blockNumberDb);
+        BlockHeader stored = Build.A.BlockHeader.WithNumber(100).TestObject;
+        BlockHeader hashKeyed = Build.A.BlockHeader.WithNumber(101).TestObject;
+        store.Insert(stored);
+        headerDb.Set(hashKeyed.Hash!, new HeaderDecoder().Encode(hashKeyed));
+
+        ulong?[] numbers = new ulong?[4];
+        store.GetBlockNumbers([TestItem.KeccakA, stored.Hash!, hashKeyed.Hash!, stored.Hash!], numbers);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(numbers, Is.EqualTo(new ulong?[] { null, 100, 101, 100 }));
+            if (blockNumberDb is BatchReadMemDb batch) Assert.That(batch.BatchReads, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void GetBlockNumbers_rejects_a_malformed_block_number_entry([Values] bool batching, [Values(7, 9)] int length)
+    {
+        MemDb blockNumberDb = batching ? new BatchReadMemDb() : new MemDb();
+        HeaderStore store = new(new MemDb(), blockNumberDb);
+        blockNumberDb.Set(TestItem.KeccakA, new byte[length]);
+
+        Assert.Throws<InvalidDataException>(() => store.GetBlockNumbers([TestItem.KeccakA], new ulong?[1]));
+    }
+
+    [Test]
     public void GetIfBloomMatches_decodes_only_a_header_whose_bloom_matches(
         [Values] bool cached, [Values] bool legacyKey, [Values] bool matches, [Values] bool byValueHash)
     {

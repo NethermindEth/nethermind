@@ -319,6 +319,34 @@ public class HeaderStore : IHeaderStore, IClearableCache
         return Get(blockHash)?.Number;
     }
 
+    /// <inheritdoc/>
+    /// <remarks>Reads the stored numbers in one batch, then looks up each missing one as <see cref="GetBlockNumber"/> does.</remarks>
+    public void GetBlockNumbers(IReadOnlyList<Hash256> blockHashes, Span<ulong?> blockNumbers)
+    {
+        ArgumentOutOfRangeException.ThrowIfNotEqual(blockNumbers.Length, blockHashes.Count);
+        using ArrayPoolSpan<byte> keys = new(blockHashes.Count * Hash256.Size);
+        for (int i = 0; i < blockHashes.Count; i++)
+        {
+            blockHashes[i].Bytes.CopyTo(keys.Slice(i * Hash256.Size, Hash256.Size));
+        }
+
+        _blockNumberDb.GetMany(keys, Hash256.Size, blockNumbers, default(BlockNumberDecoder));
+        for (int i = 0; i < blockNumbers.Length; i++)
+        {
+            blockNumbers[i] ??= GetBlockNumber(blockHashes[i]);
+        }
+    }
+
+    private readonly struct BlockNumberDecoder : IValueDecoder<ulong?>
+    {
+        public ulong? Decode(ReadOnlySpan<byte> buffer) => buffer.Length switch
+        {
+            0 => null,
+            BlockNumberLength => BinaryPrimitives.ReadUInt64BigEndian(buffer),
+            _ => throw new InvalidDataException($"Unexpected number span length: {buffer.Length}")
+        };
+    }
+
     [SkipLocalsInit]
     private ulong? GetBlockNumberFromBlockNumberDb(Hash256 blockHash)
     {

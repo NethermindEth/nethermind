@@ -44,6 +44,14 @@ public interface IBlockStore
     Block? Get(ulong blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true);
     byte[]? GetRlp(ulong blockNumber, Hash256 blockHash);
 
+    /// <summary>Reads the stored encoding of each block as <see cref="GetRlp"/> does.</summary>
+    /// <param name="blocks">The number and hash of each block.</param>
+    /// <param name="rlps">Receives the encoding of each block, or <see langword="null"/> when it is not stored.</param>
+    void GetRlps(ReadOnlySpan<(ulong Number, Hash256 Hash)> blocks, Span<byte[]?> rlps)
+    {
+        for (int i = 0; i < blocks.Length; i++) rlps[i] = GetRlp(blocks[i].Number, blocks[i].Hash);
+    }
+
     /// <summary>The stored block encoding, in memory that the caller disposes.</summary>
     /// <remarks>Unlike <see cref="GetRlp"/>, the database value need not be copied to a managed array.</remarks>
     MemoryManager<byte>? GetOwnedRlp(ulong blockNumber, Hash256 blockHash) => ArrayMemoryManager.From(GetRlp(blockNumber, blockHash));

@@ -58,6 +58,14 @@ public interface IHeaderStore : IHeaderFinder
     void InsertBlockNumber(Hash256 blockHash, ulong blockNumber);
     ulong? GetBlockNumber(Hash256 blockHash);
 
+    /// <summary>Looks up the number of each block as <see cref="GetBlockNumber"/> does.</summary>
+    /// <param name="blockHashes">The hashes of the blocks.</param>
+    /// <param name="blockNumbers">Receives the number of each block, or <see langword="null"/> when it is not known.</param>
+    void GetBlockNumbers(IReadOnlyList<Hash256> blockHashes, Span<ulong?> blockNumbers)
+    {
+        for (int i = 0; i < blockHashes.Count; i++) blockNumbers[i] = GetBlockNumber(blockHashes[i]);
+    }
+
     /// <summary>
     /// Returns up to <paramref name="count"/> consecutive headers ending at <paramref name="endBlockHash"/>,
     /// walking backward through parent hashes. Uses a DB iterator for bulk read when the underlying
