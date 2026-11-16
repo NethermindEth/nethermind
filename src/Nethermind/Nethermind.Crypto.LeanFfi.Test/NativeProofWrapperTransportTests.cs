@@ -168,7 +168,9 @@ public class NativeProofWrapperTransportTests
         gossip.Start();
 
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(60));
-        while (!target.Chain.TxPool.TryGetPendingTransaction(transaction.Hash!.ValueHash256, out _)) await Task.Delay(50, timeout.Token);
+        // The validated wrapper is stored on a background task, so it may land after its transaction is pending.
+        while (!target.Chain.TxPool.TryGetPendingTransaction(transaction.Hash!.ValueHash256, out _) || target.Transport.StoredObjects == 0)
+            await Task.Delay(50, timeout.Token);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(target.Chain.Container.Resolve<ILeanProofVerifier>(), Is.TypeOf<ProductionProofCache>());

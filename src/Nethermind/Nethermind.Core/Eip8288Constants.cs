@@ -20,19 +20,28 @@ public static class Eip8288Constants
 
     public const int MaxDependenciesPerFrame = 256;
 
-    /// <summary>Maximum distinct dependencies covered by one proof of the pinned native backend.</summary>
-    /// <remarks>The dependency-list limit of the circuit behind the pinned <see cref="AggregatedVk"/>, not a FOCIL omission bound;
-    /// EIP-8288 has no block dependency quota. Mode-1 wrapper proofs above it are invalid (EIP-8288), discarded without penalty;
-    /// an inclusion-list proof above it imposes no obligation; a block whose dependencies exceed it is invalid here, since no
-    /// proof under that key can cover it, as with <see cref="MaxAggregateProofBytes"/>.</remarks>
-    public const int MaxProofDependencies = 256;
+    /// <summary>Maximum dependencies in one dependency list of the pinned recursive guest, selected, child and discard lists alike:
+    /// EIP-8288's output capacity, <c>MAX_RLP_BLOCK_SIZE // 96</c> (87,381).</summary>
+    /// <remarks>EIP-8288 has no block dependency quota; its draft requires the circuit's output capacity to be at least this, and
+    /// a block within EIP-7934's <c>MAX_RLP_BLOCK_SIZE</c> cannot carry more distinct dependency triples. Mode-1 wrappers and
+    /// inclusion-list proofs never reach it: their byte limits bound them tighter. Fixed at EIP-7934's default, as the native
+    /// backend's bound is, whatever block size limit a chain configures.</remarks>
+    public const int MaxProofDependencies = Eip7934Constants.DefaultMaxRlpBlockSize / DependencyTripleLength;
 
-    /// <summary>Maximum leanSTARK dependencies in one dependency list of the pinned recursive guest, selected, child and discard
-    /// lists alike.</summary>
-    /// <remarks>Part of the circuit limit like <see cref="MaxProofDependencies"/>: a statement over more is split or deferred by the
-    /// builder, a mode-1 wrapper proof over it is invalid, an inclusion-list proof over it imposes no obligation, and a block over
-    /// it is invalid here, since no proof under the pinned <see cref="AggregatedVk"/> can cover it.</remarks>
-    public const int MaxGenericStarkProofs = 16;
+    /// <summary>Maximum raw leanSTARK witnesses one step of the pinned recursive guest verifies, discarded or redundant ones
+    /// included.</summary>
+    /// <remarks>The draft EIP-8288 <c>MAX_INNER_PROOFS_PER_STEP</c> (16), which also counts recursive inputs; the pinned guest
+    /// bounds those separately by <see cref="MaxRecursiveInputsPerStep"/>. Lists carry any number of leanSTARK dependencies:
+    /// more than this many are folded over several steps.</remarks>
+    public const int MaxLeanStarkWitnessesPerStep = 16;
+
+    /// <summary>Maximum recursive proofs one step of the pinned recursive guest folds.</summary>
+    public const int MaxRecursiveInputsPerStep = 16;
+
+    /// <summary>Maximum raw witnesses of either scheme one native proving call takes.</summary>
+    /// <remarks>A local proving-resource bound of the pinned backend, not an EIP-8288 constant: larger sets merge through
+    /// recursive inputs.</remarks>
+    public const int MaxRawWitnessesPerStep = 256;
 
     /// <summary>Maximum instructions of a leanSTARK program the pinned generic verifier accepts.</summary>
     public const int MaxLeanStarkInstructions = 2048;
@@ -44,7 +53,7 @@ public static class Eip8288Constants
     /// guest, including a private recursive input, in blocks, wrappers and inclusion lists alike, checked before proof decoding
     /// or verification.</summary>
     /// <remarks>Not an EIP-8288 constant: the EIP no longer bounds <c>stark_proof</c> and leaves its size to the proof system.
-    /// This is a pinned-prover limit with margin above the guest's measured 265–326 KB root proofs; a guest or key change
+    /// This is a pinned-prover limit with margin above the guest's measured 246–360 KB proofs; a guest or key change
     /// must revisit it.</remarks>
     public const int MaxAggregateProofBytes = 1_310_720;
 
@@ -62,8 +71,13 @@ public static class Eip8288Constants
     public static long IlProofBytes(int starkProofLength, int proofDepCount) =>
         IlProofOverheadBytes + (long)starkProofLength + (long)proofDepCount * DependencyTripleLength;
 
-    /// <summary>Maximum native aggregation input, including two maximum-sized child proofs and metadata.</summary>
-    public const int MaxAggregationInputBytes = 18 * 1024 * 1024;
+    /// <summary>Maximum native aggregation input: its framing, every recursive input's full dependency list and largest proof,
+    /// the raw witnesses and a full discard list.</summary>
+    public const int MaxAggregationInputBytes = 3 * sizeof(uint)
+        + MaxRecursiveInputsPerStep * (2 * sizeof(uint) + MaxProofDependencies * DependencyTripleLength + MaxProofBytes)
+        + MaxRawWitnessesPerStep * (DependencyTripleLength + sizeof(uint) + LeanSphincsWitnessBytes)
+        + MaxLeanStarkWitnessesPerStep * MaxProofBytes
+        + MaxProofDependencies * DependencyTripleLength;
 
     /// <summary>Encoded public key and signature size of the pinned NiceTry/Daisugi Keccak SPHINCS scheme.</summary>
     public const int LeanSphincsWitnessBytes = 32 + 6176;
@@ -102,5 +116,5 @@ public static class Eip8288Constants
     /// <summary>Fiat-Shamir key of the recursive guest in the pinned Nethermind.Crypto.Lean package.</summary>
     public static ReadOnlySpan<byte> AggregatedVk => _aggregatedVk;
 
-    private static readonly byte[] _aggregatedVk = Convert.FromHexString("f7cf74585d02043051f0575c23c6b441b0b08ac9e273f5e989c5984b8a4ac0e5");
+    private static readonly byte[] _aggregatedVk = Convert.FromHexString("e09e5acfcfe87832f337eb42acac98246d160bb915b55c55fbd8118b203cbb81");
 }

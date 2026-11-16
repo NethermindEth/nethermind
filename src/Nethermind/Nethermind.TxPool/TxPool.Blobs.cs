@@ -144,9 +144,7 @@ namespace Nethermind.TxPool
             }
             finally
             {
-                state.ProofReservation?.Dispose();
-                state.SenderProofReservation?.Dispose();
-                state.SenderAdmissionGate?.Exit();
+                ReleaseFilterReservations(tx, ref state);
                 _newHeadLock.ExitReadLock();
             }
         }

@@ -4,7 +4,8 @@
 
   <!-- Nethermind.Crypto.Lean ships the library for linux-x64 and linux-arm64, and on opt-in the matching vectors,
        fixtures tool and startup stub in lean-vectors/. Elsewhere the suite compiles and is skipped. -->
-  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Linux'))">
+  <!-- The live proving fixtures take several GB a test: only the native-lean CI job (or an explicit opt-in) runs them. -->
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Linux')) And '$(RunNativeLeanTests)' == 'true'">
     <DefineConstants>$(DefineConstants);NATIVE_LEAN_TESTS</DefineConstants>
     <NethermindCryptoLeanTestAssets>true</NethermindCryptoLeanTestAssets>
   </PropertyGroup>

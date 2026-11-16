@@ -54,6 +54,138 @@ public class LeanProofStoreTests
         }
     }
 
+    // An admission beyond capacity holds its witnesses only while it runs: a rejected one leaves nothing to shed, and an admitted
+    // one fits again once the fewest pending transactions that make room are released. None may exceed capacity meanwhile, and the
+    // staged witnesses cover the admitted transaction only once staging ends.
+    [Test]
+    public void Admission_beyond_capacity_fits_again_once_room_is_released([Values] bool admitted)
+    {
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        List<Transaction> pinned = [];
+        for (int i = 0; i < 64; i++)
+        {
+            FrameDependency dependency = Dependency(i);
+            store.AddVerified([dependency], [new byte[LeanProofStore.MaxWrapperBytes / 2 - 1024]], null);
+            Transaction transaction = Transaction([dependency], Sender(i + 1), 0);
+            Assert.That(store.PinPending(transaction), Is.True);
+            pinned.Add(transaction);
+        }
+        FrameDependency incoming = Dependency(1000);
+        Transaction incomingTransaction = Transaction([incoming], Sender(100), 0);
+        byte[][] witness = [new byte[LeanProofStore.MaxWrapperBytes * 3 / 4]];
+        bool fitted = store.TryBeginAdmission([incoming], witness, null, out _);
+        bool overdrawn = store.TryBeginAdmission([incoming], witness, null, out IDisposable? admission, overCapacity: true);
+        if (admitted) Assert.That(store.PinPending(incomingTransaction), Is.True);
+        admission!.Dispose();
+        ValueHash256 first = pinned[0].Hash!.ValueHash256, second = pinned[1].Hash!.ValueHash256;
+        bool overdrawnAgain = store.TryBeginAdmission([Dependency(1001)], witness, null, out IDisposable? again, overCapacity: true);
+        again?.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fitted, Is.False);
+            Assert.That(overdrawn, Is.True);
+            Assert.That(store.ShedExcess(), Is.EqualTo(!admitted));
+            Assert.That(overdrawnAgain, Is.EqualTo(!admitted), "no admission exceeds capacity while the store is over it");
+            Assert.That(store.Covers(incomingTransaction), Is.False, "staged coverage is not published");
+            Assert.That(store.ReleasesToFit([first]), admitted ? Is.Null : Is.Empty);
+            Assert.That(store.ReleasesToFit([first, second, pinned[2].Hash!.ValueHash256]), admitted ? Is.EqualTo(new[] { first, second }) : Is.Empty);
+        }
+        if (admitted)
+        {
+            store.UnpinPending(first);
+            store.UnpinPending(second);
+        }
+        store.EndStaging(admission, commit: admitted);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.ShedExcess(), Is.True);
+            Assert.That(store.Covers(incomingTransaction), Is.EqualTo(admitted));
+            Assert.That(store.Covers(pinned[0]), Is.EqualTo(!admitted));
+            Assert.That(pinned.Skip(2).All(store.Covers), Is.True);
+        }
+    }
+
+    // Only one admission stages at a time: another is refused until the first's staging ends, even once the store fits again, so
+    // neither can settle on the other's excess. Ending a staging commits or drops that admission's records only.
+    [Test]
+    public void Admissions_beyond_capacity_stage_one_at_a_time()
+    {
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        List<Transaction> pinned = [];
+        for (int i = 0; i < 64; i++)
+        {
+            FrameDependency dependency = Dependency(i);
+            store.AddVerified([dependency], [new byte[LeanProofStore.MaxWrapperBytes / 2 - 1024]], null);
+            Transaction transaction = Transaction([dependency], Sender(i + 1), 0);
+            Assert.That(store.PinPending(transaction), Is.True);
+            pinned.Add(transaction);
+        }
+        byte[][] witness = [new byte[LeanProofStore.MaxWrapperBytes * 3 / 4]];
+        Transaction committed = Transaction([Dependency(1000)], Sender(100), 0), rolledBack = Transaction([Dependency(1001)], Sender(101), 0);
+        bool first = store.TryBeginAdmission([Dependency(1000)], witness, null, out IDisposable? committing, overCapacity: true)
+            && store.PinPending(committed);
+        committing!.Dispose();
+        // Evicting two lets the store fit again before the first admission's staging ends.
+        store.UnpinPending(pinned[0].Hash!.ValueHash256);
+        store.UnpinPending(pinned[1].Hash!.ValueHash256);
+        bool fitsAgain = store.ShedExcess();
+        bool overlapping = store.TryBeginAdmission([Dependency(1001)], witness, null, out IDisposable? refused, overCapacity: true);
+        refused?.Dispose();
+        store.EndStaging(committing, commit: true);
+        bool second = store.TryBeginAdmission([Dependency(1001)], witness, null, out IDisposable? rollingBack, overCapacity: true)
+            && store.PinPending(rolledBack);
+        rollingBack!.Dispose();
+        bool secondStaged = !store.Covers(rolledBack);
+        store.UnpinPending(rolledBack.Hash!.ValueHash256);
+        store.EndStaging(rollingBack, commit: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first && fitsAgain, Is.True);
+            Assert.That(overlapping, Is.False, "no second staging while the first's is open");
+            Assert.That(second && secondStaged, Is.True);
+            Assert.That(store.Covers(committed), Is.True);
+            Assert.That(store.PinPending(rolledBack), Is.False, "the rolled-back admission's record is gone");
+            Assert.That(store.ShedExcess(), Is.True);
+        }
+    }
+
+    // A recursive proof staged beyond capacity is no input to proving until its admission commits.
+    [Test]
+    public void Staged_recursive_proof_is_not_selected()
+    {
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        FrameDependency a = Dependency(2000), b = Dependency(2001), c = Dependency(2002);
+        store.AddVerified([a], null, [1]);
+        store.AddVerified([b], [[2]], null);
+        Assert.That(store.PinPending(Transaction([a], Sender(200), 0)) && store.PinPending(Transaction([b], Sender(201), 0)), Is.True);
+        for (int i = 0; i < 64; i++)
+        {
+            FrameDependency dependency = Dependency(i);
+            store.AddVerified([dependency], [new byte[LeanProofStore.MaxWrapperBytes / 2 - 1024]], null);
+            Assert.That(store.PinPending(Transaction([dependency], Sender(i + 1), 0)), Is.True);
+        }
+        List<FrameDependency> both = Eip8288Dependencies.Canonicalize([a, b]);
+        // Only c is new, so the staged proof is stored for it and proves a and b beside their published coverage.
+        Transaction admitted = Transaction([a, b, c], Sender(202), 0);
+        Assert.That(store.TryBeginAdmission(Eip8288Dependencies.Canonicalize([a, b, c]), null, new byte[LeanProofStore.MaxWrapperBytes * 3 / 4], out IDisposable? staging,
+            overCapacity: true) && store.PinPending(admitted), Is.True);
+        staging!.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.SmallestProving(both), Is.Null);
+            Assert.That(store.ProvenSubsets(new HashSet<FrameDependency> { a, b, c }), Is.EqualTo(new[] { new[] { a } }));
+            Assert.That(store.ProvenOverlaps(new HashSet<FrameDependency> { a, b }, 2), Is.Empty);
+            Assert.That(store.TryGetInput(both, out AggregationInput input), Is.True);
+            Assert.That(input.RecursiveProofs.Select(static proof => proof.InnerDeps), Is.EqualTo(new[] { new[] { a } }));
+            Assert.That(input.Deps, Is.EqualTo(new[] { b }));
+        }
+        store.UnpinPending(admitted.Hash!.ValueHash256);
+        store.EndStaging(staging, commit: false);
+    }
+
     [Test]
     public void Record_slots_accommodate_the_default_pool_transaction_capacity()
     {

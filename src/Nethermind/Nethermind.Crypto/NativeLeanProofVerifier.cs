@@ -20,8 +20,7 @@ namespace Nethermind.Crypto;
 public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
 {
     private const string Library = "nethermind_lean";
-    private const uint ExpectedAbiVersion = 12;
-    private const int MaxRecursiveInputs = 16;
+    private const uint ExpectedAbiVersion = 21;
     private static readonly Lazy<bool> BackendAvailable = new(CheckBackend);
     public const int MaxProofBytes = Eip8288Constants.MaxProofBytes;
     public static readonly NativeLeanProofVerifier Instance = new();
@@ -39,8 +38,8 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
                 throw new InvalidOperationException("The native Lean recursive guest key does not match this node.");
             Span<uint> limits = stackalloc uint[7];
             ReadOnlySpan<uint> expectedLimits = [MaxProofBytes, Eip8288Constants.MaxProofDependencies,
-                MaxRecursiveInputs, Eip8288Constants.LeanSphincsWitnessBytes, Eip8288Constants.MaxAggregationInputBytes,
-                Eip8288Constants.MaxGenericStarkProofs, Eip8288Constants.MaxLeanStarkInstructions];
+                Eip8288Constants.MaxRecursiveInputsPerStep, Eip8288Constants.LeanSphincsWitnessBytes, Eip8288Constants.MaxAggregationInputBytes,
+                Eip8288Constants.MaxLeanStarkWitnessesPerStep, Eip8288Constants.MaxLeanStarkInstructions];
             fixed (uint* p = limits)
                 if (nlean_limits(p, (nuint)limits.Length) != 1 ||
                     !limits.SequenceEqual(expectedLimits))
@@ -162,6 +161,8 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
 
     /// <summary>Runs every native proof on one long-lived thread.</summary>
     /// <remarks>The first native call starts leanVM's worker pool on its caller, and the native prover lock serializes proofs anyway.
+    /// The library's allocator keeps a proof's peak mapped for the thread that allocated it, so proving on changing thread-pool
+    /// threads would leave one peak resident per thread.
     /// The queue is bounded, so callers that bypass the managed proving gate are refused with
     /// <see cref="LeanProverBusyException"/> rather than pile up behind the prover,
     /// and it is completed at process exit. A caller that must stop waiting runs the call on a task of its own, as
@@ -210,7 +211,9 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
 
     internal static byte[] SerializeInput(AggregationInput input)
     {
-        if (input.Deps.Count != input.Witnesses.Count || input.Deps.Count > Eip8288Constants.MaxProofDependencies || input.RecursiveProofs.Count > MaxRecursiveInputs || input.Discards.Count > Eip8288Constants.MaxProofDependencies)
+        if (input.Deps.Count != input.Witnesses.Count || input.Deps.Count > Eip8288Constants.MaxRawWitnessesPerStep
+            || Eip8288Dependencies.CountLeanStark(input.Deps) > Eip8288Constants.MaxLeanStarkWitnessesPerStep
+            || input.RecursiveProofs.Count > Eip8288Constants.MaxRecursiveInputsPerStep || input.Discards.Count > Eip8288Constants.MaxProofDependencies)
             throw new ArgumentException("Invalid Lean aggregation input", nameof(input));
         using MemoryStream stream = new();
         using BinaryWriter writer = new(stream);

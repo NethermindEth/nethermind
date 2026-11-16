@@ -43,6 +43,10 @@ public class ProofInclusionListEnforcementTests
     [TestCase("unfunded", true)]
     [TestCase("withdrawal-funded", true)]
     [TestCase("execution-gas-full", true)]
+    // EIP-8037: a block whose state gas reached the limit still has execution room for an entry reserving no state gas.
+    [TestCase("state-gas-full", false)]
+    // A payer who covers the including block's fee budget, though not max_fee, is affordable: the omission is not excused.
+    [TestCase("block-fee-funded", false)]
     // EIPs#12475: obligations follow from each list's resolved proof alone. A list without a verified proof obligates no
     // dependency-bearing entry; a covering verified one obligates it, and the inclusion check assumes its dependencies are
     // satisfied without verifying any proof again.
@@ -85,7 +89,7 @@ public class ProofInclusionListEnforcementTests
         };
         state.InsertCode(sender, code, spec);
         state.SubtractFromBalance(sender, state.GetBalance(sender), spec, out _);
-        if (scenario is not ("unfunded" or "withdrawal-funded")) state.AddToBalance(sender, 1.Ether, spec, out _);
+        if (scenario is not ("unfunded" or "withdrawal-funded")) state.AddToBalance(sender, scenario == "block-fee-funded" ? 1.Ether / 100 : 1.Ether, spec, out _);
         if (mixed) state.AddToBalance(TestItem.PrivateKeyB.Address, 1.Ether, spec, out _);
         state.Commit(spec);
 
@@ -169,6 +173,13 @@ public class ProofInclusionListEnforcementTests
             block.Header.GasUsedPerDimension = (executionUsed, 0);
         }
         if (scenario == "full-bad-proof") block.Header.GasUsed = block.GasLimit;
+        if (scenario == "state-gas-full")
+        {
+            FrameTxValidation.TryCalculateBlockGasReservations(transaction, spec, out _, out ulong stateReservation);
+            Assert.That(stateReservation, Is.Zero);
+            block.Header.GasUsed = block.GasLimit;
+            block.Header.GasUsedPerDimension = (0, block.GasLimit);
+        }
         block.InclusionListTransactions = mixed ? [legacy, transaction] : [transaction];
         if (scenario.StartsWith("mixed-malformed", System.StringComparison.Ordinal)
             || scenario.StartsWith("mixed-uncovered", System.StringComparison.Ordinal))

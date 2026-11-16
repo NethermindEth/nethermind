@@ -10,7 +10,7 @@ namespace Nethermind.Core;
 /// <summary>
 /// A single EIP-8288 dependency triple <c>(scheme, data_hash, verification_key)</c> declared by a
 /// dependency-verification frame. <c>data_hash</c>/<c>verification_key</c> are the message hash and
-/// 32-byte public key (leanSPHINCS) or the public commitment and program key hash (leanSTARK).
+/// 32-byte public key <c>PK.seed || PK.root</c> (leanSPHINCS) or the public commitment and program key hash (leanSTARK).
 /// </summary>
 public readonly struct FrameDependency(byte scheme, ValueHash256 dataHash, ValueHash256 verificationKey)
     : IEquatable<FrameDependency>
@@ -233,12 +233,10 @@ public static class Eip8288Dependencies
     }
 
     /// <summary>Whether one dependency list of the pinned recursive guest can hold <paramref name="dependencies"/>: at most
-    /// <see cref="Eip8288Constants.MaxProofDependencies"/>, <see cref="Eip8288Constants.MaxGenericStarkProofs"/> of them
-    /// leanSTARK.</summary>
-    /// <remarks>The circuit's dependency-list limit: a statement over it is split or deferred when built and a mode-1 proof over it
-    /// is invalid when received (EIP-8288).</remarks>
+    /// <see cref="Eip8288Constants.MaxProofDependencies"/>, of either scheme.</summary>
+    /// <remarks>The circuit's dependency-list limit: a statement over it is split or deferred when built.</remarks>
     public static bool FitsProofList(IReadOnlyCollection<FrameDependency> dependencies) =>
-        dependencies.Count <= Eip8288Constants.MaxProofDependencies && CountLeanStark(dependencies) <= Eip8288Constants.MaxGenericStarkProofs;
+        dependencies.Count <= Eip8288Constants.MaxProofDependencies;
 
     /// <summary>Whether every dependency's scheme is enabled (<see cref="IsAcceptedScheme"/>).</summary>
     public static bool AreSchemesEnabled(IReadOnlyList<FrameDependency> dependencies)

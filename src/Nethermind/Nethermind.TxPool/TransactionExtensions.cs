@@ -305,5 +305,10 @@ namespace Nethermind.TxPool
             => IsOverflowWhenAddingTxCostToCumulative(tx, UInt256.Zero, out txCost);
 
         public static bool IsInMempoolForm(this Transaction tx) => tx.NetworkWrapper is not null;
+
+        /// <summary>Whether a wrapped transaction carries blobs without their data, as EIP-8437 transports it, so its availability
+        /// is established through EIP-8070 cell retrieval rather than from the wrapper.</summary>
+        public static bool IsAwaitingAvailability(this Transaction tx) =>
+            tx.CarriesBlobs && tx.NetworkWrapper is ShardBlobNetworkWrapper { Blobs.Length: 0, Cells: null };
     }
 }

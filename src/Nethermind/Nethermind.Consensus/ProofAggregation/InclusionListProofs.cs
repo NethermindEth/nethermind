@@ -59,7 +59,7 @@ public sealed class InclusionListProofService(ILeanProofVerifier verifier, LeanP
             long size = Eip8288Constants.IlProofBytes(held.Proof.Length, held.InnerDeps.Count);
             List<FrameDependency> proofDeps = Eip8288Dependencies.Canonicalize(held.InnerDeps);
             if (size > Eip8288Constants.MaxIlProofBytes || held.Proof.IsEmpty || proofDeps.Count != held.InnerDeps.Count
-                || !Eip8288Dependencies.AreSchemesEnabled(proofDeps) || !Eip8288Dependencies.FitsProofList(proofDeps))
+                || !Eip8288Dependencies.AreSchemesEnabled(proofDeps))
                 continue;
             byte[] starkProof = held.Proof.ToArray();
             ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(proofDeps);
@@ -111,16 +111,14 @@ public sealed class InclusionListProofService(ILeanProofVerifier verifier, LeanP
         return proven;
     }
 
-    /// <remarks>A proof over more than <see cref="Eip8288Constants.MaxProofDependencies"/> dependencies, or more than
-    /// <see cref="Eip8288Constants.MaxGenericStarkProofs"/> leanSTARK ones, is not verified: the pinned guest commits to at most that
-    /// many, so none verifies, and the builder could not fold one into its block aggregate. The list then imposes no
-    /// dependency-bearing obligation.</remarks>
+    /// <remarks>A proof over more than <see cref="Eip8288Constants.MaxProofDependencies"/> dependencies is not verified: the pinned
+    /// guest commits to at most that many, so none verifies, and the builder could not fold one into its block aggregate. The list
+    /// then imposes no dependency-bearing obligation.</remarks>
     private bool TryVerify(CommitteeInclusionList list, IReleaseSpec spec, out List<FrameDependency>? proofDeps)
     {
         proofDeps = null;
         if (list.StarkProof.Length == 0 || list.ProofDeps.Length is 0 or > Eip8288Constants.MaxProofDependencies
-            || !InclusionListProofValidator.TryParseProofDeps(list.ProofDeps, out proofDeps)
-            || !Eip8288Dependencies.FitsProofList(proofDeps!))
+            || !InclusionListProofValidator.TryParseProofDeps(list.ProofDeps, out proofDeps))
         {
             proofDeps = null;
             return false;

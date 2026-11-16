@@ -81,10 +81,20 @@ public static class InclusionListValidator
         return false;
     }
 
+    /// <summary>Whether no transaction can be appended to <paramref name="block"/>: not even the cheapest fits.</summary>
+    /// <remarks>Under EIP-8037 the header's GasUsed is max(execution, state), and a transaction reserving no state gas needs
+    /// execution room alone, so the execution dimension decides. Without the block's dimensions GasUsed proves nothing about
+    /// it, so such a block is never full here and its callers judge the entries instead.</remarks>
     public static bool IsBlockFull(Block block, IReleaseSpec spec)
     {
+        ulong used = block.GasUsed;
+        if (spec.IsEip8037Enabled)
+        {
+            if (block.Header.GasUsedPerDimension is not { } dimensions) return false;
+            used = dimensions.Execution;
+        }
         ulong minIntrinsicGas = spec.IsEip2780Enabled ? GasCostOf.TransactionEip2780 : GasCostOf.Transaction;
-        return block.GasUsed > block.GasLimit || minIntrinsicGas > block.GasLimit - block.GasUsed;
+        return used > block.GasLimit || minIntrinsicGas > block.GasLimit - used;
     }
 
     private static bool IsSatisfied(Block block, Transaction[] il, Span<bool> included, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator, Func<Transaction, bool>? frameCanInclude)

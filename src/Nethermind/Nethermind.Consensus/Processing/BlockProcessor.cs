@@ -406,8 +406,8 @@ public partial class BlockProcessor(
         if (cost > MaxScheduledStatementCost || !Eip8288Dependencies.FitsProofList(pending))
         {
             // A statement over the whole backlog can take many slots while more arrives; prove a nonce-ordered prefix that fits
-            // the budget instead, and let later passes take the rest. A statement the pinned guest cannot hold, such as one over
-            // more leanSTARK dependencies than a list may carry, is never sent to the prover: a prefix that fits is.
+            // the budget instead, and let later passes take the rest. A statement the pinned guest cannot hold, one over more
+            // dependencies than a list may carry, is never sent to the prover: a prefix that fits is.
             pending = includable.BoundedNeed(provenLimit, pending,
                 set => Eip8288Dependencies.FitsProofList(set) ? Cheapest(set).Cost : long.MaxValue, MaxScheduledStatementCost);
             if (pending.Count == 0) return;
