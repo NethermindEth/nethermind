@@ -72,6 +72,21 @@ public class XdcForkInfoTests
     }
 
     [Test]
+    public void Gas2500x_is_part_of_the_schedule()
+    {
+        const ulong gas2500xBlock = 83600000;
+        XdcForkInfo forkInfo = new(SpecProvider(), SyncServer(),
+            new XdcChainSpecEngineParameters { SwitchBlock = SwitchBlock, Gas2500xBlock = gas2500xBlock });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forkInfo.GetForkId(gas2500xBlock - 1, 0).Next, Is.EqualTo(gas2500xBlock));
+            Assert.That(forkInfo.GetForkId(gas2500xBlock, 0).ForkHash,
+                Is.Not.EqualTo(forkInfo.GetForkId(gas2500xBlock - 1, 0).ForkHash));
+        }
+    }
+
+    [Test]
     public void Switch_at_genesis_is_not_a_transition()
     {
         Nethermind.Network.ForkId forkId = XdcForkId(headNumber: 100, switchBlock: 0);

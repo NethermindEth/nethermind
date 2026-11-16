@@ -1242,8 +1242,10 @@ public class Eth68ProtocolHandlerTests
         const int count = 512;
         using GetReceiptsMessage msg = new(1111, new(Enumerable.Repeat(Keccak.Zero, count).ToPooledList(count)));
         TxReceipt[] receipts = SoftLimitTestHelper.CreateLogHeavyReceipts(100);
-        int expectedCount = SoftLimitTestHelper.CountReceiptBlocksWithinSoftLimit(receipts, count);
+        int expectedCount = SoftLimitTestHelper.CountReceiptBlocksWithinSoftLimit(
+            ReceiptsServingTestHelper.Encode(receipts, Rlp.GetDecoderOrThrow<TxReceipt>(), _specProvider).Length, count);
         _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(receipts);
+        _syncManager.ServeReceipts(_specProvider);
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg, Eth66MessageCode.GetReceipts);

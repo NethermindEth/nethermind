@@ -29,6 +29,7 @@ using Nethermind.State.Proofs;
 using Nethermind.Stats.Model;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.Peers;
@@ -884,6 +885,33 @@ public partial class BlockDownloaderTests
 
         Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.LesserQuality));
         ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, Arg.Any<string>());
+    }
+
+    [Test]
+    public async Task Reports_breach_on_receipts_that_do_not_decode()
+    {
+        await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig { FastSync = true, SnapSync = true }));
+        Context ctx = node.Resolve<Context>();
+        SyncPeerMock syncPeer = new(101, withReceipts: true, Response.AllCorrect | Response.WithTransactions);
+        PeerInfo peerInfo = new(syncPeer);
+        ctx.ConfigureBestPeer(peerInfo);
+        ISyncFeed<BlocksRequest> feed = ctx.FastSyncFeedComponent.Feed;
+
+        BlocksRequest bodiesRequest = await feed.PrepareRequest(default);
+        await ctx.FastSyncFeedComponent.Downloader.Dispatch(peerInfo, bodiesRequest, default);
+        feed.HandleResponse(bodiesRequest, peerInfo);
+        BlocksRequest receiptsRequest = await feed.PrepareRequest(default);
+        Assert.That(receiptsRequest.ReceiptsRequests, Is.Not.Empty);
+        // Receipts kept encoded decode on the first read, so a malformed peer reply throws there.
+        IOwnedReadOnlyList<TxReceipt[]?> receipts = Substitute.For<IOwnedReadOnlyList<TxReceipt[]?>>();
+        receipts.Count.Returns(receiptsRequest.ReceiptsRequests.Count);
+        receipts[Arg.Any<int>()].Throws(new RlpReaderException("malformed"));
+        receiptsRequest.Receipts = receipts;
+
+        SyncResponseHandlingResult result = feed.HandleResponse(receiptsRequest, peerInfo);
+
+        Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.LesserQuality));
+        ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, "invalid receipts received");
     }
 
     [Test]

@@ -976,8 +976,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             // A prefix recorded under the block's own spec says nothing about the block run under another one, even
             // though the header keeps its hash: no seed when the spec is overridden.
             IPrefixStateSeedSource? seeds = specOverride is null ? prefixSeeds : null;
-            int index = transactionHash is null ? -1 : TransactionTraceBoundary.FindIndex(receiptFinder, seeds, block, transactionHash);
-            return TransactionTraceBoundary.WrapAt(tracer, transactionHash, index, seeds);
+            return TransactionTraceBoundary.WrapAtStoredIndex(tracer, receiptFinder, seeds, block, transactionHash);
         }
 
         /// <summary>

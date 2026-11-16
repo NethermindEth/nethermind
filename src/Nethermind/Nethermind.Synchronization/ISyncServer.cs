@@ -9,6 +9,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.FastSync;
 
 namespace Nethermind.Synchronization
@@ -19,9 +20,17 @@ namespace Nethermind.Synchronization
         void AddNewBlock(Block block, ISyncPeer node);
         void StopNotifyingPeersAboutNewBlocks();
         TxReceipt[]? GetReceipts(Hash256 blockHashes);
+        /// <summary>Adds the receipts of the block with <paramref name="blockHash"/> as a receipts message carries them.</summary>
+        /// <remarks>
+        /// The receipts are the encoded sequence that <paramref name="decoder"/> writes for the receipts <see cref="GetReceipts"/> gives.
+        /// The receipt finder copies the stored receipts without decoding them where it can give this form.
+        /// </remarks>
+        /// <param name="decoder">The decoder that encodes each receipt.</param>
+        /// <param name="withBloom">The form that <paramref name="decoder"/> writes: with blooms for eth/63 to eth/68; otherwise the eth/69 form.</param>
+        /// <param name="destination">The list that the encoded sequence of the block's receipts is added to.</param>
+        /// <returns><see langword="false"/> when the block's receipts are not available; nothing is then added.</returns>
+        bool TryAppendReceipts(Hash256 blockHash, IRlpDecoder<TxReceipt> decoder, bool withBloom, ArrayPoolList<byte> destination);
         MemoryManager<byte>? GetBlockAccessListRlp(Hash256 blockHash);
-        Block? Find(Hash256 hash);
-
         /// <summary>The stored block with <paramref name="hash"/>, encoded as the block store holds it.</summary>
         /// <returns>The encoded block, which the caller disposes, or <see langword="null"/> when its body is not stored.</returns>
         MemoryManager<byte>? FindBlockRlp(Hash256 hash);
