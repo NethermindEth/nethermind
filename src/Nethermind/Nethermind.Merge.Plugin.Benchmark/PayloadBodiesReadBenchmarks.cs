@@ -3,17 +3,23 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.IO.Pipelines;
+using System.Threading;
+using System.Threading.Tasks;
 using Autofac;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
+using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
@@ -40,6 +46,7 @@ public class PayloadBodiesReadBenchmarks
     private IGetPayloadBodiesByRangeV1Handler _rangeHandler = null!;
     private GetPayloadBodiesByHashV1Handler _hashHandler = null!;
     private Hash256[] _hashes = null!;
+    private readonly PipeWriter _writer = PipeWriter.Create(Stream.Null);
 
     [GlobalSetup]
     public void Setup()
@@ -123,11 +130,21 @@ public class PayloadBodiesReadBenchmarks
         }
     }
 
+    /// <summary>Reads the bodies, writes the response and disposes it, as the JSON-RPC response does.</summary>
     [Benchmark]
-    public int ByRange() => _rangeHandler.Handle(RangeStart, RangeCount).Result.Data.Count;
+    public async Task<int> ByRange() => await Write((await _rangeHandler.Handle(RangeStart, RangeCount)).Data);
 
+    /// <inheritdoc cref="ByRange"/>
     [Benchmark]
-    public int ByHash() => _hashHandler.Handle(_hashes).Data.Count;
+    public Task<int> ByHash() => Write(_hashHandler.Handle(_hashes).Data);
+
+    private async Task<int> Write(IReadOnlyList<ExecutionPayloadBodyV1Result?> response)
+    {
+        await ((IStreamableResult)response).WriteToAsync(_writer, CancellationToken.None);
+        await _writer.FlushAsync();
+        response.TryDispose();
+        return response.Count;
+    }
 
     [GlobalCleanup]
     public void Cleanup()
