@@ -7,6 +7,7 @@ using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -76,13 +77,23 @@ public class StatelessExecutingWorldStateTests
         [Values(Instruction.ISZERO, Instruction.GT, Instruction.EQ, Instruction.POP)] Instruction next) =>
         Assert.That(() => ExecuteExtcodesize(next, targetCode: null, gasLimit: 100_000), Throws.Nothing);
 
+    /// <summary>
+    /// A call to a precompile's address runs the precompile, but EXTCODESIZE reads the code an account there holds, so
+    /// that code must be in the witness too, whatever operation follows.
+    /// </summary>
+    [Test]
+    public void Extcodesize_of_code_at_a_precompile_address_missing_from_the_witness_fails(
+        [Values(Instruction.ISZERO, Instruction.GT, Instruction.EQ, Instruction.POP)] Instruction next) =>
+        Assert.That(() => ExecuteExtcodesize(next, Prepare.EvmCode.Op(Instruction.STOP).Done, 100_000, PrecompiledAddresses.Identity), Throws.InvalidOperationException);
+
     /// <summary>Runs a transaction calling a contract that applies EXTCODESIZE to a target and then <paramref name="next"/>.</summary>
     /// <param name="targetCode">The target's code, removed from the code database before execution; <see langword="null"/> for an account without code.</param>
-    private static void ExecuteExtcodesize(Instruction next, byte[] targetCode, ulong gasLimit)
+    /// <param name="targetAddress">The target; an ordinary account when <see langword="null"/>.</param>
+    private static void ExecuteExtcodesize(Instruction next, byte[] targetCode, ulong gasLimit, Address targetAddress = null)
     {
         IReleaseSpec spec = Prague.Instance;
         TestSpecProvider specProvider = new(spec);
-        Address target = TestItem.AddressB;
+        Address target = targetAddress ?? TestItem.AddressB;
         Address caller = TestItem.AddressC;
         byte[] callerCode = Prepare.EvmCode.PushData(0).PushData(target).Op(Instruction.EXTCODESIZE).Op(next).Op(Instruction.STOP).Done;
 
