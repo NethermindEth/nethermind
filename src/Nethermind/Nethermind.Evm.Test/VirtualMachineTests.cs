@@ -1841,6 +1841,9 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         yield return new TestCaseData(new UInt256(257)).SetName("{m}_base_257");
         yield return new TestCaseData((UInt256.One << 64) + UInt256.One).SetName("{m}_base_two_low_limbs");
         yield return new TestCaseData((UInt256.One << 200) + (UInt256.One << 3)).SetName("{m}_base_two_far_bits");
+        yield return new TestCaseData((UInt256.One << 192) + (UInt256.One << 128)).SetName("{m}_base_same_bit_limbs_2_3");
+        yield return new TestCaseData((UInt256.One << 128) + UInt256.One).SetName("{m}_base_same_bit_limbs_0_2");
+        yield return new TestCaseData((UInt256.One << 192) + (UInt256.One << 64)).SetName("{m}_base_same_bit_limbs_1_3");
         yield return new TestCaseData(UInt256.MaxValue).SetName("{m}_base_max");
         yield return new TestCaseData(UInt256.Parse("0x6F1D2C3B4A59687766554433221100FFEEDDCCBBAA99887766554433221100FF")).SetName("{m}_base_wide");
     }
@@ -1848,16 +1851,26 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     private static List<UInt256> ExpExponentsFor(in UInt256 baseValue)
     {
         int bitIndex = 255 - baseValue.CountLeadingZeros();
-        List<UInt256> exponents = [UInt256.Zero, UInt256.One, new UInt256(2), new UInt256(3), new UInt256(255), new UInt256(256), UInt256.One << 64, UInt256.One << 255, UInt256.MaxValue];
+        List<UInt256> exponents =
+        [
+            UInt256.Zero, UInt256.One, new UInt256(2), new UInt256(3), new UInt256(255), new UInt256(256),
+            new UInt256((1UL << 31) - 1), new UInt256(1UL << 31), new UInt256(1UL << 32), new UInt256((1UL << 32) + 1),
+            new UInt256(1UL << 63), new UInt256(ulong.MaxValue), UInt256.One << 64, UInt256.One << 255, UInt256.MaxValue
+        ];
         if (bitIndex > 0)
         {
             ulong boundary = 255UL / (ulong)bitIndex;
-            exponents.Add(new UInt256(boundary - 1));
-            exponents.Add(new UInt256(boundary));
-            exponents.Add(new UInt256(boundary + 1));
+            AddOnce(exponents, new UInt256(boundary - 1));
+            AddOnce(exponents, new UInt256(boundary));
+            AddOnce(exponents, new UInt256(boundary + 1));
         }
 
         return exponents;
+
+        static void AddOnce(List<UInt256> exponents, UInt256 exponent)
+        {
+            if (!exponents.Contains(exponent)) exponents.Add(exponent);
+        }
     }
 
     [TestCaseSource(nameof(ExpBaseCases))]
@@ -1894,17 +1907,21 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     {
         List<UInt256> exponents = ExpExponentsFor(baseValue);
 
+        UInt256 multiplier = new(0x9E3779B97F4A7C15UL);
         Prepare code = Prepare.EvmCode.PushData(UInt256.Zero);
         UInt256 expectedFold = UInt256.Zero;
         foreach (UInt256 exponent in exponents)
         {
             code = code
+                .PushData(multiplier)
+                .Op(Instruction.MUL)
                 .PushData(exponent)
                 .PushData(baseValue)
                 .Op(Instruction.EXP)
-                .Op(Instruction.XOR);
+                .Op(Instruction.ADD);
             UInt256.Exp(in baseValue, exponent, out UInt256 expected);
-            UInt256.Xor(expectedFold, expected, out expectedFold);
+            UInt256.Multiply(expectedFold, multiplier, out expectedFold);
+            UInt256.Add(expectedFold, expected, out expectedFold);
         }
 
         Execute(NullTxTracer.Instance, code.PushData(UInt256.Zero).Op(Instruction.SSTORE).Done);
