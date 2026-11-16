@@ -105,7 +105,7 @@ public sealed class SettlingBlock
 
     private static int[] EffectTransactionsOf(bool[] system)
     {
-        List<int> positions = new(system.Length);
+        List<int> positions = [with(system.Length)];
         for (int i = 0; i < system.Length; i++)
         {
             if (!system[i] || i + 1 == system.Length || system[i + 1])

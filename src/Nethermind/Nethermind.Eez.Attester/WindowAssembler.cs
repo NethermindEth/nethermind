@@ -37,8 +37,8 @@ internal sealed class WindowAssembler
         _header = header;
         _declared = declared;
         _bytes = bytes;
-        _blocks = new List<EezStatelessBlock>(declared);
-        _claims = new List<(Hash256, Hash256)>(declared);
+        _blocks = [with(declared)];
+        _claims = [with(declared)];
     }
 
     public ulong RollupId => _header.RollupId;
@@ -240,7 +240,7 @@ internal sealed class WindowAssembler
 
     private static ArrayPoolList<byte[]> ToList(IReadOnlyList<ByteString> items)
     {
-        ArrayPoolList<byte[]> list = new(items.Count);
+        ArrayPoolList<byte[]> list = [with(items.Count)];
         foreach (ByteString item in items)
         {
             list.Add(item.ToByteArray());

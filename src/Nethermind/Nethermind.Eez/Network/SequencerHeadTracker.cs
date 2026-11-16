@@ -19,7 +19,7 @@ internal sealed class SequencerHeadTracker
     internal const int MaxSources = 8;
     internal const ulong MaxFutureMs = 10000;
 
-    private readonly Dictionary<ulong, VerifiedSequencerHead> _sources = new(MaxSources);
+    private readonly Dictionary<ulong, VerifiedSequencerHead> _sources = [with(MaxSources)];
     private readonly Lock _lock = new();
 
     internal SequencerHeadVerdict Observe(VerifiedSequencerHead head, ulong nowMs)

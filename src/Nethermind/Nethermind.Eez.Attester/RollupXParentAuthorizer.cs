@@ -75,7 +75,7 @@ internal sealed class RollupXParentAuthorizer
         if (!l1Parent.Hash.Bytes.SequenceEqual(target.ParentHash.Span)) throw RollupXAuthorizationEvidence.Stale();
         if (target.TargetTimestamp <= l1Parent.Timestamp || target.TargetTimestamp < reference.Timestamp ||
             (target.TargetTimestamp - reference.Timestamp) % _schedule.L1SlotSeconds != 0) throw RollupXAuthorizationEvidence.Rejected();
-        List<CanonicalL1Header> snapshots = new(68) { reference };
+        List<CanonicalL1Header> snapshots = [with(68), reference];
         RecordSnapshot(snapshots, l1Parent);
         BlockHeader parent = await _evidence.L2Header(new Hash256(selected.AnchorHash.Span), cancellation).ConfigureAwait(false);
         if (parent.Number != selected.AnchorNumber || !parent.StateRoot!.Bytes.SequenceEqual(selected.AnchorStateRoot.Span) ||

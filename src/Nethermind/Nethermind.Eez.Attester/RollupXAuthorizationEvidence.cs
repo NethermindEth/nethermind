@@ -89,9 +89,9 @@ internal sealed class RollupXAuthorizationEvidence(SettlementRpcReader l1, Settl
         CanonicalLog[] skipLogs = await BlockLogs(block, SkippedTopic, cancellation).ConfigureAwait(false);
         ValidateIdentities(rootLogs, batchLogs, skipLogs);
         if (batchLogs.Length > MaxBatches) throw SettlementRpcReader.Unavailable();
-        List<L1Batch> batches = new(batchLogs.Length);
-        List<ClaimedChain> claims = new(batchLogs.Length);
-        HashSet<ulong> transactions = new(batchLogs.Length);
+        List<L1Batch> batches = [with(batchLogs.Length)];
+        List<ClaimedChain> claims = [with(batchLogs.Length)];
+        HashSet<ulong> transactions = [with(batchLogs.Length)];
         foreach (CanonicalLog log in batchLogs)
         {
             cancellation.ThrowIfCancellationRequested();
@@ -126,7 +126,7 @@ internal sealed class RollupXAuthorizationEvidence(SettlementRpcReader l1, Settl
         L1Settlement[] settlements;
         try { settlements = RollupXSettlementAttribution.AttributeComplete(batches, claims, roots); }
         catch (EezSettlementException) { throw SettlementRpcReader.Unavailable(); }
-        List<Hash256> endpoints = new(settlements.Length);
+        List<Hash256> endpoints = [with(settlements.Length)];
         foreach (L1Settlement settlement in settlements)
         {
             cancellation.ThrowIfCancellationRequested();
@@ -164,8 +164,8 @@ internal sealed class RollupXAuthorizationEvidence(SettlementRpcReader l1, Settl
         JsonElement array = await l1.Read("eth_getLogs", [filter], cancellation, SettlementRpcReader.BlockResponseLimit).ConfigureAwait(false);
         if (array.ValueKind != JsonValueKind.Array || array.GetArrayLength() > MaxLogs) throw SettlementRpcReader.Unavailable();
         CanonicalLog[] logs = new CanonicalLog[array.GetArrayLength()];
-        HashSet<(ulong Number, ulong Index)> positions = new(logs.Length);
-        Dictionary<(ulong Number, ulong Transaction), Hash256> transactionHashes = new(logs.Length);
+        HashSet<(ulong Number, ulong Index)> positions = [with(logs.Length)];
+        Dictionary<(ulong Number, ulong Transaction), Hash256> transactionHashes = [with(logs.Length)];
         int index = 0;
         foreach (JsonElement item in array.EnumerateArray())
         {
@@ -203,7 +203,7 @@ internal sealed class RollupXAuthorizationEvidence(SettlementRpcReader l1, Settl
 
     private static void ValidateIdentities(CanonicalLog[] roots, CanonicalLog[] batches, CanonicalLog[] skips)
     {
-        HashSet<ulong> positions = new(roots.Length + batches.Length + skips.Length);
+        HashSet<ulong> positions = [with(roots.Length + batches.Length + skips.Length)];
         Dictionary<ulong, Hash256> transactions = [];
         foreach (CanonicalLog[] category in new[] { roots, batches, skips })
         {

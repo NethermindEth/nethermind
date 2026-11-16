@@ -35,7 +35,7 @@ internal sealed class NativeStreamingEvidence
         NativeL1HeaderChain staged = _headers.Prefix(prefixLength);
         if (count != 0)
         {
-            using ArrayPoolList<ReadOnlyMemory<byte>> segment = new(count);
+            using ArrayPoolList<ReadOnlyMemory<byte>> segment = [with(count)];
             for (int index = 0; index < count; index++) segment.Add(witness.L1HeadersRlp[index].Memory);
             staged.Append(segment, in rules);
         }

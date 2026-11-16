@@ -134,7 +134,7 @@ public sealed class WitnessStore([KeyFilter(WitnessStore.DbName)] IDb db) : IWit
     private static ArrayPoolList<byte[]> ReadList(ref RlpReader reader)
     {
         RlpReader values = reader.EnterSequence(out int length);
-        ArrayPoolList<byte[]> items = new(8);
+        ArrayPoolList<byte[]> items = [with(8)];
         try
         {
             while (values.HasNext)

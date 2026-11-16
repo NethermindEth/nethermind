@@ -12,7 +12,7 @@ namespace Nethermind.Eez.Attester;
 
 internal sealed class StreamingIdentity
 {
-    private readonly HashSet<string> _certificates = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _certificates = [with(StringComparer.Ordinal)];
 
     internal StreamingIdentity(IEnumerable<X509Certificate2> trustedCertificates)
     {

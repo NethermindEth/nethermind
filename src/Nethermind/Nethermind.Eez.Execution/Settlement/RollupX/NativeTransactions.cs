@@ -60,7 +60,7 @@ internal sealed partial class NativeTransactions
         ulong skipped = (ulong)(outboundSkip + inboundSkip);
         if (systemNonce > ulong.MaxValue - skipped) throw NativeCallTree.Invalid("system nonce overflow");
         ulong nonce = systemNonce + skipped;
-        List<byte[]> transactions = new(2 * outboundTake + inboundTake);
+        List<byte[]> transactions = [with(2 * outboundTake + inboundTake)];
         for (int i = outboundSkip; i < outboundSkip + outboundTake; i++)
         {
             (ExecutionTable table, byte[] user) = _outbound[i];

@@ -22,7 +22,7 @@ internal sealed partial class NativeL1Rules
         BlobParameters prague = Blob(config, "prague", chiado ? PragueGnosis.Instance : Prague.Instance);
         BlobParameters osaka = Blob(config, "osaka", chiado ? OsakaGnosis.Instance : Osaka.Instance);
         maximum = Math.Max(cancun.Allowance, Math.Max(prague.Allowance, osaka.Allowance));
-        List<(ulong At, BlobParameters Value)> scheduled = new(6);
+        List<(ulong At, BlobParameters Value)> scheduled = [with(6)];
         foreach ((string key, ulong? at) in BlobUpdates(config))
         {
             if (at is not { } timestamp || config.BlobSchedule is null || !config.BlobSchedule.TryGetValue(key, out GethBlobScheduleEntry? entry))

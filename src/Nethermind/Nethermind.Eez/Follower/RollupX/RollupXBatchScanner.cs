@@ -35,7 +35,7 @@ public sealed class RollupXBatchScanner(IEezL1Api l1, IL1BlobSource blobs, Addre
     public async Task<ScannedBatch[]> Scan(L1SettlingBlock block, EezL1Block header, CancellationToken token)
     {
         List<Posted> posted = await Batches(block, await SkippedEntries(block, token), token);
-        List<L1Batch> batches = new(posted.Count);
+        List<L1Batch> batches = [with(posted.Count)];
         foreach (Posted batch in posted)
         {
             batches.Add(batch.Batch);
@@ -96,7 +96,7 @@ public sealed class RollupXBatchScanner(IEezL1Api l1, IL1BlobSource blobs, Addre
     /// <param name="skipped">The entry indexes L1 skipped, per transaction index.</param>
     private async Task<List<Posted>> Batches(L1SettlingBlock block, Dictionary<ulong, HashSet<ulong>> skipped, CancellationToken token)
     {
-        List<Posted> batches = new(block.BatchLogs.Length);
+        List<Posted> batches = [with(block.BatchLogs.Length)];
         foreach (EezL1Log log in block.BatchLogs)
         {
             if (batches.Count > 0 && batches[^1].Batch.TransactionHash == log.TransactionHash)

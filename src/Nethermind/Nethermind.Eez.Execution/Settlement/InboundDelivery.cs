@@ -62,7 +62,7 @@ public static class InboundDelivery
     /// <exception cref="EezSettlementException">A delivery is missing, unclaimed, invalid or claimed differently.</exception>
     public static AuthorizedInbound[] AuthorizeAll(BoundEffect[] effects, InboundCandidate[] candidates, ulong rollupId)
     {
-        List<AuthorizedInbound> authorized = new(candidates.Length);
+        List<AuthorizedInbound> authorized = [with(candidates.Length)];
         int next = 0;
         foreach (BoundEffect effect in effects)
         {

@@ -59,8 +59,8 @@ public static class BatchDerivation
 
     private static byte[][] SyncTransactions(DaAction[] actions, byte[][] users, ProducingSlice slice, ulong systemNonce, ulong chainId, ulong rollupId)
     {
-        List<ExecutionEntry> outbound = new(actions.Length);
-        List<ExecutionEntry> inbound = new(actions.Length);
+        List<ExecutionEntry> outbound = [with(actions.Length)];
+        List<ExecutionEntry> inbound = [with(actions.Length)];
         foreach (DaAction action in actions)
         {
             ExecutionEntry entry = action.ToEntry(rollupId);

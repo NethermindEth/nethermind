@@ -105,7 +105,7 @@ public sealed class L1BatchScanner(IEezL1Api l1, Address registry, ulong rollupI
 
     public async Task<ScannedBatch[]> Scan(L1SettlingBlock block, EezL1Block header, CancellationToken token)
     {
-        List<L1Batch> batches = new(block.BatchLogs.Length);
+        List<L1Batch> batches = [with(block.BatchLogs.Length)];
         foreach (EezL1Log log in block.BatchLogs)
         {
             if (batches.Count > 0 && batches[^1].TransactionHash == log.TransactionHash)

@@ -191,7 +191,7 @@ public sealed class AttestationQuorum(IReadOnlyList<IAttester> attesters, ProveR
     /// <summary>The proofs and failures so far, and whether the quorum can still be reached.</summary>
     private sealed class Tally(int registered, int threshold)
     {
-        public List<Attestation> Attestations { get; } = new(registered);
+        public List<Attestation> Attestations { get; } = [with(registered)];
 
         public List<ProveException> Failures { get; } = [];
 

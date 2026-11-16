@@ -20,7 +20,7 @@ internal sealed class SequencerPeerHeadSource : IUnsafeHeadSource
     private readonly IBlockTree _blockTree;
     private readonly Snapshot _snapshot;
     private readonly UnsafeHeadFollower _follower;
-    private readonly Dictionary<Hash256AsKey, BlockHeader> _headers = new(UnsafeHeadFollower.MaxDepth);
+    private readonly Dictionary<Hash256AsKey, BlockHeader> _headers = [with(UnsafeHeadFollower.MaxDepth)];
     private readonly Queue<Hash256AsKey> _headerOrder = new(UnsafeHeadFollower.MaxDepth);
 
     public SequencerPeerHeadSource(SequencerHeadTracker tracker, SequencerPeerBlocks blocks, IBlockTree blockTree,

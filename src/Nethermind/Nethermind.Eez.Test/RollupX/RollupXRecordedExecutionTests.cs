@@ -418,7 +418,7 @@ public class RollupXExecutionDataTests
     private static void WriteFiles(string directory, params (string File, byte[] Data)[] inputs)
     {
         Directory.CreateDirectory(directory);
-        Dictionary<string, object> files = new(inputs.Length);
+        Dictionary<string, object> files = [with(inputs.Length)];
         foreach ((string file, byte[] data) in inputs)
         {
             File.WriteAllBytes(Path.Combine(directory, file + ".gz"), GZipStreamBytes(data));

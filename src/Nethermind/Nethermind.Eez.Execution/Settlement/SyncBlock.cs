@@ -38,7 +38,7 @@ public static class SyncBlock
             }
         }
 
-        List<byte[]> transactions = new(2 * outbound.Count + inbound.Count);
+        List<byte[]> transactions = [with(2 * outbound.Count + inbound.Count)];
         ulong nonce = startingNonce;
         foreach ((ExecutionEntry entry, byte[] userTransaction) in outbound)
         {

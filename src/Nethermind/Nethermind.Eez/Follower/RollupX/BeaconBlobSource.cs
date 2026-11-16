@@ -223,7 +223,7 @@ public static class BlobSelection
     /// <exception cref="ArgumentException">A blob holds an invalid field element.</exception>
     public static Dictionary<Hash256, byte[]> ByVersionedHash(IReadOnlyList<byte[]> blobs)
     {
-        Dictionary<Hash256, byte[]> byHash = new(blobs.Count);
+        Dictionary<Hash256, byte[]> byHash = [with(blobs.Count)];
         foreach (byte[] blob in blobs)
         {
             if (blob.Length == BlobStream.BytesPerBlob)

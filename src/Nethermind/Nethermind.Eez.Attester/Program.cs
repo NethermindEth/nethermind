@@ -27,7 +27,7 @@ public static class Program
 {
     public static async Task<int> Main(string[] args)
     {
-        RootCommand root = new("EEZ attester: re-executes settlement windows streamed by a composer and signs their public inputs hash");
+        RootCommand root = [with("EEZ attester: re-executes settlement windows streamed by a composer and signs their public inputs hash")];
         AttesterCommandLine.AddTo(root);
         root.SetAction(async (result, cancellation) =>
         {

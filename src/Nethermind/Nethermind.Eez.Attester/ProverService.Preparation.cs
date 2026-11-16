@@ -70,7 +70,7 @@ internal sealed partial class ProverService
                 header.ToBlock - header.FromBlock >= (ulong)Math.Min(64, _options.Limits.MaxBlocks))
                 throw WindowAssembler.Invalid("preparation bounds invalid");
             int count = (int)(header.ToBlock - header.FromBlock + 1);
-            List<PreparedOrdinaryBlock> facts = new(count);
+            List<PreparedOrdinaryBlock> facts = [with(count)];
             long witnessItems = 0;
             long retainedBytes = 0;
             while (await Next(stream, cancellation, cancellation, "PrepareOrdinary") is { } chunk)

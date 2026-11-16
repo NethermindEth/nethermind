@@ -20,7 +20,7 @@ public static class OutboundCall
     /// <exception cref="EezSettlementException">An event is missing, unclaimed, malformed or claimed differently.</exception>
     public static AuthorizedOutbound[] AuthorizeAll(BoundEffect[] effects, OutboundEvent[] events, ReadOnlySpan<bool> systemTransactions, ulong rollupId)
     {
-        List<AuthorizedOutbound> authorized = new(events.Length);
+        List<AuthorizedOutbound> authorized = [with(events.Length)];
         int next = 0;
         bool sawInbound = false;
         foreach (BoundEffect effect in effects)

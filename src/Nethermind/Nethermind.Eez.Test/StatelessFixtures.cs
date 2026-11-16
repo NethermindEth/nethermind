@@ -67,7 +67,7 @@ internal static class StatelessFixtures
     private static ArrayPoolList<byte[]> ReadHexList(JsonElement root, string property)
     {
         JsonElement items = root.GetProperty(property);
-        ArrayPoolList<byte[]> list = new(items.GetArrayLength());
+        ArrayPoolList<byte[]> list = [with(items.GetArrayLength())];
         foreach (JsonElement item in items.EnumerateArray())
         {
             list.Add(Bytes.FromHexString(item.GetString()!));

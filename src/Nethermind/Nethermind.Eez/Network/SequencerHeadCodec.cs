@@ -245,7 +245,7 @@ internal sealed class SequencerHeadCodec
         if (expected == Keccak.EmptyTreeHash) return false;
         int maximum = bytes.Length / (transactions ? MinTransactionSize : MinWithdrawalSize) + 1;
         int count = reader.CountItems(maximum);
-        using ArrayPoolList<ReadOnlyMemory<byte>> values = new(count, count);
+        using ArrayPoolList<ReadOnlyMemory<byte>> values = [with(count, count)];
         for (int index = 0; index < count; index++)
         {
             ReadOnlyMemory<byte> item = ReadItemMemory(ref reader, bytes);

@@ -254,7 +254,7 @@ public sealed class SyncSlotComposer(
     /// <summary>The blocks after <paramref name="cursor"/> up to <paramref name="last"/>, oldest first, by parent hash.</summary>
     private List<Block> Span(BlockHeader cursor, BlockHeader last)
     {
-        List<Block> span = new((int)(last.Number - cursor.Number));
+        List<Block> span = [with((int)(last.Number - cursor.Number))];
         Hash256 next = last.Hash!;
         while (next != cursor.Hash)
         {
