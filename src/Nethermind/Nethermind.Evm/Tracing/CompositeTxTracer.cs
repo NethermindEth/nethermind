@@ -10,7 +10,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
 
-public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter, IFrameTxReceiptTracer
+public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter, IFrameTxReceiptTracer, ITxOutputTracingFilter
 {
     internal readonly ITxTracer[] _txTracers;
 
@@ -99,6 +99,21 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter, IFrameTxR
                 mask |= filter.InstructionMask;
             }
             return mask;
+        }
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>Only the tracers that trace receipts get the output, so only they can read it.</remarks>
+    public bool IsTracingOutput
+    {
+        get
+        {
+            for (int index = 0; index < _txTracers.Length; index++)
+            {
+                ITxTracer tracer = _txTracers[index];
+                if (tracer.IsTracingReceipt && tracer is not ITxOutputTracingFilter { IsTracingOutput: false }) return true;
+            }
+            return false;
         }
     }
 

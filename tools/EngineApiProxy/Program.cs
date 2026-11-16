@@ -86,8 +86,9 @@ public class Program
         };
 
         // Create root command with options
-        RootCommand rootCommand = new("Nethermind Engine API Proxy")
-        {
+        RootCommand rootCommand =
+        [
+            with("Nethermind Engine API Proxy"),
             executionClientOption,
             consensusClientOption,
             portOption,
@@ -100,7 +101,7 @@ public class Program
             requestTimeoutOption,
             getPayloadMethodOption,
             newPayloadMethodOption,
-        };
+        ];
 
         rootCommand.SetAction(async (parseResult, ct) =>
         {

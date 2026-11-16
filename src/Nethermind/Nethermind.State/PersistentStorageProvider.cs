@@ -35,7 +35,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// <summary>The change-map capacity a per-contract state is trimmed to when it goes back to the pool.</summary>
     internal const int PooledDictionaryCapacity = 512;
 
-    private OptimizedDictionary<AddressAsKey, PerContractState> _storages = new(StoragesInitialCapacity);
+    private OptimizedDictionary<AddressAsKey, PerContractState> _storages = [with(StoragesInitialCapacity)];
     // Handed back by a detached write-back once it is done with the map it took.
     private OptimizedDictionary<AddressAsKey, PerContractState>? _spareStorages;
     private readonly OptimizedDictionary<AddressAsKey, bool> _toUpdateRoots = [];
@@ -544,7 +544,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
 
         OptimizedDictionary<AddressAsKey, PerContractState> storages = _storages;
-        _storages = Interlocked.Exchange(ref _spareStorages, null) ?? new OptimizedDictionary<AddressAsKey, PerContractState>(StoragesInitialCapacity);
+        _storages = Interlocked.Exchange(ref _spareStorages, null) ?? [with(StoragesInitialCapacity)];
         InvalidateStorageMemo();
         return new StorageChangeSnapshot(this, storages, _stateProvider.DetachRemovedAccountsWithStorage());
     }
@@ -1020,7 +1020,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             if (_dictionary.Count > capacity)
             {
                 // These arrays will be discarded; clearing their entries first only adds writes.
-                _dictionary = new OptimizedDictionary<SlotKey, StorageChangeTrace>(capacity);
+                _dictionary = [with(capacity)];
             }
             else
             {
