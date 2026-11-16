@@ -261,7 +261,16 @@ public partial class Engine : IDisposable
     /// <summary>
     /// Creates a JavaScript V8Engine typed byte array
     /// </summary>
-    public ITypedArray<byte> CreateUint8Array(byte[] buffer) => _createUint8Array(buffer);
+    public ITypedArray<byte> CreateUint8Array(byte[] buffer)
+    {
+        ITypedArray<byte> array = _createUint8Array(buffer.Length);
+        if (buffer.Length > 0)
+        {
+            array.WriteBytes(buffer, 0, (ulong)buffer.Length, 0);
+        }
+
+        return array;
+    }
 
     /// <summary>
     /// Creates a JavaScript BigInteger object
