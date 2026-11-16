@@ -71,9 +71,8 @@ public class FlatSameBlockDestroyTests
         }
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Storage_of_a_removed_contract_stays_cleared_when_a_later_transaction_funds_the_address(bool markDestroyed)
+    [Test]
+    public void Storage_of_a_removed_contract_stays_cleared_when_a_later_transaction_funds_the_address([Values] bool markDestroyed)
     {
         (IWorldState worldState, IStateReader reader, IContainer container) = TestWorldStateFactory.CreateFlatForTestWithStateReader();
         using IContainer _ = container;
