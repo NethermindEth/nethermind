@@ -7,6 +7,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Serialization.FluentRlp;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
@@ -53,6 +54,24 @@ public class BlockHeadersMessageSerializerTests
         BlockHeadersMessageSerializer serializer = new();
         Assert.That(() => serializer.Deserialize(rlp), Throws.InstanceOf<RlpReaderException>());
     }
+
+    [Test]
+    public void Encoded_headers_serialize_as_the_decoded_ones([Values] bool eth66)
+    {
+        BlockHeader first = Build.A.BlockHeader.WithNumber(1).TestObject;
+        BlockHeader second = Build.A.BlockHeader.WithParent(first).WithExtraData([0x77, 0x88]).TestObject;
+        HeaderDecoder decoder = new();
+        ArrayPoolList<byte> encoded = [with(0), .. decoder.Encode(first), .. decoder.Encode(second)];
+
+        using BlockHeadersMessage decodedMessage = new(new ArrayPoolList<BlockHeader>(2) { first, second });
+        using BlockHeadersMessage encodedMessage = new() { EncodedHeaders = encoded };
+
+        Assert.That(Serialize(encodedMessage, eth66), Is.EqualTo(Serialize(decodedMessage, eth66)));
+    }
+
+    private static byte[] Serialize(BlockHeadersMessage message, bool eth66) => eth66
+        ? new Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.BlockHeadersMessageSerializer().SerializeToArray(new Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.BlockHeadersMessage(1111, message))
+        : new BlockHeadersMessageSerializer().SerializeToArray(message);
 
     [Test]
     public void To_string()

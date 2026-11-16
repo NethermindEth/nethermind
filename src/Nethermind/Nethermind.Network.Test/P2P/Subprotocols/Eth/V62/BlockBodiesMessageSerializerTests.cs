@@ -20,7 +20,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
 public class BlockBodiesMessageSerializerTests
 {
     [Test, NonParallelizable]
-    public void Deserialize_failure_returns_transactions_from_earlier_bodies()
+    public void Decode_failure_returns_transactions_from_earlier_bodies()
     {
         byte[] body = BlockBodyDecoder.Instance.Encode(new BlockBody([Build.A.Transaction.Signed().TestObject], []));
         byte[] malformed = RlpTestHelper.EncodeSequence(RlpTestHelper.EncodeSequence([Rlp.Encode(Build.A.Transaction.Signed().TestObject)]), RlpTestHelper.OfEmptyByteArray);
@@ -28,7 +28,10 @@ public class BlockBodiesMessageSerializerTests
         HashSet<Transaction> pooled = TransactionPoolTestHelper.Refill();
 
         using DisposableByteBuffer buffer = Unpooled.WrappedBuffer(bytes).AsDisposable();
-        Assert.Throws<RlpReaderException>(() => new BlockBodiesMessageSerializer().Deserialize(buffer));
+        using (BlockBodiesMessage message = new BlockBodiesMessageSerializer().Deserialize(buffer))
+        {
+            Assert.Throws<RlpReaderException>(() => _ = message.Bodies!.Bodies);
+        }
 
         TransactionPoolTestHelper.AssertAllReturned(pooled);
     }

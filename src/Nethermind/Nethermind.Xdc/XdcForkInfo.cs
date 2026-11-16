@@ -43,6 +43,7 @@ public class XdcForkInfo(
         Add(engineParameters.TipXDCXCancellationFeeBlock);
         Add(engineParameters.TipTrc21Fee);
         Add(engineParameters.Gas50xBlock);
+        Add(engineParameters.Gas2500xBlock);
         Add(engineParameters.TIPXDCXMinerDisable);
         Add(engineParameters.TIPXDCXReceiverDisable);
         Add(engineParameters.DynamicGasLimitBlock);

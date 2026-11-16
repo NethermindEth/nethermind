@@ -28,6 +28,7 @@ internal static class IndexedTrieRoot
     private const int PrecomputedBranchLength = -Keccak.Size;
     private const int Avx2HashBatchSize = 4;
     private const int MaxHashBatchSize = 8;
+    private const int MinHashBatchSize = 2;
     private const int KeccakRate = 136;
     private const int MaxEncodedPathLength = 6;
     private const int VectorByteLength = 32;
@@ -367,7 +368,6 @@ internal static class IndexedTrieRoot
             Unsafe.SkipInit(out LeafBatchBuffer buffer);
             Span<byte> storage = MemoryMarshal.AsBytes((Span<Vector256<byte>>)buffer);
             Span<byte> blocks = storage[..blocksLength];
-            Span<byte> hashes = storage.Slice(blocksLength, hashesLength);
             Span<int> positions = MemoryMarshal.Cast<byte, int>(storage.Slice(blocksLength + hashesLength, indicesLength));
             Span<int> lengths = MemoryMarshal.Cast<byte, int>(storage.Slice(blocksLength + hashesLength + indicesLength, indicesLength));
             Span<byte> path = storage.Slice(blocksLength + hashesLength + 2 * indicesLength, 6);
@@ -411,26 +411,14 @@ internal static class IndexedTrieRoot
                 positions[pending++] = position;
                 if (pending == batchSize)
                 {
-                    if (Avx512F.IsSupported)
-                        HashLeafBatchAvx512(ref buffer, references, batchSize);
-                    else
-                    {
-                        KeccakHash.ComputePaddedBlocks4Avx2(ref MemoryMarshal.GetReference(blocks), ref MemoryMarshal.GetReference(hashes));
-                        for (int i = 0; i < batchSize; i++)
-                        {
-                            ValueHash256 hash = default;
-                            hashes.Slice(i * Keccak.Size, Keccak.Size).CopyTo(hash.BytesAsSpan);
-                            references[positions[i]] = new NodeReference(hash, Keccak.Size);
-                        }
-                    }
+                    HashLeafBatch(ref buffer, references, batchSize);
                     pending = 0;
                 }
             }
-            if (Avx512F.IsSupported && pending == 0) return;
-            if (Avx512F.IsSupported && pending >= 2)
+            if (pending >= MinHashBatchSize)
             {
-                blocks[(pending * rate)..].Clear();
-                HashLeafBatchAvx512(ref buffer, references, pending);
+                blocks[(pending * rate)..(batchSize * rate)].Clear();
+                HashLeafBatch(ref buffer, references, pending);
                 return;
             }
             for (int i = 0; i < pending; i++)
@@ -609,7 +597,7 @@ internal static class IndexedTrieRoot
         ReadOnlySpan<int> positions, ReadOnlySpan<int> lengths, Span<NodeReference> references)
     {
         int batchSize = Avx512F.IsSupported ? MaxHashBatchSize : Avx2HashBatchSize;
-        if (positions.Length < (Avx512F.IsSupported ? 2 : Avx2HashBatchSize))
+        if (positions.Length < MinHashBatchSize)
         {
             for (int i = 0; i < positions.Length; i++)
                 references[positions[i]] = NodeReference.FromRlp(buffer.AsSpan(i * paddedLength, lengths[i]));
@@ -629,14 +617,17 @@ internal static class IndexedTrieRoot
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void HashLeafBatchAvx512(ref LeafBatchBuffer buffer, Span<NodeReference> references, int count)
+    private static void HashLeafBatch(ref LeafBatchBuffer buffer, Span<NodeReference> references, int count)
     {
         const int blocksLength = MaxHashBatchSize * KeccakRate;
         const int hashesLength = MaxHashBatchSize * Keccak.Size;
         Span<byte> storage = MemoryMarshal.AsBytes((Span<Vector256<byte>>)buffer);
         ReadOnlySpan<ValueHash256> hashes = MemoryMarshal.Cast<byte, ValueHash256>(storage.Slice(blocksLength, hashesLength))[..count];
         ReadOnlySpan<int> positions = MemoryMarshal.Cast<byte, int>(storage.Slice(blocksLength + hashesLength, MaxHashBatchSize * sizeof(int)))[..count];
-        KeccakHash.ComputePaddedBlocks8Avx512(ref storage[0], ref storage[blocksLength]);
+        if (Avx512F.IsSupported)
+            KeccakHash.ComputePaddedBlocks8Avx512(ref storage[0], ref storage[blocksLength]);
+        else
+            KeccakHash.ComputePaddedBlocks4Avx2(ref storage[0], ref storage[blocksLength]);
         for (int i = 0; i < hashes.Length; i++)
             references[positions[i]] = new NodeReference(hashes[i], Keccak.Size);
     }

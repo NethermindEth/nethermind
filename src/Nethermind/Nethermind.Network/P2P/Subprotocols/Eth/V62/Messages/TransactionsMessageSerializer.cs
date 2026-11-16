@@ -58,7 +58,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         {
             RlpWriter writer = RlpWriter.ContentWriter(destination);
 
-            RlpSequence sequence = writer.StartSequence(GetContentLength(message));
+            RlpSequence sequence = writer.StartSequence(MessageSequence.GetContentLength(destination.Length));
             foreach (Transaction tx in message.Transactions.AsSpan())
             {
                 TxDecoder.Encode(ref writer, tx, RlpBehaviors.InMempoolForm);
@@ -77,7 +77,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public int GetLength(TransactionsMessage message) => Rlp.LengthOfSequence(GetContentLength(message));
 
-        private static int GetContentLength(TransactionsMessage message)
+        internal static int GetContentLength(TransactionsMessage message)
         {
             int contentLength = 0;
             for (int i = 0; i < message.Transactions.Count; i++)
@@ -111,7 +111,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
             bool isSizeGuarded = maxTxSize != long.MaxValue;
             int skipped = 0;
-            ArrayPoolList<Transaction> result = new(length);
+            ArrayPoolList<Transaction> result = [with(length)];
             try
             {
                 for (int i = 0; i < length; i++)

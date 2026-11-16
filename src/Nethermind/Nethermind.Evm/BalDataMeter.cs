@@ -19,8 +19,8 @@ namespace Nethermind.Evm;
 /// </remarks>
 public sealed class BalDataMeter
 {
-    private readonly HashSet<AddressAsKey> _meteredAddresses = new(AddressAsKey.EqualityComparer);
-    private readonly HashSet<StorageCell> _meteredStorageKeys = new(StorageCell.EqualityComparer);
+    private readonly HashSet<AddressAsKey> _meteredAddresses = [with(AddressAsKey.EqualityComparer)];
+    private readonly HashSet<StorageCell> _meteredStorageKeys = [with(StorageCell.EqualityComparer)];
     private ulong _staticFloor;
     private ulong _floorLimit;
 

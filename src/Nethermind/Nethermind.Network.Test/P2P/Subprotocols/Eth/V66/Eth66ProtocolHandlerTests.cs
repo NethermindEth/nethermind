@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Linq;
 using System.Collections.Generic;
 using System.Net;
@@ -89,6 +90,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             _syncManager = Substitute.For<ISyncServer>();
             _transactionPool = Substitute.For<ITxPool>();
             _specProvider = Substitute.For<ISpecProvider>();
+            _syncManager.ServeReceipts(_specProvider);
             _gossipPolicy = Substitute.For<IGossipPolicy>();
             _genesisBlock = Build.A.Block.Genesis.TestObject;
             _syncManager.Head.Returns(_genesisBlock.Header);
@@ -180,6 +182,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         {
             using GetBlockBodiesMessage msg62 = new(new[] { Keccak.Zero, TestItem.KeccakA });
             using Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockBodiesMessage msg66 = new(1111, msg62);
+            _syncManager.FindBlockRlp(Arg.Any<Hash256>()).Returns((MemoryManager<byte>?)null);
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.GetBlockBodies);
@@ -742,6 +745,37 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         }
 
         [Test]
+        public void Serves_stored_and_decoded_receipts_with_blooms_as_decoded_ones()
+        {
+            (Block storedBlock, TxReceipt[] storedReceipts) = ReceiptsServingTestHelper.CreateStoredBlock(_specProvider, 3);
+            TxReceipt[][] blocks = [storedReceipts, [Build.A.Receipt.WithAllFieldsFilled.TestObject]];
+            Hash256[] hashes = [storedBlock.Hash!, TestItem.KeccakB];
+            for (int i = 0; i < hashes.Length; i++)
+            {
+                _syncManager.GetReceipts(hashes[i]).Returns(blocks[i]);
+            }
+
+            _syncManager.ServeReceipts(_specProvider, storedBlock);
+            Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessageSerializer serializer =
+                new(new Network.P2P.Subprotocols.Eth.V63.Messages.ReceiptsMessageSerializer(_specProvider));
+            byte[]? response = null;
+            _session.When(session => session.DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessage>()))
+                .Do(call => response = serializer.SerializeToArray((Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessage)call[0]));
+            HandleIncomingStatusMessage();
+
+            using GetReceiptsMessage msg63 = new(hashes.ToPooledList());
+            using GetReceiptsMessage66 msg66 = new(1111, msg63);
+            HandleZeroMessage(msg66, Eth66MessageCode.GetReceipts);
+
+            using Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessage decoded = new(1111, new ReceiptsMessage(blocks.ToPooledList()));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(response, Is.EqualTo(serializer.SerializeToArray(decoded)));
+                _syncManager.Received(1).TryAppendReceipts(storedBlock.Hash!, Arg.Any<IRlpDecoder<TxReceipt>>(), true, Arg.Any<ArrayPoolList<byte>>());
+            }
+        }
+
+        [Test]
         public void Should_throw_when_receiving_get_receipts_before_status()
         {
             using GetReceiptsMessage msg63 = new(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList());
@@ -913,7 +947,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>());
         }
 
-        private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
+        private void HandleZeroMessage<T>(T msg, int messageCode) where T : P2PMessage
         {
             using DisposableByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg).AsDisposable();
             getBlockHeadersPacket.ReadByte();

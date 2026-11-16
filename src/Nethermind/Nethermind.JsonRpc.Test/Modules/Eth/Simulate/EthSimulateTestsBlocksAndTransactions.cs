@@ -21,6 +21,8 @@ using Nethermind.Core.Test.Encoding;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
@@ -160,6 +162,39 @@ public class EthSimulateTestsBlocksAndTransactions
 
         using JsonDocument document = JsonDocument.Parse(response);
         Assert.That(document.RootElement.GetProperty("result")[0].GetProperty("calls")[0].GetProperty("returnData").GetString(), Is.EqualTo(Keccak.OfAnEmptyString.ToString()), response);
+    }
+
+    [TestCase("\"input\":\"0x1234\",\"data\":\"0xabcd\"", "0x1234")]
+    [TestCase("\"data\":\"0xabcd\",\"input\":\"0x1234\"", "0x1234")]
+    [TestCase("\"input\":\"0x1234\",\"data\":\"0x1234\"", "0x1234")]
+    [TestCase("\"input\":\"0x1234\"", "0x1234")]
+    [TestCase("\"input\":null,\"data\":\"0xabcd\"", "0xabcd")]
+    [TestCase("\"input\":\"0x\",\"data\":\"0xabcd\"", "0x")]
+    public async Task Simulate_prefers_non_null_input_over_data(string aliases, string expected)
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        JsonElement actual = await Simulate(aliases);
+        JsonElement inputOnly = await Simulate($"\"input\":\"{expected}\"");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.GetProperty("status").GetString(), Is.EqualTo("0x1"));
+            Assert.That(inputOnly.GetProperty("status").GetString(), Is.EqualTo("0x1"));
+            Assert.That(actual.GetProperty("returnData").GetString(), Is.EqualTo(inputOnly.GetProperty("returnData").GetString()));
+            Assert.That(actual.GetProperty("returnData").GetString(), Is.EqualTo(expected));
+        }
+
+        async Task<JsonElement> Simulate(string fields)
+        {
+            // CALLDATASIZE PUSH1 0 PUSH1 0 CALLDATACOPY CALLDATASIZE PUSH1 0 RETURN
+            JsonElement payload = SimulatePayloadJson(
+                "{\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"code\":\"0x366000600037366000f3\"}},\"calls\":[{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"gas\":\"0x186a0\"," + fields + "}]}");
+            string response = await chain.TestEthRpc("eth_simulateV1", payload, "latest");
+            Assert.That(ErrorCode(response), Is.Null, response);
+            using JsonDocument document = JsonDocument.Parse(response);
+            return document.RootElement.GetProperty("result")[0].GetProperty("calls")[0].Clone();
+        }
     }
 
     private static JsonElement SimulatePayloadJson(string blockStateCall) => ParseJson($"{{\"blockStateCalls\":[{blockStateCall}]}}");
@@ -368,6 +403,75 @@ public class EthSimulateTestsBlocksAndTransactions
             Assert.That((bool)result.Result, Is.False);
             Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
             Assert.That(result.Result.Error, Is.EqualTo(SimulateErrorMessages.EmptyBlockStateCalls));
+        }
+    }
+
+    [TestCase(3, 2, "too many calls: 4 > 3", TestName = "Test_eth_simulateV1_total_calls_above_cap_returns_error")]
+    [TestCase(4, 1, "too many calls in block: 2 > 1", TestName = "Test_eth_simulateV1_block_calls_above_cap_returns_error")]
+    [TestCase(4, 2, null, TestName = "Test_eth_simulateV1_calls_at_caps_are_accepted")]
+    public async Task Test_eth_simulateV1_calls_are_limited(long callsCap, long callsPerBlockCap, string? expectedError)
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        ulong nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new() { Calls = [TransferForRpc(nonceA), TransferForRpc(nonceA + 1)] },
+                new() { Calls = [TransferForRpc(nonceA + 2), TransferForRpc(nonceA + 3)] }
+            ]
+        };
+
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder,
+            new JsonRpcConfig { MaxSimulateCallsCap = callsCap, MaxSimulateCallsPerBlockCap = callsPerBlockCap, Timeout = -1 },
+            chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((bool)result.Result, Is.EqualTo(expectedError is null), result.Result.ToString());
+            Assert.That(result.Result.Error, Is.EqualTo(expectedError));
+            Assert.That(result.ErrorCode == ErrorCodes.ClientLimitExceededError, Is.EqualTo(expectedError is not null));
+        }
+
+        static TransactionForRpc TransferForRpc(ulong nonce) => new LegacyTransactionForRpc
+        {
+            From = TestItem.AddressA,
+            To = TestItem.AddressB,
+            Nonce = nonce,
+            Gas = 21_000,
+            GasPrice = 0
+        };
+    }
+
+    [TestCase(new[] { 5001 }, "too many calls in block: 5001 > 5000", TestName = "Test_eth_simulateV1_null_block_calls_cap_uses_the_default")]
+    [TestCase(new[] { 5000, 5000, 1 }, "too many calls: 10001 > 10000", TestName = "Test_eth_simulateV1_null_total_calls_cap_uses_the_default")]
+    public async Task Test_eth_simulateV1_null_calls_caps_use_the_defaults(int[] callsPerBlock, string expectedError)
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls = [.. callsPerBlock.Select(static count => new BlockStateCall<TransactionForRpc>
+            {
+                Calls = [.. Enumerable.Range(0, count).Select(static _ => (TransactionForRpc)new LegacyTransactionForRpc
+                {
+                    From = TestItem.AddressA,
+                    To = TestItem.AddressB,
+                    Gas = 21_000,
+                    GasPrice = 0
+                })]
+            })]
+        };
+
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder,
+            new JsonRpcConfig { MaxSimulateCallsCap = null, MaxSimulateCallsPerBlockCap = null, Timeout = -1 },
+            chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ClientLimitExceededError));
+            Assert.That(result.Result.Error, Is.EqualTo(expectedError));
         }
     }
 
@@ -756,6 +860,24 @@ public class EthSimulateTestsBlocksAndTransactions
             Assert.That(simulated.Number, Is.EqualTo(side.Number + 1));
             Assert.That(simulated.ParentHash, Is.EqualTo(side.Hash));
             Assert.That(new Hash256(simulated.Calls.Single().ReturnData!), Is.EqualTo(side.Hash));
+        }
+    }
+
+    [Test]
+    public async Task Test_eth_simulateV1_does_not_keep_execution_requests_of_simulated_blocks()
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(Prague.Instance);
+        BlockRecordingSimulateTracer tracer = new(chain.SpecProvider);
+        SimulatePayload<TransactionForRpc> payload = new() { BlockStateCalls = [new(), new()] };
+
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, chain.RpcConfig, chain.SpecProvider, new FixedTracerFactory(tracer));
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((bool)result.Result, Is.True, result.Result.ToString());
+            Assert.That(tracer.Blocks, Has.Count.EqualTo(2));
+            Assert.That(tracer.Blocks.Select(static block => block.ExecutionRequests), Is.All.Null, "simulated blocks are not kept with their execution requests");
         }
     }
 
@@ -3393,7 +3515,7 @@ public class EthSimulateTestsBlocksAndTransactions
         // SLOTNUM PUSH0 MSTORE PUSH1 0x20 PUSH0 RETURN — returns the slot number as a 32-byte word.
         byte[] probeBytecode = Bytes.FromHexString("0x4b5f5260205ff3");
 
-        List<BlockStateCall<TransactionForRpc>> blockStateCalls = new(blockCount);
+        List<BlockStateCall<TransactionForRpc>> blockStateCalls = [with(blockCount)];
         for (int i = 0; i < blockCount; i++)
         {
             blockStateCalls.Add(new BlockStateCall<TransactionForRpc>
@@ -3459,5 +3581,21 @@ public class EthSimulateTestsBlocksAndTransactions
         }
 
         return await BuildAmsterdamBalChain();
+    }
+
+    private sealed class BlockRecordingSimulateTracer(ISpecProvider specProvider) : SimulateBlockTracer(false, specProvider)
+    {
+        public List<Block> Blocks { get; } = [];
+
+        public override void StartNewBlockTrace(Block block)
+        {
+            Blocks.Add(block);
+            base.StartNewBlockTrace(block);
+        }
+    }
+
+    private sealed class FixedTracerFactory(IBlockTracer<SimulateCallResult> tracer) : ISimulateBlockTracerFactory<SimulateCallResult>
+    {
+        public IBlockTracer<SimulateCallResult> CreateSimulateBlockTracer(bool isTracingLogs, IWorldState worldState, ISpecProvider spec, BlockHeader block) => tracer;
     }
 }

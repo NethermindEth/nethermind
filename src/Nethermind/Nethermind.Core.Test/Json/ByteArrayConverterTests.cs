@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
@@ -244,6 +245,29 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
 
         string output = Encoding.UTF8.GetString(ms.ToArray());
         Assert.That(output, Is.EqualTo($"\"0x{System.Convert.ToHexString(input).ToLowerInvariant()}\""));
+    }
+
+    [Test]
+    public void Write_InputLongerThanHexStringLimit_ThrowsJsonException(
+        [Values(1_073_741_794, 1 << 30, 0x7FFFFFC7)] int length,
+        [Values] bool withWriteAction)
+    {
+        using System.IO.MemoryStream ms = new();
+        using Utf8JsonWriter writer = new(ms);
+
+        Assert.That(() =>
+        {
+            byte first = 1;
+            ReadOnlySpan<byte> input = MemoryMarshal.CreateReadOnlySpan(ref first, length);
+            if (withWriteAction)
+            {
+                ByteArrayConverter.Convert(writer, input, static (w, hex) => w.WriteRawValue(hex, skipInputValidation: true), skipLeadingZeros: false);
+            }
+            else
+            {
+                ByteArrayConverter.Convert(writer, input, skipLeadingZeros: false);
+            }
+        }, Throws.TypeOf<JsonException>());
     }
 
     [TestCase(new byte[] { 0xab, 0xcd }, "{\"0xabcd\":1}")]
