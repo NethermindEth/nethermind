@@ -17,7 +17,8 @@ public static partial class TrustedInput
     /// written into the input is as good as any other: Airbender, which copies its input into RAM and whose runtime wraps
     /// every write barrier into a bare store; SP1, whose stateless input keeps its state nodes in the input as such
     /// arrays already; and OpenVM, which reads its input into a buffer it never frees and runs the same runtime as SP1.
-    /// Not ZisK, whose input region is read-only.
+    /// Not ZisK, whose input region is read-only. An item is used in place only at an 8-aligned address: SP1 rejects
+    /// misaligned accesses, and its witness-node keccak rounds an array's data pointer down to 8 without testing it.
     /// </remarks>
     private static partial byte[] Item(ReadOnlySpan<byte> data, int start, int length)
     {

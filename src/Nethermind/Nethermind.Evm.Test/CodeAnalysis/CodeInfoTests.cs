@@ -239,7 +239,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         }
 
         [Test]
-        public void Input_buffer_code_memory_is_padded_in_place()
+        public unsafe void Input_buffer_code_memory_is_padded_in_place()
         {
             byte[] code = [0x60, 0x01, 0x5b];
             byte[] codeAndPadding = new byte[code.Length + CodeInfo.ExecutionPadding];
@@ -248,9 +248,14 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             ReadOnlyMemory<byte> wrapped = ExecutableCodeMemory.WrapInputBuffer(codeAndPadding, code.Length);
 
+            using MemoryHandle whole = wrapped.Pin();
+            using MemoryHandle tail = wrapped[1..].Pin();
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(wrapped.ToArray(), Is.EqualTo(code));
+                Assert.That((nint)whole.Pointer, Is.EqualTo((nint)Unsafe.AsPointer(ref codeAndPadding[0])));
+                Assert.That((nint)tail.Pointer, Is.EqualTo((nint)Unsafe.AsPointer(ref codeAndPadding[1])));
+                Assert.That(() => ExecutableCodeMemory.WrapInputBuffer(new byte[code.Length + CodeInfo.ExecutionPadding - 1], code.Length), Throws.InstanceOf<ArgumentOutOfRangeException>());
                 Assert.That(codeAndPadding.AsSpan(code.Length).ToArray(), Is.All.EqualTo(0));
                 Assert.That(Unsafe.AreSame(ref MemoryMarshal.GetReference(wrapped.Span), ref codeAndPadding[0]), Is.True);
                 Assert.That(ExecutableCodeMemory.TryGetInputBuffer(wrapped, out byte[]? buffer), Is.True);

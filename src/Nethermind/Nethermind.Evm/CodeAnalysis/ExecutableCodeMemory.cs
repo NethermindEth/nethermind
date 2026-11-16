@@ -83,7 +83,7 @@ public static class ExecutableCodeMemory
 
     internal static ReadOnlyMemory<byte> WrapInputBuffer(byte[] codeAndPadding, int codeLength)
     {
-        codeAndPadding.AsSpan(codeLength).Clear();
+        codeAndPadding.AsSpan(codeLength, CodeInfo.ExecutionPadding).Clear();
         return new InputBufferManager(codeAndPadding, codeLength).Memory;
     }
 
