@@ -5,8 +5,11 @@ using Nethermind.Xdc.Spec;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
+using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using NSubstitute;
 
@@ -197,6 +200,23 @@ public class XdcSpecProviderTests
             Assert.That(specProvider.GetXdcSpec(999).MinimumGasPrice, Is.EqualTo((UInt256)expectedBeforeGas50x));
             Assert.That(specProvider.GetXdcSpec(1000).MinimumGasPrice,
                 Is.EqualTo((UInt256)expectedBeforeGas50x * XdcConstants.Gas50xMultiplier));
+        }
+    }
+
+    [TestCase(83_599_999ul, XdcConstants.DefaultMinGasPrice * XdcConstants.Gas50xMultiplier, TestName = "Apothem before Gas2500x")]
+    [TestCase(83_600_000ul, XdcConstants.DefaultMinGasPrice * XdcConstants.Gas2500xMultiplier, TestName = "Apothem at Gas2500x")]
+    public void Apothem_base_fee_and_minimum_gas_price_follow_the_gas_price_tier(ulong blockNumber, ulong expectedPrice)
+    {
+        ChainSpec chainSpec = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance).LoadEmbeddedOrFromFile("xdc-testnet.json");
+        XdcChainSpecEngineParameters engineParameters =
+            chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<XdcChainSpecEngineParameters>();
+        IXdcReleaseSpec spec = new XdcChainSpecBasedSpecProvider(chainSpec, engineParameters, LimboLogs.Instance).GetXdcSpec(blockNumber);
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(blockNumber - 1).TestObject;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(BaseFeeCalculator.Calculate(parent, spec), Is.EqualTo((UInt256)expectedPrice));
+            Assert.That(spec.MinimumGasPrice, Is.EqualTo((UInt256)expectedPrice));
         }
     }
 

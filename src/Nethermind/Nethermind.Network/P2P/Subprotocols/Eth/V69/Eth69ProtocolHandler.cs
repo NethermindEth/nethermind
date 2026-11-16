@@ -57,6 +57,8 @@ public class Eth69ProtocolHandler(
 
     public override int MessageIdSpaceSize => 18;
 
+    protected override bool ReceiptsWithBloom => false;
+
     // Explicitly mark as not supported
     public override UInt256? TotalDifficulty
     {

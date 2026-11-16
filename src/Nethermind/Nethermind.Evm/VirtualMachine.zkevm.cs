@@ -36,28 +36,44 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     /// <remarks>The guest is compiled ahead of time, so a rebuilt table has no promoted code to capture.</remarks>
     private partial bool ShouldRefreshOpcodes() => false;
 
-    /// <summary>Resolves the untraced dispatch table and the current fork's own frame handlers, for tests that enter a frame directly.</summary>
-    /// <remarks>The shared table keeps the frame handlers of the first fork it prepares, so they are rebuilt for the current spec.</remarks>
-    internal void PrepareFrameHandlersForTests()
-    {
-        PrepareOpcodes<OffFlag>();
-        _executionHandlers = new ExecutionHandlers(Spec);
-    }
-
     /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs SLOAD on the guest handler.</summary>
     /// <remarks>Built apart from the shared table, which keeps the handlers of the first fork it prepares.</remarks>
-    internal static bool LoadsStorageThroughGuestHandlerForTests(IReleaseSpec spec)
-    {
-        nint handler = (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)Instruction.SLOAD];
-        return handler == (nint)AsTableEntry(&RawCalliHelper.ExecuteSLoad<OffFlag>)
-            || handler == (nint)AsTableEntry(&RawCalliHelper.ExecuteSLoad<OnFlag>);
-    }
+    internal static bool LoadsStorageThroughGuestHandlerForTests(IReleaseSpec spec) =>
+        UsesGuestStorageHandlerForTests(spec, Instruction.SLOAD);
+
+    /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs BLOBHASH on the guest handler.</summary>
+    internal static bool ReadsBlobHashesThroughGuestHandlerForTests(IReleaseSpec spec) =>
+        (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)Instruction.BLOBHASH] == (nint)AsTableEntry(&RawCalliHelper.ExecuteBlobHash);
 
     /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs SSTORE on the guest handler.</summary>
     internal static bool StoresStorageThroughGuestHandlerForTests(IReleaseSpec spec) =>
-        (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)Instruction.SSTORE] == (nint)AsTableEntry(&RawCalliHelper.ExecuteSStore);
+        UsesGuestStorageHandlerForTests(spec, Instruction.SSTORE);
 
-    /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs <paramref name="opcode"/>, a block-context word, on the guest handler.</summary>
+    private static bool UsesGuestStorageHandlerForTests(IReleaseSpec spec, Instruction opcode)
+    {
+        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] handlers = GenerateOpcodeHandlers<OffFlag, OffFlag>(spec);
+        nint expected = (opcode, spec.IsEip8038Enabled, spec.IsEip8360Enabled) switch
+        {
+            (Instruction.SSTORE, true, _) => (nint)AsTableEntry(&RawCalliHelper.ExecuteSStore<Eip8038On>),
+            (Instruction.SSTORE, false, _) => (nint)AsTableEntry(&RawCalliHelper.ExecuteSStore<Eip8038Off>),
+            (Instruction.SLOAD, true, true) => (nint)AsTableEntry(&RawCalliHelper.ExecuteSLoad<Eip8038On, OnFlag>),
+            (Instruction.SLOAD, true, false) => (nint)AsTableEntry(&RawCalliHelper.ExecuteSLoad<Eip8038On, OffFlag>),
+            (Instruction.SLOAD, false, true) => (nint)AsTableEntry(&RawCalliHelper.ExecuteSLoad<Eip8038Off, OnFlag>),
+            (Instruction.SLOAD, false, false) => (nint)AsTableEntry(&RawCalliHelper.ExecuteSLoad<Eip8038Off, OffFlag>),
+            _ => 0
+        };
+        return expected != 0 && (nint)handlers[(int)opcode] == expected;
+    }
+
+    /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs MCOPY on the guest handler.</summary>
+    internal static bool CopiesMemoryThroughGuestHandlerForTests(IReleaseSpec spec) =>
+        (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)Instruction.MCOPY] == (nint)AsTableEntry(&RawCalliHelper.ExecuteMCopyInsideMemory);
+
+    /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs SELFBALANCE on the guest handler.</summary>
+    internal static bool ReadsSelfBalanceThroughGuestHandlerForTests(IReleaseSpec spec) =>
+        (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)Instruction.SELFBALANCE] == (nint)AsTableEntry(&RawCalliHelper.ExecuteSelfBalance);
+
+    /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs <paramref name="opcode"/>, a context word, on the guest handler.</summary>
     /// <remarks>The guest handler falls back to the shared one, so only the table shows that it is installed.</remarks>
     internal static bool PushesContextWordThroughGuestHandlerForTests(IReleaseSpec spec, Instruction opcode) =>
         (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)opcode] == opcode switch
@@ -71,8 +87,18 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
             Instruction.BASEFEE => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.BaseFeeWord>),
             Instruction.BLOBBASEFEE => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.BlobBaseFeeWord>),
             Instruction.SLOTNUM => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.SlotNumWord>),
+            Instruction.ADDRESS => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.AddressWord>),
+            Instruction.ORIGIN => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.OriginWord>),
+            Instruction.CALLER => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.CallerWord>),
+            Instruction.CALLVALUE => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.CallValueWord>),
+            Instruction.GASPRICE => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.GasPriceWord>),
             _ => throw new ArgumentOutOfRangeException(nameof(opcode))
         };
+
+    /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs BLOCKHASH on the guest handler.</summary>
+    /// <remarks>The guest handler falls back to the shared one, so only the table shows that it is installed.</remarks>
+    internal static bool HashesBlockThroughGuestHandlerForTests(IReleaseSpec spec) =>
+        (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)Instruction.BLOCKHASH] == (nint)AsTableEntry(&RawCalliHelper.ExecuteBlockHash);
 
     /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs CALL, STATICCALL and DELEGATECALL on the guest handler.</summary>
     /// <remarks>Built apart from the shared table, which keeps the handlers of the first fork it prepares.</remarks>
@@ -93,6 +119,15 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         return true;
     }
 
+    /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs DUPN, SWAPN and EXCHANGE on the guest handlers.</summary>
+    internal static bool RunsEip8024StackOpsThroughGuestHandlersForTests(IReleaseSpec spec)
+    {
+        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] handlers = GenerateOpcodeHandlers<OffFlag, OffFlag>(spec);
+        return (nint)handlers[(int)Instruction.DUPN] == (nint)AsTableEntry(&RawCalliHelper.ExecuteDupN)
+            && (nint)handlers[(int)Instruction.SWAPN] == (nint)AsTableEntry(&RawCalliHelper.ExecuteSwapN)
+            && (nint)handlers[(int)Instruction.EXCHANGE] == (nint)AsTableEntry(&RawCalliHelper.ExecuteExchange);
+    }
+
     public object? ReturnData;
 
     /// <summary>The largest nested RETURN/REVERT output staged in the reused scratch buffer.</summary>
@@ -105,25 +140,6 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     /// <inheritdoc/>
     /// <remarks>A reverted output, or code above the EIP-170 limit, is never deposited, so it can share the nested-output scratch.</remarks>
     private partial bool IsUndeployableCreateOutput(int length, bool isRevert) => isRevert || (Spec.LimitCodeSize && length > Spec.MaxCodeSize);
-
-    /// <summary>
-    /// <see cref="InitializeFrameCore{Eip158, Eip8360}"/> under EIP-158, minus the zero credit to the executing account of a frame that runs code.
-    /// </summary>
-    /// <remarks>
-    /// That account is never empty: under CALL, STATICCALL and a transaction it holds the code, or an EIP-7702 designator
-    /// to it; under DELEGATECALL and CALLCODE it is the caller, itself running code or a creation whose nonce is already 1.
-    /// Crediting it zero neither creates nor touches it, yet costs two account lookups on every value-less call.
-    /// Not selected under EIP-7928, whose access-list tracking observes the credit.
-    /// </remarks>
-    private static bool InitializeFrameSkippingNoOpCredit(VirtualMachine<TGasPolicy> vm, VmState<TGasPolicy> state)
-    {
-        ExecutionEnvironment env = state.Env;
-        ExecutionType executionType = state.ExecutionType;
-        if (!executionType.IsAnyCreate() && env.CodeInfo.CodeLength != 0 && executionType.GetBalanceCredit(in env.Value).IsZero)
-            return true;
-
-        return InitializeFrameCore<OnFlag, OffFlag>(vm, state);
-    }
 
     /// <summary>
     /// Inline handling of a CALL whose target is a precompile. Precompiles run
@@ -147,6 +163,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     {
         VmState<TGasPolicy> parent = _currentState;
         VmState<TGasPolicy> child = VmState<TGasPolicy>.RentFrame(
+            FrameCache,
             gas: childGas,
             outputDestination: outputDestination,
             outputLength: outputLength,
@@ -241,6 +258,10 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     /// <remarks>
     /// The frame loop would otherwise take the caller off its chain, enter the child, and on its return restore the
     /// caller's stack and enter its chain again. Only an untraced run nests: tracers observe the loop's order of events.
+    /// The caller's chain chose its handlers for the gas it had before the call. If they skip gas tests and it now has
+    /// too little for them (<see cref="TestsEveryCharge"/>), the chain leaves with <c>Suspend</c> and nothing staged, and
+    /// <see cref="RunFrameCode{TTracingInst, TCancelable}"/> enters it again on the handlers that gas allows. A chain on
+    /// the shared handlers continues on them: the call leaves it no more gas than it had.
     /// </remarks>
     internal bool TryRunStagedFrameNested(ref EvmStack stack, out EvmExceptionType resumeResult)
     {
@@ -251,6 +272,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
             return false;
         }
 
+        bool callerTestsEveryCharge = _chainTestsEveryCharge;
         ReturnData = null;
         _stateStack.Push(_currentState);
         _currentState = child;
@@ -276,11 +298,10 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         if (previousCallOutputLength > 0)
             _currentState.Memory.SaveAfterGas(in _previousCallOutputDestination, ReturnDataBuffer.Span[..(int)previousCallOutputLength]);
 
+        _chainTestsEveryCharge = callerTestsEveryCharge;
+        if (!callerTestsEveryCharge && TestsEveryCharge(GetExecutionGas(ref _currentState.Gas), stack.CodeLength))
+            resumeResult = EvmExceptionType.Suspend;
+
         return true;
     }
-
-    private static partial delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, bool> SelectInitializeFrame(IReleaseSpec spec) =>
-        // EIP-8360 frame entry also sets the TCREATE context, so it cannot be skipped.
-        SpecFlags.Eip158(spec) && !spec.IsEip7928Enabled && !SpecFlags.Eip8360(spec) ? &InitializeFrameSkippingNoOpCredit :
-        SelectInitializeFrameCore(spec);
 }

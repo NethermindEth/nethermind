@@ -22,7 +22,7 @@ public partial struct StackAccessTracker(bool isTracingAccess) : IDisposable
     public readonly JournalSet<Address> DestroyList => _trackingState.DestroyList;
     public readonly HashSet<AddressAsKey> CreateList => _trackingState.CreateList;
 
-    private readonly bool _isTracingAccess = isTracingAccess;
+    private bool _isTracingAccess = isTracingAccess;
     private TrackingState _trackingState = TrackingState.RentState();
 
     // Word-sized: every call frame stores all four, and zkVMs charge a 32-bit store several times a 64-bit one.
@@ -90,6 +90,18 @@ public partial struct StackAccessTracker(bool isTracingAccess) : IDisposable
 
         originalBalance = default;
         return false;
+    }
+
+    /// <summary>Makes this tracker share the tracked state of <paramref name="parent"/>; take a snapshot before use.</summary>
+    /// <remarks>
+    /// Copies no snapshot positions, as the caller overwrites them. Where cached frames keep their references
+    /// (<see cref="ExecutionEnvironment.KeepsCachedReferences"/>), it stores the state reference only when it changed:
+    /// a frame reused within a transaction already holds it, and the store takes a GC write barrier.
+    /// </remarks>
+    internal void ShareStateWith(in StackAccessTracker parent)
+    {
+        if (!ExecutionEnvironment.KeepsCachedReferences || !ReferenceEquals(_trackingState, parent._trackingState)) _trackingState = parent._trackingState;
+        _isTracingAccess = parent._isTracingAccess;
     }
 
     public void TakeSnapshot()

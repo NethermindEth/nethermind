@@ -5,6 +5,7 @@ using System.IO.Abstractions;
 using System.Runtime.CompilerServices;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Era1.Exceptions;
@@ -172,7 +173,7 @@ public class EraStore : IEraStore
 
             Task accumulatorTask = Task.Run(async () =>
             {
-                ValueHash256 eraAccumulator = await reader.VerifyContent(_specProvider, _blockValidator, _verifyConcurrency, cancellation);
+                ValueHash256 eraAccumulator = await reader.VerifyContent(_specProvider, _blockValidator, _verifyConcurrency, validateTransactions: _trustedAccumulators is null, cancellation);
                 if (_trustedAccumulators != null && !_trustedAccumulators.Contains(eraAccumulator))
                 {
                     throw new EraVerificationException($"Unable to verify epoch {epoch}. Accumulator {eraAccumulator} not trusted");
@@ -202,6 +203,18 @@ public class EraStore : IEraStore
         if (ensureValidated) await EnsureEpochVerified(partOfEpoch, reader, cancellation);
         (Block b, TxReceipt[] r) = await reader.GetBlockByNumber(number, cancellation);
         return (b, r);
+    }
+
+    /// <inheritdoc/>
+    public async Task<(Block?, ArrayPoolList<byte>?, TxReceipt[]?)> FindEncodedBlockAndReceipts(ulong number, bool ensureValidated = true, CancellationToken cancellation = default)
+    {
+        long partOfEpoch = GetEpochNumber(number);
+        if (!_epochs.ContainsKey(partOfEpoch))
+            return (null, null, null);
+
+        using EraRenter _ = RentReader(partOfEpoch, out EraReader reader);
+        if (ensureValidated) await EnsureEpochVerified(partOfEpoch, reader, cancellation);
+        return await reader.GetEncodedBlockByNumber(number, cancellation);
     }
 
     private EraRenter RentReader(long epoch, out EraReader reader)

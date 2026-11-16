@@ -25,9 +25,9 @@ public class ChainLevelDecoderTests
         ChainLevelInfo chainLevelInfo = new(true, new[] { blockInfo, blockInfo2 });
         chainLevelInfo.HasBlockOnMainChain = true;
 
-        Rlp rlp = Rlp.Encode(chainLevelInfo);
+        byte[] rlp = Rlp.Encode(chainLevelInfo);
 
-        ChainLevelInfo decoded = (valueDecode ? Rlp.Decode<ChainLevelInfo>(rlp.Bytes.AsSpan()) : Rlp.Decode<ChainLevelInfo>(rlp))!;
+        ChainLevelInfo decoded = (valueDecode ? Rlp.Decode<ChainLevelInfo>(rlp.AsSpan()) : Rlp.Decode<ChainLevelInfo>(rlp))!;
 
         using (Assert.EnterMultipleScope())
         {
@@ -42,14 +42,14 @@ public class ChainLevelDecoderTests
     [TestCaseSource(nameof(EncodeCases))]
     public void Encode_matches_independently_built_rlp(BlockInfo[] blockInfos, bool hasBlockOnMainChain)
     {
-        Rlp[] encodedInfos = new Rlp[blockInfos.Length];
+        byte[][] encodedInfos = new byte[blockInfos.Length][];
         for (int i = 0; i < blockInfos.Length; i++)
         {
             encodedInfos[i] = Rlp.Encode(blockInfos[i]);
         }
 
         ChainLevelInfo chainLevelInfo = new(hasBlockOnMainChain, blockInfos);
-        byte[] expected = Rlp.Encode(Rlp.Encode(hasBlockOnMainChain ? 1 : 0), Rlp.Encode(encodedInfos)).Bytes;
+        byte[] expected = RlpTestHelper.EncodeSequence(Rlp.Encode(hasBlockOnMainChain ? 1 : 0), RlpTestHelper.EncodeSequence(encodedInfos));
         ChainLevelDecoder decoder = new();
 
         using ArrayPoolSpan<byte> pooled = decoder.EncodeToArrayPoolSpan(chainLevelInfo);
@@ -57,7 +57,7 @@ public class ChainLevelDecoderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(decoder.GetLength(chainLevelInfo, RlpBehaviors.None), Is.EqualTo(expected.Length));
-            Assert.That(Rlp.Encode(chainLevelInfo).Bytes, Is.EqualTo(expected));
+            Assert.That(Rlp.Encode(chainLevelInfo), Is.EqualTo(expected));
             Assert.That(((ReadOnlySpan<byte>)pooled).ToArray(), Is.EqualTo(expected));
         }
     }
@@ -111,7 +111,7 @@ public class ChainLevelDecoderTests
     [Test]
     public void Can_handle_nulls()
     {
-        Rlp rlp = Rlp.Encode((ChainLevelInfo)null!);
+        byte[] rlp = Rlp.Encode((ChainLevelInfo)null!);
         ChainLevelInfo? decoded = Rlp.Decode<ChainLevelInfo>(rlp);
         Assert.That(decoded, Is.Null);
     }

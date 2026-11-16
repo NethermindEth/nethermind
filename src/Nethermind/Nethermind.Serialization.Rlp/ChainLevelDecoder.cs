@@ -5,6 +5,8 @@ using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using Nethermind.Serialization.FluentRlp;
 
 namespace Nethermind.Serialization.Rlp
@@ -74,6 +76,32 @@ namespace Nethermind.Serialization.Rlp
             return new ChainLevelInfo(hasMainChainBlock, blockInfos);
         }
 
+        /// <summary>Reads the main chain block of an encoded level without decoding the level; <see langword="false"/> when only a full decode can tell, and <paramref name="hasMainChainBlock"/> is <see langword="false"/> when the level has no main chain block.</summary>
+        public static bool TryReadMainChainBlock(ReadOnlySpan<byte> rlp, out bool hasMainChainBlock, out ValueHash256 blockHash, out UInt256 totalDifficulty)
+        {
+            blockHash = default;
+            totalDifficulty = default;
+            hasMainChainBlock = false;
+
+            RlpReader reader = new(rlp);
+            if (reader.TryReadEmptySequence()) return true;
+
+            RlpReader fields = reader.EnterSequence<OffFlag>(out _);
+            if (!fields.DecodeBool()) return true;
+
+            RlpReader items = fields.EnterSequence<OffFlag>(out _);
+            if (!items.HasNext || items.TryReadEmptySequence()) return false;
+
+            RlpReader info = items.EnterSequence<OffFlag>(out _);
+            if (info.TryReadEmptyBytes()) return false;
+
+            blockHash = info.DecodeValueKeccakNonNull();
+            info.SkipItem<OffFlag>();
+            totalDifficulty = info.DecodeUInt256<OffFlag>();
+            hasMainChainBlock = true;
+            return true;
+        }
+
         private static int DecodeBlockInfos(ref RlpReader items, BlockInfo[] blockInfos, int count, RlpBehaviors infoBehaviors)
         {
             while (items.HasNext)
@@ -96,7 +124,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (item is null)
             {
-                return Rlp.OfEmptyList.Length;
+                return Rlp.LengthOfNull;
             }
 
             return Rlp.LengthOfSequence(GetContentLength(item, GetBlockInfoLength(item.BlockInfos)));

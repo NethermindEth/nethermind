@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
@@ -23,6 +24,7 @@ namespace Nethermind.State
         protected readonly ILogger _logger = logManager.GetClassLogger<PartialStorageProviderBase>();
         protected readonly List<Change> _changes = new(Resettable.StartCapacity);
         private int _protectedPosition = Resettable.EmptyPosition;
+        private int _intraBlockCacheHighWater;
 
         // stack of snapshot indexes on changes for start of each transaction
         // this is needed for OriginalValues for new transactions
@@ -80,6 +82,8 @@ namespace Nethermind.State
             {
                 return;
             }
+
+            if (_intraBlockCache.Count > _intraBlockCacheHighWater) _intraBlockCacheHighWater = _intraBlockCache.Count;
 
             ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
             for (int i = 0; i < currentPosition - snapshot; i++)
@@ -155,10 +159,37 @@ namespace Nethermind.State
         {
             if (_logger.IsTrace) _logger.Trace("Resetting storage");
 
+            ClearIntraBlockCache();
             _changes.Clear();
             _protectedPosition = Resettable.EmptyPosition;
-            _intraBlockCache.ClearAndTrim();
             _transactionChangesSnapshots.Clear();
+        }
+
+        private void ClearIntraBlockCache()
+        {
+            int highWater = Math.Max(_intraBlockCacheHighWater, _intraBlockCache.Count);
+            if (!Core.Collections.CollectionExtensions.IsSparseForRemoval(highWater, _intraBlockCache.Capacity))
+            {
+                FullyClearIntraBlockCache();
+                return;
+            }
+
+            _intraBlockCacheHighWater = highWater;
+            ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
+            for (int i = changes.Length - 1; i >= 0; i--)
+            {
+                ref readonly Change change = ref changes[i];
+                if (change.PrevIdx == -1 && change.ChangeType == StorageChangeType.Update) _intraBlockCache.Remove(change.StorageCell);
+            }
+
+            Debug.Assert(_intraBlockCache.Count == 0, "Every cached cell has an update without a previous one.");
+            if (_intraBlockCache.Count != 0) FullyClearIntraBlockCache();
+        }
+
+        private void FullyClearIntraBlockCache()
+        {
+            _intraBlockCache.ClearAndTrim();
+            _intraBlockCacheHighWater = 0;
         }
 
         /// <summary>

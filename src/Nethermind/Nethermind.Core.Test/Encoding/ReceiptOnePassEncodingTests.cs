@@ -7,13 +7,13 @@ using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
-namespace Nethermind.Core.ZkEvm.Test.Encoding;
+namespace Nethermind.Core.Test.Encoding;
 
 /// <summary>
-/// Covers the guest's one-pass encoding of receipts for the receipts root, which the host suite cannot reach.
+/// Covers the one-pass encoding of receipts for the receipts root, in the host and in the guest.
 /// </summary>
 /// <remarks>The logs, data and gas reach every prefix width.</remarks>
-public class GuestReceiptEncodingTests
+public class ReceiptOnePassEncodingTests
 {
     private static readonly ReceiptMessageDecoder Decoder = new();
 
@@ -61,14 +61,15 @@ public class GuestReceiptEncodingTests
         {
             Hash256[] topics = new Hash256[random.Next(0, 5)];
             for (int t = 0; t < topics.Length; t++) topics[t] = new Hash256(RandomBytes(random, Hash256.Size));
-            logs[i] = new LogEntry(new Address(RandomBytes(random, Address.Size)), RandomData(random), topics);
+            Address address = random.Next(10) == 0 ? null! : new Address(RandomBytes(random, Address.Size));
+            logs[i] = random.Next(10) == 0 ? null! : new LogEntry(address, RandomData(random), topics);
         }
 
         byte[] bloom = RandomBytes(random, Bloom.ByteLength);
         return new TxReceipt
         {
             TxType = type,
-            StatusCode = (byte)random.Next(2),
+            StatusCode = random.Next(8) == 0 ? (byte)random.Next(0x80, 0x100) : (byte)random.Next(2),
             GasUsedTotal = random.Next(6) switch
             {
                 0 => 0,

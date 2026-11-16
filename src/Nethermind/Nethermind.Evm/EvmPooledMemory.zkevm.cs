@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Evm.Tracing;
@@ -238,6 +239,50 @@ public partial struct EvmPooledMemory
         }
 
         return ref start;
+    }
+
+    /// <summary>
+    /// Returns the first of the <paramref name="length"/> bytes at <paramref name="offset"/> when the memory's size and its
+    /// initialized prefix both hold them already, so an overwrite needs neither a charge nor a clear; a null reference otherwise.
+    /// </summary>
+    /// <remarks>The cheap case of <see cref="TryPrepareRangeOverwrite"/>, kept in line; it refuses the same unaligned ranges in swizzled memory.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal ref byte TryGetWrittenRange(ulong offset, ulong length)
+    {
+        if (IsSwizzled && ((offset | length) & (sizeof(uint) - 1)) != 0) return ref Unsafe.NullRef<byte>();
+        return ref GetActiveInitializedRange(offset, length);
+    }
+
+    /// <summary>
+    /// Copies the <paramref name="length"/> bytes at <paramref name="source"/> to <paramref name="destination"/>, which may overlap,
+    /// when the source lies in the initialized prefix and inside the memory as the destination expands it, and the destination fits
+    /// <see cref="TryPrepareRangeOverwrite"/>, charging the expansion to <paramref name="gas"/>; otherwise changes nothing and returns
+    /// <see langword="false"/>.
+    /// </summary>
+    /// <param name="destination">The start of the destination, below 2^32.</param>
+    /// <param name="source">The start of the source, below 2^32.</param>
+    /// <param name="length">The length of the copy, from 1 to 2^32 - 1.</param>
+    /// <param name="gas">The remaining execution gas.</param>
+    /// <remarks>
+    /// MCOPY charges the expansion to the end of both ranges. With the source ending inside <see cref="Size"/> or the destination,
+    /// that is the expansion of the destination alone. The initialized prefix can pass <see cref="Size"/>, so it does not bound
+    /// the source on its own. The gap the destination clears lies above the source.
+    /// </remarks>
+    internal bool TryCopyWithin(ulong destination, ulong source, ulong length, ref nuint gas)
+    {
+        Debug.Assert(destination <= uint.MaxValue && source <= uint.MaxValue && length is > 0 and <= uint.MaxValue);
+        ulong sourceEnd = source + length;
+        if (sourceEnd > _initializedSize || sourceEnd > Math.Max(Size, destination + length)) return false;
+
+        ref byte target = ref TryPrepareRangeOverwrite(destination, length, ref gas);
+        if (Unsafe.IsNullRef(ref target)) return false;
+
+        ref byte from = ref Unsafe.Add(ref GetBackingReference(), (nint)source);
+        if (IsSwizzled)
+            SwizzledMemory.Move(ref target, ref from, (int)length);
+        else
+            MemoryMarshal.CreateReadOnlySpan(ref from, (int)length).CopyTo(MemoryMarshal.CreateSpan(ref target, (int)length));
+        return true;
     }
 
     /// <summary>The widest gap below a word <see cref="TryPrepareWordOverwrite"/> clears.</summary>

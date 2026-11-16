@@ -438,6 +438,7 @@ public class BlockAccessListJournalTests
             Assert.That(account.StorageChanges[key].Value, Is.EqualTo((UInt256)11));
             Assert.That(account.StorageChanges[key].Index, Is.EqualTo(3u));
             Assert.That(account.StorageReads, Does.Not.Contain(key));
+            Assert.That(account.StorageChangeCount, Is.EqualTo(1));
         }
     }
 

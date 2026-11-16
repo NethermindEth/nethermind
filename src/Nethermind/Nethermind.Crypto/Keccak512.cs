@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers.Binary;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Crypto
@@ -43,8 +42,6 @@ namespace Nethermind.Crypto
 
             return Core.Extensions.Bytes.ToHexString(Bytes, withZeroX);
         }
-
-        public static Keccak512 Compute(Rlp rlp) => InternalCompute(rlp.Bytes);
 
         public static Keccak512 Compute(byte[]? input)
         {

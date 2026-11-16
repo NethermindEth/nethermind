@@ -18,7 +18,9 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.Eip2930;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
@@ -76,22 +78,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             private ResultWrapper<TResult> Execute(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
             {
-                if (stateOverride is not null)
-                {
-                    IReleaseSpec spec = specProvider.GetSpec(header);
-                    foreach ((Address address, AccountOverride? accountOverride) in stateOverride)
-                    {
-                        if (accountOverride?.MovePrecompileToAddress is not null &&
-                            spec.IsPrecompile(address) &&
-                            accountOverride.MovePrecompileToAddress == address)
-                        {
-                            return ResultWrapper<TResult>.Fail(
-                                $"account {address} is already overridden",
-                                ErrorCodes.InvalidInput);
-                        }
-                    }
-                }
-
                 // The block override is applied later, inside the bridge, after the read-only state scope is opened
                 // on this (base) header — so the overridden block number does not leak into state selection.
                 if (!_requestToken.CanBeCanceled) return ExecuteTx(header, tx, stateOverride, token);
@@ -117,7 +103,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 }
 
                 // As in Geth, overrides are validated before the call's fee fields.
-                if ((BlockchainBridge.GetUnsupportedBlockOverrideError(_blockOverride) ?? StateOverrideValidation.GetStorageConflictError(stateOverride)) is { } overrideError)
+                if ((BlockchainBridge.GetUnsupportedBlockOverrideError(_blockOverride) ?? StateOverrideValidation.GetError(stateOverride, GetSpec(_blockOverride?.ApplyTo(header) ?? header))) is { } overrideError)
                     return ResultWrapper<TResult>.Fail(overrideError, ErrorCodes.InvalidInput);
 
                 CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
@@ -297,20 +283,24 @@ namespace Nethermind.JsonRpc.Modules.Eth
             /// <summary>The hash of an unsigned dynamic-fee <paramref name="tx"/> carrying <paramref name="feeCap"/>.</summary>
             private static Hash256 HashWithFeeCap(Transaction tx, BigInteger feeCap)
             {
-                Rlp payload = Rlp.Encode(
-                    Rlp.Encode(tx.ChainId ?? 0UL),
-                    Rlp.Encode(tx.Nonce),
-                    Rlp.Encode(tx.MaxPriorityFeePerGas),
-                    Rlp.Encode(feeCap),
-                    Rlp.Encode(tx.GasLimit),
-                    tx.To is null ? Rlp.OfEmptyByteArray : Rlp.Encode(tx.To.Bytes),
-                    Rlp.Encode(tx.Value),
-                    Rlp.Encode(tx.Data.Span),
-                    Rlp.Encode(tx.AccessList ?? AccessList.Empty),
-                    Rlp.OfEmptyByteArray,
-                    Rlp.OfEmptyByteArray,
-                    Rlp.OfEmptyByteArray);
-                return Keccak.Compute([(byte)TxType.EIP1559, .. payload.Bytes]);
+                byte[] payload = RlpCodec.Write((tx, feeCap), static (ref RlpWriter writer, (Transaction Tx, BigInteger FeeCap) unsigned) =>
+                    writer.WriteSequence(unsigned, static (ref RlpWriter writer, (Transaction Tx, BigInteger FeeCap) unsigned) =>
+                    {
+                        Transaction tx = unsigned.Tx;
+                        writer.Encode(tx.ChainId ?? 0UL);
+                        writer.Encode(tx.Nonce);
+                        writer.Encode(tx.MaxPriorityFeePerGas);
+                        writer.WriteEncoded(Rlp.Encode(unsigned.FeeCap));
+                        writer.Encode(tx.GasLimit);
+                        writer.Encode(tx.To);
+                        writer.Encode(tx.Value);
+                        writer.Encode(tx.Data.Span);
+                        AccessListDecoder.Instance.Encode(ref writer, tx.AccessList ?? AccessList.Empty);
+                        writer.EncodeEmptyByteArray();
+                        writer.EncodeEmptyByteArray();
+                        writer.EncodeEmptyByteArray();
+                    }));
+                return Keccak.Compute([(byte)TxType.EIP1559, .. payload]);
             }
 
             protected override ResultWrapper<AccessListResultForRpc?> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride> stateOverride, CancellationToken token)

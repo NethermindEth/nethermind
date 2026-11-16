@@ -48,14 +48,6 @@ public sealed class WithdrawalDecoder() : RlpDecoder<Withdrawal>
         writer.EndSequence(sequence);
     }
 
-    public override Rlp Encode(Withdrawal? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
-        RlpWriter writer = RlpWriter.ContentWriter(bytes);
-        Encode(ref writer, item, rlpBehaviors);
-        return new(bytes);
-    }
-
     private static int GetContentLength(Withdrawal item) =>
         Rlp.LengthOf(item.Index) +
         Rlp.LengthOf(item.ValidatorIndex) +
@@ -63,5 +55,5 @@ public sealed class WithdrawalDecoder() : RlpDecoder<Withdrawal>
         Rlp.LengthOf(item.AmountInGwei);
 
     public override int GetLength(Withdrawal? item, RlpBehaviors _)
-        => item is null ? Rlp.OfEmptyList.Length : Rlp.LengthOfSequence(GetContentLength(item));
+        => item is null ? Rlp.LengthOfNull : Rlp.LengthOfSequence(GetContentLength(item));
 }

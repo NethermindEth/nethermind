@@ -560,8 +560,6 @@ public static class BasePersistence
 
     public interface ITrieReader
     {
-        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags);
-        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags);
         /// <summary>Passes the RLP of the state trie node at <paramref name="path"/> to <paramref name="action"/>, borrowed for the duration of the call.</summary>
         /// <remarks><paramref name="action"/> runs synchronously, at most once, and only when the node is found.</remarks>
         /// <returns>Whether the node was found and passed.</returns>
@@ -904,12 +902,6 @@ public static class BasePersistence
 
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) =>
             _flatReader.TryGetSlot(address, in slot, ref outValue);
-
-        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) =>
-            _trieReader.TryLoadStateRlp(path, flags);
-
-        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) =>
-            _trieReader.TryLoadStorageRlp(address, path, flags);
 
         public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
             _trieReader.TryLoadStateRlp(path, flags, action, arg);

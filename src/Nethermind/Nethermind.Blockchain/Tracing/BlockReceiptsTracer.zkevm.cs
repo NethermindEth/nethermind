@@ -4,6 +4,7 @@
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Tracing;
 
@@ -17,4 +18,7 @@ public partial class BlockReceiptsTracer
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static partial Hash256? ReceiptTxHash(Transaction transaction) => null;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private partial UInt256 ReceiptEffectiveGasPrice(Transaction transaction) => default;
 }
