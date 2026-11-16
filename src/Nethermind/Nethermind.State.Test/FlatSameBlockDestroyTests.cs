@@ -21,6 +21,8 @@ namespace Nethermind.Store.Test;
 [TestFixture]
 public class FlatSameBlockDestroyTests
 {
+    private static readonly Address Contract = TestItem.AddressA;
+
     [TestCase(true, true)]
     [TestCase(true, false)]
     [TestCase(false, true)]
@@ -72,43 +74,16 @@ public class FlatSameBlockDestroyTests
     }
 
     [Test]
-    public void Storage_of_a_removed_contract_stays_cleared_when_a_later_transaction_funds_the_address([Values] bool markDestroyed)
+    public void Storage_of_a_removed_contract_stays_cleared_when_a_later_transaction_funds_the_address([Values] bool markDestroyed, [Values] bool recreatedBeforeRemoval)
     {
         (IWorldState worldState, IStateReader reader, IContainer container) = TestWorldStateFactory.CreateFlatForTestWithStateReader();
         using IContainer _ = container;
-        Address contract = TestItem.AddressA;
-        StorageCell slot = new(contract, 1);
-        BlockHeader parent;
-        using (worldState.BeginScope(IWorldState.PreGenesis))
-        {
-            worldState.CreateAccount(contract, 0, 1);
-            worldState.Set(slot, (UInt256)7);
-            worldState.Commit(London.Instance);
-            worldState.CommitTree(1);
-            parent = Build.A.BlockHeader.WithNumber(1).WithStateRoot(worldState.StateRoot).TestObject;
-        }
+        BlockHeader header = RemoveAndFundInOneBlock(worldState, markDestroyed, recreatedBeforeRemoval);
 
-        BlockHeader header;
-        using (worldState.BeginScope(parent))
-        {
-            worldState.Get(slot, out UInt256 _);
-            if (markDestroyed) worldState.MarkStorageDestroyed(contract);
-            else worldState.ClearStorage(contract);
-            worldState.DeleteAccount(contract);
-            worldState.Commit(London.Instance, commitRoots: false);
-
-            worldState.CreateAccount(contract, 1);
-            worldState.Commit(London.Instance, commitRoots: false);
-
-            worldState.Commit(London.Instance);
-            worldState.CommitTree(2);
-            header = Build.A.BlockHeader.WithNumber(2).WithStateRoot(worldState.StateRoot).TestObject;
-        }
-
-        reader.GetStorage(header, contract, 1, out UInt256 beforeFlush);
+        reader.GetStorage(header, Contract, 1, out UInt256 beforeFlush);
         container.Resolve<IFlatDbManager>().FlushCache(CancellationToken.None);
-        reader.GetStorage(header, contract, 1, out UInt256 afterFlush);
-        bool accountExists = reader.TryGetAccount(header, contract, out AccountStruct account);
+        reader.GetStorage(header, Contract, 1, out UInt256 afterFlush);
+        bool accountExists = reader.TryGetAccount(header, Contract, out AccountStruct account);
 
         using (Assert.EnterMultipleScope())
         {
@@ -116,6 +91,64 @@ public class FlatSameBlockDestroyTests
             Assert.That(afterFlush, Is.EqualTo(UInt256.Zero));
             Assert.That(accountExists, Is.True);
             Assert.That(account.HasStorage, Is.False);
+        }
+    }
+
+    [Test]
+    public void Trie_state_root_of_a_removed_and_funded_contract_matches_the_flat_state_root([Values] bool recreatedBeforeRemoval)
+    {
+        (IWorldState flatWorldState, _, IContainer container) = TestWorldStateFactory.CreateFlatForTestWithStateReader();
+        using IContainer flatContainer = container;
+        BlockHeader flatHeader = RemoveAndFundInOneBlock(flatWorldState, markDestroyed: true, recreatedBeforeRemoval);
+
+        (IWorldState trieWorldState, IStateReader trieReader) = TestWorldStateFactory.CreateForTestWithStateReader();
+        BlockHeader trieHeader = RemoveAndFundInOneBlock(trieWorldState, markDestroyed: false, recreatedBeforeRemoval);
+        trieReader.GetStorage(trieHeader, Contract, 1, out UInt256 trieValue);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trieHeader.StateRoot, Is.EqualTo(flatHeader.StateRoot));
+            Assert.That(trieValue, Is.EqualTo(UInt256.Zero));
+        }
+    }
+
+    private static BlockHeader RemoveAndFundInOneBlock(IWorldState worldState, bool markDestroyed, bool recreatedBeforeRemoval)
+    {
+        StorageCell slot = new(Contract, 1);
+        BlockHeader parent;
+        using (worldState.BeginScope(IWorldState.PreGenesis))
+        {
+            worldState.CreateAccount(Contract, 0, 1);
+            worldState.Set(slot, (UInt256)7);
+            worldState.Commit(London.Instance);
+            worldState.CommitTree(1);
+            parent = Build.A.BlockHeader.WithNumber(1).WithStateRoot(worldState.StateRoot).TestObject;
+        }
+
+        using (worldState.BeginScope(parent))
+        {
+            worldState.Get(slot, out UInt256 _);
+            if (recreatedBeforeRemoval)
+            {
+                worldState.MarkStorageDestroyed(Contract);
+                worldState.DeleteAccount(Contract);
+                worldState.Commit(London.Instance, commitRoots: false);
+
+                worldState.CreateAccount(Contract, 0, 1);
+                worldState.Set(slot, (UInt256)9);
+            }
+
+            if (markDestroyed) worldState.MarkStorageDestroyed(Contract);
+            else worldState.ClearStorage(Contract);
+            worldState.DeleteAccount(Contract);
+            worldState.Commit(London.Instance, commitRoots: false);
+
+            worldState.CreateAccount(Contract, 1);
+            worldState.Commit(London.Instance, commitRoots: false);
+
+            worldState.Commit(London.Instance);
+            worldState.CommitTree(2);
+            return Build.A.BlockHeader.WithNumber(2).WithStateRoot(worldState.StateRoot).TestObject;
         }
     }
 }
