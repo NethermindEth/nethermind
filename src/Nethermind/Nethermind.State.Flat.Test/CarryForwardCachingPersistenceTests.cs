@@ -16,6 +16,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Init.Modules;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 using NUnit.Framework;
@@ -134,6 +135,25 @@ public class CarryForwardCachingPersistenceTests
         using (IPersistence.IPersistenceReader reader = cache.CreateReader()) reader.GetAccount(Address);
 
         Assert.That(inner.AccountReads, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task GetAccount_WrittenAccount_InvalidatedOnCommit([Values] bool slim)
+    {
+        FakePersistence inner = new();
+        await using CarryForwardCachingPersistence cache = new(inner);
+        Account account = new(1, 100);
+
+        ReadAccount(cache, Address);
+        using (IPersistence.IWriteBatch batch = cache.CreateWriteBatch(Basis0, Basis1))
+        {
+            if (slim) batch.SetSlimAccount(Address, AccountDecoder.Slim.Encode(account));
+            else batch.SetAccount(Address, account);
+        }
+        inner.ReaderState = Basis1;
+        ReadAccount(cache, Address);
+
+        Assert.That(inner.AccountReads, Is.EqualTo(2));
     }
 
     [Test]
