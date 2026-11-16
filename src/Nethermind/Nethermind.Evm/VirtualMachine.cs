@@ -2018,16 +2018,8 @@ public partial class VirtualMachine<TGasPolicy>(
     private void TraceActionErrorDetailsCore(string error) => _txTracer.ReportActionErrorDetails(error);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    internal void TraceInvalidOpcode(Instruction opcode)
-    {
-        if (IsTracingActions)
-        {
-            // Opcode loggers receive the execution fault separately, not as a pre-execution step error.
-            _txTracer.ForEach<ITxTracer, Instruction>(
-                static tracer => tracer.IsTracingActions && !tracer.IsTracingInstructions, opcode,
-                static (tracer, instruction) => tracer.ReportActionErrorDetails($"invalid opcode: {InstructionNames.GetName(instruction)}"));
-        }
-    }
+    internal void TraceInvalidOpcode(Instruction opcode) =>
+        _txTracer.ReportActionErrorDetails($"invalid opcode: {InstructionNames.GetName(opcode)}", actionOnly: true);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     internal void EndInstructionTrace(ulong gasAvailable, EvmExceptionType? evmExceptionType = null)

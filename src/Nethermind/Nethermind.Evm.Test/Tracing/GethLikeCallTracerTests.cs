@@ -792,11 +792,14 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec(activation);
         NativeCallTracer native = new(tx, spec, GetGethTraceOptions(null));
         GethLikeTxMemoryTracer? memory = dispatch == TraceDispatch.Traced ? new(tx, GethTraceOptions.Default) : null;
+        OpcodeDetailTracer instructionObserver = new(true, false);
+        OpcodeDetailTracer memoryObserver = new(false, true);
         using ITxTracer tracer = dispatch switch
         {
             TraceDispatch.Untraced => native,
             TraceDispatch.Cancelable => native.WithCancellation(CancellationToken.None),
-            _ => new CompositeTxTracer(native.WithCancellation(CancellationToken.None), memory!).WithCancellation(CancellationToken.None)
+            _ => new CompositeTxTracer(native.WithCancellation(CancellationToken.None), memory!, instructionObserver, memoryObserver)
+                .WithCancellation(CancellationToken.None)
         };
         _processor.CallAndRestore(tx, block.Header, tracer);
         using GethLikeTxTrace callResult = native.BuildResult();
@@ -807,6 +810,8 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(frame.Error, Is.EqualTo(expectedError), "native frame error");
+            Assert.That(instructionObserver.Details, Is.Zero, "instruction tracers do not receive action-only opcode details");
+            Assert.That(memoryObserver.Details, Is.Zero, "memory tracers do not receive action-only opcode details");
             Assert.That(frame.To, Is.EqualTo(child ? TestItem.AddressC : tx.To), "failing frame target");
             if (child)
             {
@@ -833,6 +838,23 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
                 }
             }
             Assert.That(matchingSteps, Is.EqualTo(1), "the opcode's struct step is present exactly once");
+        }
+    }
+
+    private sealed class OpcodeDetailTracer : TxTracer
+    {
+        public int Details { get; private set; }
+
+        public OpcodeDetailTracer(bool instructions, bool memory)
+        {
+            IsTracingActions = true;
+            IsTracingInstructions = instructions;
+            IsTracingMemory = memory;
+        }
+
+        public override void ReportActionErrorDetails(string error)
+        {
+            if (error.StartsWith("invalid opcode:", StringComparison.Ordinal)) Details++;
         }
     }
 

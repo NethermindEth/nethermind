@@ -320,6 +320,9 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
     /// <inheritdoc/>
     public void ReportActionErrorDetails(string error) => _currentTxTracer.ReportActionErrorDetails(error);
 
+    /// <inheritdoc/>
+    public void ReportActionErrorDetails(string error, bool actionOnly) => _currentTxTracer.ReportActionErrorDetails(error, actionOnly);
+
     public void ReportActionError(EvmExceptionType exceptionType) =>
         _currentTxTracer.ReportActionError(exceptionType);
 

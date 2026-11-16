@@ -792,7 +792,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             EvmExceptionType result = EvmInstructions.InstructionBadInstruction(ref stack, ref gas, vm);
             // Dispatch consumed the opcode byte; this handler never consumes an immediate operand.
-            if (result == EvmExceptionType.BadInstruction)
+            if (result == EvmExceptionType.BadInstruction && vm.IsTracingActions)
                 vm.TraceInvalidOpcode((Instruction)Unsafe.Add(ref stack.Code, programCounter - 1));
             return result;
         }
@@ -2041,7 +2041,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
         {
             EvmExceptionType result = EvmInstructions.InstructionInvalid(ref stack, ref gas, vm);
-            if (result == EvmExceptionType.BadInstruction)
+            if (result == EvmExceptionType.BadInstruction && vm.IsTracingActions)
                 vm.TraceInvalidOpcode(Instruction.INVALID);
             return result;
         }
