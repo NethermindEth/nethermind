@@ -17,6 +17,9 @@ public class BuiltInPluginsTests
     {
         List<Type> pluginInAssembly = TypeDiscovery.FindNethermindBasedTypes(typeof(INethermindPlugin)).ToList();
         pluginInAssembly.Remove(typeof(IConsensusPlugin));
+        // Optional plugins referenced only by tests are not embedded in the runner.
+        HashSet<string> runnerReferences = typeof(Program).Assembly.GetReferencedAssemblies().Select(assembly => assembly.Name).ToHashSet();
+        pluginInAssembly.RemoveAll(type => !runnerReferences.Contains(type.Assembly.GetName().Name));
 
         HashSet<Type> builtInPlugins = NethermindPlugins.EmbeddedPlugins.ToHashSet();
         foreach (Type type in pluginInAssembly)
