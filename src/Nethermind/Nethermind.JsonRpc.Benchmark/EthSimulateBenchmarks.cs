@@ -57,9 +57,12 @@ public class EthSimulateBenchmarks
             .Build();
 
         IWorldState stateProvider = _container.Resolve<IMainProcessingContext>().WorldState;
-        stateProvider.CreateAccount(Address.Zero, 1000.Ether);
-        stateProvider.Commit(specProvider.GenesisSpec);
-        stateProvider.CommitTree(0);
+        using (stateProvider.BeginScope(IWorldState.PreGenesis))
+        {
+            stateProvider.CreateAccount(Address.Zero, 1000.Ether);
+            stateProvider.Commit(specProvider.GenesisSpec);
+            stateProvider.CommitTree(0);
+        }
 
         Block genesisBlock = Build.A.Block.Genesis.TestObject;
         IBlockTree blockTree = _container.Resolve<IBlockTree>();
@@ -106,7 +109,7 @@ public class EthSimulateBenchmarks
                         { Sender, new AccountOverride { Balance = 1.Ether } },
                         { Caller, new AccountOverride { Code = _code } }
                     },
-                    Calls = [new LegacyTransactionForRpc { From = Sender, To = Caller, Gas = 10_000_000, GasPrice = 0 }]
+                    Calls = [new LegacyTransactionForRpc { From = Sender, To = Caller, Gas = 3_000_000, GasPrice = 0 }]
                 }
             ]
         };
