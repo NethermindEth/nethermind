@@ -492,8 +492,8 @@ public class ColumnsDbTests
                 // From here the iterator is on keys[i]. Next lands on keys[i + 1], before the requested key, so the
                 // bounded probe takes over. It steps past a key that is absent between keys[i + 1] and keys[i + 2]
                 // and settles the miss without a point read. keys[i + 2], where it stopped, is still served, and
-                // keys[i + 4] is found by the probe. Several rounds, so the cleanup timer of the iterator pool cannot
-                // hide a branch.
+                // keys[i + 4] is found by the probe. Several rounds, so one read that the cleanup timer of the
+                // iterator pool sends to a seek cannot hide the probe branches.
                 for (int i = 8; i + 4 < keys.Length; i += 4)
                 {
                     Assert.That(KeyValueStoreReads.Read(snapshotColumn, [.. keys[i + 1], 0], ReadFlags.HintReadAhead, spanAction), Is.Null, $"absent key after key {i + 1}");
@@ -589,7 +589,7 @@ public class ColumnsDbTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(long.Parse(column.GatherProperty("rocksdb.num-entries-active-mem-table")!), Is.Zero, "reads must reach SST files, not the memtable");
-            Assert.That(long.Parse(column.GatherProperty("rocksdb.num-files-at-level0")!), Is.GreaterThanOrEqualTo(1), "the flush must leave an SST file");
+            Assert.That(long.Parse(column.GatherProperty("rocksdb.num-files-at-level0")!), Is.EqualTo(1), "the flush must write one SST file");
         }
         long usageBefore = BlockCacheUsage(column);
 
