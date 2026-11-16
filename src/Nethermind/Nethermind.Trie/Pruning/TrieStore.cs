@@ -509,6 +509,19 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         return rlp;
     }
 
+    /// <summary>Loads the RLP of several nodes at an empty path, as <see cref="TryLoadRlp"/> does for each.</summary>
+    public void TryLoadRlps(Hash256? address, ReadOnlySpan<Hash256> keccaks, Span<byte[]?> rlps, ReadFlags readFlags = ReadFlags.None)
+    {
+        _nodeStorage.GetMany(address, keccaks, rlps, readFlags);
+        for (int i = 0; i < keccaks.Length; i++)
+        {
+            if (rlps[i] is not null)
+            {
+                Metrics.IncrementLoadedFromDbNodesCount();
+            }
+        }
+    }
+
     public byte[] LoadRlp(Hash256? address, in TreePath path, Hash256 keccak, ReadFlags readFlags = ReadFlags.None)
     {
         byte[]? rlp = TryLoadRlp(address, path, keccak, readFlags);

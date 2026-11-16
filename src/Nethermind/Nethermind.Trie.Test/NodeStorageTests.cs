@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using NUnit.Framework;
 
 namespace Nethermind.Trie.Test;
@@ -145,5 +147,36 @@ public class NodeStorageTests(INodeStorage.KeyScheme currentKeyScheme)
 
         nodeStorage.Get(address, path, Keccak.Zero, ReadFlags.HintReadAhead);
         testDb.KeyWasReadWithFlags(NodeStorage.GetHalfPathNodeStoragePath(address, path, Keccak.Zero), expectedReadFlags);
+    }
+
+    [Test]
+    public void GetMany_ReturnsWhatGetReturns([Values] bool batching, [Values] bool storage)
+    {
+        TestMemDb testDb = batching ? new BatchingMemDb() : new TestMemDb();
+        NodeStorage nodeStorage = new(testDb, currentKeyScheme);
+        Hash256? address = storage ? TestItem.KeccakE : null;
+        nodeStorage.Set(address, TreePath.Empty, TestItem.KeccakA, [1]);
+        byte[] otherSchemeKey = currentKeyScheme == INodeStorage.KeyScheme.Hash
+            ? NodeStorage.GetHalfPathNodeStoragePath(address, TreePath.Empty, TestItem.KeccakB)
+            : TestItem.KeccakB.BytesToArray();
+        testDb[otherSchemeKey] = [2];
+
+        Hash256[] hashes = [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC, Keccak.EmptyTreeHash];
+        byte[]?[] values = new byte[]?[hashes.Length];
+        nodeStorage.GetMany(address, hashes, values, ReadFlags.HintCacheMiss);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < hashes.Length; i++)
+            {
+                Assert.That(values[i], Is.EqualTo(nodeStorage.Get(address, TreePath.Empty, hashes[i])));
+            }
+
+            Assert.That(values[2], Is.Null);
+            if (testDb is BatchingMemDb batchingDb)
+            {
+                Assert.That(batchingDb.BatchReads, Is.EqualTo(currentKeyScheme == INodeStorage.KeyScheme.Hash ? 1 : 0));
+            }
+        }
     }
 }

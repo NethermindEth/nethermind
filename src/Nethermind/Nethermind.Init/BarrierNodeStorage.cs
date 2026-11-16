@@ -27,6 +27,9 @@ internal sealed class BarrierNodeStorage(INodeStorage inner, IStatePersistenceBa
     public byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None)
         => inner.Get(address, in path, in keccak, readFlags);
 
+    public void GetMany(Hash256? address, ReadOnlySpan<Hash256> keccaks, Span<byte[]?> values, ReadFlags readFlags = ReadFlags.None)
+        => inner.GetMany(address, keccaks, values, readFlags);
+
     public void Set(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> data, WriteFlags writeFlags = WriteFlags.None)
         => inner.Set(address, in path, in hash, data, writeFlags);
 

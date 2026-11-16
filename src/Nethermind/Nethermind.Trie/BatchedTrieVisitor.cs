@@ -310,6 +310,9 @@ public class BatchedTrieVisitor<TNodeContext>
         try
         {
             using ArrayPoolListRef<int> resolveOrdering = new(_maxBatchSize);
+            Hash256[] hashes = new Hash256[_maxBatchSize];
+            byte[]?[] rlps = new byte[]?[_maxBatchSize];
+            PreloadedRlpResolver preloaded = new(_resolver);
             TreePath emptyPath = TreePath.Empty;
             while (GetNextBatch() is { } currentBatch)
                 using (currentBatch)
@@ -344,6 +347,18 @@ public class BatchedTrieVisitor<TNodeContext>
                         flags = ReadFlags.HintReadAhead;
                     }
 
+                    // Read-ahead serves the sorted keys from tailing iterators, so only point reads are batched.
+                    bool batchRead = flags == ReadFlags.None;
+                    if (batchRead)
+                    {
+                        for (int i = 0; i < resolveOrdering.Count; i++)
+                        {
+                            hashes[i] = currentBatch[resolveOrdering[i]].Item1.Keccak!;
+                        }
+
+                        _resolver.TryLoadRlps(hashes.AsSpan(0, resolveOrdering.Count), rlps.AsSpan(0, resolveOrdering.Count), flags);
+                    }
+
                     // This loop is about 60 to 70% of the time spent. If you set very high memory budget, this drop to about 50MB.
                     for (int i = 0; i < resolveOrdering.Count; i++)
                     {
@@ -353,7 +368,9 @@ public class BatchedTrieVisitor<TNodeContext>
                         try
                         {
                             Hash256? theKeccak = nodeToResolve.Keccak;
-                            nodeToResolve.ResolveNode(_resolver, emptyPath, flags);
+                            // A node the batch did not find is read again alone, so it fails as a single read does.
+                            preloaded.Rlp = batchRead ? rlps[i] : null;
+                            nodeToResolve.ResolveNode(preloaded.Rlp is null ? _resolver : preloaded, emptyPath, flags);
                             nodeToResolve.Keccak = theKeccak; // The resolve may set a key which clear the keccak
                         }
                         catch (TrieException)
@@ -485,6 +502,22 @@ public class BatchedTrieVisitor<TNodeContext>
             default:
                 throw new TrieException($"An attempt was made to visit a node {node.Keccak} of type {node.NodeType}");
         }
+    }
+
+    /// <summary>Returns <see cref="Rlp"/>, loaded in a batch beforehand, as the RLP of the node being resolved.</summary>
+    private sealed class PreloadedRlpResolver(ITrieNodeResolver inner) : ITrieNodeResolver
+    {
+        public byte[]? Rlp;
+
+        public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => inner.FindCachedOrUnknown(path, hash);
+
+        public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => Rlp;
+
+        public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => Rlp;
+
+        public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => inner.GetStorageTrieNodeResolver(address);
+
+        public INodeStorage.KeyScheme Scheme => inner.Scheme;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]

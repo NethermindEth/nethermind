@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie.Pruning;
@@ -33,6 +34,9 @@ public class TrieNodeResolverWithReadFlags(ITrieNodeResolver baseResolver, ReadF
 
         return _baseResolver.LoadRlp(treePath, hash, _defaultFlags);
     }
+
+    public void TryLoadRlps(ReadOnlySpan<Hash256> hashes, Span<byte[]?> rlps, ReadFlags flags = ReadFlags.None) =>
+        _baseResolver.TryLoadRlps(hashes, rlps, flags | _defaultFlags);
 
     public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => new TrieNodeResolverWithReadFlags(_baseResolver.GetStorageTrieNodeResolver(address), _defaultFlags);
 

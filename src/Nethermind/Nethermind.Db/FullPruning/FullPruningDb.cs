@@ -21,7 +21,7 @@ namespace Nethermind.Db.FullPruning
     /// When <see cref="IPruningContext"/> returned in <see cref="TryStartPruning"/> is <see cref="IDisposable.Dispose"/>d it will delete the pruning DB if the pruning was not successful.
     /// It uses <see cref="IRocksDbFactory"/> to create new pruning DB's. Check <see cref="FullPruningInnerDbFactory"/> to see how inner sub DB's are organized.
     /// </remarks>
-    public class FullPruningDb : IDb, IFullPruningDb, ITunableDb
+    public class FullPruningDb : IDb, IFullPruningDb, ITunableDb, IBatchReadOnlyDb
     {
         private readonly DbSettings _settings;
         private readonly IDbFactory _dbFactory;
@@ -85,6 +85,20 @@ namespace Nethermind.Db.FullPruning
             }
 
             return memoryManager;
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>While a pruning that duplicates reads runs, the keys are read one at a time through
+        /// <see cref="GetSpan"/>, so each found value is also copied to the new DB.</remarks>
+        void IBatchReadOnlyDb.GetMany<T, TDecoder>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values, TDecoder decoder, ReadFlags flags)
+        {
+            if (_pruningContext?.DuplicateReads == true && (flags & ReadFlags.SkipDuplicateRead) == 0)
+            {
+                DbExtensions.GetOneByOne(this, keys, keyLength, values, decoder, flags);
+                return;
+            }
+
+            _currentDb.GetMany(keys, keyLength, values, decoder, flags);
         }
 
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)

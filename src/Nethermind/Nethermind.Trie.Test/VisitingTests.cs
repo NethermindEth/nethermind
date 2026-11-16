@@ -13,6 +13,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
+using Nethermind.Trie.NodeBuffer;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -144,6 +145,66 @@ public class VisitingTests
                 Assert.That(path[index], Is.EqualTo(1), "The given set should be 1 as this is the only nibble");
             }
         }
+    }
+
+    [Test]
+    public void Batched_hash_visit_reads_nodes_in_batches_with_same_stats([Values] bool withMissingNode)
+    {
+        MemDb source = new();
+        NodeStorage sourceStorage = new(source, INodeStorage.KeyScheme.Hash);
+        StateTree state = new(new RawScopedTrieStore(sourceStorage), LimboLogs.Instance);
+        for (int i = 0; i < 64; i++)
+        {
+            Hash256 addressHash = Keccak.Compute(BitConverter.GetBytes(i));
+            PatriciaTree storage = new(new RawScopedTrieStore(sourceStorage, addressHash), LimboLogs.Instance);
+            for (int j = 0; j < 4; j++)
+            {
+                storage.Set(Keccak.Compute(BitConverter.GetBytes(i * 4 + j)).Bytes, [(byte)(j + 1)]);
+            }
+
+            storage.Commit();
+            state.Set(addressHash, new Account((ulong)i, (ulong)i, storage.RootHash, Keccak.OfAnEmptyString));
+        }
+
+        state.Commit();
+        Hash256 root = state.RootHash;
+
+        if (withMissingNode)
+        {
+            source.Remove(source.GetAllKeys().First(key => !key.AsSpan().SequenceEqual(root.Bytes)));
+        }
+
+        BatchingMemDb batchingDb = new();
+        MemDb plainDb = new();
+        foreach (KeyValuePair<byte[], byte[]?> entry in source.GetAll())
+        {
+            batchingDb[entry.Key] = entry.Value;
+            plainDb[entry.Key] = entry.Value;
+        }
+
+        TrieStats batched = CollectHashScanStats(batchingDb, root);
+        TrieStats single = CollectHashScanStats(plainDb, root);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batched.ToString(), Is.EqualTo(single.ToString()));
+            Assert.That(batched.MissingNodes, Is.EqualTo(withMissingNode ? 1 : 0));
+            Assert.That(batchingDb.BatchReads, Is.GreaterThan(0));
+        }
+    }
+
+    private static TrieStats CollectHashScanStats(IKeyValueStoreWithBatching db, Hash256 root)
+    {
+        TestFinalizedStateProvider finalizedStateProvider = new(64);
+        using TrieStore trieStore = new(new NodeStorage(db, INodeStorage.KeyScheme.Hash), No.Pruning, Persist.EveryBlock,
+            finalizedStateProvider, new PruningConfig(), LimboLogs.Instance);
+        finalizedStateProvider.TrieStore = trieStore;
+        StateTree tree = new(trieStore.AsReadOnly().GetTrieStore(null), LimboLogs.Instance);
+        TrieStatsCollector collector = new(new MemDb(), LimboLogs.Instance);
+        tree.Accept(new NodeRecordVisitorAdapter<TrieStatsCollector.Context>(collector), root,
+            new VisitingOptions { MaxDegreeOfParallelism = 1, FullScanMemoryBudget = 1.MiB });
+        collector.Finish();
+        return collector.Stats;
     }
 
     private static IEnumerable<TestCaseData> GetOptions()

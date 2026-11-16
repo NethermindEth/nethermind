@@ -19,6 +19,16 @@ public interface INodeStorage
     public bool RequirePath { get; }
 
     byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None);
+
+    /// <summary>Reads the nodes with the given hashes at an empty path, as <see cref="Get"/> does for each.</summary>
+    /// <param name="values">Receives one value per hash, in order; null where the node is missing.</param>
+    void GetMany(Hash256? address, ReadOnlySpan<Hash256> keccaks, Span<byte[]?> values, ReadFlags readFlags = ReadFlags.None)
+    {
+        for (int i = 0; i < keccaks.Length; i++)
+        {
+            values[i] = Get(address, TreePath.Empty, keccaks[i], readFlags);
+        }
+    }
     void Set(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> data, WriteFlags writeFlags = WriteFlags.None);
     IWriteBatch StartWriteBatch();
 

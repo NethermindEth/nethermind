@@ -597,7 +597,7 @@ public class ChainLevelInfoRepositoryTests
             }
         }
 
-        void IBatchReadOnlyDb.GetMany<T, TDecoder>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values, TDecoder decoder)
+        void IBatchReadOnlyDb.GetMany<T, TDecoder>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values, TDecoder decoder, ReadFlags flags)
         {
             if (mixedLengths) throw new InvalidOperationException("Mixed-width keys must use one legacy batch.");
             DecodedBatchReads++;

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
@@ -131,6 +132,46 @@ public class NodeStorage(
 
         return _keyValueStore.Get(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags)
                ?? _keyValueStore.Get(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>With the hash scheme over a store that batches, the hash keys are read in one batch; a node missing
+    /// there is then read as <see cref="Get"/> reads it, which also tries the half-path key.</remarks>
+    public void GetMany(Hash256? address, ReadOnlySpan<Hash256> keccaks, Span<byte[]?> values, ReadFlags readFlags = ReadFlags.None)
+    {
+        values = values[..keccaks.Length];
+        if (Scheme == INodeStorage.KeyScheme.Hash && _keyValueStore is IBatchReadOnlyDb)
+        {
+            int keysLength = keccaks.Length * Hash256.Size;
+            byte[] keys = ArrayPool<byte>.Shared.Rent(keysLength);
+            try
+            {
+                for (int i = 0; i < keccaks.Length; i++)
+                {
+                    keccaks[i].Bytes.CopyTo(keys.AsSpan(i * Hash256.Size));
+                }
+
+                _keyValueStore.GetMany(keys.AsSpan(0, keysLength), Hash256.Size, values, default(ByteArrayDecoder), readFlags);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(keys);
+            }
+        }
+        else
+        {
+            values.Clear();
+        }
+
+        for (int i = 0; i < keccaks.Length; i++)
+        {
+            values[i] ??= Get(address, TreePath.Empty, keccaks[i], readFlags);
+        }
+    }
+
+    private readonly struct ByteArrayDecoder : IValueDecoder<byte[]?>
+    {
+        public byte[]? Decode(ReadOnlySpan<byte> buffer) => buffer.ToArray();
     }
 
     [SkipLocalsInit]

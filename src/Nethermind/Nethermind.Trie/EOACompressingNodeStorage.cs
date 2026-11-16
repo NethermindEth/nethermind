@@ -21,6 +21,15 @@ internal sealed class EOACompressingNodeStorage(INodeStorage nodeStorage) : INod
     public byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None)
         => Decompress(nodeStorage.Get(address, in path, in keccak, readFlags));
 
+    public void GetMany(Hash256? address, ReadOnlySpan<Hash256> keccaks, Span<byte[]?> values, ReadFlags readFlags = ReadFlags.None)
+    {
+        nodeStorage.GetMany(address, keccaks, values, readFlags);
+        for (int i = 0; i < keccaks.Length; i++)
+        {
+            values[i] = Decompress(values[i]);
+        }
+    }
+
     public void Set(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> data, WriteFlags writeFlags = WriteFlags.None)
         => nodeStorage.Set(address, in path, in hash, Compress(data, stackalloc byte[data.Length]), writeFlags);
 

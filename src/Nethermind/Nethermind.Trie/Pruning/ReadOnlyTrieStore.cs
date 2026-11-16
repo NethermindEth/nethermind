@@ -47,6 +47,9 @@ namespace Nethermind.Trie.Pruning
 
             public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => fullTrieStore.TryLoadRlp(address, path, hash, flags);
 
+            public void TryLoadRlps(ReadOnlySpan<Hash256> hashes, Span<byte[]?> rlps, ReadFlags flags = ReadFlags.None) =>
+                fullTrieStore._trieStore.TryLoadRlps(address, hashes, rlps, flags);
+
             public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address1) =>
                 address1 == address ? this : new ScopedReadOnlyTrieStore(fullTrieStore, address1);
 

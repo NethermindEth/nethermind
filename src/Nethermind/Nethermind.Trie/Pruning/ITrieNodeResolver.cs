@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
@@ -31,6 +32,19 @@ namespace Nethermind.Trie.Pruning
         /// <param name="hash"></param>
         /// <returns></returns>
         byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
+
+        /// <summary>
+        /// Loads the RLP of several nodes at an empty path, as <see cref="TryLoadRlp"/> does for each.
+        /// </summary>
+        /// <param name="rlps">Receives one RLP per hash, in order; null where the node is missing.</param>
+        /// <remarks>Stores that read in batches override this to read all the nodes in one batch.</remarks>
+        void TryLoadRlps(ReadOnlySpan<Hash256> hashes, Span<byte[]?> rlps, ReadFlags flags = ReadFlags.None)
+        {
+            for (int i = 0; i < hashes.Length; i++)
+            {
+                rlps[i] = TryLoadRlp(TreePath.Empty, hashes[i], flags);
+            }
+        }
 
         /// <summary>
         /// Got another node resolver for another trie. Used for tree traversal. For simplicity, if address is null,
