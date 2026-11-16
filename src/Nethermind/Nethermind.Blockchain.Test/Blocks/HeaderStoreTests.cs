@@ -3,6 +3,7 @@
 
 using System;
 using System.IO;
+using Autofac;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -11,13 +12,19 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
+using Nethermind.Db.Rocks;
+using Nethermind.Db.Rocks.Config;
+using Nethermind.Logging;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using NUnit.Framework;
+using Testably.Abstractions;
 
 namespace Nethermind.Blockchain.Test.Blocks;
 
@@ -292,6 +299,66 @@ public class HeaderStoreTests
             Assert.That(store.TryAppendRlp(TestItem.KeccakA, 100, storeDecoder ? decoder : new CountingHeaderDecoder(), rlp), Is.False);
             Assert.That(rlp.Count, Is.Zero);
         }
+    }
+
+    /// <param name="rocks">Whether the headers are in RocksDB, which reads them in one batch.</param>
+    [Test]
+    public void AppendRlps_appends_each_header_as_TryAppendRlp_does([Values] bool storeDecoder, [Values] bool rocks)
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using IDb headerDb = rocks ? CreateRocksDb(directory) : new TestMemDb();
+        HeaderDecoder decoder = new();
+        HeaderStore store = new(headerDb, new MemDb(), decoder);
+        BlockHeader[] headers = new BlockHeader[5];
+        for (int i = 0; i < headers.Length; i++) headers[i] = Build.A.BlockHeader.WithNumber(100 + (ulong)i).TestObject;
+
+        HeaderSource?[] sources = [HeaderSource.NumberedKey, null, HeaderSource.HashKey, HeaderSource.Cache, HeaderSource.NumberedKey];
+        for (int i = 0; i < headers.Length; i++)
+        {
+            switch (sources[i])
+            {
+                case HeaderSource.NumberedKey:
+                    store.Insert(headers[i]);
+                    break;
+                case HeaderSource.HashKey:
+                    headerDb.Set(headers[i].Hash!, decoder.Encode(headers[i]));
+                    break;
+                case HeaderSource.Cache:
+                    store.Cache(headers[i]);
+                    break;
+            }
+        }
+
+        ValueHash256[] hashes = new ValueHash256[headers.Length];
+        ulong[] numbers = new ulong[headers.Length];
+        for (int i = 0; i < headers.Length; i++)
+        {
+            hashes[i] = headers[i].Hash!.ValueHash256;
+            numbers[i] = headers[i].Number;
+        }
+
+        using ArrayPoolList<byte> rlp = new(0);
+        Range[] items = new Range[headers.Length];
+        store.AppendRlps(hashes, numbers, storeDecoder ? decoder : new CountingHeaderDecoder(), rlp, items);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < headers.Length; i++)
+            {
+                if (sources[i] is null)
+                    Assert.That(items[i], Is.EqualTo(default(Range)), $"header {i}");
+                else
+                    Assert.That(rlp.AsSpan()[items[i]].ToArray(), Is.EqualTo(new HeaderDecoder().Encode(headers[i])), $"header {i}");
+            }
+        }
+    }
+
+    private static IDb CreateRocksDb(TempPath directory)
+    {
+        using IContainer configs = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
+        return new RocksDbFactory(configs.Resolve<IRocksDbConfigFactory>(), configs.Resolve<IDbConfig>(), new HyperClockCacheWrapper(),
+                new RealFileSystem(), LimboLogs.Instance, directory.Path)
+            .CreateDb(new DbSettings(DbNames.Headers, "headers"));
     }
 
     private sealed class CountingHeaderDecoder : HeaderDecoder

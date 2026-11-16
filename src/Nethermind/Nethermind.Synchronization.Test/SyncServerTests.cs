@@ -41,6 +41,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.State.Repositories;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastSync;
@@ -1194,13 +1195,15 @@ public class SyncServerTests
 
     /// <param name="start">The number of the canonical start header, or -1 for the side block at <see cref="SideBlockNumber"/>.</param>
     /// <param name="missing">Whether the canonical header at <see cref="MissingHeaderNumber"/> is deleted.</param>
+    /// <param name="batched">Whether the server reads main chain requests in batches.</param>
     [Test]
     public void FindHeadersRlp_encodes_the_headers_that_the_block_tree_finds(
         [Values(-1, 0, 5, 19)] int start,
         [Values(0, 1, 4, 30)] int count,
         [Values(0, 2)] int skip,
         [Values] bool reverse,
-        [Values] bool missing)
+        [Values] bool missing,
+        [Values] bool batched)
     {
         BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(20);
         BlockTree tree = builder.TestObject;
@@ -1210,7 +1213,8 @@ public class SyncServerTests
         ((IClearableCache)builder.HeaderStore).ClearCache();
 
         Hash256 startHash = start < 0 ? sideBlock.Hash! : tree.FindHash((ulong)start)!;
-        using IOwnedReadOnlyList<byte> rlp = new Context().CreateSyncServer(tree, headerStore: builder.HeaderStore)
+        using IOwnedReadOnlyList<byte> rlp = new Context()
+            .CreateSyncServer(tree, headerStore: builder.HeaderStore, chainLevelInfoRepository: batched ? builder.ChainLevelInfoRepository : null)
             .FindHeadersRlp(startHash, count, skip, reverse);
 
         HeaderDecoder decoder = new();
@@ -1335,7 +1339,8 @@ public class SyncServerTests
             ISyncModeSelector? syncModeSelector = null,
             ISpecProvider? specProvider = null,
             IReceiptFinder? receiptFinder = null,
-            IHeaderStore? headerStore = null) =>
+            IHeaderStore? headerStore = null,
+            IChainLevelInfoRepository? chainLevelInfoRepository = null) =>
             new(
                 WorldStateManager,
                 new MemDb(),
@@ -1353,7 +1358,8 @@ public class SyncServerTests
                 Policy.FullGossip,
                 HistoryPruner,
                 specProvider ?? MainnetSpecProvider.Instance,
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                chainLevelInfoRepository: chainLevelInfoRepository);
 
         public SyncServer CreateSyncServer(IBlockAccessListStore blockAccessListStore) =>
             new(
