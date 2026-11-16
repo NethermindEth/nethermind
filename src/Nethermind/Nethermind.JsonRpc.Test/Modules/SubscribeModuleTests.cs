@@ -24,9 +24,9 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Timers;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
-using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Logging;
@@ -1648,6 +1648,87 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
+        public void Closing_a_client_releases_its_subscriptions_from_the_node_limit()
+        {
+            SubscriptionManager manager = new(NoopSubscriptionFactory(), new JsonRpcConfig { MaxSubscriptionsPerConnection = 0, MaxSubscriptions = 1 }, LimboLogs.Instance);
+            IJsonRpcDuplexClient client = Substitute.For<IJsonRpcDuplexClient>();
+            client.Id.Returns("closing-client");
+            IJsonRpcDuplexClient otherClient = Substitute.For<IJsonRpcDuplexClient>();
+            otherClient.Id.Returns("other-client");
+
+            manager.AddSubscription(client, "newHeads");
+            Assert.Throws<LimitExceededException>(() => manager.AddSubscription(otherClient, "newHeads"));
+
+            client.Closed += Raise.Event();
+
+            Assert.DoesNotThrow(() => manager.AddSubscription(otherClient, "newHeads"));
+        }
+
+        [Test]
+        public void Authenticated_client_is_not_refused_by_the_node_limit_but_keeps_the_connection_limit()
+        {
+            SubscriptionManager manager = new(NoopSubscriptionFactory(), new JsonRpcConfig { MaxSubscriptionsPerConnection = 2, MaxSubscriptions = 1 }, LimboLogs.Instance);
+            IJsonRpcDuplexClient anonymousClient = Substitute.For<IJsonRpcDuplexClient>();
+            anonymousClient.Id.Returns("anonymous-client");
+            IJsonRpcDuplexClient otherAnonymousClient = Substitute.For<IJsonRpcDuplexClient>();
+            otherAnonymousClient.Id.Returns("other-anonymous-client");
+            IJsonRpcDuplexClient authenticatedClient = Substitute.For<IJsonRpcDuplexClient>();
+            authenticatedClient.Id.Returns("authenticated-client");
+            authenticatedClient.IsAuthenticated.Returns(true);
+
+            manager.AddSubscription(anonymousClient, "newHeads");
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.DoesNotThrow(() => manager.AddSubscription(authenticatedClient, "newHeads"));
+                Assert.DoesNotThrow(() => manager.AddSubscription(authenticatedClient, "newHeads"));
+                Assert.That(() => manager.AddSubscription(authenticatedClient, "newHeads"),
+                    Throws.TypeOf<LimitExceededException>().With.Message.EqualTo("Too many subscriptions. The connection limit is 2."));
+                Assert.That(() => manager.AddSubscription(otherAnonymousClient, "newHeads"),
+                    Throws.TypeOf<LimitExceededException>().With.Message.EqualTo("Too many subscriptions. The node limit is 1."));
+            }
+        }
+
+        [Test]
+        public void Subscriptions_of_one_connection_share_a_queue_limit()
+        {
+            IJsonRpcDuplexClient client = Substitute.For<IJsonRpcDuplexClient>();
+            client.SendJsonRpcResult(Arg.Any<JsonRpcResult>())
+                .Returns(new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously).Task);
+            using ManualResetEventSlim disposed = new();
+            client.When(c => c.Dispose()).Do(_ => disposed.Set());
+            QueueingSubscription[] subscriptions = [new(client), new(client), new(client)];
+            int sendsPerSubscription = Subscription.MaxQueuedPerConnection / subscriptions.Length + 2;
+
+            try
+            {
+                foreach (QueueingSubscription subscription in subscriptions)
+                {
+                    for (int i = 0; i < sendsPerSubscription; i++) subscription.Queue();
+                }
+
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(sendsPerSubscription, Is.LessThan(Subscription.MaxQueuedEvents));
+                    Assert.That(disposed.Wait(TimeSpan.FromSeconds(10)), Is.True);
+                }
+            }
+            finally
+            {
+                foreach (QueueingSubscription subscription in subscriptions) subscription.Dispose();
+            }
+        }
+
+        private static ISubscriptionFactory NoopSubscriptionFactory()
+        {
+            ISubscriptionFactory factory = Substitute.For<ISubscriptionFactory>();
+            factory
+                .CreateSubscription(Arg.Any<IJsonRpcDuplexClient>(), Arg.Any<string>(), Arg.Any<string?>())
+                .Returns(ci => new NoopSubscription((IJsonRpcDuplexClient)ci[0]));
+            return factory;
+        }
+
+        [Test]
         [Repeat(20)]
         public async Task Concurrent_add_unsubscribe_and_client_close_do_not_corrupt_the_bag()
         {
@@ -1742,6 +1823,13 @@ namespace Nethermind.JsonRpc.Test.Modules
         private sealed class NoopSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient) : Subscription(jsonRpcDuplexClient, MaxQueuedBlocks)
         {
             public override string Type => "test";
+        }
+
+        private sealed class QueueingSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient) : Subscription(jsonRpcDuplexClient, MaxQueuedEvents)
+        {
+            public override string Type => "test";
+
+            public void Queue() => ScheduleAction(() => JsonRpcDuplexClient.SendJsonRpcResult(new JsonRpcResult()));
         }
 
         private sealed class TrackingSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient) : Subscription(jsonRpcDuplexClient, MaxQueuedBlocks)

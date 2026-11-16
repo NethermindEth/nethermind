@@ -419,6 +419,26 @@ public class AdminModuleTests
     }
 
     [Test]
+    public void AdminSubscribe_AboveTheConnectionLimit_ReturnsLimitExceeded()
+    {
+        SubscriptionFactory subscriptionFactory = new();
+        subscriptionFactory.RegisterPeerEventsSubscription(_logManager, _peerPool, _rlpxPeer);
+        _subscriptionManager = new SubscriptionManager(subscriptionFactory, new JsonRpcConfig { MaxSubscriptionsPerConnection = 1 }, _logManager);
+        IAdminRpcModule adminRpcModule = BuildAdminRpcModuleWith();
+        adminRpcModule.Context = new JsonRpcContext(RpcEndpoint.Ws, _jsonRpcDuplexClient);
+
+        ResultWrapper<string> first = adminRpcModule.admin_subscribe("peerEvents");
+        ResultWrapper<string> refused = adminRpcModule.admin_subscribe("peerEvents");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(refused.ErrorCode, Is.EqualTo(ErrorCodes.LimitExceeded));
+            Assert.That(refused.Result.Error, Is.EqualTo("Too many subscriptions. The connection limit is 1."));
+        }
+    }
+
+    [Test]
     public async Task AdminSubscribe_WithTooLongStringArgs_ReturnsInvalidParams()
     {
         string args = new('a', 1_000_001);

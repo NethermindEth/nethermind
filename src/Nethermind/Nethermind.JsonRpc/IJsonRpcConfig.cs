@@ -137,7 +137,7 @@ public interface IJsonRpcConfig : IConfig
     public int MaxSubscriptionsPerConnection { get; set; }
 
     [ConfigItem(
-        Description = "The max number of `eth_subscribe` and `admin_subscribe` subscriptions of all connections together. A call above this limit returns a `LimitExceeded` error. `0` to lift the limit.",
+        Description = "The max number of `eth_subscribe` and `admin_subscribe` subscriptions of all connections together. A call above this limit returns a `LimitExceeded` error. IPC and authenticated connections are not refused by this limit. `0` to lift the limit.",
         DefaultValue = "10000")]
     public int MaxSubscriptions { get; set; }
 

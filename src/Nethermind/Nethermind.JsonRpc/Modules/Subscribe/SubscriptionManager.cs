@@ -32,7 +32,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private void ThrowIfLimitReached(IJsonRpcDuplexClient client)
         {
             int maxSubscriptions = jsonRpcConfig.MaxSubscriptions;
-            if (maxSubscriptions > 0 && _subscriptions.Count >= maxSubscriptions)
+            if (maxSubscriptions > 0 && !client.IsAuthenticated && _subscriptions.Count >= maxSubscriptions)
             {
                 throw new LimitExceededException($"Too many subscriptions. The node limit is {maxSubscriptions}.");
             }

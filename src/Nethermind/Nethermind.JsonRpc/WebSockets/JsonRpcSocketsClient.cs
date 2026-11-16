@@ -76,6 +76,8 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
 
     public bool IsClosed => Volatile.Read(ref _disposed) == 1;
 
+    public bool IsAuthenticated => _jsonRpcContext.IsAuthenticated;
+
     /// <remarks>Idempotent: a subscription can disconnect a lagging client while its owner still holds it.</remarks>
     public override void Dispose()
     {
