@@ -29,7 +29,7 @@ public class GetBlobsV2Benchmarks
     private TxLookupKey[] _keys = null!;
     private readonly Transaction?[] _read = new Transaction?[1];
     private readonly byte[]?[] _blobs = new byte[BlobCount][];
-    private readonly ReadOnlyMemory<byte[]>[] _proofs = new ReadOnlyMemory<byte[]>[BlobCount];
+    private readonly ReadOnlyMemory<byte>[] _proofs = new ReadOnlyMemory<byte>[BlobCount];
     private readonly PipeWriter _output = PipeWriter.Create(Stream.Null);
 
     [GlobalSetup]
@@ -52,7 +52,7 @@ public class GetBlobsV2Benchmarks
         for (int i = 0; i < BlobCount; i++)
         {
             _blobs[i] = wrapper.Blobs[i];
-            _proofs[i] = new ReadOnlyMemory<byte[]>(wrapper.Proofs, i * Ckzg.CellsPerExtBlob, Ckzg.CellsPerExtBlob);
+            _proofs[i] = wrapper.GetProofs(i * Ckzg.CellsPerExtBlob, Ckzg.CellsPerExtBlob);
         }
 
         using BlobsV2DirectResponse response = new(_blobs, _proofs, BlobCount);

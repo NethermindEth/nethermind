@@ -9,6 +9,7 @@ using System.Diagnostics;
 using System.IO.Pipelines;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.JsonRpc;
 using Nethermind.Serialization.Json;
@@ -19,10 +20,10 @@ namespace Nethermind.Merge.Plugin.Data;
 public sealed class BlobsV2DirectResponse : IStreamableResult, IReadOnlyList<BlobAndProofV2?>, IDisposable
 {
     private readonly ArrayPoolList<byte[]?> _blobs;
-    private readonly ArrayPoolList<ReadOnlyMemory<byte[]>> _proofs;
+    private readonly ArrayPoolList<ReadOnlyMemory<byte>> _proofs;
     private readonly int _count;
 
-    public BlobsV2DirectResponse(ArrayPoolList<byte[]?> blobs, ArrayPoolList<ReadOnlyMemory<byte[]>> proofs, int count)
+    public BlobsV2DirectResponse(ArrayPoolList<byte[]?> blobs, ArrayPoolList<ReadOnlyMemory<byte>> proofs, int count)
     {
         Debug.Assert(count <= blobs.Count && count <= proofs.Count, "count must not exceed list lengths");
         _blobs = blobs;
@@ -30,8 +31,8 @@ public sealed class BlobsV2DirectResponse : IStreamableResult, IReadOnlyList<Blo
         _count = count;
     }
 
-    public BlobsV2DirectResponse(byte[]?[] blobs, ReadOnlyMemory<byte[]>[] proofs, int count)
-        : this(new ArrayPoolList<byte[]?>(blobs.Length, blobs), new ArrayPoolList<ReadOnlyMemory<byte[]>>(proofs.Length, proofs), count)
+    public BlobsV2DirectResponse(byte[]?[] blobs, ReadOnlyMemory<byte>[] proofs, int count)
+        : this(new ArrayPoolList<byte[]?>(blobs.Length, blobs), new ArrayPoolList<ReadOnlyMemory<byte>>(proofs.Length, proofs), count)
     {
     }
 
@@ -59,7 +60,18 @@ public sealed class BlobsV2DirectResponse : IStreamableResult, IReadOnlyList<Blo
     }
 
     private BlobAndProofV2? BuildBlobAndProofV2(int i) =>
-        _blobs[i] is { } blob ? new BlobAndProofV2(blob, _proofs[i].ToArray()) : null;
+        _blobs[i] is { } blob ? new BlobAndProofV2(blob, SplitProofs(_proofs[i].Span)) : null;
+
+    private static byte[][] SplitProofs(ReadOnlySpan<byte> proofs)
+    {
+        byte[][] split = new byte[proofs.Length / ShardBlobNetworkWrapper.BytesPerProof][];
+        for (int i = 0; i < split.Length; i++)
+        {
+            split[i] = proofs.Slice(i * ShardBlobNetworkWrapper.BytesPerProof, ShardBlobNetworkWrapper.BytesPerProof).ToArray();
+        }
+
+        return split;
+    }
 
     IEnumerator IEnumerable.GetEnumerator() => ((IEnumerable<BlobAndProofV2?>)this).GetEnumerator();
 
@@ -69,7 +81,7 @@ public sealed class BlobsV2DirectResponse : IStreamableResult, IReadOnlyList<Blo
         _proofs.Dispose();
     }
 
-    private readonly struct ItemWriter(byte[]?[] blobs, ReadOnlyMemory<byte[]>[] proofsByBlob) : IJsonArrayItemWriter
+    private readonly struct ItemWriter(byte[]?[] blobs, ReadOnlyMemory<byte>[] proofsByBlob) : IJsonArrayItemWriter
     {
         public void WriteItem(PipeWriter writer, int index)
         {
@@ -84,11 +96,11 @@ public sealed class BlobsV2DirectResponse : IStreamableResult, IReadOnlyList<Blo
             HexWriter.WriteHexString(writer, blob, chunked: true);
             writer.Write(",\"proofs\":["u8);
 
-            ReadOnlySpan<byte[]> proofs = proofsByBlob[index].Span;
-            for (int p = 0; p < proofs.Length; p++)
+            ReadOnlySpan<byte> proofs = proofsByBlob[index].Span;
+            for (int offset = 0; offset < proofs.Length; offset += ShardBlobNetworkWrapper.BytesPerProof)
             {
-                if (p > 0) writer.Write(","u8);
-                HexWriter.WriteHexString(writer, proofs[p], chunked: false);
+                if (offset > 0) writer.Write(","u8);
+                HexWriter.WriteHexString(writer, proofs.Slice(offset, ShardBlobNetworkWrapper.BytesPerProof), chunked: false);
             }
 
             writer.Write("]}"u8);

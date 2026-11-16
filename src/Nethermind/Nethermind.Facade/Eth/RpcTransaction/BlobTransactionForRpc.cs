@@ -53,7 +53,7 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
         ShardBlobNetworkWrapper? wrapper = transaction.NetworkWrapper as ShardBlobNetworkWrapper;
         Blobs = wrapper?.Blobs;
         Commitments = wrapper?.Commitments;
-        Proofs = wrapper?.Proofs;
+        Proofs = wrapper?.SplitProofs();
     }
 
     public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
@@ -143,7 +143,7 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
         }
 
         Commitments = wrapper.Commitments;
-        Proofs = wrapper.Proofs;
+        Proofs = wrapper.SplitProofs();
         return Result.Success;
     }
 
@@ -198,9 +198,10 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
         };
         if (fieldError is not null) return fieldError;
 
-        ShardBlobNetworkWrapper wrapper = new(Blobs!, Commitments!, Proofs!, version);
+        bool proofLengthsValid = ShardBlobNetworkWrapper.TryJoinProofs(Proofs!, out byte[]? proofs);
+        ShardBlobNetworkWrapper wrapper = new(Blobs!, Commitments!, proofs ?? [], version);
         IBlobProofsManager manager = IBlobProofsManager.For(version);
-        if (!manager.ValidateLengths(wrapper))
+        if (!proofLengthsValid || !manager.ValidateLengths(wrapper))
             return "blob sidecar lengths invalid (blobs/commitments/proofs counts or individual byte sizes)";
         if (tx.BlobVersionedHashes is not null && !manager.ValidateHashes(wrapper, tx.BlobVersionedHashes))
             return "blob commitments do not match the supplied blobVersionedHashes";

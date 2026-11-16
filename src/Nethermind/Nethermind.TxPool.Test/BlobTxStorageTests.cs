@@ -169,7 +169,7 @@ public class BlobTxStorageTests
         Transaction tx = CreateBlobTransaction();
         storage.Add(tx);
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper;
-        wrapper.Proofs[0][0] ^= 1;
+        wrapper.Proofs[0] ^= 1;
         using ArrayPoolListRef<Transaction> transactions = new(1, tx);
 
         storage.AddBlobTransactionsFromBlock(358, transactions);
@@ -729,7 +729,7 @@ public class BlobTxStorageTests
         byte[][] versionedHashes = new byte[blobCount][];
         byte[][] blobs = new byte[blobCount][];
         byte[][] commitments = new byte[blobCount][];
-        byte[][] proofs = new byte[proofsCount][];
+        byte[] proofs = new byte[proofsCount * Ckzg.BytesPerProof];
         for (int i = 0; i < blobCount; i++)
         {
             byte[] hash = new byte[Eip4844Constants.BytesPerBlobVersionedHash];
@@ -741,7 +741,7 @@ public class BlobTxStorageTests
         }
         for (int i = 0; i < proofsCount; i++)
         {
-            proofs[i] = [(byte)(i + 2)];
+            proofs[i * Ckzg.BytesPerProof] = (byte)(i + 2);
         }
 
         Transaction tx = new()

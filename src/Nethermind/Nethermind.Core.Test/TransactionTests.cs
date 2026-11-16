@@ -16,7 +16,7 @@ public class TransactionTests
     [Test]
     public void Wrapper_equality_ignores_pool_ownership()
     {
-        ShardBlobNetworkWrapper wrapper = new([[1]], [[2]], [[3]], ProofVersion.V0);
+        ShardBlobNetworkWrapper wrapper = new([[1]], [[2]], [3], ProofVersion.V0);
         ShardBlobNetworkWrapper pooled = wrapper with { PooledBuffers = new(wrapper.Blobs) };
         using (Assert.EnterMultipleScope())
         {
@@ -27,7 +27,7 @@ public class TransactionTests
             Assert.That(pooled == wrapper, Is.True);
             Assert.That(pooled.Equals(wrapper with { Blobs = [[1]] }), Is.False);
             Assert.That(pooled.Equals(wrapper with { Commitments = [[2]] }), Is.False);
-            Assert.That(pooled.Equals(wrapper with { Proofs = [[3]] }), Is.False);
+            Assert.That(pooled.Equals(wrapper with { Proofs = [3] }), Is.False);
             Assert.That(pooled.Equals(wrapper with { Version = ProofVersion.V1 }), Is.False);
             Assert.That(pooled.Equals(wrapper with { CellMask = BlobCellMask.Full }), Is.False);
             Assert.That(pooled.Equals(wrapper with { Cells = [[4]] }), Is.False);
@@ -134,12 +134,12 @@ public class TransactionTests
     public void ShardBlobNetworkWrapper_should_preserve_legacy_constructor_and_deconstructor()
     {
         Type wrapperType = typeof(ShardBlobNetworkWrapper);
-        Type[] constructorParameters = [typeof(byte[][]), typeof(byte[][]), typeof(byte[][]), typeof(ProofVersion)];
+        Type[] constructorParameters = [typeof(byte[][]), typeof(byte[][]), typeof(byte[]), typeof(ProofVersion)];
         Type[] deconstructorParameters =
         [
             typeof(byte[][]).MakeByRefType(),
             typeof(byte[][]).MakeByRefType(),
-            typeof(byte[][]).MakeByRefType(),
+            typeof(byte[]).MakeByRefType(),
             typeof(ProofVersion).MakeByRefType(),
         ];
 

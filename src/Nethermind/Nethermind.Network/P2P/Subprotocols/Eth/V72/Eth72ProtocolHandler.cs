@@ -1840,7 +1840,7 @@ public class Eth72ProtocolHandler(
     {
         if (tx.BlobVersionedHashes is not { Length: > 0 } blobVersionedHashes
             || wrapper.Commitments.Length != blobVersionedHashes.Length
-            || wrapper.Proofs.Length != blobVersionedHashes.Length)
+            || wrapper.Proofs.Length != blobVersionedHashes.Length * ShardBlobNetworkWrapper.BytesPerProof)
         {
             return false;
         }
@@ -1863,8 +1863,7 @@ public class Eth72ProtocolHandler(
 
         for (int i = 0; i < blobVersionedHashes.Length; i++)
         {
-            if (wrapper.Commitments[i].Length != CkzgLib.Ckzg.BytesPerCommitment
-                || wrapper.Proofs[i].Length != CkzgLib.Ckzg.BytesPerProof)
+            if (wrapper.Commitments[i].Length != CkzgLib.Ckzg.BytesPerCommitment)
             {
                 return false;
             }
