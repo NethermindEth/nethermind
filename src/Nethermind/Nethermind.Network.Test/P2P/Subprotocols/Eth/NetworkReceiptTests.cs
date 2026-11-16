@@ -89,6 +89,23 @@ public class NetworkReceiptTests
         Assert.That(NetworkReceipt.TryRead(ref reader, withBloom, out _), Is.EqualTo(topicCount <= 4));
     }
 
+    [Test]
+    public void Reads_log_data_above_the_default_rlp_limit([Values] bool withBloom)
+    {
+        LogEntry log = new(TestItem.AddressA, new byte[RlpLimit.DefaultLimit.Limit + 1], [TestItem.KeccakA]);
+        TxReceipt receipt = Build.A.Receipt.WithStatusCode(1).WithLogs(log).WithCalculatedBloom().TestObject;
+        byte[] message = Encode([receipt], withBloom, eip658: true);
+        RlpReader reader = new RlpReader(message).EnterSequence(out _);
+
+        bool isRead = NetworkReceipt.TryRead(ref reader, withBloom, out NetworkReceipt read);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(isRead, Is.True);
+            Assert.That(read.LogsGas, Is.EqualTo(GasCostOf.Log + GasCostOf.LogTopic + (ulong)log.Data.Length * GasCostOf.LogData));
+        }
+    }
+
     [TestCase(null, true, TestName = "Valid receipt")]
     [TestCase("extra field", false)]
     [TestCase("trailing payload bytes", false)]
