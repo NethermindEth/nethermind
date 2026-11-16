@@ -190,6 +190,29 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task pruning_fails_without_committing_when_a_node_is_missing()
+    {
+        TestContext test = new(
+            true,
+            false,
+            FullPruningCompletionBehavior.None,
+            fullPrunerMemoryBudgetMb,
+            degreeOfParallelism,
+            currentKeyScheme: INodeStorage.KeyScheme.Hash);
+        test.RemoveStateRootChild(8);
+
+        TestFullPruningDb.TestPruningContext context = await test.WaitForPruningStart();
+        bool ended = await test.WaitForPruningContextDisposal(context);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ended, Is.True, "the copy neither finished nor failed");
+            Assert.That(context.WaitForFinish.Task.IsCompleted, Is.False, "a copy with a missing node was committed");
+            Assert.That(test.FullPruningDb.CanStartPruning, Is.True);
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task can_not_start_pruning_when_other_is_in_progress()
     {
         TestContext test = CreateTest();
@@ -346,6 +369,27 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
             }
             AddBlocks(1);
             return await Task.WhenAny(context.DisposeEvent.Task, Task.Delay(Timeout.MaxWaitTime * 5)) == context.DisposeEvent.Task;
+        }
+
+        /// <summary>Adds blocks until the pruning context is disposed, whether or not the copy was committed.</summary>
+        /// <returns><c>false</c> when it was not disposed in time.</returns>
+        public async Task<bool> WaitForPruningContextDisposal(TestFullPruningDb.TestPruningContext context)
+        {
+            Task deadline = Task.Delay(Timeout.MaxWaitTime * 10);
+            while (!context.DisposeEvent.Task.IsCompleted && !deadline.IsCompleted)
+            {
+                AddBlocks(1);
+                await Task.WhenAny(context.DisposeEvent.Task, Task.Delay(1));
+            }
+
+            return context.DisposeEvent.Task.IsCompleted;
+        }
+
+        /// <summary>Removes the state root's child at <paramref name="nibble"/> from the source DB, keyed by hash.</summary>
+        public void RemoveStateRootChild(int nibble)
+        {
+            TrieNode root = new(NodeType.Unknown, TrieDb.Get(_stateRoot.Bytes));
+            TrieDb.Remove(root.GetChildHash(nibble)!.Bytes);
         }
 
         public async Task<TestFullPruningDb.TestPruningContext> WaitForPruningStart()
