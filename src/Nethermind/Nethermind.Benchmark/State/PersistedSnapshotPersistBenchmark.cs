@@ -2,13 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO;
-using System.Threading;
+using Autofac;
 using BenchmarkDotNet.Attributes;
-using Nethermind.Config;
+using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.IO;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
+using Nethermind.Db.Rocks;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -16,9 +18,7 @@ using Nethermind.State;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
-using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.PersistedSnapshots;
-using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie.NodeBuffer;
 using FlatSnapshot = Nethermind.State.Flat.Snapshot;
@@ -43,60 +43,45 @@ public class PersistedSnapshotPersistBenchmark
     [Params(SnapshotContent.Accounts, SnapshotContent.StorageNodes)]
     public SnapshotContent Content { get; set; }
 
-    private string _directory = null!;
-    private ArenaManager _arena = null!;
-    private BlobArenaManager _blobs = null!;
-    private SnapshotRepository _repository = null!;
+    private TempPath _dbPath = null!;
+    private IContainer _container = null!;
     private PersistenceManager _persistenceManager = null!;
     private PersistedSnapshot _persisted = null!;
 
     [GlobalSetup]
     public void Setup()
     {
-        FlatDbConfig config = new() { ApplyStorageWritesOnIdleThread = false };
-        ResourcePool resourcePool = new(config);
-        FlatSnapshot snapshot = BuildSnapshot(config, resourcePool);
+        _dbPath = TempPath.GetTempDirectory();
+        FlatDbConfig config = new() { Enabled = true, Layout = FlatLayout.Flat, ApplyStorageWritesOnIdleThread = false };
+        _container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(config, new InitConfig { BaseDbPath = _dbPath.Path }))
+            .AddSingleton<IDbFactory, RocksDbFactory>()
+            .AddSingleton<IColumnsDb<FlatDbColumns>, IDbFactory>(factory => factory.CreateColumnsDb<FlatDbColumns>(new DbSettings(DbNames.Flat, DbNames.Flat)))
+            .AddSingleton<IPersistedSnapshotCompactor>(NullPersistedSnapshotCompactor.Instance)
+            .AddDecorator<IPersistence, RewritingPersistence>()
+            .Build();
 
-        _directory = Path.Combine(Path.GetTempPath(), $"{nameof(PersistedSnapshotPersistBenchmark)}-{Guid.NewGuid():N}");
-        _arena = new ArenaManager(Path.Combine(_directory, "arena"), config, NullLogManager.Instance);
-        _blobs = new BlobArenaManager(Path.Combine(_directory, "blob"), config.ArenaFileSizeBytes);
-        SnapshotCatalog catalog = new(new MemDb());
-        _repository = new SnapshotRepository(_arena, _blobs, catalog, config, UnavailableStateHeaderProvider.Instance, NullLogManager.Instance);
-        PersistedSnapshotLoader loader = new(_repository, _arena, _blobs, catalog, config, NullLogManager.Instance);
+        FlatSnapshot snapshot = BuildSnapshot(config, _container.Resolve<ResourcePool>());
+        PersistedSnapshotLoader loader = _container.Resolve<PersistedSnapshotLoader>();
         loader.Load();
         loader.ConvertAndRegister(snapshot);
 
-        using (PersistedSnapshotList bases = _repository.LeaseBaseSnapshotsInRange(snapshot.From, snapshot.To))
+        using (PersistedSnapshotList bases = _container.Resolve<SnapshotRepository>().LeaseBaseSnapshotsInRange(snapshot.From, snapshot.To))
         {
             _persisted = bases[0];
             _persisted.TryAcquire();
         }
 
         snapshot.Dispose();
-
-        RewritingPersistence persistence = new(new RocksDbPersistence(new SnapshotableMemColumnsDb<FlatDbColumns>(), NullLogManager.Instance, NullTrieNodeLog.Instance));
-        _persistenceManager = new PersistenceManager(
-            config,
-            new CompactionSchedule(new MemDb(), config, NullLogManager.Instance),
-            UnavailableStateHeaderProvider.Instance,
-            persistence,
-            _repository,
-            NullStatePersistenceBarrier.Instance,
-            NullLogManager.Instance,
-            NullPersistedSnapshotCompactor.Instance,
-            loader,
-            new ProcessExitSource(CancellationToken.None));
+        _persistenceManager = _container.Resolve<PersistenceManager>();
     }
 
     [GlobalCleanup]
     public void Cleanup()
     {
-        _persistenceManager.Dispose();
         _persisted.Dispose();
-        _repository.Dispose();
-        _blobs.Dispose();
-        _arena.Dispose();
-        Directory.Delete(_directory, recursive: true);
+        _container.Dispose();
+        _dbPath.Dispose();
     }
 
     [Benchmark]

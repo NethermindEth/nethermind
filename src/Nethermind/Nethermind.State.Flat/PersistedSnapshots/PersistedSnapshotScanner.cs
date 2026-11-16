@@ -296,6 +296,10 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
             PersistedSnapshotKey.StatePathBytes(_key), StateStage(_key[0]));
 
         public ReadOnlySpan<byte> Rlp => _snapshot.ResolveTrieRlp(_value);
+
+        /// <summary>Writes this node to <paramref name="batch"/> without copying its RLP to the heap.</summary>
+        public void Write(IPersistence.IWriteBatch batch) =>
+            _snapshot.ResolveTrieRlp(_value, static (rlp, arg) => arg.Batch.SetStateTrieNode(arg.Path, rlp), (Batch: batch, Path: Path));
     }
 
     public readonly ref struct StateNodeEnumerable(PersistedSnapshot snapshot, TReader reader)
@@ -363,6 +367,10 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
             PersistedSnapshotKey.StoragePathBytes(_key), StorageStage(PersistedSnapshotKey.StorageSubColumn(_key)));
 
         public ReadOnlySpan<byte> Rlp => _snapshot.ResolveTrieRlp(_value);
+
+        /// <summary>Writes this node to <paramref name="batch"/> without copying its RLP to the heap.</summary>
+        public void Write(IPersistence.IWriteBatch batch) =>
+            _snapshot.ResolveTrieRlp(_value, static (rlp, arg) => arg.Batch.SetStorageTrieNode(arg.AddressHash, arg.Path, rlp), (Batch: batch, AddressHash, Path: Path));
     }
 
     public readonly ref struct StorageNodeEnumerable(PersistedSnapshot snapshot, TReader reader)

@@ -748,10 +748,10 @@ public class PersistenceManager(
             }
 
             foreach (WholeReadScanner.StateNodeEntry entry in scanner.StateNodes)
-                batch.SetStateTrieNode(entry.Path, entry.Rlp);
+                entry.Write(batch);
 
             foreach (WholeReadScanner.StorageNodeEntry entry in scanner.StorageNodes)
-                batch.SetStorageTrieNode(entry.AddressHash, entry.Path, entry.Rlp);
+                entry.Write(batch);
         }
 
         // The CompactSized is now in RocksDB — drop the prefetched base blob ranges from the

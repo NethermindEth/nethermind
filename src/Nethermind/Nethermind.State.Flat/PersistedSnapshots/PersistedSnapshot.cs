@@ -339,7 +339,7 @@ public sealed class PersistedSnapshot : SmallRefCountingDisposable
         return result!;
     }
 
-    private void ResolveTrieRlp<TArg>(Bound localBound, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+    internal void ResolveTrieRlp<TArg>(Bound localBound, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
     {
         NodeRef nodeRef = default;
         Span<byte> nr = MemoryMarshal.AsBytes(new Span<NodeRef>(ref nodeRef))[..checked((int)localBound.Length)];
