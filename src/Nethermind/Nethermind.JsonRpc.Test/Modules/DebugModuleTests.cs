@@ -872,7 +872,7 @@ public class DebugModuleTests
         {
             Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Failure));
             Assert.That(actual.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
-            Assert.That(actual.Result.Error, Does.Contain("Cannot find header"));
+            Assert.That(actual.Result.Error, Is.EqualTo($"block {blockHash} not found"));
         }
     }
 
@@ -2025,7 +2025,7 @@ public class DebugModuleTests
             (Action<Hash256, IBlockFinder, IBlockchainBridge>)((blockHash, finder, _) =>
                 finder.FindHeader(blockHash).ReturnsNull()),
             ErrorCodes.ResourceNotFound,
-            "Cannot find header")
+            $"block {TestItem.KeccakA} not found")
         { TestName = "block_not_found" };
 
         yield return new TestCaseData(
