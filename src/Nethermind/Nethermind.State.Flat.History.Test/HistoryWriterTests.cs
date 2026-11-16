@@ -1199,7 +1199,11 @@ public class HistoryWriterTests
         for (int i = 0; i < keys; i++)
         {
             addresses[i] = new Address(Keccak.Compute(BitConverter.GetBytes(i)));
-            _db.GetColumnDb(FlatDbColumns.Account).PutSpan(FlatAccountKey(addresses[i]), EncodedAccount(new Account(0, (UInt256)(i + 1))));
+            // Every third key is missing, so chunks mix found and missing pre-values; the hashes make each chunk's
+            // found accounts outgrow the initial pre-value buffer.
+            if (i % 3 == 0) continue;
+            Hash256 hash = Keccak.Compute(BitConverter.GetBytes(-i));
+            _db.GetColumnDb(FlatDbColumns.Account).PutSpan(FlatAccountKey(addresses[i]), EncodedAccount(new Account(0, (UInt256)(i + 1), hash, hash)));
             int slotValueLength = BaseFlatPersistence.EncodeSlotValue((UInt256)(i + 1), RlpWrapSlots, slotValueBuffer);
             _db.GetColumnDb(FlatDbColumns.Storage).PutSpan(StorageKey(AddrA, (UInt256)i), slotValueBuffer[..slotValueLength]);
         }
@@ -1210,7 +1214,7 @@ public class HistoryWriterTests
             storageChanges: [.. Enumerable.Range(0, keys).Select(static i => (AddrA, (UInt256)i, (UInt256?)9999))]);
         windowedWriter.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
 
-        UInt256[] expected = [.. Enumerable.Range(1, keys).Select(static i => (UInt256)i)];
+        UInt256[] expected = [.. Enumerable.Range(0, keys).Select(static i => i % 3 == 0 ? UInt256.Zero : (UInt256)(i + 1))];
         UInt256[] balances = [.. addresses.Select(address => windowedReader.TryGetAccount(0, address, out AccountStruct account) ? account.Balance : UInt256.Zero)];
         UInt256[] slots = [.. Enumerable.Range(0, keys).Select(i => windowedReader.TryGetStorage(0, AddrA, (UInt256)i, out UInt256 slot) ? slot : UInt256.Zero)];
         using (Assert.EnterMultipleScope())

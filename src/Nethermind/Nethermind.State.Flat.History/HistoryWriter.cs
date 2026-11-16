@@ -860,63 +860,103 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         IWriteBatch storageBatch = columns.StorageHistory;
 
         int accountCount = pending.Accounts.Count;
+        int storageCount = pending.Storages.Count;
+        int chunkCapacity = Math.Min(PreValueMultiGetChunkSize, Math.Max(accountCount, storageCount));
+        using ArrayPoolSpan<byte> keyBuffer = new(chunkCapacity * BaseFlatPersistence.StorageKeyLength);
+        using ArrayPoolSpan<Range> preValueBuffer = new(chunkCapacity);
+        using PreValueBytes preValueBytes = new();
+
         KeyValuePair<ValueHash256, ulong>[] accounts = ArrayPool<KeyValuePair<ValueHash256, ulong>>.Shared.Rent(accountCount);
         ((ICollection<KeyValuePair<ValueHash256, ulong>>)pending.Accounts).CopyTo(accounts, 0);
         Array.Sort(accounts, 0, accountCount, AccountKeyOrder);
 
-        byte[][] accountChunkKeys = new byte[Math.Min(PreValueMultiGetChunkSize, accountCount)][];
         for (int offset = 0; offset < accountCount; offset += PreValueMultiGetChunkSize)
         {
             int count = Math.Min(PreValueMultiGetChunkSize, accountCount - offset);
-            byte[][] keys = count == accountChunkKeys.Length ? accountChunkKeys : accountChunkKeys[..count];
+            Span<byte> keys = keyBuffer.Slice(0, count * BaseFlatPersistence.AccountKeyLength);
             for (int i = 0; i < count; i++)
             {
-                HistoryKeyLayout.ToFlatStateKey(accounts[offset + i].Key.Bytes).CopyTo(keys[i] ??= new byte[BaseFlatPersistence.AccountKeyLength]);
+                HistoryKeyLayout.ToFlatStateKey(accounts[offset + i].Key.Bytes).CopyTo(keys[(i * BaseFlatPersistence.AccountKeyLength)..]);
             }
 
-            KeyValuePair<byte[], byte[]?>[] preValues = _persistedAccounts[keys];
+            Span<Range> preValues = preValueBuffer.Slice(0, count);
+            preValueBytes.Reset();
+            _persistedAccounts.GetMany(keys, BaseFlatPersistence.AccountKeyLength, preValues, preValueBytes);
             for (int i = 0; i < count; i++)
             {
-                _accountHistoryV3!.RecordPreValue(accounts[offset + i].Value, accounts[offset + i].Key.Bytes, preValues[i].Value ?? ReadOnlySpan<byte>.Empty, accountBatch);
+                _accountHistoryV3!.RecordPreValue(accounts[offset + i].Value, accounts[offset + i].Key.Bytes, preValueBytes[preValues[i]], accountBatch);
             }
         }
 
         ArrayPool<KeyValuePair<ValueHash256, ulong>>.Shared.Return(accounts);
 
-        int storageCount = pending.Storages.Count;
         KeyValuePair<PendingV3Writes.SlotKey, ulong>[] storages = ArrayPool<KeyValuePair<PendingV3Writes.SlotKey, ulong>>.Shared.Rent(storageCount);
         ((ICollection<KeyValuePair<PendingV3Writes.SlotKey, ulong>>)pending.Storages).CopyTo(storages, 0);
         Array.Sort(storages, 0, storageCount, StorageKeyOrder);
 
-        byte[][] storageChunkKeys = new byte[Math.Min(PreValueMultiGetChunkSize, storageCount)][];
         for (int offset = 0; offset < storageCount; offset += PreValueMultiGetChunkSize)
         {
             int count = Math.Min(PreValueMultiGetChunkSize, storageCount - offset);
-            byte[][] keys = count == storageChunkKeys.Length ? storageChunkKeys : storageChunkKeys[..count];
+            Span<byte> keys = keyBuffer.Slice(0, count * BaseFlatPersistence.StorageKeyLength);
             for (int i = 0; i < count; i++)
             {
-                BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(keys[i] ??= new byte[BaseFlatPersistence.StorageKeyLength], storages[offset + i].Key.AddrPath, storages[offset + i].Key.SlotHash);
+                BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(keys.Slice(i * BaseFlatPersistence.StorageKeyLength, BaseFlatPersistence.StorageKeyLength), storages[offset + i].Key.AddrPath, storages[offset + i].Key.SlotHash);
             }
 
-            KeyValuePair<byte[], byte[]?>[] preValues = _persistedStorage[keys];
+            Span<Range> preValues = preValueBuffer.Slice(0, count);
+            preValueBytes.Reset();
+            _persistedStorage.GetMany(keys, BaseFlatPersistence.StorageKeyLength, preValues, preValueBytes);
             for (int i = 0; i < count; i++)
             {
                 ulong touch = storages[offset + i].Value;
-                ReadOnlySpan<byte> preValue = preValues[i].Value ?? ReadOnlySpan<byte>.Empty;
+                ReadOnlySpan<byte> key = keys.Slice(i * BaseFlatPersistence.StorageKeyLength, BaseFlatPersistence.StorageKeyLength);
+                ReadOnlySpan<byte> preValue = preValueBytes[preValues[i]];
 
                 if (pending.Destructs.Count != 0
                     && pending.Destructs.TryGetValue(storages[offset + i].Key.AddrPath, out ulong destructBlock)
                     && destructBlock < touch)
                 {
-                    _storageHistoryV3!.RecordPreValue(destructBlock, keys[i], preValue, storageBatch);
+                    _storageHistoryV3!.RecordPreValue(destructBlock, key, preValue, storageBatch);
                     preValue = ReadOnlySpan<byte>.Empty;
                 }
 
-                _storageHistoryV3!.RecordPreValue(touch, keys[i], preValue, storageBatch);
+                _storageHistoryV3!.RecordPreValue(touch, key, preValue, storageBatch);
             }
         }
 
         ArrayPool<KeyValuePair<PendingV3Writes.SlotKey, ulong>>.Shared.Return(storages);
+    }
+
+    /// <summary>Copies each pre-value a multi-get finds into one pooled buffer, so a lookup allocates no value
+    /// arrays. A missing key keeps the default range, which reads back as an empty pre-value.</summary>
+    private sealed class PreValueBytes : IValueDecoder<Range>, IDisposable
+    {
+        private byte[] _bytes = ArrayPool<byte>.Shared.Rent(PreValueMultiGetChunkSize * 32);
+        private int _length;
+
+        public ReadOnlySpan<byte> this[Range range] => _bytes.AsSpan(range);
+
+        public void Reset() => _length = 0;
+
+        public Range Decode(ReadOnlySpan<byte> buffer)
+        {
+            int start = _length;
+            int end = start + buffer.Length;
+            if (end > _bytes.Length) Grow(end);
+            buffer.CopyTo(_bytes.AsSpan(start));
+            _length = end;
+            return start..end;
+        }
+
+        private void Grow(int required)
+        {
+            byte[] larger = ArrayPool<byte>.Shared.Rent(Math.Max(required, _bytes.Length * 2));
+            _bytes.AsSpan(0, _length).CopyTo(larger);
+            ArrayPool<byte>.Shared.Return(_bytes);
+            _bytes = larger;
+        }
+
+        public void Dispose() => ArrayPool<byte>.Shared.Return(_bytes);
     }
 
     // Sorted so each multi-get hands the persisted column keys in key order (grouped per account for storage),
