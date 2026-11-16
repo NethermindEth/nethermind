@@ -202,7 +202,6 @@ public class VisitingTests
     /// <summary>Elapses only when a walk is stuck: its workers then wait for jobs that nobody will finish.</summary>
     private static readonly TimeSpan WalkTimeout = TimeSpan.FromSeconds(30);
 
-    /// <summary>Walks the trie on a fresh tree over its store and returns what the walk threw, failing if it did not end.</summary>
     private static Exception? Walk<TContext>(SixteenBranchTrie trie, ITreeVisitor<TContext> visitor, int workers, long fullScanMemoryBudget)
         where TContext : struct, INodeContext<TContext>
     {
@@ -221,7 +220,7 @@ public class VisitingTests
     {
         Assert.That(thrown, Is.InstanceOf<AggregateException>());
         AggregateException aggregate = (AggregateException)thrown!;
-        Assert.That(aggregate.Flatten().InnerExceptions, Is.Not.Empty.And.All.InstanceOf<TException>());
+        Assert.That(aggregate.InnerExceptions, Is.Not.Empty.And.All.InstanceOf<TException>());
     }
 
     /// <summary>
@@ -233,7 +232,6 @@ public class VisitingTests
         private const int RemovedChild = 8;
         private const int LeavesPerChild = 3;
 
-        /// <summary>The expected branches and leaves are those a walk must visit: all but the removed child and its leaves.</summary>
         public static SixteenBranchTrie Build(bool removeChild)
         {
             MemDb db = new();
@@ -290,7 +288,6 @@ public class VisitingTests
         }
     }
 
-    /// <summary>Records the hashes of what it is shown; can throw on a missing node as the full pruning visitor does.</summary>
     private sealed class RecordingVisitor(bool throwOnMissingNode) : ITreeVisitor<EmptyContext>
     {
         public ConcurrentQueue<Hash256> Branches { get; } = new();

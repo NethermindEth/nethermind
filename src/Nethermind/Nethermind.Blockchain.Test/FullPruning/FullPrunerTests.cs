@@ -371,8 +371,6 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
             return await Task.WhenAny(context.DisposeEvent.Task, Task.Delay(Timeout.MaxWaitTime * 5)) == context.DisposeEvent.Task;
         }
 
-        /// <summary>Adds blocks until the pruning context is disposed, whether or not the copy was committed.</summary>
-        /// <returns><c>false</c> when it was not disposed in time.</returns>
         public async Task<bool> WaitForPruningContextDisposal(TestFullPruningDb.TestPruningContext context)
         {
             Task deadline = Task.Delay(Timeout.MaxWaitTime * 10);
@@ -385,7 +383,6 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
             return context.DisposeEvent.Task.IsCompleted;
         }
 
-        /// <summary>Removes the state root's child at <paramref name="nibble"/> from the source DB, keyed by hash.</summary>
         public void RemoveStateRootChild(int nibble)
         {
             TrieNode root = new(NodeType.Unknown, TrieDb.Get(_stateRoot.Bytes));
