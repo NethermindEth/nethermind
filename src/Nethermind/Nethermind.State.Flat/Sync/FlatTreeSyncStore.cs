@@ -53,7 +53,7 @@ public class FlatTreeSyncStore(
 
         if (address is null)
         {
-            RequestStateDeletion(writeBatch, path, node, existingNode);
+            RequestStateDeletion(reader, writeBatch, path, node, existingNode);
 
             writeBatch.SetStateTrieNode(path, data);
             FlatEntryWriter.WriteAccountFlatEntries(writeBatch, path, node);
@@ -80,14 +80,31 @@ public class FlatTreeSyncStore(
         return existingNode;
     }
 
-    private void RequestStateDeletion(IPersistence.IWriteBatch writeBatch, in TreePath path, TrieNode newNode, TrieNode? existingNode)
+    private void RequestStateDeletion(IPersistence.IPersistenceReader reader, IPersistence.IWriteBatch writeBatch, in TreePath path, TrieNode newNode, TrieNode? existingNode)
     {
         RefList16<DeletionRange> ranges = new();
         ComputeDeletionRanges(path, newNode, existingNode, ref ranges);
+        if (ranges.Count == 0) return;
+
+        ValueHash256 keptAccount = newNode.IsLeaf ? path.Append(newNode.Key).ToLowerBoundPath() : default;
         foreach (DeletionRange range in ranges.AsSpan())
         {
+            DeleteStorageOfAccounts(reader, writeBatch, range, newNode.IsLeaf, keptAccount);
             writeBatch.DeleteAccountRange(range.From, range.To);
             writeBatch.DeleteStateTrieNodeRange(range.From, range.To);
+        }
+    }
+
+    private static void DeleteStorageOfAccounts(IPersistence.IPersistenceReader reader, IPersistence.IWriteBatch writeBatch, in DeletionRange range, bool hasKeptAccount, in ValueHash256 keptAccount)
+    {
+        using IPersistence.IFlatIterator accounts = reader.CreateAccountIterator(range.From, range.To);
+        while (accounts.MoveNext())
+        {
+            ValueHash256 account = accounts.CurrentKey;
+            if (hasKeptAccount && account.Bytes[..BaseFlatPersistence.AccountKeyLength].SequenceEqual(keptAccount.Bytes[..BaseFlatPersistence.AccountKeyLength])) continue;
+
+            writeBatch.DeleteStorageRange(account, ValueKeccak.Zero, ValueKeccak.MaxValue);
+            writeBatch.DeleteStorageTrieNodeRange(account, ValueKeccak.Zero, ValueKeccak.MaxValue);
         }
     }
 

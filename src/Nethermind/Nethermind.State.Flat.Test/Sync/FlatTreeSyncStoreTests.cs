@@ -10,9 +10,12 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.Sync;
+using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -81,6 +84,57 @@ public class FlatTreeSyncStoreTests
         store.EnsureStorageEmpty(Keccak.Compute(address.Bytes));
 
         Assert.That(HasStorageEntries(address), Is.False, "Storage entries should be deleted after EnsureStorageEmpty");
+    }
+
+    [Test]
+    public void SaveNode_deletes_the_storage_of_accounts_the_new_state_node_no_longer_covers()
+    {
+        Address removed = TestItem.AddressA;
+        Address kept = TestItem.AddressB;
+        FlatTreeSyncStore store = new(_persistence, Substitute.For<IPersistenceManager>(), LimboLogs.Instance);
+        SaveRootAccountLeaf(store, removed);
+        WriteStorageDirectToDb(removed, 1, [0x01]);
+        WriteStorageDirectToDb(kept, 1, [0x02]);
+
+        SaveRootAccountLeaf(store, kept);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(HasStorageEntries(removed), Is.False);
+            Assert.That(HasStorageEntries(kept), Is.True);
+        }
+    }
+
+    [Test]
+    public void SaveNode_keeps_the_storage_of_the_account_the_new_state_leaf_holds()
+    {
+        Address held = TestItem.AddressA;
+        Address removed = TestItem.AddressB;
+        FlatTreeSyncStore store = new(_persistence, Substitute.For<IPersistenceManager>(), LimboLogs.Instance);
+        SaveRootAccountLeaf(store, removed);
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
+        {
+            batch.SetAccountRaw(Keccak.Compute(held.Bytes), new Account(1, 1));
+        }
+        WriteStorageDirectToDb(held, 1, [0x01]);
+        WriteStorageDirectToDb(removed, 1, [0x02]);
+
+        SaveRootAccountLeaf(store, held);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(HasStorageEntries(held), Is.True);
+            Assert.That(HasStorageEntries(removed), Is.False);
+        }
+    }
+
+    private static void SaveRootAccountLeaf(FlatTreeSyncStore store, Address address)
+    {
+        TrieNode leaf = TrieNodeFactory.CreateLeaf(Nibbles.BytesToNibbleBytes(Keccak.Compute(address.Bytes).Bytes), Rlp.Encode(new Account(1, 1)));
+        TreePath path = TreePath.Empty;
+        leaf.ResolveKey(NullTrieNodeResolver.Instance, ref path);
+        byte[] rlp = leaf.FullRlp.ToArray()!;
+        store.SaveNode(null, TreePath.Empty, ValueKeccak.Compute(rlp), rlp);
     }
 
     [Test]
