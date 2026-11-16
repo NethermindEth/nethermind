@@ -485,7 +485,7 @@ namespace Nethermind.Synchronization
                 return ArrayPoolList<byte>.Empty();
             }
 
-            ArrayPoolList<byte> headers = new(numberOfBlocks * HeaderRlpLengthEstimate);
+            ArrayPoolList<byte> headers = [with(numberOfBlocks * HeaderRlpLengthEstimate)];
             try
             {
                 EncodedHeaderSource source = new(_headerStore, _headerDecoder, headers);
@@ -518,7 +518,7 @@ namespace Nethermind.Synchronization
                 return headers;
             }
 
-            ArrayPoolList<byte> ordered = new(headers.Count);
+            ArrayPoolList<byte> ordered = [with(headers.Count)];
             ReadOnlySpan<byte> encoded = headers.AsSpan();
             foreach (Range item in items[..count])
             {

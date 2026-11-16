@@ -148,7 +148,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
             diagnostics.Add(Diagnostic.Create(InvalidLength, location));
         }
 
-        if (isNewtype && parameters.Count == 1 && ContainsWithoutSequence(parameters[0].Type, symbol, new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default)))
+        if (isNewtype && parameters.Count == 1 && ContainsWithoutSequence(parameters[0].Type, symbol, [with(SymbolEqualityComparer.Default)]))
         {
             diagnostics.Add(Diagnostic.Create(RecursiveNewtype, location, symbol.Name));
         }
@@ -157,7 +157,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         List<string> readCalls = [];
         List<string> writeCalls = [];
         List<int?> fixedLengths = [];
-        bool canMeasure = CanMeasure(symbol, null, new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default));
+        bool canMeasure = CanMeasure(symbol, null, [with(SymbolEqualityComparer.Default)]);
         List<string> writeLengthDeclarations = [];
         List<string> writeLengths = [];
         for (int i = 0; i < parameters.Count; i++)
@@ -198,7 +198,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         string? payloadLength = null;
         if (canMeasure)
         {
-            List<string> lengths = new(parameters.Count);
+            List<string> lengths = [with(parameters.Count)];
             for (int i = 0; i < parameters.Count; i++)
             {
                 lengths.Add(mapper.Length(parameters[i].Type, parameterSymbols[i], $"value.{parameters[i].Name}"));
@@ -697,7 +697,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
 
         private string WriteItems(ITypeSymbol type, ITypeSymbol itemType, string member, string value, string? collectionPayloadLength)
         {
-            if (!CanMeasure(itemType, null, new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default)))
+            if (!CanMeasure(itemType, null, [with(SymbolEqualityComparer.Default)]))
             {
                 return $"w.WriteSequence({value}, static (ref {Library}.RlpWriter w, {Name(type)} items) => {{ foreach ({Name(itemType)} item in items) {{ {Write(itemType, member, "item")}; }} }})";
             }

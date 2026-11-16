@@ -44,7 +44,7 @@ public class AccountCacheRemoveBenchmarks
             _cache.TryGetAccount(new Address(bytes), out _);
         }
 
-        _changed = new ArrayPoolList<AddressAsKey>(ChangedAccounts);
+        _changed = [with(ChangedAccounts)];
         for (int i = 0; i < ChangedAccounts; i++)
         {
             random.NextBytes(bytes);

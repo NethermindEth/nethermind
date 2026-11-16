@@ -415,7 +415,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 
                             ReceiptsValidationResult validationResult = ValidateBlockReceipts(blockReceipts, in context, firstBlockReceiptIndex,
                                 isCompleteSegment: false, partialReceiptsGas, partialReceiptsLogsGas, partialReceiptsContentSize);
-                            partialReceipts = new ArrayPoolList<TxReceipt>(blockReceipts.Length + firstBlockReceiptIndex);
+                            partialReceipts = [with(blockReceipts.Length + firstBlockReceiptIndex)];
                             partialReceipts.AddRange(blockReceipts);
                             firstBlockReceiptIndex = partialReceipts.Count;
 
@@ -483,7 +483,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 
     private sealed class ReceiptAggregationBuilder(int capacity) : IDisposable
     {
-        private readonly ArrayPoolList<AggregatedReceipts> _blocks = new(capacity);
+        private readonly ArrayPoolList<AggregatedReceipts> _blocks = [with(capacity)];
         private ArrayPoolList<byte>? _encodedBlocks;
         private RefRlpReaderFunc<TxReceipt[]>? _decodeBlock;
         private bool _allEncoded = true;
@@ -491,7 +491,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         public void AddEncoded(NetworkBlockReceipts receipts, int index)
         {
             ReadOnlySpan<byte> encoded = receipts.GetEncoded(index).Span;
-            _encodedBlocks ??= new ArrayPoolList<byte>(encoded.Length);
+            _encodedBlocks ??= [with(encoded.Length)];
             _decodeBlock ??= receipts.BlockDecoder;
             int start = _encodedBlocks.Count;
             _encodedBlocks.AddRange(encoded);
@@ -515,7 +515,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                 return result;
             }
 
-            ArrayPoolList<TxReceipt[]> receipts = new(_blocks.Count);
+            ArrayPoolList<TxReceipt[]> receipts = [with(_blocks.Count)];
             try
             {
                 foreach (AggregatedReceipts block in _blocks.AsSpan())
@@ -552,7 +552,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
     {
         bool eip658 = (receiptBehaviors & RlpBehaviors.Eip658Receipts) != 0;
         RlpReader receipts = new RlpReader(blockReceipts).EnterSequence(out _);
-        ArrayPoolList<ReceiptFacts> facts = new(receipts.CountItems());
+        ArrayPoolList<ReceiptFacts> facts = [with(receipts.CountItems())];
         try
         {
             while (receipts.HasNext)
