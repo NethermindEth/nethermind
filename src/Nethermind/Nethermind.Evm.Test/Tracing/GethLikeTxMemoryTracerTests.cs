@@ -883,6 +883,27 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         }
     }
 
+    /// <remarks>
+    /// Geth rejects LOG and TSTORE while executing them, a fault its struct logger does not record. Other writes fail
+    /// in their gas function, which Geth reports as running out of gas.
+    /// </remarks>
+    [TestCase("5f5f5f5f60015f5af1", "CALL", "out of gas: write protection")]
+    [TestCase("5f5f5ff0", "CREATE", "out of gas: write protection")]
+    [TestCase("5f5f5f5ff5", "CREATE2", "out of gas: write protection")]
+    [TestCase("5fff", "SELFDESTRUCT", "out of gas: write protection")]
+    [TestCase("6001600055", "SSTORE", "out of gas: write protection")]
+    [TestCase("5f5f5f5fa2", "LOG2", null)]
+    [TestCase("600160005d", "TSTORE", null)]
+    public void Static_context_write_step_error(string calleeCode, string expectedOpcode, string? expectedError)
+    {
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Bytes.FromHexString(calleeCode), Spec);
+        TestState.Commit(Spec);
+        byte[] code = Prepare.EvmCode.StaticCall(TestItem.AddressC, 50000).Op(Instruction.STOP).Done;
+
+        AssertFailedStep(TraceStructLogs(code, MainnetSpecProvider.CancunActivation), expectedOpcode, expectedError, depth: 2);
+    }
+
     /// <summary>Traces <paramref name="code"/> with the in-memory and the streaming struct logger.</summary>
     private (string Tracer, JsonElement[] Entries)[] TraceStructLogs(byte[] code, ForkActivation activation)
     {

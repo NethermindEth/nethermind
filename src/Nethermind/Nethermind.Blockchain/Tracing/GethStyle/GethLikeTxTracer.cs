@@ -55,9 +55,13 @@ public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop, ITraceOpe
     }
 
     // Geth's struct logger subscribes to OnOpcode, but not to post-execution OnFault.
-    protected static bool IsExecutionFault(EvmExceptionType error) => error is
-        EvmExceptionType.BadInstruction or EvmExceptionType.InvalidJumpDestination or
-        EvmExceptionType.AccessViolation;
+    protected static bool IsExecutionFault(EvmExceptionType error, Instruction opcode) => error switch
+    {
+        EvmExceptionType.BadInstruction or EvmExceptionType.InvalidJumpDestination or EvmExceptionType.AccessViolation => true,
+        // Geth rejects LOG and TSTORE while executing them; other writes fail in their gas function.
+        EvmExceptionType.StaticCallViolation => opcode is >= Instruction.LOG0 and <= Instruction.LOG4 or Instruction.TSTORE,
+        _ => false
+    };
 
     protected static string? GetErrorDescription(EvmExceptionType evmExceptionType) => evmExceptionType switch
     {
@@ -71,7 +75,7 @@ public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop, ITraceOpe
         EvmExceptionType.AccessViolation => "AccessViolation",
         EvmExceptionType.ReturnStackOverflow => "ReturnStackOverflow",
         EvmExceptionType.ReturnStackUnderflow => "ReturnStackUnderflow",
-        EvmExceptionType.StaticCallViolation => "StaticCallViolation",
+        EvmExceptionType.StaticCallViolation => "out of gas: write protection",
         _ => "Error"
     };
 

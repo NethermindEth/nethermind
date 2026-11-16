@@ -217,10 +217,8 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
         // As in Geth, an opcode that runs out of gas reports the cost it could not pay rather than the gas it had.
         if (error == EvmExceptionType.OutOfGas && !_gasCostReported && _calculatedGasCost is ulong gasCost)
             _pendingGasCost = gasCost;
-        if (error == EvmExceptionType.StaticCallViolation && _pendingOpcode == Instruction.SSTORE)
-            _pendingError = "out of gas: write protection";
         if (error == EvmExceptionType.OutOfGas) _pendingError ??= _stackFailure;
-        if (!IsExecutionFault(error)) _pendingError ??= GetErrorDescription(error);
+        if (!IsExecutionFault(error, _pendingOpcode)) _pendingError ??= GetErrorDescription(error);
     }
 
     /// <inheritdoc/>

@@ -17,6 +17,7 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
     private readonly long _stepLimit;
     private long _resultSize;
     private int _storageUpdates;
+    private Instruction _opcode;
 
     private bool LimitReached => (_limit != 0 && _resultSize > _limit)
         || (_stepLimit > 0 && Trace.Entries.Count >= _stepLimit);
@@ -36,6 +37,7 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
     public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
         if (LimitReached) return;
+        _opcode = opcode;
         base.StartOperation(pc, opcode, gas, in env);
         if (LimitReached)
             CurrentTraceEntry = null;
@@ -60,9 +62,7 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
         }
         if (error == EvmExceptionType.BadInstruction && CurrentTraceEntry is not null)
             CurrentTraceEntry.GasCost = 0;
-        if (error == EvmExceptionType.StaticCallViolation && CurrentTraceEntry?.Opcode == "SSTORE")
-            CurrentTraceEntry.Error = "out of gas: write protection";
-        if (!IsExecutionFault(error)) base.ReportOperationError(error);
+        if (!IsExecutionFault(error, _opcode)) base.ReportOperationError(error);
     }
 
     public override GethLikeTxTrace BuildResult()
