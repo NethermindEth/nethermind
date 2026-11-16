@@ -345,23 +345,13 @@ public class EthereumRunnerTests
                 new DbConfig { SharedBlockCacheSize = 16 * 1024 * 1024, EnableMetricsUpdater = false },
                 // Retain opened databases in the public DB tracker for inspecting persisted sidecar records.
                 new MetricsConfig { Enabled = true, EnableDbSizeMetrics = true });
-            InterfaceLogger logger = Substitute.For<InterfaceLogger>();
-            logger.IsInfo.Returns(true);
-            TaskCompletionSource firstIndexed = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            TaskCompletionSource secondIndexed = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            logger.When(x => x.Info(Arg.Any<string>())).Do(call =>
-            {
-                string message = call.Arg<string>();
-                if (message.StartsWith("Position sidecar caught up through 1 (")) firstIndexed.TrySetResult();
-                if (message.StartsWith("Position sidecar caught up through 2 (")) secondIndexed.TrySetResult();
-            });
             ProcessExitSource exit = new(cancellation.Token);
             EthereumJsonSerializer jsonSerializer = new();
             await using IContainer container = new ContainerBuilder()
                 .AddModule(new NethermindRunnerModule(jsonSerializer, spec, config, exit,
                     [new EthashPlugin(spec, config.GetConfig<IMiningConfig>()),
                         new MergePlugin(spec, config.GetConfig<IMergeConfig>()), new TraceStorePlugin(traceConfig, config.GetConfig<IJsonRpcConfig>())],
-                    null, new OneLoggerLogManager(new ILogger(logger))))
+                    null, LimboLogs.Instance))
                 .Build();
             IBlockTree tree = container.Resolve<IBlockTree>();
             Block genesis = Nethermind.Core.Test.Builders.Build.A.Block.Genesis.TestObject;
@@ -393,13 +383,19 @@ public class EthereumRunnerTests
             StepInfo startIndex = container.Resolve<IEthereumStepsLoader>().ResolveStepsImplementations()
                 .Single(step => step.StepType.Assembly == typeof(TraceAddressIndex).Assembly);
             await ((IStep)container.Resolve(startIndex.StepType)).Execute(cancellation.Token);
-            await firstIndexed.Task.WaitAsync(cancellation.Token);
             JsonSerializerOptions options = EthereumJsonSerializer.JsonOptions;
             IColumnsDb<LogIndexColumns> database = (IColumnsDb<LogIndexColumns>)container.Resolve<DbMonitoringModule.DbTracker>()
                 .GetAllDbMeta().Single(entry => entry.Key == "TraceAddressIndex").Value;
             IDb meta = database.GetColumnDb(LogIndexColumns.Meta);
-            byte[] schemaKey = [.. "ots-pos-p1/"u8, 0];
-            byte[] firstProofKey = [.. "ots-pos-p1/"u8, 2, .. first.Hash!.Bytes];
+            byte[] sidecarPrefix = "ots-pos-p1/"u8.ToArray();
+            byte[] schemaKey = [.. sidecarPrefix, 0];
+            byte[] firstProofKey = [.. sidecarPrefix, 2, .. first.Hash!.Bytes];
+            async Task WaitForProof(byte[] key)
+            {
+                while (meta.Get(key) is null)
+                    await Task.Delay(10, cancellation.Token);
+            }
+            await WaitForProof(firstProofKey);
             byte[] originalSchema = meta.Get(schemaKey)!;
             byte[] originalProof = meta.Get(firstProofKey)!;
             byte[] originalTrace = traces.Get(first.Hash!)!;
@@ -417,9 +413,9 @@ public class EthereumRunnerTests
             Assert.That(EthereumJsonSerializer.JsonOptions, Is.SameAs(options), "The disposable warm node must not invalidate the live position sidecar's serializer contract.");
 
             Block second = AddBlock(first);
-            await secondIndexed.Task.WaitAsync(cancellation.Token);
-            byte[] progressKey = [.. "ots-pos-p1/"u8, 1];
-            byte[] proofKey = [.. "ots-pos-p1/"u8, 2, .. second.Hash!.Bytes];
+            byte[] progressKey = [.. sidecarPrefix, 1];
+            byte[] proofKey = [.. sidecarPrefix, 2, .. second.Hash!.Bytes];
+            await WaitForProof(proofKey);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(BinaryPrimitives.ReadUInt64LittleEndian(meta.Get(progressKey)!), Is.EqualTo(3));
