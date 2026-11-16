@@ -18,6 +18,7 @@ using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -79,8 +80,8 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
                 CodeOverrideStore overrides = ctx.Resolve<CodeOverrideStore>();
                 return worldState => new MovedPrecompileCodeInfoRepository(inner(worldState), worldState, overrides);
             })
-            .AddScoped<TransactionProcessorAdapterFactory, SimulateRequestState>(static state =>
-                txProcessor => new SimulateTransactionProcessorAdapter(txProcessor, state))
+            .AddScoped<TransactionProcessorAdapterFactory, SimulateRequestState, IWorldState>(static (state, worldState) =>
+                txProcessor => new SimulateTransactionProcessorAdapter(txProcessor, state, worldState))
             .AddSingleton<IReceiptStorage>(NullReceiptStorage.Instance)
             .AddScoped<SimulateRequestState>()
             .BindScoped<IBlobBaseFeeOverrideProvider, SimulateRequestState>()

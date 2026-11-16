@@ -49,7 +49,7 @@ internal class NodeRecordCodecTests
     public void Record_round_trips_rlp(string rlpHex, NodeRecordKind expectedKind, ushort expectedMask)
     {
         byte[] rlp = Bytes.FromHexString(rlpHex);
-        Assert.That(NodeRecordCodec.TryDecode(rlp, out NodeRecordKind kind, out ushort hashMask), Is.True);
+        NodeRecordCodec.Decode(rlp, out NodeRecordKind kind, out ushort hashMask);
 
         byte[] buffer = new byte[NodeRecordCodec.Length(BitOperations.PopCount(hashMask), rlp.Length)];
         NodeRecordCodec.WriteFromRlp(rlp, kind, hashMask, ValueKeccak.Compute(rlp), nodeKeyHash: 0, buffer);
@@ -76,15 +76,6 @@ internal class NodeRecordCodecTests
         }
     }
 
-    [TestCase("d710" + "d5c23101c23201" + "8080808080808080808080808080" + "01", TestName = "embedded branch value")]
-    [TestCase("f851"
-        + "a01111111111111111111111111111111111111111111111111111111111111111"
-        + "a02222222222222222222222222222222222222222222222222222222222222222"
-        + "8080808080808080808080808080" + "01", TestName = "branch value")]
-    [TestCase("e215a0" + "22222222222222222222222222222222222222222222222222222222222222", TestName = "truncated")]
-    public void Rejects_invalid_rlp(string rlpHex) =>
-        Assert.That(NodeRecordCodec.TryDecode(Bytes.FromHexString(rlpHex), out _, out _), Is.False);
-
     // Trie nodes are found by hash, so the codec reads them without the checks of the canonical form.
     private static IEnumerable<TestCaseData> NonCanonicalCases()
     {
@@ -97,15 +88,22 @@ internal class NodeRecordCodecTests
     [TestCaseSource(nameof(NonCanonicalCases))]
     public void Decodes_non_canonical_rlp(string rlpHex, NodeRecordKind expectedKind, ushort expectedMask)
     {
-        bool decoded = NodeRecordCodec.TryDecode(Bytes.FromHexString(rlpHex), out NodeRecordKind kind, out ushort hashMask);
+        NodeRecordCodec.Decode(Bytes.FromHexString(rlpHex), out NodeRecordKind kind, out ushort hashMask);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(decoded, Is.True);
             Assert.That(kind, Is.EqualTo(expectedKind));
             Assert.That(hashMask, Is.EqualTo(expectedMask));
         }
     }
+
+    [TestCase(ShortLeaf, ExpectedResult = true, TestName = "leaf, even key")]
+    [TestCase("c23101", ExpectedResult = true, TestName = "leaf, single-byte key")]
+    [TestCase("c8820001" + ShortLeaf, ExpectedResult = false, TestName = "extension")]
+    [TestCase("d710" + EmbeddedBranch, ExpectedResult = false, TestName = "extension, single-byte key")]
+    [TestCase(EmbeddedBranch, ExpectedResult = false, TestName = "branch, embedded first child")]
+    [TestCase("d5" + "80" + "c23101" + "c23201" + "8080808080808080808080808080", ExpectedResult = false, TestName = "branch, empty first child")]
+    public bool Is_inline_leaf(string rlpHex) => NodeRecordCodec.IsInlineLeaf(Bytes.FromHexString(rlpHex));
 
     [Test]
     public void ChildRef_is_48_bytes() => Assert.That(Unsafe.SizeOf<ChildRef>(), Is.EqualTo(48));

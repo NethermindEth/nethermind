@@ -77,7 +77,7 @@ public class RlpExecutionWitnessJsonConverterTests
     public void Headers_are_spliced_as_nested_rlp_values()
     {
         BlockHeader header = Build.A.BlockHeader.WithNumber(7).TestObject;
-        byte[] headerRlp = new HeaderDecoder().EncodeAsBytes(header);
+        byte[] headerRlp = new HeaderDecoder().Encode(header);
 
         using NewPayloadWithWitnessV1Result result = MakeResult(
             headers: [headerRlp],

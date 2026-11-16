@@ -42,9 +42,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// compare its entries as well as its identity.
     /// </remarks>
     private static nint[] GetPairedHandlers<TTracingInst>(delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] handlers)
+        where TTracingInst : struct, IFlag =>
+        PairHandlersOnce<TTracingInst>(handlers, ref _pairedHandlers);
+
+    /// <summary>The table <see cref="PairHandlers"/> builds from <paramref name="handlers"/>, kept in <paramref name="last"/> until another table replaces it.</summary>
+    private static nint[] PairHandlersOnce<TTracingInst>(
+        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] handlers,
+        ref PairedHandlers? last)
         where TTracingInst : struct, IFlag
     {
-        PairedHandlers? paired = Volatile.Read(ref _pairedHandlers);
+        PairedHandlers? paired = Volatile.Read(ref last);
         if (paired is null || paired.Source != handlers || (TTracingInst.IsActive && IsRefilled(paired, handlers)))
         {
             fixed (void* entries = handlers)
@@ -52,7 +59,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ReadOnlySpan<nint> source = new(entries, byte.MaxValue + 1);
                 paired = new PairedHandlers(handlers, TTracingInst.IsActive ? source.ToArray() : null, PairHandlers(source));
             }
-            Volatile.Write(ref _pairedHandlers, paired);
+            Volatile.Write(ref last, paired);
         }
 
         return paired.Entries;

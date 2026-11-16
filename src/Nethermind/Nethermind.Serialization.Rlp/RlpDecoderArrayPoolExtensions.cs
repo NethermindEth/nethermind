@@ -53,7 +53,7 @@ public static class RlpDecoderArrayPoolExtensions
         for (int i = 0; i < items.Length; i++)
         {
             T? item = items[i];
-            totalLength += default(T) is null && item is null ? Rlp.OfEmptyList.Length : decoder.GetLength(item!, behaviors);
+            totalLength += default(T) is null && item is null ? Rlp.LengthOfNull : decoder.GetLength(item!, behaviors);
         }
 
         int bufferLength = Rlp.LengthOfSequence(totalLength);
@@ -90,7 +90,7 @@ public static class RlpDecoderArrayPoolExtensions
 
     private static ArrayPoolSpan<byte> EmptyListSpan()
     {
-        ArrayPoolSpan<byte> buffer = new(Rlp.OfEmptyList.Length);
+        ArrayPoolSpan<byte> buffer = new(Rlp.LengthOfNull);
         buffer[0] = Rlp.EmptyListByte;
         return buffer;
     }

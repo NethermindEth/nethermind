@@ -2,23 +2,31 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Int256;
 using Nethermind.History;
 using Nethermind.Logging;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
+using Nethermind.Serialization.FluentRlp;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
@@ -44,14 +52,28 @@ public class SyncServerReceiptsBenchmarks
     private SyncServer _server = null!;
     private Hash256[] _servedHashes = null!;
 
+    private readonly byte[] _message = new byte[16 * 1024 * 1024];
+    private ReceiptsMessageSerializer _serializerWithBloom = null!;
+    private ReceiptsMessageInnerSerializer69 _serializer69 = null!;
+    private static readonly ReceiptMessageDecoder ReceiptDecoder = new();
+    private static readonly ReceiptMessageDecoder69 ReceiptDecoder69 = new();
+
     [Params(50, 150, 300)]
     public int TransactionsPerBlock { get; set; }
+
+    /// <summary>Logs of each receipt, each one shaped as an ERC-20 transfer.</summary>
+    [Params(0, 2)]
+    public int LogsPerReceipt { get; set; }
 
     [GlobalSetup]
     public void Setup()
     {
         TestSpecProvider specProvider = new(Byzantium.Instance);
         EthereumEcdsa ecdsa = new(specProvider.ChainId);
+        _serializerWithBloom = new ReceiptsMessageSerializer(specProvider);
+        _serializer69 = new ReceiptsMessageInnerSerializer69(specProvider);
+        LogEntry[] logs = [.. Enumerable.Range(0, LogsPerReceipt).Select(static i => new LogEntry(
+            TestItem.Addresses[i], new UInt256((ulong)i + 1).ToBigEndian(), [TestItem.KeccakA, TestItem.Keccaks[i], TestItem.Keccaks[i + 1]]))];
         BlockStore blockStore = new(new TestMemDb());
         BlockTreeBuilder builder = Build.A.BlockTree().WithSpecProvider(specProvider).WithBlockStore(blockStore).OfChainLength(1);
         BlockTree blockTree = builder.TestObject;
@@ -101,8 +123,8 @@ public class SyncServerReceiptsBenchmarks
                         GasUsedTotal = gasUsedTotal,
                         Sender = TestItem.AddressA,
                         StatusCode = StatusCode.Success,
-                        Logs = [],
-                        Bloom = Bloom.Empty
+                        Logs = logs,
+                        Bloom = new Bloom(logs)
                     };
                 }
                 receiptStorage.Insert(block, receipts);
@@ -113,7 +135,7 @@ public class SyncServerReceiptsBenchmarks
         }
 
         // Check every served block through a throwaway server, so nothing the check caches reaches the measured one.
-        using (SyncServer check = CreateServer(blockTree, blockStore, receiptsDb, specProvider, ecdsa))
+        using (SyncServer check = CreateServer(blockTree, blockStore, builder.HeaderStore, receiptsDb, specProvider, ecdsa))
         {
             foreach (Hash256 hash in _servedHashes)
             {
@@ -126,11 +148,11 @@ public class SyncServerReceiptsBenchmarks
         // hold some of them, so start from an empty one. A fresh receipt storage starts with an empty receipts cache.
         IClearableCache blockCache = blockStore;
         blockCache.ClearCache();
-        _server = CreateServer(blockTree, blockStore, receiptsDb, specProvider, ecdsa);
+        _server = CreateServer(blockTree, blockStore, builder.HeaderStore, receiptsDb, specProvider, ecdsa);
     }
 
     private static SyncServer CreateServer(
-        BlockTree blockTree, BlockStore blockStore, IColumnsDb<ReceiptsColumns> receiptsDb, TestSpecProvider specProvider, EthereumEcdsa ecdsa)
+        BlockTree blockTree, BlockStore blockStore, IHeaderStore headerStore, IColumnsDb<ReceiptsColumns> receiptsDb, TestSpecProvider specProvider, EthereumEcdsa ecdsa)
     {
         PersistentReceiptStorage storage = new(
             receiptsDb, specProvider, new ReceiptsRecovery(ecdsa, specProvider), blockTree, blockStore, new ReceiptConfig())
@@ -140,6 +162,9 @@ public class SyncServerReceiptsBenchmarks
             Substitute.For<IWorldStateManager>(),
             new MemDb(),
             blockTree,
+            blockStore,
+            headerStore,
+            new HeaderDecoder(),
             new FullInfoReceiptFinder(storage, new ReceiptsRecovery(ecdsa, specProvider), blockTree),
             Substitute.For<IBlockAccessListStore>(),
             Always.Valid,
@@ -165,5 +190,47 @@ public class SyncServerReceiptsBenchmarks
             served += _server.GetReceipts(hash)!.Length;
         }
         return served;
+    }
+
+    /// <summary>Serves each block as before: decoded and recovered receipts, encoded by the message serializer.</summary>
+    [Benchmark(OperationsPerInvoke = ServedBlocks)]
+    [Arguments(true)]
+    [Arguments(false)]
+    public int Decoded(bool withBloom)
+    {
+        int length = 0;
+        foreach (Hash256 hash in _servedHashes)
+        {
+            using ReceiptsMessage message = new(new ArrayPoolList<TxReceipt[]>(1) { _server.GetReceipts(hash)! });
+            length += Serialize(message, withBloom);
+        }
+        return length;
+    }
+
+    /// <summary>Serves each block from its stored receipts, encoded without decoding them.</summary>
+    [Benchmark(OperationsPerInvoke = ServedBlocks)]
+    [Arguments(true)]
+    [Arguments(false)]
+    public int Encoded(bool withBloom)
+    {
+        IRlpDecoder<TxReceipt> decoder = withBloom ? ReceiptDecoder : ReceiptDecoder69;
+        int length = 0;
+        foreach (Hash256 hash in _servedHashes)
+        {
+            ArrayPoolList<byte> buffer = new(0);
+            if (!_server.TryAppendReceipts(hash, decoder, withBloom, buffer))
+                throw new InvalidOperationException($"Block {hash} has no receipts.");
+
+            using ReceiptsMessage message = new(NetworkBlockReceipts.FromBuffer(buffer, [new Range(0, buffer.Count)], withBloom, static (ref RlpReader _) => []));
+            length += Serialize(message, withBloom);
+        }
+        return length;
+    }
+
+    private int Serialize(ReceiptsMessage message, bool withBloom)
+    {
+        // The serializer takes the message length from the destination length.
+        ReceiptsMessageSerializer serializer = withBloom ? _serializerWithBloom : _serializer69;
+        return serializer.Serialize(_message.AsSpan(0, serializer.GetLength(message)), message);
     }
 }

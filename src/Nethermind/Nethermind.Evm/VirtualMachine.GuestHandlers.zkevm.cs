@@ -50,6 +50,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     {
         if (TTracingInst.IsActive || TCancelable.IsActive || typeof(TGasPolicy) != typeof(EthereumGasPolicy)) return;
 
+        // The build of the untraced table is the last one before the table is set, so its entries are the ones kept.
+        if (_opcodeTable is { NoTrace: null })
+            _sharedHandlers = (delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[])lookup.Clone();
+
         if (AirbenderFlag.IsActive)
             AirbenderArithmetic.Initialize();
 
@@ -98,15 +102,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         lookup[(int)Instruction.MLOAD] = AsTableEntry(&RawCalliHelper.ExecuteMLoadFromActiveMemory);
         lookup[(int)Instruction.MSTORE] = AsTableEntry(&RawCalliHelper.ExecuteMStoreInsideBacking);
         lookup[(int)Instruction.MSTORE8] = AsTableEntry(&RawCalliHelper.ExecuteMStore8InsideActiveMemory);
-        lookup[(int)Instruction.CALLDATACOPY] = AsTableEntry(&RawCalliHelper.ExecuteDataCopy<RawCalliHelper.CallDataSource>);
-        lookup[(int)Instruction.CODECOPY] = AsTableEntry(&RawCalliHelper.ExecuteDataCopy<RawCalliHelper.CodeSource>);
-        if (SpecFlags.Eip2929(spec) && !SpecFlags.Eip8038(spec))
+        lookup[(int)Instruction.CALLDATACOPY] = AsTableEntry(&RawCalliHelper.ExecuteDataCopyIntoWritten<RawCalliHelper.CallDataSource>);
+        lookup[(int)Instruction.CODECOPY] = AsTableEntry(&RawCalliHelper.ExecuteDataCopyIntoWritten<RawCalliHelper.CodeSource>);
+        if (SpecFlags.Eip2929(spec))
         {
-            lookup[(int)Instruction.SLOAD] = SpecFlags.Eip8360(spec)
-                ? AsTableEntry(&RawCalliHelper.ExecuteSLoad<OnFlag>)
-                : AsTableEntry(&RawCalliHelper.ExecuteSLoad<OffFlag>);
-            if (SpecFlags.NetGasMetering(spec) && SpecFlags.Eip2200(spec) && !SpecFlags.Eip8279(spec) && !SpecFlags.Eip8360(spec))
-                lookup[(int)Instruction.SSTORE] = AsTableEntry(&RawCalliHelper.ExecuteSStore);
+            // The EIP-8038 storage handlers do not fit Airbender's 4 MiB ROM, so there the shared handlers run them.
+            if (!SpecFlags.Eip8038(spec))
+                SetStorageHandlers<Eip8038Off>(lookup, spec);
+            else if (!AirbenderFlag.IsActive)
+                SetStorageHandlers<Eip8038On>(lookup, spec);
         }
         if (SpecFlags.Eip2929(spec) && SpecFlags.Eip150(spec) && SpecFlags.Eip158(spec) && !SpecFlags.Eip8279(spec) && !SpecFlags.Eip8360(spec))
         {
@@ -127,10 +131,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         if (spec.ReturnDataOpcodesEnabled)
         {
             lookup[(int)Instruction.RETURNDATASIZE] = AsTableEntry(&RawCalliHelper.ExecutePushValue<RawCalliHelper.ReturnDataSizeValue>);
-            lookup[(int)Instruction.RETURNDATACOPY] = AsTableEntry(&RawCalliHelper.ExecuteDataCopy<RawCalliHelper.ReturnDataSource>);
+            lookup[(int)Instruction.RETURNDATACOPY] = AsTableEntry(&RawCalliHelper.ExecuteDataCopyIntoWritten<RawCalliHelper.ReturnDataSource>);
         }
         if (spec.IncludePush0Instruction)
             lookup[(int)Instruction.PUSH0] = AsTableEntry(&RawCalliHelper.ExecutePushValue<RawCalliHelper.ZeroValue>);
+        if (!spec.IsEip7709Enabled)
+            lookup[(int)Instruction.BLOCKHASH] = AsTableEntry(&RawCalliHelper.ExecuteBlockHash);
+        if (spec.SelfBalanceOpcodeEnabled)
+            lookup[(int)Instruction.SELFBALANCE] = AsTableEntry(&RawCalliHelper.ExecuteSelfBalance);
         lookup[(int)Instruction.COINBASE] = AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.CoinbaseWord>);
         lookup[(int)Instruction.TIMESTAMP] = AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.TimestampWord>);
         lookup[(int)Instruction.NUMBER] = AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.NumberWord>);
@@ -144,7 +152,22 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             lookup[(int)Instruction.BLOBBASEFEE] = AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.BlobBaseFeeWord>);
         if (spec.IsEip7843Enabled)
             lookup[(int)Instruction.SLOTNUM] = AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.SlotNumWord>);
+        lookup[(int)Instruction.ADDRESS] = AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.AddressWord>);
+        lookup[(int)Instruction.CALLER] = AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.CallerWord>);
+        lookup[(int)Instruction.ORIGIN] = AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.OriginWord>);
+        lookup[(int)Instruction.CALLVALUE] = AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.CallValueWord>);
+        lookup[(int)Instruction.GASPRICE] = AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.GasPriceWord>);
         lookup[(int)Instruction.KECCAK256] = AsTableEntry(&RawCalliHelper.ExecuteKeccak256OfActiveMemory);
+        if (spec.MCopyIncluded)
+            lookup[(int)Instruction.MCOPY] = AsTableEntry(&RawCalliHelper.ExecuteMCopyInsideMemory);
+        if (spec.IsEip8024Enabled)
+        {
+            lookup[(int)Instruction.DUPN] = AsTableEntry(&RawCalliHelper.ExecuteDupN);
+            lookup[(int)Instruction.SWAPN] = AsTableEntry(&RawCalliHelper.ExecuteSwapN);
+            lookup[(int)Instruction.EXCHANGE] = AsTableEntry(&RawCalliHelper.ExecuteExchange);
+        }
+        if (spec.IsEip4844Enabled)
+            lookup[(int)Instruction.BLOBHASH] = AsTableEntry(&RawCalliHelper.ExecuteBlobHash);
         lookup[(int)Instruction.ADD] = AsTableEntry(&RawCalliHelper.ExecuteBinary<RawCalliHelper.AddOperation>);
         lookup[(int)Instruction.SUB] = AsTableEntry(&RawCalliHelper.ExecuteBinary<RawCalliHelper.SubtractOperation>);
         lookup[(int)Instruction.AND] = AsTableEntry(&RawCalliHelper.ExecuteBinary<RawCalliHelper.AndOperation>);
@@ -156,6 +179,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         lookup[(int)Instruction.MULMOD] = AsTableEntry(&RawCalliHelper.ExecuteModular<EvmInstructions.OpMulMod>);
         lookup[(int)Instruction.SIGNEXTEND] = AsTableEntry(&RawCalliHelper.ExecuteBinary<RawCalliHelper.SignExtendOperation>);
         lookup[(int)Instruction.NOT] = AsTableEntry(&RawCalliHelper.ExecuteNot);
+        if (spec.CLZEnabled)
+            lookup[(int)Instruction.CLZ] = AsTableEntry(&RawCalliHelper.ExecuteClz);
         lookup[(int)Instruction.BYTE] = AsTableEntry(&RawCalliHelper.ExecuteBinary<RawCalliHelper.ByteOperation>);
         lookup[(int)Instruction.DUP2] = AsTableEntry(&RawCalliHelper.ExecuteDup<EvmInstructions.Op2>);
         lookup[(int)Instruction.DUP3] = AsTableEntry(&RawCalliHelper.ExecuteDup<EvmInstructions.Op3>);
@@ -194,6 +219,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             lookup[(int)Instruction.SHR] = AsTableEntry(&RawCalliHelper.ExecuteShr);
             lookup[(int)Instruction.SAR] = AsTableEntry(&RawCalliHelper.ExecuteBinary<RawCalliHelper.ArithmeticShiftRightOperation>);
         }
+    }
+
+    /// <summary>Sets the guest's SLOAD and SSTORE handlers for the EIP-8038 setting the shared table picks.</summary>
+    private static void SetStorageHandlers<TEip8038>(
+        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] lookup, IReleaseSpec spec)
+        where TEip8038 : struct, IEip8038Flag
+    {
+        lookup[(int)Instruction.SLOAD] = SpecFlags.Eip8360(spec)
+            ? AsTableEntry(&RawCalliHelper.ExecuteSLoad<TEip8038, OnFlag>)
+            : AsTableEntry(&RawCalliHelper.ExecuteSLoad<TEip8038, OffFlag>);
+        if (SpecFlags.NetGasMetering(spec) && SpecFlags.Eip2200(spec) && !SpecFlags.Eip8279(spec) && !SpecFlags.Eip8360(spec))
+            lookup[(int)Instruction.SSTORE] = AsTableEntry(&RawCalliHelper.ExecuteSStore<TEip8038>);
     }
 
     /// <summary>Sets the guest's CALL, STATICCALL and DELEGATECALL handlers for the fork rules the shared table picks.</summary>
@@ -247,7 +284,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// code ends at a shared handler: at the latest the STOP that pads the code. A frame that halts on an exception
         /// consumes all its gas and drops its effects whichever opcode raised it, so halting a few opcodes later gives
         /// the same result. The shortfall stays far below 2^31: a code holds fewer than 2^20 opcodes, and every fixed
-        /// cost charged this way is below 2^6.
+        /// cost charged this way is below 2^6. A frame runs on these handlers only with at least as much gas as its code
+        /// has bytes (see <see cref="RunDispatchLoop{TTracingInst, TCancelable}"/>), so the opcodes a shortfall runs past
+        /// never outnumber the gas that the frame consumes.
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ChargeUntested(ref nuint gas, ulong cost)
@@ -522,7 +561,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         /// <summary>
         /// A comparison, fused with the branch after it - <c>PUSH2</c> <c>JUMPI</c>, <c>ISZERO</c> <c>PUSH2</c> <c>JUMPI</c>, or <c>PUSH1</c> <c>JUMPI</c> -
-        /// whenever that branch falls through or lands on a destination the incremental bitmap already holds.
+        /// whenever that branch falls through or lands on a destination the incremental bitmap already holds, or with a
+        /// lone <c>ISZERO</c> after it that only inverts the result.
         /// </summary>
         /// <remarks>
         /// Compilers branch on nearly every comparison they emit, so fusing saves the comparison its result slot and
@@ -644,6 +684,21 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                     goto Dispatch;
                                 }
                             }
+                        }
+                        // No branch follows: the ISZERO only inverts the result, so both run in one step. A PUSH1 JUMPI
+                        // after the ISZERO is left to the ISZERO's own branch fusion.
+                        else if (!(CodeByte(ref opcode, inverted, 2, 2) == (byte)Instruction.PUSH1 && CodeByte(ref opcode, inverted, 2, 4) == (byte)Instruction.JUMPI) &&
+                            TryCharge(ref gas, 2 * VeryLowGasCost.GasCost))
+                        {
+                            nint inverse = -TCondition.Inputs * LimbsPerWord;
+                            Unsafe.Add(ref end, inverse) = condition ^ 1;
+                            Unsafe.Add(ref end, inverse + 1) = 0;
+                            Unsafe.Add(ref end, inverse + 2) = 0;
+                            Unsafe.Add(ref end, inverse + 3) = 0;
+                            head -= TCondition.Inputs - 1;
+                            sp = ref Moved(ref sp, -(TCondition.Inputs - 1));
+                            ip = ref Unsafe.Add(ref ip, 2);
+                            goto Dispatch;
                         }
                     }
                     // Code shorter than 256 bytes pushes its destinations with PUSH1.
@@ -1197,6 +1252,36 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             }
         }
 
+        /// <summary>CLZ (EIP-7939) of the top word, in place.</summary>
+        /// <remarks>
+        /// An empty stack runs the shared CLZ handler instead, which faults on it. A short gas takes the fast path and leaves
+        /// the gas negative, and the next test halts the frame (see <see cref="ChargeUntested"/>).
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteClz(
+            ref EvmStack stack,
+            nuint gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte sp)
+        {
+            if (head > 0 && ChargeUntested(ref gas, LowGasCost.GasCost))
+            {
+                ref byte top = ref SlotBelow(ref sp, 1);
+                SetWord(ref Unsafe.As<byte, ulong>(ref top), (ulong)EvmInstructions.CountLeadingZeroBitsOfLimbs(ref top));
+                ip = ref Unsafe.Add(ref ip, 1);
+                nint next = NextHandler(handlers, ref ip);
+                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+            }
+
+            nint shared = Entry(&ExecuteOpcode<CountLeadingZerosOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
+        }
+
         /// <summary>NOT of the top word, in place.</summary>
         /// <remarks>A short stack or gas runs the shared NOT handler instead, which faults on it.</remarks>
         [SkipLocalsInit]
@@ -1732,6 +1817,114 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
         }
 
+        /// <summary>DUPN (EIP-8024), with the depth decoded from its immediate.</summary>
+        /// <remarks>
+        /// The immediate past the end of the code reads the padding's zero, as EIP-8024 has it. An invalid immediate, a
+        /// short stack or a full one runs the shared DUPN handler instead, which faults on it.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteDupN(
+            ref EvmStack stack,
+            nuint gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte sp)
+        {
+            byte immediate = Unsafe.Add(ref ip, 1);
+            nint depth = (immediate + 145) & 0xFF;
+            if (EvmInstructions.IsValidEip8024SingleImmediate(immediate) && head >= depth && head < EvmStack.MaxStackSize - 1
+                && ChargeUntested(ref gas, VeryLowGasCost.GasCost))
+            {
+                CopyWord(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, depth)), ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)));
+                head++;
+                sp = ref Moved(ref sp, 1);
+                ip = ref Unsafe.Add(ref ip, 2);
+                nint next = NextHandler(handlers, ref ip);
+                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+            }
+
+            nint shared = Entry(&ExecuteOpcode<DupNOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
+        }
+
+        /// <summary>SWAPN (EIP-8024), with the depth decoded from its immediate.</summary>
+        /// <remarks>An invalid immediate or a short stack runs the shared SWAPN handler instead, which faults on it.</remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteSwapN(
+            ref EvmStack stack,
+            nuint gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte sp)
+        {
+            byte immediate = Unsafe.Add(ref ip, 1);
+            // The top word swaps with the one the decoded depth names below it.
+            nint depth = ((immediate + 145) & 0xFF) + 1;
+            if (EvmInstructions.IsValidEip8024SingleImmediate(immediate) && head >= depth && ChargeUntested(ref gas, VeryLowGasCost.GasCost))
+            {
+                SwapWords(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), 1, depth);
+                ip = ref Unsafe.Add(ref ip, 2);
+                nint next = NextHandler(handlers, ref ip);
+                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+            }
+
+            nint shared = Entry(&ExecuteOpcode<SwapNOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
+        }
+
+        /// <summary>EXCHANGE (EIP-8024), with the pair of depths decoded from its immediate.</summary>
+        /// <remarks>An invalid immediate or a short stack runs the shared EXCHANGE handler instead, which faults on it.</remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteExchange(
+            ref EvmStack stack,
+            nuint gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte sp)
+        {
+            byte immediate = Unsafe.Add(ref ip, 1);
+            // As EvmInstructions decodes it, both depths counted from 1 at the top.
+            int k = immediate ^ 0x8F;
+            int q = k >> 4;
+            int r = k & 0x0F;
+            nint first = q < r ? q + 2 : r + 2;
+            nint second = q < r ? r + 2 : 30 - q;
+            if (EvmInstructions.IsValidEip8024PairImmediate(immediate) && head >= second && ChargeUntested(ref gas, VeryLowGasCost.GasCost))
+            {
+                SwapWords(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), first, second);
+                ip = ref Unsafe.Add(ref ip, 2);
+                nint next = NextHandler(handlers, ref ip);
+                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+            }
+
+            nint shared = Entry(&ExecuteOpcode<ExchangeOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
+        }
+
+        /// <summary>Exchanges the words <paramref name="first"/> and <paramref name="second"/> below <paramref name="end"/>, the slot above the top word.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void SwapWords(ref ulong end, nint first, nint second)
+        {
+            nint top = -first * LimbsPerWord;
+            nint bottom = -second * LimbsPerWord;
+            SwapLimbs(ref end, top, bottom);
+            SwapLimbs(ref end, top + 1, bottom + 1);
+            SwapLimbs(ref end, top + 2, bottom + 2);
+            SwapLimbs(ref end, top + 3, bottom + 3);
+        }
+
         /// <summary>Exchanges the limbs at <paramref name="top"/> and <paramref name="bottom"/> limbs from <paramref name="end"/>.</summary>
         /// <remarks>Both are addressed off <paramref name="end"/> itself, so each access folds its constant into its own offset.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1881,7 +2074,204 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             public static ulong Read(ref EvmStack stack, ref DispatchState state, ulong gas) => (uint)state.Vm.ReturnDataBuffer.Length;
         }
 
-        /// <summary>An opcode that pushes a word of the block's context, as <typeparamref name="TWord"/> writes it.</summary>
+        /// <summary>MCOPY (EIP-5656) from a range the memory holds initialized, with the operands read in their stack slots.</summary>
+        /// <remarks>
+        /// The shared handler copies the three operands off the stack and charges through 256-bit helpers. A source reaching
+        /// past the initialized memory or past the larger of the memory's size and the destination's end, a destination <see cref="EvmPooledMemory.TryPrepareRangeOverwrite"/> refuses, an
+        /// operand of 2^32 or more, a short stack or a short gas runs the shared handler instead, which charges and faults on it.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteMCopyInsideMemory(
+            ref EvmStack stack,
+            nuint gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte sp)
+        {
+            if (head > 2)
+            {
+                // The destination is the top word, the source the one below it and the length the third.
+                ref ulong destination = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
+                ref ulong source = ref Unsafe.Subtract(ref destination, LimbsPerWord);
+                ref ulong length = ref Unsafe.Subtract(ref destination, 2 * LimbsPerWord);
+                ulong size = length;
+                ulong cost = GasCostOf.VeryLow + GasCostOf.Memory * ((size + (EvmStack.WordSize - 1)) >> 5);
+                if ((Unsafe.Add(ref length, 1) | Unsafe.Add(ref length, 2) | Unsafe.Add(ref length, 3) | (size >> 32)) == 0 && Covers(gas, cost))
+                {
+                    if (size == 0)
+                    {
+                        gas -= (nuint)cost;
+                        goto Dispatch;
+                    }
+
+                    ulong to = destination;
+                    ulong from = source;
+                    if ((Unsafe.Add(ref destination, 1) | Unsafe.Add(ref destination, 2) | Unsafe.Add(ref destination, 3) | (to >> 32) |
+                         Unsafe.Add(ref source, 1) | Unsafe.Add(ref source, 2) | Unsafe.Add(ref source, 3) | (from >> 32)) == 0)
+                    {
+                        gas -= (nuint)cost;
+                        if (AlignedMemory(ref state).TryCopyWithin(to, from, size, ref gas))
+                        {
+                            // Reloaded rather than held across the call, where each would take a callee-saved register.
+                            handlers = state.OpcodeHandlers;
+                            code = ref stack.Code;
+                            sp = ref SlotAt(ref stack.Bottom, head);
+                            goto Dispatch;
+                        }
+
+                        gas += (nuint)cost;
+                    }
+                }
+            }
+
+            nint shared = Entry(&ExecuteOpcode<MCopyOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
+
+        Dispatch:
+            head -= 3;
+            sp = ref Moved(ref sp, -3);
+            ip = ref Unsafe.Add(ref ip, 1);
+            nint next = NextHandler(handlers, ref ip);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+        }
+
+        /// <summary>BLOCKHASH, before EIP-7709: the hash of the block whose number the top word holds, or zero outside the last 256.</summary>
+        /// <remarks>
+        /// The hash replaces the number in its slot, read as bytes the provider already holds. An empty stack or a short
+        /// gas runs the shared handler instead, which faults on it.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteBlockHash(
+            ref EvmStack stack,
+            nuint gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte sp)
+        {
+            if (head > 0 && TryCharge(ref gas, BlockHashGasCost.GasCost))
+            {
+                ref ulong number = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
+                VirtualMachine<TGasPolicy> vm = state.Vm;
+                BlockHeader header = vm.BlockExecutionContext.Header;
+                ulong at = number;
+                // The current block, a later one, and a number past 64 bits have no hash.
+                if ((Unsafe.Add(ref number, 1) | Unsafe.Add(ref number, 2) | Unsafe.Add(ref number, 3)) != 0 || at >= header.Number)
+                {
+                    SetWord(ref number, 0);
+                }
+                else
+                {
+                    bool found = vm.BlockHashProvider.TryGetBlockhash(header, at, vm.Spec, out ReadOnlySpan<byte> hash);
+                    // Reloaded rather than held across the call, where each would take a callee-saved register.
+                    handlers = state.OpcodeHandlers;
+                    code = ref stack.Code;
+                    sp = ref SlotAt(ref stack.Bottom, head);
+                    number = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
+                    if (found)
+                        LoadBigEndian(ref number, ref MemoryMarshal.GetReference(hash));
+                    else
+                        SetWord(ref number, 0);
+                }
+
+                ip = ref Unsafe.Add(ref ip, 1);
+                nint next = NextHandler(handlers, ref ip);
+                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+            }
+
+            nint shared = Entry(&ExecuteOpcode<BlockHashOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
+        }
+
+        /// <summary>BLOBHASH: the transaction's versioned blob hash at the index the top word holds, or zero past the last.</summary>
+        /// <remarks>
+        /// The hash replaces the index in its slot. An empty stack, a short gas or a missing or odd-length hash runs the shared
+        /// handler instead, which faults on it or pads it.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteBlobHash(
+            ref EvmStack stack,
+            nuint gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte sp)
+        {
+            if (head > 0 && Covers(gas, BlobHashGasCost.GasCost))
+            {
+                ref ulong index = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
+                byte[]?[]? hashes = state.Vm.TxExecutionContext.BlobVersionedHashes;
+                ulong at = index;
+                if (hashes is null || !FitsNativeWord(ref index) || at >= (ulong)hashes.Length)
+                {
+                    gas -= (nuint)BlobHashGasCost.GasCost;
+                    SetWord(ref index, 0);
+                    goto Dispatch;
+                }
+
+                // The shared handler left-pads a hash of another length; a versioned hash is always a whole word.
+                if (hashes[(nint)at] is { Length: EvmStack.WordSize } hash)
+                {
+                    gas -= (nuint)BlobHashGasCost.GasCost;
+                    LoadBigEndian(ref index, ref MemoryMarshal.GetArrayDataReference(hash));
+                    goto Dispatch;
+                }
+            }
+
+            nint shared = Entry(&ExecuteOpcode<BlobHashOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
+
+        Dispatch:
+            ip = ref Unsafe.Add(ref ip, 1);
+            nint next = NextHandler(handlers, ref ip);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+        }
+
+        /// <summary>SELFBALANCE: the balance of the executing account, read off the state with no shell around the call.</summary>
+        /// <remarks>A short gas or a full stack runs the shared handler instead, which faults on it.</remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteSelfBalance(
+            ref EvmStack stack,
+            nuint gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte sp)
+        {
+            if (head < EvmStack.MaxStackSize - 1 && TryCharge(ref gas, SelfBalanceGasCost.GasCost))
+            {
+                VirtualMachine<TGasPolicy> vm = state.Vm;
+                ref readonly UInt256 balance = ref vm.WorldState.GetBalance(vm.VmState.Env.ExecutingAccount);
+                // Reloaded rather than held across the call, where each would take a callee-saved register.
+                handlers = state.OpcodeHandlers;
+                code = ref stack.Code;
+                sp = ref SlotAt(ref stack.Bottom, head);
+                CopyWord(ref Unsafe.As<UInt256, ulong>(ref Unsafe.AsRef(in balance)), ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)));
+                head++;
+                sp = ref Moved(ref sp, 1);
+                ip = ref Unsafe.Add(ref ip, 1);
+                nint next = NextHandler(handlers, ref ip);
+                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+            }
+
+            nint shared = Entry(&ExecuteOpcode<SelfBalanceOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
+        }
+
+        /// <summary>An opcode that pushes a word of the block's, the transaction's or the frame's context, as <typeparamref name="TWord"/> writes it.</summary>
         /// <remarks>
         /// The context does not change while a frame runs, so the word comes straight off <see cref="DispatchState.Vm"/>
         /// with no call. A short gas, a full stack, or a word the block does not have runs the shared handler of the
@@ -1914,7 +2304,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
         }
 
-        /// <summary>A word of the block's context, of base cost, that <see cref="ExecutePushContextWord{TWord}"/> pushes.</summary>
+        /// <summary>A word of the block's, the transaction's or the frame's context, of base cost, that <see cref="ExecutePushContextWord{TWord}"/> pushes.</summary>
         internal interface IContextWord
         {
             /// <summary>The shared handler of the opcode, which handles every case that faults.</summary>
@@ -1934,18 +2324,22 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 Entry(&ExecuteOpcode<BlkAddressOpcode<EvmInstructions.OpCoinbase<TGasPolicy>, OffFlag>, OffFlag, OffFlag, OnFlag>);
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public static void Write(VirtualMachine<TGasPolicy> vm, ref ulong slot)
-            {
-                ref byte bytes = ref MemoryMarshal.GetReference(vm.BlockExecutionContext.Coinbase.Bytes);
-                slot = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref bytes, Address.Size - sizeof(ulong)));
-                Unsafe.Add(ref slot, 1) = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref bytes, Address.Size - 2 * sizeof(ulong)));
-                // The leading four bytes of the address end the third limb. Without a byte reverse they are gathered
-                // alone, as the shift does not drop the gather of the four bytes after them.
-                Unsafe.Add(ref slot, 2) = ZkEvmBitOperations.HasByteReverse
-                    ? ZkEvmBitOperations.ReadUInt64BigEndian(ref bytes) >> 32
-                    : ((uint)bytes << 24) | ((uint)Unsafe.Add(ref bytes, 1) << 16) | ((uint)Unsafe.Add(ref bytes, 2) << 8) | Unsafe.Add(ref bytes, 3);
-                Unsafe.Add(ref slot, 3) = 0;
-            }
+            public static void Write(VirtualMachine<TGasPolicy> vm, ref ulong slot) => SetAddressWord(ref slot, vm.BlockExecutionContext.Coinbase);
+        }
+
+        /// <summary>Writes <paramref name="address"/> into <paramref name="slot"/>, in limb layout.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void SetAddressWord(ref ulong slot, Address address)
+        {
+            ref byte bytes = ref MemoryMarshal.GetReference(address.Bytes);
+            slot = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref bytes, Address.Size - sizeof(ulong)));
+            Unsafe.Add(ref slot, 1) = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref bytes, Address.Size - 2 * sizeof(ulong)));
+            // The leading four bytes of the address end the third limb. Without a byte reverse they are gathered
+            // alone, as the shift does not drop the gather of the four bytes after them.
+            Unsafe.Add(ref slot, 2) = ZkEvmBitOperations.HasByteReverse
+                ? ZkEvmBitOperations.ReadUInt64BigEndian(ref bytes) >> 32
+                : ((uint)bytes << 24) | ((uint)Unsafe.Add(ref bytes, 1) << 16) | ((uint)Unsafe.Add(ref bytes, 2) << 8) | Unsafe.Add(ref bytes, 3);
+            Unsafe.Add(ref slot, 3) = 0;
         }
 
         /// <summary>TIMESTAMP: the block's timestamp.</summary>
@@ -2034,6 +2428,59 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static void Write(VirtualMachine<TGasPolicy> vm, ref ulong slot) =>
                 SetWord(ref slot, vm.BlockExecutionContext.Header.SlotNumber.GetValueOrDefault());
+        }
+
+        /// <summary>ADDRESS: the address of the running frame's account.</summary>
+        internal readonly struct AddressWord : IContextWord
+        {
+            public static nint SharedHandler =>
+                Entry(&ExecuteOpcode<EnvAddressOpcode<EvmInstructions.OpAddress<TGasPolicy>, OffFlag>, OffFlag, OffFlag, OnFlag>);
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static void Write(VirtualMachine<TGasPolicy> vm, ref ulong slot) => SetAddressWord(ref slot, vm.VmState.Env.ExecutingAccount);
+        }
+
+        /// <summary>CALLER: the address that called the running frame.</summary>
+        internal readonly struct CallerWord : IContextWord
+        {
+            public static nint SharedHandler =>
+                Entry(&ExecuteOpcode<EnvAddressOpcode<EvmInstructions.OpCaller<TGasPolicy>, OffFlag>, OffFlag, OffFlag, OnFlag>);
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static void Write(VirtualMachine<TGasPolicy> vm, ref ulong slot) => SetAddressWord(ref slot, vm.VmState.Env.Caller);
+        }
+
+        /// <summary>ORIGIN: the transaction's sender.</summary>
+        internal readonly struct OriginWord : IContextWord
+        {
+            public static nint SharedHandler =>
+                Entry(&ExecuteOpcode<Env32BytesOpcode<EvmInstructions.OpOrigin<TGasPolicy>, OffFlag>, OffFlag, OffFlag, OnFlag>);
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static void Write(VirtualMachine<TGasPolicy> vm, ref ulong slot) =>
+                LoadBigEndian(ref slot, ref Unsafe.As<ValueHash256, byte>(ref Unsafe.AsRef(in vm.TxExecutionContext.Origin)));
+        }
+
+        /// <summary>CALLVALUE: the value the running frame was called with.</summary>
+        internal readonly struct CallValueWord : IContextWord
+        {
+            public static nint SharedHandler =>
+                Entry(&ExecuteOpcode<EnvUInt256Opcode<EvmInstructions.OpCallValue<TGasPolicy>, OffFlag>, OffFlag, OffFlag, OnFlag>);
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static void Write(VirtualMachine<TGasPolicy> vm, ref ulong slot) =>
+                CopyWord(ref Unsafe.As<UInt256, ulong>(ref Unsafe.AsRef(in vm.VmState.Env.Value)), ref slot);
+        }
+
+        /// <summary>GASPRICE: the transaction's effective gas price.</summary>
+        internal readonly struct GasPriceWord : IContextWord
+        {
+            public static nint SharedHandler =>
+                Entry(&ExecuteOpcode<BlkUInt256Opcode<EvmInstructions.OpGasPrice<TGasPolicy>, OffFlag>, OffFlag, OffFlag, OnFlag>);
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static void Write(VirtualMachine<TGasPolicy> vm, ref ulong slot) =>
+                CopyWord(ref Unsafe.As<UInt256, ulong>(ref Unsafe.AsRef(in vm.TxExecutionContext.GasPrice)), ref slot);
         }
 
         /// <summary>PUSHn for n from 3 to 32, with the immediates read a limb at a time off the instruction's address.</summary>
@@ -2340,7 +2787,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
         }
 
-        /// <summary>SLOAD under EIP-2929 without EIP-8038, with the key read from and the value written to its stack slot.</summary>
+        /// <summary>SLOAD under EIP-2929, with the key read from and the value written to its stack slot.</summary>
         /// <remarks>
         /// The shared handler builds the storage cell twice and saves every callee-saved register around it. Running out
         /// of gas leaves the chain here, since the cell is warm by then and the shared handler would charge it as warm.
@@ -2349,7 +2796,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static EvmExceptionType ExecuteSLoad<Eip8360>(
+        internal static EvmExceptionType ExecuteSLoad<TEip8038, Eip8360>(
             ref EvmStack stack,
             nuint gas,
             ref DispatchState state,
@@ -2358,6 +2805,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             nint* handlers,
             ref byte code,
             ref byte sp)
+            where TEip8038 : struct, IEip8038Flag
             where Eip8360 : struct, IFlag
         {
             if (head > 0 && !(Eip8360.IsActive && state.Vm.VmState.IsTransientCreateContext))
@@ -2368,7 +2816,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ref UInt256 slot = ref Unsafe.As<byte, UInt256>(ref SlotBelow(ref sp, 1));
                 StorageCell storageCell = new(frame.Env.ExecutingAccount, in slot);
                 // Warming before the charge is unobservable: running out of gas halts the frame, whose restore drops the cell again.
-                ulong cost = frame.AccessTracker.WarmUp(in storageCell) ? GasCostOf.ColdSLoad : GasCostOf.WarmStateRead;
+                ulong cost = frame.AccessTracker.WarmUp(in storageCell)
+                    ? TEip8038.IsActive ? Eip8038Constants.ColdStorageAccess : GasCostOf.ColdSLoad
+                    : GasCostOf.WarmStateRead;
                 if (!Covers(gas, cost))
                     return ExitChain(ref state, 0, (nint)Unsafe.ByteOffset(ref code, ref ip) + 1, head - 1, EvmExceptionType.OutOfGas);
 
@@ -2383,20 +2833,21 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
-            nint shared = Entry(&ExecuteOpcode<SLoadOpcode<OffFlag, Eip8038Off, OnFlag, OffFlag, Eip8360>, OffFlag, OffFlag, OnFlag>);
+            nint shared = Entry(&ExecuteOpcode<SLoadOpcode<OffFlag, TEip8038, OnFlag, OffFlag, Eip8360>, OffFlag, OffFlag, OnFlag>);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
         }
 
-        /// <summary>SSTORE under EIP-2200 and EIP-2929 without EIP-8038, with the key and value read in their stack slots.</summary>
+        /// <summary>SSTORE under EIP-2200 and EIP-2929, with the key and value read in their stack slots.</summary>
         /// <remarks>
         /// The shared handler copies both words off the stack and reads the fork's costs through the spec on every write.
         /// The costs and refunds are those of <see cref="EvmInstructions.InstructionSStoreMetered{TGasPolicy, TTracingInst, TUseNetGasStipendFix, TEip8037, Eip8038, Eip2929, Eip8279}"/>
-        /// for the same flags. A static frame, a short stack, gas at or below the stipend sentry and traced refunds, storage
+        /// for the same flags, with EIP-8037 following <typeparamref name="TEip8038"/> as the guest's fork range has it.
+        /// A static frame, a short stack, gas at or below the stipend sentry and traced refunds, storage
         /// or accesses run the shared handler instead, which faults or reports as it does.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static EvmExceptionType ExecuteSStore(
+        internal static EvmExceptionType ExecuteSStore<TEip8038>(
             ref EvmStack stack,
             nuint gas,
             ref DispatchState state,
@@ -2405,6 +2856,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             nint* handlers,
             ref byte code,
             ref byte sp)
+            where TEip8038 : struct, IEip8038Flag
         {
             VirtualMachine<TGasPolicy> vm = state.Vm;
             VmState<TGasPolicy> frame = vm.VmState;
@@ -2415,7 +2867,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ref UInt256 newValue = ref Unsafe.As<byte, UInt256>(ref SlotBelow(ref sp, 2));
                 StorageCell storageCell = new(frame.Env.ExecutingAccount, in key);
                 // Warming before the charge is unobservable: running out of gas halts the frame, whose restore drops the cell again.
-                if (frame.AccessTracker.WarmUp(in storageCell) && !TryCharge(ref gas, GasCostOf.ColdSLoad))
+                // EIP-8038 charges the warm access on SSTORE too, in place of the net-metered charge below.
+                if (frame.AccessTracker.WarmUp(in storageCell)
+                    ? !TryCharge(ref gas, TEip8038.IsActive ? Eip8038Constants.ColdStorageAccess : GasCostOf.ColdSLoad)
+                    : TEip8038.IsActive && !TryCharge(ref gas, GasCostOf.WarmStateRead))
                     goto OutOfGas;
 
                 IWorldState worldState = vm.WorldState;
@@ -2435,7 +2890,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                 if (currentValue == newValue)
                 {
-                    if (!TryCharge(ref gas, vm.Spec.GasCosts.NetMeteredSStoreCost)) goto OutOfGas;
+                    if (!TEip8038.IsActive && !TryCharge(ref gas, vm.Spec.GasCosts.NetMeteredSStoreCost)) goto OutOfGas;
                 }
                 else
                 {
@@ -2446,17 +2901,35 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     {
                         if (currentValue.IsZero)
                         {
-                            if (!TryCharge(ref gas, GasCostOf.SSet)) goto OutOfGas;
+                            if (TEip8038.IsActive)
+                            {
+                                // EIP-8037 charges the slot's creation as state gas beside the EIP-8038 write, both through the policy.
+                                ref TGasPolicy policy = ref state.Gas;
+                                SetExecutionGas(ref policy, gas);
+                                if (!TGasPolicy.TryConsumeStateAndExecutionGas(ref policy, TGasPolicy.GetStorageSetStateCost(), Eip8038Constants.StorageWrite))
+                                {
+                                    // A shortfall of state gas halts the frame with its execution gas as the policy left it.
+                                    return ExitChain(ref state, GetExecutionGas(ref policy), (nint)Unsafe.ByteOffset(ref code, ref ip) + 1, head - 2, EvmExceptionType.OutOfGas);
+                                }
+
+                                gas = ChainGas(GetExecutionGas(ref policy));
+                                if (vm.TxExecutionContext.FrameTxContext is { } chargeFrameCtx)
+                                    chargeFrameCtx.RecordStateChargeOwner(in storageCell, chargeFrameCtx.CurrentFrameIndex);
+                            }
+                            else if (!TryCharge(ref gas, GasCostOf.SSet))
+                            {
+                                goto OutOfGas;
+                            }
                         }
                         else
                         {
-                            if (!TryCharge(ref gas, costs.SStoreResetCost)) goto OutOfGas;
+                            if (!TryCharge(ref gas, TEip8038.IsActive ? Eip8038Constants.StorageWrite : costs.SStoreResetCost)) goto OutOfGas;
                             if (newValue.IsZero) frame.Refund += sClearRefund;
                         }
                     }
                     else
                     {
-                        if (!TryCharge(ref gas, costs.NetMeteredSStoreCost)) goto OutOfGas;
+                        if (!TEip8038.IsActive && !TryCharge(ref gas, costs.NetMeteredSStoreCost)) goto OutOfGas;
                         bool originalIsZero = originalValue.IsZero;
                         if (!originalIsZero)
                         {
@@ -2464,7 +2937,37 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             if (newValue.IsZero) frame.Refund += sClearRefund;
                         }
 
-                        if (originalValue == newValue) frame.Refund += (long)costs.RefundFromReversal(originalIsZero);
+                        if (originalValue == newValue)
+                        {
+                            if (TEip8038.IsActive)
+                            {
+                                // EIP-8038 refunds the first-change write; EIP-8037 also gives a freshly created slot its state gas back in-frame.
+                                if (originalIsZero)
+                                {
+                                    long stateGasCost = TGasPolicy.GetStorageSetStateCost();
+                                    FrameTxContext? reversalFrameCtx = vm.TxExecutionContext.FrameTxContext;
+                                    if (reversalFrameCtx is not null
+                                        && reversalFrameCtx.TryResolveStateChargeOwner(in storageCell, out int chargeOwner)
+                                        && chargeOwner != reversalFrameCtx.CurrentFrameIndex)
+                                    {
+                                        reversalFrameCtx.ReduceFrameStateGas(chargeOwner, stateGasCost);
+                                    }
+                                    else
+                                    {
+                                        ref TGasPolicy policy = ref state.Gas;
+                                        SetExecutionGas(ref policy, gas);
+                                        vm.CreditStateGasRefund<OnFlag>(ref policy, stateGasCost);
+                                        gas = ChainGas(GetExecutionGas(ref policy));
+                                    }
+                                }
+
+                                frame.Refund += (long)Eip8038Constants.StorageWrite;
+                            }
+                            else
+                            {
+                                frame.Refund += (long)costs.RefundFromReversal(originalIsZero);
+                            }
+                        }
                     }
 
                     if (slots is not null) slots.WriteAt(slot, in newValue);
@@ -2485,7 +2988,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 return ExitChain(ref state, 0, (nint)Unsafe.ByteOffset(ref code, ref ip) + 1, head - 2, EvmExceptionType.OutOfGas);
             }
 
-            nint shared = Entry(&ExecuteOpcode<SStoreMeteredOpcode<OffFlag, OnFlag, OffFlag, Eip8038Off, OnFlag, OffFlag, OffFlag>, OffFlag, OffFlag, OnFlag>);
+            nint shared = Entry(&ExecuteOpcode<SStoreMeteredOpcode<OffFlag, OnFlag, TEip8038, TEip8038, OnFlag, OffFlag, OffFlag>, OffFlag, OffFlag, OnFlag>);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
         }
 
@@ -2681,6 +3184,62 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
 
         /// <summary>
+        /// CALLDATACOPY, CODECOPY or RETURNDATACOPY, as <typeparamref name="TSource"/> sources it, of bytes the source holds in
+        /// full into memory already written, with no call; an empty copy charges its base cost alone.
+        /// </summary>
+        /// <remarks>
+        /// With no call on its path, the handler saves no return address and reloads no dispatch register. Every other case
+        /// runs <see cref="ExecuteDataCopy{TSource}"/>, which also zero-fills, expands memory and falls back to the shared handler.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteDataCopyIntoWritten<TSource>(
+            ref EvmStack stack,
+            nuint gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte sp)
+            where TSource : struct, ICopySource
+        {
+            if (head > 2)
+            {
+                ref ulong destination = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
+                ref ulong offset = ref Unsafe.Subtract(ref destination, LimbsPerWord);
+                ref ulong length = ref Unsafe.Subtract(ref destination, 2 * LimbsPerWord);
+                ulong size = length;
+                ulong from = offset;
+                ulong target = destination;
+                ulong above = Unsafe.Add(ref length, 1) | Unsafe.Add(ref length, 2) | Unsafe.Add(ref length, 3) |
+                    Unsafe.Add(ref offset, 1) | Unsafe.Add(ref offset, 2) | Unsafe.Add(ref offset, 3) |
+                    Unsafe.Add(ref destination, 1) | Unsafe.Add(ref destination, 2) | Unsafe.Add(ref destination, 3);
+                ReadOnlySpan<byte> source = TSource.Read(ref stack, ref state);
+                ulong cost = VeryLowGasCost.GasCost + GasCostOf.Memory * ((size + (EvmStack.WordSize - 1)) >> 5);
+                if ((above | ((size | from | target) >> 32)) == 0 && from + size <= (ulong)source.Length && Covers(gas, cost))
+                {
+                    ref byte range = ref size == 0 ? ref Unsafe.NullRef<byte>() : ref AlignedMemory(ref state).TryGetWrittenRange(target, size);
+                    if (size == 0 || !Unsafe.IsNullRef(ref range))
+                    {
+                        gas -= (nuint)cost;
+                        if (size != 0)
+                            CopyFromSource<TSource>(ref range, source, from, (uint)size);
+
+                        head -= 3;
+                        sp = ref Moved(ref sp, -3);
+                        ip = ref Unsafe.Add(ref ip, 1);
+                        nint next = NextHandler(handlers, ref ip);
+                        return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+                    }
+                }
+            }
+
+            nint general = Entry(&ExecuteDataCopy<TSource>);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, general);
+        }
+
+        /// <summary>
         /// CALLDATACOPY, CODECOPY or RETURNDATACOPY, as <typeparamref name="TSource"/> sources it, into a range that needs no new
         /// backing and leaves a gap of at most two words below it.
         /// </summary>
@@ -2729,25 +3288,25 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         if ((Unsafe.Add(ref destination, 1) | Unsafe.Add(ref destination, 2) | Unsafe.Add(ref destination, 3) | (target >> 32)) == 0)
                         {
                             gas -= (nuint)cost;
-                            ref byte range = ref AlignedMemory(ref state).TryPrepareRangeOverwrite(target, size, ref gas);
+                            ref EvmPooledMemory memory = ref AlignedMemory(ref state);
+                            ref byte written = ref memory.TryGetWrittenRange(target, size);
+                            ref byte range = ref Unsafe.IsNullRef(ref written) ? ref memory.TryPrepareRangeOverwrite(target, size, ref gas) : ref written;
                             if (!Unsafe.IsNullRef(ref range))
                             {
                                 uint copied = 0;
                                 if (inSource)
                                 {
                                     copied = (uint)Math.Min(size, (ulong)source.Length - from);
-                                    if (TSource.InMemoryLayout)
-                                        SwizzledMemory.Copy(ref range, ref Unsafe.Add(ref MemoryMarshal.GetReference(source), (nint)from), (nint)copied);
-                                    else if (EvmPooledMemory.IsSwizzled)
-                                        SwizzledMemory.Write(ref range, source.Slice((int)from, (int)copied));
-                                    else
-                                        Bytes.Copy(source.Slice((int)from, (int)copied), MemoryMarshal.CreateSpan(ref range, (int)copied));
+                                    CopyFromSource<TSource>(ref range, source, from, copied);
                                 }
 
-                                if (EvmPooledMemory.IsSwizzled)
-                                    SwizzledMemory.Clear(ref Unsafe.Add(ref range, copied), (nint)((uint)size - copied));
-                                else
-                                    Unsafe.InitBlockUnaligned(ref Unsafe.Add(ref range, copied), 0, (uint)size - copied);
+                                if (copied < size)
+                                {
+                                    if (EvmPooledMemory.IsSwizzled)
+                                        SwizzledMemory.Clear(ref Unsafe.Add(ref range, copied), (nint)((uint)size - copied));
+                                    else
+                                        Unsafe.InitBlockUnaligned(ref Unsafe.Add(ref range, copied), 0, (uint)size - copied);
+                                }
                                 // Reloaded rather than held across the calls, where each would take a callee-saved register.
                                 handlers = state.OpcodeHandlers;
                                 code = ref stack.Code;
@@ -2770,6 +3329,22 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ip = ref Unsafe.Add(ref ip, 1);
             nint next = NextHandler(handlers, ref ip);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+        }
+
+        /// <summary>
+        /// Copies <paramref name="length"/> bytes of <paramref name="source"/> from <paramref name="from"/> into memory at
+        /// <paramref name="range"/>, in the memory layout.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void CopyFromSource<TSource>(ref byte range, ReadOnlySpan<byte> source, ulong from, uint length)
+            where TSource : struct, ICopySource
+        {
+            if (TSource.InMemoryLayout)
+                SwizzledMemory.Copy(ref range, ref Unsafe.Add(ref MemoryMarshal.GetReference(source), (nint)from), (nint)length);
+            else if (EvmPooledMemory.IsSwizzled)
+                SwizzledMemory.Write(ref range, source.Slice((int)from, (int)length));
+            else
+                Bytes.Copy(source.Slice((int)from, (int)length), MemoryMarshal.CreateSpan(ref range, (int)length));
         }
 
         /// <summary>The bytes a copy to memory reads, as <see cref="ExecuteDataCopy{TSource}"/> runs it.</summary>
@@ -3471,9 +4046,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 else
                 {
                     ref UInt256 divisor = ref Unsafe.As<ulong, UInt256>(ref quotient);
-                    // The quotient must not alias an operand.
-                    EvmInstructions.Divide256(in Unsafe.Add(ref divisor, 1), in divisor, out UInt256 result);
-                    divisor = result;
+                    if (ZiskFlag.IsActive)
+                    {
+                        // The ZisK library reads both operands before it writes, so the quotient takes the divisor's slot.
+                        EvmInstructions.Divide256(in Unsafe.Add(ref divisor, 1), in divisor, out divisor);
+                    }
+                    else
+                    {
+                        // The quotient must not alias an operand.
+                        EvmInstructions.Divide256(in Unsafe.Add(ref divisor, 1), in divisor, out UInt256 result);
+                        divisor = result;
+                    }
 
                     // Reloaded rather than held across the call, where each would take a callee-saved register.
                     handlers = state.OpcodeHandlers;

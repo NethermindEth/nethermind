@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -24,7 +25,7 @@ namespace Nethermind.Consensus.Test.Stateless;
 public class WitnessTrieValidationTests
 {
     private const int KeyNibbles = 64;
-    private static readonly byte[] StorageValue = Rlp.Encode(new byte[] { 0x01 }).Bytes;
+    private static readonly byte[] StorageValue = Rlp.Encode(new byte[] { 0x01 });
     private static readonly byte[] AccountKey = Nibbles.BytesToNibbleBytes(Keccak.Compute(TestItem.AddressA.Bytes).Bytes);
     private static readonly StorageCell Cell = new(TestItem.AddressA, UInt256.One);
 
@@ -38,8 +39,8 @@ public class WitnessTrieValidationTests
     {
         byte[] accountLeaf = AccountLeaf(0);
         byte[] unreachedNode = isLeaf ? Leaf(new byte[nibbles], StorageValue) : Extension(new byte[nibbles], AccountLeaf(0));
-        byte[] root = BranchOfReferences(Rlp.OfEmptyByteArray,
-            (AccountKey[0], Reference(accountLeaf)), (AccountKey[0] ^ 1, Reference(unreachedNode)), (AccountKey[0] ^ 2, new Rlp([0xc0])));
+        byte[] root = BranchOfReferences(RlpTestHelper.OfEmptyByteArray,
+            (AccountKey[0], Reference(accountLeaf)), (AccountKey[0] ^ 1, Reference(unreachedNode)), (AccountKey[0] ^ 2, [0xc0]));
 
         Assert.That(() => ReadBalance(root, accountLeaf, unreachedNode), Throws.Nothing);
     }
@@ -70,40 +71,40 @@ public class WitnessTrieValidationTests
     [Test]
     public void Reached_node_must_be_well_formed([Values] Malformation malformation)
     {
-        byte[] account = Rlp.Encode(new Account(UInt256.One)).Bytes;
+        byte[] account = Rlp.Encode(new Account(UInt256.One));
         byte[] leaf = Leaf(AccountKey[2..], account);
         byte[] sibling = Leaf(new byte[KeyNibbles - 2], account);
         byte[] tinyLeaf = Leaf([1], StorageValue);
         byte[] smallLeaf = Leaf(AccountKey[1..], StorageValue);
-        (Rlp slotReference, byte[][] nodes) = malformation switch
+        (byte[] slotReference, byte[][] nodes) = malformation switch
         {
             Malformation.None => (Reference(AccountLeaf(0)), [AccountLeaf(0)]),
             Malformation.InvalidRlp => Hashed(Enumerable.Repeat((byte)0xff, 40).ToArray()),
             Malformation.BranchWithOneChild => Hashed(Branch((AccountKey[1], leaf)), leaf),
             Malformation.BranchWithValue => Hashed(BranchOfReferences(Rlp.Encode(new byte[] { 1 }), (AccountKey[1], Reference(leaf)), (AccountKey[1] ^ 1, Reference(sibling))), leaf, sibling),
-            Malformation.BranchWithListValue => Hashed(BranchOfReferences(new Rlp([0xc1, 0x80]), (AccountKey[1], Reference(leaf)), (AccountKey[1] ^ 1, Reference(sibling))), leaf, sibling),
-            Malformation.BranchWithShortHashReference => Hashed(BranchOfReferences(Rlp.OfEmptyByteArray, (AccountKey[1], Reference(leaf)), (AccountKey[1] ^ 1, Rlp.Encode(new byte[Hash256.Size - 1]))), leaf),
+            Malformation.BranchWithListValue => Hashed(BranchOfReferences([0xc1, 0x80], (AccountKey[1], Reference(leaf)), (AccountKey[1] ^ 1, Reference(sibling))), leaf, sibling),
+            Malformation.BranchWithShortHashReference => Hashed(BranchOfReferences(RlpTestHelper.OfEmptyByteArray, (AccountKey[1], Reference(leaf)), (AccountKey[1] ^ 1, Rlp.Encode(new byte[Hash256.Size - 1]))), leaf),
             // An embedded child before the short reference, so the check reads the branch's slots up to it.
-            Malformation.BranchWithEmbeddedChildAndShortHashReference => Hashed(BranchOfReferences(Rlp.OfEmptyByteArray,
-                (0, new Rlp([0xc2, 0x01, 0x02])), (AccountKey[1], Reference(leaf)), (15, Rlp.Encode(new byte[Hash256.Size - 1]))), leaf),
+            Malformation.BranchWithEmbeddedChildAndShortHashReference => Hashed(BranchOfReferences(RlpTestHelper.OfEmptyByteArray,
+                (0, [0xc2, 0x01, 0x02]), (AccountKey[1], Reference(leaf)), (15, Rlp.Encode(new byte[Hash256.Size - 1]))), leaf),
             Malformation.ExtensionToLeaf => Hashed(Extension(AccountKey[1..2], leaf), leaf),
             // Flag nibble 5: an extension, as the spec reads only its two low bits.
             Malformation.HighFlagExtensionToLeaf => Hashed(HighFlagExtension(AccountKey[1..2], leaf), leaf),
-            Malformation.ExtensionToNothing => (new Rlp(Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes(AccountKey[1..2], isLeaf: false)), Rlp.OfEmptyByteArray).Bytes), []),
+            Malformation.ExtensionToNothing => (RlpTestHelper.EncodeSequence(Rlp.Encode(HexPrefix.ToBytes(AccountKey[1..2], isLeaf: false)), RlpTestHelper.OfEmptyByteArray), []),
             // Accepted in its parent, as an embedded node, but a node of no items once reached.
-            Malformation.EmptyListChild => (new Rlp([0xc0]), []),
-            Malformation.OversizedEmbeddedChild => Hashed(BranchOfReferences(Rlp.OfEmptyByteArray, (AccountKey[1], new Rlp(leaf)), (AccountKey[1] ^ 1, Reference(sibling))), sibling),
+            Malformation.EmptyListChild => ([0xc0], []),
+            Malformation.OversizedEmbeddedChild => Hashed(BranchOfReferences(RlpTestHelper.OfEmptyByteArray, (AccountKey[1], leaf), (AccountKey[1] ^ 1, Reference(sibling))), sibling),
             // In a slot the read does not take: the spec decodes the whole branch.
-            Malformation.MalformedEmbeddedChild => Hashed(BranchOfReferences(Rlp.OfEmptyByteArray, (AccountKey[1], Reference(leaf)), (AccountKey[1] ^ 1, new Rlp([0xc1, 0x81]))), leaf),
+            Malformation.MalformedEmbeddedChild => Hashed(BranchOfReferences(RlpTestHelper.OfEmptyByteArray, (AccountKey[1], Reference(leaf)), (AccountKey[1] ^ 1, [0xc1, 0x81])), leaf),
             // A leaf short enough for a one-byte list header, given a long one.
             Malformation.NonCanonicalListHeader => Hashed([0xf8, (byte)(smallLeaf.Length - 1), .. smallLeaf.AsSpan(1)]),
-            Malformation.NonCanonicalLeafValue => Hashed(Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes(AccountKey[1..], isLeaf: true)), new Rlp([0x81, 0x01])).Bytes),
-            Malformation.LeafValueLengthWithLeadingZero => Hashed(Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes(AccountKey[1..], isLeaf: true)), new Rlp([0xb9, 0x00, 0x40, .. new byte[0x40]])).Bytes),
+            Malformation.NonCanonicalLeafValue => Hashed(RlpTestHelper.EncodeSequence(Rlp.Encode(HexPrefix.ToBytes(AccountKey[1..], isLeaf: true)), [0x81, 0x01])),
+            Malformation.LeafValueLengthWithLeadingZero => Hashed(RlpTestHelper.EncodeSequence(Rlp.Encode(HexPrefix.ToBytes(AccountKey[1..], isLeaf: true)), [0xb9, 0x00, 0x40, .. new byte[0x40]])),
             // Deep enough to overflow the stack were it measured before its prefix is checked.
-            Malformation.DeeplyNestedItem => Hashed(Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes(AccountKey[1..2], isLeaf: false)), new Rlp(NestedLists(20_000))).Bytes),
+            Malformation.DeeplyNestedItem => Hashed(RlpTestHelper.EncodeSequence(Rlp.Encode(HexPrefix.ToBytes(AccountKey[1..2], isLeaf: false)), NestedLists(20_000))),
             _ => Hashed(Branch((0, tinyLeaf), (1, tinyLeaf))),
         };
-        byte[] root = BranchOfReferences(Rlp.OfEmptyByteArray, (AccountKey[0], slotReference), (AccountKey[0] ^ 1, Reference(sibling)));
+        byte[] root = BranchOfReferences(RlpTestHelper.OfEmptyByteArray, (AccountKey[0], slotReference), (AccountKey[0] ^ 1, Reference(sibling)));
 
         Assert.That(() => ReadBalance(root, [.. nodes, sibling]), malformation == Malformation.None ? Throws.Nothing : Throws.TypeOf<TrieException>());
     }
@@ -113,9 +114,9 @@ public class WitnessTrieValidationTests
     [Test]
     public void Branch_at_the_key_length_is_rejected([Values] bool full)
     {
-        (int Slot, Rlp Reference)[] children = new (int, Rlp)[full ? 16 : 2];
+        (int Slot, byte[] Reference)[] children = new (int, byte[])[full ? 16 : 2];
         for (int i = 0; i < children.Length; i++) children[i] = (i, Rlp.Encode(Keccak.Compute([(byte)i]).Bytes));
-        byte[] branchAtKeyLength = BranchOfReferences(Rlp.OfEmptyByteArray, children);
+        byte[] branchAtKeyLength = BranchOfReferences(RlpTestHelper.OfEmptyByteArray, children);
         byte[] branch = Branch((AccountKey[KeyNibbles - 1], branchAtKeyLength), (AccountKey[KeyNibbles - 1] ^ 1, Leaf([], StorageValue)));
         byte[] root = Extension(AccountKey[..(KeyNibbles - 1)], branch);
 
@@ -126,7 +127,7 @@ public class WitnessTrieValidationTests
     [Test]
     public void Extension_flag_takes_only_its_two_low_bits()
     {
-        byte[] account = Rlp.Encode(new Account(UInt256.One)).Bytes;
+        byte[] account = Rlp.Encode(new Account(UInt256.One));
         byte[] leaf = Leaf(AccountKey[3..], account);
         byte[] sibling = Leaf(new byte[KeyNibbles - 3], account);
         byte[] branch = Branch((AccountKey[2], leaf), (AccountKey[2] ^ 1, sibling));
@@ -144,7 +145,7 @@ public class WitnessTrieValidationTests
     {
         byte[] slotKey = SlotKey();
         byte[] slotLeaf = Leaf(slotKey[1..], StorageValue);
-        byte[] sibling = Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes([0], isLeaf: false)), Rlp.Encode(Keccak.Compute("branch"u8).Bytes)).Bytes;
+        byte[] sibling = RlpTestHelper.EncodeSequence(Rlp.Encode(HexPrefix.ToBytes([0], isLeaf: false)), Rlp.Encode(Keccak.Compute("branch"u8).Bytes));
         byte[] storageRoot = Branch((slotKey[0], slotLeaf), (slotKey[0] ^ 1, sibling));
 
         Assert.That(() => AccessStorage(storageRoot, [slotLeaf, sibling], StorageAccess.Write, UInt256.Zero), Throws.Nothing);
@@ -204,7 +205,7 @@ public class WitnessTrieValidationTests
         byte[] slotLeaf = Leaf(overlong == InlinedNode.SlotLeaf ? [0, .. slotLeafPath] : slotLeafPath, StorageValue);
         byte[] sibling = Leaf(new byte[KeyNibbles - ExtensionNibbles - (overlong == InlinedNode.Sibling ? 0 : 1)], StorageValue);
         byte[] branch = Branch((slotKey[ExtensionNibbles], slotLeaf), (slotKey[ExtensionNibbles] ^ 1, sibling));
-        byte[] extension = Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes(slotKey[..ExtensionNibbles], isLeaf: false)), Reference(branch)).Bytes;
+        byte[] extension = RlpTestHelper.EncodeSequence(Rlp.Encode(HexPrefix.ToBytes(slotKey[..ExtensionNibbles], isLeaf: false)), Reference(branch));
         Assert.That(branch, Has.Length.LessThan(Hash256.Size), "the branch and its leaves must be inlined");
 
         bool visited = overlong == InlinedNode.SlotLeaf || access == SlotAccess.Delete;
@@ -277,7 +278,7 @@ public class WitnessTrieValidationTests
     private static void AccessStorage(byte[] storageRoot, byte[][] storageNodes, StorageAccess access, UInt256 value)
     {
         Account account = new Account(UInt256.One).WithChangedStorageRoot(Keccak.Compute(storageRoot));
-        byte[] stateRoot = Leaf(AccountKey, Rlp.Encode(account).Bytes);
+        byte[] stateRoot = Leaf(AccountKey, Rlp.Encode(account));
         using Witness witness = CreateWitness([stateRoot, storageRoot, .. storageNodes]);
         StatelessBlockProcessingEnv env = new(witness, new TestSpecProvider(Amsterdam.Instance), Always.Valid, NullLogManager.Instance);
         using IDisposable scope = env.WorldState.BeginScope(Build.A.BlockHeader.WithStateRoot(Keccak.Compute(stateRoot)).TestObject);
@@ -316,45 +317,45 @@ public class WitnessTrieValidationTests
     {
         byte[] path = new byte[KeyNibbles - 1 + extraNibbles];
         AccountKey.AsSpan(1, Math.Min(path.Length, KeyNibbles - 1)).CopyTo(path);
-        return Leaf(path, Rlp.Encode(new Account(UInt256.One)).Bytes);
+        return Leaf(path, Rlp.Encode(new Account(UInt256.One)));
     }
 
     private static byte[] Leaf(byte[] nibbles, byte[] value) =>
-        Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes(nibbles, isLeaf: true)), Rlp.Encode(value)).Bytes;
+        RlpTestHelper.EncodeSequence(Rlp.Encode(HexPrefix.ToBytes(nibbles, isLeaf: true)), Rlp.Encode(value));
 
     /// <summary>An extension along <paramref name="nibbles"/> to <paramref name="child"/>, its hex-prefix flag nibble 5 rather than 1.</summary>
     private static byte[] HighFlagExtension(byte[] nibbles, byte[] child)
     {
         byte[] path = HexPrefix.ToBytes(nibbles, isLeaf: false);
         path[0] |= 0x40;
-        return Rlp.Encode(Rlp.Encode(path), Reference(child)).Bytes;
+        return RlpTestHelper.EncodeSequence(Rlp.Encode(path), Reference(child));
     }
 
     private static byte[] Extension(byte[] nibbles, byte[] child) =>
-        Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes(nibbles, isLeaf: false)), Reference(child)).Bytes;
+        RlpTestHelper.EncodeSequence(Rlp.Encode(HexPrefix.ToBytes(nibbles, isLeaf: false)), Reference(child));
 
     private static byte[] Branch(params (int Slot, byte[] Child)[] children) =>
-        BranchOfReferences(Rlp.OfEmptyByteArray, Array.ConvertAll(children, c => (c.Slot, Reference(c.Child))));
+        BranchOfReferences(RlpTestHelper.OfEmptyByteArray, Array.ConvertAll(children, c => (c.Slot, Reference(c.Child))));
 
-    private static byte[] BranchOfReferences(Rlp value, params (int Slot, Rlp Reference)[] children)
+    private static byte[] BranchOfReferences(byte[] value, params (int Slot, byte[] Reference)[] children)
     {
-        Rlp[] items = new Rlp[17];
-        Array.Fill(items, Rlp.OfEmptyByteArray);
-        foreach ((int slot, Rlp reference) in children)
+        byte[][] items = new byte[17][];
+        Array.Fill(items, RlpTestHelper.OfEmptyByteArray);
+        foreach ((int slot, byte[] reference) in children)
         {
             items[slot] = reference;
         }
 
         items[16] = value;
-        return Rlp.Encode(items).Bytes;
+        return RlpTestHelper.EncodeSequence(items);
     }
 
     /// <summary>A reference to <paramref name="node"/> by its hash whatever its length, with the witness nodes it needs.</summary>
-    private static (Rlp Reference, byte[][] Nodes) Hashed(byte[] node, params byte[][] children) =>
+    private static (byte[] Reference, byte[][] Nodes) Hashed(byte[] node, params byte[][] children) =>
         (Rlp.Encode(Keccak.Compute(node).Bytes), [node, .. children]);
 
     /// <summary>A parent's reference to <paramref name="child"/>: the child itself when shorter than a keccak, as a trie inlines it.</summary>
-    private static Rlp Reference(byte[] child) => child.Length < Hash256.Size ? new Rlp(child) : Rlp.Encode(Keccak.Compute(child).Bytes);
+    private static byte[] Reference(byte[] child) => child.Length < Hash256.Size ? child : Rlp.Encode(Keccak.Compute(child).Bytes);
 
     private static Witness CreateWitness(byte[][] state) => new()
     {

@@ -82,7 +82,7 @@ public class SnapMessageLimitsTests
         ArrayPoolList<PathWithStorageSlot> slots = new(slotCount);
         for (int i = 0; i < slotCount; i++)
         {
-            slots.Add(new PathWithStorageSlot(TestItem.KeccakA, Rlp.Encode(new byte[] { 0x01 }).Bytes));
+            slots.Add(new PathWithStorageSlot(TestItem.KeccakA, Rlp.Encode(new byte[] { 0x01 })));
         }
 
         using StorageRangeMessage msg = new()

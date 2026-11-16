@@ -37,8 +37,11 @@ namespace Nethermind.Consensus.AuRa.Validators
             if (_latestFinalizedValidatorsBlockNumber == EmptyBlockNumber || finalizingBlockNumber > _latestFinalizedValidatorsBlockNumber)
             {
                 ValidatorInfo validatorInfo = new(finalizingBlockNumber, _latestFinalizedValidatorsBlockNumber == EmptyBlockNumber ? EmptyBlockNumber : _latestFinalizedValidatorsBlockNumber, validators);
-                Rlp rlp = Rlp.Encode(validatorInfo);
-                _db.Set(GetKey(finalizingBlockNumber), rlp.Bytes);
+                using (ArrayPoolSpan<byte> rlp = Rlp.GetDecoderOrThrow<ValidatorInfo>().EncodeToArrayPoolSpan(validatorInfo))
+                {
+                    _db.PutSpan(GetKey(finalizingBlockNumber).Bytes, rlp);
+                }
+
                 _db.PutSpan(LatestFinalizedValidatorsBlockNumberKey.Bytes, finalizingBlockNumber.ToBigEndianSpanWithoutLeadingZeros(out _));
                 _latestFinalizedValidatorsBlockNumber = finalizingBlockNumber;
                 _latestValidatorInfo = validatorInfo;
@@ -59,7 +62,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         {
             get
             {
-                RlpReader ctx = new(_db.Get(PendingValidatorsKey) ?? Rlp.OfEmptyList.Bytes);
+                RlpReader ctx = new(_db.Get(PendingValidatorsKey) ?? [Rlp.EmptyListByte]);
                 return PendingValidatorsDecoder.Decode(ref ctx);
             }
             set => StorePendingValidators(value);

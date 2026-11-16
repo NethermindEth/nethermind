@@ -29,8 +29,8 @@ public class AuthorizationTupleDecoderTests
     {
         AuthorizationTupleDecoder sut = new();
 
-        Rlp result = sut.Encode(item);
-        RlpReader ctx = new(result.Bytes);
+        byte[] result = sut.Encode(item);
+        RlpReader ctx = new(result);
 
         AuthorizationTuple decoded = sut.Decode(ref ctx)!;
         Assert.That(decoded, Is.EqualTo(item).UsingAuthorizationTupleComparer());

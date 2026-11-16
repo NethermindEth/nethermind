@@ -13,6 +13,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.FluentRlp;
@@ -241,7 +242,7 @@ public class TrieNodeTests
     //     AccountDecoder decoder = new AccountDecoder();
     //     _accountLeaf = TrieNodeFactory.CreateLeaf(
     //         HexPrefix.Leaf("bbb"),
-    //         decoder.Encode(account).Bytes);
+    //         decoder.Encode(account));
     // }
 
     [Test]
@@ -770,7 +771,7 @@ public class TrieNodeTests
         TreeVisitorMock visitor = new();
         TrieVisitContext context = new();
         Account account = new(100);
-        TrieNode node = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("aa"), Rlp.Encode(account).Bytes);
+        TrieNode node = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("aa"), Rlp.Encode(account));
 
         TreePath emptyPath = TreePath.Empty;
         node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
@@ -784,7 +785,7 @@ public class TrieNodeTests
         TreeVisitorMock visitor = new();
         TrieVisitContext context = new();
         Account account = new(1, 100, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString);
-        TrieNode node = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("aa"), Rlp.Encode(account).Bytes);
+        TrieNode node = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("aa"), Rlp.Encode(account));
 
         TreePath emptyPath = TreePath.Empty;
         node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
@@ -798,7 +799,7 @@ public class TrieNodeTests
         TreeVisitorMock visitor = new();
         TrieVisitContext context = new();
         Account account = new(1, 100, Keccak.EmptyTreeHash, Keccak.Zero);
-        TrieNode node = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("aa"), Rlp.Encode(account).Bytes);
+        TrieNode node = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("aa"), Rlp.Encode(account));
 
         TreePath emptyPath = TreePath.Empty;
         node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
@@ -812,7 +813,7 @@ public class TrieNodeTests
         TreeVisitorMock visitor = new();
         TrieVisitContext context = new();
         Account account = new(1, 100, Keccak.Zero, Keccak.OfAnEmptyString);
-        TrieNode node = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("aa"), Rlp.Encode(account).Bytes);
+        TrieNode node = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("aa"), Rlp.Encode(account));
 
         TreePath emptyPath = TreePath.Empty;
         node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
@@ -991,14 +992,14 @@ public class TrieNodeTests
     [Test]
     public void Get_child_hash_reads_an_empty_child_of_a_branch_with_full_length([Values(0, 7, 15)] int emptyChild)
     {
-        Rlp[] items = new Rlp[TrieNode.BranchesCount + 1];
+        byte[][] items = new byte[TrieNode.BranchesCount + 1][];
         for (int i = 0; i < TrieNode.BranchesCount; i++)
         {
-            items[i] = i == emptyChild ? Rlp.OfEmptyByteArray : Rlp.Encode(Keccak.Compute([(byte)i]));
+            items[i] = i == emptyChild ? RlpTestHelper.OfEmptyByteArray : Rlp.Encode(Keccak.Compute([(byte)i]));
         }
 
         items[TrieNode.BranchesCount] = Rlp.Encode(Keccak.Compute("value"u8));
-        byte[] rlp = Rlp.Encode(items).Bytes;
+        byte[] rlp = RlpTestHelper.EncodeSequence(items);
         TrieNode node = new(NodeType.Unknown, rlp);
         node.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
 
@@ -1114,20 +1115,6 @@ public class TrieNodeTests
 
     [Test]
     public void Size_of_keccak_is_correct() => Assert.That(Hash256.MemorySize, Is.EqualTo(48));
-
-    [Test]
-    public void Size_of_rlp_unaligned_is_correct()
-    {
-        Rlp rlp = new(new byte[1]);
-        Assert.That(rlp.MemorySize, Is.EqualTo(56));
-    }
-
-    [Test]
-    public void Size_of_rlp_aligned_is_correct()
-    {
-        Rlp rlp = new(new byte[8]);
-        Assert.That(rlp.MemorySize, Is.EqualTo(56));
-    }
 
     [Test]
     public void Cannot_seal_already_sealed()
@@ -1521,7 +1508,7 @@ public class TrieNodeTests
             Account account = new(100);
             AccountLeaf = TrieNodeFactory.CreateLeaf(
                 Bytes.FromHexString("bbb"),
-                Rlp.Encode(account).Bytes);
+                Rlp.Encode(account));
         }
     }
 
