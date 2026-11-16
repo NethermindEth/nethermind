@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -65,7 +66,7 @@ public class TaikoPayloadPreparationServiceTests
         Transaction first = Build.A.Transaction.WithNonce(0).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         Transaction second = Build.A.Transaction.WithNonce(0).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
         TaikoPayloadAttributes attributes = BuildAttributes();
-        attributes.BlockMetadata!.TxList = EncodeTxList(Rlp.Encode(first), Rlp.Encode(Build.A.Transaction.TestObject), Rlp.Encode(second));
+        attributes.BlockMetadata!.TxList = RlpTestHelper.EncodeSequence(Rlp.Encode(first), Rlp.Encode(Build.A.Transaction.TestObject), Rlp.Encode(second));
 
         TaikoPayloadPreparationService service = CreateService();
 
@@ -80,7 +81,7 @@ public class TaikoPayloadPreparationServiceTests
     {
         Transaction second = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject;
         TaikoPayloadAttributes attributes = BuildAttributes();
-        attributes.BlockMetadata!.TxList = EncodeTxList(Rlp.Encode(Build.A.Transaction.TestObject), Rlp.Encode(second));
+        attributes.BlockMetadata!.TxList = RlpTestHelper.EncodeSequence(Rlp.Encode(Build.A.Transaction.TestObject), Rlp.Encode(second));
 
         Assert.Throws<RlpReaderException>(() => CreateService().StartPreparingPayload(Build.A.BlockHeader.WithNumber(0).TestObject, attributes));
     }
@@ -92,20 +93,6 @@ public class TaikoPayloadPreparationServiceTests
         TaikoSpecProvider(),
         LimboLogs.Instance,
         TxDecoder.Instance);
-
-    private static byte[] EncodeTxList(params byte[][] items)
-    {
-        int contentLength = items.Sum(static item => item.Length);
-        byte[] list = new byte[Rlp.LengthOfSequence(contentLength)];
-        int position = Rlp.StartSequence(list, 0, contentLength);
-        foreach (byte[] item in items)
-        {
-            item.CopyTo(list, position);
-            position += item.Length;
-        }
-
-        return list;
-    }
 
     private static TaikoPayloadAttributes BuildAttributes() => new()
     {
