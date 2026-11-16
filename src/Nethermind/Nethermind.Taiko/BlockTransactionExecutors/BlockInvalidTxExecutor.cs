@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -20,10 +21,9 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Taiko.BlockTransactionExecutors;
 
-public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IWorldState worldState, ITxPool txPool, ILogManager logManager, ISpecProvider specProvider, ITxValidator txValidator, ZkGasMeterHolder? zkGasMeterHolder = null) : IBlockProcessor.IBlockTransactionsExecutor
+public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IWorldState worldState, ITxPool txPool, ILogManager logManager, ISpecProvider specProvider, ITxValidator txValidator, IEthereumEcdsa ecdsa, ZkGasMeterHolder? zkGasMeterHolder = null) : IBlockProcessor.IBlockTransactionsExecutor
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BlockInvalidTxExecutor>();
-    private readonly EthereumEcdsa _ecdsa = new(specProvider.ChainId);
 
     public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
@@ -83,9 +83,9 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
             if (!isAnchor && producingBlock)
             {
                 ValidationResult validation = txValidator.IsWellFormed(tx, spec, block.Header.GasLimit);
-                if (!validation && spec.IsEip2780Enabled && tx.Signature is not null)
+                if (!validation && tx.SenderAddress is null && spec.IsEip2780Enabled && tx.Signature is not null && TxErrorMessages.IsIntrinsicGasError(validation.Error))
                 {
-                    tx.SenderAddress ??= _ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
+                    tx.SenderAddress = ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
                     validation = txValidator.IsWellFormed(tx, spec, block.Header.GasLimit);
                 }
 
