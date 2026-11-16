@@ -26,7 +26,7 @@ if (args.Length != 2)
 var baseResults = Load(args[0]);
 var headResults = Load(args[1]);
 
-Console.WriteLine("## Network benchmarks");
+Console.WriteLine("## Benchmarks");
 Console.WriteLine();
 Console.WriteLine($"Runner `{Env("RUNNER_NAME")}`, base `{Short(Env("BASE_SHA"))}` ({Env("BASE_OUTCOME")}), " +
     $"head `{Short(Env("HEAD_SHA"))}` ({Env("HEAD_OUTCOME")}).");
