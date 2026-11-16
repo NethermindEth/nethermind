@@ -5,10 +5,10 @@ using System;
 using Autofac;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
@@ -35,7 +35,8 @@ public class ReceiptStorageReadBenchmarks
 
     private TempPath _directory = null!;
     private IColumnsDb<ReceiptsColumns> _receiptsDb = null!;
-    private PersistentReceiptStorage _storage = null!;
+    private IContainer _container = null!;
+    private IReceiptStorage _storage = null!;
     private Block[] _blocks = null!;
     private Hash256[] _txHashes = null!;
 
@@ -45,11 +46,6 @@ public class ReceiptStorageReadBenchmarks
     [GlobalSetup]
     public void Setup()
     {
-        TestSpecProvider specProvider = new(Cancun.Instance);
-        EthereumEcdsa ecdsa = new(specProvider.ChainId);
-        BlockStore blockStore = new(new TestMemDb());
-        BlockTree blockTree = Build.A.BlockTree().WithSpecProvider(specProvider).WithBlockStore(blockStore).OfChainLength(1).TestObject;
-
         _directory = TempPath.GetTempDirectory();
         using (IContainer configs = new ContainerBuilder().AddModule(new TestNethermindModule()).Build())
         {
@@ -58,8 +54,17 @@ public class ReceiptStorageReadBenchmarks
                 .CreateColumnsDb<ReceiptsColumns>(new DbSettings(DbNames.Receipts, DbNames.Receipts));
         }
 
-        _storage = new PersistentReceiptStorage(
-            _receiptsDb, specProvider, new ReceiptsRecovery(ecdsa, specProvider), blockTree, blockStore, new ReceiptConfig());
+        _container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new ReceiptConfig { DeferredPersistence = false }))
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(Cancun.Instance))
+            .AddSingleton<IColumnsDb<ReceiptsColumns>>(_receiptsDb)
+            .Build();
+        IBlockTree blockTree = _container.Resolve<IBlockTree>();
+        _storage = _container.Resolve<IReceiptStorage>();
+
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        blockTree.SuggestBlock(genesis);
+        blockTree.TryUpdateMainChain(genesis.Header, true, false, genesis);
 
         _blocks = new Block[Blocks];
         _txHashes = new Hash256[Blocks * TransactionsPerBlock];
@@ -144,6 +149,7 @@ public class ReceiptStorageReadBenchmarks
     [GlobalCleanup]
     public void Cleanup()
     {
+        _container.Dispose();
         _receiptsDb.Dispose();
         _directory.Dispose();
     }
