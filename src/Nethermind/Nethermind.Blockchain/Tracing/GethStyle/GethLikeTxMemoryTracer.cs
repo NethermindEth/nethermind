@@ -61,7 +61,10 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
             return;
         }
         if (error == EvmExceptionType.BadInstruction && CurrentTraceEntry is not null)
+        {
             CurrentTraceEntry.GasCost = 0;
+            CurrentTraceEntry.Opcode = OpcodeJsonNames.GetUndefinedName(_opcode);
+        }
         if (!IsExecutionFault(error, _opcode)) base.ReportOperationError(error);
     }
 

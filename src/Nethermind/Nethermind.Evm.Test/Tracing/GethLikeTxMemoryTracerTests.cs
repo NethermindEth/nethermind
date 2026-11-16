@@ -904,6 +904,13 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         AssertFailedStep(TraceStructLogs(code, MainnetSpecProvider.CancunActivation), expectedOpcode, expectedError, depth: 2);
     }
 
+    /// <remarks>Geth names opcodes regardless of fork, but has no name for the draft opcodes only Nethermind implements.</remarks>
+    [TestCase(0xb0, "opcode 0xb0 not defined")]
+    [TestCase(0xfc, "opcode 0xfc not defined")]
+    [TestCase(0x1e, "CLZ")]
+    public void Undefined_opcode_step_name(byte opcode, string expectedName) =>
+        AssertFailedStep(TraceStructLogs([opcode], MainnetSpecProvider.CancunActivation), expectedName, null);
+
     /// <summary>Traces <paramref name="code"/> with the in-memory and the streaming struct logger.</summary>
     private (string Tracer, JsonElement[] Entries)[] TraceStructLogs(byte[] code, ForkActivation activation)
     {
