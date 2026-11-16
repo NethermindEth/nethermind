@@ -272,6 +272,8 @@ public class RlpxHostIntegrationTests
         int sessionCount = 0;
         host.SessionCreated += (_, _) => Interlocked.Increment(ref sessionCount);
         await host.Init();
+        TaskCompletionSource accepted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        host.BootstrapChannel!.Pipeline.AddFirst(new AcceptSignalHandler(accepted));
         using ManualResetEventSlim gate = new();
         Task shutdown = Task.CompletedTask;
         using Socket client = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
@@ -279,9 +281,9 @@ public class RlpxHostIntegrationTests
         {
             HoldWorkerLoops(host, gate);
             await client.ConnectAsync(new IPEndPoint(IPAddress.Loopback, port));
-            await Task.Delay(200);
+            await accepted.Task.WaitAsync(TimeSpan.FromSeconds(5));
             shutdown = host.Shutdown();
-            await Task.Delay(200);
+            await host.ActiveChannelsClosing.WaitAsync(TimeSpan.FromSeconds(5));
         }
         finally
         {
@@ -318,7 +320,7 @@ public class RlpxHostIntegrationTests
             HoldWorkerLoops(host, gate);
             dial = host.ConnectAsync(new Node(TestItem.PublicKeyA, "127.0.0.1", listenerPort));
             shutdown = host.Shutdown();
-            await Task.Delay(200);
+            await host.ActiveChannelsClosing.WaitAsync(TimeSpan.FromSeconds(5));
         }
         finally
         {
@@ -1160,6 +1162,15 @@ public class RlpxHostIntegrationTests
         {
             socket.Dispose();
             throw;
+        }
+    }
+
+    private sealed class AcceptSignalHandler(TaskCompletionSource accepted) : ChannelHandlerAdapter
+    {
+        public override void ChannelRead(IChannelHandlerContext context, object message)
+        {
+            accepted.TrySetResult();
+            context.FireChannelRead(message);
         }
     }
 

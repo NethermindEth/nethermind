@@ -63,6 +63,7 @@ namespace Nethermind.Network.Rlpx
         private readonly ConcurrentDictionary<IChannel, byte> _activeChannels = new();
         private readonly Lock _activeChannelsLock = new();
         private bool _closingActiveChannels;
+        private readonly TaskCompletionSource<bool> _activeChannelsClosing = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly Action<Task, object?> _untrackChannel;
         private readonly TimeSpan _shutdownQuietPeriod;
         private readonly TimeSpan _shutdownCloseTimeout;
@@ -506,6 +507,8 @@ namespace Nethermind.Network.Rlpx
                 }
             }
 
+            _activeChannelsClosing.TrySetResult(true);
+
             Task[] closing = new Task[channels.Count];
             for (int i = 0; i < closing.Length; i++)
             {
@@ -663,6 +666,10 @@ namespace Nethermind.Network.Rlpx
         internal int ActiveChannelCount => _activeChannels.Count;
 
         internal IEventLoopGroup? WorkerGroup => _workerGroup;
+
+        internal IChannel? BootstrapChannel => _bootstrapChannel;
+
+        internal Task ActiveChannelsClosing => _activeChannelsClosing.Task;
 
         internal bool EventLoopsTerminated =>
             (_bossGroup?.IsTerminated ?? true) && (_workerGroup?.IsTerminated ?? true) && _group.IsTerminated;
