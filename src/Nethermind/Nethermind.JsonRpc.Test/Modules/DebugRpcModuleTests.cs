@@ -315,7 +315,7 @@ public partial class DebugRpcModuleTests
 
     [TestCaseSource(nameof(InvalidTransactionIndices))]
     public void Trace_options_reject_invalid_transaction_index_quantities(string json, bool segmented) =>
-        Assert.Throws<JsonException>(() => ReadTransactionIndex(json, segmented));
+        Assert.Catch<JsonException>(() => ReadTransactionIndex(json, segmented));
 
     [TestCase("\"0x1\"")]
     [TestCase("\"\\u0030\\u0078\\u0031\"")]
@@ -548,23 +548,30 @@ public partial class DebugRpcModuleTests
         return block;
     }
 
-    [TestCase("0x3", -32000)]
-    [TestCase("0xffffffffffffffff", -32000)]
-    [TestCase("0", -32602)]
-    [TestCase("-1", -32602)]
-    [TestCase("0x00", -32602)]
-    [TestCase("0x", -32602)]
-    [TestCase("0xg", -32602)]
-    [TestCase("0x10000000000000000", -32602)]
-    [TestCase("NUMBER", -32602)]
-    public async Task Debug_traceCall_txIndex_rejects_invalid_input(string value, int errorCode)
+    [TestCase("0x3", -32000, null)]
+    [TestCase("0xffffffffffffffff", -32000, null)]
+    [TestCase("0", -32602, InvalidTxIndexQuantity)]
+    [TestCase("-1", -32602, InvalidTxIndexQuantity)]
+    [TestCase("0x00", -32602, InvalidTxIndexQuantity)]
+    [TestCase("0x", -32602, InvalidTxIndexQuantity)]
+    [TestCase("0xg", -32602, InvalidTxIndexQuantity)]
+    [TestCase("0x10000000000000000", -32602, InvalidTxIndexQuantity)]
+    [TestCase("NUMBER", -32602, "invalid argument 2: Transaction index must be a hex quantity string.")]
+    public async Task Debug_traceCall_txIndex_rejects_invalid_input(string value, int errorCode, string? expectedMessage)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
         object index = value == "NUMBER" ? 0 : value;
         string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
             new { to = TestItem.AddressC.ToString(), gas = "0x186a0" }, "latest", new { txIndex = index });
-        Assert.That((int?)JToken.Parse(response)["error"]?["code"], Is.EqualTo(errorCode), response);
+        JToken error = JToken.Parse(response)["error"]!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)error["code"], Is.EqualTo(errorCode), response);
+            if (expectedMessage is not null) Assert.That((string?)error["message"], Is.EqualTo(expectedMessage), response);
+        }
     }
+
+    private const string InvalidTxIndexQuantity = "invalid argument 2: Invalid transaction index hex quantity.";
 
     [Test]
     public async Task Debug_traceCall_missing_block_preserves_selector_policy(
