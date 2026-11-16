@@ -14,6 +14,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.PersistedSnapshots;
@@ -518,7 +519,7 @@ public class PersistedSnapshotTests
             WholeReadScanner scanner = PersistedSnapshotScanner.ForWholeRead(session, persisted);
             foreach (WholeReadScanner.PerAddressEntry e in scanner.PerAddresses)
             {
-                perAddr[e.Address] = (e.HasAccount, e.Account?.Balance, e.SelfDestructFlag);
+                perAddr[e.Address] = (e.HasAccount, BalanceOf(e), e.SelfDestructFlag);
                 foreach (WholeReadScanner.SlotEntry s in e.Slots)
                     slots[(e.Address, s.Slot)] = s.Value;
             }
@@ -598,7 +599,7 @@ public class PersistedSnapshotTests
             WholeReadScanner scanner = PersistedSnapshotScanner.ForWholeRead(session, persisted);
             foreach (WholeReadScanner.PerAddressEntry e in scanner.PerAddresses)
             {
-                accounts[e.Address] = (e.HasAccount, e.Account?.Balance);
+                accounts[e.Address] = (e.HasAccount, BalanceOf(e));
                 foreach (WholeReadScanner.SlotEntry s in e.Slots)
                     slots[(e.Address, s.Slot)] = s.Value?.ToBigEndian();
             }
@@ -660,11 +661,11 @@ public class PersistedSnapshotTests
                 if (e.Address == big)
                 {
                     // Read the account but deliberately leave big's Slots undrained.
-                    bigEntry = (e.HasAccount, e.Account?.Balance);
+                    bigEntry = (e.HasAccount, BalanceOf(e));
                 }
                 else
                 {
-                    nextEntry = (e.HasAccount, e.Account?.Balance);
+                    nextEntry = (e.HasAccount, BalanceOf(e));
                     foreach (WholeReadScanner.SlotEntry s in e.Slots)
                         nextSlots[(e.Address, s.Slot)] = s.Value?.ToBigEndian();
                 }
@@ -1410,6 +1411,14 @@ public class PersistedSnapshotTests
             result.Add((enumerator.CurrentKey.ToArray(), pin.Buffer.ToArray()));
         }
         return result;
+    }
+
+    private static UInt256? BalanceOf(WholeReadScanner.PerAddressEntry entry)
+    {
+        if (!entry.HasAccount) return null;
+        using NoOpPin pin = entry.PinAccount();
+        ReadOnlySpan<byte> rlp = WholeReadScanner.PerAddressEntry.SlimAccount(pin.Buffer);
+        return rlp.IsEmpty ? null : AccountDecoder.Slim.Decode(rlp)!.Balance;
     }
 
     private static int MergeCapacity(PersistedSnapshotList snapshots)

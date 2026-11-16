@@ -2005,6 +2005,46 @@ public class HistoryWriterTests
     }
 
     [Test]
+    public void Capture_over_converted_range_writes_the_account_rows_of_in_memory_bases([Values] bool windowed)
+    {
+        FlatDbConfig config = new()
+        {
+            HistoryEnabled = true,
+            HistoryRetention = windowed ? HistoryRetentionMode.Rolling : HistoryRetentionMode.None,
+            HistoryRetentionBlocks = windowed ? 100UL : 0UL
+        };
+        Account contract = new(1, 100, Keccak.Compute("storage"), Keccak.Compute("code"));
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 1)), (AddrB, contract)]);
+        CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 2)), (AddrB, contract.WithChangedBalance(200))]);
+        CommitBlock(2, 3, accountChanges: [(AddrA, new Account(3, 3)), (AddrB, null)]);
+        CommitBlock(3, 4, accountChanges: [(AddrA, new Account(4, 4)), (AddrB, contract)]);
+
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> fromInMemoryBases = new();
+        CaptureUpTo(4, fromInMemoryBases, config);
+        ConvertToPersistedTier(2);
+        ConvertToPersistedTier(3);
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> fromPersistedBases = new();
+        CaptureUpTo(4, fromPersistedBases, config);
+
+        IDb expected = fromInMemoryBases.GetColumnDb(FlatHistoryColumns.AccountHistory);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expected.GetAll(ordered: true), Is.Not.Empty, "precondition: the capture wrote account rows");
+            Assert.That(fromPersistedBases.GetColumnDb(FlatHistoryColumns.AccountHistory).GetAll(ordered: true),
+                Is.EqualTo(expected.GetAll(ordered: true)).Using<KeyValuePair<byte[], byte[]>>(
+                    static (left, right) => left.Key.AsSpan().SequenceEqual(right.Key) && left.Value.AsSpan().SequenceEqual(right.Value)));
+        }
+    }
+
+    private void CaptureUpTo(ulong block, IColumnsDb<FlatHistoryColumns> columns, FlatDbConfig config)
+    {
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(columns, config);
+        HistoryWriter writer = new(_db, columns, config, availability, rowFormat, LimboLogs.Instance, commitments: null);
+        writer.SeedGenesis([], StateAt(0).StateRoot);
+        writer.CaptureUpTo(StateAt(block), _repository, CancellationToken.None);
+    }
+
+    [Test]
     public void Flag_on_keeps_tip_reads_correct_and_populates_history()
     {
         SeedGenesisFloor();

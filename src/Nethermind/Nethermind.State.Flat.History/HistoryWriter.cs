@@ -13,6 +13,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
@@ -750,10 +751,12 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
             if (entry.HasAccount)
             {
+                using NoOpPin pin = entry.PinAccount();
+                ReadOnlySpan<byte> account = WholeReadScanner.PerAddressEntry.SlimAccount(pin.Buffer);
                 if (_isV3)
-                    RecordAccountV3(block, addrHash, entry.Account, pending!, columns.AccountHistory);
+                    pending!.TrackAccount(addrHash, block, account, columns.AccountHistory, _accountHistoryV3!);
                 else
-                    RecordAccount(block, addrHash, entry.Account, in columns);
+                    RecordAccount(block, addrHash, account, in columns);
             }
 
             foreach (WholeReadScanner.SlotEntry slot in entry.Slots)
@@ -777,17 +780,19 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
     private void RecordAccount(ulong block, in ValueHash256 addrHash, Account? account, scoped in HistoryColumnBatches columns)
     {
-        ReadOnlySpan<byte> flatKey = addrHash.Bytes;
-
         if (account is null)
         {
-            _accountHistory!.RecordChange(block, flatKey, ReadOnlySpan<byte>.Empty, columns.AccountHistory);
+            RecordAccount(block, addrHash, ReadOnlySpan<byte>.Empty, in columns);
             return;
         }
 
         using ArrayPoolSpan<byte> value = AccountDecoder.Slim.EncodeToArrayPoolSpan(account);
-        _accountHistory!.RecordChange(block, flatKey, value, columns.AccountHistory);
+        RecordAccount(block, addrHash, value, in columns);
     }
+
+    /// <param name="slimAccount">The account's slim RLP; empty when the account is deleted.</param>
+    private void RecordAccount(ulong block, in ValueHash256 addrHash, ReadOnlySpan<byte> slimAccount, scoped in HistoryColumnBatches columns) =>
+        _accountHistory!.RecordChange(block, addrHash.Bytes, slimAccount, columns.AccountHistory);
 
     private void RecordStorage(ulong block, in ValueHash256 addrHash, in UInt256 slot, in UInt256? value, Span<byte> keyBuffer, Span<byte> valueBuffer, scoped in HistoryColumnBatches columns)
     {
@@ -963,16 +968,27 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         [SkipLocalsInit]
         public void TrackAccount(in ValueHash256 addrPath, ulong block, Account? postValue, IWriteBatch batch, HistoryStoreV3 store)
         {
+            if (!TouchAccount(addrPath, block, out ulong newerTouch)) return;
+
+            Span<byte> rlp = stackalloc byte[AccountRlpBufferSize];
+            store.RecordPreValue(newerTouch, addrPath.Bytes, EncodeAccount(postValue, rlp), batch);
+        }
+
+        /// <param name="slimPostValue">The post-value's slim RLP; empty when the account is deleted.</param>
+        public void TrackAccount(in ValueHash256 addrPath, ulong block, ReadOnlySpan<byte> slimPostValue, IWriteBatch batch, HistoryStoreV3 store)
+        {
+            if (TouchAccount(addrPath, block, out ulong newerTouch)) store.RecordPreValue(newerTouch, addrPath.Bytes, slimPostValue, batch);
+        }
+
+        /// <summary>Makes <paramref name="block"/> the key's oldest touch.</summary>
+        /// <returns>Whether a newer touch in another block is pending, which this touch's post-value resolves.</returns>
+        private bool TouchAccount(in ValueHash256 addrPath, ulong block, out ulong newerTouch)
+        {
             ref ulong entry = ref CollectionsMarshal.GetValueRefOrAddDefault(Accounts, addrPath, out bool exists);
-            if (exists)
-            {
-                if (entry == block) return; // same-block re-touch: resolving here would fabricate a pre-value
-
-                Span<byte> rlp = stackalloc byte[AccountRlpBufferSize];
-                store.RecordPreValue(entry, addrPath.Bytes, EncodeAccount(postValue, rlp), batch);
-            }
-
+            newerTouch = entry;
             entry = block;
+            // A same-block re-touch stays pending: resolving it would fabricate a pre-value.
+            return exists && newerTouch != block;
         }
 
         public void TrackStorage(
