@@ -39,5 +39,13 @@ namespace Nethermind.State.Repositories
         }
 
         IOwnedReadOnlyList<ChainLevelInfo?> MultiLoadLevel(in ArrayPoolListRef<ulong> blockNumbers);
+
+        /// <summary>Loads each level as <see cref="LoadLevelWithoutCaching"/> does, in request order.</summary>
+        IOwnedReadOnlyList<ChainLevelInfo?> LoadLevelsWithoutCaching(in ArrayPoolListRef<ulong> blockNumbers)
+        {
+            ArrayPoolList<ChainLevelInfo?> levels = new(blockNumbers.Count, blockNumbers.Count);
+            for (int i = 0; i < blockNumbers.Count; i++) levels[i] = LoadLevelWithoutCaching(blockNumbers[i]);
+            return levels;
+        }
     }
 }

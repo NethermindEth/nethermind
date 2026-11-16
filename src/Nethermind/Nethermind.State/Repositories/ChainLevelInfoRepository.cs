@@ -169,6 +169,39 @@ namespace Nethermind.State.Repositories
             return IChainLevelInfoRepository.TryGetMainChainBlock(_decoder.Decode(ref reader, RlpBehaviors.AllowExtraBytes | RlpBehaviors.TrustedInput), out blockHash, out totalDifficulty);
         }
 
+        /// <inheritdoc/>
+        /// <remarks>The levels missing from the cache are read in one batch.</remarks>
+        public IOwnedReadOnlyList<ChainLevelInfo?> LoadLevelsWithoutCaching(in ArrayPoolListRef<ulong> blockNumbers)
+        {
+            int count = blockNumbers.Count;
+            ArrayPoolList<ChainLevelInfo?> levels = new(count, count);
+            using ArrayPoolListRef<ulong> missed = new(count);
+            using ArrayPoolListRef<int> positions = new(count);
+            for (int i = 0; i < count; i++)
+            {
+                if (_blockInfoCache.TryGetNoRefresh(new LevelNumber(blockNumbers[i]), out ChainLevelInfo? level))
+                {
+                    levels[i] = level;
+                }
+                else
+                {
+                    missed.Add(blockNumbers[i]);
+                    positions.Add(i);
+                }
+            }
+
+            if (missed.Count == 0) return levels;
+
+            using IOwnedReadOnlyList<ChainLevelInfo?> read = MultiLoadLevel(missed);
+            for (int i = 0; i < missed.Count; i++)
+            {
+                // A level persisted while this load ran is newer than the one read.
+                levels[positions[i]] = _blockInfoCache.TryGetNoRefresh(new LevelNumber(missed[i]), out ChainLevelInfo? cached) ? cached : read[i];
+            }
+
+            return levels;
+        }
+
         public IOwnedReadOnlyList<ChainLevelInfo?> MultiLoadLevel(in ArrayPoolListRef<ulong> blockNumbers)
         {
             int count = blockNumbers.Count;

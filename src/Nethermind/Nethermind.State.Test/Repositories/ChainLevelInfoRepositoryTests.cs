@@ -176,6 +176,35 @@ public class ChainLevelInfoRepositoryTests
     }
 
     [Test]
+    public void LoadLevelsWithoutCaching_returns_a_level_written_only_to_the_cache()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using IDb db = CreateBatchDb(native: true, directory);
+        using IContainer container = CreateContainer(db);
+        IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
+        ChainLevelInfo stored = CreateBatchLevel(1);
+        ChainLevelInfo pending = CreateBatchLevel(2);
+        repository.PersistLevel(1, stored);
+        ((IClearableCache)repository).ClearCache();
+        using ArrayPoolListRef<ulong> numbers = new(4, 3UL, 2UL, 1UL, 2UL);
+
+        using BatchWrite batch = repository.StartBatch();
+        repository.PersistLevel(2, pending, batch);
+        using IOwnedReadOnlyList<ChainLevelInfo> fromDb = repository.MultiLoadLevel(numbers);
+        Assert.That(fromDb[1], Is.Null, "precondition: the batch is not written yet");
+
+        using IOwnedReadOnlyList<ChainLevelInfo> levels = repository.LoadLevelsWithoutCaching(numbers);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(levels.Count, Is.EqualTo(4));
+            Assert.That(levels[0], Is.Null);
+            Assert.That(levels[1], Is.SameAs(pending));
+            AssertChainLevelInfo(levels[2], stored);
+            Assert.That(levels[3], Is.SameAs(pending));
+        }
+    }
+
+    [Test]
     public void MultiLoadLevel_WhenDecodeFails_AllowsTheNextBatch(
         [Values] bool native, [Values(2UL, 256UL)] ulong secondNumber)
     {

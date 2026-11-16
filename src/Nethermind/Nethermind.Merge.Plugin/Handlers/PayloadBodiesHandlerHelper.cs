@@ -21,15 +21,13 @@ internal static class PayloadBodiesHandlerHelper
 
     /// <summary>Reads the canonical blocks from <paramref name="start"/> to <paramref name="end"/>, both inclusive.</summary>
     /// <returns>The blocks in number order, <see langword="null"/> where a number has no canonical block or its body is not stored.</returns>
-    /// <remarks>The levels are read in one batch from the database, past the level cache, which a level write updates
-    /// before the database.</remarks>
     public static ArrayPoolList<StoredBlock?> ReadCanonicalBlocks(IChainLevelInfoRepository chainLevels, IBlockStore blockStore, ulong start, ulong end)
     {
         int count = (int)(end - start + 1);
         using ArrayPoolListRef<ulong> numbers = new(count);
         for (ulong number = start; number <= end; number++) numbers.Add(number);
 
-        using IOwnedReadOnlyList<ChainLevelInfo?> levels = chainLevels.MultiLoadLevel(numbers);
+        using IOwnedReadOnlyList<ChainLevelInfo?> levels = chainLevels.LoadLevelsWithoutCaching(numbers);
         using ArrayPoolListRef<(ulong Number, Hash256 Hash)> blocks = new(count);
         using ArrayPoolListRef<int> positions = new(count);
         for (int i = 0; i < count; i++)
