@@ -23,6 +23,7 @@ internal static class ShardBlobNetworkWrapperRlp
     /// <summary>Decode-side cap on blobs per transaction.</summary>
     internal const int BlobCountLimit = 128;
     private const int BlobCellProofsCountLimit = BlobCountLimit * Ckzg.CellsPerExtBlob;
+    private const ProofVersion LatestVersion = ProofVersion.V1;
 
     private static readonly RlpLimit BlobsCountLimit = RlpLimit.For<ShardBlobNetworkWrapper>(BlobCountLimit, nameof(ShardBlobNetworkWrapper.Blobs));
     private static readonly RlpLimit CommitmentsCountLimit = RlpLimit.For<ShardBlobNetworkWrapper>(BlobCountLimit, nameof(ShardBlobNetworkWrapper.Commitments));
@@ -41,9 +42,9 @@ internal static class ShardBlobNetworkWrapperRlp
             version = reader.PeekByte() == 0
                 ? (ProofVersion)reader.ReadRaw(1)[0]
                 : (ProofVersion)reader.DecodeByte<TCanonicalChecks>();
-            if (version > ProofVersion.V1)
+            if (version > LatestVersion)
             {
-                throw new RlpReaderException($"Unknown version of {nameof(ShardBlobNetworkWrapper)}. Expected no more than {(int)ProofVersion.V1} and is {version}");
+                throw new RlpReaderException($"Unknown version of {nameof(ShardBlobNetworkWrapper)}. Expected no more than {(int)LatestVersion} and is {version}");
             }
         }
 
@@ -85,6 +86,43 @@ internal static class ShardBlobNetworkWrapperRlp
         {
             pooledBuffers?.Return();
             throw;
+        }
+    }
+
+    /// <summary>Skips the items of a stored wrapper that its network form keeps, up to the storage-only items.</summary>
+    /// <param name="reader">A reader over the items of the stored wrapper sequence, after the transaction payload.</param>
+    /// <returns>
+    /// <see langword="false"/> when <see cref="Encode"/> would not write the items again byte for byte, or the wrapper
+    /// does not hold every blob: an explicit 0x00 version, an unknown version, or missing or empty blobs.
+    /// </returns>
+    internal static bool TrySkipNetworkItems(ref RlpReader reader)
+    {
+        if (!reader.IsNextSequence)
+        {
+            if (reader.PeekByte() is 0 or > (byte)LatestVersion) return false;
+            reader.SkipItem();
+        }
+
+        if (!HasFullBlobs(reader)) return false;
+
+        reader.SkipItem();
+        reader.SkipItem();
+        reader.SkipItem();
+        return true;
+
+        static bool HasFullBlobs(RlpReader reader)
+        {
+            if (!reader.IsNextSequence) return false;
+
+            RlpReader blobs = reader.EnterSequence(out _);
+            if (!blobs.HasNext) return false;
+            while (blobs.HasNext)
+            {
+                if (blobs.IsNextItemEmptyByteArray()) return false;
+                blobs.SkipItem();
+            }
+
+            return true;
         }
     }
 

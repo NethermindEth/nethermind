@@ -35,6 +35,8 @@ namespace Nethermind.Trie
         /// </remarks>
         public bool IsLeaf => _nodeData is LeafData;
 
+        internal ReadOnlySpan<byte> ValueSpan => _nodeData is LeafData data ? data.ValueSpan : default;
+
         /// <summary>Whether this node is an extension.</summary>
         /// <remarks><inheritdoc cref="IsLeaf" path="/remarks"/></remarks>
         public bool IsExtension => _nodeData is ExtensionData;
@@ -439,7 +441,7 @@ namespace Nethermind.Trie
             int keyPrefix = previousRlp[keyStart];
             int keyItemLength = keyPrefix < 0x80 ? 1 : 1 + keyPrefix - 0x80;
             ReadOnlySpan<byte> keyItem = previousRlp.Slice(keyStart, keyItemLength);
-            ReadOnlySpan<byte> value = node.Value.AsSpan();
+            ReadOnlySpan<byte> value = node.ValueSpan;
 
             int contentLength = keyItemLength + Rlp.LengthOf(value);
             rlp = pool.SafeRent(Rlp.LengthOfSequence(contentLength));
@@ -461,7 +463,7 @@ namespace Nethermind.Trie
                 return false;
             }
 
-            ReadOnlySpan<byte> value = leaf.Value.AsSpan();
+            ReadOnlySpan<byte> value = leaf.ValueSpan;
             int contentLength = Rlp.LengthOf(compactKey) + Rlp.LengthOf(value);
             rlp = pool.SafeRent(Rlp.LengthOfSequence(contentLength));
             Span<byte> destination = rlp.AsSpan();
@@ -531,8 +533,8 @@ namespace Nethermind.Trie
         /// <remarks>The key stays in the RLP until read: an RLP array is never written once a node holds it here, as the
         /// guest's buffer pool hands out fresh arrays and takes none back.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private LeafData CreateLeafData(ReadOnlySpan<byte> compactKey, int compactKeyEnd, CappedArray<byte> value) =>
-            new(_rlpArray!, compactKeyEnd - compactKey.Length, compactKey.Length, value);
+        private LeafData CreateLeafData(ReadOnlySpan<byte> compactKey, int compactKeyEnd, ReadOnlySpan<byte> value, int valueEnd, ICappedArrayPool? bufferPool) =>
+            new(_rlpArray!, compactKeyEnd - compactKey.Length, compactKey.Length, valueEnd - value.Length, value.Length);
 
         /// <summary>Deepens <paramref name="path"/> by one level for a child of the node being encoded, leaving its nibbles alone.</summary>
         /// <remarks>
