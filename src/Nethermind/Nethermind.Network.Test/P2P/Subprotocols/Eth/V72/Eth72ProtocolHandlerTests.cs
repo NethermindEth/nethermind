@@ -662,6 +662,34 @@ public class Eth72ProtocolHandlerTests
 
     // The frame-transaction gate reads the head spec, and an announcement carries up to MaxCount entries.
     [Test]
+    public void Without_blob_support_blob_announcements_and_cell_requests_cost_nothing()
+    {
+        _txPoolConfig.BlobsSupport.Returns(BlobsSupportMode.Disabled);
+        RecreateHandler();
+        Hash256 hash = HashFromInt(1);
+        _transactionPool.NotifyAboutTx(hash, Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
+            .Returns(AnnounceResult.RequestRequired);
+        using NewPooledTransactionHashesMessage72 announcement = new(
+            [(byte)TxType.Blob],
+            [1024],
+            [hash],
+            BlobCellMask.FromIndices([1]).ToBytes());
+        using GetCellsMessage72 request = new(7, [hash], BlobCellMask.FromIndices([1]).ToBytes());
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(announcement, Eth72MessageCode.NewPooledTransactionHashes);
+        HandleZeroMessage(request, Eth72MessageCode.GetCells);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_deliveredMessages.OfType<GetPooledTransactionsMessage>(), Is.Empty);
+            Assert.That(_deliveredMessages.OfType<GetCellsMessage72>(), Is.Empty);
+            Assert.That(_deliveredMessages.OfType<CellsMessage72>().Single().Hashes, Is.Empty);
+            _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        }
+    }
+
+    [Test]
     public void should_resolve_the_frame_tx_gate_once_per_announcement()
     {
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
