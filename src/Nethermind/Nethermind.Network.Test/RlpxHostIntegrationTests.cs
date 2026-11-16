@@ -249,9 +249,10 @@ public class RlpxHostIntegrationTests
         await sessionCreated.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.That(host.ActiveChannelCount, Is.EqualTo(1));
 
-        Task closed = ReceiveUntilClosedAsync(accepted);
+        using CancellationTokenSource eofTimeout = new(TimeSpan.FromSeconds(1));
+        Task closed = ReceiveUntilClosedAsync(accepted, eofTimeout.Token);
         Task shutdown = host.Shutdown();
-        await closed.WaitAsync(TimeSpan.FromSeconds(1));
+        await closed;
         bool shutdownDoneAtEof = shutdown.IsCompleted;
         await shutdown.WaitAsync(TimeSpan.FromSeconds(30));
 
@@ -1102,10 +1103,10 @@ public class RlpxHostIntegrationTests
         }
     }
 
-    private static async Task ReceiveUntilClosedAsync(Socket socket)
+    private static async Task ReceiveUntilClosedAsync(Socket socket, CancellationToken cancellationToken)
     {
         byte[] buffer = new byte[256];
-        while (await socket.ReceiveAsync(buffer, SocketFlags.None) > 0)
+        while (await socket.ReceiveAsync(buffer.AsMemory(), SocketFlags.None, cancellationToken) > 0)
         {
         }
     }
