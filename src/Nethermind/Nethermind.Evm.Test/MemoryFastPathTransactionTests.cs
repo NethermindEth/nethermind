@@ -30,7 +30,8 @@ namespace Nethermind.Evm.Test;
 /// pooled frames and arrays reused with stale bytes, call input and output, return data, copies, logs and creation.
 /// The reference also traces memory, which initializes the active memory before every instruction, so it does not
 /// share the lazy clearing of memory below the active size with the tables it checks; an instruction that grows memory
-/// still clears the new gap with the same code.
+/// still clears the new gap with the same code. The traced tables run once more tracing instructions alone, as
+/// <c>debug_traceTransaction</c> does by default, and are checked against the reference like the untraced ones.
 /// </remarks>
 [Parallelizable(ParallelScope.All)]
 public class MemoryFastPathTransactionTests
@@ -55,10 +56,11 @@ public class MemoryFastPathTransactionTests
 
     private static readonly Address Sender = TestItem.AddressA;
 
-    /// <summary>The dispatch tables a transaction runs on; the traced ones are the reference.</summary>
+    /// <summary>The dispatch tables a transaction runs on; <see cref="Traced"/>, tracing instructions and memory, is the reference.</summary>
     private enum Table
     {
         Traced,
+        TracedInstructions,
         NoTrace,
         NoTraceCancelable,
     }
@@ -234,7 +236,7 @@ public class MemoryFastPathTransactionTests
         public DigestTracer(Table table)
         {
             IsTracingReceipt = true;
-            IsTracingInstructions = table == Table.Traced;
+            IsTracingInstructions = table is Table.Traced or Table.TracedInstructions;
             IsTracingMemory = table == Table.Traced;
             _cancelable = table == Table.NoTraceCancelable;
         }
