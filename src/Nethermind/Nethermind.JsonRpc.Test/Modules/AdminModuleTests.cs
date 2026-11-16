@@ -440,6 +440,7 @@ public class AdminModuleTests
             Assert.That(first.Result.ResultType, Is.EqualTo(ResultType.Success));
             Assert.That(refused.ErrorCode, Is.EqualTo(ErrorCodes.LimitExceeded));
             Assert.That(refused.Result.Error, Is.EqualTo("Too many subscriptions. The connection limit is 1."));
+            Assert.That(refused.IsTemporary, Is.True);
         }
     }
 

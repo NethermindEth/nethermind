@@ -1616,6 +1616,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Assert.That(refused.Result.ResultType, Is.EqualTo(ResultType.Failure));
                 Assert.That(refused.ErrorCode, Is.EqualTo(ErrorCodes.LimitExceeded));
                 Assert.That(refused.Result.Error, Is.EqualTo("Too many subscriptions. The connection limit is 2."));
+                Assert.That(refused.IsTemporary, Is.True);
                 Assert.That(afterRelease.Result.ResultType, Is.EqualTo(ResultType.Success));
             }
         }

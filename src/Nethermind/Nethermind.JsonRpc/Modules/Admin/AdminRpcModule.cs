@@ -188,7 +188,7 @@ public class AdminRpcModule : IAdminRpcModule
         }
         catch (LimitExceededException e)
         {
-            return ResultWrapper<string>.Fail(e.Message, ErrorCodes.LimitExceeded);
+            return ResultWrapper<string>.Fail(e.Message, ErrorCodes.LimitExceeded, isTemporary: true);
         }
         catch (ArgumentException e)
         {
