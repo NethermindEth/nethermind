@@ -719,13 +719,12 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             Touch(state, now);
         }
 
-        Hash256 requestHash = hash.ToHash256();
-        placedAll &= TrySendReserved(state, requestHash, firstPeer, firstMask, firstReservationRevision);
+        placedAll &= TrySendReserved(state, hash, firstPeer, firstMask, firstReservationRevision);
         if (morePeers is not null)
         {
             foreach ((ISparseBlobPoolPeer peer, BlobCellMask sendMask, long reservationRevision) in morePeers)
             {
-                placedAll &= TrySendReserved(state, requestHash, peer, sendMask, reservationRevision);
+                placedAll &= TrySendReserved(state, hash, peer, sendMask, reservationRevision);
             }
         }
 
@@ -736,7 +735,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
     private bool TrySendReserved(
         TrackedSparseBlobTx state,
-        Hash256 hash,
+        in ValueHash256 hash,
         ISparseBlobPoolPeer peer,
         BlobCellMask sendMask,
         long reservationRevision)
@@ -770,7 +769,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
             ReleaseInFlight(
                 peer.Id,
-                hash.ValueHash256,
+                hash,
                 rollbackMask.Count,
                 releaseHashReference: remaining.IsEmpty);
         }

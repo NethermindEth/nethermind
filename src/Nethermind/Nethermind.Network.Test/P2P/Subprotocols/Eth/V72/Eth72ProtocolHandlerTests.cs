@@ -6379,10 +6379,11 @@ public class Eth72ProtocolHandlerTests
         public List<(DisconnectReason Reason, string Details)> Disconnects { get; } = [];
         public Action? Disconnecting { get; set; }
 
-        public bool TrySendGetCells(Hash256 hash, BlobCellMask requestMask)
+        public bool TrySendGetCells(in ValueHash256 hash, BlobCellMask requestMask)
         {
-            CellRequests.Add((hash, requestMask));
-            return CellRequestHandler?.Invoke(hash, requestMask) ?? true;
+            Hash256 requestHash = new(hash);
+            CellRequests.Add((requestHash, requestMask));
+            return CellRequestHandler?.Invoke(requestHash, requestMask) ?? true;
         }
 
         public bool TrySendPooledTransactionRequest(Hash256 hash)

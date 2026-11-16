@@ -1155,24 +1155,23 @@ public class Eth72ProtocolHandler(
         }
     }
 
-    private void SendGetCells(Hash256 hash, BlobCellMask requestMask)
+    private void SendGetCells(in ValueHash256 hash, BlobCellMask requestMask)
     {
         if (Logger.IsTrace) TraceRequestingBlobCells(hash, requestMask);
 
-        ValueHash256 key = hash.ValueHash256;
-        BlobCellMask sentMask = GetSentCellRequestMask(key, requestMask);
-        GetCellsMessage72 message = new([hash.ValueHash256], sentMask.ToBytes());
-        AddSentCellRequest(key, sentMask, message.RequestId);
+        BlobCellMask sentMask = GetSentCellRequestMask(hash, requestMask);
+        GetCellsMessage72 message = new([hash], sentMask.ToBytes());
+        AddSentCellRequest(hash, sentMask, message.RequestId);
         Send(message);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void TraceRequestingBlobCells(Hash256 transactionHash, BlobCellMask cellMask) =>
+        void TraceRequestingBlobCells(in ValueHash256 transactionHash, BlobCellMask cellMask) =>
             Logger.Trace($"{Node?.ToString("c"):hide} requesting blob cells for {transactionHash} with mask {cellMask}.");
     }
 
     bool ISparseBlobPoolPeer.IsClosing => Session.IsClosing;
 
-    bool ISparseBlobPoolPeer.TrySendGetCells(Hash256 hash, BlobCellMask requestMask)
+    bool ISparseBlobPoolPeer.TrySendGetCells(in ValueHash256 hash, BlobCellMask requestMask)
     {
         if (Session.IsClosing || requestMask.IsEmpty)
         {

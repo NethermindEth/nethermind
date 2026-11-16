@@ -90,7 +90,7 @@ public class SparseBlobPoolPeerRegistryBenchmarks
     {
         public PublicKey Id { get; } = id;
         public bool IsClosing => false;
-        public bool TrySendGetCells(Hash256 hash, BlobCellMask requestMask) => true;
+        public bool TrySendGetCells(in ValueHash256 hash, BlobCellMask requestMask) => true;
         public bool TrySendPooledTransactionRequest(Hash256 hash) => true;
         public void MaintainSparseBlobState(DateTimeOffset now) { }
         public void DisconnectSparseBlobPeer(DisconnectReason reason, string details) { }
