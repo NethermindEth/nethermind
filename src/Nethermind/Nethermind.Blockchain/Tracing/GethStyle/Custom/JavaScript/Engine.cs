@@ -141,7 +141,7 @@ public partial class Engine : IDisposable
     /// <summary>
     /// Converts input to 20 byte Address byte representation
     /// </summary>
-    private ITypedArray<byte> ToAddress(object address) => address.ToAddress().Bytes.ToArray().ToTypedScriptArray();
+    private ITypedArray<byte> ToAddress(object address) => address.ToAddress().Bytes.ToTypedScriptArray();
 
     /// <summary>
     /// Checks if contract at given address is a precompile
@@ -164,13 +164,13 @@ public partial class Engine : IDisposable
     /// <summary>
     /// Creates a contract address from sender and nonce (used for CREATE instruction)
     /// </summary>
-    private ITypedArray<byte> ToContract(object from, ulong nonce) => ContractAddress.From(from.ToAddress(), nonce).Bytes.ToArray().ToTypedScriptArray();
+    private ITypedArray<byte> ToContract(object from, ulong nonce) => ContractAddress.From(from.ToAddress(), nonce).Bytes.ToTypedScriptArray();
 
     /// <summary>
     /// Creates a contract address from sender, salt and initcode (used for CREATE2 instruction)
     /// </summary>
     private ITypedArray<byte> ToContract2(object from, string salt, object initcode) =>
-        ContractAddress.From(from.ToAddress(), Bytes.FromHexString(salt, EvmStack.WordSize), initcode.ToBytes()).Bytes.ToArray().ToTypedScriptArray();
+        ContractAddress.From(from.ToAddress(), Bytes.FromHexString(salt, EvmStack.WordSize), initcode.ToBytes()).Bytes.ToTypedScriptArray();
 
     /// <summary>
     /// Stops the running script, and any script the engine runs later. Called from a timer thread, so the engine
@@ -261,7 +261,16 @@ public partial class Engine : IDisposable
     /// <summary>
     /// Creates a JavaScript V8Engine typed byte array
     /// </summary>
-    public ITypedArray<byte> CreateUint8Array(byte[] buffer) => _createUint8Array(buffer);
+    public ITypedArray<byte> CreateUint8Array(ReadOnlySpan<byte> buffer)
+    {
+        ITypedArray<byte> array = _createUint8Array(buffer.Length);
+        if (buffer.Length > 0)
+        {
+            array.WriteBytes(buffer, 0, (ulong)buffer.Length, 0);
+        }
+
+        return array;
+    }
 
     /// <summary>
     /// Creates a JavaScript BigInteger object

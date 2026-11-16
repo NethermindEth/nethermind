@@ -45,7 +45,9 @@ public static class JavaScriptConverter
 
     public static ITypedArray<byte> ToTypedScriptArray(this byte[] array) => CurrentEngine.CreateUint8Array(array);
 
-    public static ITypedArray<byte> ToTypedScriptArray(this ReadOnlyMemory<byte> memory) => memory.ToArray().ToTypedScriptArray();
+    public static ITypedArray<byte> ToTypedScriptArray(this ReadOnlySpan<byte> span) => CurrentEngine.CreateUint8Array(span);
+
+    public static ITypedArray<byte> ToTypedScriptArray(this ReadOnlyMemory<byte> memory) => CurrentEngine.CreateUint8Array(memory.Span);
 
     public static IJavaScriptObject ToBigInteger(this BigInteger bigInteger) => CurrentEngine.CreateBigInteger(bigInteger);
     public static IJavaScriptObject ToBigInteger(this UInt256 bigInteger) => CurrentEngine.CreateBigInteger((BigInteger)bigInteger);
