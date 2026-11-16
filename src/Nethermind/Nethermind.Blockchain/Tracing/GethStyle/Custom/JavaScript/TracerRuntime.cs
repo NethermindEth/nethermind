@@ -45,7 +45,7 @@ internal sealed partial class TracerRuntime : IDisposable
     private const string TracersPath = "Data/JSTracers/";
     private const string Extension = ".js";
     private const string BigIntegerJavaScript = "_bigInteger.js";
-    private const string CreateUint8ArrayCode = "(function (length) {return new Uint8Array(length);}).valueOf()";
+    private const string CreateUint8ArrayCode = "(function (U) {return function (length) {return new U(length);};})(Uint8Array)";
 
     // PublicationOnly does not cache a failed load, so a later request retries it instead of rethrowing it for the process lifetime.
     private static readonly Lazy<Dictionary<string, string>> _builtInSources = new(LoadBuiltInSources, LazyThreadSafetyMode.PublicationOnly);

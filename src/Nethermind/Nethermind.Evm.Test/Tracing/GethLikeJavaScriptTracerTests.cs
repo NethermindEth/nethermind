@@ -621,8 +621,8 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
               var nativeUint8Array = Uint8Array, args = [];
               Uint8Array = function(arg) { args.push(arg); return new nativeUint8Array(arg); };
               ctx.input; ctx.output;
-              args[0].CopyTo(args[1], 0);
-              """, "rejected", TestName = "Replaced Uint8Array")]
+              if (args.length !== 0) throw new Error('replaced constructor was called');
+              """, "written", TestName = "Replaced Uint8Array")]
     public void Script_keeps_transaction_output_unchanged(string write, string expectedMarker)
     {
         byte[] output = [1, 2, 3, 4];
@@ -657,7 +657,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                             """;
         using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(GetTracer(userTracer), MStore());
         using GethLikeTxTrace trace = tracer.BuildResult().First();
-        AssertResult(trace, new[] { "number", "number", "number", "undefined" });
+        AssertResult(trace, new[] { "undefined" });
     }
 
     [Test]
