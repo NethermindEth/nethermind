@@ -227,6 +227,10 @@ public class SyncServerReceiptsBenchmarks
         return length;
     }
 
-    private int Serialize(ReceiptsMessage message, bool withBloom) =>
-        withBloom ? _serializerWithBloom.Serialize(_message, message) : _serializer69.Serialize(_message, message);
+    private int Serialize(ReceiptsMessage message, bool withBloom)
+    {
+        // The serializer takes the message length from the destination length.
+        ReceiptsMessageSerializer serializer = withBloom ? _serializerWithBloom : _serializer69;
+        return serializer.Serialize(_message.AsSpan(0, serializer.GetLength(message)), message);
+    }
 }
