@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using Nethermind.Blockchain;
 using Nethermind.Consensus.Clique;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -63,6 +65,17 @@ public class SnapshotManagerTests
         Block genesis = CliqueTests.GetGenesis();
         Snapshot snapshot = snapshotManager.GetOrCreateSnapshot(0, genesis.Hash);
         Assert.That(snapshot.Hash, Is.EqualTo(genesis.Hash));
+    }
+
+    [Test]
+    public void Does_not_create_snapshot_for_a_number_the_header_does_not_have()
+    {
+        using MemDb snapshotDb = new();
+        SnapshotManager snapshotManager = new(CliqueConfig.Default, snapshotDb, _blockTree, NullEthereumEcdsa.Instance, LimboLogs.Instance);
+        Hash256 block4Hash = _blockTree.FindHeader(4, BlockTreeLookupOptions.None)!.Hash!;
+
+        Assert.Throws<InvalidOperationException>(() => snapshotManager.GetOrCreateSnapshot(CliqueConfig.Default.Epoch, block4Hash));
+        Assert.That(snapshotDb.Keys, Is.Empty);
     }
 
     [Test]

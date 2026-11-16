@@ -515,6 +515,25 @@ public class HeaderValidatorTests
     }
 
     [Test]
+    public void Block_number_is_validated_before_the_seal()
+    {
+        ISealValidator sealValidator = Substitute.For<ISealValidator>();
+        sealValidator.ValidateParams(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<bool>()).Returns(true);
+        HeaderValidator validator = new(_blockTree, sealValidator, _specProvider, new OneLoggerLogManager(new(_testLogger)));
+        _block.Header.Number = _parentBlock.Number + 2;
+        _block.Header.Hash = _block.CalculateHash();
+
+        bool result = validator.Validate(_block.Header, _parentBlock.Header, false, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(error, Is.EqualTo(BlockErrorMessages.InvalidBlockNumber));
+            sealValidator.DidNotReceiveWithAnyArgs().ValidateParams(default!, default!, default);
+        }
+    }
+
+    [Test]
     public void Validate_does_not_mutate_parent_header_on_mismatch()
     {
         _block.Header.Hash = _block.CalculateHash();
