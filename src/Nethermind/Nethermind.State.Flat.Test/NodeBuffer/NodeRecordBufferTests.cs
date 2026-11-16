@@ -317,6 +317,31 @@ public class NodeRecordBufferTests
     }
 
     [Test]
+    public void Dropped_generation_misses_until_it_is_compacted([Values] bool compressed)
+    {
+        using NodeRecordBuffer buffer = new(compressed ? 1UL << 20 : 0, GenerationBytes);
+        byte[] rlp = Leaf(1, 8);
+        ulong pointer = Append(buffer, rlp);
+        buffer.Reserve(0, out NativeNodeBuffer original, out _);
+        // The pin keeps the generation in place once the rotation drops it.
+        using IDisposable pin = buffer.PinAll();
+        Assert.That(buffer.TryLocate(pointer, out NodeRecord borrowed), Is.True);
+        while (GenerationOf(buffer.Reserve(GenerationBytes, out _, out _)) < GenerationOf(pointer) + LiveGenerations) { }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(buffer.TryLocate(pointer, out _), Is.False, "a dropped generation misses for new lookups");
+            Assert.That(Matches(borrowed, rlp), Is.True, "while the record borrowed under the pin is still in place");
+        }
+
+        pin.Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => IsDisposed(original), Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds), "released, its storage is freed");
+            Assert.That(() => Resolves(buffer, (pointer, rlp)), Is.EqualTo(compressed).After(CompactionTimeoutMilliseconds, PollingMilliseconds), "and the record resolves again when compacted within the budget");
+        }
+    }
+
+    [Test]
     public void Compacted_generation_stays_allocated_for_pin_alls_taken_while_it_was_dropped()
     {
         const int generationBytes = 4096;
