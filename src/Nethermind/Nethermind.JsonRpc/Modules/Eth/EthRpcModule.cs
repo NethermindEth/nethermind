@@ -386,17 +386,21 @@ public partial class EthRpcModule(
     /// </summary>
     /// <returns>The error that stops the send, or null when the check and the fill pass.</returns>
     /// <remarks>
-    /// A blob transaction is sent without its sidecar and fails anyway, so it is not checked or filled:
-    /// the fill and its KZG work would be lost.
+    /// A blob transaction is not filled because it is sent without a sidecar and rejected anyway.
+    /// Without a supplied sidecar, fee checks still precede conversion errors.
     /// </remarks>
     protected async Task<ResultWrapper<Hash256>?> CheckAndFillSendTransaction(SignableTransactionForRpc rpcTx)
     {
-        if (rpcTx is BlobTransactionForRpc || _blockFinder.Head?.Header is not { } head)
+        if (rpcTx.HasConflictingCalldata)
+            return ResultWrapper<Hash256>.Fail(RpcTransactionErrors.DataAndInputDiffer, ErrorCodes.InvalidInput);
+
+        if (!rpcTx.ShouldCheckFeesBeforeConversion() || _blockFinder.Head?.Header is not { } head)
             return null;
 
         IReleaseSpec spec = _specProvider.GetSpec(head);
         if (FeeDefaultRules.Error(rpcTx, spec.IsEip1559Enabled) is { } feeError)
             return ResultWrapper<Hash256>.Fail(feeError, ErrorCodes.InvalidInput);
+        if (!rpcTx.ShouldFillDefaultsOnSend()) return null;
 
         return await FillFeesAndGas(rpcTx, head, spec) is { } fillError
             ? ResultWrapper<Hash256>.Fail(fillError.Error, fillError.ErrorCode)
@@ -484,10 +488,13 @@ public partial class EthRpcModule(
         if (!_rpcConfig.EnableEthSignTransaction)
             return ResultWrapper<SignTransactionResult>.Fail("eth_signTransaction is disabled", ErrorCodes.MethodNotFound);
 
+        if (rpcTx.HasConflictingCalldata)
+            return ResultWrapper<SignTransactionResult>.Fail(RpcTransactionErrors.DataAndInputDiffer, ErrorCodes.InvalidInput);
+
         // With the signing fields present, fees are checked before the rest of the request; a request carrying
         // blobs has its sidecar checked first.
         if (rpcTx.MissingSigningField() is null
-            && rpcTx is not BlobTransactionForRpc { Blobs: not null }
+            && rpcTx.ShouldCheckFeesBeforeConversion()
             && _blockFinder.Head?.Header is { } signingHead
             && FeeDefaultRules.Error(rpcTx, _specProvider.GetSpec(signingHead).IsEip1559Enabled) is { } feeError)
         {
@@ -581,6 +588,9 @@ public partial class EthRpcModule(
         if (head is null)
             return ResultWrapper<FillTransactionResult>.Fail("No head block available", ErrorCodes.ResourceUnavailable);
 
+        if (rpcTx.HasConflictingCalldata)
+            return ResultWrapper<FillTransactionResult>.Fail(RpcTransactionErrors.DataAndInputDiffer, ErrorCodes.InvalidInput);
+
         IReleaseSpec spec = _specProvider.GetSpec(head);
         ulong chainId = _blockchainBridge.GetChainId();
 
@@ -590,7 +600,7 @@ public partial class EthRpcModule(
 
         // Fees are checked before the chain id, as they are when a transaction to send is filled; a request carrying
         // blobs has its sidecar checked first.
-        if (rpcTx is not BlobTransactionForRpc { Blobs: not null } && FeeDefaultRules.Error(rpcTx, spec.IsEip1559Enabled) is { } feeError)
+        if (rpcTx.ShouldCheckFeesBeforeConversion() && FeeDefaultRules.Error(rpcTx, spec.IsEip1559Enabled) is { } feeError)
             return ResultWrapper<FillTransactionResult>.Fail(feeError, ErrorCodes.InvalidInput);
 
         if (legacyTx.ChainId is { } requestedChainId && requestedChainId != chainId)
