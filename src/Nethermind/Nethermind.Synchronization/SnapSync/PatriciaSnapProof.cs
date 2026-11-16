@@ -19,7 +19,7 @@ internal static class PatriciaSnapProof
     /// <returns>The nodes with their paths, the root first, for <see cref="StitchBoundaries"/>.</returns>
     public static List<(TrieNode, TreePath)> SetRoot(PatriciaTree tree, IByteArrayList proofs, IReadOnlyList<SnapProofNode> nodes)
     {
-        List<(TrieNode, TreePath)> sortedBoundaryList = new(nodes.Count);
+        List<(TrieNode, TreePath)> sortedBoundaryList = [with(capacity: nodes.Count)];
         foreach (SnapProofNode proofNode in nodes)
         {
             TrieNode node = new(NodeType.Unknown, proofs[proofNode.ProofIndex].ToArray(), isDirty: true);
