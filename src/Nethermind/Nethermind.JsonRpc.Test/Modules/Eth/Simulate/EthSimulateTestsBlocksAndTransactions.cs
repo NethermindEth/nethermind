@@ -442,6 +442,37 @@ public class EthSimulateTestsBlocksAndTransactions
         };
     }
 
+    [TestCase(new[] { 5001 }, "too many calls in block: 5001 > 5000", TestName = "Test_eth_simulateV1_null_block_calls_cap_uses_the_default")]
+    [TestCase(new[] { 5000, 5000, 1 }, "too many calls: 10001 > 10000", TestName = "Test_eth_simulateV1_null_total_calls_cap_uses_the_default")]
+    public async Task Test_eth_simulateV1_null_calls_caps_use_the_defaults(int[] callsPerBlock, string expectedError)
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls = [.. callsPerBlock.Select(static count => new BlockStateCall<TransactionForRpc>
+            {
+                Calls = [.. Enumerable.Range(0, count).Select(static _ => (TransactionForRpc)new LegacyTransactionForRpc
+                {
+                    From = TestItem.AddressA,
+                    To = TestItem.AddressB,
+                    Gas = 21_000,
+                    GasPrice = 0
+                })]
+            })]
+        };
+
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder,
+            new JsonRpcConfig { MaxSimulateCallsCap = null, MaxSimulateCallsPerBlockCap = null, Timeout = -1 },
+            chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ClientLimitExceededError));
+            Assert.That(result.Result.Error, Is.EqualTo(expectedError));
+        }
+    }
+
     [Test]
     public async Task Test_eth_simulateV1_gap_expansion_exceeding_cap_returns_error()
     {
