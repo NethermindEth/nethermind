@@ -10,27 +10,46 @@ namespace Nethermind.Stateless.Execution.IO;
 
 public static partial class TrustedInput
 {
-    /// <summary>Whether the guest uses the items where they lie in its input.</summary>
+    /// <summary>Uses the item where it lies in the input when the guest allows it, else copies it.</summary>
     /// <remarks>
-    /// Only where the input is read into writable memory, nothing ever moves or collects an object, and storing a
-    /// reference is a plain store, so that an array whose header is written into the input is as good as any other:
-    /// Airbender, which copies its input into RAM and whose runtime wraps every write barrier into a bare store.
+    /// Only where the input is read into writable memory that outlives the run, nothing ever moves or collects an
+    /// object, and storing a reference to an object outside the managed heap is sound, so that an array whose header is
+    /// written into the input is as good as any other: Airbender, which copies its input into RAM and whose runtime wraps
+    /// every write barrier into a bare store; SP1, whose stateless input keeps its state nodes in the input as such
+    /// arrays already; and OpenVM, which reads its input into a buffer it never frees and runs the same runtime as SP1.
+    /// Not ZisK, whose input region is read-only. An item is used in place only at an 8-aligned address: SP1 rejects
+    /// misaligned accesses, and its witness-node keccak rounds an array's data pointer down to 8 without testing it.
     /// </remarks>
-    private static bool UsesItemsInPlace => AirbenderFlag.IsActive;
-
     private static partial byte[] Item(ReadOnlySpan<byte> data, int start, int length)
     {
         ref byte first = ref Unsafe.Add(ref MemoryMarshal.GetReference(data), start);
-        return UsesItemsInPlace && IsAligned(ref first) ? ArrayAt(ref first, length) : data.Slice(start, length).ToArray();
+        return (AirbenderFlag.IsActive || FirstTouchMemoryFlag.IsActive || OpenVmFlag.IsActive) && IsAligned(ref first)
+            ? ArrayAt(ref first, length)
+            : data.Slice(start, length).ToArray();
     }
 
     private static partial ReadOnlyMemory<byte> Code(ReadOnlySpan<byte> data, int start, int length)
     {
-        if (!UsesItemsInPlace) return ExecutableCodeMemory.Copy(data.Slice(start, length));
+        if (AirbenderFlag.IsActive)
+        {
+            Span<byte> codeAndPadding = MemoryMarshal.CreateSpan(
+                ref Unsafe.Add(ref MemoryMarshal.GetReference(data), start), length + CodeInfo.ExecutionPadding);
+            return ExecutableCodeMemory.PlacePadded(codeAndPadding, length);
+        }
 
-        Span<byte> codeAndPadding = MemoryMarshal.CreateSpan(
-            ref Unsafe.Add(ref MemoryMarshal.GetReference(data), start), length + CodeInfo.ExecutionPadding);
-        return ExecutableCodeMemory.PlacePadded(codeAndPadding, length);
+        if (FirstTouchMemoryFlag.IsActive || OpenVmFlag.IsActive)
+        {
+            ref byte first = ref Unsafe.Add(ref MemoryMarshal.GetReference(data), start);
+            if (IsAligned(ref first))
+            {
+                if (OpenVmFlag.IsActive)
+                    return ExecutableCodeMemory.WrapInputBuffer(ArrayAt(ref first, length + CodeInfo.ExecutionPadding), length);
+
+                return ExecutableCodeMemory.PlacePadded(MemoryMarshal.CreateSpan(ref first, length + CodeInfo.ExecutionPadding), length);
+            }
+        }
+
+        return ExecutableCodeMemory.Copy(data.Slice(start, length));
     }
 
     private static unsafe bool IsAligned(ref byte first) => ((nuint)Unsafe.AsPointer(ref first) & 7) == 0;
