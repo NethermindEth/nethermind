@@ -24,14 +24,14 @@ public class TrustedInputTests
 
     private sealed class DecoderCase<T>(string name, IRlpDecoder<T> decoder, T item, RlpBehaviors behaviors = RlpBehaviors.None) : IDecoderCase
     {
-        public byte[] Canonical { get; } = decoder.Encode(item, behaviors).Bytes;
+        public byte[] Canonical { get; } = decoder.Encode(item, behaviors);
 
         public byte[] DecodeAndEncode(byte[] rlp, RlpBehaviors mode)
         {
             RlpReader reader = new(rlp);
             T? decoded = decoder.Decode(ref reader, behaviors | mode);
             reader.CheckEnd();
-            return decoder.Encode(decoded, behaviors).Bytes;
+            return decoder.Encode(decoded, behaviors);
         }
 
         public override string ToString() => name;

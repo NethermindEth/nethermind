@@ -55,8 +55,8 @@ public sealed class LegacyTxDecoder(Func<Transaction>? transactionFactory = null
         else if (IncludeSigChainIdHack(isEip155Enabled, chainId))
         {
             writer.Encode(chainId);
-            writer.Encode(Rlp.OfEmptyByteArray);
-            writer.Encode(Rlp.OfEmptyByteArray);
+            writer.EncodeEmptyByteArray();
+            writer.EncodeEmptyByteArray();
         }
 
         writer.EndSequence(sequence);

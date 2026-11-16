@@ -7,6 +7,10 @@ namespace Nethermind.Trie;
 
 public sealed partial class LeafData
 {
+    private readonly CappedArray<byte> _value;
+
+    public CappedArray<byte> Value => _value;
+
     public byte[]? Key { get; set; }
 
     public LeafData CloneWithNewValue(CappedArray<byte> value) => new(Key, value, StorageRoot);

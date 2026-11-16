@@ -100,7 +100,7 @@ public static partial class TrustedInput
     {
         byte[][] encodedTransactions = new byte[block.Transactions.Length][];
         for (int i = 0; i < encodedTransactions.Length; i++)
-            encodedTransactions[i] = Rlp.Encode(block.Transactions[i], RlpBehaviors.SkipTypedWrapping).Bytes;
+            encodedTransactions[i] = Rlp.Encode(block.Transactions[i], RlpBehaviors.SkipTypedWrapping);
 
         return precompileInputs is null
             ? Write(chainId, ProtocolFork.Current, block, encodedTransactions, witness)
@@ -122,8 +122,8 @@ public static partial class TrustedInput
     private static byte[] Write(ulong chainId, ProtocolFork fork, Block block, IReadOnlyList<byte[]> encodedTransactions,
         Witness witness, byte[] senderHints, byte[] recoveryHints)
     {
-        byte[] header = Rlp.Encode(block.Header).Bytes;
-        byte[] withdrawals = block.Withdrawals is null ? [] : Rlp.Encode(block.Withdrawals).Bytes;
+        byte[] header = Rlp.Encode(block.Header);
+        byte[] withdrawals = block.Withdrawals is null ? [] : Rlp.Encode(block.Withdrawals);
         byte[] blockAccessList = block.EncodedBlockAccessList ?? [];
 
         int length = HeaderLength + Align(header.Length) + Align(withdrawals.Length) + Align(blockAccessList.Length)

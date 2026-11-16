@@ -67,8 +67,7 @@ public partial class PatriciaTree
     private partial bool TryGetByRawKey(ReadOnlySpan<byte> rawKey, Hash256? rootHash, out ReadOnlySpan<byte> value)
     {
         TrieNode? root = rootHash is null ? RootRef : TrieStore.FindCachedOrUnknown(TreePath.Empty, rootHash);
-        CappedArray<byte> result = GetByRawKey(rawKey, root);
-        value = result.IsNull ? ReadOnlySpan<byte>.Empty : result.AsSpan();
+        value = GetByRawKey(rawKey, root);
         return true;
     }
 
@@ -143,7 +142,7 @@ public partial class PatriciaTree
                         _deletedFromSecuredTrie = isSecured;
                         node = null;
                     }
-                    else if (node.Value.AsSpan().SequenceEqual(value.AsSpan()))
+                    else if (node.ValueSpan.SequenceEqual(value.AsSpan()))
                     {
                         path.TruncateMut(originalPathLength);
                         traverseStack.Clear();
@@ -231,7 +230,7 @@ public partial class PatriciaTree
     }
 
     /// <summary>The value at <paramref name="key"/> below <paramref name="node"/>, as <see cref="GetNew"/> finds it from the key's nibbles.</summary>
-    private CappedArray<byte> GetByRawKey(ReadOnlySpan<byte> key, TrieNode? node)
+    private ReadOnlySpan<byte> GetByRawKey(ReadOnlySpan<byte> key, TrieNode? node)
     {
         TreePath path = TreePath.Empty;
         int nibbleCount = 2 * key.Length;
@@ -249,7 +248,7 @@ public partial class PatriciaTree
             }
             else if (data is LeafData leaf)
             {
-                return leaf.KeyIsSuffixOf(key, nibbleCount - consumed) ? leaf.Value : default;
+                return leaf.KeyIsSuffixOf(key, nibbleCount - consumed) ? leaf.ValueSpan : default;
             }
             else
             {

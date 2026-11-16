@@ -11,11 +11,14 @@ using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Tracing;
 
-public class AccessTxTracer(params Address[] addressesToOptimize) : TxTracer
+public class AccessTxTracer(params Address[] addressesToOptimize) : TxTracer, ITxOutputTracingFilter
 {
     public override bool IsTracingReceipt => true;
     public override bool IsCollectingLogs => false;
     public override bool IsTracingAccess => true;
+
+    /// <inheritdoc/>
+    public bool IsTracingOutput => false;
 
     public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs,
         Hash256? stateRoot = null) => GasSpent += gasSpent.SpentGas;

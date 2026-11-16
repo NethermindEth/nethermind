@@ -73,7 +73,7 @@ public partial class DebugRpcModuleTests
     [TestCaseSource(nameof(TransactionIndexingCases))]
     public async Task Debug_traceTransaction_indexing_miss(string scenario, bool stream)
     {
-        List<Hash256?> executed = [];
+        List<Transaction> executed = [];
         bool history = scenario is "uninitialized-completed-history" or "uninitialized-unfinished-history";
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new ReceiptSyncRpcBlockchain { SealEngineType = SealEngineType.NethDev })
             .WithFlatDb(false)
@@ -81,7 +81,7 @@ public partial class DebugRpcModuleTests
             .WithReceiptConfig(new ReceiptConfig { TxLookupLimit = 0 })
             .Build(builder =>
             {
-                builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new PrefixCountingAdapter(inner, executed));
+                builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new ExecutedTransactionsAdapter(inner, executed));
                 if (history)
                 {
                     ReleaseSpec spec = Berlin.Instance.Clone();
@@ -382,7 +382,7 @@ public partial class DebugRpcModuleTests
         UInt256 senderBalance = chain.WorldStateManager.GlobalStateReader.GetBalance(parent, TestItem.AddressB);
         Block block = await AddTraceCallPrefixTransfers(chain, 3);
         Transaction[] transactions = block.Transactions;
-        string canonicalHeader = Nethermind.Serialization.Rlp.Rlp.Encode(block.Header).ToString();
+        string canonicalHeader = Nethermind.Serialization.Rlp.Rlp.Encode(block.Header).ToHexString(true);
         int prefixLength = index < 0 ? 3 : index;
         for (int i = 0; i < prefixLength; i++)
             senderBalance -= transactions[i].Value + transactions[i].GasPrice * transactions[i].BlockGasUsed;
@@ -412,7 +412,7 @@ public partial class DebugRpcModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That((output.StartsWith("0x") ? output[2..] : output), Is.EqualTo(expected), response);
-            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(block.Header).ToString(), Is.EqualTo(canonicalHeader));
+            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(block.Header).ToHexString(true), Is.EqualTo(canonicalHeader));
             Assert.That(chain.WorldStateManager.GlobalStateReader.GetBalance(block.Header, TestItem.AddressC), Is.EqualTo(initial + 3));
         }
     }
@@ -794,13 +794,13 @@ public partial class DebugRpcModuleTests
     public async Task TransactionTracing_WhenTargetSelected_ExecutesOnlyPrefix(
         string method, int targetIndex, bool stream, bool unsupportedValidationModule)
     {
-        List<Hash256?> executed = [];
+        List<Transaction> executed = [];
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithConfig(new JsonRpcConfig { Timeout = -1, EnableTracingStreamMode = stream })
             .Build(builder =>
             {
                 builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
-                    .AddDecorator<ITransactionProcessorAdapter>((_, inner) => new PrefixCountingAdapter(inner, executed));
+                    .AddDecorator<ITransactionProcessorAdapter>((_, inner) => new ExecutedTransactionsAdapter(inner, executed));
                 if (unsupportedValidationModule) builder.AddSingleton<IBlockValidationModule, UnsupportedTraceValidationModule>();
             });
         ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressB);
@@ -830,7 +830,7 @@ public partial class DebugRpcModuleTests
                 "an additional validation module without explicit prefix support must retain full replay");
         }
         for (int i = 0; i < executed.Count; i++)
-            Assert.That(executed[i], Is.EqualTo(block.Transactions[i].Hash), "prefix order and original transaction identities must be preserved");
+            Assert.That(executed[i].Hash, Is.EqualTo(block.Transactions[i].Hash), "prefix order and original transaction identities must be preserved");
     }
 
     private sealed class UnsupportedTraceValidationModule : Module, IBlockValidationModule;
@@ -1570,6 +1570,33 @@ public partial class DebugRpcModuleTests
             Assert.That(result["failed"]!.Value<bool>(), Is.False);
             Assert.That(ParseReturnValue(response).ToUInt256(), Is.EqualTo(Bytes.FromHexString(value).ToUInt256()));
         }
+    }
+
+    [Test]
+    public async Task Call_resolves_blockhash_from_the_base_block_under_a_number_override(
+        [Values("eth_call", "debug_traceCall", "debug_traceCall at index")] string mode,
+        [Values(1, 10)] int offset,
+        [Values(0, 1)] int depth)
+    {
+        using Context ctx = await Context.Create();
+        BlockHeader head = ctx.Blockchain.BlockTree.Head!.Header;
+        ulong queried = head.Number - (ulong)depth;
+        const string address = "0xc200000000000000000000000000000000000000";
+        byte[] code = Prepare.EvmCode.PushData(queried).Op(Instruction.BLOCKHASH)
+            .PushData(0).Op(Instruction.MSTORE).PushData(32).PushData(0).Op(Instruction.RETURN).Done;
+        object stateOverrides = new Dictionary<string, object> { [address] = new { code = code.ToHexString(true) } };
+        object blockOverrides = new { number = $"0x{head.Number + (ulong)offset:x}" };
+        object call = new { to = address, gas = "0x186a0" };
+
+        string response = mode == "eth_call"
+            ? await RpcTest.TestSerializedRequest(ctx.Blockchain.EthRpcModule, "eth_call", call, "latest", stateOverrides, blockOverrides)
+            : await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", call, "latest",
+                new { stateOverrides, blockOverrides, txIndex = mode == "debug_traceCall" ? null : "0x0" });
+
+        // As in Geth, only debug_traceCall serves the base block's own hash, and only to its immediate successor (go-ethereum#32175).
+        byte[] expected = depth == 0 && (offset != 1 || mode == "eth_call") ? new byte[32] : ctx.Blockchain.BlockTree.FindHeader(queried, BlockTreeLookupOptions.None)!.Hash!.BytesToArray();
+        byte[] actual = mode == "eth_call" ? Bytes.FromHexString(JToken.Parse(response)["result"]!.Value<string>()!) : ParseReturnValue(response);
+        Assert.That(actual, Is.EqualTo(expected), response);
     }
 
     [Test]
@@ -2998,17 +3025,5 @@ public partial class DebugRpcModuleTests
 
         string? caller = (string?)JToken.Parse(response)["result"]?["from"];
         Assert.That(caller is null ? null : new Address(caller), Is.EqualTo(from), response);
-    }
-
-    private sealed class PrefixCountingAdapter(ITransactionProcessorAdapter inner, List<Hash256?> executed) : ITransactionProcessorAdapter
-    {
-        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
-        {
-            executed.Add(transaction.Hash);
-            return inner.Execute(transaction, txTracer);
-        }
-
-        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => inner.SetBlockExecutionContext(blockExecutionContext);
-        public void PrepareForInclusionCheck(Transaction transaction, ulong stateGasAvailable) => inner.PrepareForInclusionCheck(transaction, stateGasAvailable);
     }
 }

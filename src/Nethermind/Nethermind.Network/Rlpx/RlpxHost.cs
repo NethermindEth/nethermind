@@ -12,6 +12,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Common.Concurrency;
+using DotNetty.Common.Internal.Logging;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
@@ -492,9 +493,21 @@ namespace Nethermind.Network.Rlpx
         {
             NettyHandshakeHandler handshakeHandler = new(_serializationService, _handshakeService, session, role, _logManager, _group, _sendLatency);
             IChannelPipeline pipeline = channel.Pipeline;
-            pipeline.AddLast(new LoggingHandler(session.Direction.ToString().ToUpper(), LogLevel.TRACE));
+            AddTraceLoggingHandler(pipeline, session.Direction.ToString().ToUpper());
             pipeline.AddLast("enc-handshake-dec", new OneTimeLengthFieldBasedFrameDecoder());
             pipeline.AddLast("enc-handshake-handler", handshakeHandler);
+        }
+
+        /// <remarks>
+        /// The handler stays in the pipeline for the whole connection, and every read, write and flush passes
+        /// through it, so it is only added when its TRACE output is enabled.
+        /// </remarks>
+        internal static void AddTraceLoggingHandler(IChannelPipeline pipeline, string name)
+        {
+            if (InternalLoggerFactory.GetInstance(name).IsEnabled(InternalLogLevel.TRACE))
+            {
+                pipeline.AddLast(new LoggingHandler(name, LogLevel.TRACE));
+            }
         }
 
         private void ActivateSession(IChannel channel, ISession session)

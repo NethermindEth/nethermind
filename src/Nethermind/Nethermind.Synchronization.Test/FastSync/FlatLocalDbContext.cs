@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -52,7 +53,7 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
     {
         // For flat, sync finalization writes to persistence. Verify root node exists.
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
-        Assert.That(reader.TryLoadStateRlp(TreePath.Empty, ReadFlags.None), Is.Not.Null, "root node should exist after flush");
+        Assert.That(reader.TryLoadStateRlp(TreePath.Empty, ReadFlags.None, static (_, _) => { }, 0), Is.True, "root node should exist after flush");
     }
 
     public void CompareTrees(RemoteDbContext remote, ILogger logger, string stage, bool skipLogs = false)
@@ -96,8 +97,12 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
         public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
             new(NodeType.Unknown, hash);
 
-        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-            reader.TryLoadStateRlp(path, flags);
+        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+        {
+            byte[]? rlp = null;
+            reader.TryLoadStateRlp(path, flags, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref rlp));
+            return rlp;
+        }
 
         public override ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) =>
             address is null ? this : new ReadOnlyStorageTrieStore(reader, address);
@@ -111,8 +116,12 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
         public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
             new(NodeType.Unknown, hash);
 
-        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-            reader.TryLoadStorageRlp(address, path, flags);
+        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+        {
+            byte[]? rlp = null;
+            reader.TryLoadStorageRlp(address, path, flags, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref rlp));
+            return rlp;
+        }
     }
 
     /// <summary>
@@ -125,8 +134,12 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
         public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
             new(NodeType.Unknown, hash);
 
-        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-            reader.TryLoadStateRlp(path, flags);
+        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+        {
+            byte[]? rlp = null;
+            reader.TryLoadStateRlp(path, flags, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref rlp));
+            return rlp;
+        }
 
         public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
             new StateCommitter(writeBatch);
@@ -158,8 +171,12 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
         public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
             new(NodeType.Unknown, hash);
 
-        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-            reader.TryLoadStorageRlp(address, path, flags);
+        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+        {
+            byte[]? rlp = null;
+            reader.TryLoadStorageRlp(address, path, flags, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref rlp));
+            return rlp;
+        }
 
         public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
             new StorageCommitter(writeBatch, address);

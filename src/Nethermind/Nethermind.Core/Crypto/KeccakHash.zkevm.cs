@@ -798,12 +798,13 @@ public sealed partial class KeccakHash
     }
 
     /// <summary>Whether the rate blocks at <paramref name="a"/> and <paramref name="b"/> are equal.</summary>
-    /// <remarks>Where <see cref="ZiskFlag"/> is on this is the zkVM's DMA <c>memcmp</c>, a few steps where the lane
-    /// compares take fifty-one. Elsewhere it goes lane by lane, unrolled: corelib's <c>SequenceEqual</c> has no vector
-    /// width on riscv64 and pays a loop and a call for the same word compares.</remarks>
+    /// <remarks>Where <see cref="ZiskFlag"/> is on this is a constant-size <c>SequenceEqual</c>, which the ZisK platform's
+    /// <c>JitRiscV64DmaCompare</c> lowers to the DMA compare idiom: no call into <c>memcmp</c>, and no fifty-one lane
+    /// compares. Elsewhere it goes lane by lane, unrolled: corelib's <c>SequenceEqual</c> has no vector width on riscv64
+    /// and pays a loop and a call for the same word compares.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe bool BlockEquals(byte* a, byte* b) => ZiskFlag.IsActive
-        ? Accelerators.Memcmp(a, b, HASH_DATA_AREA) == 0
+        ? new ReadOnlySpan<byte>(a, HASH_DATA_AREA).SequenceEqual(new ReadOnlySpan<byte>(b, HASH_DATA_AREA))
         : LaneEquals(a, b, 0) && LaneEquals(a, b, 1) && LaneEquals(a, b, 2) && LaneEquals(a, b, 3)
         && LaneEquals(a, b, 4) && LaneEquals(a, b, 5) && LaneEquals(a, b, 6) && LaneEquals(a, b, 7)
         && LaneEquals(a, b, 8) && LaneEquals(a, b, 9) && LaneEquals(a, b, 10) && LaneEquals(a, b, 11)
@@ -814,13 +815,14 @@ public sealed partial class KeccakHash
     private static unsafe bool LaneEquals(byte* a, byte* b, nuint index) =>
         ReadLane(a, index) == ReadLane(b, index);
 
-    /// <remarks>Where <see cref="ZiskFlag"/> is on this is one DMA <c>memset</c> rather than eight stores.</remarks>
+    /// <remarks>Where <see cref="ZiskFlag"/> is on this is a constant-size zero fill, which the ZisK platform's
+    /// <c>JitZkMemsetCsr</c> lowers to the DMA <c>memset</c> idiom: no call, and no eight stores.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe void ZeroCapacity(ref ulong lane)
     {
         if (ZiskFlag.IsActive)
         {
-            Bytes.Memset(Unsafe.AsPointer(ref Unsafe.Add(ref lane, RateLanes)), 0, CapacityBytes);
+            Unsafe.InitBlockUnaligned(ref Unsafe.As<ulong, byte>(ref Unsafe.Add(ref lane, RateLanes)), 0, CapacityBytes);
             return;
         }
 
@@ -956,13 +958,14 @@ public sealed partial class KeccakHash
         : PaddedLastWord(data + length, length & 7);
 
     /// <summary>Zeroes all twenty-five lanes of a state.</summary>
-    /// <remarks>Where <see cref="ZiskFlag"/> is on this is one DMA <c>memset</c> rather than twenty-five stores.</remarks>
+    /// <remarks>Where <see cref="ZiskFlag"/> is on this is a constant-size zero fill, which the ZisK platform's
+    /// <c>JitZkMemsetCsr</c> lowers to the DMA <c>memset</c> idiom: no call, and no twenty-five stores.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe void ZeroState(ref ulong lane)
     {
         if (ZiskFlag.IsActive)
         {
-            Bytes.Memset(Unsafe.AsPointer(ref lane), 0, STATE_LANES * sizeof(ulong));
+            Unsafe.InitBlockUnaligned(ref Unsafe.As<ulong, byte>(ref lane), 0, STATE_LANES * sizeof(ulong));
             return;
         }
 

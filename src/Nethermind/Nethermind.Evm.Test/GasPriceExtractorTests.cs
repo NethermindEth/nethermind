@@ -21,17 +21,17 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Block_header_rlp_size_assumption_is_correct()
         {
-            Rlp rlp = BuildHeader();
+            byte[] rlp = BuildHeader();
 
-            Assert.That(rlp.Bytes.Length, Is.LessThan(600));
+            Assert.That(rlp.Length, Is.LessThan(600));
         }
 
         [Test]
         public void Intrinsic_gas_cost_assumption_is_correct()
         {
-            Rlp rlp = BuildHeader();
+            byte[] rlp = BuildHeader();
 
-            Transaction tx = Build.A.Transaction.WithData(rlp.Bytes).TestObject;
+            Transaction tx = Build.A.Transaction.WithData(rlp).TestObject;
             EthereumIntrinsicGas gasCost = IntrinsicGasCalculator.Calculate(tx, Spec);
             using (Assert.EnterMultipleScope())
             {
@@ -43,9 +43,9 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Keccak_gas_cost_assumption_is_correct()
         {
-            Rlp rlp = BuildHeader();
+            byte[] rlp = BuildHeader();
 
-            Transaction tx = Build.A.Transaction.WithData(rlp.Bytes).TestObject;
+            Transaction tx = Build.A.Transaction.WithData(rlp).TestObject;
             EthereumIntrinsicGas gasCost = IntrinsicGasCalculator.Calculate(tx, Spec);
             using (Assert.EnterMultipleScope())
             {
@@ -65,7 +65,7 @@ namespace Nethermind.Evm.Test
                     .Done;
 
             (Block block, Transaction transaction) = PrepareTx(
-                BlockNumber, 1000000, bytecode, rlp.Bytes, 0);
+                BlockNumber, 1000000, bytecode, rlp, 0);
 
             CallOutputTracer callOutputTracer = new();
             _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), callOutputTracer);
@@ -77,7 +77,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Blockhash_times_256_gas_cost_assumption_is_correct()
         {
-            Rlp rlp = BuildHeader();
+            byte[] rlp = BuildHeader();
             byte[] bytecode =
                 Prepare.EvmCode
                     .PushData(256)
@@ -97,7 +97,7 @@ namespace Nethermind.Evm.Test
                     .Done;
 
             (Block block, Transaction transaction) = PrepareTx(
-                BlockNumber, 1000000, bytecode, rlp.Bytes, 0);
+                BlockNumber, 1000000, bytecode, rlp, 0);
 
             CallOutputTracer callOutputTracer = new();
             _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), callOutputTracer);
@@ -107,7 +107,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Blockhash_times_256_no_loop()
         {
-            Rlp rlp = BuildHeader();
+            byte[] rlp = BuildHeader();
             Prepare bytecodeBuilder = Prepare.EvmCode
                     .PushData(0)
                     .PushData(1);
@@ -122,19 +122,19 @@ namespace Nethermind.Evm.Test
             byte[] bytecode = bytecodeBuilder.Done;
 
             (Block block, Transaction transaction) = PrepareTx(
-                BlockNumber, 1000000, bytecode, rlp.Bytes, 0);
+                BlockNumber, 1000000, bytecode, rlp, 0);
 
             CallOutputTracer callOutputTracer = new();
             _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), callOutputTracer);
             Assert.That(callOutputTracer.GasSpent, Is.LessThan(21000 + 9600 + 20000));
         }
 
-        private static Rlp BuildHeader()
+        private static byte[] BuildHeader()
         {
             HeaderDecoder decoder = new();
             BlockHeader blockHeader = Build.A.BlockHeader
                 .WithBloom(new Bloom(Enumerable.Repeat((byte)1, 256).ToArray())).TestObject;
-            Rlp rlp = decoder.Encode(blockHeader);
+            byte[] rlp = decoder.Encode(blockHeader);
             return rlp;
         }
     }

@@ -64,14 +64,14 @@ namespace Nethermind.Clique.Test
         {
             SnapshotDecoder decoder = new();
             Snapshot expected = GenerateSnapshot(TestItem.KeccakA, 3305206UL, TestItem.AddressA);
-            byte[] canonical = decoder.EncodeAsBytes(expected);
+            byte[] canonical = decoder.Encode(expected);
             byte[] withTrailingItem = listIndex < 0
                 ? RlpTestHelper.WithTrailingItem(canonical)
                 : RlpTestHelper.WithTrailingItem(canonical, listIndex);
 
             Snapshot actual = decoder.Decode(withTrailingItem);
 
-            Assert.That(decoder.EncodeAsBytes(actual), Is.EqualTo(canonical));
+            Assert.That(decoder.Encode(actual), Is.EqualTo(canonical));
         }
 
         private Snapshot GenerateSnapshot(Hash256 hash, ulong number, Address candidate)
