@@ -15,6 +15,8 @@ public sealed class ChangesetPrefixStateSeedSource(TransactionChangesetIndex ind
 {
     public bool Enabled => index.Enabled;
 
+    public bool MayCover(Block block) => index.Covers(block.Number);
+
     public bool TrySeed(Block block, int transactionIndex, StateReadOverlaySlot slot)
     {
         if (transactionIndex <= 0 || transactionIndex > ChangesetKeyLayout.MaxTransactionIndex || block.Hash is null) return false;

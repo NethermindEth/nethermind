@@ -7,7 +7,6 @@ using System;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Test;
@@ -554,8 +553,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             public ArrayPoolSpan<byte> Serialize<T>(T message) where T : MessageBase
                 => innerService.Serialize(message);
 
-            public IByteBuffer ZeroSerialize<T>(T message, IByteBufferAllocator? allocator = null) where T : MessageBase
-                => innerService.ZeroSerialize(message, allocator);
+            public void Serialize<T>(T message, IBufferWriter<byte> writer) where T : MessageBase
+                => innerService.Serialize(message, writer);
 
             public T Deserialize<T>(ArraySegment<byte> bytes) where T : MessageBase
             {
