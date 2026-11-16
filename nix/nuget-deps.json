@@ -365,16 +365,6 @@
     "hash": "sha256-TFlRVeUCPzcEZH2wYWZdvZNUxO3QmIP3dI7BnyRDY/U="
   },
   {
-    "pname": "Microsoft.Extensions.DependencyInjection.Abstractions",
-    "version": "10.0.0",
-    "hash": "sha256-9iodXP39YqgxomnOPOxd/mzbG0JfOSXzFoNU3omT2Ps="
-  },
-  {
-    "pname": "Microsoft.Extensions.DependencyInjection.Abstractions",
-    "version": "10.0.11",
-    "hash": "sha256-5PZeQgWmVo8K+7GgKEVAd6xcn+3XVNVzT4cg/DBtjqY="
-  },
-  {
     "pname": "Microsoft.Extensions.DependencyModel",
     "version": "8.0.2",
     "hash": "sha256-PyuO/MyCR9JtYqpA1l/nXGh+WLKCq34QuAXN9qNza9Q="
@@ -455,11 +445,6 @@
     "hash": "sha256-CYhWPbBsPjSyxzJaoDVGhidFp4+N9WD+vhVBwDdoro8="
   },
   {
-    "pname": "Microsoft.Extensions.Options",
-    "version": "10.0.0",
-    "hash": "sha256-j5MOqZSKeUtxxzmZjzZMGy0vELHdvPraqwTQQQNVsYA="
-  },
-  {
     "pname": "Microsoft.Extensions.Options.ConfigurationExtensions",
     "version": "11.0.0",
     "hash": "sha256-/BL3lsMOiDomHIH8A8b3t1TkyLjyeL6XfFnQc5Ehe3U="
@@ -468,11 +453,6 @@
     "pname": "Microsoft.Extensions.Options.ConfigurationExtensions",
     "version": "8.0.0",
     "hash": "sha256-A5Bbzw1kiNkgirk5x8kyxwg9lLTcSngojeD+ocpG1RI="
-  },
-  {
-    "pname": "Microsoft.Extensions.Primitives",
-    "version": "10.0.0",
-    "hash": "sha256-Dup08KcptLjlnpN5t5//+p4n8FUTgRAq4n/w1s6us+I="
   },
   {
     "pname": "Microsoft.IdentityModel.Abstractions",
