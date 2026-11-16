@@ -526,7 +526,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             state.Set(TestItem.KeccakB, Build.An.Account.WithNonce(2).TestObject);
             state.Commit();
 
-            List<Hash256> clearedAddresses = [];
+            List<ValueHash256> clearedAddresses = [];
 
             await using IContainer container = PrepareDownloader(remote, configureBuilder: builder =>
             {
@@ -549,7 +549,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             await ActivateAndWait(ctx);
 
             local.CompareTrees(remote, _logger, "END");
-            Assert.That(clearedAddresses, Does.Contain(TestItem.KeccakA), "EnsureStorageEmpty should be called for account with empty storage root in UpdatedStorages");
+            Assert.That(clearedAddresses, Does.Contain(TestItem.KeccakA.ValueHash256), "EnsureStorageEmpty should be called for account with empty storage root in UpdatedStorages");
         }
 
         [Test]
@@ -564,7 +564,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             state.Set(TestItem.KeccakB, Build.An.Account.WithNonce(2).TestObject);
             state.Commit();
 
-            List<Hash256> clearedAddresses = [];
+            List<ValueHash256> clearedAddresses = [];
 
             await using IContainer container = PrepareDownloader(remote, configureBuilder: builder =>
             {
@@ -585,14 +585,14 @@ namespace Nethermind.Synchronization.Test.FastSync
             await ActivateAndWait(ctx);
 
             local.CompareTrees(remote, _logger, "END");
-            Assert.That(clearedAddresses, Does.Contain(TestItem.KeccakA), "EnsureStorageEmpty should be called when the account no longer exists in final state");
+            Assert.That(clearedAddresses, Does.Contain(TestItem.KeccakA.ValueHash256), "EnsureStorageEmpty should be called when the account no longer exists in final state");
         }
 
-        private class TrackingTreeSyncStore(ITreeSyncStore inner, List<Hash256> clearedAddresses) : ITreeSyncStore
+        private class TrackingTreeSyncStore(ITreeSyncStore inner, List<ValueHash256> clearedAddresses) : ITreeSyncStore
         {
             public bool NodeExists(Hash256? address, in TreePath path, in ValueHash256 hash) => inner.NodeExists(address, path, hash);
             public void SaveNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> data) => inner.SaveNode(address, path, hash, data);
-            public void EnsureStorageEmpty(Hash256 address) { clearedAddresses.Add(address); inner.EnsureStorageEmpty(address); }
+            public void EnsureStorageEmpty(in ValueHash256 address) { clearedAddresses.Add(address); inner.EnsureStorageEmpty(address); }
             public void FinalizeSync(BlockHeader pivotHeader) => inner.FinalizeSync(pivotHeader);
             public ITreeSyncVerificationContext CreateVerificationContext(byte[] rootNodeData) => inner.CreateVerificationContext(rootNodeData);
         }

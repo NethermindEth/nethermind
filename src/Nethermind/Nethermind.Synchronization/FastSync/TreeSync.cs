@@ -940,8 +940,7 @@ namespace Nethermind.Synchronization.FastSync
                         else
                         {
                             TreePath finalPath = currentStateSyncItem.Path.Append(trieNode.Key);
-                            Hash256 address = finalPath.Path.ToCommitment();
-                            _store.EnsureStorageEmpty(address);
+                            _store.EnsureStorageEmpty(finalPath.Path);
                             isAccountComplete |= dependentItem.ResolveDependency();
                         }
 
