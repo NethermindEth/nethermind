@@ -92,7 +92,8 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             .AddSingleton<IEthereumEcdsa>(ecdsa)
             .Build();
         RecoverSignatures recovery = container.Resolve<RecoverSignatures>();
-        Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithSenderAddress(null).TestObject;
+        // A fresh signer, so the process-wide sender cache cannot answer before the gated ecdsa.
+        Transaction tx = Build.A.Transaction.SignedAndResolved(Build.A.PrivateKey.TestObject).WithSenderAddress(null).TestObject;
         Block block = Build.A.Block.WithParentHash(TestItem.KeccakC).WithNumber(1)
             .WithDifficulty(0).WithNonce(0).WithTransactions(tx).TestObject;
         block.Header.IsPostMerge = true;
