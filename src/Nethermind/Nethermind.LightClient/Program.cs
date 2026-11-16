@@ -32,6 +32,9 @@ if (Array.Exists(args, static arg => arg is "--help" or "-h"))
         "          --beacon-port 9050 --beacon-quic-port 9051 (0 disables QUIC) --execution-port 30307\n" +
         "          --host-accounts <0xaddress,0xaddress,...> (complete account state retained in RAM)\n" +
         "          --log-level Trace|Debug|Info|Warn|Error|Fatal (default Info)\n" +
+        "EEZ mode: --eez-genesis <geth genesis> --eez-genesis-hash <hash> --eez-chain-id <id> --eez-registry <0xaddress>\n" +
+        "          --eez-rollup-id <id> --eez-bootnodes <enode,...> and/or --eez-dns <enrtree> [--eez-port 30308] [--eez-name rollupx]\n" +
+        "          serves the rollup block committed in the EEZ registry at the finalized L1 head.\n" +
         "Mainnet needs --checkpoint or --checkpoint-url; Hoodi and Sepolia use EF-operated defaults.\n" +
         "See README.md for verified RPC selectors and checkpoint trust requirements.");
     return;
@@ -98,6 +101,8 @@ async Task RunClientAsync(CancellationToken stoppingToken)
     string network = builder.Configuration["network"] ?? "mainnet";
     Address[] hostedAccounts = HostedAccountState.ParseAccounts(builder.Configuration["host-accounts"]);
     (int beaconPort, int quicPort, int executionPort) = LightClientHost.ReadPorts(builder.Configuration);
+    EezLightClientOptions? eez = EezLightClientOptions.Read(builder.Configuration, beaconPort, quicPort, executionPort);
+    ulong latestHeadMaxAgeSeconds = eez is null ? OptimisticHeadMaxAgeSeconds : FinalizedHeadMaxAgeSeconds;
     BeaconChainSpec spec = network switch
     {
         "mainnet" => BeaconChainSpec.Mainnet,
@@ -118,8 +123,8 @@ async Task RunClientAsync(CancellationToken stoppingToken)
     ulong CurrentSlot() => spec.GetSlotAtTime((ulong)clock.GetUtcNow().ToUnixTimeSeconds());
     bool IsHeadFresh(VerifiedHead? snapshot, ulong maximumAgeSeconds) =>
         snapshot?.IsFresh(CurrentSlot(), maximumAgeSeconds / spec.SecondsPerSlot) ?? false;
-    LightClientStatus status = new(spec.ChainId, hostedAccounts,
-        latest => IsHeadFresh(latest, OptimisticHeadMaxAgeSeconds), finalized => IsHeadFresh(finalized, FinalizedHeadMaxAgeSeconds));
+    LightClientStatus status = new(eez?.Settlement.ChainId ?? spec.ChainId, hostedAccounts,
+        latest => IsHeadFresh(latest, latestHeadMaxAgeSeconds), finalized => IsHeadFresh(finalized, FinalizedHeadMaxAgeSeconds));
     LightClientMetrics metrics = new(network, status.Read);
     string rpcUrl = builder.Configuration["urls"] ?? "http://127.0.0.1:8545";
     builder.WebHost.UseUrls(rpcUrl);
@@ -173,7 +178,12 @@ async Task RunClientAsync(CancellationToken stoppingToken)
         bool redirected = Console.IsOutputRedirected;
         Console.Write(LightClientBanner.Render(network, rpcUrl, checkpoint.ToString(), redirected, beaconPort, executionPort));
         await using ExecutionPeerTransport execution = new(network, logManager,
-            dataDirectory: dataDirectory, hostedAccounts: hostedAccounts, port: executionPort);
+            dataDirectory: dataDirectory, hostedAccounts: eez is null ? hostedAccounts : null, port: executionPort);
+        await using ExecutionPeerTransport? rollup = eez is null ? null : new(eez.Network, logManager,
+            dataDirectory: dataDirectory, hostedAccounts: hostedAccounts, port: eez.Port);
+        if (eez is not null && rollup!.SpecProvider.ChainId != eez.Settlement.ChainId)
+            throw new ArgumentException("--eez-chain-id does not match the rollup genesis.");
+        ExecutionPeerTransport served = rollup ?? execution;
         status.SetStage(StartupStage.Beacon);
         using SemaphoreSlim consensusGate = new(1, 1);
         using ColumnsDb<BeaconChainDbColumns> beaconDb = BeaconPeerTransport.OpenPeerDb(dataDirectory, spec, logManager);
@@ -230,6 +240,11 @@ async Task RunClientAsync(CancellationToken stoppingToken)
             {
                 await execution.StartAsync(startupStop.Token);
                 logger.LogInformation("Execution P2P started; searching for SNAP peers via {Domain}", execution.DiscoveryDomain);
+                if (rollup is not null)
+                {
+                    await rollup.StartAsync(startupStop.Token);
+                    logger.LogInformation("Rollup execution P2P started for {Network}", eez!.Network.Name);
+                }
             }
             catch
             {
@@ -262,20 +277,24 @@ async Task RunClientAsync(CancellationToken stoppingToken)
             await publisher.PublishFinalizedAsync(startupToken);
             logger.LogInformation("Finalized execution block {BlockNumber} verified", publisher.Heads.Finalized!.Number);
         }
+        EezHeadPublisher? rollupPublisher = eez is null ? null : new(execution, rollup!, eez.Settlement, rollup!.UpdateHead);
+        VerifiedHead? GetFinalizedHead() => rollupPublisher is null ? publisher.Heads.Finalized : rollupPublisher.Current?.Head;
         VerifiedHead GetHead() =>
-            publisher.Heads.Finalized ?? throw new RpcException(-32000, "Waiting for an authenticated execution header.");
-        VerifiedHead? GetLatestHead() => publisher.Heads.Latest;
+            GetFinalizedHead() ?? throw new RpcException(-32000, "Waiting for an authenticated execution header.");
+        VerifiedHead? GetLatestHead() => rollupPublisher is null ? publisher.Heads.Latest : rollupPublisher.Current?.Head;
         VerifiedHead? GetFreshLatestHead()
         {
             VerifiedHead? snapshot = GetLatestHead();
-            return IsHeadFresh(snapshot, OptimisticHeadMaxAgeSeconds) ? snapshot : null;
+            return IsHeadFresh(snapshot, latestHeadMaxAgeSeconds) ? snapshot : null;
         }
-        using VerifiedCall calls = new(execution, execution.SpecProvider, logManager);
-        using VerifiedRpc rpc = new(execution, GetHead, spec.ChainId, calls, execution.SpecProvider, GetLatestHead,
-            latest => IsHeadFresh(latest, OptimisticHeadMaxAgeSeconds), finalized => IsHeadFresh(finalized, FinalizedHeadMaxAgeSeconds),
-            token => publisher.WaitForFreshLatestAsync(latest => IsHeadFresh(latest, OptimisticHeadMaxAgeSeconds),
-                () => optimisticRequests.Writer.TryWrite(true), token));
-        VerifiedSubscriptions subscriptions = new(execution, rpc, logger, metrics: metrics);
+        using VerifiedCall calls = new(served, served.SpecProvider, logManager);
+        using VerifiedRpc rpc = new(served, GetHead, eez?.Settlement.ChainId ?? spec.ChainId, calls, served.SpecProvider, GetLatestHead,
+            latest => IsHeadFresh(latest, latestHeadMaxAgeSeconds), finalized => IsHeadFresh(finalized, FinalizedHeadMaxAgeSeconds),
+            rollupPublisher is null
+                ? token => publisher.WaitForFreshLatestAsync(latest => IsHeadFresh(latest, OptimisticHeadMaxAgeSeconds),
+                    () => optimisticRequests.Writer.TryWrite(true), token)
+                : _ => Task.FromResult(GetHead()));
+        VerifiedSubscriptions subscriptions = new(served, rpc, logger, metrics: metrics);
         ConsensusSync.Processor consensus = new(store, journal, spec, clock, consensusGate,
             PublishPersistedHeaders, app.Lifetime.StopApplication, logger, app.Lifetime.ApplicationStopping);
         bool rpcInitialized = false;
@@ -296,9 +315,9 @@ async Task RunClientAsync(CancellationToken stoppingToken)
 
         void InitializeRpc()
         {
-            if (rpcInitialized || publisher.Heads.Finalized is null) return;
-            status.Initialize(rpc.InvokeAsync, subscriptions.HandleAsync, GetLatestHead, () => publisher.Heads.Finalized,
-                execution.GetHostedAccountProgress, () => execution.LogHistoryProgress);
+            if (rpcInitialized || GetFinalizedHead() is null) return;
+            status.Initialize(rpc.InvokeAsync, subscriptions.HandleAsync, GetLatestHead, GetFinalizedHead,
+                served.GetHostedAccountProgress, () => served.LogHistoryProgress);
             rpcInitialized = true;
         }
 
@@ -317,7 +336,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
             using CancellationTokenSource workersStop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             Task[] workers = [PollConsensusAsync(workersStop.Token), PublishConsensusAsync(workersStop.Token),
                 ReportPeersAsync(workersStop.Token), beacon.GossipCompletion,
-                execution.HostAccountsAsync(GetFreshLatestHead, clock, workersStop.Token)];
+                served.HostAccountsAsync(GetFreshLatestHead, clock, workersStop.Token), PublishRollupAsync(workersStop.Token)];
             await Task.WhenAny(workers);
             app.Lifetime.StopApplication();
             await workersStop.CancelAsync();
@@ -352,7 +371,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
                 }
                 WarnIfStale(snapshot.Finalized, 30 * 60, "Finalized", ref finalizedWarning);
                 WarnIfStale(snapshot.Latest, OptimisticHeadMaxAgeSeconds, "Optimistic", ref optimisticWarning);
-                if (snapshot.Latest is { } observed && IsHeadFresh(observed, OptimisticHeadMaxAgeSeconds) &&
+                if (rollupPublisher is null && snapshot.Latest is { } observed && IsHeadFresh(observed, OptimisticHeadMaxAgeSeconds) &&
                     observed.BlockHash != subscriptionHash)
                 {
                     subscriptions.PublishHead(observed);
@@ -375,6 +394,40 @@ async Task RunClientAsync(CancellationToken stoppingToken)
                     kind, current?.Slot, current?.Number);
                 warning = (true, current);
             }
+        }
+
+        async Task PublishRollupAsync(CancellationToken cancellationToken)
+        {
+            if (rollupPublisher is null) return;
+            try
+            {
+                using PeriodicTimer timer = new(TimeSpan.FromSeconds(spec.SecondsPerSlot), clock);
+                do
+                {
+                    if (publisher.Heads.Finalized is not { } settlementHead) continue;
+                    try
+                    {
+                        if (!await rollupPublisher.UpdateAsync(settlementHead, cancellationToken)) continue;
+                    }
+                    catch (ExecutionDataUnavailableException exception)
+                    {
+                        logger.LogDebug("Waiting for EEZ rollup data: {Reason}", exception.Message);
+                        continue;
+                    }
+                    catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+                    {
+                        logger.LogWarning(exception, "EEZ settlement resolution failed; retaining the last verified rollup head");
+                        continue;
+                    }
+                    EezCommittedHead committed = rollupPublisher.Current!;
+                    InitializeRpc();
+                    subscriptions.PublishHead(committed.Head);
+                    rollup!.NotifyHostedHeadChanged();
+                    logger.LogInformation("EEZ rollup block {BlockNumber} committed at finalized L1 block {SettlementNumber}",
+                        committed.Head.Number, committed.SettlementHead.Number);
+                } while (await timer.WaitForNextTickAsync(cancellationToken));
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
         }
 
         async Task PollConsensusAsync(CancellationToken cancellationToken)
@@ -438,6 +491,9 @@ async Task RunClientAsync(CancellationToken stoppingToken)
                     metrics.SetPeers(beaconPeers, executionPeers, snapPeers);
                     logger.LogInformation("Peers: beacon {BeaconPeers}, execution {ExecutionPeers}, SNAP {SnapPeers} ({ExecutionCandidates} candidates, DNS {DnsStatus})",
                         beaconPeers, executionPeers, snapPeers, execution.CandidateCount, execution.DiscoveryStatus);
+                    if (rollup is not null)
+                        logger.LogInformation("Rollup peers: execution {ExecutionPeers}, SNAP {SnapPeers} ({ExecutionCandidates} candidates)",
+                            rollup.PeerCount, rollup.SnapPeerCount, rollup.CandidateCount);
                 } while (await timer.WaitForNextTickAsync(cancellationToken));
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
