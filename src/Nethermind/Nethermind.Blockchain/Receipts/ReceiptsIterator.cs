@@ -28,7 +28,7 @@ namespace Nethermind.Blockchain.Receipts
         private IReceiptsRecovery.ISelectiveLogRecoveryContext? _selectiveLogRecoveryContext;
         private readonly IReceiptsRecovery.IDeferredLogRecoveryContext? _deferredRecoveryContext;
         private int _logRecoveryReceiptIndex;
-        private Hash256? _logRecoveryTransactionHash;
+        private ValueHash256 _logRecoveryTransactionHash;
         private readonly IReceiptRefDecoder _receiptRefDecoder;
         private readonly IReceiptRefTopicDecoder? _receiptRefTopicDecoder;
         private bool _recoveryContextConfigured;
@@ -161,25 +161,29 @@ namespace Nethermind.Blockchain.Receipts
         /// </summary>
         public void RecoverLogFieldsIfNeeded(ref TxReceiptStructRef current)
         {
-            RecoverLogFieldsIfNeeded(ref current, out Hash256? transactionHash);
-            if (transactionHash is not null) current.TxHash = transactionHash.ToStructRef();
+            if (RecoverLogFieldsIfNeeded(ref current, out ValueHash256 transactionHash)) current.TxHash = transactionHash.ToCommitment().ToStructRef();
         }
 
-        public void RecoverLogFieldsIfNeeded(ref TxReceiptStructRef current, out Hash256? transactionHash)
+        /// <inheritdoc cref="RecoverLogFieldsIfNeeded(ref TxReceiptStructRef)"/>
+        /// <returns>
+        /// <see langword="true"/> when <paramref name="transactionHash"/> holds the recovered transaction hash;
+        /// <see langword="false"/> when <paramref name="current"/> carries it.
+        /// </returns>
+        public bool RecoverLogFieldsIfNeeded(ref TxReceiptStructRef current, out ValueHash256 transactionHash)
         {
-            transactionHash = null;
-            if (_recoveryContextConfigured) return;
+            transactionHash = default;
+            if (_recoveryContextConfigured) return false;
             if (_receiptIndex == _logRecoveryReceiptIndex)
             {
                 transactionHash = _logRecoveryTransactionHash;
-                return;
+                return _logRecoveryReceiptIndex != 0;
             }
 
             if (_blockHash is not null && !_txHashes.IsEmpty)
             {
                 transactionHash = _logRecoveryTransactionHash = RecoverStoredLogFields(ref current, _receiptIndex - 1);
                 _logRecoveryReceiptIndex = _receiptIndex;
-                return;
+                return true;
             }
 
             if (_selectiveLogRecoveryContext is null)
@@ -188,7 +192,7 @@ namespace Nethermind.Blockchain.Receipts
                 if (context is not IReceiptsRecovery.ISelectiveLogRecoveryContext selective)
                 {
                     ConfigureRecovery(ref current, context);
-                    return;
+                    return false;
                 }
 
                 _selectiveLogRecoveryContext = selective;
@@ -196,9 +200,10 @@ namespace Nethermind.Blockchain.Receipts
 
             transactionHash = _logRecoveryTransactionHash = _selectiveLogRecoveryContext!.RecoverReceiptData(ref current, _receiptIndex - 1);
             _logRecoveryReceiptIndex = _receiptIndex;
+            return true;
         }
 
-        private readonly Hash256 RecoverStoredLogFields(ref TxReceiptStructRef current, int transactionIndex)
+        private readonly ValueHash256 RecoverStoredLogFields(ref TxReceiptStructRef current, int transactionIndex)
         {
             int offset = transactionIndex * Hash256.Size;
             if ((uint)offset > (uint)(_txHashes.Length - Hash256.Size))
@@ -209,7 +214,7 @@ namespace Nethermind.Blockchain.Receipts
             current.BlockHash = _blockHash!.ToStructRef();
             current.BlockNumber = _blockNumber;
             current.Index = transactionIndex;
-            return new Hash256(_txHashes.Slice(offset, Hash256.Size));
+            return new ValueHash256(_txHashes.Slice(offset, Hash256.Size));
         }
 
         private void RecoverIfNeeded(ref TxReceiptStructRef current, Func<IReceiptsRecovery.IRecoveryContext?>? recoveryContextFactory)

@@ -1291,7 +1291,7 @@ namespace Nethermind.Blockchain.Receipts
             {
                 for (int i = 0; i < block.TransactionCount; i++)
                 {
-                    Hash256 txHash = block.GetNextTransactionHash();
+                    ValueHash256 txHash = block.GetNextTransactionValueHash();
                     writeBatch[txHash.Bytes] = null;
                 }
             }

@@ -1742,8 +1742,8 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         try
         {
             Assert.That(iterator.TryGetNext(out TxReceiptStructRef receipt), Is.True);
-            iterator.RecoverLogFieldsIfNeeded(ref receipt, out Hash256? transactionHash);
-            return new RecoveredLogFields(transactionHash, receipt.Index, receipt.BlockNumber, receipt.BlockHash.ToCommitment());
+            bool recovered = iterator.RecoverLogFieldsIfNeeded(ref receipt, out ValueHash256 transactionHash);
+            return new RecoveredLogFields(recovered ? transactionHash.ToCommitment() : null, receipt.Index, receipt.BlockNumber, receipt.BlockHash.ToCommitment());
         }
         finally
         {
