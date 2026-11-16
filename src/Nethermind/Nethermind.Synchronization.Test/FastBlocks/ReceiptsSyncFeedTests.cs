@@ -662,7 +662,7 @@ public class ReceiptsSyncFeedTests
     private static NetworkBlockReceipts Encode(IOwnedReadOnlyList<TxReceipt[]?> blocks, RefRlpReaderFunc<TxReceipt[]>? decodeBlock = null)
     {
         ReceiptMessageDecoder decoder = new();
-        ArrayPoolList<byte> buffer = new(blocks.Count * 256);
+        ArrayPoolList<byte> buffer = [with(blocks.Count * 256)];
         Range[] ranges = new Range[blocks.Count];
         for (int i = 0; i < ranges.Length; i++)
         {
