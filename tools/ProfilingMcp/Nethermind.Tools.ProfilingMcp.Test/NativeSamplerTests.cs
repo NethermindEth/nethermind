@@ -146,12 +146,12 @@ public class NativeSamplerTests
         string? perfMap = null;
         try
         {
-            NativeSample sample = await NativeSampler.CollectAsync(Environment.ProcessId, TimeSpan.FromSeconds(1), output, cancellationToken);
-            perfMap = sample.PerfMap;
+            (string PerfMap, int Methods)? jit = await NativeSampler.CollectAsync(Environment.ProcessId, TimeSpan.FromSeconds(1), output, cancellationToken);
+            perfMap = jit?.PerfMap;
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(sample.JitMethods, Is.GreaterThan(0));
+                Assert.That(jit?.Methods, Is.GreaterThan(0));
                 Assert.That(perfMap, Does.Exist);
             }
         }
@@ -164,19 +164,21 @@ public class NativeSamplerTests
         }
     }
 
-    [TestCase(false, ExpectedResult = "cpu-clock")]
-    [TestCase(true, ExpectedResult = "cpu-clock, cpu-clock:u")]
-    public async Task<string> Samples_user_code_only_when_perf_cannot_sample_the_kernel(bool kernelRefused)
+    [TestCase(0)]
+    [TestCase(NativeSampler.RecordAttempts - 1)]
+    [TestCase(NativeSampler.RecordAttempts)]
+    public async Task Starts_perf_again_when_it_fails(int failures)
     {
-        List<string> recorded = [];
-        string? kernelError = await NativeSampler.RecordAsync(events =>
-        {
-            recorded.Add(events);
-            return kernelRefused && events == "cpu-clock" ? throw new InvalidOperationException("perf record failed with exit code 255") : Task.CompletedTask;
-        }, CancellationToken.None);
+        int attempts = 0;
+        Task Record() => ++attempts <= failures ? throw new InvalidOperationException("perf record failed with exit code 255") : Task.CompletedTask;
 
-        Assert.That(kernelError, kernelRefused ? Does.Contain("exit code 255") : Is.Null);
-        return string.Join(", ", recorded);
+        Task recording = NativeSampler.RecordAsync(Record, TimeSpan.Zero, CancellationToken.None);
+
+        if (failures < NativeSampler.RecordAttempts)
+            await recording;
+        else
+            Assert.That(async () => await recording, Throws.InvalidOperationException.With.Message.Contains("exit code 255").And.Message.Contains($"failed {failures} times"));
+        Assert.That(attempts, Is.EqualTo(Math.Min(failures + 1, NativeSampler.RecordAttempts)));
     }
 
     [Test]

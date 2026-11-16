@@ -74,19 +74,17 @@ public sealed class TraceTools(NetTraceReader netTrace, WorkspacePaths paths)
         CancellationToken cancellationToken = default)
     {
         string stacks = Path.Combine(paths.Snapshots, WorkspacePaths.NewFileName($"pid{pid}-native", NativeSampler.Extension));
-        NativeSample sample = await NativeSampler.CollectAsync(pid, ToolArguments.Window(seconds), stacks, cancellationToken);
+        (string PerfMap, int Methods)? jit = await NativeSampler.CollectAsync(pid, ToolArguments.Window(seconds), stacks, cancellationToken);
         IReadOnlyList<FunctionStat> functions = FoldedStacks.Read(File.ReadLines(stacks));
 
         StringBuilder sb = new();
         sb.Append($"Stacks saved: {paths.ForPerson(stacks)}\n");
-        sb.Append(sample switch
+        sb.Append(jit switch
         {
-            { PerfMap: null } => "JIT-compiled code is unnamed ([memfd:doublemapper] or [unknown]): the process is not .NET, or its diagnostics port is unavailable.\n",
-            { JitMethods: 0 } => $"JIT-compiled code is unnamed: the runtime wrote no perf map at {sample.PerfMap}.\n",
-            _ => $"JIT-compiled code is named from the runtime's perf map ({sample.JitMethods:N0} methods).\n",
+            null => "JIT-compiled code is unnamed ([memfd:doublemapper] or [unknown]): the process is not .NET, or its diagnostics port is unavailable.\n",
+            ({ } map, 0) => $"JIT-compiled code is unnamed: the runtime wrote no perf map at {map}.\n",
+            (_, int methods) => $"JIT-compiled code is named from the runtime's perf map ({methods:N0} methods).\n",
         });
-        if (sample.KernelError is not null)
-            sb.Append($"Only user-space code was sampled, so CPU time in the kernel (system calls, page faults) is missing: perf could not sample the kernel ({sample.KernelError}).\n");
 
         List<FunctionStat> threads = [];
         foreach (FunctionStat f in functions)

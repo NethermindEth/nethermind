@@ -15,11 +15,6 @@ namespace Nethermind.Tools.ProfilingMcp.Native;
 /// native libraries built without them show shortened stacks. For a .NET target the runtime is asked over its diagnostics port to write a perf map
 /// for the duration, which names JIT-compiled methods; no restart is needed.
 /// </remarks>
-/// <param name="PerfMap">Where the runtime's perf map was read, or null for a process without a .NET diagnostics port.</param>
-/// <param name="JitMethods">How many JIT-compiled methods the perf map named.</param>
-/// <param name="KernelError">Why kernel code was not sampled, or null when it was.</param>
-public sealed record NativeSample(string? PerfMap, int JitMethods, string? KernelError);
-
 public static class NativeSampler
 {
     public const int Hz = 1000;
@@ -30,12 +25,16 @@ public static class NativeSampler
     /// <summary>How long to wait for another session's sample of the same process.</summary>
     private static readonly TimeSpan LockTimeout = TimeSpan.FromMinutes(15);
 
+    /// <summary>How many times <c>perf record</c> is started before its failure is reported; see <see cref="RecordAsync"/>.</summary>
+    internal const int RecordAttempts = 4;
+
     /// <summary>Records <paramref name="pid"/> for <paramref name="duration"/> and writes its stacks to <paramref name="output"/>.</summary>
+    /// <returns>Where the runtime's perf map was read and how many JIT-compiled methods it named; null for a process without a .NET diagnostics port.</returns>
     /// <remarks>
     /// Samples of one process are serialized across sessions, since each turns the perf map on and off. A map that was on before, because the
     /// process was started with <c>DOTNET_PerfMapEnabled</c> or someone else enabled it, is left on and its files are kept.
     /// </remarks>
-    public static async Task<NativeSample> CollectAsync(int pid, TimeSpan duration, string output, CancellationToken cancellationToken)
+    public static async Task<(string PerfMap, int Methods)?> CollectAsync(int pid, TimeSpan duration, string output, CancellationToken cancellationToken)
     {
         if (!OperatingSystem.IsLinux())
             throw new PlatformNotSupportedException("native_sample needs perf, which runs on Linux only; profile a container or a Linux host.");
@@ -49,14 +48,15 @@ public static class NativeSampler
         try
         {
             // Build ids are skipped: perf script reads each library by path, from the target's mount namespace.
-            string? kernelError = await RecordAsync(events => RunPerfAsync(["record", "--quiet", "--no-buildid", "--no-buildid-cache", "-e", events, "-F", Hz.ToString(CultureInfo.InvariantCulture), "-g",
-                "-p", pid.ToString(CultureInfo.InvariantCulture), "-o", data, "--", "sleep", duration.TotalSeconds.ToString(CultureInfo.InvariantCulture)], stdout: null, cancellationToken), cancellationToken);
+            await RecordAsync(() => RunPerfAsync(["record", "--quiet", "--no-buildid", "--no-buildid-cache", "-e", "cpu-clock", "-F", Hz.ToString(CultureInfo.InvariantCulture), "-g",
+                "-p", pid.ToString(CultureInfo.InvariantCulture), "-o", data, "--", "sleep", duration.TotalSeconds.ToString(CultureInfo.InvariantCulture)], stdout: null, cancellationToken),
+                TimeSpan.FromSeconds(1), cancellationToken);
 
             JitMap jit = isDotNet ? JitMap.Load(perfMap) : JitMap.Empty;
             PerfScriptFolder folder = new(jit);
             await RunPerfAsync(["script", "--input", data, "-F", "comm,tid,ip,sym,dso"], folder.Add, cancellationToken);
             await File.WriteAllLinesAsync(output, folder.Fold(), cancellationToken);
-            return new NativeSample(isDotNet ? perfMap : null, jit.Count, kernelError);
+            return isDotNet ? (perfMap, jit.Count) : null;
         }
         finally
         {
@@ -65,24 +65,32 @@ public static class NativeSampler
         }
     }
 
-    /// <summary>Records kernel and user code, or user code only when perf cannot record the kernel.</summary>
-    /// <param name="record">Runs <c>perf record</c> for the given event, throwing <see cref="InvalidOperationException"/> when it fails.</param>
-    /// <returns>Why kernel code was not recorded, or null when it was.</returns>
+    /// <summary>Runs <paramref name="record"/>, starting it again after <paramref name="pause"/> when it fails, up to <see cref="RecordAttempts"/> times.</summary>
+    /// <param name="record">Runs <c>perf record</c>, throwing <see cref="InvalidOperationException"/> when it fails.</param>
     /// <remarks>
-    /// Some kernels refuse kernel sampling to the sidecar, as Docker Desktop's does under load with an error about kernel symbols,
-    /// while user-space sampling (<c>:u</c>) still works.
+    /// <c>perf record -p</c> (6.8 and 7.0 alike) exits with 255 and no error of its own, only its usual warning about kernel symbols, when threads
+    /// of the target end while it attaches to them. A process that starts and ends threads quickly, as a thread pool under load does, hits this
+    /// often and in bursts, so the attempts are spaced out.
     /// </remarks>
-    internal static async Task<string?> RecordAsync(Func<string, Task> record, CancellationToken cancellationToken)
+    /// <exception cref="InvalidOperationException">Every attempt failed.</exception>
+    internal static async Task RecordAsync(Func<Task> record, TimeSpan pause, CancellationToken cancellationToken)
     {
-        try
+        for (int attempt = 1; ; attempt++)
         {
-            await record("cpu-clock");
-            return null;
-        }
-        catch (InvalidOperationException e) when (!cancellationToken.IsCancellationRequested)
-        {
-            await record("cpu-clock:u");
-            return e.Message;
+            try
+            {
+                await record();
+                return;
+            }
+            catch (InvalidOperationException) when (attempt < RecordAttempts && !cancellationToken.IsCancellationRequested)
+            {
+                await Task.Delay(pause, cancellationToken);
+            }
+            catch (InvalidOperationException e) when (!cancellationToken.IsCancellationRequested)
+            {
+                throw new InvalidOperationException($"{e.Message}\nperf failed {RecordAttempts} times. It fails when threads of the target end while it attaches to them, " +
+                                                    "which is frequent while the process starts and ends many threads, as under load. Try again, or with a shorter window.", e);
+            }
         }
     }
 
@@ -169,7 +177,7 @@ public static class NativeSampler
         }
         catch (Win32Exception)
         {
-            throw new InvalidOperationException("perf is not installed. A sidecar image has it unless it was built on a base image without apt; on a Linux host install linux-perf or linux-tools for the running kernel.");
+            throw new PlatformNotSupportedException("perf is not installed. A sidecar image has it unless it was built on a base image without apt; on a Linux host install linux-perf or linux-tools for the running kernel.");
         }
 
         using (process)
