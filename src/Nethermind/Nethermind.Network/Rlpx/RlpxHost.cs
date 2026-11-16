@@ -472,7 +472,7 @@ namespace Nethermind.Network.Rlpx
             return false;
         }
 
-        private void TrackChannel(IChannel channel)
+        private bool TrackChannel(IChannel channel)
         {
             bool closing;
             lock (_activeChannelsLock)
@@ -483,7 +483,13 @@ namespace Nethermind.Network.Rlpx
 
             _ = channel.CloseCompletion.ContinueWith(_untrackChannel, channel, CancellationToken.None,
                 TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
-            if (closing) _ = channel.CloseAsync();
+            if (!closing)
+            {
+                return false;
+            }
+
+            _ = channel.CloseAsync();
+            return true;
         }
 
         private void UntrackChannel(Task _, object? state) => _activeChannels.TryRemove((IChannel)state!, out byte _);
@@ -527,7 +533,11 @@ namespace Nethermind.Network.Rlpx
 
         private void InitializeChannel(IChannel channel, ISession session, IPAddress? inboundRemoteIp)
         {
-            TrackChannel(channel);
+            if (TrackChannel(channel))
+            {
+                return;
+            }
+
             Metrics.IncomingConnections++;
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Initializing {session:hide} channel");
 
@@ -543,7 +553,11 @@ namespace Nethermind.Network.Rlpx
 
         private void InitializeOutboundChannel(IChannel channel, ISession session, ConnectionAttempt attempt)
         {
-            TrackChannel(channel);
+            if (TrackChannel(channel))
+            {
+                return;
+            }
+
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Initializing {session:hide} channel");
             SetTcpSocketOptions(channel);
             channel.Pipeline.AddLast("out-session-activation", new OutboundSessionActivationHandler(this, session, attempt));
@@ -647,6 +661,8 @@ namespace Nethermind.Network.Rlpx
         string IStoppableService.Description => "rlpx host";
 
         internal int ActiveChannelCount => _activeChannels.Count;
+
+        internal IEventLoopGroup? WorkerGroup => _workerGroup;
 
         internal bool EventLoopsTerminated =>
             (_bossGroup?.IsTerminated ?? true) && (_workerGroup?.IsTerminated ?? true) && _group.IsTerminated;

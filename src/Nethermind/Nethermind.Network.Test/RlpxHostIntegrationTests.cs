@@ -218,14 +218,122 @@ public class RlpxHostIntegrationTests
         await sessionCreated.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.That(host.ActiveChannelCount, Is.EqualTo(1));
 
-        await host.Shutdown().WaitAsync(TimeSpan.FromSeconds(30));
+        Task<int> received = client.ReceiveAsync(new byte[1], SocketFlags.None);
+        Task shutdown = host.Shutdown();
+        int got = await received.WaitAsync(TimeSpan.FromSeconds(1));
+        bool shutdownDoneAtEof = shutdown.IsCompleted;
+        await shutdown.WaitAsync(TimeSpan.FromSeconds(30));
 
-        int received = await client.ReceiveAsync(new byte[1], SocketFlags.None).WaitAsync(TimeSpan.FromSeconds(5));
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(got, Is.Zero);
+            Assert.That(shutdownDoneAtEof, Is.False);
             Assert.That(host.EventLoopsTerminated, Is.True);
             Assert.That(host.ActiveChannelCount, Is.Zero);
-            Assert.That(received, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task Shutdown_ClosesOutboundChannelsBeforeEventLoopsTerminate()
+    {
+        using TcpListener listener = new(IPAddress.Loopback, 0);
+        listener.Start();
+        int listenerPort = ((IPEndPoint)listener.LocalEndpoint).Port;
+        await using IContainer container = CreateListenerContainer(null, IPAddress.Loopback, GetAvailablePort(), shutdownCloseTimeoutMs: 6_000);
+        RlpxHost host = container.Resolve<RlpxHost>();
+        TaskCompletionSource sessionCreated = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        host.SessionCreated += (_, _) => sessionCreated.TrySetResult();
+        await host.Init();
+        Assert.That(await host.ConnectAsync(new Node(TestItem.PublicKeyA, "127.0.0.1", listenerPort)), Is.True);
+        using Socket accepted = await listener.AcceptSocketAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        await sessionCreated.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.That(host.ActiveChannelCount, Is.EqualTo(1));
+
+        Task closed = ReceiveUntilClosedAsync(accepted);
+        Task shutdown = host.Shutdown();
+        await closed.WaitAsync(TimeSpan.FromSeconds(1));
+        bool shutdownDoneAtEof = shutdown.IsCompleted;
+        await shutdown.WaitAsync(TimeSpan.FromSeconds(30));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(shutdownDoneAtEof, Is.False);
+            Assert.That(host.EventLoopsTerminated, Is.True);
+            Assert.That(host.ActiveChannelCount, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task Shutdown_ClosesInboundChannelRegisteredAfterChannelsAreClosed()
+    {
+        int port = GetAvailablePort();
+        await using IContainer container = CreateListenerContainer(null, IPAddress.Loopback, port, shutdownCloseTimeoutMs: 6_000);
+        RlpxHost host = container.Resolve<RlpxHost>();
+        int sessionCount = 0;
+        host.SessionCreated += (_, _) => Interlocked.Increment(ref sessionCount);
+        await host.Init();
+        using ManualResetEventSlim gate = new();
+        Task shutdown = Task.CompletedTask;
+        using Socket client = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        try
+        {
+            HoldWorkerLoops(host, gate);
+            await client.ConnectAsync(new IPEndPoint(IPAddress.Loopback, port));
+            await Task.Delay(200);
+            shutdown = host.Shutdown();
+            await Task.Delay(200);
+        }
+        finally
+        {
+            gate.Set();
+        }
+
+        int got = await client.ReceiveAsync(new byte[1], SocketFlags.None).WaitAsync(TimeSpan.FromSeconds(2));
+        await shutdown.WaitAsync(TimeSpan.FromSeconds(30));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(got, Is.Zero);
+            Assert.That(sessionCount, Is.Zero);
+            Assert.That(host.ActiveChannelCount, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task Shutdown_ClosesOutboundChannelRegisteredAfterChannelsAreClosed()
+    {
+        using TcpListener listener = new(IPAddress.Loopback, 0);
+        listener.Start();
+        int listenerPort = ((IPEndPoint)listener.LocalEndpoint).Port;
+        await using IContainer container = CreateListenerContainer(null, IPAddress.Loopback, GetAvailablePort(), shutdownCloseTimeoutMs: 6_000);
+        RlpxHost host = container.Resolve<RlpxHost>();
+        int sessionCount = 0;
+        host.SessionCreated += (_, _) => Interlocked.Increment(ref sessionCount);
+        await host.Init();
+        using ManualResetEventSlim gate = new();
+        Task<bool> dial = Task.FromResult(false);
+        Task shutdown = Task.CompletedTask;
+        try
+        {
+            HoldWorkerLoops(host, gate);
+            dial = host.ConnectAsync(new Node(TestItem.PublicKeyA, "127.0.0.1", listenerPort));
+            shutdown = host.Shutdown();
+            await Task.Delay(200);
+        }
+        finally
+        {
+            gate.Set();
+        }
+
+        bool connected = await dial.WaitAsync(TimeSpan.FromSeconds(5));
+        await shutdown.WaitAsync(TimeSpan.FromSeconds(30));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(connected, Is.False);
+            Assert.That(listener.Pending(), Is.False);
+            Assert.That(sessionCount, Is.Zero);
+            Assert.That(host.ActiveChannelCount, Is.Zero);
         }
     }
 
@@ -982,6 +1090,22 @@ public class RlpxHostIntegrationTests
         }
 
         return builder.Build();
+    }
+
+    private static void HoldWorkerLoops(RlpxHost host, ManualResetEventSlim gate)
+    {
+        foreach (IEventLoop loop in host.WorkerGroup!.Items)
+        {
+            loop.Execute(() => gate.Wait());
+        }
+    }
+
+    private static async Task ReceiveUntilClosedAsync(Socket socket)
+    {
+        byte[] buffer = new byte[256];
+        while (await socket.ReceiveAsync(buffer, SocketFlags.None) > 0)
+        {
+        }
     }
 
     private static async Task<bool> CanConnect(AddressFamily addressFamily, int port)
