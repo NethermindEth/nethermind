@@ -423,7 +423,12 @@ public class AdminModuleTests
     {
         SubscriptionFactory subscriptionFactory = new();
         subscriptionFactory.RegisterPeerEventsSubscription(_logManager, _peerPool, _rlpxPeer);
-        _subscriptionManager = new SubscriptionManager(subscriptionFactory, new JsonRpcConfig { MaxSubscriptionsPerConnection = 1 }, _logManager);
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new JsonRpcConfig { MaxSubscriptionsPerConnection = 1 }))
+            .AddSingleton<ISubscriptionFactory>(subscriptionFactory)
+            .Build();
+        using ILifetimeScope scope = container.BeginLifetimeScope();
+        _subscriptionManager = scope.Resolve<ISubscriptionManager>();
         IAdminRpcModule adminRpcModule = BuildAdminRpcModuleWith();
         adminRpcModule.Context = new JsonRpcContext(RpcEndpoint.Ws, _jsonRpcDuplexClient);
 

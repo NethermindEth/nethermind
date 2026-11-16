@@ -1623,11 +1623,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void AddSubscription_above_the_node_limit_is_refused_for_every_connection()
         {
-            ISubscriptionFactory factory = Substitute.For<ISubscriptionFactory>();
-            factory
-                .CreateSubscription(Arg.Any<IJsonRpcDuplexClient>(), Arg.Any<string>(), Arg.Any<string?>())
-                .Returns(ci => new NoopSubscription((IJsonRpcDuplexClient)ci[0]));
-            SubscriptionManager manager = new(factory, new JsonRpcConfig { MaxSubscriptionsPerConnection = 0, MaxSubscriptions = 2 }, LimboLogs.Instance);
+            using IContainer container = BuildSubscriptionContainer(new JsonRpcConfig { MaxSubscriptionsPerConnection = 0, MaxSubscriptions = 2 });
+            using ILifetimeScope scope = container.BeginLifetimeScope();
+            ISubscriptionManager manager = scope.Resolve<ISubscriptionManager>();
             IJsonRpcDuplexClient client = Substitute.For<IJsonRpcDuplexClient>();
             client.Id.Returns("first-client");
             IJsonRpcDuplexClient otherClient = Substitute.For<IJsonRpcDuplexClient>();
@@ -1650,7 +1648,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Closing_a_client_releases_its_subscriptions_from_the_node_limit()
         {
-            SubscriptionManager manager = new(NoopSubscriptionFactory(), new JsonRpcConfig { MaxSubscriptionsPerConnection = 0, MaxSubscriptions = 1 }, LimboLogs.Instance);
+            using IContainer container = BuildSubscriptionContainer(new JsonRpcConfig { MaxSubscriptionsPerConnection = 0, MaxSubscriptions = 1 });
+            using ILifetimeScope scope = container.BeginLifetimeScope();
+            ISubscriptionManager manager = scope.Resolve<ISubscriptionManager>();
             IJsonRpcDuplexClient client = Substitute.For<IJsonRpcDuplexClient>();
             client.Id.Returns("closing-client");
             IJsonRpcDuplexClient otherClient = Substitute.For<IJsonRpcDuplexClient>();
@@ -1667,7 +1667,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Authenticated_client_is_not_refused_by_the_node_limit_but_keeps_the_connection_limit()
         {
-            SubscriptionManager manager = new(NoopSubscriptionFactory(), new JsonRpcConfig { MaxSubscriptionsPerConnection = 2, MaxSubscriptions = 1 }, LimboLogs.Instance);
+            using IContainer container = BuildSubscriptionContainer(new JsonRpcConfig { MaxSubscriptionsPerConnection = 2, MaxSubscriptions = 1 });
+            using ILifetimeScope scope = container.BeginLifetimeScope();
+            ISubscriptionManager manager = scope.Resolve<ISubscriptionManager>();
             IJsonRpcDuplexClient anonymousClient = Substitute.For<IJsonRpcDuplexClient>();
             anonymousClient.Id.Returns("anonymous-client");
             IJsonRpcDuplexClient otherAnonymousClient = Substitute.For<IJsonRpcDuplexClient>();
@@ -1718,6 +1720,62 @@ namespace Nethermind.JsonRpc.Test.Modules
                 foreach (QueueingSubscription subscription in subscriptions) subscription.Dispose();
             }
         }
+
+        [TestCase(true, TestName = "Concurrent_AddSubscription_on_one_connection_admits_one_at_a_connection_limit_of_1")]
+        [TestCase(false, TestName = "Concurrent_AddSubscription_on_separate_connections_admits_one_at_a_node_limit_of_1")]
+        [Repeat(20)]
+        public async Task Concurrent_AddSubscription_admits_only_up_to_the_limit(bool sameConnection)
+        {
+            const int attempts = 8;
+            using IContainer container = BuildSubscriptionContainer(sameConnection
+                ? new JsonRpcConfig { MaxSubscriptionsPerConnection = 1, MaxSubscriptions = 0 }
+                : new JsonRpcConfig { MaxSubscriptionsPerConnection = 0, MaxSubscriptions = 1 });
+            using ILifetimeScope scope = container.BeginLifetimeScope();
+            ISubscriptionManager manager = scope.Resolve<ISubscriptionManager>();
+            IJsonRpcDuplexClient sharedClient = Substitute.For<IJsonRpcDuplexClient>();
+            sharedClient.Id.Returns("shared-client");
+            IJsonRpcDuplexClient[] clients = new IJsonRpcDuplexClient[attempts];
+            for (int i = 0; i < attempts; i++)
+            {
+                if (sameConnection)
+                {
+                    clients[i] = sharedClient;
+                    continue;
+                }
+
+                clients[i] = Substitute.For<IJsonRpcDuplexClient>();
+                clients[i].Id.Returns($"client-{i}");
+            }
+
+            using Barrier barrier = new(attempts);
+            Task<bool>[] tasks = new Task<bool>[attempts];
+            for (int i = 0; i < attempts; i++)
+            {
+                IJsonRpcDuplexClient client = clients[i];
+                tasks[i] = Task.Factory.StartNew(() =>
+                {
+                    barrier.SignalAndWait();
+                    try
+                    {
+                        manager.AddSubscription(client, "newHeads");
+                        return true;
+                    }
+                    catch (LimitExceededException)
+                    {
+                        return false;
+                    }
+                }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            }
+
+            bool[] admitted = await Task.WhenAll(tasks);
+
+            Assert.That(admitted.Count(static a => a), Is.EqualTo(1));
+        }
+
+        private static IContainer BuildSubscriptionContainer(JsonRpcConfig jsonRpcConfig) => new ContainerBuilder()
+            .AddModule(new TestNethermindModule(jsonRpcConfig))
+            .AddSingleton(NoopSubscriptionFactory())
+            .Build();
 
         private static ISubscriptionFactory NoopSubscriptionFactory()
         {

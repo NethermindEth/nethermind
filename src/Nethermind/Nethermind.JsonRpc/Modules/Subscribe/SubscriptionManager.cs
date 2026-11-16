@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.Logging;
 
@@ -19,14 +20,19 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly ConcurrentDictionary<string, HashSet<Subscription>> _subscriptionsByJsonRpcClient =
             new();
 
+        private readonly Lock _admissionLock = new();
+
         public string AddSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, string subscriptionType, string? args = null)
         {
-            ThrowIfLimitReached(jsonRpcDuplexClient);
-            Subscription subscription = _subscriptionFactory.CreateSubscription(jsonRpcDuplexClient, subscriptionType, args);
-            AddToDictionary(subscription);
-            AddOrUpdateClientsBag(subscription);
+            lock (_admissionLock)
+            {
+                ThrowIfLimitReached(jsonRpcDuplexClient);
+                Subscription subscription = _subscriptionFactory.CreateSubscription(jsonRpcDuplexClient, subscriptionType, args);
+                AddToDictionary(subscription);
+                AddOrUpdateClientsBag(subscription);
 
-            return subscription.Id;
+                return subscription.Id;
+            }
         }
 
         private void ThrowIfLimitReached(IJsonRpcDuplexClient client)
