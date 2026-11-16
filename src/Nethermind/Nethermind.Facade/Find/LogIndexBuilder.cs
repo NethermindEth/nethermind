@@ -672,7 +672,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     {
         blockReceipts = default;
         if (!_receiptStorage.TryGetReceiptsIterator(blockNumber, blockHash, out ReceiptsIterator iterator))
-            return false;
+            return TryDecodeLogs(blockNumber, blockHash, out blockReceipts);
 
         BlockLogsWriter writer = new();
         int txCount = 0;
@@ -713,6 +713,24 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         }
 
         blockReceipts = writer.Build((int)blockNumber, txCount);
+        return true;
+    }
+
+    /// <remarks>
+    /// Serves the receipts the iterator cannot read, such as those below <see cref="IReceiptStorage.MigratedBlockNumber"/>
+    /// that are stored only under the legacy key. Decoding without recovery does not fill the receipts cache.
+    /// </remarks>
+    private bool TryDecodeLogs(ulong blockNumber, Hash256 blockHash, out BlockReceipts blockReceipts)
+    {
+        blockReceipts = default;
+        if (_blockTree.FindBlock(blockHash, BlockTreeLookupOptions.ExcludeTxHashes, blockNumber) is not { } block)
+            return false;
+
+        TxReceipt[] receipts = _receiptStorage.Get(block, recover: false);
+        if (receipts.Length == 0)
+            return false; // block should have transactions but nothing in storage
+
+        blockReceipts = new((int)blockNumber, receipts);
         return true;
     }
 

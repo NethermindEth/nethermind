@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -119,13 +120,35 @@ public class LogIndexBuilderTests
     private class RecordingLogIndexStorage : TestLogIndexStorage
     {
         private readonly ConcurrentDictionary<int, int> _receiptCounts = new();
+        private readonly ConcurrentDictionary<int, byte[]> _logs = new();
 
         public int ReceiptCountAt(int blockNumber) => _receiptCounts.TryGetValue(blockNumber, out int count) ? count : -1;
+
+        public byte[]? LogsAt(int blockNumber) => _logs.GetValueOrDefault(blockNumber);
+
+        /// <summary>Flattens each log to its address, its topic count and its topics.</summary>
+        public static byte[] ReadLogs(BlockReceipts blockReceipts)
+        {
+            List<byte> logs = [];
+            BlockReceipts.LogReader reader = blockReceipts.ReadLogs();
+            while (reader.TryGetNext(out ReadOnlySpan<byte> address, out ReadOnlySpan<byte> topics))
+            {
+                logs.AddRange(address);
+                logs.Add((byte)(topics.Length / Hash256.Size));
+                logs.AddRange(topics);
+            }
+
+            return [.. logs];
+        }
 
         public override LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null)
         {
             foreach (BlockReceipts blockReceipts in batch)
+            {
                 _receiptCounts[blockReceipts.BlockNumber] = blockReceipts.TxCount;
+                _logs[blockReceipts.BlockNumber] = ReadLogs(blockReceipts);
+            }
+
             return base.Aggregate(batch, isBackwardSync, stats);
         }
     }
@@ -889,9 +912,16 @@ public class LogIndexBuilderTests
         }
     }
 
+    public enum ReceiptsSource
+    {
+        Database,
+        LegacyKey,
+        Cache
+    }
+
     [Test]
     [CancelAfter(60_000)]
-    public async Task Should_NotFillTheReceiptsCache_WithTheBlocksItIndexes(CancellationToken cancellation)
+    public async Task Should_IndexTheStoredLogs_WithoutFillingTheReceiptsCache([Values] bool compactReceipts, [Values] ReceiptsSource source, CancellationToken cancellation)
     {
         const int blockCount = 4;
         ISpecProvider specProvider = new TestSpecProvider(Prague.Instance);
@@ -899,10 +929,12 @@ public class LogIndexBuilderTests
         IBlockTree tree = treeBuilder.TestObject;
         TestMemColumnsDb<ReceiptsColumns> receiptsDb = new();
         PersistentReceiptStorage CreateReceiptStorage() => new(receiptsDb, specProvider,
-            new ReceiptsRecovery(new EthereumEcdsa(specProvider.ChainId), specProvider), tree, treeBuilder.BlockStore, new ReceiptConfig());
+            new ReceiptsRecovery(new EthereumEcdsa(specProvider.ChainId), specProvider), tree, treeBuilder.BlockStore,
+            new ReceiptConfig { CompactReceiptStore = compactReceipts });
 
         PersistentReceiptStorage writer = CreateReceiptStorage();
         Block[] blocks = new Block[blockCount + 1];
+        TxReceipt[][] receipts = new TxReceipt[blocks.Length][];
         blocks[0] = Build.A.Block.Genesis.TestObject;
         BlockTreeBuilder.AddBlock(tree, blocks[0]);
         for (int i = 1; i < blocks.Length; i++)
@@ -910,13 +942,23 @@ public class LogIndexBuilderTests
             Transaction tx = Build.A.Transaction.WithChainId(specProvider.ChainId).WithNonce((ulong)i).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             blocks[i] = Build.A.Block.WithParent(blocks[i - 1]).WithReceiptsRoot(TestItem.KeccakA).WithTransactions(tx).TestObject;
             BlockTreeBuilder.AddBlock(tree, blocks[i]);
-            writer.Insert(blocks[i], [Build.A.Receipt.WithTransactionHash(tx.Hash).WithLogs(Build.A.LogEntry.TestObject).TestObject]);
+            Hash256[] topics = Enumerable.Range(0, LogIndexStorage.MaxTopics).Select(t => Keccak.Compute($"{i}-{t}")).ToArray();
+            receipts[i] =
+            [
+                Build.A.Receipt.WithTransactionHash(tx.Hash).WithLogs(
+                    Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics().TestObject,
+                    Build.A.LogEntry.WithAddress(TestItem.Addresses[i]).WithTopics(topics).TestObject,
+                    Build.A.LogEntry.WithAddress(TestItem.AddressB).WithTopics(topics[..2]).TestObject).TestObject
+            ];
+            writer.Insert(blocks[i], receipts[i]);
         }
 
         tree.SyncPivot = (blocks[^1].Number, blocks[^1].Hash!);
         _config.MaxReorgDepth = 0;
         // A fresh instance starts with an empty receipts cache; the writer filled its own.
-        PersistentReceiptStorage reader = CreateReceiptStorage();
+        PersistentReceiptStorage reader = source is ReceiptsSource.Cache ? writer : CreateReceiptStorage();
+        if (source is ReceiptsSource.LegacyKey)
+            reader.MigratedBlockNumber = (ulong)blocks.Length;
         _receiptStorage = reader;
 
         RecordingLogIndexStorage storage = new();
@@ -931,10 +973,17 @@ public class LogIndexBuilderTests
         {
             Assert.That(builder.LastError, Is.Null);
             for (int i = 1; i < blocks.Length - 1; i++)
+            {
+                using BlockReceipts expected = new(i, receipts[i]);
                 Assert.That(storage.ReceiptCountAt(i), Is.EqualTo(1), $"block {i} must be indexed from its stored receipts");
+                Assert.That(storage.LogsAt(i), Is.EqualTo(RecordingLogIndexStorage.ReadLogs(expected)), $"block {i} must index its log addresses and topics");
+            }
 
-            for (int i = 1; i < blocks.Length; i++)
-                Assert.That(reader.Get(blocks[i]), Is.Empty, $"indexing block {i} must not put its receipts in the receipts cache");
+            if (source is not ReceiptsSource.Cache)
+            {
+                for (int i = 1; i < blocks.Length; i++)
+                    Assert.That(reader.Get(blocks[i]), Is.Empty, $"indexing block {i} must not put its receipts in the receipts cache");
+            }
         }
     }
 
