@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -210,8 +209,13 @@ public static class RecursiveStarkAggregator
             if (!valid) throw new InvalidOperationException("Invalid direct dependency witness.");
             if (deps is null)
             {
-                deps = [.. input.Deps.Take(i)];
-                witnesses = [.. input.Witnesses.Take(i)];
+                deps = new List<FrameDependency>(input.Deps.Count);
+                witnesses = new List<ReadOnlyMemory<byte>>(input.Witnesses.Count);
+                for (int j = 0; j < i; j++)
+                {
+                    deps.Add(input.Deps[j]);
+                    witnesses.Add(input.Witnesses[j]);
+                }
             }
         }
         cancellationToken.ThrowIfCancellationRequested();
@@ -242,6 +246,9 @@ public static class RecursiveStarkAggregator
         if (input.Deps.Count != input.Witnesses.Count) throw new ArgumentException("Witness count mismatch", nameof(input));
         foreach (RecursiveProofInput child in input.RecursiveProofs)
             if (child.InnerDeps is null) throw new ArgumentException("Uninitialized recursive proof input", nameof(input));
+        // A direct dependency a child already proves is authenticated and left out first, so neither the reuse of an unchanged
+        // child below nor the one-call limits see its witness.
+        input = WithoutCoveredDeps(input, verifier, cancellationToken);
         if (input.Deps.Count == 0 && input.RecursiveProofs.Count == 1 && input.Discards.Count == 0)
         {
             RecursiveProofInput parent = input.RecursiveProofs[0];
@@ -257,9 +264,6 @@ public static class RecursiveStarkAggregator
                 return parent.Proof.ToArray();
             }
         }
-        // A direct dependency a child already proves is authenticated and left out, before the one-call limits apply, so
-        // its witness is neither folded again nor pushes the remaining ones off the one-call path.
-        input = WithoutCoveredDeps(input, verifier, cancellationToken);
         if (input.RecursiveProofs.Count <= MaxRecursiveChildren && input.Deps.Count <= LeafCapacity(GenericCount(input.Deps))
             && input.Discards.Count <= Eip8288Constants.MaxProofDependencies
             && (input.Deps.Count <= 1 || DirectInputSize(input.Witnesses) <= MaxProductionWitnessBytes)

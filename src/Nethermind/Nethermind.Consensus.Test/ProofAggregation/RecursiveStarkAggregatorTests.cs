@@ -493,6 +493,31 @@ public class RecursiveStarkAggregatorTests
     }
 
     [Test]
+    public void Covered_direct_dependencies_do_not_block_reuse_of_an_unchanged_child()
+    {
+        FrameDependency a = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("reuse-a"), default);
+        FrameDependency b = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("reuse-b"), default);
+        List<FrameDependency> statement = Eip8288Dependencies.Canonicalize([a, b]);
+        byte[] child = LeanProofTestEnvelope.Create(statement, 2);
+        EnvelopeBoundedVerifier verifier = new();
+        ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(statement);
+
+        byte[] result = RecursiveStarkAggregator.Prove(new()
+        {
+            Deps = [a],
+            Witnesses = [new byte[] { 1 }],
+            RecursiveProofs = [new(statement, child)]
+        }, verifier, Eip8288Verifier.Pinned, hash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(child));
+            Assert.That(verifier.ProvingInputs, Is.Empty);
+            Assert.That(verifier.DirectStarkVerifications, Is.EqualTo(1), "the covered witness is still authenticated");
+        }
+    }
+
+    [Test]
     public void A_leaf_with_leanStark_stays_four_wide([Values(0, 3, 16)] int signatures, [Range(1, 16)] int generics)
     {
         List<FrameDependency> dependencies = Eip8288Dependencies.Canonicalize([
