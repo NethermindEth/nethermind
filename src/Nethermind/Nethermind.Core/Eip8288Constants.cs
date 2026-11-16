@@ -24,7 +24,8 @@ public static class Eip8288Constants
     /// EIP-8288's output capacity, <c>MAX_RLP_BLOCK_SIZE // 96</c> (87,381).</summary>
     /// <remarks>EIP-8288 has no block dependency quota; its draft requires the circuit's output capacity to be at least this, and
     /// a block within EIP-7934's <c>MAX_RLP_BLOCK_SIZE</c> cannot carry more distinct dependency triples. Mode-1 wrappers and
-    /// inclusion-list proofs never reach it: their byte limits bound them tighter.</remarks>
+    /// inclusion-list proofs never reach it: their byte limits bound them tighter. Fixed at EIP-7934's default, as the native
+    /// backend's bound is, whatever block size limit a chain configures.</remarks>
     public const int MaxProofDependencies = Eip7934Constants.DefaultMaxRlpBlockSize / DependencyTripleLength;
 
     /// <summary>Maximum raw leanSTARK witnesses one step of the pinned recursive guest verifies, discarded or redundant ones
