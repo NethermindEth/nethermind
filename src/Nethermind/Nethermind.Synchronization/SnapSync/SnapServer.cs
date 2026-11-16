@@ -26,6 +26,7 @@ public sealed class SnapServer(
     IBlockAccessListStore blockAccessListStore) : ISnapServer
 {
     private const long HardResponseByteLimit = ISnapStateServer.HardResponseByteLimit;
+    private const int CodeReadChunkSize = 64;
 
     public bool CanServe => stateServer.CanServe;
 
@@ -56,39 +57,91 @@ public sealed class SnapServer(
         if (byteLimit > HardResponseByteLimit)
             byteLimit = HardResponseByteLimit;
 
-        long currentByteCount = 0;
         using DeferredRlpItemList.Builder builder = new(requestedHashes.Count);
         DeferredRlpItemList.Builder.Writer writer = builder.BeginRootContainer();
+        CodeResponseWriter codes = new(builder, byteLimit, cancellationToken);
+        Span<byte> keys = stackalloc byte[CodeReadChunkSize * ValueHash256.MemorySize];
+        int pending = 0;
 
         foreach (ValueHash256 codeHash in requestedHashes)
         {
-            if (currentByteCount > byteLimit || cancellationToken.IsCancellationRequested) break;
-
             if (codeHash.Bytes.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
             {
-                writer.WriteValue([]);
-                currentByteCount += 1;
+                ReadCodes(keys[..(pending * ValueHash256.MemorySize)], codes);
+                pending = 0;
+                if (codes.IsFull) break;
+
+                codes.WriteEmpty();
                 continue;
             }
 
-            // Code keys are hashes, so a cached block holds no likely next request.
-            Span<byte> code = codeDb.GetSpan(codeHash.Bytes, ReadFlags.HintCacheMiss);
+            codeHash.Bytes.CopyTo(keys[(pending * ValueHash256.MemorySize)..]);
+            if (++pending < CodeReadChunkSize) continue;
+
+            ReadCodes(keys, codes);
+            pending = 0;
+            if (codes.IsFull) break;
+        }
+
+        ReadCodes(keys[..(pending * ValueHash256.MemorySize)], codes);
+        writer.Dispose();
+        return new RlpByteArrayList(builder.ToRlpItemList());
+    }
+
+    /// <summary>Writes the stored codes for <paramref name="keys"/> in order, skipping missing ones.</summary>
+    /// <remarks>
+    /// A batch reads the whole chunk even past the byte limit, which <see cref="CodeReadChunkSize"/> bounds.
+    /// Code keys are hashes, so a cached block holds no likely next request: the reads hint a cache miss.
+    /// </remarks>
+    private void ReadCodes(ReadOnlySpan<byte> keys, CodeResponseWriter codes)
+    {
+        int count = keys.Length / ValueHash256.MemorySize;
+        if (count == 0 || codes.IsFull) return;
+
+        if (codeDb is IBatchReadOnlyDb batch)
+        {
+            Span<bool> found = stackalloc bool[count];
+            batch.GetMany(keys, ValueHash256.MemorySize, found, codes, ReadFlags.HintCacheMiss);
+            return;
+        }
+
+        for (int i = 0; i < count && !codes.IsFull; i++)
+        {
+            Span<byte> code = codeDb.GetSpan(keys.Slice(i * ValueHash256.MemorySize, ValueHash256.MemorySize), ReadFlags.HintCacheMiss);
             try
             {
-                if (!code.IsNull())
-                {
-                    writer.WriteValue(code);
-                    currentByteCount += code.Length;
-                }
+                if (!code.IsNull()) codes.Decode(code);
             }
             finally
             {
                 codeDb.DangerousReleaseMemory(code);
             }
         }
+    }
 
-        writer.Dispose();
-        return new RlpByteArrayList(builder.ToRlpItemList());
+    /// <summary>Appends served codes to the response until the byte limit is passed or the request is cancelled.</summary>
+    private sealed class CodeResponseWriter(DeferredRlpItemList.Builder builder, long byteLimit, CancellationToken cancellationToken)
+        : IValueDecoder<bool>
+    {
+        private long _byteCount;
+
+        public bool IsFull => _byteCount > byteLimit || cancellationToken.IsCancellationRequested;
+
+        /// <remarks>A root writer only appends to the root entry, so a fresh one writes into the same list.</remarks>
+        public bool Decode(ReadOnlySpan<byte> code)
+        {
+            if (IsFull) return false;
+
+            builder.BeginRootContainer().WriteValue(code);
+            _byteCount += code.Length;
+            return true;
+        }
+
+        public void WriteEmpty()
+        {
+            builder.BeginRootContainer().WriteValue([]);
+            _byteCount += 1;
+        }
     }
 
     public IByteArrayList GetBlockAccessLists(IReadOnlyList<ValueHash256> blockHashes, long byteLimit, CancellationToken cancellationToken)

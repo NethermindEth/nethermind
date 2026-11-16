@@ -81,6 +81,18 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void GetMany_WithScalarFallback_PassesReadFlags()
+        {
+            using TestMemDb store = new();
+            store.Set(new byte[] { 0 }, new byte[] { 1 });
+
+            store.GetMany<long?, CountingValueDecoder>([0, 1], 1, new long?[2], default, ReadFlags.HintCacheMiss);
+
+            store.KeyWasReadWithFlags([0], ReadFlags.HintCacheMiss);
+            store.KeyWasReadWithFlags([1], ReadFlags.HintCacheMiss);
+        }
+
+        [Test]
         public void GetMany_WithScalarFallback_ReplacesPreviousValueAfterDecoding([Values(1, 2, 3, 257)] int count)
         {
             using IDb store = new MemDb();

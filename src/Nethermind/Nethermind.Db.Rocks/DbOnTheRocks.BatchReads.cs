@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core;
 using Nethermind.RocksDbBindings;
 
 namespace Nethermind.Db.Rocks;
@@ -9,11 +10,11 @@ namespace Nethermind.Db.Rocks;
 public partial class DbOnTheRocks
 {
     /// <inheritdoc/>
-    void IBatchReadOnlyDb.GetMany<T, TDecoder>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values, TDecoder decoder) =>
-        GetManyWithColumnFamily(keys, keyLength, values, decoder, _columnFamily);
+    void IBatchReadOnlyDb.GetMany<T, TDecoder>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values, TDecoder decoder, ReadFlags flags) =>
+        GetManyWithColumnFamily(keys, keyLength, values, decoder, _columnFamily, flags);
 
     internal void GetManyWithColumnFamily<T, TDecoder>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values,
-        TDecoder decoder, IColumnFamilyHandle? family) where TDecoder : IValueDecoder<T>
+        TDecoder decoder, IColumnFamilyHandle? family, ReadFlags flags) where TDecoder : IValueDecoder<T>
     {
         ThrowIfDisposing();
         ArgumentNullException.ThrowIfNull(decoder);
@@ -21,7 +22,8 @@ public partial class DbOnTheRocks
         try
         {
             _db.MultiGet<T, ValueDeserializer<T, TDecoder>>(keys, keyLength, values,
-                new ValueDeserializer<T, TDecoder>(decoder), family);
+                new ValueDeserializer<T, TDecoder>(decoder), family,
+                (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : null);
         }
         catch (RocksDbException e)
         {
