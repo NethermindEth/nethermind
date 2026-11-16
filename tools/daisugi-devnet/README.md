@@ -30,7 +30,7 @@ To test your own consensus-layer changes, build your Lighthouse image and pass i
 
 ## Pinned sources
 
-The frozen restart stack, its validation and the operator steps: [RESTART.md](RESTART.md).
+The frozen restart stack, its validation and the operator steps: [RESTART.md](RESTART.md). What EthPandaOps' ethereum-package setup needs: [PANDAOPS.md](PANDAOPS.md).
 
 | Component | Source | Revision |
 | --- | --- | --- |
