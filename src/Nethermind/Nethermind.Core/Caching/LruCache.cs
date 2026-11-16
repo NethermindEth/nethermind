@@ -29,8 +29,8 @@ namespace Nethermind.Core.Caching
             // Subclasses may override Evict; retain their notifications outside the lock.
             _notifyEviction = GetType() != typeof(LruCache<TKey, TValue>);
             _cacheMap = typeof(TKey) == typeof(byte[])
-                ? new Dictionary<TKey, int>((IEqualityComparer<TKey>)Bytes.EqualityComparer)
-                : new Dictionary<TKey, int>(startCapacity); // do not initialize it at the full capacity
+                ? [with((IEqualityComparer<TKey>)Bytes.EqualityComparer)]
+                : [with(startCapacity)]; // do not initialize it at the full capacity
         }
 
         public LruCache(int maxCapacity, string name)

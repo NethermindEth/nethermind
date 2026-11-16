@@ -66,7 +66,7 @@ internal sealed class CollectedTraceResults<TTrace> : ParallelTraceResults<TTrac
 
     public List<TTrace> Flatten()
     {
-        List<TTrace> all = new(_count);
+        List<TTrace> all = [with(_count)];
         for (int i = 0; i < _count; i++)
         {
             if (_results[i] is { } result) all.AddRange(result);

@@ -602,7 +602,7 @@ public class PreBlockCaches
         {
             Owner = owner;
             _remainingCells = remainingCells;
-            _cells = new PooledSet<StorageCell>(Math.Clamp(remainingCells.Value, 0, InitialCellCapacity));
+            _cells = [with(Math.Clamp(remainingCells.Value, 0, InitialCellCapacity))];
         }
 
         internal PreBlockCaches Owner { get; }
@@ -624,7 +624,7 @@ public class PreBlockCaches
         public void RecordReads(int maxReads)
         {
             _maxReads = maxReads;
-            _reads ??= new PooledSet<StorageCell>(Math.Clamp(maxReads, 0, InitialCellCapacity));
+            _reads ??= [with(Math.Clamp(maxReads, 0, InitialCellCapacity))];
         }
 
         /// <summary>Records a cell read from the cache, if <see cref="RecordReads"/> asked for them.</summary>
