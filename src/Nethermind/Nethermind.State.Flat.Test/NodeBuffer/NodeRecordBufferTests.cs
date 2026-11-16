@@ -380,8 +380,9 @@ public class NodeRecordBufferTests
         byte[] previous = Leaf(1, 8);
         byte[] current = Leaf(2, 8);
         ulong pointer = Append(buffer, previous);
+        buffer.Reserve(0, out NativeNodeBuffer original, out _);
         AdvanceTo(LiveGenerations + 1);
-        Assert.That(() => buffer.FindBloom(pointer) is null, Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
+        Assert.That(() => IsDisposed(original), Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
         AdvanceTo(4096);
         ulong replacement = Append(buffer, current);
         using (Assert.EnterMultipleScope())
