@@ -64,7 +64,7 @@ public class CensorshipDetector : IDisposable, IBuilderOverridePolicy
 
         _potentiallyCensoredBlocks = new(_cacheSize, _cacheSize, "potentiallyCensoredBlocks");
         _processingTasks = new(_cacheSize, _cacheSize, "censorshipProcessingTasks");
-        _censoredBlocks = new(_cacheSize);
+        _censoredBlocks = [with(_cacheSize)];
         _blockProcessor.BlockProcessing += OnBlockProcessing;
     }
 

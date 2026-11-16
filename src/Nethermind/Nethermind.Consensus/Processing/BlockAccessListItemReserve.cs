@@ -75,7 +75,7 @@ public static class BlockAccessListItemReserve
     {
         if (withdrawals is null || withdrawals.Length == 0) return 0;
 
-        HashSet<AddressAsKey> recipients = new(withdrawals.Length);
+        HashSet<AddressAsKey> recipients = [with(withdrawals.Length)];
         foreach (Withdrawal withdrawal in withdrawals)
         {
             if (!blockAccessList.HasAccount(withdrawal.Address)) recipients.Add(withdrawal.Address);

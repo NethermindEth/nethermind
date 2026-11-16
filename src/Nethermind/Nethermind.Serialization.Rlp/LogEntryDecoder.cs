@@ -16,6 +16,7 @@ namespace Nethermind.Serialization.Rlp
     public sealed class LogEntryDecoder() : RlpDecoder<LogEntry?>
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<LogEntry>((int)16.MB, nameof(LogEntry));
+        internal static readonly RlpLimit DataRlpLimit = RlpLimit.For<LogEntry>(RlpLimit.Limit, nameof(LogEntry.Data));
 
         /// <summary>Smallest RLP encoding of a non-null log entry.</summary>
         /// <remarks>
@@ -90,7 +91,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             fields.ExitSequence(in topicsReader, topicsLength);
-            byte[] data = fields.DecodeByteArray<TCanonicalChecks>();
+            byte[] data = fields.DecodeByteArray<TCanonicalChecks>(DataRlpLimit);
             reader.ExitSequence(in fields, logEntryLength);
 
             return new LogEntry(address, data, topics);
@@ -177,7 +178,7 @@ namespace Nethermind.Serialization.Rlp
             RlpReader fields = reader.EnterSequence<TCanonicalChecks>(out int logEntryLength);
             fields.DecodeAddressStructRefNonNull(out AddressStructRef address);
             ReadOnlySpan<byte> topics = fields.ReadEncodedItem<TCanonicalChecks>();
-            ReadOnlySpan<byte> data = fields.DecodeByteArraySpan<TCanonicalChecks>();
+            ReadOnlySpan<byte> data = fields.DecodeByteArraySpan<TCanonicalChecks>(DataRlpLimit);
             reader.ExitSequence(in fields, logEntryLength);
 
             item = new LogEntryStructRef(address, data, topics);
