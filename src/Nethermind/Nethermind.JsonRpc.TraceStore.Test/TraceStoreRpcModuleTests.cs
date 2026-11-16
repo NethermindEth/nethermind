@@ -427,6 +427,74 @@ public class TraceStoreRpcModuleTests
         Assert.That(JToken.Parse(Serializer.Serialize(test.Module.trace_filter(new TraceFilterForRpc { FromBlock = BlockParameter.Latest, ToBlock = BlockParameter.Latest }))), Is.EqualTo(JToken.Parse(Serializer.Serialize(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(test.DbTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace))))).Using(JToken.EqualityComparer));
     }
 
+    [Test]
+    public async Task trace_filter_from_store_reads_stored_traces_only_when_the_result_is_written([Values] bool streaming)
+    {
+        TestContext test = new(streaming: streaming);
+        CountingTraceSerializer serializer = new(new ParityLikeTraceSerializer(LimboLogs.Instance));
+        test.Store.Set(test.BlockFinder.FindHeader(new BlockParameter(1))!.Hash!, serializer.Serialize(test.DbTraces));
+        TraceStoreRpcModule module = new(test.InnerModule, test.Store, test.BlockFinder, test.ReceiptFinder, serializer, ParityTraceTypes.All,
+            new JsonRpcConfig { EnableTracingStreamMode = streaming }, LimboLogs.Instance);
+
+        using JsonRpcResponse response = module.trace_filter(new TraceFilterForRpc { FromBlock = new BlockParameter(1), ToBlock = BlockParameter.Latest });
+        int readBeforeWrite = serializer.DeserializeCount;
+        await Serialize(response);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(readBeforeWrite, Is.Zero);
+            Assert.That(serializer.DeserializeCount, Is.EqualTo(2));
+            test.InnerModule.DidNotReceive().trace_filter(Arg.Any<TraceFilterForRpc>());
+        }
+    }
+
+    [Test]
+    public async Task trace_filter_from_store_stops_reading_stored_traces_when_count_is_reached([Values] bool streaming)
+    {
+        const int windowSize = 64;
+        IBlockFinder blockFinder = Build.A.BlockTree().OfChainLength(2 * windowSize + 2).TestObject;
+        MemDb store = new();
+        CountingTraceSerializer serializer = new(new ParityLikeTraceSerializer(LimboLogs.Instance));
+        for (ulong number = 1; number <= blockFinder.Head!.Number; number++)
+        {
+            Hash256 hash = blockFinder.FindHeader(number)!.Hash!;
+            store.Set(hash, serializer.Serialize([new ParityLikeTxTrace { BlockHash = hash, TransactionHash = TestItem.KeccakA, Action = Call(TestItem.AddressA, TestItem.AddressB) }]));
+        }
+
+        TraceStoreRpcModule module = new(Substitute.For<ITraceRpcModule>(), store, blockFinder, Substitute.For<IReceiptFinder>(), serializer, ParityTraceTypes.All,
+            new JsonRpcConfig { EnableTracingStreamMode = streaming }, LimboLogs.Instance, parallelization: 1);
+
+        using JsonRpcResponse response = module.trace_filter(new TraceFilterForRpc { FromBlock = new BlockParameter(1), ToBlock = BlockParameter.Latest, Count = windowSize });
+        JToken result = JToken.Parse(Encoding.UTF8.GetString(await Serialize(response)))["result"]!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Count(), Is.EqualTo(windowSize));
+            Assert.That(serializer.DeserializeCount, Is.EqualTo(windowSize));
+        }
+    }
+
+    private sealed class CountingTraceSerializer(ITraceSerializer<ParityLikeTxTrace> inner) : ITraceSerializer<ParityLikeTxTrace>
+    {
+        private int _deserializeCount;
+
+        public int DeserializeCount => Volatile.Read(ref _deserializeCount);
+
+        public List<ParityLikeTxTrace>? Deserialize(Span<byte> serialized)
+        {
+            Interlocked.Increment(ref _deserializeCount);
+            return inner.Deserialize(serialized);
+        }
+
+        public List<ParityLikeTxTrace>? Deserialize(Stream serialized)
+        {
+            Interlocked.Increment(ref _deserializeCount);
+            return inner.Deserialize(serialized);
+        }
+
+        public byte[] Serialize(IReadOnlyCollection<ParityLikeTxTrace> traces) => inner.Serialize(traces);
+    }
+
     private static readonly string StoreAToB = $"{TestItem.AddressA} -> {TestItem.AddressB}";
     private static readonly string StoreBToB = $"{TestItem.AddressB} -> {TestItem.AddressB}";
     private static readonly string StoreAToC = $"{TestItem.AddressA} -> {TestItem.AddressC}";

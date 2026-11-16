@@ -53,11 +53,12 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
 
     // What live trace_block and trace_filter trace.
     private const ParityTraceTypes BlockTraceTypes = ParityTraceTypes.Trace | ParityTraceTypes.Rewards;
+    private const int StoredTraceReadWindow = 64;
 
     // The store can only answer for what it records; anything else falls back to live tracing.
     private bool IsStored(ParityTraceTypes traceTypes) => (traceTypes & ~_storedTraceTypes) == ParityTraceTypes.None;
 
-    private static IEnumerable<ParityTxTraceFromStore> FlattenStoreItems(List<List<ParityLikeTxTrace>> blockTraces) =>
+    private static IEnumerable<ParityTxTraceFromStore> FlattenStoreItems(IEnumerable<List<ParityLikeTxTrace>> blockTraces) =>
         blockTraces.SelectMany(static block => block.SelectMany(ParityTxTraceFromStore.FromTxTrace));
 
     private static IEnumerable<ParityTxTraceFromStore> FlattenStoreItems(List<ParityLikeTxTrace> traces) =>
@@ -244,35 +245,28 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
             return _traceModule.trace_filter(traceFilterForRpc);
         }
 
-        IEnumerable<SearchResult<BlockHeader>> blocksSearch = _blockFinder.SearchForHeadersOnMainChain(fromBlock, toBlock, ErrorCodes.StandardResourceNotFound);
-
-        IEnumerable<(SearchResult<BlockHeader> BlockSearch, List<ParityLikeTxTrace>? Traces)> blockResults = _parallelization switch
-        {
-            0 => blocksSearch.AsParallel().AsOrdered().Select(GetBlockTraces),
-            1 => blocksSearch.Select(GetBlockTraces),
-            var n => blocksSearch.AsParallel().AsOrdered().WithDegreeOfParallelism(n).Select(GetBlockTraces)
-        };
-
-        List<List<ParityLikeTxTrace>>? blockTraces = null;
-        foreach ((SearchResult<BlockHeader> blockSearch, List<ParityLikeTxTrace>? traces) in blockResults)
+        BlockHeader? first = null;
+        BlockHeader? last = null;
+        foreach (SearchResult<BlockHeader> blockSearch in _blockFinder.SearchForHeadersOnMainChain(fromBlock, toBlock, ErrorCodes.StandardResourceNotFound))
         {
             if (blockSearch.IsError)
             {
                 return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(blockSearch);
             }
 
-            if (traces is null)
+            BlockHeader header = blockSearch.Object!;
+            if (!_traceStore.KeyExists(header.Hash!))
             {
-                // fallback when we miss any traces in db
                 return _traceModule.trace_filter(traceFilterForRpc);
             }
 
-            (blockTraces ??= []).Add(traces);
+            first ??= header;
+            last = header;
         }
 
         TxTraceFilter filter = new(traceFilterForRpc.FromAddress, traceFilterForRpc.ToAddress, traceFilterForRpc.After ?? 0, traceFilterForRpc.Count, traceFilterForRpc.Mode);
 
-        if (blockTraces is null)
+        if (first is null || last is null)
         {
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(filter.FilterTxTraces([]));
         }
@@ -280,9 +274,10 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
         return BuildStoreStreamingResult<ParityTxTraceFromStore>(
             runStreaming: (writer, pipeWriter, ct) =>
             {
-                foreach (List<ParityLikeTxTrace> blockTracesOne in blockTraces)
+                foreach (List<ParityLikeTxTrace> blockTraces in ReadStoredBlockTraces(first, last, filter))
                 {
-                    foreach (ParityLikeTxTrace trace in blockTracesOne)
+                    if (filter.IsExhausted) break;
+                    foreach (ParityLikeTxTrace trace in blockTraces)
                     {
                         ct.ThrowIfCancellationRequested();
                         ParityTxTraceFromStore.Write(writer, trace, filter, EthereumJsonSerializer.JsonOptions);
@@ -290,19 +285,41 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
                     }
                 }
             },
-            runBuffered: () => filter.FilterTxTraces(FlattenStoreItems(blockTraces)));
+            runBuffered: () => filter.FilterTxTraces(FlattenStoreItems(ReadStoredBlockTraces(first, last, filter))));
+    }
 
-        (SearchResult<BlockHeader> BlockSearch, List<ParityLikeTxTrace>? Traces) GetBlockTraces(SearchResult<BlockHeader> blockSearch)
+    private IEnumerable<List<ParityLikeTxTrace>> ReadStoredBlockTraces(BlockHeader first, BlockHeader last, TxTraceFilter filter)
+    {
+        foreach (BlockHeader[] window in GetStoredRange(first, last).Chunk(StoredTraceReadWindow))
         {
-            if (blockSearch.IsError)
-            {
-                return (blockSearch, null);
-            }
+            if (filter.IsExhausted) yield break;
 
-            TryGetBlockTraces(blockSearch.Object!, out List<ParityLikeTxTrace>? traces);
-            return (blockSearch, traces);
+            List<ParityLikeTxTrace>[] windowTraces = _parallelization switch
+            {
+                1 => window.Select(ReadStoredTraces).ToArray(),
+                0 => window.AsParallel().AsOrdered().Select(ReadStoredTraces).ToArray(),
+                int n => window.AsParallel().AsOrdered().WithDegreeOfParallelism(n).Select(ReadStoredTraces).ToArray()
+            };
+
+            foreach (List<ParityLikeTxTrace> blockTraces in windowTraces)
+            {
+                yield return blockTraces;
+            }
         }
     }
+
+    private IEnumerable<BlockHeader> GetStoredRange(BlockHeader first, BlockHeader last)
+    {
+        foreach (SearchResult<BlockHeader> blockSearch in _blockFinder.SearchForHeadersOnMainChain(new BlockParameter(first.Number), new BlockParameter(last.Number), ErrorCodes.StandardResourceNotFound))
+        {
+            yield return blockSearch.Object ?? throw new ResourceNotFoundException(blockSearch.Error ?? ErrorMessages.PrunedHistoryUnavailable);
+        }
+    }
+
+    private List<ParityLikeTxTrace> ReadStoredTraces(BlockHeader header) =>
+        TryGetBlockTraces(header, out List<ParityLikeTxTrace>? traces) && traces is not null
+            ? traces
+            : throw new ResourceNotFoundException($"Stored traces unavailable for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
 
     public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_block(BlockParameter blockParameter, string? fork = null)
     {
