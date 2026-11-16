@@ -18,14 +18,14 @@ internal sealed class UnsentResponseCounter
         lock (_lock)
         {
             _reserved.TryGetValue(response, out long reserved);
-            while (limit > 0 && _bytes + bytes > limit)
+            if (reserved + bytes > limit)
             {
-                (HttpJsonRpcResponseSink? largest, long largestBytes) = FindLargest(response);
-                if (largest is null || largestBytes <= reserved + bytes)
-                {
-                    return false;
-                }
+                return false;
+            }
 
+            while (_bytes + bytes > limit)
+            {
+                (HttpJsonRpcResponseSink largest, long largestBytes) = FindLargest(response);
                 _reserved.Remove(largest);
                 _bytes -= largestBytes;
                 (evicted ??= []).Add(largest);
@@ -57,7 +57,7 @@ internal sealed class UnsentResponseCounter
         }
     }
 
-    private (HttpJsonRpcResponseSink? Sink, long Bytes) FindLargest(HttpJsonRpcResponseSink except)
+    private (HttpJsonRpcResponseSink Sink, long Bytes) FindLargest(HttpJsonRpcResponseSink except)
     {
         HttpJsonRpcResponseSink? largest = null;
         long largestBytes = 0;
@@ -70,6 +70,6 @@ internal sealed class UnsentResponseCounter
             }
         }
 
-        return (largest, largestBytes);
+        return (largest!, largestBytes);
     }
 }

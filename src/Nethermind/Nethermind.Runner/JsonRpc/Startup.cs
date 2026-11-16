@@ -509,7 +509,7 @@ public class Startup : IStartup
                 RemoteAddress = ctx.Connection.RemoteIpAddress,
                 ForwardedFor = ctx.Request.Headers["X-Forwarded-For"]
             };
-            responseSink = new HttpJsonRpcResponseSink(ctx, jsonRpcUrl, _jsonRpcConfig, _jsonRpcLocalStats, _logger, startTime, jsonRpcUrl.IsAuthenticated ? null : _unsentResponses);
+            responseSink = new HttpJsonRpcResponseSink(ctx, jsonRpcUrl, _jsonRpcConfig, _jsonRpcLocalStats, _logger, startTime, jsonRpcUrl.IsAuthenticated || _jsonRpcConfig.MaxUnsentResponsesSize <= 0 ? null : _unsentResponses);
 
             await _jsonRpcProcessor.ProcessAsync(
                 collectedBody.Memory,
