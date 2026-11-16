@@ -70,4 +70,53 @@ public class FlatSameBlockDestroyTests
             if (recreatedInSameBlock) Assert.That(account.Nonce, Is.Zero);
         }
     }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Storage_of_a_removed_contract_stays_cleared_when_a_later_transaction_funds_the_address(bool markDestroyed)
+    {
+        (IWorldState worldState, IStateReader reader, IContainer container) = TestWorldStateFactory.CreateFlatForTestWithStateReader();
+        using IContainer _ = container;
+        Address contract = TestItem.AddressA;
+        StorageCell slot = new(contract, 1);
+        BlockHeader parent;
+        using (worldState.BeginScope(IWorldState.PreGenesis))
+        {
+            worldState.CreateAccount(contract, 0, 1);
+            worldState.Set(slot, (UInt256)7);
+            worldState.Commit(London.Instance);
+            worldState.CommitTree(1);
+            parent = Build.A.BlockHeader.WithNumber(1).WithStateRoot(worldState.StateRoot).TestObject;
+        }
+
+        BlockHeader header;
+        using (worldState.BeginScope(parent))
+        {
+            worldState.Get(slot, out UInt256 _);
+            if (markDestroyed) worldState.MarkStorageDestroyed(contract);
+            else worldState.ClearStorage(contract);
+            worldState.DeleteAccount(contract);
+            worldState.Commit(London.Instance, commitRoots: false);
+
+            worldState.CreateAccount(contract, 1);
+            worldState.Commit(London.Instance, commitRoots: false);
+
+            worldState.Commit(London.Instance);
+            worldState.CommitTree(2);
+            header = Build.A.BlockHeader.WithNumber(2).WithStateRoot(worldState.StateRoot).TestObject;
+        }
+
+        reader.GetStorage(header, contract, 1, out UInt256 beforeFlush);
+        container.Resolve<IFlatDbManager>().FlushCache(CancellationToken.None);
+        reader.GetStorage(header, contract, 1, out UInt256 afterFlush);
+        bool accountExists = reader.TryGetAccount(header, contract, out AccountStruct account);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(beforeFlush, Is.EqualTo(UInt256.Zero));
+            Assert.That(afterFlush, Is.EqualTo(UInt256.Zero));
+            Assert.That(accountExists, Is.True);
+            Assert.That(account.HasStorage, Is.False);
+        }
+    }
 }
