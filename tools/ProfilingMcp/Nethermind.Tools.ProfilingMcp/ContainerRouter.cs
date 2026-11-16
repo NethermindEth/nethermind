@@ -151,7 +151,7 @@ internal sealed class ContainerRouter : IAsyncDisposable
     /// <returns>Whether the call names a container.</returns>
     internal static bool TryTakeTarget(IDictionary<string, JsonElement>? arguments, out string? dockerHost, out string? container, out Dictionary<string, JsonElement> rest)
     {
-        rest = arguments is null ? [] : new Dictionary<string, JsonElement>(arguments);
+        rest = arguments is null ? [] : [with(arguments)];
         container = rest.Remove(ContainerArgument, out JsonElement value) ? Text(value) : null;
         dockerHost = rest.Remove(DockerHostArgument, out value) ? Text(value) : null;
         return container is not null;

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Find;
@@ -159,7 +160,7 @@ public class DebugSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<G
         }
 
         ISimulateBlockTracerFactory<GethLikeTxTrace> tracerFactory = Substitute.For<ISimulateBlockTracerFactory<GethLikeTxTrace>>();
-        tracerFactory.CreateSimulateBlockTracer(Arg.Any<bool>(), Arg.Any<IWorldState>(), Arg.Any<ISpecProvider>(), Arg.Any<BlockHeader>()).Returns(tracer);
+        tracerFactory.CreateSimulateBlockTracer(Arg.Any<bool>(), Arg.Any<IWorldState>(), Arg.Any<ISpecProvider>(), Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>()).Returns(tracer);
         SimulatePayload<TransactionWithSourceDetails> payload = new() { BlockStateCalls = [new BlockStateCall<TransactionWithSourceDetails>()] };
 
         SimulateOutput<GethLikeTxTrace> result = chain.Bridge.Simulate(chain.BlockFinder.Head!.Header, payload, tracerFactory, 10_000_000, default);

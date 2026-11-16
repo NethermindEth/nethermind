@@ -51,7 +51,7 @@ internal static class ContainerSidecar
     private const string TargetTempVariable = "PROFILING_MCP_TARGET_TMPDIR";
     private const string LocalRepository = "profiling-mcp";
     private const string TargetLabel = "nethermind.profmcp.target";
-    private const string RuntimeImage = "mcr.microsoft.com/dotnet/runtime-deps:10.0";
+    private const string RuntimeImage = "mcr.microsoft.com/dotnet/runtime-deps:11.0";
     private const string Dockerfile = "sidecar.Dockerfile";
     private const string Executable = "Nethermind.Tools.ProfilingMcp";
     internal const string ServerPath = $"/profmcp/{Executable}";

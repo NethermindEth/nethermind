@@ -18,6 +18,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp.Eip7928;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
@@ -207,7 +208,7 @@ public class BranchProcessor(
                             () => processedBlock.BlockAccessList ?? (processedBlock.EncodedBlockAccessList is { } encoded
                                 ? BlockAccessListDecoder.Instance.Decode(encoded)
                                 : processedBlock.GeneratedBlockAccessList is { } generated
-                                    ? BlockAccessListDecoder.Instance.Decode(BlockAccessListDecoder.EncodeToBytes(generated)) : null),
+                                    ? BlockAccessListDecoder.Instance.Decode(BlockAccessListDecoder.EncodeToBytes(generated), RlpBehaviors.TrustedInput) : null),
                             () => new ScopeReadOnlyStateProvider(parentScope ??= OpenInclusionListParentScope(preBlockBaseBlock)));
                         inclusionListSatisfied = inclusionListSatisfactionChecker.IsSatisfied(processedBlock, suggestedBlock, boundaryState);
                         if (!boundaryState.Available) throw new InvalidOperationException("Inclusion-list transaction-boundary state is unavailable");

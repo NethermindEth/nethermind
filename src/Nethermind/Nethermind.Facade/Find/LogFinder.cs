@@ -14,7 +14,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 using Autofac.Features.AttributeFilters;
 
 namespace Nethermind.Facade.Find
@@ -145,9 +145,11 @@ namespace Nethermind.Facade.Find
         /// Missing receipts on an already processed non-canonical block are unavailable history, not proof that
         /// the block still awaits execution. Reorgs change canonical membership without clearing WasProcessed.
         /// </remarks>
-        private bool WasPruned(BlockHeader header) =>
-            (_blockFinder.Head?.Number >= header.Number && _blockFinder.IsMainChain(header))
-            || _blockFinder.GetInfo(header.Number, header.Hash!).Info?.WasProcessed == true;
+        internal static bool WasPruned(IBlockFinder blockFinder, BlockHeader header) =>
+            (blockFinder.Head?.Number >= header.Number && blockFinder.IsMainChain(header))
+            || blockFinder.GetInfo(header.Number, header.Hash!).Info?.WasProcessed == true;
+
+        private bool WasPruned(BlockHeader header) => WasPruned(_blockFinder, header);
 
         protected bool RetainsLogsForFilter(LogFilter filter, ulong fromBlock, ulong toBlock) =>
             prunedLogsRetention is not null
@@ -225,7 +227,7 @@ namespace Nethermind.Facade.Find
                     while (!sourceDrained && pending.Count < _rpcConfigGetLogsThreads)
                     {
                         int chunkSize = MinBlocksPerParallelWorker << Math.Min(MaxChunkDoublings, chunksStarted++ / _rpcConfigGetLogsThreads);
-                        List<T> chunk = new(chunkSize);
+                        List<T> chunk = [with(chunkSize)];
                         while (chunk.Count < chunkSize && items.MoveNext()) chunk.Add(items.Current);
                         sourceDrained = chunk.Count < chunkSize;
                         if (chunk.Count != 0) pending.Enqueue(Task.Run(() => ScanChunk(chunk, worker, abandoned.Token)));

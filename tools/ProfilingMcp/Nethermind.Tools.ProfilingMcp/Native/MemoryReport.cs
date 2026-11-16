@@ -111,7 +111,7 @@ internal static class MemoryReport
     /// <summary>Groups <paramref name="shares"/> by key and sums their resident bytes, in the order each key first appears.</summary>
     private static List<(string Key, List<MemoryShare> Shares, double Rss)> TotalBy(List<MemoryShare> shares, Func<MemoryShare, string> key)
     {
-        Dictionary<string, int> indexes = new(StringComparer.Ordinal);
+        Dictionary<string, int> indexes = [with(StringComparer.Ordinal)];
         List<(string Key, List<MemoryShare> Shares, double Rss)> totals = [];
         foreach (MemoryShare share in shares)
         {

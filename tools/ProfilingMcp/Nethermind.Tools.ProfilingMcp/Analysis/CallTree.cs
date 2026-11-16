@@ -6,7 +6,7 @@ namespace Nethermind.Tools.ProfilingMcp.Analysis;
 /// <summary>One method reached through one call path, with the time measured there.</summary>
 public sealed class CallTreeNode(string name)
 {
-    private readonly Dictionary<string, CallTreeNode> _children = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, CallTreeNode> _children = [with(StringComparer.Ordinal)];
 
     public string Name { get; } = name;
     public double TotalTime { get; internal set; }

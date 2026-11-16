@@ -71,7 +71,36 @@ public static class ExecutableCodeMemory
         return new FixedManager((byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(destination)), code.Length, padded: true).Memory;
     }
 
-    /// <summary>Gets whether <paramref name="code"/> is the whole of a <see cref="Place"/> result.</summary>
+    /// <summary>Wraps the first <paramref name="codeLength"/> bytes of <paramref name="codeAndPadding"/> as code
+    /// <see cref="CodeInfo"/> executes in place, clearing the execution padding after them.</summary>
+    /// <param name="codeAndPadding">Memory that never moves: the code, then <see cref="CodeInfo.ExecutionPadding"/> bytes.</param>
+    /// <param name="codeLength">The code's length.</param>
+    internal static unsafe ReadOnlyMemory<byte> PlacePadded(Span<byte> codeAndPadding, int codeLength)
+    {
+        codeAndPadding.Slice(codeLength, CodeInfo.ExecutionPadding).Clear();
+        return new FixedManager((byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(codeAndPadding)), codeLength, padded: true).Memory;
+    }
+
+    internal static ReadOnlyMemory<byte> WrapInputBuffer(byte[] codeAndPadding, int codeLength)
+    {
+        codeAndPadding.AsSpan(codeLength, CodeInfo.ExecutionPadding).Clear();
+        return new InputBufferManager(codeAndPadding, codeLength).Memory;
+    }
+
+    internal static bool TryGetInputBuffer(ReadOnlyMemory<byte> code, [NotNullWhen(true)] out byte[]? buffer)
+    {
+        if (MemoryMarshal.TryGetMemoryManager(code, out InputBufferManager? manager, out int start, out int length)
+            && start == 0 && length == manager.CodeLength)
+        {
+            buffer = manager.Buffer;
+            return true;
+        }
+
+        buffer = null;
+        return false;
+    }
+
+    /// <summary>Gets whether <paramref name="code"/> is the whole of a <see cref="Place"/> or <see cref="PlacePadded"/> result.</summary>
     internal static bool IsPlaced(ReadOnlyMemory<byte> code) =>
         MemoryMarshal.TryGetMemoryManager(code, out FixedManager? manager, out int start, out int length)
         && manager.IsPadded && start == 0 && length == manager.CodeLength;
@@ -113,6 +142,30 @@ public static class ExecutableCodeMemory
         {
             ArgumentOutOfRangeException.ThrowIfGreaterThan((uint)elementIndex, (uint)codeLength, nameof(elementIndex));
             GCHandle handle = GCHandle.Alloc(Buffer, GCHandleType.Pinned);
+            return new MemoryHandle(Unsafe.Add<byte>((void*)handle.AddrOfPinnedObject(), elementIndex), handle);
+        }
+
+        public override void Unpin() { }
+
+        protected override void Dispose(bool disposing) { }
+    }
+
+    private sealed class InputBufferManager(byte[] buffer, int codeLength) : MemoryManager<byte>
+    {
+        public byte[] Buffer => buffer;
+
+        public int CodeLength => codeLength;
+
+        public override Span<byte> GetSpan() => buffer.AsSpan(0, codeLength);
+
+        /// <remarks>
+        /// <paramref name="elementIndex"/> is an offset into the code, from 0 to its length. The returned handle owns the
+        /// only pin of <see cref="Buffer"/>: the pointer is valid until the handle is disposed, which frees the pin.
+        /// </remarks>
+        public override unsafe MemoryHandle Pin(int elementIndex = 0)
+        {
+            ArgumentOutOfRangeException.ThrowIfGreaterThan((uint)elementIndex, (uint)codeLength, nameof(elementIndex));
+            GCHandle handle = GCHandle.Alloc(buffer, GCHandleType.Pinned);
             return new MemoryHandle(Unsafe.Add<byte>((void*)handle.AddrOfPinnedObject(), elementIndex), handle);
         }
 

@@ -5,6 +5,7 @@ using Autofac;
 using Autofac.Core;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Api.Extensions;
+using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -56,6 +57,9 @@ public class TraceStorePlugin(ITraceStoreConfig traceStoreConfig, IJsonRpcConfig
                 .AddSingleton<IMainProcessingModule, TraceStoreMainProcessingModule>()
                 .RegisterBoundedJsonRpcModule<IOtsRpcModule, AutoRpcModuleFactory<IOtsRpcModule>>(int.Max(1, traceStoreConfig.OtsModuleConcurrentInstances), jsonRpcConfig.Timeout)
                 .AddScoped<IOtsRpcModule, OtsRpcModule>();
+
+            if (traceStoreConfig.AddressIndexEnabled)
+                builder.AddSingleton<TraceAddressIndex>().AddStep(typeof(StartTraceAddressIndex));
 
             if (traceStoreConfig.BlocksToKeep != 0)
                 builder.ResolveOnServiceActivation<TraceStorePruner, IBlockTree>();

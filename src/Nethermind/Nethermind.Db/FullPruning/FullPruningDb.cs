@@ -40,7 +40,7 @@ namespace Nethermind.Db.FullPruning
             _settings = settings;
             _dbFactory = dbFactory;
             _updateDuplicateWriteMetrics = updateDuplicateWriteMetrics;
-            _currentDb = CreateDb(_settings).WithEOACompressed();
+            _currentDb = CreateDb(_settings);
         }
 
         private IDb CreateDb(DbSettings settings) => _dbFactory.CreateDb(settings);

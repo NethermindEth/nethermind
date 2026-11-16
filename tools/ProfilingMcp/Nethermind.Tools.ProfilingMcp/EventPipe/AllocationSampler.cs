@@ -35,9 +35,9 @@ internal static class AllocationSampler
     /// <param name="include">When set, only allocations with a frame matching it are counted.</param>
     public static AllocationProfile Read(string path, Regex? include)
     {
-        Dictionary<string, Group> byType = new(StringComparer.Ordinal);
-        Dictionary<string, Group> bySite = new(StringComparer.Ordinal);
-        Dictionary<string, (string[] Frames, long Events, long Bytes)> byStack = new(StringComparer.Ordinal);
+        Dictionary<string, Group> byType = [with(StringComparer.Ordinal)];
+        Dictionary<string, Group> bySite = [with(StringComparer.Ordinal)];
+        Dictionary<string, (string[] Frames, long Events, long Bytes)> byStack = [with(StringComparer.Ordinal)];
 
         string etlx = Path.ChangeExtension(path, $".{Guid.NewGuid():N}.etlx");
         try
@@ -71,7 +71,7 @@ internal static class AllocationSampler
 
         List<(string[] Frames, long Events, long Bytes)> sortedStacks = [.. byStack.Values];
         Sorting.SortDescending(sortedStacks, static s => s.Bytes);
-        List<(IReadOnlyList<string> Frames, long Events, long SampledBytes)> stacks = new(sortedStacks.Count);
+        List<(IReadOnlyList<string> Frames, long Events, long SampledBytes)> stacks = [with(sortedStacks.Count)];
         foreach ((string[] frames, long events, long bytes) in sortedStacks)
             stacks.Add((frames, events, bytes));
 
@@ -89,7 +89,7 @@ internal static class AllocationSampler
 
     private static List<AllocationStat> Sorted(Dictionary<string, Group> groups)
     {
-        List<AllocationStat> stats = new(groups.Count);
+        List<AllocationStat> stats = [with(groups.Count)];
         foreach ((string name, Group group) in groups)
         {
             string? top = null;
@@ -111,6 +111,6 @@ internal static class AllocationSampler
     {
         public long Events { get; set; }
         public long Bytes { get; set; }
-        public Dictionary<string, long> ByOther { get; } = new(StringComparer.Ordinal);
+        public Dictionary<string, long> ByOther { get; } = [with(StringComparer.Ordinal)];
     }
 }

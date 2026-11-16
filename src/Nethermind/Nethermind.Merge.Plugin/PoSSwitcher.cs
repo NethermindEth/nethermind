@@ -14,6 +14,7 @@ using Nethermind.Consensus;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 
@@ -204,10 +205,11 @@ namespace Nethermind.Merge.Plugin
                     return false;
                 }
 
+                Span<byte> buffer = stackalloc byte[Rlp.LengthOfKeccakRlp];
                 using (IWriteBatch batch = _metadataDb.StartWriteBatch())
                 {
-                    batch.Set((long)MetadataDbKeys.TerminalPoWNumber, Rlp.Encode(header.Number).Bytes);
-                    batch.Set((long)MetadataDbKeys.TerminalPoWHash, Rlp.Encode(header.Hash).Bytes);
+                    batch.PutSpan(MetadataDbKeys.TerminalPoWNumber, Rlp.Encode(header.Number, buffer));
+                    batch.PutSpan(MetadataDbKeys.TerminalPoWHash, Rlp.Encode(header.Hash, buffer));
                 }
 
                 _terminalBlockNumber = header.Number;
@@ -389,10 +391,10 @@ namespace Nethermind.Merge.Plugin
                 {
                     byte[]? hashFromDb = _metadataDb.Get(MetadataDbKeys.TerminalPoWNumber);
                     RlpReader ctx = new(hashFromDb);
-                    return ctx.DecodeULong();
+                    return ctx.DecodeULong<OffFlag>();
                 }
             }
-            catch (RlpException)
+            catch (RlpReaderException)
             {
                 if (_logger.IsWarn) _logger.Warn($"Cannot decode terminal block number");
             }
@@ -411,7 +413,7 @@ namespace Nethermind.Merge.Plugin
                     return ctx.DecodeKeccak();
                 }
             }
-            catch (RlpException)
+            catch (RlpReaderException)
             {
                 if (_logger.IsWarn) _logger.Warn($"Cannot decode hash with metadata key: {key}");
             }

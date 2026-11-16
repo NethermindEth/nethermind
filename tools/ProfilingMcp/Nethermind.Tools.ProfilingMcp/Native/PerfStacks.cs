@@ -131,7 +131,7 @@ public sealed class PerfScriptFolder(JitMap jit)
 {
     private const ulong KernelAddresses = 0xffff_8000_0000_0000;
 
-    private readonly Dictionary<string, long> _stacks = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, long> _stacks = [with(StringComparer.Ordinal)];
     private readonly List<string> _frames = [];
     private string? _thread;
 

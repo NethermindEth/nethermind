@@ -3,6 +3,7 @@
 
 using DotNetty.Buffers;
 using DotNetty.Codecs;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using System;
 using System.Diagnostics;
@@ -14,6 +15,7 @@ namespace Nethermind.Network.Rlpx
     {
         private const int HeaderBodyOffset = 3;
         private const int HeaderBodyLength = Frame.HeaderSize - HeaderBodyOffset;
+        private const byte ShortListMaxPrefix = 0xf7;
 
         public byte[] HeaderBytes { get; } = new byte[Frame.HeaderSize];
 
@@ -40,22 +42,22 @@ namespace Nethermind.Network.Rlpx
         {
             try
             {
-                RlpReader headerBodyItems = new(HeaderBytes.AsSpan(HeaderBodyOffset, HeaderBodyLength));
-                int headerDataLength = headerBodyItems.ReadSequenceLength();
-                int remaining = headerBodyItems.Length - headerBodyItems.Position;
-                if ((uint)headerDataLength > (uint)remaining)
+                ReadOnlySpan<byte> body = HeaderBytes.AsSpan(HeaderBodyOffset, HeaderBodyLength);
+                // The header body is shorter than 56 bytes, so its sequence prefix holds the length.
+                if (body[0] is >= Rlp.EmptyListByte and <= ShortListMaxPrefix && body[0] - Rlp.EmptyListByte > body.Length - 1)
                 {
-                    throw new CorruptedFrameException($"Invalid Rlpx header lengths, header body RLP length {headerDataLength} exceeds the {remaining} bytes left in the header");
+                    throw new CorruptedFrameException($"Invalid Rlpx header lengths, header body RLP length {body[0] - Rlp.EmptyListByte} exceeds the {body.Length - 1} bytes left in the header");
                 }
 
-                int headerDataEnd = headerDataLength + headerBodyItems.Position;
-                int numberOfItems = headerBodyItems.PeekNumberOfItemsRemaining(headerDataEnd);
+                RlpReader headerBody = new(body);
+                RlpReader headerBodyItems = headerBody.EnterSequence(out _);
+                int numberOfItems = headerBodyItems.CountItems();
                 headerBodyItems.DecodeInt(); // not needed - adaptive IDs - DO NOT COMMENT OUT!!! - decode takes int of the RLP sequence and moves the position
                 contextId = numberOfItems > 1 ? headerBodyItems.DecodeInt() : (int?)null;
                 totalPacketSize = numberOfItems > 2 ? headerBodyItems.DecodeInt() : (int?)null;
-                headerBodyItems.Check(headerDataEnd);
+                headerBodyItems.CheckEnd();
             }
-            catch (Exception exception) when (exception is RlpException or ArgumentOutOfRangeException or IndexOutOfRangeException)
+            catch (Exception exception) when (exception is RlpReaderException or ArgumentOutOfRangeException or IndexOutOfRangeException)
             {
                 throw new CorruptedFrameException(exception);
             }

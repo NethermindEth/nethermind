@@ -6,7 +6,9 @@ using Nethermind.Consensus.AuRa;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -30,8 +32,8 @@ public class AuRaHeaderDecoderTests
     {
         BlockHeader header = Build.A.BlockHeader.WithAura(100000000, DeterministicSignature(0xA5A5)).TestObject;
 
-        Rlp rlp = _decoder.Encode(header);
-        RlpReader decoderContext = new(rlp.Bytes);
+        byte[] rlp = _decoder.Encode(header);
+        RlpReader decoderContext = new(rlp);
         BlockHeader decoded = _decoder.Decode(ref decoderContext)
             ?? throw new InvalidOperationException("AuRa header decoding returned null.");
         decoded.Hash = decoded.CalculateHash();
@@ -43,13 +45,13 @@ public class AuRaHeaderDecoderTests
     public void Decode_rejects_missing_aura_signature()
     {
         BlockHeader header = Build.A.BlockHeader.WithAura(42, null).TestObject;
-        Rlp rlp = _decoder.Encode(header);
+        byte[] rlp = _decoder.Encode(header);
 
-        Assert.That(Decode, Throws.TypeOf<RlpException>());
+        Assert.That(Decode, Throws.TypeOf<RlpReaderException>());
 
         void Decode()
         {
-            RlpReader reader = new(rlp.Bytes);
+            RlpReader reader = new(rlp);
             _decoder.Decode(ref reader);
         }
     }
@@ -59,8 +61,8 @@ public class AuRaHeaderDecoderTests
     {
         byte[] signature = [0x01];
         BlockHeader header = Build.A.BlockHeader.WithNumber(0).WithAura(42, signature).TestObject;
-        Rlp rlp = _decoder.Encode(header);
-        RlpReader reader = new(rlp.Bytes);
+        byte[] rlp = _decoder.Encode(header);
+        RlpReader reader = new(rlp);
 
         AuRaBlockHeader decoded = (AuRaBlockHeader)(_decoder.Decode(ref reader)
             ?? throw new InvalidOperationException("AuRa header decoding returned null."));
@@ -72,13 +74,13 @@ public class AuRaHeaderDecoderTests
     public void Decode_rejects_non_standard_aura_signature_after_genesis()
     {
         BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithAura(42, [0x01]).TestObject;
-        Rlp rlp = _decoder.Encode(header);
+        byte[] rlp = _decoder.Encode(header);
 
-        Assert.That(Decode, Throws.TypeOf<RlpException>());
+        Assert.That(Decode, Throws.TypeOf<RlpReaderException>());
 
         void Decode()
         {
-            RlpReader reader = new(rlp.Bytes);
+            RlpReader reader = new(rlp);
             _decoder.Decode(ref reader);
         }
     }
@@ -89,11 +91,11 @@ public class AuRaHeaderDecoderTests
     {
         BlockHeader original = Build.A.BlockHeader.WithAura(42, DeterministicSignature(1)).TestObject;
 
-        byte[] firstPass = _decoder.Encode(original).Bytes;
+        byte[] firstPass = _decoder.Encode(original);
         RlpReader ctx = new(firstPass);
         BlockHeader decoded = _decoder.Decode(ref ctx)
             ?? throw new InvalidOperationException("AuRa header decoding returned null.");
-        byte[] secondPass = _decoder.Encode(decoded).Bytes;
+        byte[] secondPass = _decoder.Encode(decoded);
 
         using (Assert.EnterMultipleScope())
         {
@@ -112,12 +114,11 @@ public class AuRaHeaderDecoderTests
         byte[] signature = DeterministicSignature(2);
         BlockHeader header = Build.A.BlockHeader.WithAura(42, signature).TestObject;
 
-        byte[] encoded = _decoder.Encode(header).Bytes;
-        RlpReader ctx = new(encoded);
-        ctx.ReadSequenceLength();
+        byte[] encoded = _decoder.Encode(header);
+        RlpReader ctx = new RlpReader(encoded).EnterSequence(out _);
         for (int i = 0; i < 13; i++) ctx.SkipItem();
 
-        (int _, int sealItemLen) = ctx.PeekPrefixAndContentLength();
+        (int _, int sealItemLen) = RlpTestHelper.PrefixAndContentLength(ctx.PeekNextItem());
         Assert.That(sealItemLen, Is.Not.EqualTo(Nethermind.Core.Crypto.Hash256.Size));
 
         long decodedStep = (long)ctx.DecodeUInt256();
@@ -135,7 +136,7 @@ public class AuRaHeaderDecoderTests
     {
         BlockHeader header = Build.A.BlockHeader.WithMixHash(TestItem.KeccakA).TestObject;
 
-        byte[] encoded = _decoder.Encode(header).Bytes;
+        byte[] encoded = _decoder.Encode(header);
         RlpReader ctx = new(encoded);
         BlockHeader decoded = _decoder.Decode(ref ctx)
             ?? throw new InvalidOperationException("PoS header decoding returned null.");
@@ -191,8 +192,8 @@ public class AuRaHeaderDecoderTests
     {
         BlockHeader header = Build.A.BlockHeader.WithAura(77, DeterministicSignature(7)).TestObject;
 
-        byte[] viaAuRa = _decoder.Encode(header).Bytes;
-        byte[] viaBase = new HeaderDecoder().Encode(header).Bytes;
+        byte[] viaAuRa = _decoder.Encode(header);
+        byte[] viaBase = new HeaderDecoder().Encode(header);
 
         Assert.That(viaBase, Is.Not.EqualTo(viaAuRa));
 

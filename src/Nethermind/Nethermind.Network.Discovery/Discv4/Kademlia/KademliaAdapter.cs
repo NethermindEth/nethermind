@@ -361,6 +361,32 @@ public class KademliaAdapter(
     protected override bool IsEnrValidForNode(Node node, NodeRecord record)
         => HasExpectedNodeId(record, node.Id.Hash.ValueHash256);
 
+    /// <remarks>
+    /// A signed record proves the node identity, not its endpoint, and every refresh follows a bond with the node's
+    /// current endpoint. The record is kept, and the node stays at that endpoint, so that a refresh never moves the
+    /// routing entry to an endpoint that did not answer a ping. When the record lists that endpoint (the same address
+    /// bytes and UDP port; a record carries no IPv6 scope), the node takes the record's TCP port and keeps the bonded
+    /// address, including its scope. Otherwise it keeps its current TCP address.
+    /// </remarks>
+    protected override bool TryCreateNodeFromEnr(Node currentNode, NodeRecord record, [NotNullWhen(true)] out Node? refreshedNode)
+    {
+        if (!base.TryCreateNodeFromEnr(currentNode, record, out Node? recordNode))
+        {
+            refreshedNode = null;
+            return false;
+        }
+
+        IPEndPoint bondedEndpoint = currentNode.DiscoveryAddress;
+        IPEndPoint recordEndpoint = recordNode.DiscoveryAddress;
+        bool listsBondedEndpoint = recordEndpoint.Port == bondedEndpoint.Port &&
+                                   HasSameAddressBytes(recordEndpoint.Address, bondedEndpoint.Address);
+        IPEndPoint tcpAddress = listsBondedEndpoint
+            ? new IPEndPoint(currentNode.Address.Address, recordNode.Port)
+            : currentNode.Address;
+        refreshedNode = new Node(currentNode.Id, tcpAddress, currentNode.DiscoveryPort);
+        return true;
+    }
+
     protected override void AddOrRefreshRemoteNode(Node node)
         => kademlia.Value.AddOrRefresh(node);
 

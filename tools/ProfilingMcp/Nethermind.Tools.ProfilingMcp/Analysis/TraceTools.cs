@@ -256,7 +256,7 @@ public sealed class TraceTools(NetTraceReader netTrace, WorkspacePaths paths)
     /// <summary>Per-method deltas from <paramref name="baseline"/> to <paramref name="current"/>.</summary>
     internal static IReadOnlyList<FunctionStat> Diff(IReadOnlyList<FunctionStat> baseline, IReadOnlyList<FunctionStat> current)
     {
-        Dictionary<string, (double Total, double Own)> deltas = new(StringComparer.Ordinal);
+        Dictionary<string, (double Total, double Own)> deltas = [with(StringComparer.Ordinal)];
         foreach (FunctionStat f in current)
             deltas[f.Name] = (f.TotalTime, f.OwnTime);
         foreach (FunctionStat f in baseline)
@@ -265,7 +265,7 @@ public sealed class TraceTools(NetTraceReader netTrace, WorkspacePaths paths)
             deltas[f.Name] = (total - f.TotalTime, own - f.OwnTime);
         }
 
-        List<FunctionStat> functions = new(deltas.Count);
+        List<FunctionStat> functions = [with(deltas.Count)];
         foreach ((string name, (double total, double own)) in deltas)
             functions.Add(new FunctionStat(name, total, own, null, []));
         return functions;

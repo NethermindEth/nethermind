@@ -181,6 +181,22 @@ public class ColumnsDbTests
     }
 
     [Test]
+    public void Prefetch_ignores_a_trailing_partial_key()
+    {
+        const int count = 10;
+        const int keyLength = 8;
+        byte[] keys = new byte[count * keyLength + 3];
+        for (int i = 0; i < count; i++) BinaryPrimitives.WriteInt64BigEndian(keys.AsSpan(i * keyLength, keyLength), i);
+        long before = Metrics.PrefetchedKeys;
+
+        using IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)_db).CreateSnapshot();
+        IReadPrefetcher prefetcher = (IReadPrefetcher)snapshot.GetColumn(ReceiptsColumns.Blocks);
+
+        Assert.DoesNotThrow(() => prefetcher.Prefetch(keys, keyLength));
+        Assert.That(Metrics.PrefetchedKeys - before, Is.EqualTo(count));
+    }
+
+    [Test]
     public void Snapshot_cache_probe_reports_disk_reads_as_not_cached()
     {
         string path = DbPath + "-cache-probe";
@@ -420,10 +436,8 @@ public class ColumnsDbTests
         }
     }
 
-    [TestCase(3)]
-    [TestCase(8)]
-    [TestCase(28)]
-    public void Snapshot_Get_WithHintReadAhead_ReadsFromSnapshot(int shortKeyLength)
+    [Test]
+    public void Snapshot_Get_WithHintReadAhead_ReadsFromSnapshot([Values(3, 8, 28)] int shortKeyLength, [Values] bool spanAction)
     {
         IDb colA = _db.GetColumnDb(ReceiptsColumns.Blocks);
 
@@ -456,18 +470,18 @@ public class ColumnsDbTests
             // values must still come from the snapshot, not the mutated head state.
             for (int i = 0; i < keys.Length; i++)
             {
-                Assert.That(snapshotColumn.Get(keys[i], ReadFlags.HintReadAhead), Is.EqualTo(new byte[] { (byte)i, 1 }), $"key {i}");
+                Assert.That(KeyValueStoreReads.Read(snapshotColumn, keys[i], ReadFlags.HintReadAhead, spanAction), Is.EqualTo(new byte[] { (byte)i, 1 }), $"key {i}");
             }
 
             // Probes past the last key (exhausts the iterator) and misses.
             byte[] missingKey = new byte[34];
             missingKey[0] = 0x23;
-            Assert.That(snapshotColumn.Get(missingKey, ReadFlags.HintReadAhead), Is.Null);
+            Assert.That(KeyValueStoreReads.Read(snapshotColumn, missingKey, ReadFlags.HintReadAhead, spanAction), Is.Null);
             for (int i = keys.Length - 1; i >= 0; i--)
             {
-                Assert.That(snapshotColumn.Get(keys[i], ReadFlags.HintReadAhead), Is.EqualTo(new byte[] { (byte)i, 1 }), $"reverse key {i}");
+                Assert.That(KeyValueStoreReads.Read(snapshotColumn, keys[i], ReadFlags.HintReadAhead, spanAction), Is.EqualTo(new byte[] { (byte)i, 1 }), $"reverse key {i}");
             }
-            Assert.That(snapshotColumn.Get(keys[0], ReadFlags.HintReadAhead), Is.EqualTo(new byte[] { 0, 1 }));
+            Assert.That(KeyValueStoreReads.Read(snapshotColumn, keys[0], ReadFlags.HintReadAhead, spanAction), Is.EqualTo(new byte[] { 0, 1 }));
         }
 
         // Disposing the snapshot tears down its iterators; the head db must stay fully usable.
@@ -497,7 +511,7 @@ public class ColumnsDbTests
     }
 
     [Test]
-    public void Snapshot_ReadAhead_DoesNotFillBlockCache([Values] bool sequentialReadAhead)
+    public void Snapshot_ReadAhead_DoesNotFillBlockCache([Values] bool sequentialReadAhead, [Values] bool spanAction)
     {
         const int keyCount = 4096;
         const int valueSize = 256;
@@ -519,7 +533,7 @@ public class ColumnsDbTests
             IReadOnlyKeyValueStore snapshotColumn = snapshot.GetColumn(ReceiptsColumns.Blocks);
             for (int i = 0; i < keyCount; i++)
             {
-                Assert.That(snapshotColumn.Get(Key(i), ReadFlags.HintReadAhead), Is.EqualTo(values[i]));
+                Assert.That(KeyValueStoreReads.Read(snapshotColumn, Key(i), ReadFlags.HintReadAhead, spanAction), Is.EqualTo(values[i]));
             }
         }
 

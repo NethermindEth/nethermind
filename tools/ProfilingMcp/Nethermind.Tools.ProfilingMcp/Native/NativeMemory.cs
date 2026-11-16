@@ -131,7 +131,7 @@ public static class NativeMemory
     /// <summary>Totals shares by category, largest first.</summary>
     public static IReadOnlyList<MemoryCategory> Categorize(IReadOnlyList<MemoryShare> shares)
     {
-        Dictionary<string, int> indexes = new(StringComparer.Ordinal);
+        Dictionary<string, int> indexes = [with(StringComparer.Ordinal)];
         List<(string Name, double Rss, double Swap, int Mappings)> totals = [];
         foreach (MemoryShare share in shares)
         {
@@ -145,7 +145,7 @@ public static class NativeMemory
             totals[index] = (name, rss + share.Rss, swap + share.Swap, mappings + 1);
         }
 
-        List<MemoryCategory> categories = new(totals.Count);
+        List<MemoryCategory> categories = [with(totals.Count)];
         foreach ((string name, double rss, double swap, int mappings) in totals)
             categories.Add(new MemoryCategory(name, (long)rss, (long)swap, mappings));
         Sorting.SortDescending(categories, static c => c.Rss + c.Swap);

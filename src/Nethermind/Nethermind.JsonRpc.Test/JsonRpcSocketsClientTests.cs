@@ -1240,6 +1240,24 @@ public class JsonRpcSocketsClientTests
             await ShutdownAndWait(pair.SendSocket, receiver);
         }
 
+        /// <remarks>The token is cancelled explicitly: noticing that the peer went away is not what this covers.</remarks>
+        [Test]
+        public async Task Cancelled_connection_abandons_its_queued_request()
+        {
+            using QueuedRentalFixture fixture = new();
+            using UnixSocketPair pair = await UnixSocketPair.CreateAsync();
+            QueuedRentalFixture.IProbeRpcModule held = fixture.Hold();
+            Task receiver = StartReceiver(pair.Listener, fixture.CreateProcessor(), pair.Cts.Token);
+            await using IpcSocketMessageStream client = new(pair.SendSocket);
+            await client.WriteAsync(Encoding.UTF8.GetBytes(QueuedRentalFixture.Request()));
+
+            await fixture.WaitUntilQueued(1);
+            await pair.Cts.CancelAsync();
+            await Assert.CatchAsync<OperationCanceledException>(() => receiver.WaitAsync(QueuedRentalFixture.Watchdog));
+            await fixture.ReleaseAndAssertUsable(held);
+            Assert.That(fixture.Invocations, Is.Zero);
+        }
+
         private static Task StartReceiver(Socket listener, IJsonRpcProcessor processor, CancellationToken token, int concurrency = 1) =>
             Task.Run(async () =>
             {

@@ -326,7 +326,7 @@ public sealed class MemoryTools(WorkspacePaths paths)
             table.Add(Size(category.Rss), Percent(category.Rss, rss), category.Swap > 0 ? Size(category.Swap) : "", Count(category.Mappings), category.Name);
         sb.Append(table);
 
-        Dictionary<string, int> fileIndexes = new(StringComparer.Ordinal);
+        Dictionary<string, int> fileIndexes = [with(StringComparer.Ordinal)];
         List<(string Name, long Rss)> fileRss = [];
         foreach (Mapping mapping in mappings)
         {

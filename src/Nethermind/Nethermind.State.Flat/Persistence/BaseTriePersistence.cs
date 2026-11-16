@@ -348,49 +348,17 @@ public static class BaseTriePersistence
         IReadOnlyKeyValueStore fallbackNodes
     ) : BasePersistence.ITrieReader
     {
-        [SkipLocalsInit]
-        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) =>
-            path.Length switch
-            {
-                <= StateNodesTopThreshold => stateTopNodes.Get(EncodeStateTopNodeKey(stackalloc byte[StateNodesTopPathLength], in path), flags: flags),
-                <= ShortenedPathThreshold => stateNodes.Get(EncodeShortenedStateNodeKey(stackalloc byte[ShortenedPathLength], in path), flags: flags),
-                _ => fallbackNodes.Get(EncodeFullStateNodeKey(stackalloc byte[FullStateNodesKeyLength], in path), flags: flags)
-            };
-
-        [SkipLocalsInit]
-        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) =>
-            path.Length <= ShortenedPathThreshold
-                ? storageNodes.Get(EncodeShortenedStorageNodeKey(stackalloc byte[ShortenedStorageNodesKeyLength], address, in path), flags: flags)
-                : fallbackNodes.Get(EncodeFullStorageNodeKey(stackalloc byte[FullStorageNodesKeyLength], address, in path), flags: flags);
-
         public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
             path.Length switch
             {
-                <= StateNodesTopThreshold => Pass(stateTopNodes, EncodeStateTopNodeKey(stackalloc byte[StateNodesTopPathLength], in path), flags, action, arg),
-                <= ShortenedPathThreshold => Pass(stateNodes, EncodeShortenedStateNodeKey(stackalloc byte[ShortenedPathLength], in path), flags, action, arg),
-                _ => Pass(fallbackNodes, EncodeFullStateNodeKey(stackalloc byte[FullStateNodesKeyLength], in path), flags, action, arg)
+                <= StateNodesTopThreshold => stateTopNodes.TryGet(EncodeStateTopNodeKey(stackalloc byte[StateNodesTopPathLength], in path), flags, action, arg),
+                <= ShortenedPathThreshold => stateNodes.TryGet(EncodeShortenedStateNodeKey(stackalloc byte[ShortenedPathLength], in path), flags, action, arg),
+                _ => fallbackNodes.TryGet(EncodeFullStateNodeKey(stackalloc byte[FullStateNodesKeyLength], in path), flags, action, arg)
             };
 
         public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
             path.Length <= ShortenedPathThreshold
-                ? Pass(storageNodes, EncodeShortenedStorageNodeKey(stackalloc byte[ShortenedStorageNodesKeyLength], address, in path), flags, action, arg)
-                : Pass(fallbackNodes, EncodeFullStorageNodeKey(stackalloc byte[FullStorageNodesKeyLength], address, in path), flags, action, arg);
-
-        private static bool Pass<TArg>(IReadOnlyKeyValueStore store, scoped ReadOnlySpan<byte> key, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg)
-            where TArg : allows ref struct
-        {
-            Span<byte> rlp = store.GetSpan(key, flags);
-            if (rlp.IsEmpty) return false;
-            try
-            {
-                action(rlp, arg);
-            }
-            finally
-            {
-                store.DangerousReleaseMemory(rlp);
-            }
-
-            return true;
-        }
+                ? storageNodes.TryGet(EncodeShortenedStorageNodeKey(stackalloc byte[ShortenedStorageNodesKeyLength], address, in path), flags, action, arg)
+                : fallbackNodes.TryGet(EncodeFullStorageNodeKey(stackalloc byte[FullStorageNodesKeyLength], address, in path), flags, action, arg);
     }
 }

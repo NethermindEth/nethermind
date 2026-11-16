@@ -64,6 +64,28 @@ public class Bswap64Tests
     }
 
     [Test]
+    public void Finds_all_ones_only_when_no_byte_is_cleared([Values(4, 20)] int length)
+    {
+        byte[] buffer = new byte[length + 1];
+        buffer.AsSpan(0, length).Fill(0xff);
+        Assert.That(ZkEvmBitOperations.AreAllOnes(ref buffer[0], length), Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int cleared = 0; cleared < length; cleared++)
+            {
+                for (int bit = 0; bit < 8; bit++)
+                {
+                    buffer[cleared] = (byte)~(1 << bit);
+                    Assert.That(ZkEvmBitOperations.AreAllOnes(ref buffer[0], length), Is.False, $"bit {bit} of byte {cleared} cleared");
+                }
+
+                buffer[cleared] = 0xff;
+            }
+        }
+    }
+
+    [Test]
     public void Reads_a_big_endian_uint256_at_any_offset([Range(0, 7)] int offset)
     {
         byte[] buffer = new byte[40];

@@ -17,7 +17,7 @@ internal static class HtmlReport
 
     public static string Render(string snapshot, IReadOnlyList<FunctionStat> functions, CallTreeNode tree, int nodesBeforePruning, Func<string, bool> isWait)
     {
-        Dictionary<string, int> nameIds = new(StringComparer.Ordinal);
+        Dictionary<string, int> nameIds = [with(StringComparer.Ordinal)];
         List<string> names = [];
         int Id(string name)
         {

@@ -115,7 +115,7 @@ public static class NativeSampler
 
     private static IReadOnlyDictionary<string, string> ReadEnvironment(int pid)
     {
-        Dictionary<string, string> environment = new(StringComparer.Ordinal);
+        Dictionary<string, string> environment = [with(StringComparer.Ordinal)];
         try
         {
             foreach (string variable in File.ReadAllText($"/proc/{pid}/environ").Split('\0', StringSplitOptions.RemoveEmptyEntries))

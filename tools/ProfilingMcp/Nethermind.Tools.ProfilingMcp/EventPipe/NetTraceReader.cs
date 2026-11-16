@@ -33,7 +33,7 @@ public sealed partial class NetTraceReader
 {
     internal const int CachedTraces = 4;
 
-    private readonly ConcurrentDictionary<string, (DateTime Written, Lazy<NetTraceProfile> Profile)> _cache = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, (DateTime Written, Lazy<NetTraceProfile> Profile)> _cache = [with(StringComparer.Ordinal)];
 
     public static bool IsNetTrace(string path) => path.EndsWith(".nettrace", StringComparison.OrdinalIgnoreCase);
 
@@ -95,7 +95,7 @@ public sealed partial class NetTraceReader
 
         PathNode root = new("", null);
         Dictionary<StackSourceCallStackIndex, PathNode> nodes = [];
-        HashSet<string> threads = new(StringComparer.Ordinal);
+        HashSet<string> threads = [with(StringComparer.Ordinal)];
         stacks.ForEach(sample =>
         {
             PathNode node = Resolve(stacks, sample.StackIndex, root, nodes, threads);
@@ -178,7 +178,7 @@ public sealed partial class NetTraceReader
 
     internal static List<FunctionStat> ToFunctions(PathNode root)
     {
-        Dictionary<string, (double Total, double Own, long Samples, List<CallStackStat> Stacks)> functions = new(StringComparer.Ordinal);
+        Dictionary<string, (double Total, double Own, long Samples, List<CallStackStat> Stacks)> functions = [with(StringComparer.Ordinal)];
         List<string> path = [];
 
         void Visit(PathNode node)
@@ -256,7 +256,7 @@ public sealed partial class NetTraceReader
 
     internal sealed class PathNode(string name, PathNode? parent)
     {
-        private readonly Dictionary<string, PathNode> _children = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, PathNode> _children = [with(StringComparer.Ordinal)];
 
         public string Name { get; } = name;
         public PathNode? Parent { get; } = parent;
