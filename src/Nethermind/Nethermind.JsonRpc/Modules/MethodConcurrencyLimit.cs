@@ -2,18 +2,25 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.JsonRpc.Exceptions;
 
 namespace Nethermind.JsonRpc.Modules;
 
-internal sealed class MethodConcurrencyLimit(int limit, int timeout)
+internal sealed class MethodConcurrencyLimit(int limit, int timeout, RpcLimits limits)
 {
-    private readonly SemaphoreSlim _slots = new(limit);
+    private readonly SemaphoreSlim _released = new(0);
+    private int _running;
+    private int _waiting;
+
+    public MethodConcurrencyLimit(int limit, int timeout) : this(limit, timeout, RpcLimits.Default)
+    {
+    }
 
     public Func<bool, CancellationToken, ValueTask<IRpcModule>> WrapRent(Func<bool, CancellationToken, ValueTask<IRpcModule>> rent) =>
-        (canBeShared, cancellationToken) => _slots.Wait(0)
+        (canBeShared, cancellationToken) => TryEnter()
             ? RentInSlot(rent, canBeShared, cancellationToken)
             : WaitAndRent(rent, canBeShared, cancellationToken);
 
@@ -26,24 +33,69 @@ internal sealed class MethodConcurrencyLimit(int limit, int timeout)
             }
             finally
             {
-                _slots.Release();
+                Exit();
             }
         };
 
+    private bool TryEnter()
+    {
+        int running = Volatile.Read(ref _running);
+        while (running < limit)
+        {
+            int seen = Interlocked.CompareExchange(ref _running, running + 1, running);
+            if (seen == running) return true;
+            running = seen;
+        }
+
+        return false;
+    }
+
+    private void Exit()
+    {
+        Interlocked.Decrement(ref _running);
+        if (Volatile.Read(ref _waiting) > 0) _released.Release();
+    }
+
     private async ValueTask<IRpcModule> WaitAndRent(Func<bool, CancellationToken, ValueTask<IRpcModule>> rent, bool canBeShared, CancellationToken cancellationToken)
     {
-        if (!await _slots.WaitAsync(timeout, cancellationToken))
+        limits.AcquireQueuedSlot();
+        try
         {
-            throw new ModuleRentalTimeoutException("Unable to start the call. Too many concurrent calls.");
+            await WaitForSlot(cancellationToken);
+        }
+        finally
+        {
+            limits.DecrementQueuedCalls();
         }
 
         if (cancellationToken.IsCancellationRequested)
         {
-            _slots.Release();
+            Exit();
             cancellationToken.ThrowIfCancellationRequested();
         }
 
         return await RentInSlot(rent, canBeShared, cancellationToken);
+    }
+
+    private async ValueTask WaitForSlot(CancellationToken cancellationToken)
+    {
+        long start = Stopwatch.GetTimestamp();
+        Interlocked.Increment(ref _waiting);
+        try
+        {
+            while (!TryEnter())
+            {
+                int remaining = timeout < 0 ? Timeout.Infinite : timeout - (int)Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+                if ((timeout >= 0 && remaining <= 0) || !await _released.WaitAsync(remaining, cancellationToken))
+                {
+                    throw new ModuleRentalTimeoutException("Unable to start the call. Too many concurrent calls.");
+                }
+            }
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _waiting);
+        }
     }
 
     private ValueTask<IRpcModule> RentInSlot(Func<bool, CancellationToken, ValueTask<IRpcModule>> rent, bool canBeShared, CancellationToken cancellationToken)
@@ -55,7 +107,7 @@ internal sealed class MethodConcurrencyLimit(int limit, int timeout)
         }
         catch
         {
-            _slots.Release();
+            Exit();
             throw;
         }
 
@@ -70,7 +122,7 @@ internal sealed class MethodConcurrencyLimit(int limit, int timeout)
         }
         catch
         {
-            _slots.Release();
+            Exit();
             throw;
         }
     }

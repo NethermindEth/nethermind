@@ -63,7 +63,7 @@ namespace Nethermind.JsonRpc.Modules
                 _filter = new RpcMethodFilter(_jsonRpcConfig.CallsFilterFilePath, fileSystem, _logger);
             }
 
-            int ethCallLimit = jsonRpcConfig.EthCallMaxConcurrentRequests ?? 2 * Environment.ProcessorCount;
+            int ethCallLimit = jsonRpcConfig.EthCallMaxConcurrentRequests ?? 4 * Environment.ProcessorCount;
             if (ethCallLimit > 0)
             {
                 _ethCallLimit = new MethodConcurrencyLimit(ethCallLimit, jsonRpcConfig.Timeout);
