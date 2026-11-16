@@ -15,7 +15,8 @@ public interface IReceiptsInsertBatch : IDisposable
     /// <summary>
     /// Adds the receipts of a canonical block to the batch in their network encoding, without decoding them.
     /// </summary>
-    /// <param name="block">The block, with the transactions the receipts belong to.</param>
+    /// <param name="block">The block, with the transactions the receipts belong to. Read it only during the call: the
+    /// caller may return its transactions to the pool as soon as the call returns.</param>
     /// <param name="blockReceipts">The RLP list of the block's receipts as a peer sends it in a receipts message.</param>
     /// <param name="withBloom"><see langword="true"/> when each receipt carries its bloom (eth/63 to eth/68);
     /// <see langword="false"/> when the blooms are left out (eth/69 and later).</param>
