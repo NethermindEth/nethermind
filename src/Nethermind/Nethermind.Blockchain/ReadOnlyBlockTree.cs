@@ -102,6 +102,9 @@ namespace Nethermind.Blockchain
 
         public BlockHeader? FindCanonicalHeaderIfBloomMatches(ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found) =>
             _wrapped.FindCanonicalHeaderIfBloomMatches(blockNumber, bloomMatches, out found);
+
+        public void FindCanonicalHeadersIfBloomMatches(ulong firstBlockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, Memory<BlockHeader?> headers, Memory<bool> found) =>
+            _wrapped.FindCanonicalHeadersIfBloomMatches(firstBlockNumber, bloomMatches, headers, found);
         public Hash256 FindBlockHash(ulong blockNumber) => _wrapped.FindBlockHash(blockNumber);
 
         public bool IsMainChain(BlockHeader blockHeader) => _wrapped.IsMainChain(blockHeader);
