@@ -73,6 +73,7 @@ public class SimulateReadOnlyBlocksProcessingScope(
             store.ClearCache();
         }
 
+        simulateState.Calls = [];
         overridableWorldStateCloser.Dispose();
         readOnlyDbProvider.ClearTempChanges(); // For blocktree. The read only db has a buffer that need to be cleared.
     }

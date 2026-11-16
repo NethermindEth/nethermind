@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
+using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using NSubstitute;
 using NUnit.Framework;
@@ -131,14 +132,20 @@ public class SimulateReadOnlyBlocksProcessingEnvPoolTests
     }
 
     [Test]
-    public void Release_ClearsRequestStores()
+    public void Release_ClearsRequestStoresAndCalls()
     {
         FakeEnvFactory factory = new();
         using SimulateReadOnlyBlocksProcessingEnvPool pool = new(factory.Create, maxConcurrent: 1);
 
-        pool.Begin(null).Dispose();
+        SimulateReadOnlyBlocksProcessingEnvPool.PooledScope scope = pool.Begin(null);
+        scope.Scope.SimulateRequestState.Calls = [new TransactionWithSourceDetails()];
+        scope.Dispose();
 
-        factory.Envs[0].RequestStore.Received(1).ClearCache();
+        using (Assert.EnterMultipleScope())
+        {
+            factory.Envs[0].RequestStore.Received(1).ClearCache();
+            Assert.That(factory.Envs[0].RequestState.Calls, Is.Empty);
+        }
     }
 
     private sealed class FakeEnvFactory(bool throwOnBegin = false)
@@ -175,13 +182,14 @@ public class SimulateReadOnlyBlocksProcessingEnvPoolTests
         public bool IsDisposed { get; private set; }
         public int BeginCount { get; private set; }
         public IClearableCache RequestStore { get; } = Substitute.For<IClearableCache>();
+        public SimulateRequestState RequestState { get; } = new();
 
         public SimulateReadOnlyBlocksProcessingScope Begin(BlockHeader? baseBlock)
         {
             BeginCount++;
             if (throwOnBegin) throw new InvalidOperationException("simulated begin failure");
             return new SimulateReadOnlyBlocksProcessingScope(
-                null!, null!, null!, null!, null!, null!,
+                null!, null!, null!, null!, RequestState, null!,
                 Substitute.For<IReadOnlyDbProvider>(),
                 new NoopDisposable(),
                 [RequestStore]);
