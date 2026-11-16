@@ -57,9 +57,9 @@ git() { printf '1793836800\n'; }
             execution_version += f"-{suffix}"
         for project, dockerfile, tag, expected in (
             ("src/Nethermind/Directory.Build.props", "Dockerfile", "test", execution_version),
-            (LIGHT_CLIENT_PROJECT, "tools/LightClient/Dockerfile", "light-client-1.0.0", "1.0.0"),
-            ("./" + LIGHT_CLIENT_PROJECT, "./tools/LightClient/Dockerfile", "light-client-1.0.0", "1.0.0"),
-            ("", "./tools/../tools/LightClient/Dockerfile", "light-client-1.0.0", "1.0.0"),
+            (LIGHT_CLIENT_PROJECT, "tools/LightClient/Dockerfile", "light-client-1.0.1", "1.0.1"),
+            ("./" + LIGHT_CLIENT_PROJECT, "./tools/LightClient/Dockerfile", "light-client-1.0.1", "1.0.1"),
+            ("", "./tools/../tools/LightClient/Dockerfile", "light-client-1.0.1", "1.0.1"),
         ):
             with self.subTest(project=project):
                 result = self.run_publish(project, dockerfile=dockerfile, tag=tag)
@@ -79,11 +79,11 @@ git() { printf '1793836800\n'; }
 
     def test_products_cannot_publish_each_others_version_or_tags(self):
         for dockerfile, project, tag in (
-            ("tools/LightClient/Dockerfile", "src/Nethermind/Directory.Build.props", "light-client-1.0.0"),
+            ("tools/LightClient/Dockerfile", "src/Nethermind/Directory.Build.props", "light-client-1.0.1"),
             ("Dockerfile", LIGHT_CLIENT_PROJECT, "test"),
             ("Dockerfile", LIGHT_CLIENT_PROJECT, "nightly"),
-            ("Dockerfile", "", "light-client-1.0.0"),
-            ("tools/Bootnode/Dockerfile", "", "light-client-1.0.0"),
+            ("Dockerfile", "", "light-client-1.0.1"),
+            ("tools/Bootnode/Dockerfile", "", "light-client-1.0.1"),
         ):
             with self.subTest(dockerfile=dockerfile, project=project, tag=tag):
                 result = self.run_publish(project, dockerfile=dockerfile, tag=tag, ref="refs/heads/master")
@@ -91,7 +91,7 @@ git() { printf '1793836800\n'; }
                 self.assertNotIn("DOCKER_ARG=", result.stdout)
 
     def test_light_client_push_on_master_does_not_add_execution_master_alias(self):
-        result = self.run_publish(LIGHT_CLIENT_PROJECT, dockerfile="tools/LightClient/Dockerfile", tag="light-client-1.0.0",
+        result = self.run_publish(LIGHT_CLIENT_PROJECT, dockerfile="tools/LightClient/Dockerfile", tag="light-client-1.0.1",
                                   ref="refs/heads/master", event="push")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertNotIn("DOCKER_ARG=nethermindeth/nethermind:master-", result.stdout)
@@ -126,7 +126,7 @@ git() { printf '1793836800\n'; }
             shutil.copyfile(REPO_ROOT / LIGHT_CLIENT_PROJECT, project)
             result = self.run_publish(project.as_posix())
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            self.assertIn("DOCKER_ARG=VERSION=1.0.0\n", result.stdout)
+            self.assertIn("DOCKER_ARG=VERSION=1.0.1\n", result.stdout)
 
     def test_invalid_version_prevents_publish(self):
         with tempfile.TemporaryDirectory() as scratch:

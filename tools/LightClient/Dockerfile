@@ -28,7 +28,7 @@ RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
 FROM mcr.microsoft.com/dotnet/aspnet:10.0.13-resolute@sha256:86ddb370c95d79ec988f94e7d66193b20d02a1df859aa3f5e56451141528f053
 
 ARG COMMIT_HASH=unknown
-ARG VERSION=1.0.0
+ARG VERSION=1.0.1
 ARG BUILD_TIMESTAMP=1970-01-01T00:00:00Z
 
 LABEL org.opencontainers.image.title="Nethermind Light Client" \

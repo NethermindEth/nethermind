@@ -200,7 +200,7 @@ docker compose stop light-client
 docker volume inspect nethermind-light-client_light-client-data
 docker run --rm --user 0 --entrypoint /bin/sh \
   -v nethermind-light-client_light-client-data:/data \
-  nethermindeth/nethermind:light-client-1.0.0 \
+  nethermindeth/nethermind:light-client-1.0.1 \
   -c 'chown -R 1654:1654 /data && chmod 700 /data'
 docker compose start light-client
 ```
@@ -260,16 +260,16 @@ Run from the repository root. The build context must contain the source tree:
 
 ```sh
 docker build --file tools/LightClient/Dockerfile \
-  --build-arg VERSION=1.0.0 \
-  --tag nethermindeth/nethermind:light-client-1.0.0 .
+  --build-arg VERSION=1.0.1 \
+  --tag nethermindeth/nethermind:light-client-1.0.1 .
 ```
 
 For both supported architectures with a configured Buildx builder:
 
 ```sh
 docker buildx build --platform linux/amd64,linux/arm64 \
-  --file tools/LightClient/Dockerfile --build-arg VERSION=1.0.0 \
-  --tag your-registry/light-client:1.0.0 --push .
+  --file tools/LightClient/Dockerfile --build-arg VERSION=1.0.1 \
+  --tag your-registry/light-client:1.0.1 --push .
 ```
 
 The runtime includes Microsoft's Linux `libmsquic` package for beacon QUIC.
@@ -289,7 +289,7 @@ docker run --rm --name nethermind-lc \
   -p 30303:30303/tcp -p 30303:30303/udp \
   -p 9050:9050/tcp -p 9050:9050/udp -p 9051:9051/udp \
   -v nethermind-light-client_light-client-data:/data \
-  nethermindeth/nethermind:light-client-1.0.0 \
+  nethermindeth/nethermind:light-client-1.0.1 \
   --network mainnet --checkpoint-url https://mainnet.checkpoint.sigp.io
 ```
 
@@ -306,13 +306,13 @@ publishes the release using these inputs:
 
 ```sh
 gh workflow run publish-docker.yml --ref YOUR_RELEASE_REF \
-  -f image-name=nethermind -f tag=light-client-1.0.0 \
+  -f image-name=nethermind -f tag=light-client-1.0.1 \
   -f dockerfile=tools/LightClient/Dockerfile \
   -f version-file=src/Nethermind/Nethermind.LightClient/Nethermind.LightClient.csproj
 ```
 
 The selected ref must contain the deployment and independent LC version. The
-workflow publishes `nethermindeth/nethermind:light-client-1.0.0` using the repository's
+workflow publishes `nethermindeth/nethermind:light-client-1.0.1` using the repository's
 configured registry credentials. The action couples this Dockerfile to its
 independent project version and requires `light-client-<version>`; omitting the
 version-file input derives the LC project automatically. It rejects EL version
