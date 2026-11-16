@@ -317,8 +317,11 @@ public class BeaconPeerTransportTests
         await new BeaconPeerTransport.PeerRequests().RequestAsync([peer], (_, _) => Task.FromResult(update),
             Validate<LightClientUpdate>(value => store.Process(value, 11)), CancellationToken.None);
 
-        Assert.That(peer.Failures, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }));
-        Assert.That(store.CurrentMaxParticipants, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.Failures, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }));
+            Assert.That(store.CurrentMaxParticipants, Is.Zero);
+        }
     }
 
     [Test]
@@ -684,8 +687,11 @@ public class BeaconPeerTransportTests
         finalized.Beacon.StateRoot = Hash256.Zero;
         optimistic.Beacon!.Slot = 101;
         optimistic.Beacon.StateRoot = Hash256.Zero;
-        Assert.That(source.CurrentStatus.HeadRoot, Is.EqualTo(headRoot));
-        Assert.That(source.CurrentStatus.FinalizedRoot, Is.EqualTo(finalizedRoot));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(source.CurrentStatus.HeadRoot, Is.EqualTo(headRoot));
+            Assert.That(source.CurrentStatus.FinalizedRoot, Is.EqualTo(finalizedRoot));
+        }
         LightClientHeader nextFinalized = ConsensusTests.Bootstrap(64, 1).Header!;
         LightClientHeader nextHead = ConsensusTests.Bootstrap(96, 1).Header!;
 
@@ -999,8 +1005,11 @@ public class BeaconPeerTransportTests
         Task<string?> poll = new BeaconPeerTransport.PeerRequests(clock).PollAsync<string>(() => peers,
             (value, _) => Task.FromResult(value.Id), static (_, _) => Task.FromResult(true), CancellationToken.None);
 
-        Assert.That(poll.IsCompleted, Is.False, "an empty peer snapshot must not end the poll before its deadline");
-        Assert.That(clock.DueTime, Is.EqualTo(TimeSpan.FromSeconds(1)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(poll.IsCompleted, Is.False, "an empty peer snapshot must not end the poll before its deadline");
+            Assert.That(clock.DueTime, Is.EqualTo(TimeSpan.FromSeconds(1)));
+        }
         peers = [peer];
         clock.Expire();
         string? response = await poll;
@@ -1350,8 +1359,11 @@ public class BeaconPeerTransportTests
 
         Assert.That(async () => await request, Throws.InstanceOf<OperationCanceledException>()
             .With.Property(nameof(OperationCanceledException.CancellationToken)).EqualTo(caller.Token));
-        Assert.That(request.IsCanceled, Is.True);
-        Assert.That(peer.Failures, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request.IsCanceled, Is.True);
+            Assert.That(peer.Failures, Is.Empty);
+        }
     }
 
     [TestCase(1UL, 2UL, 3UL, 4UL, 3UL)]
@@ -1474,9 +1486,12 @@ public class BeaconPeerTransportTests
         Assert.That(await RequestAsync(), Is.Null);
         clock.Advance(TimeSpan.FromSeconds(30) - TimeSpan.FromMilliseconds(1));
         Assert.That(await RequestAsync(), Is.Null);
-        Assert.That(providers.CanRequest<LightClientBootstrap>(peer), Is.True);
-        Assert.That(providers.CanRequest<LightClientOptimisticUpdate>(peer), Is.False);
-        Assert.That(attempts, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(providers.CanRequest<LightClientBootstrap>(peer), Is.True);
+            Assert.That(providers.CanRequest<LightClientOptimisticUpdate>(peer), Is.False);
+            Assert.That(attempts, Is.EqualTo(1));
+        }
 
         clock.Advance(TimeSpan.FromMilliseconds(1));
         Assert.That(await RequestAsync(), Is.SameAs(expected));
@@ -2272,9 +2287,12 @@ public class BeaconPeerTransportTests
                     : Task.FromResult(fixture.Bootstrap);
             }, token);
 
-            Assert.That(response, Is.SameAs(fixture.Bootstrap));
-            Assert.That(requested, Is.EqualTo(new[] { unavailable.Peer, available.Peer }));
-            Assert.That(fixture.Manager.PeerCount, Is.EqualTo(15));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(response, Is.SameAs(fixture.Bootstrap));
+                Assert.That(requested, Is.EqualTo(new[] { unavailable.Peer, available.Peer }));
+                Assert.That(fixture.Manager.PeerCount, Is.EqualTo(15));
+            }
             capacity = fixture.Manager.WaitForAdmissionCapacityAsync(capacityStop.Token);
             Assert.That(capacity.IsCompletedSuccessfully, Is.True, "the actual admission gate must have room before maintenance or grace elapses");
             await capacity;
@@ -2326,9 +2344,12 @@ public class BeaconPeerTransportTests
                 : Task.FromResult(fixture.Bootstrap);
         }, token);
 
-        Assert.That(response, Is.SameAs(fixture.Bootstrap));
-        Assert.That(requested, Is.EqualTo(new[] { unavailable.Peer, available.Peer }));
-        Assert.That(fixture.Manager.PeerCount, Is.EqualTo(expired ? 1 : 2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response, Is.SameAs(fixture.Bootstrap));
+            Assert.That(requested, Is.EqualTo(new[] { unavailable.Peer, available.Peer }));
+            Assert.That(fixture.Manager.PeerCount, Is.EqualTo(expired ? 1 : 2));
+        }
         if (expired)
         {
             await unavailable.Session.Received(1).DisconnectAsync();
@@ -2368,9 +2389,12 @@ public class BeaconPeerTransportTests
             BootstrapSession replacement = fixture.Add(old);
             release.TrySetResult();
             (LightClientBootstrap? response, _) = await request;
-            Assert.That(response, Is.Null);
-            Assert.That(requested, Is.EqualTo(new[] { old.Peer }));
-            Assert.That(fixture.Manager.GetBestPeers(0), Is.EquivalentTo(new[] { replacement.Peer, available.Peer }));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(response, Is.Null);
+                Assert.That(requested, Is.EqualTo(new[] { old.Peer }));
+                Assert.That(fixture.Manager.GetBestPeers(0), Is.EquivalentTo(new[] { replacement.Peer, available.Peer }));
+            }
             await old.Session.DidNotReceive().DisconnectAsync();
             await replacement.Session.DidNotReceive().DisconnectAsync();
             Assert.That(fixture.Manager.GetPeerDiagnostics(), Is.Empty);
@@ -2400,9 +2424,12 @@ public class BeaconPeerTransportTests
         };
         await attempt;
 
-        Assert.That(fixture.Manager.PeerCount, Is.EqualTo(1));
-        Assert.That(BootstrapAbsenceFixture.Failures(unavailable.Peer), Is.Zero);
-        Assert.That(fixture.Manager.GetPeerDiagnostics(), Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.Manager.PeerCount, Is.EqualTo(1));
+            Assert.That(BootstrapAbsenceFixture.Failures(unavailable.Peer), Is.Zero);
+            Assert.That(fixture.Manager.GetPeerDiagnostics(), Is.Empty);
+        }
         await unavailable.Session.DidNotReceive().DisconnectAsync();
 
         async Task Reject<T>() where T : class
@@ -2434,11 +2461,14 @@ public class BeaconPeerTransportTests
                 : Task.FromException<LightClientBootstrap>(new Eth2ReqRespException("Invalid request.", ReqRespFraming.ResponseCode.InvalidRequest));
         }, token);
 
-        Assert.That(response, Is.SameAs(fixture.Bootstrap));
-        Assert.That(requested, Is.EqualTo(new[] { invalid.Peer, available.Peer }));
-        Assert.That(fixture.Manager.PeerCount, Is.EqualTo(2));
-        Assert.That(BootstrapAbsenceFixture.Failures(invalid.Peer), Is.EqualTo(1));
-        Assert.That(BootstrapAbsenceFixture.ViolatedProtocol(invalid.Peer), Is.EqualTo(invalidProof));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response, Is.SameAs(fixture.Bootstrap));
+            Assert.That(requested, Is.EqualTo(new[] { invalid.Peer, available.Peer }));
+            Assert.That(fixture.Manager.PeerCount, Is.EqualTo(2));
+            Assert.That(BootstrapAbsenceFixture.Failures(invalid.Peer), Is.EqualTo(1));
+            Assert.That(BootstrapAbsenceFixture.ViolatedProtocol(invalid.Peer), Is.EqualTo(invalidProof));
+        }
         await invalid.Session.DidNotReceive().DisconnectAsync();
     }
 
@@ -2474,11 +2504,14 @@ public class BeaconPeerTransportTests
             }
             Assert.That(async () => await request, Throws.InstanceOf<OperationCanceledException>());
             IBeaconSyncPeer[] expected = alreadyCanceled ? [] : [unavailable.Peer, available.Peer];
-            Assert.That(requested, Is.EqualTo(expected));
-            Assert.That(fixture.Manager.PeerCount, Is.EqualTo(2));
-            Assert.That(BootstrapAbsenceFixture.Failures(unavailable.Peer), Is.Zero);
-            Assert.That(BootstrapAbsenceFixture.Failures(available.Peer), Is.Zero);
-            Assert.That(fixture.Manager.GetPeerDiagnostics(), Is.Empty);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(requested, Is.EqualTo(expected));
+                Assert.That(fixture.Manager.PeerCount, Is.EqualTo(2));
+                Assert.That(BootstrapAbsenceFixture.Failures(unavailable.Peer), Is.Zero);
+                Assert.That(BootstrapAbsenceFixture.Failures(available.Peer), Is.Zero);
+                Assert.That(fixture.Manager.GetPeerDiagnostics(), Is.Empty);
+            }
             await unavailable.Session.DidNotReceive().DisconnectAsync();
             await available.Session.DidNotReceive().DisconnectAsync();
         }
@@ -2512,8 +2545,11 @@ public class BeaconPeerTransportTests
         {
             await Task.WhenAny(cleanupEntered.Task, request).WaitAsync(token);
             if (request.IsCompleted) await request;
-            Assert.That(cleanupEntered.Task.IsCompletedSuccessfully, Is.True, "the constructor-wired callback must enter actual session cleanup");
-            Assert.That(fixture.Manager.PeerCount, Is.EqualTo(1), "capacity is released before slow disconnect completion");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(cleanupEntered.Task.IsCompletedSuccessfully, Is.True, "the constructor-wired callback must enter actual session cleanup");
+                Assert.That(fixture.Manager.PeerCount, Is.EqualTo(1), "capacity is released before slow disconnect completion");
+            }
             await requestStop.CancelAsync();
             Assert.That(request.IsCompleted, Is.False, "the request owner must still join its current cleanup");
         }
@@ -2524,9 +2560,13 @@ public class BeaconPeerTransportTests
             try { await request; }
             catch (OperationCanceledException) when (requestStop.IsCancellationRequested) { }
         }
-        Assert.That(requested, Is.EqualTo(new[] { unavailable.Peer }));
-        Assert.That(BootstrapAbsenceFixture.Failures(unavailable.Peer), Is.Zero);
-        Assert.That(fixture.Manager.GetPeerDiagnostics().Single().Banned, Is.False);
+        PeerManager.PeerDiagnostics diagnostic = fixture.Manager.GetPeerDiagnostics().Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(requested, Is.EqualTo(new[] { unavailable.Peer }));
+            Assert.That(BootstrapAbsenceFixture.Failures(unavailable.Peer), Is.Zero);
+            Assert.That(diagnostic.Banned, Is.False);
+        }
         await unavailable.Session.Received(1).DisconnectAsync();
         await available.Session.DidNotReceive().DisconnectAsync();
 

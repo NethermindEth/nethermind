@@ -42,6 +42,42 @@ public class LightClientTests
         FuluDriverSupport.AssertEveryKeyRunsAVector(cases, static testCase => testCase.Fork + "/" + testCase.Suite, Run);
     }
 
+#if MINIMAL_PRESET
+    [Test]
+    public void Sync_vector_rejections_fail_the_runner()
+    {
+        string source = Path.Combine(ConsensusSpecArchive.SuitePath(ConsensusPreset.Minimal, "fulu", "light_client")!,
+            "sync", "pyspec_tests", "light_client_sync");
+        string directory = Path.Combine(OperatingSystem.IsWindows() ? "C:/Temp" : Path.GetTempPath(),
+            "NethermindLightClientSpecTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            foreach (string file in Directory.EnumerateFiles(source))
+                File.Copy(file, Path.Combine(directory, Path.GetFileName(file)));
+            string stepsPath = Path.Combine(directory, "steps.yaml");
+            YamlStream yaml = [];
+            using (StreamReader reader = new(stepsPath)) yaml.Load(reader);
+            YamlSequenceNode steps = (YamlSequenceNode)yaml.Documents[0].RootNode;
+            YamlMappingNode first = (YamlMappingNode)((YamlMappingNode)steps.Children[0]).Children.Single().Value;
+            YamlMappingNode last = (YamlMappingNode)((YamlMappingNode)steps.Children[^1]).Children.Single().Value;
+            YamlMappingNode duplicate = new()
+            {
+                { "update_fork_digest", new YamlScalarNode(FuluDriverSupport.Scalar(first, "update_fork_digest")) },
+                { "update", new YamlScalarNode(FuluDriverSupport.Scalar(first, "update")) },
+                { "current_slot", new YamlScalarNode(FuluDriverSupport.Scalar(last, "current_slot")) },
+                { "checks", last.Children[new YamlScalarNode("checks")] },
+            };
+            steps.Add(new YamlMappingNode { { "process_update", duplicate } });
+            using (StreamWriter writer = new(stepsPath)) yaml.Save(writer, assignAnchors: true);
+
+            LightClientCase rejected = new("Minimal", "fulu", "sync", directory, "rejected old-period update");
+            Assert.That(() => Run(rejected), Throws.TypeOf<IrrelevantLightClientUpdateException>());
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+#endif
+
     private static IEnumerable<TestCaseData> Cases()
     {
         ConsensusPreset preset = FuluDriverSupport.CompiledPreset;
@@ -105,11 +141,7 @@ public class LightClientTests
                     LightClientUpdate update = LightClientWireCodec.DecodeUpdate(ReadSsz(testCase.CasePath,
                         FuluDriverSupport.Scalar(values, "update")), spec);
                     ulong slot = ulong.Parse(FuluDriverSupport.Scalar(values, "current_slot"));
-                    try { store.Process(update, slot); }
-                    catch (IrrelevantLightClientUpdateException)
-                    {
-                        TestContext.Out.WriteLine("Ignored stale update; checking the vector's expected state.");
-                    }
+                    store.Process(update, slot);
                     break;
                 case "force_update":
                     store.ForceUpdate(ulong.Parse(FuluDriverSupport.Scalar(values, "current_slot")));

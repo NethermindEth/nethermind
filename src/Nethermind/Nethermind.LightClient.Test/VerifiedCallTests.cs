@@ -107,9 +107,12 @@ public class VerifiedCallTests
         if (scenario is "valid" or "dimension-fits" or "blob-valid" or "verify-gas-below" or "verify-gas-limit" or "verify-state-below" or "verify-state-limit" or "prefix-work")
         {
             Assert.That(await rpc.InvokeAsync("eth_sendRawTransaction", parameters, CancellationToken.None), Is.EqualTo(transaction.CalculateHash().ToString()));
-            Assert.That(source.Broadcasts, Is.EqualTo(1));
-            Assert.That(source.StorageFetches, Is.GreaterThan(0));
-            Assert.That(source.CodeFetches, Is.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(source.Broadcasts, Is.EqualTo(1));
+                Assert.That(source.StorageFetches, Is.GreaterThan(0));
+                Assert.That(source.CodeFetches, Is.EqualTo(1));
+            }
             int storageFetches = source.StorageFetches;
             source.Head = new(source.Head.Slot + 1, source.Head.Number + 1, Keccak.Compute("next frame block"), Keccak.Compute("next frame state"));
 
@@ -125,21 +128,24 @@ public class VerifiedCallTests
         else
         {
             RpcException? error = await Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync("eth_sendRawTransaction", parameters, CancellationToken.None));
-            Assert.That(error!.Code, Is.EqualTo(-32003));
-            Assert.That(source.Broadcasts, Is.Zero);
-            if (scenario is "prefix-opcode" or "prefix-opcode-abort")
-                Assert.That(error.Message, Does.Contain("banned opcode NUMBER"));
-            if (scenario is "execution-fee" or "blob-fee" or "execution-reservation" or "state-reservation" or "verify-gas-over" or "verify-state-over")
+            using (Assert.EnterMultipleScope())
             {
-                Assert.That(error.Message, Does.Contain(scenario switch
+                Assert.That(error!.Code, Is.EqualTo(-32003));
+                Assert.That(source.Broadcasts, Is.Zero);
+                if (scenario is "prefix-opcode" or "prefix-opcode-abort")
+                    Assert.That(error.Message, Does.Contain("banned opcode NUMBER"));
+                if (scenario is "execution-fee" or "blob-fee" or "execution-reservation" or "state-reservation" or "verify-gas-over" or "verify-state-over")
                 {
-                    "execution-fee" => "fee cap is below",
-                    "blob-fee" => "blob fee cap is below",
-                    "verify-gas-over" or "verify-state-over" => "bounded public-mempool work limit",
-                    _ => "gas reservation exceeds",
-                }));
-                Assert.That(source.CodeFetches, Is.Zero);
-                Assert.That(source.StorageFetches, Is.Zero);
+                    Assert.That(error.Message, Does.Contain(scenario switch
+                    {
+                        "execution-fee" => "fee cap is below",
+                        "blob-fee" => "blob fee cap is below",
+                        "verify-gas-over" or "verify-state-over" => "bounded public-mempool work limit",
+                        _ => "gas reservation exceeds",
+                    }));
+                    Assert.That(source.CodeFetches, Is.Zero);
+                    Assert.That(source.StorageFetches, Is.Zero);
+                }
             }
         }
     }
@@ -406,8 +412,11 @@ public class VerifiedCallTests
 
         object result = await rpc.InvokeAsync("eth_call", JsonSerializer.SerializeToElement(new object[] { new { to = Contract.ToString() }, "finalized" }), CancellationToken.None);
 
-        Assert.That(result, Is.EqualTo("0x" + new string('0', 62) + "2a"));
-        Assert.That(source.StorageFetches, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo("0x" + new string('0', 62) + "2a"));
+            Assert.That(source.StorageFetches, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -776,8 +785,11 @@ public class VerifiedCallTests
         RpcException? error = await Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync("eth_call",
             JsonSerializer.SerializeToElement(new object[] { new { to = Contract.ToString() }, "finalized" }), CancellationToken.None));
 
-        Assert.That(error!.Code, Is.EqualTo(-32000));
-        Assert.That(source.Fetches, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error!.Code, Is.EqualTo(-32000));
+            Assert.That(source.Fetches, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -791,8 +803,11 @@ public class VerifiedCallTests
         RpcException? error = await Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync(method,
             JsonSerializer.SerializeToElement(new object[] { new { to = Contract.ToString() }, selector }), CancellationToken.None));
 
-        Assert.That(error!.Code, Is.EqualTo(-32001));
-        Assert.That(source.Fetches, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error!.Code, Is.EqualTo(-32001));
+            Assert.That(source.Fetches, Is.Zero);
+        }
     }
 
     [Test]
@@ -832,8 +847,12 @@ public class VerifiedCallTests
 
         if (method == "eth_call") Assert.That(result, Is.EqualTo("0x" + new string('0', 62) + "2a"));
         else Assert.That(Convert.ToUInt64(((string)result)[2..], 16), Is.InRange(21_000, 30_000));
-        Assert.That(source.LastCanonicalAnchor, Is.EqualTo(latest));
-        Assert.That(source.LastQueriedHead!.BlockHash, Is.EqualTo(source.Head.BlockHash));
+        Assert.That(source.LastQueriedHead, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(source.LastCanonicalAnchor, Is.EqualTo(latest));
+            Assert.That(source.LastQueriedHead!.BlockHash, Is.EqualTo(source.Head.BlockHash));
+        }
         source.CanonicalHistoricalHead = new(source.Head.Slot, source.Head.Number, Keccak.Compute("replacement optimistic ancestor"), source.Head.StateRoot);
         RpcException? orphan = await Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync(method,
             JsonSerializer.SerializeToElement(new object[] { new { to = Contract.ToString() }, new { blockHash = source.Head.BlockHash.ToString(), requireCanonical = true } }), CancellationToken.None));

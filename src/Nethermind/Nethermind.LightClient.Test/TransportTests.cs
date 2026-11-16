@@ -681,8 +681,11 @@ public class TransportTests
             {
                 Assert.That((await query).Select(header => header.Hash),
                     Is.EqualTo(chain.Skip(471).Take(128).Select(header => header.Hash)));
-                Assert.That(peers.Clock.GetTimestamp(), Is.EqualTo(TimeSpan.FromMilliseconds(responseDelayMs * 8).Ticks));
-                Assert.That(timeout.IsCancellationRequested, Is.False);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(peers.Clock.GetTimestamp(), Is.EqualTo(TimeSpan.FromMilliseconds(responseDelayMs * 8).Ticks));
+                    Assert.That(timeout.IsCancellationRequested, Is.False);
+                }
             }
             Assert.That(peer.ResponsesDisposed, Is.EqualTo(responses));
         }
@@ -1504,8 +1507,11 @@ public class TransportTests
             HostedStorageDownload.Page page = HostedStorageDownload.VerifyPage(
                 new(ValueKeccak.Compute(ExecutionPeers.SnapAddress.Bytes), pages.Account),
                 ValueKeccak.Zero, response, Nethermind.Logging.NullLogManager.Instance);
-            Assert.That(page.Slots, Has.Length.EqualTo(1));
-            Assert.That(page.More, Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(page.Slots, Has.Length.EqualTo(1));
+                Assert.That(page.More, Is.True);
+            }
         }
         using (SlotsAndProofs response = pages.Response(2, omit: true, start: pages.Paths[0].IncrementPath()))
         {
@@ -1829,8 +1835,11 @@ public class TransportTests
         {
             peers.Reply(await peers.Requests.Reader.ReadAsync(token));
             ReceiptRequest continuation = await peers.Requests.Reader.ReadAsync(token);
-            Assert.That(continuation.Offset, Is.EqualTo(1));
-            Assert.That(peers.Server.FindHeader(header.Hash!), Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(continuation.Offset, Is.EqualTo(1));
+                Assert.That(peers.Server.FindHeader(header.Hash!), Is.Not.Null);
+            }
             await peers.DisposeAsync();
             Assert.That(async () => await request, Throws.InstanceOf<OperationCanceledException>());
             using IDisposable assertionScope = Assert.EnterMultipleScope();
@@ -2528,8 +2537,11 @@ public class TransportTests
 
         await ObserveRepliesAsync(peers, context, 1, 9500, token);
 
-        Assert.That(PreferredHistoryPeers(peers)[context].SyncPeer, Is.SameAs(peers.Ordered[0].SyncPeer));
-        Assert.That(HistoryCooldowns(peers).Count, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(PreferredHistoryPeers(peers)[context].SyncPeer, Is.SameAs(peers.Ordered[0].SyncPeer));
+            Assert.That(HistoryCooldowns(peers).Count, Is.Zero);
+        }
     }
 
     [Test]
@@ -2543,8 +2555,11 @@ public class TransportTests
 
         await ObserveRepliesAsync(peers, AllocationContexts.Snap, 1, 9500, token);
 
-        Assert.That(PreferredHistoryPeers(peers).ContainsKey(AllocationContexts.Snap), Is.EqualTo(pauseMilliseconds >= 41_000));
-        Assert.That(HistoryCooldowns(peers).Count, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(PreferredHistoryPeers(peers).ContainsKey(AllocationContexts.Snap), Is.EqualTo(pauseMilliseconds >= 41_000));
+            Assert.That(HistoryCooldowns(peers).Count, Is.Zero);
+        }
     }
 
     [Test]
@@ -2575,9 +2590,12 @@ public class TransportTests
         peers.Clock.Advance(TimeSpan.FromMilliseconds(challengerIsFaster ? 2 : 5));
         await request;
 
-        Assert.That(PreferredHistoryPeers(peers)[AllocationContexts.Headers].SyncPeer,
-            Is.SameAs(peers.Ordered[challengerIsFaster ? 1 : 0].SyncPeer));
-        Assert.That(HistoryCooldowns(peers).Count, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(PreferredHistoryPeers(peers)[AllocationContexts.Headers].SyncPeer,
+                Is.SameAs(peers.Ordered[challengerIsFaster ? 1 : 0].SyncPeer));
+            Assert.That(HistoryCooldowns(peers).Count, Is.Zero);
+        }
     }
 
     [Test]
@@ -2594,8 +2612,11 @@ public class TransportTests
         peers.Clock.Advance(TimeSpan.FromMilliseconds(9800));
         await request;
 
-        Assert.That(PreferredHistoryPeers(peers)[AllocationContexts.Snap].SyncPeer, Is.SameAs(peers.Ordered[1].SyncPeer));
-        Assert.That(HistoryCooldowns(peers).Count, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(PreferredHistoryPeers(peers)[AllocationContexts.Snap].SyncPeer, Is.SameAs(peers.Ordered[1].SyncPeer));
+            Assert.That(HistoryCooldowns(peers).Count, Is.Zero);
+        }
     }
 
     [Test]
@@ -2734,9 +2755,12 @@ public class TransportTests
         };
 
         await peers.Request(context, token);
-        Assert.That(canceled.Task.IsCompletedSuccessfully, Is.True, "The losing attempt must finish cancellation before the request returns.");
-        Assert.That(peers.Counts(context), Is.EqualTo(new[] { 1, 1 }));
-        Assert.That(peers.Clock.GetTimestamp(), Is.Zero, "a healthy hedge must complete before the stalled peer times out");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(canceled.Task.IsCompletedSuccessfully, Is.True, "The losing attempt must finish cancellation before the request returns.");
+            Assert.That(peers.Counts(context), Is.EqualTo(new[] { 1, 1 }));
+            Assert.That(peers.Clock.GetTimestamp(), Is.Zero, "a healthy hedge must complete before the stalled peer times out");
+        }
 
         peers.Pool.RemovePeer(peers.Ordered[1].SyncPeer);
         peers.Ordered[0].BeforeResponse = null;
@@ -3510,8 +3534,11 @@ public class TransportTests
             {
                 tail.Peer.Reply(tail, Array.Empty<TxReceipt[]>(), false);
                 tail = await peers.Requests.Reader.ReadAsync(token);
-                Assert.That(tail.Peer, Is.SameAs(peers.Fallback));
-                Assert.That(tail.Hashes, Is.EqualTo(new[] { headers[3].Hash }));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(tail.Peer, Is.SameAs(peers.Fallback));
+                    Assert.That(tail.Hashes, Is.EqualTo(new[] { headers[3].Hash }));
+                }
             }
             SemaphoreSlim bulk = (SemaphoreSlim)typeof(ExecutionPeerTransport)
                 .GetField("_executionBulkRequests", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(peers.Transport)!;
@@ -3665,8 +3692,11 @@ public class TransportTests
         TxReceipt[][] receipts = await Task.WhenAll(peers.Transport.GetReceiptsAsync(headers, token));
         for (int i = 0; i < headers.Length; i++)
         {
-            Assert.That(receipts[i][0].Logs![0].Data, Is.EqualTo(new byte[] { 1, (byte)headers[i].Number }));
-            Assert.That(receipts[i].Select(receipt => receipt.TxType), Is.EqualTo(peers.Blocks[headers[i].Hash!].Receipts.Select(receipt => receipt.TxType)));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(receipts[i][0].Logs![0].Data, Is.EqualTo(new byte[] { 1, (byte)headers[i].Number }));
+                Assert.That(receipts[i].Select(receipt => receipt.TxType), Is.EqualTo(peers.Blocks[headers[i].Hash!].Receipts.Select(receipt => receipt.TxType)));
+            }
         }
         int wires = peers.Sessions.Sum(peer => peer.Requests.Count);
         foreach (BlockHeader header in headers) Assert.That(await peers.Transport.GetReceiptsAsync(header, token, 2), Has.Length.EqualTo(2));
@@ -4252,8 +4282,12 @@ public class TransportTests
             if (tamper) Assert.That(restored, Is.Empty);
             else
             {
-                Assert.That(restored.Single().NodeId, Is.EqualTo(key.PublicKey));
-                Assert.That(restored[0].IsEnr, Is.True);
+                NetworkNode restoredNode = restored.Single();
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(restoredNode.NodeId, Is.EqualTo(key.PublicKey));
+                    Assert.That(restoredNode.IsEnr, Is.True);
+                }
             }
         }
         finally { if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true); }
@@ -4621,16 +4655,20 @@ public class TransportTests
     [TestCase("{\"jsonrpc\":\"2.0\",\"method\":\"eth_sendRawTransaction\",\"id\":1}", -32601)]
     public async Task Rpc_endpoint_rejects_invalid_requests(string request, int code)
     {
-        DefaultHttpContext context = await InvokeAsync(request);
-        using JsonDocument response = JsonDocument.Parse(((MemoryStream)context.Response.Body).ToArray());
+        using MemoryStream requestBody = new(Encoding.UTF8.GetBytes(request));
+        using MemoryStream responseBody = new();
+        await InvokeAsync(requestBody, responseBody);
+        using JsonDocument response = JsonDocument.Parse(responseBody.ToArray());
         Assert.That(response.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(code));
     }
 
     [Test]
     public async Task Rpc_batch_preserves_ids_and_suppresses_notifications()
     {
-        DefaultHttpContext context = await InvokeAsync("[{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"id\":\"first\"},{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\"},{\"jsonrpc\":\"2.0\",\"method\":\"unknown\",\"id\":null}]");
-        using JsonDocument response = JsonDocument.Parse(((MemoryStream)context.Response.Body).ToArray());
+        using MemoryStream requestBody = new(Encoding.UTF8.GetBytes("[{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"id\":\"first\"},{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\"},{\"jsonrpc\":\"2.0\",\"method\":\"unknown\",\"id\":null}]"));
+        using MemoryStream responseBody = new();
+        await InvokeAsync(requestBody, responseBody);
+        using JsonDocument response = JsonDocument.Parse(responseBody.ToArray());
         Assert.That(response.RootElement.GetArrayLength(), Is.EqualTo(2));
         using (Assert.EnterMultipleScope())
         {
@@ -4661,8 +4699,9 @@ public class TransportTests
             """);
         int executions = 0;
         RecordingLogger logger = new();
+        using MemoryStream responseBody = new();
         DefaultHttpContext context = new();
-        context.Response.Body = new MemoryStream();
+        context.Response.Body = responseBody;
         await RpcEndpoint.WriteBatchAsync(context, requests.RootElement, (_, _, _) =>
             Task.FromResult<object>(Interlocked.Increment(ref executions) == 1 ? first.RootElement : second.RootElement),
             logger, CancellationToken.None);
@@ -4702,7 +4741,9 @@ public class TransportTests
     [Test]
     public async Task Rpc_notifications_produce_no_response()
     {
-        DefaultHttpContext context = await InvokeAsync("{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\"}");
+        using MemoryStream requestBody = new(Encoding.UTF8.GetBytes("{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\"}"));
+        using MemoryStream responseBody = new();
+        DefaultHttpContext context = await InvokeAsync(requestBody, responseBody);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(context.Response.StatusCode, Is.EqualTo(204));
@@ -4714,10 +4755,18 @@ public class TransportTests
     public async Task Rpc_requests_log_method_result_and_duration()
     {
         RecordingLogger logger = new();
-        await InvokeAsync("{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"id\":1}", logger);
-        await InvokeAsync("{\"jsonrpc\":\"2.0\",\"method\":\"unknown\",\"id\":2}", logger);
-        await InvokeAsync("{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\"}", logger);
-        await InvokeAsync("{\"jsonrpc\":\"2.0\",\"method\":\"unknown\\n\\u001bmethod\",\"id\":3}", logger);
+        foreach (string request in new[]
+        {
+            "{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"id\":1}",
+            "{\"jsonrpc\":\"2.0\",\"method\":\"unknown\",\"id\":2}",
+            "{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\"}",
+            "{\"jsonrpc\":\"2.0\",\"method\":\"unknown\\n\\u001bmethod\",\"id\":3}",
+        })
+        {
+            using MemoryStream requestBody = new(Encoding.UTF8.GetBytes(request));
+            using MemoryStream responseBody = new();
+            await InvokeAsync(requestBody, responseBody, logger);
+        }
 
         Assert.That(logger.Entries, Has.Count.EqualTo(4));
         using (Assert.EnterMultipleScope())
@@ -4739,9 +4788,11 @@ public class TransportTests
             method = transaction ? "eth_sendRawTransaction" : "eth_chainId",
             padding = new string('x', RpcEndpoint.StandardRequestBodySize),
         });
+        using MemoryStream requestBody = new(Encoding.UTF8.GetBytes(body));
+        using MemoryStream responseBody = new();
         DefaultHttpContext context = new();
-        context.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(body));
-        context.Response.Body = new MemoryStream();
+        context.Request.Body = requestBody;
+        context.Response.Body = responseBody;
         using VerifiedRpc rpc = new(null!, () => throw new AssertionException("Unexpected head read."), 1);
         await RpcEndpoint.HandleAsync(context, rpc.InvokeAsync, NullLogger.Instance);
         Assert.That(context.Response.StatusCode, Is.EqualTo(transaction ? 200 : StatusCodes.Status413PayloadTooLarge));
@@ -4756,11 +4807,13 @@ public class TransportTests
     [Test]
     public async Task Rpc_body_above_the_size_limit_is_refused([Values] bool rejectedByServer)
     {
-        DefaultHttpContext context = new();
-        context.Request.Body = rejectedByServer
+        using Stream requestBody = rejectedByServer
             ? new OversizedBody()
             : new MemoryStream(new byte[RpcEndpoint.MaxRequestBodySize + 1]);
-        context.Response.Body = new MemoryStream();
+        using MemoryStream responseBody = new();
+        DefaultHttpContext context = new();
+        context.Request.Body = requestBody;
+        context.Response.Body = responseBody;
         RecordingLogger logger = new();
 
         using VerifiedRpc rpc = new(null!, () => throw new AssertionException("Unexpected head read."), 1);
@@ -4779,6 +4832,7 @@ public class TransportTests
         TaskCompletionSource<bool> release = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Task[] active = new Task[64];
         BlockingBody[] bodies = new BlockingBody[active.Length];
+        MemoryStream[] responses = new MemoryStream[active.Length];
         using VerifiedRpc rpc = new(null!, () => throw new AssertionException("Unexpected head read."), 1);
         try
         {
@@ -4787,22 +4841,27 @@ public class TransportTests
                 bodies[i] = new BlockingBody(release.Task);
                 DefaultHttpContext context = new();
                 context.Request.Body = bodies[i];
-                context.Response.Body = new MemoryStream();
+                context.Response.Body = responses[i] = new MemoryStream();
                 active[i] = RpcEndpoint.HandleAsync(context, rpc.InvokeAsync, NullLogger.Instance);
             }
 
             for (int i = 0; i < bodies.Length; i++)
                 await bodies[i].Entered.WaitAsync(TimeSpan.FromSeconds(10));
 
-            DefaultHttpContext rejected = await InvokeAsync("{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"id\":1}");
+            using MemoryStream requestBody = new(Encoding.UTF8.GetBytes("{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"id\":1}"));
+            using MemoryStream responseBody = new();
+            DefaultHttpContext rejected = await InvokeAsync(requestBody, responseBody);
             Assert.That(rejected.Response.StatusCode, Is.EqualTo(StatusCodes.Status429TooManyRequests));
         }
         finally
         {
             release.TrySetResult(true);
-            await Task.WhenAll(active.Where(static task => task is not null));
-            foreach (BlockingBody body in bodies)
-                body?.Dispose();
+            try { await Task.WhenAll(active.Where(static task => task is not null)); }
+            finally
+            {
+                foreach (BlockingBody body in bodies) body?.Dispose();
+                foreach (MemoryStream response in responses) response?.Dispose();
+            }
         }
     }
 
@@ -4813,23 +4872,35 @@ public class TransportTests
         WaitingExecutionSource source = new();
         ManualDeadlineClock clock = new();
         using VerifiedRpc rpc = new(source, () => new VerifiedHead(1, 1, Keccak.Zero, Keccak.Zero), 1);
-        DefaultHttpContext context = new();
-        context.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(
+        using MemoryStream requestBody = new(Encoding.UTF8.GetBytes(
             "[{\"jsonrpc\":\"2.0\",\"method\":\"eth_getBalance\",\"params\":[\"0x1234567890123456789012345678901234567890\",\"finalized\"],\"id\":1},{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"id\":2}]"));
-        context.Response.Body = new MemoryStream();
+        using MemoryStream responseBody = new();
+        DefaultHttpContext context = new();
+        context.Request.Body = requestBody;
+        context.Response.Body = responseBody;
 
         Task pending = RpcEndpoint.HandleAsync(context, rpc.InvokeAsync, NullLogger.Instance, clock);
-        await source.Entered.WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.That(clock.DueTime, Is.EqualTo(TimeSpan.FromSeconds(90)));
-        clock.Expire();
-        await pending.WaitAsync(TimeSpan.FromSeconds(10));
-        DefaultHttpContext next = await InvokeAsync("{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"id\":3}");
-
-        using (Assert.EnterMultipleScope())
+        try
         {
-            Assert.That(context.Response.StatusCode, Is.EqualTo(StatusCodes.Status504GatewayTimeout));
-            Assert.That(context.Response.Body.Length, Is.Zero);
-            Assert.That(next.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+            await source.Entered.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.That(clock.DueTime, Is.EqualTo(TimeSpan.FromSeconds(90)));
+            clock.Expire();
+            await pending.WaitAsync(TimeSpan.FromSeconds(10));
+            using MemoryStream nextRequestBody = new(Encoding.UTF8.GetBytes("{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"id\":3}"));
+            using MemoryStream nextResponseBody = new();
+            DefaultHttpContext next = await InvokeAsync(nextRequestBody, nextResponseBody);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(context.Response.StatusCode, Is.EqualTo(StatusCodes.Status504GatewayTimeout));
+                Assert.That(context.Response.Body.Length, Is.Zero);
+                Assert.That(next.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+            }
+        }
+        finally
+        {
+            source.Complete();
+            await pending;
         }
     }
 
@@ -4840,30 +4911,40 @@ public class TransportTests
         WaitingExecutionSource source = new(ignoreCancellation: true);
         ManualDeadlineClock clock = new();
         using VerifiedRpc rpc = new(source, () => new VerifiedHead(1, 1, Keccak.Zero, Keccak.Zero), 1);
-        DefaultHttpContext context = new();
-        context.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(
+        using MemoryStream requestBody = new(Encoding.UTF8.GetBytes(
             "{\"jsonrpc\":\"2.0\",\"method\":\"eth_getBalance\",\"params\":[\"0x1234567890123456789012345678901234567890\",\"finalized\"]}"));
-        context.Response.Body = new MemoryStream();
+        using MemoryStream responseBody = new();
+        DefaultHttpContext context = new();
+        context.Request.Body = requestBody;
+        context.Response.Body = responseBody;
 
         Task pending = RpcEndpoint.HandleAsync(context, rpc.InvokeAsync, NullLogger.Instance, clock);
-        await source.Entered.WaitAsync(TimeSpan.FromSeconds(10));
-        clock.Expire();
-        source.Complete();
-        await pending.WaitAsync(TimeSpan.FromSeconds(10));
-
-        using (Assert.EnterMultipleScope())
+        try
         {
-            Assert.That(context.Response.StatusCode, Is.EqualTo(StatusCodes.Status504GatewayTimeout));
-            Assert.That(context.Response.Body.Length, Is.Zero);
+            await source.Entered.WaitAsync(TimeSpan.FromSeconds(10));
+            clock.Expire();
+            source.Complete();
+            await pending.WaitAsync(TimeSpan.FromSeconds(10));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(context.Response.StatusCode, Is.EqualTo(StatusCodes.Status504GatewayTimeout));
+                Assert.That(context.Response.Body.Length, Is.Zero);
+            }
+        }
+        finally
+        {
+            source.Complete();
+            await pending;
         }
     }
 
-    private static async Task<DefaultHttpContext> InvokeAsync(string request, ILogger? logger = null)
+    private static async Task<DefaultHttpContext> InvokeAsync(Stream requestBody, Stream responseBody, ILogger? logger = null)
     {
         using VerifiedRpc rpc = new(null!, () => throw new AssertionException("Unexpected head read."), 1);
         DefaultHttpContext context = new();
-        context.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(request));
-        context.Response.Body = new MemoryStream();
+        context.Request.Body = requestBody;
+        context.Response.Body = responseBody;
         await RpcEndpoint.HandleAsync(context, rpc.InvokeAsync, logger ?? NullLogger.Instance);
         return context;
     }
@@ -5361,8 +5442,12 @@ public class TransportTests
                     break;
                 case 3:
                     ExecutionAccountProof proof = await Transport.GetProofAsync(SnapHead, SnapAddress, [(UInt256)1], token);
-                    Assert.That(ExecutionProofVerifier.VerifyAccount(SnapHead.StateRoot, SnapAddress, proof.AccountProof), Is.EqualTo(SnapAccount));
-                    Assert.That(ExecutionProofVerifier.VerifyStorage(SnapAccount.StorageRoot, 1, proof.StorageProofs.Single().Proof), Is.EqualTo((UInt256)42));
+                    ExecutionStorageProof storageProof = proof.StorageProofs.Single();
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(ExecutionProofVerifier.VerifyAccount(SnapHead.StateRoot, SnapAddress, proof.AccountProof), Is.EqualTo(SnapAccount));
+                        Assert.That(ExecutionProofVerifier.VerifyStorage(SnapAccount.StorageRoot, 1, storageProof.Proof), Is.EqualTo((UInt256)42));
+                    }
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(operation));
