@@ -5,6 +5,7 @@ using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -13,6 +14,8 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.Taiko.BlockTransactionExecutors;
 using Nethermind.Taiko.TaikoSpec;
 using Nethermind.Taiko.ZkGas;
@@ -106,6 +109,34 @@ public class BlockInvalidTxExecutorZkTests
 
         Assert.That(block.Transactions, Has.Length.EqualTo(1));
         Assert.That(block.Transactions[0], Is.SameAs(anchor));
+    }
+
+    [TestCase(ProcessingOptions.ProducingBlock, false, TestName = "IllFormedTx_WhenProducing_IsDroppedWithoutExecution")]
+    [TestCase(ProcessingOptions.None, true, TestName = "IllFormedTx_WhenNotProducing_IsLeftToBlockValidator")]
+    public void IllFormedTx_IsDroppedOnlyWhenProducing(ProcessingOptions processingOptions, bool expectKept)
+    {
+        Transaction anchor = MakeTx(0);
+        Transaction tipAboveFeeCap = Build.A.Transaction.WithType(TxType.EIP1559).WithChainId(TestBlockchainIds.ChainId)
+            .WithNonce(1).WithMaxFeePerGas(1).WithMaxPriorityFeePerGas(2).SignedAndResolved().TestObject;
+        Transaction wellFormed = Build.A.Transaction.WithType(TxType.EIP1559).WithChainId(TestBlockchainIds.ChainId)
+            .WithNonce(1).WithMaxFeePerGas(2).WithMaxPriorityFeePerGas(1).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Block block = MakeBlock(anchor, tipAboveFeeCap, wellFormed);
+
+        ITransactionProcessorAdapter txProcessor = Substitute.For<ITransactionProcessorAdapter>();
+        txProcessor.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>()).Returns(TransactionResult.Ok);
+
+        BlockInvalidTxExecutor executor = new(txProcessor, Substitute.For<IWorldState>(), Substitute.For<ITxPool>(), LimboLogs.Instance,
+            specProvider: new TestSingleReleaseSpecProvider(London.Instance), txValidator: new TxValidator(TestBlockchainIds.ChainId));
+        executor.SetBlockExecutionContext(MakeBlockCtx(block));
+
+        executor.ProcessTransactions(block, processingOptions, MakeReceiptsTracer(block), CancellationToken.None);
+
+        Transaction[] expected = expectKept ? [anchor, tipAboveFeeCap, wellFormed] : [anchor, wellFormed];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Transactions, Is.EqualTo(expected), "only a block being produced leaves out an ill-formed transaction");
+            txProcessor.Received(expectKept ? 1 : 0).Execute(tipAboveFeeCap, Arg.Any<ITxTracer>());
+        }
     }
 
     /// <summary>

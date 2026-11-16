@@ -19,7 +19,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Taiko.BlockTransactionExecutors;
 
-public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IWorldState worldState, ITxPool txPool, ILogManager logManager, ZkGasMeterHolder? zkGasMeterHolder = null, ISpecProvider? specProvider = null) : IBlockProcessor.IBlockTransactionsExecutor
+public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IWorldState worldState, ITxPool txPool, ILogManager logManager, ZkGasMeterHolder? zkGasMeterHolder = null, ISpecProvider? specProvider = null, ITxValidator? txValidator = null) : IBlockProcessor.IBlockTransactionsExecutor
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BlockInvalidTxExecutor>();
 
@@ -44,9 +44,12 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
         // faithfully re-executes every transaction and produces the same GasUsed as the
         // producer. Gated on IsUnzenEnabled so the meter stays dormant pre-Unzen (matches
         // the validator-side gate in TaikoBlockProcessor.ProcessBlock).
-        bool enforceZkGas = (processingOptions & ProcessingOptions.ProducingBlock) != 0
+        bool producingBlock = (processingOptions & ProcessingOptions.ProducingBlock) != 0;
+        IReleaseSpec? spec = specProvider?.GetSpec(block.Header);
+        bool enforceZkGas = producingBlock
                             && zkGasMeterHolder is not null
-                            && specProvider?.GetSpec(block.Header) is ITaikoReleaseSpec { IsUnzenEnabled: true };
+                            && spec is ITaikoReleaseSpec { IsUnzenEnabled: true };
+        bool validateTxs = producingBlock && txValidator is not null && spec is not null;
 
         using ArrayPoolListRef<Transaction> correctTransactions = new(block.Transactions.Length);
 
@@ -74,6 +77,16 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
             {
                 // Skip blob transactions
                 continue;
+            }
+
+            if (!isAnchor && validateTxs)
+            {
+                ValidationResult validation = txValidator!.IsWellFormed(tx, spec!, block.Header.GasLimit);
+                if (!validation)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Skipping proposed transaction {tx.Hash}: {validation}");
+                    continue;
+                }
             }
 
             using ITxTracer _ = receiptsTracer.StartNewTxTrace(tx);
