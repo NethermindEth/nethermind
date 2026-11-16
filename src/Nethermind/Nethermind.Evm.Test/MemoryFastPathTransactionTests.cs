@@ -30,8 +30,8 @@ namespace Nethermind.Evm.Test;
 /// pooled frames and arrays reused with stale bytes, call input and output, return data, copies, logs and creation.
 /// The reference also traces memory, which initializes the active memory before every instruction, so it does not
 /// share the lazy clearing of memory below the active size with the tables it checks; an instruction that grows memory
-/// still clears the new gap with the same code. The traced tables run once more tracing instructions alone, as
-/// <c>debug_traceTransaction</c> does by default, and are checked against the reference like the untraced ones.
+/// still clears the new gap with the same code. The instruction-only traced table, as <c>debug_traceTransaction</c>
+/// runs by default, is checked against the reference like the untraced ones.
 /// </remarks>
 [Parallelizable(ParallelScope.All)]
 public class MemoryFastPathTransactionTests
@@ -120,7 +120,7 @@ public class MemoryFastPathTransactionTests
                         if (digest.StartsWith("ok ", StringComparison.Ordinal)) succeeded++;
                     }
                     else if (digest != reference)
-                        mismatches.Add($"tx {i} {tables[t]}\n {digest}\n traced {reference}\n codes {string.Join(" ", Array.ConvertAll(codes, Convert.ToHexString))} input {Convert.ToHexString(input)}");
+                        mismatches.Add($"tx {i} {tables[t]}\n {digest}\n reference {reference}\n codes {string.Join(" ", Array.ConvertAll(codes, Convert.ToHexString))} input {Convert.ToHexString(input)}");
                 }
             }
         }
