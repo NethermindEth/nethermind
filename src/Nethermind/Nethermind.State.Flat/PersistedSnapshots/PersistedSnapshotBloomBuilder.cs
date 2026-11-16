@@ -79,9 +79,8 @@ internal static class PersistedSnapshotBloomBuilder
         AddressKey(address.Bytes);
 
     /// <summary>
-    /// Span overload of <see cref="AddressKey(Address)"/> — used by the builder loop,
-    /// which iterates raw 20-byte slices in a NativeMemoryList without materialising
-    /// an <see cref="Address"/> object per row.
+    /// Span overload of <see cref="AddressKey(Address)"/> for callers that have the raw 20 address bytes:
+    /// the scanner-based bloom build, <see cref="PersistedSnapshotMerger"/> and <see cref="PersistedSnapshotBuilder"/>.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static ulong AddressKey(scoped ReadOnlySpan<byte> addressBytes) =>

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -95,10 +96,11 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
 
         /// <summary>Writes the account update of this address to <paramref name="batch"/> without decoding it.</summary>
         /// <param name="batch">The batch to write to.</param>
-        /// <param name="address">This entry's address, which a caller writing more than the account materializes once.</param>
+        /// <param name="address">Must equal <see cref="Address"/>. The caller passes it to use one materialized address for all its writes.</param>
         /// <remarks>Call only when <see cref="HasAccount"/> is true.</remarks>
         public void WriteAccount(IPersistence.IWriteBatch batch, Address address)
         {
+            Debug.Assert(Address.AsSpan.SequenceEqual(address.Bytes));
             using TPin pin = _reader.PinBuffer(_accountBound);
             ReadOnlySpan<byte> rlp = pin.Buffer;
             if (rlp.Length == 1 && rlp[0] == PersistedSnapshotTags.AccountDeletedMarkerByte) batch.SetAccount(address, null);
