@@ -737,9 +737,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            // A restore run discards the fee payment, so skip it unless a tracer can see it: the fees, the state, or the
-            // EIP-8037 burn log of a destroyed beneficiary, which includes its fee.
-            if (!opts.HasFlag(ExecutionOptions.Restore) || tracer.IsTracingFees || _tracerFlags.IsTracingState || _tracerFlags.IsCollectingLogs || _tracerFlags.IsTracingLogs)
+            // A restore run discards the fee payment, so skip it unless a tracer can see it.
+            if (!opts.HasFlag(ExecutionOptions.Restore) || tracer.IsObservingFeePayment)
             {
                 PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, in effectiveGasPrice, blobBaseFee, statusCode);
             }
