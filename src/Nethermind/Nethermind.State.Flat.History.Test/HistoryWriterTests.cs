@@ -1189,6 +1189,38 @@ public class HistoryWriterTests
     }
 
     [Test]
+    public void V3_PreValuesSpanningSeveralMultiGetChunks_ResolveForEveryKey()
+    {
+        const int keys = 2500;
+        (HistoryWriter windowedWriter, HistoryReader windowedReader) = CreateWindowedPair(retentionBlocks: 1000);
+
+        Address[] addresses = new Address[keys];
+        Span<byte> slotValueBuffer = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
+        for (int i = 0; i < keys; i++)
+        {
+            addresses[i] = new Address(Keccak.Compute(BitConverter.GetBytes(i)));
+            _db.GetColumnDb(FlatDbColumns.Account).PutSpan(FlatAccountKey(addresses[i]), EncodedAccount(new Account(0, (UInt256)(i + 1))));
+            int slotValueLength = BaseFlatPersistence.EncodeSlotValue((UInt256)(i + 1), RlpWrapSlots, slotValueBuffer);
+            _db.GetColumnDb(FlatDbColumns.Storage).PutSpan(StorageKey(AddrA, (UInt256)i), slotValueBuffer[..slotValueLength]);
+        }
+
+        windowedWriter.SeedGenesis([], StateAt(0).StateRoot);
+        CommitBlock(0, 1,
+            accountChanges: [.. addresses.Select(static address => (address, (Account?)new Account(1, 0)))],
+            storageChanges: [.. Enumerable.Range(0, keys).Select(static i => (AddrA, (UInt256)i, (UInt256?)9999))]);
+        windowedWriter.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
+
+        UInt256[] expected = [.. Enumerable.Range(1, keys).Select(static i => (UInt256)i)];
+        UInt256[] balances = [.. addresses.Select(address => windowedReader.TryGetAccount(0, address, out AccountStruct account) ? account.Balance : UInt256.Zero)];
+        UInt256[] slots = [.. Enumerable.Range(0, keys).Select(i => windowedReader.TryGetStorage(0, AddrA, (UInt256)i, out UInt256 slot) ? slot : UInt256.Zero)];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(balances, Is.EqualTo(expected));
+            Assert.That(slots, Is.EqualTo(expected));
+        }
+    }
+
+    [Test]
     public async Task SeedPivot_OnAnUnwindowedWriter_WritesThePivotStateAsRows_InTheBackground_AtItsCheckpointWindowStart()
     {
         StateId pivot = StateAt(1000);
