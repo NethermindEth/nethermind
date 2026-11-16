@@ -9,7 +9,16 @@ PQ_KEY=${PQ_KEY:-bcdf20249abf0ed6d944c0288fad489e33f66b3960d9e6229c1cd214ed3bbe3
 G=$PWD/run/$ENCLAVE
 ARGS=$PWD/run/$ENCLAVE.network_params.yaml
 
-docker image inspect "$NETHERMIND_IMAGE" >/dev/null
+# Image tags are mutable: run only the binaries the release pins.
+file_sha256() {
+  local id; id=$(docker create "$1")
+  docker cp "$id:$2" - | tar -xO | sha256sum | cut -d' ' -f1
+  docker rm "$id" >/dev/null
+}
+[[ $(file_sha256 "$NETHERMIND_IMAGE" /nethermind/libnethermind_lean.so) == "${NETHERMIND_LEAN_SHA256:-aad07d8fa0f106457ef1719eadd1685a98e39fe6df3ab27308022e14637b8f00}" ]] \
+  || { echo "FAIL: $NETHERMIND_IMAGE does not carry the pinned libnethermind_lean.so"; exit 1; }
+[[ $(file_sha256 "$LIGHTHOUSE_IMAGE" /lighthouse) == "${LIGHTHOUSE_SHA256:-109c9a91e128db8cb17be6939c5f614b1ae494a68da53814e9300bc5299ccd3d}" ]] \
+  || { echo "FAIL: $LIGHTHOUSE_IMAGE does not carry the pinned /lighthouse"; exit 1; }
 docker build -q --build-arg LIGHTHOUSE_IMAGE="$LIGHTHOUSE_IMAGE" -f lighthouse.Dockerfile -t daisugi-kurtosis/lighthouse:eip8288-lean .
 docker build -q -f genesis.Dockerfile -t daisugi-kurtosis/genesis-generator:287f596b .
 mkdir -p run
