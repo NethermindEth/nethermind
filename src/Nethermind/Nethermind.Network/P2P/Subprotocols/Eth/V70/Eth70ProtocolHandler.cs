@@ -553,14 +553,22 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         bool eip658 = (receiptBehaviors & RlpBehaviors.Eip658Receipts) != 0;
         RlpReader receipts = new RlpReader(blockReceipts).EnterSequence(out _);
         ArrayPoolList<ReceiptFacts> facts = new(receipts.CountItems());
-        while (receipts.HasNext)
+        try
         {
-            if (!NetworkReceipt.TryRead(ref receipts, withBloom: false, out NetworkReceipt receipt))
-                throw new SubprotocolException("Unexpected receipt shape in encoded receipts");
-            facts.Add(new ReceiptFacts((ulong)receipt.GetEth69MessageLength(eip658), receipt.GasUsedTotal, receipt.LogsGas));
-        }
+            while (receipts.HasNext)
+            {
+                if (!NetworkReceipt.TryRead(ref receipts, withBloom: false, out NetworkReceipt receipt))
+                    throw new SubprotocolException("Unexpected receipt shape in encoded receipts");
+                facts.Add(new ReceiptFacts((ulong)receipt.GetEth69MessageLength(eip658), receipt.GasUsedTotal, receipt.LogsGas));
+            }
 
-        return facts;
+            return facts;
+        }
+        catch
+        {
+            facts.Dispose();
+            throw;
+        }
     }
 
     private static ulong GetBlockReceiptsSize(ulong receiptsContentSize) =>
