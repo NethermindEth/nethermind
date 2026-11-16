@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
@@ -52,6 +53,28 @@ public class BlockchainProcessorTests
 
         Assert.DoesNotThrow(() =>
             BlockTraceDumper.LogDiagnosticTrace(NullBlockTracer.Instance, input, logger));
+    }
+
+    [Test]
+    public async Task Failed_enqueue_reports_an_empty_queue()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.FindBlock(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(static _ => throw new IOException());
+        await using BlockchainProcessor processor = new(blockTree, Substitute.For<IBranchProcessor>(), [], Substitute.For<IStateReader>(), LimboLogs.Instance,
+            new BlockchainProcessor.Options(), Substitute.For<IProcessingStats>(), new BlockTreeMutationLock())
+        {
+            SoftMaxRecoveryQueueSizeInTx = 0
+        };
+        int queueEmptyCount = 0;
+        processor.ProcessingQueueEmpty += (_, _) => queueEmptyCount++;
+
+        await Assert.ThrowsAsync<IOException>(async () => await processor.Enqueue(Build.A.Block.WithNumber(1).TestObject, ProcessingOptions.None));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(processor.IsEmpty, Is.True);
+            Assert.That(queueEmptyCount, Is.EqualTo(1));
+        }
     }
 
     private class ProcessingTestContext : IAsyncDisposable

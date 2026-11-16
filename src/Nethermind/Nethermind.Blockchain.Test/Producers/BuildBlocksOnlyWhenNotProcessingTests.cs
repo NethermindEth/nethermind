@@ -64,6 +64,46 @@ public class BuildBlocksOnlyWhenNotProcessingTests
         Assert.That(async () => await f(), Throws.InstanceOf<OperationCanceledException>());
     }
 
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task should_trigger_block_production_after_a_rejected_block_was_processed_before_its_suggestion_event()
+    {
+        Context context = new();
+        context.BlockProcessingQueue.IsEmpty.Returns(true);
+        Block rejected = Build.A.Block.WithNumber(1).TestObject;
+        context.BlockTree.Head.Returns(context.DefaultBlock);
+
+        context.BlockProcessingQueue.BlockAdded += Raise.EventWith(new BlockEventArgs(rejected));
+        context.BlockProcessingQueue.ProcessingQueueEmpty += Raise.Event();
+        context.BlockTree.NewBestSuggestedBlock += Raise.EventWith(new BlockEventArgs(rejected));
+
+        using CancellationTokenSource cancellation = new();
+        Task<Block?> buildTask = context.MainBlockProductionTrigger.BuildBlock(cancellationToken: cancellation.Token);
+        bool producedAtOnce = buildTask.IsCompletedSuccessfully;
+        await cancellation.CancelAsync();
+
+        Assert.That(producedAtOnce, Is.True);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task should_delay_block_production_while_an_added_block_is_processed()
+    {
+        Context context = new();
+        context.BlockProcessingQueue.IsEmpty.Returns(true);
+        context.BlockProcessingQueue.BlockAdded += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(1).TestObject));
+
+        Task<Block?> buildTask = context.MainBlockProductionTrigger.BuildBlock();
+        Assert.That(buildTask.IsCompleted, Is.False);
+
+        context.BlockProcessingQueue.ProcessingQueueEmpty += Raise.Event();
+        Block? block = await buildTask;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block, Is.EqualTo(context.DefaultBlock));
+            Assert.That(context.TriggeredCount, Is.EqualTo(1));
+        }
+    }
+
     private class Context
     {
         public Context()

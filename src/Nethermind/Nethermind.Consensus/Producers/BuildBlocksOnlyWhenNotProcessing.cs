@@ -35,30 +35,19 @@ namespace Nethermind.Consensus.Producers
             _canProduce = waitForInitialSync ? 0 : 1;
             _logger = logManager.GetClassLogger<BuildBlocksOnlyWhenNotProcessing>();
 
-            _blockTree.NewBestSuggestedBlock += BlockTreeOnNewBestSuggestedBlock;
+            _blockProcessingQueue.BlockAdded += OnBlockAddedToProcessingQueue;
             _blockProcessingQueue.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
             _blockProductionTrigger.TriggerBlockProduction += OnTriggerBlockProduction;
         }
 
-        private void BlockTreeOnNewBestSuggestedBlock(object sender, BlockEventArgs e)
+        private void OnBlockAddedToProcessingQueue(object? sender, BlockEventArgs e)
         {
-            if (_blockTree.Head?.Hash != e.Block.Hash)
-            {
-                Interlocked.Exchange(ref _canProduce, 0);
-                Interlocked.Exchange(ref Metrics.CanProduceBlocks, 0);
-                if (_logger.IsTrace)
-                    _logger.Trace(
-                        $"Can not produce a block new best suggested {_blockTree.BestSuggestedHeader?.ToString(BlockHeader.Format.FullHashAndNumber)}" +
-                        $"{Environment.NewLine}{new StackTrace()}");
-            }
-            else
-            {
-                Interlocked.Exchange(ref Metrics.CanProduceBlocks, 1);
-                if (_logger.IsTrace)
-                    _logger.Trace(
-                        $"Can produce blocks, a block new best suggested {_blockTree.BestSuggestedHeader?.ToString(BlockHeader.Format.FullHashAndNumber)}" +
-                        $"{Environment.NewLine}{new StackTrace()} is already processed.");
-            }
+            Interlocked.Exchange(ref _canProduce, 0);
+            Interlocked.Exchange(ref Metrics.CanProduceBlocks, 0);
+            if (_logger.IsTrace)
+                _logger.Trace(
+                    $"Can not produce a block, {e.Block.ToString(Block.Format.FullHashAndNumber)} was added for processing" +
+                    $"{Environment.NewLine}{new StackTrace()}");
         }
 
         private void OnBlockProcessorQueueEmpty(object? sender, EventArgs e)
@@ -124,7 +113,7 @@ namespace Nethermind.Consensus.Producers
         private void DetachEvents()
         {
             _blockProductionTrigger.TriggerBlockProduction -= OnTriggerBlockProduction;
-            _blockTree.NewBestSuggestedBlock -= BlockTreeOnNewBestSuggestedBlock;
+            _blockProcessingQueue.BlockAdded -= OnBlockAddedToProcessingQueue;
             _blockProcessingQueue.ProcessingQueueEmpty -= OnBlockProcessorQueueEmpty;
         }
     }
