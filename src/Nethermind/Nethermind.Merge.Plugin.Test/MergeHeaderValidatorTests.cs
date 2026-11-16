@@ -9,6 +9,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Specs;
@@ -153,6 +154,7 @@ public class MergeHeaderValidatorTests
         MergeHeaderValidator validator = new(poSSwitcher, Substitute.For<IHeaderValidator>(), blockTree, MainnetSpecProvider.Instance, Always.Valid, LimboLogs.Instance);
         BlockHeader parent = Build.A.BlockHeader.WithDifficulty(0).TestObject;
         parent.TotalDifficulty = parentTotalDifficulty;
+        poSSwitcher.GetBlockConsensusInfo(parent).Returns((false, false));
         BlockHeader header = Build.A.BlockHeader.WithParent(parent).WithDifficulty(headerDifficulty).TestObject;
 
         validator.Validate(header, parent);
@@ -264,5 +266,31 @@ public class MergeHeaderValidatorTests
         }
 
         Assert.That(allocated, Is.Zero);
+    }
+
+    [TestCase(true, TestName = "{m}(nonce)")]
+    [TestCase(false, TestName = "{m}(uncles hash)")]
+    public void Post_merge_header_with_a_wrong_pow_field_is_rejected(bool wrongNonce)
+    {
+        const ulong ttd = 10;
+        TestSpecProvider specProvider = new(Paris.Instance) { TerminalTotalDifficulty = ttd };
+        BlockHeader parent = Build.A.BlockHeader
+            .WithNumber(1)
+            .WithDifficulty(0)
+            .WithNonce(0)
+            .WithTotalDifficulty(ttd)
+            .TestObject;
+        BlockHeaderBuilder headerBuilder = Build.A.BlockHeader
+            .WithParent(parent)
+            .WithDifficulty(0)
+            .WithNonce(wrongNonce ? 1UL : 0UL)
+            .WithTimestamp(parent.Timestamp + 1)
+            .WithBaseFee(BaseFeeCalculator.Calculate(parent, Paris.Instance))
+            .WithTotalDifficulty(ttd);
+        if (!wrongNonce) headerBuilder = headerBuilder.WithUnclesHash(Keccak.Zero);
+        BlockHeader header = headerBuilder.TestObject;
+        using IContainer ctx = BuildContainer(specProvider, Substitute.For<IHeaderValidator>());
+
+        Assert.That(ctx.Resolve<IHeaderValidator>().Validate(header, parent, false, out _, false), Is.False);
     }
 }
