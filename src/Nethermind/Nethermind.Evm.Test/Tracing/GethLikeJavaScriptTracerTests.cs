@@ -715,7 +715,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
 
     private GethLikeBlockJavaScriptTracer GetTracer(string userTracer) => new(TestState, Shanghai.Instance, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer });
 
-    [TestCase("ctx.Input.ToArray().CopyTo(ctx.Output, 0);", "written", TestName = "Output host member")]
+    [TestCase("ctx.Input.ToArray().CopyTo(ctx.Output, 0);", "rejected", TestName = "Output host member")]
     [TestCase("""
               var nativeUint8Array = Uint8Array, args = [];
               Uint8Array = function(arg) { args.push(arg); return new nativeUint8Array(arg); };
@@ -1451,6 +1451,29 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         using GethLikeTxTrace traces = tracer.BuildResult().First();
 
         TestContext.Out.WriteLine(GetEthereumJsonSerializer().Serialize(traces.CustomTracerResult));
+    }
+
+    [Test]
+    public void Tracer_objects_can_be_stringified()
+    {
+        const string userTracer = """
+            {
+                retVal: [],
+                step: function(log, db) { if (this.retVal.length === 0) this.retVal.push(JSON.stringify(log)); },
+                enter: function(frame) { this.retVal.push(JSON.stringify(frame)); },
+                exit: function(result) { this.retVal.push(JSON.stringify(result)); },
+                fault: function(log, db) { },
+                result: function(ctx, db) { this.retVal.push(JSON.parse(JSON.stringify(ctx)).type); return this.retVal; }
+            }
+            """;
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
+                GetTracer(userTracer),
+                NestedCalls(),
+                MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
+
+        Assert.That(JsonSerializer.Serialize(traces.CustomTracerResult?.Value), Is.EqualTo(
+            """["{\"op\":{},\"stack\":{},\"memory\":{},\"contract\":{},\"pc\":0,\"gas\":79000,\"gasCost\":3,\"depth\":1,\"refund\":0,\"error\":null}","{}","{}","{}","{}","CALL"]"""));
     }
 
     [Test]
