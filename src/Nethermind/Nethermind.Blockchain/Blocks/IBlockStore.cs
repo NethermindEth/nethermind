@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
@@ -44,12 +45,19 @@ public interface IBlockStore
     Block? Get(ulong blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true);
     byte[]? GetRlp(ulong blockNumber, Hash256 blockHash);
 
-    /// <summary>Reads the stored encoding of each block as <see cref="GetRlp"/> does.</summary>
+    /// <summary>Adds the stored encoding of each block, as <see cref="GetRlp"/> reads it, to <paramref name="destination"/>.</summary>
     /// <param name="blocks">The number and hash of each block.</param>
-    /// <param name="rlps">Receives the encoding of each block, or <see langword="null"/> when it is not stored.</param>
-    void GetRlps(ReadOnlySpan<(ulong Number, Hash256 Hash)> blocks, Span<byte[]?> rlps)
+    /// <param name="destination">The list the encodings are added to, in any order.</param>
+    /// <param name="rlps">Receives where the encoding of each block is in <paramref name="destination"/>, or <see langword="null"/> when it is not stored.</param>
+    void GetRlps(ReadOnlySpan<(ulong Number, Hash256 Hash)> blocks, ArrayPoolList<byte> destination, Span<Range?> rlps)
     {
-        for (int i = 0; i < blocks.Length; i++) rlps[i] = GetRlp(blocks[i].Number, blocks[i].Hash);
+        for (int i = 0; i < blocks.Length; i++)
+        {
+            byte[]? rlp = GetRlp(blocks[i].Number, blocks[i].Hash);
+            int start = destination.Count;
+            if (rlp is not null) destination.AddRange(rlp);
+            rlps[i] = rlp is null ? null : start..destination.Count;
+        }
     }
 
     /// <summary>The stored block encoding, in memory that the caller disposes.</summary>

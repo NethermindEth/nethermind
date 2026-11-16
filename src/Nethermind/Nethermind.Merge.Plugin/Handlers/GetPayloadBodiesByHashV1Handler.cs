@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Headers;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -27,7 +26,6 @@ public sealed class GetPayloadBodiesByHashV1Handler(IHeaderStore headerStore, IB
             return ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>.Fail(error, MergeErrorCodes.TooLargeRequest);
         }
 
-        using ArrayPoolList<StoredBlock?> blocks = ReadBlocks(headerStore, blockStore, blockHashes);
-        return ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>.Success(new PayloadBodiesV1DirectResponse(CreatePayloadBodiesV1(blocks)));
+        return ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>.Success(CreateResponseV1(ReadBlocks(headerStore, blockStore, blockHashes)));
     }
 }

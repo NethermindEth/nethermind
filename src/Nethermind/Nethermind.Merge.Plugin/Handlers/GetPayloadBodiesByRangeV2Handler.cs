@@ -7,7 +7,6 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Core.Collections;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
@@ -47,7 +46,6 @@ public sealed class GetPayloadBodiesByRangeV2Handler(
         ulong end = Math.Min(start + count - 1, headNumber);
         if (end < start) return new PayloadBodiesV2DirectResponse([]);
 
-        using ArrayPoolList<StoredBlock?> blocks = ReadCanonicalBlocks(chainLevels, blockStore, start, end);
-        return new PayloadBodiesV2DirectResponse(CreatePayloadBodiesV2(balStore, blocks));
+        return CreateResponseV2(balStore, ReadCanonicalBlocks(chainLevels, blockStore, start, end));
     }
 }

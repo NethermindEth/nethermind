@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Blocks;
@@ -18,10 +19,12 @@ namespace Nethermind.Merge.Plugin.Handlers;
 internal static class PayloadBodiesHandlerHelper
 {
     public const int MaxCount = 1024;
+    // A mainnet block is tens of kilobytes; the list grows past this as needed.
+    private const int RlpLengthEstimate = 16 * 1024;
 
     /// <summary>Reads the canonical blocks from <paramref name="start"/> to <paramref name="end"/>, both inclusive.</summary>
     /// <returns>The blocks in number order, <see langword="null"/> where a number has no canonical block or its body is not stored.</returns>
-    public static ArrayPoolList<StoredBlock?> ReadCanonicalBlocks(IChainLevelInfoRepository chainLevels, IBlockStore blockStore, ulong start, ulong end)
+    public static StoredBlocks ReadCanonicalBlocks(IChainLevelInfoRepository chainLevels, IBlockStore blockStore, ulong start, ulong end)
     {
         int count = (int)(end - start + 1);
         using ArrayPoolListRef<ulong> numbers = new(count);
@@ -44,7 +47,7 @@ internal static class PayloadBodiesHandlerHelper
 
     /// <summary>Reads the blocks of <paramref name="blockHashes"/>, canonical or not.</summary>
     /// <returns>The blocks in request order, <see langword="null"/> where a block is not known or its body is not stored.</returns>
-    public static ArrayPoolList<StoredBlock?> ReadBlocks(IHeaderStore headerStore, IBlockStore blockStore, IReadOnlyList<Hash256> blockHashes)
+    public static StoredBlocks ReadBlocks(IHeaderStore headerStore, IBlockStore blockStore, IReadOnlyList<Hash256> blockHashes)
     {
         int count = blockHashes.Count;
         using ArrayPoolSpan<ulong?> numbers = new(count);
@@ -64,34 +67,41 @@ internal static class PayloadBodiesHandlerHelper
         return ReadBlocks(blockStore, blocks, positions, count);
     }
 
-    private static ArrayPoolList<StoredBlock?> ReadBlocks(
+    private static StoredBlocks ReadBlocks(
         IBlockStore blockStore, in ArrayPoolListRef<(ulong Number, Hash256 Hash)> blocks, in ArrayPoolListRef<int> positions, int count)
     {
-        using ArrayPoolList<byte[]?> rlps = new(blocks.Count, blocks.Count);
-        blockStore.GetRlps(blocks.AsSpan(), rlps.AsSpan());
+        using ArrayPoolList<Range?> ranges = new(blocks.Count, blocks.Count);
+        ArrayPoolList<byte> rlps = new(blocks.Count * RlpLengthEstimate);
+        blockStore.GetRlps(blocks.AsSpan(), rlps, ranges.AsSpan());
 
         ArrayPoolList<StoredBlock?> stored = new(count, count);
         for (int i = 0; i < blocks.Count; i++)
         {
-            if (rlps[i] is { } rlp) stored[positions[i]] = new StoredBlock(blocks[i].Number, blocks[i].Hash, rlp);
+            if (ranges[i] is { } rlp) stored[positions[i]] = new StoredBlock(blocks[i].Number, blocks[i].Hash, rlp);
         }
 
-        return stored;
+        return new StoredBlocks(stored, rlps);
     }
 
-    public static PayloadBodyV1?[] CreatePayloadBodiesV1(ArrayPoolList<StoredBlock?> blocks)
+    /// <summary>Creates the V1 response, which takes the stored encodings and returns them when disposed.</summary>
+    public static PayloadBodiesV1DirectResponse CreateResponseV1(StoredBlocks stored)
     {
+        using ArrayPoolList<StoredBlock?> blocks = stored.Blocks;
+        ReadOnlyMemory<byte> rlps = stored.Rlps.AsMemory();
         PayloadBodyV1?[] results = new PayloadBodyV1?[blocks.Count];
         for (int i = 0; i < results.Length; i++)
         {
-            if (blocks[i] is { } block) results[i] = PayloadBodiesV1DirectResponse.CreatePayloadBody(block.Rlp);
+            if (blocks[i] is { } block) results[i] = PayloadBodiesV1DirectResponse.CreatePayloadBody(rlps[block.Rlp]);
         }
 
-        return results;
+        return new PayloadBodiesV1DirectResponse(results, stored.Rlps);
     }
 
-    public static PayloadBodyV2?[] CreatePayloadBodiesV2(IBlockAccessListStore balStore, ArrayPoolList<StoredBlock?> blocks)
+    /// <summary>Creates the V2 response, which takes the stored encodings and returns them when disposed.</summary>
+    public static PayloadBodiesV2DirectResponse CreateResponseV2(IBlockAccessListStore balStore, StoredBlocks stored)
     {
+        using ArrayPoolList<StoredBlock?> blocks = stored.Blocks;
+        ReadOnlyMemory<byte> rlps = stored.Rlps.AsMemory();
         PayloadBodyV2?[] results = new PayloadBodyV2?[blocks.Count];
         try
         {
@@ -99,19 +109,23 @@ internal static class PayloadBodiesHandlerHelper
             {
                 if (blocks[i] is { } block)
                 {
-                    results[i] = PayloadBodiesV2DirectResponse.CreatePayloadBody(block.Rlp, balStore.GetRlp(block.Number, block.Hash));
+                    results[i] = PayloadBodiesV2DirectResponse.CreatePayloadBody(rlps[block.Rlp], balStore.GetRlp(block.Number, block.Hash));
                 }
             }
         }
         catch
         {
             PayloadBodiesV2DirectResponse.DisposeItems(results);
+            stored.Rlps.Dispose();
             throw;
         }
 
-        return results;
+        return new PayloadBodiesV2DirectResponse(results, stored.Rlps);
     }
 
-    /// <summary>A stored block and its encoding.</summary>
-    public readonly record struct StoredBlock(ulong Number, Hash256 Hash, byte[] Rlp);
+    /// <summary>A stored block and where its encoding is in <see cref="StoredBlocks.Rlps"/>.</summary>
+    public readonly record struct StoredBlock(ulong Number, Hash256 Hash, Range Rlp);
+
+    /// <summary>The blocks found, <see langword="null"/> where not stored, and their encodings one after another.</summary>
+    public readonly record struct StoredBlocks(ArrayPoolList<StoredBlock?> Blocks, ArrayPoolList<byte> Rlps);
 }

@@ -492,6 +492,7 @@ public partial class EngineModuleTests
             ];
 
             Assert.That(JToken.Parse(chain.JsonSerializer.Serialize(payloadBodies)), Is.EqualTo(JToken.Parse(chain.JsonSerializer.Serialize(expected))).Using(JToken.EqualityComparer));
+            await AssertStreamedJsonMatchesSerializer((PayloadBodiesV1DirectResponse)payloadBodies);
         }
 
         // Second branch
@@ -556,6 +557,7 @@ public partial class EngineModuleTests
             rpc.engine_getPayloadBodiesByRangeV1(1, 5).Result.Data;
 
         Assert.That(JToken.Parse(chain.JsonSerializer.Serialize(payloadBodies)), Is.EqualTo(JToken.Parse(chain.JsonSerializer.Serialize(input.Outcome))).Using(JToken.EqualityComparer));
+        await AssertStreamedJsonMatchesSerializer((PayloadBodiesV1DirectResponse)payloadBodies);
     }
 
     [Test]

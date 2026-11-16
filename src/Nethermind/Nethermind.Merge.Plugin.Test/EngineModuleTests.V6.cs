@@ -666,6 +666,8 @@ public partial class EngineModuleTests
             Assert.That(response.Data.Count, Is.EqualTo(3));
             Assert.That(response.Data.ElementAt(2), Is.Null);
         }
+
+        await AssertStreamedJsonMatchesSerializer((PayloadBodiesV2DirectResponse)response.Data);
     }
 
     [Test]
@@ -685,6 +687,8 @@ public partial class EngineModuleTests
             Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success));
             Assert.That(response.Data.Count, Is.EqualTo(4)); // cutoff at head
         }
+
+        await AssertStreamedJsonMatchesSerializer((PayloadBodiesV2DirectResponse)response.Data);
     }
 
     [Test]

@@ -19,14 +19,21 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.Merge.Plugin.Data;
 
 /// <summary>Wraps payload body V1 results and writes JSON directly into a <see cref="PipeWriter"/>.</summary>
-public sealed class PayloadBodiesV1DirectResponse : IStreamableResult, IReadOnlyList<ExecutionPayloadBodyV1Result?>
+public sealed class PayloadBodiesV1DirectResponse : IStreamableResult, IReadOnlyList<ExecutionPayloadBodyV1Result?>, IDisposable
 {
     private readonly ExecutionPayloadBodyV1Result?[]? _items;
     private readonly PayloadBody?[]? _payloadBodies;
+    private readonly IDisposable? _payloadBodiesOwner;
 
     public PayloadBodiesV1DirectResponse(ExecutionPayloadBodyV1Result?[] items) => _items = items;
 
-    internal PayloadBodiesV1DirectResponse(PayloadBody?[] payloadBodies) => _payloadBodies = payloadBodies;
+    /// <param name="payloadBodies">The bodies to write.</param>
+    /// <param name="payloadBodiesOwner">The owner of the memory the bodies are in, disposed with this response.</param>
+    internal PayloadBodiesV1DirectResponse(PayloadBody?[] payloadBodies, IDisposable? payloadBodiesOwner = null)
+    {
+        _payloadBodies = payloadBodies;
+        _payloadBodiesOwner = payloadBodiesOwner;
+    }
 
     public int Count => _payloadBodies?.Length ?? _items!.Length;
 
@@ -49,7 +56,9 @@ public sealed class PayloadBodiesV1DirectResponse : IStreamableResult, IReadOnly
     IEnumerator<ExecutionPayloadBodyV1Result?> IEnumerable<ExecutionPayloadBodyV1Result?>.GetEnumerator() => GetEnumerator();
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
-    internal static PayloadBody CreatePayloadBody(byte[] blockRlp) => new(blockRlp);
+    public void Dispose() => _payloadBodiesOwner?.Dispose();
+
+    internal static PayloadBody CreatePayloadBody(ReadOnlyMemory<byte> blockRlp) => new(blockRlp);
 
     public struct Enumerator(PayloadBodiesV1DirectResponse response) : IEnumerator<ExecutionPayloadBodyV1Result?>
     {
@@ -98,14 +107,14 @@ public sealed class PayloadBodiesV1DirectResponse : IStreamableResult, IReadOnly
         }
     }
 
-    internal readonly struct PayloadBody(byte[] blockRlp)
+    internal readonly struct PayloadBody(ReadOnlyMemory<byte> blockRlp)
     {
         public void WriteTo(PipeWriter writer) =>
-            PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, blockRlp);
+            PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, blockRlp.Span);
 
         public ExecutionPayloadBodyV1Result ToResult()
         {
-            (byte[][] transactions, Withdrawal[]? withdrawals) = PayloadBodiesDirectResponseWriter.DecodePayloadBody(blockRlp);
+            (byte[][] transactions, Withdrawal[]? withdrawals) = PayloadBodiesDirectResponseWriter.DecodePayloadBody(blockRlp.Span);
             ExecutionPayloadBodyV1Result result = new([], withdrawals);
             result.Transactions = transactions;
             return result;
@@ -157,7 +166,7 @@ internal static class PayloadBodiesDirectResponseWriter
 
     public static void WritePayloadBody(
         IBufferWriter<byte> writer,
-        byte[] blockRlp,
+        ReadOnlySpan<byte> blockRlp,
         MemoryManager<byte>? blockAccessList = null,
         bool includeBlockAccessList = false)
     {
@@ -249,7 +258,7 @@ internal static class PayloadBodiesDirectResponseWriter
         ArrayPool<byte>.Shared.Return(buffer);
     }
 
-    public static (byte[][] Transactions, Withdrawal[]? Withdrawals) DecodePayloadBody(byte[] blockRlp)
+    public static (byte[][] Transactions, Withdrawal[]? Withdrawals) DecodePayloadBody(ReadOnlySpan<byte> blockRlp)
     {
         RlpReader ctx = new RlpReader(blockRlp).EnterSequence(out _);
         ctx.SkipItem(); // header

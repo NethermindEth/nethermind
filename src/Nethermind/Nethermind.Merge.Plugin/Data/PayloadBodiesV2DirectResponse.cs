@@ -18,9 +18,16 @@ namespace Nethermind.Merge.Plugin.Data;
 public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnlyList<ExecutionPayloadBodyV2Result?>, IDisposable
 {
     private readonly PayloadBody?[] _items;
+    private readonly IDisposable? _itemsOwner;
     private bool _disposed;
 
-    internal PayloadBodiesV2DirectResponse(PayloadBody?[] items) => _items = items;
+    /// <param name="items">The bodies to write.</param>
+    /// <param name="itemsOwner">The owner of the memory the bodies are in, disposed with this response.</param>
+    internal PayloadBodiesV2DirectResponse(PayloadBody?[] items, IDisposable? itemsOwner = null)
+    {
+        _items = items;
+        _itemsOwner = itemsOwner;
+    }
 
     public int Count => _items.Length;
 
@@ -55,6 +62,7 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
 
         _disposed = true;
         DisposeItems(_items);
+        _itemsOwner?.Dispose();
     }
 
     internal static PayloadBody CreatePayloadBody(
@@ -74,7 +82,7 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
     }
 
     internal static PayloadBody CreatePayloadBody(
-        byte[] blockRlp,
+        ReadOnlyMemory<byte> blockRlp,
         MemoryManager<byte>? blockAccessList)
     {
         try
@@ -114,19 +122,19 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
     internal readonly struct PayloadBody : IDisposable
     {
         private readonly Transaction[]? _transactions;
-        private readonly byte[]? _blockRlp;
+        private readonly ReadOnlyMemory<byte> _blockRlp;
         private readonly Withdrawal[]? _withdrawals;
         private readonly MemoryManager<byte>? _blockAccessList;
 
         public PayloadBody(Transaction[] transactions, Withdrawal[]? withdrawals, MemoryManager<byte>? blockAccessList)
         {
             _transactions = transactions;
-            _blockRlp = null;
+            _blockRlp = default;
             _withdrawals = withdrawals;
             _blockAccessList = blockAccessList;
         }
 
-        public PayloadBody(byte[] blockRlp, MemoryManager<byte>? blockAccessList)
+        public PayloadBody(ReadOnlyMemory<byte> blockRlp, MemoryManager<byte>? blockAccessList)
         {
             _transactions = null;
             _blockRlp = blockRlp;
@@ -136,9 +144,9 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
 
         public void WriteTo(PipeWriter writer)
         {
-            if (_blockRlp is { } blockRlp)
+            if (_transactions is null)
             {
-                PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, blockRlp, _blockAccessList, includeBlockAccessList: true);
+                PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, _blockRlp.Span, _blockAccessList, includeBlockAccessList: true);
             }
             else
             {
@@ -148,9 +156,9 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
 
         public ExecutionPayloadBodyV2Result ToResult()
         {
-            if (_blockRlp is { } blockRlp)
+            if (_transactions is null)
             {
-                (byte[][] transactions, Withdrawal[]? withdrawals) = PayloadBodiesDirectResponseWriter.DecodePayloadBody(blockRlp);
+                (byte[][] transactions, Withdrawal[]? withdrawals) = PayloadBodiesDirectResponseWriter.DecodePayloadBody(_blockRlp.Span);
                 ExecutionPayloadBodyV2Result result = new([], withdrawals, _blockAccessList?.Memory.ToArray())
                 {
                     Transactions = transactions

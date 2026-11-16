@@ -8,6 +8,7 @@ using Autofac;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -108,10 +109,13 @@ public class BlockStoreTests
         db[hashKeyed.Hash!.Bytes] = decoder.Encode(hashKeyed);
         store.InsertDeferred(pending);
 
-        byte[]?[] rlps = new byte[]?[5];
+        using ArrayPoolList<byte> destination = new(0);
+        Range?[] ranges = new Range?[5];
         store.GetRlps(
             [(missing.Number, missing.Hash!), (stored.Number, stored.Hash!), (pending.Number, pending.Hash!), (hashKeyed.Number, hashKeyed.Hash!), (stored.Number, stored.Hash!)],
-            rlps);
+            destination,
+            ranges);
+        byte[]?[] rlps = Array.ConvertAll(ranges, range => range is { } r ? destination.AsSpan()[r].ToArray() : null);
 
         using (Assert.EnterMultipleScope())
         {
