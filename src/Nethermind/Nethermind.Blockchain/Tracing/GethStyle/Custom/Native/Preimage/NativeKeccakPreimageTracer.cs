@@ -79,13 +79,7 @@ public sealed class NativeKeccakPreimageTracer : GethLikeNativeTxTracer, IInstru
     {
         GethLikeTxTrace result = base.BuildResult();
         result.TxHash = _transaction.Hash;
-        Dictionary<Hash256, byte[]> preimages = new(_preimages.Count);
-        foreach (KeyValuePair<ValueHash256, byte[]> preimage in _preimages)
-        {
-            preimages.Add(preimage.Key.ToCommitment(), preimage.Value);
-        }
-
-        result.CustomTracerResult = new GethLikeCustomTrace { Value = preimages };
+        result.CustomTracerResult = new GethLikeCustomTrace { Value = _preimages };
         return result;
     }
 }

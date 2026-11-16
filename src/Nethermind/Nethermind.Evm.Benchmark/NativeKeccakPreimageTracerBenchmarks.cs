@@ -46,7 +46,7 @@ public class NativeKeccakPreimageTracerBenchmarks
 
         _warmTracer = new NativeKeccakPreimageTracer(_transaction, new GethTraceOptions());
         TraceKeccaks(_warmTracer);
-        if (((Dictionary<Hash256, byte[]>)_warmTracer.BuildResult().CustomTracerResult!.Value!).Count != DistinctPreimages)
+        if (((Dictionary<ValueHash256, byte[]>)_warmTracer.BuildResult().CustomTracerResult!.Value!).Count != DistinctPreimages)
         {
             throw new InvalidOperationException("The tracer must capture every distinct preimage.");
         }
