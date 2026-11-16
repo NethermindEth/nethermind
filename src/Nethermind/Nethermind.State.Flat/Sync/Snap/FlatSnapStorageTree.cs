@@ -42,8 +42,9 @@ public class FlatSnapStorageTree : ISnapTree<PathWithStorageSlot>
 
     public bool IsPersisted(in TreePath path, in ValueHash256 keccak)
     {
-        byte[]? rlp = _reader.TryLoadStorageRlp(_addressHash, path, ReadFlags.None);
-        return rlp is not null && ValueKeccak.Compute(rlp) == keccak;
+        ValueHash256 computedHash = default;
+        return _reader.TryLoadStorageRlp(_addressHash, path, ReadFlags.None, static (rlp, result) => result[0] = ValueKeccak.Compute(rlp), new Span<ValueHash256>(ref computedHash))
+            && computedHash == keccak;
     }
 
     public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithStorageSlot> entries)

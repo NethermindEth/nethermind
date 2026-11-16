@@ -6,6 +6,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages;
@@ -68,10 +69,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V2.Messages
         [Test]
         public void Deserialize_Throws_On_Empty_List_Block_Hash()
         {
-            byte[] serialized = Rlp.Encode(
-                Rlp.Encode(1L),
-                Rlp.Encode([Rlp.OfEmptyList]),
-                Rlp.Encode(10L)).Bytes;
+            byte[] serialized = RlpTestHelper.EncodeSequence(Rlp.Encode(1L),
+                RlpTestHelper.EncodeSequence([RlpTestHelper.OfEmptyList]),
+                Rlp.Encode(10L));
             GetBlockAccessListsMessageSerializer serializer = new();
 
             Assert.That(() => serializer.Deserialize(serialized), Throws.TypeOf<RlpReaderException>());

@@ -272,7 +272,7 @@ public class DebugModuleTests
         _blockFinder.FindHeader(new BlockParameter(0UL)).Returns(header);
 
         using JsonRpcResponse response = await Request("debug_getRawHeader", "0x0");
-        Assert.That(RpcTest.AssertSuccess<ArrayPoolList<byte>>(response).AsSpan(), Is.SequenceEqualTo(new HeaderDecoder().Encode(header).Bytes));
+        Assert.That(RpcTest.AssertSuccess<ArrayPoolList<byte>>(response).AsSpan(), Is.SequenceEqualTo(new HeaderDecoder().Encode(header)));
         _debugBridge.DidNotReceiveWithAnyArgs().GetBlock(null!);
     }
 
@@ -283,14 +283,14 @@ public class DebugModuleTests
         _debugBridge.GetBlock(blockParameter).Returns(block);
 
         using JsonRpcResponse response = await Request("debug_getRawBlock", requestParameter);
-        Assert.That(RpcTest.AssertSuccess<ArrayPoolList<byte>>(response).AsSpan(), Is.SequenceEqualTo(new BlockDecoder().Encode(block).Bytes));
+        Assert.That(RpcTest.AssertSuccess<ArrayPoolList<byte>>(response).AsSpan(), Is.SequenceEqualTo(new BlockDecoder().Encode(block)));
     }
 
     [Test]
     public async Task DebugGetRawTransaction_WhenTransactionExists_ReturnsTransactionRlp()
     {
         Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
-        string expected = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes.ToHexString(true);
+        string expected = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).ToHexString(true);
         _debugBridge.GetTransactionFromHash(transaction.Hash!).Returns(transaction);
 
         string serialized = await SerializedRequest("debug_getRawTransaction", transaction.Hash!);
@@ -313,7 +313,7 @@ public class DebugModuleTests
         Block block = BlockAtNumberOne();
         _debugBridge.GetReceiptsForBlock(block).Returns(receipts);
         RlpBehaviors behavior = (_specProvider.GetReceiptSpec(receipts[0].BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping;
-        string expected = $"[\"{Rlp.Encode(receipts[0], behavior).Bytes.ToHexString(true)}\",\"{Rlp.Encode(receipts[1], behavior).Bytes.ToHexString(true)}\"]";
+        string expected = $"[\"{Rlp.Encode(receipts[0], behavior).ToHexString(true)}\",\"{Rlp.Encode(receipts[1], behavior).ToHexString(true)}\"]";
 
         // Only the plain hash lookup is stubbed, so honouring requireCanonical would find nothing; geth ignores it here.
         object parameter = byHash ? new { blockHash = block.Hash, requireCanonical = true } : "0x1";
@@ -993,7 +993,7 @@ public class DebugModuleTests
         {
             "debug_traceBlockByHash" => block.Hash!,
             "debug_traceBlockByNumber" => new BlockParameter(1UL),
-            _ => new BlockDecoder().Encode(block).Bytes
+            _ => new BlockDecoder().Encode(block)
         };
 
         JToken json = JToken.Parse(await SerializedRequest(method, selector, new { streamMode = streaming }));
@@ -1052,7 +1052,7 @@ public class DebugModuleTests
 
         using ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> actual = method switch
         {
-            "debug_traceBlock" => module.debug_traceBlock(Rlp.Encode(block).Bytes, options),
+            "debug_traceBlock" => module.debug_traceBlock(Rlp.Encode(block), options),
             "debug_traceBlockByNumber" => module.debug_traceBlockByNumber(new BlockParameter(header.Number), options),
             _ => module.debug_traceBlockByHash(header.Hash!, options),
         };
@@ -1482,7 +1482,7 @@ public class DebugModuleTests
         blockTree.DeleteInvalidBlock(block1);
 
         BlockDecoder decoder = new();
-        _blocksDb.Set(block1.Hash ?? new Hash256("0x0"), decoder.Encode(block1).Bytes);
+        _blocksDb.Set(block1.Hash ?? new Hash256("0x0"), decoder.Encode(block1));
 
         _debugBridge.GetBadBlocks().Returns(badBlocksStore.GetAll());
 
@@ -1938,7 +1938,7 @@ public class DebugModuleTests
             transactions[i] = Build.A.Transaction.SignedAndResolved().TestObject;
         }
 
-        return new BlockDecoder().Encode(Build.A.Block.WithNumber(1).WithTransactions(transactions).TestObject).Bytes;
+        return new BlockDecoder().Encode(Build.A.Block.WithNumber(1).WithTransactions(transactions).TestObject);
     }
 
     private static IEnumerable<IEnumerable<GethLikeTxTrace>> StreamBundles(CancellationToken token)

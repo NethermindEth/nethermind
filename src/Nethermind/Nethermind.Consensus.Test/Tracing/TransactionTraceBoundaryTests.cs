@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.Tracing;
 using Nethermind.Serialization.Rlp;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test.Tracing;
@@ -92,6 +95,52 @@ public class TransactionTraceBoundaryTests
         Assert.That(((TransactionTraceBoundary)TransactionTraceBoundary.WrapAt(NullBlockTracer.Instance, hash, index)).IndexOf(block), Is.EqualTo(target));
     }
 
+    /// <remarks>The finder is substituted to count its reads; the seed source to state its coverage of the block.</remarks>
+    [TestCase(null, TestName = "NoSeedSource")]
+    [TestCase(false, TestName = "BlockNotCovered")]
+    [TestCase(true, TestName = "BlockCovered")]
+    public void FindIndex_reads_the_stored_index_only_when_a_seed_may_skip_the_prefix(bool? mayCover)
+    {
+        Block block = Build.A.Block.WithTransactions(Decode()).TestObject;
+        IReceiptFinder receipts = Substitute.For<IReceiptFinder>();
+        receipts.FindTransactionIndex(block, TestItem.KeccakA).Returns(7);
+        IPrefixStateSeedSource seeds = null;
+        if (mayCover is { } covers)
+        {
+            seeds = Substitute.For<IPrefixStateSeedSource>();
+            seeds.MayCover(block).Returns(covers);
+        }
+
+        int index = TransactionTraceBoundary.FindIndex(receipts, seeds, block, TestItem.KeccakA);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(index, Is.EqualTo(mayCover == true ? 7 : -1), "a replayed prefix hashes its transactions anyway");
+            receipts.Received(mayCover == true ? 1 : 0).FindTransactionIndex(block, TestItem.KeccakA);
+        }
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void WrapAtStoredIndex_reads_no_stored_index_for_a_reward_trace(bool tracesRewards)
+    {
+        Block block = Build.A.Block.WithTransactions(Decode()).TestObject;
+        IReceiptFinder receipts = Substitute.For<IReceiptFinder>();
+        receipts.FindTransactionIndex(block, TestItem.KeccakA).Returns(7);
+        IPrefixStateSeedSource seeds = Substitute.For<IPrefixStateSeedSource>();
+        seeds.MayCover(block).Returns(true);
+        IBlockTracer tracer = Substitute.For<IBlockTracer>();
+        tracer.IsTracingRewards.Returns(tracesRewards);
+
+        IBlockTracer wrapped = TransactionTraceBoundary.WrapAtStoredIndex(tracer, receipts, seeds, block, TestItem.KeccakA);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wrapped is TransactionTraceBoundary, Is.EqualTo(!tracesRewards));
+            receipts.Received(tracesRewards ? 0 : 1).FindTransactionIndex(block, TestItem.KeccakA);
+        }
+    }
+
     private static TransactionTraceBoundary Boundary(Hash256 hash) =>
         (TransactionTraceBoundary)TransactionTraceBoundary.Wrap(NullBlockTracer.Instance, hash);
 
@@ -112,7 +161,7 @@ public class TransactionTraceBoundaryTests
         for (int i = 0; i < count; i++)
         {
             Transaction transaction = Build.A.Transaction.WithNonce((ulong)i).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            encoded[i] = Rlp.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes;
+            encoded[i] = Rlp.Encode(transaction, RlpBehaviors.SkipTypedWrapping);
         }
 
         return encoded;

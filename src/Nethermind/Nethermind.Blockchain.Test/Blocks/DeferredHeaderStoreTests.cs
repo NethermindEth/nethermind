@@ -5,8 +5,10 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Blocks;
@@ -48,6 +50,21 @@ public class DeferredHeaderStoreTests
             Assert.That(_store.Get(header.Hash!, shouldCache: false, blockNumber: header.Number), Is.SameAs(header));
             Assert.That(_store.GetBlockNumber(header.Hash!), Is.EqualTo(header.Number));
             Assert.That(Reopen().Get(header.Hash!, shouldCache: false), Is.Null, "precondition: nothing is written yet");
+        }
+    }
+
+    [Test]
+    public void Deferred_insert_is_appended_encoded_before_its_write()
+    {
+        BlockHeader header = HeaderNumbered(7);
+        _store.InsertDeferred(header);
+
+        HeaderDecoder decoder = new();
+        using ArrayPoolList<byte> rlp = new(0);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_store.TryAppendRlp(header.Hash!, header.Number, decoder, rlp), Is.True);
+            Assert.That(rlp.AsSpan().ToArray(), Is.EqualTo(decoder.Encode(header)));
         }
     }
 

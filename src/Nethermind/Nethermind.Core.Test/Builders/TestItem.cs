@@ -173,7 +173,7 @@ namespace Nethermind.Core.Test.Builders
             accountDecoder ??= _accountDecoder;
             Account account = GenerateRandomAccount();
             IRlpDecoder<Account?> encoder = accountDecoder;
-            byte[] value = encoder.Encode(account).Bytes;
+            byte[] value = encoder.Encode(account);
             return value;
         }
 
@@ -192,7 +192,7 @@ namespace Nethermind.Core.Test.Builders
 
             Account account = GenerateIndexedAccount(index);
             IRlpDecoder<Account?> encoder = accountDecoder;
-            byte[] value = encoder.Encode(account).Bytes;
+            byte[] value = encoder.Encode(account);
             return value;
         }
 

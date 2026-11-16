@@ -116,6 +116,11 @@ public class StatelessBlockTree : IBlockTree, IBlockhashCache, IHeaderFinder
         WriteFlags bodiesWriteFlags = WriteFlags.None)
         => throw new NotSupportedException();
 
+    public AddBlockResult Insert(BlockHeader header, ReadOnlySpan<byte> body, BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None,
+        BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None,
+        WriteFlags bodiesWriteFlags = WriteFlags.None)
+        => throw new NotSupportedException();
+
     /// <inheritdoc/>
     public bool TryRewindHead(Hash256 blockHash) => throw new NotSupportedException();
 

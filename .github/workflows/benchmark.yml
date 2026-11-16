@@ -1,6 +1,6 @@
-name: Network Benchmark
+name: Benchmark
 
-# Runs the Nethermind.Network.Benchmark benchmarks at a base and a head commit in one job on one runner,
+# Runs BenchmarkDotNet benchmarks of Nethermind.Benchmark.Runner at a base and a head commit in one job on one runner,
 # and writes a comparison table to the job summary. Timings are only comparable within a run.
 
 on:
@@ -15,10 +15,10 @@ on:
         required: false
         type: string
       filter:
-        description: Space-separated BenchmarkDotNet filter patterns.
-        required: false
+        # Required: without a filter, BenchmarkDotNet asks interactively which benchmarks to run.
+        description: Space-separated BenchmarkDotNet filter patterns, e.g. "*RlpxRoundTripBenchmarks* *Keccak256Benchmarks*".
+        required: true
         type: string
-        default: "*RlpxRoundTripBenchmarks* *OutFlowBenchmarks*"
 
 permissions:
   contents: read
@@ -33,7 +33,7 @@ env:
 
 jobs:
   benchmark:
-    name: Network benchmarks
+    name: Benchmarks
     if: github.repository_owner == 'NethermindEth'
     runs-on: benchmark
     timeout-minutes: 180
@@ -119,13 +119,13 @@ jobs:
           HEAD_SHA: ${{ steps.refs.outputs.head }}
           BASE_OUTCOME: ${{ steps.run-base.outcome }}
           HEAD_OUTCOME: ${{ steps.run-head.outcome }}
-        run: head/scripts/network-bench/compare.cs "${RUNNER_TEMP}/bdn-base" "${RUNNER_TEMP}/bdn-head" >> "${GITHUB_STEP_SUMMARY}"
+        run: head/scripts/benchmark/compare.cs "${RUNNER_TEMP}/bdn-base" "${RUNNER_TEMP}/bdn-head" >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: network-benchmark-${{ steps.refs.outputs.head }}
+          name: benchmark-${{ steps.refs.outputs.head }}
           path: |
             ${{ runner.temp }}/bdn-base
             ${{ runner.temp }}/bdn-head

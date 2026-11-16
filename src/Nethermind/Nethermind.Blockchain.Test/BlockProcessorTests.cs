@@ -423,7 +423,7 @@ public partial class BlockProcessorTests
             .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false }));
         Block parent = chain.BlockTree.Head!;
         Block block = await AddThreeTransferBlock(chain);
-        Block copy = Rlp.Decode<Block>(Rlp.Encode(block).Bytes)!;
+        Block copy = Rlp.Decode<Block>(Rlp.Encode(block))!;
         copy.Transactions[0].SenderAddress = TestItem.AddressF;
 
         Block processed = chain.BranchProcessor.Process(parent.Header, [copy], ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance)[0];

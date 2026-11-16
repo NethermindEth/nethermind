@@ -178,7 +178,7 @@ public class TaikoExecutionPayloadTests
         for (int i = 0; i < count; i++)
         {
             Transaction tx = Build.A.Transaction.WithNonce(nonceOffset + (ulong)i).SignedAndResolved().TestObject;
-            rlps[i] = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
+            rlps[i] = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping);
         }
         return rlps;
     }

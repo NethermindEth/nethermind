@@ -17,6 +17,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
@@ -159,6 +160,39 @@ public class EthSimulateTestsBlocksAndTransactions
 
         using JsonDocument document = JsonDocument.Parse(response);
         Assert.That(document.RootElement.GetProperty("result")[0].GetProperty("calls")[0].GetProperty("returnData").GetString(), Is.EqualTo(Keccak.OfAnEmptyString.ToString()), response);
+    }
+
+    [TestCase("\"input\":\"0x1234\",\"data\":\"0xabcd\"", "0x1234")]
+    [TestCase("\"data\":\"0xabcd\",\"input\":\"0x1234\"", "0x1234")]
+    [TestCase("\"input\":\"0x1234\",\"data\":\"0x1234\"", "0x1234")]
+    [TestCase("\"input\":\"0x1234\"", "0x1234")]
+    [TestCase("\"input\":null,\"data\":\"0xabcd\"", "0xabcd")]
+    [TestCase("\"input\":\"0x\",\"data\":\"0xabcd\"", "0x")]
+    public async Task Simulate_prefers_non_null_input_over_data(string aliases, string expected)
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        JsonElement actual = await Simulate(aliases);
+        JsonElement inputOnly = await Simulate($"\"input\":\"{expected}\"");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.GetProperty("status").GetString(), Is.EqualTo("0x1"));
+            Assert.That(inputOnly.GetProperty("status").GetString(), Is.EqualTo("0x1"));
+            Assert.That(actual.GetProperty("returnData").GetString(), Is.EqualTo(inputOnly.GetProperty("returnData").GetString()));
+            Assert.That(actual.GetProperty("returnData").GetString(), Is.EqualTo(expected));
+        }
+
+        async Task<JsonElement> Simulate(string fields)
+        {
+            // CALLDATASIZE PUSH1 0 PUSH1 0 CALLDATACOPY CALLDATASIZE PUSH1 0 RETURN
+            JsonElement payload = SimulatePayloadJson(
+                "{\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"code\":\"0x366000600037366000f3\"}},\"calls\":[{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"gas\":\"0x186a0\"," + fields + "}]}");
+            string response = await chain.TestEthRpc("eth_simulateV1", payload, "latest");
+            Assert.That(ErrorCode(response), Is.Null, response);
+            using JsonDocument document = JsonDocument.Parse(response);
+            return document.RootElement.GetProperty("result")[0].GetProperty("calls")[0].Clone();
+        }
     }
 
     private static JsonElement SimulatePayloadJson(string blockStateCall) => ParseJson($"{{\"blockStateCalls\":[{blockStateCall}]}}");
@@ -511,7 +545,7 @@ public class EthSimulateTestsBlocksAndTransactions
         JsonElement child = document.RootElement.GetProperty("result")[1];
         JsonElement grandchild = document.RootElement.GetProperty("result")[2];
 
-        List<Rlp> fields =
+        List<byte[]> fields =
         [
             Rlp.Encode(new Hash256(block.GetProperty("parentHash").GetString()!)),
             Rlp.Encode(new Hash256(block.GetProperty("sha3Uncles").GetString()!)),
@@ -530,13 +564,13 @@ public class EthSimulateTestsBlocksAndTransactions
             Rlp.Encode(Bytes.FromHexString(block.GetProperty("nonce").GetString()!)),
         ];
         if (spec.IsEip1559Enabled) fields.Add(Rlp.Encode(Quantity("baseFeePerGas")));
-        Rlp header = Rlp.Encode([.. fields]);
+        byte[] header = RlpTestHelper.EncodeSequence([.. fields]);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(block.TryGetProperty("baseFeePerGas", out JsonElement baseFee) ? baseFee.GetString() : null,
                 Is.EqualTo(spec.IsEip1559Enabled ? "0x0" : null));
-            Assert.That(block.GetProperty("hash").GetString(), Is.EqualTo(Keccak.Compute(header.Bytes).ToString()));
+            Assert.That(block.GetProperty("hash").GetString(), Is.EqualTo(Keccak.Compute(header).ToString()));
             // The block is [header, transactions, uncles], both lists empty.
             Assert.That(Quantity("size"), Is.EqualTo((ulong)Rlp.LengthOfSequence(header.Length + 2)));
             Assert.That(child.GetProperty("parentHash").GetString(), Is.EqualTo(block.GetProperty("hash").GetString()));

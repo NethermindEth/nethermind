@@ -436,15 +436,15 @@ public class Eth68ProtocolHandler(ISession session,
     protected override bool CanServePooledTransaction(Transaction tx) => !IsSparseBlobTransaction(tx);
 
     /// <inheritdoc/>
-    protected override bool TryGetPooledTransactionToServe(in ValueHash256 hash, [NotNullWhen(true)] out Transaction? tx)
+    /// <remarks>
+    /// Serves a full type-3 transaction that only persistent storage holds. One blob-pool lookup gives both the cell
+    /// mask and the encoding, so a sparse transaction is not loaded, and a hash takes the blob-pool lock once before
+    /// <see cref="Eth65ProtocolHandler.TryGetPooledTransactionToServe"/>.
+    /// </remarks>
+    private protected override bool TryGetEncodedPooledTransactionToServe(in ValueHash256 hash, [NotNullWhen(true)] out IOwnedReadOnlyList<byte>? encodedTx, out bool unservable)
     {
-        if (_txPool.TryGetPendingBlobCellMask(hash, out BlobCellMask availableMask) && !availableMask.IsFull)
-        {
-            tx = default;
-            return false;
-        }
-
-        return base.TryGetPooledTransactionToServe(hash, out tx);
+        unservable = _txPool.TryGetPendingBlobCellMaskAndNetworkForm(hash, out BlobCellMask availableMask, out encodedTx) && !availableMask.IsFull;
+        return encodedTx is not null;
     }
 
     protected override ValueTask HandleSlow(TransactionsRequest request, CancellationToken cancellationToken)

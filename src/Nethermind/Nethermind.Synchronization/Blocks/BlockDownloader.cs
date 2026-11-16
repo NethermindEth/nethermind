@@ -522,14 +522,27 @@ namespace Nethermind.Synchronization.Blocks
         public SyncResponseHandlingResult HandleResponse(BlocksRequest response, PeerInfo? peer)
         {
             using BlocksRequest _ = response;
-            BlockBody[]? bodies = response.OwnedBodies?.Bodies;
+            SyncResponseHandlingResult result = SyncResponseHandlingResult.OK;
+            BlockBody[]? bodies;
+            try
+            {
+                bodies = response.OwnedBodies?.Bodies;
+            }
+            // Any decode failure comes from the bytes the peer sent, so it is the peer's fault.
+            catch (Exception e)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Invalid block bodies from {peer:hide}: {e.Message}");
+                if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, "invalid block bodies received");
+                bodies = null;
+                result = SyncResponseHandlingResult.LesserQuality;
+            }
+
             response.OwnedBodies?.Disown();
             IOwnedReadOnlyList<byte[]?>? blockAccessLists = response.BlockAccessLists;
             bool unsupportedBlockAccessListsPeer = response.BlockAccessListsRequests.Count > 0 &&
                                                    peer is not null &&
                                                    !peer.SyncPeer.SupportsBlockAccessLists();
 
-            SyncResponseHandlingResult result = SyncResponseHandlingResult.OK;
             using ArrayPoolListRef<Block> blocks = new(response.BodiesRequests?.Count ?? 0);
             int bodiesCount = 0;
             int blockAccessListsCount = 0;
@@ -627,7 +640,21 @@ namespace Nethermind.Synchronization.Blocks
                     continue;
                 }
 
-                TxReceipt[]? receipts = response.Receipts[i];
+                TxReceipt[]? receipts;
+                try
+                {
+                    receipts = response.Receipts[i];
+                }
+                // Receipts kept encoded decode on this first read, so a failure comes from the bytes the peer sent.
+                catch (Exception e)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Invalid receipts from {peer:hide} for block {header.ToString(BlockHeader.Format.Short)}: {e.Message}");
+                    if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, "invalid receipts received");
+                    result = SyncResponseHandlingResult.LesserQuality;
+                    entry.RetryReceiptRequest();
+                    continue;
+                }
+
                 if (receipts is null)
                 {
                     entry.RecordMissingReceipt();

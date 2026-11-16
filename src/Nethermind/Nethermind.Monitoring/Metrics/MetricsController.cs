@@ -78,7 +78,7 @@ namespace Nethermind.Monitoring.Metrics
                 foreach (DictionaryEntry entry in dict)
                 {
                     string keyStr = entry.Key.ToString()!;
-                    double value = Convert.ToDouble(entry.Value);
+                    double value = ToGaugeValue(entry.Value);
                     string gaugeName = GetGaugeNameKey(dictionaryName, keyStr);
                     ref Gauge? gauge = ref CollectionsMarshal.GetValueRefOrAddDefault(_gauges, gaugeName, out _);
                     gauge ??= CreateGauge(BuildGaugeName(keyStr));
@@ -94,7 +94,7 @@ namespace Nethermind.Monitoring.Metrics
                 foreach (DictionaryEntry entry in dict)
                 {
                     object key = entry.Key;
-                    double value = Convert.ToDouble(entry.Value);
+                    double value = ToGaugeValue(entry.Value);
                     switch (key)
                     {
                         case IMetricLabels label:
@@ -354,6 +354,8 @@ namespace Nethermind.Monitoring.Metrics
             metricUpdater = null!;
             return false;
         }
+
+        private static double ToGaugeValue(object? value) => value is MetricCounter counter ? counter.Value : Convert.ToDouble(value);
 
         private static string BuildGaugeName(MemberInfo propertyInfo) =>
             propertyInfo.GetCustomAttribute<DataMemberAttribute>()?.Name ?? BuildGaugeName(propertyInfo.Name);

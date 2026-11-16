@@ -148,7 +148,7 @@ public class OptimismEthRpcModuleTest
         Transaction tx = Build.A.Transaction
             .Signed(ecdsa: ethereumEcdsa, privateKey: TestItem.PrivateKeyA)
             .TestObject;
-        string serialized = await rpcBlockchain.TestEthRpc("eth_sendRawTransaction", Rlp.Encode(item: tx, behaviors: RlpBehaviors.None).Bytes.ToHexString());
+        string serialized = await rpcBlockchain.TestEthRpc("eth_sendRawTransaction", Rlp.Encode(item: tx, behaviors: RlpBehaviors.None).ToHexString());
 
         await txSender.Received().SendTransaction(tx: Arg.Any<Transaction>(), txHandlingOptions: TxHandlingOptions.PersistentBroadcast);
         Assert.That(serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","result":"{{TestItem.KeccakA.Bytes.ToHexString(withZeroX: true)}}","id":67}"""));
@@ -181,7 +181,7 @@ public class OptimismEthRpcModuleTest
             .Build();
 
         Transaction tx = Build.A.Transaction.Signed(TestItem.PrivateKeyA).TestObject;
-        string serialized = await rpcBlockchain.TestEthRpc("eth_sendRawTransaction", Rlp.Encode(item: tx, behaviors: RlpBehaviors.None).Bytes.ToHexString());
+        string serialized = await rpcBlockchain.TestEthRpc("eth_sendRawTransaction", Rlp.Encode(item: tx, behaviors: RlpBehaviors.None).ToHexString());
 
         Assert.That(serialized, Is.EqualTo(expected));
     }
@@ -203,8 +203,9 @@ public class OptimismEthRpcModuleTest
                 opSpecHelper: Substitute.For<IOptimismSpecHelper>())
             .Build();
 
+        // A fresh signer, so the process-wide sender cache cannot recover the sender in place of the failing ecdsa.
         Transaction tx = Build.A.Transaction
-            .Signed(ecdsa: signingEcdsa, privateKey: TestItem.PrivateKeyA)
+            .Signed(ecdsa: signingEcdsa, privateKey: Build.A.PrivateKey.TestObject)
             .TestObject;
         SignableTransactionForRpc rpcTx = new NullSenderTransactionForRpc(tx);
 
@@ -215,6 +216,28 @@ public class OptimismEthRpcModuleTest
         {
             Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidInput), "a request with no sender comes from no account this node holds");
             Assert.That(result.Result.Error, Is.EqualTo("unknown account"), "a request with no sender comes from no account this node holds");
+        }
+    }
+
+    [TestCase(",\"input\":\"0x1234\",\"data\":\"0xabcd\"", true)]
+    [TestCase(",\"input\":\"0x1234\",\"data\":\"0x1234\"", false)]
+    [TestCase(",\"input\":\"0x1234\"", false)]
+    [TestCase(",\"data\":\"0x1234\"", false)]
+    [TestCase("", false)]
+    public async Task Send_transaction_checks_input_and_data_before_zero_gas_price(string aliases, bool differ)
+    {
+        using TestRpcBlockchain rpcBlockchain = await BuildSendRpc(sequencer: null);
+
+        string serialized = await SendFrom(rpcBlockchain, rpcBlockchain.TestWallet.GetAccounts()[0], ",\"gas\":\"0x186a0\",\"nonce\":\"0x0\",\"gasPrice\":\"0x0\"" + aliases);
+
+        JToken response = JToken.Parse(serialized);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response["error"]?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput), serialized);
+            Assert.That(response["error"]?["message"]?.Value<string>(), Is.EqualTo(differ
+                ? RpcTransactionErrors.DataAndInputDiffer
+                : "gasPrice must be non-zero after london fork"), serialized);
+            Assert.That(response["result"], Is.Null, serialized);
         }
     }
 

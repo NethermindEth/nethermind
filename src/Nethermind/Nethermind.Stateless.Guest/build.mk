@@ -135,8 +135,12 @@ BFLAT_REFS := \
 
 .DEFAULT_GOAL := build
 
+# Extra properties of the guest's managed build, given on the command line so that
+# every referenced project sees them too.
+GUEST_DOTNET_FLAGS ?=
+
 dotnet-build:
-	dotnet build -c release -p:EnableZkEvm=true -p:GuestInput=$(GUEST_INPUT) $(GUEST_DIR)/$(GUEST_PROJECT).csproj
+	dotnet build -c release -p:EnableZkEvm=true -p:GuestInput=$(GUEST_INPUT) $(GUEST_DOTNET_FLAGS) $(GUEST_DIR)/$(GUEST_PROJECT).csproj
 
 # ILC embeds every manifest resource of every input assembly and the guest reads
 # none, so they are dead weight (6.9 MB of chainspecs once rode along).

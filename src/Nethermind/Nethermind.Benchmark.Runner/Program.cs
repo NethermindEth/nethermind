@@ -63,6 +63,8 @@ namespace Nethermind.Benchmark.Runner
                 typeof(Evm.Benchmark.EvmStackBenchmarks).Assembly,
                 typeof(Network.Benchmarks.DiscoveryBenchmarks).Assembly,
                 typeof(NewPayloadSerializationBenchmarks).Assembly,
+                typeof(Abi.Benchmark.F).Assembly,
+                typeof(Serialization.FluentRlp.Benchmark.NestedCollectionsBenchmark).Assembly,
             ];
 
             List<Assembly> simpleJobAssemblies = [

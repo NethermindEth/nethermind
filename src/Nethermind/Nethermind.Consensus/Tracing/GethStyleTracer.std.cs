@@ -65,7 +65,7 @@ public class GethStyleTracer(
         return TraceImpl(block, block.Transactions[txIndex].Hash, cancellationToken, options, writer: writer, pipeWriter: pipeWriter, txIndex: txIndex);
     }
 
-    public GethLikeTxTrace? Trace(Rlp blockRlp, Hash256 txHash, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
+    public GethLikeTxTrace? Trace(byte[] blockRlp, Hash256 txHash, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
         TraceImpl(GetBlockToTrace(blockRlp), txHash, cancellationToken, options, writer: writer, pipeWriter: pipeWriter, allowIndexed: false, processingOptions: TraceProcessingOptions.ReadOnlySigned);
 
     public GethLikeTxTrace? Trace(Block block, Hash256 txHash, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
@@ -302,7 +302,7 @@ public class GethStyleTracer(
         return blockTree.FindBlock(selector.BlockHash!, lookupOptions);
     }
 
-    public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(Rlp blockRlp, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
+    public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(byte[] blockRlp, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
         TraceBlockImpl(GetBlockToTrace(blockRlp), options, cancellationToken, writer, pipeWriter, allowIndexed: false, processingOptions: TraceProcessingOptions.ReadOnlySigned);
 
     public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(Block block, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
@@ -421,6 +421,7 @@ public class GethStyleTracer(
         }
 
         bool unaltered = allowIndexed && options.StateOverrides is null && options.BlockOverrides is null && !options.NoBaseFee;
+        if (txIndex < 0 && !useBlockAsBase && unaltered) txIndex = TransactionTraceBoundary.FindIndex(receiptFinder, prefixSeeds, block, txHash);
         BlockLogIndex? logIndex = null;
         bool tracePreceding = false;
         if (!useBlockAsBase && WantsLogIndex(options))
@@ -731,7 +732,7 @@ public class GethStyleTracer(
         return parent;
     }
 
-    private static Block GetBlockToTrace(Rlp blockRlp)
+    private static Block GetBlockToTrace(byte[] blockRlp)
     {
         Block block = Rlp.Decode<Block>(blockRlp)
             ?? throw new RlpReaderException("Block decoded as null.");
