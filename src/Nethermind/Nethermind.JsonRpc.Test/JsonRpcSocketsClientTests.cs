@@ -286,6 +286,22 @@ public class JsonRpcSocketsClientTests
     }
 
     [Test]
+    public async Task Large_socket_response_is_written_only_asynchronously([Values] bool batch)
+    {
+        using AsyncWriteOnlyMessageStream stream = new();
+        using SocketSendLock sendLock = new();
+
+        await WriteSocketResponseAsync(stream, RpcEndpoint.Ws, sendLock, batch ? 2 : null,
+            static () => Enumerable.Repeat("0x0102030405060708091011121314151617181920212223242526272829303132", 4096).ToArray(), CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stream.Length, Is.GreaterThan(4 * 32 * 1024));
+            Assert.DoesNotThrow(() => JsonDocument.Parse(stream.ToArray()).Dispose());
+        }
+    }
+
+    [Test]
     public async Task Socket_sink_reports_deferred_failure([Values] bool committed, [Values] bool batch)
     {
         using MemoryMessageStream stream = new();
@@ -711,6 +727,19 @@ public class JsonRpcSocketsClientTests
         {
             Write(buffer, offset, count);
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class AsyncWriteOnlyMessageStream : MemoryMessageStream
+    {
+        public override void Write(byte[] buffer, int offset, int count) => throw new InvalidOperationException("Synchronous write");
+
+        public override void Write(ReadOnlySpan<byte> buffer) => throw new InvalidOperationException("Synchronous write");
+
+        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            base.Write(buffer.ToArray(), 0, buffer.Length);
+            return ValueTask.CompletedTask;
         }
     }
 

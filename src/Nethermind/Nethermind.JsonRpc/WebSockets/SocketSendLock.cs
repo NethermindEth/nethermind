@@ -47,7 +47,7 @@ internal sealed class SocketSendLock : IDisposable
     {
         if (_writer is null || _writer.InnerStream != stream || _writer.IsCompleted)
         {
-            _writer = new CountingStreamPipeWriter(stream, options, writtenCount);
+            _writer = new CountingStreamPipeWriter(stream, options, writtenCount, flushOnThreshold: false);
         }
         else
         {
