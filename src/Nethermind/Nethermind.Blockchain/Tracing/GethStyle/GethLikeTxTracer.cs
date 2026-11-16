@@ -63,7 +63,8 @@ public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop, ITraceOpe
     {
         EvmExceptionType.None => null,
         EvmExceptionType.BadInstruction => "BadInstruction",
-        EvmExceptionType.StackOverflow => "StackOverflow",
+        // No opcode grows the stack by more than one word, so only a full stack overflows, against a limit of 1023.
+        EvmExceptionType.StackOverflow => "stack limit reached 1024 (1023)",
         EvmExceptionType.StackUnderflow => "StackUnderflow",
         EvmExceptionType.OutOfGas => "out of gas",
         EvmExceptionType.InvalidJumpDestination => "BadJumpDestination",

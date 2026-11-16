@@ -240,7 +240,6 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
     internal static readonly ulong[] StackUnderflowGasAfterIntrinsic = [GasCostOf.VeryLow - 1, 100000UL];
 
     [Test]
-    [Todo("Verify the exact error string in Geth")]
     public void Can_trace_stack_overflow_failure()
     {
         byte[] code = Prepare.EvmCode
@@ -251,11 +250,8 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
             .Done;
 
         GethLikeTxTrace trace = ExecuteAndTrace(code);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(trace.Failed, Is.EqualTo(true));
-            Assert.That(trace.Entries.Last().Error, Is.EqualTo("StackOverflow"));
-        }
+        Assert.That(trace.Failed, Is.EqualTo(true));
+        AssertFailedStep(TraceStructLogs(code, Activation), "PUSH1", "stack limit reached 1024 (1023)");
     }
 
     [Test]
@@ -883,6 +879,37 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
                 Assert.That(sstores[^1].GetProperty("error").GetString(), Is.EqualTo(expectedError), $"{tracerName}: failed SSTORE error");
                 Assert.That(sstores[^1].TryGetProperty("storage", out _), Is.False, $"{tracerName}: failed SSTORE storage");
                 Assert.That(sstores[..^1].All(static e => e.TryGetProperty("storage", out _)), Is.True, $"{tracerName}: successful SSTORE storage");
+            }
+        }
+    }
+
+    /// <summary>Traces <paramref name="code"/> with the in-memory and the streaming struct logger.</summary>
+    private (string Tracer, JsonElement[] Entries)[] TraceStructLogs(byte[] code, ForkActivation activation)
+    {
+        (Block block, Transaction transaction) = PrepareTx(activation, 100000UL, code);
+        GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        using JsonDocument inMemory = JsonDocument.Parse(new EthereumJsonSerializer().Serialize(trace));
+
+        return [
+            ("in-memory", [.. inMemory.RootElement.GetProperty("structLogs").EnumerateArray().Select(static e => e.Clone())]),
+            ("streaming", ExecuteStreamingTracerEntries(code, activation))];
+    }
+
+    /// <summary>Asserts the last step at <paramref name="depth"/>, the one that halted its frame, in each tracer's output.</summary>
+    private static void AssertFailedStep((string Tracer, JsonElement[] Entries)[] traces, string expectedOpcode, string? expectedError,
+        int depth = 1, ulong? expectedGasCost = null)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            foreach ((string tracer, JsonElement[] entries) in traces)
+            {
+                JsonElement step = entries.Last(e => e.GetProperty("depth").GetInt32() == depth);
+                Assert.That(step.GetProperty("op").GetString(), Is.EqualTo(expectedOpcode), $"{tracer}: op");
+                Assert.That(step.TryGetProperty("error", out JsonElement error) ? error.GetString() : null, Is.EqualTo(expectedError), $"{tracer}: error");
+                if (expectedGasCost is not null)
+                    Assert.That(step.GetProperty("gasCost").GetUInt64(), Is.EqualTo(expectedGasCost), $"{tracer}: gasCost");
             }
         }
     }
