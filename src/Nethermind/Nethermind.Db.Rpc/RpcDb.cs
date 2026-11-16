@@ -44,7 +44,6 @@ namespace Nethermind.Db.Rpc
 
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) => ThrowWritesNotSupported();
         public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => GetThroughRpc(key);
-        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]?>(k, GetThroughRpc(k))).ToArray();
         public void Remove(ReadOnlySpan<byte> key) => ThrowWritesNotSupported();
         public bool KeyExists(ReadOnlySpan<byte> key) => GetThroughRpc(key) is not null;
         public void Flush(bool onlyWal = false) { }

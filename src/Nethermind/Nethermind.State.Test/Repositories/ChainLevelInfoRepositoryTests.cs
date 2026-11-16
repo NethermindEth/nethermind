@@ -138,23 +138,19 @@ public class ChainLevelInfoRepositoryTests
     }
 
     [Test]
-    public void MultiLoadLevel_WithFixedOrMixedKeyLengths_UsesExpectedBatchPath([Values] bool mixedLengths)
+    public void MultiLoadLevel_WithFixedOrMixedKeyLengths_BatchesEachKeyLengthOnce([Values] bool mixedLengths)
     {
-        BatchTrackingDb db = new(mixedLengths);
+        BatchTrackingDb db = new();
         using IContainer container = CreateContainer(db);
         IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
-        ulong[] requested = mixedLengths ? [255, 256, 255] : [1, 2, 1];
+        ulong[] requested = mixedLengths ? [65_536, 255, 256, 255, 65_536] : [1, 2, 1];
         foreach (ulong number in requested) repository.PersistLevel(number, CreateBatchLevel(number));
 
         using ArrayPoolListRef<ulong> numbers = new(requested);
         using IOwnedReadOnlyList<ChainLevelInfo> levels = repository.MultiLoadLevel(numbers);
         Assert.That(levels.Count, Is.EqualTo(requested.Length));
         for (int i = 0; i < requested.Length; i++) AssertChainLevelInfo(levels[i], CreateBatchLevel(requested[i]));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(db.DecodedBatchReads, Is.EqualTo(mixedLengths ? 0 : 1));
-            Assert.That(db.LegacyBatchReads, Is.EqualTo(mixedLengths ? 1 : 0));
-        }
+        Assert.That(db.BatchKeyLengths, Is.EqualTo(mixedLengths ? new[] { 1, 2, 3 } : new[] { 1 }));
     }
 
     [Test]
@@ -582,25 +578,13 @@ public class ChainLevelInfoRepositoryTests
         }
     }
 
-    private sealed class BatchTrackingDb(bool mixedLengths) : MemDb, IDb, IBatchReadOnlyDb
+    private sealed class BatchTrackingDb : MemDb, IBatchReadOnlyDb
     {
-        public int DecodedBatchReads { get; private set; }
-        public int LegacyBatchReads { get; private set; }
-
-        KeyValuePair<byte[], byte[]>[] IDb.this[byte[][] keys]
-        {
-            get
-            {
-                if (!mixedLengths) throw new InvalidOperationException("Fixed-width keys must use decoded batch reads.");
-                LegacyBatchReads++;
-                return base[keys];
-            }
-        }
+        public List<int> BatchKeyLengths { get; } = [];
 
         void IBatchReadOnlyDb.GetMany<T, TDecoder>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values, TDecoder decoder)
         {
-            if (mixedLengths) throw new InvalidOperationException("Mixed-width keys must use one legacy batch.");
-            DecodedBatchReads++;
+            BatchKeyLengths.Add(keyLength);
             for (int i = 0; i < values.Length; i++)
             {
                 byte[] value = Get(keys.Slice(i * keyLength, keyLength));
