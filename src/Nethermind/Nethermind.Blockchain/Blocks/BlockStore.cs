@@ -228,7 +228,7 @@ public class BlockStore : IBlockStore, IClearableCache
     /// <remarks>Reads the number-prefixed keys in one batch. Pending blocks are taken before the batch, as
     /// <see cref="GetRlp"/> does, so a block whose write lands during the batch is not missed. A block missing from the
     /// batch is read under its bare hash, as a database predating the block-number prefix stores it.</remarks>
-    public void GetRlps(ReadOnlySpan<(ulong Number, Hash256 Hash)> blocks, ArrayPoolList<byte> destination, Span<Range?> rlps)
+    public void GetRlps(ReadOnlySpan<(ulong Number, ValueHash256 Hash)> blocks, ArrayPoolList<byte> destination, Span<Range?> rlps)
     {
         ArgumentOutOfRangeException.ThrowIfNotEqual(rlps.Length, blocks.Length);
         using ArrayPoolListRef<(int Index, Range Rlp)> pending = new(0);
@@ -236,7 +236,7 @@ public class BlockStore : IBlockStore, IClearableCache
         {
             for (int i = 0; i < blocks.Length; i++)
             {
-                if (_pending.TryGet(blocks[i].Hash, out Block? pendingBlock))
+                if (_pending.TryGet(in blocks[i].Hash, out Block? pendingBlock))
                 {
                     pending.Add((i, Add(destination, _blockDecoder.Encode(pendingBlock))));
                 }
@@ -253,7 +253,7 @@ public class BlockStore : IBlockStore, IClearableCache
         foreach ((int index, Range rlp) in pending.AsSpan()) rlps[index] = rlp;
         for (int i = 0; i < rlps.Length; i++)
         {
-            if (rlps[i] is null && _blockDb.Get(blocks[i].Hash) is { } rlp) rlps[i] = Add(destination, rlp);
+            if (rlps[i] is null && _blockDb.Get(blocks[i].Hash.Bytes) is { } rlp) rlps[i] = Add(destination, rlp);
         }
     }
 

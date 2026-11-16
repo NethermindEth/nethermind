@@ -30,12 +30,13 @@ internal static class PayloadBodiesHandlerHelper
         using ArrayPoolListRef<ulong> numbers = new(count);
         for (ulong number = start; number <= end; number++) numbers.Add(number);
 
-        using IOwnedReadOnlyList<ChainLevelInfo?> levels = chainLevels.LoadLevelsWithoutCaching(numbers);
-        using ArrayPoolListRef<(ulong Number, Hash256 Hash)> blocks = new(count);
+        using ArrayPoolSpan<ValueHash256?> hashes = new(count);
+        chainLevels.GetMainChainBlockHashesWithoutCaching(numbers.AsSpan(), hashes);
+        using ArrayPoolListRef<(ulong Number, ValueHash256 Hash)> blocks = new(count);
         using ArrayPoolListRef<int> positions = new(count);
         for (int i = 0; i < count; i++)
         {
-            if (levels[i]?.MainChainBlock?.BlockHash is { } hash && hash != Keccak.Zero)
+            if (hashes[i] is { } hash && hash != Keccak.Zero.ValueHash256)
             {
                 blocks.Add((numbers[i], hash));
                 positions.Add(i);
@@ -53,13 +54,13 @@ internal static class PayloadBodiesHandlerHelper
         using ArrayPoolSpan<ulong?> numbers = new(count);
         headerStore.GetBlockNumbers(blockHashes, numbers);
 
-        using ArrayPoolListRef<(ulong Number, Hash256 Hash)> blocks = new(count);
+        using ArrayPoolListRef<(ulong Number, ValueHash256 Hash)> blocks = new(count);
         using ArrayPoolListRef<int> positions = new(count);
         for (int i = 0; i < count; i++)
         {
             if (numbers[i] is { } number)
             {
-                blocks.Add((number, blockHashes[i]));
+                blocks.Add((number, blockHashes[i].ValueHash256));
                 positions.Add(i);
             }
         }
@@ -68,7 +69,7 @@ internal static class PayloadBodiesHandlerHelper
     }
 
     private static StoredBlocks ReadBlocks(
-        IBlockStore blockStore, in ArrayPoolListRef<(ulong Number, Hash256 Hash)> blocks, in ArrayPoolListRef<int> positions, int count)
+        IBlockStore blockStore, in ArrayPoolListRef<(ulong Number, ValueHash256 Hash)> blocks, in ArrayPoolListRef<int> positions, int count)
     {
         using ArrayPoolList<Range?> ranges = new(blocks.Count, blocks.Count);
         ArrayPoolList<byte> rlps = new(blocks.Count * RlpLengthEstimate);
@@ -109,7 +110,7 @@ internal static class PayloadBodiesHandlerHelper
             {
                 if (blocks[i] is { } block)
                 {
-                    results[i] = PayloadBodiesV2DirectResponse.CreatePayloadBody(rlps[block.Rlp], balStore.GetRlp(block.Number, block.Hash));
+                    results[i] = PayloadBodiesV2DirectResponse.CreatePayloadBody(rlps[block.Rlp], balStore.GetRlp(block.Number, new Hash256(block.Hash)));
                 }
             }
         }
@@ -124,7 +125,7 @@ internal static class PayloadBodiesHandlerHelper
     }
 
     /// <summary>A stored block and where its encoding is in <see cref="StoredBlocks.Rlps"/>.</summary>
-    public readonly record struct StoredBlock(ulong Number, Hash256 Hash, Range Rlp);
+    public readonly record struct StoredBlock(ulong Number, ValueHash256 Hash, Range Rlp);
 
     /// <summary>The blocks found, <see langword="null"/> where not stored, and their encodings one after another.</summary>
     public readonly record struct StoredBlocks(ArrayPoolList<StoredBlock?> Blocks, ArrayPoolList<byte> Rlps);

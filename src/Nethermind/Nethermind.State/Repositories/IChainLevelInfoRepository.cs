@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -40,12 +41,15 @@ namespace Nethermind.State.Repositories
 
         IOwnedReadOnlyList<ChainLevelInfo?> MultiLoadLevel(in ArrayPoolListRef<ulong> blockNumbers);
 
-        /// <summary>Loads each level as <see cref="LoadLevelWithoutCaching"/> does, in request order.</summary>
-        IOwnedReadOnlyList<ChainLevelInfo?> LoadLevelsWithoutCaching(in ArrayPoolListRef<ulong> blockNumbers)
+        /// <summary>Reads the main chain block hash of each level as <see cref="TryGetMainChainBlockWithoutCaching"/> does.</summary>
+        /// <param name="blockNumbers">The numbers of the levels.</param>
+        /// <param name="blockHashes">Receives the hash of each main chain block, or <see langword="null"/> when the level has none.</param>
+        void GetMainChainBlockHashesWithoutCaching(ReadOnlySpan<ulong> blockNumbers, Span<ValueHash256?> blockHashes)
         {
-            ArrayPoolList<ChainLevelInfo?> levels = new(blockNumbers.Count, blockNumbers.Count);
-            for (int i = 0; i < blockNumbers.Count; i++) levels[i] = LoadLevelWithoutCaching(blockNumbers[i]);
-            return levels;
+            for (int i = 0; i < blockNumbers.Length; i++)
+            {
+                blockHashes[i] = TryGetMainChainBlockWithoutCaching(blockNumbers[i], out ValueHash256 blockHash, out _) ? blockHash : (ValueHash256?)null;
+            }
         }
     }
 }

@@ -176,32 +176,31 @@ public class ChainLevelInfoRepositoryTests
     }
 
     [Test]
-    public void LoadLevelsWithoutCaching_returns_a_level_written_only_to_the_cache()
+    public void GetMainChainBlockHashesWithoutCaching_reads_cached_and_stored_levels_in_request_order()
     {
         using TempPath directory = TempPath.GetTempDirectory();
         using IDb db = CreateBatchDb(native: true, directory);
         using IContainer container = CreateContainer(db);
         IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
-        ChainLevelInfo stored = CreateBatchLevel(1);
-        ChainLevelInfo pending = CreateBatchLevel(2);
-        repository.PersistLevel(1, stored);
+        repository.PersistLevel(1, CreateBatchLevel(1));
+        repository.PersistLevel(256, new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakD, 256)));
+        repository.PersistLevel(4, new ChainLevelInfo(false, new BlockInfo(TestItem.KeccakE, 4)));
         ((IClearableCache)repository).ClearCache();
-        using ArrayPoolListRef<ulong> numbers = new(4, 3UL, 2UL, 1UL, 2UL);
 
         using BatchWrite batch = repository.StartBatch();
-        repository.PersistLevel(2, pending, batch);
-        using IOwnedReadOnlyList<ChainLevelInfo> fromDb = repository.MultiLoadLevel(numbers);
-        Assert.That(fromDb[1], Is.Null, "precondition: the batch is not written yet");
+        repository.PersistLevel(2, new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakC, 2)), batch);
+        ulong[] numbers = [3, 2, 1, 256, 4, 2];
+        using ArrayPoolListRef<ulong> fromDbNumbers = new(numbers);
+        using IOwnedReadOnlyList<ChainLevelInfo> fromDb = repository.MultiLoadLevel(fromDbNumbers);
+        Assert.That(fromDb[1], Is.Null, "precondition: the level written in the batch is only in the cache");
 
-        using IOwnedReadOnlyList<ChainLevelInfo> levels = repository.LoadLevelsWithoutCaching(numbers);
-        using (Assert.EnterMultipleScope())
+        ValueHash256?[] hashes = new ValueHash256?[numbers.Length];
+        repository.GetMainChainBlockHashesWithoutCaching(numbers, hashes);
+
+        Assert.That(hashes, Is.EqualTo(new ValueHash256?[]
         {
-            Assert.That(levels.Count, Is.EqualTo(4));
-            Assert.That(levels[0], Is.Null);
-            Assert.That(levels[1], Is.SameAs(pending));
-            AssertChainLevelInfo(levels[2], stored);
-            Assert.That(levels[3], Is.SameAs(pending));
-        }
+            null, TestItem.KeccakC.ValueHash256, TestItem.KeccakA.ValueHash256, TestItem.KeccakD.ValueHash256, null, TestItem.KeccakC.ValueHash256
+        }));
     }
 
     [Test]

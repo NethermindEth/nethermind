@@ -112,7 +112,7 @@ public class BlockStoreTests
         using ArrayPoolList<byte> destination = new(0);
         Range?[] ranges = new Range?[5];
         store.GetRlps(
-            [(missing.Number, missing.Hash!), (stored.Number, stored.Hash!), (pending.Number, pending.Hash!), (hashKeyed.Number, hashKeyed.Hash!), (stored.Number, stored.Hash!)],
+            [(missing.Number, missing.Hash!.ValueHash256), (stored.Number, stored.Hash!.ValueHash256), (pending.Number, pending.Hash!.ValueHash256), (hashKeyed.Number, hashKeyed.Hash!.ValueHash256), (stored.Number, stored.Hash!.ValueHash256)],
             destination,
             ranges);
         byte[]?[] rlps = Array.ConvertAll(ranges, range => range is { } r ? destination.AsSpan()[r].ToArray() : null);
