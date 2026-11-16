@@ -86,10 +86,7 @@ public class TransactionProcessorFeeTests
     [Test]
     public void Pays_fees_without_fee_tracing([Values] bool withFeeCollector)
     {
-        if (withFeeCollector)
-        {
-            _spec.FeeCollector = TestItem.AddressC;
-        }
+        _spec.FeeCollector = withFeeCollector ? TestItem.AddressC : null;
 
         Transaction tx = Build.A.Transaction
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).WithMaxFeePerGas(10).WithMaxPriorityFeePerGas(10)
