@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -122,6 +123,31 @@ public class ReceiptSyncFeedTests
         using ReceiptsSyncBatch req2 = (await _feed.PrepareRequest())!;
         Assert.That(req2.Infos[0]!.BlockNumber, Is.EqualTo(95));
         insertBatch.Received(1).Dispose();
+    }
+
+    [Test]
+    public async Task ShouldKeepInsertFailureWhenStoringFails()
+    {
+        _feed.InitializeFeed();
+
+        using ReceiptsSyncBatch req = (await _feed.PrepareRequest())!;
+        req.Response = req.Infos.Take(8).Select(info => _syncingFromReceiptStore.Get(info!.BlockHash)).ToPooledList(8)!;
+
+        IReceiptsInsertBatch insertBatch = Substitute.For<IReceiptsInsertBatch>();
+        _receiptStorage.StartInsertBatch().Returns(insertBatch);
+        insertBatch
+            .When((it) => it.Insert(Arg.Any<Block>(), Arg.Any<TxReceipt[]?>()))
+            .Do((callInfo) =>
+            {
+                Block block = (Block)callInfo[0];
+                if (block.Number == 95) throw new InvalidOperationException("insert failed");
+            });
+        insertBatch.When(static (it) => it.Dispose()).Do(static (_) => throw new IOException("store failed"));
+
+        Func<SyncResponseHandlingResult> act = () => _feed.HandleResponse(req);
+        Assert.That(act, Throws.InvalidOperationException.With.Message.EqualTo("insert failed"));
+        using ReceiptsSyncBatch req2 = (await _feed.PrepareRequest())!;
+        Assert.That(req2.Infos[0]!.BlockNumber, Is.EqualTo(_pivotBlock.Number));
     }
 
     [Test]

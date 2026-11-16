@@ -329,18 +329,39 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 validResponsesCount = AddReceipts(batch, insertBatch, insertedBlocks);
             }
-            finally
+            catch (Exception)
             {
-                insertBatch.Dispose();
-                foreach (ulong blockNumber in insertedBlocks)
-                {
-                    _syncStatusList.MarkInserted(blockNumber);
-                }
+                if (TryStore(insertBatch)) MarkInserted(insertedBlocks);
+                throw;
             }
 
+            insertBatch.Dispose();
+            MarkInserted(insertedBlocks);
             UpdateSyncReport();
             LogPostProcessingBatchInfo(batch, validResponsesCount);
             return validResponsesCount;
+        }
+
+        private bool TryStore(IReceiptsInsertBatch insertBatch)
+        {
+            try
+            {
+                insertBatch.Dispose();
+                return true;
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error("Could not store the receipts inserted before the failure.", e);
+                return false;
+            }
+        }
+
+        private void MarkInserted(ArrayPoolList<ulong> insertedBlocks)
+        {
+            foreach (ulong blockNumber in insertedBlocks)
+            {
+                _syncStatusList.MarkInserted(blockNumber);
+            }
         }
 
         private int AddReceipts(ReceiptsSyncBatch batch, IReceiptsInsertBatch insertBatch, ArrayPoolList<ulong> insertedBlocks)
