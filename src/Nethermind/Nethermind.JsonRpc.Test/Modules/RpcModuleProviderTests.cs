@@ -11,11 +11,13 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
 using Nethermind.Core.Test.Modules;
+using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -412,6 +414,98 @@ public class RpcModuleProviderTests
         _ = container.Resolve<IRpcModuleProvider>();
 
         Assert.That(container.Resolve<TestRpcModuleDependencies>().WasRequested, Is.EqualTo(preload));
+    }
+
+    [Test]
+    public void Eth_calls_within_the_limit_start_at_once()
+    {
+        IRpcModuleProvider provider = CreateEthCallLimitedProvider(limit: 2);
+
+        ValueTask<IRpcModule> first = provider.Rent("eth_call", true);
+        ValueTask<IRpcModule> second = provider.Rent("eth_estimateGas", true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.IsCompletedSuccessfully, Is.True);
+            Assert.That(second.IsCompletedSuccessfully, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task Eth_call_above_the_limit_waits_until_a_call_returns()
+    {
+        IRpcModuleProvider provider = CreateEthCallLimitedProvider(limit: 1);
+        IRpcModule held = await provider.Rent("eth_call", true);
+
+        ValueTask<IRpcModule> waiting = provider.Rent("eth_createAccessList", true);
+        Assert.That(waiting.IsCompleted, Is.False);
+
+        provider.Return("eth_call", held);
+
+        Assert.That(await waiting.AsTask().WaitAsync(TimeSpan.FromSeconds(10)), Is.Not.Null);
+    }
+
+    [Test]
+    public async Task Eth_call_wait_times_out_without_holding_a_slot()
+    {
+        IRpcModuleProvider provider = CreateEthCallLimitedProvider(limit: 1, timeout: 200);
+        IRpcModule held = await provider.Rent("eth_call", true);
+
+        Assert.That(async () => await provider.Rent("eth_call", true), Throws.TypeOf<ModuleRentalTimeoutException>());
+
+        provider.Return("eth_call", held);
+        ValueTask<IRpcModule> next = provider.Rent("eth_call", true);
+        ValueTask<IRpcModule> overLimit = provider.Rent("eth_call", true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(next.IsCompletedSuccessfully, Is.True);
+            Assert.That(overLimit.IsCompleted, Is.False);
+        }
+
+        Assert.That(async () => await overLimit, Throws.TypeOf<ModuleRentalTimeoutException>());
+    }
+
+    [Test]
+    public async Task Cancelled_eth_call_wait_does_not_hold_a_slot()
+    {
+        IRpcModuleProvider provider = CreateEthCallLimitedProvider(limit: 1);
+        IRpcModule held = await provider.Rent("eth_call", true);
+        using CancellationTokenSource cancellation = new();
+
+        ValueTask<IRpcModule> cancelled = provider.Rent("eth_call", true, cancellation.Token);
+        await cancellation.CancelAsync();
+
+        Assert.That(async () => await cancelled, Throws.InstanceOf<OperationCanceledException>());
+
+        provider.Return("eth_call", held);
+        ValueTask<IRpcModule> next = provider.Rent("eth_call", true);
+        ValueTask<IRpcModule> overLimit = provider.Rent("eth_call", true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(next.IsCompletedSuccessfully, Is.True);
+            Assert.That(overLimit.IsCompleted, Is.False);
+        }
+
+        provider.Return("eth_call", await next);
+        Assert.That(await overLimit.AsTask().WaitAsync(TimeSpan.FromSeconds(10)), Is.Not.Null);
+    }
+
+    [Test]
+    public async Task Other_eth_methods_do_not_wait_for_the_eth_call_limit()
+    {
+        IRpcModuleProvider provider = CreateEthCallLimitedProvider(limit: 1);
+        await provider.Rent("eth_call", true);
+
+        Assert.That(provider.Rent("eth_blockNumber", true).IsCompletedSuccessfully, Is.True);
+    }
+
+    private static IRpcModuleProvider CreateEthCallLimitedProvider(int limit, int timeout = 30_000)
+    {
+        IRpcModuleProvider provider = CreateProvider(new JsonRpcConfig { EthCallMaxConcurrentRequests = limit, Timeout = timeout });
+        provider.Register(new SingletonModulePool<IEthRpcModule>(Substitute.For<IEthRpcModule>(), true));
+        return provider;
     }
 
     private static IRpcModuleProvider CreateEraAdminModuleProvider() =>

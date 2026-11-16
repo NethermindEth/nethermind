@@ -188,6 +188,9 @@ public interface IJsonRpcConfig : IConfig
             """)]
     int? EthModuleConcurrentInstances { get; set; }
 
+    [ConfigItem(Description = "The maximum number of `eth_call`, `eth_estimateGas` and `eth_createAccessList` requests that execute at a time, with or without overrides. A request above this number waits for a free slot for up to `JsonRpc.Timeout` and then fails with a `ModuleTimeout` JSON-RPC error. Waiting requests do not hold a thread. `0` or negative to lift the limit. Defaults to twice the number of logical processors.")]
+    int? EthCallMaxConcurrentRequests { get; set; }
+
     [ConfigItem(Description = "The path to the JWT secret file required for the Engine API authentication.", DefaultValue = "null", IsSensitiveWhenMasked = true)]
     public string JwtSecretFile { get; set; }
 
