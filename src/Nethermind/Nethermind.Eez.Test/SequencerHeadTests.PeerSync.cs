@@ -18,6 +18,7 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Eez.Follower;
 using Nethermind.Eez.Network;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Peers;
@@ -144,11 +145,12 @@ public partial class SequencerHeadTests
     {
         await using PeerSyncFixture fixture = PeerSyncFixture.Create();
         byte[] bytes = [1, 2, 3, 4];
-        using PoisonedBodyMemory memory = new(bytes);
-        Transaction transaction = Build.A.Transaction.WithData(bytes).TestObject;
+        Transaction transaction = Build.A.Transaction.WithData(bytes).Signed().TestObject;
         Block expected = Build.A.Block.WithTransactions(transaction).TestObject;
+        byte[] encoded = BlockBodyDecoder.Instance.Encode(expected.Body);
+        using PoisonedBodyMemory memory = new(encoded);
         fixture.Peer.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
-            .Returns(_ => new OwnedBlockBodies([expected.Body], memory));
+            .Returns(_ => new OwnedBlockBodies(memory, [new Range(0, encoded.Length)], BlockBodyDecoder.Instance));
 
         Block? block = await fixture.ReadBody(expected.Header);
 
