@@ -1,8 +1,10 @@
 participants:
   - el_type: nethermind
-    el_image: daisugi/nethermind:fe94447c77
+    el_image: daisugi/nethermind:9065d9a50b
     el_extra_params:
       - --TxPool.FrameTxMaxVerifyGas=500000
+      # No blob support lets peers negotiate eth/73 and relay proof wrappers before PeerDAS.
+      - --TxPool.BlobsSupport=Disabled
     cl_type: lighthouse
     cl_image: daisugi-kurtosis/lighthouse:eip8288-lean
     vc_type: lighthouse

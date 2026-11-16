@@ -1,0 +1,40 @@
+# Peering across hosts: add after lighthouse-distroless.override.yml in COMPOSE_FILE. Discovery stays off; peers are
+# static. EL_P2P_PORT and CL_P2P_PORT are the host ports this node publishes, BEACON_PUBLIC_IP the address other hosts
+# reach it at, and BEACON_PEERS a comma-separated list of the other beacon nodes'
+# /ip4/<ip>/tcp/<port>/p2p/<peer id>. The other Nethermind nodes go in <genesis dir>/nethermind/static-nodes.json.
+services:
+  nethermind:
+    environment:
+      NETHERMIND_INITCONFIG_PEERMANAGERENABLED: "true"
+      # A static peer redials within seconds after a restart; the recent-IP filter would reject each redial and renew
+      # its own window, so the peers never reconnect. Behind NAT the inbound address is not the peer's listed one either.
+      NETHERMIND_NETWORKCONFIG_FILTERPEERSBYRECENTIP: "false"
+    ports:
+      - ${EL_P2P_PORT:-30303}:30303/tcp
+      - ${EL_P2P_PORT:-30303}:30303/udp
+  beacon:
+    ports:
+      - ${CL_P2P_PORT:-9000}:9000/tcp
+      - ${CL_P2P_PORT:-9000}:9000/udp
+    command:
+      - lighthouse
+      - bn
+      - --testnet-dir=/testnet
+      - --datadir=/data
+      - --execution-endpoint=http://nethermind:8551
+      - --execution-jwt=/jwt/jwtsecret
+      - --http
+      - --http-address=0.0.0.0
+      - --http-port=5052
+      - --disable-upnp
+      - --disable-enr-auto-update
+      - --enable-private-discovery
+      - --target-peers=8
+      - --disable-peer-scoring
+      - --subscribe-all-subnets
+      - --suggested-fee-recipient=${FEE_RECIPIENT:-0x8943545177806ED17B9F23F0a21ee5948eCaa776}
+      - --port=9000
+      - --enr-address=${BEACON_PUBLIC_IP:?set BEACON_PUBLIC_IP to the address other hosts reach this beacon node at}
+      - --enr-tcp-port=${CL_P2P_PORT:-9000}
+      - --enr-udp-port=${CL_P2P_PORT:-9000}
+      - --libp2p-addresses=${BEACON_PEERS:-}

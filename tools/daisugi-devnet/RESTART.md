@@ -1,87 +1,111 @@
 # Daisugi fresh-genesis restart: operator handoff
 
-The F128 stack this kit pins, how it was validated, and how operators bring up a shared network from it. Build and genesis commands live in [README.md](README.md); this file adds the frozen pins, the multi-host steps and the health checks.
+One shared fresh genesis, coordinated with EthPandaOps, on the frozen F128 stack below. Build and genesis commands live in [README.md](README.md); this file adds the pins, the evidence, the multi-host setup and the health checks.
 
 ## Frozen stack
 
 | Component | Revision | Check |
 | --- | --- | --- |
-| Nethermind | `fe94447c770f7eedfb31336c47a824df69aeaf53` (`feature/eip8288-lean` `757b7eabed` + NethermindEth/nethermind#15955) | `nethermind --version` prints `Commit: fe94447c…` |
-| Native Lean backend | `Nethermind.Crypto.Lean` 0.21.0.110 (int.nugettest.org), from NethermindEth/lean-bindings `1209c17` | nupkg sha256 `daecd150e646cdbc1ecaffb0fa118dff780c8a928a2ff705a7c3362fddd51ac2` |
+| Nethermind | `9065d9a50b5036f9d1b08b650234acb0a1d4823e` (`feature/eip8288-lean` `757b7eabed` + NethermindEth/nethermind#15955 + #15961) | `nethermind --version` prints `Commit: 9065d9a5…` |
+| Native Lean backend | `Nethermind.Crypto.Lean` 0.21.0.110 (int.nugettest.org), from NethermindEth/lean-bindings `1209c17` (#22, tree `734985e4`) | nupkg sha256 `daecd150e646cdbc1ecaffb0fa118dff780c8a928a2ff705a7c3362fddd51ac2` |
 | Native library in the image | `/nethermind/libnethermind_lean.so` | sha256 `aad07d8fa0f106457ef1719eadd1685a98e39fe6df3ab27308022e14637b8f00` (x64), `caa3ed9b725d44cef6411452f35342f50f2d077dfe8dd666f4360abfd436c8ad` (arm64, not run) |
 | Protocol | leanVM `f7ba4999` (F128), native ABI 21, leanSPHINCS key `PK.seed \|\| PK.root` (ethereum/EIPs#12666) | `AGGREGATED_VK` `e09e5acfcfe87832f337eb42acac98246d160bb915b55c55fbd8118b203cbb81` |
-| Lighthouse | v8.2.2 `e423a667` + asanso/AA-PQ#10 patches `0ba239e` | `/lighthouse` sha256 `109c9a91e128db8cb17be6939c5f614b1ae494a68da53814e9300bc5299ccd3d` |
+| Lighthouse | v8.2.2 `e423a667` + asanso/AA-PQ#10 patches at `4b0a11e0e7d261bf47a2e78589bcdff050703412` (patches unchanged since `0ba239e`) | `/lighthouse` sha256 `109c9a91e128db8cb17be6939c5f614b1ae494a68da53814e9300bc5299ccd3d` |
 | PQ signer (`FX`) | `testing/runtimes/linux-x64/native/fixtures` of the same nupkg | sha256 `fc25affec68cbafacd35a728a7f665bd6aa75cbe0e59b7fc0775d4f47386b982` |
-| AA-PQ wallet | asanso/AA-PQ#12 `9f40934` (`eip8288-lean` profile, `PK.seed \|\| PK.root`); guide #13 `f4932aa` | lean runtime hash `0x0b882e19…b467`, factory creation hash `0x20b2c680…5462` |
+| AA-PQ | wallet #12 `9f409345d5798de862425a104e91e2ecb9d16e1c`; guide #13 `ee0d1c939e12886c06fb87e8107b4da011ad9128` | lean runtime hash `0x0b882e19…b467`, factory creation hash `0x20b2c680…5462` |
 
-- Every EL must run this exact Nethermind build. A node with another native build reports a different `AGGREGATED_VK`, refuses to start or rejects every proof.
-- Rebuilt images get new local IDs; compare the commit and library hashes above, not image IDs.
-- Every EL on the network must be Nethermind: it follows open EIP drafts (proof in the block body, #12479; proof-carrying inclusion lists, #12475; wrapper limits, #12590) that EIP-8288 master does not have yet.
+- Every EL runs this exact Nethermind build. Another native build reports another `AGGREGATED_VK`: it refuses to start or rejects every proof.
+- Every EL is Nethermind: the stack follows open EIP drafts (proof in the block body, #12479; proof-carrying inclusion lists, #12475; wrapper limits, #12590) that EIP-8288 master does not have yet.
+- Every EL runs with blob support off (`--TxPool.BlobsSupport=Disabled`; the compose default). Without it, peers negotiate eth/71 and never relay proof wrappers (EIP-8437), so a PQ transaction is included only by the node that received it.
+- Rebuilt images get new IDs; compare the commit and library hashes above.
 
-## Validation (2026-11-16, one host, Kurtosis)
+## Validation (2026-11-16, one host)
 
-- 3 Nethermind + Lighthouse + validator nodes, 64 validators each, fresh genesis, Daisugi fork at epoch 3 (`kurtosis/run.sh`, `NODES=3`, `PQ_SCHEMES="sphincs stark mixed"`).
-- `check.sh`: EL/CL genesis agree, Lean backend up, finality past the fork, 0 missed slots on slots 96..192, 0 error lines on EL, beacon and validator.
-- `pq.sh`, one series per scheme (`0x10`, `0x11`, mixed): every valid wrapper included with status `0x1`; corrupted witness, early keyed nonce, replay and stale sequence all rejected.
-- Burst of 8 wrappers (sphincs, stark, mixed) sent across the 3 nodes: all included in 3 blocks; one block proof merged 2 recursive children.
-- Block proofs 213 to 279 KB, under the 1.25 MiB bound.
-- Late joiner (`kurtosis/sync.sh`) synced from genesis over P2P; `sync-check.sh` on 4 ELs and 4 CLs: identical hash, state root and receipts root for every block, identical raw blocks, receipts and `starkProof` for 6 proof blocks, same finalized head.
-- AA-PQ: lean factory deployed; a fresh NiceTry SPHINCS-G key created its account through its first transaction at the wallet-derived address and paid a recipient; a witness in the old `root || seed` order was rejected; portal, RPC gateway (HTTP and HTTPS front) and explorer answered.
-- Not validated: multi-host networking, public bootnodes, arm64.
+- Kurtosis, 3 Nethermind + Lighthouse + validator nodes, 64 validators each, fresh genesis, fork at epoch 3: see "Kurtosis run" below.
+- Two compose deployments on separate Docker networks, peered only through the host's address and published ports with `multi-host.override.yml`. Shared-mode genesis (private mnemonic, chain ID 7337, operators `alpha` and `beta` with 32 validators each), each side given only `params.json`, `data/metadata` and its own keystores; JWT generated locally.
+  - Finality needs both halves, and both finalized past the fork; 0 missed slots before the restart tests; `check.sh` PASS on both.
+  - `pq.sh` for `0x10`, `0x11` and mixed through host B: all included, all rejections as expected.
+  - Wrappers sent only to B reached A within 2 s and were included in A's block (needs #15961 and blob support off).
+  - Both ELs reconnect within 12 s after a restart (needs the recent-IP filter off, set by the override).
+  - `sync-check.sh`: 1135 blocks identical on both, same finalized head.
+- Not validated: separate physical hosts, NAT, arm64.
 
 ## Restart procedure
 
-1. Build or pull the images of [README step 1](README.md#1-build-the-images). Check the hashes in "Frozen stack" on every host.
-2. Generate the genesis once, on one trusted host, as in [Shared network](README.md#shared-network): a new `CHAIN_ID`, a private mnemonic file (mode 0600), `OPERATORS` with each operator's validator range, a genesis timestamp far enough ahead for distribution.
-3. Distribute to every operator: `params.json`, `data/metadata/{genesis.json,genesis.ssz,config.yaml}`. Hand each operator only its own `data/validators/<operator>` keystores, over a private channel. Never distribute the mnemonic.
-4. Each operator starts its node with `OPERATOR=<name> FEE_RECIPIENT=<own address> ./up.sh <genesis dir>`. `up.sh` generates the JWT locally.
+1. Agree with EthPandaOps on: chain ID, genesis time, Daisugi fork epoch, the operator list with validator ranges, who holds the mnemonic and runs `gen-genesis.sh`, and which nodes serve public RPC.
+2. Build the images ([README step 1](README.md#1-build-the-images)) or pull the published ones; check the hashes above on every host.
+3. One trusted party generates the genesis once ([Shared network](README.md#shared-network)): new `CHAIN_ID`, private mnemonic file (mode 0600), `OPERATORS='name:first:count ...'`.
+4. Distribute to every operator `params.json` and `data/metadata/`; give each operator only its own `data/operators/<name>/` keystores over a private channel. Never the mnemonic. `data/metadata/bootstrap_nodes.txt` comes from the generator and is unused (discovery is off).
+5. Each operator starts with the multi-host override (below) and `OPERATOR=<name> FEE_RECIPIENT=<own address> ./up.sh <genesis dir> <nethermind image> <lighthouse image>`. `up.sh` creates the JWT on the host.
+6. Exchange enodes and beacon multiaddrs, restart with the full peer lists, run the health checks.
 
 ## Multi-host P2P
 
-The compose file is single-host: discovery is off on both layers, the original `nethermind` service runs with its peer manager off (`NETHERMIND_INITCONFIG_PEERMANAGERENABLED: "false"`), and only RPC and API ports are published, on 127.0.0.1. Peering across hosts needs an override and static peers. Not validated yet; try it on two hosts before the restart.
+Discovery stays off on both layers; every node lists the others statically.
 
-```yaml
-# multi-host.override.yml, added to COMPOSE_FILE
-services:
-  nethermind:
-    environment:
-      NETHERMIND_INITCONFIG_PEERMANAGERENABLED: "true"
-    ports: ["30303:30303/tcp", "30303:30303/udp"]
-  beacon:
-    ports: ["9000:9000/tcp", "9000:9000/udp"]
-    command: !override  # the beacon command of docker-compose.yml, plus:
-      # --libp2p-addresses=/ip4/<peer ip>/tcp/9000/p2p/<peer id>,...  --enr-address=<own public ip>
+```bash
+export COMPOSE_FILE=docker-compose.yml:lighthouse-distroless.override.yml:multi-host.override.yml
+export EL_P2P_PORT=30303 CL_P2P_PORT=9000 BEACON_PUBLIC_IP=<this host's public IP>
+export BEACON_PEERS=/ip4/<ip>/tcp/<port>/p2p/<peer id>,...   # every other beacon node
+# <genesis dir>/nethermind/static-nodes.json: ["enode://<id>@<ip>:<port>", ...]  every other Nethermind node
+OPERATOR=<name> FEE_RECIPIENT=<address> ./up.sh <genesis dir> <nethermind image> <lighthouse image>
 ```
 
-- Open TCP and UDP 30303 (devp2p) and 9000 (libp2p) between hosts. Keep 8551 (Engine API) and the RPC and API ports off the public interface.
-- EL: collect each node's enode (`admin_nodeInfo`, or the `enode://` line of its log with the host's public IP in place of the logged one) and write the other nodes' enodes into `<genesis dir>/nethermind/static-nodes.json`, the file `--Init.StaticNodesPath` reads.
-- CL: collect each beacon node's peer ID (`/eth/v1/node/identity`) and give the others as a comma-separated `--libp2p-addresses` list.
-- Start one node first, publish its enode and multiaddr, then start the rest.
+- `multi-host.override.yml` turns on the EL peer manager, turns off the recent-IP filter, publishes the P2P ports and sets the beacon node's ENR address and static peers.
+- Open TCP and UDP `EL_P2P_PORT` and `CL_P2P_PORT` between hosts. RPC (28545), beacon API (25052) and the Engine API stay on localhost.
+- Enode: the `enode://` line of the Nethermind log (it logs `255.255.255.255`; use the host's public IP and `EL_P2P_PORT`). Beacon peer ID: `curl -s localhost:25052/eth/v1/node/identity | jq -r .data.peer_id`.
+- List every peer on every node (symmetric), so the peering survives restarts in both directions.
 
 ## Health checks
 
 ```bash
 cd tools/daisugi-devnet
-EL_RPC_PORT=<rpc> CL_HTTP_PORT=<api> EL_CONTAINER=<el> BN_CONTAINER=<bn> VC_CONTAINER=<vc> ./check.sh <genesis dir>
-curl -s localhost:<api>/eth/v1/node/peer_count                    # connected > 0
-curl -s localhost:<api>/eth/v1/beacon/states/head/finality_checkpoints
+EL_RPC_PORT=28545 CL_HTTP_PORT=25052 EL_CONTAINER=daisugi-nethermind BN_CONTAINER=daisugi-beacon VC_CONTAINER=daisugi-validator ./check.sh <genesis dir>
+curl -s -XPOST -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"net_peerCount","params":[]}' localhost:28545
+curl -s localhost:25052/eth/v1/node/peer_count
 docker run --rm --entrypoint sh <nethermind image> -c 'sha256sum /nethermind/libnethermind_lean.so'
 ```
 
-- `check.sh` fails on genesis mismatch, a failed `InitializeLeanBackend`, missing finality past the fork, a wrong fork boundary, or missed slots after the fork (`MISSED_SLOTS_MAX`, default 0).
-- Proof path: `FX=<signer> PQ_KEY=<funded key> CHAIN_ID=<id> PORT=<rpc> OUT=<fresh dir> ./pq.sh` sends one series and checks inclusion and rejections.
-- Sync: `EL_RPC_PORTS="<ref> <others>" CL_HTTP_PORTS="<ref> <others>" ./sync-check.sh <proof block>...` compares nodes block by block.
+- `check.sh` fails on genesis mismatch, a failed `InitializeLeanBackend`, no finality past the fork, a wrong fork boundary, or missed slots after the fork (`MISSED_SLOTS_MAX`, default 0). Beacon `ERROR` lines right after start (`execution engine upcheck`) are the EL still starting.
+- Proof path: `FX=<signer> PQ_KEY=<funded key> CHAIN_ID=<id> PORT=<rpc> OUT=<fresh dir> ./pq.sh`.
+- Relay: send a wrapper to one node and look it up on another with `eth_getTransactionByHash` within seconds.
+- Consistency: `EL_RPC_PORTS="<ref> <others>" CL_HTTP_PORTS="<ref> <others>" ./sync-check.sh <proof block>...`.
 
 ## Rollback and troubleshooting
 
-- `InitializeLeanBackend ... failed` at startup: wrong native library or ABI. Rebuild from the pinned commit; check the library hash.
-- Proofs rejected network-wide (`a wrapper dependency proof failed verification` for valid wrappers): a signer or node on another package version. All signers use the `FX` of 0.21.0.110; wallets use the `eip8288-lean` profile of AA-PQ#12.
-- A node stuck behind: check peers first, then compare it with `sync-check.sh`. Wipe its data directory and resync from genesis over P2P.
-- Restart from scratch: stop all nodes, generate a new genesis with a new timestamp, redistribute. There is no in-place downgrade: the chain is not valid for the previous ABI 12 stack.
+- `InitializeLeanBackend ... failed`: wrong native library or ABI. Rebuild from the pinned commit and check the library hash.
+- Valid wrappers rejected (`a wrapper dependency proof failed verification`): a signer or wallet on another package or key order. Signers use the `FX` of 0.21.0.110; wallets the `eip8288-lean` profile of AA-PQ#12.
+- PQ transactions included only by the node that received them: blob support is on somewhere; peers fell back to eth/71.
+- EL peers 0 after a restart: the override is missing (peer manager off or recent-IP filter on), the peer is not in `static-nodes.json`, or the port is closed.
+- Stuck node: compare with `sync-check.sh`, wipe its data directory, resync from genesis over P2P.
+- No in-place downgrade: this chain is invalid for the ABI 12 stack. Starting over means a new genesis time and redistribution.
+
+## Images
+
+Published images save every operator the builds. Whoever holds push rights to the target organization publishes (for `nethermindeth` on Docker Hub, the Nethermind DevOps team; not checked here). No credentials belong in this repository.
+
+```bash
+docker tag daisugi/nethermind:9065d9a50b <registry>/nethermind:daisugi-9065d9a50b
+docker tag daisugi/lighthouse:eip8288-lean <registry>/lighthouse:daisugi-eip8288-lean-4b0a11e
+docker push <registry>/nethermind:daisugi-9065d9a50b
+docker push <registry>/lighthouse:daisugi-eip8288-lean-4b0a11e
+docker buildx imagetools inspect <registry>/nethermind:daisugi-9065d9a50b --format '{{json .Manifest.Digest}}'
+```
+
+Record the pushed digests here, and give operators `image@sha256:…` references.
 
 ## Remaining external actions
 
-- Merge NethermindEth/nethermind#15955 into `feature/eip8288-lean`. A squash merge changes the commit hash, so re-pin to the merged hash or keep building from `fe94447c77`.
-- lean-bindings: merge #9 into `main`, #21 into the #19 branch, then #19 into `main` (Rubo or Marc). Until then `0.21.0.110` comes from the validated `release/daisugi-f128` branch.
-- asanso/AA-PQ: merge #11, #12, #10, then #13 (repository owner).
-- Publish the images to a registry and record their digests, if operators pull rather than build.
+- NethermindEth/nethermind: approve and merge #15955, then #15961 (retarget to `feature/eip8288-lean` after #15955). A squash merge changes the commit hash; the image stays reproducible from `9065d9a50b`.
+- NethermindEth/lean-bindings: merge #22 (the released source: #9, #14, #19 and #21 together). Until then `0.21.0.110` comes from `release/daisugi-f128`.
+- asanso/AA-PQ: merge #11, #12, #10, then take #13 out of draft and merge it.
+- Publish the images and record their digests.
+
+## Kurtosis run
+
+Release candidate `9065d9a50b`, 2026-11-16: local image `sha256:4c957037f68de9a882a2b5a32dca58591e718d1445b2597e8d74dbcdbdafff6c` (Nethermind), `sha256:4a9b7bd612af1be108736bde9a1a8c04969068a2e2baf307f04369ddf235c872` (Lighthouse base).
+
+- `run.sh`, `NODES=3`, `PQ_SCHEMES="sphincs stark mixed"`: genesis agrees, Lean backend up, finality past the fork, 0 missed slots on slots 96..192, 0 error lines; every series included with all rejections as expected.
+- 6 wrappers (sphincs, stark, mixed) sent only to node 3: nodes 1 and 2 held all 6 within 2 s; all included; every node built proofs, with recursive merges on nodes 1 and 3.
+- Late joiner (`kurtosis/sync.sh`) from genesis: `sync-check.sh` on 4 ELs and 4 CLs PASS, 287 blocks identical, proof blocks byte-identical.
+- AA-PQ: lean factory deployed; a fresh SPHINCS-G account sent its first transaction through node 2, was created at the wallet-derived address and paid; a `root || seed` witness was rejected; portal, gateway (HTTP and HTTPS) and explorer answered.

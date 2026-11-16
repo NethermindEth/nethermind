@@ -16,7 +16,7 @@ services:
       # An environment setting, so the sync nodes can turn on peering without repeating the command.
       NETHERMIND_INITCONFIG_PEERMANAGERENABLED: "false"
       # Disabled lets the node negotiate eth/73 before PeerDAS (MergeP2PCapabilityResolver); it then holds no blob txs.
-      NETHERMIND_TXPOOLCONFIG_BLOBSSUPPORT: ${BLOBS_SUPPORT:-StorageWithReorgs}
+      NETHERMIND_TXPOOLCONFIG_BLOBSSUPPORT: ${BLOBS_SUPPORT:-Disabled}
     ports:
       - 127.0.0.1:${EL_RPC_PORT:-28545}:8545
     volumes:
