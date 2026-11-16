@@ -138,7 +138,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
         internal ValueTask<PooledTransactionsMessage> FulfillPooledTransactionsRequest(GetPooledTransactionsMessage msg, CancellationToken cancellationToken)
         {
-            ArrayPoolList<Transaction> txsToSend = new(Math.Min(msg.Hashes.Count, MaxNumberOfTxsInOneMsg));
+            int maxResponseCount = Math.Min(msg.Hashes.Count, MaxNumberOfTxsInOneMsg);
+            ArrayPoolList<Transaction> txsToSend = new(maxResponseCount);
+            ArrayPoolList<PooledTransactionsMessage.EncodedTransaction>? encodedTxsToSend = null;
 
             // Once a response is non-empty, enforce the eth spec's 256-hash soft limit. If the
             // first 256 hashes miss, keep scanning without growing the deduplication set.
@@ -149,11 +151,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                 int packetSizeLeft = ProtocolVersion >= EthVersions.Eth68
                     ? PooledTransactionsResponseSoftLimit
                     : TransactionsMessage.MaxPacketSize;
+                int responseCount = 0;
                 foreach (ref readonly ValueHash256 hash in msg.Hashes.AsSpan())
                 {
                     if (cancellationToken.IsCancellationRequested) break;
 
-                    if (seenHashes.Count >= MaxNumberOfTxsInOneMsg && txsToSend.Count > 0)
+                    if (seenHashes.Count >= MaxNumberOfTxsInOneMsg && responseCount > 0)
                     {
                         break;
                     }
@@ -163,27 +166,50 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                         continue;
                     }
 
-                    if (TryGetPooledTransactionToServe(hash, out Transaction tx) && CanServePooledTransaction(tx))
+                    int txSize;
+                    Transaction? responseTx = null;
+                    if (TryGetEncodedPooledTransactionToServe(hash, out IOwnedReadOnlyList<byte>? encodedTx, out bool unservable))
                     {
-                        Transaction responseTx = PreparePooledTransactionForResponse(tx);
-                        int txSize = responseTx.GetLength();
-
-                        if (txSize > packetSizeLeft && txsToSend.Count > 0)
-                        {
-                            break;
-                        }
-
-                        txsToSend.Add(responseTx);
-                        packetSizeLeft -= txSize;
-                        TxPool.Metrics.PendingTransactionsSent++;
+                        txSize = encodedTx.Count;
                     }
+                    else if (!unservable && TryGetPooledTransactionToServe(hash, out Transaction tx) && CanServePooledTransaction(tx))
+                    {
+                        responseTx = PreparePooledTransactionForResponse(tx);
+                        txSize = responseTx.GetLength();
+                    }
+                    else
+                    {
+                        continue;
+                    }
+
+                    if (txSize > packetSizeLeft && responseCount > 0)
+                    {
+                        encodedTx?.Dispose();
+                        break;
+                    }
+
+                    if (encodedTx is null)
+                    {
+                        txsToSend.Add(responseTx!);
+                    }
+                    else
+                    {
+                        (encodedTxsToSend ??= new(maxResponseCount)).Add(new(txsToSend.Count, encodedTx));
+                    }
+
+                    responseCount++;
+                    packetSizeLeft -= txSize;
+                    TxPool.Metrics.PendingTransactionsSent++;
                 }
 
-                return new ValueTask<PooledTransactionsMessage>(CreatePooledTransactionsMessage(txsToSend));
+                PooledTransactionsMessage response = CreatePooledTransactionsMessage(txsToSend);
+                response.EncodedTransactions = encodedTxsToSend;
+                return new ValueTask<PooledTransactionsMessage>(response);
             }
             catch
             {
                 txsToSend.Dispose();
+                PooledTransactionsMessage.DisposeEncodedTransactions(encodedTxsToSend);
                 throw;
             }
             finally
@@ -192,6 +218,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             }
         }
 
+        /// <summary>Whether a pooled transaction that <see cref="TryGetPooledTransactionToServe"/> gives is served.</summary>
+        /// <remarks>
+        /// Not called for a transaction that <see cref="TryGetEncodedPooledTransactionToServe"/> serves. An override that
+        /// rejects such a transaction must also override that method.
+        /// </remarks>
         protected virtual bool CanServePooledTransaction(Transaction tx) => true;
 
         /// <summary>
@@ -200,6 +231,27 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         protected virtual bool TryGetPooledTransactionToServe(in ValueHash256 hash, [NotNullWhen(true)] out Transaction? tx)
             => _txPool.TryGetPendingTransaction(hash, out tx);
 
+        /// <summary>Gets the network encoding of a pooled transaction that is served without decoding it.</summary>
+        /// <remarks>
+        /// Tried before <see cref="TryGetPooledTransactionToServe"/>, which serves the transaction when this misses and
+        /// <paramref name="unservable"/> is <see langword="false"/>. The encoding is served as it is:
+        /// <see cref="CanServePooledTransaction"/> and <see cref="PreparePooledTransactionForResponse"/> do not see it, so
+        /// a version that overrides either of them must also override this method. This version serves no encodings.
+        /// </remarks>
+        /// <param name="encodedTx">The encoding without the typed envelope. The caller disposes it.</param>
+        /// <param name="unservable">Whether the transaction is not served at all, so it is not looked up again.</param>
+        private protected virtual bool TryGetEncodedPooledTransactionToServe(in ValueHash256 hash, [NotNullWhen(true)] out IOwnedReadOnlyList<byte>? encodedTx, out bool unservable)
+        {
+            encodedTx = null;
+            unservable = false;
+            return false;
+        }
+
+        /// <summary>Gets the transaction that the response carries for a pooled transaction.</summary>
+        /// <remarks>
+        /// Not called for a transaction that <see cref="TryGetEncodedPooledTransactionToServe"/> serves. An override that
+        /// changes such a transaction must also override that method.
+        /// </remarks>
         protected virtual Transaction PreparePooledTransactionForResponse(Transaction tx) => tx;
 
         /// <summary>Builds the response to a <see cref="GetPooledTransactionsMessage"/>.</summary>
