@@ -13,7 +13,7 @@ public abstract class ListRlpConverter<T>
     public static List<T> Read(ref RlpReader reader, RefRlpReaderFunc<T> func)
         => reader.ReadSequence(func, static (scoped ref RlpReader r, RefRlpReaderFunc<T> func) =>
         {
-            List<T> result = new(r.CountItems());
+            List<T> result = [with(r.CountItems())];
             while (r.HasNext)
             {
                 result.Add(func(ref r));

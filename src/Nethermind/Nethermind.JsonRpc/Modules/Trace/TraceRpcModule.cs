@@ -164,7 +164,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return GetStateFailureResult<IEnumerable<ParityTxTraceFromReplay>>(header);
             }
 
-            Dictionary<Hash256, ParityTraceTypes> traceTypeByTransaction = new(calls.Count);
+            Dictionary<Hash256, ParityTraceTypes> traceTypeByTransaction = [with(calls.Count)];
             Transaction[] txs = new Transaction[calls.Count];
             for (int i = 0; i < calls.Count; i++)
             {
@@ -560,7 +560,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         private IEnumerable<ParityTxTraceFromStore> RunBufferedTraceFilter(List<(BlockHeader Header, BlockHeader? Parent)> blocks, TxTraceFilter filter, CancellationToken cancellationToken)
         {
-            ArrayPoolList<ParityTxTraceFromStore> result = new(blocks.Count);
+            ArrayPoolList<ParityTxTraceFromStore> result = [with(blocks.Count)];
             try
             {
                 foreach ((BlockHeader header, BlockHeader? parentHeader) in blocks)
@@ -976,8 +976,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             // A prefix recorded under the block's own spec says nothing about the block run under another one, even
             // though the header keeps its hash: no seed when the spec is overridden.
             IPrefixStateSeedSource? seeds = specOverride is null ? prefixSeeds : null;
-            int index = transactionHash is null ? -1 : TransactionTraceBoundary.FindIndex(receiptFinder, seeds, block, transactionHash);
-            return TransactionTraceBoundary.WrapAt(tracer, transactionHash, index, seeds);
+            return TransactionTraceBoundary.WrapAtStoredIndex(tracer, receiptFinder, seeds, block, transactionHash);
         }
 
         /// <summary>

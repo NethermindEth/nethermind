@@ -544,7 +544,7 @@ public class PersistInMemoryTailForShutdownTests
                 ? new ObservedCatalog(inner, after: entry => { if (entry.Tier == SnapshotTier.PersistedCompactSized) exit.Cancel(); })
                 : new ObservedCatalog(inner, before: entry => { if (entry.Tier == SnapshotTier.PersistedCompactSized && entry.To == State(8)) throw fault; })));
         ConvertBases(tier, 1, 16);
-        ArrayPoolList<StateId> batch = new(16);
+        ArrayPoolList<StateId> batch = [with(16)];
         for (ulong i = 1; i <= 16; i++) batch.Add(State(i));
         await tier.Compactor.EnqueueAsync(batch, 0, CancellationToken.None);
         await tier.Compactor.DisposeAsync(); // drains the queue
@@ -570,7 +570,7 @@ public class PersistInMemoryTailForShutdownTests
         tier.Compactor.DoCompactCompactSized(State(8));
         Assert.That(At8(SnapshotTier.PersistedCompactSized), Is.True, "the CompactSized snapshot made before the batch");
 
-        ArrayPoolList<StateId> batch = new(8);
+        ArrayPoolList<StateId> batch = [with(8)];
         for (ulong i = 1; i <= 8; i++) batch.Add(State(i));
         await tier.Compactor.EnqueueAsync(batch, 0, CancellationToken.None);
         await tier.Compactor.DisposeAsync(); // drains the queue
