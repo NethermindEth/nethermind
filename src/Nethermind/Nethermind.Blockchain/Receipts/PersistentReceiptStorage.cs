@@ -1128,6 +1128,7 @@ namespace Nethermind.Blockchain.Receipts
                     insertedReceipts = _storageDecoder.Decode(rlp, RlpBehaviors.TrustedInput);
                     // The block may hold the transaction hashes only, and recovery reads the recipients.
                     _receiptsRecovery.TryRecover(_blockStore.Get(block.Number, block.Hash!, shouldCache: false) ?? block, insertedReceipts, false);
+                    if (spec.IsEip7668Enabled) insertedReceipts.SetZeroLengthBlooms();
                 }
             }
 

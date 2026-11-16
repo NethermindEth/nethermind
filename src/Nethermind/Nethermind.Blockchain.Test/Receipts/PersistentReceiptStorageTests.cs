@@ -362,15 +362,30 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     }
 
     [Test]
-    public void Network_receipts_store_the_same_receipts_and_index_as_decoded_ones()
+    public void Network_receipts_store_the_same_receipts_and_index_as_decoded_ones([Values] bool eip658, [Values] bool eip7668)
     {
+        IReleaseSpec spec = eip658 ? Byzantium.Instance : SpuriousDragon.Instance;
+        _specProvider.NextForkSpec = eip7668 ? new OverridableReleaseSpec(spec) { IsEip7668Enabled = true } : spec;
         Block block = Build.A.Block.WithNumber(1).WithTransactions(
             Build.A.Transaction.WithNonce(0).SignedAndResolved().TestObject,
             Build.A.Transaction.WithNonce(1).WithType(TxType.EIP1559).SignedAndResolved().TestObject).TestObject;
-        TxReceipt[] receipts = CreateReceipts();
+        TxReceipt[] CreateSpecReceipts()
+        {
+            TxReceipt[] specReceipts = CreateReceipts();
+            if (!eip658)
+            {
+                specReceipts[0].PostTransactionState = TestItem.KeccakC;
+                specReceipts[1].PostTransactionState = TestItem.KeccakD;
+            }
+
+            return specReceipts;
+        }
+
+        TxReceipt[] receipts = CreateSpecReceipts();
         foreach (TxReceipt receipt in receipts) receipt.Bloom = new Bloom(receipt.Logs);
         ReceiptMessageDecoder decoder = new();
-        byte[] message = RlpTestHelper.EncodeSequence([.. receipts.Select(receipt => decoder.Encode(receipt, RlpBehaviors.Eip658Receipts))]);
+        RlpBehaviors behaviors = eip658 ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
+        byte[] message = RlpTestHelper.EncodeSequence([.. receipts.Select(receipt => decoder.Encode(receipt, behaviors))]);
         TestMemColumnsDb<ReceiptsColumns> otherDb = new();
         otherDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, Array.Empty<byte>());
         PersistentReceiptStorage other = new(otherDb, _specProvider, _receiptsRecovery, _blockTree, _blockStore, _receiptConfig, _decoder)
@@ -384,8 +399,10 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Transaction[] encodedTransactions = BlockBodyDecoder.DecodeEncodedTransactionsOfBlock(encodedBlock);
         TxReceipt[]? inserted = null;
         other.ReceiptsInserted += (_, args) => inserted = args.TxReceipts;
+        TxReceipt[]? insertedDecoded = null;
+        _storage.ReceiptsInserted += (_, args) => insertedDecoded = args.TxReceipts;
 
-        _storage.Insert(stored, CreateReceipts(), ensureCanonical: true);
+        _storage.Insert(stored, CreateSpecReceipts(), ensureCanonical: true);
         bool keptEncoded = other.TryInsertNetworkReceipts(new Block(stored.Header, new BlockBody(encodedTransactions, [])), message, withBloom: true, ensureCanonical: true);
         foreach (Transaction transaction in encodedTransactions) TxDecoder.TxObjectPool.Return(transaction);
 
@@ -393,7 +410,11 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         if (keptEncoded)
         {
             AssertSameContent(otherDb);
-            Assert.That(inserted!.Select(static r => r.Recipient), Is.EqualTo(block.Transactions.Select(static tx => tx.To)));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(inserted!.Select(static r => r.Recipient), Is.EqualTo(block.Transactions.Select(static tx => tx.To)));
+                Assert.That(inserted!.Select(static r => r.Bloom), Is.EqualTo(insertedDecoded!.Select(static r => r.Bloom)));
+            }
         }
     }
 

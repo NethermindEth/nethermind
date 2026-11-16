@@ -623,7 +623,7 @@ public class ReceiptsSyncFeedTests
         using (ArrayPoolList<TxReceipt[]?> zeroBlooms = new(batch!.Infos.Length, batch.Infos.Length))
         {
             // The peer sends the receipts with an all-zero bloom.
-            for (int i = 0; i < zeroBlooms.Count; i++) zeroBlooms[i] = [WithLogs()];
+            for (int i = 0; i < zeroBlooms.Count; i++) zeroBlooms[i] = [Build.A.Receipt.WithStatusCode(StatusCode.Success).WithLogs(Build.A.LogEntry.TestObject).WithBloom(Bloom.Empty).TestObject];
             batch.Response = Encode(zeroBlooms)!;
         }
 
