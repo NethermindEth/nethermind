@@ -751,10 +751,7 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
             if (record.RecursiveProof is null || _staged.ContainsKey(record)) return;
             long size = record.RecursiveProof.Length + (long)record.Dependencies.Length * Eip8288Constants.DependencyTripleLength;
             if (size >= bestSize || record.Dependencies.Length < wanted.Count) return;
-            HashSet<FrameDependency> missing = [.. wanted];
-            foreach (FrameDependency dependency in record.Dependencies)
-                if (missing.Remove(dependency) && missing.Count == 0) break;
-            if (missing.Count != 0) return;
+            if (!wanted.IsSubsetOf(record.Dependencies)) return;
             best = record;
             bestSize = size;
         }
