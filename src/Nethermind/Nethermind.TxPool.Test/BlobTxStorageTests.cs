@@ -946,6 +946,50 @@ public class BlobTxStorageTests
         }
     }
 
+    [TestCase(false, false)]
+    [TestCase(true, false)]
+    [TestCase(true, true)]
+    public void TryGetFullRecordWithoutBlobs_should_match_the_elided_full_read(bool cellProofs, bool partial)
+    {
+        Transaction tx = partial
+            ? CreateV1BlobTransactions(1)[0]
+            : CreateBlobTransaction(TestItem.PrivateKeyA, blobCount: 2, spec: cellProofs ? Osaka.Instance : Cancun.Instance);
+
+        byte[] expectedRecord = PersistMetadataRecord(tx, storage =>
+            storage.TryGet(tx.Hash!, tx.SenderAddress!, tx.Timestamp, out Transaction read) ? BlobTransactionPayload.Elide(read) : null);
+        Transaction elided = null;
+        byte[] actualRecord = PersistMetadataRecord(tx, storage =>
+            ((IBlobTxElidedReadStorage)storage).TryGetFullRecordWithoutBlobs(tx.Hash!, tx.SenderAddress!, tx.Timestamp, out elided) ? elided : null);
+
+        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)elided!.NetworkWrapper!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actualRecord, Is.EqualTo(expectedRecord));
+            Assert.That(BlobTransactionPayload.Elide(elided), Is.SameAs(elided));
+            Assert.That(elided.Hash, Is.EqualTo(tx.Hash));
+            Assert.That(elided.SenderAddress, Is.EqualTo(tx.SenderAddress));
+            Assert.That(elided.Timestamp, Is.EqualTo(tx.Timestamp));
+            Assert.That(wrapper.Blobs, Is.Empty);
+            Assert.That(wrapper.Commitments, Is.EqualTo(((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Commitments));
+            Assert.That(wrapper.Proofs, Is.EqualTo(((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Proofs));
+            Assert.That(wrapper.CellMask, Is.EqualTo(BlobCellMask.Empty));
+            Assert.That(wrapper.Cells, Is.Null);
+        }
+
+        static byte[] PersistMetadataRecord(Transaction tx, Func<BlobTxStorage, Transaction> read)
+        {
+            MemColumnsDb<BlobTxsColumns> columnsDb = new();
+            IDb fullBlobTxsDb = columnsDb.GetColumnDb(BlobTxsColumns.FullBlobTxs);
+            BlobTxStorage storage = new(columnsDb);
+            storage.Add(tx);
+            byte[] elidedKey = [0x01, .. tx.Hash!.Bytes];
+            fullBlobTxsDb.Remove(elidedKey);
+
+            storage.AddWithoutBlobs(read(storage)!);
+            return fullBlobTxsDb.Get(elidedKey)!;
+        }
+    }
+
     [Test]
     public void TryGet_should_release_the_read_record([Values] bool withoutBlobs)
     {

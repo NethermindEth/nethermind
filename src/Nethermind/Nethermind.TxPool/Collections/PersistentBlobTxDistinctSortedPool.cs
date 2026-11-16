@@ -276,8 +276,10 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         bool readCompleted = false;
         try
         {
-            if (!_blobTxStorage.TryGet(hash, lightTx.SenderAddress, lightTx.Timestamp, out loadedTx)
-                || loadedTx is null)
+            bool loaded = _blobTxStorage is IBlobTxElidedReadStorage elidedReadStorage
+                ? elidedReadStorage.TryGetFullRecordWithoutBlobs(hash, lightTx.SenderAddress, lightTx.Timestamp, out loadedTx)
+                : _blobTxStorage.TryGet(hash, lightTx.SenderAddress, lightTx.Timestamp, out loadedTx);
+            if (!loaded || loadedTx is null)
             {
                 blobTx = default;
                 return false;

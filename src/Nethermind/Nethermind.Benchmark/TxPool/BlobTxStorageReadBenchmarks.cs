@@ -108,7 +108,7 @@ public class BlobTxStorageReadBenchmarks
         int found = 0;
         foreach (Transaction tx in _transactions)
         {
-            if (_storage.TryGet(tx.Hash!.ValueHash256, tx.SenderAddress!, tx.Timestamp, out Transaction read))
+            if (((IBlobTxElidedReadStorage)_storage).TryGetFullRecordWithoutBlobs(tx.Hash!.ValueHash256, tx.SenderAddress!, tx.Timestamp, out Transaction read))
             {
                 _ = BlobTransactionPayload.Elide(read);
                 found++;

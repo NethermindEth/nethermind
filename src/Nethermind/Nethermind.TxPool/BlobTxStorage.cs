@@ -24,7 +24,7 @@ using Nethermind.Serialization.Rlp.TxDecoders;
 
 namespace Nethermind.TxPool;
 
-public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? logManager = null) : IBlobTxStorage, IBlobTxMetadataStorage, ISpecChangeValidationStorage, IAtomicBlobTxStorage, IProcessedBlobTxStorage, IBlobTxNetworkFormStorage
+public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? logManager = null) : IBlobTxStorage, IBlobTxMetadataStorage, ISpecChangeValidationStorage, IAtomicBlobTxStorage, IProcessedBlobTxStorage, IBlobTxNetworkFormStorage, IBlobTxElidedReadStorage
 {
     private const int TransactionLockCount = 64;
     private const int ProcessedTransactionKeyLength = sizeof(ulong) + sizeof(int);
@@ -47,7 +47,14 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
 
     public BlobTxStorage() : this(new MemColumnsDb<BlobTxsColumns>()) { }
 
-    public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, [NotNullWhen(true)] out Transaction? transaction)
+    public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, [NotNullWhen(true)] out Transaction? transaction) =>
+        TryGetFullTx(hash, sender, timestamp, RlpBehaviors.None, out transaction);
+
+    /// <inheritdoc/>
+    bool IBlobTxElidedReadStorage.TryGetFullRecordWithoutBlobs(in ValueHash256 hash, Address sender, in UInt256 timestamp, [NotNullWhen(true)] out Transaction? transaction) =>
+        TryGetFullTx(hash, sender, timestamp, RlpBehaviors.ExcludeBlobs, out transaction);
+
+    private bool TryGetFullTx(in ValueHash256 hash, Address sender, in UInt256 timestamp, RlpBehaviors extraBehaviors, [NotNullWhen(true)] out Transaction? transaction)
     {
         Span<byte> txHashPrefixed = stackalloc byte[FullTxKeyLength];
         GetHashPrefixedByTimestamp(timestamp, hash, txHashPrefixed);
@@ -55,7 +62,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         Span<byte> txBytes = _fullBlobTxsDb.GetSpan(txHashPrefixed);
         try
         {
-            return TryDecodeFullTx(txBytes, sender, timestamp, out transaction);
+            return TryDecodeFullTx(txBytes, sender, timestamp, extraBehaviors, out transaction);
         }
         finally
         {
@@ -645,11 +652,12 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         Span<byte> txBytes,
         Address sender,
         in UInt256 timestamp,
+        RlpBehaviors extraBehaviors,
         [NotNullWhen(true)] out Transaction? transaction)
     {
         if (!txBytes.IsNull())
         {
-            transaction = Rlp.Decode<Transaction>(txBytes, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage | RlpBehaviors.TrustedInput);
+            transaction = Rlp.Decode<Transaction>(txBytes, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage | RlpBehaviors.TrustedInput | extraBehaviors);
             if (transaction is null)
             {
                 return false;
