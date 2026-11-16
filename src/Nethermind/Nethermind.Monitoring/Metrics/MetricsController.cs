@@ -39,7 +39,7 @@ namespace Nethermind.Monitoring.Metrics
 
         private readonly ILogger _logger;
         private readonly Lock _reportedFailuresLock = new();
-        private readonly HashSet<object> _reportedFailures = new(ReferenceEqualityComparer.Instance);
+        private readonly HashSet<object> _reportedFailures = [with(ReferenceEqualityComparer.Instance)];
 
         private readonly Dictionary<Type, NamedUpdater[]> _metricUpdaters = [];
         private volatile NamedUpdater[][] _updaterValues = [];

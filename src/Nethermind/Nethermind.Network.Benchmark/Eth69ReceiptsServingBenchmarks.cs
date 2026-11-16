@@ -49,8 +49,8 @@ public class Eth69ReceiptsServingBenchmarks
     {
         Random random = new(42);
         _blocks = new TxReceipt[RequestedBlocks][];
-        Dictionary<Hash256, TxReceipt[]> receipts = new(RequestedBlocks);
-        ArrayPoolList<Hash256> hashes = new(RequestedBlocks);
+        Dictionary<Hash256, TxReceipt[]> receipts = [with(RequestedBlocks)];
+        ArrayPoolList<Hash256> hashes = [with(RequestedBlocks)];
         for (int i = 0; i < RequestedBlocks; i++)
         {
             _blocks[i] = CreateBlockReceipts(random, 21_000_000 + (ulong)i, ReceiptsPerBlock);
