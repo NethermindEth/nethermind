@@ -450,7 +450,7 @@ public class PersistedSnapshotTests
             WholeReadScanner scanner = PersistedSnapshotScanner.ForWholeRead(session, persisted);
             foreach (WholeReadScanner.PerAddressEntry entry in scanner.PerAddresses)
                 foreach (WholeReadScanner.SlotEntry slot in entry.Slots)
-                    scanned[(entry.Address, slot.Slot)] = slot.Value;
+                    scanned[(entry.Address.ToAddress(), slot.Slot)] = slot.Value;
         }
 
         foreach (KeyValuePair<(Address, UInt256), UInt256?> entry in scanned)
@@ -518,9 +518,9 @@ public class PersistedSnapshotTests
             WholeReadScanner scanner = PersistedSnapshotScanner.ForWholeRead(session, persisted);
             foreach (WholeReadScanner.PerAddressEntry e in scanner.PerAddresses)
             {
-                perAddr[e.Address] = (e.HasAccount, e.Account?.Balance, e.SelfDestructFlag);
+                perAddr[e.Address.ToAddress()] = (e.HasAccount, e.Account?.Balance, e.SelfDestructFlag);
                 foreach (WholeReadScanner.SlotEntry s in e.Slots)
-                    slots[(e.Address, s.Slot)] = s.Value;
+                    slots[(e.Address.ToAddress(), s.Slot)] = s.Value;
             }
             foreach (WholeReadScanner.StateNodeEntry n in scanner.StateNodes)
             {
@@ -598,9 +598,9 @@ public class PersistedSnapshotTests
             WholeReadScanner scanner = PersistedSnapshotScanner.ForWholeRead(session, persisted);
             foreach (WholeReadScanner.PerAddressEntry e in scanner.PerAddresses)
             {
-                accounts[e.Address] = (e.HasAccount, e.Account?.Balance);
+                accounts[e.Address.ToAddress()] = (e.HasAccount, e.Account?.Balance);
                 foreach (WholeReadScanner.SlotEntry s in e.Slots)
-                    slots[(e.Address, s.Slot)] = s.Value?.ToBigEndian();
+                    slots[(e.Address.ToAddress(), s.Slot)] = s.Value?.ToBigEndian();
             }
         }
 
@@ -657,7 +657,7 @@ public class PersistedSnapshotTests
             WholeReadScanner scanner = PersistedSnapshotScanner.ForWholeRead(session, persisted);
             foreach (WholeReadScanner.PerAddressEntry e in scanner.PerAddresses)
             {
-                if (e.Address == big)
+                if (e.Address.ToAddress() == big)
                 {
                     // Read the account but deliberately leave big's Slots undrained.
                     bigEntry = (e.HasAccount, e.Account?.Balance);
@@ -666,7 +666,7 @@ public class PersistedSnapshotTests
                 {
                     nextEntry = (e.HasAccount, e.Account?.Balance);
                     foreach (WholeReadScanner.SlotEntry s in e.Slots)
-                        nextSlots[(e.Address, s.Slot)] = s.Value?.ToBigEndian();
+                        nextSlots[(e.Address.ToAddress(), s.Slot)] = s.Value?.ToBigEndian();
                 }
             }
         }

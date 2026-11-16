@@ -54,7 +54,7 @@ internal static class PersistedSnapshotBloomBuilder
         // of a slot check), then one key per slot.
         foreach (WholeReadScanner.PerAddressEntry entry in scanner.PerAddresses)
         {
-            ulong addrKey = AddressKey(entry.Address);
+            ulong addrKey = AddressKey(entry.Address.AsSpan);
             bloom.Add(addrKey);
             foreach (WholeReadScanner.SlotEntry slot in entry.Slots)
                 bloom.Add(SlotKey(addrKey, slot.Slot));

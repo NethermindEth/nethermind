@@ -739,7 +739,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         Span<byte> storageValue = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
         foreach (WholeReadScanner.PerAddressEntry entry in scanner.PerAddresses)
         {
-            ValueHash256 addrHash = entry.Address.ToAccountPath;
+            ValueHash256 addrHash = KeccakCache.Compute(entry.Address.AsSpan);
 
             if (entry.SelfDestructFlag is false)
             {

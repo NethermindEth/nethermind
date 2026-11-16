@@ -737,14 +737,15 @@ public class PersistenceManager(
             // write batch.
             foreach (WholeReadScanner.PerAddressEntry entry in scanner.PerAddresses)
             {
+                Address address = entry.Address.ToAddress();
                 if (entry.SelfDestructFlag is false)
-                    batch.SelfDestruct(entry.Address);
+                    batch.SelfDestruct(address);
 
                 if (entry.HasAccount)
-                    entry.WriteAccount(batch);
+                    entry.WriteAccount(batch, address);
 
                 foreach (WholeReadScanner.SlotEntry slot in entry.Slots)
-                    batch.SetStorage(entry.Address, slot.Slot, slot.Value);
+                    batch.SetStorage(address, slot.Slot, slot.Value);
             }
 
             foreach (WholeReadScanner.StateNodeEntry entry in scanner.StateNodes)
