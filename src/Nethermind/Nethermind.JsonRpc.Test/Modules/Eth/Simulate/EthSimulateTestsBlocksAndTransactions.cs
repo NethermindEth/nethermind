@@ -1288,37 +1288,36 @@ public class EthSimulateTestsBlocksAndTransactions
         yield return new TestCaseData(CallTracingTarget,
                 Call(CallTracingReverter) + Call(TestItem.AddressB) + StaticCall(new Address("0x0000000000000000000000000000000000000004")) + Log0 + "00",
                 "", 200_000UL, null, null)
-            { TestName = "Call tracing: nested reverted call with logs, call to an account without code, static precompile call" };
+        { TestName = "Call tracing: nested reverted call with logs, call to an account without code, static precompile call" };
         yield return new TestCaseData(CallTracingTarget, RevertEmpty, "", 100_000UL, ErrorCodes.ExecutionReverted, "execution reverted")
-            { TestName = "Call tracing: revert without data" };
+        { TestName = "Call tracing: revert without data" };
         yield return new TestCaseData(CallTracingTarget, RevertWithPayload + OutOfGasReason, "", 100_000UL, ErrorCodes.ExecutionReverted, "execution reverted: OutOfGas")
-            { TestName = "Call tracing: revert with a reason that names an EVM exception" };
+        { TestName = "Call tracing: revert with a reason that names an EVM exception" };
         yield return new TestCaseData(CallTracingTarget, "fe", "", 100_000UL, ErrorCodes.VMError, "invalid instruction")
-            { TestName = "Call tracing: invalid opcode" };
+        { TestName = "Call tracing: invalid opcode" };
         yield return new TestCaseData(CallTracingTarget, "01", "", 100_000UL, ErrorCodes.VMError, "stack underflow")
-            { TestName = "Call tracing: stack underflow" };
+        { TestName = "Call tracing: stack underflow" };
         yield return new TestCaseData(CallTracingTarget, "600056", "", 100_000UL, ErrorCodes.VMError, "invalid jump destination")
-            { TestName = "Call tracing: invalid jump destination" };
+        { TestName = "Call tracing: invalid jump destination" };
         yield return new TestCaseData(CallTracingTarget, "5b600056", "", 100_000UL, ErrorCodes.VMError, "out of gas")
-            { TestName = "Call tracing: out of gas" };
+        { TestName = "Call tracing: out of gas" };
         yield return new TestCaseData(CallTracingTarget, Call(CallTracingHalter) + Log0 + RevertEmpty, "", 200_000UL, ErrorCodes.ExecutionReverted, "execution reverted")
-            { TestName = "Call tracing: revert after a halted nested call" };
+        { TestName = "Call tracing: revert after a halted nested call" };
         yield return new TestCaseData(CallTracingTarget, Call(CallTracingReverter) + Log0 + "fe", "", 200_000UL, ErrorCodes.VMError, "invalid instruction")
-            { TestName = "Call tracing: invalid opcode after a reverted nested call" };
+        { TestName = "Call tracing: invalid opcode after a reverted nested call" };
         // BN254 addition of the point (1, 1), which is not on the curve, halts and uses all gas.
         yield return new TestCaseData(new Address("0x0000000000000000000000000000000000000006"), null,
                 "0000000000000000000000000000000000000000000000000000000000000001" + "0000000000000000000000000000000000000000000000000000000000000001",
                 100_000UL, ErrorCodes.VMError, "out of gas")
-            { TestName = "Call tracing: precompile call with invalid input" };
+        { TestName = "Call tracing: precompile call with invalid input" };
         yield return new TestCaseData(new Address("0x0000000000000000000000000000000000000002"), null, "", 21_010UL, ErrorCodes.VMError, "out of gas")
-            { TestName = "Call tracing: precompile call out of gas" };
+        { TestName = "Call tracing: precompile call out of gas" };
     }
 
     [TestCaseSource(nameof(CallTracingCases))]
     public async Task Test_eth_simulateV1_result_does_not_depend_on_call_tracing(Address to, string? code, string input, ulong gas, int? expectedErrorCode, string? expectedMessage)
     {
         using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(new OverridableReleaseSpec(London.Instance));
-        EthereumJsonSerializer serializer = new();
 
         // Without value transfers, traceTransfers adds no logs, but it keeps call tracing on.
         // The reverter and the halter both emit a log first, then REVERT or INVALID.
@@ -1332,22 +1331,8 @@ public class EthSimulateTestsBlocksAndTransactions
             };
             if (code is not null) stateOverrides.Add(to, new AccountOverride { Code = Bytes.FromHexString(code) });
 
-            SimulatePayload<TransactionForRpc> payload = new()
-            {
-                TraceTransfers = traceTransfers,
-                BlockStateCalls =
-                [
-                    new()
-                    {
-                        StateOverrides = stateOverrides,
-                        Calls = [new LegacyTransactionForRpc { From = TestItem.AddressA, To = to, Input = Bytes.FromHexString(input), Gas = gas, GasPrice = 0 }]
-                    }
-                ]
-            };
-
-            ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
-            Assert.That((bool)result.Result, Is.True, result.Result.ToString());
-            return (serializer.Serialize(result.Data), result.Data[0].Calls.Single());
+            return SimulateSingleCall(chain, traceTransfers, stateOverrides,
+                new LegacyTransactionForRpc { From = TestItem.AddressA, To = to, Input = Bytes.FromHexString(input), Gas = gas, GasPrice = 0 });
         }
 
         (string tracedJson, _) = Simulate(traceTransfers: true);
@@ -1359,6 +1344,48 @@ public class EthSimulateTestsBlocksAndTransactions
             Assert.That(call.Error?.Code, Is.EqualTo(expectedErrorCode));
             Assert.That(call.Error?.Message, Is.EqualTo(expectedMessage));
         }
+    }
+
+    /// <summary>
+    /// A value transfer to a new account gives the same result with call tracing on and off: on Amsterdam the
+    /// EIP-7708 transfer log is in the receipt. One gas short, the transfer halts on the EIP-8037 new-account state gas.
+    /// </summary>
+    [Test]
+    public async Task Test_eth_simulateV1_value_transfer_does_not_depend_on_call_tracing([Values] bool runsOutOfGas)
+    {
+        using TestRpcBlockchain chain = await BuildAmsterdamBalChain();
+        Address newAccount = new("0xca00000000000000000000000000000000000000");
+
+        (string Json, SimulateCallResult Call) Simulate(bool traceTransfers, ulong gas) =>
+            SimulateSingleCall(chain, traceTransfers,
+                new Dictionary<Address, AccountOverride> { { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } } },
+                new LegacyTransactionForRpc { From = TestItem.AddressA, To = newAccount, Value = 1, Gas = gas, GasPrice = 0 });
+
+        ulong gas = runsOutOfGas ? Simulate(traceTransfers: false, 1_000_000).Call.GasUsed!.Value - 1 : 1_000_000;
+        (string tracedJson, _) = Simulate(traceTransfers: true, gas);
+        (string json, SimulateCallResult call) = Simulate(traceTransfers: false, gas);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json, Is.EqualTo(tracedJson));
+            Assert.That(call.Error?.Code, Is.EqualTo(runsOutOfGas ? (int?)ErrorCodes.VMError : null));
+            Assert.That(call.Error?.Message, Is.EqualTo(runsOutOfGas ? "out of gas" : null));
+            Assert.That(call.Logs, Has.Count.EqualTo(runsOutOfGas ? 0 : 1));
+        }
+    }
+
+    private static (string Json, SimulateCallResult Call) SimulateSingleCall(
+        TestRpcBlockchain chain, bool traceTransfers, Dictionary<Address, AccountOverride> stateOverrides, LegacyTransactionForRpc call)
+    {
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            TraceTransfers = traceTransfers,
+            BlockStateCalls = [new() { StateOverrides = stateOverrides, Calls = [call] }]
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+        Assert.That((bool)result.Result, Is.True, result.Result.ToString());
+        return (new EthereumJsonSerializer().Serialize(result.Data), result.Data[0].Calls.Single());
     }
 
     [TestCase(

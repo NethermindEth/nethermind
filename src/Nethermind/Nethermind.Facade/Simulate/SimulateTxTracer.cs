@@ -212,8 +212,7 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
     /// </remarks>
     private static EvmExceptionType TopLevelException(byte[] output, string? error) =>
         output.Length > 0 || error is TransactionSubstate.Revert ? EvmExceptionType.Revert
-        : Enum.TryParse(error, out EvmExceptionType exceptionType) ? exceptionType
-        : EvmExceptionType.None;
+        : EvmExceptionTypeExtensions.FastParse(error);
 
     private List<Log> BuildLogs()
     {
