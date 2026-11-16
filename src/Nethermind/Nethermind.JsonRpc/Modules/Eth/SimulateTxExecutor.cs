@@ -117,6 +117,10 @@ public class SimulateTxExecutor<TTrace>(
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
                 $"This node is configured to support only {_rpcConfig.MaxSimulateBlocksCap} blocks", ErrorCodes.ClientLimitExceededError);
 
+        if (CountCalls(call.BlockStateCalls) > _rpcConfig.MaxSimulateCallsCap)
+            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
+                $"This node is configured to support only {_rpcConfig.MaxSimulateCallsCap} calls", ErrorCodes.ClientLimitExceededError);
+
         searchResult ??= _blockFinder.SearchForHeader(blockParameter);
 
         if (searchResult.Value.IsError || searchResult.Value.Object is null)
@@ -294,6 +298,17 @@ public class SimulateTxExecutor<TTrace>(
         EvmExceptionType.Revert => ErrorCodes.ExecutionReverted,
         _ => ErrorCodes.VMError
     };
+
+    private static long CountCalls(List<BlockStateCall<TransactionForRpc>> blockStateCalls)
+    {
+        long count = 0;
+        foreach (BlockStateCall<TransactionForRpc> blockStateCall in blockStateCalls)
+        {
+            count += blockStateCall.Calls?.Length ?? 0;
+        }
+
+        return count;
+    }
 }
 
 /// <summary>

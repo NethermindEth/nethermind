@@ -404,6 +404,40 @@ public class EthSimulateTestsBlocksAndTransactions
         }
     }
 
+    [TestCase(3, true, TestName = "Test_eth_simulateV1_total_calls_above_cap_returns_error")]
+    [TestCase(4, false, TestName = "Test_eth_simulateV1_total_calls_at_cap_is_accepted")]
+    public async Task Test_eth_simulateV1_total_calls_are_limited(long callsCap, bool expectLimitError)
+    {
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new() { Calls = [TransferForRpc(0), TransferForRpc(1)] },
+                new() { Calls = [TransferForRpc(2), TransferForRpc(3)] }
+            ]
+        };
+
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder,
+            new JsonRpcConfig { MaxSimulateCallsCap = callsCap, Timeout = -1 }, chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((bool)result.Result, Is.EqualTo(!expectLimitError), result.Result.ToString());
+            Assert.That(result.ErrorCode == ErrorCodes.ClientLimitExceededError, Is.EqualTo(expectLimitError), "the cap counts the calls of all blocks together");
+        }
+
+        static TransactionForRpc TransferForRpc(ulong nonce) => new LegacyTransactionForRpc
+        {
+            From = TestItem.AddressA,
+            To = TestItem.AddressB,
+            Nonce = nonce,
+            Gas = 21_000,
+            GasPrice = 0
+        };
+    }
+
     [Test]
     public async Task Test_eth_simulateV1_gap_expansion_exceeding_cap_returns_error()
     {
