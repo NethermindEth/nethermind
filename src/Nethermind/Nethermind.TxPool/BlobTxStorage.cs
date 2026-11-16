@@ -52,8 +52,15 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         Span<byte> txHashPrefixed = stackalloc byte[FullTxKeyLength];
         GetHashPrefixedByTimestamp(timestamp, hash, txHashPrefixed);
 
-        byte[]? txBytes = _fullBlobTxsDb.Get(txHashPrefixed);
-        return TryDecodeFullTx(txBytes, sender, timestamp, out transaction);
+        Span<byte> txBytes = _fullBlobTxsDb.GetSpan(txHashPrefixed);
+        try
+        {
+            return TryDecodeFullTx(txBytes, sender, timestamp, out transaction);
+        }
+        finally
+        {
+            _fullBlobTxsDb.DangerousReleaseMemory(txBytes);
+        }
     }
 
     /// <inheritdoc/>
@@ -62,21 +69,28 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         Span<byte> elidedKey = stackalloc byte[ElidedTxKeyLength];
         GetElidedTxKey(hash, elidedKey);
 
-        byte[]? elidedBytes = _fullBlobTxsDb.Get(elidedKey);
-        if (elidedBytes is not null)
+        Span<byte> elidedBytes = _fullBlobTxsDb.GetSpan(elidedKey);
+        try
         {
-            transaction = Rlp.Decode<Transaction>(elidedBytes, RlpBehaviors.InMempoolForm);
-            if (transaction is null)
+            if (!elidedBytes.IsNull())
             {
-                return false;
+                transaction = Rlp.Decode<Transaction>(elidedBytes, RlpBehaviors.InMempoolForm);
+                if (transaction is null)
+                {
+                    return false;
+                }
+
+                transaction.SenderAddress = sender;
+                return true;
             }
 
-            transaction.SenderAddress = sender;
-            return true;
+            transaction = default;
+            return false;
         }
-
-        transaction = default;
-        return false;
+        finally
+        {
+            _fullBlobTxsDb.DangerousReleaseMemory(elidedBytes);
+        }
     }
 
     /// <inheritdoc/>
@@ -628,12 +642,12 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
     }
 
     private static bool TryDecodeFullTx(
-        byte[]? txBytes,
+        Span<byte> txBytes,
         Address sender,
         in UInt256 timestamp,
         [NotNullWhen(true)] out Transaction? transaction)
     {
-        if (txBytes is not null)
+        if (!txBytes.IsNull())
         {
             transaction = Rlp.Decode<Transaction>(txBytes, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage | RlpBehaviors.TrustedInput);
             if (transaction is null)

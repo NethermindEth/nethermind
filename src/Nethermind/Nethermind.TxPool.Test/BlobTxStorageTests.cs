@@ -947,6 +947,32 @@ public class BlobTxStorageTests
     }
 
     [Test]
+    public void TryGet_should_release_the_read_record([Values] bool withoutBlobs)
+    {
+        using TrackingColumnsDb db = new();
+        BlobTxStorage blobTxStorage = new(db);
+        Transaction tx = CreateBlobTransaction();
+        blobTxStorage.Add(tx);
+
+        bool found = withoutBlobs
+            ? blobTxStorage.TryGetWithoutBlobs(tx.Hash!, tx.SenderAddress!, out Transaction read)
+            : blobTxStorage.TryGet(tx.Hash!, tx.SenderAddress!, tx.Timestamp, out read);
+        bool missingFound = withoutBlobs
+            ? blobTxStorage.TryGetWithoutBlobs(TestItem.KeccakC, tx.SenderAddress!, out Transaction missing)
+            : blobTxStorage.TryGet(TestItem.KeccakC, tx.SenderAddress!, tx.Timestamp, out missing);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(read.Hash, Is.EqualTo(tx.Hash));
+            Assert.That(read.SenderAddress, Is.EqualTo(tx.SenderAddress));
+            Assert.That(missingFound, Is.False);
+            Assert.That(missing, Is.Null);
+            Assert.That(db.ActiveSpans, Is.Zero);
+        }
+    }
+
+    [Test]
     public void Add_should_not_rewrite_existing_elided_payload()
     {
         MemColumnsDb<BlobTxsColumns> columnsDb = new();
