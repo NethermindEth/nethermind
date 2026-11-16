@@ -76,9 +76,7 @@ public class ReceiptsSyncFeedTests
 
     private static readonly ISpecProvider _specProvider;
     private IReceiptStorage _receiptStorage;
-#pragma warning disable NUnit1032
     private IReceiptsInsertBatch _insertBatch;
-#pragma warning restore NUnit1032
     private ISyncPointers _syncPointers;
     private ISyncPeerPool _syncPeerPool;
     private ReceiptsSyncFeed _feed;
@@ -140,6 +138,7 @@ public class ReceiptsSyncFeedTests
     [TearDown]
     public void TearDown()
     {
+        _insertBatch?.Dispose();
         _feed?.Dispose();
         _syncPeerPool?.DisposeAsync();
         _syncReport?.Dispose();

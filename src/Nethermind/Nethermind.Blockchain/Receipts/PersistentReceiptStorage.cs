@@ -96,6 +96,7 @@ namespace Nethermind.Blockchain.Receipts
 
         // Serialises the queued receipts write, the canonical-index write, and a synchronous removal. Shared with _pendingReceipts.
         private readonly Lock _writeLock = new();
+        private readonly Lock _migratedBlockNumberLock = new();
 
         // Bodies skipped by StoresBodies, held until capture durably covers their block so a capture breakdown can
         // persist them before the pending state persist prunes the blocks' snapshots — their only other source.
@@ -853,11 +854,7 @@ namespace Nethermind.Blockchain.Receipts
         public void Insert(Block block, TxReceipt[]? txReceipts, IReleaseSpec spec, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, ulong? lastBlockNumber = null)
         {
             InsertCore(block, txReceipts, spec, ensureCanonical, writeFlags, lastBlockNumber);
-
-            if (block.Number < MigratedBlockNumber)
-            {
-                MigratedBlockNumber = block.Number;
-            }
+            LowerMigratedBlockNumber(block.Number);
         }
 
         void IReceiptMigrationStore.InsertForMigration(Block block, TxReceipt[] receipts)
@@ -871,7 +868,7 @@ namespace Nethermind.Blockchain.Receipts
                 InsertCore(block, txReceipts, spec, ensureCanonical: false, WriteFlags.None, lastBlockNumber: null,
                     storeBody: storesBody);
                 if (!storesBody) RetainSkippedBody(block, txReceipts ?? []);
-                if (block.Number < MigratedBlockNumber) MigratedBlockNumber = block.Number;
+                LowerMigratedBlockNumber(block.Number);
                 return;
             }
 
@@ -896,10 +893,7 @@ namespace Nethermind.Blockchain.Receipts
             if (StoresBodies(spec)) _pendingReceipts.Publish(block.Number, blockHash, (txReceipts, behaviors));
             else RetainSkippedBody(block, txReceipts);
 
-            if (block.Number < MigratedBlockNumber)
-            {
-                MigratedBlockNumber = block.Number;
-            }
+            LowerMigratedBlockNumber(block.Number);
 
             ReceiptsInserted?.Invoke(this, new(block.Header, txReceipts));
         }
@@ -1182,14 +1176,8 @@ namespace Nethermind.Blockchain.Receipts
 
                 try
                 {
-                    bool lowersMigratedBlockNumber = _lowestBlockNumber < _storage._migratedBlockNumber;
-                    if (lowersMigratedBlockNumber)
-                    {
-                        _batch.GetColumnBatch(ReceiptsColumns.Default).PutSpan(MigrationBlockNumberKey.Bytes, _lowestBlockNumber.ToBigEndianSpanWithoutLeadingZeros(out _));
-                    }
-
                     _batch.Dispose();
-                    if (lowersMigratedBlockNumber) _storage._migratedBlockNumber = _lowestBlockNumber;
+                    if (_inserted.Count > 0) _storage.LowerMigratedBlockNumber(_lowestBlockNumber);
 
                     foreach ((BlockHeader header, TxReceipt[]? receipts, bool cache) in _inserted)
                     {
@@ -1218,7 +1206,7 @@ namespace Nethermind.Blockchain.Receipts
             TxReceipt[]? insertedReceipts = WriteNetworkReceipts(block, blockReceipts, withBloom, _receiptsDb);
             _receiptsCache.Delete(block.Hash);
             if (ensureCanonical) EnsureCanonical(block, null);
-            if (block.Number < MigratedBlockNumber) MigratedBlockNumber = block.Number;
+            LowerMigratedBlockNumber(block.Number);
             if (insertedReceipts is not null) ReceiptsInserted?.Invoke(this, new(block.Header, insertedReceipts));
             return true;
         }
@@ -1254,6 +1242,14 @@ namespace Nethermind.Blockchain.Receipts
             }
 
             return true;
+        }
+
+        private void LowerMigratedBlockNumber(ulong blockNumber)
+        {
+            lock (_migratedBlockNumberLock)
+            {
+                if (blockNumber < _migratedBlockNumber) MigratedBlockNumber = blockNumber;
+            }
         }
 
         public ulong MigratedBlockNumber
