@@ -481,20 +481,24 @@ public class ColumnsDbTests
             {
                 Assert.That(KeyValueStoreReads.Read(snapshotColumn, keys[i], ReadFlags.HintReadAhead, spanAction), Is.EqualTo(new byte[] { (byte)i, 1 }), $"reverse key {i}");
             }
-            Assert.That(KeyValueStoreReads.Read(snapshotColumn, keys[0], ReadFlags.HintReadAhead, spanAction), Is.EqualTo(new byte[] { 0, 1 }));
 
             using (Assert.EnterMultipleScope())
             {
+                Assert.That(KeyValueStoreReads.Read(snapshotColumn, keys[0], ReadFlags.HintReadAhead, spanAction), Is.EqualTo(new byte[] { 0, 1 }));
+
                 // Skip-ahead reads. The iterator is on keys[0]. A key further away than the five steps of its probe
                 // is found by a seek.
                 Assert.That(KeyValueStoreReads.Read(snapshotColumn, keys[8], ReadFlags.HintReadAhead, spanAction), Is.EqualTo(new byte[] { 8, 1 }), "key 8 from key 0");
+            }
 
-                // From here the iterator is on keys[i]. Next lands on keys[i + 1], before the requested key, so the
-                // bounded probe takes over. It steps past a key that is absent between keys[i + 1] and keys[i + 2]
-                // and settles the miss without a point read. keys[i + 2], where it stopped, is still served, and
-                // keys[i + 4] is found by the probe. Several rounds, so one read that the cleanup timer of the
-                // iterator pool sends to a seek cannot hide the probe branches.
-                for (int i = 8; i + 4 < keys.Length; i += 4)
+            // From here the iterator is on keys[i]. Next lands on keys[i + 1], before the requested key, so the
+            // bounded probe takes over. It steps past a key that is absent between keys[i + 1] and keys[i + 2] and
+            // settles the miss without a point read. keys[i + 2], where it stopped, is still served, and keys[i + 4]
+            // is found by the probe. Several rounds, so one read that the cleanup timer of the iterator pool sends to
+            // a seek cannot hide the probe branches.
+            for (int i = 8; i + 4 < keys.Length; i += 4)
+            {
+                using (Assert.EnterMultipleScope())
                 {
                     Assert.That(KeyValueStoreReads.Read(snapshotColumn, [.. keys[i + 1], 0], ReadFlags.HintReadAhead, spanAction), Is.Null, $"absent key after key {i + 1}");
                     Assert.That(KeyValueStoreReads.Read(snapshotColumn, keys[i + 2], ReadFlags.HintReadAhead, spanAction), Is.EqualTo(new byte[] { (byte)(i + 2), 1 }), $"key {i + 2} after the miss");
@@ -612,8 +616,8 @@ public class ColumnsDbTests
 
         long added = BlockCacheUsage(column) - usageBefore;
         // Only the point reads of the fallback can fill the cache, and HintCacheMiss must keep them out of it.
-        // The fallback without the flag is the control: it shows that these misses do read data blocks. A miss
-        // that the cleanup timer of the iterator pool sends to the fallback adds one block, far below the bound.
+        // The fallback without the flag is the control: it shows that these misses do read data blocks. A miss that
+        // the cleanup timer of the iterator pool sends to the fallback adds one or two blocks, far below the bound.
         bool fills = !probe && !hintCacheMiss;
         Assert.That(added, fills ? Is.GreaterThan(storedBytes / 2) : Is.LessThan(storedBytes / 10));
     }
