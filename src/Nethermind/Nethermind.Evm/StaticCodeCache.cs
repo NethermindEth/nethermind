@@ -36,7 +36,7 @@ public sealed class StaticCodeCache : ICodeCache
     /// <remarks>
     /// Code above <see cref="MediumCodeSize"/> is what a block of distinct maximum-size contracts loads; confined to
     /// its own tier, it cannot evict the small and medium code ordinary blocks run, and each tier bounds its memory
-    /// by the largest code it holds. Code above <see cref="LargeCodeSize"/> is not kept: no fork allows it, so it
+    /// by the largest code it holds. Code above <see cref="LargeCodeSize"/> is not kept: no fork with EIP-170 allows it, so it
     /// comes from RPC state overrides, simulations without a code size limit or chains with a custom limit.
     /// </remarks>
     /// <param name="smallCapacity">Entries for code of at most <see cref="SmallCodeSize"/>.</param>
