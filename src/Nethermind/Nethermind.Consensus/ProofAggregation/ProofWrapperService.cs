@@ -34,10 +34,12 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     IBlockFinder blockFinder, LeanProofStore leanProofStore, ILeanProofVerifier leanProofVerifier,
     IWrappedBlobTransactionAdmission? blobAdmission = null)
 {
-    /// <summary>Encoded transaction bytes a produced mode-1 wrapper may carry: <c>MAX_WRAPPER_BYTES</c> less the largest
-    /// aggregate proof, the widest dependency list the pinned guest proves and the list framing.</summary>
-    internal const int MaxWrapperTransactionBytes = Eip8288Constants.MaxWrapperBytes - Eip8288Constants.MaxAggregateProofBytes
-        - Eip8288Constants.MaxProofDependencies * (2 + Eip8288Constants.DependencyTripleLength) - 64;
+    /// <summary>Encoded transaction and dependency bytes a produced mode-1 wrapper may carry: <c>MAX_WRAPPER_BYTES</c> less the
+    /// largest aggregate proof and the list framing.</summary>
+    internal const int MaxWrapperContentBytes = Eip8288Constants.MaxWrapperBytes - Eip8288Constants.MaxAggregateProofBytes - 64;
+
+    /// <summary>Encoded bytes of one dependency in a wrapper's dependency list: a 96-byte RLP string.</summary>
+    private const int EncodedDependencyBytes = 2 + Eip8288Constants.DependencyTripleLength;
 
     /// <summary>Estimated proving cost (<see cref="RecursiveStarkAggregator.EstimatedCost"/>) one produced wrapper may take: that of
     /// folding <c>MAX_LEANSIG_DEPS_PER_WRAPPER</c> fresh signatures.</summary>
@@ -106,7 +108,6 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     private readonly Lock _commitLock = new();
     // The admission beyond capacity whose scope has not ended; guarded by _commitLock.
     private CapacityRestoringScope? _staging;
-    internal const string WiderThanCircuitBound = "Mode 1 proof covers more dependencies than the AGGREGATED_VK circuit accepts.";
     private const string VerifierChangedDuringAdmission = "The target fork's verifier changed during validation; retry.";
     private Eip8288Verifier? _verifier;
     private TargetForks? _targetForks;
@@ -277,9 +278,6 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             {
                 return ProofWrapperAcceptance.Malformed($"Invalid proof wrapper RLP: {exception.Message}");
             }
-            // EIP-8288: mode 1 is limited by the dependency list the AGGREGATED_VK circuit accepts, here the pinned guest's.
-            if (decoded.Mode == MempoolWrapper.ModeRecursive && !Eip8288Dependencies.FitsProofList(decoded.Deps))
-                return ProofWrapperAcceptance.Invalid(WiderThanCircuitBound, verifier);
             // EIP-8437 carries blob-carrying transactions with their blob data elided, so a wrapper submitted with full blobs is
             // relayed in that form; its blobs reach peers as EIP-8070 cells once the pool holds them.
             byte[]? relay = ElidedForRelay(decoded, wrapper);
@@ -910,10 +908,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// <summary>Partitions the pending dependency-bearing transactions into transaction-hash-prefix buckets that each fit one
     /// mode-1 wrapper.</summary>
     /// <remarks>EIP-8288 proof reuse: the candidates in canonical order start as one bucket, and a bucket exceeding the wrapper's
-    /// transaction bytes, the circuit's dependency-list limit or the proving-cost budget is subdivided by successive hash bits.
+    /// transaction and dependency bytes or the proving-cost budget is subdivided by successive hash bits.
     /// Buckets do not depend on arrival order, but the cost check depends on the proofs held here, so nodes with the same pool view
     /// share bucket boundaries only where their held proofs agree. A transaction exceeding the proving
-    /// budget alone is still a bucket of its own; one whose inputs are unavailable or exceed the circuit is left out.
+    /// budget alone is still a bucket of its own; one whose inputs are unavailable or exceed the wrapper is left out.
     /// Only transactions executable at the head are candidates (see <see cref="AddExecutable"/>).</remarks>
     private List<Bucket> PlanBuckets(Eip8288Verifier verifier, CancellationToken cancellationToken)
     {
@@ -934,7 +932,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 shape = (Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue),
                     Rlp.LengthOfSequence(TxDecoder.Instance.GetLength(transaction, MempoolWrapperDecoder.TransactionBehaviors)));
             shapes[hash] = shape;
-            if (shape.Deps.Count != 0 && shape.EncodedLength <= MaxWrapperTransactionBytes)
+            if (shape.Deps.Count != 0 && shape.EncodedLength + (long)shape.Deps.Count * EncodedDependencyBytes <= MaxWrapperContentBytes)
                 candidates.Add(new(transaction, shape.Deps, shape.EncodedLength));
         }
         // Only transactions still pending are remembered, so removed ones are dropped.
@@ -965,12 +963,13 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             fits = false;
             long bytes = 0;
             for (int i = start; i < end; i++) bytes += candidates[i].EncodedLength;
-            if (bytes > MaxWrapperTransactionBytes) return null;
+            if (bytes > MaxWrapperContentBytes) return null;
             List<FrameDependency> union = [];
             for (int i = start; i < end; i++) union.AddRange(candidates[i].Deps);
             union = Eip8288Dependencies.Canonicalize(union);
-            if (!Eip8288Dependencies.FitsProofList(union) || !leanProofStore.TryGetInput(union, out AggregationInput input)
-                || union.Count + input.Discards.Count > Eip8288Constants.MaxProofDependencies) return null;
+            if (bytes + (long)union.Count * EncodedDependencyBytes > MaxWrapperContentBytes
+                || !leanProofStore.TryGetInput(union, out AggregationInput input) || input.Discards.Count > Eip8288Constants.MaxProofDependencies)
+                return null;
             fits = end - start == 1 || ProvingCost(input, union, previousProof) <= MaxWrapperProvingCost;
             List<Transaction> transactions = new(end - start);
             for (int i = start; i < end; i++) transactions.Add(candidates[i].Transaction);
@@ -1098,7 +1097,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 {
                     AggregationInput incremental = RecursiveStarkAggregator.Combine(
                         [new() { RecursiveProofs = [cached.Parent] }, selectedInput], deps);
-                    if (deps.Count + incremental.Discards.Count <= Eip8288Constants.MaxProofDependencies)
+                    if (incremental.Discards.Count <= Eip8288Constants.MaxProofDependencies)
                         selectedInput = incremental;
                 }
                 proof = RecursiveStarkAggregator.Prove(selectedInput, leanProofVerifier, verifier, in hash, cancellationToken);

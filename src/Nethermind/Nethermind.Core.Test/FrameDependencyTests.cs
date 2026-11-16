@@ -28,6 +28,42 @@ public class FrameDependencyTests
             Assert.Throws<ArgumentException>(() => NativeLeanProofVerifier.SerializeInput(input));
     }
 
+    // The native host takes one aggregation step: at most MaxLeanStarkWitnessesPerStep raw leanSTARK and MaxRawWitnessesPerStep raw
+    // witnesses, discarded ones included, MaxRecursiveInputsPerStep children and lists up to the output capacity. Anything wider is
+    // refused before it is encoded.
+    [TestCase("step", false)]
+    [TestCase("raw leanSTARK", true)]
+    [TestCase("raw witnesses", true)]
+    [TestCase("children", true)]
+    [TestCase("child list", true)]
+    [TestCase("discards", true)]
+    [TestCase("child proof", true)]
+    [TestCase("witness", true)]
+    public void Aggregation_input_beyond_one_step_is_refused_before_encoding(string scenario, bool refused)
+    {
+        int starks = Eip8288Constants.MaxLeanStarkWitnessesPerStep + (scenario == "raw leanSTARK" ? 1 : 0);
+        int raw = Eip8288Constants.MaxRawWitnessesPerStep + (scenario == "raw witnesses" ? 1 : 0);
+        FrameDependency[] deps = [.. Enumerable.Range(0, raw)
+            .Select(i => Dependency(i < starks ? Eip8288Constants.LeanStarkScheme : Eip8288Constants.LeanSphincsScheme, i))];
+        FrameDependency[] list = [.. Enumerable.Range(0, Eip8288Constants.MaxProofDependencies + (scenario == "child list" ? 1 : 0))
+            .Select(static i => Dependency(Eip8288Constants.LeanSphincsScheme, -1 - i))];
+        RecursiveProofInput child = new(list, new byte[Eip8288Constants.MaxAggregateProofBytes + (scenario == "child proof" ? 1 : 0)]);
+        AggregationInput input = new()
+        {
+            Deps = deps,
+            Witnesses = [.. deps.Select((_, i) => (ReadOnlyMemory<byte>)new byte[i == 0 && scenario == "witness" ? Eip8288Constants.MaxProofBytes + 1 : 1])],
+            RecursiveProofs = [.. Enumerable.Repeat(child, scenario == "children" ? Eip8288Constants.MaxRecursiveInputsPerStep + 1 : 1)],
+            Discards = [.. list.Take(Eip8288Constants.MaxProofDependencies), .. scenario == "discards" ? deps[..1] : []]
+        };
+
+        if (refused)
+            Assert.Throws<ArgumentException>(() => NativeLeanProofVerifier.SerializeInput(input));
+        else
+            Assert.That(NativeLeanProofVerifier.SerializeInput(input), Has.Length.LessThanOrEqualTo(Eip8288Constants.MaxAggregationInputBytes));
+
+        static FrameDependency Dependency(byte scheme, int index) => new(scheme, ValueKeccak.Compute(BitConverter.GetBytes(index)), default);
+    }
+
     [Test]
     public void ParseFrame_reads_triples_from_frame_data()
     {

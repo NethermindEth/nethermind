@@ -247,8 +247,8 @@ public class ProofWrapperServiceTests
     }
 
     // EIP-8437: proof and dependency-rule failures, including exceeding MAX_SIGS_PER_TX or another EIP-8288 dependency limit, are
-    // discarded without penalty, so they are reported apart from malformed encodings, which remain penalizable. EIP-8288 Test
-    // Case 12: a mode-1 proof wider than the circuit's dependency-list limit, the pinned guest's, is invalid.
+    // discarded without penalty, so they are reported apart from malformed encodings, which remain penalizable. A mode-1 proof may
+    // carry more leanSTARK dependencies than one aggregation step verifies.
     [TestCase("valid", ProofWrapperAcceptanceStatus.Accepted)]
     [TestCase("proof", ProofWrapperAcceptanceStatus.Invalid)]
     [TestCase("union", ProofWrapperAcceptanceStatus.Invalid)]
@@ -256,9 +256,7 @@ public class ProofWrapperServiceTests
     [TestCase("limit", ProofWrapperAcceptanceStatus.Invalid)]
     [TestCase("transaction limit", ProofWrapperAcceptanceStatus.Invalid)]
     [TestCase("wide", ProofWrapperAcceptanceStatus.Accepted)]
-    [TestCase("wider than the circuit bound", ProofWrapperAcceptanceStatus.Invalid)]
-    [TestCase("leanstark within the circuit bound", ProofWrapperAcceptanceStatus.Accepted)]
-    [TestCase("leanstark wider than the circuit bound", ProofWrapperAcceptanceStatus.Invalid)]
+    [TestCase("leanstark beyond one step", ProofWrapperAcceptanceStatus.Accepted)]
     [TestCase("reference", ProofWrapperAcceptanceStatus.Malformed)]
     [TestCase("order", ProofWrapperAcceptanceStatus.Malformed)]
     public async Task Proof_and_dependency_failures_are_invalid_and_encoding_failures_malformed(string scenario, ProofWrapperAcceptanceStatus expected)
@@ -269,11 +267,7 @@ public class ProofWrapperServiceTests
         {
             "limit" or "wide" => (2, static i => 9 - i),
             "transaction limit" => (1, static _ => Eip8288Constants.MaxSigsPerTx + 1),
-            "wider than the circuit bound" => (Eip8288Constants.MaxProofDependencies / Eip8288Constants.MaxSigsPerTx + 1,
-                static _ => Eip8288Constants.MaxSigsPerTx),
-            // The pinned guest holds at most MaxGenericStarkProofs leanSTARK dependencies per list.
-            "leanstark within the circuit bound" => (Eip8288Constants.MaxGenericStarkProofs, static _ => Eip8288Constants.MaxStarksPerTx),
-            "leanstark wider than the circuit bound" => (Eip8288Constants.MaxGenericStarkProofs + 1, static _ => Eip8288Constants.MaxStarksPerTx),
+            "leanstark beyond one step" => (Eip8288Constants.MaxLeanStarkWitnessesPerStep + 1, static _ => Eip8288Constants.MaxStarksPerTx),
             "unsorted" => (1, static _ => 2),
             _ => (1, (Func<int, int>)(static _ => 1))
         };
@@ -910,38 +904,6 @@ public class ProofWrapperServiceTests
             Assert.That(store.TryGetInput(dependencies, out _), Is.True);
         }
         if (sameParent) Assert.That(wrapper.RecursiveStark!.StarkProof, Is.EqualTo(proof));
-    }
-
-    [Test]
-    public void Large_discarded_parent_coverage_is_skipped_before_proving()
-    {
-        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
-        Transaction[] transactions = new Transaction[2];
-        for (int i = 0; i < transactions.Length; i++)
-        {
-            FrameDependency[] parent = Enumerable.Range(0, Eip8288Constants.MaxProofDependencies / 2 + 1).Select(index => new FrameDependency(
-                Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"{i}:{index}"), default)).ToArray();
-            store.AddVerified(parent, null, [(byte)i]);
-            transactions[i] = new Transaction
-            {
-                Type = TxType.FrameTx,
-                NonceKeys = [UInt256.Zero],
-                ChainId = 1,
-                SenderAddress = Address.Zero,
-                Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
-                    UInt256.Zero, Eip8288Dependencies.Serialize([parent[0]]))]
-            };
-            transactions[i].Hash = transactions[i].CalculateHash();
-        }
-        FakeLeanProofVerifier verifier = new(true);
-        ProofWrapperService service = CreateService(transactions, store, verifier);
-        byte[] first = service.BuildWrapper().Data!;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Decode(first).Transactions, Has.Count.EqualTo(1));
-            Assert.That(verifier.LargestRecursiveInput, Is.EqualTo(1));
-            Assert.That(verifier.ProofCalls, Is.EqualTo(1));
-        }
     }
 
     [Test]

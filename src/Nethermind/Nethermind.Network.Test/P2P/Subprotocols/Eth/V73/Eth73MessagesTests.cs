@@ -399,7 +399,7 @@ public class Eth73MessagesTests
             return Eth73Rlp.EncodeList(Eth73Rlp.EncodeList([.. items]), Eth73Rlp.EncodeUInt(1), content ?? fields.ReadItem().ToArray());
         }
         byte[][] encoded = [.. transactions.Select(static t => Eth73Rlp.EncodeBytes(WrapperTestObjects.Envelope(t)))];
-        byte[][] wide = [.. Enumerable.Range(0, Eip8288Constants.MaxProofDependencies + 1)
+        byte[][] wide = [.. Enumerable.Range(0, Eip8288Constants.MaxLeanSigDepsPerWrapper + 1)
             .Select(static i => Eth73Rlp.EncodeBytes(Eip8288Dependencies.Serialize([new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute([(byte)i, (byte)(i >> 8)]), default)])))
             .OrderBy(static d => d.ToHexString())];
         byte[] wrapper = scenario switch

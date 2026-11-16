@@ -412,6 +412,25 @@ public class RecursiveStarkAggregatorTests
     }
 
     [Test]
+    public void LeanStark_witnesses_beyond_one_step_fold_into_one_list()
+    {
+        List<FrameDependency> dependencies = Eip8288Dependencies.Canonicalize(Enumerable.Range(0, 2 * Eip8288Constants.MaxLeanStarkWitnessesPerStep + 1)
+            .Select(static i => new FrameDependency(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute($"step:{i}"), default)));
+        GenericBoundedVerifier verifier = new();
+        ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(dependencies);
+        byte[] proof = RecursiveStarkAggregator.Prove(new()
+        {
+            Deps = dependencies,
+            Witnesses = [.. dependencies.Select(static _ => (ReadOnlyMemory<byte>)new byte[] { 1 })]
+        }, verifier, Eip8288Verifier.Pinned, hash);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(proof, Is.EqualTo(hash.ToByteArray()));
+            Assert.That(verifier.ProofCalls, Is.GreaterThan(1));
+        }
+    }
+
+    [Test]
     public void Recursive_generic_coverage_avoids_direct_reproving([Values(1, 2, 3)] int directWitnessBytes)
     {
         FrameDependency dependency = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("generic-source-tie"), default);
@@ -541,7 +560,7 @@ public class RecursiveStarkAggregatorTests
             {
                 Assert.That(RecursiveStarkAggregatorTests.TryAggregate(input, Accepting, Eip8288Verifier.Pinned, out IReadOnlyList<FrameDependency> dependencies, out ValueHash256 actual), Is.True);
                 Assert.That(actual, Is.EqualTo(hash));
-                Assert.That(dependencies.Count, Is.LessThanOrEqualTo(Eip8288Constants.MaxGenericStarkProofs));
+                Assert.That(Eip8288Dependencies.CountLeanStark(input.Deps), Is.LessThanOrEqualTo(Eip8288Constants.MaxLeanStarkWitnessesPerStep));
             }
             ProofCalls++;
             return hash.ToByteArray();

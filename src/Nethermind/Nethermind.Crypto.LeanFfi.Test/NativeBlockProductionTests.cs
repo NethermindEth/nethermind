@@ -57,7 +57,7 @@ public class NativeBlockProductionTests
         transaction.Hash = transaction.CalculateHash();
         byte[] encodedTransaction = TxDecoder.Instance.Encode(transaction).Bytes;
         FrameDependency resolved = Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue).Single();
-        byte[] witness = await SignMessage(resolved.DataHash);
+        byte[] witness = await GenerateWitness(resolved.DataHash);
         ILeanProofVerifier verifier = NativeLeanProofVerifier.Instance;
         using (Assert.EnterMultipleScope())
         {
@@ -125,7 +125,9 @@ public class NativeBlockProductionTests
         }
     }
 
-    private static async Task<byte[]> SignMessage(ValueHash256 message)
+    /// <summary>Runs the package's fixtures tool: a leanSPHINCS witness over <paramref name="message"/>, or with
+    /// <paramref name="stark"/> a leanSTARK one, its 32-byte key followed by the proof.</summary>
+    internal static async Task<byte[]> GenerateWitness(ValueHash256 message, bool stark = false)
     {
         string executable = Path.Combine(TestContext.CurrentContext.TestDirectory, "lean-vectors", OperatingSystem.IsWindows() ? "fixtures.exe" : "fixtures");
         string output = Path.GetTempFileName();
@@ -136,7 +138,7 @@ public class NativeBlockProductionTests
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
-                ArgumentList = { "--sign-message", Convert.ToHexString(message.Bytes), output }
+                ArgumentList = { stark ? "--prove-stark" : "--sign-message", Convert.ToHexString(message.Bytes), output }
             }
         };
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(30));
