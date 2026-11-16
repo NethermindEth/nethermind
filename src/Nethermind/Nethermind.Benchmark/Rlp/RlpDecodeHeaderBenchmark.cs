@@ -4,6 +4,7 @@
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Benchmarks.Rlp
 {
@@ -16,11 +17,11 @@ namespace Nethermind.Benchmarks.Rlp
 
         private readonly byte[][] _scenarios =
         [
-            Serialization.Rlp.Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes,
+            Serialization.Rlp.Rlp.Encode(Build.A.BlockHeader.TestObject),
             Serialization.Rlp.Rlp.Encode(
                 Build.A.BlockHeader.WithBaseFee(42).WithWithdrawalsRoot(TestItem.KeccakA)
                     .WithBlobGasUsed(1024).WithExcessBlobGas(2048)
-                    .WithParentBeaconBlockRoot(TestItem.KeccakB).TestObject).Bytes,
+                    .WithParentBeaconBlockRoot(TestItem.KeccakB).TestObject),
         ];
 
         [Params(0, 1)]
@@ -36,6 +37,18 @@ namespace Nethermind.Benchmarks.Rlp
             for (int i = 0; i < Batch; i++)
             {
                 header = Serialization.Rlp.Rlp.Decode<BlockHeader>(_header);
+            }
+
+            return header;
+        }
+
+        [Benchmark(OperationsPerInvoke = Batch)]
+        public BlockHeader ExcludeHashes()
+        {
+            BlockHeader header = null;
+            for (int i = 0; i < Batch; i++)
+            {
+                header = Serialization.Rlp.Rlp.Decode<BlockHeader>(_header, RlpBehaviors.ExcludeHashes);
             }
 
             return header;

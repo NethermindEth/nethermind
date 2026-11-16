@@ -23,9 +23,16 @@ namespace Nethermind.Evm.TransactionProcessing;
 /// EVM call, applying APPROVE effects, enforcing the payer gate and producing per-frame receipts.</summary>
 public abstract partial class TransactionProcessorBase<TGasPolicy>
 {
+    // Wraps the world state the processor was built with, which never changes, so one wrapper serves every
+    // transaction a pooled RPC processor runs.
+    private TracedAccessWorldState? _assertDiffRecorder;
+
     /// <summary>EIP-7906: starts the slice the assertion opcodes read, for a transaction with ASSERT frames on a
     /// path that is not already recording one. Returns the recorder so the caller can stop it.</summary>
     /// <remarks>Recording starts before the transaction touches state, so the prestate is its own baseline.
+    /// Block processing records every transaction into its block access list, and that slice is reused. Elsewhere
+    /// <see cref="WorldState"/> is swapped for a recorder over it until the transaction ends, so every write must
+    /// go through the property, including the code repository's, which take the world state as a parameter.
     /// The EIP-7928 condition mirrors block processing in both directions: without it, simulation could
     /// succeed on a chain whose blocks halt.</remarks>
     private IBlockAccessListSource? BeginAssertFrameDiffRecording(Transaction tx, ExecutionOptions opts, IReleaseSpec spec)
@@ -35,7 +42,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             || !spec.BlockLevelAccessListsEnabled
             || opts.HasFlag(ExecutionOptions.FrameValidationPrefixOnly)
             || tx.Frames is not { } frames
-            || WorldState is not IBlockAccessListSource { GeneratedBlockAccessList: null } recorder)
+            || WorldState is IBlockAccessListSource { GeneratedBlockAccessList: not null })
         {
             return null;
         }
@@ -44,7 +51,15 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         {
             if (frame.Mode == FrameMode.Assert)
             {
+                if (WorldState is IBlockAccessListSource idleRecorder)
+                {
+                    idleRecorder.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
+                    return idleRecorder;
+                }
+
+                TracedAccessWorldState recorder = _assertDiffRecorder ??= new(WorldState, parallel: false);
                 recorder.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
+                WorldState = recorder;
                 return recorder;
             }
         }

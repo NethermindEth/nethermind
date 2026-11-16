@@ -16,6 +16,7 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 using Snappier;
@@ -175,7 +176,7 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
 
     public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
     {
-        if (exception is SocketException or RlpException or ReadTimeoutException)
+        if (exception is SocketException or RlpReaderException or ReadTimeoutException)
         {
             if (_logger.IsTrace) TraceCommunicationError(exception);
         }

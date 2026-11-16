@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Linq;
 using System.Collections.Generic;
 using System.Net;
@@ -20,6 +21,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.Messages;
@@ -179,6 +181,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         {
             using GetBlockBodiesMessage msg62 = new(new[] { Keccak.Zero, TestItem.KeccakA });
             using Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockBodiesMessage msg66 = new(1111, msg62);
+            _syncManager.FindBlockRlp(Arg.Any<Hash256>()).Returns((MemoryManager<byte>?)null);
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.GetBlockBodies);
@@ -308,17 +311,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             ReserveAllButOneMessage(scheduler, reservations);
             const int count = 16;
             byte[] transaction = malformed ? [0xc0] : [0xc9, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x1b, 0x01, 0x01];
-            int contentLength = count * transaction.Length;
             using DisposableByteBuffer packet = Unpooled.Buffer(256).AsDisposable();
-            ByteBufferRlpWriter writer = new(packet);
+            byte[] transactions = RlpTestHelper.EncodeSequence(Enumerable.Repeat(transaction, count).ToArray());
             if (pooledResponse)
             {
                 long requestId = RequestTransaction(Build.A.Transaction.SignedAndResolved().TestObject);
-                writer.StartSequence(Rlp.LengthOf(requestId) + Rlp.LengthOfSequence(contentLength));
-                writer.Encode(requestId);
+                transactions = RlpTestHelper.EncodeSequence(Rlp.Encode(requestId), transactions);
             }
-            writer.StartSequence(contentLength);
-            for (int i = 0; i < count; i++) packet.WriteBytes(transaction);
+            packet.WriteBytes(transactions);
 
             Assert.That(() => _handler.HandleMessage(new NettyBufferPacket(packet)
             {
@@ -915,7 +915,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>());
         }
 
-        private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
+        private void HandleZeroMessage<T>(T msg, int messageCode) where T : P2PMessage
         {
             using DisposableByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg).AsDisposable();
             getBlockHeadersPacket.ReadByte();

@@ -17,6 +17,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Stateless.Execution.IO;
@@ -99,7 +100,7 @@ public static partial class TrustedInput
     {
         byte[][] encodedTransactions = new byte[block.Transactions.Length][];
         for (int i = 0; i < encodedTransactions.Length; i++)
-            encodedTransactions[i] = Rlp.Encode(block.Transactions[i], RlpBehaviors.SkipTypedWrapping).Bytes;
+            encodedTransactions[i] = Rlp.Encode(block.Transactions[i], RlpBehaviors.SkipTypedWrapping);
 
         return precompileInputs is null
             ? Write(chainId, ProtocolFork.Current, block, encodedTransactions, witness)
@@ -121,8 +122,8 @@ public static partial class TrustedInput
     private static byte[] Write(ulong chainId, ProtocolFork fork, Block block, IReadOnlyList<byte[]> encodedTransactions,
         Witness witness, byte[] senderHints, byte[] recoveryHints)
     {
-        byte[] header = Rlp.Encode(block.Header).Bytes;
-        byte[] withdrawals = block.Withdrawals is null ? [] : Rlp.Encode(block.Withdrawals).Bytes;
+        byte[] header = Rlp.Encode(block.Header);
+        byte[] withdrawals = block.Withdrawals is null ? [] : Rlp.Encode(block.Withdrawals);
         byte[] blockAccessList = block.EncodedBlockAccessList ?? [];
 
         int length = HeaderLength + Align(header.Length) + Align(withdrawals.Length) + Align(blockAccessList.Length)
@@ -236,9 +237,11 @@ public static partial class TrustedInput
 
             foreach (AuthorizationTuple tuple in transaction.AuthorizationList)
             {
-                KeccakRlpWriter writer = new();
+                Span<byte> payload = input[..AuthorizationTupleDecoder.GetSignaturePayloadLength(tuple.ChainId, tuple.CodeAddress, tuple.Nonce)];
+                RlpWriter writer = RlpWriter.ContentWriter(payload);
                 AuthorizationTupleDecoder.EncodeSignaturePayload(ref writer, tuple.ChainId, tuple.CodeAddress, tuple.Nonce);
-                recoveries.Add((writer.GetValueHash(), tuple.AuthoritySignature));
+                Rlp.CheckLength(in writer, payload.Length);
+                recoveries.Add((ValueKeccak.Compute(payload), tuple.AuthoritySignature));
             }
         }
 

@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
 
@@ -273,7 +274,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
             }
 
             RlpReader ctx = new(valueBuffer[..responseSize]);
-            return AccountDecoder.Slim.Decode(ref ctx);
+            return AccountDecoder.Slim.Decode(ref ctx, RlpBehaviors.TrustedInput);
         }
 
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue)

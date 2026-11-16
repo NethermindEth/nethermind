@@ -2,16 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using DotNetty.Buffers;
-using DotNetty.Common.Utilities;
 using Nethermind.Core.Collections;
-using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.Rlpx;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network;
 
@@ -65,34 +62,12 @@ public class MessageSerializationService : IMessageSerializationService
             : serializer.Deserialize(content.Span);
     }
 
-    public IByteBuffer ZeroSerialize<T>(T message, IByteBufferAllocator? allocator = null) where T : MessageBase
-        => ZeroSerialize(GetSerializer<T>(), message, allocator ?? NethermindBuffers.Default);
-
-    private static IByteBuffer ZeroSerialize<T>(IMessageSerializer<T> serializer, T message, IByteBufferAllocator allocator) where T : MessageBase
+    public void Serialize<T>(T message, IBufferWriter<byte> writer) where T : MessageBase
     {
-        P2PMessage? p2PMessage = message as P2PMessage;
-        int packetTypeLength = p2PMessage is null ? 0 : Rlp.LengthOf(p2PMessage.AdaptivePacketType);
-        int length = packetTypeLength + serializer.GetLength(message);
-        IByteBuffer byteBuffer = allocator.Buffer(length);
-        try
-        {
-            // DotNetty allocators return array-backed buffers, the direct ones included.
-            Span<byte> packet = byteBuffer.Array.AsSpan(byteBuffer.ArrayOffset + byteBuffer.WriterIndex, length);
-            if (p2PMessage is not null)
-            {
-                RlpWriter writer = new(packet);
-                writer.Encode(p2PMessage.AdaptivePacketType);
-            }
-
-            SerializeExactly(serializer, packet[packetTypeLength..], message);
-            byteBuffer.SetWriterIndex(byteBuffer.WriterIndex + length);
-            return byteBuffer;
-        }
-        catch
-        {
-            byteBuffer.SafeRelease();
-            throw;
-        }
+        IMessageSerializer<T> serializer = GetSerializer<T>();
+        int length = serializer.GetLength(message);
+        SerializeExactly(serializer, writer.GetSpan(length)[..length], message);
+        writer.Advance(length);
     }
 
     // A short write would leave stale pooled bytes in the message.

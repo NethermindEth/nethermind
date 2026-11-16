@@ -18,10 +18,10 @@ public static partial class HexPrefix
     /// they key a leaf.</summary>
     public static (int NibbleCount, bool IsLeaf) ReadHeader(ReadOnlySpan<byte> bytes)
     {
-        // The first nibble flags a leaf (0x2, read as any flag from it up) and an odd nibble count (0x1), whose first
-        // nibble then shares the byte.
+        // The first nibble flags a leaf (0x2) and an odd nibble count (0x1), whose first nibble then shares the byte. Only
+        // these two bits are read, as the execution specs' compact_to_nibbles does.
         int flags = bytes[0];
-        return (2 * bytes.Length - ((flags & 0x10) != 0 ? 1 : 2), flags >= 0x20);
+        return (2 * bytes.Length - ((flags & 0x10) != 0 ? 1 : 2), (flags & 0x20) != 0);
     }
 
     public static void CopyToSpan(byte[] path, bool isLeaf, Span<byte> output)

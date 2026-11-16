@@ -29,6 +29,7 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Proofs;
@@ -704,24 +705,21 @@ public partial class EngineModuleTests
                 "JSON uses witness DATA only");
         }
 
-        RlpReader reader = new(Nethermind.Core.Extensions.Bytes.FromHexString(result.GetProperty("witness").GetString()!));
-        reader.ReadSequenceLength();
-        int headersLength = reader.ReadSequenceLength();
-        int headersEnd = reader.Position + headersLength;
+        RlpReader reader = new RlpReader(Nethermind.Core.Extensions.Bytes.FromHexString(result.GetProperty("witness").GetString()!)).EnterSequence(out _);
+        RlpReader headers = reader.EnterSequence(out int headersLength);
 
         HeaderDecoder headerDecoder = new();
         BlockHeader? lastHeader = null;
-        while (reader.Position < headersEnd)
-            lastHeader = headerDecoder.Decode(ref reader);
+        while (headers.HasNext)
+            lastHeader = headerDecoder.Decode(ref headers);
 
-        int headersPosition = reader.Position;
+        reader.ExitSequence(headers, headersLength);
         byte[][] codes = reader.DecodeByteArrays();
         byte[][] state = reader.DecodeByteArrays();
         reader.CheckEnd();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(headersPosition, Is.EqualTo(headersEnd));
             Assert.That(codes.All(static code => code.Length > 0), Is.True);
             Assert.That(state, Is.Not.Empty);
             Assert.That(state.All(static node => node.Length > 0), Is.True);

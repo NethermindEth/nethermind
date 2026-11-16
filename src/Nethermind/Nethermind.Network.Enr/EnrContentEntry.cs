@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Enr
@@ -24,15 +25,13 @@ namespace Nethermind.Network.Enr
         /// <summary>
         /// Encodes the entry into a value RLP writer.
         /// </summary>
-        public void Encode<TWriter>(ref TWriter writer)
-            where TWriter : struct, IRlpWriteBackend, allows ref struct
+        public void Encode(ref RlpWriter writer)
         {
             writer.Encode(Key);
             EncodeValue(ref writer);
         }
 
-        protected abstract void EncodeValue<TWriter>(ref TWriter writer)
-            where TWriter : struct, IRlpWriteBackend, allows ref struct;
+        protected abstract void EncodeValue(ref RlpWriter writer);
 
         public override int GetHashCode() => Key.GetHashCode();
     }

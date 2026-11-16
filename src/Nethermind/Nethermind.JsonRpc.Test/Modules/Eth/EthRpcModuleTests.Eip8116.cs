@@ -16,6 +16,7 @@ using Nethermind.Evm;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -175,7 +176,7 @@ public partial class EthRpcModuleTests
 
         static TxReceipt RoundTrip(RlpDecoder<TxReceipt> decoder, TxReceipt receipt, RlpBehaviors behaviors)
         {
-            RlpReader reader = new(decoder.EncodeAsBytes(receipt, behaviors));
+            RlpReader reader = new(decoder.Encode(receipt, behaviors));
             return decoder.Decode(ref reader, behaviors)!;
         }
     }

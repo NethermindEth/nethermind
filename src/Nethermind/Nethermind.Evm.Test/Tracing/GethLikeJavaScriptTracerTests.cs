@@ -806,6 +806,36 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         AssertResult(traces, new[] { expected, expected });
     }
 
+    // Recipient 0x9429…, sender 0xb770…, AddressC 0x76e6…
+    [TestCase(Instruction.CALL, "0x76e68a8696537e4141926f3e528733af9e237d69:0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358")]
+    [TestCase(Instruction.CALLCODE, "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358:0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358")]
+    [TestCase(Instruction.DELEGATECALL, "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358:0xb7705ae4c6f81b66cdb323c65f4e8133690fc099")]
+    public void log_contract_in_child_frame_matches_the_executing_account(Instruction callOpcode, string expected)
+    {
+        const string userTracer = @"{
+                    retVal: [],
+                    step: function(log, db) {
+                        if (log.getDepth() === 2) this.retVal.push(toHex(log.contract.getAddress()) + ':' + toHex(log.contract.getCaller()));
+                    },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) { return this.retVal }
+                }";
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done, Spec);
+        Prepare code = callOpcode switch
+        {
+            Instruction.CALLCODE => Prepare.EvmCode.CallCode(TestItem.AddressC, 50000),
+            Instruction.DELEGATECALL => Prepare.EvmCode.DelegateCall(TestItem.AddressC, 50000),
+            _ => Prepare.EvmCode.Call(TestItem.AddressC, 50000)
+        };
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
+                GetTracer(userTracer),
+                code.Op(Instruction.STOP).Done,
+                MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
+        AssertResult(traces, new[] { expected });
+    }
+
     [Test]
     public void post_step_fires_once_per_step()
     {
@@ -1400,6 +1430,91 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         string[] results = ResultJsons(tracer.BuildResult());
 
         Assert.That(results, Is.EqualTo(new[] { "\"error\"", "\"none\"" }));
+    }
+
+    [Test]
+    public void Top_level_precompile_failure_sets_ctx_error_without_fault()
+    {
+        const string faultTracer = @"{
+                    events: [],
+                    fault: function(log, db) { this.events.push('fault:' + log.op.toString()); },
+                    result: function(ctx, db) { this.events.push('error:' + ctx.error); return this.events; }
+                }";
+        const ulong gasLimit = 21050UL;
+        Transaction precompileCall = Build.A.Transaction
+            .WithGasLimit(gasLimit)
+            .WithGasPrice(1)
+            .To(Sha256Precompile.Address)
+            .SignedAndResolved(SenderKey)
+            .TestObject;
+        (Block block, Transaction transaction) = PrepareTx(MainnetSpecProvider.CancunActivation, gasLimit, transaction: precompileCall);
+        using GethLikeBlockJavaScriptTracer tracer = GetTracer(faultTracer);
+
+        tracer.StartNewBlockTrace(block);
+        ExecuteTraced(tracer, block, transaction);
+        tracer.EndBlockTrace();
+
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        AssertResult(trace, new[] { "error:out of gas" });
+    }
+
+    [TestCase(false, 100000UL, "enter:SELFDESTRUCT:0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358:0x000000000000000000000000000000000000dead:0x:0:100000000000000000000|exit:SELFDESTRUCT:0:0x:undefined")]
+    // The new-account charge for the dead beneficiary runs SELFDESTRUCT out of gas, so no frame is reported.
+    [TestCase(false, 40000UL, "")]
+    [TestCase(true, 100000UL, "enter:CALL|enter:SELFDESTRUCT:0x76e68a8696537e4141926f3e528733af9e237d69:0x000000000000000000000000000000000000dead:0x:0:1000000000000000000|exit:SELFDESTRUCT:0:0x:undefined|exit:CALL")]
+    public void Self_destruct_is_reported_as_an_enter_exit_frame(bool nested, ulong gasLimit, string expected)
+    {
+        const string frameTracer = @"{
+                    events: [],
+                    types: [],
+                    enter: function(frame) {
+                        this.types.push(frame.getType());
+                        this.events.push(frame.getType() !== 'SELFDESTRUCT' ? 'enter:' + frame.getType() : 'enter:' + frame.getType() + ':' + toHex(frame.getFrom())
+                            + ':' + toHex(frame.getTo()) + ':' + toHex(frame.getInput()) + ':' + frame.getGas() + ':' + frame.getValue());
+                    },
+                    exit: function(result) {
+                        var type = this.types.pop();
+                        this.events.push(type !== 'SELFDESTRUCT' ? 'exit:' + type : 'exit:' + type + ':' + result.getGasUsed()
+                            + ':' + toHex(result.getOutput()) + ':' + result.getError());
+                    },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) { return this.events.join('|'); }
+                }";
+        Address beneficiary = new("0x000000000000000000000000000000000000dead");
+        byte[] selfDestruct = Prepare.EvmCode.PushData(beneficiary).Op(Instruction.SELFDESTRUCT).Done;
+        byte[] code = selfDestruct;
+        if (nested)
+        {
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+            TestState.InsertCode(TestItem.AddressC, selfDestruct, Spec);
+            code = Prepare.EvmCode.Call(TestItem.AddressC, 50000).Op(Instruction.STOP).Done;
+        }
+
+        (Block block, Transaction transaction) = PrepareTx(MainnetSpecProvider.CancunActivation, gasLimit, code);
+        using GethLikeBlockJavaScriptTracer tracer = GetTracer(frameTracer);
+        tracer.StartNewBlockTrace(block);
+        ExecuteTraced(tracer, block, transaction);
+        tracer.EndBlockTrace();
+
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        AssertResult(trace, expected);
+    }
+
+    [Test]
+    public void Ctx_coinbase_is_the_block_beneficiary()
+    {
+        const string coinbaseTracer = @"{
+                    fault: function(log, db) { },
+                    result: function(ctx, db) {
+                        var coinbase = (ctx.coinbase instanceof Uint8Array) + ':' + toHex(ctx.coinbase);
+                        ctx.coinbase[0] = 0xff;
+                        return coinbase;
+                    }
+                }";
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteTwoTransactionBlock(GetTracer(coinbaseTracer));
+
+        string expected = JsonSerializer.Serialize($"true:{Miner}");
+        Assert.That(ResultJsons(tracer.BuildResult()), Is.EqualTo(new[] { expected, expected }));
     }
 
     [TestCase("5b600056", null, "out of gas")]

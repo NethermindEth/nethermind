@@ -5,6 +5,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.FastSync;
@@ -81,7 +82,7 @@ public class SnapMessageLimitsTests
         ArrayPoolList<PathWithStorageSlot> slots = new(slotCount);
         for (int i = 0; i < slotCount; i++)
         {
-            slots.Add(new PathWithStorageSlot(TestItem.KeccakA, Rlp.Encode(new byte[] { 0x01 }).Bytes));
+            slots.Add(new PathWithStorageSlot(TestItem.KeccakA, Rlp.Encode(new byte[] { 0x01 })));
         }
 
         using StorageRangeMessage msg = new()

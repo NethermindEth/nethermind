@@ -7,6 +7,7 @@ using DotNetty.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 

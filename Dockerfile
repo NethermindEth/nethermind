@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0.403-resolute@sha256:2107242a0f56885d09f8a536ac300f6cb1a2b3f6d40605e5ff81bbd83ad91e3f AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0.404-resolute@sha256:f685dd6b5a970778b53cead9a11cf54206c4b4fc3c97e4424a59b8bff9aa43d7 AS build
 
 ARG BUILD_CONFIG=release
 ARG CI=true
@@ -26,7 +26,7 @@ RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
 # A temporary symlink to support the old executable name
 RUN ln -sr /publish/nethermind /publish/Nethermind.Runner
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0.14-resolute@sha256:cb0e8cadcf227143d90cf2a861106f2de9b2d404e7e9806d5817bbb5400db97d
+FROM mcr.microsoft.com/dotnet/aspnet:10.0.15-resolute@sha256:b5e72aa3bc183d98a0fc5739c583201a4b97bdbaadcb9dcd1b69d428a8bd172b
 
 ARG COMMIT_HASH=unknown
 ARG VERSION=unknown

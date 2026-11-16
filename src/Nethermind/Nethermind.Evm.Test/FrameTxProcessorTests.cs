@@ -11,11 +11,11 @@ using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
-using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.StateGas;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -40,7 +40,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using Nethermind.State;
 using Nethermind.State.OverridableEnv;
 using NSubstitute;
 using NUnit.Framework;
@@ -4402,9 +4401,11 @@ public partial class FrameTxProcessorTests
         return tracer.StatusCode;
     }
 
-    [TestCase(false, TestName = "Execute_TxTrace_Create2_ListsTheCodeAndNonceChanges")]
-    [TestCase(true, TestName = "Execute_TxTrace_Create2_ListsTheCodeAndNonceChanges_Parallel")]
-    public void Execute_TxTrace_Create2_ListsTheCodeAndNonceChanges(bool parallel)
+    // The eth_call case deposits the code through the repository into the recorder the processor started itself.
+    [TestCase(false, false, TestName = "Execute_TxTrace_Create2_ListsTheCodeAndNonceChanges")]
+    [TestCase(true, false, TestName = "Execute_TxTrace_Create2_ListsTheCodeAndNonceChanges_Parallel")]
+    [TestCase(false, true, TestName = "CallAndRestore_TxTrace_Create2_ListsTheCodeAndNonceChanges")]
+    public void Execute_TxTrace_Create2_ListsTheCodeAndNonceChanges(bool parallel, bool simulatesCall)
     {
         byte[] runtimeCode = Prepare.EvmCode.Op(Instruction.STOP).Done;
         byte[] initCode = Prepare.EvmCode.ForInitOf(runtimeCode).Done;
@@ -4429,9 +4430,35 @@ public partial class FrameTxProcessorTests
             asserts.Add((Txtrace(0x10, (UInt256)i), To32(1)));
         }
         DeployContract(Recipient, AssertAll([.. asserts]));
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.Assert, target: Recipient));
 
-        (_, CallOutputTracer tracer) = ProcessTraced(FrameTx(nonce: 0,
-            SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.Assert, target: Recipient)), parallel);
+        (_, CallOutputTracer tracer) = simulatesCall ? CallSimulated(tx) : ProcessTraced(tx, parallel);
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+    }
+
+    // The transient code is installed through the repository, so the eth_call case proves the write reaches
+    // the recorder the processor started itself.
+    [TestCase(false, TestName = "Execute_TxTrace_Tcreate_ListsTheCodeChange")]
+    [TestCase(true, TestName = "CallAndRestore_TxTrace_Tcreate_ListsTheCodeChange")]
+    public void Execute_TxTrace_Tcreate_ListsTheCodeChange(bool simulatesCall)
+    {
+        UseBogotaWithEip8360();
+        byte[] runtimeCode = Prepare.EvmCode.Op(Instruction.STOP).Done;
+        byte[] initCode = Prepare.EvmCode.ForInitOf(runtimeCode).Done;
+        byte[] salt = new byte[32];
+        Address tcreated = ContractAddress.FromTransientCreate(Observer, salt, initCode);
+
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.TCreate(initCode, salt, 0).Op(Instruction.POP).Op(Instruction.STOP).Done);
+        DeployContract(Recipient, AssertAll(
+            (Txtrace(0x02, 0), To32(1)),
+            (Txtrace(0x0B, 0), To32(AddressAsWord(tcreated))),
+            (Txtrace(0x0C, 0), Keccak.OfAnEmptyString.BytesToArray()),
+            (Txtrace(0x0D, 0), Keccak.Compute(runtimeCode).BytesToArray())));
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.Assert, target: Recipient));
+
+        (_, CallOutputTracer tracer) = simulatesCall ? CallSimulated(tx) : ProcessTraced(tx);
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
     }
@@ -4664,27 +4691,66 @@ public partial class FrameTxProcessorTests
         return tracedProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer);
     }
 
-    /// <summary>Runs <paramref name="tx"/> as <c>eth_call</c> does: an idle recorder and no block-level
-    /// slice, so the transaction must start its own to read its diff.</summary>
+    /// <summary>Runs <paramref name="tx"/> as <c>eth_call</c> does: a plain world state and no block-level
+    /// slice, so the processor must start its own recorder to read the diff.</summary>
     private (TransactionResult result, CallOutputTracer tracer) CallSimulated(Transaction tx)
-        => CallSimulated(tx, out _);
+        => CallSimulated(tx, _stateProvider, out _);
 
+    /// <summary>Runs <paramref name="tx"/> over a recorder holding no slice, as a block processing env between slices.</summary>
     private (TransactionResult result, CallOutputTracer tracer) CallSimulated(Transaction tx, out TracedAccessWorldState idleRecorder)
-        => CallSimulated(tx, out idleRecorder, out _);
-
-    private (TransactionResult result, CallOutputTracer tracer) CallSimulated(Transaction tx, out TracedAccessWorldState idleRecorder, out EthereumVirtualMachine virtualMachine)
     {
         idleRecorder = new(_stateProvider, parallel: false);
-        EthereumCodeInfoRepository codeInfoRepository = new(idleRecorder);
+        return CallSimulated(tx, idleRecorder, out _);
+    }
+
+    private (TransactionResult result, CallOutputTracer tracer) CallSimulated(Transaction tx, IWorldState state, out EthereumVirtualMachine virtualMachine)
+        => CallSimulated(tx, SimulatingProcessor(state, out virtualMachine));
+
+    private static (TransactionResult result, CallOutputTracer tracer) CallSimulated(Transaction tx, ITransactionProcessor processor)
+    {
+        CallOutputTracer tracer = new();
+        return (processor.CallAndRestore(tx, tracer), tracer);
+    }
+
+    private WorldStateExposingProcessor SimulatingProcessor(IWorldState state, out EthereumVirtualMachine virtualMachine)
+    {
+        EthereumCodeInfoRepository codeInfoRepository = new(state);
         virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
-        EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, _specProvider, idleRecorder, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+        WorldStateExposingProcessor processor = new(_specProvider, state, virtualMachine, codeInfoRepository);
 
         BlockHeader header = Build.A.BlockHeader.WithNumber(1)
             .WithBeneficiary(Beneficiary)
             .WithGasLimit(30_000_000).TestObject;
-        CallOutputTracer tracer = new();
         processor.SetBlockExecutionContext(new BlockExecutionContext(header, Spec));
-        return (processor.CallAndRestore(tx, tracer), tracer);
+        return processor;
+    }
+
+    private sealed class WorldStateExposingProcessor(ISpecProvider specProvider, IWorldState worldState, IVirtualMachine virtualMachine, ICodeInfoRepository codeInfoRepository)
+        : EthereumTransactionProcessorBase(BlobBaseFeeCalculator.Instance, specProvider, worldState, virtualMachine, codeInfoRepository, LimboLogs.Instance)
+    {
+        public new IWorldState WorldState => base.WorldState;
+    }
+
+    // RPC processors are pooled, so the recorder must come off again after the call and serve the next ASSERT frame.
+    [Test]
+    public void CallAndRestore_Assertion_RestoresThePlainWorldStateAndReusesTheRecorder()
+    {
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Recipient, AssertAll((Txtrace(0x01, 0), To32(0))));
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Assert, target: Recipient));
+        WorldStateExposingProcessor processor = SimulatingProcessor(_stateProvider, out _);
+
+        (_, CallOutputTracer first) = CallSimulated(tx, processor);
+        IWorldState afterFirst = processor.WorldState;
+        (_, CallOutputTracer second) = CallSimulated(tx, processor);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(afterFirst, Is.SameAs(_stateProvider));
+            Assert.That(second.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(processor.WorldState, Is.SameAs(_stateProvider));
+        }
     }
 
     [Test]
@@ -4784,7 +4850,7 @@ public partial class FrameTxProcessorTests
         DeployContract(Recipient, AssertAll((Txtrace(0x01, 0), To32(0))));
 
         (_, CallOutputTracer tracer) = CallSimulated(
-            FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Assert, target: Recipient)), out _, out EthereumVirtualMachine vm);
+            FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Assert, target: Recipient)), _stateProvider, out EthereumVirtualMachine vm);
 
         Assert.That(vm.TxExecutionContext.FrameTxContext, Is.Not.Null,
             "the view is only released, so the context still proves the assertion ran");
@@ -5017,7 +5083,7 @@ public partial class FrameTxProcessorTests
     /// VM, so a trace built from what the VM reported would show the transaction's second frame as its only
     /// one.</summary>
     [Test]
-    public void Execute_CodelessVerifyTargetTracedWithCallTracer_KeepsTheDefaultCodeFrame()
+    public void Execute_CodelessVerifyTargetTracedWithCallTracer_KeepsTheDefaultCodeFrame([Values] bool mux)
     {
         _stateProvider.CreateAccount(Sender, 1.Ether);
         DeployContract(Observer, Prepare.EvmCode.PushData(42).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
@@ -5026,7 +5092,7 @@ public partial class FrameTxProcessorTests
         tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, new byte[TxFrameSignature.Secp256k1SignatureLength])];
         SignCanonicalHash(tx, index: 0, TestItem.PrivateKeyA, signer: null);
 
-        using JsonDocument document = TraceCall(tx).Trace;
+        using JsonDocument document = TraceCall(tx, mux: mux, throughReceipts: true).Trace;
         JsonElement frames = document.RootElement.GetProperty("calls");
 
         using (Assert.EnterMultipleScope())
@@ -5039,21 +5105,29 @@ public partial class FrameTxProcessorTests
         }
     }
 
+    private static IEnumerable<TestCaseData> PreDispatchTraceCases()
+    {
+        foreach (PreDispatchExit exit in Enum.GetValues<PreDispatchExit>())
+        {
+            yield return new(exit, false, false);
+            yield return new(exit, true, false);
+            yield return new(exit, true, true);
+        }
+    }
+
     /// <summary>Each of the pre-dispatch exits of <c>ExecuteFrame</c> ends a frame without the VM ever
     /// reporting an action, and those are exactly the failed frames callTracer must render with an
     /// <c>error</c>.</summary>
-    [TestCase(PreDispatchExit.EntryAccessCharge, "out of gas", TestName = "Execute_FrameFailingTheEntryAccessCharge_IsTracedWithItsError")]
-    [TestCase(PreDispatchExit.ValueTransfer, "execution reverted", TestName = "Execute_FrameFailingTheValueTransfer_IsTracedWithItsError")]
-    [TestCase(PreDispatchExit.EntryStateCharge, "out of gas", TestName = "Execute_FrameFailingTheEntryStateCharge_IsTracedWithItsError")]
-    [TestCase(PreDispatchExit.DelegationCharge, "out of gas", TestName = "Execute_FrameFailingTheDelegationCharge_IsTracedWithItsError")]
-    public void Execute_FrameFailingBeforeDispatch_IsTracedWithItsError(PreDispatchExit exit, string expectedError)
+    [TestCaseSource(nameof(PreDispatchTraceCases))]
+    public void Execute_FrameFailingBeforeDispatch_IsTracedWithItsError(PreDispatchExit exit, bool throughReceipts, bool mux)
     {
+        string expectedError = exit == PreDispatchExit.ValueTransfer ? "execution reverted" : "out of gas";
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         TxFrame failing = UndispatchedFrame(exit, out Address target);
 
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), failing);
 
-        using JsonDocument document = TraceCall(tx).Trace;
+        using JsonDocument document = TraceCall(tx, mux: mux, throughReceipts: throughReceipts).Trace;
         JsonElement frames = document.RootElement.GetProperty("calls");
 
         using (Assert.EnterMultipleScope())
@@ -5061,8 +5135,10 @@ public partial class FrameTxProcessorTests
             Assert.That(frames.GetArrayLength(), Is.EqualTo(2), "a frame failing before dispatch is still a frame");
             Assert.That(frames[1].GetProperty("to").GetString(), Is.EqualTo(target.ToString()));
             Assert.That(frames[1].GetProperty("error").GetString(), Is.EqualTo(expectedError));
-            Assert.That(document.RootElement.TryGetProperty("error", out _), Is.False,
-                "one failed body frame does not fail the transaction");
+            Assert.That(document.RootElement.TryGetProperty("error", out JsonElement rootError), Is.EqualTo(throughReceipts),
+                "the processor includes the transaction, while the receipts tracer reports aggregate frame failure");
+            if (throughReceipts)
+                Assert.That(rootError.GetString(), Is.EqualTo("frame failed"));
         }
     }
 
@@ -5094,7 +5170,7 @@ public partial class FrameTxProcessorTests
     /// <summary>An unrolled atomic batch keeps its frames' success status while dropping their logs, so a
     /// trace that renders logs by frame status shows events that never reached the receipt.</summary>
     [Test]
-    public void Execute_AtomicBatchUnrollsAFrameThatLogged_TracesOnlyTheCommittedLogs()
+    public void Execute_AtomicBatchUnrollsAFrameThatLogged_TracesOnlyTheCommittedLogs([Values] bool mux)
     {
         Address afterBatch = TestItem.AddressD;
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
@@ -5105,10 +5181,11 @@ public partial class FrameTxProcessorTests
         Transaction tx = FrameTx(nonce: 0,
             SelfVerifyFrame(),
             Frame(FrameMode.Sender, flags: FrameFlags.AtomicBatch, target: Observer),
-            Frame(FrameMode.Sender, target: Recipient),
+            Frame(FrameMode.Sender, flags: FrameFlags.AtomicBatch, target: Recipient),
+            Frame(FrameMode.Sender, target: Observer),
             Frame(FrameMode.Sender, target: afterBatch));
 
-        (JsonDocument trace, TxFrameReceipt[] receipts) = TraceCall(tx, withLog: true);
+        (JsonDocument trace, TxFrameReceipt[] receipts) = TraceCall(tx, withLog: true, mux: mux, throughReceipts: true);
         using JsonDocument document = trace;
         JsonElement frames = document.RootElement.GetProperty("calls");
 
@@ -5119,8 +5196,13 @@ public partial class FrameTxProcessorTests
             Assert.That(receipts[1].Logs, Is.Empty, "its log went back with its state");
             Assert.That(frames[1].TryGetProperty("logs", out _), Is.False,
                 "an unrolled frame's logs must not survive in the trace either");
-            Assert.That(frames[3].GetProperty("logs").GetArrayLength(), Is.EqualTo(1),
+            Assert.That(receipts[3].Status, Is.EqualTo(TxFrameReceipt.StatusSkipped));
+            Assert.That(frames[3].GetProperty("error").GetString(), Is.EqualTo("frame skipped"));
+            Assert.That(HexValue(frames[3], "gasUsed"), Is.Zero);
+            Assert.That(frames[4].GetProperty("logs").GetArrayLength(), Is.EqualTo(1),
                 "the frame after the batch committed its log");
+            Assert.That(HexValue(frames[4].GetProperty("logs")[0], "index"), Is.Zero,
+                "the rollback renumbers the logs after it");
             Assert.That(CountLogs(document.RootElement), Is.EqualTo(TxFrameReceipt.ConcatLogs(receipts).Length),
                 "the trace's logs are the receipt's logs");
         }
@@ -5130,7 +5212,7 @@ public partial class FrameTxProcessorTests
     /// <summary>EIP-7906 keeps everything up to the validation prefix when an <c>ASSERT</c> frame reverts, so
     /// the prefix's logs stay in the receipt and a trace clearing the whole tree contradicts it.</summary>
     [Test]
-    public void Execute_AssertFrameRevertsOverALoggingPrefix_TracesTheLogsTheReceiptKeeps()
+    public void Execute_AssertFrameRevertsOverALoggingPrefix_TracesTheLogsTheReceiptKeeps([Values] bool mux)
     {
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         DeployContract(Observer, LogEmitter(999));
@@ -5141,12 +5223,13 @@ public partial class FrameTxProcessorTests
             executionGasLimit: Eip8038Constants.ColdAccountAccess - 1, stateGasLimit: 0, UInt256.Zero, default);
         Transaction tx = FrameTx(nonce: 0, Frame(FrameMode.Default, target: Observer), SelfVerifyFrame(), assertFrame);
 
-        (JsonDocument trace, TxFrameReceipt[] receipts) = TraceCall(tx, withLog: true);
+        (JsonDocument trace, TxFrameReceipt[] receipts) = TraceCall(tx, withLog: true, mux: mux, throughReceipts: true);
         using JsonDocument document = trace;
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(document.RootElement.GetProperty("error").GetString(), Is.EqualTo("ASSERT frame reverted"));
+            Assert.That(document.RootElement.GetProperty("calls").GetArrayLength(), Is.EqualTo(3));
             Assert.That(TxFrameReceipt.ConcatLogs(receipts), Has.Length.EqualTo(1),
                 "the prefix's log outlives the revert, so the receipt still carries it");
             Assert.That(CountLogs(document.RootElement), Is.EqualTo(TxFrameReceipt.ConcatLogs(receipts).Length),
@@ -5784,7 +5867,7 @@ public partial class FrameTxProcessorTests
 
     /// <summary>Runs <paramref name="tx"/> under <c>callTracer</c>, returning the serialized trace and the
     /// per-frame receipts the processor reported alongside it.</summary>
-    private (JsonDocument Trace, TxFrameReceipt[] Receipts) TraceCall(Transaction tx, bool onlyTopCall = false, bool withLog = false)
+    private (JsonDocument Trace, TxFrameReceipt[] Receipts) TraceCall(Transaction tx, bool onlyTopCall = false, bool withLog = false, bool mux = false, bool throughReceipts = false)
     {
         string config = $$"""{"onlyTopCall":{{(onlyTopCall ? "true" : "false")}},"withLog":{{(withLog ? "true" : "false")}}}""";
         GethTraceOptions options = GethTraceOptions.Default with
@@ -5793,13 +5876,37 @@ public partial class FrameTxProcessorTests
             TracerConfig = JsonSerializer.Deserialize<JsonElement>(config)
         };
 
-        using NativeCallTracer callTracer = new(tx, Spec, options);
-        FrameCallTracer tracer = new(callTracer);
-        Assert.That(ProcessTraced(tx, tracer).TransactionExecuted, Is.True);
+        if (!throughReceipts)
+        {
+            NativeCallTracer callTracer = new(tx, Spec, options);
+            FrameReceiptTracer receipts = new();
+            using CompositeTxTracer tracer = new(callTracer, receipts);
+            Assert.That(ProcessTraced(tx, tracer).TransactionExecuted, Is.True);
+            using GethLikeTxTrace result = callTracer.BuildResult();
+            return (JsonDocument.Parse(JsonSerializer.Serialize(result.CustomTracerResult?.Value, EthereumJsonSerializer.JsonOptions)),
+                receipts.FrameReceipts!);
+        }
 
-        using GethLikeTxTrace trace = callTracer.BuildResult();
-        return (JsonDocument.Parse(JsonSerializer.Serialize(trace.CustomTracerResult?.Value, EthereumJsonSerializer.JsonOptions)),
-            tracer.FrameReceipts);
+        if (mux)
+        {
+            options = options with
+            {
+                Tracer = "muxTracer",
+                TracerConfig = JsonSerializer.SerializeToElement(new Dictionary<string, JsonElement>
+                {
+                    [NativeCallTracer.CallTracer] = options.TracerConfig!.Value,
+                    [NativePrestateTracer.PrestateTracer] = JsonSerializer.Deserialize<JsonElement>("{}")
+                })
+            };
+        }
+
+        JsonDocument trace = TraceThroughReceiptsTracer(tx, options, baseFeePerGas: 0, out TxReceipt receipt);
+        if (mux)
+        {
+            using JsonDocument muxTrace = trace;
+            trace = JsonDocument.Parse(muxTrace.RootElement.GetProperty(NativeCallTracer.CallTracer).GetRawText());
+        }
+        return (trace, receipt.FrameReceipts!);
     }
 
     /// <summary>Runs <paramref name="tx"/> under <c>callTracer</c> through the chain the tracing RPCs build —
@@ -5809,10 +5916,11 @@ public partial class FrameTxProcessorTests
 
     private JsonDocument TraceThroughReceiptsTracer(Transaction tx, GethTraceOptions options, UInt256 baseFeePerGas, out TxReceipt receipt, ulong? slotNumber = null)
     {
-        GethLikeBlockNativeTracer? blockTracer = null;
-        receipt = ProcessThroughReceiptsTracer(tx, tracedState => blockTracer = new GethLikeBlockNativeTracer(txHash: null,
-            (b, t) => GethLikeNativeTracerFactory.CreateTracer(options, b, t, tracedState, Spec)), baseFeePerGas, slotNumber);
+        IBlockTracer<GethLikeTxTrace>? blockTracer = null;
+        receipt = ProcessThroughReceiptsTracer(tx, tracedState => blockTracer = GethStyleTracer.CreateOptionsTracer(
+            Build.A.Block.WithNumber(1).TestObject.Header, options, tracedState, _specProvider), baseFeePerGas, slotNumber);
 
+        using IDisposable? cleanup = blockTracer as IDisposable;
         using GethLikeTxTrace trace = blockTracer!.BuildResult().Single();
         return JsonDocument.Parse(JsonSerializer.Serialize(trace.CustomTracerResult?.Value, EthereumJsonSerializer.JsonOptions));
     }
@@ -5830,7 +5938,7 @@ public partial class FrameTxProcessorTests
             .WithSlotNumber(slotNumber)
             .WithGasLimit(30_000_000).TestObject;
 
-        BlockReceiptsTracer receiptsTracer = new();
+        using BlockReceiptsTracer receiptsTracer = new();
         receiptsTracer.SetOtherTracer(createBlockTracer(tracedState).WithCancellation(CancellationToken.None));
         receiptsTracer.StartNewBlockTrace(block);
         receiptsTracer.StartNewTxTrace(tx);
@@ -5838,21 +5946,5 @@ public partial class FrameTxProcessorTests
         receiptsTracer.EndTxTrace();
         receiptsTracer.EndBlockTrace();
         return receiptsTracer.LastReceipt;
-    }
-
-    /// <summary>A <c>callTracer</c> that also keeps the per-frame receipts, so a test can hold the trace
-    /// against what the receipt records.</summary>
-    private sealed class FrameCallTracer(NativeCallTracer callTracer) : CompositeTxTracer(callTracer), IFrameTxReceiptTracer
-    {
-        public TxFrameReceipt[] FrameReceipts { get; private set; } = [];
-
-        public void ReportFrameTxReceipt(Address payer, TxFrameReceipt[] frameReceipts)
-        {
-            FrameReceipts = frameReceipts;
-            callTracer.ReportFrameTxReceipt(payer, frameReceipts);
-        }
-
-        public void ReportFrameEnd(int frameIndex, EvmExceptionType? error) =>
-            callTracer.ReportFrameEnd(frameIndex, error);
     }
 }

@@ -28,6 +28,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Eth.V71;
 using Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -262,7 +263,7 @@ public class Eth72ProtocolHandler(
                     {
                         cellsMessage = Deserialize<CellsMessage72>(message);
                     }
-                    catch (RlpException)
+                    catch (RlpReaderException)
                     {
                         RequeueClaimedCellRequest(sentRequest, CellRequeueReason.PeerFault);
                         throw;
@@ -563,6 +564,14 @@ public class Eth72ProtocolHandler(
     }
 
     protected override bool CanServePooledTransaction(Transaction tx) => true;
+
+    /// <remarks>Always misses: the stored encoding carries the type-3 blobs that eth/72 strips.</remarks>
+    private protected override bool TryGetEncodedPooledTransactionToServe(in ValueHash256 hash, [NotNullWhen(true)] out IOwnedReadOnlyList<byte>? encodedTx, out bool unservable)
+    {
+        encodedTx = null;
+        unservable = false;
+        return false;
+    }
 
     /// <summary>Whether <paramref name="tx"/> carries blobs that this protocol version cannot fetch separately.</summary>
     /// <remarks><see cref="Transaction.SupportsBlobs"/> is type-3 only, so it does not answer this for a

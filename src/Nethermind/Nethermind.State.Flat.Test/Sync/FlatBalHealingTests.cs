@@ -665,8 +665,8 @@ public class FlatBalHealingTests
         using (Assert.EnterMultipleScope())
         {
             foreach (Hash256 address in updatedStorages)
-                Assert.That(reader.TryLoadStorageRlp(address, TreePath.Empty, ReadFlags.None), Is.Not.Null, "a storage trie rebuilt before the stop");
-            Assert.That(reader.TryLoadStateRlp(TreePath.Empty, ReadFlags.None), Is.Null, "the state trie the stop came before");
+                Assert.That(reader.LoadStorageRlp(address, TreePath.Empty, ReadFlags.None), Is.Not.Null, "a storage trie rebuilt before the stop");
+            Assert.That(reader.LoadStateRlp(TreePath.Empty, ReadFlags.None), Is.Null, "the state trie the stop came before");
         }
 
         Assert.That(_healing.Reassemble(updatedStorages, default), Is.EqualTo(BuildRoot(state)));

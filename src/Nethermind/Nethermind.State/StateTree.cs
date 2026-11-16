@@ -11,6 +11,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -23,7 +24,7 @@ namespace Nethermind.State
     {
         private static readonly AccountDecoder _decoder = new();
 
-        public static Rlp EmptyAccountRlp => field ??= _decoder.Encode(Account.TotallyEmpty);
+        public static byte[] EmptyAccountRlp => field ??= _decoder.Encode(Account.TotallyEmpty);
 
         [DebuggerStepThrough]
         public StateTree(ICappedArrayPool? bufferPool = null)
@@ -49,7 +50,7 @@ namespace Nethermind.State
             }
 
             RlpReader context = new(bytes);
-            return _decoder.Decode(ref context);
+            return _decoder.Decode(ref context, RlpBehaviors.TrustedInput);
         }
 
         [DebuggerStepThrough]
@@ -62,7 +63,7 @@ namespace Nethermind.State
                 return false;
             }
 
-            return _decoder.TryDecodeStruct(bytes, out account);
+            return _decoder.TryDecodeStruct<OffFlag>(bytes, out account);
         }
 
         [DebuggerStepThrough]
@@ -75,14 +76,14 @@ namespace Nethermind.State
             }
 
             RlpReader context = new(bytes);
-            return _decoder.Decode(ref context);
+            return _decoder.Decode(ref context, RlpBehaviors.TrustedInput);
         }
 
         public void Set(Address address, Account? account)
         {
             KeccakCache.ComputeTo(address.Bytes, out ValueHash256 keccak);
             Set(keccak.BytesAsSpan, account is null ? CappedArray<byte>.Empty
-                : new CappedArray<byte>(account.IsTotallyEmpty ? EmptyAccountRlp.Bytes : _decoder.EncodeAsBytes(account)));
+                : new CappedArray<byte>(account.IsTotallyEmpty ? EmptyAccountRlp : _decoder.Encode(account)));
         }
 
         internal void SetAccounts(Dictionary<AddressAsKey, Account?> accounts)
@@ -102,7 +103,7 @@ namespace Nethermind.State
             {
                 batch.Add(entry.Key.Value.Bytes, entries.Count, out ValueHash256 hash);
                 Account? account = entry.Value;
-                byte[]? encoded = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp.Bytes : _decoder.EncodeAsBytes(account);
+                byte[]? encoded = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : _decoder.Encode(account);
                 entries.Add(new(in hash, encoded));
                 if (batch.IsFull) batch.Flush(entries.AsSpan());
             }
@@ -123,11 +124,9 @@ namespace Nethermind.State
             {
                 KeccakCache.ComputeTo(key.Bytes, out ValueHash256 keccak);
 
-                // EncodeAsBytes skips the throwaway Rlp wrapper that _decoder.Encode(account) would
-                // allocate for every changed account on each block commit.
                 byte[]? accountBytes = account is null ? null
-                    : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp.Bytes
-                    : _decoder.EncodeAsBytes(account);
+                    : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp
+                    : _decoder.Encode(account);
 
                 _bulkWrite.Add(new BulkSetEntry(keccak, accountBytes));
             }
@@ -140,19 +139,19 @@ namespace Nethermind.State
         }
 
         [DebuggerStepThrough]
-        public Rlp? Set(Hash256 keccak, Account? account)
+        public byte[]? Set(Hash256 keccak, Account? account)
         {
-            Rlp? rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : _decoder.Encode(account);
+            byte[]? rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : _decoder.Encode(account);
 
-            Set(keccak.Bytes, rlp);
+            Set(keccak.Bytes, rlp is null ? CappedArray<byte>.Empty : new CappedArray<byte>(rlp));
             return rlp;
         }
 
-        public Rlp? Set(in ValueHash256 keccak, Account? account)
+        public byte[]? Set(in ValueHash256 keccak, Account? account)
         {
-            Rlp? rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : _decoder.Encode(account);
+            byte[]? rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : _decoder.Encode(account);
 
-            Set(keccak.Bytes, rlp);
+            Set(keccak.Bytes, rlp is null ? CappedArray<byte>.Empty : new CappedArray<byte>(rlp));
             return rlp;
         }
 

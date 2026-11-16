@@ -21,6 +21,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Receipts
@@ -292,7 +293,7 @@ namespace Nethermind.Blockchain.Receipts
             {
                 candidate = _blockStore.GetReceiptRecoveryBlock(oldBlockNumber, oldBlockHash);
             }
-            catch (RlpException exception)
+            catch (RlpReaderException exception)
             {
                 WarnMalformedTxIndexPrune(oldBlockNumber, exception);
                 return false;
@@ -311,14 +312,14 @@ namespace Nethermind.Blockchain.Receipts
                 RemoveBlockTx(ref block, writeBatch);
                 return true;
             }
-            catch (RlpException exception)
+            catch (RlpReaderException exception)
             {
                 WarnMalformedTxIndexPrune(block.Number, exception);
                 return false;
             }
         }
 
-        private void WarnMalformedTxIndexPrune(ulong blockNumber, RlpException exception)
+        private void WarnMalformedTxIndexPrune(ulong blockNumber, RlpReaderException exception)
         {
             if (_logger.IsWarn)
             {
@@ -347,7 +348,8 @@ namespace Nethermind.Blockchain.Receipts
                 if (blockHashData.IsNull()) return FindReceiptObsolete(txHash)?.BlockHash;
                 if (blockHashData.Length == Hash256.Size) return new Hash256(blockHashData);
 
-                ulong blockNum = new RlpReader(blockHashData).DecodeULong();
+                RlpReader blockNumReader = new(blockHashData);
+                ulong blockNum = blockNumReader.DecodeULong<OffFlag>();
                 return _blockTree.FindBlockHash(blockNum);
             }
             finally
@@ -522,38 +524,40 @@ namespace Nethermind.Blockchain.Receipts
                 }
                 else
                 {
-                    index = MemoryMarshal.Cast<byte, ValueHash256>(txHashes).IndexOf(txHash.ValueHash256);
+                    index = IndexOf(txHashes, txHash);
                 }
                 if (index < 0) return false;
 
-                int end = reader.ReadSequenceLength() + reader.Position;
-                RlpBehaviors behaviors = RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes
+                // The compact list declares one byte less than its receipts take, so a receipt counts while it
+                // starts before the declared end, as the receipts of the list do.
+                int end = reader.EnterSequence<OffFlag>(out _).Remaining;
+                RlpReader items = ReceiptArrayStorageDecoder.EnterCompactReceiptList<OffFlag>(ref reader);
+                RlpBehaviors behaviors = RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes | RlpBehaviors.TrustedInput
                     | (_eip7668EverEnabled && _specProvider.GetSpec(header).IsEip7668Enabled ? RlpBehaviors.Eip7668Receipts : RlpBehaviors.None);
                 CompactReceiptStorageDecoder decoder = CompactReceiptStorageDecoder.Instance;
                 TxReceipt? found = null;
                 ulong gasUsedBefore = 0;
                 int logsBefore = 0;
                 int count = 0;
-                for (; reader.Position < end; count++)
+                for (; items.BytesRead < end; count++)
                 {
                     // Get keeps only the receipts before an empty item, which then cannot be recovered.
-                    if (reader.IsNextItemEmptyList()) return false;
+                    if (items.IsNextItemEmptyList()) return false;
 
                     if (count < index)
                     {
-                        decoder.DecodeStructRef(ref reader, RlpBehaviors.Storage, out TxReceiptStructRef previous);
+                        decoder.DecodeStructRef(ref items, RlpBehaviors.Storage | RlpBehaviors.TrustedInput, out TxReceiptStructRef previous);
                         gasUsedBefore = previous.GasUsedTotal;
-                        RlpReader logs = new(previous.LogsRlp);
-                        logs.SkipLength();
-                        logsBefore += logs.PeekNumberOfItemsRemaining();
+                        RlpReader logs = new RlpReader(previous.LogsRlp).EnterSequence<OffFlag>(out _);
+                        logsBefore += logs.CountItems<OffFlag>(int.MaxValue);
                     }
                     else if (count == index)
                     {
-                        found = decoder.Decode(ref reader, behaviors);
+                        found = decoder.Decode(ref items, behaviors);
                     }
                     else
                     {
-                        reader.SkipItem();
+                        items.SkipItem<OffFlag>();
                     }
                 }
 
@@ -572,24 +576,75 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        private static bool TryFind(TxReceipt[] receipts, int transactionCount, Hash256 txHash, [NotNullWhen(true)] out TxReceipt? receipt, out int txIndex, out int logIndexStart)
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Serves cached and pending receipts, and compact receipts read from the database that store their
+        /// transaction hashes. Only the transaction at the found index is hashed, to confirm it.
+        /// </remarks>
+        public int FindTransactionIndex(Block block, Hash256 txHash)
         {
-            int count = Math.Min(receipts.Length, transactionCount);
-            for (int i = 0; i < count; i++)
+            if (block.Hash is not { } blockHash || block.ReceiptsRoot == Keccak.EmptyTreeHash) return -1;
+
+            int index = FindStoredTransactionIndex(block.Number, blockHash, txHash);
+            Transaction[] transactions = block.Transactions;
+            return (uint)index < (uint)transactions.Length && transactions[index].Hash == txHash ? index : -1;
+        }
+
+        private int FindStoredTransactionIndex(ulong blockNumber, Hash256 blockHash, Hash256 txHash)
+        {
+            if (_receiptsCache.TryGet(blockHash, out TxReceipt[]? cached)) return cached is null ? -1 : IndexOf(cached, cached.Length, txHash);
+
+            if (_pendingReceipts is not null && _pendingReceipts.TryGet(blockHash, out (TxReceipt[] Receipts, RlpBehaviors Behaviors) pending))
             {
-                if (receipts[i].TxHash == txHash)
-                {
-                    receipt = receipts[i];
-                    txIndex = i;
-                    logIndexStart = receipts.GetBlockLogFirstIndex(i);
-                    return true;
-                }
+                return IndexOf(pending.Receipts, pending.Receipts.Length, txHash);
             }
 
-            receipt = null;
-            txIndex = -1;
-            logIndexStart = 0;
-            return false;
+            Span<byte> receiptsData = GetReceiptData(blockNumber, blockHash);
+            if (receiptsData.IsEmpty) return -1;
+
+            try
+            {
+                RlpReader reader = new(receiptsData);
+                return ReceiptArrayStorageDecoder.TrySkipCompactPrefix(ref reader, out ReadOnlySpan<byte> txHashes) ? IndexOf(txHashes, txHash) : -1;
+            }
+            catch (RlpReaderException exception)
+            {
+                // The index only spares the caller a lookup by hash, which does not depend on the stored receipts.
+                if (_logger.IsWarn) _logger.Warn($"Stored transaction hashes of block {blockNumber} ({blockHash}) are malformed: {exception.Message}");
+                return -1;
+            }
+            finally
+            {
+                _receiptsDb.DangerousReleaseMemory(receiptsData);
+            }
+        }
+
+        private static int IndexOf(ReadOnlySpan<byte> txHashes, Hash256 txHash) =>
+            MemoryMarshal.Cast<byte, ValueHash256>(txHashes).IndexOf(txHash.ValueHash256);
+
+        private static int IndexOf(TxReceipt[] receipts, int count, Hash256 txHash)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                if (receipts[i].TxHash == txHash) return i;
+            }
+
+            return -1;
+        }
+
+        private static bool TryFind(TxReceipt[] receipts, int transactionCount, Hash256 txHash, [NotNullWhen(true)] out TxReceipt? receipt, out int txIndex, out int logIndexStart)
+        {
+            txIndex = IndexOf(receipts, Math.Min(receipts.Length, transactionCount), txHash);
+            if (txIndex < 0)
+            {
+                receipt = null;
+                logIndexStart = 0;
+                return false;
+            }
+
+            receipt = receipts[txIndex];
+            logIndexStart = receipts.GetBlockLogFirstIndex(txIndex);
+            return true;
         }
 
         TxReceipt?[] IReceiptMigrationStore.GetForMigration(ulong blockNumber, Hash256 blockHash)
@@ -599,7 +654,7 @@ namespace Nethermind.Blockchain.Receipts
             {
                 return receiptsData.IsNullOrEmpty()
                     ? []
-                    : _storageDecoder.DecodeAllowingMissing(in receiptsData);
+                    : _storageDecoder.DecodeAllowingMissing(in receiptsData, RlpBehaviors.TrustedInput);
             }
             finally
             {
@@ -681,9 +736,9 @@ namespace Nethermind.Blockchain.Receipts
         /// </remarks>
         private TxReceipt[] Decode(in Span<byte> receiptsData, BlockHeader header)
         {
-            if (!_eip7668EverEnabled || !_specProvider.GetSpec(header).IsEip7668Enabled) return _storageDecoder.Decode(in receiptsData);
+            if (!_eip7668EverEnabled || !_specProvider.GetSpec(header).IsEip7668Enabled) return _storageDecoder.Decode(in receiptsData, RlpBehaviors.TrustedInput);
 
-            TxReceipt[] receipts = _storageDecoder.Decode(in receiptsData, RlpBehaviors.Eip7668Receipts);
+            TxReceipt[] receipts = _storageDecoder.Decode(in receiptsData, RlpBehaviors.Eip7668Receipts | RlpBehaviors.TrustedInput);
             receipts.SetZeroLengthBlooms();
             return receipts;
         }
@@ -1262,10 +1317,11 @@ namespace Nethermind.Blockchain.Receipts
 
             try
             {
-                number = new RlpReader(value).DecodeULong();
+                RlpReader reader = new(value);
+                number = reader.DecodeULong<OffFlag>();
                 return true;
             }
-            catch (RlpException)
+            catch (RlpReaderException)
             {
                 return false;
             }
@@ -1303,6 +1359,7 @@ namespace Nethermind.Blockchain.Receipts
             EnsureCanonical(block, lastBlockNumber, writeBatch);
         }
 
+        [SkipLocalsInit]
         private void EnsureCanonical(Block block, ulong? lastBlockNumber, IWriteBatch writeBatch)
         {
             lastBlockNumber ??= _blockTree.FindBestSuggestedHeader()?.Number ?? 0UL;
@@ -1310,22 +1367,23 @@ namespace Nethermind.Blockchain.Receipts
             if (!ShouldIndexTxs(block.Number, lastBlockNumber.Value)) return;
             if (_receiptConfig.CompactTxIndex)
             {
-                byte[] blockNumber = Rlp.Encode(block.Number).Bytes;
+                Span<byte> buffer = stackalloc byte[Rlp.MaxLengthOfUInt64Rlp];
+                ReadOnlySpan<byte> blockNumber = Rlp.Encode(block.Number, buffer);
                 foreach (Transaction tx in block.Transactions)
                 {
                     tx.Hash ??= tx.CalculateHash();
                     Hash256 hash = tx.Hash;
-                    writeBatch[hash.Bytes] = blockNumber;
+                    writeBatch.PutSpan(hash.Bytes, blockNumber);
                 }
             }
             else
             {
-                byte[] blockHash = block.Hash.BytesToArray();
+                ReadOnlySpan<byte> blockHash = block.Hash.Bytes;
                 foreach (Transaction tx in block.Transactions)
                 {
                     tx.Hash ??= tx.CalculateHash();
                     Hash256 hash = tx.Hash;
-                    writeBatch[hash.Bytes] = blockHash;
+                    writeBatch.PutSpan(hash.Bytes, blockHash);
                 }
             }
         }

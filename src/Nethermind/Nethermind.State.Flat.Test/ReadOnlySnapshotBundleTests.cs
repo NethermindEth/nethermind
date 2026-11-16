@@ -256,7 +256,7 @@ public class ReadOnlySnapshotBundleTests
     public void TryLoadStateRlp_DelegatesToReader([Values] bool detailedMetrics)
     {
         TreePath path = TreePath.FromHexString("12");
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        SubstitutablePersistenceReader reader = Substitute.For<SubstitutablePersistenceReader>();
         reader.TryLoadStateRlp(path, ReadFlags.None).Returns([0xc1, 0xff]);
 
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(MakeSnapshot()), reader, detailedMetrics);
@@ -269,7 +269,7 @@ public class ReadOnlySnapshotBundleTests
     {
         TreePath path = TreePath.FromHexString("ab");
         Hash256 address = TestItem.KeccakA;
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        SubstitutablePersistenceReader reader = Substitute.For<SubstitutablePersistenceReader>();
         reader.TryLoadStorageRlp(address, path, ReadFlags.None).Returns([0xc1, 0xee]);
 
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(MakeSnapshot()), reader, detailedMetrics);

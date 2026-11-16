@@ -29,6 +29,7 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
@@ -318,7 +319,7 @@ public abstract class BlockchainTestBase
 
                 test.GenesisRlp ??= Rlp.Encode(new Block(JsonToEthereumTest.Convert(test.GenesisBlockHeader)));
 
-                RlpReader genesisReader = new(test.GenesisRlp.Bytes);
+                RlpReader genesisReader = new(test.GenesisRlp);
                 Block genesisBlock = blockDecoder.DecodeComplete(ref genesisReader);
                 Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
 
