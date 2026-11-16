@@ -145,17 +145,12 @@ public static partial class StatelessExecutor
         using IDisposable _ = scope;
         IBlockProcessor blockProcessor = blockProcessingEnv.BlockProcessor;
 
-        (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(
+        // Without NoValidation, ProcessOne validates the processed block and throws when it is invalid.
+        blockProcessor.ProcessOne(
             suggestedBlock,
             ProcessingOptions.ReadOnlyChain,
             blockTracer ?? NullBlockTracer.Instance,
             specProvider.GetSpec(suggestedBlock.Header));
-
-        if (!blockValidator.ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out error))
-        {
-            Debug.WriteLine(error);
-            return false;
-        }
 
         return true;
     }

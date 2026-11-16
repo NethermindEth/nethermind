@@ -4,6 +4,8 @@
 using System.Runtime.CompilerServices;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -18,6 +20,9 @@ public partial class BlockProcessor
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static partial bool ShouldCalculateReceiptsInBackground(TxReceipt[] receipts) =>
         receipts.Length >= BackgroundReceiptCountThreshold || CountLogs(receipts) >= BackgroundLogCountThreshold;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private partial Hash256 CalculateHeaderHash(BlockHeader header) => header.CalculateHash();
 
     /// <inheritdoc/>
     private partial void ApplyDaoTransition(Block block)

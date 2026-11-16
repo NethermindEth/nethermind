@@ -3,13 +3,28 @@
 
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 
 namespace Nethermind.Consensus.Processing;
 
 public partial class BlockProcessor
 {
+    private BlockHeader? _suggestedHeader;
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static partial bool ShouldCalculateReceiptsInBackground(TxReceipt[] receipts) => false;
+
+    partial void SetSuggestedHeader(BlockHeader header) => _suggestedHeader = header;
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Takes the hash of the suggested header when the two headers encode the same, see
+    /// <see cref="ProcessedHeaderHash.Calculate"/>. The stateless executor checks the hash of the suggested header before
+    /// processing, for both of its inputs.
+    /// </remarks>
+    private partial Hash256 CalculateHeaderHash(BlockHeader header) =>
+        _suggestedHeader is { } suggested ? ProcessedHeaderHash.Calculate(header, suggested) : header.CalculateHash();
 
     /// <inheritdoc/>
     /// <remarks>

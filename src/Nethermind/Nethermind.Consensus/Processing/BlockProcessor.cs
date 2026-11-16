@@ -84,6 +84,7 @@ public partial class BlockProcessor(
 
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
+        SetSuggestedHeader(suggestedBlock.Header);
         TxReceipt[] receipts;
         bool processed = false;
         try
@@ -332,7 +333,7 @@ public partial class BlockProcessor(
 
         if (TComputesCommitments.IsActive)
         {
-            header.Hash = header.CalculateHash();
+            header.Hash = CalculateHeaderHash(header);
         }
 
         if (BlockchainProcessor.IsMainProcessingThread)
@@ -365,6 +366,12 @@ public partial class BlockProcessor(
     }
 
     private static partial bool ShouldCalculateReceiptsInBackground(TxReceipt[] receipts);
+
+    /// <summary>Keeps the header of the block <see cref="ProcessOne"/> processes, for <see cref="CalculateHeaderHash"/>.</summary>
+    partial void SetSuggestedHeader(BlockHeader header);
+
+    /// <summary>Returns the hash of the processed <paramref name="header"/>.</summary>
+    private partial Hash256 CalculateHeaderHash(BlockHeader header);
 
     private static int CountLogs(TxReceipt[] receipts)
     {
