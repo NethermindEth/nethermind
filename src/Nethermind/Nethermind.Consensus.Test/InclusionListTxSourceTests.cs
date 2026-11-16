@@ -104,7 +104,8 @@ public class InclusionListTxSourceTests
     {
         CountingEcdsa ecdsa = new(new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId));
         InclusionListTxSource source = new(ecdsa, new CustomSpecProvider(((ForkActivation)0, Bogota.Instance)), LimboLogs.Instance);
-        Transaction tx = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        // A fresh signer, so the process-wide sender cache cannot answer before the counting ecdsa.
+        Transaction tx = Build.A.Transaction.WithNonce(1).SignedAndResolved(Build.A.PrivateKey.TestObject).TestObject;
         byte[][] il = [Encode(tx)];
 
         source.Set(il, Bogota.Instance);
