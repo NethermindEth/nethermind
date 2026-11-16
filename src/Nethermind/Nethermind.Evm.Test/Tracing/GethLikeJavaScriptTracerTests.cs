@@ -49,6 +49,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase("[0, 1, 255]", "[0,1,255]")]
     [TestCase("toHex(new Uint8Array([]))", "\"0x\"")]
     [TestCase("toHex(new Uint8Array([0, 1, 255]))", "\"0x0001ff\"")]
+    [TestCase("toHex([256, 511, -1, 1.9])", "\"0x00ffff01\"")]
     [TestCase("({ DUP1: 'a', PUSH1: 'b', LOG2: 'c', Foo: 'd', add: 'e' })", "{\"DUP1\":\"a\",\"PUSH1\":\"b\",\"LOG2\":\"c\",\"Foo\":\"d\",\"add\":\"e\"}")]
     [TestCase("({ counts: { SSTORE: 'x' } })", "{\"counts\":{\"SSTORE\":\"x\"}}")]
     [TestCase("[{ DUP1: 1 }]", "[{\"DUP1\":1}]")]

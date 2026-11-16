@@ -21,7 +21,8 @@ public static class JavaScriptConverter
         ITypedArray<byte> typedArray => typedArray.Length == 0 ? [] : typedArray.ToArray(),
         IArrayBuffer arrayBuffer => arrayBuffer.GetBytes(),
         IArrayBufferView arrayBufferView => arrayBufferView.GetBytes(),
-        IList list => list.ToEnumerable().Select(Convert.ToByte).ToArray(),
+        // Geth truncates each element to an integer and wraps it into a byte.
+        IList list => list.ToEnumerable().Select(static item => unchecked((byte)(long)Convert.ToDouble(item))).ToArray(),
         _ => throw new ArgumentException("Unsupported input type.", nameof(input))
     };
 
