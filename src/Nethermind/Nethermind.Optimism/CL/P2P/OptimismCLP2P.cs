@@ -5,8 +5,11 @@ using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Libp2p.Protocols;
 using System;
+using System.Buffers;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Security.Cryptography;
@@ -37,6 +40,8 @@ namespace Nethermind.Optimism.CL.P2P;
 public class OptimismCLP2P : IDisposable
 {
     private const int MaxGossipSize = 10485760;
+    private const int MessageDomainLength = 4;
+    private const int MessageIdLength = 20;
 
     private readonly ServiceProvider _serviceProvider;
     private readonly ILogger _logger;
@@ -91,6 +96,7 @@ public class OptimismCLP2P : IDisposable
                 LowestDegree = 2,
                 HighestDegree = 6,
                 LazyDegree = 3,
+                MaxRpcBytes = MaxGossipSize,
                 DefaultSignaturePolicy = PubsubSettings.SignaturePolicy.StrictNoSign,
                 GetMessageId = CalculateMessageId
             })
@@ -350,13 +356,69 @@ public class OptimismCLP2P : IDisposable
         await MainLoop(token);
     }
 
-    private MessageId CalculateMessageId(Message message)
+    private static ReadOnlySpan<byte> MessageDomainValidSnappy => [0x01, 0x00, 0x00, 0x00];
+    private static ReadOnlySpan<byte> MessageDomainInvalidSnappy => [0x00, 0x00, 0x00, 0x00];
+
+    // OP Stack rollup node p2p specification: gossipsub message ID computation
+    internal static MessageId CalculateMessageId(Message message)
     {
-        IncrementalHash sha256 = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        sha256.AppendData(BitConverter.GetBytes((ulong)message.Topic.Length));
-        sha256.AppendData(Encoding.ASCII.GetBytes(message.Topic));
-        sha256.AppendData(message.Data.Span);
-        return new MessageId(sha256.GetHashAndReset());
+        ReadOnlySpan<byte> data = message.Data.Span;
+        string topic = message.Topic;
+        int topicLength = Encoding.UTF8.GetByteCount(topic);
+        int headerLength = MessageDomainLength + sizeof(ulong) + topicLength;
+        int decompressedLength = TryGetDecompressedLength(data, out int length) ? length : -1;
+
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(headerLength + Math.Max(decompressedLength, data.Length));
+        try
+        {
+            Span<byte> payload = buffer.AsSpan(headerLength);
+            ReadOnlySpan<byte> domain = MessageDomainValidSnappy;
+            int payloadLength = decompressedLength;
+            if (decompressedLength < 0 || !TryDecompress(data, payload[..decompressedLength]))
+            {
+                domain = MessageDomainInvalidSnappy;
+                data.CopyTo(payload);
+                payloadLength = data.Length;
+            }
+
+            domain.CopyTo(buffer);
+            BinaryPrimitives.WriteUInt64LittleEndian(buffer.AsSpan(MessageDomainLength), (ulong)topicLength);
+            Encoding.UTF8.GetBytes(topic, buffer.AsSpan(MessageDomainLength + sizeof(ulong), topicLength));
+
+            Span<byte> hash = stackalloc byte[SHA256.HashSizeInBytes];
+            SHA256.HashData(buffer.AsSpan(0, headerLength + payloadLength), hash);
+            return new MessageId(hash[..MessageIdLength].ToArray());
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
+    }
+
+    private static bool TryGetDecompressedLength(ReadOnlySpan<byte> data, out int length)
+    {
+        try
+        {
+            length = Snappy.GetUncompressedLength(data);
+            return length is >= 0 and <= MaxGossipSize;
+        }
+        catch (InvalidDataException)
+        {
+            length = 0;
+            return false;
+        }
+    }
+
+    private static bool TryDecompress(ReadOnlySpan<byte> data, Span<byte> destination)
+    {
+        try
+        {
+            return Snappy.Decompress(data, destination) == destination.Length;
+        }
+        catch (InvalidDataException)
+        {
+            return false;
+        }
     }
 
     public void Reset(ulong headNumber) => _headNumber = headNumber;
