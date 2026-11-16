@@ -76,6 +76,13 @@ on:
         type: string
         default: ''
 
+# A dispatch for the same ref and head waits for the previous one instead of running beside it.
+# The fixed prefix keeps the group apart from the caller's own group under workflow_call, where
+# github.workflow and github.ref are the caller's.
+concurrency:
+  group: zkvm-guest-ab-${{ github.ref }}-${{ inputs.head_ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
@@ -156,7 +163,7 @@ jobs:
         env:
           BASE_SHA: ${{ needs.resolve.outputs.base_sha }}
           FORMATS: ${{ needs.resolve.outputs.formats }}
-          SCRIPT_HASH: ${{ hashFiles('.github/zkvm-ab/inputs.sh') }}
+          SCRIPT_HASH: ${{ hashFiles('.github/zkvm-ab/inputs.cs') }}
         run: echo "key=zkab-inputs-$BASE_SHA-${FORMATS//,/-}-$SCRIPT_HASH" >> "$GITHUB_OUTPUT"
 
       - name: Look up inputs
@@ -179,6 +186,10 @@ jobs:
       - name: Set up .NET
         if: steps.cache.outputs.cache-hit != 'true'
         uses: ./.github/actions/setup-dotnet
+
+      - name: Set up base .NET
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: ./.github/actions/setup-dotnet
         with:
           global-json-file: base/global.json
 
@@ -186,7 +197,7 @@ jobs:
         if: steps.cache.outputs.cache-hit != 'true'
         env:
           FORMATS: ${{ needs.resolve.outputs.formats }}
-        run: .github/zkvm-ab/inputs.sh base zkab-inputs "$FORMATS"
+        run: dotnet run --file .github/zkvm-ab/inputs.cs -- base zkab-inputs "$FORMATS"
 
       - name: Save inputs
         if: steps.cache.outputs.cache-hit != 'true'
@@ -280,6 +291,9 @@ jobs:
 
       - name: Set up .NET
         uses: ./.github/actions/setup-dotnet
+
+      - name: Set up base .NET
+        uses: ./.github/actions/setup-dotnet
         with:
           global-json-file: sdk/global.json
 
@@ -294,7 +308,7 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: zkab-elf
-          key: zkab-elf-${{ matrix.vm }}-${{ fromJSON(needs.resolve.outputs.keys)[matrix.vm] }}-sdk${{ steps.sdk.outputs.version }}-${{ hashFiles('.github/zkvm-ab/build.sh') }}
+          key: zkab-elf-${{ matrix.vm }}-${{ fromJSON(needs.resolve.outputs.keys)[matrix.vm] }}-sdk${{ steps.sdk.outputs.version }}-${{ hashFiles('.github/zkvm-ab/build.cs') }}
 
       - name: Check out base
         if: steps.cache.outputs.cache-hit != 'true'
@@ -325,14 +339,14 @@ jobs:
           CANDIDATE_DIR: ${{ runner.temp }}/candidate
           VM: ${{ matrix.vm }}
           PROJECT: ${{ matrix.project }}
-        run: .github/zkvm-ab/build.sh "$VM" "$PROJECT" arm zkab-elf
+        run: dotnet run --file .github/zkvm-ab/build.cs -- "$VM" "$PROJECT" arm zkab-elf
 
       - name: Save base binaries
         if: steps.cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v5
         with:
           path: zkab-elf
-          key: zkab-elf-${{ matrix.vm }}-${{ fromJSON(needs.resolve.outputs.keys)[matrix.vm] }}-sdk${{ steps.sdk.outputs.version }}-${{ hashFiles('.github/zkvm-ab/build.sh') }}
+          key: zkab-elf-${{ matrix.vm }}-${{ fromJSON(needs.resolve.outputs.keys)[matrix.vm] }}-sdk${{ steps.sdk.outputs.version }}-${{ hashFiles('.github/zkvm-ab/build.cs') }}
 
       - name: Upload guest binaries
         uses: actions/upload-artifact@v7
@@ -374,7 +388,7 @@ jobs:
         id: key
         env:
           BUILD_KEY: ${{ fromJSON(needs.resolve.outputs.keys)[matrix.vm] }}
-          SCRIPT_HASH: ${{ hashFiles('.github/zkvm-ab/*.sh', '.github/zkvm-ab/*.rs') }}
+          SCRIPT_HASH: ${{ hashFiles('.github/zkvm-ab/*.sh', '.github/zkvm-ab/*.rs', '.github/zkvm-ab/inputs.cs', '.github/zkvm-ab/build.cs') }}
         run: |
           set -euo pipefail
           elf_hash="$(cd "$RUNNER_TEMP/base-elf" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum | cut -c1-64)"
@@ -512,6 +526,9 @@ jobs:
 
       - name: Set up .NET
         uses: ./.github/actions/setup-dotnet
+
+      - name: Set up head .NET
+        uses: ./.github/actions/setup-dotnet
         with:
           global-json-file: arm/global.json
 
@@ -530,7 +547,7 @@ jobs:
           CANDIDATE_DIR: ${{ runner.temp }}/candidate
           VM: ${{ matrix.vm }}
           PROJECT: ${{ matrix.project }}
-        run: .github/zkvm-ab/build.sh "$VM" "$PROJECT" arm zkab-elf
+        run: dotnet run --file .github/zkvm-ab/build.cs -- "$VM" "$PROJECT" arm zkab-elf
 
       - name: Upload guest binaries
         uses: actions/upload-artifact@v7
