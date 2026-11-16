@@ -404,11 +404,12 @@ public class EthSimulateTestsBlocksAndTransactions
         }
     }
 
-    [TestCase(3, true, TestName = "Test_eth_simulateV1_total_calls_above_cap_returns_error")]
-    [TestCase(4, false, TestName = "Test_eth_simulateV1_total_calls_at_cap_is_accepted")]
-    public async Task Test_eth_simulateV1_total_calls_are_limited(long callsCap, bool expectLimitError)
+    [TestCase(3, 2, "too many calls: 4 > 3", TestName = "Test_eth_simulateV1_total_calls_above_cap_returns_error")]
+    [TestCase(4, 1, "too many calls in block: 2 > 1", TestName = "Test_eth_simulateV1_block_calls_above_cap_returns_error")]
+    [TestCase(4, 2, null, TestName = "Test_eth_simulateV1_calls_at_caps_are_accepted")]
+    public async Task Test_eth_simulateV1_calls_are_limited(long callsCap, long callsPerBlockCap, string? expectedError)
     {
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         ulong nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
         SimulatePayload<TransactionForRpc> payload = new()
         {
@@ -420,13 +421,15 @@ public class EthSimulateTestsBlocksAndTransactions
         };
 
         SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder,
-            new JsonRpcConfig { MaxSimulateCallsCap = callsCap, Timeout = -1 }, chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
+            new JsonRpcConfig { MaxSimulateCallsCap = callsCap, MaxSimulateCallsPerBlockCap = callsPerBlockCap, Timeout = -1 },
+            chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That((bool)result.Result, Is.EqualTo(!expectLimitError), result.Result.ToString());
-            Assert.That(result.ErrorCode == ErrorCodes.ClientLimitExceededError, Is.EqualTo(expectLimitError), "the cap counts the calls of all blocks together");
+            Assert.That((bool)result.Result, Is.EqualTo(expectedError is null), result.Result.ToString());
+            Assert.That(result.Result.Error, Is.EqualTo(expectedError));
+            Assert.That(result.ErrorCode == ErrorCodes.ClientLimitExceededError, Is.EqualTo(expectedError is not null));
         }
 
         static TransactionForRpc TransferForRpc(ulong nonce) => new LegacyTransactionForRpc

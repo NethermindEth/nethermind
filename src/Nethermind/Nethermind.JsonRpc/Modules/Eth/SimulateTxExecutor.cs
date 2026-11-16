@@ -31,7 +31,8 @@ public class SimulateTxExecutor<TTrace>(
     private readonly IBlockFinder _blockFinder = blockFinder;
     private readonly IJsonRpcConfig _rpcConfig = rpcConfig;
     private readonly long _blocksLimit = rpcConfig.MaxSimulateBlocksCap ?? 256;
-    private readonly long _callsLimit = rpcConfig.MaxSimulateCallsCap ?? 16384;
+    private readonly long _callsLimit = rpcConfig.MaxSimulateCallsCap ?? 10000;
+    private readonly long _callsPerBlockLimit = rpcConfig.MaxSimulateCallsPerBlockCap ?? 5000;
     private readonly ulong _secondsPerSlot = secondsPerSlot ?? new BlocksConfig().SecondsPerSlot;
 
     private Result<SimulatePayload<TransactionWithSourceDetails>> Prepare(SimulatePayload<TransactionForRpc> call, BlockHeader header)
@@ -118,9 +119,9 @@ public class SimulateTxExecutor<TTrace>(
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
                 $"This node is configured to support only {_rpcConfig.MaxSimulateBlocksCap} blocks", ErrorCodes.ClientLimitExceededError);
 
-        if (CountCalls(call.BlockStateCalls) > _callsLimit)
-            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
-                $"This node is configured to support only {_callsLimit} calls", ErrorCodes.ClientLimitExceededError);
+        string? callsLimitError = GetCallsLimitError(call.BlockStateCalls);
+        if (callsLimitError is not null)
+            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(callsLimitError, ErrorCodes.ClientLimitExceededError);
 
         searchResult ??= _blockFinder.SearchForHeader(blockParameter);
 
@@ -300,15 +301,19 @@ public class SimulateTxExecutor<TTrace>(
         _ => ErrorCodes.VMError
     };
 
-    private static long CountCalls(List<BlockStateCall<TransactionForRpc>> blockStateCalls)
+    private string? GetCallsLimitError(List<BlockStateCall<TransactionForRpc>> blockStateCalls)
     {
         long count = 0;
         foreach (BlockStateCall<TransactionForRpc> blockStateCall in blockStateCalls)
         {
-            count += blockStateCall.Calls?.Length ?? 0;
+            int blockCount = blockStateCall.Calls?.Length ?? 0;
+            if (blockCount > _callsPerBlockLimit)
+                return $"too many calls in block: {blockCount} > {_callsPerBlockLimit}";
+
+            count += blockCount;
         }
 
-        return count;
+        return count > _callsLimit ? $"too many calls: {count} > {_callsLimit}" : null;
     }
 }
 
