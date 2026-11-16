@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Validators;
@@ -9,7 +10,9 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -74,7 +77,8 @@ public class SnapshotManagerTests
     public void Does_not_create_snapshot_for_a_number_the_header_does_not_have()
     {
         using MemDb snapshotDb = new();
-        SnapshotManager snapshotManager = new(CliqueConfig.Default, snapshotDb, _blockTree, NullEthereumEcdsa.Instance, LimboLogs.Instance);
+        using IContainer container = BuildCliqueContainer(snapshotDb);
+        ISnapshotManager snapshotManager = container.Resolve<ISnapshotManager>();
         Hash256 block4Hash = _blockTree.FindHeader(4, BlockTreeLookupOptions.None)!.Hash!;
 
         Assert.Throws<InvalidOperationException>(() => snapshotManager.GetOrCreateSnapshot(CliqueConfig.Default.Epoch, block4Hash));
@@ -85,10 +89,9 @@ public class SnapshotManagerTests
     public void Header_validation_rejects_a_wrong_number_before_the_seal_creates_a_snapshot()
     {
         using MemDb snapshotDb = new();
-        SnapshotManager snapshotManager = new(CliqueConfig.Default, snapshotDb, _blockTree, NullEthereumEcdsa.Instance, LimboLogs.Instance);
-        CliqueSealValidator sealValidator = new(CliqueConfig.Default, snapshotManager, LimboLogs.Instance);
-        HeaderValidator headerValidator = new(_blockTree, sealValidator,
-            new TestSingleReleaseSpecProvider(new ReleaseSpec { MaximumExtraDataSize = 1024 }), LimboLogs.Instance);
+        using IContainer container = BuildCliqueContainer(snapshotDb);
+        ISnapshotManager snapshotManager = container.Resolve<ISnapshotManager>();
+        IHeaderValidator headerValidator = container.Resolve<IHeaderValidator>();
         BlockHeader parent = _blockTree.FindHeader(4, BlockTreeLookupOptions.None)!;
         BlockHeader header = Rlp.Decode<Block>(Bytes.FromHexString(Block5Rlp)).Header;
         header.Number = CliqueConfig.Default.Epoch + 1;
@@ -179,6 +182,15 @@ public class SnapshotManagerTests
             .TestObject;
         return header;
     }
+
+    private IContainer BuildCliqueContainer(IDb snapshotDb) => new ContainerBuilder()
+        .AddModule(new TestNethermindModule())
+        .AddModule(new CliqueModule())
+        .AddSingleton(new CliqueChainSpecEngineParameters { Epoch = CliqueConfig.Default.Epoch, Period = CliqueConfig.Default.BlockPeriod })
+        .AddSingleton<IBlockTree>(_blockTree)
+        .AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(new ReleaseSpec { MaximumExtraDataSize = 1024 }))
+        .AddKeyedSingleton(DbNames.Blocks, snapshotDb)
+        .Build();
 
     private void MineBlock(BlockTree tree, Block block)
     {

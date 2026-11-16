@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Autofac;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Validators;
@@ -15,6 +16,7 @@ using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -519,7 +521,13 @@ public class HeaderValidatorTests
     {
         ISealValidator sealValidator = Substitute.For<ISealValidator>();
         sealValidator.ValidateParams(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<bool>()).Returns(true);
-        HeaderValidator validator = new(_blockTree, sealValidator, _specProvider, new OneLoggerLogManager(new(_testLogger)));
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton(_blockTree)
+            .AddSingleton(sealValidator)
+            .AddSingleton(_specProvider)
+            .Build();
+        IHeaderValidator validator = container.Resolve<IHeaderValidator>();
         _block.Header.Number = _parentBlock.Number + 2;
         _block.Header.Hash = _block.CalculateHash();
 
