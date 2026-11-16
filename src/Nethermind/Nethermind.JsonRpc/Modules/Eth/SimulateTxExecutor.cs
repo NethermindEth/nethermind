@@ -31,6 +31,7 @@ public class SimulateTxExecutor<TTrace>(
     private readonly IBlockFinder _blockFinder = blockFinder;
     private readonly IJsonRpcConfig _rpcConfig = rpcConfig;
     private readonly long _blocksLimit = rpcConfig.MaxSimulateBlocksCap ?? 256;
+    private readonly long _callsLimit = rpcConfig.MaxSimulateCallsCap ?? 16384;
     private readonly ulong _secondsPerSlot = secondsPerSlot ?? new BlocksConfig().SecondsPerSlot;
 
     private Result<SimulatePayload<TransactionWithSourceDetails>> Prepare(SimulatePayload<TransactionForRpc> call, BlockHeader header)
@@ -117,9 +118,9 @@ public class SimulateTxExecutor<TTrace>(
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
                 $"This node is configured to support only {_rpcConfig.MaxSimulateBlocksCap} blocks", ErrorCodes.ClientLimitExceededError);
 
-        if (CountCalls(call.BlockStateCalls) > _rpcConfig.MaxSimulateCallsCap)
+        if (CountCalls(call.BlockStateCalls) > _callsLimit)
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
-                $"This node is configured to support only {_rpcConfig.MaxSimulateCallsCap} calls", ErrorCodes.ClientLimitExceededError);
+                $"This node is configured to support only {_callsLimit} calls", ErrorCodes.ClientLimitExceededError);
 
         searchResult ??= _blockFinder.SearchForHeader(blockParameter);
 

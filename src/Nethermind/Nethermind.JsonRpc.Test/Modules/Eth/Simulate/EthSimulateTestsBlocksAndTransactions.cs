@@ -409,12 +409,13 @@ public class EthSimulateTestsBlocksAndTransactions
     public async Task Test_eth_simulateV1_total_calls_are_limited(long callsCap, bool expectLimitError)
     {
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        ulong nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
         SimulatePayload<TransactionForRpc> payload = new()
         {
             BlockStateCalls =
             [
-                new() { Calls = [TransferForRpc(0), TransferForRpc(1)] },
-                new() { Calls = [TransferForRpc(2), TransferForRpc(3)] }
+                new() { Calls = [TransferForRpc(nonceA), TransferForRpc(nonceA + 1)] },
+                new() { Calls = [TransferForRpc(nonceA + 2), TransferForRpc(nonceA + 3)] }
             ]
         };
 
