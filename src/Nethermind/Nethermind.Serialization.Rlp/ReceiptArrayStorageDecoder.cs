@@ -297,7 +297,7 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
     }
 
     /// <summary>
-    /// Encodes the stored receipts of one block as a receipts message carries them: as <see cref="Decode(in Span{byte}, RlpBehaviors)"/>,
+    /// Encodes the stored receipts of one block as a receipts message carries them: as <see cref="Decode(in ReadOnlySpan{byte}, RlpBehaviors)"/>,
     /// recovery against the block and the receipts message encoders give them, but without decoding the receipts or the block.
     /// </summary>
     /// <remarks>
