@@ -319,6 +319,42 @@ public class HeaderStore : IHeaderStore, IClearableCache
         return Get(blockHash)?.Number;
     }
 
+    /// <inheritdoc/>
+    /// <remarks>Reads the numbers of blocks that are not pending in one batch.</remarks>
+    public void GetBlockNumbers(ReadOnlySpan<ValueHash256> blockHashes, Span<ulong?> numbers)
+    {
+        using ArrayPoolSpan<byte> keys = new(blockHashes.Length * ValueHash256.MemorySize);
+        using ArrayPoolSpan<int> stored = new(blockHashes.Length);
+        int count = 0;
+        for (int i = 0; i < blockHashes.Length; i++)
+        {
+            if (_pending is not null && _pending.TryGet(in blockHashes[i], out BlockHeader pending))
+            {
+                numbers[i] = pending.Number;
+                continue;
+            }
+
+            blockHashes[i].Bytes.CopyTo(keys.Slice(count * ValueHash256.MemorySize, ValueHash256.MemorySize));
+            stored[count++] = i;
+        }
+
+        using ArrayPoolSpan<ulong?> storedNumbers = new(count);
+        _blockNumberDb.GetMany<ulong?, BlockNumberDecoder>(keys.Slice(0, count * ValueHash256.MemorySize), ValueHash256.MemorySize, storedNumbers, default);
+        for (int j = 0; j < count; j++)
+        {
+            int i = stored[j];
+            // Probably still hash based
+            numbers[i] = storedNumbers[j] ?? Get(new Hash256(in blockHashes[i]))?.Number;
+        }
+    }
+
+    private readonly struct BlockNumberDecoder : IValueDecoder<ulong?>
+    {
+        public ulong? Decode(ReadOnlySpan<byte> buffer) => buffer.Length == BlockNumberLength
+            ? BinaryPrimitives.ReadUInt64BigEndian(buffer)
+            : throw new InvalidDataException($"Unexpected number span length: {buffer.Length}");
+    }
+
     [SkipLocalsInit]
     private ulong? GetBlockNumberFromBlockNumberDb(Hash256 blockHash)
     {

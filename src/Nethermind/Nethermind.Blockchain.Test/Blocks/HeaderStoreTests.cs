@@ -3,6 +3,7 @@
 
 using System;
 using System.IO;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -166,6 +167,26 @@ public class HeaderStoreTests
         Assert.That(context.Store.GetBlockNumber(context.Header.Hash!), Is.EqualTo(200));
         context.Header.Number = 300;
         Assert.That(context.Store.GetBlockNumber(context.Header.Hash!), Is.EqualTo(200));
+    }
+
+    [Test]
+    public async Task GetBlockNumbers_resolves_each_block_as_GetBlockNumber_does()
+    {
+        IDb headerDb = new MemDb();
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
+        HeaderStore store = new(headerDb, new MemDb(), deferredWriter: writer);
+        BlockHeader stored = Build.A.BlockHeader.WithNumber(100).TestObject;
+        BlockHeader hashOnly = Build.A.BlockHeader.WithNumber(101).TestObject;
+        BlockHeader pending = Build.A.BlockHeader.WithNumber(102).TestObject;
+        store.Insert(stored);
+        headerDb.Set(hashOnly.Hash!, new HeaderDecoder().Encode(hashOnly));
+        store.InsertDeferred(pending);
+        ValueHash256[] hashes = [pending.Hash!, TestItem.KeccakA, hashOnly.Hash!, stored.Hash!];
+
+        ulong?[] numbers = new ulong?[hashes.Length];
+        store.GetBlockNumbers(hashes, numbers);
+
+        Assert.That(numbers, Is.EqualTo(new ulong?[] { 102, null, 101, 100 }));
     }
 
     [Test]
