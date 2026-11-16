@@ -518,7 +518,7 @@ namespace Nethermind.Synchronization
         /// <returns>
         /// The headers in response order, or <see langword="null"/>, with <paramref name="headers"/> still owned by the
         /// caller, when the walk must answer: the request has no skip, the start header is not on the main chain, or
-        /// a level has no main chain block.
+        /// a reverse request meets a level without a main chain block.
         /// </returns>
         /// <remarks>
         /// Without a skip, the walk finds the headers by parent hash, which needs no level read per header. A forward
@@ -533,28 +533,35 @@ namespace Nethermind.Synchronization
             ulong available = reverse ? number / step : highestLevel > number ? (highestLevel - number) / step : 0;
             int count = (int)Math.Min((ulong)numberOfBlocks, available + 1);
 
-            using ArrayPoolListRef<ulong> numbers = new(count);
+            using ArrayPoolSpan<ulong> numbers = new(count);
             for (int i = 0; i < count; i++)
             {
                 ulong offset = (ulong)i * step;
-                numbers.Add(reverse ? number - offset : number + offset);
+                numbers[i] = reverse ? number - offset : number + offset;
             }
 
             using ArrayPoolListRef<ValueHash256> hashes = new(count);
-            using (IOwnedReadOnlyList<ChainLevelInfo?> levels = _chainLevelInfoRepository.MultiLoadLevel(numbers))
+            using (ArrayPoolSpan<(ValueHash256 BlockHash, UInt256 TotalDifficulty)> mainChainBlocks = new(count))
             {
+                _chainLevelInfoRepository.GetMainChainBlocksWithoutCaching(numbers.AsReadOnlyMemory(), mainChainBlocks.AsMemory());
                 for (int i = 0; i < count; i++)
                 {
-                    if (levels[i] is not { } level) break;
-                    if (!level.HasBlockOnMainChain || level.BlockInfos.Length == 0) return null;
-                    hashes.Add(level.BlockInfos[0].BlockHash.ValueHash256);
+                    ValueHash256 blockHash = mainChainBlocks[i].BlockHash;
+                    if (blockHash == Keccak.Zero.ValueHash256)
+                    {
+                        // A level without a main chain block ends a forward walk; a reverse walk would take the best one.
+                        if (reverse) return null;
+                        break;
+                    }
+
+                    hashes.Add(blockHash);
                 }
             }
 
             if (hashes.Count == 0 || hashes[0] != hash) return null;
 
             using ArrayPoolList<Range> items = new(hashes.Count, hashes.Count);
-            _headerStore.AppendRlps(hashes.AsSpan(), numbers.AsSpan()[..hashes.Count], _headerDecoder, headers, items.AsSpan());
+            _headerStore.AppendRlps(hashes.AsSpan(), ((ReadOnlySpan<ulong>)numbers)[..hashes.Count], _headerDecoder, headers, items.AsSpan());
             return InResponseOrder(headers, items.AsSpan());
         }
 
