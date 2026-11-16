@@ -435,7 +435,7 @@ public class ZeroNettyP2PHandlerTests
             GasLimit = 21000,
             Signature = new Signature(1, 2, 27)
         };
-        Hash256 expectedHash = Keccak.Compute(TxDecoder.Instance.Encode(source).Bytes);
+        Hash256 expectedHash = Keccak.Compute(TxDecoder.Instance.Encode(source));
         TransactionsMessageSerializer serializer = new();
         using TransactionsMessage message = new(new ArrayPoolList<Transaction>(1) { source });
         using DisposableByteBuffer encoded = detector.Allocator.Buffer(256).AsDisposable();

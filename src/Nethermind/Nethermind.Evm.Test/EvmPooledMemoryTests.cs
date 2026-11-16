@@ -76,9 +76,15 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         byte[] data = new byte[length + 8];
         SwizzledMemory.ComputeHash(ref data[1], length, out _);
         SwizzledMemory.ComputeHash(ref data[1], length, out _);
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 10; i++) SwizzledMemory.ComputeHash(ref data[1], length, out _);
-        Assert.That(GC.GetAllocatedBytesForCurrentThread() - before, Is.Zero);
+        // Runtime tier-up can allocate on this thread during a round; reused scratch leaves at least one round clean.
+        long allocated = long.MaxValue;
+        for (int round = 0; round < 5 && allocated != 0; round++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 10; i++) SwizzledMemory.ComputeHash(ref data[1], length, out _);
+            allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+        Assert.That(allocated, Is.Zero);
     }
 
     [Test]

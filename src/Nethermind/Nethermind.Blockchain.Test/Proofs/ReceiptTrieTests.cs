@@ -6,6 +6,7 @@ using System;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Threading;
@@ -200,7 +201,7 @@ public class ReceiptTrieTests
             Hash256 proofHash = Keccak.Compute(proof[i - 1]);
             if (i > 1)
             {
-                if (!new Rlp(proof[i - 2]).ToString(false).Contains(proofHash.ToString(false)))
+                if (!proof[i - 2].ToHexString().Contains(proofHash.ToString(false)))
                 {
                     throw new InvalidDataException();
                 }

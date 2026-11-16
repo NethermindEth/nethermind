@@ -137,6 +137,13 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     {
         const string GetLogsMethodName = "eth_getLogs";
 
+        LogRequest(methodName);
+
+        if (request.ParamsKind is not (JsonValueKind.Undefined or JsonValueKind.Null or JsonValueKind.Array))
+        {
+            return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "non-array args", in request.IdRef);
+        }
+
         // Rented before decoding so that requests the pool queues or sheds do not pay for, or hold, decoded params.
         IRpcModule rpcModule = await _rpcModuleProvider.Rent(method, cancellationToken);
         if (rpcModule is IContextAwareRpcModule contextAwareModule)
@@ -293,8 +300,6 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         ExpectedParameter[] expectedParameters = method.ExpectedParameters;
         bool useUtf8Parameters = CanDeserializeParametersFromUtf8(request, expectedParameters);
         JsonElement providedParameters = useUtf8Parameters ? default : request.Params;
-
-        LogRequest(methodName);
 
         return expectedParameters.Length == 0
             ? PrepareNoParameters(

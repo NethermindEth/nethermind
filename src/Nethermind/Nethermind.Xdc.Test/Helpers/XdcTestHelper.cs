@@ -134,8 +134,8 @@ internal static class XdcTestHelper
     {
         TimeoutDecoder decoder = new();
         Timeout timeout = new(round, signature: null, gap);
-        Rlp rlp = decoder.Encode(timeout, Nethermind.Serialization.Rlp.RlpBehaviors.ForSealing);
-        ValueHash256 hash = Keccak.Compute(rlp.Bytes).ValueHash256;
+        byte[] rlp = decoder.Encode(timeout, Nethermind.Serialization.Rlp.RlpBehaviors.ForSealing);
+        ValueHash256 hash = Keccak.Compute(rlp).ValueHash256;
         Signature signature = new EthereumEcdsa(0).Sign(key, hash);
         return new Timeout(round, signature, gap) { Signer = key.Address };
     }

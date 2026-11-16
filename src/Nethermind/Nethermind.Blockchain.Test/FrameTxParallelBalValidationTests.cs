@@ -64,7 +64,7 @@ public class FrameTxParallelBalValidationTests
         ReadOnlyBlockAccessList claimed = new(accounts, list.ItemCount + 1);
 
         BlockHeader header = produced.Header.Clone();
-        header.BlockAccessListHash = Keccak.Compute(Rlp.Encode(claimed).Bytes);
+        header.BlockAccessListHash = Keccak.Compute(Rlp.Encode(claimed));
         header.Hash = header.CalculateHash();
         Block suggested = new(header, [FrameTx()], [], produced.Withdrawals) { BlockAccessList = claimed };
         BlockHeader parent = chain.BlockTree.FindHeader(produced.ParentHash!, BlockTreeLookupOptions.None)!;

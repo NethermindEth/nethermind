@@ -10,12 +10,15 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
+using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
@@ -30,6 +33,10 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
+using Nethermind.Serialization.FluentRlp;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
@@ -96,12 +103,88 @@ public class SyncServerTests
         Context ctx = new();
         IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
         SyncServer server = ctx.CreateSyncServer(ctx.BlockTree, receiptFinder: receiptFinder);
+        using ArrayPoolList<byte> destination = new(0);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(server.GetReceipts(TestItem.KeccakA), Is.Null);
+            Assert.That(server.TryAppendReceipts(TestItem.KeccakA, new ReceiptMessageDecoder(), withBloom: true, destination), Is.False);
+            Assert.That(destination, Is.Empty);
             receiptFinder.DidNotReceiveWithAnyArgs().Get(Arg.Any<Hash256>());
         }
+    }
+
+    [Test]
+    public void Appended_receipts_of_a_block_without_transactions_are_an_empty_list_when_its_body_is_stored([Values] bool bodyStored)
+    {
+        Context ctx = new();
+        BlockHeader header = Build.A.BlockHeader.WithTransactionsRoot(Keccak.EmptyTreeHash).TestObject;
+        Hash256 hash = header.Hash!;
+        ctx.BlockTree.FindHeader(hash, Arg.Any<BlockTreeLookupOptions>()).Returns(header);
+        ctx.BlockTree.HasBlock(header.Number, hash).Returns(bodyStored);
+        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+        // The receipt store keeps no receipts for a block without transactions.
+        receiptFinder.Get(hash).Returns([]);
+        SyncServer server = ctx.CreateSyncServer(ctx.BlockTree, receiptFinder: receiptFinder);
+        using ArrayPoolList<byte> destination = new(0);
+
+        bool appended = server.TryAppendReceipts(hash, new ReceiptMessageDecoder(), withBloom: true, destination);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(appended, Is.EqualTo(bodyStored));
+            Assert.That(destination.AsSpan().ToArray(), Is.EqualTo(bodyStored ? new[] { Rlp.EmptyListByte } : Array.Empty<byte>()));
+        }
+    }
+
+    [Test]
+    public void Appended_receipts_are_the_stored_copy_or_encoded_as_receipts_messages_encode_them(
+        [Values] bool withBloom, [Values] bool storedFormReadable, [Values(1UL, 4_370_000UL)] ulong number)
+    {
+        Context ctx = new();
+        BlockHeader header = Build.A.BlockHeader.WithNumber(number).WithTransactionsRoot(TestItem.KeccakB).TestObject;
+        Hash256 hash = header.Hash!;
+        TxReceipt[] receipts =
+        [
+            Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(number).TestObject,
+            Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(number).WithTxType(TxType.EIP1559).WithLogs(Build.A.LogEntry.TestObject).TestObject,
+        ];
+        ctx.BlockTree.FindHeader(hash, Arg.Any<BlockTreeLookupOptions>()).Returns(header);
+        ctx.BlockTree.HasBlock(header.Number, hash).Returns(true);
+        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+        receiptFinder.Get(hash).Returns(receipts);
+        byte[] storedCopy = [0xc1, 0x80];
+        receiptFinder.TryAppendNetworkReceipts(header, withBloom, Arg.Any<ArrayPoolList<byte>>()).Returns(call =>
+        {
+            if (!storedFormReadable) return false;
+            call.ArgAt<ArrayPoolList<byte>>(2).AddRange(storedCopy);
+            return true;
+        });
+        SyncServer server = ctx.CreateSyncServer(ctx.BlockTree, receiptFinder: receiptFinder);
+        IRlpDecoder<TxReceipt> decoder = withBloom ? new ReceiptMessageDecoder() : new ReceiptMessageDecoder69();
+        using ArrayPoolList<byte> destination = new(1) { 0xff };
+
+        bool appended = server.TryAppendReceipts(hash, decoder, withBloom, destination);
+
+        byte[] expected = storedFormReadable ? storedCopy : EncodeAsReceiptsMessage(receipts, withBloom);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(appended, Is.True);
+            Assert.That(destination.AsSpan().ToArray(), Is.EqualTo((byte[])[0xff, .. expected]));
+            receiptFinder.Received(1).TryAppendNetworkReceipts(header, withBloom, Arg.Any<ArrayPoolList<byte>>());
+        }
+    }
+
+    /// <summary>The receipt sequence of one block as the receipts message serializers write decoded receipts.</summary>
+    private static byte[] EncodeAsReceiptsMessage(TxReceipt[] receipts, bool withBloom)
+    {
+        ReceiptsMessageSerializer serializer = withBloom
+            ? new ReceiptsMessageSerializer(MainnetSpecProvider.Instance)
+            : new ReceiptsMessageInnerSerializer69(MainnetSpecProvider.Instance);
+        using ReceiptsMessage message = new(new ArrayPoolList<TxReceipt[]>(1) { receipts });
+        byte[] serialized = new byte[serializer.GetLength(message)];
+        serializer.Serialize(serialized, message);
+        return new RlpReader(serialized).EnterSequence(out _).ReadEncodedItem().ToArray();
     }
 
     [Test]
@@ -123,11 +206,18 @@ public class SyncServerTests
     }
 
     [Test]
-    public void When_finding_by_hash_block_info_is_not_loaded()
+    public void Finds_stored_block_rlp_by_its_block_number([Values] bool headerKnown)
     {
         Context ctx = new();
-        ctx.SyncServer.Find(TestItem.KeccakA);
-        ctx.BlockTree.Received().FindBlock(Arg.Any<Hash256>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.ExcludeTxHashes);
+        byte[] blockRlp = [0xc0];
+        if (headerKnown)
+        {
+            ctx.HeaderStore.GetBlockNumber(TestItem.KeccakA).Returns(5UL);
+        }
+        ctx.BlockStore.GetOwnedRlp(5, TestItem.KeccakA).Returns(ArrayMemoryManager.From(blockRlp));
+
+        using MemoryManager<byte>? found = ctx.SyncServer.FindBlockRlp(TestItem.KeccakA);
+        Assert.That(found?.Memory.ToArray(), Is.EqualTo(headerKnown ? blockRlp : null));
     }
 
     [TestCase(true, true, true)]
@@ -238,6 +328,9 @@ public class SyncServerTests
             ctx.WorldStateManager,
             new MemDb(),
             localBlockTree,
+            Substitute.For<IBlockStore>(),
+            Substitute.For<IHeaderStore>(),
+            new HeaderDecoder(),
             NullReceiptStorage.Instance,
             Substitute.For<IBlockAccessListStore>(),
             blockValidator,
@@ -463,6 +556,9 @@ public class SyncServerTests
             ctx.WorldStateManager,
             new MemDb(),
             localBlockTree,
+            Substitute.For<IBlockStore>(),
+            Substitute.For<IHeaderStore>(),
+            new HeaderDecoder(),
             NullReceiptStorage.Instance,
             Substitute.For<IBlockAccessListStore>(),
             blockValidator,
@@ -749,6 +845,9 @@ public class SyncServerTests
             Substitute.For<IWorldStateManager>(),
             new MemDb(),
             blockTree,
+            Substitute.For<IBlockStore>(),
+            Substitute.For<IHeaderStore>(),
+            new HeaderDecoder(),
             NullReceiptStorage.Instance,
             Substitute.For<IBlockAccessListStore>(),
             Always.Valid,
@@ -887,6 +986,9 @@ public class SyncServerTests
             worldStateManager,
             new MemDb(),
             localBlockTree,
+            Substitute.For<IBlockStore>(),
+            Substitute.For<IHeaderStore>(),
+            new HeaderDecoder(),
             NullReceiptStorage.Instance,
             Substitute.For<IBlockAccessListStore>(),
             Always.Valid,
@@ -1036,6 +1138,9 @@ public class SyncServerTests
             Substitute.For<IWorldStateManager>(),
             new MemDb(),
             blockTree,
+            Substitute.For<IBlockStore>(),
+            Substitute.For<IHeaderStore>(),
+            new HeaderDecoder(),
             NullReceiptStorage.Instance,
             Substitute.For<IBlockAccessListStore>(),
             Always.Valid,
@@ -1087,6 +1192,52 @@ public class SyncServerTests
         }
     }
 
+    /// <param name="start">The number of the canonical start header, or -1 for the side block at <see cref="SideBlockNumber"/>.</param>
+    /// <param name="missing">Whether the canonical header at <see cref="MissingHeaderNumber"/> is deleted.</param>
+    [Test]
+    public void FindHeadersRlp_encodes_the_headers_that_the_block_tree_finds(
+        [Values(-1, 0, 5, 19)] int start,
+        [Values(0, 1, 4, 30)] int count,
+        [Values(0, 2)] int skip,
+        [Values] bool reverse,
+        [Values] bool missing)
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(20);
+        BlockTree tree = builder.TestObject;
+        Block sideBlock = Build.A.Block.WithParent(tree.FindBlock(SideBlockNumber - 1, BlockTreeLookupOptions.None)!).WithDifficulty(1).TestObject;
+        tree.SuggestBlock(sideBlock);
+        if (missing) builder.HeaderStore.Delete(tree.FindHash(MissingHeaderNumber)!);
+        ((IClearableCache)builder.HeaderStore).ClearCache();
+
+        Hash256 startHash = start < 0 ? sideBlock.Hash! : tree.FindHash((ulong)start)!;
+        using IOwnedReadOnlyList<byte> rlp = new Context().CreateSyncServer(tree, headerStore: builder.HeaderStore)
+            .FindHeadersRlp(startHash, count, skip, reverse);
+
+        HeaderDecoder decoder = new();
+        using IOwnedReadOnlyList<BlockHeader> headers = tree.FindHeaders(startHash, count, skip, reverse);
+        List<byte> expected = [];
+        foreach (BlockHeader? header in headers)
+        {
+            if (header is null) break;
+            expected.AddRange(decoder.Encode(header));
+        }
+
+        Assert.That(rlp.AsSpan().ToArray(), Is.EqualTo(expected.ToArray()));
+    }
+
+    [Test]
+    public void FindHeadersRlp_finds_nothing_for_an_unknown_start()
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(3);
+        using IOwnedReadOnlyList<byte> rlp = new Context().CreateSyncServer(builder.TestObject, headerStore: builder.HeaderStore)
+            .FindHeadersRlp(TestItem.KeccakA, 2, 0, false);
+
+        Assert.That(rlp.Count, Is.Zero);
+    }
+
+    private const ulong SideBlockNumber = 6;
+    private const ulong MissingHeaderNumber = 8;
+
     private sealed class RaisableHistoryPruner : IHistoryPruner
     {
         public ulong? CutoffBlockNumber => null;
@@ -1134,6 +1285,8 @@ public class SyncServerTests
             PeerPool = Substitute.For<ISyncPeerPool>();
 
             BlockTree = Substitute.For<IBlockTree>();
+            BlockStore = Substitute.For<IBlockStore>();
+            HeaderStore = Substitute.For<IHeaderStore>();
             WorldStateManager = Substitute.For<IWorldStateManager>();
             HistoryPruner = Substitute.For<IHistoryPruner>();
             SyncPointers = Substitute.For<ISyncPointers>();
@@ -1143,6 +1296,9 @@ public class SyncServerTests
                 WorldStateManager,
                 new MemDb(),
                 BlockTree,
+                BlockStore,
+                HeaderStore,
+                new HeaderDecoder(),
                 NullReceiptStorage.Instance,
                 Substitute.For<IBlockAccessListStore>(),
                 Always.Valid,
@@ -1168,17 +1324,25 @@ public class SyncServerTests
         public IBlockTree LocalBlockTree { get; set; } = null!;
         public ISyncPeer NodeWhoSentTheBlock { get; }
 
+        public IBlockStore BlockStore { get; }
+
+        public IHeaderStore HeaderStore { get; }
+
         public SyncServer CreateSyncServer(
             IBlockTree localBlockTree,
             IBlockValidator? blockValidator = null,
             ISealValidator? sealValidator = null,
             ISyncModeSelector? syncModeSelector = null,
             ISpecProvider? specProvider = null,
-            IReceiptFinder? receiptFinder = null) =>
+            IReceiptFinder? receiptFinder = null,
+            IHeaderStore? headerStore = null) =>
             new(
                 WorldStateManager,
                 new MemDb(),
                 localBlockTree,
+                Substitute.For<IBlockStore>(),
+                headerStore ?? Substitute.For<IHeaderStore>(),
+                new HeaderDecoder(),
                 receiptFinder ?? NullReceiptStorage.Instance,
                 Substitute.For<IBlockAccessListStore>(),
                 blockValidator ?? Always.Valid,
@@ -1196,6 +1360,9 @@ public class SyncServerTests
                 WorldStateManager,
                 new MemDb(),
                 BlockTree,
+                Substitute.For<IBlockStore>(),
+                Substitute.For<IHeaderStore>(),
+                new HeaderDecoder(),
                 NullReceiptStorage.Instance,
                 blockAccessListStore,
                 Always.Valid,

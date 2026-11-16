@@ -26,6 +26,6 @@ namespace Nethermind.Benchmarks.Rlp
         public void Setup() => _account = _scenarios[ScenarioIndex];
 
         [Benchmark]
-        public byte[] Current() => Serialization.Rlp.Rlp.Encode(_account).Bytes;
+        public byte[] Current() => Serialization.Rlp.Rlp.Encode(_account);
     }
 }

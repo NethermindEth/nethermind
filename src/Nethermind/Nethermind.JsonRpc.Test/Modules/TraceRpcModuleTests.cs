@@ -2200,7 +2200,7 @@ public class TraceRpcModuleTests
             .TestObject;
 
         ResultWrapper<ParityTxTraceFromReplay> traces = context.TraceRpcModule.trace_rawTransaction(
-            TxDecoder.Instance.Encode(transaction).Bytes, traceTypes
+            TxDecoder.Instance.Encode(transaction), traceTypes
         );
 
         AssertBalanceChange(traces.Data.StateChanges?.GetValueOrDefault(address), balance, balance - send);
@@ -2366,7 +2366,7 @@ public class TraceRpcModuleTests
             .TestObject;
 
     private static ResultWrapper<ParityTxTraceFromReplay> TraceRaw(Context context, Transaction transaction) =>
-        context.TraceRpcModule.trace_rawTransaction(TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes, ["trace"]);
+        context.TraceRpcModule.trace_rawTransaction(TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping), ["trace"]);
 
     private static void AssertTracedFromAddressA(ResultWrapper<ParityTxTraceFromReplay> traces)
     {
@@ -2379,7 +2379,7 @@ public class TraceRpcModuleTests
 
     private static async Task<JToken> TraceRawSerialized(Context context, Transaction transaction) =>
         JToken.Parse(await RpcTest.TestSerializedRequest(context.TraceRpcModule,
-            "trace_rawTransaction", TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes, new[] { "trace" }));
+            "trace_rawTransaction", TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping), new[] { "trace" }));
 
     private static void AssertRejected(JToken response, string error)
     {
@@ -2625,14 +2625,14 @@ public class TraceRpcModuleTests
     }
 
     [Test]
-    public async Task Trace_call_rejects_differing_data_and_input(
+    public async Task Trace_call_prefers_input_when_data_differs(
         [ValueSource(typeof(TransactionForRpcDeserializationTests), nameof(TransactionForRpcDeserializationTests.DifferingCallData))] string calldata,
         [Values("trace_call", "trace_callMany")] string method)
     {
         Context context = new();
         await context.Build(new TestSpecProvider(Prague.Instance));
         using TestRpcBlockchain blockchain = context.Blockchain;
-        using JsonDocument call = JsonDocument.Parse($"{{\"from\":\"{TestItem.AddressA}\",\"gas\":\"0x493e0\",{calldata}}}");
+        using JsonDocument call = JsonDocument.Parse($"{{\"from\":\"{TestItem.AddressA}\",\"gas\":\"0x493e0\",\"to\":\"{TestItem.AddressB}\",{calldata}}}");
         string[] traceTypes = ["trace"];
         object[] parameters = method == "trace_call"
             ? [call.RootElement, traceTypes, "latest"]
@@ -2640,11 +2640,13 @@ public class TraceRpcModuleTests
 
         string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, parameters);
 
-        JToken? error = JToken.Parse(response)["error"];
+        JToken json = JToken.Parse(response);
+        Assert.That(json["error"], Is.Null, response);
+        JToken result = method == "trace_call" ? json["result"]! : json["result"]![0]!;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(error?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.InvalidParams), response);
-            Assert.That(error?["message"]?.Value<string>(), Is.EqualTo(RpcTransactionErrors.DataAndInputDiffer), response);
+            Assert.That((string?)result["trace"]?[0]?["action"]?["input"], Is.EqualTo(call.RootElement.GetProperty("input").GetString()));
+            Assert.That((string?)result["output"], Is.EqualTo("0x"));
         }
     }
 
@@ -3483,7 +3485,7 @@ public class TraceRpcModuleTests
             .TestObject;
 
         string serialized = await RpcTest.TestSerializedRequest(context.TraceRpcModule,
-            "trace_rawTransaction", TxDecoder.Instance.Encode(transaction).Bytes, new[] { traceType });
+            "trace_rawTransaction", TxDecoder.Instance.Encode(transaction), new[] { traceType });
         using JsonDocument document = JsonDocument.Parse(serialized);
         using (Assert.EnterMultipleScope())
         {
@@ -3517,7 +3519,7 @@ public class TraceRpcModuleTests
             .TestObject;
 
         string serialized = await RpcTest.TestSerializedRequest(context.TraceRpcModule,
-            "trace_rawTransaction", TxDecoder.Instance.Encode(transaction).Bytes, new[] { "trace" });
+            "trace_rawTransaction", TxDecoder.Instance.Encode(transaction), new[] { "trace" });
         using JsonDocument document = JsonDocument.Parse(serialized);
         JsonElement response = document.RootElement;
         if (gasCap is > 0 and < 100_000)
@@ -4225,6 +4227,57 @@ public class TraceRpcModuleTests
 
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success),
             "tracing a London block with a pre-EIP-1559 fork override must succeed (AdjustHeaderForSpec zeroes BaseFeePerGas)");
+    }
+
+    private static IEnumerable<TestCaseData> ReplayCopiesCases()
+    {
+        foreach (bool streaming in new[] { false, true })
+        {
+            string mode = streaming ? "streamed" : "buffered";
+            yield return new TestCaseData("trace_block", false, streaming).SetArgDisplayNames("trace_block", "no fork override", mode);
+            yield return new TestCaseData("trace_block", true, streaming).SetArgDisplayNames("trace_block", "fork override", mode);
+            yield return new TestCaseData("trace_replayBlockTransactions", false, streaming).SetArgDisplayNames("trace_replayBlockTransactions", "no fork override", mode);
+            yield return new TestCaseData("trace_transaction", false, streaming).SetArgDisplayNames("trace_transaction", "no fork override", mode);
+        }
+    }
+
+    /// <summary>
+    /// A replay writes into each transaction it runs the nonce it loads from state, the sender it recovers and the gas it
+    /// spends, under the block's own fork or another, so it runs on copies that keep the transaction's type and state.
+    /// </summary>
+    [TestCaseSource(nameof(ReplayCopiesCases))]
+    public async Task Trace_replays_copies_of_the_block_transactions(string method, bool forkOverride, bool streaming)
+    {
+        List<Transaction> replayed = [];
+        Context context = new();
+        await context.Build(new ForkAwareTestSpecProvider(Berlin.Instance, MainnetSpecProvider.Instance),
+            configurer: builder => builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new ExecutedTransactionsAdapter(inner, replayed)));
+        using TestRpcBlockchain chain = context.Blockchain;
+        chain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+
+        ReplayCopies.Stored stored = await ReplayCopies.MineSubclassTransaction(chain, TestItem.PrivateKeyB, replayed);
+        Block head = chain.BlockTree.Head!;
+        string number = "0x" + head.Number.ToString("x");
+
+        // The serialized response is the whole stream, read to its end.
+        string response = method switch
+        {
+            "trace_block" when forkOverride => await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, number, nameof(Istanbul)),
+            "trace_block" => await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, number),
+            "trace_replayBlockTransactions" => await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, number, new[] { "trace" }),
+            _ => await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, stored.Hash),
+        };
+
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That(json["result"]?.Children().Select(static trace => (string?)trace["transactionHash"]), Has.Some.EqualTo(stored.Hash.ToString()),
+                "the replay traced the transaction");
+            Assert.That(chain.BlockTree.FindBlock(head.Hash!, BlockTreeLookupOptions.None)!.Transactions[0], Is.SameAs(stored.Instance),
+                "the block tree keeps its own transaction");
+            ReplayCopies.AssertReplayedCopies(replayed, 1, stored);
+        }
     }
 
     // regression test ensuring asynchronous streaming pipe doesn't crash tracing

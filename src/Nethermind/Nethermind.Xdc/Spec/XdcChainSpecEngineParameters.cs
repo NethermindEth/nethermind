@@ -59,11 +59,12 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public ulong? TipXDCXLendingBlock { get; set; }
     public ulong? TipXDCXCancellationFeeBlock { get; set; }
     public ulong? Gas50xBlock { get; set; }
+    public ulong? Gas2500xBlock { get; set; }
 
     /// <summary>
-    /// Gas price floor, in wei, that the transaction pool applies before <see cref="Gas50xBlock"/>; from that block it
-    /// is multiplied by <see cref="XdcConstants.Gas50xMultiplier"/>. Defaults to
-    /// <see cref="XdcConstants.DefaultMinGasPrice"/> (0.25 gwei, so 12.5 gwei once raised).
+    /// Gas price floor, in wei, that the transaction pool applies before <see cref="Gas50xBlock"/>; from then on it is
+    /// multiplied by the active gas price tier. Defaults to <see cref="XdcConstants.DefaultMinGasPrice"/> (0.25 gwei,
+    /// so 12.5 gwei from <see cref="Gas50xBlock"/> and 625 gwei from <see cref="Gas2500xBlock"/>).
     /// </summary>
     /// <remarks>
     /// Mirrors the reference client's <c>--miner-gasprice</c>: a value below the default is raised to it, so the floor
@@ -89,12 +90,25 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public ulong? DynamicGasLimitBlock { get; set; }
 
     /// <summary>The transaction pool's gas price floor, in wei, at <paramref name="blockNumber"/>.</summary>
-    /// <remarks>Mirrors <c>common.GetMinGasPrice</c> of XDPoSChain: the configured floor below
-    /// <see cref="Gas50xBlock"/>, raised 50x from it.</remarks>
+    /// <remarks>Mirrors <c>params.GetMinGasPrice</c> of XDPoSChain: the configured floor below
+    /// <see cref="Gas50xBlock"/>, raised by the active gas price tier from it.</remarks>
     internal virtual UInt256 ResolveMinGasPrice(ulong blockNumber) =>
-        (Gas50xBlock ?? ulong.MaxValue) <= blockNumber
-            ? ConfiguredMinGasPrice * XdcConstants.Gas50xMultiplier
-            : ConfiguredMinGasPrice;
+        ConfiguredMinGasPrice * (ResolveGasTierMultiplier(blockNumber) ?? 1);
+
+    /// <summary>The EIP-1559 base fee, in wei, of the block at <paramref name="blockNumber"/>.</summary>
+    /// <remarks>Mirrors <c>params.BaseFeeForBlock</c> of XDPoSChain: the price of the active gas price tier, or
+    /// <see cref="XdcBaseFeeCalculator.BaseFee"/> before any tier. It does not check whether EIP-1559 is active.</remarks>
+    internal UInt256 ResolveBaseFee(ulong blockNumber) =>
+        ResolveGasTierMultiplier(blockNumber) is { } multiplier
+            ? XdcConstants.DefaultMinGasPrice * (UInt256)multiplier
+            : (UInt256)XdcBaseFeeCalculator.BaseFee;
+
+    /// <summary>The multiplier of the newest gas price tier active at <paramref name="blockNumber"/>, or
+    /// <see langword="null"/> before any tier.</summary>
+    private uint? ResolveGasTierMultiplier(ulong blockNumber) =>
+        (Gas2500xBlock ?? ulong.MaxValue) <= blockNumber ? XdcConstants.Gas2500xMultiplier
+        : (Gas50xBlock ?? ulong.MaxValue) <= blockNumber ? XdcConstants.Gas50xMultiplier
+        : null;
 
     /// <summary>The stated floor, never below <see cref="XdcConstants.DefaultMinGasPrice"/>.</summary>
     private protected UInt256 ConfiguredMinGasPrice =>
@@ -117,7 +131,7 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
         }
     }
 
-    public void ApplyToReleaseSpec(ReleaseSpec spec, ulong startBlock, ulong? startTimestamp) => spec.BaseFeeCalculator = new XdcBaseFeeCalculator();
+    public void ApplyToReleaseSpec(ReleaseSpec spec, ulong startBlock, ulong? startTimestamp) => spec.BaseFeeCalculator = new XdcBaseFeeCalculator(this);
 
     public void AddTransitions(SortedSet<ulong> blockNumbers, SortedSet<ulong> timestamps)
     {
@@ -132,6 +146,8 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
             blockNumbers.Add(DynamicGasLimitBlock.Value);
         if (Gas50xBlock is not null)
             blockNumbers.Add(Gas50xBlock.Value);
+        if (Gas2500xBlock is not null)
+            blockNumbers.Add(Gas2500xBlock.Value);
         if (TipXDCX is not null)
             blockNumbers.Add(TipXDCX.Value);
         if (TIPXDCXMinerDisable is not null)

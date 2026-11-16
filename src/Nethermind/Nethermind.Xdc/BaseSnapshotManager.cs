@@ -120,9 +120,7 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
         if (_snapshotDb.KeyExists(key))
             return;
 
-        Rlp rlpEncodedSnapshot = _snapshotDecoder.Encode(snapshot);
-
-        _snapshotDb.Set(key, rlpEncodedSnapshot.Bytes);
+        _snapshotDb.Set(key, _snapshotDecoder.Encode(snapshot));
         _snapshotCache.Set(snapshot.HeaderHash, snapshot);
     }
 

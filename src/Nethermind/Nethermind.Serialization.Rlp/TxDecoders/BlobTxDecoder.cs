@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Int256;
 using Nethermind.Serialization.FluentRlp;
 
@@ -46,6 +48,49 @@ public sealed class BlobTxDecoder(Func<Transaction>? transactionFactory = null)
         {
             transaction.Hash = NetworkPayloadFormHash.Calculate(TxType.Blob, transactionSequence);
         }
+    }
+
+    /// <summary>Writes the network form of a type-3 transaction from its stored record, without decoding it.</summary>
+    /// <param name="record">
+    /// The record that <see cref="TxDecoder"/> encodes with <see cref="RlpBehaviors.InMempoolForm"/> and
+    /// <see cref="RlpBehaviors.Storage"/>.
+    /// </param>
+    /// <param name="networkForm">
+    /// The encoding with <see cref="RlpBehaviors.InMempoolForm"/> and <see cref="RlpBehaviors.SkipTypedWrapping"/>.
+    /// The caller disposes it.
+    /// </param>
+    /// <returns>
+    /// <see langword="false"/> when the record is empty, is not a type-3 transaction, does not hold every blob, or is
+    /// not written again byte for byte.
+    /// </returns>
+    /// <remarks>
+    /// The transaction and sidecar items are copied as they are and the storage-only items after them are dropped, so
+    /// only the type byte and the sequence prefix are written again.
+    /// </remarks>
+    public static bool TryGetNetworkForm(ReadOnlySpan<byte> record, [NotNullWhen(true)] out IOwnedReadOnlyList<byte>? networkForm)
+    {
+        networkForm = null;
+        if (record.IsEmpty) return false;
+
+        ReadOnlySpan<byte> typedTx = new RlpReader(record).ReadBytes();
+        if (typedTx.IsEmpty || typedTx[0] != (byte)TxType.Blob) return false;
+
+        RlpReader items = new RlpReader(typedTx[1..]).EnterSequence(out _);
+        RlpReader all = items;
+        ReadOnlySpan<byte> storedItems = all.ReadRaw(all.Remaining);
+        items.SkipItem();
+        if (!ShardBlobNetworkWrapperRlp.TrySkipNetworkItems(ref items)) return false;
+
+        ReadOnlySpan<byte> networkItems = storedItems[..items.BytesRead];
+        int length = 1 + Rlp.LengthOfSequence(networkItems.Length);
+        ArrayPoolList<byte> encoded = new(SafeArrayPool<byte>.Shared, length, length, clearFirst: false);
+        RlpWriter writer = RlpWriter.ContentWriter(encoded.AsSpan());
+        writer.WriteByte((byte)TxType.Blob);
+        RlpSequence sequence = writer.StartSequence(networkItems.Length);
+        writer.WriteEncoded(networkItems);
+        writer.EndSequence(sequence);
+        networkForm = encoded;
+        return true;
     }
 
     public override void Encode(Transaction transaction, ref RlpWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,

@@ -167,12 +167,10 @@ namespace Nethermind.Serialization.Rlp
         {
             if (item is null)
             {
-                return Rlp.OfEmptyList.Length;
+                return Rlp.LengthOfNull;
             }
 
-            int length = -1;
-            if (!skipStateAndStatus && !skipBloom) GetLengthInOnePass(item, rlpBehaviors, ref length);
-            if (length >= 0) return length;
+            if (IsOnePass(item, rlpBehaviors)) return GetOnePassLength(item, rlpBehaviors, out _, out _);
 
             (int Total, _) = GetContentLength(item, rlpBehaviors);
             int receiptPayloadLength = Rlp.LengthOfSequence(Total);
@@ -190,7 +188,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (item is null)
             {
-                return Rlp.OfEmptyList.Bytes;
+                return [Rlp.EmptyListByte];
             }
 
             int length = GetLength(item, rlpBehaviors);
@@ -201,10 +199,6 @@ namespace Nethermind.Serialization.Rlp
             return bytes;
         }
 
-        partial void GetLengthInOnePass(TxReceipt item, RlpBehaviors rlpBehaviors, ref int length);
-
-        partial void EncodeInOnePass(ref RlpWriter writer, TxReceipt item, RlpBehaviors rlpBehaviors, ref bool encoded);
-
         public override void Encode(ref RlpWriter writer, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
@@ -213,9 +207,11 @@ namespace Nethermind.Serialization.Rlp
                 return;
             }
 
-            bool encoded = false;
-            if (!skipStateAndStatus && !skipBloom) EncodeInOnePass(ref writer, item, rlpBehaviors, ref encoded);
-            if (encoded) return;
+            if (IsOnePass(item, rlpBehaviors))
+            {
+                EncodeInOnePass(ref writer, item, rlpBehaviors);
+                return;
+            }
 
             (int totalContentLength, int innerLength) = GetContentLength(item, rlpBehaviors);
             int sequenceLength = Rlp.LengthOfSequence(totalContentLength);

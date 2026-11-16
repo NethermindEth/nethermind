@@ -74,7 +74,7 @@ public class TransactionTests
             GasPrice = (UInt256)testJson.GasPrice,
             PrivateKey = new PrivateKey(testJson.Key),
             Nonce = testJson.Nonce,
-            Signed = new Rlp(Bytes.FromHexString(testJson.Signed))
+            Signed = Bytes.FromHexString(testJson.Signed)
         };
         byte[] unsigned = Bytes.FromHexString(testJson.Unsigned);
 
@@ -83,7 +83,7 @@ public class TransactionTests
         else
             unsigned[0] -= 3;
 
-        test.Unsigned = new Rlp(unsigned.Slice(0, unsigned.Length - 3));
+        test.Unsigned = unsigned.Slice(0, unsigned.Length - 3);
         test.StartGas = testJson.StartGas;
         test.To = string.IsNullOrEmpty(testJson.To) ? null : new Address(testJson.To);
         return test;
@@ -112,8 +112,8 @@ public class TransactionTests
         public Address To { get; set; }
         public UInt256 Value { get; set; }
         public byte[] Data { get; set; }
-        public Rlp Unsigned { get; set; }
-        public Rlp Signed { get; set; }
+        public byte[] Unsigned { get; set; }
+        public byte[] Signed { get; set; }
 
         public override string ToString() => PrivateKey.ToString();
     }
