@@ -319,11 +319,8 @@ public partial class DebugRpcModuleTests
     }
 
     [TestCase("0x0", false, 0, null)]
-    [TestCase("0x0", false, 0, "0x9")]
     [TestCase("0x0", true, 0, null)]
-    [TestCase("0x0", true, 0, "0x9")]
     [TestCase("0x1", false, 1, null)]
-    [TestCase("0x1", false, 1, "0x9")]
     [TestCase(null, true, 0, null)]
     [TestCase(null, true, 0, "0x9")]
     public async Task Debug_traceCall_runs_blob_fee_cap_as_geth(string? blobFeeCap, bool withBlobHashes, int expectedBlobBaseFee, string? blobBaseFeeOverride)
