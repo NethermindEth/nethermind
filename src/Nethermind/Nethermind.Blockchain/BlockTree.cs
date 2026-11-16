@@ -711,9 +711,9 @@ namespace Nethermind.Blockchain
                 stored++;
             }
 
-            BlockHeader?[] storedHeaders = new BlockHeader?[stored];
-            bool[] storedFound = new bool[stored];
-            _headerStore.GetIfBloomMatches(hashes.AsReadOnlyMemory()[..stored], numbers.AsReadOnlyMemory()[..stored], bloomMatches, storedHeaders, storedFound);
+            using ArrayPoolSpan<BlockHeader?> storedHeaders = new(stored);
+            using ArrayPoolSpan<bool> storedFound = new(stored);
+            _headerStore.GetIfBloomMatches(hashes.AsReadOnlyMemory()[..stored], numbers.AsReadOnlyMemory()[..stored], bloomMatches, storedHeaders.AsMemory(), storedFound.AsMemory());
             for (int i = 0; i < stored; i++)
             {
                 BlockHeader? header = storedHeaders[i];
@@ -726,6 +726,8 @@ namespace Nethermind.Blockchain
                 headerSpan[indexes[i]] = header;
                 foundSpan[indexes[i]] = storedFound[i];
             }
+
+            ((Span<BlockHeader?>)storedHeaders).Clear();
         }
 
         public Hash256? FindBlockHash(ulong blockNumber) => GetBlockHashOnMainOrBestDifficultyHash(blockNumber);

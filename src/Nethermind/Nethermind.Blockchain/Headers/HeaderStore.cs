@@ -323,6 +323,9 @@ public class HeaderStore : IHeaderStore, IClearableCache
             headers[i] = header;
             found[i] = isFound;
         }
+
+        // The rented array goes back to a shared pool, which must not keep the headers alive.
+        ((Span<BloomMatch>)matches).Clear();
     }
 
     private readonly record struct BloomMatch(BlockHeader? Header, bool Found);

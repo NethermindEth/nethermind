@@ -11,6 +11,7 @@ using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
@@ -326,8 +327,8 @@ namespace Nethermind.Facade.Find
         }
 
         /// <summary>
-        /// Finds the canonical headers of <paramref name="blockNumbers"/> whose bloom matches in one batch, and returns
-        /// the worker that finds the logs of one of these blocks.
+        /// Finds the canonical headers of <paramref name="blockNumbers"/> whose bloom matches in one batch, logs the
+        /// missing blocks, and returns the worker that finds the logs of one of these blocks.
         /// </summary>
         /// <param name="blockNumbers">Consecutive block numbers.</param>
         private Func<ulong, IEnumerable<TLog>> FindLogsInBlocksIfBloomMatches<TBlockLogs, TLog>(LogFilter filter, IReadOnlyList<ulong> blockNumbers,
@@ -337,19 +338,45 @@ namespace Nethermind.Facade.Find
             cancellationToken.ThrowIfCancellationRequested();
 
             ulong firstNumber = blockNumbers[0];
-            BlockHeader?[] headers = new BlockHeader?[blockNumbers.Count];
-            bool[] found = new bool[blockNumbers.Count];
-            _blockFinder.FindCanonicalHeadersIfBloomMatches(firstNumber, bloomMatches, headers, found);
+            BlockHeader[]? matches = null;
+            using (ArrayPoolSpan<BlockHeader?> headers = new(blockNumbers.Count))
+            using (ArrayPoolSpan<bool> found = new(blockNumbers.Count))
+            {
+                _blockFinder.FindCanonicalHeadersIfBloomMatches(firstNumber, bloomMatches, headers.AsMemory(), found.AsMemory());
+
+                int matchCount = 0;
+                for (int i = 0; i < headers.Length; i++)
+                {
+                    if (!found[i]) LogMissingBlock(firstNumber + (ulong)i);
+                    if (headers[i] is not null) matchCount++;
+                }
+
+                if (matchCount != 0)
+                {
+                    matches = new BlockHeader[matchCount];
+                    matchCount = 0;
+                    for (int i = 0; i < headers.Length; i++)
+                    {
+                        if (headers[i] is { } header) matches[matchCount++] = header;
+                    }
+                }
+
+                // The rented array goes back to a shared pool, which must not keep the headers alive.
+                ((Span<BlockHeader?>)headers).Clear();
+            }
+
+            if (matches is null) return static _ => [];
 
             return number =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                int index = (int)(number - firstNumber);
-                if (!found[index]) LogMissingBlock(number);
-                return headers[index] is { } header
-                    ? FindLogsInBlock<TBlockLogs, TLog>(filter, header.Hash, header.Number, header.Timestamp, cancellationToken)
-                    : [];
+                foreach (BlockHeader header in matches)
+                {
+                    if (header.Number == number) return FindLogsInBlock<TBlockLogs, TLog>(filter, header.Hash, header.Number, header.Timestamp, cancellationToken);
+                }
+
+                return [];
             };
         }
 
