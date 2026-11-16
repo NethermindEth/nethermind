@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Threading;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Network;
@@ -119,10 +120,45 @@ public class DiscoveryNodeAdmissionTests
     }
 
     [Test]
+    public void Same_subnet_node_is_admitted_after_the_holder_goes_silent_for_the_window()
+    {
+        ManualTimeProvider clock = new();
+        Fixture fixture = CreateAdmission(timeProvider: clock);
+        Node holder = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
+        Node sameSubnet = CreateNode(TestItem.PublicKeyB, "203.0.113.20");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.Admission.TryAdmit(holder), Is.True);
+            Assert.That(fixture.Admission.TryAdmit(sameSubnet), Is.False);
+        }
+
+        clock.Advance(TimeSpan.FromMinutes(5));
+
+        Assert.That(fixture.Admission.TryAdmit(sameSubnet), Is.True);
+    }
+
+    [Test]
     public void Exempt_nodes_bypass_the_filter_without_consuming_capacity()
     {
         Fixture fixture = CreateAdmission(
             persisted: [new NetworkNode(TestItem.PublicKeyA, "203.0.113.10", 30303)]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyA, "203.0.113.10")), Is.True);
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyB, "203.0.113.20")), Is.True);
+        }
+    }
+
+    [Test]
+    public void Persisted_nodes_from_the_same_subnet_keep_their_exemption()
+    {
+        Fixture fixture = CreateAdmission(persisted:
+        [
+            new NetworkNode(TestItem.PublicKeyA, "203.0.113.10", 30303),
+            new NetworkNode(TestItem.PublicKeyB, "203.0.113.20", 30303),
+        ]);
 
         using (Assert.EnterMultipleScope())
         {
@@ -243,7 +279,8 @@ public class DiscoveryNodeAdmissionTests
         bool subnetBucketing = true,
         KademliaConfig<Node>? config = null,
         NetworkNode[]? persisted = null,
-        string currentIp = "198.51.100.1")
+        string currentIp = "198.51.100.1",
+        TimeProvider? timeProvider = null)
     {
         IRoutingTable<Node, ValueHash256> routingTable = Substitute.For<IRoutingTable<Node, ValueHash256>>();
         INetworkStorage storage = Substitute.For<INetworkStorage>();
@@ -257,7 +294,10 @@ public class DiscoveryNodeAdmissionTests
             CurrentNodeId = CreateNode(TestItem.PublicKeyD, "198.51.100.2"),
         };
         IPAddress? currentAddress = IPAddress.TryParse(currentIp, out IPAddress? parsed) ? parsed : null;
-        NodeFilter filter = NodeFilter.Create(100, enabled, subnetBucketing, currentAddress);
+        NodeFilter filter = timeProvider is null
+            ? NodeFilter.Create(100, enabled, subnetBucketing, currentAddress)
+            : new NodeFilter(100, !subnetBucketing, currentAddress,
+                (long)TimeSpan.FromMinutes(5).TotalMilliseconds, timeProvider);
         DiscoveryNodeAdmission admission = new(
             filter,
             enabled,
