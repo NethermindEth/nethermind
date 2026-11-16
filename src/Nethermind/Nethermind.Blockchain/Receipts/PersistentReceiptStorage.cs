@@ -673,12 +673,19 @@ namespace Nethermind.Blockchain.Receipts
         private ReadOnlySpan<byte> GetReceiptData(ulong blockNumber, Hash256 blockHash, out nint handle)
         {
             Span<byte> blockNumPrefixed = stackalloc byte[40];
-            GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
-            ReadOnlySpan<byte> receiptsData = ReadPinned(_receiptsDb, _legacyHashKey ? blockHash.Bytes : blockNumPrefixed, out handle);
+            GetReceiptKeys(blockNumber, blockHash, blockNumPrefixed, out ReadOnlySpan<byte> firstKey, out ReadOnlySpan<byte> secondKey);
+            ReadOnlySpan<byte> receiptsData = ReadPinned(_receiptsDb, firstKey, out handle);
             if (!receiptsData.IsEmpty) return receiptsData;
 
             ReleasePinned(_receiptsDb, handle);
-            return ReadPinned(_receiptsDb, _legacyHashKey ? blockNumPrefixed : blockHash.Bytes, out handle);
+            return ReadPinned(_receiptsDb, secondKey, out handle);
+        }
+
+        private void GetReceiptKeys(ulong blockNumber, Hash256 blockHash, Span<byte> blockNumPrefixed, out ReadOnlySpan<byte> firstKey, out ReadOnlySpan<byte> secondKey)
+        {
+            GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
+            firstKey = _legacyHashKey ? blockHash.Bytes : blockNumPrefixed;
+            secondKey = _legacyHashKey ? blockNumPrefixed : blockHash.Bytes;
         }
 
         private static ReadOnlySpan<byte> ReadPinned(IDb db, scoped ReadOnlySpan<byte> key, out nint handle)
@@ -695,35 +702,15 @@ namespace Nethermind.Blockchain.Receipts
         }
 
         [SkipLocalsInit]
-        private unsafe Span<byte> GetOwnedReceiptData(ulong blockNumber, Hash256 blockHash)
+        private Span<byte> GetOwnedReceiptData(ulong blockNumber, Hash256 blockHash)
         {
             Span<byte> blockNumPrefixed = stackalloc byte[40];
-            if (_legacyHashKey)
-            {
-                Span<byte> receiptsData = _receiptsDb.GetSpan(blockHash);
-                if (!receiptsData.IsNull())
-                {
-                    return receiptsData;
-                }
+            GetReceiptKeys(blockNumber, blockHash, blockNumPrefixed, out ReadOnlySpan<byte> firstKey, out ReadOnlySpan<byte> secondKey);
+            Span<byte> receiptsData = _receiptsDb.GetSpan(firstKey);
+            if (!receiptsData.IsEmpty) return receiptsData;
 
-                GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
-
-                receiptsData = _receiptsDb.GetSpan(blockNumPrefixed);
-
-                return receiptsData;
-            }
-            else
-            {
-                GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
-
-                Span<byte> receiptsData = _receiptsDb.GetSpan(blockNumPrefixed);
-                if (receiptsData.IsNull())
-                {
-                    receiptsData = _receiptsDb.GetSpan(blockHash);
-                }
-
-                return receiptsData;
-            }
+            _receiptsDb.DangerousReleaseMemory(receiptsData);
+            return _receiptsDb.GetSpan(secondKey);
         }
 
         private static void GetBlockNumPrefixedKey(ulong blockNumber, Hash256 blockHash, Span<byte> output)

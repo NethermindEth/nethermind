@@ -764,6 +764,41 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         }
     }
 
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Transaction_index_and_network_receipt_reads_from_a_native_store_finish_before_releasing_the_pinned_value()
+    {
+        PinnedReadDb blocks = new();
+        IColumnsDb<ReceiptsColumns> columns = Substitute.For<IColumnsDb<ReceiptsColumns>>();
+        columns.GetColumnDb(Arg.Any<ReceiptsColumns>()).Returns(call => call.Arg<ReceiptsColumns>() == ReceiptsColumns.Blocks
+            ? blocks
+            : _receiptsDb.GetColumnDb(call.Arg<ReceiptsColumns>()));
+        columns.StartWriteBatch().Returns(_ => _receiptsDb.StartWriteBatch());
+        PersistentReceiptStorage storage = new(columns, _specProvider, _receiptsRecovery, _blockTree, _blockStore,
+            _receiptConfig, _decoder, logManager: _logManager);
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(
+            Build.A.Transaction.WithNonce(0).SignedAndResolved().TestObject,
+            Build.A.Transaction.WithNonce(1).WithType(TxType.EIP1559).SignedAndResolved().TestObject).WithReceiptsRoot(TestItem.KeccakA).TestObject;
+        storage.Insert(block, CreateReceipts());
+        ReceiptMessageDecoder decoder = new();
+        byte[] expected = RlpTestHelper.EncodeSequence([.. storage.Get(block).Select(receipt => decoder.Encode(receipt, RlpBehaviors.Eip658Receipts))]);
+        storage.ClearCache();
+        _blockStore.GetOwnedRlp(block.Number, block.Hash!).Returns(_ => ArrayMemoryManager.From(new BlockDecoder().Encode(block)));
+        int lentBefore = blocks.Lent;
+        using ArrayPoolList<byte> encoded = new(0);
+
+        int index = storage.FindTransactionIndex(block, block.Transactions[1].Hash!);
+        bool served = storage.TryAppendNetworkReceipts(block.Header, withBloom: true, encoded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(index, Is.EqualTo(useCompactReceipts ? 1 : -1));
+            Assert.That(served, Is.EqualTo(useCompactReceipts));
+            Assert.That(encoded.AsSpan().ToArray(), Is.EqualTo(served ? expected : []));
+            Assert.That(blocks.Lent - lentBefore, Is.EqualTo(useCompactReceipts ? 2 : 1));
+            Assert.That(blocks.Outstanding, Is.Zero);
+        }
+    }
+
     private sealed class PinnedReadDb : TestMemDb, IReadOnlyNativeKeyValueStore
     {
         private readonly Dictionary<nint, byte[]> _borrowed = [];
