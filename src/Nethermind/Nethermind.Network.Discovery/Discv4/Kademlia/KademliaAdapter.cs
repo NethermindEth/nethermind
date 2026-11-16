@@ -676,7 +676,7 @@ public class KademliaAdapter(
 
     private static bool IsResponse(MsgType msgType) => msgType is MsgType.Neighbors or MsgType.Pong or MsgType.EnrResponse;
 
-    private static Node CreateNode(DiscoveryMsg msg)
+    internal static Node CreateNode(DiscoveryMsg msg)
     {
         PublicKey farPublicKey = msg.FarPublicKey
             ?? throw new ArgumentException("Discovery message is missing a remote public key.", nameof(msg));
@@ -688,11 +688,13 @@ public class KademliaAdapter(
             : Node.FromDiscoveryEndpoint(farPublicKey, farAddress);
     }
 
-    private bool ValidatePingAddress(PingMsg msg)
+    private bool ValidatePingAddress(PingMsg msg) => ValidatePingAddress(msg, Logger);
+
+    internal static bool ValidatePingAddress(PingMsg msg, ILogger logger)
     {
         if (msg.DestinationAddress is null || msg.FarAddress is null)
         {
-            if (Logger.IsError) Logger.Error($"Received a ping message with empty address, message: {msg:hide}");
+            if (logger.IsError) logger.Error($"Received a ping message with empty address, message: {msg:hide}");
             return false;
         }
 

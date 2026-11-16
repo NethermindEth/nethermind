@@ -28,7 +28,7 @@ public sealed class KademliaModule(Node currentNode, IReadOnlyList<Node> bootNod
     {
         base.Load(builder);
 
-        builder.AddDecorator<INodeHealthTracker<Node>>((ctx, inner) =>
+        builder.AddSingleton<DiscoveryNodeAdmission>((ctx) =>
         {
             INetworkConfig networkConfig = ctx.Resolve<INetworkConfig>();
             IDiscoveryConfig discoveryConfig = ctx.Resolve<IDiscoveryConfig>();
@@ -40,15 +40,20 @@ public sealed class KademliaModule(Node currentNode, IReadOnlyList<Node> bootNod
                 networkConfig.FilterDiscoveryNodesBySameSubnet,
                 currentIp);
 
-            return new FilteringNodeHealthTracker(
-                inner,
-                ctx.Resolve<IRoutingTable<Node, ValueHash256>>(),
-                ctx.Resolve<KademliaConfig<Node>>(),
+            return new DiscoveryNodeAdmission(
                 filter,
                 networkConfig.FilterDiscoveryNodesByRecentIp,
+                ctx.Resolve<IRoutingTable<Node, ValueHash256>>(),
+                ctx.Resolve<KademliaConfig<Node>>(),
                 ctx.ResolveKeyed<INetworkStorage>(DbNames.DiscoveryNodes),
+                filterSize,
                 ctx.Resolve<ILogManager>());
         });
+        builder.AddDecorator<INodeHealthTracker<Node>>((ctx, inner) =>
+            new FilteringNodeHealthTracker(
+                inner,
+                ctx.Resolve<DiscoveryNodeAdmission>(),
+                ctx.Resolve<ILogManager>()));
     }
 
     protected override void RegisterProtocolServices(ContainerBuilder builder) => builder

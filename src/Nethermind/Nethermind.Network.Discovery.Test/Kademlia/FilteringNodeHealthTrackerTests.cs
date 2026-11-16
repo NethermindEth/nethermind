@@ -29,6 +29,17 @@ public class FilteringNodeHealthTrackerTests
     }
 
     [Test]
+    public void Rejects_second_node_from_same_exact_ip()
+    {
+        (FilteringNodeHealthTracker tracker, INodeHealthTracker<Node> inner, _) = CreateTracker();
+
+        tracker.OnIncomingMessageFrom(CreateNode(TestItem.PublicKeyA, "203.0.113.10"));
+        tracker.OnIncomingMessageFrom(CreateNode(TestItem.PublicKeyB, "203.0.113.10"));
+
+        inner.Received(1).OnIncomingMessageFrom(Arg.Any<Node>());
+    }
+
+    [Test]
     public void Accepts_second_node_from_different_subnet()
     {
         (FilteringNodeHealthTracker tracker, INodeHealthTracker<Node> inner, _) = CreateTracker();
@@ -148,7 +159,15 @@ public class FilteringNodeHealthTrackerTests
         };
         IPAddress? currentAddress = IPAddress.TryParse(currentIp, out IPAddress? parsed) ? parsed : null;
         NodeFilter filter = NodeFilter.Create(100, enabled, subnetBucketing, currentAddress);
-        FilteringNodeHealthTracker tracker = new(inner, routingTable, kademliaConfig, filter, enabled, storage, LimboLogs.Instance);
+        DiscoveryNodeAdmission admission = new(
+            filter,
+            enabled,
+            routingTable,
+            kademliaConfig,
+            storage,
+            admittedCapacity: 100,
+            LimboLogs.Instance);
+        FilteringNodeHealthTracker tracker = new(inner, admission, LimboLogs.Instance);
         return (tracker, inner, routingTable);
     }
 }

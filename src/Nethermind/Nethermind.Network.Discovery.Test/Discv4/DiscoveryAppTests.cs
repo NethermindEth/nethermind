@@ -21,6 +21,7 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv4;
+using Nethermind.Network.Discovery.Discv4.Kademlia;
 using Nethermind.Network.Enr;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stats;
@@ -317,6 +318,20 @@ public class DiscoveryAppTests
             Assert.That(routingTable.TryGet(first.Id.Hash.ValueHash256, out _), Is.True);
             Assert.That(routingTable.TryGet(second.Id.Hash.ValueHash256, out _), Is.EqualTo(expectSecondAccepted));
         }
+    }
+
+    [Test]
+    public async Task Discv4_scope_resolves_the_admission_gated_adapter()
+    {
+        await using IContainer container = CreateDiscoveryAppContainer(
+            filterEnabled: true,
+            subnetBucketing: true,
+            out NetworkListenerState _);
+        await using DiscoveryApp app = container.Resolve<DiscoveryApp>();
+
+        IKademliaAdapter adapter = ResolveDiscv4<IKademliaAdapter>(app);
+
+        Assert.That(adapter, Is.InstanceOf<AdmissionGatedKademliaAdapter>());
     }
 
     private static IContainer CreateDiscoveryAppContainer(

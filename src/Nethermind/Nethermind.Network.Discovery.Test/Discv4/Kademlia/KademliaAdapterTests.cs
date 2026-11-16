@@ -1086,14 +1086,15 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             INetworkStorage storage = Substitute.For<INetworkStorage>();
             storage.GetPersistedNodes().Returns([]);
             NodeFilter filter = NodeFilter.Create(100, filterEnabled: true, subnetBucketing: true, IPAddress.Parse("198.51.100.1"));
-            FilteringNodeHealthTracker filteringTracker = new(
-                admitted,
-                _routingTable,
-                _kademliaConfig,
+            DiscoveryNodeAdmission admission = new(
                 filter,
                 enabled: true,
+                _routingTable,
+                _kademliaConfig,
                 storage,
+                admittedCapacity: 100,
                 _logManager);
+            FilteringNodeHealthTracker filteringTracker = new(admitted, admission, _logManager);
 
             await _adapter.DisposeAsync();
             _adapter = CreateAdapter(FailsafeRequestTimeoutMs, nodeHealthTracker: filteringTracker);
@@ -1127,6 +1128,38 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                     $"received: {string.Join(", ", receivedNodes.Select(node => $"{node.Id}@{node.Address}"))}");
                 Assert.That(receivedNodes.Select(node => node.Id), Does.Not.Contain(TestItem.PublicKeyD));
             }
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task Filtered_ping_is_dropped_before_the_real_adapter_responds_or_publishes(CancellationToken token)
+        {
+            INetworkStorage storage = Substitute.For<INetworkStorage>();
+            storage.GetPersistedNodes().Returns([]);
+            NodeFilter filter = NodeFilter.Create(100, filterEnabled: true, subnetBucketing: true, IPAddress.Parse("198.51.100.1"));
+            DiscoveryNodeAdmission admission = new(
+                filter,
+                enabled: true,
+                _routingTable,
+                _kademliaConfig,
+                storage,
+                admittedCapacity: 100,
+                _logManager);
+            AdmissionGatedKademliaAdapter gate = new(_adapter, admission, _logManager);
+
+            // Record the /24 through admission alone, as if a node in it had already been handled.
+            Assert.That(admission.TryAdmit(new Node(TestItem.PublicKeyC, "203.0.113.10", 30303, 30303)), Is.True);
+
+            IPEndPoint address = new(IPAddress.Parse("203.0.113.50"), 30303);
+            await gate.OnIncomingMsg(CreatePing(TestItem.PublicKeyD, address));
+
+            using (Assert.EnterMultipleScope())
+            {
+                await _msgSender.DidNotReceive().SendMsg(Arg.Any<PongMsg>());
+                await _msgSender.DidNotReceive().SendMsg(Arg.Any<PingMsg>());
+                _nodeHealthTracker.DidNotReceive().OnIncomingMessageFrom(Arg.Any<Node>());
+            }
+            await AssertNoPeerCandidate(token);
         }
 
         private PingMsg CreatePing(PublicKey publicKey, IPEndPoint address)
