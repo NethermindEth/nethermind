@@ -16,7 +16,19 @@ namespace Nethermind.Tools.ProfilingMcp.Memory;
 /// <summary>A heap read over EventPipe: per-type statistics, and the object graph when references were requested.</summary>
 /// <param name="PauseMs">How long the induced GC suspended the process, including the heap walk that reports the objects.</param>
 /// <param name="EventsLost">Events the runtime dropped because the session buffer was full; when non-zero the heap is incomplete.</param>
-internal sealed record GcHeapDumpResult(HeapSnapshot Snapshot, HeapGraph? Graph, double PauseMs, TimeSpan Elapsed, int EventsLost);
+internal sealed record GcHeapDumpResult(HeapSnapshot Snapshot, HeapGraph? Graph, double PauseMs, TimeSpan Elapsed, int EventsLost)
+{
+    /// <summary>The object graph of a read that requested references and lost no events.</summary>
+    /// <remarks>
+    /// The runtime reports edges in batches that are matched to objects by each object's edge count, so after a lost batch the later
+    /// edges would be attached to the wrong objects and reference chains would be invented.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">Events were lost, or references were not requested.</exception>
+    public HeapGraph CompleteGraph => EventsLost > 0
+        ? throw new InvalidOperationException($"The runtime dropped {EventsLost:N0} heap events, so references cannot be matched to their objects. Try again; " +
+                                              "if it keeps happening, the process allocates faster than the events are read, so write_dump and analyze the dump instead.")
+        : Graph ?? throw new InvalidOperationException("The heap was read without references.");
+}
 
 /// <summary>Reads the managed heap of a live process from the runtime's heap-dump events, as <c>dotnet-gcdump</c> does.</summary>
 /// <remarks>

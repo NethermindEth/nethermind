@@ -60,6 +60,26 @@ public class NativeSamplerTests
         }
     }
 
+    [TestCase(JitMap.MaxFileBytes, JitMap.MaxRanges, null)]
+    [TestCase(50L, JitMap.MaxRanges, "bytes")]
+    [TestCase(JitMap.MaxFileBytes, 2, "entries")]
+    public void Reads_a_perf_map_only_within_its_limits(long maxBytes, int maxRanges, string? refusal)
+    {
+        string map = Path.Combine(Path.GetTempPath(), $"perf-{Guid.NewGuid():N}.map");
+        File.WriteAllLines(map, ["0x1000 10 void [A] A::M1()", "0x2000 10 void [B] B::M2()", "0x3000 10 void [C] C::M3()"]);
+        try
+        {
+            if (refusal is null)
+                Assert.That(JitMap.Load(map, maxBytes, maxRanges).Count, Is.EqualTo(3));
+            else
+                Assert.That(() => JitMap.Load(map, maxBytes, maxRanges), Throws.InstanceOf<InvalidDataException>().With.Message.Contains(refusal));
+        }
+        finally
+        {
+            File.Delete(map);
+        }
+    }
+
     [Test]
     public void Reads_folded_stacks_as_cpu_time_per_method()
     {

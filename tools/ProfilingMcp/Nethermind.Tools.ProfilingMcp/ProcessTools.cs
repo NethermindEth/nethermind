@@ -47,10 +47,11 @@ public sealed class ProcessTools
                  "To profile a container's processes, pass its name as container, and the engine as dockerHost, to the other tools.")]
     public async Task<string> ListContainersAsync(
         [Description("Docker engine: a context name, or an address such as ssh://user@host or tcp://host:2376. Omit for the engine the docker CLI uses by default.")] string? dockerHost = null,
-        [Description("Only containers whose name or image contains this text (case-insensitive).")] string? filter = null)
+        [Description("Only containers whose name or image contains this text (case-insensitive).")] string? filter = null,
+        CancellationToken cancellationToken = default)
     {
         TextTable containers = new("container", "image", "status");
-        string listing = await ContainerSidecar.DockerAsync(ContainerSidecar.EngineArguments(dockerHost), "ps", "--format", "{{.Names}}\t{{.Image}}\t{{.Status}}");
+        string listing = await ContainerSidecar.DockerAsync(ContainerSidecar.EngineArguments(dockerHost), ["ps", "--format", "{{.Names}}\t{{.Image}}\t{{.Status}}"], cancellationToken);
         foreach (string line in listing.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             string[] columns = line.Split('\t');
@@ -60,7 +61,7 @@ public sealed class ProcessTools
         }
 
         TextTable contexts = new("context", "engine");
-        string contextListing = await ContainerSidecar.DockerAsync([], "context", "ls", "--format", "{{.Name}}\t{{.DockerEndpoint}}");
+        string contextListing = await ContainerSidecar.DockerAsync([], ["context", "ls", "--format", "{{.Name}}\t{{.DockerEndpoint}}"], cancellationToken);
         foreach (string line in contextListing.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             string[] columns = line.Split('\t');

@@ -23,17 +23,53 @@ public sealed class JitMap
 
     public int Count => _ranges.Length;
 
-    public static JitMap Load(string path) => File.Exists(path) ? Parse(File.ReadLines(path)) : Empty;
+    /// <summary>Far more than a large process's map holds: Nethermind's has a few hundred thousand entries in tens of MB.</summary>
+    internal const long MaxFileBytes = 512L << 20;
+
+    internal const int MaxRanges = 4_000_000;
+
+    /// <summary>Reads the perf map at <paramref name="path"/>, or returns <see cref="Empty"/> when there is none.</summary>
+    /// <remarks>
+    /// The map is the target's file, read by the privileged sidecar, so it is bounded: only as many bytes as the file had when opened, which
+    /// leaves out a device such as <c>/dev/zero</c> planted at its path, and only <paramref name="maxBytes"/> of them.
+    /// </remarks>
+    /// <exception cref="InvalidDataException">The map is larger than the limits.</exception>
+    public static JitMap Load(string path, long maxBytes = MaxFileBytes, int maxRanges = MaxRanges)
+    {
+        if (!File.Exists(path))
+            return Empty;
+
+        using FileStream file = new(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        long length = file.Length;
+        if (length > maxBytes)
+            throw new InvalidDataException($"The perf map {path} is {length:N0} bytes, more than the {maxBytes:N0} read.");
+
+        byte[] content = GC.AllocateUninitializedArray<byte>((int)length);
+        int read = file.ReadAtLeast(content, content.Length, throwOnEndOfStream: false);
+        using StreamReader reader = new(new MemoryStream(content, 0, read));
+        return Parse(Lines(reader), maxRanges);
+
+        static IEnumerable<string> Lines(StreamReader reader)
+        {
+            while (reader.ReadLine() is { } line)
+                yield return line;
+        }
+    }
 
     /// <summary>Parses perf map lines: start and size in hex, then the method's name.</summary>
-    internal static JitMap Parse(IEnumerable<string> lines)
+    /// <exception cref="InvalidDataException">There are more than <paramref name="maxRanges"/> ranges.</exception>
+    internal static JitMap Parse(IEnumerable<string> lines, int maxRanges = MaxRanges)
     {
         List<(ulong, ulong, string)> ranges = [];
         foreach (string line in lines)
         {
             string[] parts = line.Split(' ', 3);
             if (parts.Length == 3 && TryParseHex(parts[0], out ulong start) && TryParseHex(parts[1], out ulong size) && size > 0)
+            {
+                if (ranges.Count == maxRanges)
+                    throw new InvalidDataException($"The perf map has more than {maxRanges:N0} entries.");
                 ranges.Add((start, start + size, CleanMethodName(parts[2])));
+            }
         }
 
         return new JitMap([.. ranges]);

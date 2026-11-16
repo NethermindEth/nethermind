@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Text.Json;
 using NUnit.Framework;
 
@@ -91,12 +92,17 @@ public class ContainerRouterTests
 
     [Test]
     [CancelAfter(30_000)]
-    public void Stops_a_command_that_hangs()
+    public void Stops_a_command_that_hangs([Values] bool requestCancelled)
     {
         (string command, string[] arguments) = OperatingSystem.IsWindows() ? ("ping", new[] { "-n", "30", "127.0.0.1" }) : ("sleep", new[] { "30" });
+        using CancellationTokenSource request = new();
+        if (requestCancelled)
+            request.CancelAfter(TimeSpan.FromSeconds(1));
+        Stopwatch elapsed = Stopwatch.StartNew();
 
-        Assert.That(async () => await ContainerSidecar.RunAsync(command, arguments, TimeSpan.FromSeconds(1)),
-            Throws.InvalidOperationException.With.Message.Contains("did not finish within"));
+        Assert.That(async () => await ContainerSidecar.RunAsync(command, arguments, requestCancelled ? TimeSpan.FromMinutes(1) : TimeSpan.FromSeconds(1), request.Token),
+            requestCancelled ? Throws.InstanceOf<OperationCanceledException>() : Throws.InvalidOperationException.With.Message.Contains("did not finish within"));
+        Assert.That(elapsed.Elapsed, Is.LessThan(TimeSpan.FromSeconds(20)), "the command is killed, not waited for");
     }
 
     [Test]

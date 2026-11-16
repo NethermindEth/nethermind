@@ -27,7 +27,7 @@ public class GcHeapDumpTests
         {
             GcHeapDumpResult dump = await GcHeapDump.CollectAsync(Environment.ProcessId, withReferences: true, cancellationToken);
             // The runtime names a nested type without its declaring type, but generic arguments with it.
-            RetentionReport report = RetentionAnalyzer.Analyze(dump.Graph!, new Regex($"^{nameof(Retained)}$"), maxPaths: 5, maxVisited: long.MaxValue);
+            RetentionReport report = RetentionAnalyzer.Analyze(dump.CompleteGraph, new Regex($"^{nameof(Retained)}$"), maxPaths: 5, maxVisited: long.MaxValue);
             Dictionary<string, TypeStat> types = dump.Snapshot.Types.ToDictionary(static t => t.Name);
             string list = $"System.Collections.Generic.List<{typeof(Retained).FullName}>";
 
@@ -150,6 +150,20 @@ public class GcHeapDumpTests
         finally
         {
             idle.Kill();
+        }
+    }
+
+    [Test]
+    public void Refuses_reference_chains_from_a_read_that_lost_events()
+    {
+        HeapGraph graph = new(typeNames: [nameof(Retained)], nodeTypes: [0], addresses: [0x100], sizes: [24], edgeStarts: [0, 0], edgeTargets: [],
+            roots: [(0x100UL, "static")], dependentHandles: []);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new GcHeapDumpResult(null!, graph, 1, TimeSpan.Zero, EventsLost: 0).CompleteGraph, Is.SameAs(graph));
+            Assert.That(() => new GcHeapDumpResult(null!, graph, 1, TimeSpan.Zero, EventsLost: 3).CompleteGraph,
+                Throws.InvalidOperationException.With.Message.Contains("dropped 3 heap events"));
         }
     }
 

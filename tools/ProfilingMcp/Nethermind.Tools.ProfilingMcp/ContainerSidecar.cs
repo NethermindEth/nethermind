@@ -88,7 +88,7 @@ internal static class ContainerSidecar
     {
         string[] engine = EngineArguments(dockerHost);
         string sidecar = await EnsureSidecarAsync(engine, container);
-        string architecture = await DockerAsync(engine, "version", "--format", "{{.Server.Arch}}");
+        string architecture = await DockerAsync(engine, ["version", "--format", "{{.Server.Arch}}"], cancellationToken);
         await DebuggingLibraries.ProvideAsync(engine, sidecar, architecture, WorkspacePaths.FromEnvironment().Root, cancellationToken);
     }
 
@@ -394,11 +394,13 @@ internal static class ContainerSidecar
         return Convert.ToHexStringLower(hash.GetHashAndReset())[..12];
     }
 
-    internal static async Task<bool> SucceedsAsync(string[] engine, params string[] arguments)
+    internal static Task<bool> SucceedsAsync(string[] engine, params string[] arguments) => SucceedsAsync(engine, arguments, CancellationToken.None);
+
+    internal static async Task<bool> SucceedsAsync(string[] engine, string[] arguments, CancellationToken cancellationToken)
     {
         try
         {
-            await DockerAsync(engine, arguments);
+            await DockerAsync(engine, arguments, cancellationToken);
             return true;
         }
         catch (InvalidOperationException)
@@ -408,16 +410,24 @@ internal static class ContainerSidecar
     }
 
     /// <summary>Runs a docker CLI command on an engine and returns its output.</summary>
-    public static Task<string> DockerAsync(string[] engine, params string[] arguments) => RunAsync("docker", [.. engine, .. arguments], CommandTimeout);
+    /// <remarks>For work no single request owns, such as starting a sidecar that other calls wait for too.</remarks>
+    public static Task<string> DockerAsync(string[] engine, params string[] arguments) => DockerAsync(engine, arguments, CancellationToken.None);
 
-    /// <summary>Runs a command and returns its output, killing it when it runs longer than <paramref name="timeout"/>.</summary>
+    /// <summary>Runs a docker CLI command on an engine for a request and returns its output, stopping the command when the request is cancelled.</summary>
+    public static Task<string> DockerAsync(string[] engine, string[] arguments, CancellationToken cancellationToken) =>
+        RunAsync("docker", [.. engine, .. arguments], CommandTimeout, cancellationToken);
+
+    /// <summary>Runs a command and returns its output, killing it when it runs longer than <paramref name="timeout"/> or is cancelled.</summary>
     /// <exception cref="InvalidOperationException">The command failed or timed out.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled; the command was stopped.</exception>
     /// <remarks>A docker command can hang, for example on an unreachable SSH engine; failing it lets the next call try again.</remarks>
-    internal static async Task<string> RunAsync(string command, string[] arguments, TimeSpan timeout)
+    internal static async Task<string> RunAsync(string command, string[] arguments, TimeSpan timeout, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         ProcessStartInfo info = new(command, arguments) { RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true };
         using Process process = Process.Start(info) ?? throw new InvalidOperationException($"Could not start {command}.");
-        using CancellationTokenSource timer = new(timeout);
+        using CancellationTokenSource timer = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timer.CancelAfter(timeout);
         await using CancellationTokenRegistration kill = timer.Token.Register(() =>
         {
             try
@@ -430,13 +440,16 @@ internal static class ContainerSidecar
             }
         });
 
-        Task<string> error = process.StandardError.ReadToEndAsync();
-        string output = (await process.StandardOutput.ReadToEndAsync()).Trim();
-        await process.WaitForExitAsync();
+        // Killing the command closes its pipes, so they are read to the end and the process reaped before it is reported as stopped.
+        Task<string> error = process.StandardError.ReadToEndAsync(CancellationToken.None);
+        string output = (await process.StandardOutput.ReadToEndAsync(CancellationToken.None)).Trim();
+        string errorOutput = (await error).Trim();
+        await process.WaitForExitAsync(CancellationToken.None);
+        cancellationToken.ThrowIfCancellationRequested();
         string commandLine = $"{command} {string.Join(' ', arguments)}";
         if (timer.IsCancellationRequested)
             throw new InvalidOperationException($"{commandLine} did not finish within {timeout.TotalSeconds:N0} s and was stopped.");
 
-        return process.ExitCode == 0 ? output : throw new InvalidOperationException($"{commandLine}: {(await error).Trim()}");
+        return process.ExitCode == 0 ? output : throw new InvalidOperationException($"{commandLine}: {errorOutput}");
     }
 }

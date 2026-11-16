@@ -25,9 +25,12 @@ internal static partial class DebuggingLibraries
 
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(5) };
 
-    /// <summary>Tools that load the DAC: native_memory, and the heap tools when given a dump instead of a PID.</summary>
+    /// <summary>
+    /// Tools that load the DAC: native_memory, and the heap tools when given a dump instead of a PID. write_dump is included because
+    /// DACs are supplied for the runtimes running at the time, and the dumped process may have exited by the time its dump is read.
+    /// </summary>
     public static bool AreNeededBy(string tool, IReadOnlyDictionary<string, JsonElement> arguments) =>
-        tool == "native_memory"
+        tool is "native_memory" or "write_dump"
         || tool is "heap_stats" or "heap_retention" && arguments.TryGetValue("target", out JsonElement target) && !HeapTarget.IsProcess(target.ToString(), out _);
 
     /// <summary>The .NET version and runtime identifier of a runtime loaded from <paramref name="coreclrPath"/>, or null when they cannot be told.</summary>
@@ -58,23 +61,23 @@ internal static partial class DebuggingLibraries
     public static async Task ProvideAsync(string[] engine, string sidecar, string architecture, string cacheRoot, CancellationToken cancellationToken)
     {
         string? own = null;
-        foreach ((string path, bool musl) in ParseRuntimes(await ContainerSidecar.DockerAsync(engine, "exec", sidecar, "sh", "-c", RuntimesScript)))
+        foreach ((string path, bool musl) in ParseRuntimes(await ContainerSidecar.DockerAsync(engine, ["exec", sidecar, "sh", "-c", RuntimesScript], cancellationToken)))
         {
             if (musl || Runtime(path, architecture) is not var (rid, version))
                 continue;
 
-            own ??= await OwnVersionAsync(engine, sidecar) ?? "";
+            own ??= await OwnVersionAsync(engine, sidecar, cancellationToken) ?? "";
             string target = $"{SidecarFolder}/{rid}/{version}";
-            if (version == own || await ContainerSidecar.SucceedsAsync(engine, "exec", sidecar, "test", "-f", $"{target}/{Dac}"))
+            if (version == own || await ContainerSidecar.SucceedsAsync(engine, ["exec", sidecar, "test", "-f", $"{target}/{Dac}"], cancellationToken))
                 continue;
 
             string local = await DownloadAsync(rid, version, cacheRoot, cancellationToken);
             string partial = $"{target}/{Dac}.{Guid.NewGuid():N}.partial";
-            await ContainerSidecar.DockerAsync(engine, "exec", sidecar, "mkdir", "-p", target);
+            await ContainerSidecar.DockerAsync(engine, ["exec", sidecar, "mkdir", "-p", target], cancellationToken);
             try
             {
-                await ContainerSidecar.DockerAsync(engine, "cp", local, $"{sidecar}:{partial}");
-                await ContainerSidecar.DockerAsync(engine, "exec", sidecar, "mv", "-f", partial, $"{target}/{Dac}");
+                await ContainerSidecar.DockerAsync(engine, ["cp", local, $"{sidecar}:{partial}"], cancellationToken);
+                await ContainerSidecar.DockerAsync(engine, ["exec", sidecar, "mv", "-f", partial, $"{target}/{Dac}"], cancellationToken);
             }
             catch
             {
@@ -96,11 +99,11 @@ internal static partial class DebuggingLibraries
     }
 
     /// <summary>The .NET version of the sidecar's own runtime, whose DAC it bundles, or null when its image does not tell.</summary>
-    private static async Task<string?> OwnVersionAsync(string[] engine, string sidecar)
+    private static async Task<string?> OwnVersionAsync(string[] engine, string sidecar, CancellationToken cancellationToken)
     {
         try
         {
-            return IncludedRuntimeVersion(await ContainerSidecar.DockerAsync(engine, "exec", sidecar, "cat", $"{ContainerSidecar.ServerPath}.runtimeconfig.json"));
+            return IncludedRuntimeVersion(await ContainerSidecar.DockerAsync(engine, ["exec", sidecar, "cat", $"{ContainerSidecar.ServerPath}.runtimeconfig.json"], cancellationToken));
         }
         catch (InvalidOperationException)
         {

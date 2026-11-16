@@ -88,6 +88,7 @@ public class DebuggingLibrariesTests
     }
 
     [TestCase("native_memory", "1", ExpectedResult = true)]
+    [TestCase("write_dump", "1", ExpectedResult = true)]
     [TestCase("heap_stats", "/profmcp-home/heap/a.dmp", ExpectedResult = true)]
     [TestCase("heap_retention", "1", ExpectedResult = false)]
     [TestCase("cpu_sample", "1", ExpectedResult = false)]

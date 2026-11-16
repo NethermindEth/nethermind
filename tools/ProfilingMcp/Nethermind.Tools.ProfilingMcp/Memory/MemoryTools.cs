@@ -114,7 +114,7 @@ public sealed class MemoryTools(WorkspacePaths paths)
         {
             GcHeapDumpResult dump = await GcHeapDump.CollectAsync(pid, withReferences: true, cancellationToken);
             sb.Append(Describe(dump));
-            report = RetentionAnalyzer.Analyze(dump.Graph!, pattern, maxPaths, maxVisited);
+            report = RetentionAnalyzer.Analyze(dump.CompleteGraph, pattern, maxPaths, maxVisited);
         }
         else
         {
