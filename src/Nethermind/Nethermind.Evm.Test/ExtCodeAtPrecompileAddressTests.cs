@@ -3,7 +3,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Precompiles;
@@ -15,6 +18,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.State;
 using Nethermind.State.OverridableEnv;
 using NUnit.Framework;
 
@@ -121,6 +125,53 @@ public class ExtCodeAtPrecompileAddressTests : VirtualMachineTestsBase
         AssertForm(_overridingProcessor, activation, PrecompiledAddresses.Identity, TargetCode, form, dispatch, CallInputLength);
     }
 
+    /// <summary>
+    /// A block access list state serves code by hash only when the block declares it, so code from the parent state is
+    /// read by the account's address, as the code resolver does for any account.
+    /// </summary>
+    [Test]
+    public void Code_at_a_precompile_address_from_the_parent_of_a_block_access_list_state_is_reported(
+        [Values(Form.Size, Form.Copy)] Form form, [Values] Dispatch dispatch)
+    {
+        ForkActivation activation = MainnetSpecProvider.AmsterdamActivation;
+        Address address = PrecompiledAddresses.Identity;
+        TestState.CreateAccount(address, 1);
+        TestState.InsertCode(address, TargetCode, SpecProvider.GetSpec(activation));
+        // Every account the transaction touches, declared without a change, so each is read from the parent state.
+        ReadOnlyBlockAccessList blockAccessList = Build.A.BlockAccessList
+            .WithAccountChanges([.. new[] { Sender, Recipient, Miner, address }.Select(static account => Build.An.AccountChanges.WithAddress(account).TestObject)])
+            .TestObject;
+        BlockAccessListBasedWorldState state = new(TestState, LimboLogs.Instance);
+        state.SetBlockAccessIndex(1);
+        state.Setup(Build.A.Block.WithBlockAccessList(blockAccessList).TestObject);
+        state.SetParentReader(TestState);
+        ITransactionProcessor processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, state, Machine,
+            new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), NoopCodeCache.Instance), LimboLogs.Instance);
+
+        AssertForm(processor, activation, address, TargetCode, form, dispatch, CallInputLength);
+    }
+
+    /// <summary>
+    /// The code at a precompile's address is read only when the account's code hash says there is some: a precompile
+    /// without code, the mainnet case, loads nothing, while code that is there is read through the bytecode access a
+    /// witness records.
+    /// </summary>
+    [Test]
+    public void Code_at_a_precompile_address_is_read_only_when_there_is_some([Values(Form.Size, Form.Copy)] Form form, [Values] bool hasCode)
+    {
+        ForkActivation activation = MainnetSpecProvider.OsakaActivation;
+        Address address = PrecompiledAddresses.Identity;
+        byte[] code = hasCode ? TargetCode : [];
+        TestState.CreateAccount(address, 1);
+        if (hasCode) TestState.InsertCode(address, code, SpecProvider.GetSpec(activation));
+        CodeReadCountingWorldState state = new(TestState, address);
+        ITransactionProcessor processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, state, Machine,
+            new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), NoopCodeCache.Instance), LimboLogs.Instance);
+
+        AssertForm(processor, activation, address, code, form, Dispatch.Untraced, CallInputLength);
+        Assert.That(state.CodeReads, hasCode ? Is.Positive : Is.Zero, "reads of the code at the precompile's address");
+    }
+
     private void AssertForm(ITransactionProcessor processor, ForkActivation activation, Address address, byte[] code, Form form, Dispatch dispatch, int? precompileOutputLength)
     {
         (Block block, Transaction transaction) = PrepareTx(activation, 200_000, Observer(form, address));
@@ -207,5 +258,23 @@ public class ExtCodeAtPrecompileAddressTests : VirtualMachineTestsBase
         bool ITxTracer.IsCancelable => true;
 
         bool ITxTracer.IsCancelled => false;
+    }
+
+    /// <summary>Counts the reads of one account's code, by its address or as a bytecode access recorded for it.</summary>
+    private sealed class CodeReadCountingWorldState(IWorldState state, Address account) : WorldStateDecorator(state)
+    {
+        public int CodeReads { get; private set; }
+
+        public override ReadOnlyMemory<byte> GetCode(Address address)
+        {
+            if (address == account) CodeReads++;
+            return base.GetCode(address);
+        }
+
+        public override void RecordBytecodeAccess(Address address)
+        {
+            if (address == account) CodeReads++;
+            base.RecordBytecodeAccess(address);
+        }
     }
 }

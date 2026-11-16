@@ -24,6 +24,7 @@ using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
@@ -1203,6 +1204,40 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
             Assert.That(footprint.ContextReads,
                 Is.EqualTo(BlockContextReads.Coinbase | BlockContextReads.Timestamp | BlockContextReads.GasLimit | BlockContextReads.PrevRandao
                     | BlockContextReads.OutOfGas));
+        }
+    }
+
+    /// <summary>
+    /// EXTCODESIZE and EXTCODECOPY of a precompile's address report the code of the account there, so a run executing
+    /// them requires its code hash, here of an address without code.
+    /// </summary>
+    [Test]
+    public void A_run_reading_the_code_at_a_precompile_address_requires_its_code_hash([Values] bool copy)
+    {
+        Address observer = new("0x00000000000000000000000000000000004e4d17");
+        Address identity = PrecompiledAddresses.Identity;
+        byte[] code = copy
+            ? Prepare.EvmCode.PushData(32).PushData(0).PushData(0).PushData(identity).Op(Instruction.EXTCODECOPY).Op(Instruction.STOP).Done
+            : Prepare.EvmCode.PushData(identity).Op(Instruction.EXTCODESIZE).Op(Instruction.POP).Op(Instruction.STOP).Done;
+        ISpecProvider specProvider = ProcessingScope.Resolve<ISpecProvider>();
+        IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
+        using (worldState.BeginScope(Parent))
+        {
+            worldState.CreateAccount(observer, 0);
+            worldState.InsertCode(observer, code, Spec);
+            FootprintRecorder recorder = new(worldState);
+            using EthereumVirtualMachine machine = new(new Nethermind.Core.Test.TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
+            EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, specProvider, recorder, machine, new EthereumCodeInfoRepository(recorder), LimboLogs.Instance);
+            Transaction tx = Call(TestItem.PrivateKeyA, 0, observer);
+            recorder.Start(new Progress { MainThreadTxIndex = -1 }, txIndex: 0, CancellationToken.None);
+            recorder.GetNonce(TestItem.AddressA);
+            TransactionResult result = processor.Warmup(tx, new BlockExecutionContext(BuildBlock(tx).Header, Spec), recorder.Outcome);
+            TransactionFootprint? footprint = recorder.Finish(tx, result);
+            recorder.Stop();
+
+            Assert.That(footprint, Is.Not.Null);
+            AccountPrecondition precompile = footprint!.Accounts.ToArray().Single(account => account.Address == identity);
+            Assert.That(precompile.Fields, Is.EqualTo(AccountFields.Existence | AccountFields.Code));
         }
     }
 
