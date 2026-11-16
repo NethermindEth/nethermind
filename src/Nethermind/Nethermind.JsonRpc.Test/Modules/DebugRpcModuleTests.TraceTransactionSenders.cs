@@ -267,7 +267,6 @@ public partial class DebugRpcModuleTests
         Transaction[] transactions = new Transaction[count];
         for (int i = 0; i < transactions.Length; i++)
         {
-            // Legacy transactions bypass the process-wide sender cache, so every recovery reaches the counter.
             transactions[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce + (ulong)i).WithValue(1)
                 .WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
         }
@@ -298,8 +297,10 @@ public partial class DebugRpcModuleTests
     }
 
     /// <summary>Clears what block production recovered on the transaction objects the block tree hands to the tracer.</summary>
+    /// <remarks>Also empties the process-wide sender cache, so that every sender the replay needs is recovered again.</remarks>
     internal static Transaction[] ClearSenders(TestRpcBlockchain chain, Block block)
     {
+        EthereumEcdsaExtensions.ClearSenderCache();
         Transaction[] stored = chain.BlockTree.FindBlock(block.Hash!)!.Transactions;
         Assert.That(stored[0], Is.SameAs(chain.BlockTree.FindBlock(block.Hash!)!.Transactions[0]), "precondition: the tracer reads these transactions");
         foreach (Transaction transaction in stored)
