@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -68,9 +69,8 @@ public class NativeDirectBatchTests
 
     /// <summary>What a direct leaf of leanSTARK witnesses costs, which <see cref="RecursiveStarkAggregator.DirectBatchSize"/>
     /// bounds alongside signatures.</summary>
-    /// <remarks>A leanSTARK witness is about 183 KB against a signature's 6 KB, and mode 1 caps generics per statement at
-    /// <see cref="Eip8288Constants.MaxGenericStarkProofs"/> rather than at one per wrapper, so a whole leaf of them is
-    /// reachable. Reports time, native calls and peak RSS; asserts only that the proof verifies, so it holds on any host.</remarks>
+    /// <remarks>A leanSTARK witness is about 163 KB against a signature's 6 KB, and mode 1 does not cap generics at one per
+    /// wrapper, so a whole leaf of them is reachable. Reports time, native calls and peak RSS; asserts only that the proof verifies, so it holds on any host.</remarks>
     [Test]
     public void Generic_leaf_cost([Values(1, 2, 4, 8, 16)] int count)
     {
@@ -167,6 +167,69 @@ public class NativeDirectBatchTests
         {
             Assert.That(verifier.ProofCalls, Is.EqualTo(2), "one leaf, then one call folding the child with the rest");
             Assert.That(NativeLeanProofVerifier.Instance.VerifyRecursiveStark(wholeHash, Eip8288Constants.AggregatedVk, proof), Is.True);
+        }
+    }
+
+    private const int GenericLeaf = 4;
+
+    public enum CallShape { FourSignatureLeaf, SixteenSignatureLeaf, MergeOfTwoEightSignatureProofs, FourGenericLeaf, SixteenSignaturesAndFourGenericsLeaf }
+
+    /// <summary>The wall time of one noninterruptible native proving call of each leaf or merge shape.</summary>
+    /// <remarks>Background folds yield to a waiting producer only between native calls, so the longest single call bounds
+    /// how long a producer can wait behind one. Four leanSTARK witnesses were the longest leaf four-wide leaves could issue;
+    /// sixteen signatures with four leanSTARK witnesses would be longer, which is why a leaf holding any leanSTARK
+    /// dependency stays four wide. Reports time and peak RSS; asserts only that the proof verifies.</remarks>
+    [Test]
+    public void Single_call_cost([Values] CallShape shape)
+    {
+        AggregationInput signatures = PackagedSignatures(Eip8288Constants.MaxLeanSigDepsPerWrapper);
+        AggregationInput input = shape switch
+        {
+            CallShape.FourSignatureLeaf => Take(signatures, 0, 4),
+            CallShape.SixteenSignatureLeaf => signatures,
+            CallShape.MergeOfTwoEightSignatureProofs => new()
+            {
+                RecursiveProofs = [ProvenChild(Take(signatures, 0, 8)), ProvenChild(Take(signatures, 8, 8))]
+            },
+            CallShape.FourGenericLeaf => PooledGenerics(GenericLeaf),
+            _ => Union(signatures, PooledGenerics(GenericLeaf)),
+        };
+        List<FrameDependency> statement = [.. input.Deps];
+        foreach (RecursiveProofInput child in input.RecursiveProofs) statement.AddRange(child.InnerDeps);
+        ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(Eip8288Dependencies.Canonicalize(statement));
+
+        // The first call in a process also pays the backend's one-time setup, so the second is the one measured.
+        NativeLeanProofVerifier.Instance.ProveRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, input);
+        Stopwatch watch = Stopwatch.StartNew();
+        byte[] proof = NativeLeanProofVerifier.Instance.ProveRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, input);
+        TimeSpan elapsed = watch.Elapsed;
+
+        Report($"shape={shape},ms={elapsed.TotalMilliseconds:F0},proof_bytes={proof.Length},peak_rss_kb={PeakRssKb()}");
+        Assert.That(NativeLeanProofVerifier.Instance.VerifyRecursiveStark(depsHash, Eip8288Constants.AggregatedVk, proof), Is.True);
+
+        static AggregationInput Take(AggregationInput source, int start, int count) => new()
+        {
+            Deps = [.. source.Deps.Skip(start).Take(count)],
+            Witnesses = [.. source.Witnesses.Skip(start).Take(count)]
+        };
+
+        static RecursiveProofInput ProvenChild(AggregationInput leaf)
+        {
+            ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(leaf.Deps);
+            return new(leaf.Deps, NativeLeanProofVerifier.Instance.ProveRecursiveStark(in hash, Eip8288Constants.AggregatedVk, leaf));
+        }
+
+        static AggregationInput Union(AggregationInput a, AggregationInput b)
+        {
+            List<FrameDependency> aDeps = [.. a.Deps], bDeps = [.. b.Deps];
+            List<FrameDependency> deps = Eip8288Dependencies.Canonicalize([.. aDeps, .. bDeps]);
+            List<ReadOnlyMemory<byte>> witnesses = new(deps.Count);
+            foreach (FrameDependency dependency in deps)
+            {
+                int i = aDeps.IndexOf(dependency);
+                witnesses.Add(i >= 0 ? a.Witnesses[i] : b.Witnesses[bDeps.IndexOf(dependency)]);
+            }
+            return new() { Deps = deps, Witnesses = witnesses };
         }
     }
 

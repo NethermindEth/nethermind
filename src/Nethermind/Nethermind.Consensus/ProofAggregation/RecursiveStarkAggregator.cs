@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -23,19 +24,19 @@ public static class RecursiveStarkAggregator
     /// <remarks>A recursive merge costs about nine signatures, so fewer, wider leaves cost less than more, narrower ones.
     /// Four came from the former in-tree BLAKE2s-to-Keccak backend, whose raw proving witness made wide direct batches
     /// expensive in memory, and was documented there as "the conservative default for smaller CI hosts", not as a bound.
-    /// The packaged ABI 12 backend reports <c>MAX_DEPS</c> 256 per call, and <c>MAX_LEANSIG_DEPS_PER_WRAPPER</c> is the
-    /// largest fresh-signature set a produced mode-0 wrapper may carry, so one leaf now covers a whole wrapper. The batch
-    /// loop takes whatever is available and never waits to fill a leaf, and <see cref="MaxProductionWitnessBytes"/> still
-    /// caps a leaf's serialized witnesses.</remarks>
+    /// The packaged backend takes up to 256 raw witnesses per call, and <c>MAX_LEANSIG_DEPS_PER_WRAPPER</c> is the
+    /// largest fresh-signature set a produced mode-0 wrapper may carry, so one signature-only leaf now covers a whole
+    /// wrapper. The batch loop takes whatever is available and never waits to fill a leaf, and
+    /// <see cref="MaxProductionWitnessBytes"/> still caps a leaf's serialized witnesses.</remarks>
     internal const int DirectBatchSize = Eip8288Constants.MaxLeanSigDepsPerWrapper;
-    /// <summary>leanSTARK dependencies folded into one direct leaf, bounding the wider
-    /// <see cref="DirectBatchSize"/> for them.</summary>
-    /// <remarks>A leanSTARK witness runs about 183 KB against a signature's 6 KB, and the prover's peak memory tracks a
-    /// leaf's witness bytes: measured on the packaged 0.12.0.21 library, leaves of 1/2/4/8/16 generics peaked at
-    /// 0.85/1.27/2.16/3.97/5.85 GiB. Four keeps that at about 2.2 GiB however many a statement carries, at the cost of
-    /// more calls, which signatures no longer pay. Mode 1 bounds generics per statement by
-    /// <see cref="Eip8288Constants.MaxGenericStarkProofs"/> rather than at one per wrapper, so a whole leaf of them is
-    /// reachable; <see cref="MaxProductionWitnessBytes"/> alone would admit 16.</remarks>
+    /// <summary>Dependencies folded into one direct leaf that holds any leanSTARK dependency.</summary>
+    /// <remarks>A native call cannot be interrupted, and a background fold yields to a waiting producer only between calls,
+    /// so the longest single call bounds a producer's wait. On the F128 backend (ABI 21) a leaf of four leanSTARK witnesses
+    /// takes about 334 ms (808 ms on four cores), the longest call four-wide leaves could issue, while sixteen signatures
+    /// plus four leanSTARK witnesses take about 428 ms (971 ms). Keeping any leaf with a leanSTARK dependency four wide
+    /// keeps the longest call where it was; signature-only leaves, at about 197 ms for sixteen, stay below it. A leanSTARK
+    /// witness is about 163 KB against a signature's 6 KB, and the prover's peak memory tracks a leaf's witness bytes, which
+    /// this bounds too.</remarks>
     internal const int GenericDirectBatchSize = 4;
 
     /// <summary>Runs the STARK check of a block proof against its dependency list.</summary>
@@ -50,8 +51,9 @@ public static class RecursiveStarkAggregator
             : proof.Length is > 0 and <= Eip8288Constants.MaxAggregateProofBytes
                 && verifier.VerifyRecursiveStark(in depsHash, forkVerifier.AggregatedVk.Bytes, proof);
 
-    // Relative native proving costs measured on a two-core devnet node: folding one leanSPHINCS signature into a leaf
-    // costs about 2.2 s and each recursive merge of two proofs about 20 s, so a merge costs about nine signatures.
+    // Relative native proving costs that rank alternative inputs. First measured on a two-core devnet node with the in-tree
+    // backend (about 2.2 s per signature and 20 s per merge); on the F128 backend a merge of two proofs takes about 194 ms
+    // and a leaf of sixteen signatures about 197 ms, so a merge still costs well over nine signatures and the ranking holds.
     internal const int SignatureCost = 1;
     internal const int GenericLeafCost = 2;
     internal const int MergeCost = 9;
@@ -72,8 +74,8 @@ public static class RecursiveStarkAggregator
         long calls = Math.Max(0, nodes - 1);
         if (input.Discards.Count != 0)
         {
-            if (input.RecursiveProofs.Count <= MaxRecursiveChildren && input.Deps.Count <= DirectBatchSize
-                && generics <= GenericDirectBatchSize) calls = Math.Max(calls, 1);
+            if (input.RecursiveProofs.Count <= MaxRecursiveChildren && input.Deps.Count <= LeafCapacity(generics))
+                calls = Math.Max(calls, 1);
             else
             {
                 HashSet<FrameDependency> discards = [.. input.Discards];
@@ -181,14 +183,45 @@ public static class RecursiveStarkAggregator
         }
     }
 
-    /// <summary>Whether any of <paramref name="deps"/> is in <paramref name="covered"/>.</summary>
-    private static bool AnyCovered(IReadOnlyList<FrameDependency> deps, HashSet<FrameDependency> covered)
+    /// <summary>Authenticates the direct witnesses of dependencies a recursive child already proves and drops them.</summary>
+    private static AggregationInput WithoutCoveredDeps(AggregationInput input, ILeanProofVerifier verifier, CancellationToken cancellationToken)
     {
-        if (covered.Count == 0) return false;
-        foreach (FrameDependency dependency in deps)
-            if (covered.Contains(dependency)) return true;
-        return false;
+        if (input.RecursiveProofs.Count == 0 || input.Deps.Count == 0) return input;
+        HashSet<FrameDependency> covered = [];
+        foreach (RecursiveProofInput child in input.RecursiveProofs) covered.UnionWith(child.InnerDeps);
+        List<FrameDependency>? deps = null;
+        List<ReadOnlyMemory<byte>>? witnesses = null;
+        for (int i = 0; i < input.Deps.Count; i++)
+        {
+            FrameDependency dependency = input.Deps[i];
+            if (!covered.Contains(dependency))
+            {
+                deps?.Add(dependency);
+                witnesses?.Add(input.Witnesses[i]);
+                continue;
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            bool valid = dependency.Scheme switch
+            {
+                Eip8288Constants.LeanSphincsScheme => verifier.VerifyLeanSphincs(dependency.DataHash, dependency.VerificationKey, input.Witnesses[i].Span),
+                Eip8288Constants.LeanStarkScheme => verifier.VerifyLeanStark(dependency.DataHash, dependency.VerificationKey, input.Witnesses[i].Span),
+                _ => false
+            };
+            if (!valid) throw new InvalidOperationException("Invalid direct dependency witness.");
+            if (deps is null)
+            {
+                deps = [.. input.Deps.Take(i)];
+                witnesses = [.. input.Witnesses.Take(i)];
+            }
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        return deps is null
+            ? input
+            : new() { Deps = deps, Witnesses = witnesses!, RecursiveProofs = input.RecursiveProofs, Discards = input.Discards };
     }
+
+    /// <summary>The widest direct leaf holding <paramref name="generics"/> leanSTARK dependencies.</summary>
+    private static int LeafCapacity(int generics) => generics == 0 ? DirectBatchSize : GenericDirectBatchSize;
 
     /// <summary>The leanSTARK dependencies among <paramref name="deps"/>.</summary>
     private static int GenericCount(IReadOnlyList<FrameDependency> deps)
@@ -224,16 +257,13 @@ public static class RecursiveStarkAggregator
                 return parent.Proof.ToArray();
             }
         }
-        HashSet<FrameDependency> recursiveCoverage = [];
-        foreach (RecursiveProofInput child in input.RecursiveProofs) recursiveCoverage.UnionWith(child.InnerDeps);
-        // A direct dependency a child already proves is authenticated and then left out of the leaf below, so the one-call
-        // path is only equivalent while no child covers one: taking it then would fold that witness again for nothing.
-        if (input.RecursiveProofs.Count <= MaxRecursiveChildren && input.Deps.Count <= DirectBatchSize
-            && GenericCount(input.Deps) <= GenericDirectBatchSize
+        // A direct dependency a child already proves is authenticated and left out, before the one-call limits apply, so
+        // its witness is neither folded again nor pushes the remaining ones off the one-call path.
+        input = WithoutCoveredDeps(input, verifier, cancellationToken);
+        if (input.RecursiveProofs.Count <= MaxRecursiveChildren && input.Deps.Count <= LeafCapacity(GenericCount(input.Deps))
             && input.Discards.Count <= Eip8288Constants.MaxProofDependencies
             && (input.Deps.Count <= 1 || DirectInputSize(input.Witnesses) <= MaxProductionWitnessBytes)
-            && InputSize(input) <= Eip8288Constants.MaxAggregationInputBytes
-            && !AnyCovered(input.Deps, recursiveCoverage))
+            && InputSize(input) <= Eip8288Constants.MaxAggregationInputBytes)
         {
             byte[] result = ProductionProofCache.Prove(verifier, in depsHash, aggregatedVk, input, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
@@ -262,33 +292,17 @@ public static class RecursiveStarkAggregator
             do
             {
                 FrameDependency dependency = input.Deps[offset];
-                if (recursiveCoverage.Contains(dependency))
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    bool valid = dependency.Scheme switch
-                    {
-                        Eip8288Constants.LeanSphincsScheme => verifier.VerifyLeanSphincs(dependency.DataHash, dependency.VerificationKey, input.Witnesses[offset].Span),
-                        Eip8288Constants.LeanStarkScheme => verifier.VerifyLeanStark(dependency.DataHash, dependency.VerificationKey, input.Witnesses[offset].Span),
-                        _ => false
-                    };
-                    if (!valid) throw new InvalidOperationException("Invalid direct dependency witness.");
-                    cancellationToken.ThrowIfCancellationRequested();
-                    offset++;
-                    continue;
-                }
                 ReadOnlyMemory<byte> witness = input.Witnesses[offset];
                 long entrySize = Eip8288Constants.DependencyTripleLength + 4L + witness.Length;
                 if (deps.Count > 0 && bytes + entrySize > MaxProductionWitnessBytes) break;
-                if (dependency.Scheme == Eip8288Constants.LeanStarkScheme)
-                {
-                    if (generics == GenericDirectBatchSize) break;
-                    generics++;
-                }
+                int withThis = generics + (dependency.Scheme == Eip8288Constants.LeanStarkScheme ? 1 : 0);
+                if (deps.Count > 0 && deps.Count >= LeafCapacity(withThis)) break;
+                generics = withThis;
                 deps.Add(input.Deps[offset]);
                 witnesses.Add(witness);
                 bytes += entrySize;
                 offset++;
-            } while (offset < input.Deps.Count && deps.Count < DirectBatchSize);
+            } while (offset < input.Deps.Count);
             if (deps.Count != 0) children.Add(ProveChild(new() { Deps = deps, Witnesses = witnesses }, deps));
         }
         while (children.Count > MaxRecursiveChildren

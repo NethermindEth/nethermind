@@ -907,8 +907,8 @@ public class Eip8288BlockProductionTests
         Assert.That(proofs.ProvenSubsets(all).Any(subset => subset.Length > widest), Is.False);
     }
 
-    // A transaction declares at most MaxSigsPerTx leanSPHINCS dependencies, which one direct leaf now covers, so no single
-    // transaction can exceed MaxScheduledStatementCost: the "pass over" branch is a safety net for future constant changes.
+    // A transaction declares at most MaxSigsPerTx leanSPHINCS and MaxStarksPerTx leanSTARK dependencies, whose leaves and
+    // one merge fit MaxScheduledStatementCost, so no single transaction can exceed it: the "pass over" branch is a safety net for future constant changes.
     // What is asserted here is the consequence, that such a transaction is scheduled with the rest rather than skipped.
     [Test]
     public async Task Widest_transaction_is_scheduled_within_the_statement_bound()
@@ -916,12 +916,16 @@ public class Eip8288BlockProductionTests
         CountingVerifier verifier = new();
         LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
         using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
-        FrameDependency[] wide = [.. Enumerable.Range(0, 9).Select(i =>
-            new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"wide-{i}"), default))];
+        FrameDependency[] wide = [.. Enumerable.Range(0, Eip8288Constants.MaxSigsPerTx).Select(i =>
+            new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"wide-{i}"), default)),
+            .. Enumerable.Range(0, Eip8288Constants.MaxStarksPerTx).Select(i =>
+            new FrameDependency(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute($"wide-stark-{i}"), default))];
         foreach (FrameDependency dependency in wide) proofs.AddVerified([dependency], [[1]], null);
         Transaction oversized = CreateTransaction(chain, wide[0], [(UInt256)100], transaction =>
         {
-            transaction.Frames![1] = new(FrameMode.DepVerify, FrameFlags.None, null, (ulong)wide.Length * Eip8288Constants.LeanSphincsVerificationGas,
+            transaction.Frames![1] = new(FrameMode.DepVerify, FrameFlags.None, null,
+                (ulong)Eip8288Constants.MaxSigsPerTx * Eip8288Constants.LeanSphincsVerificationGas
+                + (ulong)Eip8288Constants.MaxStarksPerTx * Eip8288Constants.LeanStarkVerificationGas,
                 UInt256.Zero, Eip8288Dependencies.Serialize(wide));
             transaction.GasLimit = FrameTxValidation.TotalGasLimit(transaction.Frames);
             // A higher priority fee puts it first in the body, so the bounded run starts with it.
