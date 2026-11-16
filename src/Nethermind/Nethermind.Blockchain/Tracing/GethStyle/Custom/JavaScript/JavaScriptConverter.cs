@@ -41,9 +41,16 @@ public static class JavaScriptConverter
         _ => BytesToAddress(address.ToBytes())
     } ?? throw new ArgumentException("Not correct address", nameof(address));
 
-    private static Address BytesToAddress(ReadOnlySpan<byte> bytes) => bytes.Length >= Address.Size
-        ? new Address(bytes[^Address.Size..])
-        : new Address(bytes.PadLeft(Address.Size));
+    private static Address BytesToAddress(ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.Length >= Address.Size)
+            return new Address(bytes[^Address.Size..]);
+
+        Span<byte> buffer = stackalloc byte[Address.Size];
+        buffer.Clear();
+        bytes.CopyTo(buffer[^bytes.Length..]);
+        return new Address(buffer);
+    }
 
     private static Engine CurrentEngine => Engine.CurrentEngine ?? throw new InvalidOperationException("No engine set");
 

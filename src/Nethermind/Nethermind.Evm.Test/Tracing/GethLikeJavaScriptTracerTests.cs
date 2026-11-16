@@ -62,8 +62,15 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         Assert.That(JsonSerializer.Serialize(result, EthereumJsonSerializer.JsonOptions), Is.EqualTo(expected));
     }
 
-    [TestCaseSource(nameof(AddressInputCases))]
-    public void Javascript_address_inputs_normalize_for_helpers_and_database(string expression, string inputHex, string addressHex)
+    [TestCaseSource(nameof(AddressInputCases), new object[] { false })]
+    public void Javascript_address_inputs_normalize_geth_widths(string expression, string inputHex, string addressHex) =>
+        AssertAddressInputNormalization(expression, inputHex, addressHex);
+
+    [TestCaseSource(nameof(AddressInputCases), new object[] { true })]
+    public void Javascript_address_inputs_preserve_nethermind_extended_input_kinds(string expression, string inputHex, string addressHex) =>
+        AssertAddressInputNormalization(expression, inputHex, addressHex);
+
+    private void AssertAddressInputNormalization(string expression, string inputHex, string addressHex)
     {
         Address address = new(addressHex);
         byte[] code = [0x60, 0x2a];
@@ -92,8 +99,11 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         Assert.That(result, Is.EqualTo(expected));
     }
 
-    private static IEnumerable<TestCaseData> AddressInputCases()
+    private static IEnumerable<TestCaseData> AddressInputCases(bool nethermindExtensions)
     {
+        if (nethermindExtensions)
+            yield return new TestCaseData("new Uint16Array([1, 2])", "0x01000200", "0x0000000000000000000000000000000001000200");
+
         foreach (int length in new[] { 0, 1, 19, 20, 21, 32 })
         {
             byte[] bytes = new byte[length];
@@ -102,8 +112,13 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
             string inputHex = bytes.ToHexString(withZeroX: true);
             string addressHex = "0x" + inputHex[2..].PadLeft(40, '0')[^40..];
             string array = "[" + string.Join(",", bytes) + "]";
-            yield return new TestCaseData(array, inputHex, addressHex);
-            yield return new TestCaseData($"new Uint8Array([238].concat({array}, [255])).subarray(1, {length + 1})", inputHex, addressHex);
+            if (!nethermindExtensions)
+            {
+                yield return new TestCaseData(array, inputHex, addressHex);
+                yield return new TestCaseData($"new Uint8Array([238].concat({array}, [255])).subarray(1, {length + 1})", inputHex, addressHex);
+                continue;
+            }
+
             if (length is 1 or 21)
             {
                 yield return new TestCaseData($"new Uint8Array({array}).buffer", inputHex, addressHex);
