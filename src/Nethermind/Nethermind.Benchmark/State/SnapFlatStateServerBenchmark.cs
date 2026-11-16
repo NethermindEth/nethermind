@@ -5,11 +5,16 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.IO;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
+using Nethermind.Db.Rocks;
+using Nethermind.Db.Rocks.Config;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -25,6 +30,7 @@ using Nethermind.State.Snap;
 using Nethermind.State.SnapServer;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using Testably.Abstractions;
 using FlatSnapshot = Nethermind.State.Flat.Snapshot;
 using static Nethermind.Benchmarks.State.FlatWorldStateBenchmarkHarness;
 
@@ -35,7 +41,7 @@ namespace Nethermind.Benchmarks.State;
 /// The state is a persisted base of <see cref="AccountCount"/> accounts and one contract of <see cref="SlotCount"/> slots, under
 /// <see cref="InMemoryBlocks"/> blocks held in the trie node buffer as production holds the blocks it has not persisted: each block
 /// updates <see cref="AccountsPerBlock"/> accounts and <see cref="SlotsPerBlock"/> slots, and every <see cref="CompactSize"/> blocks
-/// are compacted into one snapshot.
+/// are compacted into one snapshot. The persisted base is in RocksDB, as in production, so the allocations are the server's own.
 /// </remarks>
 [MemoryDiagnoser]
 public class SnapFlatStateServerBenchmark
@@ -47,7 +53,8 @@ public class SnapFlatStateServerBenchmark
     private const int CompactSize = 32;
     private static readonly ValueHash256 MidRange = new("0x8000000000000000000000000000000000000000000000000000000000000000");
 
-    private SnapshotableMemColumnsDb<FlatDbColumns> _columnsDb = null!;
+    private TempPath _directory = null!;
+    private IColumnsDb<FlatDbColumns> _columnsDb = null!;
     private INodeRecordBuffer _nodeRecordBuffer = null!;
     private List<FlatSnapshot> _snapshots = null!;
     private List<FlatSnapshot> _compactedBlocks = null!;
@@ -78,7 +85,14 @@ public class SnapFlatStateServerBenchmark
         stateTree.Commit();
 
         StateId stateId = new(0, stateTree.RootHash.ValueHash256);
-        _columnsDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
+        _directory = TempPath.GetTempDirectory();
+        using (IContainer configs = new ContainerBuilder().AddModule(new TestNethermindModule()).Build())
+        {
+            _columnsDb = new RocksDbFactory(configs.Resolve<IRocksDbConfigFactory>(), configs.Resolve<IDbConfig>(),
+                    new HyperClockCacheWrapper(), new RealFileSystem(), LimboLogs.Instance, _directory.Path)
+                .CreateColumnsDb<FlatDbColumns>(new DbSettings(DbNames.Flat, DbNames.Flat));
+        }
+
         RocksDbPersistence persistence = new(_columnsDb, NullLogManager.Instance, NullTrieNodeLog.Instance);
         new Importer(nodeStorage, persistence, NullLogManager.Instance).Copy(stateId).GetAwaiter().GetResult();
 
@@ -169,6 +183,7 @@ public class SnapFlatStateServerBenchmark
         foreach (FlatSnapshot snapshot in _compactedBlocks) snapshot.Dispose();
         _nodeRecordBuffer.Dispose();
         _columnsDb.Dispose();
+        _directory.Dispose();
     }
 
     [Benchmark]

@@ -2446,7 +2446,8 @@ public partial class EthRpcModuleTests
         IEthereumEcdsa signingEcdsa = new EthereumEcdsa(TestBlockchainIds.ChainId);
         using TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .Build(builder => builder.AddSingleton<IEthereumEcdsa>(new NoRecoveryEthereumEcdsa(signingEcdsa)));
-        Transaction tx = Build.A.Transaction.Signed(signingEcdsa, TestItem.PrivateKeyA).TestObject;
+        // A fresh signer, so the process-wide sender cache cannot recover the sender in place of the failing ecdsa.
+        Transaction tx = Build.A.Transaction.Signed(signingEcdsa, Build.A.PrivateKey.TestObject).TestObject;
 
         string serialized = await test.TestEthRpc("eth_sendRawTransaction", Rlp.Encode(tx, RlpBehaviors.None).ToHexString());
 

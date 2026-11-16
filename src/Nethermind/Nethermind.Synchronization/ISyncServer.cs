@@ -21,9 +21,15 @@ namespace Nethermind.Synchronization
         TxReceipt[]? GetReceipts(Hash256 blockHashes);
         MemoryManager<byte>? GetBlockAccessListRlp(Hash256 blockHash);
         Block? Find(Hash256 hash);
+
+        /// <summary>The stored block with <paramref name="hash"/>, encoded as the block store holds it.</summary>
+        /// <returns>The encoded block, which the caller disposes, or <see langword="null"/> when its body is not stored.</returns>
+        MemoryManager<byte>? FindBlockRlp(Hash256 hash);
         BlockHeader? FindHeader(Hash256 hash);
         Hash256? FindHash(ulong number);
-        IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse);
+        /// <summary>Finds the headers that a block headers request asks for, encoded for the network.</summary>
+        /// <returns>The encoded headers one after another, up to the first header that is not found.</returns>
+        IOwnedReadOnlyList<byte> FindHeadersRlp(Hash256 hash, int numberOfBlocks, int skip, bool reverse);
         IByteArrayList GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.Code | NodeDataType.State);
         int GetPeerCount();
         ulong NetworkId { get; }

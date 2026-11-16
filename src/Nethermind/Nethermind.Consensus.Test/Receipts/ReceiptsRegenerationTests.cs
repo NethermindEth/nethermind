@@ -207,6 +207,22 @@ public class ReceiptsRegenerationTests
     }
 
     [Test]
+    public async Task Decorator_takes_the_transaction_index_from_stored_receipts_only()
+    {
+        Block block = await AddBlock(BuildTransactions(Scenario.ContractCreationWithLog));
+        Hash256 txHash = block.Transactions[0].Hash!;
+        IReceiptFinder inner = Substitute.For<IReceiptFinder>();
+        inner.FindTransactionIndex(block, txHash).Returns(0);
+        RegeneratingReceiptFinder finder = new(inner, _chain.ReceiptStorage, _chain.BlockFinder, _regenerator);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(finder.FindTransactionIndex(block, txHash), Is.EqualTo(0), "the stored receipts give the index");
+            inner.DidNotReceive().Get(Arg.Any<Block>(), Arg.Any<bool>(), Arg.Any<bool>());
+        }
+    }
+
+    [Test]
     public void Decorator_leaves_a_transactionless_block_alone()
     {
         Block genesis = _chain.BlockTree.FindBlock(0, BlockTreeLookupOptions.None)!;

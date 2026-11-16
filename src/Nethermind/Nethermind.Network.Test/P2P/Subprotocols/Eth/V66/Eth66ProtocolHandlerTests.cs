@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Linq;
 using System.Collections.Generic;
 using System.Net;
@@ -180,6 +181,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         {
             using GetBlockBodiesMessage msg62 = new(new[] { Keccak.Zero, TestItem.KeccakA });
             using Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockBodiesMessage msg66 = new(1111, msg62);
+            _syncManager.FindBlockRlp(Arg.Any<Hash256>()).Returns((MemoryManager<byte>?)null);
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.GetBlockBodies);
@@ -913,7 +915,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>());
         }
 
-        private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
+        private void HandleZeroMessage<T>(T msg, int messageCode) where T : P2PMessage
         {
             using DisposableByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg).AsDisposable();
             getBlockHeadersPacket.ReadByte();

@@ -3,9 +3,11 @@
 
 using System.Buffers;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -60,6 +62,35 @@ public class FlatWorldStateScopeProviderTests
             Assert.That(forwarding.CompletedRecords, Is.GreaterThan(0));
             Assert.That(context.LastCommittedSnapshot!.BufferPin!.Buffer, Is.SameAs(retained));
         }
+    }
+
+    [Test]
+    public void Write_batches_on_one_thread_reuse_their_dirty_account_map_and_root_queue_once_disposed()
+    {
+        using TestContext context = new();
+        FlatWorldStateScope scope = context.Scope;
+        IWorldStateScopeProvider.IWorldStateWriteBatch first = scope.StartWriteBatch(1);
+        object firstMap = GetField(first, "_dirtyAccounts");
+        object firstQueue = GetField(first, "_dirtyStorageTree");
+        first.Set(TestItem.AddressA, new Account(nonce: 1, balance: 2));
+        first.Dispose();
+        IWorldStateScopeProvider.IWorldStateWriteBatch second = scope.StartWriteBatch(1);
+        first.Dispose();
+        IWorldStateScopeProvider.IWorldStateWriteBatch third = scope.StartWriteBatch(1);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(GetField(second, "_dirtyAccounts"), Is.SameAs(firstMap));
+            Assert.That(GetField(second, "_dirtyStorageTree"), Is.SameAs(firstQueue));
+            Assert.That(GetField(third, "_dirtyAccounts"), Is.Not.SameAs(firstMap));
+            Assert.That(GetField(third, "_dirtyStorageTree"), Is.Not.SameAs(firstQueue));
+            Assert.That(((ICollection)firstMap).Count, Is.Zero);
+        }
+
+        third.Dispose();
+        second.Dispose();
+
+        static object GetField(IWorldStateScopeProvider.IWorldStateWriteBatch batch, string name) =>
+            batch.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(batch)!;
     }
 
     [Test]
