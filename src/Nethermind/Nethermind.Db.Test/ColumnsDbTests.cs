@@ -493,9 +493,9 @@ public class ColumnsDbTests
 
             // From here the iterator is on keys[i]. Next lands on keys[i + 1], before the requested key, so the
             // bounded probe takes over. It steps past a key that is absent between keys[i + 1] and keys[i + 2] and
-            // settles the miss without a point read. keys[i + 2], where it stopped, is still served, and keys[i + 4]
-            // is found by the probe. Several rounds, so one read that the cleanup timer of the iterator pool sends to
-            // a seek cannot hide the probe branches.
+            // settles the miss without a point read. The read of keys[i + 2], where it stopped, steps past it, so a
+            // seek serves that key, and keys[i + 4] is found by the probe. Several rounds, so one read that the
+            // cleanup timer of the iterator pool sends to a seek cannot hide the probe branches.
             for (int i = 8; i + 4 < keys.Length; i += 4)
             {
                 using (Assert.EnterMultipleScope())
