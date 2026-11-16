@@ -60,6 +60,8 @@ public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop, ITraceOpe
         EvmExceptionType.BadInstruction or EvmExceptionType.InvalidJumpDestination or EvmExceptionType.AccessViolation => true,
         // Geth rejects LOG and TSTORE while executing them; other writes fail in their gas function.
         EvmExceptionType.StaticCallViolation => opcode is >= Instruction.LOG0 and <= Instruction.LOG4 or Instruction.TSTORE,
+        // Geth checks the depth these opcodes' immediates select while executing them.
+        EvmExceptionType.StackUnderflow => opcode is Instruction.DUPN or Instruction.SWAPN or Instruction.EXCHANGE,
         _ => false
     };
 

@@ -918,6 +918,14 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
     public void Huge_memory_expansion_step_gas_cost(string code, string expectedOpcode, ulong expectedGasCost) =>
         AssertFailedStep(TraceStructLogs(Bytes.FromHexString(code), MainnetSpecProvider.CancunActivation), expectedOpcode, "out of gas", expectedGasCost: expectedGasCost);
 
+    /// <remarks>Geth checks the depth these opcodes' immediates select while executing them, a fault its struct logger does not record.</remarks>
+    [TestCase("e680", "DUPN")]
+    [TestCase("e780", "SWAPN")]
+    [TestCase("e89d", "EXCHANGE")]
+    public void Immediate_stack_underflow_has_no_step_error(string code, string expectedOpcode) =>
+        AssertFailedStep(TraceStructLogs(Bytes.FromHexString(code), MainnetSpecProvider.AmsterdamActivation), expectedOpcode, null,
+            expectedGasCost: GasCostOf.VeryLow);
+
     /// <summary>Traces <paramref name="code"/> with the in-memory and the streaming struct logger.</summary>
     private (string Tracer, JsonElement[] Entries)[] TraceStructLogs(byte[] code, ForkActivation activation)
     {
