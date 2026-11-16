@@ -875,9 +875,15 @@ public class LogFinderTests
             .ToArray();
         SerializeAll(logs);
 
-        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
-        SerializeAll(logs);
-        long allocatedPerInstance = (GC.GetAllocatedBytesForCurrentThread() - allocatedBefore) / Count;
+        // The fewest bytes of several rounds: a one-off refill, such as of a pool trimmed by a GC of a parallel test,
+        // lands in one round only, while a writer per instance lands in every round.
+        long allocatedPerInstance = long.MaxValue;
+        for (int round = 0; round < 5; round++)
+        {
+            long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+            SerializeAll(logs);
+            allocatedPerInstance = Math.Min(allocatedPerInstance, (GC.GetAllocatedBytesForCurrentThread() - allocatedBefore) / Count);
+        }
 
         Assert.That(allocatedPerInstance, Is.LessThan(MaxBytesPerSerializedLogs));
 
