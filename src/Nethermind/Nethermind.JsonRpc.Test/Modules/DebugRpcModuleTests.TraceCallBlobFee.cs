@@ -100,8 +100,11 @@ public partial class DebugRpcModuleTests
     // A stored header carries no flag; the chain's switcher decides, as for Taiko's zk gas in the difficulty.
     [TestCase("0x9", null, 5, false, true, true)]
     [TestCase(null, "0x0", 5, false, true, true)]
+    // The source block is classified before the overrides, so a number override of 0 does not make the copy a genesis.
+    [TestCase("0x9", null, 5, false, true, true, "0x0")]
     public async Task Debug_traceCall_blob_fee_override_reads_prevrandao_or_difficulty(
-        string? blobBaseFee, string? maxFeePerBlobGas, int difficulty, bool isPostMerge, bool expectMixHash, bool chainIsPostMerge = false)
+        string? blobBaseFee, string? maxFeePerBlobGas, int difficulty, bool isPostMerge, bool expectMixHash, bool chainIsPostMerge = false,
+        string? number = null)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(builder =>
         {
@@ -119,7 +122,7 @@ public partial class DebugRpcModuleTests
         {
             ["stateOverrides"] = new Dictionary<string, object> { [address] = new { code = "0x4460005260206000f3" } }
         };
-        if (blobBaseFee is not null) options["blockOverrides"] = new { blobBaseFee };
+        if (blobBaseFee is not null) options["blockOverrides"] = number is null ? new { blobBaseFee } : new { blobBaseFee, number };
         if (maxFeePerBlobGas is not null)
         {
             transaction["maxFeePerBlobGas"] = maxFeePerBlobGas;
