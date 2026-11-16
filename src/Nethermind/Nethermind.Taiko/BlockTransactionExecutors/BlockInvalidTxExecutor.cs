@@ -8,6 +8,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -19,9 +20,10 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Taiko.BlockTransactionExecutors;
 
-public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IWorldState worldState, ITxPool txPool, ILogManager logManager, ZkGasMeterHolder? zkGasMeterHolder = null, ISpecProvider? specProvider = null, ITxValidator? txValidator = null) : IBlockProcessor.IBlockTransactionsExecutor
+public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IWorldState worldState, ITxPool txPool, ILogManager logManager, ISpecProvider specProvider, ITxValidator txValidator, ZkGasMeterHolder? zkGasMeterHolder = null) : IBlockProcessor.IBlockTransactionsExecutor
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BlockInvalidTxExecutor>();
+    private readonly EthereumEcdsa _ecdsa = new(specProvider.ChainId);
 
     public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
@@ -45,11 +47,10 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
         // producer. Gated on IsUnzenEnabled so the meter stays dormant pre-Unzen (matches
         // the validator-side gate in TaikoBlockProcessor.ProcessBlock).
         bool producingBlock = (processingOptions & ProcessingOptions.ProducingBlock) != 0;
-        IReleaseSpec? spec = specProvider?.GetSpec(block.Header);
+        IReleaseSpec spec = specProvider.GetSpec(block.Header);
         bool enforceZkGas = producingBlock
                             && zkGasMeterHolder is not null
                             && spec is ITaikoReleaseSpec { IsUnzenEnabled: true };
-        bool validateTxs = producingBlock && txValidator is not null && spec is not null;
 
         using ArrayPoolListRef<Transaction> correctTransactions = new(block.Transactions.Length);
 
@@ -79,9 +80,15 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
                 continue;
             }
 
-            if (!isAnchor && validateTxs)
+            if (!isAnchor && producingBlock)
             {
-                ValidationResult validation = txValidator!.IsWellFormed(tx, spec!, block.Header.GasLimit);
+                ValidationResult validation = txValidator.IsWellFormed(tx, spec, block.Header.GasLimit);
+                if (!validation && spec.IsEip2780Enabled && tx.Signature is not null)
+                {
+                    tx.SenderAddress ??= _ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
+                    validation = txValidator.IsWellFormed(tx, spec, block.Header.GasLimit);
+                }
+
                 if (!validation)
                 {
                     if (_logger.IsDebug) _logger.Debug($"Skipping proposed transaction {tx.Hash}: {validation}");

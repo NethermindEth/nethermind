@@ -9,6 +9,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -102,7 +103,7 @@ public class BlockInvalidTxExecutorZkTests
         BlockReceiptsTracer receiptsTracer = MakeReceiptsTracer(block);
 
         BlockInvalidTxExecutor executor = new(txProcessor, Substitute.For<IWorldState>(),
-            Substitute.For<ITxPool>(), LimboLogs.Instance);
+            Substitute.For<ITxPool>(), LimboLogs.Instance, new TestSingleReleaseSpecProvider(London.Instance), Always.Valid);
         executor.SetBlockExecutionContext(MakeBlockCtx(block));
 
         executor.ProcessTransactions(block, ProcessingOptions.ProducingBlock, receiptsTracer, CancellationToken.None);
@@ -126,7 +127,7 @@ public class BlockInvalidTxExecutorZkTests
         txProcessor.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>()).Returns(TransactionResult.Ok);
 
         BlockInvalidTxExecutor executor = new(txProcessor, Substitute.For<IWorldState>(), Substitute.For<ITxPool>(), LimboLogs.Instance,
-            specProvider: new TestSingleReleaseSpecProvider(London.Instance), txValidator: new TxValidator(TestBlockchainIds.ChainId));
+            new TestSingleReleaseSpecProvider(London.Instance), new TxValidator(TestBlockchainIds.ChainId));
         executor.SetBlockExecutionContext(MakeBlockCtx(block));
 
         executor.ProcessTransactions(block, processingOptions, MakeReceiptsTracer(block), CancellationToken.None);
@@ -136,6 +137,32 @@ public class BlockInvalidTxExecutorZkTests
         {
             Assert.That(block.Transactions, Is.EqualTo(expected), "only a block being produced leaves out an ill-formed transaction");
             txProcessor.Received(expectKept ? 1 : 0).Execute(tipAboveFeeCap, Arg.Any<ITxTracer>());
+        }
+    }
+
+    [Test]
+    public void SelfTransferBelowNonSelfIntrinsicGas_WhenProducing_IsKeptAfterSenderRecovery()
+    {
+        Transaction anchor = MakeTx(0);
+        Transaction selfTransfer = Build.A.Transaction.WithType(TxType.EIP1559).WithChainId(TestBlockchainIds.ChainId)
+            .WithTo(TestItem.AddressA).WithValue(1).WithGasLimit(15_000).WithMaxFeePerGas(2).WithMaxPriorityFeePerGas(1)
+            .Signed(new EthereumEcdsa(TestBlockchainIds.ChainId), TestItem.PrivateKeyA).TestObject;
+        Block block = MakeBlock(anchor, selfTransfer);
+
+        ITransactionProcessorAdapter txProcessor = Substitute.For<ITransactionProcessorAdapter>();
+        txProcessor.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>()).Returns(TransactionResult.Ok);
+
+        BlockInvalidTxExecutor executor = new(txProcessor, Substitute.For<IWorldState>(), Substitute.For<ITxPool>(), LimboLogs.Instance,
+            new TestSingleReleaseSpecProvider(Amsterdam.Instance), new TxValidator(TestBlockchainIds.ChainId));
+        executor.SetBlockExecutionContext(MakeBlockCtx(block));
+
+        executor.ProcessTransactions(block, ProcessingOptions.ProducingBlock, MakeReceiptsTracer(block), CancellationToken.None);
+
+        Transaction[] expected = [anchor, selfTransfer];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Transactions, Is.EqualTo(expected));
+            Assert.That(selfTransfer.SenderAddress, Is.EqualTo(TestItem.AddressA));
         }
     }
 
@@ -157,7 +184,7 @@ public class BlockInvalidTxExecutorZkTests
         IWorldState worldState = Substitute.For<IWorldState>();
         BlockReceiptsTracer receiptsTracer = MakeReceiptsTracer(block);
 
-        BlockInvalidTxExecutor executor = new(txProcessor, worldState, Substitute.For<ITxPool>(), LimboLogs.Instance);
+        BlockInvalidTxExecutor executor = new(txProcessor, worldState, Substitute.For<ITxPool>(), LimboLogs.Instance, new TestSingleReleaseSpecProvider(London.Instance), Always.Valid);
         executor.SetBlockExecutionContext(MakeBlockCtx(block));
 
         executor.ProcessTransactions(block, ProcessingOptions.ProducingBlock, receiptsTracer, CancellationToken.None);
@@ -183,7 +210,7 @@ public class BlockInvalidTxExecutorZkTests
         BlockReceiptsTracer receiptsTracer = MakeReceiptsTracer(block);
 
         BlockInvalidTxExecutor executor = new(txProcessor, Substitute.For<IWorldState>(),
-            Substitute.For<ITxPool>(), LimboLogs.Instance);
+            Substitute.For<ITxPool>(), LimboLogs.Instance, new TestSingleReleaseSpecProvider(London.Instance), Always.Valid);
         executor.SetBlockExecutionContext(MakeBlockCtx(block));
 
         executor.ProcessTransactions(block, ProcessingOptions.ProducingBlock, receiptsTracer, CancellationToken.None);
@@ -221,7 +248,7 @@ public class BlockInvalidTxExecutorZkTests
         IWorldState worldState = Substitute.For<IWorldState>();
         BlockReceiptsTracer receiptsTracer = MakeReceiptsTracer(block);
 
-        BlockInvalidTxExecutor executor = new(txProcessor, worldState, Substitute.For<ITxPool>(), LimboLogs.Instance, holder, MakeUnzenSpecProvider());
+        BlockInvalidTxExecutor executor = new(txProcessor, worldState, Substitute.For<ITxPool>(), LimboLogs.Instance, MakeUnzenSpecProvider(), Always.Valid, holder);
         executor.SetBlockExecutionContext(MakeBlockCtx(block));
 
         executor.ProcessTransactions(block, ProcessingOptions.ProducingBlock, receiptsTracer, CancellationToken.None);
@@ -263,7 +290,7 @@ public class BlockInvalidTxExecutorZkTests
         BlockReceiptsTracer receiptsTracer = MakeReceiptsTracer(block);
 
         BlockInvalidTxExecutor executor = new(txProcessor, Substitute.For<IWorldState>(),
-            Substitute.For<ITxPool>(), LimboLogs.Instance, holder, MakeUnzenSpecProvider());
+            Substitute.For<ITxPool>(), LimboLogs.Instance, MakeUnzenSpecProvider(), Always.Valid, holder);
         executor.SetBlockExecutionContext(MakeBlockCtx(block));
 
         executor.ProcessTransactions(block, ProcessingOptions.ProducingBlock, receiptsTracer, CancellationToken.None);
@@ -297,7 +324,7 @@ public class BlockInvalidTxExecutorZkTests
         ITxPool txPool = Substitute.For<ITxPool>();
         BlockReceiptsTracer receiptsTracer = MakeReceiptsTracer(block);
 
-        BlockInvalidTxExecutor executor = new(txProcessor, Substitute.For<IWorldState>(), txPool, LimboLogs.Instance, holder, MakeUnzenSpecProvider());
+        BlockInvalidTxExecutor executor = new(txProcessor, Substitute.For<IWorldState>(), txPool, LimboLogs.Instance, MakeUnzenSpecProvider(), Always.Valid, holder);
         executor.SetBlockExecutionContext(MakeBlockCtx(block));
 
         executor.ProcessTransactions(block, ProcessingOptions.ProducingBlock, receiptsTracer, CancellationToken.None);
@@ -334,7 +361,7 @@ public class BlockInvalidTxExecutorZkTests
         BlockReceiptsTracer receiptsTracer = MakeReceiptsTracer(block);
 
         BlockInvalidTxExecutor executor = new(txProcessor, Substitute.For<IWorldState>(),
-            Substitute.For<ITxPool>(), LimboLogs.Instance, holder);
+            Substitute.For<ITxPool>(), LimboLogs.Instance, new TestSingleReleaseSpecProvider(London.Instance), Always.Valid, holder);
         executor.SetBlockExecutionContext(MakeBlockCtx(block));
 
         executor.ProcessTransactions(block, ProcessingOptions.None, receiptsTracer, CancellationToken.None);
@@ -379,7 +406,7 @@ public class BlockInvalidTxExecutorZkTests
         ITxPool txPool = Substitute.For<ITxPool>();
         BlockReceiptsTracer receiptsTracer = MakeReceiptsTracer(block);
 
-        BlockInvalidTxExecutor executor = new(txProcessor, worldState, txPool, LimboLogs.Instance, holder, MakeUnzenSpecProvider());
+        BlockInvalidTxExecutor executor = new(txProcessor, worldState, txPool, LimboLogs.Instance, MakeUnzenSpecProvider(), Always.Valid, holder);
         executor.SetBlockExecutionContext(MakeBlockCtx(block));
 
         executor.ProcessTransactions(block, ProcessingOptions.ProducingBlock, receiptsTracer, CancellationToken.None);
