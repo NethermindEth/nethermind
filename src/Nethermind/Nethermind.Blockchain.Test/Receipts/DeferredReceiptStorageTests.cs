@@ -117,6 +117,7 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
             Assert.That(pending, Is.SameAs(receipts[0]));
             Assert.That(txIndex, Is.Zero);
             Assert.That(logIndexStart, Is.Zero);
+            Assert.That(_storage.FindTransactionIndex(block, block.Transactions[0].Hash!), Is.EqualTo(0), "the pending receipts give the index");
         }
         _storage.Get(block).AssertEquivalentTo(receipts, nameof(TxReceipt.Error));
 
