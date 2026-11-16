@@ -1,20 +1,21 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Facade.Filters;
 using Nethermind.Facade.Filters.Topics;
 using Nethermind.Facade.Find;
-using Nethermind.Logging;
 using Nethermind.Specs;
 
 namespace Nethermind.JsonRpc.Benchmark;
@@ -26,7 +27,8 @@ namespace Nethermind.JsonRpc.Benchmark;
 [MemoryDiagnoser]
 public class LogFinderPersistentReceiptsBenchmarks
 {
-    private LogFinder _logFinder = null!;
+    private IContainer _container = null!;
+    private ILogFinder _logFinder = null!;
     private LogFilter _filter = null!;
 
     [Params(200)]
@@ -61,18 +63,27 @@ public class LogFinderPersistentReceiptsBenchmarks
             receipts[i] = Build.A.Receipt.WithLogs(logs).WithTransactionHash(transactions[i].Hash).WithBlockHash(block.Hash).WithBlockNumber(block.Number).TestObject;
         }
 
-        ReceiptsRecovery recovery = new(new EthereumEcdsa(blockTree.ChainId), MainnetSpecProvider.Instance);
+        ContainerBuilder containerBuilder = new();
+        containerBuilder.AddModule(new TestNethermindModule(new ReceiptConfig { StoreTxHashes = StoreTxHashes, DeferredPersistence = false }));
+        containerBuilder.AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance);
+        containerBuilder.AddSingleton<IBlockTree>(blockTree);
         // A fresh block store has no block cache, so recovery reads the stored block body.
-        PersistentReceiptStorage receiptStorage = new(new TestMemColumnsDb<ReceiptsColumns>(), MainnetSpecProvider.Instance, recovery,
-            blockTree, new BlockStore(builder.BlocksDb), new ReceiptConfig { StoreTxHashes = StoreTxHashes })
-        { MigratedBlockNumber = 0 };
+        containerBuilder.AddSingleton<IBlockStore>(new BlockStore(builder.BlocksDb));
+        containerBuilder.AddSingleton<IColumnsDb<ReceiptsColumns>>(new TestMemColumnsDb<ReceiptsColumns>());
+        _container = containerBuilder.Build();
+
+        PersistentReceiptStorage receiptStorage = (PersistentReceiptStorage)_container.Resolve<IReceiptStorage>();
+        receiptStorage.MigratedBlockNumber = 0;
         receiptStorage.Insert(block, receipts, ensureCanonical: false);
         receiptStorage.ClearCache();
 
-        _logFinder = new LogFinder(blockTree, receiptStorage, receiptStorage, NullLogManager.Instance, recovery, MainnetSpecProvider.Instance);
+        _logFinder = _container.Resolve<ILogFinder>();
         BlockParameter blockParameter = new(block.Hash!);
         _filter = new LogFilter(0, blockParameter, blockParameter, new AddressFilter(TestItem.AddressA), SequenceTopicsFilter.AnyTopic);
     }
+
+    [GlobalCleanup]
+    public void Cleanup() => _container.Dispose();
 
     [Benchmark]
     public int Serialize()
