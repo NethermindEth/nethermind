@@ -28,6 +28,8 @@ def prepare(args):
         raise ValueError("RollupX composer streaming requires a separately reviewed integration")
     if revision(upstream) != manifest["revision"] or revision(upstream / "eez-core-protocol") != manifest["core_revision"]:
         raise ValueError("integration sources do not match their pinned revisions")
+    if "provers_revision" in manifest and revision(upstream / "provers") != manifest["provers_revision"]:
+        raise ValueError("prover source does not match the selected gitlink")
     source = Path(__file__).resolve().parent
     package = upstream / "testing/kurtosis"
     if 'EEZ_SKIP_PROOF_SIGNER_BUILD' not in (package / "start.sh").read_text():
@@ -47,7 +49,7 @@ def prepare(args):
     if 'l1_el = participants[0].el_context' not in original or 'name="eez-deployments"' not in original:
         raise ValueError("upstream deployment seam changed")
     if "streaming" in manifest:
-        if manifest["streaming"]["wire"] != "prove.v2" or manifest["streaming"]["profile"] != "rollup0-conditional":
+        if manifest["streaming"]["wire"] not in ("prove.v1", "prove.v2") or manifest["streaming"]["profile"] != "rollup0-conditional":
             raise ValueError("unexpected streaming profile")
         if not re.search(r"(?m)^  prover_backend: stateless$", (package / "ci-args.yaml").read_text()):
             raise ValueError("the candidate requires the stateless upstream backend")
@@ -168,7 +170,7 @@ def report(args):
     if native and manifest.get("repository") != "eez-association/eez-rollupX":
         raise ValueError("unexpected native prover source")
     counts = result["proof_flow"]
-    if streaming["wire"] != "prove.v2" or streaming["profile"] != ("rollupx-native" if native else "rollup0-conditional") or result["result"] != "pass" or result["exit_code"] != 0:
+    if streaming["wire"] not in ("prove.v1", "prove.v2") or streaming["profile"] != ("rollupx-native" if native else "rollup0-conditional") or result["result"] != "pass" or result["exit_code"] != 0:
         raise ValueError("live streaming scenarios did not pass")
     if not all(type(counts[name]) is int and counts[name] > 0 for name in ("signed_windows", "remote_attestations")):
         raise ValueError("missing actual signed windows or remote attestations")
@@ -189,7 +191,7 @@ def report(args):
                 raise ValueError("malformed signed-window evidence")
             event = json.loads(match[1])["fields"]
             start, end = event["validated_from_block"], event["validated_to_block"]
-            if event.get("wire") != "prove.v2" or type(start) is not int or type(end) is not int or not 0 <= start <= end or not re.fullmatch(r"0x[0-9a-fA-F]{64}", event["recomputed_public_inputs_hash"]):
+            if event.get("wire") != streaming["wire"] or type(start) is not int or type(end) is not int or not 0 <= start <= end or not re.fullmatch(r"0x[0-9a-fA-F]{64}", event["recomputed_public_inputs_hash"]):
                 raise ValueError("invalid or fallback signed-window evidence")
             signed.append(event)
     if len(signed) != counts["signed_windows"]:
@@ -199,7 +201,7 @@ def report(args):
             observation = json.loads((args.directory / (phase + ".json")).read_text())
             if observation["result"] != "pass" or observation.get("verified_blocks", 0) <= 1:
                 raise ValueError("missing complete candidate prefix observation")
-    report = {"result": "pass", "implementation": "Nethermind", "wire": "prove.v2",
+    report = {"result": "pass", "implementation": "Nethermind", "wire": streaming["wire"],
         "profile": streaming["profile"], "transport": "isolated-h2-to-mtls",
         "candidate_revision": args.revision, "image_id": args.image_id,
         "proof_flow": counts, "signed_windows": signed}

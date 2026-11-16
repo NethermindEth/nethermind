@@ -5,6 +5,7 @@ using System;
 using System.CommandLine;
 using System.IO;
 using System.Threading.Tasks;
+using Grpc.AspNetCore.Server.Model;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -84,6 +85,7 @@ public static class Program
             builder.Services.AddSingleton(services => streaming.CreateTransport(services.GetRequiredService<BackendAdmission>(),
                 services.GetRequiredService<ILogger<StreamingTransport>>()));
             builder.Services.AddSingleton<StreamingProverService>();
+            builder.Services.AddSingleton<IServiceMethodProvider<StreamingProverService>, StreamingServiceMethods>();
         }
 
         WebApplication app = builder.Build();
@@ -91,7 +93,8 @@ public static class Program
         {
             app.Use(async (context, next) =>
             {
-                if (context.Features.Get<ITlsConnectionFeature>() is not null && context.Request.Path.StartsWithSegments("/prove.v1.Prover"))
+                if (context.Features.Get<ITlsConnectionFeature>() is not null &&
+                    context.Request.Path.StartsWithSegments("/prove.v1.Prover") && context.Request.Path != StreamingServiceMethods.Rollup0Path)
                 {
                     context.Response.StatusCode = StatusCodes.Status404NotFound;
                     return;

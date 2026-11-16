@@ -35,7 +35,7 @@ internal sealed class NativeProver
 
     internal NativeProver(ByteString identity) => Identity = identity;
 
-    private static RpcException Unsupported() => new(new Status(StatusCode.Unimplemented, "native offline proving requires prove.v2"));
+    private static RpcException Unsupported() => new(new Status(StatusCode.Unimplemented, "native offline proving requires streaming"));
 
     internal Task<PreparedOrdinaryBlock> Prepare(EezStatelessBlock block, CancellationToken cancellation) =>
         (_finalizer ?? throw Unsupported()).Prepare(block, cancellation);

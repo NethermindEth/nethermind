@@ -16,12 +16,15 @@ import upstream
 
 
 class StreamingSourceTests(unittest.TestCase):
-    def invoke(self, directory, factory="EthBlockExecutorFactory", main_streaming=False, changed=False, merged=False, revision=""):
+    def invoke(self, directory, factory="EthBlockExecutorFactory", main_streaming=False, changed=False, merged=False, revision="", wire="prove.v2", provers=False):
         head, core = "a" * 40, "b" * 40
         selected = revision or (head if main_streaming else upstream.REVIEWED_STREAMING_REVISION)
         client = b"StreamingProverClient .prove_stream(request)"
         execution = ("type BlockExecutorFactory = " + factory + "<Receipt>;").encode()
-        sources = {"crates/eez-prover-client/src/lib.rs": client, "crates/eez-evm/src/lib.rs": execution}
+        schema_name = "prove_stream.proto" if wire == "prove.v2" else "prove.proto"
+        schema = ("package " + wire + ";\nservice Prover { rpc ProveStream(stream ClientFrame) returns (stream ServerFrame); }").encode()
+        sources = {"crates/eez-prover-client/src/lib.rs": client, "crates/eez-evm/src/lib.rs": execution,
+                   "crates/eez-control-rpc/proto/" + schema_name: schema}
         blobs = {hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest(): data for data in sources.values()}
         entries = [{"path": path, "type": "blob", "sha": hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()} for path, data in sources.items()]
         calls = []
@@ -30,7 +33,8 @@ class StreamingSourceTests(unittest.TestCase):
             if path == "commits/main": return {"sha": head}
             if path == "git/trees/" + head + "?recursive=1" and not main_streaming: return {"tree": []}
             if path == "git/trees/" + selected + "?recursive=1": return {"tree": entries}
-            if path == "git/trees/" + selected: return {"tree": [{"path": "eez-core-protocol", "mode": "160000", "sha": core}]}
+            if path == "git/trees/" + selected: return {"tree": [{"path": "eez-core-protocol", "mode": "160000", "sha": core}] +
+                    ([{"path": "provers", "mode": "160000", "sha": "f" * 40}] if provers else [])}
             if path == "pulls/206": return {"merged": merged, "head": {"sha": "c" * 40 if changed else upstream.REVIEWED_STREAMING_REVISION, "repo": {"full_name": upstream.REPOSITORY}}}
             if path.startswith("git/blobs/"):
                 blob = path.split("/")[-1]
@@ -76,6 +80,16 @@ class StreamingSourceTests(unittest.TestCase):
                 self.assertEqual(manifest["streaming"]["source"], "reviewed-pr206-replay")
                 self.assertFalse(any(path.startswith("compare/") for path in calls))
 
+    def test_promoted_streaming_and_provers_gitlink_are_selected_from_the_exact_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            manifest, _ = self.invoke(Path(directory), main_streaming=True, wire="prove.v1", provers=True)
+            self.assertEqual(manifest["streaming"]["wire"], "prove.v1")
+            self.assertEqual(manifest["provers_revision"], "f" * 40)
+            self.assertEqual(upstream.build_identity(manifest)["provers_revision"], "f" * 40)
+            self.assertIn("crates/eez-control-rpc/proto/prove.proto", manifest["streaming"]["source_blobs"])
+        with tempfile.TemporaryDirectory() as directory, self.assertRaisesRegex(ValueError, "schema changed"):
+            self.invoke(Path(directory), main_streaming=True, wire="prove.v3")
+
     def test_source_blob_digest_size_and_encoding_are_checked(self):
         data = b"source"
         blob = hashlib.sha1(b"blob 6\0" + data).hexdigest()
@@ -89,17 +103,18 @@ class StreamingEvidenceTests(unittest.TestCase):
     def test_requires_v2_signed_windows_matching_passed_upstream_source_and_counts(self):
         self.check_profile(False)
         self.check_profile(True)
+        self.check_profile(False, wire="prove.v1")
 
-    def check_profile(self, native):
+    def check_profile(self, native, wire="prove.v2"):
         for mutation in (None, "v1", "absent", "count", "digest", "result", "source", "remote", "partition", "genesis-only", "missing-prefix"):
             with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
-                manifest = {"revision": "a" * 40, "core_revision": "b" * 40, "streaming": {"wire": "prove.v2", "profile": "rollup0-conditional"}}
+                manifest = {"revision": "a" * 40, "core_revision": "b" * 40, "streaming": {"wire": wire, "profile": "rollup0-conditional"}}
                 if native:
                     manifest = {"profile": "rollupx", "repository": "eez-association/eez-rollupX", "revision": "a" * 40, "core_revision": "b" * 40}
                 result = {"result": "pass", "exit_code": 0, "commits": {"root": "a" * 40, "protocol": "b" * 40}, "proof_flow": {"signed_windows": 1, "remote_attestations": 2}}
-                fields = {"wire": "prove.v2", "validated_from_block": 1, "validated_to_block": 6, "recomputed_public_inputs_hash": "0x" + "cd" * 32}
-                if mutation == "v1": fields["wire"] = "prove.v1"
+                fields = {"wire": wire, "validated_from_block": 1, "validated_to_block": 6, "recomputed_public_inputs_hash": "0x" + "cd" * 32}
+                if mutation == "v1": fields["wire"] = "prove.v2" if wire == "prove.v1" else "prove.v1"
                 if mutation == "count": result["proof_flow"]["signed_windows"] = 2
                 if mutation == "digest": fields["recomputed_public_inputs_hash"] = "0x01"
                 if mutation == "result": result["result"] = "fail"
@@ -123,7 +138,7 @@ class StreamingEvidenceTests(unittest.TestCase):
                     else:
                         prepare.report(args)
                         report = json.loads((root / "candidate-prover.json").read_text())
-                        self.assertEqual(report["wire"], "prove.v2")
+                        self.assertEqual(report["wire"], wire)
                         self.assertEqual(report["signed_windows"], [fields])
                         self.assertEqual(report["image_id"], args.image_id)
 
@@ -138,7 +153,11 @@ class StreamingProxyTests(unittest.TestCase):
             + f'os.execv({executable!r}, [{executable!r}, *sys.argv[1:]])\n')
         probe.chmod(0o555)
 
-    def test_generated_proxy_allows_only_v2_with_verified_backend_and_pinned_client(self):
+    def test_generated_proxy_allows_only_the_selected_rpc_with_verified_backend_and_pinned_client(self):
+        for wire in ("prove.v1", "prove.v2"):
+            with self.subTest(wire=wire): self.check_proxy(wire)
+
+    def check_proxy(self, wire):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             launcher = root / "start-streaming.sh"
@@ -146,14 +165,16 @@ class StreamingProxyTests(unittest.TestCase):
             proxy = root / "haproxy"
             proxy.write_text('#!/bin/sh\nexit 7\n')
             proxy.chmod(0o555)
-            environment = dict(os.environ, PATH=str(root) + os.pathsep + os.environ["PATH"], EEZ_KEYSTORE_DIRECTORY=str(root / "keystore"))
+            environment = dict(os.environ, PATH=str(root) + os.pathsep + os.environ["PATH"], EEZ_KEYSTORE_DIRECTORY=str(root / "keystore"), EEZ_STREAMING_WIRE=wire)
             result = subprocess.run(["bash", str(launcher), "--listen-addr=0.0.0.0:50061", "--chain-config=/out/l2-genesis.json"],
                 env=environment, text=True, capture_output=True, timeout=30)
             self.assertEqual(result.returncode, 7, result.stderr)
             stream = root / "keystore/streaming"
             config = (stream / "haproxy.cfg").read_text()
             self.assertIn("bind :50061 proto h2", config)
-            self.assertIn("http-request deny unless { path /prove.v2.Prover/ProveStream /prove.v2.Prover/Capabilities }", config)
+            allowed = "/prove.v1.Prover/ProveStream" if wire == "prove.v1" else "/prove.v2.Prover/ProveStream /prove.v2.Prover/Capabilities"
+            self.assertIn("http-request deny unless { path " + allowed + " }", config)
+            if wire == "prove.v1": self.assertNotIn("/prove.v2.Prover/ProveStream", config)
             self.assertIn("http-request set-uri https://eez-ci-server%[pathq]", config)
             self.assertIn("log stdout format raw local0", config)
             self.assertIn("option httplog", config)

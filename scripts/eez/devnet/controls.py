@@ -92,7 +92,16 @@ def main():
         target = upstream / "crates/eez-node-e2e/tests/nethermind_streaming_controls.rs"
         if target.exists():
             raise ValueError("control test target already exists")
-        shutil.copyfile(Path(__file__).with_suffix(".rs"), target)
+        manifest = json.loads((directory / "upstream.json").read_text())
+        wire = manifest["streaming"]["wire"]
+        if wire not in ("prove.v1", "prove.v2"):
+            raise ValueError("unsupported control streaming protocol")
+        text = Path(__file__).with_suffix(".rs").read_text()
+        if wire == "prove.v1":
+            if text.count("    v2::{") != 1:
+                raise ValueError("control protocol import changed")
+            text = text.replace("    v2::{", "    v1::{")
+        target.write_text(text)
         return
     path = directory / "streaming-controls-input.json"
     deadline = time.monotonic() + 180
@@ -112,10 +121,11 @@ def main():
     report = json.loads((directory / "streaming-controls-probe.json").read_text())
     validate_report(report, data)
     recheck(l1, source, context)
+    manifest = json.loads((directory / "upstream.json").read_text())
     report.update({"candidate_revision": os.environ["GITHUB_SHA"], "prover_image_id": os.environ["EEZ_CONTROL_IMAGE_ID"],
-                   "upstream": json.loads((directory / "upstream.json").read_text()),
+                   "upstream": manifest,
                    "input_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
-                   "context": context, "wire": "prove.v2", "profile": "rollup0-conditional",
+                   "context": context, "wire": manifest["streaming"]["wire"], "profile": "rollup0-conditional",
                    "scope": "ordinary transaction-empty blocks; control cursor and fencing; no Finalize or settlement claim"})
     (directory / "streaming-controls.json").write_text(json.dumps(report, indent=2) + "\n")
 

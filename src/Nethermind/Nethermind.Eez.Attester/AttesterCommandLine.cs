@@ -37,7 +37,7 @@ internal static class AttesterCommandLine
 
     public static readonly Option<string?> SkipConsensusLayerCalls = Flag("--skip-consensus-layer-calls", "EEZ_SKIP_CONSENSUS_LAYER_CALLS", "Omit L2 beacon-root updates and consensus requests", "false");
 
-    public static readonly Option<string?> StreamingConfig = Flag("--streaming-config", "EEZ_STREAMING_CONFIG", "Trusted configuration for the optional mutual-TLS prove.v2 endpoint");
+    public static readonly Option<string?> StreamingConfig = Flag("--streaming-config", "EEZ_STREAMING_CONFIG", "Trusted configuration for the optional mutual-TLS streaming endpoint");
 
     /// <exception cref="FormatException">A setting is missing or invalid.</exception>
     public static AttesterOptions Parse(ParseResult result, EezChainRules? rules = null)

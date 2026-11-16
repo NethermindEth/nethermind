@@ -18,7 +18,7 @@ class VectorSelectionTests(unittest.TestCase):
     revision = "a" * 40
     core = "b" * 40
 
-    def invoke(self, directory, available, merged=True, data=None, truncated=False, old_replay=False):
+    def invoke(self, directory, available, merged=True, data=None, truncated=False, old_replay=False, wire="prove.v2"):
         args = SimpleNamespace(revision="", directory=directory / "vectors", output=directory / "vectors/upstream.json")
         document = {"format": "eez-prove-v2-transcript-1", "cases": [{"name": "baseline", "steps": [
             {"action": "open", "stream": "main"}, {"action": "send", "stream": "main", "protobuf_hex": ""},
@@ -28,6 +28,9 @@ class VectorSelectionTests(unittest.TestCase):
         for name in self.names:
             case = dict(document, source_file=name)
             payloads[name] = json.dumps(case).encode() if data is None else data
+        schema = ("package " + wire + ";\nservice Prover { rpc ProveStream(stream ClientFrame) returns (stream ServerFrame); }").encode()
+        schema_blob = hashlib.sha1(b"blob " + str(len(schema)).encode() + b"\0" + schema).hexdigest()
+        schema_path = "crates/eez-control-rpc/proto/" + ("prove.proto" if wire == "prove.v1" else "prove_stream.proto")
         paths = []
 
         def api(path):
@@ -36,11 +39,13 @@ class VectorSelectionTests(unittest.TestCase):
             if path == "git/trees/" + self.revision:
                 return {"tree": [{"path": "eez-core-protocol", "mode": "160000", "sha": self.core}]}
             if path == "git/trees/" + self.revision + "?recursive=1":
-                return {"tree": [{"path": "crates/eez-control-rpc/conformance/" + name, "type": "blob", "sha": blobs[name]} for name in available], "truncated": truncated}
+                return {"tree": [{"path": "crates/eez-control-rpc/conformance/" + name, "type": "blob", "sha": blobs[name]} for name in available] + [{"path": schema_path, "type": "blob", "sha": schema_blob}], "truncated": truncated}
             if path == "pulls/229": return {"merged": merged, "merge_commit_sha": "e" * 40}
             if path.startswith("compare/" + "e" * 40): return {"merge_base_commit": {"sha": ("f" if old_replay else "e") * 40}}
             if path.startswith("git/blobs/"):
                 blob = path.removeprefix("git/blobs/")
+                if blob == schema_blob:
+                    return {"sha": blob, "encoding": "base64", "size": len(schema), "content": base64.b64encode(schema).decode()}
                 name = next(name for name in self.names if blobs[name] == blob)
                 payload = payloads[name]
                 return {"sha": blob, "encoding": "base64", "size": len(payload), "content": base64.b64encode(payload).decode()}
@@ -68,6 +73,12 @@ class VectorSelectionTests(unittest.TestCase):
     def test_replay_before_quota_contract_merge_cannot_use_old_vectors(self):
         with tempfile.TemporaryDirectory() as temporary, self.assertRaisesRegex(ValueError, "predates the current streaming quota contract"):
             self.invoke(Path(temporary), self.names, old_replay=True)
+
+    def test_promoted_wire_does_not_change_any_vector_bytes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            args, _, manifest, payloads = self.invoke(Path(temporary), self.names, wire="prove.v1")
+            self.assertEqual(manifest["vectors"]["wire"], "prove.v1")
+            for name in self.names: self.assertEqual((args.directory / name).read_bytes(), payloads[name])
 
     def test_replay_before_quota_contract_merge_cannot_use_old_vectors(self):
         with tempfile.TemporaryDirectory() as temporary, self.assertRaisesRegex(ValueError, "predates the current streaming quota contract"):

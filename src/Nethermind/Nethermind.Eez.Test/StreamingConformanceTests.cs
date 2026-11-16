@@ -80,9 +80,8 @@ public class StreamingConformanceTests
         await using StreamingEndpointTests.EndpointServer server = await StreamingEndpointTests.EndpointServer.Start(
             StatelessFixtures.Window84, 79, 84, Limits(scenario), parent, profile: prooflessRequests ? StreamingSettlementProfile.Rollup0Calldata : StreamingSettlementProfile.Rollup0Conditional);
         using GrpcChannel channel = server.Channel(server.ClientA);
-        Prover.ProverClient client = new(channel);
         Address attester = new(document.GetProperty("oracle").GetProperty("attester").GetString()!);
-        await Replay(client, scenario, attester, prooflessRequests);
+        await Replay(channel, WireProtocol(prooflessRequests), scenario, attester, prooflessRequests);
         await server.Admission.WaitUntilIdle();
     }
 
@@ -155,6 +154,20 @@ public class StreamingConformanceTests
         return document.RootElement.Clone();
     }
 
+    private static string WireProtocol(bool prooflessRequests)
+    {
+        string path = Path.Combine(DirectoryPath(prooflessRequests), "upstream.json");
+        if (!File.Exists(path))
+        {
+            if (!prooflessRequests && Environment.GetEnvironmentVariable("EEZ_REQUIRE_UPSTREAM_VECTORS") == "true")
+                throw new InvalidOperationException("selected upstream vectors require their wire protocol manifest");
+            return "prove.v2";
+        }
+        using JsonDocument manifest = JsonDocument.Parse(File.ReadAllText(path));
+        string? wire = manifest.RootElement.GetProperty("vectors").GetProperty("wire").GetString();
+        return wire is "prove.v1" or "prove.v2" ? wire : throw new InvalidOperationException("unsupported upstream streaming protocol");
+    }
+
     private static WindowLimits Limits(JsonElement scenario)
     {
         WindowLimits limits = new(8, 16 * 1024 * 1024, 100_000);
@@ -180,7 +193,7 @@ public class StreamingConformanceTests
         return EezCalldata.EncodePostAndVerifyBatch(batch with { Proofs = proofs });
     }
 
-    private static async Task Replay(Prover.ProverClient client, JsonElement scenario, Address attester, bool prooflessRequests)
+    private static async Task Replay(GrpcChannel channel, string wire, JsonElement scenario, Address attester, bool prooflessRequests)
     {
         Dictionary<string, AsyncDuplexStreamingCall<ClientFrame, ServerFrame>> streams = [];
         Dictionary<ByteString, ByteString> sessions = [];
@@ -196,7 +209,7 @@ public class StreamingConformanceTests
                 switch (step.GetProperty("action").GetString())
                 {
                     case "open":
-                        streams.Add(name, client.ProveStream(Options()));
+                        streams.Add(name, StreamingEndpointTests.OpenStream(channel, wire, Options()));
                         break;
                     case "send":
                         ClientFrame request = ClientFrame.Parser.ParseFrom(Convert.FromHexString(step.GetProperty("protobuf_hex").GetString()!));

@@ -36,6 +36,8 @@ def sha(value):
 
 def build_identity(manifest):
     identity = {key: manifest[key] for key in ("repository", "profile", "revision", "core_revision")}
+    if "provers_revision" in manifest:
+        identity["provers_revision"] = sha(manifest["provers_revision"])
     if "streaming" in manifest:
         identity["streaming"] = {key: value for key, value in manifest["streaming"].items() if key != "source"}
     return identity
@@ -95,6 +97,11 @@ def resolve(args):
         raise ValueError("missing unique Core gitlink")
     manifest = {"repository": repository, "profile": profile, "revision": source,
         "core_revision": sha(core[0]["sha"]), "main_at_resolution": head}
+    provers = [entry for entry in entries if entry["path"] == "provers" and entry["mode"] == "160000"]
+    if len(provers) > 1:
+        raise ValueError("ambiguous provers gitlink")
+    if provers:
+        manifest["provers_revision"] = sha(provers[0]["sha"])
     if streaming is not None:
         manifest["streaming"] = streaming
     args.output.write_text(json.dumps(manifest, indent=2) + "\n")
@@ -114,6 +121,17 @@ def source_blob(entry):
     return data.decode("utf-8")
 
 
+def streaming_protocol(files):
+    for name, wire in (("prove.proto", "prove.v1"), ("prove_stream.proto", "prove.v2")):
+        path = "crates/eez-control-rpc/proto/" + name
+        if path not in files:
+            continue
+        schema = source_blob(files[path])
+        if re.search(r"(?m)^package\s+" + re.escape(wire) + r"\s*;", schema) and re.search(r"\brpc\s+ProveStream\s*\(", schema):
+            return wire, path
+    raise ValueError("upstream streaming RPC schema changed")
+
+
 def streaming_source(revision):
     tree = api("git/trees/" + sha(revision) + "?recursive=1")
     if tree.get("truncated"):
@@ -130,10 +148,11 @@ def streaming_source(revision):
     factories = re.findall(r"type BlockExecutorFactory\s*=\s*(\w+)\s*<", execution)
     if len(factories) != 1 or factories[0] not in ("EthBlockExecutorFactory", "EezBlockExecutorFactory"):
         raise ValueError("upstream execution factory changed; review consensus-call behavior")
-    return {"wire": "prove.v2", "profile": "rollup0-conditional",
+    wire, schema_path = streaming_protocol(files)
+    return {"wire": wire, "profile": "rollup0-conditional",
         "skip_consensus_layer_calls": factories[0] == "EezBlockExecutorFactory",
         "execution_factory": factories[0],
-        "source_blobs": {path: sha(files[path]["sha"]) for path in (client_path, execution_path)}}
+        "source_blobs": {path: sha(files[path]["sha"]) for path in (client_path, execution_path, schema_path)}}
 
 
 def runtime(args):
@@ -257,7 +276,10 @@ def native_runtime(args, manifest):
 
 def record_build(args):
     manifest = json.loads(args.manifest.read_text())
-    for path, expected in ((args.checkout, manifest["revision"]), (args.checkout / "eez-core-protocol", manifest["core_revision"])):
+    sources = [(args.checkout, manifest["revision"]), (args.checkout / "eez-core-protocol", manifest["core_revision"])]
+    if "provers_revision" in manifest:
+        sources.append((args.checkout / "provers", manifest["provers_revision"]))
+    for path, expected in sources:
         actual = subprocess.check_output(["git", "-C", str(path), "rev-parse", "HEAD"], text=True, timeout=30).strip()
         if actual != sha(expected):
             raise ValueError("runtime build source differs from selected revision")
@@ -328,12 +350,16 @@ def vectors(args):
         found = []
     snapshot = Path(__file__).resolve().parents[3] / "src/Nethermind/Nethermind.Eez.Test/Fixtures/streaming-conformance/rollup0-conditional"
     if len(found) == len(names):
-        source = {"source": "public-main", "revision": manifest["revision"], "core_revision": manifest["core_revision"], "files": {}}
+        schema_paths = ("crates/eez-control-rpc/proto/prove.proto", "crates/eez-control-rpc/proto/prove_stream.proto")
+        wire, schema_path = streaming_protocol({path: {"sha": available[path]} for path in schema_paths if path in available})
+        source = {"source": "public-main", "revision": manifest["revision"], "core_revision": manifest["core_revision"],
+                  "wire": wire, "schema_blob": available[schema_path], "files": {}}
     elif found or merged:
         raise ValueError("selected upstream revision is missing the vector suite")
     else:
         source = json.loads((snapshot / "provenance.json").read_text())
         source["source"] = "reviewed-pr-snapshot-before-merge"
+        source["wire"] = "prove.v2"
         print("PR229 vectors are not on public main yet; running the explicit reviewed snapshot " + sha(source["revision"]))
     for name in names:
         if found:

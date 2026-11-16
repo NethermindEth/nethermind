@@ -48,7 +48,7 @@ internal sealed class StreamingTransport
     }
 
     internal async Task Run(IAsyncStreamReader<ClientFrame> input, IServerStreamWriter<ServerFrame> output,
-        string authenticatedOwner, CancellationToken cancellation)
+        string authenticatedOwner, CancellationToken cancellation, string wire = "prove.v2")
     {
         StreamingConnection connection = new(_registry, authenticatedOwner, _rollupId);
         if (Interlocked.Increment(ref _connections) > _limits.MaxConnections)
@@ -139,7 +139,7 @@ internal sealed class StreamingTransport
                             work = null;
                             continue;
                         }
-                        response = await Complete(connection, work, closed.Token).ConfigureAwait(false);
+                        response = await Complete(connection, work, closed.Token, wire).ConfigureAwait(false);
                     }
                     catch (RpcException) when (connection.AttachmentRevoked.IsCompleted)
                     {
@@ -302,7 +302,7 @@ internal sealed class StreamingTransport
             ? new StreamingResult(await _execute(operation, cancellation).ConfigureAwait(false), null)
             : new StreamingResult(null, await _finalize!(operation, cancellation).ConfigureAwait(false));
 
-    private async Task<ServerFrame> Complete(StreamingConnection connection, StreamingWork work, CancellationToken cancellation)
+    private async Task<ServerFrame> Complete(StreamingConnection connection, StreamingWork work, CancellationToken cancellation, string wire)
     {
         try
         {
@@ -312,7 +312,7 @@ internal sealed class StreamingTransport
             return result switch
             {
                 { Block: { } block, Proof: null } => connection.CommitBlock(work.Operation, block),
-                { Block: null, Proof: { } proof } => CompleteProof(connection, work.Operation, proof),
+                { Block: null, Proof: { } proof } => CompleteProof(connection, work.Operation, proof, wire),
                 _ => throw new InvalidOperationException("invalid streaming backend result"),
             };
         }
@@ -332,15 +332,15 @@ internal sealed class StreamingTransport
         }
     }
 
-    private ServerFrame CompleteProof(StreamingConnection connection, SessionOperation operation, Proof proof)
+    private ServerFrame CompleteProof(StreamingConnection connection, SessionOperation operation, Proof proof, string wire)
     {
         ServerFrame response = connection.CompleteProof(operation, proof);
         (ulong from, ulong to) = operation.FinalizationRange;
         _logger.LogInformation(
             "{{\"event_name\":\"eez.proof_signer.window_signed\",\"fields\":{{" +
-            "\"wire\":\"prove.v2\",\"validated_from_block\":{From},\"validated_to_block\":{To}," +
+            "\"wire\":\"{Wire}\",\"validated_from_block\":{From},\"validated_to_block\":{To}," +
             "\"recomputed_public_inputs_hash\":\"0x{Hash}\"}}}}",
-            from, to, Convert.ToHexStringLower(proof.PublicInputsHash.Span));
+            wire, from, to, Convert.ToHexStringLower(proof.PublicInputsHash.Span));
         return response;
     }
 

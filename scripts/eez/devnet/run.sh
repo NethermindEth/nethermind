@@ -56,7 +56,8 @@ else
     export EEZ_CAUSAL_VERIFIER_BIN="$EEZ_RUNTIME_DIR/e2e-causal-verify"
     export EEZ_BLOB_VERIFIER_BIN="$EEZ_RUNTIME_DIR/verify_blob_evidence"
 fi
-docker build --build-arg PROFILE="$profile" --build-arg SKIP_CONSENSUS_LAYER_CALLS="$skip_consensus_calls" -f "$HERE/Dockerfile.prover" --build-arg BASE_IMAGE="$EEZ_NETHERMIND_PROVER_BASE_IMAGE" -t "$EEZ_PROOF_SIGNER_IMAGE" "$HERE"
+streaming_wire="$(jq -er '.streaming.wire // "prove.v2"' "$EEZ_CI_RESULT_DIR/upstream.json")"
+docker build --build-arg PROFILE="$profile" --build-arg STREAMING_WIRE="$streaming_wire" --build-arg SKIP_CONSENSUS_LAYER_CALLS="$skip_consensus_calls" -f "$HERE/Dockerfile.prover" --build-arg BASE_IMAGE="$EEZ_NETHERMIND_PROVER_BASE_IMAGE" -t "$EEZ_PROOF_SIGNER_IMAGE" "$HERE"
 prover_revision="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$EEZ_PROOF_SIGNER_IMAGE")"
 [[ "$prover_revision" == "$GITHUB_SHA" ]] || { echo "candidate prover image revision mismatch" >&2; exit 1; }
 prover_image_id="$(docker image inspect --format '{{.Id}}' "$EEZ_PROOF_SIGNER_IMAGE")"

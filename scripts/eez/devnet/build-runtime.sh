@@ -9,7 +9,8 @@ if [[ "$EEZ_PROFILE" == rollup0 ]]; then
   python3 "$HERE/controls.py" install
   runtime_targets=()
   if test ! -x "$EEZ_RUNTIME_DIR/eez-composer"; then
-    runtime_targets=(-p eez-node -p eez-follower -p eez-prover-stateless --bins --examples)
+    runtime_targets=(-p eez-node -p eez-follower --bins --examples)
+    if test ! -f scripts/provers-cargo.sh; then runtime_targets+=(-p eez-prover-stateless); fi
   fi
   cargo build --locked --profile ci-e2e -p eez-node-e2e "${runtime_targets[@]}" --message-format=json-render-diagnostics --timings \
     --test durability --test resumption --test resumption_append --test native_system --test contract_post --test partial_consumption --test nethermind_streaming_controls \
@@ -30,6 +31,9 @@ if [[ "$EEZ_PROFILE" == rollupx ]]; then
 fi
 if test ! -x "$EEZ_RUNTIME_DIR/eez-composer"; then
   if [[ "$EEZ_PROFILE" == rollup0 ]]; then
+    if test -f scripts/provers-cargo.sh; then
+      bash scripts/provers-cargo.sh build --profile ci-e2e --target-dir target -p eez-prover-stateless --bin eez-proof-signer
+    fi
     cp target/ci-e2e/eez-composer target/ci-e2e/eez-follower target/ci-e2e/eez-proof-signer "$EEZ_RUNTIME_DIR/"
     cp target/ci-e2e/examples/genesis_state_root "$EEZ_RUNTIME_DIR/eez-genesis-state-root"
     cp target/ci-e2e/examples/genesis_block_hash "$EEZ_RUNTIME_DIR/eez-genesis-block-hash"

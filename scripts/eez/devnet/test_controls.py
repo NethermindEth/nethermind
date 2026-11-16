@@ -153,6 +153,24 @@ class StreamingControlInputTests(unittest.TestCase):
             stack.enter_context(patch.object(controls, 'validate_report', side_effect=validate_report))
             controls.main()
 
+    def test_control_probe_uses_the_selected_upstream_generated_client(self):
+        for wire in ('prove.v1', 'prove.v2', 'prove.v3'):
+            with self.subTest(wire=wire), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                target = root / 'crates/eez-node-e2e/tests'
+                target.mkdir(parents=True)
+                (root / 'upstream.json').write_text(json.dumps({'streaming': {'wire': wire}}))
+                with patch.dict(os.environ, {'EEZ_UPSTREAM': str(root), 'EEZ_CI_RESULT_DIR': str(root)}), \
+                        patch.object(sys, 'argv', ['controls', 'install']):
+                    if wire == 'prove.v3':
+                        with self.assertRaises(ValueError): controls.main()
+                        self.assertEqual(list(target.iterdir()), [])
+                    else:
+                        controls.main()
+                        original = Path(controls.__file__).with_suffix('.rs').read_text()
+                        expected = original.replace('    v2::{', '    v1::{') if wire == 'prove.v1' else original
+                        self.assertEqual((target / 'nethermind_streaming_controls.rs').read_text(), expected)
+
     def test_entry_point_rejects_failed_or_wrong_profile_observations_and_canonical_changes(self):
         context = {'result': 'pass', 'phase': 'fresh-follower', 'profile': 'legacy-rollup0-0x76',
                    'height': 6, 'endpoint': hash_value(6), 'canonical_l1_number': '0x1', 'canonical_l1_hash': 'snapshot',
@@ -172,6 +190,10 @@ class StreamingControlInputTests(unittest.TestCase):
                     self.assertEqual(json.loads(output.read_text())['context'], context)
 
     def test_report_requires_the_original_context_and_final_canonical_recheck(self):
+        for wire in ('prove.v1', 'prove.v2'):
+            with self.subTest(wire=wire): self.check_report(wire)
+
+    def check_report(self, wire):
         context = {'result': 'pass', 'phase': 'fresh-follower', 'profile': 'legacy-rollup0-0x76',
                    'height': 6, 'endpoint': hash_value(6), 'canonical_l1_number': '0x1', 'canonical_l1_hash': 'snapshot',
                    'genesis_state': {'hash': 'genesis', 'chain_id': 2}}
@@ -184,7 +206,7 @@ class StreamingControlInputTests(unittest.TestCase):
                           'blocks': [{key: block[key] for key in ('number', 'hash', 'state_root')} for block in data['blocks']],
                           'checks': ['disconnect-resume', 'rewind-reexecute', 'pipelined-cancel', 'cancelled-resume-rejected', 'independent-session']}
                 (directory / 'streaming-controls-probe.json').write_text(json.dumps(report))
-                (directory / 'upstream.json').write_text(json.dumps({'revision': 'upstream'}))
+                (directory / 'upstream.json').write_text(json.dumps({'revision': 'upstream', 'streaming': {'wire': wire}}))
                 if failure == 'context':
                     data['context']['canonical_l1_hash'] = 'fork'
                     (directory / 'streaming-controls-input.json').write_text(json.dumps(data))
@@ -194,4 +216,4 @@ class StreamingControlInputTests(unittest.TestCase):
                     self.assertFalse(output.exists())
                 else:
                     self.invoke(directory, 'report', context, '')
-                    self.assertEqual(json.loads(output.read_text())['wire'], 'prove.v2')
+                    self.assertEqual(json.loads(output.read_text())['wire'], wire)

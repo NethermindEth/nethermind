@@ -206,7 +206,7 @@ jobs:
         run: |
           zstd -dc artifacts/eez-candidate/images.tar.zst | docker load
           docker build --build-arg BASE_IMAGE="nethermind-eez-attester:eez-$GITHUB_RUN_ID" \
-            --build-arg PROFILE=rollup0 --build-arg SKIP_CONSENSUS_LAYER_CALLS=true \
+            --build-arg PROFILE=rollup0 --build-arg STREAMING_WIRE=prove.v2 --build-arg SKIP_CONSENSUS_LAYER_CALLS=true \
             -t "nethermind-eez-prover:quorum-$GITHUB_RUN_ID" \
             -f scripts/eez/devnet/Dockerfile.prover scripts/eez/devnet
       - uses: actions/setup-dotnet@v5

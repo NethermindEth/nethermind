@@ -35,7 +35,6 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 using ProverV1 = Nethermind.Eez.Prove.Prover;
-using ProverV2 = Nethermind.Eez.Prove.V2.Prover;
 using StreamBlock = Nethermind.Eez.Prove.V2.Block;
 using SettlementBatch = Nethermind.Eez.Execution.Settlement.PostBatch;
 
@@ -53,9 +52,8 @@ public class StreamingEndpointTests(string fixture, int from, int to, bool live)
     [TearDown]
     public async Task TearDown() => await _server.DisposeAsync();
 
-    [TestCase(false, TestName = "ProveStream_AuthenticatedProfileOverRealTls_ReturnsIndependentProofAndEof")]
-    [TestCase(true, TestName = "ProveStream_ConditionalProfileOverRealTls_ReturnsIndependentProofAndEof")]
-    public async Task ProveStream_PinnedComposerOverRealTls_ReturnsIndependentProofAndEof(bool conditional)
+    [Test]
+    public async Task ProveStream_PinnedComposerOverRealTls_ReturnsIndependentProofAndEof([Values] bool conditional, [Values("prove.v1", "prove.v2")] string wire)
     {
         if (conditional)
         {
@@ -63,8 +61,7 @@ public class StreamingEndpointTests(string fixture, int from, int to, bool live)
             _server = await EndpointServer.Start(fixture, from, to, live: live, profile: StreamingSettlementProfile.Rollup0Conditional);
         }
         using GrpcChannel channel = _server.Channel(_server.ClientA);
-        ProverV2.ProverClient client = new(channel);
-        using AsyncDuplexStreamingCall<ClientFrame, ServerFrame> call = client.ProveStream(Options());
+        using AsyncDuplexStreamingCall<ClientFrame, ServerFrame> call = OpenStream(channel, wire, Options());
         ServerFrame current = await Begin(call);
         foreach (ProveChunk chunk in _server.Chunks.Skip(1))
         {
@@ -116,13 +113,12 @@ public class StreamingEndpointTests(string fixture, int from, int to, bool live)
         await _server.Admission.WaitUntilIdle();
     }
 
-    [TestCase(false, TestName = "ProveStream_NoClientCertificate_RejectsTls")]
-    [TestCase(true, TestName = "ProveStream_UnpinnedClientCertificate_RejectsTls")]
-    public async Task ProveStream_UntrustedClient_DoesNotReachTheBackend(bool unpinned)
+    [Test]
+    public async Task ProveStream_UntrustedClient_DoesNotReachTheBackend([Values] bool unpinned, [Values("prove.v1", "prove.v2")] string wire)
     {
         using X509Certificate2 other = EndpointServer.Certificate("unknown", false);
         using GrpcChannel channel = _server.Channel(unpinned ? other : null);
-        using AsyncDuplexStreamingCall<ClientFrame, ServerFrame> call = new ProverV2.ProverClient(channel).ProveStream(Options());
+        using AsyncDuplexStreamingCall<ClientFrame, ServerFrame> call = OpenStream(channel, wire, Options());
         Task<bool> response = call.ResponseStream.MoveNext();
         try { await call.RequestStream.WriteAsync(new ClientFrame { Begin = _server.Anchor }); }
         catch (Exception exception) when (exception is IOException or RpcException) { }
@@ -145,10 +141,10 @@ public class StreamingEndpointTests(string fixture, int from, int to, bool live)
     }
 
     [Test]
-    public async Task ProveStream_PlaintextEvenWithOwnerMetadata_IsUnauthenticated()
+    public async Task ProveStream_PlaintextEvenWithOwnerMetadata_IsUnauthenticated([Values("prove.v1", "prove.v2")] string wire)
     {
         using GrpcChannel channel = GrpcChannel.ForAddress(_server.PlainAddress);
-        using AsyncDuplexStreamingCall<ClientFrame, ServerFrame> call = new ProverV2.ProverClient(channel).ProveStream(Options(new Metadata
+        using AsyncDuplexStreamingCall<ClientFrame, ServerFrame> call = OpenStream(channel, wire, Options(new Metadata
         {
             { "owner", _server.ClientA.GetCertHashString(HashAlgorithmName.SHA256) },
             { "x-forwarded-proto", "https" },
@@ -179,12 +175,11 @@ public class StreamingEndpointTests(string fixture, int from, int to, bool live)
     }
 
     [Test]
-    public async Task Resume_RealTlsCertificateOwner_PreservesProgressAndRejectsAnotherPinnedOwner()
+    public async Task Resume_RealTlsCertificateOwner_PreservesProgressAndRejectsAnotherPinnedOwner([Values("prove.v1", "prove.v2")] string wire)
     {
         using GrpcChannel channelA = _server.Channel(_server.ClientA);
-        ProverV2.ProverClient clientA = new(channelA);
         ServerFrame ready;
-        using (AsyncDuplexStreamingCall<ClientFrame, ServerFrame> first = clientA.ProveStream(Options()))
+        using (AsyncDuplexStreamingCall<ClientFrame, ServerFrame> first = OpenStream(channelA, wire, Options()))
         {
             ready = await Begin(first);
             BlockWitness block = _server.Chunks[1].Block;
@@ -196,7 +191,7 @@ public class StreamingEndpointTests(string fixture, int from, int to, bool live)
             Assert.That(await first.ResponseStream.MoveNext(), Is.False, "half-close detaches without canceling the retained session");
         }
         using GrpcChannel channelB = _server.Channel(_server.ClientB);
-        using (AsyncDuplexStreamingCall<ClientFrame, ServerFrame> other = new ProverV2.ProverClient(channelB).ProveStream(Options(new Metadata
+        using (AsyncDuplexStreamingCall<ClientFrame, ServerFrame> other = OpenStream(channelB, wire, Options(new Metadata
             { { "owner", _server.ClientA.GetCertHashString(HashAlgorithmName.SHA256) } })))
         {
             await other.RequestStream.WriteAsync(new ClientFrame { SessionId = ready.SessionId, RequestId = 3, Resume = new Resume() });
@@ -208,7 +203,7 @@ public class StreamingEndpointTests(string fixture, int from, int to, bool live)
             await other.RequestStream.CompleteAsync();
             Assert.That(await other.ResponseStream.MoveNext(), Is.False, "foreign resume does not attach");
         }
-        using AsyncDuplexStreamingCall<ClientFrame, ServerFrame> resumed = clientA.ProveStream(Options());
+        using AsyncDuplexStreamingCall<ClientFrame, ServerFrame> resumed = OpenStream(channelA, wire, Options());
         await resumed.RequestStream.WriteAsync(new ClientFrame { SessionId = ready.SessionId, RequestId = 4, Resume = new Resume() });
         Assert.That(await resumed.ResponseStream.MoveNext(), Is.True, "original authenticated owner can resume");
         ServerFrame attachment = resumed.ResponseStream.Current;
@@ -218,11 +213,11 @@ public class StreamingEndpointTests(string fixture, int from, int to, bool live)
     }
 
     [Test]
-    public async Task ProveStream_SharedV1Admission_WaitsThenExecutesBlock()
+    public async Task ProveStream_SharedV1Admission_WaitsThenExecutesBlock([Values("prove.v1", "prove.v2")] string wire)
     {
         using BackendAdmission.BackendLease slot = _server.Admission.TryAcquire()!;
         using GrpcChannel channel = _server.Channel(_server.ClientA);
-        using AsyncDuplexStreamingCall<ClientFrame, ServerFrame> call = new ProverV2.ProverClient(channel).ProveStream(Options());
+        using AsyncDuplexStreamingCall<ClientFrame, ServerFrame> call = OpenStream(channel, wire, Options());
         ServerFrame ready = await Begin(call);
         await call.RequestStream.WriteAsync(new ClientFrame
         {
@@ -249,6 +244,15 @@ public class StreamingEndpointTests(string fixture, int from, int to, bool live)
         ServerFrame ready = call.ResponseStream.Current;
         Assert.That(ready.Ready?.ValidatedThrough, Is.EqualTo((ulong)from - 1), "Ready binds the configured rollup anchor");
         return ready;
+    }
+
+    internal static AsyncDuplexStreamingCall<ClientFrame, ServerFrame> OpenStream(GrpcChannel channel, string wire, CallOptions options)
+    {
+        if (wire is not ("prove.v1" or "prove.v2")) throw new ArgumentOutOfRangeException(nameof(wire));
+        Method<ClientFrame, ServerFrame> method = new(MethodType.DuplexStreaming, wire + ".Prover", "ProveStream",
+            Marshallers.Create<ClientFrame>(static frame => frame.ToByteArray(), ClientFrame.Parser.ParseFrom),
+            Marshallers.Create<ServerFrame>(static frame => frame.ToByteArray(), ServerFrame.Parser.ParseFrom));
+        return channel.CreateCallInvoker().AsyncDuplexStreamingCall(method, null, options);
     }
 
     private static bool IsTransportRejection(RpcException failure)

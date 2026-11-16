@@ -49,9 +49,10 @@ class RuntimeBuildTests(unittest.TestCase):
     def test_selected_tests_build_with_missing_or_prebuilt_runtime_and_failures_stop_publication(self):
         script = Path(__file__).with_name("build-runtime.sh")
         selected = list(CASES) + ["nethermind_streaming_controls"]
-        for prebuilt in (False, True):
-            for failed in (False, True):
-                with self.subTest(prebuilt=prebuilt, failed=failed), tempfile.TemporaryDirectory() as directory:
+        for prebuilt, moved in ((False, False), (True, False), (False, True), (True, True)):
+            for failed in (False, True, "signer"):
+                if failed == "signer" and (prebuilt or not moved): continue
+                with self.subTest(prebuilt=prebuilt, moved=moved, failed=failed), tempfile.TemporaryDirectory() as directory:
                     root = Path(directory)
                     upstream, output, commands = [root / name for name in ("source", "output", "commands")]
                     runtime = output / "runtime"
@@ -60,6 +61,15 @@ class RuntimeBuildTests(unittest.TestCase):
                         command = commands / name
                         command.write_text("#!" + sys.executable + "\n" + DRIVER)
                         command.chmod(0o755)
+                    if moved:
+                        helper = upstream / "scripts/provers-cargo.sh"
+                        helper.parent.mkdir()
+                        helper.write_text('#!/bin/sh\nexec cargo "$@"\n')
+                    if failed == "signer":
+                        stale = upstream / "target/ci-e2e/eez-proof-signer"
+                        stale.parent.mkdir(parents=True)
+                        stale.write_text("stale signer fixture")
+                        stale.chmod(0o555)
                     composer = runtime / "eez-composer"
                     if prebuilt:
                         composer.write_text("trusted imported runtime")
@@ -67,12 +77,15 @@ class RuntimeBuildTests(unittest.TestCase):
                     environment = {**os.environ, "PATH": str(commands) + os.pathsep + os.environ["PATH"],
                         "EEZ_PROFILE": "rollup0", "EEZ_UPSTREAM": str(upstream), "EEZ_CI_RESULT_DIR": str(output),
                         "EEZ_RUNTIME_DIR": str(runtime), "EEZ_BUILD_CALLS": str(root / "calls.jsonl"),
-                        "EEZ_BUILD_FAIL": str(int(failed)), "GITHUB_WORKSPACE": str(script.parents[3]),
+                        "EEZ_BUILD_FAIL": str(int(failed is True)), "EEZ_MOVED_SIGNER": str(int(moved)),
+                        "EEZ_SIGNER_BUILD_FAIL": str(int(failed == "signer")), "GITHUB_WORKSPACE": str(script.parents[3]),
                         "GITHUB_PATH": str(root / "github-path")}
                     result = subprocess.run(["bash", str(script)], env=environment, capture_output=True, text=True, timeout=15)
                     calls = [json.loads(line) for line in (root / "calls.jsonl").read_text().splitlines()]
                     builds = [call for call in calls if call[0] == "cargo"]
-                    self.assertEqual(len(builds), 1, "selected tests require one Cargo invocation even with prebuilt runtime")
+                    self.assertEqual(len(builds), 2 if moved and not prebuilt and failed is not True else 1)
+                    if len(builds) == 2:
+                        self.assertEqual(builds[1], ["cargo", "build", "--profile", "ci-e2e", "--target-dir", "target", "-p", "eez-prover-stateless", "--bin", "eez-proof-signer"])
                     cargo = builds[0]
                     self.assertEqual(cargo[1], "build")
                     self.assertIn("--locked", cargo)
@@ -81,19 +94,25 @@ class RuntimeBuildTests(unittest.TestCase):
                     self.assertEqual(cargo[cargo.index("--profile") + 1], "ci-e2e")
                     self.assertCountEqual([cargo[i + 1] for i, value in enumerate(cargo) if value == "--test"], selected)
                     packages = [cargo[i + 1] for i, value in enumerate(cargo) if value == "-p"]
-                    self.assertEqual(packages, ["eez-node-e2e"] + ([] if prebuilt else ["eez-node", "eez-follower", "eez-prover-stateless"]))
+                    self.assertEqual(packages, ["eez-node-e2e"] + ([] if prebuilt else ["eez-node", "eez-follower"] + ([] if moved else ["eez-prover-stateless"])))
                     self.assertEqual("--bins" in cargo, not prebuilt)
                     self.assertEqual("--examples" in cargo, not prebuilt)
                     self.assertEqual(Path(calls[0][1]).name, "embedded.py")
                     self.assertEqual(Path(calls[1][1]).name, "controls.py")
                     self.assertEqual(calls[2], cargo, "observation adapters must be installed before compilation")
                     self.assertEqual(result.returncode, 1 if failed else 0, result.stderr)
-                    if failed:
+                    if failed is True:
                         self.assertIn("compiler diagnostic fixture", result.stderr)
                         self.assertEqual({"fixture": "cargo-json"}, json.loads((output / "test-build.jsonl").read_text()))
                         self.assertEqual(calls[-1], cargo, "failed compilation must stop inventory and runtime publication")
                         self.assertFalse((root / "github-path").exists())
                         if not prebuilt: self.assertEqual(list(runtime.iterdir()), [])
+                    elif failed == "signer":
+                        self.assertIn("compiler diagnostic fixture", result.stderr)
+                        self.assertFalse((root / "github-path").exists())
+                        self.assertEqual(list(runtime.iterdir()), [])
+                        self.assertEqual(stale.read_text(), "stale signer fixture")
+                        self.assertEqual(calls[-1], builds[-1])
                     else:
                         self.assertEqual((output / "cargo-timing.html").read_text(), "compiler timing fixture")
                         self.assertEqual(Path(calls[3][1]).name, "bundle.py")
@@ -118,7 +137,7 @@ name = Path(sys.argv[0]).name
 with Path(os.environ["EEZ_BUILD_CALLS"]).open("a") as stream:
     stream.write(json.dumps([name, *sys.argv[1:]]) + "\\n")
 if name == "cargo":
-    if os.environ["EEZ_BUILD_FAIL"] == "1":
+    if os.environ["EEZ_BUILD_FAIL"] == "1" or (os.environ.get("EEZ_SIGNER_BUILD_FAIL") == "1" and "--bin" in sys.argv):
         print(json.dumps({"fixture": "cargo-json"}))
         print("compiler diagnostic fixture", file=sys.stderr)
         sys.exit(1)
@@ -127,8 +146,13 @@ if name == "cargo":
     timing.write_text("compiler timing fixture")
     if "--bins" in sys.argv:
         for relative in ("eez-composer", "eez-follower", "eez-proof-signer", "examples/genesis_state_root", "examples/genesis_block_hash"):
+            if relative == "eez-proof-signer" and os.environ.get("EEZ_MOVED_SIGNER") == "1": continue
             path = Path(os.environ["EEZ_UPSTREAM"]) / "target/ci-e2e" / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("compiled runtime fixture")
             path.chmod(0o555)
+    if "--bin" in sys.argv and sys.argv[sys.argv.index("--bin") + 1] == "eez-proof-signer":
+        path = Path(os.environ["EEZ_UPSTREAM"]) / "target/ci-e2e/eez-proof-signer"
+        path.write_text("compiled signer fixture")
+        path.chmod(0o555)
 '''

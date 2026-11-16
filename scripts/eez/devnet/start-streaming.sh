@@ -52,6 +52,16 @@ else
         serverCertificate: "server.pfx", serverPasswordFile: "password", composerCertificates: ["client.cer"],
         maxSessionsPerOwner: 4, maxReservedBytes: 2147483648}' > "$stream/config.json"
 fi
+wire="${EEZ_STREAMING_WIRE:-}"
+if [[ -z "$wire" ]]; then
+    if [[ "$profile" == rollup0 ]]; then wire=prove.v1; else wire=prove.v2; fi
+fi
+case "$wire" in
+    prove.v1) allowed_paths=/prove.v1.Prover/ProveStream ;;
+    prove.v2) allowed_paths="/prove.v2.Prover/ProveStream /prove.v2.Prover/Capabilities" ;;
+    *) echo "unsupported streaming protocol" >&2; exit 1 ;;
+esac
+if [[ "$profile" == rollupx && "$wire" != prove.v2 ]]; then echo "unsupported native streaming protocol" >&2; exit 1; fi
 cat > "$stream/haproxy.cfg" <<EOF
 global
     maxconn 8
@@ -65,7 +75,7 @@ defaults
     timeout server 120s
 frontend composer
     bind :50061 proto h2
-    http-request deny unless { path /prove.v2.Prover/ProveStream /prove.v2.Prover/Capabilities }
+    http-request deny unless { path $allowed_paths }
     default_backend prover
 backend prover
     http-request set-uri https://eez-ci-server%[pathq]

@@ -142,6 +142,17 @@ class ProverDeploymentSeamTests(unittest.TestCase):
         with patch.object(prepare, "revision", side_effect=["a" * 40, "b" * 40]):
             prepare.prepare(self.args)
 
+    def test_mismatched_prover_gitlink_rejects_before_the_deployment_overlay(self):
+        manifest = json.loads(self.args.manifest.read_text())
+        manifest["provers_revision"] = "c" * 40
+        self.args.manifest.write_text(json.dumps(manifest))
+        with patch.object(prepare, "revision", side_effect=["a" * 40, "b" * 40, "d" * 40]) as revisions:
+            with self.assertRaisesRegex(ValueError, "prover source does not match"):
+                prepare.prepare(self.args)
+        self.assertEqual(revisions.call_args_list[-1].args[0], self.root / "provers")
+        self.assertEqual((self.package / "main.star").read_text(), self.original)
+        self.assertFalse(self.args.output.exists())
+
     def test_supported_signer_preserves_upstream_proof_assertion_and_command(self):
         self.prepare()
         expected = self.original.replace("ethereum_package.run(plan, eth_args)",

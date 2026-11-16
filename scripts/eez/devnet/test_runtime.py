@@ -5,6 +5,7 @@ from pathlib import Path
 import tempfile
 import subprocess
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 import warnings
 import zipfile
@@ -86,6 +87,18 @@ class RuntimeTests(unittest.TestCase):
                         self.assertEqual(manifest["runtime"]["source"], "build-required")
                         self.assertEqual(manifest["runtime"]["artifact_unavailable"], status)
                         self.assertFalse((args.output / "runtime.zip").exists())
+
+    def test_mismatched_prover_source_rejects_before_runtime_publication(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            args = SimpleNamespace(manifest=root / "manifest.json", checkout=root / "source", output=root / "runtime")
+            args.manifest.write_text(json.dumps({"repository": upstream.REPOSITORY, "profile": "rollup0",
+                "revision": "a" * 40, "core_revision": "b" * 40, "provers_revision": "c" * 40}))
+            with patch.object(upstream.subprocess, "check_output", side_effect=["a" * 40, "b" * 40, "d" * 40]) as revisions:
+                with self.assertRaisesRegex(ValueError, "runtime build source differs"):
+                    upstream.record_build(args)
+            self.assertEqual(revisions.call_args_list[-1].args[0], ["git", "-C", str(args.checkout / "provers"), "rev-parse", "HEAD"])
+            self.assertNotIn("runtime", json.loads(args.manifest.read_text()))
 
     def test_missing_matching_runtime_requires_same_source_build(self):
         class Args:
