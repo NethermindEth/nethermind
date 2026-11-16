@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
+using Nethermind.State.SnapServer;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 {
@@ -33,24 +34,32 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             else
             {
                 RlpSequence allSlots = writer.StartSequence(allSlotsLength);
-                ReadOnlySpan<IOwnedReadOnlyList<PathWithStorageSlot>> slotsSpan = message.Slots.AsSpan();
+                EncodedStorageRanges? encoded = message.Slots as EncodedStorageRanges;
+                ReadOnlySpan<IOwnedReadOnlyList<PathWithStorageSlot>> slotsSpan = encoded is null ? message.Slots.AsSpan() : default;
 
-                for (int i = 0; i < slotsSpan.Length; i++)
+                for (int i = 0; i < message.Slots.Count; i++)
                 {
                     RlpSequence accountSequence = writer.StartSequence(accountSlotsLengths[i]);
 
-                    ReadOnlySpan<PathWithStorageSlot> accountSlots = slotsSpan[i].AsSpan();
-
-                    for (int j = 0; j < accountSlots.Length; j++)
+                    if (encoded is not null)
                     {
-                        PathWithStorageSlot slot = accountSlots[j];
+                        writer.WriteEncoded(encoded.GetEncoded(i));
+                    }
+                    else
+                    {
+                        ReadOnlySpan<PathWithStorageSlot> accountSlots = slotsSpan[i].AsSpan();
 
-                        int itemLength = Rlp.LengthOf(slot.Path) + Rlp.LengthOf(slot.SlotRlpValue);
+                        for (int j = 0; j < accountSlots.Length; j++)
+                        {
+                            PathWithStorageSlot slot = accountSlots[j];
 
-                        RlpSequence slotSequence = writer.StartSequence(itemLength);
-                        writer.Encode(slot.Path);
-                        writer.Encode(slot.SlotRlpValue);
-                        writer.EndSequence(slotSequence);
+                            int itemLength = Rlp.LengthOf(slot.Path) + Rlp.LengthOf(slot.SlotRlpValue);
+
+                            RlpSequence slotSequence = writer.StartSequence(itemLength);
+                            writer.Encode(slot.Path);
+                            writer.Encode(slot.SlotRlpValue);
+                            writer.EndSequence(slotSequence);
+                        }
                     }
 
                     writer.EndSequence(accountSequence);
@@ -125,17 +134,25 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             {
                 if (slots is not null && slotsCount != 0)
                 {
-                    ReadOnlySpan<IOwnedReadOnlyList<PathWithStorageSlot>> slotsSpan = slots.AsSpan();
-                    for (int i = 0; i < slotsSpan.Length; i++)
+                    EncodedStorageRanges? encoded = slots as EncodedStorageRanges;
+                    ReadOnlySpan<IOwnedReadOnlyList<PathWithStorageSlot>> slotsSpan = encoded is null ? slots.AsSpan() : default;
+                    for (int i = 0; i < slotsCount; i++)
                     {
                         int accountSlotsLength = 0;
 
-                        ReadOnlySpan<PathWithStorageSlot> accountSlots = slotsSpan[i].AsSpan();
-                        for (int j = 0; j < accountSlots.Length; j++)
+                        if (encoded is not null)
                         {
-                            PathWithStorageSlot slot = accountSlots[j];
-                            int slotLength = Rlp.LengthOf(slot.Path) + Rlp.LengthOf(slot.SlotRlpValue);
-                            accountSlotsLength += Rlp.LengthOfSequence(slotLength);
+                            accountSlotsLength = encoded.GetEncoded(i).Length;
+                        }
+                        else
+                        {
+                            ReadOnlySpan<PathWithStorageSlot> accountSlots = slotsSpan[i].AsSpan();
+                            for (int j = 0; j < accountSlots.Length; j++)
+                            {
+                                PathWithStorageSlot slot = accountSlots[j];
+                                int slotLength = Rlp.LengthOf(slot.Path) + Rlp.LengthOf(slot.SlotRlpValue);
+                                accountSlotsLength += Rlp.LengthOfSequence(slotLength);
+                            }
                         }
 
                         accountSlotsLengths[i] = accountSlotsLength;

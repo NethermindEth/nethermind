@@ -11,6 +11,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Trie.Pruning;
 
@@ -295,8 +296,12 @@ namespace Nethermind.Trie
 
         /// <summary>Creates the data of a leaf decoded from RLP, with the hex-prefix key <paramref name="compactKey"/>.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static LeafData CreateLeafData(ReadOnlySpan<byte> compactKey, int compactKeyEnd, CappedArray<byte> value) =>
-            new(HexPrefix.FromBytes(compactKey).key, value);
+        private static LeafData CreateLeafData(ReadOnlySpan<byte> compactKey, int compactKeyEnd, ReadOnlySpan<byte> value, int valueEnd, ICappedArrayPool? bufferPool)
+        {
+            CappedArray<byte> buffer = bufferPool.SafeRent(value.Length);
+            Bytes.Copy(value, buffer.AsSpan());
+            return new(HexPrefix.FromBytes(compactKey).key, buffer);
+        }
 
         /// <summary>Descends <paramref name="path"/> into child <paramref name="index"/> of the node being encoded.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
