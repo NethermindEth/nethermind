@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Network.Contract.Messages;
@@ -139,6 +140,26 @@ namespace Nethermind.TxPool
             transaction = default;
             return false;
         }
+
+        /// <summary>
+        /// Gets the cell availability mask of a pending blob transaction, as <see cref="TryGetPendingBlobCellMask"/> does,
+        /// and in the same lookup the network encoding of a type-3 transaction that holds every blob, read from
+        /// persistent storage without decoding it.
+        /// </summary>
+        /// <param name="hash">The transaction hash.</param>
+        /// <param name="availableMask">The cell availability mask.</param>
+        /// <param name="networkForm">
+        /// The encoding that <see cref="TryGetPendingTransaction"/> would give when encoded in the mempool form without
+        /// the typed envelope, or <see langword="null"/> when the transaction is not a full type-3 transaction or is held
+        /// in memory, so <see cref="TryGetPendingTransaction"/> is the cheaper read. The caller disposes it.
+        /// </param>
+        /// <returns><see langword="true"/> when the blob pool holds the transaction.</returns>
+        bool TryGetPendingBlobCellMaskAndNetworkForm(in ValueHash256 hash, out BlobCellMask availableMask, out IOwnedReadOnlyList<byte>? networkForm)
+        {
+            networkForm = null;
+            return TryGetPendingBlobCellMask(hash, out availableMask);
+        }
+
         bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction);
 
         /// <summary>
