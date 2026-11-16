@@ -1,126 +1,76 @@
-# Daisugi restart: handover to EthPandaOps
+# Daisugi restart: EthPandaOps handover
 
-EthPandaOps generates the shared genesis with their own Kurtosis / ethereum-package setup. This file lists what that setup needs to run the restart stack, and how it differs from a stock ethereum-package network. We hand over images, parameters and checks, never a genesis or keys.
+EthPandaOps generates the genesis with its own Kurtosis / ethereum-package setup. This file lists what that setup needs for Daisugi. We provide images, configuration and checks, not a genesis and no keys.
 
-## What is custom, and why
+## 1. What Daisugi needs
 
-| Piece | Stock ethereum-package | Daisugi needs | Why |
-| --- | --- | --- | --- |
-| EL image | upstream Nethermind | `nethermind` built from `9065d9a50b5036f9d1b08b650234acb0a1d4823e` (see "Images") | EIP-8141 frame txs, EIP-8288 proofs, EIP-8437 wrapper relay, F128 native backend |
-| EL flags | none | `--TxPool.FrameTxMaxVerifyGas=500000`, `--TxPool.BlobsSupport=Disabled` | Frame verification budget; without blob support peers negotiate eth/73 and relay proof wrappers before PeerDAS |
-| CL image | upstream Lighthouse | Lighthouse v8.2.2 + AA-PQ#10 patches, plus `/bin/sh` | The Daisugi fork (Electra plus the EIP-8288 proof in the payload); the reproducible image is distroless, and ethereum-package starts the beacon node through `sh` |
-| EL genesis | generator output | `config.eip8141PrototypeTime` = genesis timestamp, `config.eip8288PrototypeTime` = Daisugi fork time, no `osakaTime`, `amsterdamTime`, `bogotaTime` | The generator knows neither prototype fork |
-| CL config | generator output | `DAISUGI_FORK_VERSION: 0xd0000038`, `DAISUGI_FORK_EPOCH: <epoch>`; no `SECONDS_PER_SLOT` | The generator knows no Daisugi fork; Lighthouse refuses `SECONDS_PER_SLOT` next to `SLOT_DURATION_MS` |
-| Predeploys | none | the two contracts in `additional_preloaded_contracts` below | EIP-8141 expiry verifier and EIP-8250 nonce manager, used by frame transactions |
-| Generator image | `ethpandaops/ethereum-genesis-generator` | the same at `sha256:287f596b…`, plus `/apps/validator-mapping` from `sha256:e05851fc…` | The pinned ethereum-package calls `validator-mapping`, which the pinned generator lacks |
+- **EL**: Nethermind built from the pinned commit, every node, with `--TxPool.FrameTxMaxVerifyGas=500000` and `--TxPool.BlobsSupport=Disabled`. Without blob support, peers negotiate eth/73 and relay EIP-8288 proof wrappers; with it they stay on eth/71 and a PQ transaction is included only by the node that received it.
+- **CL**: Lighthouse with the Daisugi fork patches, plus `/bin/sh` (ethereum-package starts the beacon node through `sh`).
+- **Genesis**: two predeploys and two post-generation edits (section 3). This is the only custom genesis logic.
+- **Generator**: the pinned ethereum-package calls `/apps/validator-mapping/merge.sh`, which the pinned generator image lacks; `kurtosis/genesis.Dockerfile` copies it from a later generator image and adds the genesis edits.
+- Everything else is stock: mainnet preset, Electra at genesis, Fulu, Gloas and BPOs unscheduled.
 
-Everything else is stock: mainnet preset, Electra at genesis, Fulu, Gloas and BPOs unscheduled, prefunded accounts and validators from the network's own mnemonic.
+## 2. Kurtosis configuration
 
-The two genesis edits are the only custom genesis logic. `kurtosis/genesis.Dockerfile` and `kurtosis/daisugi-genesis.sh` apply them inside ethereum-package. EthPandaOps can use that image or apply the same edits in their own pipeline:
+Tested file: [`kurtosis/network_params.yaml`](kurtosis/network_params.yaml), with ethereum-package `5795b77e65235ad223d4d3b413b2739190bf60cc`.
 
-```bash
-# EL: after the generator wrote /data/metadata/genesis.json
-T8141=$(jq -r .timestamp genesis.json)
-T8288=$(( GENESIS_TIME + DAISUGI_FORK_EPOCH * 32 * SLOT_DURATION_MS / 1000 ))   # GENESIS_TIME = CL genesis time
-jq --argjson a $((T8141)) --argjson b $T8288 '.config.eip8141PrototypeTime=$a | .config.eip8288PrototypeTime=$b
-  | del(.config.osakaTime, .config.amsterdamTime, .config.bogotaTime)' genesis.json > g && mv g genesis.json
-# CL
-sed -i '/^SECONDS_PER_SLOT:/d' config.yaml
-printf '\nDAISUGI_FORK_VERSION: 0xd0000038\nDAISUGI_FORK_EPOCH: %s\n' "$DAISUGI_FORK_EPOCH" >> config.yaml
-```
+| Setting | Tested | EthPandaOps chooses |
+| --- | --- | --- |
+| `participants` | 3 × (Nethermind + Lighthouse + 64 validators); the file holds one entry with `count: 1`, `run.sh` sets `count` from `NODES` | participants and validator split; finality needs more than 2/3 of the stake online |
+| `el_extra_params` | `--TxPool.FrameTxMaxVerifyGas=500000`, `--TxPool.BlobsSupport=Disabled` | keep both |
+| `network_id` | 1337 | a new chain ID |
+| `preregistered_validator_keys_mnemonic` | the public ethereum-package test mnemonic | a private mnemonic |
+| `seconds_per_slot` | 2 | keep 2 (others not tested) |
+| `genesis_gaslimit`, `max_payload_size` | 60000000, 20971520 | keep |
+| `electra_fork_epoch` | 0 | keep |
+| `fulu_fork_epoch`, `gloas_fork_epoch`, `bpo_1..5_epoch` | 18446744073709551615 | keep |
+| `additional_preloaded_contracts` | the two predeploys of section 3 | keep exactly |
+| `ethereum_genesis_generator_params.extra_env.DAISUGI_FORK_EPOCH` | 3 | the Daisugi fork epoch; 1 tested outside ethereum-package, 0 not tested |
 
-Nethermind reads `genesis.json` (ethereum-package passes `--Init.ChainSpecPath=/network-configs/genesis.json`); `chainspec.json` and `besu.json` are not used and need no edit.
+## 3. Genesis customization
 
-## Tested parameters
+Predeploys, nonce 1, balance 0, empty storage, as the EIPs require:
 
-From `kurtosis/network_params.yaml`, validated on 2026-11-16 (3 participants):
+| Address | Code | Source |
+| --- | --- | --- |
+| `0x81413f0cF12e9b6a49B1D0439E081c577D57FfFf` | `0x60083614600a575f5ffd5b5f3560c01c4211601657005b5f5ffd` | EIP-8141 expiry verifier |
+| `0x8250968C12e01A19d6F667b9B2F3b3A4d0e51cB7` | `0x60006000fd` | EIP-8250 `NONCE_MANAGER` |
 
-```yaml
-participants:
-  - el_type: nethermind
-    el_image: <nethermind image>
-    el_extra_params:
-      - --TxPool.FrameTxMaxVerifyGas=500000
-      - --TxPool.BlobsSupport=Disabled
-    cl_type: lighthouse
-    cl_image: <lighthouse image with /bin/sh>
-    vc_type: lighthouse
-    vc_image: <lighthouse image with /bin/sh>
-    count: 1
-    supernode: false
-    validator_count: 64
-network_params:
-  network_id: "<new chain id>"           # tested: 1337 (Kurtosis), 7337 (shared-mode compose)
-  preset: mainnet
-  seconds_per_slot: 2
-  genesis_delay: 20
-  genesis_gaslimit: 60000000
-  preregistered_validator_keys_mnemonic: "<EthPandaOps-held mnemonic>"
-  electra_fork_epoch: 0
-  fulu_fork_epoch: 18446744073709551615
-  gloas_fork_epoch: 18446744073709551615
-  bpo_1_epoch: 18446744073709551615      # bpo_2..bpo_5 likewise
-  max_payload_size: 20971520
-  additional_preloaded_contracts:
-    "0x81413f0cF12e9b6a49B1D0439E081c577D57FfFf":
-      balance: "0"
-      code: "0x60083614600a575f5ffd5b5f3560c01c4211601657005b5f5ffd"
-      storage: {}
-      nonce: 1
-    "0x8250968C12e01A19d6F667b9B2F3b3A4d0e51cB7":
-      balance: "0"
-      storage: {}
-      nonce: 1
-ethereum_genesis_generator_params:
-  image: <generator image with daisugi-genesis.sh>
-  extra_env:
-    DAISUGI_FORK_EPOCH: "3"              # tested: 1 and 3; 0 not tested
-```
+Post-generation edits, applied by [`kurtosis/daisugi-genesis.sh`](kurtosis/daisugi-genesis.sh) inside the generator image:
 
-- ethereum-package tested at `5795b77e65235ad223d4d3b413b2739190bf60cc`. A newer revision may change the generator interface or launcher flags; rerun the checks below if it is used.
-- Validator layout: any split works; finality needs more than 2/3 of the stake online and peered. Tested 3 × 64 (Kurtosis) and 2 × 32 (two separate networks, finality only with both halves).
-- Every EL must be Nethermind from the pinned commit with blob support off; every CL this Lighthouse build.
-- Slot time 2 s, gas limit 60M and a 20 MiB payload cap are what was tested. Longer slots are expected to work but were not run.
+- EL `genesis.json`: `config.eip8141PrototypeTime` = the EL genesis `timestamp`; `config.eip8288PrototypeTime` = `MIN_GENESIS_TIME + GENESIS_DELAY + DAISUGI_FORK_EPOCH × 32 × SLOT_DURATION_MS / 1000`, all read from the generated `config.yaml`; `osakaTime`, `amsterdamTime`, `bogotaTime` removed. Nethermind loads this file (`--Init.ChainSpecPath=/network-configs/genesis.json`); `chainspec.json` and `besu.json` are unused.
+- CL `config.yaml`: `DAISUGI_FORK_VERSION: 0xd0000038` and `DAISUGI_FORK_EPOCH` appended; `SECONDS_PER_SLOT` removed (Lighthouse refuses it next to `SLOT_DURATION_MS`).
 
-## Images
+The script fails instead of writing a shifted fork time when `DAISUGI_FORK_EPOCH`, `MIN_GENESIS_TIME`, `GENESIS_DELAY` or `SLOT_DURATION_MS` is missing, the preset is not mainnet, or the slot is not whole seconds.
+
+## 4. Images and versions
+
+| Image | Source | Required property |
+| --- | --- | --- |
+| Nethermind | `NethermindEth/nethermind` `af50ed19171295395ea12513f6d9464b782f4c5a` (`feature/eip8288-lean`), stock `Dockerfile`, `--build-arg COMMIT_HASH=<that sha>` | `/nethermind/libnethermind_lean.so` sha256 `aad07d8fa0f106457ef1719eadd1685a98e39fe6df3ab27308022e14637b8f00` (x64); `--version` prints that commit |
+| Lighthouse | v8.2.2 `e423a66763bb1bd780492d635123f208d80c3538` + `asanso/AA-PQ` `aggregation/frames/consensus/eip8288-lean` patches at `4b0a11e0e7d261bf47a2e78589bcdff050703412`, built as in [README step 1](README.md#1-build-the-images), then wrapped by [`kurtosis/lighthouse.Dockerfile`](kurtosis/lighthouse.Dockerfile) | `/lighthouse` sha256 `109c9a91e128db8cb17be6939c5f614b1ae494a68da53814e9300bc5299ccd3d`; `/bin/sh` present |
+| Genesis generator | [`kurtosis/genesis.Dockerfile`](kurtosis/genesis.Dockerfile): `ethpandaops/ethereum-genesis-generator@sha256:287f596b…` + `/apps/validator-mapping` from `@sha256:e05851fc…` + `daisugi-genesis.sh` | |
+
+- Native backend: `Nethermind.Crypto.Lean` 0.21.0.110 (int.nugettest.org), leanVM F128, ABI 21, leanSPHINCS key `PK.seed || PK.root`, `AGGREGATED_VK` `e09e5acfcfe87832f337eb42acac98246d160bb915b55c55fbd8118b203cbb81`. The Nethermind build restores it; no Rust.
+- No image is published yet. Each image is reproducible from the sources above; publishing needs push rights to the chosen registry.
+- linux-x64 only was run.
+
+## 5. Validation
+
+On the generated files, before start:
 
 ```bash
-# Nethermind: stock Dockerfile; the native F128 backend comes from Nethermind.Crypto.Lean 0.21.0.110, no Rust
-git clone https://github.com/NethermindEth/nethermind nm && git -C nm checkout 9065d9a50b5036f9d1b08b650234acb0a1d4823e
-docker build --build-arg COMMIT_HASH=9065d9a50b5036f9d1b08b650234acb0a1d4823e -t <registry>/nethermind:daisugi-9065d9a50b nm
-# Lighthouse: README step 1 builds daisugi/lighthouse:eip8288-lean from the pinned archive and patches; then add /bin/sh
-docker build --build-arg LIGHTHOUSE_IMAGE=daisugi/lighthouse:eip8288-lean -f kurtosis/lighthouse.Dockerfile \
-  -t <registry>/lighthouse:daisugi-eip8288-lean kurtosis
-# Genesis generator with the Daisugi edits
-docker build -f kurtosis/genesis.Dockerfile -t <registry>/ethereum-genesis-generator:daisugi-287f596b kurtosis
+jq '.config | {eip8141PrototypeTime, eip8288PrototypeTime, osakaTime}' genesis.json   # osakaTime null
+jq '.alloc["0x8250968C12e01A19d6F667b9B2F3b3A4d0e51cB7"].code' genesis.json        # "0x60006000fd"
+grep -E '^(DAISUGI_FORK|SECONDS_PER_SLOT|SLOT_DURATION_MS)' config.yaml             # no SECONDS_PER_SLOT
 ```
 
-Expected inside the images: `/nethermind/libnethermind_lean.so` sha256 `aad07d8fa0f106457ef1719eadd1685a98e39fe6df3ab27308022e14637b8f00` (x64); `/lighthouse` sha256 `109c9a91e128db8cb17be6939c5f614b1ae494a68da53814e9300bc5299ccd3d`. `nethermind --version` prints `Commit: 9065d9a5…`. Publish them and pass `image@sha256:…` references.
+On the running network, with the scripts in this directory (usage in [README.md](README.md) and [RESTART.md](RESTART.md#health-checks)):
 
-## Checks on the generated genesis
+- `check.sh`: EL and CL genesis agree, Lean backend up, finality past the fork, fork boundary at `eip8288PrototypeTime`, no missed slots after the fork.
+- `pq.sh` for `PQ_SCHEME=sphincs`, `stark` and `mixed`, with `FX` = `testing/runtimes/linux-x64/native/fixtures` from the 0.21.0.110 nupkg and a funded key: valid wrappers included, invalid ones rejected.
+- Propagation: a wrapper sent to one node is returned by `eth_getTransactionByHash` on the others within seconds.
+- `sync-check.sh` across nodes, including one synced from genesis: identical blocks, proofs and finalized head.
+- Wallet: AA-PQ `docs/LOCAL-DEVNET.md` (asanso/AA-PQ#13) deploys the lean factory and sends a wallet transaction.
 
-Before distributing it:
-
-- `genesis.json`: `config.eip8141PrototypeTime` equals `timestamp`; `config.eip8288PrototypeTime` equals the CL genesis time plus `DAISUGI_FORK_EPOCH × 32 × slot seconds`; no `osakaTime`, `amsterdamTime`, `bogotaTime`.
-- `config.yaml`: `DAISUGI_FORK_VERSION: 0xd0000038`, the agreed `DAISUGI_FORK_EPOCH`, `SLOT_DURATION_MS` present, `SECONDS_PER_SLOT` absent; `FULU_FORK_EPOCH` far future.
-- The two predeploys in `alloc`, the 8141 one with the code above.
-- After start: the EL genesis hash equals `latest_execution_payload_header.block_hash` of the CL genesis state (`check.sh` asserts it), and Nethermind logs no `InitializeLeanBackend ... failed`.
-
-## Checks on the running network
-
-From `tools/daisugi-devnet` (see [RESTART.md](RESTART.md)):
-
-- `check.sh`: finality past the fork, slot before the fork `electra` and fork slot `daisugi` with `eip8288PrototypeTime`, 0 missed slots after the fork.
-- `pq.sh` with `FX` from the 0.21.0.110 package and a funded key, for `PQ_SCHEME` `sphincs`, `stark` and `mixed`.
-- Wrapper relay: a wrapper sent to one node shows up on the others (`eth_getTransactionByHash`) within seconds. If not, a node runs with blob support on.
-- `sync-check.sh` against several nodes, including one synced from genesis.
-
-## Reproduce our run
-
-```bash
-cd tools/daisugi-devnet/kurtosis
-NODES=3 KEEP=1 PQ_SERIES=1 PQ_SCHEMES="sphincs stark mixed" FX=<fixtures from the 0.21.0.110 nupkg> \
-  NETHERMIND_IMAGE=<nethermind image> LIGHTHOUSE_IMAGE=<lighthouse image without /bin/sh> ./run.sh daisugi
-```
-
-`run.sh` builds the `/bin/sh` wrapper and the generator image itself, runs ethereum-package at the pinned commit, then `check.sh` and the PQ series.
+`kurtosis/run.sh` runs the same stack locally end to end (`NODES`, `PQ_SCHEMES`, `FX`, `NETHERMIND_IMAGE`, `LIGHTHOUSE_IMAGE`).

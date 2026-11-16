@@ -1,6 +1,6 @@
 participants:
   - el_type: nethermind
-    el_image: daisugi/nethermind:9065d9a50b
+    el_image: daisugi/nethermind:af50ed1917
     el_extra_params:
       - --TxPool.FrameTxMaxVerifyGas=500000
       # No blob support lets peers negotiate eth/73 and relay proof wrappers before PeerDAS.
@@ -37,6 +37,7 @@ network_params:
       nonce: 1
     "0x8250968C12e01A19d6F667b9B2F3b3A4d0e51cB7":
       balance: "0"
+      code: "0x60006000fd"
       storage: {}
       nonce: 1
 

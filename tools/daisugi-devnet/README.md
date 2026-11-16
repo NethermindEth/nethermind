@@ -34,8 +34,8 @@ The frozen restart stack, its validation and the operator steps: [RESTART.md](RE
 
 | Component | Source | Revision |
 | --- | --- | --- |
-| Nethermind | `NethermindEth/nethermind` `feature/eip8288-lean` `757b7eabed` plus #15955 and #15961 (F128 leanVM, native ABI 21, leanSPHINCS key `PK.seed \|\| PK.root`), native Lean backend from `Nethermind.Crypto.Lean` 0.21.0.110 (nugettest) | `9065d9a50b5036f9d1b08b650234acb0a1d4823e` |
-| Native Lean backend | `Nethermind.Crypto.Lean` 0.21.0.110, from `NethermindEth/lean-bindings` `1209c17b42f5c5756cb5f4913e0b8b414b381f44` | nupkg sha256 `daecd150e646cdbc1ecaffb0fa118dff780c8a928a2ff705a7c3362fddd51ac2`; linux-x64 `libnethermind_lean.so` `aad07d8fa0f106457ef1719eadd1685a98e39fe6df3ab27308022e14637b8f00`; `AGGREGATED_VK` `e09e5acfcfe87832f337eb42acac98246d160bb915b55c55fbd8118b203cbb81` |
+| Nethermind | `NethermindEth/nethermind` `feature/eip8288-lean` `af50ed1917` (#15955, #15870 and #15961 merged; F128 leanVM, native ABI 21, leanSPHINCS key `PK.seed \|\| PK.root`), native Lean backend from `Nethermind.Crypto.Lean` 0.21.0.110 (nugettest) | `af50ed19171295395ea12513f6d9464b782f4c5a` |
+| Native Lean backend | `Nethermind.Crypto.Lean` 0.21.0.110, from `NethermindEth/lean-bindings` `main` `8d54d3165d453f340420cf39d8da174e497c50bc` (#22; same tree as `1209c17`) | nupkg sha256 `daecd150e646cdbc1ecaffb0fa118dff780c8a928a2ff705a7c3362fddd51ac2`; linux-x64 `libnethermind_lean.so` `aad07d8fa0f106457ef1719eadd1685a98e39fe6df3ab27308022e14637b8f00`; `AGGREGATED_VK` `e09e5acfcfe87832f337eb42acac98246d160bb915b55c55fbd8118b203cbb81` |
 | Lighthouse | `sigp/lighthouse` v8.2.2 | `e423a66763bb1bd780492d635123f208d80c3538`, archive sha256 `3f3193218d8f7228889505eb508c6176ea60a964fcfb072eb248787c1e242d4c` |
 | Lighthouse patch series | `asanso/AA-PQ` PR #10, `aggregation/frames/consensus/eip8288-lean` | `4b0a11e0e7d261bf47a2e78589bcdff050703412` |
 | Genesis generator | `ethpandaops/ethereum-genesis-generator` | `sha256:287f596b9a4ee72ae2aff194682f854650a8861542e489259adf0975cc0c9a54` |
@@ -53,8 +53,8 @@ From the repository root.
 Nethermind, from a checkout of the pinned revision with its stock `Dockerfile`; it restores the native Lean library from `Nethermind.Crypto.Lean` and builds no Rust:
 
 ```bash
-git worktree add ../nethermind-el 9065d9a50b5036f9d1b08b650234acb0a1d4823e
-docker build --build-arg COMMIT_HASH=9065d9a50b5036f9d1b08b650234acb0a1d4823e -t daisugi/nethermind:9065d9a50b ../nethermind-el
+git worktree add ../nethermind-el af50ed19171295395ea12513f6d9464b782f4c5a
+docker build --build-arg COMMIT_HASH=af50ed19171295395ea12513f6d9464b782f4c5a -t daisugi/nethermind:af50ed1917 ../nethermind-el
 ```
 
 - Expected `/nethermind/libnethermind_lean.so` sha256 in the image: `aad07d8fa0f106457ef1719eadd1685a98e39fe6df3ab27308022e14637b8f00`.
@@ -91,7 +91,7 @@ Set this in every shell that runs the scripts:
 ```bash
 cd tools/daisugi-devnet
 export COMPOSE_FILE=docker-compose.yml:lighthouse-distroless.override.yml
-NM=daisugi/nethermind:9065d9a50b LH=daisugi/lighthouse:eip8288-lean
+NM=daisugi/nethermind:af50ed1917 LH=daisugi/lighthouse:eip8288-lean
 ```
 
 ## 2. Genesis and fork schedule
@@ -199,7 +199,7 @@ until curl -s -X POST -H 'content-type: application/json' --data "{\"jsonrpc\":\
 tools/daisugi-devnet/kurtosis/run.sh daisugi
 ```
 
-- Needs Kurtosis, the two images from step 1 (`daisugi/nethermind:9065d9a50b`, `daisugi/lighthouse:eip8288-lean`), plus .NET SDK as for `pq.sh`. The Docker host must be no Swarm node: Kurtosis matches its network by the name `bridge` and fails on `docker_gwbridge`. Its engine binds host port 8081.
+- Needs Kurtosis, the two images from step 1 (`daisugi/nethermind:af50ed1917`, `daisugi/lighthouse:eip8288-lean`), plus .NET SDK as for `pq.sh`. The Docker host must be no Swarm node: Kurtosis matches its network by the name `bridge` and fails on `docker_gwbridge`. Its engine binds host port 8081.
 - `network_params.yaml`: Nethermind and Lighthouse images, 64 validators, 2 s slots, chain ID 1337, Electra at genesis, the 8141 verifier and 8250 nonce manager predeploys, and `DAISUGI_FORK_EPOCH` 3.
 - `genesis.Dockerfile` wraps the pinned genesis generator. After it runs, the wrapper sets `eip8141PrototypeTime` to genesis, sets `eip8288PrototypeTime` to the Daisugi fork slot, drops the Osaka/Amsterdam/Bogota times, appends `DAISUGI_FORK_VERSION` `0xd0000038`, and removes `SECONDS_PER_SLOT`. Lighthouse rejects `SECONDS_PER_SLOT` together with `SLOT_DURATION_MS`.
 - `lighthouse.Dockerfile` adds `/bin/sh` to the distroless Lighthouse image and clears its `ENTRYPOINT`. ethereum-package starts the beacon node with `sh -c` itself, and the validator client runs `lighthouse vc ...` with the image entrypoint.
