@@ -207,7 +207,6 @@ public class RlpxHostIntegrationTests
     [Test]
     public async Task Shutdown_ReturnsOnlyAfterEventLoopsTerminate()
     {
-        // The worker group uses the close timeout as its quiet period. After the accepted connection it waits about 6 seconds to stop.
         int port = GetAvailablePort();
         await using IContainer container = CreateListenerContainer(null, IPAddress.Loopback, port, shutdownCloseTimeoutMs: 6_000);
         RlpxHost host = container.Resolve<RlpxHost>();

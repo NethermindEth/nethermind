@@ -17,6 +17,7 @@ using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Logging;
@@ -60,6 +61,8 @@ namespace Nethermind.Network.Rlpx
         private readonly NetworkListenerState _listenerState;
         private readonly ConcurrentDictionary<Guid, SessionActivitySubscription> _sessionActivitySubscriptions = new();
         private readonly ConcurrentDictionary<IChannel, byte> _activeChannels = new();
+        private readonly Lock _activeChannelsLock = new();
+        private bool _closingActiveChannels;
         private readonly Action<Task, object?> _untrackChannel;
         private readonly TimeSpan _shutdownQuietPeriod;
         private readonly TimeSpan _shutdownCloseTimeout;
@@ -471,29 +474,55 @@ namespace Nethermind.Network.Rlpx
 
         private void TrackChannel(IChannel channel)
         {
-            _activeChannels.TryAdd(channel, 0);
+            bool closing;
+            lock (_activeChannelsLock)
+            {
+                _activeChannels.TryAdd(channel, 0);
+                closing = _closingActiveChannels;
+            }
+
             _ = channel.CloseCompletion.ContinueWith(_untrackChannel, channel, CancellationToken.None,
                 TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            if (closing) _ = channel.CloseAsync();
         }
 
         private void UntrackChannel(Task _, object? state) => _activeChannels.TryRemove((IChannel)state!, out byte _);
 
         private async Task CloseActiveChannelsAsync()
         {
-            List<Task> closing = new(_activeChannels.Count);
-            foreach (KeyValuePair<IChannel, byte> entry in _activeChannels)
+            using ArrayPoolList<IChannel> channels = new(_activeChannels.Count);
+            lock (_activeChannelsLock)
             {
-                closing.Add(entry.Key.CloseAsync());
+                _closingActiveChannels = true;
+                foreach (KeyValuePair<IChannel, byte> entry in _activeChannels)
+                {
+                    channels.Add(entry.Key);
+                }
+            }
+
+            Task[] closing = new Task[channels.Count];
+            for (int i = 0; i < closing.Length; i++)
+            {
+                closing[i] = channels[i].CloseAsync();
             }
 
             try
             {
-                await Task.WhenAll(closing);
+                await Task.WhenAll(closing).WaitAsync(_shutdownCloseTimeout);
             }
             catch (Exception e)
             {
                 if (_logger.IsDebug) _logger.Debug($"Closing peer channels on shutdown failed: {e.Message}");
             }
+        }
+
+        private async Task CloseChannelsAndEventLoopsAsync()
+        {
+            await CloseActiveChannelsAsync();
+            await Task.WhenAll(
+                _bossGroup is not null ? _bossGroup.ShutdownGracefullyAsync(_shutdownQuietPeriod, _shutdownCloseTimeout) : Task.CompletedTask,
+                _workerGroup is not null ? _workerGroup.ShutdownGracefullyAsync(_shutdownCloseTimeout, _shutdownCloseTimeout) : Task.CompletedTask,
+                _group.ShutdownGracefullyAsync(_shutdownQuietPeriod, _shutdownCloseTimeout));
         }
 
         private void InitializeChannel(IChannel channel, ISession session, IPAddress? inboundRemoteIp)
@@ -640,15 +669,9 @@ namespace Nethermind.Network.Rlpx
 
             if (_logger.IsDebug) _logger.Debug("Closed _bootstrapChannel");
 
-            await CloseActiveChannelsAsync();
+            Task closingTask = CloseChannelsAndEventLoopsAsync();
 
-            Task closingTask = Task.WhenAll(
-                _bossGroup is not null ? _bossGroup.ShutdownGracefullyAsync(_shutdownQuietPeriod, _shutdownCloseTimeout) : Task.CompletedTask,
-                _workerGroup is not null ? _workerGroup.ShutdownGracefullyAsync(_shutdownCloseTimeout, _shutdownCloseTimeout) : Task.CompletedTask,
-                _group.ShutdownGracefullyAsync(_shutdownQuietPeriod, _shutdownCloseTimeout));
-
-            // A loop stops within its close timeout unless one of its tasks does not return; report that case and keep waiting.
-            TimeSpan warningDelay = _shutdownCloseTimeout * 2 + TimeSpan.FromSeconds(1);
+            TimeSpan warningDelay = _shutdownCloseTimeout * 3 + TimeSpan.FromSeconds(1);
             try
             {
                 await closingTask.WaitAsync(warningDelay);
