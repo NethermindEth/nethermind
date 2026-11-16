@@ -104,6 +104,34 @@ public class MergeP2PCapabilityResolverTests
         Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 73)), Is.EqualTo(scheduled));
     }
 
+    [TestCase(BlobsSupportMode.Disabled, false, true, true, TestName = "No blob support, EIP-8288 scheduled, no PeerDAS: eth72 and eth73")]
+    [TestCase(BlobsSupportMode.Disabled, false, false, false, TestName = "No blob support, no EIP-8288: neither")]
+    [TestCase(BlobsSupportMode.StorageWithReorgs, false, true, false, TestName = "Blob support without PeerDAS: neither")]
+    [TestCase(BlobsSupportMode.StorageWithReorgs, true, true, true, TestName = "Blob support with PeerDAS: eth72 and eth73")]
+    public void Resolve_advertises_eth73_without_peerdas_only_without_blob_support(BlobsSupportMode blobs, bool eip7594Enabled,
+        bool eip8288Scheduled, bool advertised)
+    {
+        IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
+        poSSwitcher.TransitionFinished.Returns(true);
+        IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
+        IReleaseSpec head = Substitute.For<IReleaseSpec>();
+        head.IsEip7594Enabled.Returns(eip7594Enabled);
+        IReleaseSpec final = Substitute.For<IReleaseSpec>();
+        final.IsEip8288Enabled.Returns(eip8288Scheduled);
+        specProvider.GetCurrentHeadSpec().Returns(head);
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(final);
+        using MergeP2PCapabilityResolver resolver = new(poSSwitcher, new TxPoolConfig { BlobsSupport = blobs }, specProvider);
+
+        HashSet<Capability> capabilities = [];
+        resolver.Resolve(capabilities);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 72)), Is.EqualTo(advertised));
+            Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 73)), Is.EqualTo(advertised));
+        }
+    }
+
     [Test]
     public void Raises_Changed_when_eip7594_activation_changes()
     {

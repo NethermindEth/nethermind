@@ -74,8 +74,11 @@ public class MergeP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
         capabilities.Add(new Capability(Protocol.Eth, 69));
         capabilities.Add(new Capability(Protocol.Eth, 70));
         capabilities.Add(new Capability(Protocol.Eth, 71));
+        // A node without blob support exchanges no cells, so before PeerDAS it can still take eth/72 as the base of eth/73
+        // and propagate EIP-8288 proof wrappers; otherwise a chain without EIP-7594 would never relay them.
         if (_txPoolConfig.BlobsSupport.IsEnabled()
-            && IsEip7594Enabled())
+            ? IsEip7594Enabled()
+            : IsEip8288Scheduled())
         {
             capabilities.Add(new Capability(Protocol.Eth, 72));
             // EIP-8437 eth/73 extends eth/72 with proof wrapper propagation. It is advertised once EIP-8288 is scheduled,
