@@ -26,6 +26,7 @@ using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Logging;
@@ -55,6 +56,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         private IReceiptStorage _receiptStorage = null!;
         private FilterStore _filterStore = null!;
         private ISubscriptionManager _subscriptionManager = null!;
+        private JsonRpcConfig _jsonRpcConfig = null!;
         private IJsonRpcDuplexClient _jsonRpcDuplexClient = null!;
         private ISpecProvider _specProvider = null!;
         private IReceiptMonitor _receiptCanonicalityMonitor = null!;
@@ -93,8 +95,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             // Register the standard subscription types in the dictionary
             subscriptionFactory.RegisterStandardEthSubscriptions(_blockTree, _logManager, _specProvider, _receiptCanonicalityMonitor, _filterStore, _txPool, _ethSyncingInfo, new BlockForRpcFactory(), new BlocksConfig().SecondsPerSlot);
 
+            _jsonRpcConfig = new JsonRpcConfig();
             _subscriptionManager = new SubscriptionManager(
             subscriptionFactory,
+            _jsonRpcConfig,
             _logManager);
 
             _subscribeRpcModule = new SubscribeRpcModule(_subscriptionManager);
@@ -1596,6 +1600,54 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
+        public void Eth_subscribe_above_the_connection_limit_returns_limit_exceeded()
+        {
+            _jsonRpcConfig.MaxSubscriptionsPerConnection = 2;
+
+            ResultWrapper<string> first = _subscribeRpcModule.eth_subscribe("newHeads");
+            ResultWrapper<string> second = _subscribeRpcModule.eth_subscribe("newHeads");
+            ResultWrapper<string> refused = _subscribeRpcModule.eth_subscribe("newHeads");
+            _subscribeRpcModule.eth_unsubscribe(first.Data);
+            ResultWrapper<string> afterRelease = _subscribeRpcModule.eth_subscribe("newHeads");
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(second.Result.ResultType, Is.EqualTo(ResultType.Success));
+                Assert.That(refused.Result.ResultType, Is.EqualTo(ResultType.Failure));
+                Assert.That(refused.ErrorCode, Is.EqualTo(ErrorCodes.LimitExceeded));
+                Assert.That(refused.Result.Error, Is.EqualTo("Too many subscriptions. The connection limit is 2."));
+                Assert.That(afterRelease.Result.ResultType, Is.EqualTo(ResultType.Success));
+            }
+        }
+
+        [Test]
+        public void AddSubscription_above_the_node_limit_is_refused_for_every_connection()
+        {
+            ISubscriptionFactory factory = Substitute.For<ISubscriptionFactory>();
+            factory
+                .CreateSubscription(Arg.Any<IJsonRpcDuplexClient>(), Arg.Any<string>(), Arg.Any<string?>())
+                .Returns(ci => new NoopSubscription((IJsonRpcDuplexClient)ci[0]));
+            SubscriptionManager manager = new(factory, new JsonRpcConfig { MaxSubscriptionsPerConnection = 0, MaxSubscriptions = 2 }, LimboLogs.Instance);
+            IJsonRpcDuplexClient client = Substitute.For<IJsonRpcDuplexClient>();
+            client.Id.Returns("first-client");
+            IJsonRpcDuplexClient otherClient = Substitute.For<IJsonRpcDuplexClient>();
+            otherClient.Id.Returns("second-client");
+
+            manager.AddSubscription(client, "newHeads");
+            manager.AddSubscription(client, "newHeads");
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.Throws<LimitExceededException>(() => manager.AddSubscription(otherClient, "newHeads"));
+                Assert.Throws<LimitExceededException>(() => manager.AddSubscription(client, "newHeads"));
+            }
+
+            manager.RemoveClientSubscriptions(client);
+
+            Assert.DoesNotThrow(() => manager.AddSubscription(otherClient, "newHeads"));
+        }
+
+        [Test]
         [Repeat(20)]
         public async Task Concurrent_add_unsubscribe_and_client_close_do_not_corrupt_the_bag()
         {
@@ -1603,7 +1655,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             factory
                 .CreateSubscription(Arg.Any<IJsonRpcDuplexClient>(), Arg.Any<string>(), Arg.Any<string?>())
                 .Returns(ci => new NoopSubscription((IJsonRpcDuplexClient)ci[0]));
-            SubscriptionManager manager = new(factory, LimboLogs.Instance);
+            SubscriptionManager manager = new(factory, new JsonRpcConfig(), LimboLogs.Instance);
 
             IJsonRpcDuplexClient client = Substitute.For<IJsonRpcDuplexClient>();
             client.Id.Returns("concurrent-client");

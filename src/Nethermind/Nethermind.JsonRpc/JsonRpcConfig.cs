@@ -53,6 +53,8 @@ public class JsonRpcConfig : IJsonRpcConfig
     public string CallsFilterFilePath { get; set; } = "Data/jsonrpc.filter";
     public long? MaxRequestBodySize { get; set; } = 30000000;
     public int MaxLogsPerResponse { get; set; } = 20_000;
+    public int MaxSubscriptionsPerConnection { get; set; } = 1_000;
+    public int MaxSubscriptions { get; set; } = 10_000;
     public int OverlayMaxBlockRange { get; set; } = 1_000;
     public bool EnableTracingStreamMode { get; set; } = true;
     public bool EnableLogsStreamMode { get; set; } = false;

@@ -97,7 +97,7 @@ public class AdminModuleTests
 
         SubscriptionFactory subscriptionFactory = new();
         subscriptionFactory.RegisterPeerEventsSubscription(_logManager, _peerPool, _rlpxPeer);
-        _subscriptionManager = new SubscriptionManager(subscriptionFactory, _logManager);
+        _subscriptionManager = new SubscriptionManager(subscriptionFactory, new JsonRpcConfig(), _logManager);
 
         _adminRpcModule = new AdminRpcModule(
             _blockTree,
