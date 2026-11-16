@@ -4,7 +4,9 @@
 using System.Collections;
 using System.Net;
 using System.Net.Sockets;
+using System.Reflection;
 using Autofac;
+using Microsoft.Extensions.DependencyInjection;
 using Multiformats.Address;
 using Multiformats.Address.Net;
 using Nethermind.BeaconChain.DataAvailability;
@@ -19,7 +21,9 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Libp2p.Core;
+using Nethermind.Libp2p.Core.Exceptions;
 using Nethermind.Logging;
+using Nethermind.Network.Libp2p;
 using NSubstitute;
 using NSubstitute.Core;
 
@@ -51,6 +55,53 @@ public class BeaconP2PLoopbackTests
         if (alreadyConnected)
         {
             Assert.That(resumed, Is.SameAs(established), "a cancelled dial must leave the established session usable");
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Disposal_closes_inflight_connections_and_rejects_session_admission_after_its_snapshot(
+        [Values] bool sharedHost, CancellationToken token)
+    {
+        await using ServiceProvider? services = sharedHost ? new ServiceCollection().AddLibp2p().BuildServiceProvider() : null;
+        await using BeaconP2P? beacon = sharedHost ? null : PeerSessionNodes.Create().P2P;
+        if (beacon is not null) await beacon.StartAsync(token);
+        LocalPeer peer = beacon?.LocalPeerForTest! ?? (LocalPeer)services!.GetRequiredService<IPeerFactory>().Create();
+        IProtocolStackSettings settings = (IProtocolStackSettings)typeof(LocalPeer)
+            .GetField("_protocolStackSettings", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(peer)!;
+        ProtocolRef protocol = settings.TopProtocols![0];
+        LocalPeer.Session opening = new(peer);
+        opening.State.RemoteAddress = Multiaddress.Decode($"/ip4/127.0.0.1/tcp/1/p2p/{new Identity().PeerId}");
+        peer.CreateConnection(protocol, opening, isListener: false, activity: null);
+        Assert.That(peer.Sessions, Is.Empty, "fixture: the connection has not reached session admission");
+        TaskCompletionSource cancelling = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using ManualResetEventSlim release = new();
+        using CancellationTokenRegistration hold = opening.Closed.Register(() =>
+        {
+            cancelling.TrySetResult();
+            release.Wait(token);
+        });
+        Task disposing = Task.Run(async () => await peer.DisposeAsync(), token);
+        try
+        {
+            await cancelling.Task.WaitAsync(token);
+            LocalPeer.Session late = new(peer);
+            late.State.RemoteAddress = opening.State.RemoteAddress;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(disposing.IsCompleted, Is.False, "fixture: disposal has snapshotted connections and is still draining");
+                Assert.That(opening.Closed.IsCancellationRequested, Is.True, "disposal also closes pre-admission connections");
+                Assert.That(() => peer.UpgradeToSession(opening, protocol, isListener: false, activity: null), Throws.TypeOf<ChannelClosedException>());
+                Assert.That(() => peer.CreateConnection(protocol, late, isListener: false, activity: null), Throws.TypeOf<ChannelClosedException>());
+                Assert.That(late.Closed.IsCancellationRequested, Is.True);
+                Assert.That(peer.Sessions, Is.Empty, "no late session or identify callback is admitted");
+            }
+        }
+        finally
+        {
+            release.Set();
+            await disposing.WaitAsync(token);
+            await peer.DisposeAsync();
         }
     }
 

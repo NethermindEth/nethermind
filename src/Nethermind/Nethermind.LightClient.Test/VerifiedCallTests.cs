@@ -423,9 +423,12 @@ public class VerifiedCallTests
         object first = await rpc.InvokeAsync("eth_call", parameters, CancellationToken.None);
         object second = await rpc.InvokeAsync("eth_call", parameters, CancellationToken.None);
 
-        Assert.That(first, Is.EqualTo("0x" + new string('0', 62) + "2b"));
-        Assert.That(second, Is.EqualTo(first));
-        Assert.That(source.StorageFetches, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.EqualTo("0x" + new string('0', 62) + "2b"));
+            Assert.That(second, Is.EqualTo(first));
+            Assert.That(source.StorageFetches, Is.EqualTo(1));
+        }
     }
 
     [Test]

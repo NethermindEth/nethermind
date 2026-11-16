@@ -220,8 +220,6 @@ namespace Nethermind.Network
                 {
                     peer.SyncPeer.RegisterSatelliteProtocol(handler.ProtocolCode, handler);
                     if (handler.IsPriority) _syncPool.SetPeerPriority(session.Node.Id);
-                    if (_logger.IsDebug)
-                        _logger.Debug($"Satellite {handler.ProtocolCode}/{handler.ProtocolVersion} attached on session {session.SessionId} with {session.Node:s}");
                     if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol registered for sync peer {session}.");
                 }
                 else
@@ -234,8 +232,6 @@ namespace Nethermind.Network
                             return dict;
                         });
 
-                    if (_logger.IsDebug)
-                        _logger.Debug($"Satellite {handler.ProtocolCode}/{handler.ProtocolVersion} awaiting ETH admission on session {session.SessionId} with {session.Node:s}");
                     if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol sync peer {session} not found.");
                 }
 
@@ -268,8 +264,6 @@ namespace Nethermind.Network
                 P2PVersion = args.P2PVersion,
                 ListenPort = args.ListenPort
             });
-            if (_logger.IsDebug)
-                _logger.Debug($"Hello on session {session.SessionId} with {session.Node:s}: p2p/{args.P2PVersion}, client {args.ClientId}, capabilities {string.Join(", ", args.Capabilities)}");
 
             AddNodeToDiscovery(session, args);
 
@@ -285,8 +279,6 @@ namespace Nethermind.Network
         private void OnSyncPeerProtocolInitialized(ISession session, SyncPeerProtocolHandlerBase handler, SyncPeerProtocolInitializedEventArgs args)
         {
             if (!RunBasicChecks(session, handler.ProtocolCode, handler.ProtocolVersion)) return;
-            if (_logger.IsDebug)
-                _logger.Debug($"{handler.ProtocolCode}/{handler.ProtocolVersion} status on session {session.SessionId} with {session.Node:s}: network {args.NetworkId}, genesis {args.GenesisHash}, fork {args.ForkId}, head {args.BestHash}");
 
             _stats.ReportSyncPeerInitializeEvent(handler.ProtocolCode, session.Node, new SyncPeerNodeDetails
             {
@@ -307,16 +299,12 @@ namespace Nethermind.Network
                         {
                             handler.RegisterSatelliteProtocol(registration.Value);
                             if (registration.Value.IsPriority) handler.IsPriority = true;
-                            if (_logger.IsDebug)
-                                _logger.Debug($"Satellite {registration.Value.ProtocolCode}/{registration.Value.ProtocolVersion} attached during ETH admission on session {session.SessionId} with {session.Node:s}");
                             if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol registered for sync peer {session}. Sync peer has priority: {handler.IsPriority}");
                         }
                     }
 
                     _syncPool.AddPeer(handler);
                     if (handler.IncludeInTxPool) _txPool.AddPeer(handler);
-                    if (_logger.IsDebug)
-                        _logger.Debug($"{handler.ProtocolCode}/{handler.ProtocolVersion} validated on session {session.SessionId} with {session.Node:s}: sync admitted {ReferenceEquals(_syncPool.GetPeer(handler.Node)?.SyncPeer, handler)}, initialized {handler.IsInitialized}");
                     if (_logger.IsTrace) _logger.Trace($"{handler.ClientId} sync peer {session} created.");
                 }
                 else

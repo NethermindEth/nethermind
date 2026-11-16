@@ -56,15 +56,12 @@ namespace Nethermind.Blockchain.Synchronization
         /// </summary>
         /// <param name="blockHashes">The blocks to get the receipts of.</param>
         /// <param name="expectedReceiptCounts">
-        /// Per block in <paramref name="blockHashes"/>, its transaction count, or a negative value when unknown;
-        /// blocks past its end have no known count. It must stay unchanged until the returned task completes.
+        /// Per block in <paramref name="blockHashes"/>, an upper bound on its receipt count, or a negative value when unknown;
+        /// blocks past its end have no known bound. This does not establish completeness and must stay unchanged until the task completes.
         /// </param>
         /// <param name="token">Cancels the request.</param>
-        /// <param name="receiptCountLimits">Optional per-block decode ceilings, combined with known counts and existing decoder limits.
-        /// Negative or missing entries add no restriction. A ceiling does not establish completeness and must stay unchanged until the task completes.</param>
-        Task<IOwnedReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> blockHashes, ReadOnlyMemory<int> expectedReceiptCounts, CancellationToken token,
-            ReadOnlyMemory<int>? receiptCountLimits = null) =>
-            receiptCountLimits is null ? GetReceipts(blockHashes, token) : throw new NotSupportedException("Bounded receipt decoding is not supported.");
+        Task<IOwnedReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> blockHashes, ReadOnlyMemory<int> expectedReceiptCounts, CancellationToken token) =>
+            GetReceipts(blockHashes, token);
         Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token);
         Task<IOwnedReadOnlyList<byte[]?>> GetBlockAccessLists(IReadOnlyList<Hash256> blockHashes, CancellationToken token) =>
             Task.FromResult(IOwnedReadOnlyList<byte[]?>.Empty);

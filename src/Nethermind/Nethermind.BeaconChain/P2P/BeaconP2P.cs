@@ -608,28 +608,40 @@ public sealed class BeaconP2P : IAsyncDisposable
         return await ExchangeAsync<BeaconBlocksByRootProtocolV2, Hash256[], IReadOnlyList<ForkedSignedBeaconBlock>>(session, () => TrackedCopy(timing, roots), cts, token, timing);
     }
 
+    /// <summary>Fetches a fork-decoded light-client bootstrap for the requested beacon block root.</summary>
+    /// <remarks>Checks response framing and fork context; the caller must authenticate the root, committee branch and execution header.
+    /// Uses the configured request timeout and observes caller cancellation and session closure.</remarks>
     public async Task<LightClientBootstrap> RequestLightClientBootstrapAsync(ISession session, Hash256 root, CancellationToken token, RequestTiming? timing = null)
     {
         using CancellationTokenSource cts = Timeout(session, token);
-        return await ExchangeAsync<LightClientBootstrapProtocol, Hash256, LightClientBootstrap>(session, () => Tracked(timing, root), cts, token, timing);
+        return await ExchangeAsync<LightClientBootstrapProtocol, Hash256, LightClientBootstrap>(session, () => timing is null ? root : timing.Track(new Hash256(root.Bytes)), cts, token, timing);
     }
 
+    /// <summary>Fetches one fork-decoded light-client update for the requested sync-committee period.</summary>
+    /// <remarks>Checks response framing and fork context; the caller must authenticate committee signatures and Merkle proofs.
+    /// Uses the configured request timeout and observes caller cancellation and session closure.</remarks>
     public async Task<LightClientUpdate> RequestLightClientUpdateAsync(ISession session, ulong period, CancellationToken token, RequestTiming? timing = null)
     {
         using CancellationTokenSource cts = Timeout(session, token);
-        return await ExchangeAsync<LightClientUpdatesByRangeProtocol, ulong, LightClientUpdate>(session, () => period, cts, token, timing);
+        return await ExchangeAsync<LightClientUpdatesByRangeProtocol, Uint64Request, LightClientUpdate>(session, () => Tracked(timing, new Uint64Request(period)), cts, token, timing);
     }
 
+    /// <summary>Fetches the peer's latest fork-decoded light-client finality update.</summary>
+    /// <remarks>Checks response framing and fork context; the caller must authenticate the aggregate signature and finality proof.
+    /// Uses the configured request timeout and observes caller cancellation and session closure.</remarks>
     public async Task<LightClientFinalityUpdate> RequestLightClientFinalityAsync(ISession session, CancellationToken token, RequestTiming? timing = null)
     {
         using CancellationTokenSource cts = Timeout(session, token);
-        return await ExchangeAsync<LightClientFinalityUpdateProtocol, ulong, LightClientFinalityUpdate>(session, () => 0UL, cts, token, timing);
+        return await ExchangeAsync<LightClientFinalityUpdateProtocol, Uint64Request, LightClientFinalityUpdate>(session, () => Tracked(timing, new Uint64Request(0)), cts, token, timing);
     }
 
+    /// <summary>Fetches the peer's latest fork-decoded light-client optimistic update.</summary>
+    /// <remarks>Checks response framing and fork context; the caller must authenticate the aggregate signature and execution header proof.
+    /// Uses the configured request timeout and observes caller cancellation and session closure.</remarks>
     public async Task<LightClientOptimisticUpdate> RequestLightClientOptimisticAsync(ISession session, CancellationToken token, RequestTiming? timing = null)
     {
         using CancellationTokenSource cts = Timeout(session, token);
-        return await ExchangeAsync<LightClientOptimisticUpdateProtocol, ulong, LightClientOptimisticUpdate>(session, () => 0UL, cts, token, timing);
+        return await ExchangeAsync<LightClientOptimisticUpdateProtocol, Uint64Request, LightClientOptimisticUpdate>(session, () => Tracked(timing, new Uint64Request(0)), cts, token, timing);
     }
 
     public async Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRangeAsync(ISession session, ulong startSlot, ulong count, ulong[] columns, CancellationToken token, RequestTiming? timing = null)

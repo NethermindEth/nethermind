@@ -442,7 +442,7 @@ public class Eth70ProtocolHandlerTests
     }
 
     [Test]
-    public async Task Partial_first_block_is_checked_against_its_remaining_expected_receipts([Values] bool exceedsCount, [Values] bool countKnown)
+    public async Task Partial_first_block_is_checked_against_its_remaining_expected_receipts([Values] bool exceedsCount)
     {
         SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = 75;
 
@@ -475,9 +475,8 @@ public class Eth70ProtocolHandlerTests
         });
 
         HandleIncomingStatusMessage();
-        ReadOnlyMemory<int> counts = countKnown ? new[] { block1.Length, block2.Length } : new[] { -1, -1 };
-        ReadOnlyMemory<int>? limits = countKnown ? null : new ReadOnlyMemory<int>(new[] { block1.Length, block2.Length });
-        Task<IOwnedReadOnlyList<TxReceipt[]>> task = _handler.GetReceipts([Keccak.Zero, TestItem.KeccakA], counts, CancellationToken.None, limits);
+        Task<IOwnedReadOnlyList<TxReceipt[]>> task = _handler.GetReceipts([Keccak.Zero, TestItem.KeccakA],
+            new[] { block1.Length, block2.Length }, CancellationToken.None);
 
         if (exceedsCount)
         {
@@ -494,6 +493,33 @@ public class Eth70ProtocolHandlerTests
         AssertReceiptsEqual(result[1], block2);
     }
 
+    [TestCase(-1, 3)]
+    [TestCase(1, 2)]
+    [TestCase(2, 3)]
+    [TestCase(3, 3)]
+    public async Task Caller_receipt_bounds_do_not_widen_the_known_body_count(int bound, int received)
+    {
+        Hash256 hash = TestItem.KeccakA;
+        SetupBlockMetadata(hash, 1_000_000, 42_000, 100_000, 100_000);
+        GetReceiptsMessage70? request = null;
+        _session.When(session => session.DeliverMessage(Arg.Any<GetReceiptsMessage70>()))
+            .Do(call => request = call.Arg<GetReceiptsMessage70>());
+        HandleIncomingStatusMessage();
+        using CancellationTokenSource cancellation = new();
+        Task pending = _handler.GetReceipts([hash], new[] { bound }, cancellation.Token);
+        try
+        {
+            Assert.That(request, Is.Not.Null);
+            UndecodableResponse.AssertReceiptsRejectedBeforeDecoding(_handler.HandleMessage,
+                UndecodableResponse.CreateReceipts(request!.RequestId, received, Rlp.Encode(0)), Eth70MessageCode.Receipts);
+        }
+        finally
+        {
+            await cancellation.CancelAsync();
+            await pending.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
     [Test]
     public async Task Should_not_page_receipts_of_block_with_unknown_header(
         [Values(0, 1)] int knownLeadingBlocks,
@@ -504,8 +530,8 @@ public class Eth70ProtocolHandlerTests
         StrongBox<int> requestCount = RespondWithSingleReceiptPages(knownLeadingBlocks > 0, unknownBlockIncomplete);
 
         HandleIncomingStatusMessage();
-        ReadOnlyMemory<int>? limits = bounded ? new ReadOnlyMemory<int>(new[] { 2, 2 }) : null;
-        using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(hashes.Take(knownLeadingBlocks + 1).ToArray(), ReadOnlyMemory<int>.Empty, CancellationToken.None, limits);
+        ReadOnlyMemory<int> counts = bounded ? new[] { 2, 2 } : ReadOnlyMemory<int>.Empty;
+        using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(hashes.Take(knownLeadingBlocks + 1).ToArray(), counts, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {

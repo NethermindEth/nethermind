@@ -3,6 +3,7 @@
 
 using System.Collections;
 using System.Collections.Concurrent;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -444,18 +445,125 @@ public class ConsensusTests
     }
 
     [Test]
-    public void Recovery_candidate_is_detached_from_callers()
+    public void Recovery_candidate_is_detached_from_callers([Values("input", "read", "restored")] string owner)
     {
         LightClientStore store = Store(Bootstrap(1, 1));
-        store.Process(Update(2, 3, 4, 1, participants: 341), 4);
-        LightClientUpdate candidate = store.BestUpdate!;
+        LightClientUpdate input = Update(2, 3, 4, 1, participants: 341, nextKey: 2);
+        input.FinalityBranch![0] = new Hash256(input.FinalityBranch[0].Bytes);
+        store.Process(input, 4);
+        LightClientUpdate candidate = owner == "input" ? input : store.BestUpdate!;
+        if (owner == "restored")
+        {
+            store.RestoreBestUpdate(null, 4);
+            store.RestoreBestUpdate(candidate, 4);
+        }
         Hash256 original = new(candidate.FinalityBranch![0].Bytes);
+        Hash256 committeeRoot = SszRoots.HashTreeRoot(candidate.NextSyncCommittee!);
         candidate.FinalityBranch[0].Bytes[0] ^= 0xff;
         candidate.AttestedHeader!.Beacon!.Slot = 9000;
+        candidate.NextSyncCommittee!.Pubkeys![0] = default;
+        candidate.SyncAggregate!.SyncCommitteeBits!.SetAll(false);
 
+        LightClientUpdate retained = store.BestUpdate!;
         using IDisposable scope = Assert.EnterMultipleScope();
-        Assert.That(store.BestUpdate!.FinalityBranch![0], Is.EqualTo(original));
-        Assert.That(store.BestUpdate!.AttestedHeader!.Beacon!.Slot, Is.EqualTo(3));
+        Assert.That(retained.FinalityBranch![0], Is.EqualTo(original));
+        Assert.That(retained.AttestedHeader!.Beacon!.Slot, Is.EqualTo(3));
+        Assert.That(SszRoots.HashTreeRoot(retained.NextSyncCommittee!), Is.EqualTo(committeeRoot));
+        Assert.That(retained.SyncAggregate!.SyncCommitteeBits![0], Is.True);
+    }
+
+    [Test]
+    public async Task Forced_recovery_runs_before_the_live_age_check_and_is_durable(
+        [Values(8193UL, 8194UL)] ulong currentSlot, [Values] bool candidate, [Values] bool incoming)
+    {
+        LightClientBootstrap bootstrap = Bootstrap(1, 1);
+        LightClientStore store = Store(bootstrap);
+        using BootstrapFixture fixture = new(SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!), initialSlot: 8101);
+        VerifiedConsensusJournal journal = fixture.OpenJournal();
+        await journal.InitializeAsync(bootstrap, store, CancellationToken.None);
+        LightClientUpdate learning = Update(1, 1, 2, 1, nextKey: 2);
+        store.Process(learning, fixture.CurrentSlot);
+        await journal.AppendAsync(learning, store, CancellationToken.None);
+        if (candidate)
+        {
+            LightClientUpdate weak = Update(8000, 8100, 8101, 1, participants: 1);
+            store.Process(weak, fixture.CurrentSlot);
+            await journal.AppendAsync(weak, store, CancellationToken.None);
+        }
+        Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(1));
+        fixture.Clock.Advance(TimeSpan.FromSeconds((currentSlot - fixture.CurrentSlot) * Spec.SecondsPerSlot));
+        using SemaphoreSlim gate = new(1, 1);
+        int published = 0;
+        bool stopped = false;
+        ConsensusSync.Processor processor = new(store, journal, Spec, fixture.Clock, gate,
+            () => published++, () => stopped = true, NullLogger.Instance, CancellationToken.None);
+        bool forceDue = currentSlot == 8194;
+        LightClientUpdate signed = Update(8001, 8102, 8103, 1, participants: 1);
+        LightClientOptimisticUpdate optimistic = new()
+        {
+            AttestedHeader = signed.AttestedHeader,
+            SyncAggregate = signed.SyncAggregate,
+            SignatureSlot = signed.SignatureSlot,
+        };
+        Task<bool> Process() => incoming ? processor.ProcessAsync(optimistic, CancellationToken.None)
+            : processor.ForceUpdateAsync(CancellationToken.None);
+        if (forceDue && !candidate)
+            Assert.That(async () => await Process(), Throws.TypeOf<InvalidOperationException>());
+        else
+        {
+            Assert.That(await Process(), Is.EqualTo(!incoming && forceDue));
+            LightClientStore? replayed = await fixture.OpenJournal().LoadAsync(currentSlot, CancellationToken.None);
+            Assert.That(replayed, Is.Not.Null);
+            Assert.That(replayed!.HasSameAuthenticatedState(store), Is.True);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stopped, Is.EqualTo(forceDue && !candidate));
+            Assert.That(published, Is.EqualTo(forceDue && !candidate ? 0 : (incoming ? 1 : 0) + (forceDue ? 1 : 0)));
+            Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(forceDue && candidate ? 8000 : 1));
+            Assert.That(store.FinalizedHeader.Beacon!.Slot, Is.EqualTo(1));
+            Assert.That(gate.CurrentCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task A_clock_rollback_cannot_mutate_or_publish_forced_state()
+    {
+        LightClientBootstrap bootstrap = Bootstrap(1, 1);
+        LightClientStore store = Store(bootstrap);
+        using BootstrapFixture fixture = new(SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!), initialSlot: 8201);
+        VerifiedConsensusJournal journal = fixture.OpenJournal();
+        await journal.InitializeAsync(bootstrap, store, CancellationToken.None);
+        foreach (LightClientUpdate update in new[] { Update(1, 1, 2, 1, nextKey: 2), Update(1, 8200, 8201, 2) })
+        {
+            store.Process(update, fixture.CurrentSlot);
+            await journal.AppendAsync(update, store, CancellationToken.None);
+        }
+        fixture.Clock.ShiftUtc(-TimeSpan.FromSeconds(7 * Spec.SecondsPerSlot));
+        using SemaphoreSlim gate = new(1, 1);
+        int callbacks = 0;
+        ConsensusSync.Processor processor = new(store, journal, Spec, fixture.Clock, gate,
+            () => callbacks++, () => callbacks++, NullLogger.Instance, CancellationToken.None);
+
+        Assert.That(async () => await processor.ForceUpdateAsync(CancellationToken.None), Throws.TypeOf<LightClientClockException>());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.Period, Is.Zero);
+            Assert.That(store.HasBestUpdate, Is.True);
+            Assert.That(store.NextSyncCommitteeKnown, Is.True);
+            Assert.That(callbacks, Is.Zero);
+            Assert.That(gate.CurrentCount, Is.EqualTo(1));
+        }
+        fixture.Clock.ShiftUtc(TimeSpan.FromSeconds(7 * Spec.SecondsPerSlot));
+        Assert.That(await processor.ForceUpdateAsync(CancellationToken.None), Is.True);
+        LightClientStore? replayed = await fixture.OpenJournal().LoadAsync(fixture.CurrentSlot, CancellationToken.None);
+        Assert.That(replayed, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(callbacks, Is.EqualTo(1));
+            Assert.That(replayed!.HasSameAuthenticatedState(store), Is.True);
+        }
     }
 
     public enum InvalidUpdate
@@ -660,6 +768,70 @@ public class ConsensusTests
         LightClientStore store = Store(bootstrap);
 
         Assert.That(() => store.Process(Update(2, 3, 4, 1), 4), Throws.TypeOf<InvalidDataException>().With.Message.Contains("public key"));
+    }
+
+    [Test]
+    public void Prepared_committee_checks_each_updates_participation_and_signature([Values(1, 341, 342, 512)] int participants)
+    {
+        LightClientStore store = Store(Bootstrap(1, 1));
+        store.Process(Update(2, 3, 4, 1), 4);
+        LightClientUpdate update = Update(2, 5, 6, 1, participants);
+        if (participants < 512)
+        {
+            update.SyncAggregate!.SyncCommitteeBits![0] = false;
+            update.SyncAggregate.SyncCommitteeBits[511] = true;
+        }
+        store.Process(update, 6);
+        store.Process(update, 6);
+        Assert.That(store.CurrentMaxParticipants, Is.EqualTo(Math.Max(342, participants)));
+
+        update.SyncAggregate!.SyncCommitteeSignature = default;
+        Assert.That(() => store.Process(update, 6), Throws.TypeOf<InvalidDataException>().With.Message.Contains("signature"));
+    }
+
+    [Test]
+    public void Prepared_committee_revalidates_changed_keys_and_recovers_after_rejection(
+        [Values("malformed", "infinity", "torsion", "different")] string mutation, [Values] bool replaceArray)
+    {
+        LightClientStore store = Store(Bootstrap(1, 1));
+        store.Process(Update(2, 3, 4, 1), 4);
+        // The store normally owns detached committees; exercise the mutable array beneath the cache directly.
+        object snapshot = typeof(LightClientStore).GetField("_snapshot", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(store)!;
+        SyncCommittee committee = (SyncCommittee)snapshot.GetType().GetProperty("CurrentCommittee")!.GetValue(snapshot)!;
+        BlsPublicKey original = committee.Pubkeys![0];
+        if (replaceArray) committee.Pubkeys = (BlsPublicKey[])committee.Pubkeys.Clone();
+        byte[] infinity = new byte[48];
+        infinity[0] = 0xc0;
+        committee.Pubkeys[0] = mutation switch
+        {
+            "infinity" => new BlsPublicKey(infinity),
+            "torsion" => PublicKeyWithTorsion(),
+            "different" => new BlsPublicKey(new Bls.P1(Key(2)).Compress()),
+            _ => default,
+        };
+        LightClientUpdate update = Update(2, 5, 6, 1);
+        Assert.That(() => store.Process(update, 6), Throws.TypeOf<InvalidDataException>()
+            .With.Message.Contains(mutation == "different" ? "signature" : "public key"));
+        Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(3));
+
+        committee.Pubkeys[0] = original;
+        store.Process(update, 6);
+        Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(5));
+    }
+
+    [Test]
+    public void Prepared_next_committee_remains_valid_after_rotation()
+    {
+        LightClientStore store = Store(Bootstrap(8188, 1));
+        store.Process(Update(8188, 8189, 8190, 1, nextKey: 2), 8190);
+        store.Process(Update(8188, 8191, 8192, 2), 8192);
+        store.Process(Update(8192, 8193, 8194, 2, nextKey: 3), 8194);
+        store.Process(Update(8192, 8195, 8196, 2), 8196);
+        Assert.That(store.Period, Is.EqualTo(1));
+        Assert.That(() => store.Process(Update(8192, 8197, 8198, 1), 8198),
+            Throws.TypeOf<InvalidDataException>().With.Message.Contains("signature"));
+        store.Process(Update(8192, 16383, 16384, 3), 16384);
+        Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(16383));
     }
 
     [Test]
@@ -2122,7 +2294,7 @@ public class ConsensusTests
     }
 
     [Test]
-    public void Forced_progress_keeps_latest_at_or_below_the_participation_safety_threshold([Values(170, 171)] int participants)
+    public void Forced_progress_promotes_latest_below_the_participation_safety_threshold([Values(1, 170, 171)] int participants)
     {
         LightClientStore store = Store(Bootstrap(1, 1));
         store.Process(Update(2, 3, 4, 1), 4);
@@ -2131,7 +2303,7 @@ public class ConsensusTests
         Assert.That(store.ForceUpdate(8195), Is.True);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(3));
+            Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(19));
             Assert.That(store.FinalizedHeader.Beacon!.Slot, Is.EqualTo(2));
         }
     }
@@ -2175,20 +2347,7 @@ public class ConsensusTests
         }
         else
         {
-            byte[] x = new byte[48], y = new byte[48];
-            y[^1] = 2;
-            Bls.P1Affine torsion = new(new long[Bls.P1Affine.Sz]);
-            torsion.Decode(x, y);
-            Assert.That(torsion.OnCurve(), Is.True);
-            Assert.That(torsion.InGroup(), Is.False);
-            Bls.P1 mixed = new(Key(1));
-            mixed.Add(torsion);
-            byte[] encoded = mixed.Compress();
-            Bls.P1Affine decoded = new(new long[Bls.P1Affine.Sz]);
-            Assert.That(decoded.TryDecode(encoded, out _), Is.True);
-            Assert.That(decoded.IsInf(), Is.False);
-            Assert.That(decoded.InGroup(), Is.False);
-            bootstrap.CurrentSyncCommittee!.Pubkeys![0] = new BlsPublicKey(encoded);
+            bootstrap.CurrentSyncCommittee!.Pubkeys![0] = PublicKeyWithTorsion();
         }
         Hash256[] tree = Tree(new Dictionary<int, Hash256> { [86] = SszRoots.HashTreeRoot(bootstrap.CurrentSyncCommittee!) });
         bootstrap.Header!.Beacon!.StateRoot = tree[1];
@@ -2280,6 +2439,30 @@ public class ConsensusTests
     {
         Pubkeys = Enumerable.Repeat(new BlsPublicKey(new Bls.P1(Key(key)).Compress()), 512).ToArray(),
     };
+
+    private static BlsPublicKey PublicKeyWithTorsion()
+    {
+        byte[] x = new byte[48], y = new byte[48];
+        y[^1] = 2;
+        Bls.P1Affine torsion = new(new long[Bls.P1Affine.Sz]);
+        torsion.Decode(x, y);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(torsion.OnCurve(), Is.True);
+            Assert.That(torsion.InGroup(), Is.False);
+        }
+        Bls.P1 mixed = new(Key(1));
+        mixed.Add(torsion);
+        byte[] encoded = mixed.Compress();
+        Bls.P1Affine decoded = new(new long[Bls.P1Affine.Sz]);
+        Assert.That(decoded.TryDecode(encoded, out _), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.IsInf(), Is.False);
+            Assert.That(decoded.InGroup(), Is.False);
+        }
+        return new BlsPublicKey(encoded);
+    }
 
     private static Bls.SecretKey Key(byte key)
     {

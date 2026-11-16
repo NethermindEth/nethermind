@@ -120,13 +120,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
 
         [Test]
         public async Task Receipts_response_is_checked_against_expected_receipt_counts(
-            [Values] bool exceedsCount, [Values] bool countKnown, [Values] bool bounded)
+            [Values] bool exceedsCount, [Values] bool bounded)
         {
             const int count = 3;
-            ReadOnlyMemory<int>? limits = bounded ? new ReadOnlyMemory<int>(new[] { count + (countKnown ? 1 : 0) }) : null;
-            Task<IOwnedReadOnlyList<TxReceipt[]>> task = _ctx.ProtocolHandler.GetReceipts([Keccak.Zero], new[] { countKnown ? count : -1 }, CancellationToken.None, limits);
+            Task<IOwnedReadOnlyList<TxReceipt[]>> task = _ctx.ProtocolHandler.GetReceipts([Keccak.Zero], new[] { bounded ? count : -1 }, CancellationToken.None);
 
-            if (exceedsCount && (countKnown || bounded))
+            if (exceedsCount && bounded)
             {
                 UndecodableResponse.AssertReceiptsRejectedBeforeDecoding(_ctx.ProtocolHandler.HandleMessage, UndecodableResponse.CreateReceipts(null, count + 1), Eth63MessageCode.Receipts);
                 return;

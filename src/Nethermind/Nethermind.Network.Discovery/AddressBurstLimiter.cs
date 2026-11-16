@@ -7,15 +7,18 @@ namespace Nethermind.Network.Discovery;
 
 internal sealed class AddressBurstLimiter
 {
-    private readonly Lazy<NodeFilter>[] _filters;
+    private readonly NodeFilter _first;
+    private readonly Lazy<NodeFilter>[] _burstFilters;
 
     public AddressBurstLimiter(int burstPerAddress, int filterSize, TimeSpan window)
     {
-        _filters = new Lazy<NodeFilter>[Math.Max(1, burstPerAddress)];
+        _first = NodeFilter.CreateExact(Math.Max(1, filterSize), window);
+        int remaining = Math.Max(1, burstPerAddress) - 1;
+        _burstFilters = remaining == 0 ? [] : new Lazy<NodeFilter>[remaining];
         Func<NodeFilter> createFilter = () => NodeFilter.CreateExact(Math.Max(1, filterSize), window);
-        for (int i = 0; i < _filters.Length; i++)
+        for (int i = 0; i < _burstFilters.Length; i++)
         {
-            _filters[i] = new Lazy<NodeFilter>(createFilter);
+            _burstFilters[i] = new Lazy<NodeFilter>(createFilter);
         }
     }
 
@@ -23,12 +26,14 @@ internal sealed class AddressBurstLimiter
     {
         ArgumentNullException.ThrowIfNull(filter);
 
-        _filters = [new Lazy<NodeFilter>(() => filter)];
+        _first = filter;
+        _burstFilters = [];
     }
 
     public bool TryAccept(IPAddress address)
     {
-        Lazy<NodeFilter>[] filters = _filters;
+        if (_first.TryAccept(address, exactOnly: true)) return true;
+        Lazy<NodeFilter>[] filters = _burstFilters;
         for (int i = 0; i < filters.Length; i++)
         {
             if (filters[i].Value.TryAccept(address, exactOnly: true))

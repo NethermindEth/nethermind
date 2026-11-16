@@ -321,11 +321,11 @@ for this Dockerfile.
 
 ## Check the deployment
 
-Offline checks need Python 3, Docker Compose and a POSIX shell, and do not start
+Offline checks need .NET SDK 10.0.300 or newer, Docker Compose and a POSIX shell, and do not start
 containers or contact the chain:
 
 ```sh
-python3 tools/LightClient/tests/test_deployment.py
+dotnet run tools/LightClient/tests/test-deployment.cs
 ```
 
 After starting the stack, export `GRAFANA_ADMIN_PASSWORD` with the same password
@@ -342,7 +342,7 @@ allow 95 seconds for the client's 90-second request deadline and transport margi
 an unavailable-data response still fails the check instead of being hidden by retries.
 
 ```sh
-python3 tools/LightClient/tests/smoke.py --network mainnet
+dotnet run tools/LightClient/tests/smoke.cs -- --network mainnet
 ```
 
 The script accepts `--rpc-url` and `--grafana-url` for alternate local ports.

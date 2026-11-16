@@ -119,7 +119,7 @@ public class KademliaAdapterTests
         before = GC.GetAllocatedBytesForCurrentThread();
         AddressBurstLimiter limiter = new(burst, filterSize, window);
         long constructionBytes = GC.GetAllocatedBytesForCurrentThread() - before;
-        Assert.That(constructionBytes, Is.LessThan(filterBytes));
+        Assert.That(constructionBytes, Is.InRange(filterBytes, filterBytes * 2));
 
         for (int i = 0; i < burst; i++)
         {
@@ -130,7 +130,7 @@ public class KademliaAdapterTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(accepted, Is.True);
-                Assert.That(acceptanceBytes, Is.InRange(filterBytes, filterBytes * 2));
+                Assert.That(acceptanceBytes, i == 0 ? Is.LessThan(filterBytes) : Is.InRange(filterBytes, filterBytes * 2));
             }
         }
 

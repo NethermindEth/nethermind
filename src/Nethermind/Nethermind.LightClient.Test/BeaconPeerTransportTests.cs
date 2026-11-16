@@ -160,9 +160,9 @@ public class BeaconPeerTransportTests
             switch (kind)
             {
                 case 0: await new LightClientBootstrapProtocol(ConsensusTests.Spec).DialAsync(channel, context, Hash256.Zero); break;
-                case 1: await new LightClientUpdatesByRangeProtocol(ConsensusTests.Spec).DialAsync(channel, context, 0); break;
-                case 2: await new LightClientFinalityUpdateProtocol(ConsensusTests.Spec).DialAsync(channel, context, 0); break;
-                default: await new LightClientOptimisticUpdateProtocol(ConsensusTests.Spec).DialAsync(channel, context, 0); break;
+                case 1: await new LightClientUpdatesByRangeProtocol(ConsensusTests.Spec).DialAsync(channel, context, new(0)); break;
+                case 2: await new LightClientFinalityUpdateProtocol(ConsensusTests.Spec).DialAsync(channel, context, new(0)); break;
+                default: await new LightClientOptimisticUpdateProtocol(ConsensusTests.Spec).DialAsync(channel, context, new(0)); break;
             }
         }
     }
@@ -225,7 +225,7 @@ public class BeaconPeerTransportTests
         await using BootstrapAbsenceFixture fixture = new();
         BootstrapSession first = fixture.Add(), second = fixture.Add();
         foreach (BootstrapSession peer in new[] { first, second })
-            peer.Session.DialAsync<LightClientUpdatesByRangeProtocol, ulong, LightClientUpdate>(Arg.Any<ulong>(), Arg.Any<CancellationToken>())
+            peer.Session.DialAsync<LightClientUpdatesByRangeProtocol, Uint64Request, LightClientUpdate>(Arg.Any<Uint64Request>(), Arg.Any<CancellationToken>())
                 .Returns(Task.FromResult(nonlearning));
 
         await ConsensusSync.CatchUpAsync(store, ConsensusTests.Spec, fixture.UpdateAsync, () => 16384,

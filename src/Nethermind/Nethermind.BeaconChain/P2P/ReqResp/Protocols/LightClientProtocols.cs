@@ -25,6 +25,7 @@ public abstract class LightClientProtocol<TRequest, TResponse>(BeaconChainSpec s
 
     public async Task<TResponse> DialAsync(IChannel downChannel, ISessionContext context, TRequest request)
     {
+        using RequestTiming.Exchange exchange = RequestTiming.Open(request);
         using ChannelStreamAdapter stream = new(downChannel);
         using CancellationTokenSource timeout = StartTimeout(TtfbTimeout + RespTimeout);
         if (HasRequestBody)
@@ -39,6 +40,7 @@ public abstract class LightClientProtocol<TRequest, TResponse>(BeaconChainSpec s
         ResponseChunk chunk = await ReqRespFraming.ReadResponseChunkAsync(stream, ReqRespFraming.ForkContextLength, MaxResponseSize, timeout.Token)
             ?? throw new Eth2ReqRespException("Peer closed without a light-client response",
                 AllowsEmptyResponse ? ReqRespFraming.ResponseCode.ResourceUnavailable : ReqRespFraming.ResponseCode.InvalidRequest);
+        exchange.Timing?.ChunkRead();
         if (chunk.Result != ReqRespFraming.ResponseCode.Success) throw ErrorChunkToException(chunk);
 
         TResponse response;
@@ -109,15 +111,15 @@ public sealed class LightClientBootstrapProtocol(BeaconChainSpec spec) : LightCl
 }
 
 /// <summary>Requests one light-client update at the given sync-committee period.</summary>
-public sealed class LightClientUpdatesByRangeProtocol(BeaconChainSpec spec) : LightClientProtocol<ulong, LightClientUpdate>(spec)
+public sealed class LightClientUpdatesByRangeProtocol(BeaconChainSpec spec) : LightClientProtocol<Uint64Request, LightClientUpdate>(spec)
 {
     public override string Id => "/eth2/beacon_chain/req/light_client_updates_by_range/1/ssz_snappy";
     protected override int MaxRequestSize => 16;
     protected override bool AllowsEmptyResponse => true;
-    protected override byte[] EncodeRequest(ulong period)
+    protected override byte[] EncodeRequest(Uint64Request request)
     {
         byte[] ssz = new byte[16];
-        BinaryPrimitives.WriteUInt64LittleEndian(ssz, period);
+        BinaryPrimitives.WriteUInt64LittleEndian(ssz, request.Value);
         BinaryPrimitives.WriteUInt64LittleEndian(ssz.AsSpan(8), 1);
         return ssz;
     }
@@ -128,12 +130,12 @@ public sealed class LightClientUpdatesByRangeProtocol(BeaconChainSpec spec) : Li
 }
 
 /// <summary>Requests the latest light-client finality update.</summary>
-public sealed class LightClientFinalityUpdateProtocol(BeaconChainSpec spec) : LightClientProtocol<ulong, LightClientFinalityUpdate>(spec)
+public sealed class LightClientFinalityUpdateProtocol(BeaconChainSpec spec) : LightClientProtocol<Uint64Request, LightClientFinalityUpdate>(spec)
 {
     public override string Id => "/eth2/beacon_chain/req/light_client_finality_update/1/ssz_snappy";
     protected override int MaxRequestSize => 0;
     protected override bool HasRequestBody => false;
-    protected override byte[] EncodeRequest(ulong request) => [];
+    protected override byte[] EncodeRequest(Uint64Request request) => [];
     protected override LightClientFinalityUpdate DecodeResponse(byte[] ssz)
         => LightClientWireCodec.DecodeFinality(ssz, Spec);
     protected override ulong ResponseSlot(LightClientFinalityUpdate response) => response.AttestedHeader?.Beacon?.Slot
@@ -141,12 +143,12 @@ public sealed class LightClientFinalityUpdateProtocol(BeaconChainSpec spec) : Li
 }
 
 /// <summary>Requests the latest light-client optimistic update.</summary>
-public sealed class LightClientOptimisticUpdateProtocol(BeaconChainSpec spec) : LightClientProtocol<ulong, LightClientOptimisticUpdate>(spec)
+public sealed class LightClientOptimisticUpdateProtocol(BeaconChainSpec spec) : LightClientProtocol<Uint64Request, LightClientOptimisticUpdate>(spec)
 {
     public override string Id => "/eth2/beacon_chain/req/light_client_optimistic_update/1/ssz_snappy";
     protected override int MaxRequestSize => 0;
     protected override bool HasRequestBody => false;
-    protected override byte[] EncodeRequest(ulong request) => [];
+    protected override byte[] EncodeRequest(Uint64Request request) => [];
     protected override LightClientOptimisticUpdate DecodeResponse(byte[] ssz) => LightClientWireCodec.DecodeOptimistic(ssz, Spec);
     protected override ulong ResponseSlot(LightClientOptimisticUpdate response) => response.AttestedHeader?.Beacon?.Slot
         ?? throw new Eth2ReqRespException("Optimistic update has no attested header");

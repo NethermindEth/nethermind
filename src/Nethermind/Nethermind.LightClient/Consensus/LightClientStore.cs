@@ -25,7 +25,8 @@ internal sealed class LightClientFutureSlotException(ulong signatureSlot)
 /// <summary>Authenticates finalized and optimistic headers from a trusted beacon checkpoint.</summary>
 /// <remarks>
 /// Implements the consensus-specs light client sync protocol using the Electra and Gloas proof indices.
-/// Forced progress never changes the header exposed as finalized to RPC.
+/// A force step does not expose its target as finalized to RPC. Subsequent supermajority finality
+/// still inherits the trust of any committee admitted by timeout recovery.
 /// One synchronization owner calls <see cref="Process(LightClientUpdate, ulong)"/>;
 /// RPC readers receive copies of atomically published snapshots.
 /// https://ethereum.github.io/consensus-specs/specs/altair/light-client/sync-protocol/
@@ -34,6 +35,32 @@ internal sealed class LightClientStore
 {
     private readonly BeaconChainSpec _spec;
     private Snapshot _snapshot;
+    private PreparedCommittee? _currentCommitteeKeys;
+    private PreparedCommittee? _nextCommitteeKeys;
+
+    private sealed class PreparedCommittee(SyncCommittee committee)
+    {
+        private readonly BlsPublicKey[] _keys = new BlsPublicKey[Presets.SyncCommitteeSize];
+        private readonly long[] _points = new long[Presets.SyncCommitteeSize * Bls.P1Affine.Sz];
+        private readonly bool[] _valid = new bool[Presets.SyncCommitteeSize];
+
+        public SyncCommittee Committee { get; } = committee;
+
+        public Bls.P1Affine Get(int index)
+        {
+            BlsPublicKey key = Committee.Pubkeys![index];
+            Bls.P1Affine point = new(_points.AsSpan(index * Bls.P1Affine.Sz, Bls.P1Affine.Sz));
+            if (!_valid[index] || _keys[index] != key)
+            {
+                // A changed or rejected encoding must never reuse the old decoded point.
+                _valid[index] = false;
+                Require(point.TryDecode(key.Bytes, out _) && !point.IsInf() && point.InGroup(), "Invalid sync committee public key.");
+                _keys[index] = key;
+                _valid[index] = true;
+            }
+            return point;
+        }
+    }
 
     private sealed record Snapshot(
         LightClientHeader Header,
@@ -44,6 +71,12 @@ internal sealed class LightClientStore
         LightClientUpdate? BestUpdate,
         int PreviousMaxParticipants,
         int CurrentMaxParticipants);
+
+    private LightClientStore(BeaconChainSpec spec, Snapshot snapshot)
+    {
+        _spec = spec;
+        _snapshot = snapshot;
+    }
 
     public LightClientStore(BeaconChainSpec spec, Hash256 checkpoint, LightClientBootstrap bootstrap, ulong currentSlot)
     {
@@ -84,7 +117,7 @@ internal sealed class LightClientStore
     /// <summary>A detached copy of the best authenticated header; it may be unfinalized.</summary>
     public LightClientHeader OptimisticHeader => CloneHeader(Volatile.Read(ref _snapshot).OptimisticHeader);
 
-    /// <summary>The sync committee period of the authenticated finalized beacon header.</summary>
+    /// <summary>The sync committee period currently used to authenticate updates.</summary>
     public ulong Period => PeriodAtSlot(Volatile.Read(ref _snapshot).SyncHeader.Beacon!.Slot);
 
     /// <summary>Whether the next committee is authenticated and available for period rollover.</summary>
@@ -162,6 +195,17 @@ internal sealed class LightClientStore
         update.AttestedHeader, null, null, null, null, update.SyncAggregate,
         update.SignatureSlot, currentSlot);
 
+    /// <summary>Applies timeout recovery only when its resulting authenticated head passes the live recency policy.</summary>
+    /// <exception cref="LightClientLocalStateException">The proposed state is too old or ahead of the local clock.</exception>
+    internal bool ForceUpdateRecent(ulong currentSlot)
+    {
+        LightClientStore proposal = new(_spec, _snapshot);
+        bool forced = proposal.ForceUpdate(currentSlot);
+        proposal.RequireRecent(currentSlot);
+        if (forced) Volatile.Write(ref _snapshot, proposal._snapshot);
+        return forced;
+    }
+
     /// <summary>Advances the sync committee after an update timeout, while retaining the proven finalized head.</summary>
     public bool ForceUpdate(ulong currentSlot)
     {
@@ -193,9 +237,7 @@ internal sealed class LightClientStore
             nextCommittee = Clone(best.NextSyncCommittee!);
         }
 
-        int safetyThreshold = Math.Max(snapshot.PreviousMaxParticipants, snapshot.CurrentMaxParticipants) / 2;
-        LightClientHeader optimistic = CountParticipants(best.SyncAggregate!) > safetyThreshold &&
-            target.Beacon.Slot > snapshot.OptimisticHeader.Beacon!.Slot
+        LightClientHeader optimistic = target.Beacon.Slot > snapshot.OptimisticHeader.Beacon!.Slot
             ? CloneHeader(target) : snapshot.OptimisticHeader;
         Volatile.Write(ref _snapshot, snapshot with
         {
@@ -278,7 +320,7 @@ internal sealed class LightClientStore
             throw new LightClientFutureSlotException(signatureSlot);
         if (currentSlot < signatureSlot)
             throw new LightClientFutureUpdateException();
-        LightClientUpdate candidate = CloneUpdate(new LightClientUpdate
+        LightClientUpdate candidate = new()
         {
             AttestedHeader = attested,
             FinalizedHeader = finalized,
@@ -287,11 +329,11 @@ internal sealed class LightClientStore
             NextSyncCommitteeBranch = nextBranch,
             SyncAggregate = aggregate,
             SignatureSlot = signatureSlot,
-        });
+        };
         if (restoreCandidate)
         {
             Require(participants <= snapshot.CurrentMaxParticipants, "Saved recovery candidate exceeds authenticated participation history.");
-            Volatile.Write(ref _snapshot, snapshot with { BestUpdate = candidate });
+            Volatile.Write(ref _snapshot, snapshot with { BestUpdate = CloneUpdate(candidate) });
             return;
         }
 
@@ -299,8 +341,6 @@ internal sealed class LightClientStore
         int safetyThreshold = Math.Max(snapshot.PreviousMaxParticipants, currentMax) / 2;
         LightClientHeader optimistic = participants > safetyThreshold && attestedSlot > snapshot.OptimisticHeader.Beacon!.Slot
             ? CloneHeader(attested) : snapshot.OptimisticHeader;
-        LightClientUpdate? best = snapshot.BestUpdate is null || Better(candidate, snapshot.BestUpdate) ? candidate : snapshot.BestUpdate;
-
         bool supermajorityFinality = participants * 3 >= Presets.SyncCommitteeSize * 2 && hasFinality;
         ulong finalizedPeriod = PeriodAtSlot(finalizedSlot);
         bool advancesSync = supermajorityFinality &&
@@ -315,7 +355,8 @@ internal sealed class LightClientStore
             {
                 Header = finalizedHeader,
                 OptimisticHeader = optimistic.Beacon!.Slot < finalizedHeader.Beacon!.Slot ? finalizedHeader : optimistic,
-                BestUpdate = best,
+                BestUpdate = snapshot.BestUpdate is null || Better(candidate, snapshot.BestUpdate)
+                    ? CloneUpdate(candidate) : snapshot.BestUpdate,
                 CurrentMaxParticipants = currentMax,
             });
             return;
@@ -405,18 +446,18 @@ internal sealed class LightClientStore
 
     private int VerifySignature(SyncCommittee committee, SyncAggregate? aggregate, ulong signatureSlot, BeaconBlockHeader attested)
     {
+        ValidateCommittee(committee);
         Require(aggregate?.SyncCommitteeBits?.Length == Presets.SyncCommitteeSize, "Invalid sync committee bitfield.");
         int participants = 0;
         for (int i = 0; i < Presets.SyncCommitteeSize; i++)
             if (aggregate!.SyncCommitteeBits![i]) participants++;
         Require(participants > 0, "Update has no sync committee participants.");
+        PreparedCommittee prepared = PrepareCommittee(committee);
         Bls.P1 publicKey = new(stackalloc long[Bls.P1.Sz]);
-        Bls.P1Affine decoded = new(stackalloc long[Bls.P1Affine.Sz]);
         for (int i = 0; i < Presets.SyncCommitteeSize; i++)
         {
             if (!aggregate!.SyncCommitteeBits![i]) continue;
-            Require(decoded.TryDecode(committee.Pubkeys![i].Bytes, out _) && !decoded.IsInf() && decoded.InGroup(), "Invalid sync committee public key.");
-            publicKey.Add(decoded);
+            publicKey.Add(prepared.Get(i));
         }
         Require(!publicKey.ToAffine().IsInf(), "Aggregate public key is infinity.");
         byte[] version = _spec.VersionForEpoch(_spec.GetEpoch(signatureSlot - 1));
@@ -424,6 +465,17 @@ internal sealed class LightClientStore
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(attested), domain);
         Require(BlsSigner.Verify(publicKey.ToAffine(), aggregate!.SyncCommitteeSignature.Bytes, signingRoot.Bytes), "Invalid sync committee signature.");
         return participants;
+    }
+
+    private PreparedCommittee PrepareCommittee(SyncCommittee committee)
+    {
+        if (!ReferenceEquals(_currentCommitteeKeys?.Committee, _snapshot.CurrentCommittee))
+            _currentCommitteeKeys = ReferenceEquals(_nextCommitteeKeys?.Committee, _snapshot.CurrentCommittee) ? _nextCommitteeKeys : null;
+        if (!ReferenceEquals(_nextCommitteeKeys?.Committee, _snapshot.NextCommittee))
+            _nextCommitteeKeys = null;
+        ref PreparedCommittee? prepared = ref ReferenceEquals(committee, _snapshot.CurrentCommittee)
+            ? ref _currentCommitteeKeys : ref _nextCommitteeKeys;
+        return prepared ??= new PreparedCommittee(committee);
     }
 
     private bool Better(LightClientUpdate candidate, LightClientUpdate previous)

@@ -1767,6 +1767,70 @@ public class VerifiedRpcTests
     }
 
     [Test]
+    public async Task A_single_receipt_projects_only_its_sender_and_keeps_block_coordinates(
+        [Values(0, 1, 2)] int index, [Values] bool warm)
+    {
+        using Provider provider = ReceiptProjectionProvider();
+        using VerifiedExecutionData data = new(provider, MainnetSpecProvider.Instance, 1);
+        Hash256 hash = provider.Transactions[index].Hash!;
+        if (warm) await data.FindTransactionAsync(provider.Header, hash, receipt: true, CancellationToken.None);
+
+        JsonElement receipt = (await data.FindTransactionAsync(provider.Header, hash, receipt: true, CancellationToken.None))!.Value;
+        int[] offsets = [0, 2, 3];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.Transactions[index].SenderAddress, Is.Not.Null);
+            Assert.That(provider.Transactions.Where((_, i) => i != index).Select(transaction => transaction.SenderAddress), Is.All.Null);
+            Assert.That(receipt.GetProperty("transactionHash").GetString(), Is.EqualTo(hash.ToString()));
+            Assert.That(receipt.GetProperty("transactionIndex").GetString(), Is.EqualTo(VerifiedRpc.Quantity((ulong)index)));
+            Assert.That(receipt.GetProperty("gasUsed").GetString(), Is.EqualTo("0x5208"));
+            Assert.That(receipt.GetProperty("cumulativeGasUsed").GetString(), Is.EqualTo(VerifiedRpc.Quantity((ulong)((index + 1) * 21_000))));
+            Assert.That(receipt.GetProperty("logs").EnumerateArray().Select(log => log.GetProperty("logIndex").GetString()),
+                Is.EqualTo(provider.Receipts[index].Logs!.Select((_, i) => VerifiedRpc.Quantity((ulong)(offsets[index] + i)))));
+        }
+
+        JsonElement all = await data.GetBlockReceiptsAsync(provider.Header, CancellationToken.None);
+        Assert.That(receipt.GetRawText(), Is.EqualTo(all[index].GetRawText()));
+    }
+
+    [Test]
+    public async Task A_single_receipt_still_authenticates_and_checks_other_receipts(
+        [Values("root", "type", "gas")] string invalid, [Values(0, 2)] int sibling)
+    {
+        using Provider provider = ReceiptProjectionProvider();
+        if (invalid == "root") provider.Receipts[sibling].Logs![0].Data[0] ^= 1;
+        else
+        {
+            if (invalid == "type") provider.Receipts[sibling].TxType = TxType.EIP1559;
+            else provider.Receipts[sibling].GasUsedTotal = sibling == 0 ? 50_000UL : 10_000UL;
+            provider.Header.ReceiptsRoot = ReceiptTrie.CalculateRoot(MainnetSpecProvider.Instance.GetSpec(provider.Header),
+                provider.Receipts, new ReceiptMessageDecoder());
+        }
+        using VerifiedExecutionData data = new(provider, MainnetSpecProvider.Instance, 1);
+
+        Assert.That(async () => await data.FindTransactionAsync(provider.Header, provider.Transactions[1].Hash!,
+            receipt: true, CancellationToken.None), Throws.TypeOf<InvalidDataException>());
+    }
+
+    [Test]
+    public async Task A_single_receipt_rejects_a_verified_list_with_the_wrong_transaction_count()
+    {
+        using Provider provider = ReceiptProjectionProvider();
+        provider.Receipts = provider.Receipts[..2];
+        provider.Header.ReceiptsRoot = ReceiptTrie.CalculateRoot(MainnetSpecProvider.Instance.GetSpec(provider.Header),
+            provider.Receipts, new ReceiptMessageDecoder());
+        using VerifiedExecutionData data = new(provider, MainnetSpecProvider.Instance, 1);
+
+        Assert.That(async () => await data.FindTransactionAsync(provider.Header, provider.Transactions[1].Hash!,
+            receipt: true, CancellationToken.None), Throws.TypeOf<InvalidDataException>());
+    }
+
+    private static Provider ReceiptProjectionProvider() => LogsProvider(
+        [new(AccountAddress, [1], []), new(AccountAddress, [2], [])],
+        [new(AccountAddress, [3], [])],
+        [new(AccountAddress, [4], []), new(AccountAddress, [5], []), new(AccountAddress, [6], [])]);
+
+    [Test]
     public async Task Transaction_receipt_and_logs_are_derived_from_verified_roots([Values(-1, 0, 1)] int headerGasOffset)
     {
         using Provider provider = new(new Account(7, 123));

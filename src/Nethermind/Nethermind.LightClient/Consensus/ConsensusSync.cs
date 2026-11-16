@@ -40,7 +40,11 @@ internal static class ConsensusSync
                 {
                     token.ThrowIfCancellationRequested();
                     ulong currentSlot = CurrentSlot();
-                    RequireLiveState(store, currentSlot, stopApplication);
+                    try { store.RequireRecent(currentSlot); }
+                    catch (LightClientLocalStateException exception) when (exception is not LightClientClockException)
+                    {
+                        await ForceUpdateAsync(currentSlot);
+                    }
                     ulong before = progress();
                     if (logger.IsEnabled(LogLevel.Debug))
                     {
@@ -69,15 +73,30 @@ internal static class ConsensusSync
             try
             {
                 token.ThrowIfCancellationRequested();
-                ulong currentSlot = CurrentSlot();
-                RequireLiveState(store, currentSlot, stopApplication);
-                LightClientUpdate? best = store.BestUpdate;
-                if (best is null || !store.ForceUpdate(currentSlot)) return false;
-                await PersistAsync(journal.AppendForcedAsync(best, currentSlot, store, stoppingToken));
-                publish();
-                return true;
+                return await ForceUpdateAsync(CurrentSlot());
             }
             finally { gate.Release(); }
+        }
+
+        private async Task<bool> ForceUpdateAsync(ulong currentSlot)
+        {
+            LightClientUpdate? best = store.BestUpdate;
+            if (best is null)
+            {
+                RequireLiveState(store, currentSlot, stopApplication);
+                return false;
+            }
+            bool forced;
+            try { forced = store.ForceUpdateRecent(currentSlot); }
+            catch (LightClientLocalStateException exception) when (exception is not LightClientClockException)
+            {
+                RequireLiveState(store, currentSlot, stopApplication);
+                throw;
+            }
+            if (!forced) return false;
+            await PersistAsync(journal.AppendForcedAsync(best, currentSlot, store, stoppingToken));
+            publish();
+            return true;
         }
 
         private ulong CurrentSlot() => spec.GetSlotAtTime((ulong)clock.GetUtcNow().ToUnixTimeSeconds());

@@ -1141,17 +1141,10 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
                                 }
                                 int requestedLength = peer.ProtocolVersion < 70 ? 1 : ownedHashes.Length - start;
                                 using ArrayPoolList<Hash256> remaining = new(requestedLength);
-                                bool exactCounts = false;
-                                bool unknownCounts = false;
                                 for (int i = start; i < start + requestedLength; i++)
-                                {
                                     remaining.Add(ownedHashes[i]);
-                                    exactCounts |= counts[i] >= 0;
-                                    unknownCounts |= counts[i] < 0;
-                                }
-                                ReadOnlyMemory<int> expected = exactCounts ? counts.AsMemory(start, requestedLength) : ReadOnlyMemory<int>.Empty;
-                                ReadOnlyMemory<int>? ceilings = unknownCounts ? limits.AsMemory(start, requestedLength) : null;
-                                using IOwnedReadOnlyList<TxReceipt[]?> batches = await peer.GetReceipts(remaining, expected, token, ceilings);
+                                using IOwnedReadOnlyList<TxReceipt[]?> batches = await peer.GetReceipts(remaining,
+                                    limits.AsMemory(start, requestedLength), token);
                                 if (batches.Count == 0)
                                     throw new ExecutionDataUnavailableException("Execution peer does not have the requested receipt list.");
                                 if (batches.Count > remaining.Count)

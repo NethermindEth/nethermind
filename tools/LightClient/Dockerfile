@@ -43,8 +43,9 @@ LABEL org.opencontainers.image.title="Nethermind Light Client" \
   org.opencontainers.image.created="$BUILD_TIMESTAMP"
 
 RUN apt-get update && \
-  apt-get install -y --no-install-recommends curl && \
+  apt-get install -y --no-install-recommends curl=8.18.0-1ubuntu2.8 && \
   curl -fsSL https://packages.microsoft.com/config/ubuntu/26.04/packages-microsoft-prod.deb -o /tmp/packages-microsoft-prod.deb && \
+  echo "b2e7c6b9328e0c6a68bfe5d0045be90ceb192b32e0ca906c6c529b9012726f39  /tmp/packages-microsoft-prod.deb" | sha256sum -c - && \
   dpkg -i /tmp/packages-microsoft-prod.deb && \
   rm /tmp/packages-microsoft-prod.deb && \
   apt-get update && \

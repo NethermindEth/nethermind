@@ -243,10 +243,15 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
             if (receipt)
             {
                 TxReceipt[] receipts = await source.GetReceiptsAsync(block.Header, cancellationToken, block.Transactions.Length);
-                ReceiptForRpc[] result = BuildReceipts(block, receipts);
+                ValidateReceipts(block, receipts);
+                int logIndex = 0;
+                for (int previous = 0; previous < i; previous++)
+                    logIndex = checked(logIndex + (receipts[previous].Logs?.Length ?? 0));
                 long payloadBytes = 0;
                 ValidateLogPayload(receipts[i], ref payloadBytes);
-                return BoundedJson.ToElement(result[i]);
+                ReceiptForRpc result = BuildReceipt(block, receipts[i], i,
+                    i == 0 ? 0 : receipts[i - 1].GasUsedTotal, logIndex, specProvider.GetSpec(block.Header));
+                return BoundedJson.ToElement(result);
             }
             ValidatePayloadBytes(PayloadBytes(transaction));
             RecoverSender(transaction);
@@ -426,37 +431,53 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
 
     private ReceiptForRpc[] BuildReceipts(Block block, TxReceipt[] receipts)
     {
-        if (receipts.Length != block.Transactions.Length)
-            throw new InvalidDataException("Verified receipt count does not match the block transaction count.");
+        ValidateReceipts(block, receipts);
         ReceiptForRpc[] result = new ReceiptForRpc[receipts.Length];
         ulong previousGas = 0;
         int logIndex = 0;
         IReleaseSpec releaseSpec = specProvider.GetSpec(block.Header);
         for (int i = 0; i < receipts.Length; i++)
         {
-            Transaction transaction = block.Transactions[i];
-            RecoverSender(transaction);
             TxReceipt receipt = receipts[i];
-            if (receipt.TxType != transaction.Type || receipt.GasUsedTotal < previousGas)
-                throw new InvalidDataException("Verified receipt has inconsistent transaction type or cumulative gas.");
-            receipt.TxHash = transaction.Hash;
-            receipt.BlockHash = block.Hash;
-            receipt.BlockNumber = block.Number;
-            receipt.Index = i;
-            receipt.GasUsed = receipt.GasUsedTotal - previousGas;
-            receipt.Sender = transaction.SenderAddress;
-            receipt.Recipient = transaction.To;
-            if (transaction.CreatesTopLevelContract)
-                receipt.ContractAddress = ContractAddress.From(transaction.SenderAddress, (Nethermind.Int256.UInt256)transaction.Nonce);
-            result[i] = new ReceiptForRpc(transaction.Hash!, receipt, block.Timestamp,
-                transaction.GetGasInfo(releaseSpec, block.Header), logIndex)
-            {
-                LogsBloom = releaseSpec.IsEip7668Enabled ? Bloom.ZeroLength : receipt.Bloom,
-            };
+            result[i] = BuildReceipt(block, receipt, i, previousGas, logIndex, releaseSpec);
             previousGas = receipt.GasUsedTotal;
             logIndex = checked(logIndex + (receipt.Logs?.Length ?? 0));
         }
         return result;
+    }
+
+    private static void ValidateReceipts(Block block, TxReceipt[] receipts)
+    {
+        if (receipts.Length != block.Transactions.Length)
+            throw new InvalidDataException("Verified receipt count does not match the block transaction count.");
+        ulong previousGas = 0;
+        for (int index = 0; index < receipts.Length; index++)
+        {
+            TxReceipt receipt = receipts[index];
+            if (receipt.TxType != block.Transactions[index].Type || receipt.GasUsedTotal < previousGas)
+                throw new InvalidDataException("Verified receipt has inconsistent transaction type or cumulative gas.");
+            previousGas = receipt.GasUsedTotal;
+        }
+    }
+
+    private ReceiptForRpc BuildReceipt(Block block, TxReceipt receipt, int index, ulong previousGas, int logIndex, IReleaseSpec spec)
+    {
+        Transaction transaction = block.Transactions[index];
+        RecoverSender(transaction);
+        receipt.TxHash = transaction.Hash;
+        receipt.BlockHash = block.Hash;
+        receipt.BlockNumber = block.Number;
+        receipt.Index = index;
+        receipt.GasUsed = receipt.GasUsedTotal - previousGas;
+        receipt.Sender = transaction.SenderAddress;
+        receipt.Recipient = transaction.To;
+        if (transaction.CreatesTopLevelContract)
+            receipt.ContractAddress = ContractAddress.From(transaction.SenderAddress, (UInt256)transaction.Nonce);
+        return new ReceiptForRpc(transaction.Hash!, receipt, block.Timestamp,
+            transaction.GetGasInfo(spec, block.Header), logIndex)
+        {
+            LogsBloom = spec.IsEip7668Enabled ? Bloom.ZeroLength : receipt.Bloom,
+        };
     }
 
     private void RecoverSenders(Block block)

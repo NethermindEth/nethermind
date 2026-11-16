@@ -671,9 +671,9 @@ It refuses committee conflicts and skips. Signed optimistic updates can move
 participation maxima start at zero after bootstrap, so the first valid update
 can advance optimistic latest with one signer; this is not a supermajority or
 finality guarantee. Select `"finalized"` when that stronger condition is needed.
-Timeout recovery can advance the sync committee, but only moves RPC latest when
-its candidate also exceeds the existing adaptive threshold, and never promotes
-an unfinalized execution state to finalized RPC. Later finality is signed by
+The specification's timeout recovery can advance the sync committee and RPC
+`latest` to its forced target without exceeding that threshold. It never directly
+promotes an unfinalized execution state to finalized RPC. Later finality is signed by
 the committee that recovery selected, so it carries that recovery's weaker
 trust; each forced advance is logged as a warning.
 

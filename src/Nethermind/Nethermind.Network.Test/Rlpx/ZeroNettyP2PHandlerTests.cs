@@ -109,6 +109,46 @@ public class ZeroNettyP2PHandlerTests
     }
 
     [Test]
+    public void Transport_rlp_limits_preserve_privileged_peer_policy([Values] bool snappy, [Values] PeerPrivilege privilege)
+    {
+        using PooledBufferLeakDetector detector = new();
+        IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
+        context.Allocator.Returns(detector.Allocator);
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303)
+        {
+            IsStatic = privilege == PeerPrivilege.Static,
+            IsTrusted = privilege == PeerPrivilege.Trusted,
+        });
+        RlpLimitException exception = new("message exceeds decode limits");
+        session.When(s => s.ReceiveMessage(Arg.Any<ZeroPacket>())).Do(_ => throw exception);
+        ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
+        if (snappy) handler.EnableSnappy();
+        ZeroPacket packet = snappy
+            ? CreateCompressedPacket(detector.Allocator, [0xc0], 0x10)
+            : new ZeroPacket(detector.Allocator.Buffer().WriteByte(0xc0)) { PacketType = 0x10 };
+        try
+        {
+            handler.ChannelRead(context, packet);
+            if (privilege == PeerPrivilege.None)
+            {
+                session.Received(1).InitiateDisconnect(DisconnectReason.MessageLimitsBreached, Arg.Any<string>());
+                context.DidNotReceive().FireExceptionCaught(Arg.Any<Exception>());
+            }
+            else
+            {
+                session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+                context.Received(1).FireExceptionCaught(exception);
+            }
+            Assert.That(packet.ReferenceCount, Is.Zero);
+        }
+        finally
+        {
+            handler.HandlerRemoved(context);
+        }
+    }
+
+    [Test]
     public void Rlp_limit_disconnect_is_preserved_without_a_second_disconnect([Values] bool snappy)
     {
         using PooledBufferLeakDetector detector = new();
@@ -189,6 +229,7 @@ public class ZeroNettyP2PHandlerTests
     {
         yield return new TestCaseData(new Exception(), DisconnectReason.Exception).SetName("Generic_exception_uses_generic_reason");
         yield return new TestCaseData(new CorruptedFrameException("malformed frame"), DisconnectReason.Exception).SetName("Corrupted_frame_uses_generic_reason");
+        yield return new TestCaseData(new RlpLimitException("message exceeds decode limits"), DisconnectReason.MessageLimitsBreached).SetName("RLP_limit_uses_message_limits_reason");
         yield return new TestCaseData(new SocketException((int)SocketError.ConnectionReset), DisconnectReason.ConnectionReset).SetName("Connection_reset_uses_connection_reset_reason");
     }
 

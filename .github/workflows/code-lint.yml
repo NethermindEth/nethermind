@@ -78,8 +78,11 @@ jobs:
       - name: Run script test suites
         run: python -m unittest discover -s scripts/ci -p 'test*.py' -v
 
+      - name: Set up .NET for deployment checks
+        uses: actions/setup-dotnet@v5
+
       - name: Check light-client deployment
-        run: python -m unittest discover -s tools/LightClient/tests -p 'test*.py' -v
+        run: dotnet run tools/LightClient/tests/test-deployment.cs
 
   zisk-bench-scripts:
     name: Test zkVM benchmark scripts

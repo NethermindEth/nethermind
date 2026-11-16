@@ -19,3 +19,13 @@ These fixtures prove serialization conformance. The separate captured mainnet
 Fulu fixture exercises real committee proofs, BLS signatures, tampering rejection
 and journal replay. Neither establishes adversarial-network availability or
 live Gloas interoperability.
+
+The existing `Ethereum.ConsensusSpec.Test` and `Ethereum.ConsensusSpec.Minimal.Test`
+projects also run the pinned release's `light_client/single_merkle_proof`, `sync`
+and `update_ranking` suites through [the light-client driver](../../../Ethereum.ConsensusSpec.Test/LightClientTests.cs).
+The production `LightClientStore.cs` is source-linked against each preset's beacon
+types, so the minimal vectors use 32-member committees and mainnet vectors use
+512-member committees without changing runtime configuration. The release publishes
+stateful sync/ranking cases for minimal and proof cases for both presets. The
+archive downloader verifies the pinned SHA-256 and extraction coverage; a discovery
+check requires runnable cases for every published fork/suite combination.

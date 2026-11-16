@@ -44,6 +44,7 @@ using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 using Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
@@ -1640,15 +1641,14 @@ public class TransportTests
 
     [Test]
     [CancelAfter(30_000)]
-    public async Task Header_only_receipts_separate_decode_limits_from_unknown_transaction_counts(CancellationToken token)
+    public async Task Header_only_receipts_bound_decoding_without_requiring_an_exact_transaction_count(CancellationToken token)
     {
         await using ExecutionPeers peers = new(1);
         TxReceipt[] receipts = await peers.Transport.GetReceiptsAsync(peers.Header, token);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(receipts, Has.Length.EqualTo(peers.Receipts.Length));
-        Assert.That(peers.Ordered[0].LastReceiptCounts.IsEmpty, Is.True);
-        Assert.That(peers.Ordered[0].LastReceiptLimits?.ToArray(), Is.EqualTo(new[]
+        Assert.That(peers.Ordered[0].LastReceiptCounts.ToArray(), Is.EqualTo(new[]
         {
             ExecutionPeerTransport.GetReceiptCountLimit(peers.Header, peers.Transport.SpecProvider.GetSpec(peers.Header))!.Value,
         }));
@@ -3329,6 +3329,8 @@ public class TransportTests
         Assert.That(enr.ServesSnap2, Is.False);
         Assert.That(capabilities, Does.Contain(new Capability(Protocol.Snap, 1)));
         Assert.That(capabilities, Does.Contain(new Capability(Protocol.Snap, 2)));
+        Assert.That(capabilities.Where(capability => capability.ProtocolCode == Protocol.Eth).Select(capability => capability.Version),
+            Is.EquivalentTo(new[] { 68, 69, 70, 71, 72 }));
     }
 
     private static ExecutionPeerTransport SnapTransport() => new("sepolia", Nethermind.Logging.LimboLogs.Instance,
@@ -3579,21 +3581,27 @@ public class TransportTests
     }
 
     [TestCase(68, false)]
+    [TestCase(69, false)]
     [TestCase(70, false)]
     [TestCase(70, true)]
+    [TestCase(71, false)]
+    [TestCase(71, true)]
+    [TestCase(72, false)]
+    [TestCase(72, true)]
     [NonParallelizable]
     [CancelAfter(30_000)]
     public async Task Receipt_batches_authenticate_every_block_across_wire_prefixes(
         int version, bool partial, CancellationToken token)
     {
-        await using ReceiptPeers peers = new(version == 70 && partial, version);
-        BlockHeader[] headers = Enumerable.Range(100, 4).Select(number => peers.AddBlock((ulong)number, true)).ToArray();
+        await using ReceiptPeers peers = new(partial, version);
+        BlockHeader[] headers = Enumerable.Range(100, 4).Select(number =>
+            peers.AddBlock((ulong)number, true, number - 99, (ulong)(number - 99) * 21_000)).ToArray();
         TxReceipt[][] receipts = await Task.WhenAll(peers.Transport.GetReceiptsAsync(headers, token));
         for (int i = 0; i < headers.Length; i++)
         {
             Assert.That(receipts[i].Select(receipt => receipt.Logs![0].Data[1]), Is.All.EqualTo((byte)headers[i].Number));
             receipts[i][0].StatusCode = 0;
-            TxReceipt[] cached = await peers.Transport.GetReceiptsAsync(headers[i], token, 2);
+            TxReceipt[] cached = await peers.Transport.GetReceiptsAsync(headers[i], token, i + 1);
             Assert.That(cached[0].StatusCode, Is.EqualTo(1));
         }
         using (Assert.EnterMultipleScope())
@@ -3604,7 +3612,12 @@ public class TransportTests
             Assert.That(headers.All(header => peers.Server.FindHeader(header.Hash!) is null), Is.True);
             Assert.That(peers.Sessions.Sum(peer => peer.BodyRequests), Is.Zero);
             Assert.That(peers.Sessions.All(peer => peer.BuffersReleased), Is.True);
-            if (version == 70 && partial) Assert.That(peers.Primary.Requests.Any(request => request.Offset == 1), Is.True);
+            Assert.That(peers.Sessions.Select(peer => peer.SyncPeer), Is.All.InstanceOf<Eth63ProtocolHandler>());
+            foreach (ReceiptRequest request in peers.Primary.Requests)
+                Assert.That(request.Limits, Is.EqualTo(request.Hashes.Select(hash =>
+                    ExecutionPeerTransport.GetReceiptCountLimit(peers.Blocks[hash].Header,
+                        peers.Transport.SpecProvider.GetSpec(peers.Blocks[hash].Header))!.Value)));
+            if (partial) Assert.That(peers.Primary.Requests.Any(request => request.Offset == 1), Is.True);
             if (version < 70) Assert.That(peers.Primary.Requests, Has.Count.EqualTo(4));
         }
     }
@@ -3777,7 +3790,7 @@ public class TransportTests
         }
     }
 
-    private readonly record struct ReceiptRequest(ReceiptPeer Peer, long Id, Hash256[] Hashes, long Offset)
+    private readonly record struct ReceiptRequest(ReceiptPeer Peer, long Id, Hash256[] Hashes, long Offset, int[] Limits)
     {
         internal Hash256 Hash => Hashes[0];
     }
@@ -3816,11 +3829,11 @@ public class TransportTests
             SoftLimit.SetValue(null, 75UL);
         }
 
-        internal BlockHeader AddBlock(ulong number, bool distinct = false, int receiptCount = 2)
+        internal BlockHeader AddBlock(ulong number, bool distinct = false, int receiptCount = 2, ulong gasLimit = 1_000_000)
         {
             BlockHeader header = EmptyHeader();
             header.Number = number;
-            header.GasLimit = 1_000_000;
+            header.GasLimit = gasLimit;
             header.GasUsed = (ulong)receiptCount * 21_000;
             TxReceipt[] receipts = Enumerable.Range(1, receiptCount).Select(index => new TxReceipt
             {
@@ -3918,14 +3931,16 @@ public class TransportTests
                 switch (message)
                 {
                     case GetReceiptsMessage70 receipts:
-                        ReceiptRequest request = new(this, receipts.RequestId, receipts.Hashes.AsSpan().ToArray(), receipts.FirstBlockReceiptIndex);
+                        ReceiptRequest request = new(this, receipts.RequestId, receipts.Hashes.AsSpan().ToArray(), receipts.FirstBlockReceiptIndex,
+                            receipts.MaxReceiptsPerBlock.ToArray());
                         _pending.TryAdd(request.Id, request);
                         Requests.Enqueue(request);
                         owner.Requests.Writer.TryWrite(request);
                         Respond?.Invoke(request);
                         break;
                     case Eth66Messages.GetReceiptsMessage wrappedReceipts:
-                        ReceiptRequest wrapped = new(this, wrappedReceipts.RequestId, wrappedReceipts.EthMessage.Hashes.AsSpan().ToArray(), 0);
+                        ReceiptRequest wrapped = new(this, wrappedReceipts.RequestId, wrappedReceipts.EthMessage.Hashes.AsSpan().ToArray(), 0,
+                            wrappedReceipts.EthMessage.MaxReceiptsPerBlock.ToArray());
                         _pending.TryAdd(wrapped.Id, wrapped);
                         Requests.Enqueue(wrapped);
                         owner.Requests.Writer.TryWrite(wrapped);
@@ -5407,7 +5422,6 @@ public class TransportTests
         internal Func<TxReceipt[], TxReceipt[]>? ReceiptTransform;
         internal Func<Hash256, BlockHeader, BlockHeader>? HeaderTransform;
         internal ReadOnlyMemory<int> LastReceiptCounts;
-        internal ReadOnlyMemory<int>? LastReceiptLimits;
 
         internal ExecutionPeer(ExecutionPeers owner, int id, bool snap2, byte ethVersion, bool snap1, bool collidingIds)
         {
@@ -5465,10 +5479,9 @@ public class TransportTests
                 await Read(AllocationContexts.Bodies, call.ArgAt<CancellationToken>(1));
                 return new OwnedBlockBodies([InvalidData ? new BlockBody([], [], []) : owner.Body], new ResponseMemory(Disposed));
             });
-            SyncPeer.GetReceipts(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<ReadOnlyMemory<int>>(), Arg.Any<CancellationToken>(), Arg.Any<ReadOnlyMemory<int>?>()).Returns(async call =>
+            SyncPeer.GetReceipts(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<ReadOnlyMemory<int>>(), Arg.Any<CancellationToken>()).Returns(async call =>
             {
                 LastReceiptCounts = call.ArgAt<ReadOnlyMemory<int>>(1);
-                LastReceiptLimits = call.ArgAt<ReadOnlyMemory<int>?>(3);
                 await Read(AllocationContexts.Receipts, call.ArgAt<CancellationToken>(2));
                 return (IOwnedReadOnlyList<TxReceipt[]?>)new TrackedResponse<TxReceipt[]?>(MissingReceipts ? [] : [InvalidData ? [] : ReceiptTransform?.Invoke(owner.Receipts) ?? owner.Receipts], Disposed);
             });

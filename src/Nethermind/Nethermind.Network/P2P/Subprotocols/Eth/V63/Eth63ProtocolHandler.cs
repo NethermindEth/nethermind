@@ -116,8 +116,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         public override Task<IOwnedReadOnlyList<TxReceipt[]>> GetReceipts(IReadOnlyList<Hash256> blockHashes, CancellationToken token) =>
             GetReceipts(blockHashes, ReadOnlyMemory<int>.Empty, token);
 
-        public override async Task<IOwnedReadOnlyList<TxReceipt[]>> GetReceipts(IReadOnlyList<Hash256> blockHashes, ReadOnlyMemory<int> expectedReceiptCounts, CancellationToken token,
-            ReadOnlyMemory<int>? receiptCountLimits = null)
+        public override async Task<IOwnedReadOnlyList<TxReceipt[]>> GetReceipts(IReadOnlyList<Hash256> blockHashes, ReadOnlyMemory<int> expectedReceiptCounts, CancellationToken token)
         {
             if (blockHashes.Count == 0)
             {
@@ -127,9 +126,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             IOwnedReadOnlyList<TxReceipt[]> txReceipts = await _nodeStats.RunSizeAndLatencyRequestSizer<IOwnedReadOnlyList<TxReceipt[]>, Hash256, TxReceipt[]>(RequestType.Receipts, blockHashes, async clampedBlockHashes =>
                 await SendRequest(new GetReceiptsMessage(clampedBlockHashes.ToPooledList())
                 {
-                    MaxReceiptsPerBlock = receiptCountLimits is { } limits
-                        ? ReceiptsResponseBudget.GetReceiptCountLimits(expectedReceiptCounts.Span, limits.Span, clampedBlockHashes.Count)
-                        : expectedReceiptCounts.ToArray()
+                    MaxReceiptsPerBlock = expectedReceiptCounts.ToArray()
                 }, token));
 
             return txReceipts;

@@ -146,13 +146,7 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
         {
             if (!_session.IsClosing)
             {
-                if (exception is RlpLimitException)
-                {
-                    if (_logger.IsTrace) TraceCommunicationError(exception);
-                    _session.InitiateDisconnect(DisconnectReason.MessageLimitsBreached,
-                        $"Error in communication with {GetClientId(_session)} ({exception.GetType().Name}): {exception.Message}");
-                }
-                else ExceptionCaught(context, exception);
+                ExceptionCaught(context, exception);
             }
         }
     }
@@ -211,10 +205,12 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
         }
         else if (_session?.Node?.IsStatic != true && _session?.Node?.IsTrusted != true)
         {
-            DisconnectReason reason =
-                exception is SocketException { SocketErrorCode: SocketError.ConnectionReset }
-                    ? DisconnectReason.ConnectionReset
-                    : DisconnectReason.Exception;
+            DisconnectReason reason = exception switch
+            {
+                SocketException { SocketErrorCode: SocketError.ConnectionReset } => DisconnectReason.ConnectionReset,
+                RlpLimitException => DisconnectReason.MessageLimitsBreached,
+                _ => DisconnectReason.Exception,
+            };
             _session.InitiateDisconnect(reason, $"Error in communication with {GetClientId(_session)} ({exception.GetType().Name}): {exception.Message}");
         }
         else
