@@ -409,6 +409,15 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         {
             using IReceiptsInsertBatch batch = other.StartInsertBatch();
             keptEncoded = batch.TryInsertNetworkReceipts(withEncodedTransactions, message, withBloom: true);
+            if (keptEncoded)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(other.HasBlock(stored.Number, stored.Hash!), Is.False);
+                    Assert.That(otherDb.GetColumnDb(ReceiptsColumns.Transactions).Get(block.Transactions[0].Hash!), Is.Null);
+                    Assert.That(inserted, Is.Null);
+                }
+            }
         }
         else
         {
