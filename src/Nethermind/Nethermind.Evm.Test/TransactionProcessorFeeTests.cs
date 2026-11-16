@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using System.Threading;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
@@ -11,6 +12,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -467,9 +469,12 @@ public class TransactionProcessorFeeTests
         _stateProvider.Commit(_spec);
 
         FeeAccountRecorder recorder = new(_stateProvider, TestItem.AddressB, TestItem.AddressC);
-        EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, _specProvider, recorder,
-            new EthereumVirtualMachine(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance),
-            new EthereumCodeInfoRepository(recorder), LimboLogs.Instance);
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton<ISpecProvider>(_specProvider)
+            .Build();
+        using ILifetimeScope scope = container.BeginLifetimeScope(builder => builder.AddSingleton<IWorldState>(recorder));
+        ITransactionProcessor processor = scope.Resolve<ITransactionProcessor>();
 
         Transaction tx = Build.A.Transaction
             .WithType(TxType.EIP1559).WithMaxFeePerGas(10).WithMaxPriorityFeePerGas(2)
