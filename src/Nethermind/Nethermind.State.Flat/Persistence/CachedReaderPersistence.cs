@@ -131,6 +131,7 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
     {
         public void SelfDestruct(Address addr) => inner.SelfDestruct(addr);
         public void SetAccount(Address addr, Account? account) => inner.SetAccount(addr, account);
+        public void SetSlimAccount(Address addr, scoped ReadOnlySpan<byte> slimRlp) => inner.SetSlimAccount(addr, slimRlp);
         public void SetStorage(Address addr, in UInt256 slot, in UInt256? value) => inner.SetStorage(addr, slot, value);
         public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStateTrieNode(path, rlp);
         public void SetStorageTrieNode(in ValueHash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStorageTrieNode(address, path, rlp);

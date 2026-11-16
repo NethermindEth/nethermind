@@ -546,6 +546,9 @@ public static class BasePersistence
 
         public void SetAccount(Address addr, Account? account);
 
+        /// <inheritdoc cref="IPersistence.IWriteBatch.SetSlimAccount"/>
+        public void SetSlimAccount(Address addr, scoped ReadOnlySpan<byte> slimRlp);
+
         public void SetStorage(Address addr, in UInt256 slot, in UInt256? value);
 
         /// <summary>Writes a slot whose value is already the trie-leaf RLP byte string (<c>RLP(stripped)</c>).</summary>
@@ -607,6 +610,12 @@ public static class BasePersistence
 
             using ArrayPoolSpan<byte> rlp = _accountDecoder.EncodeToArrayPoolSpan(account);
             _flatWriteBatch.SetAccount(addr.ToAccountPath, rlp);
+        }
+
+        public void SetSlimAccount(Address addr, scoped ReadOnlySpan<byte> slimRlp)
+        {
+            if (_accountDecoder == AccountDecoder.Slim) _flatWriteBatch.SetAccount(addr.ToAccountPath, slimRlp);
+            else SetAccount(addr, AccountDecoder.Slim.Decode(slimRlp));
         }
 
         public void SetStorage(Address addr, in UInt256 slot, in UInt256? value)
@@ -959,6 +968,9 @@ public static class BasePersistence
 
         public void SetAccount(Address addr, Account? account) =>
             _flatWriter.SetAccount(addr, account);
+
+        public void SetSlimAccount(Address addr, scoped ReadOnlySpan<byte> slimRlp) =>
+            _flatWriter.SetSlimAccount(addr, slimRlp);
 
         public void SetStorage(Address addr, in UInt256 slot, in UInt256? value) =>
             _flatWriter.SetStorage(addr, slot, value);

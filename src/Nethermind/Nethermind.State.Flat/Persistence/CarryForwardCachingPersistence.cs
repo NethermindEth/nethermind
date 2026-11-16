@@ -378,6 +378,12 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             inner.SetAccount(addr, account);
         }
 
+        public void SetSlimAccount(Address addr, scoped ReadOnlySpan<byte> slimRlp)
+        {
+            if (!_clearAll) TrackWrite(_writtenAccounts ??= parent.RentWrittenAccounts(), addr);
+            inner.SetSlimAccount(addr, slimRlp);
+        }
+
         public void SetStorage(Address addr, in UInt256 slot, in UInt256? value)
         {
             if (!_clearAll) TrackWrite(_writtenSlots ??= parent.RentWrittenSlots(), (addr, slot));

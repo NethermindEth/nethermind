@@ -93,6 +93,16 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
             }
         }
 
+        /// <summary>Writes the account update of this address to <paramref name="batch"/> without decoding it.</summary>
+        /// <remarks>Call only when <see cref="HasAccount"/> is true.</remarks>
+        public void WriteAccount(IPersistence.IWriteBatch batch)
+        {
+            using TPin pin = _reader.PinBuffer(_accountBound);
+            ReadOnlySpan<byte> rlp = pin.Buffer;
+            if (rlp.Length == 1 && rlp[0] == PersistedSnapshotTags.AccountDeletedMarkerByte) batch.SetAccount(Address, null);
+            else batch.SetSlimAccount(Address, rlp);
+        }
+
         /// <summary>Streams the address's slots straight off the shared per-address cursor rather than
         /// buffering them — an account can carry an unbounded number of storage slots. Addresses with no
         /// slots cost nothing.</summary>

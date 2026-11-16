@@ -741,7 +741,7 @@ public class PersistenceManager(
                     batch.SelfDestruct(entry.Address);
 
                 if (entry.HasAccount)
-                    batch.SetAccount(entry.Address, entry.Account);
+                    entry.WriteAccount(batch);
 
                 foreach (WholeReadScanner.SlotEntry slot in entry.Slots)
                     batch.SetStorage(entry.Address, slot.Slot, slot.Value);
