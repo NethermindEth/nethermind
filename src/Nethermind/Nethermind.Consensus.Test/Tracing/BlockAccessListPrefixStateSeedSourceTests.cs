@@ -408,6 +408,22 @@ public class BlockAccessListPrefixStateSeedSourceTests
     }
 
     [Test]
+    public void MayCover_OnABlockBeforeTheFork_FollowsTheSourceUnderneath([Values] bool innerCovers)
+    {
+        IPrefixStateSeedSource inner = Substitute.For<IPrefixStateSeedSource>();
+        Block before = BuildBlock(ForkBlock - 1);
+        inner.MayCover(before).Returns(innerCovers);
+        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Prague.Instance), ((ForkActivation)ForkBlock, Amsterdam.Instance));
+        BlockAccessListPrefixStateSeedSource seeds = new(inner, Substitute.For<IBlockAccessListStore>(), specProvider, LimboLogs.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(seeds.MayCover(before), Is.EqualTo(innerCovers), "a block before the fork is seeded by whatever sits underneath");
+            Assert.That(seeds.MayCover(BuildBlock(ForkBlock)), Is.True, "a block with an access list may be seeded from it");
+        }
+    }
+
+    [Test]
     public void TrySeed_OnABlockWithAnAccessList_NeverAsksTheSourceUnderneath()
     {
         IPrefixStateSeedSource inner = Substitute.For<IPrefixStateSeedSource>();

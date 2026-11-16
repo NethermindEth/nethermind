@@ -38,6 +38,8 @@ public sealed class BlockAccessListPrefixStateSeedSource(IPrefixStateSeedSource 
 
     public bool Enabled => _chainHasAccessLists || inner.Enabled;
 
+    public bool MayCover(Block block) => CarriesAccessList(block) || inner.MayCover(block);
+
     public bool TrySeed(Block block, int transactionIndex, StateReadOverlaySlot slot)
     {
         if (!CarriesAccessList(block)) return inner.TrySeed(block, transactionIndex, slot);

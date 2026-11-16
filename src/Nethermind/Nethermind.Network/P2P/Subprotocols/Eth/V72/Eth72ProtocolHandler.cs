@@ -563,6 +563,14 @@ public class Eth72ProtocolHandler(
 
     protected override bool CanServePooledTransaction(Transaction tx) => true;
 
+    /// <remarks>Always misses: the stored encoding carries the type-3 blobs that eth/72 strips.</remarks>
+    private protected override bool TryGetEncodedPooledTransactionToServe(in ValueHash256 hash, [NotNullWhen(true)] out IOwnedReadOnlyList<byte>? encodedTx, out bool unservable)
+    {
+        encodedTx = null;
+        unservable = false;
+        return false;
+    }
+
     /// <summary>Whether <paramref name="tx"/> carries blobs that this protocol version cannot fetch separately.</summary>
     /// <remarks><see cref="Transaction.SupportsBlobs"/> is type-3 only, so it does not answer this for a
     /// type-6 frame transaction, which carries blobs by presence rather than by type.</remarks>

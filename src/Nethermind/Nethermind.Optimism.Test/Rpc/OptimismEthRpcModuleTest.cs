@@ -203,8 +203,9 @@ public class OptimismEthRpcModuleTest
                 opSpecHelper: Substitute.For<IOptimismSpecHelper>())
             .Build();
 
+        // A fresh signer, so the process-wide sender cache cannot recover the sender in place of the failing ecdsa.
         Transaction tx = Build.A.Transaction
-            .Signed(ecdsa: signingEcdsa, privateKey: TestItem.PrivateKeyA)
+            .Signed(ecdsa: signingEcdsa, privateKey: Build.A.PrivateKey.TestObject)
             .TestObject;
         SignableTransactionForRpc rpcTx = new NullSenderTransactionForRpc(tx);
 

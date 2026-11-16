@@ -190,7 +190,7 @@ public class PooledTransactionsRequestingTests
         handler.HandleMessage(new NettyBufferPacket(statusPacket) { PacketType = 0 });
     }
 
-    private void HandleZeroMessage<T>(Eth66ProtocolHandler handler, T msg, int messageCode) where T : MessageBase
+    private void HandleZeroMessage<T>(Eth66ProtocolHandler handler, T msg, int messageCode) where T : P2PMessage
     {
         using DisposableByteBuffer packet = _svc.ZeroSerialize(msg).AsDisposable();
         packet.ReadByte();
