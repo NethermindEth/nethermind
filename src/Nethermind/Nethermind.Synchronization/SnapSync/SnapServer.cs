@@ -62,12 +62,16 @@ public sealed class SnapServer(
         CodeResponseWriter codes = new(builder, byteLimit, cancellationToken);
         Span<byte> keys = stackalloc byte[CodeReadChunkSize * ValueHash256.MemorySize];
         int pending = 0;
+        // A peer sets the byte limit, so chunks start at one code and double: a batch never reads more
+        // codes past the limit than were read before it.
+        int chunkSize = 1;
 
         foreach (ValueHash256 codeHash in requestedHashes)
         {
             if (codeHash.Bytes.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
             {
                 ReadCodes(keys[..(pending * ValueHash256.MemorySize)], codes);
+                chunkSize = NextChunkSize(chunkSize, pending);
                 pending = 0;
                 if (codes.IsFull) break;
 
@@ -76,9 +80,10 @@ public sealed class SnapServer(
             }
 
             codeHash.Bytes.CopyTo(keys[(pending * ValueHash256.MemorySize)..]);
-            if (++pending < CodeReadChunkSize) continue;
+            if (++pending < chunkSize) continue;
 
-            ReadCodes(keys, codes);
+            ReadCodes(keys[..(pending * ValueHash256.MemorySize)], codes);
+            chunkSize = NextChunkSize(chunkSize, pending);
             pending = 0;
             if (codes.IsFull) break;
         }
@@ -88,9 +93,12 @@ public sealed class SnapServer(
         return new RlpByteArrayList(builder.ToRlpItemList());
     }
 
+    private static int NextChunkSize(int chunkSize, int read) =>
+        read == 0 ? chunkSize : Math.Min(chunkSize * 2, CodeReadChunkSize);
+
     /// <summary>Writes the stored codes for <paramref name="keys"/> in order, skipping missing ones.</summary>
     /// <remarks>
-    /// A batch reads the whole chunk even past the byte limit, which <see cref="CodeReadChunkSize"/> bounds.
+    /// A batch reads the whole chunk even past the byte limit, which the growing chunk size bounds.
     /// Code keys are hashes, so a cached block holds no likely next request: the reads hint a cache miss.
     /// </remarks>
     private void ReadCodes(ReadOnlySpan<byte> keys, CodeResponseWriter codes)

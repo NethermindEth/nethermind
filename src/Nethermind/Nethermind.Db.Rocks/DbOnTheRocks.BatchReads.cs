@@ -23,7 +23,7 @@ public partial class DbOnTheRocks
         {
             _db.MultiGet<T, ValueDeserializer<T, TDecoder>>(keys, keyLength, values,
                 new ValueDeserializer<T, TDecoder>(decoder), family,
-                (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : null);
+                (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _defaultReadOptions);
         }
         catch (RocksDbException e)
         {

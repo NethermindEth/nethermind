@@ -196,6 +196,27 @@ public class SnapServerTests
         AssertCodes(result, [_codeDb[hashA.Bytes]!, _codeDb[hashB.Bytes]!]);
     }
 
+    [TestCase(1, 1, 1)]
+    [TestCase(500, 51, 63)]
+    public void GetByteCodes_reads_little_past_the_byte_limit(long byteLimit, int served, int maxReads)
+    {
+        List<ValueHash256> request = [];
+        for (int i = 0; i < 100; i++)
+        {
+            request.Add(StoreCode([.. BitConverter.GetBytes(i), 0, 0, 0, 0, 0, 0]));
+        }
+        BatchReadingCodeDb codeDb = new(_codeDb);
+
+        using IByteArrayList result = new SnapServer(NoopSnapServer.Instance, codeDb, _blockTree, _balStore)
+            .GetByteCodes(request, byteLimit, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Count, Is.EqualTo(served));
+            Assert.That(codeDb.Reads, Is.InRange(served, maxReads));
+        }
+    }
+
     [Test]
     public void GetByteCodes_serves_nothing_when_cancelled([Values] bool batching)
     {
@@ -225,12 +246,15 @@ public class SnapServerTests
     /// <summary>Serves batch reads from a memory database, as RocksDB does, without calling the decoder for missing keys.</summary>
     private sealed class BatchReadingCodeDb(IReadOnlyKeyValueStore inner) : IReadOnlyKeyValueStore, IBatchReadOnlyDb
     {
+        public int Reads { get; private set; }
+
         public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) =>
             throw new InvalidOperationException("Codes must be read in batches.");
 
         public void GetMany<T, TDecoder>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values, TDecoder decoder, ReadFlags flags)
             where TDecoder : IValueDecoder<T>
         {
+            Reads += values.Length;
             for (int i = 0; i < values.Length; i++)
             {
                 byte[]? value = inner.Get(keys.Slice(i * keyLength, keyLength), flags);

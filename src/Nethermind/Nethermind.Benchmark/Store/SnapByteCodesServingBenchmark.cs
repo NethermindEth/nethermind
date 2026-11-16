@@ -37,6 +37,9 @@ public class SnapByteCodesServingBenchmark
     [Params(500, 3_000)]
     public int AverageCodeSize { get; set; }
 
+    [Params(4_096, ISnapStateServer.HardResponseByteLimit)]
+    public long ByteLimit { get; set; }
+
     [GlobalSetup]
     public void Setup()
     {
@@ -71,7 +74,7 @@ public class SnapByteCodesServingBenchmark
 
         _server = new SnapServer(NoopSnapServer.Instance, _db, null!, null!);
 
-        using IByteArrayList codes = _server.GetByteCodes(_requests[0], ISnapStateServer.HardResponseByteLimit, CancellationToken.None);
+        using IByteArrayList codes = _server.GetByteCodes(_requests[0], ByteLimit, CancellationToken.None);
         if (codes.Count == 0 || ValueKeccak.Compute(codes[0]) != _requests[0][0])
             throw new InvalidOperationException("Wrong code was served.");
     }
@@ -80,7 +83,7 @@ public class SnapByteCodesServingBenchmark
     public int ServeByteCodes()
     {
         ValueHash256[] request = _requests[_nextRequest++ % _requests.Length];
-        using IByteArrayList codes = _server.GetByteCodes(request, ISnapStateServer.HardResponseByteLimit, CancellationToken.None);
+        using IByteArrayList codes = _server.GetByteCodes(request, ByteLimit, CancellationToken.None);
         return codes.Count;
     }
 
