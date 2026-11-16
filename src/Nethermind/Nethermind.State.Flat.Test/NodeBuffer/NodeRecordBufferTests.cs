@@ -357,7 +357,7 @@ public class NodeRecordBufferTests
         IDisposable reader = buffer.PinAll();
 
         holdsFirst.Dispose();
-        Assert.That(() => buffer.FindBloom(first) is null, Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
+        Assert.That(() => IsLocatable(buffer, first), Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
         Assert.That(buffer.TryLocate(first, out NodeRecord record) && Matches(record, firstRlp), Is.True, "the reader reads the compacted record");
 
         holdsSecond.Dispose();
