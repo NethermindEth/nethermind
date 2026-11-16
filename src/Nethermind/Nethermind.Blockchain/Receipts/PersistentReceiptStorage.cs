@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
@@ -524,7 +525,7 @@ namespace Nethermind.Blockchain.Receipts
                 }
                 else
                 {
-                    index = MemoryMarshal.Cast<byte, ValueHash256>(txHashes).IndexOf(txHash.ValueHash256);
+                    index = IndexOf(txHashes, txHash);
                 }
                 if (index < 0) return false;
 
@@ -576,24 +577,75 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        private static bool TryFind(TxReceipt[] receipts, int transactionCount, Hash256 txHash, [NotNullWhen(true)] out TxReceipt? receipt, out int txIndex, out int logIndexStart)
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Serves cached and pending receipts, and compact receipts read from the database that store their
+        /// transaction hashes. Only the transaction at the found index is hashed, to confirm it.
+        /// </remarks>
+        public int FindTransactionIndex(Block block, Hash256 txHash)
         {
-            int count = Math.Min(receipts.Length, transactionCount);
-            for (int i = 0; i < count; i++)
+            if (block.Hash is not { } blockHash || block.ReceiptsRoot == Keccak.EmptyTreeHash) return -1;
+
+            int index = FindStoredTransactionIndex(block.Number, blockHash, txHash);
+            Transaction[] transactions = block.Transactions;
+            return (uint)index < (uint)transactions.Length && transactions[index].Hash == txHash ? index : -1;
+        }
+
+        private int FindStoredTransactionIndex(ulong blockNumber, Hash256 blockHash, Hash256 txHash)
+        {
+            if (_receiptsCache.TryGet(blockHash, out TxReceipt[]? cached)) return cached is null ? -1 : IndexOf(cached, cached.Length, txHash);
+
+            if (_pendingReceipts is not null && _pendingReceipts.TryGet(blockHash, out (TxReceipt[] Receipts, RlpBehaviors Behaviors) pending))
             {
-                if (receipts[i].TxHash == txHash)
-                {
-                    receipt = receipts[i];
-                    txIndex = i;
-                    logIndexStart = receipts.GetBlockLogFirstIndex(i);
-                    return true;
-                }
+                return IndexOf(pending.Receipts, pending.Receipts.Length, txHash);
             }
 
-            receipt = null;
-            txIndex = -1;
-            logIndexStart = 0;
-            return false;
+            Span<byte> receiptsData = GetReceiptData(blockNumber, blockHash);
+            if (receiptsData.IsEmpty) return -1;
+
+            try
+            {
+                RlpReader reader = new(receiptsData);
+                return ReceiptArrayStorageDecoder.TrySkipCompactPrefix(ref reader, out ReadOnlySpan<byte> txHashes) ? IndexOf(txHashes, txHash) : -1;
+            }
+            catch (RlpReaderException exception)
+            {
+                // The index only spares the caller a lookup by hash, which does not depend on the stored receipts.
+                if (_logger.IsWarn) _logger.Warn($"Stored transaction hashes of block {blockNumber} ({blockHash}) are malformed: {exception.Message}");
+                return -1;
+            }
+            finally
+            {
+                _receiptsDb.DangerousReleaseMemory(receiptsData);
+            }
+        }
+
+        private static int IndexOf(ReadOnlySpan<byte> txHashes, Hash256 txHash) =>
+            MemoryMarshal.Cast<byte, ValueHash256>(txHashes).IndexOf(txHash.ValueHash256);
+
+        private static int IndexOf(TxReceipt[] receipts, int count, Hash256 txHash)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                if (receipts[i].TxHash == txHash) return i;
+            }
+
+            return -1;
+        }
+
+        private static bool TryFind(TxReceipt[] receipts, int transactionCount, Hash256 txHash, [NotNullWhen(true)] out TxReceipt? receipt, out int txIndex, out int logIndexStart)
+        {
+            txIndex = IndexOf(receipts, Math.Min(receipts.Length, transactionCount), txHash);
+            if (txIndex < 0)
+            {
+                receipt = null;
+                logIndexStart = 0;
+                return false;
+            }
+
+            receipt = receipts[txIndex];
+            logIndexStart = receipts.GetBlockLogFirstIndex(txIndex);
+            return true;
         }
 
         TxReceipt?[] IReceiptMigrationStore.GetForMigration(ulong blockNumber, Hash256 blockHash)
@@ -654,6 +706,31 @@ namespace Nethermind.Blockchain.Receipts
             Block? block = _blockTree.FindBlock(blockHash);
             if (block is not null) return Get(block, recover, false);
             return GetRetainedWithoutBody(blockHash);
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>Gives the compact values only; the block's receipts not yet written are left to <see cref="Get(Hash256, bool)"/>.</remarks>
+        public bool TryAppendNetworkReceipts(BlockHeader header, bool withBloom, ArrayPoolList<byte> destination)
+        {
+            if (!_storageDecoder.CanEncodeNetworkReceipts) return false;
+
+            Hash256 blockHash = header.Hash!;
+            Span<byte> receiptsData = GetReceiptData(header.Number, blockHash);
+            try
+            {
+                // Pending and non-compact receipts are left to the decoders before the block is read.
+                if (receiptsData.IsEmpty || receiptsData[0] is not (ReceiptArrayStorageDecoder.CompactEncoding or ReceiptArrayStorageDecoder.CompactEncodingWithTxHashes)) return false;
+
+                using MemoryManager<byte>? block = _blockStore.GetOwnedRlp(header.Number, blockHash);
+                return block is not null && ReceiptArrayStorageDecoder.TryAppendNetworkReceipts(receiptsData, block.Memory.Span, withBloom,
+                    _specProvider.GetReceiptSpec(header.Number).IsEip658Enabled,
+                    _eip7668EverEnabled && _specProvider.GetSpec(header).IsEip7668Enabled,
+                    destination);
+            }
+            finally
+            {
+                _receiptsDb.DangerousReleaseMemory(receiptsData);
+            }
         }
 
         /// <summary>Serves a block whose body was pruned but whose receipts were retained self-describing: the
@@ -1026,6 +1103,40 @@ namespace Nethermind.Blockchain.Receipts
             }
 
             ReceiptsInserted?.Invoke(this, new(block.Header, txReceipts));
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Stores the receipts as <see cref="Insert(Block, TxReceipt[], IReleaseSpec, bool, WriteFlags, ulong?)"/> stores them
+        /// once decoded. Only the compact form takes them, as it stores no field recovered from the transactions but their hashes.
+        /// </remarks>
+        [SkipLocalsInit]
+        public bool TryInsertNetworkReceipts(Block block, ReadOnlyMemory<byte> blockReceipts, bool withBloom, bool ensureCanonical)
+        {
+            if (!_storageDecoder.CanEncodeNetworkReceipts) return false;
+
+            IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+            TxReceipt[]? insertedReceipts = null;
+            using (ArrayPoolSpan<byte> rlp = _storageDecoder.EncodeNetworkReceipts(blockReceipts.Span, withBloom, spec.IsEip658Enabled, block.Transactions))
+            {
+                Span<byte> blockNumPrefixed = stackalloc byte[40];
+                GetBlockNumPrefixedKey(block.Number, block.Hash!, blockNumPrefixed);
+                _receiptsDb.PutSpan(blockNumPrefixed, rlp, WriteFlags.None);
+
+                if (ReceiptsInserted is not null)
+                {
+                    insertedReceipts = _storageDecoder.Decode(rlp, RlpBehaviors.TrustedInput);
+                    // The block may hold the transaction hashes only, and recovery reads the recipients.
+                    _receiptsRecovery.TryRecover(_blockStore.Get(block.Number, block.Hash!, shouldCache: false) ?? block, insertedReceipts, false);
+                    if (spec.IsEip7668Enabled) insertedReceipts.SetZeroLengthBlooms();
+                }
+            }
+
+            _receiptsCache.Delete(block.Hash);
+            if (ensureCanonical) EnsureCanonical(block, null);
+            if (block.Number < MigratedBlockNumber) MigratedBlockNumber = block.Number;
+            if (insertedReceipts is not null) ReceiptsInserted?.Invoke(this, new(block.Header, insertedReceipts));
+            return true;
         }
 
         private static bool HasAllSenders(Block block)

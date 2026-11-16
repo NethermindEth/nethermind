@@ -24,6 +24,7 @@ namespace Nethermind.Network.Rlpx
         private int _contextId;
         private ILogger _snappyLogger;
         private int _encodingMode;
+        private int _pendingInputLength;
 
         internal void EnableSnappy(ILogManager logManager)
         {
@@ -40,6 +41,38 @@ namespace Nethermind.Network.Rlpx
             _cipher = cipher;
             _macProcessor = macProcessor;
             _headerBuffer = new byte[Frame.HeaderSize];
+        }
+
+        public override bool AcceptOutboundMessage(object message)
+        {
+            if (message is not IByteBuffer input)
+            {
+                return false;
+            }
+
+            // The base encoder calls AllocateBuffer right after this on the same event loop thread,
+            // so the input length is recorded here to size the output buffer once.
+            _pendingInputLength = input.ReadableBytes;
+            return true;
+        }
+
+        protected override IByteBuffer AllocateBuffer(IChannelHandlerContext context) =>
+            context.Allocator.Buffer(GetMaxEncodedLength(_pendingInputLength));
+
+        /// <summary>
+        /// Upper bound of the encoded size, so the output buffer is not grown and copied while encoding.
+        /// </summary>
+        private int GetMaxEncodedLength(int inputLength)
+        {
+            int macsSize = _cipher is null ? 0 : 2 * Frame.MacSize;
+            int encodingMode = Volatile.Read(ref _encodingMode);
+            if (encodingMode == Snappy)
+            {
+                return Frame.HeaderSize + macsSize + Snappier.Snappy.GetMaxCompressedLength(inputLength) + Frame.BlockSize;
+            }
+
+            int framesCount = encodingMode == Framed ? (inputLength - 1) / Frame.DefaultMaxFrameSize + 1 : 1;
+            return inputLength + framesCount * (Frame.HeaderSize + macsSize) + Frame.BlockSize;
         }
 
         protected override void Encode(IChannelHandlerContext context, IByteBuffer input, IByteBuffer output)

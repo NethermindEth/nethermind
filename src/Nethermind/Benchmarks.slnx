@@ -39,6 +39,7 @@
     <Project Path="Nethermind.Network.Test/Nethermind.Network.Test.csproj" />
     <Project Path="Nethermind.Network/Nethermind.Network.csproj" />
     <Project Path="Nethermind.Serialization.FluentRlp/Nethermind.Serialization.FluentRlp.csproj" />
+    <Project Path="Nethermind.Serialization.FluentRlp.Generator/Nethermind.Serialization.FluentRlp.Generator.csproj" />
     <Project Path="Nethermind.Serialization.Json/Nethermind.Serialization.Json.csproj" />
     <Project Path="Nethermind.Serialization.Rlp/Nethermind.Serialization.Rlp.csproj" />
     <Project Path="Nethermind.Serialization.Ssz/Nethermind.Serialization.Ssz.csproj" />
@@ -64,4 +65,5 @@
   <Project Path="Nethermind.Network.Benchmark/Nethermind.Network.Benchmark.csproj" />
   <Project Path="Nethermind.Precompiles.Benchmark/Nethermind.Precompiles.Benchmark.csproj" />
   <Project Path="Nethermind.Precompiles.Benchmark.Test/Nethermind.Precompiles.Benchmark.Test.csproj" />
+  <Project Path="Nethermind.Serialization.FluentRlp.Benchmark/Nethermind.Serialization.FluentRlp.Benchmark.csproj" />
 </Solution>

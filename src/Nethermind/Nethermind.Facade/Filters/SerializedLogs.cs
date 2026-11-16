@@ -31,12 +31,17 @@ public sealed class SerializedLogs : IBufferWriter<byte>, IDisposable
         MaxDepth = EthereumJsonSerializer.JsonOptions.MaxDepth
     };
 
-    private readonly Utf8JsonWriter _writer;
+    private static readonly ArrayBufferWriter<byte> DetachedOutput = new(1);
+
+    [ThreadStatic] private static Utf8JsonWriter? _threadWriter;
+
     private byte[] _buffer = ArrayPool<byte>.Shared.Rent(InitialBufferSize);
     private int _written;
     private int[] _ends = ArrayPool<int>.Shared.Rent(InitialLogCapacity);
 
-    internal SerializedLogs() => _writer = new Utf8JsonWriter(this, WriterOptions);
+    internal SerializedLogs()
+    {
+    }
 
     public int Count { get; private set; }
 
@@ -53,8 +58,16 @@ public sealed class SerializedLogs : IBufferWriter<byte>, IDisposable
 
     internal void Add(FilterLog log)
     {
-        TypeInfoJsonSerializer.Serialize(_writer, log, EthereumJsonSerializer.JsonOptions);
-        CompleteLog();
+        Utf8JsonWriter writer = RentWriter();
+        try
+        {
+            TypeInfoJsonSerializer.Serialize(writer, log, EthereumJsonSerializer.JsonOptions);
+            CompleteLog(writer);
+        }
+        finally
+        {
+            writer.Reset(DetachedOutput);
+        }
     }
 
     /// <summary>Writes the log exactly as the JSON writer of <see cref="FilterLog"/> would, without materializing it.</summary>
@@ -75,31 +88,38 @@ public sealed class SerializedLogs : IBufferWriter<byte>, IDisposable
             ThrowInvalidTransactionHash(transactionHash.Length);
         }
 
-        Utf8JsonWriter writer = _writer;
-        writer.WriteStartObject();
-        writer.WritePropertyName("address"u8);
-        ByteArrayConverter.Convert(writer, log.Address.Bytes, skipLeadingZeros: false);
-        writer.WritePropertyName("blockHash"u8);
-        HexWriter.WriteFixed32HexRawValue(writer, blockHash.Bytes);
-        writer.WritePropertyName("blockNumber"u8);
-        NumericConverterHelper.Write(writer, blockNumber);
-        writer.WritePropertyName("blockTimestamp"u8);
-        NumericConverterHelper.Write(writer, blockTimestamp);
-        writer.WritePropertyName("data"u8);
-        WriteData(writer, log);
-        writer.WritePropertyName("logIndex"u8);
-        NumericConverterHelper.Write(writer, logIndex);
-        writer.WriteBoolean("removed"u8, false);
-        writer.WritePropertyName("topics"u8);
-        writer.WriteStartArray();
-        WriteTopics(writer, log, iterator);
-        writer.WriteEndArray();
-        writer.WritePropertyName("transactionHash"u8);
-        HexWriter.WriteFixed32HexRawValue(writer, transactionHash);
-        writer.WritePropertyName("transactionIndex"u8);
-        NumericConverterHelper.Write(writer, transactionIndex);
-        writer.WriteEndObject();
-        CompleteLog();
+        Utf8JsonWriter writer = RentWriter();
+        try
+        {
+            writer.WriteStartObject();
+            writer.WritePropertyName("address"u8);
+            ByteArrayConverter.Convert(writer, log.Address.Bytes, skipLeadingZeros: false);
+            writer.WritePropertyName("blockHash"u8);
+            HexWriter.WriteFixed32HexRawValue(writer, blockHash.Bytes);
+            writer.WritePropertyName("blockNumber"u8);
+            NumericConverterHelper.Write(writer, blockNumber);
+            writer.WritePropertyName("blockTimestamp"u8);
+            NumericConverterHelper.Write(writer, blockTimestamp);
+            writer.WritePropertyName("data"u8);
+            WriteData(writer, log);
+            writer.WritePropertyName("logIndex"u8);
+            NumericConverterHelper.Write(writer, logIndex);
+            writer.WriteBoolean("removed"u8, false);
+            writer.WritePropertyName("topics"u8);
+            writer.WriteStartArray();
+            WriteTopics(writer, log, iterator);
+            writer.WriteEndArray();
+            writer.WritePropertyName("transactionHash"u8);
+            HexWriter.WriteFixed32HexRawValue(writer, transactionHash);
+            writer.WritePropertyName("transactionIndex"u8);
+            NumericConverterHelper.Write(writer, transactionIndex);
+            writer.WriteEndObject();
+            CompleteLog(writer);
+        }
+        finally
+        {
+            writer.Reset(DetachedOutput);
+        }
     }
 
     [DoesNotReturn, StackTraceHidden]
@@ -136,11 +156,25 @@ public sealed class SerializedLogs : IBufferWriter<byte>, IDisposable
         if (rented is not null) ArrayPool<byte>.Shared.Return(rented);
     }
 
-    private void CompleteLog()
+    private Utf8JsonWriter RentWriter()
     {
-        _writer.Flush();
-        // Each log is a separate top-level value; a reset keeps the writer from separating them with a comma.
-        _writer.Reset(this);
+        Utf8JsonWriter? writer = _threadWriter;
+        if (writer is null)
+        {
+            _threadWriter = writer = new Utf8JsonWriter(this, WriterOptions);
+        }
+        else
+        {
+            // Each log is a separate top-level value; a reset keeps the writer from separating them with a comma.
+            writer.Reset(this);
+        }
+
+        return writer;
+    }
+
+    private void CompleteLog(Utf8JsonWriter writer)
+    {
+        writer.Flush();
         if (Count == _ends.Length)
         {
             _ends = Grow(_ends, Count + 1, Count);
@@ -153,7 +187,6 @@ public sealed class SerializedLogs : IBufferWriter<byte>, IDisposable
     {
         if (_buffer.Length == 0) return;
 
-        _writer.Dispose();
         ArrayPool<byte>.Shared.Return(_buffer);
         ArrayPool<int>.Shared.Return(_ends);
         _buffer = [];

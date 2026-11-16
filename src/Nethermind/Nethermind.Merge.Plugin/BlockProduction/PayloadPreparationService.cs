@@ -12,6 +12,7 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 using Nethermind.Core.Timers;
@@ -51,6 +52,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
     // first ExecutionPayloadV1 is empty (without txs), second one is the ideal one
     protected readonly ConcurrentDictionary<string, IBlockImprovementContext> _payloadStorage = new();
     private readonly ConcurrentDictionary<string, EmptyBlockPreparation> _emptyBlockPreparations = new();
+    private TxPoolHead _txPoolHead = new(null);
 
     public PayloadPreparationService(
         IBlockProducer blockProducer,
@@ -88,6 +90,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         _timer = timerFactory.CreateTimer(slotsPerOldPayloadCleanup * timeout);
         _timer.Elapsed += CleanupOldPayloads;
         _timer.Start();
+        _txPool.TxPoolHeadChanged += OnTxPoolHeadChanged;
 
         _logger = logManager.GetClassLogger<PayloadPreparationService>();
     }
@@ -268,6 +271,9 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         long startTimestamp = Stopwatch.GetTimestamp();
         CancellationToken token = cts.Token;
         long added = _txPool.PendingTransactionsAdded;
+        // The pool drops the parent's transactions on its own thread, so this build may still pick them and
+        // lose the block space to them; the next build then starts as soon as the pool has caught up.
+        bool txPoolBehindParent = Volatile.Read(ref _txPoolHead).Hash != parentHeader.Hash;
         IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime, currentBlockFees, cts);
         blockImprovementContext.ImprovementTask.ContinueWith(
             b =>
@@ -297,7 +303,14 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                 }
 
                 // If we reach here, we still have time for an improvement build (which still responds to cancellation)
-                await Core.Extensions.TaskExtensions.DelaySafe(dynamicDelay, token);
+                if (txPoolBehindParent)
+                {
+                    if (await WaitForTxPoolHead(parentHeader.Hash, dynamicDelay, token)) break;
+                }
+                else
+                {
+                    await Core.Extensions.TaskExtensions.DelaySafe(dynamicDelay, token);
+                }
 
                 // Loop the delay if no new txs have been added, and while not cancelled.
                 // Is no point in rebuilding an identical block.
@@ -403,6 +416,33 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         }
 
         return dynamicDelay;
+    }
+
+    private void OnTxPoolHeadChanged(object? sender, Block block) =>
+        Interlocked.Exchange(ref _txPoolHead, new TxPoolHead(block.Hash)).Replaced.TrySetResult();
+
+    /// <summary>Waits until the tx pool has processed the block <paramref name="hash"/> as its head.</summary>
+    /// <returns><see langword="true"/> if it did; <see langword="false"/> on timeout or cancellation.</returns>
+    private async Task<bool> WaitForTxPoolHead(Hash256? hash, TimeSpan timeout, CancellationToken token)
+    {
+        using CancellationTokenSource waitCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+        waitCts.CancelAfter(timeout);
+        TxPoolHead head = Volatile.Read(ref _txPoolHead);
+        while (head.Hash != hash)
+        {
+            try
+            {
+                await head.Replaced.Task.WaitAsync(waitCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return false;
+            }
+
+            head = Volatile.Read(ref _txPoolHead);
+        }
+
+        return true;
     }
 
     private void CleanupOldPayloads(object? sender, EventArgs e)
@@ -537,6 +577,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
     public void Dispose()
     {
         _timer.Stop();
+        _txPool.TxPoolHeadChanged -= OnTxPoolHeadChanged;
         CancellationTokenExtensions.CancelDisposeAndClear(ref _shutdown);
 
         foreach (KeyValuePair<string, IBlockImprovementContext> payload in _payloadStorage)
@@ -565,5 +606,13 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
     {
         public TaskCompletionSource Prepared { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public SharedCancellationTokenSource Cts { get; } = cts;
+    }
+
+    private sealed class TxPoolHead(Hash256? hash)
+    {
+        public Hash256? Hash { get; } = hash;
+
+        /// <summary>Completed once the tx pool has processed a later head.</summary>
+        public TaskCompletionSource Replaced { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 }

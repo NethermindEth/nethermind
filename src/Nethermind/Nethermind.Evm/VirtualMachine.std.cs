@@ -65,7 +65,4 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     private partial bool IsUndeployableCreateOutput(int length, bool isRevert) => false;
 
     public object? ReturnData { get; set; }
-
-    private static partial delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, bool> SelectInitializeFrame(IReleaseSpec spec) =>
-        SelectInitializeFrameCore(spec);
 }
