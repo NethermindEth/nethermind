@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
+using Nethermind.Db.Rocks;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -54,6 +55,8 @@ public class PersistedSnapshotPersistBenchmark
         FlatDbConfig config = new() { Enabled = true, Layout = FlatLayout.Flat, ApplyStorageWritesOnIdleThread = false };
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(config, new InitConfig { BaseDbPath = _dbPath.Path }))
+            .AddSingleton<IDbFactory, RocksDbFactory>()
+            .AddSingleton<IColumnsDb<FlatDbColumns>, IDbFactory>(factory => factory.CreateColumnsDb<FlatDbColumns>(new DbSettings(DbNames.Flat, DbNames.Flat)))
             .AddSingleton<IPersistedSnapshotCompactor>(NullPersistedSnapshotCompactor.Instance)
             .AddDecorator<IPersistence, RewritingPersistence>()
             .Build();
