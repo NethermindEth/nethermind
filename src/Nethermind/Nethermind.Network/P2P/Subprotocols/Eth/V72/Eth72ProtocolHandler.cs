@@ -100,8 +100,9 @@ public class Eth72ProtocolHandler(
     private readonly Dictionary<long, SentCellRequest> _sentCellRequestIds = [];
     private readonly PooledTransactionRequests _sentPooledTransactionRequests = new(MaxSentCellRequests);
     private readonly ClockCache<ValueHash256, byte> _countedBlobAnnouncements = new(MaxCountedBlobAnnouncements, lockPartition: 1);
+    // Only transactions in our own blob pool are announced, so remembering more hashes than the pool holds buys nothing.
     private readonly Lazy<ClockCache<ValueHash256, BlobCellMask>> _announcedBlobTransactionMasks = new(
-        static () => new(MemoryAllowance.TxHashCacheSize, lockPartition: 1));
+        () => new(Math.Min(txPoolConfig.BlobsSupport.IsPersistentStorage() ? txPoolConfig.PersistentBlobStorageSize : txPoolConfig.InMemoryBlobPoolSize, MemoryAllowance.TxHashCacheSize), lockPartition: 1));
     private readonly Lazy<ClockCache<ValueHash256, DateTimeOffset>> _partialCellResponseBackoff = new(
         static () => new(MemoryAllowance.TxHashCacheSize / 10, lockPartition: 1));
     private readonly Lazy<ClockCache<ValueHash256, int>> _unansweredCellRequests = new(
@@ -477,12 +478,12 @@ public class Eth72ProtocolHandler(
                 && (_blobSupportEnabled || !supportsBlobs))
             {
                 SetTxShape(in hash, (txSize, txType));
-                hashesToRequest ??= new(Math.Min(hashes.Length - i, 256));
+                hashesToRequest ??= [with(Math.Min(hashes.Length - i, 256))];
 
                 if ((txSize > packetSizeLeft && toRequestCount > 0) || toRequestCount >= 256)
                 {
                     SendPooledTransactionsRequest(hashesToRequest);
-                    hashesToRequest = new ArrayPoolList<ValueHash256>(Math.Min(hashes.Length - i, 256));
+                    hashesToRequest = [with(Math.Min(hashes.Length - i, 256))];
                     packetSizeLeft = TransactionsMessage.MaxPacketSize;
                     toRequestCount = 0;
                 }
@@ -631,9 +632,9 @@ public class Eth72ProtocolHandler(
 
         int requestHashCount = Math.Min(message.Hashes.Length, MaxCellsRequestHashes);
         int responseCapacity = Math.Min(requestHashCount, MaxCellsResponseHashes);
-        List<ValueHash256> responseHashes = new(responseCapacity);
-        List<byte[][]> cellsByTx = new(responseCapacity);
-        HashSet<ValueHash256> seenHashes = new(requestHashCount);
+        List<ValueHash256> responseHashes = [with(responseCapacity)];
+        List<byte[][]> cellsByTx = [with(responseCapacity)];
+        HashSet<ValueHash256> seenHashes = [with(requestHashCount)];
         int hashesContentLength = 0;
         int cellsContentLength = 0;
 
@@ -1955,9 +1956,9 @@ public class Eth72ProtocolHandler(
     private void SendAnnouncement(IReadOnlyList<Transaction> txs, byte[] cellMask)
     {
         int count = txs.Count;
-        ArrayPoolList<byte> types = new(count);
-        ArrayPoolList<int> sizes = new(count);
-        ArrayPoolList<ValueHash256> hashes = new(count);
+        ArrayPoolList<byte> types = [with(count)];
+        ArrayPoolList<int> sizes = [with(count)];
+        ArrayPoolList<ValueHash256> hashes = [with(count)];
 
         for (int i = 0; i < count; i++)
         {

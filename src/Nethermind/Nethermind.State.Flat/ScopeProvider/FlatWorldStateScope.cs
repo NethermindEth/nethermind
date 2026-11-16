@@ -265,7 +265,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (accountCount == 0) return Task.CompletedTask;
 
         // Copy the span into a pooled array so the Task.Run body can capture it.
-        ArrayPoolList<ReadOnlyAccountChanges> accountChanges = new(bal.AccountChanges.AsSpan());
+        ArrayPoolList<ReadOnlyAccountChanges> accountChanges = [with(bal.AccountChanges.AsSpan())];
 
         _hintBalCts = new CancellationTokenSource();
         CancellationToken token = _hintBalCts.Token;
@@ -802,7 +802,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         {
             _scope = scope;
             _logger = logger;
-            _dirtyAccounts = _spareDirtyAccounts ?? new(estimatedAccountCount);
+            _dirtyAccounts = _spareDirtyAccounts ?? [with(estimatedAccountCount)];
             _spareDirtyAccounts = null;
             _dirtyAccounts.EnsureCapacity(estimatedAccountCount);
             _dirtyStorageTree = _spareDirtyStorageTrees ?? new();

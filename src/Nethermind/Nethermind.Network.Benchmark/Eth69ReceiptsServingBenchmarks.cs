@@ -21,6 +21,8 @@ using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69;
+using Nethermind.Serialization.FluentRlp;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -47,8 +49,8 @@ public class Eth69ReceiptsServingBenchmarks
     {
         Random random = new(42);
         _blocks = new TxReceipt[RequestedBlocks][];
-        Dictionary<Hash256, TxReceipt[]> receipts = new(RequestedBlocks);
-        ArrayPoolList<Hash256> hashes = new(RequestedBlocks);
+        Dictionary<Hash256, TxReceipt[]> receipts = [with(RequestedBlocks)];
+        ArrayPoolList<Hash256> hashes = [with(RequestedBlocks)];
         for (int i = 0; i < RequestedBlocks; i++)
         {
             _blocks[i] = CreateBlockReceipts(random, 21_000_000 + (ulong)i, ReceiptsPerBlock);
@@ -142,11 +144,24 @@ public class Eth69ReceiptsServingBenchmarks
     private sealed class ReceiptsSyncServer(Dictionary<Hash256, TxReceipt[]> receipts) : ISyncServer
     {
         public TxReceipt[] GetReceipts(Hash256 blockHashes) => receipts.GetValueOrDefault(blockHashes);
+
+        public bool TryAppendReceipts(Hash256 blockHash, IRlpDecoder<TxReceipt> decoder, bool withBloom, ArrayPoolList<byte> destination)
+        {
+            if (!receipts.TryGetValue(blockHash, out TxReceipt[] blockReceipts)) return false;
+
+            int contentLength = 0;
+            foreach (TxReceipt receipt in blockReceipts) contentLength += decoder.GetLength(receipt, RlpBehaviors.Eip658Receipts);
+            RlpWriter writer = RlpWriter.ContentWriter(destination.AddUninitialized(Rlp.LengthOfSequence(contentLength)));
+            RlpSequence sequence = writer.StartSequence(contentLength);
+            foreach (TxReceipt receipt in blockReceipts) decoder.Encode(ref writer, receipt, RlpBehaviors.Eip658Receipts);
+            writer.EndSequence(sequence);
+            return true;
+        }
+
         public void HintBlock(Hash256 hash, ulong number, ISyncPeer receivedFrom) { }
         public void AddNewBlock(Block block, ISyncPeer node) { }
         public void StopNotifyingPeersAboutNewBlocks() { }
         public MemoryManager<byte> GetBlockAccessListRlp(Hash256 blockHash) => null;
-        public Block Find(Hash256 hash) => null;
         public MemoryManager<byte> FindBlockRlp(Hash256 hash) => null;
         public BlockHeader FindHeader(Hash256 hash) => null;
         public Hash256 FindHash(ulong number) => null;
