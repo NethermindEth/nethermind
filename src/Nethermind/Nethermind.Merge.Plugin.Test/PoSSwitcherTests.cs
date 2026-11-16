@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -107,6 +108,26 @@ namespace Nethermind.Merge.Plugin.Test
                 Assert.That(isTerminal, Is.False);
                 Assert.That(isPostMerge, Is.False);
                 Assert.That(genesis.Header.IsPostMerge, Is.False);
+            }
+        }
+
+        [Test]
+        public void RestorePostMergeForCall_keeps_pre_merge_headers_and_marks_a_ttd_zero_genesis_post_merge()
+        {
+            TestSpecProvider preMergeSpec = new(London.Instance) { TerminalTotalDifficulty = (UInt256)5_000_000 };
+            BlockHeader preMerge = CreatePreTerminalBlock(3).Header;
+            ChainSpec hoodi = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance).LoadEmbeddedOrFromFile(FindHoodiChainSpecPath());
+            PoSSwitcher hoodiSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), Substitute.For<IBlockTree>(), new ChainSpecBasedSpecProvider(hoodi), hoodi, LimboLogs.Instance);
+            // Hoodi is post-merge from a genesis with a nonzero difficulty, so a call at block 0 reads its mix hash.
+            BlockHeader genesis = Build.A.BlockHeader.WithNumber(0).WithDifficulty(1).TestObject;
+
+            CreatePosSwitcher(Substitute.For<IBlockTree>(), specProvider: preMergeSpec).RestorePostMergeForCall(preMerge);
+            hoodiSwitcher.RestorePostMergeForCall(genesis);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(preMerge.IsPostMerge, Is.False, "a header below the TTD keeps DIFFICULTY");
+                Assert.That(genesis.IsPostMerge, Is.True, "a TTD-0 genesis is post-merge whatever its difficulty");
             }
         }
 
