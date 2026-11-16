@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp.Eip7928;
@@ -32,6 +33,10 @@ public partial class BlockAccessListManager
         uint postExecutionIndex = (uint)(block.Transactions.Length + 1);
         if (VerifyOnly)
         {
+            // Nothing else binds rows 0..txCount to the suggested list, so a row the executor skipped must not pass.
+            if (_validatedRowCount != postExecutionIndex)
+                throw new InvalidOperationException($"Verify-only block access list validation covered {_validatedRowCount} of {postExecutionIndex} rows.");
+
             // IncrementalValidation only covered indices 0..txCount; the post-execution row
             // (txCount + 1) was just merged but not yet compared.
             ValidateBlockAccessList(block, postExecutionIndex);

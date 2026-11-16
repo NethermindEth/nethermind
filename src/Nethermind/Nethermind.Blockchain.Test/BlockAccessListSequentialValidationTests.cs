@@ -96,24 +96,6 @@ public class BlockAccessListSequentialValidationTests
             () => RunSequentialValidation(suggested));
     }
 
-    [TestCase(new ulong[0], TestName = "Missing read")]
-    [TestCase(new[] { ReadSlot + 1 }, TestName = "Different read")]
-    public void Sequential_validation_rejects_bal_differing_only_in_storage_reads(ulong[] recipientReads)
-    {
-        ReadOnlyBlockAccessList generated = GenerateBlockAccessList();
-        ReadOnlyAccountChanges recipient = generated.GetAccountChanges(TestItem.AddressB)!;
-        Assert.That(recipient.StorageReads, Is.EqualTo(new UInt256[] { ReadSlot }));
-
-        ReadOnlyAccountChanges tamperedRecipient = new(recipient.Address, recipient.StorageChanges,
-            Array.ConvertAll(recipientReads, static slot => (UInt256)slot), recipient.BalanceChanges, recipient.NonceChanges, recipient.CodeChanges);
-
-        Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(
-            () => RunSequentialValidation(WithWireHash(Build.A.BlockAccessList
-                .WithAccountChanges([.. generated.AccountChanges.AsSpan()])
-                .WithAccountChanges(tamperedRecipient)
-                .TestObject)));
-    }
-
     [TestCase(ProcessingOptions.NoValidation)]
     [TestCase(ProcessingOptions.ForceSequentialBlockAccessList)]
     public void Sequential_validation_defers_mismatched_bal_when_requested(ProcessingOptions processingOptions)
@@ -169,18 +151,31 @@ public class BlockAccessListSequentialValidationTests
     {
         ReadOnlyBlockAccessList suggested = suggest(GenerateBlockAccessList());
 
-        bool generatedAccepted = Accepts(suggested, verifySequentialBlocks: false, out _, out Block generatedBlock)
-            && generatedBlock.Header.BlockAccessListHash == suggested.WireHash;
-        bool verifiedAccepted = Accepts(suggested, verifySequentialBlocks: true, out BlockAccessListManager balManager, out Block verifiedBlock);
+        bool generatedAccepted = Accepts(suggested, verifySequentialBlocks: false, out _, out Block? generatedBlock)
+            && generatedBlock!.Header.BlockAccessListHash == suggested.WireHash;
+        bool verifiedAccepted = Accepts(suggested, verifySequentialBlocks: true, out BlockAccessListManager? balManager, out Block? verifiedBlock);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(generatedAccepted, Is.EqualTo(expectedAccepted), "generated");
             Assert.That(verifiedAccepted, Is.EqualTo(expectedAccepted), "verify-only");
-            Assert.That(balManager.GeneratedBlockAccessList.AccountChanges.Count, Is.Zero);
-            Assert.That(verifiedBlock.GeneratedBlockAccessList, Is.Null);
-            Assert.That(verifiedBlock.Header.BlockAccessListHash, Is.EqualTo(suggested.WireHash));
+            if (verifiedAccepted)
+            {
+                Assert.That(balManager!.GeneratedBlockAccessList.AccountChanges.Count, Is.Zero);
+                Assert.That(verifiedBlock!.GeneratedBlockAccessList, Is.Null);
+                Assert.That(verifiedBlock.Header.BlockAccessListHash, Is.EqualTo(suggested.WireHash));
+            }
         }
+    }
+
+    [Test]
+    public void Sequential_verify_only_throws_when_the_executor_skipped_rows()
+    {
+        // Only the transaction row is wrong, so the post-execution row and the structural check alone accept it.
+        ReadOnlyBlockAccessList suggested = WithWrongRecipientBalance(GenerateBlockAccessList());
+
+        Assert.Throws<InvalidOperationException>(() => RunSequentialValidation(suggested,
+            verifySequentialBlocks: true, executorOptions: ProcessingOptions.NoValidation));
     }
 
     private static IEnumerable<TestCaseData> SuggestedBlockAccessLists()
@@ -192,29 +187,23 @@ public class BlockAccessListSequentialValidationTests
         yield return Case(static bal => WithRecipient(bal, []), false, "Missing read");
         yield return Case(static bal => WithRecipient(bal, [ReadSlot + 1]), false, "Different read");
         yield return Case(static bal => WithRecipient(bal, [ReadSlot, ReadSlot + 1]), false, "Extra read");
-        yield return Case(static bal => WithRecipient(bal, [ReadSlot],
-            Array.ConvertAll(bal.GetAccountChanges(TestItem.AddressB)!.BalanceChanges, static change => new BalanceChange(change.Index, change.Value + 1))), false, "Wrong balance");
+        yield return Case(WithWrongRecipientBalance, false, "Wrong balance");
 
         static TestCaseData Case(Func<ReadOnlyBlockAccessList, ReadOnlyBlockAccessList> suggest, bool accepted, string name)
             => new TestCaseData(suggest, accepted).SetName(name);
     }
 
     /// <summary>Runs <paramref name="suggested"/> through sequential validation of a block whose header declares its hash.</summary>
-    private static bool Accepts(ReadOnlyBlockAccessList suggested, bool verifySequentialBlocks, out BlockAccessListManager balManager, out Block block)
+    private static bool Accepts(ReadOnlyBlockAccessList suggested, bool verifySequentialBlocks, out BlockAccessListManager? balManager, out Block? block)
     {
-        (IWorldState stateProvider, balManager) = CreateFundedAmsterdamSetup(verifySequentialBlocks);
-        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
-        FundSender(stateProvider);
-
-        block = BuildBlock();
-        block.Header.BlockAccessListHash = suggested.WireHash;
         try
         {
-            RunSequential(stateProvider, balManager, block, suggested);
+            (balManager, block) = RunSequentialValidation(suggested, verifySequentialBlocks: verifySequentialBlocks, headerHash: suggested.WireHash);
             return true;
         }
         catch (BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException)
         {
+            (balManager, block) = (null, null);
             return false;
         }
     }
@@ -228,6 +217,10 @@ public class BlockAccessListSequentialValidationTests
                 Array.ConvertAll(reads, static slot => (UInt256)slot), balanceChanges ?? recipient.BalanceChanges, recipient.NonceChanges, recipient.CodeChanges))
             .TestObject);
     }
+
+    private static ReadOnlyBlockAccessList WithWrongRecipientBalance(ReadOnlyBlockAccessList bal)
+        => WithRecipient(bal, [ReadSlot],
+            Array.ConvertAll(bal.GetAccountChanges(TestItem.AddressB)!.BalanceChanges, static change => new BalanceChange(change.Index, change.Value + 1)));
 
     /// <summary>
     /// Runs the block once on the sequential path with no suggested BAL so the executor
@@ -261,15 +254,17 @@ public class BlockAccessListSequentialValidationTests
     private static (BlockAccessListManager, Block) RunSequentialValidation(
         ReadOnlyBlockAccessList suggested,
         ProcessingOptions processingOptions = ProcessingOptions.None,
-        bool verifySequentialBlocks = false)
+        bool verifySequentialBlocks = false,
+        Hash256? headerHash = null,
+        ProcessingOptions? executorOptions = null)
     {
         (IWorldState stateProvider, BlockAccessListManager balManager) = CreateFundedAmsterdamSetup(verifySequentialBlocks);
         using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
         FundSender(stateProvider);
 
         Block block = BuildBlock();
-        block.Header.BlockAccessListHash = Keccak.Zero;
-        RunSequential(stateProvider, balManager, block, suggested, processingOptions);
+        block.Header.BlockAccessListHash = headerHash ?? Keccak.Zero;
+        RunSequential(stateProvider, balManager, block, suggested, processingOptions, executorOptions ?? processingOptions);
         return (balManager, block);
     }
 
@@ -278,7 +273,8 @@ public class BlockAccessListSequentialValidationTests
         BlockAccessListManager balManager,
         Block block,
         ReadOnlyBlockAccessList? blockAccessList,
-        ProcessingOptions processingOptions = ProcessingOptions.None)
+        ProcessingOptions processingOptions = ProcessingOptions.None,
+        ProcessingOptions? executorOptions = null)
     {
         block.BlockAccessList = blockAccessList;
 
@@ -298,7 +294,7 @@ public class BlockAccessListSequentialValidationTests
         BlockReceiptsTracer tracer = new();
         tracer.StartNewBlockTrace(block);
 
-        executor.ProcessTransactions(block, processingOptions, tracer, CancellationToken.None);
+        executor.ProcessTransactions(block, executorOptions ?? processingOptions, tracer, CancellationToken.None);
         balManager.SetBlockAccessList(block);
     }
 

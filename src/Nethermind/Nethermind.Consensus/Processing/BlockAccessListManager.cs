@@ -121,8 +121,8 @@ public partial class BlockAccessListManager(
     /// parallel path, instead of building <see cref="GeneratedBlockAccessList"/>.
     /// </summary>
     /// <remarks>
-    /// The stateless executor turns it on: it runs every block sequentially and needs only the verdict, never the
-    /// constructed list.
+    /// Always on in the zkEVM guest through <see cref="ZkEvmFlag"/>: it runs every block sequentially and needs only
+    /// the verdict, never the constructed list. Tests set it to cover the route on the host.
     /// </remarks>
     internal bool VerifySequentialBlocks { get; init; }
 
@@ -167,7 +167,7 @@ public partial class BlockAccessListManager(
             // Verify-only checks only the post-execution row at the end, so a sequential block needs the executor
             // to validate every earlier row, which it skips for these options.
             bool verifyOnly = ParallelExecutionEnabled
-                || (VerifySequentialBlocks
+                || ((ZkEvmFlag.IsActive || VerifySequentialBlocks)
                     && !_isBuilding
                     && suggestedBlock.BlockAccessList is not null
                     && !options.ContainsFlag(ProcessingOptions.NoValidation)
