@@ -268,13 +268,33 @@ jobs:
           ref: ${{ job.workflow_sha || env.TOOLS_REF }}
           persist-credentials: false
 
+      - name: Check out base global.json
+        uses: actions/checkout@v7
+        with:
+          repository: NethermindEth/nethermind
+          ref: ${{ matrix.sha }}
+          path: sdk
+          sparse-checkout: global.json
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: ./.github/actions/setup-dotnet
+        with:
+          global-json-file: sdk/global.json
+
+      - name: .NET SDK version
+        id: sdk
+        working-directory: sdk
+        run: echo "version=$(dotnet --version)" >> "$GITHUB_OUTPUT"
+
       # The emulators are deterministic and the key covers every input of the base build
       - name: Restore base binaries
         id: cache
         uses: actions/cache/restore@v5
         with:
           path: zkab-elf
-          key: zkab-elf-${{ matrix.vm }}-${{ fromJSON(needs.resolve.outputs.keys)[matrix.vm] }}-${{ hashFiles('.github/zkvm-ab/build.sh') }}
+          key: zkab-elf-${{ matrix.vm }}-${{ fromJSON(needs.resolve.outputs.keys)[matrix.vm] }}-sdk${{ steps.sdk.outputs.version }}-${{ hashFiles('.github/zkvm-ab/build.sh') }}
 
       - name: Check out base
         if: steps.cache.outputs.cache-hit != 'true'
@@ -288,12 +308,6 @@ jobs:
       - name: Free disk
         if: steps.cache.outputs.cache-hit != 'true'
         run: sudo rm -rf /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
-
-      - name: Set up .NET
-        if: steps.cache.outputs.cache-hit != 'true'
-        uses: ./.github/actions/setup-dotnet
-        with:
-          global-json-file: arm/global.json
 
       - name: Download candidate packages
         if: steps.cache.outputs.cache-hit != 'true' && env.EXTLIB_PATH != ''
@@ -318,7 +332,7 @@ jobs:
         uses: actions/cache/save@v5
         with:
           path: zkab-elf
-          key: zkab-elf-${{ matrix.vm }}-${{ fromJSON(needs.resolve.outputs.keys)[matrix.vm] }}-${{ hashFiles('.github/zkvm-ab/build.sh') }}
+          key: zkab-elf-${{ matrix.vm }}-${{ fromJSON(needs.resolve.outputs.keys)[matrix.vm] }}-sdk${{ steps.sdk.outputs.version }}-${{ hashFiles('.github/zkvm-ab/build.sh') }}
 
       - name: Upload guest binaries
         uses: actions/upload-artifact@v7
@@ -350,12 +364,21 @@ jobs:
           ref: ${{ job.workflow_sha || env.TOOLS_REF }}
           persist-credentials: false
 
+      - name: Download base binaries
+        uses: actions/download-artifact@v8
+        with:
+          name: zkab-elf-${{ matrix.vm }}-base
+          path: ${{ runner.temp }}/base-elf
+
       - name: Cache key
         id: key
         env:
           BUILD_KEY: ${{ fromJSON(needs.resolve.outputs.keys)[matrix.vm] }}
           SCRIPT_HASH: ${{ hashFiles('.github/zkvm-ab/*.sh', '.github/zkvm-ab/*.rs') }}
-        run: echo "key=zkab-result-$VM-$FORMAT-$BUILD_KEY-$OPENVM_RUNNER_SHA-$SCRIPT_HASH" >> "$GITHUB_OUTPUT"
+        run: |
+          set -euo pipefail
+          elf_hash="$(cd "$RUNNER_TEMP/base-elf" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum | cut -c1-64)"
+          echo "key=zkab-result-$VM-$FORMAT-$BUILD_KEY-$elf_hash-$OPENVM_RUNNER_SHA-$SCRIPT_HASH" >> "$GITHUB_OUTPUT"
 
       - name: Restore base results
         id: cache
@@ -377,12 +400,9 @@ jobs:
             src/Nethermind/Nethermind.Stateless.ZiskGuest
             src/Nethermind/${{ matrix.project }}
 
-      - name: Download base binaries
+      - name: Place base binaries
         if: steps.cache.outputs.cache-hit != 'true'
-        uses: actions/download-artifact@v8
-        with:
-          name: zkab-elf-${{ matrix.vm }}-base
-          path: base/${{ env.GUEST }}/bin
+        run: mkdir -p "base/$GUEST/bin" && cp -R "$RUNNER_TEMP/base-elf/." "base/$GUEST/bin/"
 
       - name: Restore inputs
         if: steps.cache.outputs.cache-hit != 'true'
@@ -463,6 +483,7 @@ jobs:
   build-head:
     name: Build ${{ matrix.vm }} head
     needs: [resolve, seal-base]
+    if: ${{ !cancelled() && needs.seal-base.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
