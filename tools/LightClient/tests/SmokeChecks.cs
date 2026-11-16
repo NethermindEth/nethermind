@@ -3,7 +3,6 @@
 
 using System.Globalization;
 using System.Net;
-using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -39,7 +38,12 @@ internal sealed class SmokeChecks(HttpClient client, TimeProvider clock, Func<Ti
     private static readonly Regex LabelPattern = new("(\\w+)=(\"(?:[^\"\\\\]|\\\\.)*\")");
     private static readonly Regex SamplePattern = new("^([a-zA-Z_:][a-zA-Z0-9_:]*)(\\{[^{}]*\\})?\\s+(\\S+)(?:\\s+\\S+)?$");
 
-    internal static string DeploymentDirectory([CallerFilePath] string source = "") => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(source)!, ".."));
+    internal static string DeploymentDirectory()
+    {
+        if (AppContext.GetData("EntryPointFileDirectoryPath") is not string directory || !Path.IsPathFullyQualified(directory))
+            throw new InvalidOperationException("Run the .cs source with dotnet run so the SDK supplies its physical source directory.");
+        return Path.GetFullPath(Path.Combine(directory, ".."));
+    }
 
     internal async Task RunAsync(SmokeOptions options, string password, string dashboardPath, CancellationToken token = default)
     {

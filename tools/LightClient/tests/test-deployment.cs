@@ -26,6 +26,8 @@ internal static class DeploymentTests
         Task<JsonNode> configuration = ServicesAsync();
         List<(string Name, Func<Task> Check)> checks =
         [
+            ("Deployment assets follow the physical file-app entrypoint", CheckDeploymentDirectoryAsync),
+            ("Missing file-app source metadata has a useful diagnostic", CheckMissingDeploymentDirectoryAsync),
             ("Grafana requires an explicit password", async () =>
             {
                 ProcessResult missing = await ComposeAsync(null);
@@ -107,6 +109,37 @@ internal static class DeploymentTests
         }
         Console.WriteLine($"{checks.Count - failures}/{checks.Count} deployment checks passed");
         return failures == 0 ? 0 : 1;
+    }
+
+    private static Task CheckDeploymentDirectoryAsync()
+    {
+        object? original = AppContext.GetData("EntryPointFileDirectoryPath");
+        using ScratchDirectory scratch = new();
+        try
+        {
+            AppContext.SetData("EntryPointFileDirectoryPath", Path.Combine(scratch.Path, "tests"));
+            Require(SmokeChecks.DeploymentDirectory() == Path.GetFullPath(scratch.Path), "Deployment paths followed a compiler-mapped source or cached assembly instead of the physical entrypoint");
+        }
+        finally { AppContext.SetData("EntryPointFileDirectoryPath", original); }
+        return Task.CompletedTask;
+    }
+
+    private static async Task CheckMissingDeploymentDirectoryAsync()
+    {
+        object? original = AppContext.GetData("EntryPointFileDirectoryPath");
+        try
+        {
+            foreach (object? value in new object?[] { null, "", "relative/tests", 42 })
+            {
+                AppContext.SetData("EntryPointFileDirectoryPath", value);
+                await ExpectFailureAsync(() =>
+                {
+                    SmokeChecks.DeploymentDirectory();
+                    return Task.CompletedTask;
+                }, "Run the .cs source with dotnet run");
+            }
+        }
+        finally { AppContext.SetData("EntryPointFileDirectoryPath", original); }
     }
 
     private static async Task<JsonNode> ServicesAsync()
