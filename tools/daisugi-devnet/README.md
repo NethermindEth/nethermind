@@ -30,6 +30,8 @@ To test your own consensus-layer changes, build your Lighthouse image and pass i
 
 ## Pinned sources
 
+The frozen restart stack, its validation and the operator steps: [RESTART.md](RESTART.md).
+
 | Component | Source | Revision |
 | --- | --- | --- |
 | Nethermind | `NethermindEth/nethermind` `feature/eip8288-lean` `757b7eabed` plus #15955 (F128 leanVM, native ABI 21, leanSPHINCS key `PK.seed \|\| PK.root`), native Lean backend from `Nethermind.Crypto.Lean` 0.21.0.110 (nugettest) | `fe94447c770f7eedfb31336c47a824df69aeaf53` |
@@ -242,6 +244,6 @@ rm -rf run/devnet-1
 
 - AA-PQ's wallet, RPC gateway and explorer run against this devnet only with their `eip8288-lean` profile (asanso/AA-PQ #12, guide in #13); its default `daisugi-v1` profile keeps the live chain's formats.
 - Not configured: Osaka/Fulu (PeerDAS), Amsterdam, Gloas, Bogota, adaptive aggregation.
-- Single host, Docker network only. No bootnodes, discovery, public ENRs or multi-host topology yet.
+- Single host, Docker network only. No bootnodes, discovery or public ENRs; [RESTART.md](RESTART.md) describes static multi-host peering, not validated yet.
 - arm64: no runtime-validated Lighthouse image (lock `binarySha256` for arm64 is `null`); Nethermind arm64 not run here.
 - `proof.sh`, `sync.sh` and `sync-check.sh` default to fixed container names and host ports, so without `EL_CONTAINER`/`BN_CONTAINER` or `EL_RPC_PORTS`/`CL_HTTP_PORTS` they run only against the default `DEVNET_PREFIX`.
