@@ -369,30 +369,24 @@ public class OptimismCLP2P : IDisposable
         int decompressedLength = TryGetDecompressedLength(data, out int length) ? length : -1;
 
         byte[] buffer = ArrayPool<byte>.Shared.Rent(headerLength + Math.Max(decompressedLength, data.Length));
-        try
+        Span<byte> payload = buffer.AsSpan(headerLength);
+        ReadOnlySpan<byte> domain = MessageDomainValidSnappy;
+        int payloadLength = decompressedLength;
+        if (decompressedLength < 0 || !TryDecompress(data, payload[..decompressedLength]))
         {
-            Span<byte> payload = buffer.AsSpan(headerLength);
-            ReadOnlySpan<byte> domain = MessageDomainValidSnappy;
-            int payloadLength = decompressedLength;
-            if (decompressedLength < 0 || !TryDecompress(data, payload[..decompressedLength]))
-            {
-                domain = MessageDomainInvalidSnappy;
-                data.CopyTo(payload);
-                payloadLength = data.Length;
-            }
-
-            domain.CopyTo(buffer);
-            BinaryPrimitives.WriteUInt64LittleEndian(buffer.AsSpan(MessageDomainLength), (ulong)topicLength);
-            Encoding.UTF8.GetBytes(topic, buffer.AsSpan(MessageDomainLength + sizeof(ulong), topicLength));
-
-            Span<byte> hash = stackalloc byte[SHA256.HashSizeInBytes];
-            SHA256.HashData(buffer.AsSpan(0, headerLength + payloadLength), hash);
-            return new MessageId(hash[..MessageIdLength].ToArray());
+            domain = MessageDomainInvalidSnappy;
+            data.CopyTo(payload);
+            payloadLength = data.Length;
         }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
+
+        domain.CopyTo(buffer);
+        BinaryPrimitives.WriteUInt64LittleEndian(buffer.AsSpan(MessageDomainLength), (ulong)topicLength);
+        Encoding.UTF8.GetBytes(topic, buffer.AsSpan(MessageDomainLength + sizeof(ulong), topicLength));
+
+        Span<byte> hash = stackalloc byte[SHA256.HashSizeInBytes];
+        SHA256.HashData(buffer.AsSpan(0, headerLength + payloadLength), hash);
+        ArrayPool<byte>.Shared.Return(buffer);
+        return new MessageId(hash[..MessageIdLength].ToArray());
     }
 
     private static bool TryGetDecompressedLength(ReadOnlySpan<byte> data, out int length)
