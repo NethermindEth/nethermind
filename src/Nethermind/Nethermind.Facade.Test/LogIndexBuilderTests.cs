@@ -16,13 +16,17 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Find;
 using Nethermind.History;
 using Nethermind.Logging;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using NSubstitute;
 using NSubstitute.Core;
 using NUnit.Framework;
@@ -882,6 +886,55 @@ public class LogIndexBuilderTests
             Assert.That(builder.LastError, Is.InstanceOf<InvalidOperationException>());
             Assert.That(builder.IsRunning, Is.True,
                 "the give-up is scoped to the backward direction - the live forward index must keep running");
+        }
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Should_NotFillTheReceiptsCache_WithTheBlocksItIndexes(CancellationToken cancellation)
+    {
+        const int blockCount = 4;
+        ISpecProvider specProvider = new TestSpecProvider(Prague.Instance);
+        BlockTreeBuilder treeBuilder = Build.A.BlockTree().WithSpecProvider(specProvider);
+        IBlockTree tree = treeBuilder.TestObject;
+        TestMemColumnsDb<ReceiptsColumns> receiptsDb = new();
+        PersistentReceiptStorage CreateReceiptStorage() => new(receiptsDb, specProvider,
+            new ReceiptsRecovery(new EthereumEcdsa(specProvider.ChainId), specProvider), tree, treeBuilder.BlockStore, new ReceiptConfig());
+
+        PersistentReceiptStorage writer = CreateReceiptStorage();
+        Block[] blocks = new Block[blockCount + 1];
+        blocks[0] = Build.A.Block.Genesis.TestObject;
+        BlockTreeBuilder.AddBlock(tree, blocks[0]);
+        for (int i = 1; i < blocks.Length; i++)
+        {
+            Transaction tx = Build.A.Transaction.WithChainId(specProvider.ChainId).WithNonce((ulong)i).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            blocks[i] = Build.A.Block.WithParent(blocks[i - 1]).WithReceiptsRoot(TestItem.KeccakA).WithTransactions(tx).TestObject;
+            BlockTreeBuilder.AddBlock(tree, blocks[i]);
+            writer.Insert(blocks[i], [Build.A.Receipt.WithTransactionHash(tx.Hash).WithLogs(Build.A.LogEntry.TestObject).TestObject]);
+        }
+
+        tree.SyncPivot = (blocks[^1].Number, blocks[^1].Hash!);
+        _config.MaxReorgDepth = 0;
+        // A fresh instance starts with an empty receipts cache; the writer filled its own.
+        PersistentReceiptStorage reader = CreateReceiptStorage();
+        _receiptStorage = reader;
+
+        RecordingLogIndexStorage storage = new();
+        LogIndexBuilder builder = GetService(storage, tree);
+        await builder.StartAsync();
+        await builder.BackwardSyncCompletion.WaitAsync(cancellation);
+        await builder.StopAsync();
+
+        // Only a cached block can still be read once the stored receipts are gone.
+        ((MemDb)receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)).Clear();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(builder.LastError, Is.Null);
+            for (int i = 1; i < blocks.Length - 1; i++)
+                Assert.That(storage.ReceiptCountAt(i), Is.EqualTo(1), $"block {i} must be indexed from its stored receipts");
+
+            for (int i = 1; i < blocks.Length; i++)
+                Assert.That(reader.Get(blocks[i]), Is.Empty, $"indexing block {i} must not put its receipts in the receipts cache");
         }
     }
 
