@@ -742,7 +742,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
 
         public override void ReportActionErrorDetails(string error)
         {
-            if (error == "contract creation code storage out of gas") CodeDepositDetails++;
+            if (error is "contract creation code storage out of gas" or "max code size exceeded") CodeDepositDetails++;
         }
 
         public override void ReportActionError(EvmExceptionType evmExceptionType)
@@ -859,6 +859,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
                 {
                     FailedCreate.DepositOutOfGas => "contract creation code storage out of gas",
                     FailedCreate.InvalidDeposit or FailedCreate.InvalidDepositOutOfGas => "invalid code: must not begin with 0xef",
+                    FailedCreate.Oversize => "max code size exceeded",
                     _ => "out of gas"
                 };
                 Assert.That(frame.Error, Is.EqualTo(expectedError), "creation error precedence");
@@ -877,7 +878,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         .PushData(firstByte).PushData(0).Op(Instruction.MSTORE8)
         .PushData(length).PushData(0).Op(Instruction.RETURN).Done;
 
-    public enum DepositOutcome { EnoughGas, InsufficientGas, InvalidCode, InvalidCodeAndInsufficientGas, Oversize, ExecutionOutOfGas }
+    public enum DepositOutcome { EnoughGas, InsufficientGas, InvalidCode, InvalidCodeAndInsufficientGas, Oversize, OversizeAndInvalidCode, ExecutionOutOfGas }
 
     private static IEnumerable<TestCaseData> RootDepositCases()
     {
@@ -890,7 +891,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
                 yield return new TestCaseData(activation, DepositOutcome.InsufficientGas, dispatch);
             }
         }
-        foreach (DepositOutcome outcome in new[] { DepositOutcome.InvalidCode, DepositOutcome.InvalidCodeAndInsufficientGas, DepositOutcome.Oversize, DepositOutcome.ExecutionOutOfGas })
+        foreach (DepositOutcome outcome in new[] { DepositOutcome.InvalidCode, DepositOutcome.InvalidCodeAndInsufficientGas, DepositOutcome.Oversize, DepositOutcome.OversizeAndInvalidCode, DepositOutcome.ExecutionOutOfGas })
         {
             foreach (TraceDispatch dispatch in Enum.GetValues<TraceDispatch>())
             {
@@ -906,12 +907,12 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         int length = outcome switch
         {
             DepositOutcome.InsufficientGas or DepositOutcome.InvalidCodeAndInsufficientGas => 1024,
-            DepositOutcome.Oversize => checked((int)spec.MaxCodeSize + 1),
+            DepositOutcome.Oversize or DepositOutcome.OversizeAndInvalidCode => checked((int)spec.MaxCodeSize + 1),
             _ => 1
         };
         byte[] initCode = outcome == DepositOutcome.ExecutionOutOfGas
             ? Prepare.EvmCode.Op(Instruction.JUMPDEST).PushData(0).Op(Instruction.JUMP).Done
-            : DepositInitCode(length, outcome is DepositOutcome.InvalidCode or DepositOutcome.InvalidCodeAndInsufficientGas ? (byte)0xEF : (byte)0);
+            : DepositInitCode(length, outcome is DepositOutcome.InvalidCode or DepositOutcome.InvalidCodeAndInsufficientGas or DepositOutcome.OversizeAndInvalidCode ? (byte)0xEF : (byte)0);
         // 1024 bytes require 204800 deposit gas; this budget comfortably executes the short initcode,
         // but cannot pay that deposit. The one-byte control requires only 200 deposit gas.
         const ulong gasLimit = 100000;
@@ -942,7 +943,8 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         {
             DepositOutcome.EnoughGas => null,
             DepositOutcome.InsufficientGas => frontierEmpty ? null : "contract creation code storage out of gas",
-            DepositOutcome.InvalidCode => "invalid code: must not begin with 0xef",
+            DepositOutcome.InvalidCode or DepositOutcome.InvalidCodeAndInsufficientGas => "invalid code: must not begin with 0xef",
+            DepositOutcome.Oversize or DepositOutcome.OversizeAndInvalidCode => "max code size exceeded",
             _ => "out of gas"
         };
         using (Assert.EnterMultipleScope())
@@ -969,6 +971,9 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
                 yield return new TestCaseData(activation, Instruction.CREATE, length, false);
             }
         }
+        int oversize = checked((int)Osaka.Instance.MaxCodeSize + 1);
+        yield return new TestCaseData(MainnetSpecProvider.OsakaActivation, Instruction.CREATE, oversize, false);
+        yield return new TestCaseData(MainnetSpecProvider.OsakaActivation, Instruction.CREATE2, oversize, false);
         yield return new TestCaseData(MainnetSpecProvider.OsakaActivation, Instruction.CREATE2, 1, false);
         yield return new TestCaseData(MainnetSpecProvider.OsakaActivation, Instruction.CREATE2, 1024, false);
         yield return new TestCaseData(MainnetSpecProvider.OsakaActivation, Instruction.CREATE, 1024, true);
@@ -1025,11 +1030,15 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(child.Type, Is.EqualTo(opcode));
-                Assert.That(child.Error, Is.EqualTo(success ? null : "contract creation code storage out of gas"));
+                string? error = success ? null : length > spec.MaxCodeSize ? "max code size exceeded" : "contract creation code storage out of gas";
+                Assert.That(child.Error, Is.EqualTo(error));
                 Assert.That(child.To, Is.EqualTo(success ? address : null));
                 Assert.That(child.Input.ToArray(), Is.EqualTo(initCode));
                 Assert.That(child.Output.ToArray(), Is.EqualTo(success ? new byte[length] : Array.Empty<byte>()));
-                if (length == 1024) Assert.That(child.GasUsed, Is.EqualTo(child.Gas));
+                if (frontierEmpty)
+                    Assert.That(child.GasUsed, Is.LessThan(child.Gas), "Frontier retains the child's unspent deposit gas");
+                else if (!success)
+                    Assert.That(child.GasUsed, Is.EqualTo(child.Gas));
             }
         }
         AssertDepositStructTrace(actualStruct, expectedStruct);

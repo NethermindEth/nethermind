@@ -877,16 +877,20 @@ public partial class VirtualMachine<TGasPolicy>(
             {
                 // The deposit failure consumed the gas the frame returned, so it ends with none left.
                 _txTracer.ReportActionRemainingGas(0);
-                if (!hasEnoughGas && !invalidCode && executionDepositCost != ulong.MaxValue)
+                if (spec.LimitCodeSize && code.Length > spec.MaxCodeSize)
                 {
-                    TraceCodeDepositOutOfGas();
+                    TraceCodeDepositError("max code size exceeded");
+                }
+                else if (!hasEnoughGas && !invalidCode && executionDepositCost != ulong.MaxValue)
+                {
+                    TraceCodeDepositError("contract creation code storage out of gas");
                 }
                 _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas);
             }
         }
         else if (!chargedCodeDeposit && IsTracingActions)
         {
-            _txTracer.ReportActionEnd(0UL, callCodeOwner, code);
+            _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas), callCodeOwner, code);
         }
     }
 
@@ -1430,17 +1434,27 @@ public partial class VirtualMachine<TGasPolicy>(
         else if (currentState.ExecutionType.IsAnyCreate())
         {
             ulong gasAvailable = TGasPolicy.GetRemainingGas(currentState.Gas);
+            // EIP-3541 prefix validation precedes deposit gas, but not the EIP-170 size limit.
+            if (CodeDepositHandler.CodeIsInvalid(spec, outputBytes) && codeDepositGasCost != ulong.MaxValue)
+            {
+                _txTracer.ReportActionRemainingGas(0);
+                _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
+            }
             // If available gas is insufficient to cover the code deposit cost...
-            if (!hasEnoughGasForCodeDeposit)
+            else if (!hasEnoughGasForCodeDeposit)
             {
                 // When the spec mandates charging for top-level creation, report an out-of-gas error,
                 // which consumes all the frame's gas.
                 if (spec.ChargeForTopLevelCreate)
                 {
                     _txTracer.ReportActionRemainingGas(0);
-                    if (codeDepositGasCost != ulong.MaxValue && !CodeDepositHandler.CodeIsInvalid(spec, outputBytes))
+                    if (spec.LimitCodeSize && outputBytes.Length > spec.MaxCodeSize)
                     {
-                        TraceCodeDepositOutOfGas();
+                        TraceCodeDepositError("max code size exceeded");
+                    }
+                    else if (codeDepositGasCost != ulong.MaxValue)
+                    {
+                        TraceCodeDepositError("contract creation code storage out of gas");
                     }
                     _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
                 }
@@ -1449,12 +1463,6 @@ public partial class VirtualMachine<TGasPolicy>(
                 {
                     _txTracer.ReportActionEnd(gasAvailable, currentState.To, outputBytes);
                 }
-            }
-            // If the generated code is invalid (e.g., violates EIP-3541 by starting with 0xEF), report an invalid code error.
-            else if (CodeDepositHandler.CodeIsInvalid(spec, outputBytes))
-            {
-                _txTracer.ReportActionRemainingGas(0);
-                _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
             }
             // In the successful contract creation case, deduct the code deposit gas cost and report a normal action end.
             else
@@ -1470,13 +1478,7 @@ public partial class VirtualMachine<TGasPolicy>(
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void TraceCodeDepositOutOfGas() =>
-        // Wrappers and composites must be traversed even when their aggregate flags match.
-        _txTracer.ForEach<ITxTracer, string>(
-            static tracer => tracer is not ITxTracerWrapper and not CompositeTxTracer
-                && tracer.IsTracingActions && !tracer.IsTracingInstructions && !tracer.IsTracingMemory,
-            "contract creation code storage out of gas",
-            static (tracer, error) => tracer.ReportActionErrorDetails(error));
+    private void TraceCodeDepositError(string error) => _txTracer.ReportActionErrorDetails(error, actionOnly: true);
 
     private unsafe CallResult RunPrecompile(VmState<TGasPolicy> state) =>
         GetExecutionHandlers().RunPrecompile(this, state);
