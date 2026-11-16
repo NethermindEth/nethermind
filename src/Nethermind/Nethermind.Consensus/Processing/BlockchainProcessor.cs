@@ -822,8 +822,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         _stats.CaptureStartStats();
 
-        using ProcessingBranch processingBranch = PrepareProcessingBranch(suggestedBlock, options);
-        _branchBuilder.PrepareBlocksToProcess(suggestedBlock, options, processingBranch, token);
+        using ProcessingBranch processingBranch = PrepareBranchToProcess(suggestedBlock, options, token);
 
         _stopwatch.Restart();
         Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer, token, out error);
@@ -932,6 +931,53 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
 
         return processedBlocks;
+    }
+
+    private ProcessingBranch PrepareBranchToProcess(Block suggestedBlock, ProcessingOptions options, CancellationToken token)
+    {
+        ProcessingBranch processingBranch = PrepareProcessingBranch(suggestedBlock, options);
+        try
+        {
+            _branchBuilder.PrepareBlocksToProcess(suggestedBlock, options, processingBranch, token);
+        }
+        catch (Exception exception)
+        {
+            processingBranch.Dispose();
+            if (exception is InvalidBlockException) TryDeleteRefusedBranch(suggestedBlock);
+            throw;
+        }
+
+        return processingBranch;
+    }
+
+    private void TryDeleteRefusedBranch(Block suggestedBlock)
+    {
+        try
+        {
+            DeleteRefusedBranch(suggestedBlock);
+        }
+        catch (Exception exception)
+        {
+            if (_logger.IsError) _logger.Error($"Failed to delete the refused branch of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}", exception);
+        }
+    }
+
+    private void DeleteRefusedBranch(Block suggestedBlock)
+    {
+        if (suggestedBlock.IsPoS() || _blockTree.IsMainChain(suggestedBlock.Header)) return;
+
+        Block branchRoot = suggestedBlock;
+        while (_blockTree.FindParent(branchRoot.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded) is { } parent && !_blockTree.IsMainChain(parent.Header))
+        {
+            branchRoot = parent;
+        }
+
+        BlockHeader? forkPoint = _blockTree.FindParentHeader(branchRoot.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+        if (forkPoint is null || forkPoint.Number < (_blockTree.Head?.Number ?? 0))
+        {
+            if (_logger.IsDebug) _logger.Debug($"Deleting refused branch from {branchRoot.ToString(Block.Format.FullHashAndNumber)} to {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}");
+            _blockTree.DeleteBranch(branchRoot);
+        }
     }
 
     private ProcessingBranch PrepareProcessingBranch(Block suggestedBlock, ProcessingOptions options)

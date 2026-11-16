@@ -143,6 +143,9 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
     public void DeleteInvalidBlock(Block invalidBlock) =>
         _overlayTree.DeleteInvalidBlock(invalidBlock);
 
+    public void DeleteBranch(Block branchRoot) =>
+        _overlayTree.DeleteBranch(branchRoot);
+
     public void ReportBadBlock(Block badBlock) =>
         _overlayTree.ReportBadBlock(badBlock);
 

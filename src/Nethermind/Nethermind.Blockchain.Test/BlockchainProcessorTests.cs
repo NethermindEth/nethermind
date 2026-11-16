@@ -54,6 +54,43 @@ public class BlockchainProcessorTests
             BlockTraceDumper.LogDiagnosticTrace(NullBlockTracer.Instance, input, logger));
     }
 
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task Refused_branch_is_deleted_and_the_best_suggested_block_reset_only_when_it_forks_below_the_head(bool forkBelowHead)
+    {
+        BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree().WithoutSettingHead;
+        IBlockTree blockTree = blockTreeBuilder.TestObject;
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        genesis.Header.TotalDifficulty = genesis.Header.Difficulty;
+        blockTree.SuggestBlock(genesis);
+        blockTree.TryUpdateMainChain(genesis.Header, wereProcessed: true, preloadedBlocks: [genesis]);
+        Block head = genesis;
+        for (int i = 0; i < (forkBelowHead ? 2 : 1); i++)
+        {
+            head = Build.A.Block.WithParent(head).WithNonce((ulong)i + 1).WithDifficulty(2).TestObject;
+            blockTree.SuggestBlock(head);
+            blockTree.TryUpdateMainChain(head.Header, wereProcessed: true, preloadedBlocks: [head]);
+        }
+
+        BlockHeader bodylessParent = Build.A.BlockHeader.WithParent(genesis.Header).WithNonce(100).WithDifficulty(1).TestObject;
+        blockTree.SuggestHeader(bodylessParent);
+        Block refused = Build.A.Block.WithParent(bodylessParent).WithNonce(101).WithDifficulty(10).TestObject;
+        blockTree.SuggestBlock(refused, BlockTreeSuggestOptions.ForceDontSetAsMain);
+        Assert.That(blockTree.BestSuggestedHeader?.Hash, Is.EqualTo(refused.Hash));
+
+        await using BlockchainProcessor processor = new(blockTree, Substitute.For<IBranchProcessor>(), [], Substitute.For<IStateReader>(), LimboLogs.Instance,
+            new BlockchainProcessor.Options(), Substitute.For<IProcessingStats>(), new BlockTreeMutationLock());
+
+        Assert.Throws<InvalidBlockException>(() => processor.Process(refused, ProcessingOptions.None, NullBlockTracer.Instance));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTree.BestSuggestedHeader?.Hash, Is.EqualTo(forkBelowHead ? head.Hash : refused.Hash));
+            Assert.That(blockTree.FindBlock(refused.Hash!, BlockTreeLookupOptions.None), forkBelowHead ? Is.Null : Is.Not.Null);
+            Assert.That(blockTreeBuilder.BadBlockStore.GetAll(), Is.Empty);
+        }
+    }
+
     private class ProcessingTestContext : IAsyncDisposable
     {
         private readonly ILogManager _logManager = LimboLogs.Instance;

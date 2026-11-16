@@ -858,7 +858,24 @@ namespace Nethermind.Blockchain
             if (Logger.IsDebug) Logger.Debug($"Deleting invalid block {invalidBlock.ToString(Block.Format.FullHashAndNumber)}");
 
             ReportBadBlock(invalidBlock);
+            DeleteBranchFrom(invalidBlock.Hash);
+        }
 
+        public void DeleteBranch(Block branchRoot)
+        {
+            if (branchRoot.Hash is null)
+            {
+                if (Logger.IsWarn) Logger.Warn($"{nameof(DeleteBranch)} call has been made for a block with a null hash.");
+                return;
+            }
+
+            if (Logger.IsDebug) Logger.Debug($"Deleting branch from {branchRoot.ToString(Block.Format.FullHashAndNumber)}");
+
+            DeleteBranchFrom(branchRoot.Hash);
+        }
+
+        private void DeleteBranchFrom(Hash256 branchRootHash)
+        {
             BestSuggestedHeader = Head?.Header;
             BestSuggestedBody = Head;
 
@@ -867,7 +884,7 @@ namespace Nethermind.Blockchain
 
             try
             {
-                DeleteBlocks(invalidBlock.Hash!);
+                DeleteBlocks(branchRootHash);
             }
             finally
             {

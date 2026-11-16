@@ -189,6 +189,8 @@ namespace Nethermind.Blockchain
         IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse);
 
         void DeleteInvalidBlock(Block invalidBlock);
+
+        void DeleteBranch(Block branchRoot);
         /// <summary>
         /// Records <paramref name="badBlock"/> as invalid without altering the canonical chain.
         /// </summary>
