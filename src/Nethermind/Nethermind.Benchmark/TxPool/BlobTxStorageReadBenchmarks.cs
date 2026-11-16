@@ -100,4 +100,21 @@ public class BlobTxStorageReadBenchmarks
 
         return found;
     }
+
+    /// <summary>The read of the blob pool's sidecar-free fallback, which a missing sidecar-free record takes.</summary>
+    [Benchmark]
+    public int FullRecordWithoutBlobs()
+    {
+        int found = 0;
+        foreach (Transaction tx in _transactions)
+        {
+            if (_storage.TryGet(tx.Hash!.ValueHash256, tx.SenderAddress!, tx.Timestamp, out Transaction read))
+            {
+                _ = BlobTransactionPayload.Elide(read);
+                found++;
+            }
+        }
+
+        return found;
+    }
 }
