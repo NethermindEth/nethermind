@@ -71,6 +71,9 @@ public sealed class TransactionTraceBoundary : IBlockTracer
     internal static int FindIndex(IReceiptFinder receipts, IPrefixStateSeedSource? seeds, Block block, Hash256 transactionHash) =>
         seeds is not null && seeds.MayCover(block) ? receipts.FindTransactionIndex(block, transactionHash) : -1;
 
+    internal static IBlockTracer WrapAtStoredIndex(IBlockTracer tracer, IReceiptFinder receipts, IPrefixStateSeedSource? seeds, Block block, Hash256? transactionHash) =>
+        transactionHash is null || tracer.IsTracingRewards ? tracer : WrapAt(tracer, transactionHash, FindIndex(receipts, seeds, block, transactionHash), seeds);
+
     /// <summary>Wraps a tracer that wants only what comes after the transactions: the seed for the end of the block
     /// stays armed through the rewards and withdrawals, so they are applied and traced on the state the last
     /// transaction left, as in the replay. A refused seed replays transactions without forwarding their traces.</summary>
