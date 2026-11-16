@@ -24,8 +24,9 @@ public static class EthereumEcdsaExtensions
     /// Cross-context cache of recovered senders: a transaction recovered on mempool ingress becomes a
     /// lookup on block arrival. The key is derived from exactly what recovery reads, the signing hash
     /// and the signature (<see cref="CalculateSenderCacheKey"/>), so an entry is correct for every transaction
-    /// that maps to it. Legacy transactions are left uncached, as before: that is a matter of scope, not a
-    /// requirement of the key, which is just as valid for them.
+    /// that maps to it. That holds for legacy transactions too: the signing hash already reflects the chain id
+    /// the signature was checked against, so a legacy transaction recovered on ingress is not recovered again.
+    /// The zkEVM guest has no ingress and keeps legacy transactions uncached.
     /// </remarks>
     private const int SenderCacheCapacity = 1 << 15;
     private static readonly AssociativeCache<ValueHash256, Address> _senderCache = new(SenderCacheCapacity);
@@ -127,7 +128,8 @@ public static class EthereumEcdsaExtensions
     {
         // The result is this transaction's sender, so an encoding of another transaction must not be hashed.
         ValueHash256 hash = SignatureHash(ecdsa, tx, signature, encoded, useSignatureChainId, checkOwnership: true);
-        bool cacheable = tx.Type != TxType.Legacy;
+        // The guest has no pool ingress to warm the cache, so it hashes no key for legacy senders.
+        bool cacheable = !ZkEvmFlag.IsActive || tx.Type != TxType.Legacy;
         ValueHash256 key = default;
         if (cacheable)
         {

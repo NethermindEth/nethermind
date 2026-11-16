@@ -20,10 +20,11 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.TxDecoders;
 
 namespace Nethermind.TxPool;
 
-public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? logManager = null) : IBlobTxStorage, IBlobTxMetadataStorage, ISpecChangeValidationStorage, IAtomicBlobTxStorage, IProcessedBlobTxStorage
+public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? logManager = null) : IBlobTxStorage, IBlobTxMetadataStorage, ISpecChangeValidationStorage, IAtomicBlobTxStorage, IProcessedBlobTxStorage, IBlobTxNetworkFormStorage
 {
     private const int TransactionLockCount = 64;
     private const int ProcessedTransactionKeyLength = sizeof(ulong) + sizeof(int);
@@ -76,6 +77,40 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
 
         transaction = default;
         return false;
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// <see cref="BlobTxDecoder.TryGetNetworkForm"/> writes the network form. A database that pins its values gives
+    /// the record without a copy.
+    /// </remarks>
+    bool IBlobTxNetworkFormStorage.TryGetNetworkForm(in ValueHash256 hash, in UInt256 timestamp, [NotNullWhen(true)] out IOwnedReadOnlyList<byte>? networkForm)
+    {
+        Span<byte> txHashPrefixed = stackalloc byte[FullTxKeyLength];
+        GetHashPrefixedByTimestamp(timestamp, hash, txHashPrefixed);
+
+        if (_fullBlobTxsDb is IReadOnlyNativeKeyValueStore native)
+        {
+            ReadOnlySpan<byte> pinned = native.GetNativeSlice(txHashPrefixed, out IntPtr handle);
+            try
+            {
+                return BlobTxDecoder.TryGetNetworkForm(pinned, out networkForm);
+            }
+            finally
+            {
+                if (handle != 0) native.DangerousReleaseHandle(handle);
+            }
+        }
+
+        ReadOnlySpan<byte> record = _fullBlobTxsDb.GetSpan(txHashPrefixed);
+        try
+        {
+            return BlobTxDecoder.TryGetNetworkForm(record, out networkForm);
+        }
+        finally
+        {
+            _fullBlobTxsDb.DangerousReleaseMemory(record);
+        }
     }
 
     public int TryGetMany(TxLookupKey[] keys, int count, Transaction?[] results)
