@@ -333,7 +333,7 @@ public class TxGossipAllocationTests
         return requested;
     }
 
-    private NettyBufferPacket Packet<T>(T message, int code) where T : MessageBase
+    private NettyBufferPacket Packet<T>(T message, int code) where T : P2PMessage
     {
         IByteBuffer buffer = _serializer.ZeroSerialize(message);
         buffer.ReadByte();

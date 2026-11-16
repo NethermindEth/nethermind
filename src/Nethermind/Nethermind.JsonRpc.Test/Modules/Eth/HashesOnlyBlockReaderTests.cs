@@ -28,6 +28,7 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Int256;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Specs.Forks;
 using Nethermind.State.Repositories;
 using Newtonsoft.Json.Linq;
@@ -569,14 +570,14 @@ public class HashesOnlyBlockReaderTests
     private static byte[] WithTrailingBodyField(byte[] storedBlock)
     {
         RlpReader reader = new RlpReader(storedBlock).EnterSequence(out _);
-        List<Rlp> items = [];
+        List<byte[]> items = [];
         while (reader.HasNext)
         {
-            items.Add(new Rlp(reader.ReadEncodedItem().ToArray()));
+            items.Add(reader.ReadEncodedItem().ToArray());
         }
 
-        items.Add(Rlp.OfEmptyList);
-        return Rlp.Encode([.. items]).Bytes;
+        items.Add(RlpTestHelper.OfEmptyList);
+        return RlpTestHelper.EncodeSequence([.. items]);
     }
 
     private static string Serialize(IBlockForRpcFactory factory, HashesOnlyBlock hashesOnly) =>

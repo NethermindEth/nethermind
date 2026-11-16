@@ -136,8 +136,8 @@ public class SnappyTests
         ZeroSnappyEncoderForTest encoder = new();
 
         // RLP-encoded packet type (0x01) followed by an RLP-encoded body
-        byte[] packetType = Rlp.Encode(1).Bytes;
-        byte[] body = Rlp.Encode(new byte[100]).Bytes;
+        byte[] packetType = Rlp.Encode(1);
+        byte[] body = Rlp.Encode(new byte[100]);
         byte[] payload = Bytes.Concat(packetType, body);
         using DisposableByteBuffer input = detector.Allocator.Buffer().AsDisposable();
         using DisposableByteBuffer output = detector.Allocator.Buffer().AsDisposable();

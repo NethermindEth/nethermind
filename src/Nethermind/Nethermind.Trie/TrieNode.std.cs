@@ -11,6 +11,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Trie.Pruning;
 
@@ -295,8 +296,12 @@ namespace Nethermind.Trie
 
         /// <summary>Creates the data of a leaf decoded from RLP, with the hex-prefix key <paramref name="compactKey"/>.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static LeafData CreateLeafData(ReadOnlySpan<byte> compactKey, int compactKeyEnd, CappedArray<byte> value) =>
-            new(HexPrefix.FromBytes(compactKey).key, value);
+        private static LeafData CreateLeafData(ReadOnlySpan<byte> compactKey, int compactKeyEnd, ReadOnlySpan<byte> value, int valueEnd, ICappedArrayPool? bufferPool)
+        {
+            CappedArray<byte> buffer = bufferPool.SafeRent(value.Length);
+            Bytes.Copy(value, buffer.AsSpan());
+            return new(HexPrefix.FromBytes(compactKey).key, buffer);
+        }
 
         /// <summary>Descends <paramref name="path"/> into child <paramref name="index"/> of the node being encoded.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -314,6 +319,22 @@ namespace Nethermind.Trie
         partial void OnEmbeddedNodeResolving(ITrieNodeResolver tree, in TreePath path, CappedArray<byte> rlp)
         {
             if (tree is IEmbeddedNodeObserver observer) observer.OnEmbeddedNodeResolving(path, rlp.AsSpan());
+        }
+
+        private partial class TrieNodeDecoder
+        {
+            /// <summary>Patches the hashes of the children from <paramref name="group"/> to <paramref name="end"/> into <paramref name="destination"/>, a full branch encoding.</summary>
+            /// <returns>Whether every slot is empty or patched; <see langword="false"/> if the branch is no longer a full one.</returns>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            private static bool TryPatchFullBranchChildren(ITrieNodeResolver tree, ref TreePath path, ref object? group, ref object? end,
+                ushort taken, Span<byte> destination, ref int unchanged, ICappedArrayPool? bufferPool, bool canBeParallel)
+            {
+                for (; Unsafe.IsAddressLessThan(ref group, ref end) && (!TracksTakenChildren || taken != 0); group = ref Unsafe.Add(ref group, 1), taken >>= 1)
+                {
+                    if (!TryPatchFullBranchChild(tree, ref path, ref group, 0, ref end, taken, destination, ref unchanged, bufferPool, canBeParallel)) return false;
+                }
+                return true;
+            }
         }
     }
 }

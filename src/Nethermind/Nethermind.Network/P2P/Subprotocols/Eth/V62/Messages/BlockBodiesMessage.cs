@@ -37,6 +37,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             Bodies?.Dispose();
         }
 
-        public override string ToString() => $"{nameof(BlockBodiesMessage)}({Bodies?.Bodies?.Length ?? 0})";
+        public override string ToString() => $"{nameof(BlockBodiesMessage)}({Bodies?.Count ?? 0})";
     }
 }

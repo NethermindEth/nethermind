@@ -27,7 +27,7 @@ public class SlotRlpEncodingTests
         RocksDbPersistence persistence = CreatePersistence(db, rlpWrap);
         byte[] oversized = new byte[33];
         Array.Fill(oversized, (byte)1);
-        WriteRawSlotToDb(db, rlpWrap ? Rlp.Encode((ReadOnlySpan<byte>)oversized).Bytes : oversized);
+        WriteRawSlotToDb(db, rlpWrap ? Rlp.Encode((ReadOnlySpan<byte>)oversized) : oversized);
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
         ValueHash256 address = ValueKeccak.Compute(Addr.Bytes);
         ValueHash256 slot = ValueKeccak.Compute(Slot.ToBigEndian());
@@ -106,7 +106,7 @@ public class SlotRlpEncodingTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(read, Is.EqualTo(value));
-            Assert.That(ReadStoredSlotBytes(db), Is.EqualTo(rlpWrap ? Rlp.Encode((ReadOnlySpan<byte>)stripped).Bytes : stripped));
+            Assert.That(ReadStoredSlotBytes(db), Is.EqualTo(rlpWrap ? Rlp.Encode((ReadOnlySpan<byte>)stripped) : stripped));
         }
     }
 
@@ -121,7 +121,7 @@ public class SlotRlpEncodingTests
         RocksDbPersistence persistence = CreatePersistence(db, rlpWrap: true);
 
         byte[] stripped = Bytes.FromHexString(strippedHex);
-        byte[] rlpLeaf = Rlp.Encode((ReadOnlySpan<byte>)stripped).Bytes; // trie leaf value == RLP(stripped)
+        byte[] rlpLeaf = Rlp.Encode((ReadOnlySpan<byte>)stripped); // trie leaf value == RLP(stripped)
         WriteSlotEncoded(persistence, rlpLeaf);
 
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
@@ -142,7 +142,7 @@ public class SlotRlpEncodingTests
         using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
         RocksDbPersistence persistence = CreatePersistence(db, rlpWrap: false);
 
-        byte[] rlpLeaf = Rlp.Encode((ReadOnlySpan<byte>)Bytes.FromHexString("0102")).Bytes;
+        byte[] rlpLeaf = Rlp.Encode((ReadOnlySpan<byte>)Bytes.FromHexString("0102"));
         Assert.That(() => WriteSlotEncoded(persistence, rlpLeaf), Throws.InstanceOf<NotSupportedException>());
     }
 

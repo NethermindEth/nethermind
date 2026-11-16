@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
+using Nethermind.Core.Specs;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using NSubstitute;
-using NSubstitute.ReturnsExtensions;
 using System.IO.Abstractions;
 using Autofac;
 using Nethermind.Core.Crypto;
@@ -17,6 +17,30 @@ namespace Nethermind.Era1.Test;
 
 public class EraExporterTests
 {
+    [Test]
+    public async Task Export_WritesTheBytesOfTheDecodedBlocks()
+    {
+        const int ChainLength = 16;
+        await using IContainer container = await EraTestModule.CreateExportedEraEnv(ChainLength);
+        IBlockTree blockTree = container.Resolve<IBlockTree>();
+        IReceiptStorage receiptStorage = container.Resolve<IReceiptStorage>();
+
+        using MemoryStream expected = new();
+        using (EraWriter writer = new(expected, container.Resolve<ISpecProvider>()))
+        {
+            for (ulong i = 0; i < ChainLength; i++)
+            {
+                Block block = blockTree.FindBlock(i, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)!;
+                await writer.Add(block, receiptStorage.Get(block, true, false));
+            }
+
+            await writer.Finalize();
+        }
+
+        string exported = Directory.GetFiles(container.ResolveTempDirPath(), "*.era1").Single();
+        Assert.That(await File.ReadAllBytesAsync(exported), Is.EqualTo(expected.ToArray()));
+    }
+
     [TestCase(1, 0UL, 1UL - 1, 1UL, 1)]
     [TestCase(3, 0UL, 3UL - 1, 1UL, 3)]
     [TestCase(16, 0UL, 16UL - 1, 16UL, 1)]
@@ -338,19 +362,30 @@ public class EraExporterTests
         Assert.That(() => { _ = sut.Export(tmpDirectory, 0UL, to); }, Throws.TypeOf<ArgumentException>());
     }
 
-    [Test]
-    public void Export_ReceiptsAreNull_ThrowEraException()
+    [Test, NonParallelizable]
+    public void Export_returns_transactions_when_receipts_fail([Values] bool cancel)
     {
         using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(10)
             .AddSingleton<IReceiptStorage>(Substitute.For<IReceiptStorage>())
             .Build();
+        IBlockTree tree = container.Resolve<IBlockTree>();
+        ulong number = Enumerable.Range(1, 9).Select(i => tree.FindBlock((ulong)i)!)
+            .First(block => block.Transactions.Length > 0).Number;
+        Transaction? decoded = null;
+        container.Resolve<IReceiptStorage>().Get(Arg.Any<Block>(), Arg.Any<bool>(), Arg.Any<bool>())
+            .Returns(call =>
+            {
+                decoded = call.Arg<Block>().Transactions[0];
+                decoded.Nonce = 123;
+                if (cancel) throw new OperationCanceledException();
+                return (TxReceipt[]?)null;
+            });
 
-        string tmpDirectory = container.ResolveTempDirPath();
-        container.Resolve<IReceiptStorage>().Get(Arg.Any<Block>(), Arg.Any<bool>(), Arg.Any<bool>()).ReturnsNull();
-
-        IEraExporter sut = container.Resolve<IEraExporter>();
-
-        Assert.That(() => sut.Export(tmpDirectory, 0UL, 1UL), Throws.TypeOf<EraException>());
+        IEraExporter exporter = container.Resolve<IEraExporter>();
+        Assert.That(() => exporter.Export(container.ResolveTempDirPath(), number, number),
+            cancel ? Throws.InstanceOf<OperationCanceledException>() : Throws.TypeOf<EraException>());
+        Assert.That(decoded, Is.Not.Null);
+        Assert.That(decoded!.Nonce, Is.EqualTo(0UL), "Returning to the pool resets the transaction nonce.");
     }
 
     /// <summary>The real file system, listing files in ordinal order or in reverse.</summary>

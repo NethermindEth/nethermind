@@ -249,15 +249,15 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
     public override void Encode(ref RlpWriter writer, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         => EncodeTx(ref writer, item, rlpBehaviors, forSigning: false, isEip155Enabled: false, chainId: 0);
 
-    public override Rlp Encode(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => EncodeTx(item, rlpBehaviors);
+    public override byte[] Encode(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => EncodeTx(item, rlpBehaviors);
 
-    public Rlp EncodeTx(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+    public byte[] EncodeTx(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
         byte[] bytes = new byte[GetLength(item, rlpBehaviors, forSigning, isEip155Enabled, chainId)];
         RlpWriter writer = RlpWriter.ContentWriter(bytes);
         EncodeTx(ref writer, item, rlpBehaviors, forSigning, isEip155Enabled, chainId);
         Rlp.CheckLength(in writer, bytes.Length);
-        return new Rlp(bytes);
+        return bytes;
     }
 
     /// <summary>Computes the Keccak hash of the encoding that <see cref="EncodeTx(ref RlpWriter, T, RlpBehaviors, bool, bool, ulong)"/> writes.</summary>

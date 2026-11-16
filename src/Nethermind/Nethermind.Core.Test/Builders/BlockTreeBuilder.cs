@@ -63,7 +63,7 @@ namespace Nethermind.Core.Test.Builders
                     if (!_noHead)
                     {
                         // so we automatically include in all tests my questionable decision of storing Head block header at 00...
-                        BlocksDb.Set(Keccak.Zero, Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes);
+                        BlocksDb.Set(Keccak.Zero, Rlp.Encode(Build.A.BlockHeader.TestObject));
                     }
 
                     _blockTree = new BlockTree(
@@ -322,13 +322,13 @@ namespace Nethermind.Core.Test.Builders
                 [
                     Build.A.Transaction
                         .WithValue(1)
-                        .WithData(Rlp.Encode(blockIndex).Bytes)
+                        .WithData(Rlp.Encode(blockIndex))
                         .WithGasLimit(GasCostOf.Transaction * 2)
                         .Signed(_ecdsa!, TestItem.PrivateKeyA, _specProvider.GetSpec((ulong)(blockIndex + 1), null).IsEip155Enabled)
                         .TestObject,
                     Build.A.Transaction
                         .WithValue(2)
-                        .WithData(Rlp.Encode(blockIndex + 1).Bytes)
+                        .WithData(Rlp.Encode(blockIndex + 1))
                         .WithGasLimit(GasCostOf.Transaction * 2)
                         .Signed(_ecdsa!, TestItem.PrivateKeyA, _specProvider.GetSpec((ulong)(blockIndex + 1), null).IsEip155Enabled)
                         .TestObject

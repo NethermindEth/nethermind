@@ -122,6 +122,28 @@ public class HeaderValidatorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void ValidateHash_reports_calculated_hash([Values(true, false, null)] bool? hashMatches)
+    {
+        BlockHeader header = _block.Header;
+        Hash256 calculatedHash = header.CalculateHash();
+        header.Hash = hashMatches switch
+        {
+            true => calculatedHash,
+            false => TestItem.KeccakA,
+            null => null
+        };
+
+        bool result = HeaderValidator.ValidateHash(header, out Hash256 actualHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(hashMatches is true));
+            Assert.That(actualHash, Is.EqualTo(calculatedHash));
+            Assert.That(HeaderValidator.ValidateHash(header), Is.EqualTo(hashMatches is true));
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_slot_number_not_greater_than_parent_is_still_valid()
     {
         // Arrange: Same setup as above
@@ -130,7 +152,7 @@ public class HeaderValidatorTests
             new OneLoggerLogManager(new(_testLogger)));
 
         ReadOnlyBlockAccessList emptyBal = new();
-        byte[] emptyEncodedBal = Rlp.Encode(emptyBal).Bytes;
+        byte[] emptyEncodedBal = Rlp.Encode(emptyBal);
         _parentBlock = Build.A.Block
             .WithNumber(5)
             .WithSlotNumber(10)
