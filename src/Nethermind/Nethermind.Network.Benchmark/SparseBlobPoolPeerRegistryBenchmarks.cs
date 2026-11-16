@@ -56,7 +56,7 @@ public class SparseBlobPoolPeerRegistryBenchmarks
         for (int i = 0; i < _hashes.Length; i++)
         {
             _hashes[i] = ValueKeccak.Compute(BitConverter.GetBytes(i));
-            if (!_registry.RecordAnnouncement(_peers[i / AnnouncementsPerPeer], _hashes[i].ToHash256(), BlobCellMask.Full))
+            if (!_registry.RecordAnnouncement(_peers[i / AnnouncementsPerPeer], _hashes[i], BlobCellMask.Full))
             {
                 throw new InvalidOperationException("Announcement was not tracked.");
             }
@@ -77,10 +77,9 @@ public class SparseBlobPoolPeerRegistryBenchmarks
         ValueHash256[] hashes = _hashes;
         for (int i = 0; i < AnnouncementsPerPeer; i++)
         {
-            Hash256 hash = hashes[i].ToHash256();
-            if (_registry.RecordAnnouncement(peer, hash, BlobCellMask.Full))
+            if (_registry.RecordAnnouncement(peer, hashes[i], BlobCellMask.Full))
             {
-                requested += _registry.GetRequestMask(hash, BlobCellMask.Full, ProviderProbabilityPercent).Count;
+                requested += _registry.GetRequestMask(hashes[i], BlobCellMask.Full, ProviderProbabilityPercent).Count;
             }
         }
 
