@@ -872,7 +872,7 @@ public class DebugModuleTests
         {
             Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Failure));
             Assert.That(actual.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
-            Assert.That(actual.Result.Error, Is.EqualTo($"block {blockHash} not found"));
+            Assert.That(actual.Result.Error, Is.EqualTo(isBadBlock ? $"bad block {blockHash} not found" : $"block {blockHash} not found"));
         }
     }
 
