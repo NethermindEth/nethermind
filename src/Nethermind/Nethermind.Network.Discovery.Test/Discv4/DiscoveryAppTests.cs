@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -305,7 +304,7 @@ public class DiscoveryAppTests
         await using IContainer container = CreateDiscoveryAppContainer(filterEnabled, subnetBucketing, out NetworkListenerState listenerState);
         listenerState.SetDiscoveryAddress(IPAddress.Any);
         await using DiscoveryApp app = container.Resolve<DiscoveryApp>();
-        IRoutingTable<Node, ValueHash256> routingTable = ResolveDiscv4<IRoutingTable<Node, ValueHash256>>(app);
+        IRoutingTable<Node, ValueHash256> routingTable = app.ResolveDiscv4Service<IRoutingTable<Node, ValueHash256>>();
 
         Node first = CreateNode(TestItem.PublicKeyA, "203.0.113.50");
         Node second = CreateNode(TestItem.PublicKeyB, secondIp);
@@ -329,7 +328,7 @@ public class DiscoveryAppTests
             out NetworkListenerState _);
         await using DiscoveryApp app = container.Resolve<DiscoveryApp>();
 
-        IKademliaAdapter adapter = ResolveDiscv4<IKademliaAdapter>(app);
+        IKademliaAdapter adapter = app.ResolveDiscv4Service<IKademliaAdapter>();
 
         Assert.That(adapter, Is.InstanceOf<AdmissionGatedKademliaAdapter>());
     }
@@ -368,14 +367,6 @@ public class DiscoveryAppTests
         builder.RegisterInstance(Substitute.For<INodeStatsManager>());
         builder.RegisterInstance(new Enode(TestItem.PrivateKeyF.PublicKey, IPAddress.Parse("8.8.8.8"), 30303, 30303)).As<IEnode>();
         return builder.Build();
-    }
-
-    private static T ResolveDiscv4<T>(DiscoveryApp app) where T : notnull
-    {
-        FieldInfo field = typeof(DiscoveryApp).GetField("_discv4Services", BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("DiscoveryApp no longer stores its discv4 lifetime scope.");
-        ILifetimeScope scope = (ILifetimeScope)field.GetValue(app)!;
-        return scope.Resolve<T>();
     }
 
     private static Node CreateNode(PublicKey id, string host) => new(id, host, 30303, 30303);

@@ -67,6 +67,8 @@ public class DiscoveryApp : KademliaDiscoveryApp
         UseKademliaServices(services.NodeSource, services.Kademlia);
     }
 
+    internal T ResolveDiscv4Service<T>() where T : notnull => _discv4Services.Resolve<T>();
+
     public override void AddNodeToDiscovery(Node node)
     {
         if (!TryCreateReachableNode(node, LocalIp, out Node? reachableNode))
