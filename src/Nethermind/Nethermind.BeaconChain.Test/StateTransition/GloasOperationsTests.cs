@@ -40,6 +40,37 @@ public class GloasOperationsTests
     }
 
     [Test]
+    public void Indexed_requests_keep_their_lookup_after_the_first_validator_write()
+    {
+        BeaconStateFulu seed = CreateFuluState(64);
+        Validator[] validators = seed.Validators!;
+        Validator target = validators.First(v => (v.Pubkey.GetHashCode() & 31) != (validators[0].Pubkey.GetHashCode() & 31));
+        byte[] credentials = new byte[32];
+        credentials[0] = Presets.EthWithdrawalPrefix;
+        target.WithdrawalCredentials = new Hash256(credentials);
+        ConsolidationRequest request = new() { SourcePubkey = target.Pubkey, TargetPubkey = target.Pubkey, SourceAddress = Address.Zero };
+        ValidatorPubkeyIndex index = new();
+        index.BeginBlock(Hash256.Zero);
+        index.Extend(validators);
+        index.AdmitBlock(Hash256.Zero);
+        // An indexed lookup never reads this unrelated bucket. A linear scan on the detached array would reach it first.
+        validators[0] = null!;
+        BeaconStateFulu parent = seed.Clone();
+        BeaconStateFulu child = parent.Clone();
+        Assert.That(child.ValidatorBuffer, Is.SameAs(parent.ValidatorBuffer));
+
+        index.BeginBlock(Hash256.Zero);
+        BeaconBlockBody body = new() { ExecutionRequests = new() { Consolidations = [request, request] } };
+        BlockProcessing.ProcessOperations(child, body, new EpochCache { RequestRegistry = index }, new PubkeyCache(), verifySignatures: false);
+
+        int targetIndex = Array.IndexOf(validators, target);
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(child.ValidatorBuffer, Is.Not.SameAs(parent.ValidatorBuffer));
+        Assert.That(child.ReadOnlyValidators[targetIndex].WithdrawalCredentials!.Bytes[0], Is.EqualTo(Presets.CompoundingWithdrawalPrefix));
+        Assert.That(parent.ReadOnlyValidators[targetIndex].WithdrawalCredentials!.Bytes[0], Is.EqualTo(Presets.EthWithdrawalPrefix));
+    }
+
+    [Test]
     public void Withdrawal_batches_match_sequential_operations([Values] bool gloas, [Values(0, 31)] int queued, [Values] bool overflow)
     {
         BeaconStateFulu fuluState = CreateFuluState(8);

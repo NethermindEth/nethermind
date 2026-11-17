@@ -516,13 +516,7 @@ public static partial class GloasBlockProcessing
         PendingDeposit[] pendingDeposits = state.PendingDeposits!;
         state.PendingDeposits = [];
         ProcessDepositRequests(state, requests.Deposits ?? []);
-        cache.IndexRequestPubkeys(state.ValidatorBuffer!.Items, requests.Withdrawals, requests.Consolidations);
-        PendingWithdrawalBatch withdrawals = new(state.PendingPartialWithdrawals!);
-        foreach (WithdrawalRequest request in requests.Withdrawals ?? [])
-            ProcessWithdrawalRequestCore(state, request, cache, withdrawals);
-        foreach (ConsolidationRequest request in requests.Consolidations ?? [])
-            ProcessConsolidationRequestCore(state, request, cache, withdrawals);
-        state.PendingPartialWithdrawals = withdrawals.ToArray();
+        ProcessWithdrawalAndConsolidationRequests(state, requests.Withdrawals, requests.Consolidations, cache, new(state.PendingPartialWithdrawals!));
         state.PendingDeposits = state.PendingDeposits.Length == 0 ? pendingDeposits : [.. pendingDeposits, .. state.PendingDeposits];
         BuilderRegistryBatch? builders = null;
         if ((requests.BuilderDeposits?.Length ?? 0) + (requests.BuilderExits?.Length ?? 0) > 1)

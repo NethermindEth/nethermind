@@ -224,7 +224,20 @@ public static partial class BlockProcessing
 #endif
         => ProcessWithdrawalRequestCore(state, request, cache, null);
 
-    private static void ProcessWithdrawalRequestCore(ForkState state, WithdrawalRequest request, EpochCache cache, PendingWithdrawalBatch? withdrawals)
+    private static void ProcessWithdrawalAndConsolidationRequests(ForkState state, WithdrawalRequest[]? withdrawals, ConsolidationRequest[]? consolidations,
+        EpochCache cache, PendingWithdrawalBatch pending)
+    {
+        // These requests can detach the validator array, but never change pubkeys or their indices.
+        Validator[] indexedValidators = state.ValidatorBuffer!.Items;
+        cache.IndexRequestPubkeys(indexedValidators, withdrawals, consolidations);
+        foreach (WithdrawalRequest request in withdrawals ?? [])
+            ProcessWithdrawalRequestCore(state, request, cache, pending, indexedValidators);
+        foreach (ConsolidationRequest request in consolidations ?? [])
+            ProcessConsolidationRequestCore(state, request, cache, pending, indexedValidators);
+        state.PendingPartialWithdrawals = pending.ToArray();
+    }
+
+    private static void ProcessWithdrawalRequestCore(ForkState state, WithdrawalRequest request, EpochCache cache, PendingWithdrawalBatch? withdrawals, Validator[]? indexedValidators = null)
     {
         bool isFullExitRequest = request.Amount == Presets.FullExitRequestAmount;
 
@@ -232,7 +245,7 @@ public static partial class BlockProcessing
         if ((withdrawals?.Count ?? state.PendingPartialWithdrawals!.Length) == Presets.PendingPartialWithdrawalsLimit && !isFullExitRequest)
             return;
 
-        if (cache.FindRequestValidator(state.ValidatorBuffer!.Items, request.ValidatorPubkey) is not int index)
+        if (cache.FindRequestValidator(indexedValidators ?? state.ValidatorBuffer!.Items, request.ValidatorPubkey) is not int index)
             return;
         Validator validator = state.ReadOnlyValidators[index];
 
@@ -288,11 +301,11 @@ public static partial class BlockProcessing
 #else
     public static partial void ProcessConsolidationRequest(ForkState state, ConsolidationRequest request, EpochCache cache)
 #endif
-        => ProcessConsolidationRequestCore(state, request, cache, null);
+        => ProcessConsolidationRequestCore(state, request, cache, null, state.ValidatorBuffer!.Items);
 
-    private static void ProcessConsolidationRequestCore(ForkState state, ConsolidationRequest request, EpochCache cache, PendingWithdrawalBatch? withdrawals)
+    private static void ProcessConsolidationRequestCore(ForkState state, ConsolidationRequest request, EpochCache cache, PendingWithdrawalBatch? withdrawals, Validator[] indexedValidators)
     {
-        int? source = cache.FindRequestValidator(state.ValidatorBuffer!.Items, request.SourcePubkey);
+        int? source = cache.FindRequestValidator(indexedValidators, request.SourcePubkey);
         if (IsValidSwitchToCompoundingRequest(state, request, source))
         {
             SwitchToCompoundingValidator(state, source!.Value);
@@ -309,7 +322,7 @@ public static partial class BlockProcessing
 
         if (source is not int sourceIndex)
             return;
-        if (cache.FindRequestValidator(state.ValidatorBuffer!.Items, request.TargetPubkey) is not int targetIndex)
+        if (cache.FindRequestValidator(indexedValidators, request.TargetPubkey) is not int targetIndex)
             return;
         Validator sourceValidator = state.ReadOnlyValidators[sourceIndex];
         Validator targetValidator = state.ReadOnlyValidators[targetIndex];

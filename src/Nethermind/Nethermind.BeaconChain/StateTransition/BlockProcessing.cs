@@ -314,16 +314,7 @@ public static partial class BlockProcessing
         }
         ExecutionRequests requests = body.ExecutionRequests!;
         ProcessDepositRequests(state, requests.Deposits ?? [], cache.SigningSpec);
-        cache.IndexRequestPubkeys(state.ValidatorBuffer!.Items, requests.Withdrawals, requests.Consolidations);
-        foreach (WithdrawalRequest request in requests.Withdrawals ?? [])
-        {
-            ProcessWithdrawalRequestCore(state, request, cache, withdrawals);
-        }
-        foreach (ConsolidationRequest request in requests.Consolidations ?? [])
-        {
-            ProcessConsolidationRequestCore(state, request, cache, withdrawals);
-        }
-        state.PendingPartialWithdrawals = withdrawals.ToArray();
+        ProcessWithdrawalAndConsolidationRequests(state, requests.Withdrawals, requests.Consolidations, cache, withdrawals);
         state.PendingDeposits = state.PendingDeposits.Length == 0 ? pendingDeposits : [.. pendingDeposits, .. state.PendingDeposits];
     }
 
