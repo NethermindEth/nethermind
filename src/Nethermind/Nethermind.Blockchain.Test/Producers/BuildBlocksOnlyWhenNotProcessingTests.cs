@@ -72,7 +72,6 @@ public class BuildBlocksOnlyWhenNotProcessingTests
         Block rejected = Build.A.Block.WithNumber(1).TestObject;
         context.BlockTree.Head.Returns(context.DefaultBlock);
 
-        context.BlockProcessingQueue.BlockAdded += Raise.EventWith(new BlockEventArgs(rejected));
         context.BlockProcessingQueue.ProcessingQueueEmpty += Raise.Event();
         context.BlockTree.NewBestSuggestedBlock += Raise.EventWith(new BlockEventArgs(rejected));
 
@@ -85,16 +84,16 @@ public class BuildBlocksOnlyWhenNotProcessingTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public async Task should_delay_block_production_while_an_added_block_is_processed()
+    public async Task should_delay_block_production_while_the_processing_queue_is_not_empty()
     {
         Context context = new();
-        context.BlockProcessingQueue.IsEmpty.Returns(true);
-        context.BlockProcessingQueue.BlockAdded += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(1).TestObject));
+        context.BlockProcessingQueue.ProcessingQueueEmpty += Raise.Event();
+        context.BlockProcessingQueue.IsEmpty.Returns(false);
 
         Task<Block?> buildTask = context.MainBlockProductionTrigger.BuildBlock();
         Assert.That(buildTask.IsCompleted, Is.False);
 
-        context.BlockProcessingQueue.ProcessingQueueEmpty += Raise.Event();
+        context.BlockProcessingQueue.IsEmpty.Returns(true);
         Block? block = await buildTask;
 
         using (Assert.EnterMultipleScope())

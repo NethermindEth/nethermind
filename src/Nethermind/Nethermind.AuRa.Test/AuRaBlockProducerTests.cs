@@ -133,7 +133,7 @@ namespace Nethermind.AuRa.Test
 
         [Test]
         public async Task Does_not_produce_block_when_ProcessingQueueEmpty_not_raised() =>
-            await StartStop(new Context(), expectBlock: false, processingQueueEmpty: false, blockAddedForProcessing: true);
+            await StartStop(new Context(), expectBlock: false, processingQueueEmpty: false, queueBecomesBusy: true);
 
         [Test]
         public async Task Does_not_produce_block_when_QueueNotEmpty()
@@ -248,10 +248,10 @@ namespace Nethermind.AuRa.Test
         }
 
         [Test]
-        public async Task Does_not_produce_block_when_a_block_is_added_for_processing() =>
-            await StartStop(new Context(), expectBlock: false, blockAddedForProcessing: true);
+        public async Task Does_not_produce_block_when_the_processing_queue_becomes_busy() =>
+            await StartStop(new Context(), expectBlock: false, queueBecomesBusy: true);
 
-        private async Task StartStop(Context context, bool expectBlock, bool processingQueueEmpty = true, bool blockAddedForProcessing = false)
+        private async Task StartStop(Context context, bool expectBlock, bool processingQueueEmpty = true, bool queueBecomesBusy = false)
         {
             TaskCompletionSource processedEvent = new(TaskCreationOptions.RunContinuationsAsynchronously);
             context.BlockTree.SuggestBlock(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
@@ -274,9 +274,9 @@ namespace Nethermind.AuRa.Test
                     context.BlockProcessingQueue.ProcessingQueueEmpty += Raise.Event();
                 }
 
-                if (blockAddedForProcessing)
+                if (queueBecomesBusy)
                 {
-                    context.BlockProcessingQueue.BlockAdded += Raise.EventWith(new BlockEventArgs(Build.A.Block.TestObject));
+                    context.BlockProcessingQueue.IsEmpty.Returns(false);
                     await Task.Delay(context.StepDelay * 5);
                     context.BlockTree.ClearReceivedCalls();
                     Interlocked.Exchange(ref processedEvent, new(TaskCreationOptions.RunContinuationsAsynchronously));

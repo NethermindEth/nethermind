@@ -35,19 +35,8 @@ namespace Nethermind.Consensus.Producers
             _canProduce = waitForInitialSync ? 0 : 1;
             _logger = logManager.GetClassLogger<BuildBlocksOnlyWhenNotProcessing>();
 
-            _blockProcessingQueue.BlockAdded += OnBlockAddedToProcessingQueue;
             _blockProcessingQueue.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
             _blockProductionTrigger.TriggerBlockProduction += OnTriggerBlockProduction;
-        }
-
-        private void OnBlockAddedToProcessingQueue(object? sender, BlockEventArgs e)
-        {
-            Interlocked.Exchange(ref _canProduce, 0);
-            Interlocked.Exchange(ref Metrics.CanProduceBlocks, 0);
-            if (_logger.IsTrace)
-                _logger.Trace(
-                    $"Can not produce a block, {e.Block.ToString(Block.Format.FullHashAndNumber)} was added for processing" +
-                    $"{Environment.NewLine}{new StackTrace()}");
         }
 
         private void OnBlockProcessorQueueEmpty(object? sender, EventArgs e)
@@ -113,7 +102,6 @@ namespace Nethermind.Consensus.Producers
         private void DetachEvents()
         {
             _blockProductionTrigger.TriggerBlockProduction -= OnTriggerBlockProduction;
-            _blockProcessingQueue.BlockAdded -= OnBlockAddedToProcessingQueue;
             _blockProcessingQueue.ProcessingQueueEmpty -= OnBlockProcessorQueueEmpty;
         }
     }
