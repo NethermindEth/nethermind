@@ -26,6 +26,7 @@ using static Nethermind.Evm.VirtualMachineStatics;
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Evm.Precompiles")]
 [assembly: InternalsVisibleTo("Nethermind.Evm.Benchmark")]
+[assembly: InternalsVisibleTo("Nethermind.Blockchain")]
 namespace Nethermind.Evm;
 
 using Int256;
@@ -877,12 +878,20 @@ public partial class VirtualMachine<TGasPolicy>(
             {
                 // The deposit failure consumed the gas the frame returned, so it ends with none left.
                 _txTracer.ReportActionRemainingGas(0);
+                if (spec.LimitCodeSize && code.Length > spec.MaxCodeSize)
+                {
+                    TraceCodeDepositError("max code size exceeded");
+                }
+                else if (!hasEnoughGas && !invalidCode && executionDepositCost != ulong.MaxValue)
+                {
+                    TraceCodeDepositError("contract creation code storage out of gas");
+                }
                 _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas);
             }
         }
         else if (!chargedCodeDeposit && IsTracingActions)
         {
-            _txTracer.ReportActionEnd(0UL, callCodeOwner, code);
+            _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas), callCodeOwner, code);
         }
     }
 
@@ -1426,14 +1435,28 @@ public partial class VirtualMachine<TGasPolicy>(
         else if (currentState.ExecutionType.IsAnyCreate())
         {
             ulong gasAvailable = TGasPolicy.GetRemainingGas(currentState.Gas);
+            // EIP-3541 prefix validation precedes deposit gas, but not the EIP-170 size limit.
+            if (CodeDepositHandler.CodeIsInvalid(spec, outputBytes) && codeDepositGasCost != ulong.MaxValue)
+            {
+                _txTracer.ReportActionRemainingGas(0);
+                _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
+            }
             // If available gas is insufficient to cover the code deposit cost...
-            if (!hasEnoughGasForCodeDeposit)
+            else if (!hasEnoughGasForCodeDeposit)
             {
                 // When the spec mandates charging for top-level creation, report an out-of-gas error,
                 // which consumes all the frame's gas.
                 if (spec.ChargeForTopLevelCreate)
                 {
                     _txTracer.ReportActionRemainingGas(0);
+                    if (spec.LimitCodeSize && outputBytes.Length > spec.MaxCodeSize)
+                    {
+                        TraceCodeDepositError("max code size exceeded");
+                    }
+                    else if (codeDepositGasCost != ulong.MaxValue)
+                    {
+                        TraceCodeDepositError("contract creation code storage out of gas");
+                    }
                     _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
                 }
                 // Otherwise, report a successful action end with the remaining gas.
@@ -1441,12 +1464,6 @@ public partial class VirtualMachine<TGasPolicy>(
                 {
                     _txTracer.ReportActionEnd(gasAvailable, currentState.To, outputBytes);
                 }
-            }
-            // If the generated code is invalid (e.g., violates EIP-3541 by starting with 0xEF), report an invalid code error.
-            else if (CodeDepositHandler.CodeIsInvalid(spec, outputBytes))
-            {
-                _txTracer.ReportActionRemainingGas(0);
-                _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
             }
             // In the successful contract creation case, deduct the code deposit gas cost and report a normal action end.
             else
@@ -1460,6 +1477,9 @@ public partial class VirtualMachine<TGasPolicy>(
             _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(currentState.Gas), outputBytes);
         }
     }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void TraceCodeDepositError(string error) => _txTracer.ReportActionErrorDetails(error, actionOnly: true);
 
     private unsafe CallResult RunPrecompile(VmState<TGasPolicy> state) =>
         GetExecutionHandlers().RunPrecompile(this, state);
@@ -2015,6 +2035,10 @@ public partial class VirtualMachine<TGasPolicy>(
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void TraceActionErrorDetailsCore(string error) => _txTracer.ReportActionErrorDetails(error);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal void TraceInvalidOpcode(Instruction opcode) =>
+        _txTracer.ReportActionErrorDetails($"invalid opcode: {InstructionNames.GetName(opcode)}", actionOnly: true);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     internal void EndInstructionTrace(ulong gasAvailable, EvmExceptionType? evmExceptionType = null)

@@ -5,6 +5,7 @@ using System.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Persistence;
@@ -103,9 +104,14 @@ public interface IPersistence
     {
         void SelfDestruct(Address addr);
         void SetAccount(Address addr, Account? account);
+
+        /// <summary>Writes an account that is already in the slim account encoding, as persisted snapshots hold it.</summary>
+        /// <remarks>Lets a store that keeps accounts in this encoding write the bytes as they are, without decoding them.</remarks>
+        void SetSlimAccount(Address addr, scoped ReadOnlySpan<byte> slimRlp) => SetAccount(addr, AccountDecoder.Slim.Decode(slimRlp));
+
         void SetStorage(Address addr, in UInt256 slot, in UInt256? value);
         void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp);
-        void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp);
+        void SetStorageTrieNode(in ValueHash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp);
 
         /// <summary>
         /// Writes a slot whose value is already the trie-leaf RLP byte string (<c>RLP(stripped)</c>), as produced
@@ -120,13 +126,14 @@ public interface IPersistence
 
         /// <summary>
         /// Does what <see cref="SelfDestruct"/> does, deleting the storage slots and storage trie nodes, for every
-        /// account whose path is within <c>[<paramref name="fromPath"/>, <paramref name="toPath"/>]</c>.
+        /// account whose path is within <c>[<paramref name="fromPath"/>, <paramref name="toPath"/>]</c>, except
+        /// <paramref name="keptAccount"/> when it is given.
         /// </summary>
         /// <remarks>
         /// Storage is keyed by the first 20 bytes of the account path, so the bounds are compared on those bytes only,
         /// as in <see cref="DeleteAccountRange"/>.
         /// </remarks>
-        void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath);
+        void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount);
 
         /// <summary>
         /// Deletes every state trie node whose node and subtree are entirely contained within the value range

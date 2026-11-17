@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain.Find;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -21,6 +22,7 @@ internal sealed class WitnessCall(
     IBlockFinder blockFinder,
     IBlockchainBridge blockchainBridge,
     ISpecProvider specProvider,
+    IPoSSwitcher poSSwitcher,
     IJsonRpcConfig jsonRpcConfig)
 {
     /// <summary>
@@ -65,7 +67,7 @@ internal sealed class WitnessCall(
         BlockHeader callHeader = sourceHeader.Clone();
         callHeader.GasUsed = 0;
         callHeader.MixHash = sourceHeader.MixHash;
-        callHeader.IsPostMerge = sourceHeader.Difficulty == 0;
+        poSSwitcher.RestorePostMergeForCall(callHeader);
 
         IReleaseSpec releaseSpec = specProvider.GetSpec(callHeader);
         if (!callRequest.ShouldSetBaseFee())
