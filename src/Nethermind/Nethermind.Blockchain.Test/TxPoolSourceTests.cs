@@ -402,7 +402,7 @@ public class TxPoolSourceTests
         byte[][] versionedHashes = new byte[blobCount][];
         byte[][] blobs = new byte[blobCount][];
         byte[][] commitments = new byte[blobCount][];
-        byte[][] proofs = new byte[blobCount][];
+        byte[] proofs = [];
         for (int i = 0; i < blobCount; i++)
         {
             byte[] hash = new byte[Eip4844Constants.BytesPerBlobVersionedHash];
@@ -412,7 +412,6 @@ public class TxPoolSourceTests
             // Non-empty so the sidecar reads as complete rather than locally sampled; the bytes are never verified here.
             blobs[i] = [1];
             commitments[i] = [];
-            proofs[i] = [];
         }
 
         byte[] senderBytes = new byte[Address.Size];
