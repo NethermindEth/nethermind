@@ -151,8 +151,8 @@ public partial class DebugRpcModuleTests
     /// <summary>
     /// As in geth's <c>debug_traceCall</c>, a <c>prevRandao</c> override decides PREVRANDAO from London on, judged on the
     /// overridden block number; before London a block from before the merge reads its difficulty, also with
-    /// <c>txIndex</c> and with a blob fee override, while a block that is already post-merge keeps reading its mix hash,
-    /// which the override sets. The head itself is not changed.
+    /// <c>txIndex</c> and with a blob fee override. In Nethermind, a block that is already post-merge keeps reading its mix
+    /// hash, which the override sets, even below London. The head itself is not changed.
     /// </summary>
     [TestCase(true, null, null)]
     [TestCase(false, null, null)]
