@@ -616,7 +616,7 @@ namespace Nethermind.Synchronization
         public void PrefetchReceipts(IReadOnlyList<Hash256> hashes, int start, int count)
         {
             using ArrayPoolSpan<(ulong Number, ValueHash256 Hash)> blocks = new(count);
-            ReadOnlyMemory<(ulong Number, ValueHash256 Hash)> known = blocks.AsReadOnlyMemory()[.._headerStore.GetKnownBlocks(hashes, start, count, blocks)];
+            ReadOnlySpan<(ulong Number, ValueHash256 Hash)> known = blocks.Slice(0, _headerStore.GetKnownBlocks(hashes, start, count, blocks));
             _headerStore.Prefetch(known);
             _receiptFinder.Prefetch(known);
         }

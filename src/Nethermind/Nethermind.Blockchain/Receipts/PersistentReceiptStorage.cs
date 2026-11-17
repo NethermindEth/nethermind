@@ -731,9 +731,9 @@ namespace Nethermind.Blockchain.Receipts
         /// <remarks>Gives the compact values only; the block's receipts not yet written are left to <see cref="Get(Hash256, bool)"/>.</remarks>
         /// <inheritdoc/>
         /// <remarks>Also prefetches the block bodies, which the compact receipts encoding needs. Receipts stored under hash keys are not prefetched.</remarks>
-        public void Prefetch(ReadOnlyMemory<(ulong Number, ValueHash256 Hash)> blocks)
+        public void Prefetch(ReadOnlySpan<(ulong Number, ValueHash256 Hash)> blocks)
         {
-            if (!_legacyHashKey) KeyValueStoreExtensions.PrefetchBlockNumPrefixed(_receiptsDb, blocks.Span);
+            if (!_legacyHashKey) KeyValueStoreExtensions.PrefetchBlockNumPrefixed(_receiptsDb, blocks);
             _blockStore.Prefetch(blocks);
         }
 

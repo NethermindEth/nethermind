@@ -43,7 +43,7 @@ namespace Nethermind.Blockchain.Receipts
 
         /// <summary>Starts reading the stored receipts of blocks, and what <see cref="TryAppendNetworkReceipts"/> needs with them, before the reads that need them.</summary>
         /// <remarks>Returns before the reads complete. A finder that cannot read ahead does nothing.</remarks>
-        void Prefetch(ReadOnlyMemory<(ulong Number, ValueHash256 Hash)> blocks) { }
+        void Prefetch(ReadOnlySpan<(ulong Number, ValueHash256 Hash)> blocks) { }
 
         /// <summary>Gets the recovered receipt of one transaction without decoding the other receipts or transactions of its block.</summary>
         /// <param name="block">The block containing the transaction. Its memory stays owned by the caller.</param>
