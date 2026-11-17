@@ -61,6 +61,8 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     private readonly Context _ctx;
     private readonly TracerFunctions _functions;
 
+    internal bool IsFrameTransaction { get; init; }
+
     /// <summary>Creates a JavaScript tracer using the supplied execution context and engine.</summary>
     /// <remarks>SELFDESTRUCT refunds are credited at transaction finalization, avoiding a second credit at the opcode boundary.</remarks>
     public GethLikeJavaScriptTxTracer(
@@ -421,7 +423,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     public override void ReportActionRevert(ulong gasLeft, ReadOnlyMemory<byte> output)
     {
         base.ReportActionRevert(gasLeft, output);
-        if (_depth == 0) _rootReverted = true;
+        if (_depth == 0 && !IsFrameTransaction) _rootReverted = true;
         InvokeExit(gasLeft, output, EvmExceptionType.Revert.GetEvmExceptionDescription());
     }
 

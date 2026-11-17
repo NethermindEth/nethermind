@@ -65,7 +65,10 @@ public class GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec 
         Engine engine = new(spec, _runtime);
         try
         {
-            return _currentTxTracer = new GethLikeJavaScriptTxTracer(engine, _db, _ctx, options);
+            return _currentTxTracer = new GethLikeJavaScriptTxTracer(engine, _db, _ctx, options)
+            {
+                IsFrameTransaction = tx!.SupportsFrames
+            };
         }
         catch
         {
