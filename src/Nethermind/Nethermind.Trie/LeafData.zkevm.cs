@@ -9,6 +9,15 @@ namespace Nethermind.Trie;
 
 public sealed partial class LeafData
 {
+    private CappedArray<byte> _value;
+    private byte[]? _valueSource;
+    private int _valueStart;
+    private int _valueLength;
+
+    public CappedArray<byte> Value => _valueSource is null ? _value : CopyValue();
+
+    internal ReadOnlySpan<byte> ValueSpan => _valueSource is null ? _value.AsSpan() : _valueSource.AsSpan(_valueStart, _valueLength);
+
     private byte[]? _key;
 
     // The hex-prefix key in the RLP the leaf was decoded from, expanded into nibbles only when first read.
@@ -35,6 +44,16 @@ public sealed partial class LeafData
         _compactKeyStart = compactKeyStart;
         _compactKeyLength = compactKeyLength;
         _value = value;
+    }
+
+    internal LeafData(byte[] rlp, int compactKeyStart, int compactKeyLength, int valueStart, int valueLength)
+    {
+        _compactKeySource = rlp;
+        _compactKeyStart = compactKeyStart;
+        _compactKeyLength = compactKeyLength;
+        _valueSource = rlp;
+        _valueStart = valueStart;
+        _valueLength = valueLength;
     }
 
     /// <summary>A leaf keyed by the nibbles of <paramref name="bytes"/> from nibble <paramref name="start"/> on, kept in hex-prefix form.</summary>
@@ -66,6 +85,14 @@ public sealed partial class LeafData
         _key is null && _compactKeySource is not null
             ? new LeafData(_compactKeySource, _compactKeyStart, _compactKeyLength, value) { StorageRoot = StorageRoot }
             : new LeafData(_key, value, StorageRoot);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private CappedArray<byte> CopyValue()
+    {
+        _value = new CappedArray<byte>(_valueSource.AsSpan(_valueStart, _valueLength).ToArray());
+        _valueSource = null;
+        return _value;
+    }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private byte[]? DecodeCompactKey()

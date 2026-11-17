@@ -7,9 +7,11 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 using NUnit.Framework;
@@ -33,7 +35,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             };
 
             AccountRangeMessageSerializer serializer = new();
-            Assert.That(serializer.Serialize(msg).ToHexString(), Is.EqualTo("c301c0c0"));
+            Assert.That(serializer.SerializeToArray(msg).ToHexString(), Is.EqualTo("c301c0c0"));
         }
 
         [Test]
@@ -47,7 +49,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             };
 
             AccountRangeMessageSerializer serializer = new();
-            SerializerTester.TestZero(serializer, msg);
+            SerializerTester.Test(serializer, msg);
         }
 
         [Test]
@@ -66,13 +68,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
 
             AccountRangeMessage msg = new()
             {
-                RequestId = MessageConstants.Random.NextLong(),
+                RequestId = 1,
                 PathsWithAccounts = new ArrayPoolList<PathWithAccount>(2) { new(TestItem.KeccakA, acc01), new(TestItem.KeccakB, acc02) },
                 Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(2) { TestItem.RandomDataA, TestItem.RandomDataB })
             };
 
             AccountRangeMessageSerializer serializer = new();
-            SerializerTester.TestZero(serializer, msg);
+            SerializerTester.Test(serializer, msg,
+                "f8df01f8d2f867a003783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760f8448001a010d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470a054a8c0ab653c15bfb48b47fd011ba2b9617af01cb45cab344acd57c924d56798" +
+                "f867a01f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111f8448002a020d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470a049d03a195e239b52779866b33024210fc7dc66e9c2998975c0aa45c1702549d5c9830102038404050607");
         }
 
         [Test]
@@ -92,7 +96,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             };
 
             AccountRangeMessageSerializer serializer = new();
-            SerializerTester.TestZero(serializer, msg);
+            SerializerTester.Test(serializer, msg);
         }
 
         [TestCase(SnapMessageLimits.MaxProofs, false)]
@@ -108,7 +112,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             };
 
             AccountRangeMessageSerializer serializer = new();
-            byte[] serialized = serializer.Serialize(msg);
+            byte[] serialized = serializer.SerializeToArray(msg);
 
             if (shouldThrow)
             {
@@ -127,13 +131,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             // A sequence header declaring one content byte and carrying none. AccountDecoder yields no
             // account without reading past that header, so the entry's declared length is consumed
             // exactly and its checkpoint still passes.
-            Rlp accountCarryingNothing = new([0xc1]);
-            Rlp[] entries = [Rlp.Encode(Rlp.Encode(TestItem.KeccakA), accountCarryingNothing)];
-            byte[] serialized = Rlp.Encode(Rlp.Encode(1), Rlp.Encode(entries), Rlp.OfEmptyList).Bytes;
+            byte[] accountCarryingNothing = [0xc1];
+            byte[][] entries = [RlpTestHelper.EncodeSequence(Rlp.Encode(TestItem.KeccakA), accountCarryingNothing)];
+            byte[] serialized = RlpTestHelper.EncodeSequence(Rlp.Encode(1), RlpTestHelper.EncodeSequence(entries), RlpTestHelper.OfEmptyList);
 
             AccountRangeMessageSerializer serializer = new();
 
-            Assert.Throws<RlpException>(() => serializer.Deserialize(serialized));
+            Assert.Throws<RlpReaderException>(() => serializer.Deserialize(serialized));
         }
 
         [Test]
@@ -153,7 +157,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             };
 
             AccountRangeMessageSerializer serializer = new();
-            SerializerTester.TestZero(serializer, msg);
+            SerializerTester.Test(serializer, msg);
         }
 
         [Test]
@@ -162,7 +166,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             byte[] serialized = EncodeMessageWithNullAccountPath();
             AccountRangeMessageSerializer serializer = new();
 
-            Assert.That(() => serializer.Deserialize(serialized), Throws.InstanceOf<RlpException>());
+            Assert.That(() => serializer.Deserialize(serialized), Throws.InstanceOf<RlpReaderException>());
         }
 
         [Test]
@@ -171,7 +175,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             byte[] serialized = EncodeMessageWithNullAccount();
             AccountRangeMessageSerializer serializer = new();
 
-            Assert.That(() => serializer.Deserialize(serialized), Throws.TypeOf<RlpException>());
+            Assert.That(() => serializer.Deserialize(serialized), Throws.TypeOf<RlpReaderException>());
         }
 
         private static byte[] EncodeMessageWithNullAccountPath()
@@ -190,7 +194,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
                 + Rlp.LengthOfSequence(0);
 
             byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
-            RlpWriter writer = new(bytes);
+            RlpWriter writer = RlpWriter.ContentWriter(bytes);
             writer.StartSequence(contentLength);
             writer.Encode(1L);
             writer.StartSequence(pathsWithAccountsContentLength);
@@ -210,7 +214,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
                 + Rlp.LengthOfSequence(0);
 
             byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
-            RlpWriter writer = new(bytes);
+            RlpWriter writer = RlpWriter.ContentWriter(bytes);
             writer.StartSequence(contentLength);
             writer.Encode(1L);
             writer.StartSequence(pathsWithAccountsContentLength);

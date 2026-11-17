@@ -29,7 +29,7 @@ internal class BlockProductionMinGasPriceTests
     [TestCase(1ul, false, TestName = "Default one wei floor skips a transaction paying the chain minimum")]
     public void MinGasPriceTxFilter_TxAtChainMinimum_WithXdcBaseFee(ulong configuredFloor, bool expectedAllowed)
     {
-        XdcReleaseSpec spec = new() { IsEip1559Enabled = true, BaseFeeCalculator = new XdcBaseFeeCalculator() };
+        XdcReleaseSpec spec = new() { IsEip1559Enabled = true, BaseFeeCalculator = new XdcBaseFeeCalculator(new XdcChainSpecEngineParameters()) };
         MinGasPriceTxFilter filter = new(new BlocksConfig { MinGasPrice = configuredFloor });
 
         Transaction tx = Build.A.Transaction
@@ -38,7 +38,7 @@ internal class BlockProductionMinGasPriceTests
             .WithTo(TestItem.AddressC)
             .TestObject;
 
-        AcceptTxResult result = filter.IsAllowed(tx, Build.A.BlockHeader.TestObject, spec);
+        AcceptTxResult result = filter.IsAllowed(tx, new TxFilterContext(Build.A.BlockHeader.TestObject, spec));
 
         Assert.That((bool)result, Is.EqualTo(expectedAllowed), result.ToString());
     }

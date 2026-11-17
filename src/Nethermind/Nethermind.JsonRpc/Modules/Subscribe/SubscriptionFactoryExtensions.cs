@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Facade.Filters;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -65,9 +66,14 @@ public static class SubscriptionFactoryExtensions
         this ISubscriptionFactory subscriptionFactory,
         ITxPool? txPool,
         ISpecProvider? specProvider,
+        IBlockFinder? blockFinder,
+        ulong secondsPerSlot,
         ILogManager? logManager)
     {
-        PendingTransactionPayloadCache payloads = new(specProvider ?? throw new ArgumentNullException(nameof(specProvider)));
+        PendingTransactionPayloadCache payloads = new(
+            specProvider ?? throw new ArgumentNullException(nameof(specProvider)),
+            blockFinder ?? throw new ArgumentNullException(nameof(blockFinder)),
+            secondsPerSlot);
         subscriptionFactory.RegisterSubscriptionType<TransactionsOption?>(
             SubscriptionType.EthSubscription.NewPendingTransactions,
             (jsonRpcDuplexClient, args) => new NewPendingTransactionsSubscription(jsonRpcDuplexClient, txPool, payloads, logManager, args));
@@ -116,13 +122,14 @@ public static class SubscriptionFactoryExtensions
         IEthSyncingInfo ethSyncingInfo,
         IPeerPool? peerPool,
         IRlpxHost? rlpxHost,
-        IBlockForRpcFactory blockForRpcFactory
+        IBlockForRpcFactory blockForRpcFactory,
+        ulong secondsPerSlot
         )
     {
         subscriptionFactory.RegisterNewHeadSubscription(blockTree, logManager, specProvider, blockForRpcFactory);
         subscriptionFactory.RegisterLogsSubscription(receiptMonitor, filterStore, blockTree, logManager);
         subscriptionFactory.RegisterTransactionReceiptsSubscription(receiptMonitor, blockTree, specProvider, logManager);
-        subscriptionFactory.RegisterNewPendingTransactionsSubscription(txPool, specProvider, logManager);
+        subscriptionFactory.RegisterNewPendingTransactionsSubscription(txPool, specProvider, blockTree, secondsPerSlot, logManager);
         subscriptionFactory.RegisterDroppedPendingTransactionsSubscription(txPool, logManager);
         subscriptionFactory.RegisterSyncingSubscription(blockTree, ethSyncingInfo, logManager);
         subscriptionFactory.RegisterPeerEventsSubscription(logManager, peerPool, rlpxHost);
@@ -137,13 +144,14 @@ public static class SubscriptionFactoryExtensions
         FilterStore? filterStore,
         ITxPool? txPool,
         IEthSyncingInfo ethSyncingInfo,
-        IBlockForRpcFactory blockForRpcFactory
+        IBlockForRpcFactory blockForRpcFactory,
+        ulong secondsPerSlot
         )
     {
         subscriptionFactory.RegisterNewHeadSubscription(blockTree, logManager, specProvider, blockForRpcFactory);
         subscriptionFactory.RegisterLogsSubscription(receiptMonitor, filterStore, blockTree, logManager);
         subscriptionFactory.RegisterTransactionReceiptsSubscription(receiptMonitor, blockTree, specProvider, logManager);
-        subscriptionFactory.RegisterNewPendingTransactionsSubscription(txPool, specProvider, logManager);
+        subscriptionFactory.RegisterNewPendingTransactionsSubscription(txPool, specProvider, blockTree, secondsPerSlot, logManager);
         subscriptionFactory.RegisterDroppedPendingTransactionsSubscription(txPool, logManager);
         subscriptionFactory.RegisterSyncingSubscription(blockTree, ethSyncingInfo, logManager);
     }

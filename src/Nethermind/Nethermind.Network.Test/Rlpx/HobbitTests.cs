@@ -35,7 +35,7 @@ namespace Nethermind.Network.Test.Rlpx
             using GetBlockBodiesMessage message = new(hashes);
 
             GetBlockBodiesMessageSerializer serializer = new();
-            byte[] data = serializer.Serialize(message);
+            byte[] data = serializer.SerializeToArray(message);
 
             Packet packet = new("eth", 5, data);
             Run(packet, inbound, outbound, framingEnabled);
@@ -104,7 +104,7 @@ namespace Nethermind.Network.Test.Rlpx
             GetReceiptsMessage message = new(hashes.ToPooledList());
 
             GetReceiptsMessageSerializer serializer = new();
-            byte[] data = serializer.Serialize(message);
+            byte[] data = serializer.SerializeToArray(message);
             Packet packet = new("eth", 7, data);
             Packet decoded = Run(packet, inbound, outbound, framingEnabled);
 

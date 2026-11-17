@@ -88,11 +88,18 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task FrameGas_rejects_unsupported_overrides_before_frame_validation(
         [Values("eth_call", "eth_estimateGas")] string method,
-        [Values("beaconRoot", "withdrawals", "both", "null")] string field)
+        [Values("beaconRoot", "withdrawals", "both", "null")] string field,
+        [Values("none", "conflictingStorage", "invalidMove")] string stateOverrideKind)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
         FrameTransactionForRpc request = FrameGasRequest();
         request.Frames![1].Mode = byte.MaxValue;
+        object? stateOverride = stateOverrideKind switch
+        {
+            "conflictingStorage" => new Dictionary<string, object> { [TestItem.AddressD.ToString()] = new { state = new { }, stateDiff = new { } } },
+            "invalidMove" => new Dictionary<string, object> { [TestItem.AddressD.ToString()] = new { movePrecompileToAddress = TestItem.AddressE.ToString() } },
+            _ => null
+        };
         object blockOverride = JsonSerializer.Deserialize<object>(field switch
         {
             "beaconRoot" => $"{{\"beaconRoot\":\"{Hash256.Zero}\"}}",
@@ -101,10 +108,12 @@ public partial class EthRpcModuleTests
             _ => """{"beaconRoot":null,"withdrawals":null}"""
         })!;
 
-        string response = await ctx.Test.TestEthRpc(method, request, "latest", null, blockOverride);
+        string response = await ctx.Test.TestEthRpc(method, request, "latest", stateOverride, blockOverride);
         string expectedMessage = field switch
         {
             "withdrawals" => BlockOverride.WithdrawalsNotSupported,
+            "null" when stateOverrideKind == "conflictingStorage" => $"account {TestItem.AddressD.ToString(withEip55Checksum: true)} has both 'state' and 'stateDiff'",
+            "null" when stateOverrideKind == "invalidMove" => $"account {TestItem.AddressD.ToString(withEip55Checksum: true)} is not a precompile",
             "null" => FrameTxValidation.InvalidMode,
             _ => BlockOverride.BeaconRootNotSupported
         };
@@ -1941,7 +1950,7 @@ public partial class EthRpcModuleTests
         TestName = "Empty authorization list")]
     [TestCase(
         """{"from":"0x0001020304050607080910111213141516171819","value":"0x0","type":"0x4","data":"0x60006000f3","authorizationList":[{"chainId":"0x1","address":"0x0000000000000000000000000000000000000001","nonce":"0x1","yParity":"0x0","r":"0x0101010101010101010101010101010101010101010101010101010101010101","s":"0x0101010101010101010101010101010101010101010101010101010101010101"}]}""",
-        "failed with 4000000 gas: " + TxErrorMessages.NotAllowedCreateTransaction + " (sender 0x0001020304050607080910111213141516171819)",
+        TxErrorMessages.NotAllowedCreateTransaction,
         TestName = "Contract creation")]
     public async Task Eth_estimateGas_setCode_invalid_transaction_returns_error(string txJson, string expectedMessage)
     {

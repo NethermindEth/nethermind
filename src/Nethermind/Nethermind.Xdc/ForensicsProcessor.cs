@@ -385,7 +385,7 @@ internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epoc
     private IReadOnlyList<string> GetQcSignerAddresses(QuorumCertificate quorumCert)
     {
         Signature[] signatures = quorumCert.Signatures ?? [];
-        List<string> signerList = new(signatures.Length);
+        List<string> signerList = [with(signatures.Length)];
         Vote signVote = new(quorumCert.ProposedBlockInfo, quorumCert.GapNumber);
         ValueHash256 signHash = VoteHash(signVote);
         for (int i = 0; i < signatures.Length; i++)
@@ -423,12 +423,8 @@ internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epoc
         return true;
     }
 
-    private ValueHash256 VoteHash(Vote vote)
-    {
-        KeccakRlpWriter writer = new();
-        _voteDecoder.Encode(ref writer, vote, RlpBehaviors.ForSealing);
-        return writer.GetValueHash();
-    }
+    private ValueHash256 VoteHash(Vote vote) =>
+        _voteDecoder.ComputeValueHash(vote, RlpBehaviors.ForSealing);
 
     private bool IsExtendingFromAncestor(BlockRoundInfo currentBlock, BlockRoundInfo ancestorBlock)
     {

@@ -149,17 +149,21 @@ public sealed class PersistedSnapshotLoader(
     }
 
     /// <summary>
-    /// Rebuild a bloom only for each widest snapshot covering the persisted tier and share it across its
-    /// range, so the narrower contained snapshots adopt it instead of each carrying its own — mirroring
-    /// the runtime layout a large compaction leaves behind. Snapshots no widest one covers keep their
-    /// AlwaysTrue placeholder (correct — never a false negative — just unfiltered).
+    /// Rebuild a bloom only for each widest snapshot covering the persisted tier. When the widest snapshot
+    /// holds no storage clear the bloom is shared across its range, so the narrower contained snapshots adopt
+    /// it instead of each carrying its own — mirroring the runtime layout a large compaction leaves behind.
+    /// When it holds one, its merge dropped slots the contained snapshots still hold, so the bloom is
+    /// installed on the widest snapshot only. Every snapshot left without a rebuilt bloom — not covered by a
+    /// widest one, or inside a range with a clear — keeps its AlwaysTrue placeholder (correct — never a false
+    /// negative — just unfiltered).
     /// </summary>
     /// <remarks>
     /// Assembles the widest-first chain via the main read-path <see cref="ISnapshotRepository.AssembleSnapshots"/>
     /// (its <c>EdgePriority</c> leads with the large skip-pointers), so the chain tiles
     /// <c>(committed, head]</c> with the fewest, widest snapshots. The committed base it targets is the
     /// oldest loaded snapshot's <c>From</c>. The few wide blooms are rebuilt in parallel; chain ranges are
-    /// disjoint, so the per-range <see cref="ISnapshotRepository.ShareBloomAcrossRange"/> calls don't collide.
+    /// disjoint, so the per-range <see cref="ISnapshotRepository.ShareBloomAcrossRange"/> and
+    /// <see cref="ISnapshotRepository.ReplacePersistedSnapshot"/> calls don't collide.
     /// </remarks>
     private void ReconstructBloom(List<CatalogEntry> entries)
     {
@@ -180,16 +184,31 @@ public sealed class PersistedSnapshotLoader(
         assembled.InMemory.Dispose();
         using PersistedSnapshotList widest = assembled.Persisted;
 
-        // Build the (few, wide) blooms in parallel and share each across its range. A fresh bloom
-        // (refcount 1) is leased by each snapshot ShareBloomAcrossRange re-registers; the local lease is
-        // released on dispose, leaving the shared snapshots holding theirs.
+        // Build the (few, wide) blooms in parallel and share each across its range, or install it on the
+        // widest snapshot alone when that range holds a storage clear. A fresh bloom (refcount 1) is leased
+        // by each snapshot re-registered with it; the local lease is released on dispose, leaving those
+        // snapshots holding theirs.
         Parallel.ForEach(widest, snap =>
         {
             RefCountedBloomFilter bloom;
+            bool hasStorageClears;
             using (WholeReadSession session = snap.BeginWholeReadSession())
-                bloom = new RefCountedBloomFilter(PersistedSnapshotBloomBuilder.Build(session, snap, _bloomBitsPerKey));
+                bloom = new RefCountedBloomFilter(PersistedSnapshotBloomBuilder.Build(session, snap, _bloomBitsPerKey, out hasStorageClears));
             using (bloom)
-                repository.ShareBloomAcrossRange(snap.From, snap.To, bloom, blobs);
+            {
+                if (!hasStorageClears)
+                {
+                    repository.ShareBloomAcrossRange(snap.From, snap.To, bloom, blobs);
+                }
+                else
+                {
+                    // As SnapshotRepository.ShareBloomAt does for one snapshot: the twin consumes this lease
+                    // (its ctor releases it on failure), and a false Replace leaves the twin to its `using`.
+                    bloom.AcquireLease();
+                    using PersistedSnapshot twin = new(snap.From, snap.To, snap.Reservation, blobs, snap.Tier, bloom);
+                    repository.ReplacePersistedSnapshot(snap.To, twin, snap.Tier);
+                }
+            }
         });
     }
 

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.IO.Abstractions;
 using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
@@ -32,6 +33,7 @@ public class RocksDbRewriter(
     IDbConfig dbConfig,
     IRocksDbConfigFactory rocksDbConfigFactory,
     HyperClockCacheWrapper sharedCache,
+    IFileSystem fileSystem,
     ILogManager logManager)
 {
     private const string RewriteSuffix = "_rewrite";
@@ -43,6 +45,7 @@ public class RocksDbRewriter(
     private const string CompactWriteBytes = "rocksdb.compact.write.bytes";
 
     private readonly ILogger _logger = logManager.GetClassLogger<RocksDbRewriter>();
+    private readonly StatisticsDbFactory _dbFactory = new(rocksDbConfigFactory, dbConfig, initConfig, sharedCache, fileSystem, logManager);
 
     /// <summary>Rewrites the database in <paramref name="dbPath"/> and swaps it into place.</summary>
     /// <param name="dbPath">The database directory under the base DB path, e.g. <c>receipts</c>.</param>
@@ -206,7 +209,7 @@ public class RocksDbRewriter(
 
     private static (long Read, long Written) ReadCompactionBytes(DbOnTheRocks db)
     {
-        string statistics = db.DbOptions!.GetStatisticsString() ?? "";
+        string statistics = db._db.GetProperty("rocksdb.options-statistics") ?? "";
         return (ReadTicker(statistics, CompactReadBytes), ReadTicker(statistics, CompactWriteBytes));
     }
 
@@ -257,9 +260,14 @@ public class RocksDbRewriter(
     }
 
     /// <param name="dbName">The database the config is read for, whatever directory it is opened from.</param>
-    private DbOnTheRocks Open(string dbName, string dbPath, IList<string>? columns) =>
-        new ColumnCreatingDb(initConfig.BaseDbPath, new DbSettings(char.ToUpperInvariant(dbName[0]) + dbName[1..], dbPath), dbConfig,
-            rocksDbConfigFactory, logManager, columns, sharedCache.Handle);
+    private DbOnTheRocks Open(string dbName, string dbPath, IList<string>? columns)
+    {
+        DbSettings settings = new(char.ToUpperInvariant(dbName[0]) + dbName[1..], dbPath);
+        IRocksDbConfig tableConfig = rocksDbConfigFactory.GetForDatabase(settings.DbName, null);
+        using RocksDbInstance instance = _dbFactory.Open(settings, tableConfig,
+            columns?.Select(column => (column, rocksDbConfigFactory.GetForDatabase(settings.DbName, column))).ToArray());
+        return new DbOnTheRocks(instance, null, settings.DbName, tableConfig, logManager);
+    }
 
     /// <param name="family">The column family, or <c>null</c> for a database opened without column families.</param>
     private static IColumnFamilyHandle? GetFamily(DbOnTheRocks db, string? family) =>
@@ -374,25 +382,20 @@ public class RocksDbRewriter(
         return progress;
     }
 
-    /// <summary>
-    /// Opens a database that creates the column families it is given, as <see cref="ColumnsDb{T}"/> does, and
-    /// collects statistics for the compaction progress log.
-    /// </summary>
-    private sealed class ColumnCreatingDb(
-        string basePath,
-        DbSettings dbSettings,
-        IDbConfig dbConfig,
+    /// <summary>Opens databases that collect statistics for the compaction progress log.</summary>
+    private sealed class StatisticsDbFactory(
         IRocksDbConfigFactory rocksDbConfigFactory,
-        ILogManager logManager,
-        IList<string>? columnFamilies,
-        nint sharedCache)
-        : DbOnTheRocks(basePath, dbSettings, dbConfig, rocksDbConfigFactory, logManager, columnFamilies, sharedCache: sharedCache)
+        IDbConfig dbConfig,
+        IInitConfig initConfig,
+        HyperClockCacheWrapper sharedCache,
+        IFileSystem fileSystem,
+        ILogManager logManager)
+        : RocksDbFactory(rocksDbConfigFactory, dbConfig, initConfig, sharedCache, fileSystem, logManager)
     {
-        protected override void BuildOptions<T>(IRocksDbConfig dbConfig, Options<T> options, nint? sharedCache, IMergeOperator? mergeOperator)
+        protected override RocksDb DoOpen(string path, DbOptions options, ColumnFamilies? families)
         {
-            base.BuildOptions(dbConfig, options, sharedCache, mergeOperator);
-            options.SetCreateMissingColumnFamilies();
             options.EnableStatistics();
+            return base.DoOpen(path, options, families);
         }
     }
 }

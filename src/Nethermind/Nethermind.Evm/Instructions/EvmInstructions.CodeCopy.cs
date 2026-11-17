@@ -26,14 +26,15 @@ public static partial class EvmInstructions
         VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
         ref TGasPolicy gas,
-        scoped ReadOnlySpan<byte> source)
+        scoped ReadOnlySpan<byte> source,
+        bool sourceInMemoryLayout = false)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         if (!stack.PopMemoryPositionAndUInt256(out UInt256 a, out UInt256 b, out UInt256 result))
             return EvmExceptionType.StackUnderflow;
 
-        return DataCopyCore<TGasPolicy, TTracingInst>(vm, ref gas, in a, in b, in result, source);
+        return DataCopyCore<TGasPolicy, TTracingInst>(vm, ref gas, in a, in b, in result, source, sourceInMemoryLayout);
     }
 
     /// <summary>Copy-to-memory core with the three copy operands already popped, for callers that pop
@@ -46,7 +47,8 @@ public static partial class EvmInstructions
         in UInt256 a,
         in UInt256 b,
         in UInt256 result,
-        scoped ReadOnlySpan<byte> source)
+        scoped ReadOnlySpan<byte> source,
+        bool sourceInMemoryLayout = false)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -66,7 +68,7 @@ public static partial class EvmInstructions
             if (!TGasPolicy.UpdateMemoryCost(ref gas, in a, result, ref vm.VmState.Memory))
                 goto OutOfGas;
 
-            vm.VmState.Memory.CopyFromZeroExtendedAfterGas(in a, source, in b, (int)result);
+            vm.VmState.Memory.CopyFromZeroExtendedAfterGas(in a, source, in b, (int)result, sourceInMemoryLayout);
 
             if (TTracingInst.IsActive)
             {
@@ -196,7 +198,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
         => DataCopy<TGasPolicy, TTracingInst>(vm, ref stack, ref gas,
-            MemoryMarshal.CreateReadOnlySpan(in stack.InputData, (int)stack.InputDataLength));
+            MemoryMarshal.CreateReadOnlySpan(in stack.InputData, (int)stack.InputDataLength), EvmPooledMemory.IsSwizzled);
 
     /// <summary>
     /// Copies data from the previous call's return buffer into memory.
@@ -253,6 +255,12 @@ public static partial class EvmInstructions
 
         // Deduct gas cost: cost for external code access plus memory expansion cost.
         ulong words = EvmCalculations.Div32Ceiling(in result, out bool outOfGas);
+        if (TTracingInst.IsActive && vm.IsTracingOperationStart && !outOfGas)
+        {
+            ulong accessCost = vm.GetAccountAccessTraceGasCost(address, spec.GasCosts.ExtCodeCost, Eip8038.IsActive ? Eip8038Constants.WarmAccess : 0);
+            if (words <= (ulong.MaxValue - accessCost) / GasCostOf.Memory)
+                vm.TraceMemoryOperationGasCost(in a, in result, accessCost + GasCostOf.Memory * words);
+        }
         if (!TGasPolicy.TryConsumeDataCopyGas(ref gas, spec, isExternalCode: true, words)) return EvmExceptionType.OutOfGas;
         if (outOfGas) goto OutOfGas;
 

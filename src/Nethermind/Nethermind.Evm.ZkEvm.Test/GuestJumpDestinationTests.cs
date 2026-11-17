@@ -175,7 +175,13 @@ public class GuestJumpDestinationTests
         ulong highest = 1UL << bit;
         ulong below = (ulong)new Random(bit).NextInt64() & (highest - 1);
 
-        Assert.That(JumpDestinationAnalyzer.HighestSetBit(highest | below), Is.EqualTo((nint)bit));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JumpDestinationAnalyzer.HighestSetBit(highest | below), Is.EqualTo((nint)bit));
+            // The 32-bit guest's halves, which a 64-bit host never takes through the ulong overload.
+            uint half = (uint)((highest | below) >> (bit < 32 ? 0 : 32));
+            Assert.That(JumpDestinationAnalyzer.HighestSetBit(half), Is.EqualTo((nint)(bit & 31)));
+        }
     }
 
     private static TestCaseData Shape(string name, byte[] code) => new TestCaseData(code).SetName($"{{m}}({name})");

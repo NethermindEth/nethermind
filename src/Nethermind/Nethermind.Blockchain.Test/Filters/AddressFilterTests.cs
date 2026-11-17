@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Facade.Filters;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -104,6 +105,64 @@ public class AddressFilterTests
             Assert.That(filter.Accepts(ref addressARef), Is.True);
             Assert.That(filter.Accepts(ref addressBRef), Is.True);
             Assert.That(filter.Accepts(ref addressCRef), Is.True);
+        }
+    }
+
+    [Test]
+    public void Accepts_only_addresses_in_a_set_by_ref_for_any_set_size([Values(1, 8, 9, 200)] int count)
+    {
+        HashSet<AddressAsKey> addresses = TestItem.Addresses.Take(count).Select(static a => new AddressAsKey(a)).ToHashSet();
+        AddressFilter filter = new(addresses);
+
+        using (Assert.EnterMultipleScope())
+        {
+            if (count > 8)
+            {
+                Assert.That(filter.Addresses.Comparer, Is.SameAs(AddressAsKeyComparer.Instance));
+            }
+            else
+            {
+                Assert.That(filter.Addresses, Is.SameAs(addresses));
+            }
+
+            foreach (Address address in TestItem.Addresses)
+            {
+                AddressStructRef @ref = address.ToStructRef();
+                Assert.That(filter.Accepts(ref @ref), Is.EqualTo(addresses.Contains(address)), address.ToString());
+            }
+        }
+    }
+
+    [Test]
+    public void Uses_a_set_with_the_span_comparer_without_a_copy([Values(9, 200)] int count)
+    {
+        HashSet<AddressAsKey> addresses = new(TestItem.Addresses.Take(count).Select(static a => new AddressAsKey(a)), AddressAsKeyComparer.Instance);
+        AddressFilter filter = new(addresses);
+
+        AddressStructRef hit = TestItem.Addresses[count - 1].ToStructRef();
+        AddressStructRef miss = TestItem.Addresses[count].ToStructRef();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Addresses, Is.SameAs(addresses));
+            Assert.That(filter.Accepts(ref hit), Is.True);
+            Assert.That(filter.Accepts(ref miss), Is.False);
+        }
+    }
+
+    [Test]
+    public void Accepts_by_ref_with_a_copy_of_the_address_bytes()
+    {
+        HashSet<AddressAsKey> addresses = TestItem.Addresses.Take(50).Select(static a => new AddressAsKey(a)).ToHashSet();
+        AddressFilter filter = new(addresses);
+
+        byte[] hitBytes = TestItem.Addresses[10].Bytes.ToArray();
+        byte[] missBytes = TestItem.Addresses[60].Bytes.ToArray();
+        AddressStructRef hit = new(hitBytes);
+        AddressStructRef miss = new(missBytes);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Accepts(ref hit), Is.True);
+            Assert.That(filter.Accepts(ref miss), Is.False);
         }
     }
 

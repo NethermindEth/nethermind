@@ -6,7 +6,6 @@ using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.Transactions
@@ -16,16 +15,16 @@ namespace Nethermind.Consensus.AuRa.Transactions
         private readonly IMinGasPriceTxFilter _minGasPriceFilter = minGasPriceFilter;
         private readonly IDictionaryContractDataStore<TxPriorityContract.Destination> _minGasPrices = minGasPrices ?? throw new ArgumentNullException(nameof(minGasPrices));
 
-        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec currentSpec)
+        public AcceptTxResult IsAllowed(Transaction tx, in TxFilterContext context)
         {
-            AcceptTxResult isAllowed = _minGasPriceFilter.IsAllowed(tx, parentHeader, currentSpec);
+            AcceptTxResult isAllowed = _minGasPriceFilter.IsAllowed(tx, in context);
             if (!isAllowed)
             {
                 return isAllowed;
             }
-            else if (_minGasPrices.TryGetValue(parentHeader, tx, out TxPriorityContract.Destination @override))
+            else if (_minGasPrices.TryGetValue(context.Parent, tx, out TxPriorityContract.Destination @override))
             {
-                return _minGasPriceFilter.IsAllowed(tx, parentHeader, @override.Value, currentSpec);
+                return _minGasPriceFilter.IsAllowed(tx, in context, @override.Value);
             }
 
             return AcceptTxResult.Accepted;

@@ -70,7 +70,7 @@ internal sealed class DiscoveryConnectionsPool(
             }
             catch (Exception e) when (!preferredAddress.Equals(fallbackAddress))
             {
-                if (_logger.IsWarn) _logger.Warn($"Failed to bind discovery UDP channel on {preferredAddress}:{port}. Retrying on {fallbackAddress}:{port}. {e}");
+                if (_logger.IsWarn) _logger.Warn($"Failed to bind discovery UDP channel on {preferredAddress:hide}:{port}. Retrying on {fallbackAddress:hide}:{port}. {e:hide}");
                 return Bind(socketFactory, fallbackAddress, port);
             }
         }
@@ -145,7 +145,7 @@ internal sealed class DiscoveryConnectionsPool(
         }
         catch (SocketException e)
         {
-            if (_logger.IsWarn) _logger.Warn($"Discovery stopped receiving on {socket.LocalEndpoint} after a socket error. {e}");
+            if (_logger.IsWarn) _logger.Warn($"Discovery stopped receiving on {socket.LocalEndpoint:hide} after a socket error. {e:hide}");
         }
         catch (Exception e)
         {

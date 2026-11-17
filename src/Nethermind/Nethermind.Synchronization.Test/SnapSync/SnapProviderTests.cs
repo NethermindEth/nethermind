@@ -29,6 +29,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Flat;
@@ -927,6 +928,65 @@ public class SnapProviderTests
             new ByteArrayListAdapter(ProveStorage(stateTree, account.Path, Keccak.Zero, slots[^1].Path).ToPooledList())), Is.EqualTo(AddRangeResult.OK));
     }
 
+    // A, B, A again and M are requested; U never is, and no response serves M. Each letter of a response is one item.
+    // Only requested, distinct codes are stored and counted, and every requested hash left unserved is queued again.
+    [TestCase("", "", TestName = "{m} (empty)")]
+    [TestCase("UU", "", TestName = "{m} (padding only)")]
+    [TestCase("UAA", "A", TestName = "{m} (partial, padded, duplicate)")]
+    [TestCase("UBABA", "AB", TestName = "{m} (two distinct codes)")]
+    [NonParallelizable]
+    public void AddCodes_ShouldPersistOnlyRequestedCodes(string response, string expectedStored)
+    {
+        const long codesBaseline = 17, bytesBaseline = 29;
+        Dictionary<char, byte[]> code = new()
+        {
+            ['A'] = [0x60, 0x01, 0x60, 0x02],
+            ['B'] = [0x60, 0x03, 0x60, 0x04, 0x01, 0x00, 0x00],
+            ['M'] = [0x60, 0x05, 0x00],
+            ['U'] = [0x60, 0x06],
+        };
+        ValueHash256 Hash(char c) => ValueKeccak.Compute(code[c]);
+
+        long savedCodes = Metrics.SnapSyncedCodes, savedBytes = Metrics.SnapStateSynced;
+        Metrics.SnapSyncedCodes = codesBaseline;
+        Metrics.SnapStateSynced = bytesBaseline;
+        try
+        {
+            using IContainer container = CreateContainerBuilder(new TestSyncConfig { SnapSyncAccountRangePartitionCount = 1 })
+                .WithSuggestedHeaderOfStateRoot(Keccak.EmptyTreeHash)
+                .Build();
+            SnapProvider snapProvider = container.Resolve<SnapProvider>();
+            ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
+            IDb codeDb = container.ResolveNamed<IDb>(DbNames.Code);
+            DrainAccountRangePartition(progressTracker);
+
+            ArrayPoolList<byte[]> items = [with(response.Length)];
+            using IByteArrayList codes = new ByteArrayListAdapter(items);
+            foreach (char c in response) items.Add(code[c]);
+
+            snapProvider.AddCodes([Hash('A'), Hash('B'), Hash('A'), Hash('M')], codes);
+
+            progressTracker.IsFinished(out SnapSyncBatch? retry);
+            using (retry)
+            using (Assert.EnterMultipleScope())
+            {
+                foreach (char c in "ABMU")
+                {
+                    Assert.That(codeDb.Get(Hash(c).Bytes), expectedStored.Contains(c) ? Is.EqualTo(code[c]) : Is.Null, $"code {c} in the DB");
+                }
+
+                Assert.That(Metrics.SnapSyncedCodes - codesBaseline, Is.EqualTo(expectedStored.Length), "SnapSyncedCodes delta");
+                Assert.That(Metrics.SnapStateSynced - bytesBaseline, Is.EqualTo(expectedStored.Sum(c => code[c].Length)), "SnapStateSynced delta");
+                Assert.That(retry?.CodesRequest?.ToArray() ?? [], Is.EquivalentTo("ABM".Where(c => !expectedStored.Contains(c)).Select(Hash)), "codes queued again");
+            }
+        }
+        finally
+        {
+            Metrics.SnapSyncedCodes = savedCodes;
+            Metrics.SnapStateSynced = savedBytes;
+        }
+    }
+
     [Test]
     public void AddAccountRange_SetStartRange_ToAfterLastPath()
     {
@@ -1428,7 +1488,7 @@ public class SnapProviderTests
     }
 
     private static SortedDictionary<string, string> ReadColumn(IColumnsDb<FlatDbColumns> db, FlatDbColumns column) =>
-        new(db.GetColumnDb(column).GetAll().ToDictionary(static kv => Convert.ToHexString(kv.Key), static kv => Convert.ToHexString(kv.Value)));
+        [with(db.GetColumnDb(column).GetAll().ToDictionary(static kv => Convert.ToHexString(kv.Key), static kv => Convert.ToHexString(kv.Value)))];
 
     /// <summary>A pivot at <see cref="Header"/>, which each healing round moves to the next of <paramref name="rounds"/>, staying at the last.</summary>
     private sealed class HealingPivot(BlockHeader header, params BlockHeader[] rounds) : IStateSyncPivot
@@ -1607,7 +1667,7 @@ public class SnapProviderTests
 
     private static StorageRange CreateStorageRange(int accountCount)
     {
-        ArrayPoolList<PathWithAccount> accounts = new(accountCount);
+        ArrayPoolList<PathWithAccount> accounts = [with(accountCount)];
         for (int i = 0; i < accountCount; i++)
         {
             accounts.Add(new PathWithAccount(TestItem.ValueKeccaks[i], Account.TotallyEmpty));
@@ -1618,7 +1678,7 @@ public class SnapProviderTests
 
     private static SlotsAndProofs CreateEmptySlotsResponse(int slotListCount)
     {
-        ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>> pathsAndSlots = new(slotListCount);
+        ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>> pathsAndSlots = [with(slotListCount)];
         for (int i = 0; i < slotListCount; i++)
         {
             pathsAndSlots.Add(new ArrayPoolList<PathWithStorageSlot>(0));
@@ -1644,7 +1704,7 @@ public class SnapProviderTests
         {
             ValueHash256 slotKey = Keccak.Compute(i.ToBigEndianByteArray());
             byte[] value = (i + 1).ToBigEndianByteArray();
-            byte[] rlpValue = Rlp.Encode(value).Bytes;
+            byte[] rlpValue = Rlp.Encode(value);
             storageTree.Set(slotKey, rlpValue, false);
             slots[i] = new PathWithStorageSlot(slotKey, rlpValue);
         }

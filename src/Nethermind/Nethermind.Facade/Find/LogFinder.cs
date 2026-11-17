@@ -14,7 +14,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 using Autofac.Features.AttributeFilters;
 
 namespace Nethermind.Facade.Find
@@ -145,9 +145,11 @@ namespace Nethermind.Facade.Find
         /// Missing receipts on an already processed non-canonical block are unavailable history, not proof that
         /// the block still awaits execution. Reorgs change canonical membership without clearing WasProcessed.
         /// </remarks>
-        private bool WasPruned(BlockHeader header) =>
-            (_blockFinder.Head?.Number >= header.Number && _blockFinder.IsMainChain(header))
-            || _blockFinder.GetInfo(header.Number, header.Hash!).Info?.WasProcessed == true;
+        internal static bool WasPruned(IBlockFinder blockFinder, BlockHeader header) =>
+            (blockFinder.Head?.Number >= header.Number && blockFinder.IsMainChain(header))
+            || blockFinder.GetInfo(header.Number, header.Hash!).Info?.WasProcessed == true;
+
+        private bool WasPruned(BlockHeader header) => WasPruned(_blockFinder, header);
 
         protected bool RetainsLogsForFilter(LogFilter filter, ulong fromBlock, ulong toBlock) =>
             prunedLogsRetention is not null
@@ -225,7 +227,7 @@ namespace Nethermind.Facade.Find
                     while (!sourceDrained && pending.Count < _rpcConfigGetLogsThreads)
                     {
                         int chunkSize = MinBlocksPerParallelWorker << Math.Min(MaxChunkDoublings, chunksStarted++ / _rpcConfigGetLogsThreads);
-                        List<T> chunk = new(chunkSize);
+                        List<T> chunk = [with(chunkSize)];
                         while (chunk.Count < chunkSize && items.MoveNext()) chunk.Add(items.Current);
                         sourceDrained = chunk.Count < chunkSize;
                         if (chunk.Count != 0) pending.Enqueue(Task.Run(() => ScanChunk(chunk, worker, abandoned.Token)));
@@ -361,11 +363,7 @@ namespace Nethermind.Facade.Find
                                 // On CL workload, recovery happens about 70% of the time.
                                 iterator.RecoverLogFieldsIfNeeded(ref receipt, out Hash256? recoveredTransactionHash);
 
-                                Hash256[] topics = log.Topics;
-
-                                topics ??= iterator.DecodeTopics(new RlpReader(log.TopicsRlp));
-
-                                logs.Add(logIndexInBlock, blockNumber, blockTimestamp, blockHash, receipt, recoveredTransactionHash, ref txHash, log, topics);
+                                logs.Add(logIndexInBlock, blockNumber, blockTimestamp, blockHash, receipt, recoveredTransactionHash, ref txHash, log, in iterator);
                             }
 
                             logIndexInBlock++;
@@ -497,7 +495,7 @@ namespace Nethermind.Facade.Find
         private protected interface IBlockLogs<TSelf, TLog> : IDisposable where TSelf : struct, IBlockLogs<TSelf, TLog>
         {
             void Add(long logIndex, ulong blockNumber, ulong blockTimestamp, Hash256 blockHash, in TxReceiptStructRef receipt,
-                Hash256? recoveredTransactionHash, ref Hash256? transactionHash, in LogEntryStructRef log, Hash256[] topics);
+                Hash256? recoveredTransactionHash, ref Hash256? transactionHash, in LogEntryStructRef log, in ReceiptsIterator iterator);
 
             IEnumerable<TLog> Complete();
 
@@ -513,10 +511,11 @@ namespace Nethermind.Facade.Find
             private List<FilterLog>? _logs;
 
             public void Add(long logIndex, ulong blockNumber, ulong blockTimestamp, Hash256 blockHash, in TxReceiptStructRef receipt,
-                Hash256? recoveredTransactionHash, ref Hash256? transactionHash, in LogEntryStructRef log, Hash256[] topics)
+                Hash256? recoveredTransactionHash, ref Hash256? transactionHash, in LogEntryStructRef log, in ReceiptsIterator iterator)
             {
                 byte[] data = log.DataLength == 0 ? [] : new byte[log.DataLength];
                 log.CopyDataTo(data);
+                Hash256[] topics = log.Topics ?? iterator.DecodeTopics(new RlpReader(log.TopicsRlp));
 
                 (_logs ??= []).Add(new FilterLog(
                     logIndex,
@@ -544,7 +543,7 @@ namespace Nethermind.Facade.Find
             private SerializedLogs? _logs;
 
             public void Add(long logIndex, ulong blockNumber, ulong blockTimestamp, Hash256 blockHash, in TxReceiptStructRef receipt,
-                Hash256? recoveredTransactionHash, ref Hash256? transactionHash, in LogEntryStructRef log, Hash256[] topics) =>
+                Hash256? recoveredTransactionHash, ref Hash256? transactionHash, in LogEntryStructRef log, in ReceiptsIterator iterator) =>
                 (_logs ??= new SerializedLogs()).Add(
                     logIndex,
                     blockNumber,
@@ -553,7 +552,7 @@ namespace Nethermind.Facade.Find
                     receipt.Index,
                     recoveredTransactionHash is null ? receipt.TxHash.Bytes : recoveredTransactionHash.Bytes,
                     log,
-                    topics);
+                    iterator);
 
             public readonly IEnumerable<SerializedLogs> Complete() => _logs is null ? [] : [_logs];
 

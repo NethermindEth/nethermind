@@ -12,6 +12,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Common.Concurrency;
+using DotNetty.Common.Internal.Logging;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
@@ -162,7 +163,7 @@ namespace Nethermind.Network.Rlpx
             }
             catch (Exception e) when (!bindAddress.Equals(_listenerState.FallbackAddress))
             {
-                if (_logger.IsWarn) _logger.Warn($"Failed to bind {nameof(RlpxHost)} on {bindAddress}:{LocalPort}. Retrying on {_listenerState.FallbackAddress}:{LocalPort}. {e}");
+                if (_logger.IsWarn) _logger.Warn($"Failed to bind {nameof(RlpxHost)} on {bindAddress:hide}:{LocalPort:hide}. Retrying on {_listenerState.FallbackAddress:hide}:{LocalPort:hide}. {e:hide}");
                 return await BindAsync(_listenerState.FallbackAddress);
             }
         }
@@ -244,7 +245,7 @@ namespace Nethermind.Network.Rlpx
 
         public async Task<bool> ConnectAsync(Node node, CancellationToken cancellationToken = default)
         {
-            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {node:s} initiating OUT connection");
+            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {node.ToString("s"):hide} initiating OUT connection");
 
             bool allowNonRoutable = node.Address.Address.IsLoopbackOrPrivateOrLinkLocal;
             bool primaryAccepted = IsDialAddressAcceptable(node.Address.Address, allowNonRoutable);
@@ -274,7 +275,7 @@ namespace Nethermind.Network.Rlpx
             if (_logger.IsDebug)
             {
                 string reason = primaryAccepted ? "Failed to connect" : "Rejected dial endpoint";
-                _logger.Debug($"{reason} for {node:s} on {node.Address}, retrying on {alternate.Address}");
+                _logger.Debug($"{reason} for {node.ToString("s"):hide} on {node.Address:hide}, retrying on {alternate.Address:hide}");
             }
 
             bool connected = await TryConnect(alternate, cancellationToken);
@@ -357,7 +358,7 @@ namespace Nethermind.Network.Rlpx
                 return false;
             }
 
-            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {node:s} OUT connected");
+            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {node.ToString("s"):hide} OUT connected");
             return true;
         }
 
@@ -413,19 +414,19 @@ namespace Nethermind.Network.Rlpx
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void TraceConnectionTimedOut(Node node) =>
-            _logger.Trace($"|NetworkTrace| {node:s} OUT connection timed out");
+            _logger.Trace($"|NetworkTrace| {node.ToString("s"):hide} OUT connection timed out");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void TraceConnectionFailure(Node node, Exception exception) =>
-            _logger.Trace($"|NetworkTrace| {node:s} error when OUT connecting {exception}");
+            _logger.Trace($"|NetworkTrace| {node.ToString("s"):hide} error when OUT connecting {exception:hide}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void TraceRejectedDialEndpoint(Node node, IPEndPoint endpoint) =>
-            _logger.Trace($"|NetworkTrace| {node:s} rejected OUT endpoint {endpoint}");
+            _logger.Trace($"|NetworkTrace| {node.ToString("s"):hide} rejected OUT endpoint {endpoint:hide}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void TraceFilteredDialEndpoint(Node node) =>
-            _logger.Trace($"|NetworkTrace| {node:s} rejected filtered OUT endpoint {node.Address}");
+            _logger.Trace($"|NetworkTrace| {node.ToString("s"):hide} rejected filtered OUT endpoint {node.Address:hide}");
 
         public event EventHandler<SessionEventArgs> SessionCreated;
         public event SessionDisconnectedEventHandler SessionDisconnected;
@@ -456,7 +457,7 @@ namespace Nethermind.Network.Rlpx
             {
                 if (!_privilegedIpProvider.IsPrivileged(inboundRemoteIp) && !_nodeFilter.TryAccept(inboundRemoteIp))
                 {
-                    if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Rejecting inbound connection from filtered IP {inboundRemoteIp}");
+                    if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Rejecting inbound connection from filtered IP {inboundRemoteIp:hide}");
                     _ = channel.CloseAsync();
                     return true;
                 }
@@ -468,7 +469,7 @@ namespace Nethermind.Network.Rlpx
         private void InitializeChannel(IChannel channel, ISession session, IPAddress? inboundRemoteIp)
         {
             Metrics.IncomingConnections++;
-            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Initializing {session} channel");
+            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Initializing {session:hide} channel");
 
             if (ShouldRejectInbound(session, channel, inboundRemoteIp))
             {
@@ -482,7 +483,7 @@ namespace Nethermind.Network.Rlpx
 
         private void InitializeOutboundChannel(IChannel channel, ISession session, ConnectionAttempt attempt)
         {
-            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Initializing {session} channel");
+            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Initializing {session:hide} channel");
             SetTcpSocketOptions(channel);
             channel.Pipeline.AddLast("out-session-activation", new OutboundSessionActivationHandler(this, session, attempt));
             AddHandshakeHandlers(channel, session, HandshakeRole.Initiator);
@@ -492,9 +493,21 @@ namespace Nethermind.Network.Rlpx
         {
             NettyHandshakeHandler handshakeHandler = new(_serializationService, _handshakeService, session, role, _logManager, _group, _sendLatency);
             IChannelPipeline pipeline = channel.Pipeline;
-            pipeline.AddLast(new LoggingHandler(session.Direction.ToString().ToUpper(), LogLevel.TRACE));
+            AddTraceLoggingHandler(pipeline, session.Direction.ToString().ToUpper());
             pipeline.AddLast("enc-handshake-dec", new OneTimeLengthFieldBasedFrameDecoder());
             pipeline.AddLast("enc-handshake-handler", handshakeHandler);
+        }
+
+        /// <remarks>
+        /// The handler stays in the pipeline for the whole connection, and every read, write and flush passes
+        /// through it, so it is only added when its TRACE output is enabled.
+        /// </remarks>
+        internal static void AddTraceLoggingHandler(IChannelPipeline pipeline, string name)
+        {
+            if (InternalLoggerFactory.GetInstance(name).IsEnabled(InternalLogLevel.TRACE))
+            {
+                pipeline.AddLast(new LoggingHandler(name, LogLevel.TRACE));
+            }
         }
 
         private void ActivateSession(IChannel channel, ISession session)
@@ -529,7 +542,7 @@ namespace Nethermind.Network.Rlpx
             }
             catch (Exception ex)
             {
-                if (_logger.IsWarn) _logger.Warn($"Failed to set channel option {option}: {ex.Message}");
+                if (_logger.IsWarn) _logger.Warn($"Failed to set channel option {option}: {ex.Message:hide}");
             }
         }
 
@@ -564,7 +577,7 @@ namespace Nethermind.Network.Rlpx
         private void MarkDisconnectedAfterCloseDelay(Task _, object? state)
         {
             ISession session = (ISession)state!;
-            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {session} channel disconnected");
+            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {session:hide} channel disconnected");
             session.MarkDisconnected(DisconnectReason.ConnectionClosed, DisconnectType.Remote, "channel disconnected");
         }
 

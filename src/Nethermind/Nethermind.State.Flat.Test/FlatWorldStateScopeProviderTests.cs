@@ -3,9 +3,11 @@
 
 using System.Buffers;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -60,6 +62,35 @@ public class FlatWorldStateScopeProviderTests
             Assert.That(forwarding.CompletedRecords, Is.GreaterThan(0));
             Assert.That(context.LastCommittedSnapshot!.BufferPin!.Buffer, Is.SameAs(retained));
         }
+    }
+
+    [Test]
+    public void Write_batches_on_one_thread_reuse_their_dirty_account_map_and_root_queue_once_disposed()
+    {
+        using TestContext context = new();
+        FlatWorldStateScope scope = context.Scope;
+        IWorldStateScopeProvider.IWorldStateWriteBatch first = scope.StartWriteBatch(1);
+        object firstMap = GetField(first, "_dirtyAccounts");
+        object firstQueue = GetField(first, "_dirtyStorageTree");
+        first.Set(TestItem.AddressA, new Account(nonce: 1, balance: 2));
+        first.Dispose();
+        IWorldStateScopeProvider.IWorldStateWriteBatch second = scope.StartWriteBatch(1);
+        first.Dispose();
+        IWorldStateScopeProvider.IWorldStateWriteBatch third = scope.StartWriteBatch(1);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(GetField(second, "_dirtyAccounts"), Is.SameAs(firstMap));
+            Assert.That(GetField(second, "_dirtyStorageTree"), Is.SameAs(firstQueue));
+            Assert.That(GetField(third, "_dirtyAccounts"), Is.Not.SameAs(firstMap));
+            Assert.That(GetField(third, "_dirtyStorageTree"), Is.Not.SameAs(firstQueue));
+            Assert.That(((ICollection)firstMap).Count, Is.Zero);
+        }
+
+        third.Dispose();
+        second.Dispose();
+
+        static object GetField(IWorldStateScopeProvider.IWorldStateWriteBatch batch, string name) =>
+            batch.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(batch)!;
     }
 
     [Test]
@@ -235,6 +266,8 @@ public class FlatWorldStateScopeProviderTests
         public TestContext(IBlockTree? blockTree = null, FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null, bool historical = false, Hash256? stateRoot = null, bool decorateBuffer = false, IPersistence.IPersistenceReader? persistenceReader = null)
         {
             config ??= new FlatDbConfig();
+            // Resolving Auto needs the hardware info and records the layout on disk.
+            if (config.Layout == FlatLayout.Auto) config.Layout = FlatLayout.Flat;
 
             _containerBuilder = new ContainerBuilder()
                     .AddModule(new FlatWorldStateModule(config))
@@ -389,6 +422,50 @@ public class FlatWorldStateScopeProviderTests
         IWorldStateScopeProvider.IStorageTree storageTree = ctx.Scope.CreateStorageTree(testAddress);
         storageTree.Get(slotIndex, out UInt256 slotRead186);
         Assert.That(slotRead186, Is.EqualTo(new UInt256(newerSlotValue, isBigEndian: true)));
+    }
+
+    [Test]
+    public void ClearStorage_WithOtherAccountsAndRewrites_RemovesOnlyTargetSlots([Values(0, 1, 128)] int slots)
+    {
+        using TestContext ctx = new();
+        SnapshotBundle bundle = ctx.SnapshotBundle;
+        Address target = TestItem.AddressA;
+        Address other = TestItem.AddressB;
+        Hash256 targetHash = Keccak.Compute(target.Bytes);
+        for (int i = 0; i < slots; i++)
+        {
+            bundle.SetChangedSlot(target, (UInt256)(ulong)i, i % 2 == 0 ? UInt256.Zero : (UInt256)11);
+            bundle.SetChangedSlot(other, (UInt256)(ulong)i, (UInt256)22);
+        }
+        if (slots > 0)
+        {
+            bundle.GetSlot(other, UInt256.Zero, bundle.DetermineSelfDestructSnapshotIdx(other), out UInt256? before);
+            Assert.That(before, Is.EqualTo((UInt256)22), "precondition: both accounts have current slot entries");
+        }
+
+        bundle.ClearStorage(target, targetHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < slots; i++)
+            {
+                UInt256 slot = (ulong)i;
+                bundle.GetSlot(target, slot, bundle.DetermineSelfDestructSnapshotIdx(target), out UInt256? cleared);
+                bundle.GetSlot(other, slot, bundle.DetermineSelfDestructSnapshotIdx(other), out UInt256? retained);
+                Assert.That(cleared, Is.Null, "the target's values and deletion entries must both be removed");
+                Assert.That(retained, Is.EqualTo((UInt256)22), "clearing one account must retain the other account's slots");
+            }
+        }
+
+        bundle.SetChangedSlot(target, UInt256.Zero, (UInt256)33);
+        bundle.GetSlot(target, UInt256.Zero, bundle.DetermineSelfDestructSnapshotIdx(target), out UInt256? rewritten);
+        Assert.That(rewritten, Is.EqualTo((UInt256)33), "writes after a clear register the account again");
+
+        bundle.ClearStorage(target, targetHash);
+        bundle.ClearStorage(target, targetHash);
+
+        bundle.GetSlot(target, UInt256.Zero, bundle.DetermineSelfDestructSnapshotIdx(target), out UInt256? clearedAgain);
+        Assert.That(clearedAgain, Is.Null, "a later clear must remove rewritten slots and a repeated clear must remain empty");
     }
 
     [Test]
@@ -727,6 +804,11 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(() =>
         {
             using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1);
+            if (hasStorage)
+            {
+                using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, 1);
+                storageBatch.Set((UInt256)1, (UInt256)0xBEEF);
+            }
             writeBatch.Set(address, null);
         }, Throws.Nothing);
         Assert.That(scope.Get(address), Is.Null);
@@ -1048,9 +1130,9 @@ public class FlatWorldStateScopeProviderTests
         using TestContext ctx = new(config: new FlatDbConfig(), stateRoot: stateRoot);
         ctx.PersistenceReader.GetAccount(address).Returns(account);
         int backgroundLoads = 0;
-        ctx.PersistenceReader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
+        ((SubstitutablePersistenceReader)ctx.PersistenceReader).TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
             .Returns(c => persistedNodes.GetValueOrDefault((null, c.ArgAt<TreePath>(0))));
-        ctx.PersistenceReader.TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
+        ((SubstitutablePersistenceReader)ctx.PersistenceReader).TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
             .Returns(c =>
             {
                 if (Thread.CurrentThread.Name == "Storage early apply") Interlocked.Increment(ref backgroundLoads);
@@ -1361,6 +1443,9 @@ public class FlatWorldStateScopeProviderTests
         [Values(48, 512)] int slotsPerContract)
     {
         const int contractCount = 8;
+        // Accounts with storage that no block touches, so some state and storage nodes are read only from persistence.
+        const int untouchedContractCount = 4;
+        const int untouchedContractOffset = 100;
         FlatDbConfig config = new() { DeferStorageTrieCommit = deferStorageTrieCommit };
         Account baseAccount = new(1, 1);
 
@@ -1374,6 +1459,16 @@ public class FlatWorldStateScopeProviderTests
             expectedStorages[contract].Commit();
             expectedState.Set(TestItem.Addresses[contract], baseAccount.WithChangedStorageRoot(expectedStorages[contract].RootHash));
         }
+        Account[] untouchedAccounts = new Account[untouchedContractCount];
+        for (int i = 0; i < untouchedContractCount; i++)
+        {
+            Address address = TestItem.Addresses[untouchedContractOffset + i];
+            StorageTree storage = new(expectedStore.GetTrieStore(address.ToAccountPath.ToHash256()), LimboLogs.Instance);
+            for (int slot = 0; slot < slotsPerContract; slot++) storage.Set((UInt256)slot, ((UInt256)(slot + 7)).ToMinimalBigEndian());
+            storage.Commit();
+            untouchedAccounts[i] = baseAccount.WithChangedStorageRoot(storage.RootHash);
+            expectedState.Set(address, untouchedAccounts[i]);
+        }
         expectedState.Commit();
 
         // The tries start from nodes only persistence holds, so the blocks load and warm nodes from outside the trie node buffer.
@@ -1385,18 +1480,25 @@ public class FlatWorldStateScopeProviderTests
         {
             ctx.PersistenceReader.GetAccount(TestItem.Addresses[contract]).Returns(baseAccount.WithChangedStorageRoot(expectedStorages[contract].RootHash));
         }
-        ctx.PersistenceReader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
+        for (int i = 0; i < untouchedContractCount; i++)
+        {
+            ctx.PersistenceReader.GetAccount(TestItem.Addresses[untouchedContractOffset + i]).Returns(untouchedAccounts[i]);
+        }
+        ((SubstitutablePersistenceReader)ctx.PersistenceReader).TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
             .Returns(c => persistedNodes.GetValueOrDefault((null, c.ArgAt<TreePath>(0))));
-        ctx.PersistenceReader.TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
+        ((SubstitutablePersistenceReader)ctx.PersistenceReader).TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
             .Returns(c => persistedNodes.GetValueOrDefault((c.ArgAt<Hash256>(0), c.ArgAt<TreePath>(1))));
         FlatWorldStateScope scope = ctx.Scope;
         warmer.Scope = scope;
 
         int lastBlock = blocksBetweenCommits + 2;
-        // The first and last blocks write every contract and the ones in between one each, so the last block
-        // updates tries committed many blocks, and buffer generations, before.
+        // The first block writes every contract, the ones in between one each, and the last block every contract but the
+        // last one. So the last block updates tries committed many blocks, and buffer generations, before, and the newest
+        // snapshot has no storage root for the last contract, which an older snapshot holds.
         (int First, int End) ContractsOf(int block) =>
-            block == 1 || block == lastBlock ? (0, contractCount) : (block % contractCount, block % contractCount + 1);
+            block == 1 ? (0, contractCount)
+            : block == lastBlock ? (0, contractCount - 1)
+            : (block % contractCount, block % contractCount + 1);
         UInt256 SlotOf(int block, int i) => (UInt256)((block * 7 + i) % (2 * slotsPerContract));
 
         for (int block = 1; block <= lastBlock; block++)
@@ -1450,8 +1552,59 @@ public class FlatWorldStateScopeProviderTests
             }
         }
 
-        Assert.That(CollectNodes(new StateTrieStoreAdapter(ctx.SnapshotBundle), scope.RootHash).Nodes,
-            Is.EquivalentTo(CollectNodes(expectedStore.GetTrieStore(null), expectedState.RootHash).Nodes));
+        NodeCollector bundleNodes = new();
+        ctx.SnapshotBundle.RunTreeVisitor(new TreeVisitorAdapter<TreePathContextWithStorage>(bundleNodes), scope.RootHash, VisitingOptions.Default, diagnostics: null);
+        HashSet<string> expectedNodes = CollectNodes(expectedStore.GetTrieStore(null), expectedState.RootHash).Nodes;
+        Assert.That(bundleNodes.Nodes, Is.EquivalentTo(expectedNodes));
+
+        // A read-only bundle over the same snapshots reads every node through the newest snapshot's roots and persistence.
+        SnapshotPooledList snapshots = new(ctx.SnapshotBundle._snapshots.Count);
+        foreach (Snapshot snapshot in ctx.SnapshotBundle._snapshots)
+        {
+            snapshot.AcquireLease();
+            snapshots.Add(snapshot);
+        }
+        using ReadOnlySnapshotBundle readOnly = new(snapshots, ctx.PersistenceReader, false, PersistedSnapshotStack.Empty(), bufferPin: null);
+        OlderSnapshotNodeProbe probe = new(snapshots);
+        new PatriciaTree(new ReadOnlyStateTrieStoreAdapter(readOnly), LimboLogs.Instance).Accept(probe, scope.RootHash);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshots.Count, Is.GreaterThan(1), "the bundle holds several snapshots");
+            Assert.That(probe.Nodes, Is.EquivalentTo(expectedNodes));
+            // The untouched accounts keep state nodes that only persistence holds, and every block rewrites only part of
+            // each storage trie, so both kinds of lookup miss in the newest snapshot that holds the trie's root.
+            Assert.That(probe.StateMisses, Is.Positive, "some state nodes are only persisted");
+            Assert.That(probe.StorageMisses, Is.Positive, "some storage nodes are only persisted");
+            Assert.That(probe.OlderOnlyHits, Is.Empty, "an older snapshot never holds a node the newest one misses");
+        }
+    }
+
+    [Test]
+    public void Storage_root_of_an_account_set_in_the_same_write_batch_reaches_the_state_root()
+    {
+        Account account = new(1, 1);
+        UInt256 slot = 1;
+        UInt256 value = 42;
+
+        RawTrieStore expectedStore = new(new TestMemDb());
+        StateTree expectedState = new(expectedStore.GetTrieStore(null), LimboLogs.Instance);
+        StorageTree expectedStorage = new(expectedStore.GetTrieStore(TestItem.AddressA.ToAccountPath.ToHash256()), LimboLogs.Instance);
+        expectedStorage.Set(slot, value.ToMinimalBigEndian());
+        expectedStorage.Commit();
+        expectedState.Set(TestItem.AddressA, account.WithChangedStorageRoot(expectedStorage.RootHash));
+        expectedState.Commit();
+
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            writeBatch.Set(TestItem.AddressA, account);
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
+            storageBatch.Set(slot, value);
+        }
+        scope.Commit(1);
+
+        Assert.That(scope.RootHash, Is.EqualTo(expectedState.RootHash));
     }
 
     [Test]
@@ -1581,6 +1734,64 @@ public class FlatWorldStateScopeProviderTests
         NodeCollector collector = new();
         new PatriciaTree(store, LimboLogs.Instance).Accept(collector, root);
         return collector;
+    }
+
+    /// <summary>
+    /// Collects the nodes as <see cref="NodeCollector"/> does, and for each node the newest snapshot that holds the trie's root misses,
+    /// records whether an older snapshot would still have returned one at that path.
+    /// </summary>
+    private sealed class OlderSnapshotNodeProbe(SnapshotPooledList snapshots) : ITreeVisitor<TreePathContextWithStorage>
+    {
+        private readonly NodeCollector _collector = new();
+
+        public HashSet<string> Nodes => _collector.Nodes;
+
+        public int StateMisses { get; private set; }
+
+        public int StorageMisses { get; private set; }
+
+        public List<string> OlderOnlyHits { get; } = [];
+
+        public bool IsFullDbScan => false;
+
+        public bool ShouldVisit(in TreePathContextWithStorage nodeContext, in ValueHash256 nextNode) => true;
+
+        public void VisitTree(in TreePathContextWithStorage nodeContext, in ValueHash256 rootHash) { }
+
+        public void VisitMissingNode(in TreePathContextWithStorage nodeContext, in ValueHash256 nodeHash) => _collector.VisitMissingNode(nodeContext, nodeHash);
+
+        public void VisitBranch(in TreePathContextWithStorage nodeContext, TrieNode node) => Probe(nodeContext, node);
+
+        public void VisitExtension(in TreePathContextWithStorage nodeContext, TrieNode node) => Probe(nodeContext, node);
+
+        public void VisitLeaf(in TreePathContextWithStorage nodeContext, TrieNode node) => Probe(nodeContext, node);
+
+        public void VisitAccount(in TreePathContextWithStorage nodeContext, TrieNode node, in AccountStruct account) { }
+
+        private void Probe(in TreePathContextWithStorage nodeContext, TrieNode node)
+        {
+            _collector.VisitLeaf(nodeContext, node);
+            if (node.FullRlp.Length < Hash256.Size && nodeContext.Path.Length != 0) return;
+
+            Hash256? storage = nodeContext.Storage;
+            int newest = snapshots.Count - 1;
+            if (storage is not null)
+            {
+                while (newest >= 0 && !snapshots[newest].TryGetStorageRoot(storage, out _)) newest--;
+            }
+
+            if (newest < 0 || Holds(snapshots[newest], storage, nodeContext.Path)) return;
+
+            if (storage is null) StateMisses++;
+            else StorageMisses++;
+            for (int i = newest - 1; i >= 0; i--)
+            {
+                if (Holds(snapshots[i], storage, nodeContext.Path)) OlderOnlyHits.Add($"{storage}/{nodeContext.Path} in snapshot {i} of {snapshots.Count}");
+            }
+        }
+
+        private static bool Holds(Snapshot snapshot, Hash256? storage, in TreePath path) =>
+            storage is null ? snapshot.TryGetStateNode(path, out _) : snapshot.TryGetStorageNode((storage, path), out _);
     }
 
     private sealed class NodeCollector : ITreeVisitor<TreePathContextWithStorage>
@@ -2275,6 +2486,8 @@ public class FlatWorldStateScopeProviderTests
         using TestContext ctx = new(trieWarmer: warmer);
         // The slot hints warm only an account whose storage trie is not empty.
         ctx.PersistenceReader.GetAccount(TestItem.AddressA).Returns(new Account(1, 1, TestItem.KeccakA, Keccak.OfAnEmptyString));
+        // Unconfigured, the substitute returns an empty array, which is not a node.
+        ((SubstitutablePersistenceReader)ctx.PersistenceReader).TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns((byte[]?)null);
         FlatWorldStateScope scope = ctx.Scope;
         warmer.Scope = scope;
 
@@ -2450,8 +2663,6 @@ public class FlatWorldStateScopeProviderTests
         public Account? GetAccount(Address address) => _empty.GetAccount(address);
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => _empty.TryGetSlot(address, slot, ref outValue);
         public StateId CurrentState => _empty.CurrentState;
-        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => _empty.TryLoadStateRlp(path, flags);
-        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => _empty.TryLoadStorageRlp(address, path, flags);
         public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
             _empty.TryLoadStateRlp(path, flags, action, arg);
         public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
@@ -2870,14 +3081,6 @@ public class FlatWorldStateScopeProviderTests
     {
         public int Loads { get; private set; }
 
-        public byte[]? TryLoadStateRlp(in TreePath nodePath, ReadFlags flags)
-        {
-            Loads++;
-            return nodePath == path ? rlp : null;
-        }
-
-        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath nodePath, ReadFlags flags) => TryLoadStateRlp(nodePath, flags);
-
         public bool TryLoadStateRlp<TArg>(in TreePath nodePath, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
         {
             Loads++;
@@ -2945,7 +3148,6 @@ public class FlatWorldStateScopeProviderTests
         public Account? GetAccount(Address address) => null;
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => false;
         public StateId CurrentState => new(0, Keccak.EmptyTreeHash);
-        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => null;
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
         public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => false;
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();

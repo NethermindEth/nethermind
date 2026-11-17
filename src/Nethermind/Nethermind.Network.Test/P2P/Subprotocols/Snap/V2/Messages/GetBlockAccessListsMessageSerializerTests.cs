@@ -6,9 +6,11 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -29,7 +31,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V2.Messages
 
             GetBlockAccessListsMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, msg);
+            SerializerTester.Test(serializer, msg);
         }
 
         [Test]
@@ -37,14 +39,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V2.Messages
         {
             GetBlockAccessListsMessage msg = new()
             {
-                RequestId = MessageConstants.Random.NextLong(),
+                RequestId = 1,
                 BlockHashes = ArrayPoolList<ValueHash256>.Empty(),
                 Bytes = 10
             };
 
             GetBlockAccessListsMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, msg);
+            SerializerTester.Test(serializer, msg, "c301c00a");
         }
 
         [Test]
@@ -59,7 +61,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V2.Messages
             };
 
             GetBlockAccessListsMessageSerializer serializer = new();
-            byte[] serialized = serializer.Serialize(msg);
+            byte[] serialized = serializer.SerializeToArray(msg);
 
             Assert.Throws<RlpLimitException>(() => serializer.Deserialize(serialized));
         }
@@ -67,13 +69,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V2.Messages
         [Test]
         public void Deserialize_Throws_On_Empty_List_Block_Hash()
         {
-            byte[] serialized = Rlp.Encode(
-                Rlp.Encode(1L),
-                Rlp.Encode([Rlp.OfEmptyList]),
-                Rlp.Encode(10L)).Bytes;
+            byte[] serialized = RlpTestHelper.EncodeSequence(Rlp.Encode(1L),
+                RlpTestHelper.EncodeSequence([RlpTestHelper.OfEmptyList]),
+                Rlp.Encode(10L));
             GetBlockAccessListsMessageSerializer serializer = new();
 
-            Assert.That(() => serializer.Deserialize(serialized), Throws.TypeOf<RlpException>());
+            Assert.That(() => serializer.Deserialize(serialized), Throws.TypeOf<RlpReaderException>());
         }
     }
 }

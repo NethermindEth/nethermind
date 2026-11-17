@@ -31,6 +31,8 @@ public class SimulateTxExecutor<TTrace>(
     private readonly IBlockFinder _blockFinder = blockFinder;
     private readonly IJsonRpcConfig _rpcConfig = rpcConfig;
     private readonly long _blocksLimit = rpcConfig.MaxSimulateBlocksCap ?? 256;
+    private readonly long _callsLimit = rpcConfig.MaxSimulateCallsCap ?? 10000;
+    private readonly long _callsPerBlockLimit = rpcConfig.MaxSimulateCallsPerBlockCap ?? 5000;
     private readonly ulong _secondsPerSlot = secondsPerSlot ?? new BlocksConfig().SecondsPerSlot;
 
     private Result<SimulatePayload<TransactionWithSourceDetails>> Prepare(SimulatePayload<TransactionForRpc> call, BlockHeader header)
@@ -39,10 +41,14 @@ public class SimulateTxExecutor<TTrace>(
 
         if (call.BlockStateCalls is not null)
         {
-            blockStateCalls = new List<BlockStateCall<TransactionWithSourceDetails>>(call.BlockStateCalls.Count);
+            blockStateCalls = [with(call.BlockStateCalls.Count)];
 
             foreach (BlockStateCall<TransactionForRpc> blockStateCall in call.BlockStateCalls)
             {
+                // As in Geth, a block's state overrides are validated before its calls.
+                if (StateOverrideValidation.GetStorageConflictError(blockStateCall.StateOverrides) is { } storageError)
+                    return storageError;
+
                 TransactionWithSourceDetails[]? calls = null;
 
                 if (blockStateCall.Calls is not null)
@@ -112,6 +118,10 @@ public class SimulateTxExecutor<TTrace>(
         if (call.BlockStateCalls!.Count > _rpcConfig.MaxSimulateBlocksCap)
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
                 $"This node is configured to support only {_rpcConfig.MaxSimulateBlocksCap} blocks", ErrorCodes.ClientLimitExceededError);
+
+        string? callsLimitError = GetCallsLimitError(call.BlockStateCalls);
+        if (callsLimitError is not null)
+            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(callsLimitError, ErrorCodes.ClientLimitExceededError);
 
         searchResult ??= _blockFinder.SearchForHeader(blockParameter);
 
@@ -290,6 +300,21 @@ public class SimulateTxExecutor<TTrace>(
         EvmExceptionType.Revert => ErrorCodes.ExecutionReverted,
         _ => ErrorCodes.VMError
     };
+
+    private string? GetCallsLimitError(List<BlockStateCall<TransactionForRpc>> blockStateCalls)
+    {
+        long count = 0;
+        foreach (BlockStateCall<TransactionForRpc> blockStateCall in blockStateCalls)
+        {
+            int blockCount = blockStateCall.Calls?.Length ?? 0;
+            if (blockCount > _callsPerBlockLimit)
+                return $"too many calls in block: {blockCount} > {_callsPerBlockLimit}";
+
+            count += blockCount;
+        }
+
+        return count > _callsLimit ? $"too many calls: {count} > {_callsLimit}" : null;
+    }
 }
 
 /// <summary>

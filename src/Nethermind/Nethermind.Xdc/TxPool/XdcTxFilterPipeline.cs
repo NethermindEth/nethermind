@@ -3,7 +3,6 @@
 
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Xdc.Spec;
 
 namespace Nethermind.Xdc.TxPool;
@@ -12,11 +11,11 @@ internal class XdcTxFilterPipeline(ITxFilterPipeline inner) : ITxFilterPipeline
 {
     public void AddTxFilter(ITxFilter txFilter) => inner.AddTxFilter(txFilter);
 
-    public bool Execute(Transaction tx, BlockHeader parentHeader, IReleaseSpec currentSpec)
+    public bool Execute(Transaction tx, in TxFilterContext context)
     {
-        if (currentSpec is IXdcReleaseSpec xdcSpec && tx.IsSpecialTransaction(xdcSpec))
+        if (context.Spec is IXdcReleaseSpec xdcSpec && tx.IsSpecialTransaction(xdcSpec))
             return true;
 
-        return inner.Execute(tx, parentHeader, currentSpec);
+        return inner.Execute(tx, in context);
     }
 }

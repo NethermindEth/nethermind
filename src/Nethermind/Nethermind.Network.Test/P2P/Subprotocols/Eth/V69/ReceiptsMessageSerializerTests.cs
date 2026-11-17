@@ -202,7 +202,7 @@ public class ReceiptsMessageSerializerTests
         IByteBuffer x = PooledByteBufferAllocator.Default.Buffer(1024);
         serializer.Serialize(x, message);
 
-        SerializerTester.TestZero(
+        SerializerTester.Test(
             serializer,
             message,
             expected
@@ -221,11 +221,11 @@ public class ReceiptsMessageSerializerTests
         }));
 
         ReceiptsMessageSerializer69 serializer = new(new TestSpecProvider(Prague.Instance));
-        byte[] encoded = serializer.Serialize(message);
+        byte[] encoded = serializer.SerializeToArray(message);
 
         message.EthMessage.TxReceipts[0]![0].Bloom = length.HasValue
             ? new(Enumerable.Range(0, length.Value).Select(i => (byte)i).ToArray())
             : null;
-        Assert.That(serializer.Serialize(message), Is.EqualTo(encoded));
+        Assert.That(serializer.SerializeToArray(message), Is.EqualTo(encoded));
     }
 }

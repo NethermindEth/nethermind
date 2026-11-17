@@ -55,7 +55,7 @@ internal sealed class BulkFillScratchState
 
         foreach (Columns column in Enum.GetValues<Columns>())
         {
-            using IEnumerator<byte[]> keys = db.GetColumnDb(column).GetAllKeys(ordered: false).GetEnumerator();
+            using IEnumerator<byte[]> keys = db.GetColumnDb(column).GetAllKeys(ordered: true).GetEnumerator();
             if (keys.MoveNext()) throw new ScratchStateUnusableException("Refusing to initialize a nonempty scratch database without an identity.");
         }
 

@@ -26,15 +26,15 @@ public sealed class PersistedSnapshotStack(
     PersistedSnapshotList snapshots,
     bool recordDetailedMetrics) : IDisposable
 {
-    private static readonly StringLabel _readAccountPersistedLabel = new("account_persisted_snapshot");
-    private static readonly StringLabel _readStoragePersistedLabel = new("storage_persisted_snapshot");
-    private static readonly StringLabel _readStateRlpPersistedLabel = new("state_rlp_persisted_snapshot");
-    private static readonly StringLabel _readStorageRlpPersistedLabel = new("storage_rlp_persisted_snapshot");
+    private static readonly StableStringLabel _readAccountPersistedLabel = StableStringLabel.Get("account_persisted_snapshot");
+    private static readonly StableStringLabel _readStoragePersistedLabel = StableStringLabel.Get("storage_persisted_snapshot");
+    private static readonly StableStringLabel _readStateRlpPersistedLabel = StableStringLabel.Get("state_rlp_persisted_snapshot");
+    private static readonly StableStringLabel _readStorageRlpPersistedLabel = StableStringLabel.Get("storage_rlp_persisted_snapshot");
 
-    private static readonly StringLabel _skipAccountLabel = new("account");
-    private static readonly StringLabel _skipSlotLabel = new("slot");
-    private static readonly StringLabel _skipStateRlpLabel = new("state_rlp");
-    private static readonly StringLabel _skipStorageRlpLabel = new("storage_rlp");
+    private static readonly StableStringLabel _skipAccountLabel = StableStringLabel.Get("account");
+    private static readonly StableStringLabel _skipSlotLabel = StableStringLabel.Get("slot");
+    private static readonly StableStringLabel _skipStateRlpLabel = StableStringLabel.Get("state_rlp");
+    private static readonly StableStringLabel _skipStorageRlpLabel = StableStringLabel.Get("storage_rlp");
 
     private readonly PersistedSnapshotList _snapshots = snapshots;
     private readonly bool _recordDetailedMetrics = recordDetailedMetrics;

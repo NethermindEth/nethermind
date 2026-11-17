@@ -17,6 +17,7 @@ using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using NUnit.Framework;
+using Testably.Abstractions;
 
 namespace Nethermind.Db.Test;
 
@@ -130,10 +131,10 @@ public class RewriteDbTests
         new(dbConfig, new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance);
 
     private static RocksDbFactory CreateFactory(DbConfig dbConfig, HyperClockCacheWrapper sharedCache, string basePath) =>
-        new(CreateConfigFactory(dbConfig), dbConfig, sharedCache, LimboLogs.Instance, basePath);
+        new(CreateConfigFactory(dbConfig), dbConfig, sharedCache, new RealFileSystem(), LimboLogs.Instance, basePath);
 
     private static RocksDbRewriter CreateRewriter(DbConfig dbConfig, HyperClockCacheWrapper sharedCache, string basePath) =>
-        new(new InitConfig { BaseDbPath = basePath }, dbConfig, CreateConfigFactory(dbConfig), sharedCache, LimboLogs.Instance);
+        new(new InitConfig { BaseDbPath = basePath }, dbConfig, CreateConfigFactory(dbConfig), sharedCache, new RealFileSystem(), LimboLogs.Instance);
 
     private static RewriteDb CreateStep(DbConfig dbConfig, HyperClockCacheWrapper sharedCache, string basePath, string[] arguments) =>
         new([new StepCommandSelection("rewrite-db", arguments)], new InitConfig { BaseDbPath = basePath },
@@ -151,14 +152,8 @@ public class RewriteDbTests
     private static (IDisposable, IDb[]) Columns<T>(IColumnsDb<T> db) where T : struct, Enum =>
         (db, [.. db.ColumnKeys.Select(db.GetColumnDb)]);
 
-    private static int FilesAtLevelZero(IDb column)
-    {
-        const string property = "rocksdb.num-files-at-level0";
-        string? files = column is ColumnDb columnDb
-            ? columnDb._mainDb._db.GetProperty(property, columnDb._columnFamily)
-            : ((DbOnTheRocks)column)._db.GetProperty(property);
-        return int.Parse(files!);
-    }
+    private static int FilesAtLevelZero(IDb column) =>
+        int.Parse(((DbOnTheRocks)column).GatherProperty("rocksdb.num-files-at-level0")!);
 
     /// <remarks>Large enough values that each column spans several write chunks.</remarks>
     private static IDb Fill(IDb db)

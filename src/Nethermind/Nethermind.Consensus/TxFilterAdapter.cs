@@ -22,7 +22,8 @@ public class TxFilterAdapter(IBlockTree blockTree, ITxFilter txFilter, ILogManag
             BlockHeader parentHeader = blockTree.Head?.Header;
             if (parentHeader is null) return AcceptTxResult.Accepted;
 
-            AcceptTxResult isAllowed = txFilter.IsAllowed(tx, parentHeader, specProvider.GetSpec(parentHeader));
+            TxFilterContext context = new(parentHeader, specProvider.GetSpec(parentHeader));
+            AcceptTxResult isAllowed = txFilter.IsAllowed(tx, in context);
             if (!isAllowed)
             {
                 if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, filtered ({isAllowed}).");

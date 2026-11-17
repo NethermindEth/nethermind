@@ -81,14 +81,14 @@ public class DiscoveryHandler(
         }
         catch (Exception e)
         {
-            _logger.Error($"Error during serialization of the message: {discoveryMsg}", e);
+            _logger.Error($"Error during serialization of the message: {discoveryMsg:hide}", SensitiveLogMasking.Enabled ? null : e);
             return;
         }
 
         int size = packet.Length;
         if (size > MaxPacketSize)
         {
-            if (_logger.IsWarn) _logger.Warn($"Attempting to send message larger than 1280 bytes. This is out of spec and may not work for all clients. Msg: ${discoveryMsg}");
+            if (_logger.IsWarn) _logger.Warn($"Attempting to send message larger than 1280 bytes. This is out of spec and may not work for all clients. Msg: ${discoveryMsg:hide}");
         }
 
         if (discoveryMsg is PingMsg pingMessage)
@@ -119,11 +119,11 @@ public class DiscoveryHandler(
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void TraceSending(DiscoveryMsg message) => _logger.Trace($"Sending message: {message}");
+    private void TraceSending(DiscoveryMsg message) => _logger.Trace($"Sending message: {message:hide}");
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void TraceSendFailure(DiscoveryMsg message, Exception exception) =>
-        _logger.Trace($"Error when sending a discovery message Msg: {message} ,Exp: {exception}");
+        _logger.Trace($"Error when sending a discovery message Msg: {message:hide} ,Exp: {exception:hide}");
 
     private bool TryAcceptPacket(PooledUdpReceiveResult packet, out MsgType type, out bool shouldForward)
     {
@@ -155,13 +155,13 @@ public class DiscoveryHandler(
         // Per-IP first, so a single flooding host cannot spend the global budget that everyone shares.
         if (!TryAcceptInbound(address))
         {
-            if (_logger.IsTrace) _logger.Trace($"Rate limiting discovery message {type} from {address}");
+            if (_logger.IsTrace) _logger.Trace($"Rate limiting discovery message {type} from {address:hide}");
             return false;
         }
 
         if (!_globalInboundMessageLimiter.TryAcquire())
         {
-            if (_logger.IsTrace) _logger.Trace($"Rate limiting discovery message globally, type: {type}, sender: {address}");
+            if (_logger.IsTrace) _logger.Trace($"Rate limiting discovery message globally, type: {type}, sender: {address:hide}");
             return false;
         }
 
@@ -169,11 +169,11 @@ public class DiscoveryHandler(
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceNonDiscv4Message(int messageSize, EndPoint sender) =>
-            _logger.Trace($"Forwarding non-discv4 discovery message, length: {messageSize}, sender: {sender}");
+            _logger.Trace($"Forwarding non-discv4 discovery message, length: {messageSize}, sender: {sender:hide}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceUnsupportedMessageType(byte messageType, EndPoint sender) =>
-            _logger.Trace($"Unsupported message type: {messageType}, sender: {sender}");
+            _logger.Trace($"Unsupported message type: {messageType}, sender: {sender:hide}");
     }
 
     /// <summary>
@@ -199,7 +199,7 @@ public class DiscoveryHandler(
         if (!_inboundMessages.Writer.TryWrite(new InboundDiscoveryPacket(packet, type)))
         {
             packet.Dispose();
-            if (_logger.IsDebug) _logger.Debug($"Dropping discovery message because inbound dispatch queue is full, type: {type}, sender: {packet.RemoteEndPoint}");
+            if (_logger.IsDebug) _logger.Debug($"Dropping discovery message because inbound dispatch queue is full, type: {type}, sender: {packet.RemoteEndPoint:hide}");
         }
     }
 
@@ -273,23 +273,23 @@ public class DiscoveryHandler(
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceExpiredMessage(long secondsAgo, MsgType messageType, EndPoint sender, DiscoveryMsg message) =>
-            _logger.Trace($"Received a discovery message that has expired {secondsAgo} seconds ago, type: {messageType}, sender: {sender}, message: {message}");
+            _logger.Trace($"Received a discovery message that has expired {secondsAgo} seconds ago, type: {messageType}, sender: {sender:hide}, message: {message:hide}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceFarFutureMessage(long seconds, MsgType messageType, EndPoint sender, DiscoveryMsg message) =>
-            _logger.Trace($"Received a discovery message that expires too far in the future ({seconds} seconds), type: {messageType}, sender: {sender}, message: {message}");
+            _logger.Trace($"Received a discovery message that expires too far in the future ({seconds} seconds), type: {messageType}, sender: {sender:hide}, message: {message:hide}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceMissingFarAddress(MsgType messageType, EndPoint sender, DiscoveryMsg message) =>
-            _logger.Trace($"Discovery message without a valid far address {message.FarAddress}, type: {messageType}, sender: {sender}, message: {message}");
+            _logger.Trace($"Discovery message without a valid far address {message.FarAddress:hide}, type: {messageType}, sender: {sender:hide}, message: {message:hide}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceFakeIp(MsgType messageType, EndPoint sender, DiscoveryMsg message) =>
-            _logger.Trace($"Discovery fake IP detected - pretended {message.FarAddress}, type: {messageType}, sender: {sender}, message: {message}");
+            _logger.Trace($"Discovery fake IP detected - pretended {message.FarAddress:hide}, type: {messageType}, sender: {sender:hide}, message: {message:hide}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceMissingPublicKey(MsgType messageType, EndPoint sender, DiscoveryMsg message) =>
-            _logger.Trace($"Discovery message without a valid signature {message.FarAddress}, type: {messageType}, sender: {sender}, message: {message}");
+            _logger.Trace($"Discovery message without a valid signature {message.FarAddress:hide}, type: {messageType}, sender: {sender:hide}, message: {message:hide}");
     }
 
     private static void ReportMsgByType(DiscoveryMsg msg, int size)
@@ -323,7 +323,7 @@ public class DiscoveryHandler(
                 }
                 catch (Exception e)
                 {
-                    if (_logger.IsError) _logger.Error($"Error while dispatching discovery message, type: {packet.Type}, sender: {packet.Address}", e);
+                    if (_logger.IsError) _logger.Error($"Error while dispatching discovery message, type: {packet.Type}, sender: {packet.Address:hide}", SensitiveLogMasking.Enabled ? null : e);
                 }
                 finally
                 {
@@ -379,7 +379,7 @@ public class DiscoveryHandler(
         }
         catch (Exception e)
         {
-            if (_logger.IsError) _logger.Error($"Error while handling discovery message, type: {msg.MsgType}, sender: {msg.FarAddress}", e);
+            if (_logger.IsError) _logger.Error($"Error while handling discovery message, type: {msg.MsgType}, sender: {msg.FarAddress:hide}", SensitiveLogMasking.Enabled ? null : e);
         }
     }
 
@@ -405,7 +405,7 @@ public class DiscoveryHandler(
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceDeserializationFailure(InboundDiscoveryPacket failedPacket, Exception exception) =>
-            _logger.Trace($"Error during deserialization of the message, type: {failedPacket.Type}, sender: {failedPacket.Address}, msg: {failedPacket.Packet.Buffer.Span.ToHexString()}, {exception.Message}");
+            _logger.Trace($"Error during deserialization of the message, type: {failedPacket.Type}, sender: {failedPacket.Address:hide}, msg: {failedPacket.Packet.Buffer.Span.ToHexString()}, {exception.Message:hide}");
     }
 
     private void Forward(PooledUdpReceiveResult packet)

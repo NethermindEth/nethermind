@@ -16,6 +16,7 @@ using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -90,7 +91,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             SubscriptionFactory subscriptionFactory = new();
 
             // Register the standard subscription types in the dictionary
-            subscriptionFactory.RegisterStandardEthSubscriptions(_blockTree, _logManager, _specProvider, _receiptCanonicalityMonitor, _filterStore, _txPool, _ethSyncingInfo, new BlockForRpcFactory());
+            subscriptionFactory.RegisterStandardEthSubscriptions(_blockTree, _logManager, _specProvider, _receiptCanonicalityMonitor, _filterStore, _txPool, _ethSyncingInfo, new BlockForRpcFactory(), new BlocksConfig().SecondsPerSlot);
 
             _subscriptionManager = new SubscriptionManager(
             subscriptionFactory,
@@ -174,7 +175,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         private JsonRpcResult GetNewPendingTransactionsResult(TxEventArgs txEventArgs, out string subscriptionId, TransactionsOption? option = null, bool shouldReceiveResult = true)
         {
-            NewPendingTransactionsSubscription newPendingTransactionsSubscription = new(_jsonRpcDuplexClient, _txPool, _specProvider, _logManager, option);
+            NewPendingTransactionsSubscription newPendingTransactionsSubscription = new(_jsonRpcDuplexClient, _txPool, _specProvider, _blockTree, new BlocksConfig().SecondsPerSlot, _logManager, option);
             JsonRpcResult jsonRpcResult = new();
 
             ManualResetEvent manualResetEvent = new(false);
@@ -539,11 +540,20 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
+        public async Task TransactionReceiptsSubscription_with_too_many_hashes_returns_invalid_params_with_reason()
+        {
+            string hashes = string.Join(",", Enumerable.Repeat($"\"{TestItem.KeccakA}\"", 201));
+            string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "transactionReceipts", $$"""{"transactionHashes":[{{hashes}}]}""");
+
+            Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":-32602,"message":"Cannot subscribe to more than 200 transaction hashes at once."},"id":67}"""));
+        }
+
+        [Test]
         public async Task LogsSubscription_with_too_long_string_arguments_returns_invalid_params()
         {
             string args = new('a', 1_000_001);
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs", args);
-            string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\",\"data\":\"subscription args string length 1000001 exceeds maximum allowed length of 1000000\"},\"id\":67}";
+            string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"subscription args string length 1000001 exceeds maximum allowed length of 1000000\"},\"id\":67}";
             Assert.That(expectedResult, Is.EqualTo(serialized), "oversized string args should be rejected before subscription creation");
         }
 
@@ -722,6 +732,32 @@ namespace Nethermind.JsonRpc.Test.Modules
                 receiptMonitor.ReceiptsInserted += Raise.EventWith(new object(), receiptsEvent);
 
                 Assert.That(disposed.Wait(TimeSpan.FromMilliseconds(500)), Is.False);
+            }
+        }
+
+        [Test]
+        public void Subscription_does_not_queue_a_block_whose_receipt_blooms_match_no_accepted_log()
+        {
+            _jsonRpcDuplexClient.SendJsonRpcResult(Arg.Any<JsonRpcResult>())
+                .Returns(new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously).Task);
+            IReceiptMonitor receiptMonitor = Substitute.For<IReceiptMonitor>();
+            LogEntry fromA = Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject;
+            Bloom falsePositive = new(new[] { fromA, Build.A.LogEntry.WithAddress(TestItem.AddressC).TestObject });
+            BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithBloom(falsePositive).TestObject;
+            ReceiptsEventArgs receiptsEvent = new(header, [Build.A.Receipt.WithBlockNumber(header.Number).WithLogs(fromA).WithBloom(falsePositive).TestObject]);
+            Filter filter = new() { FromBlock = BlockParameter.Latest, ToBlock = BlockParameter.Latest, Address = [TestItem.AddressC] };
+            using ManualResetEventSlim disposed = new();
+            _jsonRpcDuplexClient.When(c => c.Dispose()).Do(_ => disposed.Set());
+
+            using (new LogsSubscription(_jsonRpcDuplexClient, receiptMonitor, _filterStore, _blockTree, _logManager, filter))
+            {
+                for (int i = 0; i < Subscription.MaxQueuedBlocks + 2; i++)
+                {
+                    receiptMonitor.ReceiptsInserted += Raise.EventWith(new object(), receiptsEvent);
+                }
+
+                Assert.That(disposed.Wait(TimeSpan.FromMilliseconds(500)), Is.False);
+                _jsonRpcDuplexClient.DidNotReceive().SendJsonRpcResult(Arg.Any<JsonRpcResult>());
             }
         }
 
@@ -1150,6 +1186,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 jsonRpcDuplexClient: client,
                 txPool: txPool,
                 specProvider: _specProvider,
+                blockFinder: _blockTree,
+                secondsPerSlot: new BlocksConfig().SecondsPerSlot,
                 logManager: LimboLogs.Instance);
 
             for (int i = 0; i < messages; i++)
@@ -1188,6 +1226,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                         jsonRpcDuplexClient: client,
                         txPool: txPool,
                         specProvider: _specProvider,
+                        blockFinder: _blockTree,
+                        secondsPerSlot: new BlocksConfig().SecondsPerSlot,
                         logManager: LimboLogs.Instance
                     );
 
@@ -1294,7 +1334,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             client.SendJsonRpcResult(Arg.Any<JsonRpcResult>()).Returns(new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously).Task);
             using Subscription subscription = dropped
                 ? new DroppedPendingTransactionsSubscription(client, _txPool, _logManager)
-                : new NewPendingTransactionsSubscription(client, _txPool, _specProvider, _logManager);
+                : new NewPendingTransactionsSubscription(client, _txPool, _specProvider, _blockTree, new BlocksConfig().SecondsPerSlot, _logManager);
 
             WeakReference transaction = RaiseTransactionEvent(dropped);
             GC.Collect();
@@ -1312,6 +1352,37 @@ namespace Nethermind.JsonRpc.Test.Modules
             // The substitute records the raise, event arguments included.
             _txPool.ClearReceivedCalls();
             return new WeakReference(transaction);
+        }
+
+        [Test]
+        public void New_head_subscriptions_do_not_retain_queued_previous_blocks()
+        {
+            IJsonRpcDuplexClient client = Substitute.For<IJsonRpcDuplexClient>();
+            client.SendJsonRpcResult(Arg.Any<JsonRpcResult>()).Returns(new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously).Task);
+            using NewHeadSubscription subscription = new(client, _blockTree, _logManager, _specProvider, new BlockForRpcFactory());
+
+            (WeakReference queuedBlock, WeakReference previousBlock) = RaiseBlockAddedToMainEvents();
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(queuedBlock.IsAlive, Is.True);
+                Assert.That(previousBlock.IsAlive, Is.False);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private (WeakReference QueuedBlock, WeakReference PreviousBlock) RaiseBlockAddedToMainEvents()
+        {
+            Block queuedBlock = Build.A.Block.WithNumber(2).TestObject;
+            Block previousBlock = Build.A.Block.WithNumber(1).TestObject;
+            // The first send never completes, so the second event stays queued.
+            _blockTree.BlockAddedToMain += Raise.EventWith(new object(), new BlockReplacementEventArgs(Build.A.Block.WithNumber(0).TestObject));
+            _blockTree.BlockAddedToMain += Raise.EventWith(new object(), new BlockReplacementEventArgs(queuedBlock, previousBlock));
+            // The substitute records the raise, event arguments included.
+            _blockTree.ClearReceivedCalls();
+            return (new WeakReference(queuedBlock), new WeakReference(previousBlock));
         }
 
         [Test]

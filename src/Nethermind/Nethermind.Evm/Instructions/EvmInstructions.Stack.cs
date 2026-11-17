@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -146,7 +147,7 @@ public static partial class EvmInstructions
                 : (nextInstruction = (Instruction)Unsafe.Add(ref bytes, programCounter + Size)) is Instruction.JUMP or Instruction.JUMPI))
         {
             // If next instruction is a JUMP we can skip the PUSH+POP from stack
-            ushort destination = Unsafe.As<byte, ushort>(ref Unsafe.Add(ref bytes, programCounter));
+            ushort destination = Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref bytes, programCounter));
             destination = BinaryPrimitives.ReverseEndianness(destination);
             // With lazy analysis the destination may not be analyzed yet, and analyzing it here would put a call into
             // this handler, so unless a JUMPI will not be taken, and so never validates it, the push and the jump run
@@ -1185,7 +1186,12 @@ public static partial class EvmInstructions
     {
         VmState<TGasPolicy> vmState = vm.VmState;
         // Logging is not permitted in static call contexts.
-        if (vmState.IsStatic) goto StaticCallViolation;
+        if (vmState.IsStatic)
+        {
+            // Geth raises write protection while executing LOG, after a step that carries no error.
+            vm.TraceOperationReady(0);
+            goto StaticCallViolation;
+        }
 
         // Pop memory offset and length for the log data.
         if (!stack.PopMemoryPositionAndUInt256(out UInt256 position, out UInt256 length)) goto StackUnderflow;
@@ -1213,8 +1219,8 @@ public static partial class EvmInstructions
             return EvmExceptionType.None;
         }
 
-        // Load the log data from memory.
-        Span<byte> data = vmState.Memory.LoadSpanAfterGas(in position, in length);
+        // Load the log data from memory, as the memory holds it: it is copied out below.
+        Span<byte> data = vmState.Memory.LoadLaidOutSpanAfterGas(in position, in length);
 
         // Prepare the topics array by popping the corresponding number of words from the stack.
         Hash256[] topics = topicsCount == 0 ? [] : new Hash256[topicsCount];
@@ -1228,7 +1234,9 @@ public static partial class EvmInstructions
         // Create a new log entry with the executing account, log data, and topics.
         LogEntry logEntry = new(
             vmState.Env.ExecutingAccount,
-            data.Length == 0 ? [] : data.ToArray(),
+            data.Length == 0 ? []
+                : EvmPooledMemory.IsSwizzled ? SwizzledMemory.ToArray(ref MemoryMarshal.GetReference(data), data.Length)
+                : data.ToArray(),
             topics);
 
         vm.AddLog(logEntry);

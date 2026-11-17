@@ -19,6 +19,8 @@ using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
+using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -47,9 +49,14 @@ public class FlatOverridableWorldScopeTests
         public List<(Snapshot Snapshot, TransientResource Resource)> FlatDbManagerAddSnapshotCalls { get; } = [];
         public ForwardingNodeRecordBuffer GlobalNodeRecordBuffer { get; } = new(FlatTestHelpers.NewTestBuffer());
 
+        /// <summary>An in-memory snapshot of the main world state, included in the read-only bundle gathered for its state.</summary>
+        public Snapshot? GlobalSnapshot { get; set; }
+
         public TestContext(FlatDbConfig? config = null)
         {
             config ??= new FlatDbConfig();
+            // Resolving Auto needs the hardware info and records the layout on disk.
+            if (config.Layout == FlatLayout.Auto) config.Layout = FlatLayout.Flat;
             IPersistence.IPersistenceReader persistenceReader = Substitute.For<IPersistence.IPersistenceReader>();
 
             _containerBuilder = new ContainerBuilder()
@@ -68,9 +75,11 @@ public class FlatOverridableWorldScopeTests
                         });
 
                     flatDbManager.GatherReadOnlySnapshotBundle(Arg.Any<StateId>())
-                        .Returns(_ =>
+                        .Returns(call =>
                         {
                             SnapshotPooledList snapshotList = new(0);
+                            if (GlobalSnapshot is { } globalSnapshot && globalSnapshot.To == call.Arg<StateId>() && globalSnapshot.TryAcquire())
+                                snapshotList.Add(globalSnapshot);
                             return new ReadOnlySnapshotBundle(snapshotList, Substitute.For<IPersistence.IPersistenceReader>(), false, PersistedSnapshotStack.Empty(), bufferPin: null);
                         });
 
@@ -308,6 +317,72 @@ public class FlatOverridableWorldScopeTests
 
             // Verify no calls to main FlatDbManager
             Assert.That(ctx.FlatDbManagerAddSnapshotCalls, Is.Empty);
+        }
+    }
+
+    [Test]
+    public void RunTreeVisitor_FollowsOverlayAndMainBufferRecords([Values(1, 4)] int parallelism)
+    {
+        using TestContext ctx = new();
+        FlatOverridableWorldScope overridableScope = ctx.OverridableScope;
+
+        BlockHeader CommitAccountsWithSlot(BlockHeader? baseBlock, params Address[] addresses)
+        {
+            using IWorldStateScopeProvider.IScope scope = overridableScope.WorldState.BeginScope(baseBlock);
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(addresses.Length))
+            {
+                foreach (Address address in addresses)
+                {
+                    writeBatch.Set(address, Build.An.Account.WithBalance(1).TestObject);
+                    using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, 1);
+                    storageBatch.Set(1, 1);
+                }
+            }
+            ulong number = (baseBlock?.Number ?? 0) + 1;
+            scope.Commit(number);
+            return Build.A.BlockHeader.WithNumber(number).WithStateRoot(scope.RootHash).TestObject;
+        }
+
+        TrieStats Visit(BlockHeader block)
+        {
+            TrieStatsCollector collector = new(new TestMemDb(), LimboLogs.Instance);
+            overridableScope.GlobalStateReader.RunTreeVisitor(collector, block, new VisitingOptions { MaxDegreeOfParallelism = parallelism }, diagnostics: null);
+            return collector.Stats;
+        }
+
+        // Block 2 adds D beside A and C, so its root points at their leaves from block 1, and only block 1's snapshot holds their storage roots.
+        BlockHeader overlayBlock = CommitAccountsWithSlot(CommitAccountsWithSlot(null, TestItem.AddressA, TestItem.AddressC), TestItem.AddressD);
+
+        // A main state indexed after the overlay pinned the main buffer: the overlay's root lookup would skip it, while the state's
+        // own snapshot resolves it in the main buffer.
+        Hash256 addressHash = Keccak.Compute(TestItem.AddressB.Bytes);
+        TestMemDb trieDb = new();
+        StorageTree storageTree = new(new RawScopedTrieStore(trieDb, addressHash), LimboLogs.Instance);
+        storageTree.Set(1, [0x01]);
+        storageTree.Commit();
+        StateTree stateTree = new(new RawScopedTrieStore(trieDb), LimboLogs.Instance);
+        stateTree.Set(TestItem.AddressB, Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject);
+        stateTree.Commit();
+        BlockHeader mainBlock = Build.A.BlockHeader.WithNumber(3).WithStateRoot(stateTree.RootHash).TestObject;
+        INodeRecordBuffer mainBuffer = ctx.GlobalNodeRecordBuffer;
+        using Snapshot mainSnapshot = new ResourcePool(new FlatDbConfig()).CreateSnapshot(StateId.PreGenesis, new StateId(mainBlock), ResourcePool.Usage.MainBlockProcessing, mainBuffer);
+        mainBuffer.SetRoot(addressHash, storageTree.RootHash, mainBuffer.AppendRecordFromRlp(addressHash, TreePath.Empty, storageTree.RootHash, storageTree.GetNodeByPath([])!, []));
+        mainBuffer.SetRoot(null, stateTree.RootHash, mainBuffer.AppendRecordFromRlp(null, TreePath.Empty, stateTree.RootHash, stateTree.GetNodeByPath([])!, []));
+        ctx.GlobalSnapshot = mainSnapshot;
+
+        // The bundle under the overlay is empty, so a node read from persistence instead of a record is missing.
+        TrieStats overlayStats = Visit(overlayBlock);
+        TrieStats mainStats = Visit(mainBlock);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(overlayStats.StateBranchCount, Is.EqualTo(1));
+            Assert.That(overlayStats.AccountCount, Is.EqualTo(3));
+            Assert.That(overlayStats.StorageLeafCount, Is.EqualTo(3));
+            Assert.That(overlayStats.MissingNodes, Is.Zero);
+            Assert.That(mainStats.AccountCount, Is.EqualTo(1));
+            Assert.That(mainStats.StorageLeafCount, Is.EqualTo(1));
+            Assert.That(mainStats.MissingNodes, Is.Zero);
         }
     }
 
