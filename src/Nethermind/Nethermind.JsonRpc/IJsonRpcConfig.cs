@@ -132,6 +132,16 @@ public interface IJsonRpcConfig : IConfig
     public int MaxLogsPerResponse { get; set; }
 
     [ConfigItem(
+        Description = "The max number of `eth_subscribe` and `admin_subscribe` subscriptions of one WebSocket or IPC connection. A call above this limit returns a `LimitExceeded` error. `0` to lift the limit.",
+        DefaultValue = "1000")]
+    public int MaxSubscriptionsPerConnection { get; set; }
+
+    [ConfigItem(
+        Description = "The max number of `eth_subscribe` and `admin_subscribe` subscriptions of all connections together. A call above this limit returns a `LimitExceeded` error. IPC and authenticated connections are not refused by this limit. `0` to lift the limit.",
+        DefaultValue = "10000")]
+    public int MaxSubscriptions { get; set; }
+
+    [ConfigItem(
         Description = "The max number of blocks the `overlay_getLogs` JSON-RPC method re-executes in one call. `0` to lift the limit.",
         DefaultValue = "1000")]
     int OverlayMaxBlockRange { get; set; }
