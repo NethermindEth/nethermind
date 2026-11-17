@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -183,6 +184,77 @@ public class InclusionListTxSourceTests
             GetTransactions(source, attrs).Select(t => t.Nonce),
             Is.EquivalentTo([1ul, 3ul]));
     }
+
+    [Test]
+    public void Frame_transactions_past_the_verify_budget_are_not_offered()
+    {
+        Transaction legacy = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Transaction[] frameTxs = [.. TestItem.Addresses.Skip(1).Take(5).Select(sender => Profile2FrameTx(sender, 250_000))];
+        Hash256 overBudget = frameTxs.Select(tx => tx.CalculateHash()).Max()!;
+        InclusionListTxSource source = CreateProfile2Source();
+        byte[][][] il = AtPosition0([Encode(legacy), .. frameTxs.Select(Encode)]);
+
+        source.Set(il, Eip8369Prototype.Instance);
+        List<Transaction> offered = [.. GetTransactions(source, Attributes(il))];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(offered.Select(tx => tx.Hash), Does.Not.Contain(overBudget));
+            Assert.That(offered, Has.Count.EqualTo(5));
+            Assert.That(offered.Count(tx => tx.Hash == legacy.CalculateHash()), Is.EqualTo(1), "Profile 1 entries are still offered");
+        }
+    }
+
+    [Test]
+    public void Frame_transaction_admitted_at_another_position_is_offered()
+    {
+        Transaction[] frameTxs = [.. TestItem.Addresses.Skip(1).Take(5).Select(sender => Profile2FrameTx(sender, 250_000))];
+        Transaction overBudget = frameTxs.MaxBy(tx => tx.CalculateHash())!;
+        InclusionListTxSource source = CreateProfile2Source();
+        byte[][][] il = [[.. frameTxs.Select(Encode)], [Encode(overBudget)], .. Enumerable.Repeat<byte[][]>([], Eip7805Constants.InclusionListCommitteeSize - 2)];
+
+        source.Set(il, Eip8369Prototype.Instance);
+
+        Assert.That(GetTransactions(source, Attributes(il)).Select(tx => tx.Hash), Is.EquivalentTo(frameTxs.Select(tx => tx.CalculateHash())));
+    }
+
+    [TestCase(0UL, 2, TestName = "Lifting MAX_VERIFY_GAS_PER_TX admits the costlier entry")]
+    [TestCase(Eip8369Constants.MaxVerifyGasPerTx, 1, TestName = "An entry over MAX_VERIFY_GAS_PER_TX is not offered")]
+    public void Frame_transaction_over_the_per_tx_cap_is_not_offered(ulong maxVerifyGasPerTx, int expected)
+    {
+        Transaction admitted = Profile2FrameTx(TestItem.AddressB, 100_000);
+        Transaction overCap = Profile2FrameTx(TestItem.AddressC, Eip8369Constants.MaxVerifyGasPerTx + 1);
+        InclusionListTxSource source = CreateProfile2Source(new BlocksConfig { FocilProfile2MaxVerifyGas = maxVerifyGasPerTx });
+        byte[][][] il = AtPosition0([Encode(overCap), Encode(admitted)]);
+
+        source.Set(il, Eip8369Prototype.Instance);
+        List<Transaction> offered = [.. GetTransactions(source, Attributes(il))];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(offered, Has.Count.EqualTo(expected));
+            Assert.That(offered.Select(tx => tx.Hash), Does.Contain(admitted.CalculateHash()));
+        }
+    }
+
+    private static InclusionListTxSource CreateProfile2Source(IBlocksConfig blocksConfig = null) => new(
+        new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
+        new CustomSpecProvider(((ForkActivation)0, Eip8369Prototype.Instance)),
+        LimboLogs.Instance,
+        blocksConfig: blocksConfig);
+
+    private static Transaction Profile2FrameTx(Address sender, ulong verifyGas) => new()
+    {
+        Type = TxType.FrameTx,
+        ChainId = MainnetSpecProvider.Instance.ChainId,
+        Nonce = 0,
+        SenderAddress = sender,
+        NonceKeys = [UInt256.Zero],
+        Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, verifyGas, UInt256.Zero, default)],
+        FrameSignatures = [],
+        GasPrice = 2.GWei,
+        DecodedMaxFeePerGas = 10.GWei,
+    };
 
     private static Transaction FrameTx(ulong nonce, byte[][] blobVersionedHashes) => new()
     {

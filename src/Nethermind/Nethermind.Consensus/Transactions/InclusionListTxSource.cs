@@ -4,7 +4,9 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using System.Runtime.CompilerServices;
+using Nethermind.Config;
 using Nethermind.Consensus.Decoders;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -22,7 +24,8 @@ public class InclusionListTxSource(
     IEthereumEcdsa ecdsa,
     ISpecProvider specProvider,
     ILogManager logManager,
-    IProfile2EligibilityReplayer? profile2Replayer = null) : IInclusionListTxSource
+    IProfile2EligibilityReplayer? profile2Replayer = null,
+    IBlocksConfig? blocksConfig = null) : IInclusionListTxSource
 {
     // Lazy<T> defaults to ExecutionAndPublication: constructed once even under racing FCUs.
     private readonly Lazy<InclusionListDecoder> _decoder = new(() => new InclusionListDecoder(ecdsa, specProvider, logManager));
@@ -40,9 +43,20 @@ public class InclusionListTxSource(
         public (ulong MaxVerifyGasPerTx, IReadOnlySet<Hash256AsKey>? Candidates)? Profile2Candidates;
     }
 
+    private readonly ulong _maxVerifyGasPerTx = blocksConfig?.FocilProfile2MaxVerifyGas ?? Eip8369Constants.MaxVerifyGasPerTx;
+
+    /// <inheritdoc/>
+    /// <remarks>Once Profile 2 is active, a frame transaction no committee position's VERIFY budget fill admits is
+    /// not offered: its omission is excused (EIP-8369 § Profile 2 omission claims), so the build never runs its VERIFY.</remarks>
     // gasLimit is ignored: the downstream tx selection pipeline enforces it.
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, BlockHeader targetBlock, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
-        => TryGetDecoded(payloadAttributes, out DecodedInclusionLists? decoded) ? decoded.ForProduction : [];
+    {
+        if (!TryGetDecoded(payloadAttributes, out DecodedInclusionLists? decoded)) return [];
+        if (!Eip8369Profile2.IsActive(decoded.Spec)) return decoded.ForProduction;
+
+        IReadOnlySet<Hash256AsKey>? admitted = GetProfile2Candidates(payloadAttributes, _maxVerifyGasPerTx);
+        return decoded.ForProduction.Where(tx => !tx.SupportsFrames || (admitted is not null && tx.Hash is not null && admitted.Contains(tx.Hash)));
+    }
 
     public IReadOnlySet<Hash256AsKey>? GetProfile2Candidates(PayloadAttributes? payloadAttributes, ulong maxVerifyGasPerTx)
     {
