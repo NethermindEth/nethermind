@@ -535,10 +535,14 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     /// <remarks>
     /// A CREATE, CREATE2 or TCREATE frame that halted deployed no contract, so its <c>to</c> is dropped —
     /// the execution-apis <c>CallFrame</c> schema requires it to be omitted there.
+    /// A stack overflow uses Geth's text, which is always the same: no opcode grows the stack by more than one item,
+    /// so it overflows only on a full stack of 1024 items against a limit of 1023.
     /// </remarks>
     private static void MarkFrameFailed(NativeCallTracerCallFrame callFrame, EvmExceptionType error)
     {
-        callFrame.Error ??= error.GetEvmExceptionDescription();
+        callFrame.Error ??= error == EvmExceptionType.StackOverflow
+            ? "stack limit reached 1024 (1023)"
+            : error.GetEvmExceptionDescription();
         if (callFrame.Type is Instruction.CREATE or Instruction.CREATE2 or Instruction.TCREATE)
         {
             callFrame.To = null;

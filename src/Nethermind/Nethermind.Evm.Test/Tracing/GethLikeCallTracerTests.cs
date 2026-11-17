@@ -806,6 +806,11 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
                 Assert.That(frame.Error, Is.EqualTo("execution reverted"), "revert error");
             }
 
+            if (outcome == ChildOutcome.StackOverflow)
+            {
+                Assert.That(frame.Error, Is.EqualTo("stack limit reached 1024 (1023)"), "stack overflow error");
+            }
+
             if (depth == 2)
             {
                 Assert.That(root.Calls[0].Error, Is.Null, "the middle frame survives its child's failure");
