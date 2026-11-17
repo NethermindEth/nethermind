@@ -282,7 +282,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
 
     private void WriteTraceFilter(List<Hash256> blockHashes, TxTraceFilter filter, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken)
     {
-        foreach ((Hash256 blockHash, List<ParityLikeTxTrace>? blockTraces) in ReadStoredBlockTraces(blockHashes, filter))
+        foreach ((Hash256 blockHash, List<ParityLikeTxTrace>? blockTraces) in ReadStoredBlockTraces(blockHashes, filter, cancellationToken))
         {
             if (filter.IsExhausted) break;
             cancellationToken.ThrowIfCancellationRequested();
@@ -312,7 +312,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
         ArrayPoolList<ParityTxTraceFromStore> result = [with(16)];
         try
         {
-            foreach ((Hash256 blockHash, List<ParityLikeTxTrace>? blockTraces) in ReadStoredBlockTraces(blockHashes, filter))
+            foreach ((Hash256 blockHash, List<ParityLikeTxTrace>? blockTraces) in ReadStoredBlockTraces(blockHashes, filter, cancellationToken))
             {
                 if (filter.IsExhausted) break;
                 cancellationToken.ThrowIfCancellationRequested();
@@ -347,7 +347,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
         }
     }
 
-    private IEnumerable<(Hash256 BlockHash, List<ParityLikeTxTrace>? Traces)> ReadStoredBlockTraces(List<Hash256> blockHashes, TxTraceFilter filter)
+    private IEnumerable<(Hash256 BlockHash, List<ParityLikeTxTrace>? Traces)> ReadStoredBlockTraces(List<Hash256> blockHashes, TxTraceFilter filter, CancellationToken cancellationToken)
     {
         List<ParityLikeTxTrace>?[] windowTraces = new List<ParityLikeTxTrace>?[Math.Min(StoredTraceReadWindow, blockHashes.Count)];
         for (int start = 0; start < blockHashes.Count; start += StoredTraceReadWindow)
@@ -355,7 +355,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
             if (filter.IsExhausted) yield break;
 
             int length = Math.Min(StoredTraceReadWindow, blockHashes.Count - start);
-            ReadStoredTraceWindow(blockHashes, start, windowTraces, length);
+            ReadStoredTraceWindow(blockHashes, start, windowTraces, length, cancellationToken);
 
             for (int i = 0; i < length; i++)
             {
@@ -364,19 +364,20 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
         }
     }
 
-    private void ReadStoredTraceWindow(List<Hash256> blockHashes, int start, List<ParityLikeTxTrace>?[] windowTraces, int length)
+    private void ReadStoredTraceWindow(List<Hash256> blockHashes, int start, List<ParityLikeTxTrace>?[] windowTraces, int length, CancellationToken cancellationToken)
     {
         if (_parallelization == 1)
         {
             for (int i = 0; i < length; i++)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 windowTraces[i] = ReadStoredTraces(blockHashes[start + i]);
             }
 
             return;
         }
 
-        ParallelOptions options = new() { MaxDegreeOfParallelism = _parallelization == 0 ? -1 : _parallelization };
+        ParallelOptions options = new() { MaxDegreeOfParallelism = _parallelization == 0 ? -1 : _parallelization, CancellationToken = cancellationToken };
         Parallel.For(0, length, options, i => windowTraces[i] = ReadStoredTraces(blockHashes[start + i]));
     }
 

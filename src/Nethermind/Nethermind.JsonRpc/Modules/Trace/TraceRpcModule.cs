@@ -610,12 +610,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
             ?? throw new ResourceNotFoundException($"{ErrorMessages.PrunedHistoryUnavailable} for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
 
         public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_block(BlockParameter blockParameter, string? fork = null) =>
-            TraceBlockWithCancellation(blockParameter, fork, CancellationToken.None);
+            ((ICancellableBlockTracer)this).TraceBlockWithCancellation(blockParameter, fork, CancellationToken.None);
 
-        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> ICancellableBlockTracer.TraceBlockWithCancellation(BlockParameter blockParameter, string? fork, CancellationToken cancellationToken) =>
-            TraceBlockWithCancellation(blockParameter, fork, cancellationToken);
-
-        internal ResultWrapper<IEnumerable<ParityTxTraceFromStore>> TraceBlockWithCancellation(BlockParameter blockParameter, string? fork, CancellationToken cancellationToken)
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> ICancellableBlockTracer.TraceBlockWithCancellation(BlockParameter blockParameter, string? fork, CancellationToken cancellationToken)
         {
             if (IsPending(blockParameter))
             {

@@ -605,7 +605,7 @@ public class TraceRpcModuleTests
         await context.Build();
         using TestRpcBlockchain blockchain = context.Blockchain;
         blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = false;
-        TraceRpcModule module = (TraceRpcModule)context.TraceRpcModule;
+        ICancellableBlockTracer module = (ICancellableBlockTracer)context.TraceRpcModule;
         using CancellationTokenSource cancellation = new();
         await cancellation.CancelAsync();
 

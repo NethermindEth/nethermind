@@ -555,6 +555,36 @@ public class TraceStoreRpcModuleTests
     }
 
     [Test]
+    public async Task trace_filter_from_store_stops_the_stored_window_read_when_the_request_times_out([Values] bool streaming, [Values(1, 2)] int parallelization)
+    {
+        const int timeoutMs = 50;
+        const int windowSize = 64;
+        IBlockFinder blockFinder = Build.A.BlockTree().OfChainLength(windowSize + 1).TestObject;
+        MemDb store = new();
+        CountingTraceSerializer serializer = new(new ParityLikeTraceSerializer(LimboLogs.Instance), static () => Thread.Sleep(timeoutMs));
+        for (ulong number = 1; number <= blockFinder.Head!.Number; number++)
+        {
+            Hash256 hash = blockFinder.FindHeader(number)!.Hash!;
+            store.Set(hash, serializer.Serialize([new ParityLikeTxTrace { BlockHash = hash, TransactionHash = TestItem.KeccakA, Action = Call(TestItem.AddressA, TestItem.AddressB) }]));
+        }
+
+        TraceStoreRpcModule module = new(Substitute.For<ITraceRpcModule>(), store, blockFinder, Substitute.For<IReceiptFinder>(), serializer, ParityTraceTypes.All,
+            new JsonRpcConfig { EnableTracingStreamMode = streaming, Timeout = timeoutMs }, LimboLogs.Instance, parallelization);
+
+        Exception? failure = await Assert.CatchAsync(async () =>
+        {
+            using JsonRpcResponse response = module.trace_filter(new TraceFilterForRpc { FromBlock = new BlockParameter(1), ToBlock = BlockParameter.Latest });
+            await Serialize(response);
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failure, Is.InstanceOf<OperationCanceledException>());
+            Assert.That(serializer.DeserializeCount, Is.LessThan(windowSize));
+        }
+    }
+
+    [Test]
     public async Task trace_filter_from_store_keeps_the_live_trace_block_error([Values] bool streaming)
     {
         StoreWithUnreadableBlocks test = new(streaming, readableBlocks: 0);
@@ -611,7 +641,7 @@ public class TraceStoreRpcModuleTests
         }
     }
 
-    private sealed class CountingTraceSerializer(ITraceSerializer<ParityLikeTxTrace> inner) : ITraceSerializer<ParityLikeTxTrace>
+    private sealed class CountingTraceSerializer(ITraceSerializer<ParityLikeTxTrace> inner, Action? onDeserialize = null) : ITraceSerializer<ParityLikeTxTrace>
     {
         private int _deserializeCount;
 
@@ -620,12 +650,14 @@ public class TraceStoreRpcModuleTests
         public List<ParityLikeTxTrace>? Deserialize(Span<byte> serialized)
         {
             Interlocked.Increment(ref _deserializeCount);
+            onDeserialize?.Invoke();
             return inner.Deserialize(serialized);
         }
 
         public List<ParityLikeTxTrace>? Deserialize(Stream serialized)
         {
             Interlocked.Increment(ref _deserializeCount);
+            onDeserialize?.Invoke();
             return inner.Deserialize(serialized);
         }
 
