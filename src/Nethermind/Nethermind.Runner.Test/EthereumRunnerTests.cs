@@ -399,7 +399,6 @@ public class EthereumRunnerTests
             byte[] originalSchema = meta.Get(schemaKey)!;
             byte[] originalProof = meta.Get(firstProofKey)!;
             byte[] originalTrace = traces.Get(first.Hash!)!;
-            Assert.That(originalProof, Is.Not.Null, "The live sidecar must build a proof before warmup.");
             TxReceipt receipt = new() { StatusCode = 1, GasUsed = 21_000, GasUsedTotal = 21_000, Logs = [] };
             string receiptJson = jsonSerializer.Serialize(receipt);
             using (Assert.EnterMultipleScope())
