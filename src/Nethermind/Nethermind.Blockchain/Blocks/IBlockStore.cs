@@ -50,7 +50,7 @@ public interface IBlockStore
 
     /// <summary>Starts reading stored blocks into memory before the reads that need them.</summary>
     /// <remarks>Returns before the reads complete. A store that cannot read ahead does nothing.</remarks>
-    void Prefetch(ReadOnlyMemory<(ulong Number, ValueHash256 Hash)> blocks) { }
+    void Prefetch(ReadOnlySpan<(ulong Number, ValueHash256 Hash)> blocks) { }
     ReceiptRecoveryBlock? GetReceiptRecoveryBlock(ulong blockNumber, Hash256 blockHash);
     void Cache(Block block);
 

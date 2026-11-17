@@ -388,7 +388,7 @@ public class BlockStoreTests
         Block last = Build.A.Block.WithNumber(7).TestObject;
         if (lastCached) db.CachedKeys.Add(NumberedKey(last));
 
-        store.Prefetch(new[] { (first.Number, first.Hash!.ValueHash256), (last.Number, last.Hash!.ValueHash256) });
+        store.Prefetch([(first.Number, first.Hash!.ValueHash256), (last.Number, last.Hash!.ValueHash256)]);
 
         Assert.That(db.Prefetches, lastCached ? Is.Empty : Is.EqualTo(new[] { new[] { NumberedKey(first), NumberedKey(last) } }));
     }

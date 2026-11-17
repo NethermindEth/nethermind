@@ -620,7 +620,7 @@ namespace Nethermind.Synchronization
                 if (numbers[i] is { } number) blocks[known++] = (number, blockHashes[i]);
             }
 
-            _blockStore.Prefetch(blocks.AsReadOnlyMemory()[..known]);
+            _blockStore.Prefetch(blocks.Slice(0, known));
         }
 
         public BlockHeader? FindHeader(Hash256 hash) => _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
