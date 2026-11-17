@@ -31,21 +31,5 @@ namespace Nethermind.Facade.Proxy.Models
         public Hash256 TransactionsRoot { get; set; }
         public ulong? BlobGasUsed { get; set; }
         public ulong? ExcessBlobGas { get; set; }
-
-        public Block ToBlock()
-        {
-            Block block = new(new BlockHeader(ParentHash, Sha3Uncles, Miner, Difficulty, Number,
-                GasLimit, Timestamp, ExtraData));
-
-            block.Header.StateRoot = StateRoot;
-            block.Header.GasUsed = GasUsed;
-            block.Header.Hash = Hash;
-            block.Header.MixHash = MixHash;
-            block.Header.Nonce = Nonce;
-            block.Header.ReceiptsRoot = ReceiptsRoot;
-            block.Header.TotalDifficulty = TotalDifficulty;
-            block.Header.TxRoot = TransactionsRoot;
-            return block;
-        }
     }
 }
