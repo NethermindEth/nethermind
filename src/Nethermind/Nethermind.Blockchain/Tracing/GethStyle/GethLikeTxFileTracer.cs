@@ -18,6 +18,7 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
 {
     private const int MinStackBufferSize = 16 * EvmStack.WordSize;
     private const int MinMemoryBufferSize = 1024;
+    private const string StackLimitReachedError = "stack limit reached 1024 (1023)";
 
     private readonly IGethFileTraceSink _sink;
     private readonly Stack<ulong>? _actionGas;
@@ -27,6 +28,7 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
     private TopLevelGasTracker _gasTracker;
     private bool _captureStopped;
     private string? _errorDetails;
+    private Instruction _lastOpcode;
 
     /// <summary>
     /// Creates a streaming Geth-style transaction tracer.
@@ -78,6 +80,7 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
 
     public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
+        _lastOpcode = opcode;
         if (_captureStopped) return;
         base.StartOperation(pc, opcode, gas, in env);
         if (_captureStopped) CurrentTraceEntry = null;
@@ -181,8 +184,18 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
     public override void ReportActionError(EvmExceptionType evmExceptionType)
     {
         base.ReportActionError(evmExceptionType);
-        CompleteAction(0, default, _errorDetails ?? evmExceptionType.GetEvmExceptionDescription());
+        CompleteAction(0, default, _errorDetails ?? GetActionErrorDescription(evmExceptionType));
     }
+
+    /// <summary>Returns the error Geth reports for an action that ended with <paramref name="error"/>.</summary>
+    private string? GetActionErrorDescription(EvmExceptionType error) => error switch
+    {
+        // Only opcodes that push one item more than they pop can overflow, which happens on a full stack, and Geth's
+        // limit for them is one below the stack size.
+        EvmExceptionType.StackOverflow => StackLimitReachedError,
+        EvmExceptionType.BadInstruction => $"invalid opcode: {OpcodeJsonNames.GetName(_lastOpcode)}",
+        _ => error.GetEvmExceptionDescription()
+    };
 
     public override void ReportActionErrorDetails(string error)
     {

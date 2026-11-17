@@ -113,6 +113,8 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
     [TestCase("return", "0x6", null)]
     [TestCase("badJump", "0x13498", "invalid jump destination")]
     [TestCase("underflow", "0x13498", "stack underflow (1 \\u003c=\\u003e 2)")]
+    [TestCase("overflow", "0x13498", "stack limit reached 1024 (1023)")]
+    [TestCase("undefined", "0x13498", "invalid opcode: opcode 0xc not defined")]
     public void File_summary_reports_execution_gas_and_error_after_top_level_action(string scenario, string gasUsed, string? error)
     {
         byte[] code = scenario switch
@@ -121,6 +123,8 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
             "return" => Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.RETURN).Done,
             "badJump" => Prepare.EvmCode.PushData(255).Op(Instruction.JUMP).Done,
             "underflow" => Prepare.EvmCode.PushData(7).Op(Instruction.ADD).Done,
+            "overflow" => Enumerable.Repeat(Prepare.EvmCode.PushData(0).Done, 1025).SelectMany(push => push).ToArray(),
+            "undefined" => Prepare.EvmCode.Op((Instruction)0x0c).Done,
             _ => throw new ArgumentOutOfRangeException(nameof(scenario), scenario, null)
         };
         string[] records = TraceFile(code).Split('\n', StringSplitOptions.RemoveEmptyEntries);
@@ -130,6 +134,15 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
             Assert.That(records[^1], Is.EqualTo($"{{\"output\":\"\",\"gasUsed\":\"{gasUsed}\"{errorField}}}"));
             Assert.That(records[^2], Does.Not.Contain("\\u003C").And.Not.Contain("\\u003E"), "Geth escapes HTML characters with lowercase hex");
         }
+    }
+
+    [Test]
+    public void Child_error_detail_does_not_reach_parent_exit()
+    {
+        PrepareNestedCall("underflow");
+        byte[] code = Prepare.EvmCode.Call(TestItem.AddressC, 50_000).Op(Instruction.POP).PushData(255).Op(Instruction.JUMP).Done;
+        string[] records = TraceFile(code).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        Assert.That(records[^1], Is.EqualTo("{\"output\":\"\",\"gasUsed\":\"0x13498\",\"error\":\"invalid jump destination\"}"));
     }
 
     [TestCase(Instruction.REVERT, "execution reverted", "0x6")]
