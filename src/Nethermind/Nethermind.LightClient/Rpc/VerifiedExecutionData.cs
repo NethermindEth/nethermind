@@ -20,7 +20,7 @@ using Nethermind.Logging;
 namespace Nethermind.LightClient.Rpc;
 
 internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecProvider specProvider, ulong chainId,
-    IBlockForRpcFactory blockForRpcFactory) : IDisposable
+    IBlockForRpcFactory blockForRpcFactory, SendPolicyRelay? sendPolicy = null) : IDisposable
 {
     private const int LogPrefetchLimit = 4;
     private readonly EthereumEcdsa _ecdsa = new(chainId);
@@ -289,7 +289,7 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
             if (frameVerifier is null) throw new RpcException(-32601, "Verified frame admission is unavailable.");
             await frameVerifier.ValidateFrameAdmissionAsync(head, transaction, header, spec, cancellationToken);
             transaction.Hash ??= transaction.CalculateHash();
-            await source.BroadcastTransactionAsync(transaction, cancellationToken);
+            await RelayAsync(transaction, cancellationToken);
             return transaction.Hash!.ToString();
         }
         try { RecoverSender(transaction); }
@@ -308,9 +308,13 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
                 throw new RpcException(-32003, "Transaction sender has deployed code.");
         }
         transaction.Hash ??= transaction.CalculateHash();
-        await source.BroadcastTransactionAsync(transaction, cancellationToken);
+        await RelayAsync(transaction, cancellationToken);
         return transaction.Hash!.ToString();
     }
+
+    private Task RelayAsync(Transaction transaction, CancellationToken cancellationToken) => sendPolicy is null
+        ? source.BroadcastTransactionAsync(transaction, cancellationToken)
+        : sendPolicy.RelayAsync(transaction, relayed => source.BroadcastTransactionAsync(relayed, cancellationToken));
 
     internal async Task<JsonElement> GetFeeHistoryAsync(BlockHeader[] headers, double[]? percentiles, CancellationToken cancellationToken)
     {

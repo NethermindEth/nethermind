@@ -2604,6 +2604,42 @@ public class VerifiedRpcTests
     }
 
     [Test]
+    public async Task Signed_submission_follows_send_policy_rules_before_relay([Values("none", "listed", "unlisted", "over-value")] string rules)
+    {
+        using PrivateKey key = new("0x0000000000000000000000000000000000000000000000000000000000000001");
+        using Provider provider = new(new Account(7, (UInt256)1_000_000_000), headNumber: 20_000_000, accountAddress: key.Address);
+        string rulesPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.rules");
+        await File.WriteAllTextAsync(rulesPath, rules switch
+        {
+            "listed" => $"from {key.Address}\nto {AccountAddress} 3\n",
+            "over-value" => $"from {key.Address}\nto {AccountAddress} 2\n",
+            _ => $"from {key.Address}\n",
+        });
+        try
+        {
+            using VerifiedRpc rpc = provider.CreateRpc(sendPolicy: rules == "none" ? null : new SendPolicyRelay(rulesPath, 1, LimboLogs.Instance));
+            Transaction transaction = new() { Nonce = 7, GasLimit = 21_000, GasPrice = 2, To = AccountAddress, Value = 3 };
+            new EthereumEcdsa(1).Sign(key, transaction, true);
+            transaction.Hash = transaction.CalculateHash();
+            JsonElement parameters = Parameters("0x" + Convert.ToHexString(TxDecoder.Instance.EncodeAsBytes(transaction,
+                RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm)).ToLowerInvariant());
+            if (rules is "none" or "listed")
+            {
+                Assert.That(await rpc.InvokeAsync("eth_sendRawTransaction", parameters, CancellationToken.None), Is.EqualTo(transaction.Hash.ToString()));
+                Assert.That(provider.Broadcasts.Single().SenderAddress, Is.EqualTo(key.Address));
+            }
+            else
+            {
+                RpcException? exception = await Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync("eth_sendRawTransaction", parameters, CancellationToken.None));
+                Assert.That(exception!.Code, Is.EqualTo(-32003));
+                Assert.That(exception.Message, Does.Contain("send policy"));
+                Assert.That(provider.Broadcasts, Is.Empty);
+            }
+        }
+        finally { File.Delete(rulesPath); }
+    }
+
+    [Test]
     public async Task Blob_submission_validates_kzg_sidecar_before_relay([Values] bool tamper)
     {
         await KzgPolynomialCommitments.InitializeAsync(Nethermind.Logging.LimboLogs.Instance.GetClassLogger<VerifiedRpcTests>());
@@ -2830,9 +2866,9 @@ public class VerifiedRpcTests
         public VerifiedHead? LatestHead { get; set; }
         public ulong? CurrentSlot { get; set; }
         public VerifiedRpc CreateRpc(VerifiedCall? calls = null, Func<VerifiedHead>? getHead = null,
-            Func<CancellationToken, Task<VerifiedHead>>? waitForLatestHead = null) => new(this, getHead ?? (() => Head), 1,
+            Func<CancellationToken, Task<VerifiedHead>>? waitForLatestHead = null, SendPolicyRelay? sendPolicy = null) => new(this, getHead ?? (() => Head), 1,
             calls, _specProvider, () => LatestHead, head => head.IsFresh(CurrentSlot ?? head.Slot, 10),
-            waitForLatestHead: waitForLatestHead);
+            waitForLatestHead: waitForLatestHead, sendPolicy: sendPolicy);
         public BlockHeader Header { get; }
         public BlockHeader? HistoricalHeader { get; set; }
         public BlockHeader? OptimisticHeader { get; set; }

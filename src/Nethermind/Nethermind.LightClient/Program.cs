@@ -31,6 +31,7 @@ if (Array.Exists(args, static arg => arg is "--help" or "-h"))
         "          --data-dir src/Nethermind/artifacts/lightclient\n" +
         "          --beacon-port 9050 --beacon-quic-port 9051 (0 disables QUIC) --execution-port 30307\n" +
         "          --host-accounts <0xaddress,0xaddress,...> (complete account state retained in RAM)\n" +
+        "          --send-policy-rules <path> (refuse eth_sendRawTransaction that breaks the SendPolicy rule file)\n" +
         "          --log-level Trace|Debug|Info|Warn|Error|Fatal (default Info)\n" +
         "Mainnet needs --checkpoint or --checkpoint-url; Hoodi and Sepolia use EF-operated defaults.\n" +
         "Gnosis uses a Gnosis-operated checkpoint default; use --checkpoint-url to choose another provider.\n" +
@@ -109,6 +110,8 @@ async Task RunClientAsync(CancellationToken stoppingToken)
     BeaconPresetSelection.Initialize(chainId);
     BeaconChainSpec spec = BeaconChainSpec.ForChainId(chainId);
     Address[] hostedAccounts = HostedAccountState.ParseAccounts(builder.Configuration["host-accounts"]);
+    string? sendPolicyRules = builder.Configuration["send-policy-rules"];
+    SendPolicyRelay? sendPolicy = sendPolicyRules is null ? null : new(sendPolicyRules, chainId, logManager);
     (int beaconPort, int quicPort, int executionPort) = LightClientHost.ReadPorts(builder.Configuration);
     string? checkpointValue = builder.Configuration["checkpoint"];
     string? checkpointCheckUrl = builder.Configuration["checkpoint-check-url"];
@@ -280,7 +283,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
         using VerifiedRpc rpc = new(execution, GetHead, spec.ChainId, calls, execution.SpecProvider, GetLatestHead,
             latest => IsHeadFresh(latest, OptimisticHeadMaxAgeSeconds), finalized => IsHeadFresh(finalized, FinalizedHeadMaxAgeSeconds),
             token => publisher.WaitForFreshLatestAsync(latest => IsHeadFresh(latest, OptimisticHeadMaxAgeSeconds),
-                () => optimisticRequests.Writer.TryWrite(true), token), blockForRpcFactory: execution.BlockForRpcFactory);
+                () => optimisticRequests.Writer.TryWrite(true), token), blockForRpcFactory: execution.BlockForRpcFactory, sendPolicy: sendPolicy);
         VerifiedSubscriptions subscriptions = new(execution, rpc, logger, metrics: metrics);
         ConsensusSync.Processor consensus = new(store, journal, spec, clock, consensusGate,
             PublishPersistedHeaders, app.Lifetime.StopApplication, logger, app.Lifetime.ApplicationStopping);
