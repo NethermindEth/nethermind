@@ -569,6 +569,25 @@ public class TraceStoreRpcModuleTests
     }
 
     [Test]
+    public async Task trace_filter_from_store_traces_unreadable_blocks_live_with_the_request_token([Values] bool streaming)
+    {
+        ITraceRpcModule innerModule = Substitute.For<ITraceRpcModule, ICancellableBlockTracer>();
+        ICancellableBlockTracer cancellableModule = (ICancellableBlockTracer)innerModule;
+        cancellableModule.TraceBlockWithCancellation(Arg.Any<BlockParameter>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success([]));
+        using StoreWithUnreadableBlocks test = new(streaming, readableBlocks: 0, innerModule: innerModule);
+
+        using JsonRpcResponse response = test.Module.trace_filter(new TraceFilterForRpc { FromBlock = new BlockParameter(1), ToBlock = new BlockParameter(1) });
+        await Serialize(response);
+
+        using (Assert.EnterMultipleScope())
+        {
+            cancellableModule.Received(1).TraceBlockWithCancellation(Arg.Any<BlockParameter>(), Arg.Any<string?>(), Arg.Is<CancellationToken>(static token => token.CanBeCanceled));
+            innerModule.DidNotReceive().trace_block(Arg.Any<BlockParameter>(), Arg.Any<string?>());
+        }
+    }
+
+    [Test]
     public async Task trace_filter_from_store_keeps_the_live_trace_block_error([Values] bool streaming)
     {
         using StoreWithUnreadableBlocks test = new(streaming, readableBlocks: 0);
@@ -608,10 +627,10 @@ public class TraceStoreRpcModuleTests
         public Hash256[] Hashes { get; }
         public ITraceRpcModule Module => _context.Module;
 
-        public StoreWithUnreadableBlocks(bool streaming, int readableBlocks, int? timeoutMs = null)
+        public StoreWithUnreadableBlocks(bool streaming, int readableBlocks, int? timeoutMs = null, ITraceRpcModule? innerModule = null)
         {
             ParityLikeTraceSerializer serializer = new(LimboLogs.Instance);
-            _context = new TestContext(parallelization: 1, streaming, serializer: new UnreadableTraceSerializer(serializer), timeoutMs: timeoutMs);
+            _context = new TestContext(parallelization: 1, streaming, serializer: new UnreadableTraceSerializer(serializer), timeoutMs: timeoutMs, innerModule: innerModule);
             Hashes = [_context.BlockFinder.FindHeader(1)!.Hash!, _context.BlockFinder.FindHeader(2)!.Hash!];
             for (int i = 0; i < Hashes.Length; i++)
             {
@@ -983,9 +1002,9 @@ public class TraceStoreRpcModuleTests
         public ITraceRpcModule Module { get; }
 
         public TestContext(int parallelization = 0, bool streaming = true, ParityTraceTypes storedTraceTypes = ParityTraceTypes.All,
-            ulong chainLength = 3, ITraceSerializer<ParityLikeTxTrace>? serializer = null, int? timeoutMs = null)
+            ulong chainLength = 3, ITraceSerializer<ParityLikeTxTrace>? serializer = null, int? timeoutMs = null, ITraceRpcModule? innerModule = null)
         {
-            InnerModule = Substitute.For<ITraceRpcModule>();
+            InnerModule = innerModule ?? Substitute.For<ITraceRpcModule>();
             Store = new MemDb();
             ReceiptFinder = Substitute.For<IReceiptFinder>();
             ParityLikeTraceSerializer storeSerializer = new(LimboLogs.Instance);
