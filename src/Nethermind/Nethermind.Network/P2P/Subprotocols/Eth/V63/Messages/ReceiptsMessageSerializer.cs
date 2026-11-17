@@ -22,17 +22,23 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         private readonly ISpecProvider _specProvider;
         private readonly IRlpDecoder<TxReceipt> _decoder;
         private readonly RefRlpReaderFunc<TxReceipt[]> _decodeArrayFunc;
+        // Whether the receipts have blooms: the eth/63 to eth/68 form.
+        private readonly bool _withBloom;
+        private readonly bool _allowZeroLengthBloom;
 
-        public ReceiptsMessageSerializer(ISpecProvider specProvider) : this(specProvider, Rlp.GetDecoderOrThrow<TxReceipt>()) { }
+        public ReceiptsMessageSerializer(ISpecProvider specProvider) : this(specProvider, Rlp.GetDecoderOrThrow<TxReceipt>(), withBloom: true) { }
 
-        protected ReceiptsMessageSerializer(ISpecProvider specProvider, IRlpDecoder<TxReceipt> decoder)
+        /// <param name="withBloom">Whether the receipts have blooms: the eth/63 to eth/68 form.</param>
+        protected ReceiptsMessageSerializer(ISpecProvider specProvider, IRlpDecoder<TxReceipt> decoder, bool withBloom)
         {
+            _withBloom = withBloom;
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _decoder = decoder;
             // The message does not say which blocks the receipts belong to, so a zero-length bloom (EIP-7668) is
             // accepted whenever the chain ever schedules the EIP; the receipts root rejects one before the fork.
             RlpBehaviors decodeBehaviors = specProvider.GetFinalSpec().IsEip7668Enabled ? RlpBehaviors.Eip7668Receipts : RlpBehaviors.None;
             _decodeArrayFunc = (ref RlpReader ctx) => ctx.DecodeNonNullArray((ref RlpReader nestedContext) => _decoder.Decode(ref nestedContext, decodeBehaviors), limit: BlockReceiptsRlpLimit);
+            _allowZeroLengthBloom = decodeBehaviors == RlpBehaviors.Eip7668Receipts;
         }
 
         public int Serialize(Span<byte> destination, ReceiptsMessage message)
@@ -48,6 +54,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         private void Serialize(ref RlpWriter writer, ReceiptsMessage message, int contentLength)
         {
             RlpSequence sequence = writer.StartSequence(contentLength);
+
+            if (GetEncodedInThisForm(message) is { } encoded)
+            {
+                for (int i = 0; i < encoded.Count; i++) writer.WriteEncoded(encoded.GetEncoded(i).Span);
+                writer.EndSequence(sequence);
+                return;
+            }
 
             ulong lastBlockNumber = NoBlockSeenYet;
             RlpBehaviors behaviors = RlpBehaviors.None;
@@ -98,17 +111,38 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
             return ctx.CheckEnd(Deserialize(ref ctx));
         }
 
+        /// <remarks>
+        /// The receipts stay encoded until read when every one has a shape <see cref="NetworkReceipt"/> reads; the decoder
+        /// decodes them then, so a chain whose receipts take another form still reads them with its own decoder.
+        /// </remarks>
         public ReceiptsMessage Deserialize(ref RlpReader ctx)
         {
+            RlpReader encoded = ctx;
+            NetworkBlockReceipts? receipts = NetworkBlockReceipts.TryCreate(encoded.ReadEncodedItem(), _withBloom, _decodeArrayFunc, ReceiptsRlpLimit, BlockReceiptsRlpLimit, _allowZeroLengthBloom);
+            if (receipts is not null)
+            {
+                ctx = encoded;
+                return new ReceiptsMessage(receipts);
+            }
+
             ArrayPoolList<TxReceipt[]> data = ctx.DecodeNonNullArrayPoolList(_decodeArrayFunc, defaultElement: [], limit: ReceiptsRlpLimit);
             return new ReceiptsMessage(data);
         }
 
         public int GetLength(ReceiptsMessage message) => Rlp.LengthOfSequence(GetContentLength(message));
 
+        /// <summary>The receipts of <paramref name="message"/> when they are encoded in the form this serializer writes.</summary>
+        private NetworkBlockReceipts? GetEncodedInThisForm(ReceiptsMessage message) =>
+            message.TxReceipts is NetworkBlockReceipts encoded && encoded.WithBloom == _withBloom ? encoded : null;
+
         private int GetContentLength(ReceiptsMessage message)
         {
             int contentLength = 0;
+            if (GetEncodedInThisForm(message) is { } encoded)
+            {
+                for (int i = 0; i < encoded.Count; i++) contentLength += encoded.GetEncoded(i).Length;
+                return contentLength;
+            }
 
             ReadOnlySpan<TxReceipt[]?> txReceiptsSpan = message.TxReceipts.AsSpan();
             for (int i = 0; i < txReceiptsSpan.Length; i++)

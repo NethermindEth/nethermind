@@ -85,6 +85,24 @@ public class ProofRpcModuleCallTests
     }
 
     [Test]
+    public async Task Proof_call_witness_includes_the_gas_beneficiary()
+    {
+        using TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        await CreateTransferTx(blockchain);
+
+        BlockHeader head = blockchain.BlockTree.Head!.Header;
+        Address beneficiary = head.GasBeneficiary!;
+        Assert.That(beneficiary, Is.Not.EqualTo(TestItem.AddressB).And.Not.EqualTo(Address.Zero), "the call must not touch the beneficiary for another reason");
+
+        using ResultWrapper<CallResultWithProof> wrapper = blockchain.ProofRpcModule.proof_call(
+            new Facade.Eth.RpcTransaction.LegacyTransactionForRpc { To = TestItem.AddressB },
+            new BlockParameter(head.Number));
+
+        Assert.That(wrapper.Data!.Witness.Keys, Has.Some.EqualTo(beneficiary.Bytes.ToArray()),
+            "a stateless re-execution of the call pays the fees, so it reads the beneficiary");
+    }
+
+    [Test]
     public async Task Proof_call_against_genesis_is_rejected()
     {
         using TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();

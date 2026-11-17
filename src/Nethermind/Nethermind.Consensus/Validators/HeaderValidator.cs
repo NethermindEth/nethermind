@@ -33,8 +33,15 @@ namespace Nethermind.Consensus.Validators
 
         public static bool ValidateHash(BlockHeader header, out Hash256 actualHash)
         {
-            actualHash = header.CalculateHash();
-            return header.Hash == actualHash;
+            ValueHash256 calculatedHash = header.CalculateValueHash();
+            if (header.Hash is { } hash && hash.ValueHash256 == calculatedHash)
+            {
+                actualHash = hash;
+                return true;
+            }
+
+            actualHash = new Hash256(calculatedHash);
+            return false;
         }
 
         public static bool ValidateHash(BlockHeader header) => ValidateHash(header, out _);

@@ -737,7 +737,11 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, in effectiveGasPrice, blobBaseFee, statusCode);
+            // A restore run discards the fee payment, so skip it unless a tracer can see it.
+            if (!opts.HasFlag(ExecutionOptions.Restore) || tracer.IsObservingFeePayment)
+            {
+                PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, in effectiveGasPrice, blobBaseFee, statusCode);
+            }
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -835,7 +839,7 @@ namespace Nethermind.Evm.TransactionProcessing
             HashSet<Address>? writtenAccounts = null;
             if (spec.IsEip8037Enabled)
             {
-                writtenAccounts = new HashSet<Address>(Address.EqualityComparer) { tx.SenderAddress! };
+                writtenAccounts = [with(Address.EqualityComparer), tx.SenderAddress!];
                 if (!tx.ValueRef.IsZero && tx.To is not null)
                 {
                     writtenAccounts.Add(tx.To);
@@ -1907,6 +1911,9 @@ namespace Nethermind.Evm.TransactionProcessing
                 WorldState.AddToBalanceAndCreateIfNotEmpty(header.GasBeneficiary!, fees, spec);
             }
 
+            bool isTracingFees = tracer.IsTracingFees;
+            if (spec.FeeCollector is null && !isTracingFees) return;
+
             // Cap collected base fee at the effective price paid — a no-op for validated blocks; prevents fee-collector minting in validation-off eth_simulateV1 where maxFeePerGas < baseFee.
             UInt256 effectiveBaseFee = UInt256.Min(header.BaseFeePerGas, effectiveGasPrice);
             UInt256 eip1559Fees = !tx.IsFree() ? effectiveBaseFee * spentGas : UInt256.Zero;
@@ -1922,7 +1929,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, collectedFees, spec);
             }
 
-            if (tracer.IsTracingFees)
+            if (isTracingFees)
             {
                 tracer.ReportFees(fees, eip1559Fees + blobBaseFee);
             }

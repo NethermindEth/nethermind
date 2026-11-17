@@ -226,15 +226,14 @@ public class FlatTreeSyncStore(
     private static DeletionRange ComputeSubtreeRangeForNibble(TreePath path, int from, int to) =>
         new(path.Append(from).ToLowerBoundPath(), path.Append(to).ToUpperBoundPath());
 
-    public void EnsureStorageEmpty(Hash256 address)
+    public void EnsureStorageEmpty(in ValueHash256 address)
     {
         // Only need to clean flat storage entries. Orphaned storage trie nodes are not a problem
         // because the trie is always traversed from the account's storage root hash — when the
         // account has EmptyTreeHash or the account no longer exists, no storage trie nodes will
         // ever be reached.
         using IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
-        ValueHash256 addressHash = address.ValueHash256;
-        writeBatch.DeleteStorageRange(addressHash, ValueKeccak.Zero, ValueKeccak.MaxValue);
+        writeBatch.DeleteStorageRange(address, ValueKeccak.Zero, ValueKeccak.MaxValue);
     }
 
     public void FinalizeSync(BlockHeader pivotHeader)

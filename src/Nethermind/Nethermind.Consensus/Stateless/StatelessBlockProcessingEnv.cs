@@ -34,14 +34,19 @@ public partial class StatelessBlockProcessingEnv(
     private IBlockProcessor? _blockProcessor;
     private IWorldState? _worldState;
     private readonly StatelessBlockTree? _blockTree;
+    private readonly IBlockValidator? _blockValidator;
 
     internal StatelessBlockProcessingEnv(
         Witness witness,
         ISpecProvider specProvider,
         ISealValidator sealValidator,
         ILogManager logManager,
-        StatelessBlockTree blockTree) : this(witness, specProvider, sealValidator, logManager)
-        => _blockTree = blockTree;
+        StatelessBlockTree blockTree,
+        IBlockValidator blockValidator) : this(witness, specProvider, sealValidator, logManager)
+    {
+        _blockTree = blockTree;
+        _blockValidator = blockValidator;
+    }
     // Per-block: StaticCodeCache.Instance would leak code across blocks and mask deliberately missing
     // witness code. The first fetch of each hash still reads through the world state.
     private readonly ICodeCache _codeCache = CreateCodeCache();
@@ -100,18 +105,9 @@ public partial class StatelessBlockProcessingEnv(
             logManager
         );
 
-        HeaderValidator headerValidator = new(statelessBlockTree, sealValidator, specProvider, logManager);
-        BlockValidator blockValidator = new(
-            new TxValidator(specProvider.ChainId),
-            headerValidator,
-            new UnclesValidator(statelessBlockTree, headerValidator, logManager),
-            specProvider,
-            logManager
-        );
-
         return new BlockProcessor(
             specProvider,
-            blockValidator,
+            _blockValidator ?? CreateBlockValidator(statelessBlockTree),
             NoBlockRewards.Instance,
             txExecutor,
             WorldState,
@@ -122,6 +118,18 @@ public partial class StatelessBlockProcessingEnv(
             new WithdrawalProcessor(WorldState, logManager),
             new ExecutionRequestsProcessor(txProcessor),
             blockAccessListManager
+        );
+    }
+
+    private BlockValidator CreateBlockValidator(StatelessBlockTree blockTree)
+    {
+        HeaderValidator headerValidator = new(blockTree, sealValidator, specProvider, logManager);
+        return new BlockValidator(
+            new TxValidator(specProvider.ChainId),
+            headerValidator,
+            new UnclesValidator(blockTree, headerValidator, logManager),
+            specProvider,
+            logManager
         );
     }
 

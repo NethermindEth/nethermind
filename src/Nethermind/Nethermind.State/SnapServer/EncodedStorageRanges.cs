@@ -19,7 +19,7 @@ namespace Nethermind.State.SnapServer;
 public sealed class EncodedStorageRanges(int accountCapacity) : IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>>
 {
     private readonly EncodedSnapEntries<PathWithStorageSlot> _buffer = new(PathWithStorageCollector.DecodeEntry);
-    private readonly ArrayPoolList<AccountEntries> _accounts = new(accountCapacity);
+    private readonly ArrayPoolList<AccountEntries> _accounts = [with(accountCapacity)];
     private IOwnedReadOnlyList<PathWithStorageSlot>[]? _slotLists;
     private int _accountStart;
     private int _accountFirstEntry;
