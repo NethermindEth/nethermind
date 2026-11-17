@@ -114,6 +114,7 @@ public class RangeQueryVisitor : INodeRecordVisitor<TreePathContext>, IDisposabl
 
     public ArrayPoolList<byte[]> GetProofs()
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         HashSet<byte[]> proofs = [with(Bytes.EqualityComparer)];
 
         AddToProof(_leftmostNodes);

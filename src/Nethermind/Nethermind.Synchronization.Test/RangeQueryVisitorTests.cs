@@ -110,6 +110,16 @@ public class RangeQueryVisitorTests
         Assert.That(act, Throws.Nothing);
     }
 
+    [Test]
+    public void GetProofs_after_dispose_throws()
+    {
+        RangeQueryVisitor visitor = new(Keccak.Zero, Keccak.MaxValue, new RlpCollector());
+        _inputTree.Accept(new NodeRecordVisitorAdapter<TreePathContext>(visitor), _inputTree.RootHash, CreateVisitingOptions());
+        visitor.Dispose();
+
+        Assert.That(() => visitor.GetProofs(), Throws.TypeOf<ObjectDisposedException>());
+    }
+
     private static VisitingOptions CreateVisitingOptions() => new() { };
 
     [Test]
