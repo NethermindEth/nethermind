@@ -217,6 +217,12 @@ public class CachedHasherTests
         state.PendingConsolidations = (PendingConsolidation[])[new PendingConsolidation { SourceIndex = 1 }, new PendingConsolidation { SourceIndex = 2 }];
         AssertRootsMatch(hasher, state, "pending queues appended");
         AssertRootsMatch(hasher, state, "unchanged pending queues");
+        state.HistoricalSummaries = (HistoricalSummary[])[new HistoricalSummary { BlockSummaryRoot = FromFirstByte(1), StateSummaryRoot = FromFirstByte(2) }];
+        if (gloas) state.BuilderPendingWithdrawals = (BuilderPendingWithdrawal[])[new BuilderPendingWithdrawal { Amount = 1, FeeRecipient = Nethermind.Core.Address.Zero }];
+        AssertRootsMatch(hasher, state, "replacement history and withdrawal queues");
+        state.HistoricalSummaries = Array.Empty<HistoricalSummary>();
+        if (gloas) state.BuilderPendingWithdrawals = Array.Empty<BuilderPendingWithdrawal>();
+        AssertRootsMatch(hasher, state, "cleared history and withdrawal queues");
         state.PendingDeposits = ((PendingDeposit[])state.PendingDeposits)[1..];
         state.PendingPartialWithdrawals = ((PendingPartialWithdrawal[])state.PendingPartialWithdrawals)[1..];
         state.PendingConsolidations = ((PendingConsolidation[])state.PendingConsolidations)[1..];
