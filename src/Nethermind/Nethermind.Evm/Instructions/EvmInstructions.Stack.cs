@@ -1188,10 +1188,12 @@ public static partial class EvmInstructions
         // Logging is not permitted in static call contexts.
         if (vmState.IsStatic)
         {
-            // Geth checks the stack before it prices LOG, then raises write protection while executing it, after a step
-            // that carries no error. The depth stays as it started, so underflow diagnostics report it.
-            if (stack.Head < 2 + TOpCount.Count) goto StackUnderflow;
-            if (DispatchFlags.ConstTracing && (vm.IsTracingOperationGasCost || vm.IsTracingOperationStart))
+            // Geth raises write protection while executing LOG, after a step that carries no error and prices it.
+            // Geth checks the stack first, but a static LOG missing operands halts with write protection here, as REVM does:
+            // Taiko's zk gas (RevmFailedStepGas) charges a static violation REVM's static gas, and an underflow the LOG body.
+            if (stack.Head < 2 + TOpCount.Count)
+                vm.TraceOperationReady(0);
+            else if (DispatchFlags.ConstTracing && (vm.IsTracingOperationGasCost || vm.IsTracingOperationStart))
                 TraceStaticLogGasCost<TGasPolicy, TOpCount>(vm, in stack);
             goto StaticCallViolation;
         }

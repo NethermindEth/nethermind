@@ -400,8 +400,6 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     // Geth's struct logger has no fault hook, so only the cost of a LOG that faults with write protection is compared.
     [TestCase("5f5f5f5fa2", "LOG2", null, 1125UL)]
     [TestCase("5f5f60205fa2", "LOG2", null, 1384UL)]
-    [TestCase("5f5f5fa4", "LOG4", "stack underflow (3 <=> 6)", 0UL)]
-    [TestCase("5f5f5f5f5fa4", "LOG4", "stack underflow (5 <=> 6)", 0UL)]
     public void Static_storage_fault_keeps_dynamic_gas_error(string childCode, string opcode, string? error, ulong gasCost)
     {
         TestState.CreateAccount(TestItem.AddressC, 1.Ether);

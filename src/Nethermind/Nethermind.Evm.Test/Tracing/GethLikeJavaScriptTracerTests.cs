@@ -475,8 +475,6 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase("680100000000000000005f5ff0", "step:32000:gas uint64 overflow", null)]
     [TestCase("5f5f5f5fa2", "step:1125:", "fault:1125:write protection")]
     [TestCase("5f5f60205fa2", "step:1384:", "fault:1384:write protection")]
-    [TestCase("5f5f5fa4", "step:0:stack underflow (3 <=> 6)", null)]
-    [TestCase("5f5f5f5f5fa4", "step:0:stack underflow (5 <=> 6)", null)]
     [TestCase("ff", "step:5000:stack underflow (0 <=> 1)", null)]
     [TestCase("61beefff", "step:5000:out of gas: write protection", null)]
     public void Static_context_preserves_precondition_and_execution_failure_callbacks(string childCode, string step, string? fault)
