@@ -74,8 +74,9 @@ internal static class GoSnappy
         ReadOnlySpan<byte> input = block[headerLength..];
         int s = 0;
         int d = 0;
-        // Run until the input ends, not until the output is full: every element produces at least one byte, so
-        // anything after the last expected element overflows the output and makes the block invalid.
+        // Run until the input ends, not until the output is full, so bytes after the last expected element make the
+        // block invalid: a complete element would overflow the output, since every element produces at least one
+        // byte, and a cut-off element fails the input bound.
         while (s < input.Length)
         {
             byte tag = input[s++];

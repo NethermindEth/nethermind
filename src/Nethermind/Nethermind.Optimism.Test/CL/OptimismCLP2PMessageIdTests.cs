@@ -179,7 +179,9 @@ public class OptimismCLP2PMessageIdTests
     public void Decode_rejects_destination_of_other_than_declared_length() =>
         Assert.That(GoSnappy.TryDecode(Bytes.FromHexString("001068656c6c6f"), new byte[5]), Is.False);
 
-    // A literal of byte(i % 251) followed by copies back into it, as built by the golang/snappy vector generator
+    // A literal of byte(i % 251), then copies back into it, if any; the expected IDs come from golang/snappy
+    [TestCase(70000, "f86f1101", "", 0, "35021ce86031d9b1349c261f3a348c546e58d042")] // literal70000-3byte-len
+    [TestCase(70000, "fc6f110100", "", 0, "35021ce86031d9b1349c261f3a348c546e58d042")] // literal70000-4byte-len
     [TestCase(256, "f0ff", "2100", 4, "3429d8e29f5f21a3bb1aa5ce8ff328cf8716881a")] // copy1-off256
     [TestCase(256, "f0ff", "0e0001", 4, "3429d8e29f5f21a3bb1aa5ce8ff328cf8716881a")] // copy2-off256
     [TestCase(65536, "f4ffff", "0f00000100", 4, "87d4e47d6387c431f122f5f63321cbf1379346b7")] // copy4-off65536
