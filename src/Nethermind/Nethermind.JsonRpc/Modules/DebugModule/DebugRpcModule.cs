@@ -293,15 +293,8 @@ public class DebugRpcModule(
         {
             return TracingFailed<GethLikeTxTrace>(ex);
         }
-        catch (InvalidDataException ex) when (IsJavaScriptOrMuxTracer(effective))
-        {
-            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
-        }
-        catch (NativeTracerConfigException exception)
-        {
-            return ResultWrapper<GethLikeTxTrace>.Fail(exception.Message, ErrorCodes.InvalidInput);
-        }
-        catch (TraceDurationFormatException exception)
+        catch (Exception exception) when (exception is NativeTracerConfigException or TraceDurationFormatException
+            || (exception is InvalidDataException && IsJavaScriptOrMuxTracer(effective)))
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
@@ -541,11 +534,8 @@ public class DebugRpcModule(
         {
             transactionTrace = debugBridge.GetTransactionTrace(blockHash, index, timeout.Token, WithBufferedLimit(options));
         }
-        catch (InvalidDataException ex) when (IsJavaScriptOrMuxTracer(options))
-        {
-            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
-        }
-        catch (Exception exception) when (exception is NativeTracerConfigException or TraceDurationFormatException)
+        catch (Exception exception) when (exception is NativeTracerConfigException or TraceDurationFormatException
+            || (exception is InvalidDataException && IsJavaScriptOrMuxTracer(options)))
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
@@ -584,15 +574,8 @@ public class DebugRpcModule(
         {
             transactionTrace = debugBridge.GetTransactionTrace(block, transactionHash, cancellationToken, WithBufferedLimit(options));
         }
-        catch (InvalidDataException ex) when (IsJavaScriptOrMuxTracer(options))
-        {
-            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
-        }
-        catch (NativeTracerConfigException exception)
-        {
-            return ResultWrapper<GethLikeTxTrace>.Fail(exception.Message, ErrorCodes.InvalidInput);
-        }
-        catch (TraceDurationFormatException exception)
+        catch (Exception exception) when (exception is NativeTracerConfigException or TraceDurationFormatException
+            || (exception is InvalidDataException && IsJavaScriptOrMuxTracer(options)))
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
@@ -636,11 +619,8 @@ public class DebugRpcModule(
         {
             transactionTrace = debugBridge.GetTransactionTrace(block, targetTxHash, timeout.Token, WithBufferedLimit(options));
         }
-        catch (InvalidDataException ex) when (IsJavaScriptOrMuxTracer(options))
-        {
-            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
-        }
-        catch (Exception exception) when (exception is NativeTracerConfigException or TraceDurationFormatException)
+        catch (Exception exception) when (exception is NativeTracerConfigException or TraceDurationFormatException
+            || (exception is InvalidDataException && IsJavaScriptOrMuxTracer(options)))
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
