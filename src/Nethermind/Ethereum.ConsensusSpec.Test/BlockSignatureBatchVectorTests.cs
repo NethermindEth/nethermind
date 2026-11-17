@@ -6,6 +6,7 @@ using Ethereum.Ssz.Test;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using static Ethereum.ConsensusSpec.Test.OperationVectorHandlers;
@@ -72,7 +73,8 @@ public class BlockSignatureBatchVectorTests
             // The Electra driver advances slots with its own lookahead refill, so only Fulu can run the production transition.
             if (batched && fulu.Fork == "fulu")
             {
-                FuluStateTransition.Apply(state, signedBlock, cache, pubkeys, new GloasForkChoiceStepDriver.ValidPayloadNotifier(), spec, validateResult: false, verify);
+                FuluStateTransition.Apply(state, signedBlock, cache, pubkeys, new GloasForkChoiceStepDriver.ValidPayloadNotifier(), spec,
+                    validateResult: true, verify, proposerSignatureVerified: false, trackBlockChanges: true);
                 return block.StateRoot!;
             }
 
@@ -114,7 +116,11 @@ public class BlockSignatureBatchVectorTests
         PubkeyCache pubkeys = FuluDriverSupport.BuildPubkeyCache(driver.ValidatorsOf(state));
         bool verifySignatures = FuluDriverSupport.ShouldVerifySignatures(testCase.CasePath);
         BeaconChainSpec spec = FuluDriverSupport.CaseSpec(testCase.CasePath, testCase.Fork);
-        if (driver.Fork == "fulu") cache.SigningSpec = spec;
+        if (driver.Fork == "fulu")
+        {
+            cache.SigningSpec = spec;
+            if (batched) cache.Hasher = new CachedBeaconStateHasher();
+        }
         int blocksCount = int.Parse(FuluDriverSupport.ParseFlowMap(Path.Combine(testCase.CasePath, "meta.yaml"))["blocks_count"]);
 
         try

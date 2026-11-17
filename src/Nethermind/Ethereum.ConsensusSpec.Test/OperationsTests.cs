@@ -202,8 +202,6 @@ public class OperationsTests
 
         TState state = driver.DecodePre(Path.Combine(testCase.CasePath, "pre.ssz_snappy"));
         EpochCache cache = driver.NewCache();
-        // Primes the incremental hasher so the post-state root is taken as a diff against the pre-state, as in production.
-        driver.CachedRoot(state, cache);
         OpContext<TState> ctx = new(
             state,
             cache,
@@ -215,8 +213,15 @@ public class OperationsTests
 
         byte[] operand = operandPath is null ? [] : SszConsensusTestLoader.ReadSszSnappy(operandPath);
         string postPath = Path.Combine(testCase.CasePath, "post.ssz_snappy");
+        void Apply() => handler.Apply(ctx, operand, null);
+        Action apply = Apply;
+        if (driver.Fork == "fulu" && state is BeaconStateFulu fulu)
+            apply = () => DifferentialBeaconStateHasher.CheckTrackedOperation(fulu, cache, Apply);
+        else
+            driver.CachedRoot(state, cache);
+
         FuluDriverSupport.AssertTransition(driver, postPath, ctx.State, cache,
-            () => handler.Apply(ctx, operand, null), "the operation",
+            apply, "the operation",
             "expected the operation to be accepted, but it threw");
     }
 

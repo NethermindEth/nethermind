@@ -230,6 +230,16 @@ public class ForkDriverTests
         Assert.That(after, Is.EqualTo(new FullBeaconStateHasher().HashTreeRoot(state)));
     }
 
+    [Test]
+    public void Tracked_operation_reports_an_unrecorded_balance_write()
+    {
+        ulong[] balances = [.. Enumerable.Repeat(32 * Gwei, 8)];
+        BeaconStateFulu state = WorkingStateAtEndOfEpochZero(effectiveBalances: [.. balances], balances, exitEpoch: Presets.FarFutureEpoch);
+        Assert.Throws<HasherDivergenceException>(() =>
+            DifferentialBeaconStateHasher.CheckTrackedOperation(state, new EpochCache(), () => state.Balances![3] += Gwei));
+        Assert.That(state.BlockChanges, Is.Null);
+    }
+
     private sealed class FirstRootHasher : IBeaconStateHasher
     {
         private Hash256? _first;
