@@ -36,6 +36,9 @@ jobs:
     if: github.event.pull_request.head.repo.fork == false
     runs-on: ubuntu-arm64-8-core
     timeout-minutes: 180
+    permissions:
+      contents: read
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -163,6 +166,16 @@ jobs:
           # Use docker compose directly instead of `sedge run` because sedge run
           # does `docker compose pull` which fails for the locally-built image.
           docker compose up -d
+
+      - name: Connect to Tailscale
+        continue-on-error: true
+        timeout-minutes: 5
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ vars.TS_SYNC_PR_GATE_CLIENT_ID }}
+          audience: api.tailscale.com/${{ vars.TS_SYNC_PR_GATE_CLIENT_ID }}
+          tags: tag:access-dev
+          args: --accept-routes
 
       - name: Start Grafana Alloy
         continue-on-error: true
