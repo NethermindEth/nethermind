@@ -21,13 +21,9 @@ namespace Nethermind.Benchmark.Runner
 {
     public class DashboardConfig : ManualConfig
     {
-        public DashboardConfig(params Job[] jobs)
+        public DashboardConfig(Job job)
         {
-            //foreach (Job job in jobs)
-            //{
-            //    AddJob(job.WithToolchain(InProcessNoEmitToolchain.Instance));
-            //}
-
+            AddJob(job.AsDefault());
             AddColumnProvider(DefaultColumnProviders.Descriptor);
             AddColumnProvider(DefaultColumnProviders.Statistics);
             AddColumnProvider(DefaultColumnProviders.Params);
@@ -54,7 +50,7 @@ namespace Nethermind.Benchmark.Runner
             string[] benchmarkArgs = args.Where(static arg => arg != "--quick").ToArray();
             // BenchmarkDotNet 0.15.8 doesn't recognize .NET 11 and fails validating such a job, so it claims .NET 10
             // and the toolchain builds for net11.0. TODO: use the host runtime once BenchmarkDotNet 0.16.0 is released.
-            Job benchmarkJob = (quickMode ? Job.ShortRun : Job.MediumRun).WithRuntime(CoreRuntime.Core10_0)
+            Job benchmarkJob = (quickMode ? Job.ShortRun : Job.Default).WithRuntime(CoreRuntime.Core10_0)
                 .WithToolchain(CsProjCoreToolchain.From(new NetCoreAppSettings("net11.0", null, ".NET 11.0")));
 
             List<Assembly> additionalJobAssemblies = [
