@@ -18,6 +18,7 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
     private Hash256 _previousProposerBoostRoot = Hash256.Zero;
     private ulong _previousProposerBoostScore;
     private bool?[] _leafViability = [];
+    private bool[] _finalizedAncestry = [];
 
     /// <summary>Do not prune unless the finalized block is at least this deep; small prunes waste time.</summary>
     public int PruneThreshold { get; set; } = ProtoArrayForkChoice.DefaultPruneThreshold;
@@ -345,6 +346,7 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
     /// </remarks>
     internal bool[,] FilterNodeTree(ulong currentSlot, CheckpointRef justifiedCheckpoint, CheckpointRef finalizedCheckpoint, IReadOnlySet<Hash256> payloads)
     {
+        bool[]? finalizedAncestry = finalizedCheckpoint.Epoch == GenesisEpoch ? null : ComputeFinalizedAncestry(finalizedCheckpoint);
         bool[,] kept = new bool[Nodes.Count, 3];
         for (int nodeIndex = Nodes.Count - 1; nodeIndex >= 0; nodeIndex--)
         {
@@ -366,11 +368,27 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
                     anyChildKept |= kept[child, (int)ForkChoicePayloadStatus.Pending];
                 }
 
-                kept[nodeIndex, (int)status] = hasChildren ? anyChildKept : (viableLeaf ??= NodeIsViableForHead(node, currentSlot, justifiedCheckpoint, finalizedCheckpoint));
+                kept[nodeIndex, (int)status] = hasChildren ? anyChildKept : (viableLeaf ??= NodeIsViableForHead(node, currentSlot, justifiedCheckpoint, finalizedCheckpoint, finalizedAncestry?[nodeIndex]));
             }
             kept[nodeIndex, (int)ForkChoicePayloadStatus.Pending] = kept[nodeIndex, (int)ForkChoicePayloadStatus.Empty] || kept[nodeIndex, (int)ForkChoicePayloadStatus.Full];
         }
         return kept;
+    }
+
+    private bool[] ComputeFinalizedAncestry(CheckpointRef finalizedCheckpoint)
+    {
+        if (_finalizedAncestry.Length < Nodes.Count)
+            _finalizedAncestry = new bool[Math.Max(Nodes.Count, _finalizedAncestry.Length * 2)];
+        ulong finalizedSlot = checked(finalizedCheckpoint.Epoch * slotsPerEpoch);
+        for (int i = 0; i < Nodes.Count; i++)
+        {
+            ProtoNode node = Nodes[i];
+            // A node's checkpoint shortcut applies only to that node, not to descendants walking its raw ancestry.
+            _finalizedAncestry[i] = node.Slot <= finalizedSlot ? node.Root == finalizedCheckpoint.Root
+                : node.Parent is int parent ? _finalizedAncestry[parent]
+                : node.Root == finalizedCheckpoint.Root && node.FinalizedCheckpoint == finalizedCheckpoint;
+        }
+        return _finalizedAncestry;
     }
 
     /// <summary>Drops all nodes preceding <paramref name="finalizedRoot"/>, unless it is shallower than <see cref="PruneThreshold"/>.</summary>
@@ -527,7 +545,7 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
     /// For blocks from a prior epoch the voting source is "pulled up" to the unrealized justified
     /// checkpoint when it is tracked.
     /// </remarks>
-    private bool NodeIsViableForHead(ProtoNode node, ulong currentSlot, CheckpointRef justifiedCheckpoint, CheckpointRef finalizedCheckpoint)
+    private bool NodeIsViableForHead(ProtoNode node, ulong currentSlot, CheckpointRef justifiedCheckpoint, CheckpointRef finalizedCheckpoint, bool? finalizedAncestry = null)
     {
         if (node.ExecutionStatus == ExecutionStatus.Invalid) return false;
 
@@ -543,7 +561,8 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
             || votingSource.Epoch + 2 >= currentEpoch;
 
         bool correctFinalized = finalizedCheckpoint.Epoch == GenesisEpoch
-            || IsFinalizedCheckpointOrDescendant(node.Root, finalizedCheckpoint);
+            || (finalizedAncestry is bool ancestor ? HasFinalizedCheckpoint(node, finalizedCheckpoint) || ancestor
+                : IsFinalizedCheckpointOrDescendant(node.Root, finalizedCheckpoint));
 
         return correctJustified && correctFinalized;
     }
@@ -594,10 +613,7 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
 
         // The node's own checkpoints are known ancestors likely to coincide with the store's
         // finalized checkpoint; check them once here rather than walking the whole chain.
-        if (node.FinalizedCheckpoint == finalizedCheckpoint
-            || node.JustifiedCheckpoint == finalizedCheckpoint
-            || node.UnrealizedFinalizedCheckpoint == finalizedCheckpoint
-            || node.UnrealizedJustifiedCheckpoint == finalizedCheckpoint)
+        if (HasFinalizedCheckpoint(node, finalizedCheckpoint))
         {
             return true;
         }
@@ -616,6 +632,12 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
             node = Nodes[parentIndex];
         }
     }
+
+    private static bool HasFinalizedCheckpoint(ProtoNode node, CheckpointRef finalizedCheckpoint) =>
+        node.FinalizedCheckpoint == finalizedCheckpoint
+        || node.JustifiedCheckpoint == finalizedCheckpoint
+        || node.UnrealizedFinalizedCheckpoint == finalizedCheckpoint
+        || node.UnrealizedJustifiedCheckpoint == finalizedCheckpoint;
 
 
     /// <summary>The proposer boost in Gwei: <paramref name="boostPercent"/>% of one committee's share of the unslashed active balance.</summary>

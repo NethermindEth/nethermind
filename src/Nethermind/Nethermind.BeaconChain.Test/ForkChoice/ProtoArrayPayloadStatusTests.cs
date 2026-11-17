@@ -15,6 +15,84 @@ public class ProtoArrayPayloadStatusTests
     private static readonly CheckpointRef Anchor = new(0, GetRoot(0));
     private static readonly Hash256 OtherHash = new("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
 
+    [Test]
+    public void Gloas_filter_ancestry_matches_individual_queries_after_growth_finality_and_pruning([Values(64, 1024)] int length)
+    {
+        ProtoArray tree = new(SlotsPerEpoch, 40) { PruneThreshold = 0 };
+        HashSet<Hash256> payloads = [];
+        AddThrough(length);
+        Check(new CheckpointRef(1, GetRoot(32)));
+        Check(new CheckpointRef(2, GetRoot(64)));
+        Check(new CheckpointRef(1, OtherHash));
+        Check(Anchor);
+        AddThrough(length + 64);
+        Check(new CheckpointRef(1, GetRoot(32)));
+        tree.Nodes[^1].ExecutionStatus = ExecutionStatus.Invalid;
+        tree.Prune(GetRoot(32));
+        Check(new CheckpointRef(2, GetRoot(64)));
+
+        void AddThrough(int last)
+        {
+            for (int i = tree.Nodes.Count; i <= last; i++)
+            {
+                Hash256 root = GetRoot((ulong)i);
+                Hash256? parent = i == 0 ? null : GetRoot((ulong)i - 1);
+                tree.OnBlock(Block((ulong)i, root, parent, isGloas: true, parentBlockHash: parent), (ulong)last, Anchor, Anchor);
+                payloads.Add(root);
+            }
+        }
+
+        void Check(CheckpointRef finalized)
+        {
+            bool[,] filtered = tree.FilterNodeTree((ulong)length + 64, Anchor, finalized, payloads);
+            using System.IDisposable scope = Assert.EnterMultipleScope();
+            for (int i = 0; i < tree.Nodes.Count; i++)
+            {
+                ProtoNode node = tree.Nodes[i];
+                bool expected = node.ExecutionStatus != ExecutionStatus.Invalid
+                    && (finalized.Epoch == 0 || tree.IsFinalizedCheckpointOrDescendant(node.Root, finalized));
+                Assert.That(filtered[i, (int)ForkChoicePayloadStatus.Empty], Is.EqualTo(expected), $"node {i}, finalized {finalized}");
+            }
+        }
+    }
+
+    [Test]
+    public void Gloas_filter_does_not_propagate_a_parents_checkpoint_shortcut([Range(0, 3)] int shortcut)
+    {
+        CheckpointRef finalized = new(1, OtherHash);
+        ProtoArray tree = new(SlotsPerEpoch, 40);
+        tree.OnBlock(Block(0, GetRoot(0), null, isGloas: true), 35, Anchor, Anchor);
+        ProtoBlock parent = Block(33, GetRoot(1), GetRoot(0), isGloas: true, parentBlockHash: GetRoot(0));
+        parent = shortcut switch
+        {
+            0 => parent with { FinalizedCheckpoint = finalized },
+            1 => parent with { JustifiedCheckpoint = finalized },
+            2 => parent with { UnrealizedFinalizedCheckpoint = finalized },
+            _ => parent with { UnrealizedJustifiedCheckpoint = finalized },
+        };
+        tree.OnBlock(parent, 35, Anchor, Anchor);
+        tree.OnBlock(Block(35, GetRoot(2), GetRoot(1), isGloas: true, parentBlockHash: GetRoot(1)), 35, Anchor, Anchor);
+
+        bool[,] filtered = tree.FilterNodeTree(35, Anchor, finalized, new HashSet<Hash256> { GetRoot(0), GetRoot(1), GetRoot(2) });
+
+        using System.IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(filtered[1, (int)ForkChoicePayloadStatus.Empty], Is.True);
+        Assert.That(filtered[2, (int)ForkChoicePayloadStatus.Empty], Is.False);
+    }
+
+    [Test]
+    public void Gloas_filter_preserves_a_mid_epoch_bootstrap_checkpoint()
+    {
+        CheckpointRef bootstrap = new(1, GetRoot(0));
+        ProtoArray tree = new(SlotsPerEpoch, 40);
+        tree.OnBlock(Block(33, GetRoot(0), null, isGloas: true) with { FinalizedCheckpoint = bootstrap }, 35, Anchor, bootstrap);
+        tree.OnBlock(Block(35, GetRoot(1), GetRoot(0), isGloas: true, parentBlockHash: GetRoot(0)), 35, Anchor, bootstrap);
+
+        bool[,] filtered = tree.FilterNodeTree(35, Anchor, bootstrap, new HashSet<Hash256> { GetRoot(0), GetRoot(1) });
+
+        Assert.That(filtered[1, (int)ForkChoicePayloadStatus.Empty], Is.True);
+    }
+
     private static ProtoBlock Block(ulong slot, Hash256 root, Hash256? parent, ExecutionStatus status = ExecutionStatus.Optimistic, bool isGloas = false, Hash256? parentBlockHash = null) =>
         CreateProtoBlock(slot, root, parent, Anchor, Anchor, status, root,
             isGloas: isGloas, parentBlockHash: parentBlockHash);
