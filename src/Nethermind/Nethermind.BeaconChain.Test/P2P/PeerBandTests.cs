@@ -513,7 +513,8 @@ public class PeerBandTests
         manager.GetBestPeers(0).Single(p => p.Id == LoopbackAddress(outbound.P2P)).ReportFailure(PeerFailureReason.RequestFailed);
         local.Config.StaticPeers = LoopbackAddress(configured.P2P);
         await PeerSessionNodes.DialAsync(configured.P2P, local.P2P, token);
-        await WaitUntilAsync(() => manager.GetPeerDiagnostics().Any(p => p.PeerId == configured.P2P.LocalPeerId!.ToString()), token, "static peer was not admitted");
+        await WaitUntilAsync(() => manager.Peers.Any(p => p.PeerId == configured.P2P.LocalPeerId!.ToString() && p.State == PeerConnectionState.Connected)
+            && manager.PeerCount == 2, token, "static peer admission did not replace an existing peer");
         await manager.RunMaintenanceRoundAsync(token);
         Assert.That(manager.GetBestPeers(0).Any(p => p.Id == LoopbackAddress(outbound.P2P)), Is.True);
     }

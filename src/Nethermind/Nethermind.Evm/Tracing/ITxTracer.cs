@@ -423,6 +423,16 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <summary>Sets additional diagnostic information for the current action's subsequent error.</summary>
     void ReportActionErrorDetails(string error) { }
 
+    /// <summary>Sets diagnostic information for the current action, optionally excluding instruction and memory tracers.</summary>
+    /// <param name="error">The diagnostic information for the subsequent action error.</param>
+    /// <param name="actionOnly">Whether only leaves tracing actions without instructions or memory receive the information.</param>
+    /// <remarks>Wrappers and composites forward the scope to their children rather than filtering aggregate capabilities.</remarks>
+    void ReportActionErrorDetails(string error, bool actionOnly)
+    {
+        if (!actionOnly || (IsTracingActions && !IsTracingInstructions && !IsTracingMemory))
+            ReportActionErrorDetails(error);
+    }
+
     /// <summary>
     /// Reports the remaining gas observed at an execution-segment boundary.
     /// </summary>

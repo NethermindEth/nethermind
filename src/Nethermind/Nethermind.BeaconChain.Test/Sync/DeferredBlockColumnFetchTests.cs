@@ -1345,6 +1345,7 @@ public class DeferredBlockColumnFetchTests
     {
         SignedBeaconBlock other = Test.P2P.TestChain.CreateBlock(fixture.Chain.Block.Message!.Slot + 1, fixture.Chain.AnchorRoot);
         other.Message!.Body!.BlobKzgCommitments = fixture.Chain.Block.Message.Body!.BlobKzgCommitments;
+        fixture.Sign(other);
         return new ForkedSignedBeaconBlock.OfFulu(other);
     }
 

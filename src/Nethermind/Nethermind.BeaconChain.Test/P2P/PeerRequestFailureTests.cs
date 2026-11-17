@@ -50,6 +50,7 @@ public class PeerRequestFailureTests
         await using Fixture fixture = await Fixture.CreateAsync(token, hangable: true);
         fixture.Config.FaultDisconnectsBeforeBan = 1;
         fixture.Config.MinPeerCount = aboveFloor ? 0 : 1;
+        fixture.Manager.CountEveryTimeoutForTest();
         fixture.Fail(violated ? PeerFailureReason.ProtocolViolation : PeerFailureReason.RequestFailed, Limit - 1);
         string peerId = fixture.Manager.Peers.Single().PeerId;
         fixture.StopAnswering();

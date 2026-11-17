@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.IO;
 using System.Text.Json.Nodes;
 using Autofac;
 using Autofac.Core;
@@ -113,8 +114,8 @@ public class ExecutionForkScheduleTests
 
     [Test]
     public void Amsterdam_before_osaka_is_refused() =>
-        Assert.That(AssertConflict(() => BeaconChainSpec.ForExecution(Sepolia(config => config["amsterdamTime"] = config["osakaTime"]!.GetValue<ulong>() - 384))).Message,
-            Does.Contain("before the previous fork"));
+        Assert.That(Assert.Throws<InvalidDataException>(() => Sepolia(config => config["amsterdamTime"] = config["osakaTime"]!.GetValue<ulong>() - 384))!.Message,
+            Does.Contain("Unsupported fork ordering"));
 
     // The fork digest hashes each entry's epoch, so a change of target or update fraction alone still needs an entry.
     [TestCase(16, 24, 13_000_000, TestName = "Every_blob_parameter_changes")]
@@ -174,8 +175,8 @@ public class ExecutionForkScheduleTests
 
     [Test]
     public void A_blob_parameter_fork_before_osaka_is_refused() =>
-        Assert.That(AssertConflict(() => BeaconChainSpec.ForExecution(Sepolia(config => config["bpo1Time"] = config["osakaTime"]!.GetValue<ulong>() - 384))).Message,
-            Does.Contain("between Prague and Osaka"));
+        Assert.That(Assert.Throws<InvalidDataException>(() => Sepolia(config => config["bpo1Time"] = config["osakaTime"]!.GetValue<ulong>() - 384))!.Message,
+            Does.Contain("Unsupported fork ordering"));
 
     [Test]
     public void Amsterdam_on_a_gnosis_network_is_refused([Values("gnosis", "chiado")] string chainspec)
@@ -215,6 +216,7 @@ public class ExecutionForkScheduleTests
 
     private static void AddBpo3(JsonObject config, int target, int max, int fraction)
     {
+        config.Remove("amsterdamTime");
         config["bpo3Time"] = TimeAt(BeaconChainSpec.Sepolia, 300_000);
         config["blobSchedule"]!["bpo3"] = new JsonObject { ["target"] = target, ["max"] = max, ["baseFeeUpdateFraction"] = fraction };
     }

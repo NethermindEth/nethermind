@@ -989,7 +989,8 @@ public class ReqRespLimitsTests
         public override DateTimeOffset GetUtcNow() => _now;
         public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
         {
-            Waiting.TrySetResult(() => { _now += dueTime; callback(state); });
+            // Task.Delay rounds fractional milliseconds down; run just after the timer's due time.
+            Waiting.TrySetResult(() => { _now += dueTime + TimeSpan.FromMilliseconds(1); callback(state); });
             return new NoopTimer();
         }
         private sealed class NoopTimer : ITimer
