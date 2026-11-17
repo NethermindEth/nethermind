@@ -93,6 +93,34 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void GetMany_WithCacheMissHint_DoesNotFillBlockCache([Values(ReadFlags.None, ReadFlags.HintCacheMiss)] ReadFlags flags)
+        {
+            const int keyCount = 4096;
+            const int valueSize = 256;
+            using DbOnTheRocks db = CreateFreshDb("Blocks");
+            Random random = new(42);
+            byte[] keys = new byte[keyCount * sizeof(int)];
+            byte[] value = new byte[valueSize];
+            for (int i = 0; i < keyCount; i++)
+            {
+                Span<byte> key = keys.AsSpan(i * sizeof(int), sizeof(int));
+                BinaryPrimitives.WriteInt32BigEndian(key, i);
+                random.NextBytes(value);
+                db.PutSpan(key, value, WriteFlags.None);
+            }
+
+            db.Flush();
+            long usageBefore = BlockCacheUsage();
+
+            ((IDb)db).GetMany<long?, CountingValueDecoder>(keys, sizeof(int), new long?[keyCount], default, flags);
+
+            long added = BlockCacheUsage() - usageBefore;
+            Assert.That(added, flags == ReadFlags.HintCacheMiss ? Is.LessThan(keyCount * valueSize / 10) : Is.GreaterThan(keyCount * valueSize / 2));
+
+            long BlockCacheUsage() => long.Parse(db.GatherProperty("rocksdb.block-cache-usage")!);
+        }
+
+        [Test]
         public void GetMany_WithScalarFallback_ReplacesPreviousValueAfterDecoding([Values(1, 2, 3, 257)] int count)
         {
             using IDb store = new MemDb();
