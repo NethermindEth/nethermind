@@ -63,4 +63,25 @@ public class FullStateFinderTests
         Assert.That(finder.FindBestFullState(), Is.EqualTo(50));
     }
 
+    [Test]
+    public void Finds_completed_pivot_below_the_lookback_only_on_the_suggested_chain([Values] bool canonical)
+    {
+        IBlockTree blockTree = Build.A.BlockTree()
+            .WithStateRoot(b => b.Number == 10 ? _goodRoot : _badRoot)
+            .OfChainLength(200)
+            .TestObject;
+        BlockHeader pivot = blockTree.FindHeader(10, BlockTreeLookupOptions.RequireCanonical)!;
+        if (!canonical)
+        {
+            pivot = Build.A.BlockHeader.WithNumber(10).WithStateRoot(_goodRoot).TestObject;
+        }
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        stateReader.HasStateForBlock(Arg.Is<BlockHeader>(header => header.StateRoot == _goodRoot)).Returns(true);
+        FullStateFinder finder = new(blockTree, stateReader);
+
+        Assert.That(finder.FindBestFullState(), Is.Zero);
+        finder.SetCompletedPivot(pivot);
+        Assert.That(finder.FindBestFullState(), Is.EqualTo(canonical ? 10UL : 0UL));
+    }
+
 }

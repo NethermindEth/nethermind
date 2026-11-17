@@ -17,7 +17,6 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.TxPool;
 using Nethermind.Config;
-using Nethermind.Evm.State;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
@@ -29,7 +28,6 @@ namespace Nethermind.Consensus.AuRa.Validators
         private readonly ContractBasedValidator _contractValidator;
         private readonly ulong _posdaoTransition;
         private readonly ITxSender _posdaoTxSender;
-        private readonly IReadOnlyStateProvider _stateProvider;
         private readonly Cache _cache;
         private readonly ISpecProvider _specProvider;
         private readonly ITxSender _nonPosdaoTxSender;
@@ -42,7 +40,6 @@ namespace Nethermind.Consensus.AuRa.Validators
             ITxSender txSender,
             ITxPool txPool,
             IBlocksConfig blocksConfig,
-            IReadOnlyStateProvider stateProvider,
             Cache cache,
             ISpecProvider specProvider,
             IGasPriceOracle gasPriceOracle,
@@ -52,7 +49,6 @@ namespace Nethermind.Consensus.AuRa.Validators
             ValidatorContract = reportingValidatorContract ?? throw new ArgumentNullException(nameof(reportingValidatorContract));
             _posdaoTransition = posdaoTransition;
             _posdaoTxSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
-            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _cache = cache ?? throw new ArgumentNullException(nameof(cache));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _nonPosdaoTxSender = new TxGasPriceSender(txSender, gasPriceOracle);
@@ -83,12 +79,8 @@ namespace Nethermind.Consensus.AuRa.Validators
             return CreateReportMaliciousTransactionCore(persistentReport);
         }
 
-        private Transaction CreateReportMaliciousTransactionCore(PersistentReport persistentReport)
-        {
-            Transaction transaction = ValidatorContract.ReportMalicious(persistentReport.MaliciousValidator, persistentReport.BlockNumber, persistentReport.Proof);
-            transaction.Nonce = _stateProvider.GetNonce(ValidatorContract.NodeAddress);
-            return transaction;
-        }
+        private Transaction CreateReportMaliciousTransactionCore(PersistentReport persistentReport) =>
+            ValidatorContract.ReportMalicious(persistentReport.MaliciousValidator, persistentReport.BlockNumber, persistentReport.Proof);
 
         public void ReportBenign(Address validator, ulong blockNumber, IReportingValidator.BenignCause cause) => Report(ReportType.Benign, validator, blockNumber, [], cause.ToString(), CreateReportBenignTransaction);
 

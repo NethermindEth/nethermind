@@ -17,7 +17,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
-using Nethermind.Evm.State;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -205,9 +204,7 @@ namespace Nethermind.AuRa.Test.Validators
 
                 TxSender = Substitute.For<ITxSender>();
                 ITxPool txPool = Substitute.For<ITxPool>();
-                IWorldState stateProvider = Substitute.For<IWorldState>();
                 ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-                stateProvider.GetNonce(ReportingValidatorContract.NodeAddress).Returns(1UL);
 
                 Validator = new ReportingContractBasedValidator(
                     ContractBasedValidator,
@@ -216,7 +213,6 @@ namespace Nethermind.AuRa.Test.Validators
                     TxSender,
                     txPool,
                     new BlocksConfig(),
-                    stateProvider,
                     cache ?? new ReportingContractBasedValidator.Cache(),
                     specProvider,
                     Substitute.For<IGasPriceOracle>(),

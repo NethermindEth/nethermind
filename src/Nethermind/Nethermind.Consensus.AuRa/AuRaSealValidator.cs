@@ -3,7 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
@@ -36,6 +38,15 @@ namespace Nethermind.Consensus.AuRa
         private readonly ILogger _logger = logManager?.GetClassLogger<AuRaSealValidator>() ?? throw new ArgumentNullException(nameof(logManager));
         private readonly ReceivedSteps _receivedSteps = new();
         private readonly Lazy<IReportingValidator> _reportingValidator = reportingValidator;
+        /// <remarks>
+        /// Forward sync recovers the sealers of a batch in parallel in <see cref="ValidateSeal"/> and checks the parameters
+        /// of each header later, so the last recoveries are kept for a whole batch rather than for the last header only.
+        /// A lookup compares the sealing hash with each kept entry, which costs far less than one recovery.
+        /// </remarks>
+        internal const int RecoveredSealersCapacity = 256;
+
+        private readonly RecoveredSealer?[] _recoveredSealers = new RecoveredSealer?[RecoveredSealersCapacity];
+        private int _nextRecoveredSealer;
 
         private IReportingValidator ReportingValidator => _reportingValidator.Value;
 
@@ -55,14 +66,29 @@ namespace Nethermind.Consensus.AuRa
                 return false;
             }
 
-            if (auraHeader.AuRaSignature is null)
+            if (auraHeader.AuRaSignature?.Length != Signature.Size)
             {
-                if (_logger.IsError) _logger.Error($"Block {header.Number}, hash {header.Hash} is missing signature.");
+                if (_logger.IsError) _logger.Error($"Block {header.Number}, hash {header.Hash} is missing signature or its length is invalid.");
                 return false;
             }
 
-            // Ensure header is from the step after parent.
+            if (!IsSealedByBeneficiary(header))
+            {
+                if (_logger.IsError) _logger.Error($"Block {header.Number}, hash {header.Hash} is not signed by its beneficiary {header.Beneficiary}.");
+                return false;
+            }
+
             ulong step = auraHeader.AuRaStep;
+
+            if (header.Number >= _parameters.ValidateScoreTransition)
+            {
+                UInt256 expectedDifficulty = AuraDifficultyCalculator.CalculateDifficulty(auraParent.AuRaStep, step, 0);
+                if (header.Difficulty != expectedDifficulty)
+                {
+                    if (_logger.IsError) _logger.Error($"Invalid difficulty for block {header.Number}, hash {header.Hash}, expected value {expectedDifficulty}, but found {header.Difficulty}.");
+                    return false;
+                }
+            }
 
             if (step == auraParent.AuRaStep)
             {
@@ -77,15 +103,11 @@ namespace Nethermind.Consensus.AuRa
                 return false;
             }
 
-            // we can only validate if its correct proposer for step if parent was already processed as it can change validators
-            // no worries we do this validation later before processing the block
-            if (parent.Hash == _blockTree.Head?.Hash)
+            bool validatorsKnown = TryGetValidators(parent, out Address[] validators);
+            if (validatorsKnown && !_validSealerStrategy.IsValidSealer(validators, header.Beneficiary, step, out Address expectedAddress))
             {
-                if (!_validSealerStrategy.IsValidSealer(_validatorStore.GetValidators(), header.Beneficiary, step, out Address expectedAddress))
-                {
-                    if (_logger.IsError) _logger.Error($"Proposed block is not valid {header.ToString(BlockHeader.Format.FullHashAndNumber)}. Incorrect proposer at step {step}, expected {expectedAddress}, but found {header.Beneficiary}.");
-                    return false;
-                }
+                if (_logger.IsError) _logger.Error($"Proposed block is not valid {header.ToString(BlockHeader.Format.FullHashAndNumber)}. Incorrect proposer at step {step}, expected {expectedAddress}, but found {header.Beneficiary}.");
+                return false;
             }
 
             ulong currentStep = _stepCalculator.CurrentStep;
@@ -108,30 +130,20 @@ namespace Nethermind.Consensus.AuRa
                 }
             }
 
-            // if (!ValidateEmptySteps())
-            // ReportBenign
-            ReportingValidator.TryReportSkipped(header, parent);
-
-            // Report malice if the validator produced other sibling blocks in the same step.
-            if (_receivedSteps.ContainsSiblingOrInsert(header, _validatorStore.GetValidators().Length))
+            if (header.Number >= _parameters.ValidateScoreTransition && header.Difficulty >= AuraDifficultyCalculator.MaxDifficulty)
             {
-                if (_logger.IsDebug) _logger.Debug($"Validator {header.Beneficiary} produced sibling blocks in the same step {step} in block {header.Number}.");
-                ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, [], IReportingValidator.MaliciousCause.SiblingBlocksInSameStep);
+                if (_logger.IsError) _logger.Error($"Difficulty out of bounds for block {header.Number}, hash {header.Hash}, Max value {AuraDifficultyCalculator.MaxDifficulty}, but found {header.Difficulty}.");
+                return false;
             }
 
-            if (header.Number >= _parameters.ValidateScoreTransition)
+            if (validatorsKnown)
             {
-                if (header.Difficulty >= AuraDifficultyCalculator.MaxDifficulty)
-                {
-                    if (_logger.IsError) _logger.Error($"Difficulty out of bounds for block {header.Number}, hash {header.Hash}, Max value {AuraDifficultyCalculator.MaxDifficulty}, but found {header.Difficulty}.");
-                    return false;
-                }
+                ReportingValidator.TryReportSkipped(header, parent);
 
-                UInt256 expectedDifficulty = AuraDifficultyCalculator.CalculateDifficulty(auraParent.AuRaStep, step, 0);
-                if (header.Difficulty != expectedDifficulty)
+                if (_receivedSteps.ContainsSiblingOrInsert(header, validators.Length))
                 {
-                    if (_logger.IsError) _logger.Error($"Invalid difficulty for block {header.Number}, hash {header.Hash}, expected value {expectedDifficulty}, but found {header.Difficulty}.");
-                    return false;
+                    if (_logger.IsDebug) _logger.Debug($"Validator {header.Beneficiary} produced sibling blocks in the same step {step} in block {header.Number}.");
+                    ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, [], IReportingValidator.MaliciousCause.SiblingBlocksInSameStep);
                 }
             }
 
@@ -142,11 +154,9 @@ namespace Nethermind.Consensus.AuRa
         {
             if (header.IsGenesis) return true;
 
-            Address author = GetSealer(header);
-
-            if (author != header.Beneficiary)
+            if (!IsSealedByBeneficiary(header))
             {
-                if (_logger.IsError) _logger.Error($"Author {header.Beneficiary} of the block {header.Number}, hash {header.Hash} doesn't match signer {author}.");
+                if (_logger.IsError) _logger.Error($"Author {header.Beneficiary} of the block {header.Number}, hash {header.Hash} doesn't match its signer.");
                 return false;
             }
 
@@ -155,14 +165,103 @@ namespace Nethermind.Consensus.AuRa
             return true;
         }
 
+        private bool TryGetValidators(BlockHeader parent, out Address[] validators)
+        {
+            if (_parameters.ValidatorsJson?.List is { Length: > 0 } fixedValidators)
+            {
+                validators = fixedValidators;
+                return true;
+            }
+
+            validators = [];
+            BlockHeader? head = _blockTree.Head?.Header;
+            if (head is null) return false;
+
+            if (parent.Hash == head.Hash)
+            {
+                validators = _validatorStore.GetValidators();
+                return true;
+            }
+
+            ValidatorInfo current = _validatorStore.GetValidatorsInfo();
+            ulong quorum = current.Validators.MinSealersForFinalization();
+
+            if (parent.Number > head.Number)
+            {
+                if (_validatorStore.PendingValidators is not null || parent.Number - head.Number >= quorum || HasValidatorTransition(head.Number, parent.Number)) return false;
+
+                BlockHeader? ancestor = parent;
+                while (ancestor is not null && ancestor.Number > head.Number)
+                {
+                    ancestor = _blockTree.FindParentHeader(ancestor, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                }
+
+                if (ancestor?.Hash != head.Hash) return false;
+
+                validators = current.Validators;
+                return validators.Length != 0;
+            }
+
+            BlockHeader? forkPoint = parent;
+            ulong depth = 0;
+            while (forkPoint is not null && !_blockTree.IsMainChain(forkPoint))
+            {
+                if (++depth >= quorum) return false;
+                forkPoint = _blockTree.FindParentHeader(forkPoint, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            }
+
+            if (forkPoint is null) return false;
+
+            ValidatorInfo validatorInfo = _validatorStore.GetValidatorsInfo(Math.Max(forkPoint.Number, AuRaValidatorBase.DefaultStartBlockNumber) + 1);
+
+            if (forkPoint.Hash != parent.Hash)
+            {
+                bool changesOnMainChain = validatorInfo.FinalizingBlockNumber != current.FinalizingBlockNumber || _validatorStore.PendingValidators is not null;
+                bool canChangeOnSideBranch = parent.Number - forkPoint.Number >= validatorInfo.Validators.MinSealersForFinalization();
+                if (changesOnMainChain || canChangeOnSideBranch || HasValidatorTransition(forkPoint.Number, parent.Number)) return false;
+            }
+
+            validators = validatorInfo.Validators;
+            return validators.Length != 0;
+        }
+
+        private bool HasValidatorTransition(ulong after, ulong upTo)
+        {
+            if (_parameters.ValidatorsJson?.Multi is not { Count: > 0 } multi) return false;
+
+            foreach (ulong transition in multi.Keys)
+            {
+                if (transition > after && transition <= upTo + 1) return true;
+            }
+
+            return false;
+        }
+
+        private bool IsSealedByBeneficiary(BlockHeader header) => GetSealer(header) == header.Beneficiary;
+
         private Address GetSealer(BlockHeader header)
         {
             AuRaBlockHeader auraHeader = header.RequireAuRa();
+            ValueHash256 message = header.CalculateValueHash(RlpBehaviors.ForSealing);
+            RecoveredSealer?[] recovered = _recoveredSealers;
+            for (int i = 0; i < recovered.Length; i++)
+            {
+                RecoveredSealer? cached = Volatile.Read(ref recovered[i]);
+                if (cached is not null && cached.Message == message && cached.Signature.AsSpan().SequenceEqual(auraHeader.AuRaSignature))
+                {
+                    return cached.Sealer;
+                }
+            }
+
             Signature signature = new(auraHeader.AuRaSignature);
             signature.V += Signature.VOffset;
-            ValueHash256 message = header.CalculateValueHash(RlpBehaviors.ForSealing);
-            return _ecdsa.RecoverAddress(signature, in message);
+            Address sealer = _ecdsa.RecoverAddress(signature, in message);
+            int next = (int)((uint)Interlocked.Increment(ref _nextRecoveredSealer) % RecoveredSealersCapacity);
+            Volatile.Write(ref recovered[next], new RecoveredSealer(message, auraHeader.AuRaSignature.AsSpan().ToArray(), sealer));
+            return sealer;
         }
+
+        private sealed record RecoveredSealer(ValueHash256 Message, byte[] Signature, Address Sealer);
 
         private class ReceivedSteps
         {

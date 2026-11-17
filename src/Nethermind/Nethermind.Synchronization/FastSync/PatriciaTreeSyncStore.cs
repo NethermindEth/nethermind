@@ -6,12 +6,13 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization.FastSync;
 
-public class PatriciaTreeSyncStore(INodeStorage nodeStorage, IStateBoundaryWriter stateBoundary, ILogManager logManager) : ITreeSyncStore
+public class PatriciaTreeSyncStore(INodeStorage nodeStorage, IStateBoundaryWriter stateBoundary, ILogManager logManager, FullStateFinder? fullStateFinder = null) : ITreeSyncStore
 {
     public bool NodeExists(Hash256? address, in TreePath path, in ValueHash256 hash) =>
         nodeStorage.KeyExists(address, path, hash);
@@ -26,6 +27,7 @@ public class PatriciaTreeSyncStore(INodeStorage nodeStorage, IStateBoundaryWrite
         nodeStorage.Flush(onlyWal: false);
         // Records the floor reported through eth_capabilities.
         stateBoundary.OldestStateBlock = pivotHeader.Number;
+        fullStateFinder?.SetCompletedPivot(pivotHeader);
     }
 
     public ITreeSyncVerificationContext CreateVerificationContext(byte[] rootNodeData) =>

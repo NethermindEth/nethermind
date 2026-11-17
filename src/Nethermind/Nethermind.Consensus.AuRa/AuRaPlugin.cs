@@ -14,6 +14,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Data;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Services;
+using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
@@ -37,6 +38,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State.Repositories;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.FastSync;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Comparison;
 
@@ -124,6 +126,12 @@ namespace Nethermind.Consensus.AuRa
                 .AddSingleton<IHealthHintService, AuraHealthHintService>()
 
                 ;
+
+            if (AuRaStateSyncPivot.IsNeededFor(specParam.ValidatorsJson))
+            {
+                builder.AddDecorator<IStateSyncPivot>((ctx, inner) => new AuRaStateSyncPivot(
+                    inner, ctx.Resolve<IBlockTree>(), ctx.Resolve<ISpecProvider>(), ctx.Resolve<ILogManager>(), ctx.Resolve<IProcessExitSource>()));
+            }
 
             if (specParam.BlockGasLimitContractTransitions?.Any() == true)
             {

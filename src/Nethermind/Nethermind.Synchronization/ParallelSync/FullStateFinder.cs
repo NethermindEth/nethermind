@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -12,7 +13,8 @@ namespace Nethermind.Synchronization.ParallelSync;
 
 public class FullStateFinder(
     IBlockTree blockTree,
-    IStateReader stateReader) : IFullStateFinder
+    IStateReader stateReader,
+    IStateBoundary? stateBoundary = null) : IFullStateFinder
 {
     // TODO: we can search 1024 back and confirm 128 deep header and start using it as Max(0, confirmed)
     // then we will never have to look 128 back again
@@ -22,6 +24,9 @@ public class FullStateFinder(
     private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
 
     private ulong _lastKnownState;
+    private BlockHeader? _completedPivot;
+
+    internal void SetCompletedPivot(BlockHeader pivot) => Volatile.Write(ref _completedPivot, pivot);
 
     private bool IsFullySynced(BlockHeader block) =>
         block.StateRoot == Keccak.EmptyTreeHash || _stateReader.HasStateForBlock(block);
@@ -60,7 +65,24 @@ public class FullStateFinder(
             _lastKnownState = bestFullState;
         }
 
-        return bestFullState;
+        return bestSuggested is not null ? Math.Max(bestFullState, FindCompletedPivot(bestSuggested, bestFullState)) : bestFullState;
+    }
+
+    private ulong FindCompletedPivot(BlockHeader bestSuggested, ulong bestFullState)
+    {
+        BlockHeader? pivot = Volatile.Read(ref _completedPivot);
+        if (pivot is null && stateBoundary?.OldestStateBlock is { } number && number > bestFullState && number <= bestSuggested.Number)
+        {
+            pivot = _blockTree.FindHeader(number, BlockTreeLookupOptions.RequireCanonical);
+        }
+
+        if (pivot is null || pivot.Number <= bestFullState || pivot.Number > bestSuggested.Number ||
+            !_blockTree.IsMainChain(bestSuggested) || !_blockTree.IsMainChain(pivot))
+        {
+            return 0;
+        }
+
+        return IsFullySynced(pivot) ? pivot.Number : 0;
     }
 
     private ulong SearchForFullState(BlockHeader startHeader)

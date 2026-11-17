@@ -92,6 +92,7 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.FastSync;
 using Nethermind.Taiko.TaikoSpec;
 using Nethermind.TxPool;
 using Nethermind.Xdc;
@@ -1005,6 +1006,50 @@ public class EthereumRunnerTests
                 Throws.TypeOf<StepDependencyException>());
 
             processExitSource.DidNotReceive().Exit(ExitCodes.Ok);
+        }
+        finally
+        {
+            await runner.StopAsync();
+        }
+    }
+
+    [TestCase("energyweb", typeof(AuRaStateSyncPivot))]
+    [TestCase("volta", typeof(AuRaStateSyncPivot))]
+    [TestCase("gnosis", typeof(AuRaStateSyncPivot))]
+    [TestCase("mainnet", typeof(StateSyncPivot))]
+    public async Task State_sync_pivot_checks_finality_for_aura_validators_that_can_change(string network, Type expected)
+    {
+        EthereumRunner runner = await CreateRunner(network);
+        try
+        {
+            Assert.That(runner.Api.Context.Resolve<IStateSyncPivot>(), Is.TypeOf(expected));
+        }
+        finally
+        {
+            await runner.StopAsync();
+        }
+    }
+
+    [Test]
+    public async Task State_sync_pivot_is_not_decorated_for_a_fixed_aura_validator_list()
+    {
+        Assembly configAssembly = typeof(IConfig).Assembly;
+        string resource = configAssembly.GetManifestResourceNames().Single(static name => name.EndsWith(".chiado.json", StringComparison.Ordinal));
+        JsonNode chainSpec;
+        using (Stream stream = configAssembly.GetManifestResourceStream(resource)!)
+        {
+            chainSpec = JsonNode.Parse(stream)!;
+        }
+
+        chainSpec["engine"]!["authorityRound"]!["params"]!["validators"] = new JsonObject { ["list"] = new JsonArray(TestItem.AddressA.ToString()) };
+        using TempPath directory = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(directory.Path);
+        string chainSpecPath = Path.Combine(directory.Path, "aura-list.json");
+        await File.WriteAllTextAsync(chainSpecPath, chainSpec.ToJsonString());
+        EthereumRunner runner = await CreateRunner("chiado", configProvider => configProvider.GetConfig<IInitConfig>().ChainSpecPath = chainSpecPath);
+        try
+        {
+            Assert.That(runner.Api.Context.Resolve<IStateSyncPivot>(), Is.TypeOf<StateSyncPivot>());
         }
         finally
         {

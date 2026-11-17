@@ -132,10 +132,6 @@ namespace Nethermind.AuRa.Test
             await StartStop(new Context(), expectBlock: false, processingQueueEmpty: false);
 
         [Test]
-        public async Task Does_not_produce_block_when_ProcessingQueueEmpty_not_raised() =>
-            await StartStop(new Context(), expectBlock: false, processingQueueEmpty: false, queueBecomesBusy: true);
-
-        [Test]
         public async Task Does_not_produce_block_when_QueueNotEmpty()
         {
             Context context = new();

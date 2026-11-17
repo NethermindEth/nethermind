@@ -96,7 +96,6 @@ namespace Nethermind.Consensus.AuRa
                         _txSender,
                         _txPool,
                         _blocksConfig,
-                        _stateProvider,
                         _reportingValidatorCache,
                         _specProvider,
                         _gasPriceOracle,
