@@ -316,7 +316,11 @@ public class LookupKNearestNeighbourTests
             },
             token);
 
-        Assert.That(cancelledWorkerDrained.Task.IsCompleted, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cancelledWorkerDrained.Task.IsCompleted, Is.True);
+            Assert.That(token.IsCancellationRequested, Is.False);
+        }
     }
 
     [Test]
