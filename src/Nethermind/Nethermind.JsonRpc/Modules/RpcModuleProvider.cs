@@ -110,7 +110,7 @@ namespace Nethermind.JsonRpc.Modules
                     {
                         if (_ethCallLimit is not null && EthCallMethodNames.Contains(method.Key))
                         {
-                            method.Value.SetPool(_ethCallLimit.WrapRent(rentModule), _ethCallLimit.WrapReturn(returnModule), pool);
+                            method.Value.SetPool(_ethCallLimit.WrapRent(rentModule), _ethCallLimit.WrapReturn(returnModule), pool, rentModule, returnModule);
                         }
                         else
                         {
@@ -273,6 +273,8 @@ namespace Nethermind.JsonRpc.Modules
 
         public ValueTask<IRpcModule> Rent(ResolvedMethodInfo method, CancellationToken cancellationToken) => method.RentModule(cancellationToken);
 
+        public ValueTask<IRpcModule> RentNested(ResolvedMethodInfo method, CancellationToken cancellationToken) => method.RentNestedModule(cancellationToken);
+
         public void Return(string methodName, IRpcModule rpcModule)
         {
             MethodCache cache = EnsureMethodCache();
@@ -283,6 +285,8 @@ namespace Nethermind.JsonRpc.Modules
         }
 
         public void Return(ResolvedMethodInfo method, IRpcModule rpcModule) => method.ReturnModule(rpcModule);
+
+        public void ReturnNested(ResolvedMethodInfo method, IRpcModule rpcModule) => method.ReturnNestedModule(rpcModule);
 
         private sealed class MethodCache(
             FrozenDictionary<string, ResolvedMethodInfo> methods,
@@ -523,16 +527,46 @@ namespace Nethermind.JsonRpc.Modules
             internal void SetPool(
                 Func<bool, CancellationToken, ValueTask<IRpcModule>> rentModule,
                 Action<IRpcModule> returnModule,
-                IRpcModulePool modulePool)
+                IRpcModulePool modulePool,
+                Func<bool, CancellationToken, ValueTask<IRpcModule>>? rentNestedModule = null,
+                Action<IRpcModule>? returnNestedModule = null)
             {
                 _rentModule = rentModule;
                 _returnModule = returnModule;
+                _rentNestedModule = rentNestedModule ?? rentModule;
+                _returnNestedModule = returnNestedModule ?? returnModule;
                 ModulePool = modulePool;
             }
 
             private Func<bool, CancellationToken, ValueTask<IRpcModule>>? _rentModule;
 
             private Action<IRpcModule>? _returnModule;
+
+            private Func<bool, CancellationToken, ValueTask<IRpcModule>>? _rentNestedModule;
+
+            private Action<IRpcModule>? _returnNestedModule;
+
+            internal ValueTask<IRpcModule> RentNestedModule(CancellationToken cancellationToken)
+            {
+                Func<bool, CancellationToken, ValueTask<IRpcModule>>? rentModule = _rentNestedModule;
+                if (rentModule is null)
+                {
+                    ThrowMissingPool();
+                }
+
+                return rentModule(ReadOnly, cancellationToken);
+            }
+
+            internal void ReturnNestedModule(IRpcModule rpcModule)
+            {
+                Action<IRpcModule>? returnModule = _returnNestedModule;
+                if (returnModule is null)
+                {
+                    ThrowMissingPool();
+                }
+
+                returnModule(rpcModule);
+            }
 
             internal ValueTask<IRpcModule> RentModule(bool canBeShared, CancellationToken cancellationToken)
             {

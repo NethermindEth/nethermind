@@ -493,6 +493,28 @@ public class RpcModuleProviderTests
     }
 
     [Test]
+    public async Task Nested_eth_call_rental_does_not_wait_for_the_eth_call_limit()
+    {
+        IRpcModuleProvider provider = CreateEthCallLimitedProvider(limit: 1);
+        IRpcModule held = await provider.Rent("eth_call", true);
+        RpcModuleProvider.ResolvedMethodInfo method = provider.Resolve("eth_call")!;
+
+        ValueTask<IRpcModule> nested = provider.RentNested(method, CancellationToken.None);
+        Assert.That(nested.IsCompletedSuccessfully, Is.True);
+        provider.ReturnNested(method, await nested);
+        provider.Return("eth_call", held);
+
+        ValueTask<IRpcModule> next = provider.Rent("eth_call", true);
+        ValueTask<IRpcModule> overLimit = provider.Rent("eth_call", true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(next.IsCompletedSuccessfully, Is.True);
+            Assert.That(overLimit.IsCompleted, Is.False);
+        }
+    }
+
+    [Test]
     public async Task Other_eth_methods_do_not_wait_for_the_eth_call_limit()
     {
         IRpcModuleProvider provider = CreateEthCallLimitedProvider(limit: 1);

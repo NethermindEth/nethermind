@@ -473,7 +473,7 @@ internal sealed class McpToolExecutor(
                 return Error(McpToolErrorCodes.Unavailable, $"The {rpcMethod} JSON-RPC method is not available on this node.");
             }
 
-            module = await rpcModuleProvider.Rent(method);
+            module = await rpcModuleProvider.Rent(method, cancellationToken);
             if (module is not TModule typedModule)
             {
                 return Error(McpToolErrorCodes.Unavailable, $"The JSON-RPC module serving {rpcMethod} is not available on this node.");
@@ -592,7 +592,7 @@ internal sealed class McpToolExecutor(
             return default;
         }
 
-        IRpcModule module = await rpcModuleProvider.Rent(method);
+        IRpcModule module = await rpcModuleProvider.RentNested(method, CancellationToken.None);
         if (module is TModule typed)
         {
             return new ModuleLease<TModule>(rpcModuleProvider, method, typed);
@@ -600,7 +600,7 @@ internal sealed class McpToolExecutor(
 
         if (module is not null)
         {
-            rpcModuleProvider.Return(method, module);
+            rpcModuleProvider.ReturnNested(method, module);
         }
 
         return default;
@@ -659,7 +659,7 @@ internal readonly struct ModuleLease<TModule>(IRpcModuleProvider provider, RpcMo
     {
         if (module is not null)
         {
-            provider.Return(method, module);
+            provider.ReturnNested(method, module);
         }
     }
 }
