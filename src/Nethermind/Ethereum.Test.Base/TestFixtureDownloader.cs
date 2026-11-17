@@ -143,13 +143,13 @@ public static class TestFixtureDownloader
 
     private static void DownloadAndExtract(HttpClient httpClient, string url, string tempDir)
     {
-        Directory.CreateDirectory(tempDir);
-
         using HttpRequestMessage request = new(HttpMethod.Get, url);
         using HttpResponseMessage response = httpClient.Send(request, HttpCompletionOption.ResponseHeadersRead);
         response.EnsureSuccessStatusCode();
 
-        using Stream contentStream = response.Content.ReadAsStream();
+        Directory.CreateDirectory(tempDir);
+
+        using ResponseStream contentStream = new(response.Content.ReadAsStream());
         using GZipStream gzStream = new(contentStream, CompressionMode.Decompress);
 
         TarFile.ExtractToDirectory(gzStream, tempDir, overwriteFiles: true);
@@ -160,7 +160,7 @@ public static class TestFixtureDownloader
         HttpRequestException { StatusCode: null } => true,
         HttpRequestException { StatusCode: HttpStatusCode status } => IsTransient(status),
         TaskCanceledException or TimeoutException => true,
-        IOException or InvalidDataException => true,
+        HttpIOException or EndOfStreamException or InvalidDataException => true,
         _ => false
     };
 
@@ -171,5 +171,49 @@ public static class TestFixtureDownloader
     {
         if (Directory.Exists(directory))
             Directory.Delete(directory, true);
+    }
+
+    private sealed class ResponseStream(Stream inner) : Stream
+    {
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
+
+        public override int Read(Span<byte> buffer)
+        {
+            try
+            {
+                return inner.Read(buffer);
+            }
+            catch (IOException exception) when (exception is not HttpIOException)
+            {
+                throw new HttpIOException(HttpRequestError.ResponseEnded, exception.Message, exception);
+            }
+        }
+
+        public override void Flush() { }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+                inner.Dispose();
+
+            base.Dispose(disposing);
+        }
     }
 }

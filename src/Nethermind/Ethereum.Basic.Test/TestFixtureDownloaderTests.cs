@@ -38,6 +38,8 @@ public class TestFixtureDownloaderTests
     {
         if (Directory.Exists(_cacheRoot))
             Directory.Delete(_cacheRoot, true);
+        else if (File.Exists(_cacheRoot))
+            File.Delete(_cacheRoot);
     }
 
     [Test]
@@ -101,6 +103,21 @@ public class TestFixtureDownloaderTests
             Assert.That(exception.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
             Assert.That(Directory.Exists(TargetDir()), Is.False);
             AssertNoTempDirectories();
+        }
+    }
+
+    [Test]
+    public void Local_filesystem_failure_is_not_retried_and_keeps_its_type()
+    {
+        File.WriteAllText(_cacheRoot, "not a directory");
+        FakeHandler handler = new(Archive);
+
+        IOException exception = Assert.Catch<IOException>(() => Download(handler));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(handler.Requests, Is.EqualTo(1));
+            Assert.That(exception, Is.Not.InstanceOf<HttpIOException>());
         }
     }
 
