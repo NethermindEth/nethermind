@@ -407,6 +407,33 @@ public class ChainLevelInfoRepositoryTests
     }
 
     [Test]
+    public void GetMainChainBlocksWithoutCaching_reads_each_level_as_the_single_read_does([Values] bool native, [Values] bool mixedLengths)
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using IDb db = CreateBatchDb(native, directory);
+        using IContainer container = CreateContainer(db);
+        IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
+        ulong[] numbers = mixedLengths ? [300, 2, 301, 302, 303] : [300, 301, 302, 303, 304];
+        repository.PersistLevel(numbers[0], CreateBatchLevel(numbers[0]));
+        repository.PersistLevel(numbers[2], new ChainLevelInfo(false, new BlockInfo(TestItem.KeccakC, 3)));
+        repository.PersistLevel(numbers[3], CreateBatchLevel(numbers[3]));
+        ((IClearableCache)repository).ClearCache();
+        ChainLevelInfo cached = new(true, new BlockInfo(TestItem.KeccakD, 7));
+        repository.PersistLevel(numbers[4], cached);
+
+        (ValueHash256 BlockHash, UInt256 TotalDifficulty)[] blocks = new (ValueHash256, UInt256)[numbers.Length];
+        repository.GetMainChainBlocksWithoutCaching(numbers, blocks);
+
+        for (int i = 0; i < numbers.Length; i++)
+        {
+            bool expectedFound = repository.TryGetMainChainBlockWithoutCaching(numbers[i], out ValueHash256 expectedHash, out UInt256 expectedTotalDifficulty);
+            Assert.That(blocks[i], Is.EqualTo(expectedFound ? (expectedHash, expectedTotalDifficulty) : default((ValueHash256, UInt256))), $"level {numbers[i]}");
+        }
+
+        Assert.That(blocks[4].BlockHash, Is.EqualTo(TestItem.KeccakD.ValueHash256), "a cached level is served");
+    }
+
+    [Test]
     public void TryGetMainChainBlockWithoutCaching_serves_a_cached_level_without_a_read()
     {
         MemDb db = new();
