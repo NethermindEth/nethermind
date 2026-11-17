@@ -47,6 +47,7 @@ public class TestFixtureDownloaderTests
         new TestCaseData(new Func<HttpResponseMessage>[] { BadGateway, BadGateway, Archive }, 3).SetName("Bad_gateway_responses_are_retried_until_the_download_succeeds"),
         new TestCaseData(new Func<HttpResponseMessage>[] { BrokenStream, Archive }, 2).SetName("Broken_response_stream_is_retried_and_no_partial_extraction_is_used"),
         new TestCaseData(new Func<HttpResponseMessage>[] { RequestTimeout, Archive }, 2).SetName("Request_timeout_is_retried_until_the_download_succeeds"),
+        new TestCaseData(new Func<HttpResponseMessage>[] { RequestTimeoutStatus, Archive }, 2).SetName("Request_timeout_status_is_retried_until_the_download_succeeds"),
         new TestCaseData(new Func<HttpResponseMessage>[] { TooManyRequests, Archive }, 2).SetName("Too_many_requests_is_retried_until_the_download_succeeds"),
         new TestCaseData(new Func<HttpResponseMessage>[] { ConnectionError, Archive }, 2).SetName("Connection_error_is_retried_until_the_download_succeeds")
     ];
@@ -182,6 +183,8 @@ public class TestFixtureDownloaderTests
     }
 
     private static HttpResponseMessage BadGateway() => new(HttpStatusCode.BadGateway);
+
+    private static HttpResponseMessage RequestTimeoutStatus() => new(HttpStatusCode.RequestTimeout);
 
     private static HttpResponseMessage TooManyRequests() => new(HttpStatusCode.TooManyRequests);
 
