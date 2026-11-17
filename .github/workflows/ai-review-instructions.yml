@@ -107,7 +107,7 @@ jobs:
           if all_scopes or any(any('Test' in part or 'Benchmark' in part for part in path.parts[:-1]) for path in csharp):
               rules.setdefault('di-patterns', []).append('Test setup pattern (preferred: direct DI)')
               rules['test-infrastructure'] = ['DI anti-pattern — never manually new up infrastructure',
-                                               'Running tests (.NET 10 / Microsoft.Testing.Platform)']
+                                               'Running tests (Microsoft.Testing.Platform)']
           if all_scopes or any(path.suffix in {'.csproj', '.props', '.targets', '.sln', '.slnx'} for path in paths):
               rules['package-management'] = None
           if all_scopes or any(path.parts[0] == '.github' and path.suffix in {'.yml', '.yaml'} for path in paths if path.parts):
@@ -120,6 +120,10 @@ jobs:
               if headings is not None:
                   sections = {section.splitlines()[0].removeprefix('## '): section
                               for section in re.split(r'(?m)(?=^## )', text) if section.startswith('## ')}
+                  # The trusted base can predate the test heading rename.
+                  legacy_test_heading = 'Running tests (.NET 10 / Microsoft.Testing.Platform)'
+                  if name == 'test-infrastructure' and legacy_test_heading in sections:
+                      sections.setdefault('Running tests (Microsoft.Testing.Platform)', sections[legacy_test_heading])
                   text = ''.join(sections[heading] for heading in headings)
               instructions += f'\n\nTrusted repository rule: {source}\n{text}'
 

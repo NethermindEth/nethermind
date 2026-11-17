@@ -172,6 +172,15 @@ try
         foreach (var name in names)
             Check(prompt.Split($"Trusted repository rule: {Path.Combine(".agents", "rules", name + ".md")}").Length - 1 == (rules.Contains(name) ? 1 : 0), $"{scope}: rule count {name}");
     }
+    var testRules = Read(".agents/rules/test-infrastructure.md").Replace("## Running tests (Microsoft.Testing.Platform)", "## Running tests (.NET 10 / Microsoft.Testing.Platform)", StringComparison.Ordinal);
+    foreach (var heading in new[] { "Running tests (.NET 10 / Microsoft.Testing.Platform)", "Running tests (Microsoft.Testing.Platform)" })
+    {
+        File.WriteAllText(Path.Combine(rulesDirectory.FullName, "test-infrastructure.md"), testRules.Replace("## Running tests (.NET 10 / Microsoft.Testing.Platform)", $"## {heading}", StringComparison.Ordinal));
+        var prompt = await Prompt(temporary.FullName, ["src/Client.Test/Client.cs"]);
+        Check(prompt.Contains($"## {heading}\n", StringComparison.Ordinal), $"trusted test heading: {heading}");
+        Check(prompt.Contains("zero tests ran", StringComparison.Ordinal), $"test execution guidance preserved: {heading}");
+    }
+    File.WriteAllText(Path.Combine(rulesDirectory.FullName, "test-infrastructure.md"), testRules);
     File.Delete(Path.Combine(rulesDirectory.FullName, "coding-style.md"));
     Check((await Prepare(temporary.FullName, ["src/Client.cs"])).Code != 0, "missing scoped rule fails");
     var allPaths = new[] { "src/Client/Modules/Client.cs", "src/Client.Test/Client.cs", "Directory.Packages.props", ".github/workflows/build.yml" };
@@ -194,9 +203,10 @@ try
         }
     }
     foreach (var file in Directory.GetFiles(Path.Combine(repository, ".agents/rules"))) File.Copy(file, Path.Combine(rulesDirectory.FullName, Path.GetFileName(file)), overwrite: true);
-    var originals = new[] { "di-patterns", "coding-style" }.ToDictionary(name => name, name => File.ReadAllText(Path.Combine(rulesDirectory.FullName, name + ".md")));
+    var originals = new[] { "di-patterns", "coding-style", "test-infrastructure" }.ToDictionary(name => name, name => File.ReadAllText(Path.Combine(rulesDirectory.FullName, name + ".md")));
     foreach (var (name, text, paths, error, all) in new[]
     {
+        ("test-infrastructure", testRules.Replace("## Running tests (.NET 10 / Microsoft.Testing.Platform)", "## Renamed section", StringComparison.Ordinal), new[] { "src/Client.Test/Client.cs" }, "Running tests (Microsoft.Testing.Platform)", false),
         ("di-patterns", originals["di-patterns"].Replace("## Singleton vs Scoped", "## Renamed section", StringComparison.Ordinal), new[] { "src/Client/Modules/Client.cs" }, "Singleton vs Scoped", false),
         ("di-patterns", originals["di-patterns"] + new string('x', 32768), new[] { "src/Client/Modules/Client.cs" }, "source size limit", false),
         ("coding-style", new string('x', 16384), new[] { "src/Client.cs" }, "prompt budget", false),
