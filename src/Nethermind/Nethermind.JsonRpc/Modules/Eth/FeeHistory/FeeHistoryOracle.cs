@@ -29,7 +29,8 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         private const int RewardPercentilesLengthLimit = 100;
         private readonly ulong _oldestBlockDistanceFromHeadAllowedInCache;
         private ulong _lastCleanupHeadBlockNumber = 0;
-        private Task? _cleanupTask = null;
+        // 1 while a cleanup is queued or running; only the thread that sets it writes _lastCleanupHeadBlockNumber.
+        private int _cleanupRunning;
         private readonly ConcurrentDictionary<Hash256AsKey, BlockFeeHistorySearchInfo> _feeHistoryCache = new();
         private readonly IBlockTree _blockTree;
         private readonly IReceiptStorage _receiptStorage;
@@ -377,27 +378,43 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         private void TryRunCleanup()
         {
             ulong headNumber = _blockTree.Head?.Number ?? 0;
-            ulong lastCleanupHeadBlockNumber = _lastCleanupHeadBlockNumber;
-            if (lastCleanupHeadBlockNumber != headNumber
+            if (_lastCleanupHeadBlockNumber != headNumber
                 && _feeHistoryCache.Count > 2 * MaxBlockCount // let's let the cache grow a bit and do less cleanup
-                && _cleanupTask is null
-                && Interlocked.CompareExchange(ref _lastCleanupHeadBlockNumber, headNumber, lastCleanupHeadBlockNumber) == lastCleanupHeadBlockNumber)
+                && Interlocked.CompareExchange(ref _cleanupRunning, 1, 0) == 0)
             {
-                _cleanupTask = Task.Run(CleanupCache);
+                // The flag is claimed above and released only by the cleanup (or below if it cannot be queued), so a cleanup
+                // that ends before this method returns leaves nothing behind.
+                Volatile.Write(ref _lastCleanupHeadBlockNumber, headNumber);
+                try
+                {
+                    Task.Run(CleanupCache);
+                }
+                catch
+                {
+                    Volatile.Write(ref _cleanupRunning, 0);
+                    throw;
+                }
             }
         }
 
         private void CleanupCache()
         {
-            foreach (KeyValuePair<Hash256AsKey, BlockFeeHistorySearchInfo> historyInfo in _feeHistoryCache)
+            try
             {
-                if (historyInfo.Value.BlockNumber < _lastCleanupHeadBlockNumber - _oldestBlockDistanceFromHeadAllowedInCache)
+                // The bound ShouldCache uses, so nothing wraps while the head is below the distance.
+                ulong oldestBlockNumber = _lastCleanupHeadBlockNumber.SaturatingSub(_oldestBlockDistanceFromHeadAllowedInCache);
+                foreach (KeyValuePair<Hash256AsKey, BlockFeeHistorySearchInfo> historyInfo in _feeHistoryCache)
                 {
-                    _feeHistoryCache.TryRemove(historyInfo);
+                    if (historyInfo.Value.BlockNumber < oldestBlockNumber)
+                    {
+                        _feeHistoryCache.TryRemove(historyInfo);
+                    }
                 }
             }
-
-            _cleanupTask = null;
+            finally
+            {
+                Volatile.Write(ref _cleanupRunning, 0);
+            }
         }
 
         private ArrayPoolList<UInt256>? CalculateRewardsPercentiles(
