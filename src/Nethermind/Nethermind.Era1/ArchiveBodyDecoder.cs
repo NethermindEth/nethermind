@@ -27,7 +27,7 @@ public static class ArchiveBodyDecoder
     {
         if (form == BodyForm.EncodedTransactions && decoder is BlockBodyDecoder bodyDecoder)
         {
-            ArrayPoolList<byte> encoded = new(buffer.Span);
+            ArrayPoolList<byte> encoded = [with(buffer.Span)];
             try
             {
                 return (bodyDecoder.DecodeWithEncodedTransactions(encoded.AsMemory())!, encoded);

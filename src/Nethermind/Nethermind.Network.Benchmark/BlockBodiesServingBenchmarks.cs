@@ -101,7 +101,7 @@ public class BlockBodiesServingBenchmarks
         foreach (IMemoryOwner<byte> owner in owners) owner.Dispose();
         int length = _serializer.GetLength(message);
         byte[] buffer = ArrayPool<byte>.Shared.Rent(length);
-        int written = _serializer.Serialize(buffer, message);
+        int written = _serializer.Serialize(buffer.AsSpan(0, length), message);
         ArrayPool<byte>.Shared.Return(buffer);
         return written;
     }
