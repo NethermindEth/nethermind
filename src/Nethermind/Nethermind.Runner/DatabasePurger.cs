@@ -11,12 +11,13 @@ namespace Nethermind.Runner;
 
 internal static class DatabasePurger
 {
-    private static readonly HashSet<string> NetworkDbNames = new(StringComparer.OrdinalIgnoreCase)
-    {
+    private static readonly HashSet<string> NetworkDbNames =
+    [
+        with(StringComparer.OrdinalIgnoreCase),
         DbNames.PeersDb,
         DbNames.DiscoveryNodes,
         DbNames.DiscoveryV5Nodes
-    };
+    ];
 
     /// <summary>
     /// Deletes database files from <paramref name="basePath"/>.
