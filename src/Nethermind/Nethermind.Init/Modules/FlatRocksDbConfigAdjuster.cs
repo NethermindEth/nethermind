@@ -24,7 +24,7 @@ internal class FlatRocksDbConfigAdjuster(
 {
     private readonly ILogger _logger = logManager.GetClassLogger<FlatRocksDbConfigAdjuster>();
 
-    public IRocksDbConfig GetForDatabase(string databaseName, string? columnName)
+    public IRocksDbConfig GetForDatabase(string? databaseName, string? columnName)
     {
         IRocksDbConfig config = rocksDbConfigFactory.GetForDatabase(databaseName, columnName);
         if (databaseName == nameof(DbNames.Flat))
