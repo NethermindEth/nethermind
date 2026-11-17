@@ -298,6 +298,9 @@ jobs:
             rm -rf "$archive" "$batch_dir"
           }
 
+          # The loop below reads jq through a process substitution, which set -e cannot see fail.
+          jq -e --argjson chunk "$BATCH_CHUNK" '.[$chunk] | length > 0' "$BATCHES_FILE" > /dev/null
+
           while IFS= read -r batch; do
             archive_path="$(jq -r '.path' <<< "$batch")"
             archive_sha="$(jq -r '.sha256' <<< "$batch" | sed 's/^0x//')"
