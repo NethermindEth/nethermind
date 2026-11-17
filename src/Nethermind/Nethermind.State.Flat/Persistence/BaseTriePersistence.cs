@@ -169,7 +169,7 @@ public static class BaseTriePersistence
         }
 
         [SkipLocalsInit]
-        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount = null)
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount)
         {
             ReadOnlySpan<byte> fromAccount = fromPath.Bytes[..StorageHashPrefixLength];
             ReadOnlySpan<byte> toAccount = toPath.Bytes[..StorageHashPrefixLength];

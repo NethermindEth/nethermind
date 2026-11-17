@@ -502,7 +502,7 @@ public static class BasePersistence
         public void SelfDestruct(in ValueHash256 address);
 
         /// <inheritdoc cref="IPersistence.IWriteBatch.SelfDestructRange"/>
-        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount = null);
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount);
 
         public void RemoveAccount(in ValueHash256 address);
 
@@ -544,7 +544,7 @@ public static class BasePersistence
         public void SelfDestruct(Address addr);
 
         /// <inheritdoc cref="IPersistence.IWriteBatch.SelfDestructRange"/>
-        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount = null);
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount);
 
         public void SetAccount(Address addr, Account? account);
 
@@ -577,7 +577,7 @@ public static class BasePersistence
         public void SelfDestruct(in ValueHash256 address);
 
         /// <inheritdoc cref="IPersistence.IWriteBatch.SelfDestructRange"/>
-        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount = null);
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount);
 
         public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp);
         public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp);
@@ -596,7 +596,7 @@ public static class BasePersistence
 
         public void SelfDestruct(Address addr) => _flatWriteBatch.SelfDestruct(addr.ToAccountPath);
 
-        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount = null) =>
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount) =>
             _flatWriteBatch.SelfDestructRange(fromPath, toPath, keptAccount);
 
         public void SetAccount(Address addr, Account? account)
@@ -953,7 +953,7 @@ public static class BasePersistence
             _trieWriteBatch.SelfDestruct(addr.ToAccountPath);
         }
 
-        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount = null)
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount)
         {
             _flatWriter.SelfDestructRange(fromPath, toPath, keptAccount);
             _trieWriteBatch.SelfDestructRange(fromPath, toPath, keptAccount);

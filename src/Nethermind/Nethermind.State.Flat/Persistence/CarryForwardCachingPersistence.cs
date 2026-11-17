@@ -422,7 +422,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             inner.DeleteStorageRange(addressHash, fromPath, toPath);
         }
 
-        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount = null)
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount)
         {
             _clearAll = true;
             inner.SelfDestructRange(fromPath, toPath, keptAccount);

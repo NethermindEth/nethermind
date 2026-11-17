@@ -127,7 +127,7 @@ public interface IPersistence
         /// Storage is keyed by the first 20 bytes of the account path, so the bounds are compared on those bytes only,
         /// as in <see cref="DeleteAccountRange"/>.
         /// </remarks>
-        void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount = null);
+        void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount);
 
         /// <summary>
         /// Deletes every state trie node whose node and subtree are entirely contained within the value range

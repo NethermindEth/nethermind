@@ -352,7 +352,7 @@ public static class BaseFlatPersistence
         }
 
         [SkipLocalsInit]
-        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount = null)
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount)
         {
             int prefixLength = StoragePrefixLength(fullAddressStorageKey);
             Span<byte> lastKey = stackalloc byte[StorageKeyLength + 1];
