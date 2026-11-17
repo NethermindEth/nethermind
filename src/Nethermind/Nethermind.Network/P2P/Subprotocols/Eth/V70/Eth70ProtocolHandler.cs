@@ -109,6 +109,9 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
             {
                 if (cancellationToken.IsCancellationRequested) break;
 
+                int remaining = Math.Min(hashes.Length, MaxReceiptsLookups) - blockIndex;
+                if (blockIndex % ServingPrefetchWindow == 0 && remaining > 1) SyncServer.PrefetchReceipts(getReceiptsMessage.Hashes, blockIndex, Math.Min(ServingPrefetchWindow, remaining));
+
                 int blockStart = buffer.Count;
                 if (!SyncServer.TryAppendReceipts(hashes[blockIndex], ReceiptMessageDecoder, withBloom: false, buffer)) break;
 

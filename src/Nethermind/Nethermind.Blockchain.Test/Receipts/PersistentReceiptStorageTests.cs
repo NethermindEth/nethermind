@@ -362,6 +362,27 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     }
 
     [Test]
+    public void Prefetch_reads_the_receipts_and_bodies_of_the_blocks([Values] bool legacyHashKeys)
+    {
+        using PrefetchingTestDb receiptsBlocksDb = new();
+        if (legacyHashKeys) receiptsBlocksDb.Set(Keccak.Zero, [1]);
+        TestMemColumnsDb<ReceiptsColumns> receiptsDb = new();
+        receiptsDb.SetColumnDb(ReceiptsColumns.Blocks, receiptsBlocksDb);
+        using PrefetchingTestDb blocksDb = new();
+        PersistentReceiptStorage storage = new(receiptsDb, _specProvider, _receiptsRecovery, _blockTree, new BlockStore(blocksDb), _receiptConfig, _decoder, logManager: _logManager);
+        Block block = Build.A.Block.WithNumber(3).TestObject;
+        byte[] key = Bytes.Concat(block.Number.ToBigEndianByteArray(), block.Hash!.BytesToArray());
+
+        storage.Prefetch([(block.Number, block.Hash!.ValueHash256)]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receiptsBlocksDb.Prefetches, legacyHashKeys ? Is.Empty : Is.EqualTo(new[] { new[] { key } }));
+            Assert.That(blocksDb.Prefetches, Is.EqualTo(new[] { new[] { key } }));
+        }
+    }
+
+    [Test]
     public void Network_receipts_store_the_same_receipts_and_index_as_decoded_ones([Values] bool eip658, [Values] bool eip7668, [Values] bool inBatch)
     {
         IReleaseSpec spec = eip658 ? Byzantium.Instance : SpuriousDragon.Instance;

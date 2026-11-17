@@ -30,6 +30,9 @@ namespace Nethermind.Synchronization
         /// <param name="destination">The list that the encoded sequence of the block's receipts is added to.</param>
         /// <returns><see langword="false"/> when the block's receipts are not available; nothing is then added.</returns>
         bool TryAppendReceipts(Hash256 blockHash, IRlpDecoder<TxReceipt> decoder, bool withBloom, ArrayPoolList<byte> destination);
+        /// <summary>Starts reading what <see cref="TryAppendReceipts"/> needs for <paramref name="count"/> hashes from <paramref name="start"/>, before the calls that need it.</summary>
+        /// <remarks>Returns before the reads complete.</remarks>
+        void PrefetchReceipts(IReadOnlyList<Hash256> hashes, int start, int count) { }
         MemoryManager<byte>? GetBlockAccessListRlp(Hash256 blockHash);
         /// <summary>The stored block with <paramref name="hash"/>, encoded as the block store holds it.</summary>
         /// <returns>The encoded block, which the caller disposes, or <see langword="null"/> when its body is not stored.</returns>

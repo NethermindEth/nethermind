@@ -623,6 +623,24 @@ namespace Nethermind.Blockchain
         }
 
         /// <inheritdoc/>
+        /// <remarks>Reads the chain levels in one batch, as the headers are keyed by the canonical hashes they hold.</remarks>
+        public void PrefetchCanonicalHeaders(ulong start, int count)
+        {
+            using ArrayPoolListRef<ulong> numbers = new(count);
+            for (int i = 0; i < count; i++) numbers.Add(start + (ulong)i);
+
+            using IOwnedReadOnlyList<ChainLevelInfo?> levels = _chainLevelInfoRepository.MultiLoadLevel(numbers);
+            using ArrayPoolSpan<(ulong Number, ValueHash256 Hash)> blocks = new(count);
+            int known = 0;
+            for (int i = 0; i < count; i++)
+            {
+                if (levels[i]?.MainChainBlock is { } blockInfo) blocks[known++] = (start + (ulong)i, blockInfo.BlockHash.ValueHash256);
+            }
+
+            _headerStore.Prefetch(blocks.Slice(0, known));
+        }
+
+        /// <inheritdoc/>
         /// <remarks>A level outside the cached window is read without caching it, as long scans read many.</remarks>
         public BlockHeader? FindCanonicalHeaderIfBloomMatches(ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
         {

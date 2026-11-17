@@ -221,21 +221,28 @@ public class SyncServerTests
     }
 
     [Test]
-    public void Prefetches_the_stored_blocks_of_the_known_hashes_in_the_window()
+    public void Prefetches_the_known_hashes_in_the_window([Values] bool receipts)
     {
         Context ctx = new();
         using PrefetchingTestDb blockDb = new();
-        HeaderStore headerStore = new(new MemDb(), new MemDb());
+        using PrefetchingTestDb headerDb = new();
+        HeaderStore headerStore = new(headerDb, new MemDb());
         Block known = Build.A.Block.WithNumber(5).TestObject;
         Block outside = Build.A.Block.WithNumber(9).TestObject;
         headerStore.InsertBlockNumber(known.Hash!, known.Number);
         headerStore.InsertBlockNumber(outside.Hash!, outside.Number);
         SyncServer server = ctx.CreateSyncServer(ctx.BlockTree, headerStore: headerStore, blockStore: new BlockStore(blockDb));
 
-        server.PrefetchBlocks([outside.Hash!, known.Hash!, TestItem.KeccakA, outside.Hash!], 1, 2);
+        Action<IReadOnlyList<Hash256>, int, int> prefetch = receipts ? server.PrefetchReceipts : server.PrefetchBlocks;
+
+        prefetch([outside.Hash!, known.Hash!, TestItem.KeccakA, outside.Hash!], 1, 2);
 
         byte[] knownKey = Bytes.Concat(known.Number.ToBigEndianByteArray(), known.Hash!.BytesToArray());
-        Assert.That(blockDb.Prefetches, Is.EqualTo(new[] { new[] { knownKey } }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((receipts ? headerDb : blockDb).Prefetches, Is.EqualTo(new[] { new[] { knownKey } }));
+            Assert.That((receipts ? blockDb : headerDb).Prefetches, Is.Empty);
+        }
     }
 
     [TestCase(true, true, true)]

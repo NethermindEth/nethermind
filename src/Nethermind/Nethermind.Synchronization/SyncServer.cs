@@ -603,20 +603,37 @@ namespace Nethermind.Synchronization
         /// <remarks>Reads the block numbers in one batch, as <see cref="FindBlockRlp"/> needs them to find the blocks.</remarks>
         public void PrefetchBlocks(IReadOnlyList<Hash256> hashes, int start, int count)
         {
+            using ArrayPoolSpan<(ulong Number, ValueHash256 Hash)> blocks = new(count);
+            _blockStore.Prefetch(blocks.Slice(0, FindKnownBlocks(hashes, start, count, blocks)));
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>Reads the block numbers in one batch, as <see cref="TryAppendReceipts"/> needs them to find the headers.</remarks>
+        public void PrefetchReceipts(IReadOnlyList<Hash256> hashes, int start, int count)
+        {
+            using ArrayPoolSpan<(ulong Number, ValueHash256 Hash)> blocks = new(count);
+            ReadOnlySpan<(ulong Number, ValueHash256 Hash)> known = blocks.Slice(0, FindKnownBlocks(hashes, start, count, blocks));
+            _headerStore.Prefetch(known);
+            _receiptFinder.Prefetch(known);
+        }
+
+        /// <summary>Puts the number and hash of each known block of the window in <paramref name="blocks"/>.</summary>
+        /// <returns>The number of known blocks.</returns>
+        private int FindKnownBlocks(IReadOnlyList<Hash256> hashes, int start, int count, Span<(ulong Number, ValueHash256 Hash)> blocks)
+        {
             using ArrayPoolSpan<ValueHash256> blockHashes = new(count);
             for (int i = 0; i < count; i++) blockHashes[i] = hashes[start + i].ValueHash256;
 
             using ArrayPoolSpan<ulong?> numbers = new(count);
             _headerStore.GetBlockNumbers(blockHashes, numbers);
 
-            using ArrayPoolSpan<(ulong Number, ValueHash256 Hash)> blocks = new(count);
             int known = 0;
             for (int i = 0; i < count; i++)
             {
                 if (numbers[i] is { } number) blocks[known++] = (number, blockHashes[i]);
             }
 
-            _blockStore.Prefetch(blocks.Slice(0, known));
+            return known;
         }
 
         public BlockHeader? FindHeader(Hash256 hash) => _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);

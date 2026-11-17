@@ -69,6 +69,10 @@ public interface IHeaderStore : IHeaderFinder
         }
     }
 
+    /// <summary>Starts reading stored headers into memory before the reads that need them.</summary>
+    /// <remarks>Returns before the reads complete. A store that cannot read ahead does nothing.</remarks>
+    void Prefetch(ReadOnlySpan<(ulong Number, ValueHash256 Hash)> blocks) { }
+
     /// <summary>
     /// Returns up to <paramref name="count"/> consecutive headers ending at <paramref name="endBlockHash"/>,
     /// walking backward through parent hashes. Uses a DB iterator for bulk read when the underlying
