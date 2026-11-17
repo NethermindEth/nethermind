@@ -1097,7 +1097,7 @@ public class HistoryWalkVerifierTests
 
                 Account account = new(block + 1, 50, StorageRootOf(slots), Keccak.OfAnEmptyString);
                 HistoryColumnsWriter.RecordAccount(_historyColumns, path, block, account);
-                trees[block].Set(path.Bytes, new AccountDecoder().EncodeAsBytes(account));
+                trees[block].Set(path.Bytes, new AccountDecoder().Encode(account));
             }
         }
 

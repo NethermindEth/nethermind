@@ -187,7 +187,7 @@ public class OptimismEthRpcModule(
             return (ResultWrapper<Hash256>.Fail("authentication needed: password or unlock", ErrorCodes.AccountLocked), false);
 
         bool signedByNode = unsigned && tx.Signature is not null;
-        return (await eth_sendRawTransaction(Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes), signedByNode);
+        return (await eth_sendRawTransaction(Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping)), signedByNode);
     }
 
     public override async Task<ResultWrapper<Hash256>> eth_sendRawTransaction(byte[] transaction)

@@ -66,7 +66,7 @@ public class FundsDistributor(IJsonRpcClient rpcClient, ulong chainId, string? k
 
     private async Task<IEnumerable<string>> ExecuteDistribution(Signer distributeFrom, DistributionPlan plan, uint keysToMake, UInt256 maxFee, PendingKeyFile? pending)
     {
-        List<string> txHashes = new((int)keysToMake);
+        List<string> txHashes = [with((int)keysToMake)];
 
         using PrivateKeyGenerator generator = new();
 
@@ -146,7 +146,7 @@ public class FundsDistributor(IJsonRpcClient rpcClient, ulong chainId, string? k
             throw new InvalidOperationException($"Signer {signer.Address} could not sign transaction.");
 
         string txRlp = Convert.ToHexStringLower(TxDecoderInstance
-            .Encode(tx, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm).Bytes);
+            .Encode(tx, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm));
 
         return await _rpcClient.SendRawTransactionAsync($"0x{txRlp}");
     }

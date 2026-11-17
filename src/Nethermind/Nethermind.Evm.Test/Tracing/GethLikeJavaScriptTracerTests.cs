@@ -622,6 +622,49 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
 
     private GethLikeBlockJavaScriptTracer GetTracer(string userTracer) => new(TestState, Shanghai.Instance, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer });
 
+    [TestCase("ctx.Input.ToArray().CopyTo(ctx.Output, 0);", "written", TestName = "Output host member")]
+    [TestCase("""
+              var nativeUint8Array = Uint8Array, args = [];
+              Uint8Array = function(arg) { args.push(arg); return new nativeUint8Array(arg); };
+              ctx.input; ctx.output;
+              if (args.length !== 0) throw new Error('replaced constructor was called');
+              """, "written", TestName = "Replaced Uint8Array")]
+    public void Script_keeps_transaction_output_unchanged(string write, string expectedMarker)
+    {
+        byte[] output = [1, 2, 3, 4];
+        using GethLikeBlockJavaScriptTracer tracer = GetTracer(
+            "{ fault: function(log, db) { }, result: function(ctx, db) { try { " + write + " } catch (e) { return 'rejected' } return 'written' } }");
+        IBlockTracer blockTracer = tracer;
+        blockTracer.StartNewBlockTrace(Build.A.Block.TestObject);
+        ITxTracer txTracer = blockTracer.StartNewTxTrace(Build.A.Transaction.WithData([9, 9, 9, 9]).TestObject);
+        txTracer.MarkAsSuccess(TestItem.AddressA, new GasConsumed(21000, 21000), output, []);
+        blockTracer.EndTxTrace();
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+
+        Assert.That(output, Is.EqualTo(new byte[] { 1, 2, 3, 4 }));
+        AssertResult(trace, expectedMarker);
+    }
+
+    [Test]
+    public void Script_receives_byte_arrays_by_value()
+    {
+        string userTracer = """
+                            {
+                                fault: function(log, db) { },
+                                result: function(ctx, db) {
+                                    var nativeUint8Array = Uint8Array, args = [];
+                                    Uint8Array = function(arg) { args.push(typeof arg); return new nativeUint8Array(arg); };
+                                    db.getCode(ctx.to);
+                                    db.getState(ctx.to, '0x00');
+                                    args.push(typeof db.WorldState);
+                                    return args;
+                                }
+                            }
+                            """;
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(GetTracer(userTracer), MStore());
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        AssertResult(trace, new[] { "undefined" });
+    }
 
     [Test]
     public void log_operation_functions()

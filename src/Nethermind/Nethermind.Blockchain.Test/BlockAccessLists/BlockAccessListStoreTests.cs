@@ -57,7 +57,7 @@ public class BlockAccessListStoreTests
         Assert.That(retrieved, Is.Not.Null);
 
         using MemoryManager<byte>? rlp = store.GetRlp(blockNumber, blockHash);
-        Assert.That(rlp!.Memory, Is.SequenceEqualTo(Rlp.Encode(bal).Bytes));
+        Assert.That(rlp!.Memory, Is.SequenceEqualTo(Rlp.Encode(bal)));
     }
 
     [Test]

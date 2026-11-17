@@ -24,7 +24,7 @@ public class BlockForRpcTests
                 Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject)
             .TestObject;
         BlockDecoder decoder = new();
-        Block decoded = decoder.Decode(decoder.Encode(block).Bytes)!;
+        Block decoded = decoder.Decode(decoder.Encode(block))!;
 
         using (Assert.EnterMultipleScope())
         {

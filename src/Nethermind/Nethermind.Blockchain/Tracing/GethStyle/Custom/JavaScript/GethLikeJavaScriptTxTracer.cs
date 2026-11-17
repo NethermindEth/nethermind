@@ -484,7 +484,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     {
         base.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
         _ctx.gasUsed = gasSpent.SpentGas;
-        _ctx.Output = output;
+        _ctx.Output = output.AsSpan().ToArray();
         // A revert reason is decoded from the output, which an exceptional halt never has.
         // The halting step's error carries Geth's detailed text; a failed code deposit or a precompile call has no such step.
         _ctx.error = output.Length == 0 && error is not null && ErrorDescriptionsBySubstateError.TryGetValue(error, out string? description) ? _log.error ?? description : error;
@@ -494,7 +494,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     {
         base.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
         _ctx.gasUsed = gasSpent.SpentGas;
-        _ctx.Output = output;
+        _ctx.Output = output.AsSpan().ToArray();
     }
 
     public override void SetOperationMemory(TraceMemory memoryTrace)

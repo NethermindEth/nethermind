@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Db;
@@ -153,6 +154,19 @@ public class FlatStateReaderTests
             Assert.That(diagnostics.NodeLookups, Is.EqualTo(5));
             Assert.That(diagnostics.CacheMisses, Is.EqualTo(2));
         }
+    }
+
+    [Test]
+    public void RunTreeVisitor_ReportsTheAccountOfEachStorageTrie([Values(1, 4)] int parallelism)
+    {
+        CountingTrieReader trieReader = CountingTrieReader.WithAccountsAndSlot(out Hash256 stateRoot, TestItem.AddressA, TestItem.AddressC);
+        BlockHeader header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(stateRoot).TestObject;
+        FlatStateReader reader = CreateReader(new CurrentBundleFlatDbManager(trieReader, snapshot: null, persisted: null));
+        StorageAddressCollector collector = new();
+
+        reader.RunTreeVisitor(collector, header, new VisitingOptions { MaxDegreeOfParallelism = parallelism });
+
+        Assert.That(collector.Addresses, Is.EquivalentTo(new[] { Keccak.Compute(TestItem.AddressA.Bytes), Keccak.Compute(TestItem.AddressC.Bytes) }));
     }
 
     [Test]

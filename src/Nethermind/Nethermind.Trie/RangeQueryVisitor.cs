@@ -112,7 +112,7 @@ public class RangeQueryVisitor : INodeRecordVisitor<TreePathContext>, IDisposabl
 
     public ArrayPoolList<byte[]> GetProofs()
     {
-        HashSet<byte[]> proofs = new(Bytes.EqualityComparer);
+        HashSet<byte[]> proofs = [with(Bytes.EqualityComparer)];
 
         AddToProof(_leftmostNodes);
         AddToProof(_rightmostNodes);

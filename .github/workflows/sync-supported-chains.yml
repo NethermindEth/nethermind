@@ -78,7 +78,7 @@ jobs:
       - name: Set up .NET for CI scripts
         uses: ./nethermind/.github/actions/setup-dotnet
         with:
-          dotnet-version: 10.0.403
+          global-json-file: nethermind/global.json
 
       - name: Set Matrix
         id: set-matrix

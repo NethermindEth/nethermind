@@ -209,7 +209,7 @@ public class HistoryPrunerTests
     {
         IBlockAccessListStore balStore = Substitute.For<IBlockAccessListStore>();
         using IContainer container = CreateBalOnlyContainer(Substitute.For<IBlockTree>(), Substitute.For<IReceiptStorage>(), balStore);
-        container.Resolve<IDbProvider>().MetadataDb.Set(MetadataDbKeys.BlockAccessListPruningDeletePointer, Rlp.Encode(30_000UL).Bytes);
+        container.Resolve<IDbProvider>().MetadataDb.Set(MetadataDbKeys.BlockAccessListPruningDeletePointer, Rlp.Encode(30_000UL));
         HistoryPruner pruner = (HistoryPruner)container.Resolve<IHistoryPruner>();
 
         pruner.TryPruneHistory(CancellationToken.None);
@@ -281,7 +281,7 @@ public class HistoryPrunerTests
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         IBlockAccessListStore balStore = Substitute.For<IBlockAccessListStore>();
         using IContainer container = CreateBalOnlyContainer(blockTree, Substitute.For<IReceiptStorage>(), balStore, chainHasAccessLists: chainHasAccessLists);
-        container.Resolve<IDbProvider>().MetadataDb.Set(MetadataDbKeys.BlockAccessListPruningDeletePointer, Rlp.Encode(42_400UL).Bytes);
+        container.Resolve<IDbProvider>().MetadataDb.Set(MetadataDbKeys.BlockAccessListPruningDeletePointer, Rlp.Encode(42_400UL));
         blockTree.Head.Returns(Build.A.Block.WithNumber(BalOnlyHead - 1).TestObject);
 
         HistoryPruner pruner = (HistoryPruner)container.Resolve<IHistoryPruner>();
@@ -552,8 +552,8 @@ public class HistoryPrunerTests
         // process exit aborted before completion, so its marker is absent. Nothing else is owed - retention is
         // unchanged - so only the owed-compaction term can re-enter pruning after the restart.
         IDb metadataDb = testBlockchain.Container.Resolve<IDbProvider>().MetadataDb;
-        metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(BeaconGenesisBlockNumber).Bytes);
-        metadataDb.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(BeaconGenesisBlockNumber).Bytes);
+        metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(BeaconGenesisBlockNumber));
+        metadataDb.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(BeaconGenesisBlockNumber));
         metadataDb.Set(MetadataDbKeys.HistoryPruningBlobCompactionOwed, [1]);
 
         HistoryPruner restarted = CreatePrunerWithSpyBlocksDb(testBlockchain, historyConfig, out IDb blocksDb, NullPrunedReceiptRetention.Instance);
@@ -736,8 +736,8 @@ public class HistoryPrunerTests
         HistoryConfig config = new() { Pruning = PruningModes.UseAncientBarriers, PruningInterval = 0, CompactBlocksOnPrune = true };
         using BasicTestBlockchain chain = await CreateBlockchainWithBlocks(config, 100, syncPivot: 100);
         IDb metadata = chain.Container.Resolve<IDbProvider>().MetadataDb;
-        metadata.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(BeaconGenesisBlockNumber).Bytes);
-        if (reclaimCursor != 0) metadata.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(reclaimCursor).Bytes);
+        metadata.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(BeaconGenesisBlockNumber));
+        if (reclaimCursor != 0) metadata.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(reclaimCursor));
 
         HistoryPruner pruner = CreatePrunerWithSpyBlocksDb(chain, config, out IDb blocksDb);
         blocksDb.CompactReclaimingBlobFiles().Returns(true);
@@ -760,8 +760,8 @@ public class HistoryPrunerTests
         const ulong reclaimedThrough = 200_000;
         chain.BlockTree.SyncPivot = (reclaimedThrough, Hash256.Zero);
         IDb metadata = chain.Container.Resolve<IDbProvider>().MetadataDb;
-        metadata.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(reclaimedThrough).Bytes);
-        metadata.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(reclaimedThrough).Bytes);
+        metadata.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(reclaimedThrough));
+        metadata.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(reclaimedThrough));
         metadata.Set(MetadataDbKeys.HistoryPruningBlobCompactionOwed, [1]);
         MutableRetention retention = new() { ExpiredUpperBound = expiredUpperBound };
         HistoryPruner pruner = CreatePrunerWithSpyBlocksDb(chain, config, out IDb blocksDb, retention);
@@ -1204,7 +1204,7 @@ public class HistoryPrunerTests
     {
         TestMemDb metadataDb = new();
         if (bodyPointer is not null)
-            metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(bodyPointer.Value).Bytes);
+            metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(bodyPointer.Value));
         IDbProvider dbProvider = Substitute.For<IDbProvider>();
         dbProvider.MetadataDb.Returns(metadataDb);
         dbProvider.BlocksDb.Returns(new TestMemDb());
@@ -1227,7 +1227,7 @@ public class HistoryPrunerTests
     public void SetDeletePointerToOldestBlock_releases_when_the_feed_marked_its_backfill_complete()
     {
         TestMemDb metadataDb = new();
-        metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(7000UL).Bytes);
+        metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(7000UL));
         metadataDb.Set(MetadataDbKeys.AncientBodiesDownloadComplete, [1]);
         IDbProvider dbProvider = Substitute.For<IDbProvider>();
         dbProvider.MetadataDb.Returns(metadataDb);
@@ -1244,7 +1244,7 @@ public class HistoryPrunerTests
     public void SetDeletePointerToOldestBlock_releases_a_pointer_parked_at_the_barrier_the_feed_last_started_with()
     {
         TestMemDb metadataDb = new();
-        metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(5000UL).Bytes);
+        metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(5000UL));
         metadataDb.Set(MetadataDbKeys.BodiesBarrierWhenStarted, ((long)5000).ToBigEndianByteArrayWithoutLeadingZeros());
         IDbProvider dbProvider = Substitute.For<IDbProvider>();
         dbProvider.MetadataDb.Returns(metadataDb);
@@ -1261,8 +1261,8 @@ public class HistoryPrunerTests
     public void OldestUnreclaimedBlockNumber_reads_the_persisted_boundary_before_the_pointers_load()
     {
         TestMemDb metadataDb = new();
-        metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(5_000_000UL).Bytes);
-        metadataDb.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(4_000_000UL).Bytes);
+        metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(5_000_000UL));
+        metadataDb.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(4_000_000UL));
         IDbProvider dbProvider = Substitute.For<IDbProvider>();
         dbProvider.MetadataDb.Returns(metadataDb);
         dbProvider.BlocksDb.Returns(new TestMemDb());
@@ -1278,8 +1278,8 @@ public class HistoryPrunerTests
     public void OldestUnreclaimedBlockNumber_floors_at_the_configured_barrier_before_the_pointers_load()
     {
         TestMemDb metadataDb = new();
-        metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(5_000UL).Bytes);
-        metadataDb.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(4_000UL).Bytes);
+        metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(5_000UL));
+        metadataDb.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(4_000UL));
         IDbProvider dbProvider = Substitute.For<IDbProvider>();
         dbProvider.MetadataDb.Returns(metadataDb);
         dbProvider.BlocksDb.Returns(new TestMemDb());
@@ -1310,7 +1310,7 @@ public class HistoryPrunerTests
     public void SetDeletePointerToOldestBlock_holds_when_the_barrier_dropped_below_the_one_the_feed_last_started_with()
     {
         TestMemDb metadataDb = new();
-        metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(7000UL).Bytes);
+        metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(7000UL));
         metadataDb.Set(MetadataDbKeys.BodiesBarrierWhenStarted, ((long)7000).ToBigEndianByteArrayWithoutLeadingZeros());
         IDbProvider dbProvider = Substitute.For<IDbProvider>();
         dbProvider.MetadataDb.Returns(metadataDb);
@@ -1337,7 +1337,7 @@ public class HistoryPrunerTests
 
         for (ulong frontier = 9000; frontier > 8995; frontier--)
         {
-            metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(frontier).Bytes);
+            metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(frontier));
             Assert.That(pruner.SetDeletePointerToOldestBlock(), Is.False);
             Assert.That(pruner.SetDeletePointerToOldestBlock(), Is.False,
                 "a written pointer above the static barrier must hold until the completion marker releases it");
@@ -1350,7 +1350,7 @@ public class HistoryPrunerTests
     public void SetDeletePointerToOldestBlock_releases_a_written_pointer_when_synchronization_is_disabled()
     {
         TestMemDb metadataDb = new();
-        metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(9000UL).Bytes);
+        metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(9000UL));
         IDbProvider dbProvider = Substitute.For<IDbProvider>();
         dbProvider.MetadataDb.Returns(metadataDb);
         dbProvider.BlocksDb.Returns(new TestMemDb());
@@ -1398,7 +1398,7 @@ public class HistoryPrunerTests
             "the ancient backfill hold must leave the pruning state unloaded");
 
         metadataDb.Set(MetadataDbKeys.AncientBodiesDownloadComplete, [1]);
-        metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(1UL).Bytes);
+        metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(1UL));
         ulong cutoff = pruner.CutoffBlockNumber!.Value;
         retention.RetainedHeights(Arg.Any<ulong>(), Arg.Any<ulong>(), out Arg.Any<ulong>(), out Arg.Any<ulong>())
             .Returns(callInfo =>
@@ -1430,7 +1430,7 @@ public class HistoryPrunerTests
     private static (HistoryPruner Pruner, TestMemDb MetadataDb, IPrunedReceiptRetention Retention) CreateFrontierFixture(bool synchronizationEnabled, bool markerPresent = false, ulong pruningInterval = 0)
     {
         TestMemDb metadataDb = new();
-        metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(9000UL).Bytes);
+        metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(9000UL));
         if (markerPresent)
         {
             metadataDb.Set(MetadataDbKeys.AncientBodiesDownloadComplete, [1]);
@@ -1520,7 +1520,7 @@ public class HistoryPrunerTests
         using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks);
 
         IDb metadataDb = testBlockchain.Container.Resolve<IDbProvider>().MetadataDb;
-        metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(storedPointer).Bytes);
+        metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(storedPointer));
 
         IHistoryPruner historyPruner = testBlockchain.Container.Resolve<IHistoryPruner>();
 
@@ -1609,8 +1609,8 @@ public class HistoryPrunerTests
         // What a crash between the two metadata writes leaves. Seeded rather than produced by interrupting a pass,
         // because a chunk spans more heights than a test chain has, so an interrupted pass leaves nothing to resume.
         IDb metadataDb = testBlockchain.Container.Resolve<IDbProvider>().MetadataDb;
-        metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(boundary).Bytes);
-        metadataDb.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(1UL).Bytes);
+        metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(boundary));
+        metadataDb.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(1UL));
 
         NewPrunerOver(testBlockchain).TryPruneHistory(CancellationToken.None);
 
@@ -1637,8 +1637,8 @@ public class HistoryPrunerTests
         // Blocks and access lists caught up, a sweep left half-finished. The sweep is then the only work owed, so a
         // pass has to be scheduled on the strength of its cursor alone rather than on some other pass being due.
         IDb metadataDb = testBlockchain.Container.Resolve<IDbProvider>().MetadataDb;
-        metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(36UL).Bytes);
-        metadataDb.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(36UL).Bytes);
+        metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(36UL));
+        metadataDb.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(36UL));
         metadataDb.Set(MetadataDbKeys.HistoryPruningTxIndexSweepCursor, [1, 2, 3]);
 
         NewPrunerOver(testBlockchain).TryPruneHistory(CancellationToken.None);
@@ -1677,7 +1677,7 @@ public class HistoryPrunerTests
 
         // A database pruned by the per-block code has a boundary and no cursor, and everything below it is gone.
         IDb metadataDb = testBlockchain.Container.Resolve<IDbProvider>().MetadataDb;
-        metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(storedBoundary).Bytes);
+        metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(storedBoundary));
 
         NewPrunerOver(testBlockchain).TryPruneHistory(CancellationToken.None);
 
@@ -1779,7 +1779,7 @@ public class HistoryPrunerTests
         using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, 100, syncPivot: 100);
 
         IDb receiptsDefault = testBlockchain.Container.Resolve<IDbProvider>().ReceiptsDb.GetColumnDb(ReceiptsColumns.Default);
-        receiptsDefault.Set(Keccak.Zero, Rlp.Encode(60UL).Bytes);
+        receiptsDefault.Set(Keccak.Zero, Rlp.Encode(60UL));
 
         FrontierCapturingRetention retention = new();
         HistoryPruner pruner = NewPrunerOver(testBlockchain, retention);
@@ -1796,7 +1796,7 @@ public class HistoryPrunerTests
         using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, 100, syncPivot: 100);
 
         IDb receiptsDefault = testBlockchain.Container.Resolve<IDbProvider>().ReceiptsDb.GetColumnDb(ReceiptsColumns.Default);
-        receiptsDefault.Set(Keccak.Zero, Rlp.Encode(60UL).Bytes);
+        receiptsDefault.Set(Keccak.Zero, Rlp.Encode(60UL));
 
         FrontierCapturingRetention retention = new();
         HistoryPruner pruner = NewPrunerOver(testBlockchain, retention);
@@ -1954,7 +1954,7 @@ public class HistoryPrunerTests
         IBackgroundTaskScheduler scheduler = null)
     {
         BasicTestBlockchain bc = await BasicTestBlockchain.Create(BuildContainer(historyConfig, scheduler));
-        bc.Container.Resolve<IDbProvider>().MetadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(1UL).Bytes);
+        bc.Container.Resolve<IDbProvider>().MetadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(1UL));
         blockHashes?.Add(bc.BlockTree.Head!.Hash!);
         for (int i = 0; i < blocks; i++)
         {

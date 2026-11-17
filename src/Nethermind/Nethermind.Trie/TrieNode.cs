@@ -518,9 +518,7 @@ namespace Nethermind.Trie
             if ((keySpan[0] & 0x20) != 0)
             {
                 reader.DecodeByteArraySpan(ref position, out ReadOnlySpan<byte> valueSpan);
-                CappedArray<byte> buffer = bufferPool.SafeRent(valueSpan.Length);
-                Bytes.Copy(valueSpan, buffer.AsSpan());
-                Volatile.Write(ref _nodeData, CreateLeafData(keySpan, keyEnd, buffer));
+                Volatile.Write(ref _nodeData, CreateLeafData(keySpan, keyEnd, valueSpan, position, bufferPool));
             }
             else
             {

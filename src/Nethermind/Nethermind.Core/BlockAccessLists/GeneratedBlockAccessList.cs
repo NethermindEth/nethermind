@@ -18,7 +18,7 @@ namespace Nethermind.Core.BlockAccessLists;
 /// </remarks>
 public class GeneratedBlockAccessList
 {
-    private readonly Dictionary<AddressAsKey, GeneratedAccountChanges> _accountChanges = new(GenericEqualityComparer.GetOptimized<AddressAsKey>());
+    private readonly Dictionary<AddressAsKey, GeneratedAccountChanges> _accountChanges = [with(GenericEqualityComparer.GetOptimized<AddressAsKey>())];
 
     /// <summary>
     /// Insertion-ordered view over the BAL's accounts.
@@ -98,6 +98,9 @@ public class GeneratedBlockAccessList
     }
 
     public void Clear() => _accountChanges.ClearAndTrim();
+
+    /// <summary>Makes room for <paramref name="accounts"/> accounts without growing the account map as they merge in.</summary>
+    internal void EnsureCapacity(int accounts) => _accountChanges.EnsureCapacity(accounts);
     public void Reset() => Clear();
 
     /// <summary>

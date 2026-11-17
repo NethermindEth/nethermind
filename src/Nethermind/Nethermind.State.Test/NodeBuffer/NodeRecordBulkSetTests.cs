@@ -854,14 +854,14 @@ internal class NodeRecordBulkSetTests
         foreach ((TreePath path, ulong pointer, NodeRecord record) in buffer.EnumerateNodes(root.Pointer, 0))
         {
             byte[] rlp = record.Rlp.ToArray();
-            bool parses = NodeRecordCodec.TryDecode(rlp, out NodeRecordKind kind, out ushort hashMask);
+            NodeRecordCodec.Decode(rlp, out NodeRecordKind kind, out ushort hashMask);
             bool transientPointer = NodeRecordCodec.IsTransient(pointer);
             for (int i = 0; i < BitOperations.PopCount(hashMask); i++)
             {
                 transientPointer |= NodeRecordCodec.IsTransient(BinaryPrimitives.ReadUInt64LittleEndian(record.Span[(NodeRecordCodec.HeaderLength + i * NodeRecordCodec.PointerLength)..]));
             }
 
-            if (ValueKeccak.Compute(rlp) != record.Hash || !parses || kind != record.Kind || hashMask != record.View.HashMask
+            if (ValueKeccak.Compute(rlp) != record.Hash || kind != record.Kind || hashMask != record.View.HashMask
                 || BinaryPrimitives.ReadUInt64LittleEndian(record.Span[NodeRecordCodec.NodeKeyHashOffset..]) != NodeRecordCodec.NodeKeyHash(null, path) || transientPointer)
             {
                 invalid.Add(path.ToString());

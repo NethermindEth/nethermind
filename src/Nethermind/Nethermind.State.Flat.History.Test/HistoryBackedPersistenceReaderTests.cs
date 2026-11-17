@@ -113,8 +113,8 @@ public class HistoryBackedPersistenceReaderTests
         HistoryBackedPersistenceReader reader = Reader(10);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(() => reader.TryLoadStateRlp(default, ReadFlags.None), Throws.InstanceOf<NotSupportedException>());
-            Assert.That(() => reader.TryLoadStorageRlp(Keccak.Zero, default, ReadFlags.None), Throws.InstanceOf<NotSupportedException>());
+            Assert.That(() => reader.TryLoadStateRlp(default, ReadFlags.None, static (_, _) => { }, 0), Throws.InstanceOf<NotSupportedException>());
+            Assert.That(() => reader.TryLoadStorageRlp(Keccak.Zero, default, ReadFlags.None, static (_, _) => { }, 0), Throws.InstanceOf<NotSupportedException>());
             Assert.That(() => reader.GetAccountRaw(default), Throws.InstanceOf<NotSupportedException>());
             Assert.That(() => { UInt256 raw = default; reader.TryGetStorageRaw(default, default, ref raw); }, Throws.InstanceOf<NotSupportedException>());
             Assert.That(() => reader.CreateAccountIterator(default, default), Throws.InstanceOf<NotSupportedException>());

@@ -176,7 +176,7 @@ public partial class EthRpcModuleTests
 
         static TxReceipt RoundTrip(RlpDecoder<TxReceipt> decoder, TxReceipt receipt, RlpBehaviors behaviors)
         {
-            RlpReader reader = new(decoder.EncodeAsBytes(receipt, behaviors));
+            RlpReader reader = new(decoder.Encode(receipt, behaviors));
             return decoder.Decode(ref reader, behaviors)!;
         }
     }

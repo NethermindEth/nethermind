@@ -106,6 +106,17 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
         ArrayPoolListCore<T>.AddRange(_arrayPool, ref _array, ref _capacity, ref _count, items);
     }
 
+    /// <summary>Adds <paramref name="count"/> items for the caller to write.</summary>
+    /// <returns>The added items. They hold what the rented array held before, so the caller writes all of them.</returns>
+    public Span<T> AddUninitialized(int count)
+    {
+        GuardDispose();
+        ArrayPoolListCore<T>.GuardResize(_arrayPool, ref _array, ref _capacity, _count, count);
+        Span<T> added = _array.AsSpan(_count, count);
+        _count += count;
+        return added;
+    }
+
     public void Clear()
     {
         GuardDispose();
