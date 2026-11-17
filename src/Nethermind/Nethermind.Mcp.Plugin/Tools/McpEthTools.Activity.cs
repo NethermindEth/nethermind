@@ -279,7 +279,7 @@ internal sealed partial class McpEthTools
 
             McpDetachedEth detached = new(async () =>
             {
-                ModuleLease<IEthRpcModule> lease = await _executor.RentAsync<IEthRpcModule>(nameof(IEthRpcModule.eth_call));
+                ModuleLease<IEthRpcModule> lease = await _executor.RentAsync<IEthRpcModule>(nameof(IEthRpcModule.eth_call), cancellation);
                 return (lease.Module, lease);
             }, _executor.TrackDetached);
             Dictionary<(AddressAsKey Token, Hash256 BlockHash), McpTokenInfo> metadata = [];

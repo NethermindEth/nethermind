@@ -96,7 +96,7 @@ internal sealed class McpPriceReader(McpChainProfile profile, ILogManager logMan
             try
             {
                 if (Stopped()) return results;
-                using ModuleLease<IEthRpcModule> lease = await executor.RentAsync<IEthRpcModule>(nameof(IEthRpcModule.eth_call));
+                using ModuleLease<IEthRpcModule> lease = await executor.RentAsync<IEthRpcModule>(nameof(IEthRpcModule.eth_call), cancellationToken);
                 if (lease.Module is null) return Failed("The eth_call module is unavailable for the price feed.");
                 if (!TryResolveReference(lease.Module, block, Stopped, pinnedHead, out PriceReference reference, out string referenceError)) return Failed(referenceError);
                 foreach ((AddressAsKey key, McpPriceFeed feed) in feeds)

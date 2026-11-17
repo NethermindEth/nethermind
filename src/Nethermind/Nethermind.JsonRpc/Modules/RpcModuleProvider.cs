@@ -522,6 +522,8 @@ namespace Nethermind.JsonRpc.Modules
             internal TaskResultReader? TaskResultAccessor { get; }
             internal IRpcModulePool? ModulePool { get; private set; }
 
+            public bool HasConcurrencyLimit { get; private set; }
+
             public override string ToString() => MethodInfo.Name;
 
             internal void SetPool(
@@ -535,6 +537,7 @@ namespace Nethermind.JsonRpc.Modules
                 _returnModule = returnModule;
                 _rentNestedModule = rentNestedModule ?? rentModule;
                 _returnNestedModule = returnNestedModule ?? returnModule;
+                HasConcurrencyLimit = rentNestedModule is not null;
                 ModulePool = modulePool;
             }
 
