@@ -1441,13 +1441,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Each master run here and in rpc-bench leaves a digest-pinned image on this box. expb's own pull drops the
-          # daemon's error, so once they fill the disk the run fails later with a bare ImageNotFound. Digest-only
+          # Each master run leaves a digest-pinned image on this box. expb's own pull drops the daemon's error, so
+          # once they fill the disk the run fails later with a bare ImageNotFound. With the overlay2 store, digest-only
           # images count as dangling; keep this run's image when an earlier matrix cell already pulled it.
           keep="$(docker image inspect --format '{{.Id}}' "${NETHERMIND_IMAGE}" 2>/dev/null || true)"
           docker container prune -f >/dev/null || true
           docker images -q --no-trunc --filter dangling=true | grep -vxF "${keep:-none}" | xargs -r docker rmi >/dev/null 2>&1 || true
           docker builder prune -af >/dev/null || true
+          echo "Storage driver: $(docker info --format '{{.Driver}}')"
+          docker system df || true
           df -h / "$(docker info --format '{{.DockerRootDir}}')"
           docker pull "${NETHERMIND_IMAGE}"
 
