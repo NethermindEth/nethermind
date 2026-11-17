@@ -109,7 +109,8 @@ public sealed class SnapServer(
         Span<Range?> ranges = stackalloc Range?[AccessListReadChunkSize];
 
         // A batch of lists is read whole even past the byte limit, which a peer sets. Batches start at one list
-        // and grow with the lists read, so a batch never reads more lists past the limit than were read before it.
+        // and grow with the lists read, but a batch takes only as many lists as fit, at the mean size so far, in the
+        // bytes left, plus one to pass the limit.
         int listReads = 0;
         for (int start = 0; start < blockHashes.Count; start += AccessListReadChunkSize)
         {
@@ -139,6 +140,7 @@ public sealed class SnapServer(
                 if (numbers[i] is not null && next == read)
                 {
                     int batch = Math.Min(Math.Clamp(listReads, 1, AccessListReadChunkSize), known - read);
+                    if (currentByteCount > 0) batch = (int)Math.Min(batch, (byteLimit - currentByteCount) * listReads / currentByteCount + 1);
                     lists.Clear();
                     blockAccessListStore.AppendRlps(knownNumbers.Slice(read, batch), knownHashes.Slice(read, batch), lists, ranges.Slice(read, batch));
                     read += batch;

@@ -260,6 +260,7 @@ public class SnapServerTests
     [TestCase(1, 0, 1, 1)]
     [TestCase(150, 0, 16, 31)]
     [TestCase(15, 15, 16, 1, Description = "Unknown hashes read no list, so they do not grow the batch")]
+    [TestCase(165, 0, 17, 17, Description = "A batch reads only the lists needed to pass the limit")]
     public void GetBlockAccessLists_reads_little_past_the_byte_limit(long byteLimit, int unknownHashes, int served, int maxReads)
     {
         List<ValueHash256> request = [];
