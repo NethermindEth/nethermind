@@ -24,7 +24,7 @@ using Testably.Abstractions;
 namespace Nethermind.JsonRpc.Benchmark;
 
 /// <summary>
-/// Hashes-only reads of distinct mainnet-sized blocks (about 130 KB each) from a RocksDB blocks database, bypassing
+/// Hashes-only reads of distinct mainnet-sized blocks (about 148 KB each) from a RocksDB blocks database, bypassing
 /// the reader's cache so that every read goes to the database, by one reader or by several concurrent ones.
 /// </summary>
 [MemoryDiagnoser]
