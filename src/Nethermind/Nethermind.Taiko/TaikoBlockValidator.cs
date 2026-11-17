@@ -50,8 +50,7 @@ public class TaikoBlockValidator(
             return false;
         }
 
-        // Blob transactions are never valid on Taiko L2. The base TxValidator is initialised
-        // with an Always.Valid validator (see TaikoPlugin), so we must enforce this explicitly.
+        // Blob transactions are never valid on Taiko L2, so we must enforce this explicitly.
         foreach (Transaction tx in block.Transactions)
         {
             if (tx.Type == TxType.Blob)
@@ -61,7 +60,6 @@ public class TaikoBlockValidator(
             }
         }
 
-        // TaikoPlugin initializes the TxValidator with an Always.Valid validator
         return base.ValidateTransactions(block, spec, ref errorMessage);
     }
 
