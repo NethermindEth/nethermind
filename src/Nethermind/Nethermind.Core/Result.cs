@@ -14,7 +14,12 @@ namespace Nethermind.Core
         public string? Error { get; }
         public ResultType ResultType => Error is null ? ResultType.Success : ResultType.Failure;
 
-        public static Result Fail(string error) => new(error ?? throw new ArgumentNullException(nameof(error)));
+        public static Result Fail(string error)
+        {
+            ArgumentNullException.ThrowIfNull(error);
+            return new(error);
+        }
+
         public static Result Success { get; } = default;
         public static implicit operator bool(Result result) => result.ResultType == ResultType.Success;
         public static implicit operator Result(string? error) => error is null ? Success : Fail(error);
@@ -39,7 +44,12 @@ namespace Nethermind.Core
         public TData? Data { get; }
         public string? Error { get; }
 
-        public static Result<TData> Fail(string error, TData? data = default) => new(data, error ?? throw new ArgumentNullException(nameof(error)));
+        public static Result<TData> Fail(string error, TData? data = default)
+        {
+            ArgumentNullException.ThrowIfNull(error);
+            return new(data, error);
+        }
+
         public static Result<TData> Success(TData data) => new(data, null);
         public static implicit operator bool(Result<TData> result) => result.IsSuccess;
         public static implicit operator Result<TData>(TData data) => Success(data);
