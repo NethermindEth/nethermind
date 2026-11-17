@@ -179,7 +179,7 @@ namespace Nethermind.TxPool.Collections
 
             for (int i = 0; i < _transactionsToRemove.Count; i++)
             {
-                TryRemove(_transactionsToRemove[i].Hash!);
+                TryRemoveNonLocked(_transactionsToRemove[i].Hash!, evicted: false, out _, out _);
             }
         }
 
