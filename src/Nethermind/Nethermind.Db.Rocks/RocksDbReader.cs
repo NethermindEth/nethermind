@@ -40,6 +40,8 @@ public class RocksDbReader(DbOnTheRocks mainDb,
 
     internal DisposableLazy<DbOnTheRocks.IteratorManager>? IteratorManager => _iteratorManager;
 
+    internal InFlightOperations? Reads { get; init; }
+
     public RocksDbReader(DbOnTheRocks mainDb,
         Func<ReadOptions> readOptionsFactory,
         DisposableLazy<DbOnTheRocks.IteratorManager>? iteratorManager = null,
@@ -61,43 +63,90 @@ public class RocksDbReader(DbOnTheRocks mainDb,
         _hintCacheMissOptions.Dispose();
     }
 
+    internal bool DrainReads()
+    {
+        InFlightOperations? reads = Reads;
+        if (reads is null) return true;
+        reads.Close();
+        return reads.WaitForAll(_mainDb.PinnedSliceDrainTimeout);
+    }
+
+    private InFlightOperations? BeginRead()
+    {
+        InFlightOperations? reads = Reads;
+        ObjectDisposedException.ThrowIf(reads is not null && !reads.TryBegin(), this);
+        return reads;
+    }
+
     public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
-        if ((flags & ReadFlags.HintReadAhead) != 0 && _iteratorManager is not null)
+        InFlightOperations? reads = BeginRead();
+        try
         {
-            byte[]? result = _mainDb.GetWithIterator(key, _iteratorManager.Value, flags, out bool success);
-            if (success)
+            if ((flags & ReadFlags.HintReadAhead) != 0 && _iteratorManager is not null)
             {
-                return result;
+                byte[]? result = _mainDb.GetWithIterator(key, _iteratorManager.Value, flags, out bool success);
+                if (success)
+                {
+                    return result;
+                }
             }
-        }
 
-        ReadOptions readOptions = ((flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options);
-        return _mainDb.Get(key, _columnFamily, readOptions);
+            ReadOptions readOptions = ((flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options);
+            return _mainDb.Get(key, _columnFamily, readOptions);
+        }
+        finally
+        {
+            reads?.End();
+        }
     }
 
     public int Get(scoped ReadOnlySpan<byte> key, Span<byte> output, ReadFlags flags = ReadFlags.None)
     {
-        ReadOptions readOptions = ((flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options);
-        return _mainDb.GetCStyleWithColumnFamily(key, output, _columnFamily, readOptions);
+        InFlightOperations? reads = BeginRead();
+        try
+        {
+            ReadOptions readOptions = ((flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options);
+            return _mainDb.GetCStyleWithColumnFamily(key, output, _columnFamily, readOptions);
+        }
+        finally
+        {
+            reads?.End();
+        }
     }
 
     public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
-        ReadOptions readOptions = ((flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options);
-        return _mainDb.GetSpanWithColumnFamily(key, _columnFamily, readOptions);
+        InFlightOperations? reads = BeginRead();
+        try
+        {
+            ReadOptions readOptions = ((flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options);
+            return _mainDb.GetSpanWithColumnFamily(key, _columnFamily, readOptions);
+        }
+        finally
+        {
+            reads?.End();
+        }
     }
 
     public bool TryGet<TArg>(scoped ReadOnlySpan<byte> key, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
     {
-        if ((flags & ReadFlags.HintReadAhead) != 0 && _iteratorManager is not null
-            && _mainDb.TryGetWithIterator(key, _iteratorManager.Value, flags, action, arg, out bool found))
+        InFlightOperations? reads = BeginRead();
+        try
         {
-            return found;
-        }
+            if ((flags & ReadFlags.HintReadAhead) != 0 && _iteratorManager is not null
+                && _mainDb.TryGetWithIterator(key, _iteratorManager.Value, flags, action, arg, out bool found))
+            {
+                return found;
+            }
 
-        ReadOptions readOptions = ((flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options);
-        return _mainDb.TryGetPinnedWithColumnFamily(key, _columnFamily, readOptions, action, arg);
+            ReadOptions readOptions = ((flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options);
+            return _mainDb.TryGetPinnedWithColumnFamily(key, _columnFamily, readOptions, action, arg);
+        }
+        finally
+        {
+            reads?.End();
+        }
     }
 
     public void DangerousReleaseMemory(in ReadOnlySpan<byte> span) => _mainDb.DangerousReleaseMemory(span);
@@ -113,9 +162,17 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     {
         get
         {
-            using Iterator iterator = _mainDb.CreateIterator(_options, _columnFamily);
-            iterator.SeekToFirst();
-            return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
+            InFlightOperations? reads = BeginRead();
+            try
+            {
+                using Iterator iterator = _mainDb.CreateIterator(_options, _columnFamily);
+                iterator.SeekToFirst();
+                return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
+            }
+            finally
+            {
+                reads?.End();
+            }
         }
     }
 
@@ -123,9 +180,17 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     {
         get
         {
-            using Iterator iterator = _mainDb.CreateIterator(_options, _columnFamily);
-            iterator.SeekToLast();
-            return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
+            InFlightOperations? reads = BeginRead();
+            try
+            {
+                using Iterator iterator = _mainDb.CreateIterator(_options, _columnFamily);
+                iterator.SeekToLast();
+                return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
+            }
+            finally
+            {
+                reads?.End();
+            }
         }
     }
 
@@ -135,24 +200,32 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     {
         _mainDb.ThrowIfDisposing();
         keyLength = valueLength = 0;
-        using ReadOptions readOptions = _readOptionsFactory();
-        if (_mainDb.CrossesPrefixBucket(lowerBoundInclusive, upperBoundExclusive)) readOptions.SetTotalOrderSeek(true);
-        readOptions.SetIterateBounds(lowerBoundInclusive, upperBoundExclusive);
-        using Iterator iterator = _mainDb.CreateIterator(readOptions, _columnFamily);
-        iterator.SeekToFirst();
-        if (!iterator.Valid())
+        InFlightOperations? reads = BeginRead();
+        try
         {
-            iterator.ThrowIfError();
-            return false;
-        }
+            using ReadOptions readOptions = _readOptionsFactory();
+            if (_mainDb.CrossesPrefixBucket(lowerBoundInclusive, upperBoundExclusive)) readOptions.SetTotalOrderSeek(true);
+            readOptions.SetIterateBounds(lowerBoundInclusive, upperBoundExclusive);
+            using Iterator iterator = _mainDb.CreateIterator(readOptions, _columnFamily);
+            iterator.SeekToFirst();
+            if (!iterator.Valid())
+            {
+                iterator.ThrowIfError();
+                return false;
+            }
 
-        ReadOnlySpan<byte> key = iterator.GetKeySpan();
-        ReadOnlySpan<byte> value = iterator.GetValueSpan();
-        keyLength = key.Length;
-        valueLength = value.Length;
-        key.TryCopyTo(keyBuffer);
-        value.TryCopyTo(valueBuffer);
-        return true;
+            ReadOnlySpan<byte> key = iterator.GetKeySpan();
+            ReadOnlySpan<byte> value = iterator.GetValueSpan();
+            keyLength = key.Length;
+            valueLength = value.Length;
+            key.TryCopyTo(keyBuffer);
+            value.TryCopyTo(valueBuffer);
+            return true;
+        }
+        finally
+        {
+            reads?.End();
+        }
     }
 
     public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey, ReadFlags flags = ReadFlags.None)

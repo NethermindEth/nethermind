@@ -2107,7 +2107,10 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             ReadOptions readOptions = CreateReadOptions();
             readOptions.SetSnapshot(snapshot);
             return readOptions;
-        }, _columnFamily, snapshot);
+        }, _columnFamily, snapshot)
+        {
+            Reads = new InFlightOperations()
+        };
     }
 
     public sealed class RocksDbSnapshot(
@@ -2127,7 +2130,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         public override void Dispose()
         {
-            if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            if (Interlocked.Exchange(ref _disposed, 1) != 0 || !DrainReads())
             {
                 return;
             }
