@@ -1205,18 +1205,77 @@ public class SyncServerTests
         [Values] bool missing,
         [Values] bool batched)
     {
-        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(20);
+        BlockTreeBuilder builder = BuildBlockTree(out CountingChainLevelInfoRepository levels);
         BlockTree tree = builder.TestObject;
         Block sideBlock = Build.A.Block.WithParent(tree.FindBlock(SideBlockNumber - 1, BlockTreeLookupOptions.None)!).WithDifficulty(1).TestObject;
         tree.SuggestBlock(sideBlock);
         if (missing) builder.HeaderStore.Delete(tree.FindHash(MissingHeaderNumber)!);
-        ((IClearableCache)builder.HeaderStore).ClearCache();
 
         Hash256 startHash = start < 0 ? sideBlock.Hash! : tree.FindHash((ulong)start)!;
-        using IOwnedReadOnlyList<byte> rlp = new Context()
-            .CreateSyncServer(tree, headerStore: builder.HeaderStore, chainLevelInfoRepository: batched ? builder.ChainLevelInfoRepository : null)
-            .FindHeadersRlp(startHash, count, skip, reverse);
+        using IOwnedReadOnlyList<byte> rlp = FindHeadersRlp(builder, levels, batched, startHash, count, skip, reverse);
 
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rlp.AsSpan().ToArray(), Is.EqualTo(EncodeHeadersTheTreeFinds(tree, startHash, count, skip, reverse)));
+            Assert.That(levels.BatchedReads, Is.EqualTo(batched && skip > 0 && count > 0 ? 1 : 0));
+        }
+    }
+
+    /// <remarks>
+    /// A forward walk stops at a level without a main chain block, so the batched read answers it alone. A reverse walk
+    /// takes the best block of such a level, so the walk answers it.
+    /// </remarks>
+    [Test]
+    public void FindHeadersRlp_with_a_skip_answers_as_the_walk_at_a_level_without_a_main_chain_block([Values] bool reverse)
+    {
+        BlockTreeBuilder builder = BuildBlockTree(out CountingChainLevelInfoRepository levels);
+        BlockTree tree = builder.TestObject;
+        ulong holeNumber;
+        if (reverse)
+        {
+            holeNumber = 10;
+            ChainLevelInfo level = levels.LoadLevel(holeNumber)!;
+            level.HasBlockOnMainChain = false;
+            levels.PersistLevel(holeNumber, level);
+        }
+        else
+        {
+            holeNumber = tree.BestKnownNumber + 1;
+            tree.SuggestBlock(Build.A.Block.WithParent(tree.FindBlock(holeNumber - 1, BlockTreeLookupOptions.None)!).TestObject);
+        }
+
+        Hash256 startHash = tree.FindHash(reverse ? holeNumber + 9 : holeNumber - 6)!;
+        using IOwnedReadOnlyList<byte> rlp = FindHeadersRlp(builder, levels, batched: true, startHash, 5, 2, reverse);
+        int walkLevelReads = levels.LevelReads;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rlp.AsSpan().ToArray(), Is.EqualTo(EncodeHeadersTheTreeFinds(tree, startHash, 5, 2, reverse)));
+            Assert.That(levels.BatchedReads, Is.EqualTo(1));
+            Assert.That(walkLevelReads, reverse ? Is.Positive : Is.Zero, "levels read by the walk");
+        }
+    }
+
+    private static BlockTreeBuilder BuildBlockTree(out CountingChainLevelInfoRepository levels)
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree();
+        levels = new CountingChainLevelInfoRepository(new ChainLevelInfoRepository(builder.BlockInfoDb));
+        return builder.WithChainLevelInfoRepository(levels).OfChainLength(20);
+    }
+
+    /// <summary>Calls <see cref="SyncServer.FindHeadersRlp"/> with the header and level caches empty, so that every read goes to the database.</summary>
+    private static IOwnedReadOnlyList<byte> FindHeadersRlp(BlockTreeBuilder builder, CountingChainLevelInfoRepository levels, bool batched, Hash256 startHash, int count, int skip, bool reverse)
+    {
+        SyncServer server = new Context()
+            .CreateSyncServer(builder.TestObject, headerStore: builder.HeaderStore, chainLevelInfoRepository: batched ? levels : null);
+        ((IClearableCache)builder.HeaderStore).ClearCache();
+        levels.ClearCache();
+        levels.ResetCounts();
+        return server.FindHeadersRlp(startHash, count, skip, reverse);
+    }
+
+    private static byte[] EncodeHeadersTheTreeFinds(BlockTree tree, Hash256 startHash, int count, int skip, bool reverse)
+    {
         HeaderDecoder decoder = new();
         using IOwnedReadOnlyList<BlockHeader> headers = tree.FindHeaders(startHash, count, skip, reverse);
         List<byte> expected = [];
@@ -1226,7 +1285,45 @@ public class SyncServerTests
             expected.AddRange(decoder.Encode(header));
         }
 
-        Assert.That(rlp.AsSpan().ToArray(), Is.EqualTo(expected.ToArray()));
+        return [.. expected];
+    }
+
+    /// <summary>Counts the batched main chain reads and the other level reads that reach a repository.</summary>
+    private sealed class CountingChainLevelInfoRepository(ChainLevelInfoRepository inner) : IChainLevelInfoRepository
+    {
+        public int BatchedReads { get; private set; }
+        public int LevelReads { get; private set; }
+
+        public void ResetCounts() => BatchedReads = LevelReads = 0;
+        public void ClearCache() => ((IClearableCache)inner).ClearCache();
+
+        public void Delete(ulong number, BatchWrite? batch = null) => inner.Delete(number, batch);
+        public void PersistLevel(ulong number, ChainLevelInfo level, BatchWrite? batch = null) => inner.PersistLevel(number, level, batch);
+        public BatchWrite StartBatch() => inner.StartBatch();
+
+        public ChainLevelInfo? LoadLevel(ulong number)
+        {
+            LevelReads++;
+            return inner.LoadLevel(number);
+        }
+
+        public ChainLevelInfo? LoadLevelWithoutCaching(ulong number)
+        {
+            LevelReads++;
+            return inner.LoadLevelWithoutCaching(number);
+        }
+
+        public IOwnedReadOnlyList<ChainLevelInfo?> MultiLoadLevel(in ArrayPoolListRef<ulong> blockNumbers)
+        {
+            LevelReads++;
+            return inner.MultiLoadLevel(in blockNumbers);
+        }
+
+        public void GetMainChainBlocksWithoutCaching(ReadOnlyMemory<ulong> blockNumbers, Memory<(ValueHash256 BlockHash, UInt256 TotalDifficulty)> blocks)
+        {
+            BatchedReads++;
+            inner.GetMainChainBlocksWithoutCaching(blockNumbers, blocks);
+        }
     }
 
     [Test]
