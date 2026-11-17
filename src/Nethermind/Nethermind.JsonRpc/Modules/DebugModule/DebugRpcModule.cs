@@ -545,6 +545,10 @@ public class DebugRpcModule(
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
         }
+        catch (Exception exception) when (exception is NativeTracerConfigException or TraceDurationFormatException)
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(exception.Message, ErrorCodes.InvalidInput);
+        }
         catch (InvalidTransactionException exception)
         {
             return TracingFailed<GethLikeTxTrace>(exception);
@@ -635,6 +639,10 @@ public class DebugRpcModule(
         catch (InvalidDataException ex) when (IsJavaScriptOrMuxTracer(options))
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
+        }
+        catch (Exception exception) when (exception is NativeTracerConfigException or TraceDurationFormatException)
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
         catch (InvalidTransactionException exception)
         {

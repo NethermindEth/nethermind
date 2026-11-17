@@ -1120,7 +1120,8 @@ public partial class DebugRpcModuleTests
     [Test]
     public async Task Debug_native_config_errors_are_execution_input_errors_on_every_route(
         [Values("debug_traceBlockByHash", "debug_traceBlock", "debug_traceTransaction", "debug_traceCall",
-            "debug_traceTransactionInBlockByHash", "debug_traceBadBlock")] string method,
+            "debug_traceTransactionInBlockByHash", "debug_traceBadBlock", "debug_traceTransactionByBlockhashAndIndex",
+            "debug_traceTransactionByBlockAndIndex", "debug_traceTransactionInBlockByIndex")] string method,
         [Values("callTracer", "prestateTracer")] string tracer,
         [Values(null, "bad", "5s")] string? timeout,
         [Values("17", "[]")] string invalidValue)
@@ -1139,7 +1140,8 @@ public partial class DebugRpcModuleTests
 
     [Test]
     public async Task Debug_malformed_timeout_is_execution_input_error(
-        [Values("debug_traceCall", "debug_traceTransactionInBlockByHash", "debug_traceBadBlock")] string method,
+        [Values("debug_traceCall", "debug_traceTransactionInBlockByHash", "debug_traceBadBlock", "debug_traceTransactionByBlockhashAndIndex",
+            "debug_traceTransactionByBlockAndIndex", "debug_traceTransactionInBlockByIndex")] string method,
         [Values(null, "noopTracer", "callTracer")] string? tracer,
         [Values(null, false, true)] bool? streamMode)
     {
@@ -1156,8 +1158,9 @@ public partial class DebugRpcModuleTests
             context.Blockchain.Container.Resolve<IBadBlockStore>().Insert(block);
         object selector = method switch
         {
-            "debug_traceBlockByHash" or "debug_traceBadBlock" => block.Hash!,
-            "debug_traceBlock" or "debug_traceTransactionInBlockByHash" => new BlockDecoder().Encode(block),
+            "debug_traceBlockByHash" or "debug_traceBadBlock" or "debug_traceTransactionByBlockhashAndIndex" => block.Hash!,
+            "debug_traceTransactionByBlockAndIndex" => block.Number,
+            "debug_traceBlock" or "debug_traceTransactionInBlockByHash" or "debug_traceTransactionInBlockByIndex" => new BlockDecoder().Encode(block),
             "debug_traceTransaction" => block.Transactions[0].Hash!,
             _ => new { to = TestItem.AddressC.ToString(), gas = "0x186a0" }
         };
@@ -1165,6 +1168,7 @@ public partial class DebugRpcModuleTests
         {
             "debug_traceCall" => [selector, "latest", options],
             "debug_traceTransactionInBlockByHash" => [selector, block.Transactions[0].Hash!, options],
+            "debug_traceTransactionByBlockhashAndIndex" or "debug_traceTransactionByBlockAndIndex" or "debug_traceTransactionInBlockByIndex" => [selector, 0, options],
             _ => [selector, options]
         };
         return await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, parameters);
