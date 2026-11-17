@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core;
 using Nethermind.Db;
 
 namespace Nethermind.Blockchain.Test.Blocks;
@@ -11,7 +12,7 @@ internal sealed class BatchReadMemDb : MemDb, IBatchReadOnlyDb
 {
     public int BatchReads { get; private set; }
 
-    void IBatchReadOnlyDb.GetMany<T, TDecoder>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values, TDecoder decoder)
+    void IBatchReadOnlyDb.GetMany<T, TDecoder>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values, TDecoder decoder, ReadFlags flags)
     {
         BatchReads++;
         for (int i = 0; i < values.Length; i++)
