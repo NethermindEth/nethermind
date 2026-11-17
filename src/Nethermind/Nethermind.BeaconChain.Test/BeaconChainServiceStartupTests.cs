@@ -786,8 +786,14 @@ public class BeaconChainServiceStartupTests
         }
     }
 
-    private sealed class GatedMemDb(ReadGate gate) : MemDb
+    private sealed class GatedMemDb(ReadGate gate) : MemDb, IDb
     {
+        IEnumerable<byte[]> IDb.GetAllKeys(bool ordered)
+        {
+            gate.PassThrough();
+            return GetAllKeys(ordered);
+        }
+
         public override byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
             gate.PassThrough();
@@ -808,9 +814,15 @@ public class BeaconChainServiceStartupTests
         }
     }
 
-    private sealed class OnReadMemDb : MemDb
+    private sealed class OnReadMemDb : MemDb, IDb
     {
         public Action? OnRead { get; set; }
+
+        IEnumerable<byte[]> IDb.GetAllKeys(bool ordered)
+        {
+            OnRead?.Invoke();
+            return GetAllKeys(ordered);
+        }
 
         public override byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
