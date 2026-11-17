@@ -364,7 +364,7 @@ public class ProtocolsManagerTests
 
             // to account for AdaptivePacketType byte
             disconnectPacket.ReadByte();
-            _currentSession.ReceiveMessage(new ZeroPacket(disconnectPacket) { PacketType = P2PMessageCode.Disconnect });
+            _currentSession.ReceiveMessage(new NettyBufferPacket(disconnectPacket) { PacketType = P2PMessageCode.Disconnect });
             return this;
         }
 
@@ -414,7 +414,7 @@ public class ProtocolsManagerTests
             using DisposableByteBuffer statusPacket = _serializer.ZeroSerialize(msg).AsDisposable();
             statusPacket.ReadByte();
 
-            _currentSession.ReceiveMessage(new ZeroPacket(statusPacket) { PacketType = Eth62MessageCode.Status + 16 });
+            _currentSession.ReceiveMessage(new NettyBufferPacket(statusPacket) { PacketType = Eth62MessageCode.Status + 16 });
             return this;
         }
 
@@ -457,7 +457,7 @@ public class ProtocolsManagerTests
             // to account for AdaptivePacketType byte
             helloPacket.ReadByte();
 
-            _currentSession.ReceiveMessage(new ZeroPacket(helloPacket) { PacketType = P2PMessageCode.Hello });
+            _currentSession.ReceiveMessage(new NettyBufferPacket(helloPacket) { PacketType = P2PMessageCode.Hello });
             return this;
         }
 

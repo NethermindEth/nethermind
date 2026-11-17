@@ -22,6 +22,7 @@ internal sealed class GethLikeBlockMuxTracer : IBlockTracer<GethLikeTxTrace>, ID
 {
     internal const string TracerName = "muxTracer";
     private const string CleanupExceptionKey = "MuxCleanupException";
+    private static readonly JsonSerializerOptions _snapshotOptions = new(EthereumJsonSerializer.JsonOptions) { DictionaryKeyPolicy = null };
 
     private readonly Hash256? _txHash;
     private readonly CompositeBlockTracer _composite = new();
@@ -88,7 +89,7 @@ internal sealed class GethLikeBlockMuxTracer : IBlockTracer<GethLikeTxTrace>, ID
     {
         if (tx is not null && (_txHash is null || _txHash == tx.Hash))
             _transactions.Add(tx.Hash);
-        List<ITxTracer> started = new(_children.Count);
+        List<ITxTracer> started = [with(_children.Count)];
         try
         {
             foreach (IBlockTracer<GethLikeTxTrace> child in _children.Values)
@@ -129,7 +130,7 @@ internal sealed class GethLikeBlockMuxTracer : IBlockTracer<GethLikeTxTrace>, ID
         GethLikeTxTrace[] results = new GethLikeTxTrace[_transactions.Count];
         for (int i = 0; i < results.Length; i++)
         {
-            values[i] = new Dictionary<string, JsonElement>(_children.Count);
+            values[i] = [with(_children.Count)];
             results[i] = new GethLikeTxTrace
             {
                 TxHash = _transactions[i],
@@ -152,6 +153,9 @@ internal sealed class GethLikeBlockMuxTracer : IBlockTracer<GethLikeTxTrace>, ID
                 if (index != results.Length)
                     throw new InvalidOperationException("Mux child returned a different number of transaction traces.");
             }
+            for (int i = 0; i < results.Length; i++)
+                results[i].CustomTracerResult!.Value = JsonSerializer.SerializeToElement(values[i],
+                    TypeInfoJsonSerializer.GetTypeInfo<Dictionary<string, JsonElement>>(_snapshotOptions));
             return _results = results;
         }
         finally

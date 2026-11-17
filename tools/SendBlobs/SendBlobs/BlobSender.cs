@@ -193,7 +193,7 @@ internal class BlobSender
         IReleaseSpec spec)
     {
         int capacity = data.Length + data.Length / 32; // at most one extra byte per 32-byte chunk
-        List<byte> normalized = new(capacity);
+        List<byte> normalized = [with(capacity)];
         for (int i = 0; i < data.Length; i++)
         {
             byte value = data[i];
@@ -319,7 +319,7 @@ internal class BlobSender
             throw new InvalidOperationException($"Signer {signer.Address} could not sign blob transaction.");
 
         string txRlp = Hex.ToHexString(txDecoder
-            .Encode(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping).Bytes);
+            .Encode(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping));
 
         string? result = await _rpcClient.SendRawTransactionAsync($"0x{txRlp}");
 

@@ -6,7 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V69;
@@ -76,6 +76,6 @@ public class StatusMessageSerializerTests
     {
         StatusMessageSerializer69 serializer = new();
 
-        Assert.That(() => serializer.Deserialize(Bytes.FromHexString(message)), Throws.InstanceOf<RlpException>());
+        Assert.That(() => serializer.Deserialize(Bytes.FromHexString(message)), Throws.InstanceOf<RlpReaderException>());
     }
 }

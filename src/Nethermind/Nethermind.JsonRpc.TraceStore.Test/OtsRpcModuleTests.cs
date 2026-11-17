@@ -172,6 +172,36 @@ public class OtsRpcModuleTests
     }
 
     [Test]
+    public void Search_reports_a_frame_tx_gas_price_matching_its_receipt([Values] bool backwards, [Values] bool carriesBlobs)
+    {
+        UInt256 baseFee = 1_000_000_000ul;
+        const ulong excessBlobGas = 50_000_000;
+        IReleaseSpec spec = Eip8141Prototype.Instance;
+        using Fixture f = new(specProvider: new TestSpecProvider(spec));
+        Assert.That(BlobGasCalculator.TryCalculateFeePerBlobGas(excessBlobGas, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas), Is.True);
+        Transaction tx = FrameTxTestFrames.FrameTx(TestItem.AddressE, [FrameTxTestFrames.Secp256k1Signature(TestItem.AddressE)],
+            FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas), FrameTxTestFrames.Execution());
+        if (carriesBlobs) tx.BlobVersionedHashes = [new byte[32]];
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out ulong maxGas, estimateSignatureBytes: true), Is.True);
+        tx.MaxFee = (UInt256)maxGas * baseFee + (UInt256)maxGas * 3 + maxGas / 2 + (UInt256)tx.GetBlobGas() * feePerBlobGas;
+        tx.GasPrice = 100;
+        tx.Hash = TestItem.KeccakB;
+        f.AddBlock([tx], baseFee, excessBlobGas, Call(TestItem.AddressE));
+        Assert.That(tx.CalculateEffectiveGasPrice(true, baseFee), Is.Not.EqualTo(baseFee + 3));
+
+        using ResultWrapper<OtsSearchResult> response = backwards
+            ? f.Module.ots_searchTransactionsBefore(TestItem.AddressE, 0, 25)
+            : f.Module.ots_searchTransactionsAfter(TestItem.AddressE, 0, 25);
+
+        Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success), response.Result.Error);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(((FrameTransactionForRpc)response.Data.Txs.Single()).GasPrice, Is.EqualTo(baseFee + 3));
+            Assert.That(response.Data.Receipts.Single().EffectiveGasPrice, Is.EqualTo(baseFee + 3));
+        }
+    }
+
+    [Test]
     public void Log_only_involvement_and_rewards_are_not_transaction_call_involvement()
     {
         using Fixture f = new();
@@ -829,6 +859,24 @@ public class OtsRpcModuleTests
         return block;
     }
 
+    [Test]
+    public void Search_reports_frame_tx_gas_from_the_including_block_spec()
+    {
+        using Fixture f = new(specProvider: new TestSpecProvider(Eip8141Prototype.Instance));
+        Transaction tx = FrameTxTestFrames.FrameTx(FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas));
+        tx.ChainId = f.Container.Resolve<ISpecProvider>().ChainId;
+        tx.MaxFee = 1_000;
+        tx.Hash = TestItem.KeccakH;
+        tx.GasLimit = FrameTxValidation.TotalGasLimit(tx.Frames!);
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, Eip8141Prototype.Instance, out ulong intrinsicGas, out _, out _), Is.True);
+        f.AddBlock([tx], [Call(TestItem.AddressA)]);
+
+        using ResultWrapper<OtsSearchResult> response = f.Search(true, 0, 25);
+
+        TransactionForRpc frameTx = response.Data.Txs.Single(t => t.Hash == tx.Hash);
+        Assert.That(frameTx.Gas, Is.EqualTo(intrinsicGas + tx.GasLimit));
+    }
+
     private static Transaction ExecutionTransaction(ulong nonce, Address? to, byte[] data, UInt256 value) =>
         Build.A.Transaction.WithTo(to).WithNonce(nonce).WithGasLimit(500_000).WithGasPrice(2_000_000_000)
             .WithValue(value).WithData(data).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
@@ -914,12 +962,17 @@ public class OtsRpcModuleTests
             ? Module.ots_searchTransactionsBefore(TestItem.AddressA, cursor, pageSize)
             : Module.ots_searchTransactionsAfter(TestItem.AddressA, cursor, pageSize);
 
-        public void AddBlock(params ParityTraceAction[] actions)
+        public void AddBlock(params ParityTraceAction[] actions) =>
+            AddBlock(actions.Select((a, i) => Build.A.Transaction
+                .WithNonce(Blocks.Count * 10 + i).WithTo(a.To).SignedAndResolved(TestItem.PrivateKeyB).TestObject).ToArray(), actions);
+
+        public void AddBlock(Transaction[] transactions, ParityTraceAction[] actions) =>
+            AddBlock(transactions, UInt256.Zero, null, actions);
+
+        public void AddBlock(Transaction[] transactions, UInt256 baseFee, ulong? excessBlobGas, params ParityTraceAction[] actions)
         {
             int number = Blocks.Count;
-            Transaction[] transactions = actions.Select((a, i) => Build.A.Transaction
-                .WithNonce(number * 10 + i).WithTo(a.To).SignedAndResolved(TestItem.PrivateKeyB).TestObject).ToArray();
-            Block block = Build.A.Block.WithParent(Blocks[^1]).WithTransactions(transactions)
+            Block block = Build.A.Block.WithParent(Blocks[^1]).WithTransactions(transactions).WithBaseFeePerGas(baseFee).WithExcessBlobGas(excessBlobGas)
                 .WithReceiptsRoot(TestItem.KeccakA).WithTimestamp((ulong)number * 12).TestObject;
             Tree.SuggestBlock(block);
             Tree.TryUpdateMainChain(block.Header, true, true, block);
@@ -2040,7 +2093,7 @@ public class OtsRpcModuleTests
     {
         using IndexEnvironment env = new();
         ManualTimeProvider clock = new();
-        TaskCompletionSource caughtUp = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        bool? timerArmedWhenCaughtUp = null;
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
         logger.IsInfo.Returns(true);
         await using Fixture indexed = new(env, positions: positions, logManager: new OneLoggerLogManager(new ILogger(logger)), timeProvider: clock);
@@ -2053,7 +2106,7 @@ public class OtsRpcModuleTests
         string message = positions ? $"Position sidecar caught up through {indexed.Blocks.Count - 1} "
             : $"Trace address index coverage: 1-{indexed.Blocks.Count - 1} ";
         logger.When(x => x.Info(Arg.Is<string>(line => line.StartsWith(message))))
-            .Do(call => caughtUp.TrySetResult());
+            .Do(_ => timerArmedWhenCaughtUp = clock.TimerCreated.IsCompleted);
         TraceAddressIndex index = indexed.Container.Resolve<TraceAddressIndex>();
         IDb meta = env.Database!.GetColumnDb(LogIndexColumns.Meta);
         KeyValuePair<byte[], byte[]>[] original = [];
@@ -2063,9 +2116,9 @@ public class OtsRpcModuleTests
             original = meta.GetAll().ToArray();
         }
         index.Start();
-        Task completed = await Task.WhenAny(caughtUp.Task, clock.TimerCreated).WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.That(completed, Is.SameAs(caughtUp.Task), "productive batches must not wait for the idle timer");
+        // The worker logs the catch-up line and arms the idle timer in sequence, so the order is recorded in the logger callback.
         await clock.TimerCreated.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.That(timerArmedWhenCaughtUp, Is.False, "productive batches must not wait for the idle timer");
         if (positions) Assert.That(index.TryMatchPositions(indexed.Blocks[1], TestItem.AddressA, CancellationToken.None), Is.Not.Null);
         using ResultWrapper<OtsSearchResult> expected = scanned.Search(backwards, 0, 25);
         using ResultWrapper<OtsSearchResult> actual = indexed.Search(backwards, 0, 25);

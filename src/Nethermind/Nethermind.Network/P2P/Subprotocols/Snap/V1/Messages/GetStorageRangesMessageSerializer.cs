@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
@@ -18,20 +19,21 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             ReadOnlySpan<PathWithAccount> accounts = message.StorageRange.Accounts.AsSpan();
             int accountsCount = accounts.Length;
             int accountsPathsContentLength = accountsCount * Rlp.LengthOfKeccakRlp;
-            writer.StartSequence(accountsPathsContentLength);
+            RlpSequence paths = writer.StartSequence(accountsPathsContentLength);
             for (int i = 0; i < accountsCount; i++)
             {
                 writer.Encode(accounts[i].Path);
             }
+            writer.EndSequence(paths);
             writer.Encode(message.StorageRange.StartingHash);
             writer.Encode(message.StorageRange.LimitHash);
             writer.Encode(message.ResponseBytes);
         }
 
-        protected override GetStorageRangeMessage Deserialize(ref RlpReader ctx)
+        protected override GetStorageRangeMessage Deserialize(ref RlpReader reader)
         {
             GetStorageRangeMessage message = new();
-            ctx.ReadSequenceLength();
+            RlpReader ctx = reader.EnterSequence(out int itemLength);
 
             message.RequestId = ctx.DecodeLong();
 
@@ -42,6 +44,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             message.StorageRange.LimitHash = ctx.DecodeValueKeccak();
             message.ResponseBytes = ctx.DecodeLong();
 
+            reader.ExitSequenceIgnoringRest(ctx, itemLength);
             return message;
         }
 

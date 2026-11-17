@@ -24,7 +24,8 @@ public sealed class TxValidator : ITxValidator
     public TxValidator(ulong chainId)
     {
         // Sender-independent failures must precede intrinsic gas so malformed transactions cannot
-        // trigger EIP-2780 sender recovery; expensive blob proof validation remains after the gas gate.
+        // trigger EIP-2780 sender recovery. Blob sidecar checks are the exception: they run after the gas gate
+        // (see the blob list), so a bad proof version can cost one sender recovery.
         RegisterValidator(TxType.Legacy, new CompositeTxValidator([
             NonceCapTxValidator.Instance,
             new LegacySignatureTxValidator(chainId),
@@ -67,10 +68,11 @@ public sealed class TxValidator : ITxValidator
             GasFieldsTxValidator.Instance,
             ContractSizeTxValidator.Instance,
             BlobFieldsTxValidator.Instance,
-            MempoolBlobTxProofVersionValidator.Instance,
             NonSetCodeFieldsTxValidator.Instance,
             GasLimitCapTxValidator.Instance,
             IntrinsicGasTxValidator.Instance,
+            // Sidecar checks run last: the pool forgets a sidecar-only rejection, so hash-covered defects must be reported first.
+            MempoolBlobTxProofVersionValidator.Instance,
             MempoolBlobTxValidator.Instance
         ]));
         RegisterValidator(TxType.SetCode, new CompositeTxValidator([
@@ -190,17 +192,15 @@ public sealed class IntrinsicGasTxValidator : ITxValidator
             : EthereumGasPolicy.CalculateIntrinsicGas(transaction, releaseSpec, blockGasLimit);
         if (releaseSpec.IsEip8037Enabled && intrinsicGas.ExceedsCap(Eip7825Constants.DefaultTxGasLimitCap, out ulong execution, out ulong floor))
         {
-            return IntrinsicGasError((options & TxValidationOptions.SkipErrorDetails) != 0
+            return (options & TxValidationOptions.SkipErrorDetails) != 0
                 ? TxErrorMessages.IntrinsicGasTooLow
-                : TxErrorMessages.TxIntrinsicGasExceedsCap(execution, floor, Eip7825Constants.DefaultTxGasLimitCap));
+                : TxErrorMessages.TxIntrinsicGasExceedsCap(execution, floor, Eip7825Constants.DefaultTxGasLimitCap);
         }
 
         return transaction.GasLimit < intrinsicGas.MinRequiredGasLimit
-            ? IntrinsicGasError(TxErrorMessages.IntrinsicGasTooLow)
+            ? TxErrorMessages.IntrinsicGasTooLow
             : ValidationResult.Success;
     }
-
-    private static ValidationResult IntrinsicGasError(string error) => new(error) { IsIntrinsicGasError = true };
 }
 
 /// <summary>Applies <paramref name="inner"/> to every transaction except frame transactions, which carry no

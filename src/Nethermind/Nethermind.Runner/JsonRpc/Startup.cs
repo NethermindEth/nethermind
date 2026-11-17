@@ -402,7 +402,7 @@ public class Startup : IStartup
     {
         if (cidrs is null || cidrs.Length == 0) return [];
 
-        List<TrustedCidr> parsed = new(cidrs.Length);
+        List<TrustedCidr> parsed = [with(cidrs.Length)];
         foreach (string? cidr in cidrs)
         {
             if (string.IsNullOrWhiteSpace(cidr)) continue;
@@ -516,6 +516,12 @@ public class Startup : IStartup
                 responseSink,
                 new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument),
                 ctx.RequestAborted);
+        }
+        catch (OperationCanceledException e) when (ctx.RequestAborted.IsCancellationRequested && e.CancellationToken == ctx.RequestAborted)
+        {
+            // The client went away: nobody is left to read an answer, so discard what is buffered instead of finishing it.
+            responseSink?.Abort(abortTransport: ctx.Response.HasStarted);
+            if (_logger.IsDebug) _logger.Debug("JSON-RPC request aborted by the client.");
         }
         catch (Exception e) when (responseSink is { BytesWritten: > 0 })
         {

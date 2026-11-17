@@ -73,6 +73,13 @@ public ref partial struct EvmStack
         CodeInfo? codeInfo = _codeInfo;
         if (codeInfo is null || !codeInfo.IsJumpProvenByLookBack(destination, _jumpDestinations, ref code)) return false;
 
+        if (IntPtr.Size == sizeof(uint))
+        {
+            // As in IsAnalyzedJumpDestination: one 32-bit word, not a shift across a register pair.
+            Unsafe.Add(ref Unsafe.As<long, uint>(ref _jumpDestinationBits), destination >> 5) |= 1u << (int)destination;
+            return true;
+        }
+
         ref long segment = ref Unsafe.Add(ref _jumpDestinationBits, destination >> 6);
         // As in IsAnalyzedJumpDestination: rounding the segment's address lets the JIT drop its alignment tests.
         if (StrictAlignmentFlag.IsActive)
@@ -118,6 +125,17 @@ public ref partial struct EvmStack
         // The bitmap is a long[], so rounding the segment's address changes nothing but lets the JIT drop its alignment test.
         ulong bits = (ulong)(StrictAlignmentFlag.IsActive ? *(long*)((nuint)Unsafe.AsPointer(ref segment) & ~(nuint)(sizeof(long) - 1)) : segment);
         return (long)((bits >> (int)destination) << 63) < 0;
+    }
+
+    /// <summary>The handler cache of <see cref="Code"/> for the paired table <paramref name="table"/>.</summary>
+    /// <param name="table">The paired table.</param>
+    /// <param name="readOnly">Whether the cache is the shared one that dispatch must not write, past the caches' memory bound.</param>
+    /// <remarks>Code without its code info gets a cache of its own on every call.</remarks>
+    internal readonly nint[] GetHandlerCache(nint[] table, out bool readOnly)
+    {
+        nint[]? cache = _codeInfo is null ? CodeInfo.TryCreateHandlerCache((int)CodeLength) : _codeInfo.GetHandlerCache(table);
+        readOnly = cache is null;
+        return cache ?? CodeInfo.ReadOnlyHandlerCache((int)CodeLength);
     }
 
     /// <summary>The bottom slot of the stack.</summary>

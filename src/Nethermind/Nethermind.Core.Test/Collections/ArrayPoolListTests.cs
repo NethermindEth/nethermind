@@ -220,6 +220,16 @@ public class ArrayPoolListTests
     }
 
     [Test]
+    public void AddUninitialized_adds_the_items_for_the_caller_to_write([Values(3, 100)] int count)
+    {
+        using ArrayPoolList<int> list = new(16) { 0, 1 };
+        Span<int> added = list.AddUninitialized(count);
+        for (int i = 0; i < added.Length; i++) added[i] = i + 2;
+
+        Assert.That(list, Is.EqualTo(Enumerable.Range(0, count + 2)));
+    }
+
+    [Test]
     public void Construct_from_ICollection_copies_all_items()
     {
         // HashSet is an ICollection<T> but neither an array nor a list, so it exercises the bulk CopyTo path.
@@ -391,12 +401,13 @@ public class ArrayPoolListTests
     [Test]
     public void Dispose_recursive()
     {
-        ArrayPoolList<ArrayPoolList<int>> list = new(8)
-        {
-            new ArrayPoolList<int>(8),
-            new ArrayPoolList<int>(8),
-            new ArrayPoolList<int>(8)
-        };
+        ArrayPoolList<ArrayPoolList<int>> list =
+        [
+            with(8),
+            [with(8)],
+            [with(8)],
+            [with(8)]
+        ];
 
         list.DisposeRecursive();
         list.DisposeRecursive();

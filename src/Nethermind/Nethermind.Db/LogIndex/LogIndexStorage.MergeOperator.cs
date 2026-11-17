@@ -80,7 +80,7 @@ partial class LogIndexStorage
             {
                 // Fast return in case of a single operand
                 if (!enumerator.HasExistingValue && enumerator.OperandsCount == 1 && !MergeOps.IsAny(enumerator.GetOperand(0)))
-                    return new(enumerator.GetOperand(0));
+                    return [with(enumerator.GetOperand(0))];
 
                 bool isBackwards = UseBackwardSyncFor(key);
 
@@ -101,7 +101,7 @@ partial class LogIndexStorage
                     resultLength += operand.Length;
                 }
 
-                result = new(resultLength);
+                result = [with(resultLength)];
 
                 // For truncate - just use max/min for all operands
                 int? truncateAggregate = Aggregate(MergeOp.Truncate, enumerator, isBackwards);

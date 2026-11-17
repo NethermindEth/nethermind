@@ -14,6 +14,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
@@ -142,8 +143,8 @@ public class ReceiptsIteratorTests
     {
         LogEntry first = Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject;
         LogEntry second = Build.A.LogEntry.WithAddress(TestItem.AddressB).TestObject;
-        Rlp encoded = Rlp.Encode(Rlp.Encode(first), Rlp.OfEmptyList, Rlp.Encode(second));
-        LogEntriesIterator iterator = new(encoded.Bytes, new ReceiptStorageDecoder());
+        byte[] encoded = RlpTestHelper.EncodeSequence(Rlp.Encode(first), RlpTestHelper.OfEmptyList, Rlp.Encode(second));
+        LogEntriesIterator iterator = new(encoded, new ReceiptStorageDecoder());
 
 #pragma warning disable NUnit2045 // Each operation advances state required by the following check.
         Assert.That(iterator.TryGetNext(out LogEntryStructRef log), Is.True);
@@ -191,7 +192,7 @@ public class ReceiptsIteratorTests
         using ArrayPoolSpan<byte> stream = _decoder.EncodeToArrayPoolSpan(receipts, RlpBehaviors.Storage);
         Span<byte> span = stream;
         BlockDecoder blockDecoder = new();
-        byte[] encodedBlock = blockDecoder.Encode(block).Bytes;
+        byte[] encodedBlock = blockDecoder.Encode(block);
         CountingMemoryManager? blockMemory = fromEncoded ? new(encodedBlock) : null;
         if (!fromEncoded && useLogContext)
         {
@@ -274,7 +275,7 @@ public class ReceiptsIteratorTests
     {
         Block block = Build.A.Block.WithTransactions(Build.A.Transaction.Signed().TestObject).TestObject;
         BlockDecoder blockDecoder = new();
-        byte[] encodedBlock = blockDecoder.Encode(block).Bytes;
+        byte[] encodedBlock = blockDecoder.Encode(block);
         ReceiptRecoveryBlock recoveryBlock = fromEncoded
             ? blockDecoder.DecodeToReceiptRecoveryBlock(null, encodedBlock, RlpBehaviors.None)!.Value
             : new ReceiptRecoveryBlock(block);
@@ -456,7 +457,7 @@ public class ReceiptsIteratorTests
             Reads++;
             if (!fromEncoded) return new ReceiptRecoveryBlock(block);
             BlockDecoder decoder = new();
-            CountingMemoryManager owner = new(decoder.Encode(block).Bytes);
+            CountingMemoryManager owner = new(decoder.Encode(block));
             Owners.Add(owner);
             return decoder.DecodeToReceiptRecoveryBlock(owner, owner.Memory, RlpBehaviors.None)!.Value;
         }

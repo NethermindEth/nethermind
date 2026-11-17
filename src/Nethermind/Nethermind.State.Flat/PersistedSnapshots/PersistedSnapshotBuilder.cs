@@ -9,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.Persistence;
@@ -105,7 +106,7 @@ public static class PersistedSnapshotBuilder
                     seen.Add(kv.Key);
 
                 NativeMemoryList<((ValueAddress Addr, UInt256 Slot) Key, UInt256? Value)> storages =
-                    new(Math.Max(1, snapshot.StoragesCount));
+                    [with(Math.Max(1, snapshot.StoragesCount))];
                 foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> kv in snapshot.Storages)
                 {
                     (Address addr, UInt256 slot) = kv.Key.Key;
@@ -113,7 +114,7 @@ public static class PersistedSnapshotBuilder
                     seen.Add(addr);
                 }
 
-                NativeMemoryList<ValueAddress> addresses = new(Math.Max(1, seen.Count));
+                NativeMemoryList<ValueAddress> addresses = [with(Math.Max(1, seen.Count))];
                 foreach (HashedKey<Address> addr in seen)
                     addresses.Add(new ValueAddress(addr.Key.Bytes));
                 addresses.Sort(ValueAddressComparer);
@@ -238,7 +239,7 @@ public static class PersistedSnapshotBuilder
                 else
                 {
                     int rlpLen = AccountDecoder.Slim.GetLength(account);
-                    RlpWriter rlpWriter = new(rlpBuffer);
+                    RlpWriter rlpWriter = RlpWriter.ContentWriter(rlpBuffer);
                     AccountDecoder.Slim.Encode(account, ref rlpWriter);
                     table.Add(keyBuf[..len], rlpBuffer[..rlpLen]);
                 }

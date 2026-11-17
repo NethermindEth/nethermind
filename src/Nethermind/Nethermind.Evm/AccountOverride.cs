@@ -9,6 +9,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
+[JsonConverter(typeof(AccountOverrideConverter))]
 public class AccountOverride
 {
     public ulong? Nonce { get; set; }

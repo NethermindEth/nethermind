@@ -16,6 +16,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
 
@@ -453,7 +454,7 @@ public class BatchedTrieVisitor<TNodeContext>
                         TNodeContext childContext = nodeContext.Add(node.Key!);
 
                         RlpReader decoderContext = new(node.Value.AsSpan());
-                        if (!_accountDecoder.TryDecodeStruct(ref decoderContext, out AccountStruct account))
+                        if (!_accountDecoder.TryDecodeStruct<OffFlag>(ref decoderContext, out AccountStruct account))
                         {
                             throw new InvalidDataException("Non storage leaf should be an account");
                         }
@@ -462,7 +463,7 @@ public class BatchedTrieVisitor<TNodeContext>
                         if (account.HasStorage && _visitor.ShouldVisit(childContext, account.StorageRoot))
                         {
                             trieVisitContext.IsStorage = true;
-                            TNodeContext storageContext = childContext.AddStorage(account.StorageRoot);
+                            TNodeContext storageContext = childContext.AddStorage(null);
                             trieVisitContext.Level++;
 
                             if (node.TryResolveStorageRoot(nodeResolver, ref emptyPath, out TrieNode? storageRoot))
@@ -515,7 +516,7 @@ public readonly struct EmptyContext : INodeContext<EmptyContext>
 {
     public EmptyContext Add(ReadOnlySpan<byte> nibblePath) => this;
     public EmptyContext Add(byte nibble) => this;
-    public EmptyContext AddStorage(in ValueHash256 storage) => this;
+    public EmptyContext AddStorage(Hash256? storage) => this;
 }
 
 public struct TreePathContext : INodeContext<TreePathContext>
@@ -536,7 +537,7 @@ public struct TreePathContext : INodeContext<TreePathContext>
         Path = Path.Append(nibble)
     };
 
-    public readonly TreePathContext AddStorage(in ValueHash256 storage) => new();
+    public readonly TreePathContext AddStorage(Hash256? storage) => new();
 }
 
 public interface ITreePathContextWithStorage
@@ -566,10 +567,10 @@ public readonly struct TreePathContextWithStorage : ITreePathContextWithStorage,
         Storage = Storage
     };
 
-    public readonly TreePathContextWithStorage AddStorage(in ValueHash256 storage) => new()
+    public readonly TreePathContextWithStorage AddStorage(Hash256? storage) => new()
     {
         Path = TreePath.Empty,
-        Storage = Path.Path.ToCommitment(),
+        Storage = storage ?? Path.Path.ToCommitment(),
     };
 }
 
@@ -583,7 +584,7 @@ public struct NoopTreePathContextWithStorage : ITreePathContextWithStorage, INod
 
     public readonly NoopTreePathContextWithStorage Add(byte nibble) => this;
 
-    public readonly NoopTreePathContextWithStorage AddStorage(in ValueHash256 storage) => this;
+    public readonly NoopTreePathContextWithStorage AddStorage(Hash256? storage) => this;
 
     public readonly TreePath Path => TreePath.Empty;
     public readonly Hash256? Storage => null;
@@ -597,5 +598,11 @@ public interface INodeContext<out TNodeContext>
     TNodeContext Add(ReadOnlySpan<byte> nibblePath);
 
     TNodeContext Add(byte nibble);
-    TNodeContext AddStorage(in ValueHash256 storage);
+
+    /// <summary>Returns the context for the root of the storage trie of the account at this context.</summary>
+    /// <param name="storage">
+    /// The account path hash, or <c>null</c> when the caller does not track the account path.
+    /// A context that needs the address then derives it from its own path.
+    /// </param>
+    TNodeContext AddStorage(Hash256? storage);
 }
