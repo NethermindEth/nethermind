@@ -149,11 +149,13 @@ public class ImportFlatDbTests
         Lazy<IPersistence> persistence = new(() => new HalfPathFallbackPersistence(_persistence, _nodeStorage, migrationCursor.Value));
         IPersistenceManager persistenceManager = Substitute.For<IPersistenceManager>();
         IBackgroundTaskScheduler scheduler = Substitute.For<IBackgroundTaskScheduler>();
+        Lazy<IBackgroundTaskScheduler> lazyScheduler = new(() => scheduler);
         Lazy<HalfPathMigrator> migrator = new(() => new HalfPathMigrator(persistence.Value, persistenceManager, migrationCursor.Value, _nodeStorage, blockTree,
-            new FlatDbConfig(), scheduler, Substitute.For<IProcessExitSource>(), LimboLogs.Instance));
-        StartPruningTrieStateMigration step = new(policy, migrationCursor, migrator);
+            new FlatDbConfig(), lazyScheduler, Substitute.For<IProcessExitSource>(), LimboLogs.Instance));
 
-        await step.Execute(CancellationToken.None);
+        await new PreparePruningTrieStateMigration(policy, migrationCursor, migrator).Execute(CancellationToken.None);
+        bool schedulerBuiltToPointAtHead = lazyScheduler.IsValueCreated;
+        await new StartPruningTrieStateMigration(policy, migrationCursor, migrator).Execute(CancellationToken.None);
 
         if (!migrate)
         {
@@ -169,6 +171,8 @@ public class ImportFlatDbTests
             Assert.That(reader.CurrentState, Is.EqualTo(new StateId(head)));
             Assert.That(bundle.GetAccount(TestItem.AddressA), Is.EqualTo(account), "served from the patricia trie state");
             persistenceManager.Received(1).ResetPersistedStateId();
+            // The scheduler is built from block processing, which on AuRa reads the head's state while it is built.
+            Assert.That(schedulerBuiltToPointAtHead, Is.False, "pointing at the head builds no block processing");
             Assert.That(scheduler.ReceivedCalls(), Is.Not.Empty, "the copy is started");
         }
     }

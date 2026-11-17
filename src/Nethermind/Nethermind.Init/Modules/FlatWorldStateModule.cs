@@ -178,6 +178,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
         // Registered unconditionally: a migration, once started, continues whether or not it is still configured.
         builder
             .AddSingleton<HalfPathMigrator>()
+            .AddStep(typeof(PreparePruningTrieStateMigration))
             .AddStep(typeof(StartPruningTrieStateMigration));
 
         // Only pulls the state DB open during init; PruningTrieStoreModule still decides.

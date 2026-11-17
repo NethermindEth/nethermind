@@ -9,14 +9,12 @@ using Nethermind.State.Flat.Migration;
 
 namespace Nethermind.Init.Steps;
 
-/// <summary>Starts the migration from the patricia trie state, see <see cref="HalfPathMigrator.Start"/>.</summary>
+/// <summary>Starts copying the patricia trie state into flat, see <see cref="HalfPathMigrator.Start"/>.</summary>
 /// <remarks>
 /// A no-op unless a migration is in progress. The flat components are resolved only then, so a patricia node does not open the flat DB.
+/// It runs once block processing is built, which the copy's scheduler needs, so that is built in its usual order.
 /// </remarks>
-[RunnerStepDependencies(
-    dependencies: [typeof(InitializeBlockTree)],
-    dependents: [typeof(InitializeBlockchain)]
-)]
+[RunnerStepDependencies(typeof(StartBlockProcessor))]
 public class StartPruningTrieStateMigration(
     FlatStateActivationPolicy activationPolicy,
     Lazy<HalfPathMigrationCursor> migrationCursor,

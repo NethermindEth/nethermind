@@ -637,7 +637,7 @@ public class ImporterTests
             });
 
             _migrator = new HalfPathMigrator(persistence, persistenceManager, Cursor, halfPath, Substitute.For<IBlockTree>(),
-                new FlatDbConfig { MigrationChunkNodes = chunkNodes }, new InlineScheduler(_scheduled),
+                new FlatDbConfig { MigrationChunkNodes = chunkNodes }, new Lazy<IBackgroundTaskScheduler>(() => new InlineScheduler(_scheduled)),
                 Substitute.For<IProcessExitSource>(), LimboLogs.Instance);
         }
 

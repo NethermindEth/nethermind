@@ -153,7 +153,7 @@ public class WorldStateDbDeciderModuleTests
         IWorldStateManager worldStateManager = container.Resolve<IWorldStateManager>();
         Assert.That(worldStateManager, Is.TypeOf<FlatWorldStateManager>());
         IPersistence persistence = container.Resolve<IPersistence>();
-        // As HalfPathMigrator.Start does: the empty flat DB points at the trie state.
+        // As HalfPathMigrator.PointAtHeadOnFirstStart does: the empty flat DB points at the trie state.
         persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, patricia.RootHash)).Dispose();
 
         using ReadOnlySnapshotBundle bundle = new(new SnapshotPooledList(0), persistence.CreateReader(), recordDetailedMetrics: false,

@@ -42,7 +42,7 @@ public sealed class HalfPathMigrator(
     INodeStorage halfPath,
     IBlockTree blockTree,
     IFlatDbConfig flatDbConfig,
-    IBackgroundTaskScheduler scheduler,
+    Lazy<IBackgroundTaskScheduler> scheduler,
     IProcessExitSource processExitSource,
     ILogManager logManager)
 {
@@ -56,25 +56,22 @@ public sealed class HalfPathMigrator(
 
     private readonly record struct ChunkRequest : IBackgroundTaskRequest<ChunkRequest>;
 
-    /// <summary>Starts copying from the cursor, if a migration is in progress, first pointing a flat DB with no state yet at the head's state.</summary>
+    /// <summary>On a migration's first start, points the flat DB, which has no state yet, at the head's state, which flat then serves through the HalfPath fallback.</summary>
+    /// <remarks>
+    /// A restart midway keeps the state flat already has, which block processing has moved on from the head the migration started at.
+    /// Call it before anything reads state through flat. It builds nothing of block processing, which on AuRa reads the head's
+    /// state while it is built, so <see cref="Start"/> is called once that is done.
+    /// </remarks>
     /// <exception cref="InvalidConfigurationException">The flat DB has no state yet and the HalfPath DB has no head state to point it at.</exception>
-    public void Start()
+    public void PointAtHeadOnFirstStart()
     {
         if (cursor.Current is null) return;
 
-        StateId current;
         using (IPersistence.IPersistenceReader reader = persistence.CreateReader())
         {
-            current = reader.CurrentState;
+            if (reader.CurrentState != StateId.PreGenesis) return;
         }
 
-        if (current == StateId.PreGenesis) PointAtHead();
-        if (_logger.IsInfo) _logger.Info("Copying the HalfPath trie state into the flat DB in the background.");
-        Schedule();
-    }
-
-    private void PointAtHead()
-    {
         BlockHeader head = blockTree.Head?.Header
             ?? throw new InvalidConfigurationException(
                 $"Cannot migrate from the patricia trie state: the block tree has no head. Remove FlatDb.{nameof(IFlatDbConfig.MigrateFromPruningTrieState)} and delete the '{DbNames.Flat}' directory to start the node normally.",
@@ -95,10 +92,19 @@ public sealed class HalfPathMigrator(
         persistenceManager.ResetPersistedStateId();
     }
 
+    /// <summary>Starts copying from the cursor, if a migration is in progress.</summary>
+    public void Start()
+    {
+        if (cursor.Current is null) return;
+
+        if (_logger.IsInfo) _logger.Info("Copying the HalfPath trie state into the flat DB in the background.");
+        Schedule();
+    }
+
     private void Schedule()
     {
         if (processExitSource.Token.IsCancellationRequested) return;
-        if (!scheduler.TryScheduleTask(default(ChunkRequest), RunChunk, ChunkTimeout)) ScheduleAfterDelay();
+        if (!scheduler.Value.TryScheduleTask(default(ChunkRequest), RunChunk, ChunkTimeout)) ScheduleAfterDelay();
     }
 
     /// <summary>Schedules the next chunk after <see cref="RetryDelay"/>, giving a full queue time to drain.</summary>
