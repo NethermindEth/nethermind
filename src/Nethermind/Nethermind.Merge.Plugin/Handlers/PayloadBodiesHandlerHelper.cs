@@ -71,9 +71,9 @@ internal static class PayloadBodiesHandlerHelper
     private static StoredBlocks ReadBlocks(
         IBlockStore blockStore, in ArrayPoolListRef<(ulong Number, ValueHash256 Hash)> blocks, in ArrayPoolListRef<int> positions, int count)
     {
-        using ArrayPoolList<Range?> ranges = new(blocks.Count, blocks.Count);
+        using ArrayPoolSpan<Range?> ranges = new(blocks.Count);
         ArrayPoolList<byte> rlps = new(blocks.Count * RlpLengthEstimate);
-        blockStore.GetRlps(blocks.AsSpan(), rlps, ranges.AsSpan());
+        blockStore.GetRlps(blocks.AsSpan(), rlps, ranges);
 
         ArrayPoolList<StoredBlock?> stored = new(count, count);
         for (int i = 0; i < blocks.Count; i++)
@@ -89,13 +89,13 @@ internal static class PayloadBodiesHandlerHelper
     {
         using ArrayPoolList<StoredBlock?> blocks = stored.Blocks;
         ReadOnlyMemory<byte> rlps = stored.Rlps.AsMemory();
-        PayloadBodyV1?[] results = new PayloadBodyV1?[blocks.Count];
-        for (int i = 0; i < results.Length; i++)
+        ArrayPoolList<PayloadBodyV1?> results = new(blocks.Count, blocks.Count);
+        for (int i = 0; i < results.Count; i++)
         {
             if (blocks[i] is { } block) results[i] = PayloadBodiesV1DirectResponse.CreatePayloadBody(rlps[block.Rlp]);
         }
 
-        return new PayloadBodiesV1DirectResponse(results, stored.Rlps);
+        return new PayloadBodiesV1DirectResponse(results.AsMemory(), new Owner(results, stored.Rlps));
     }
 
     /// <summary>Creates the V2 response, which takes the stored encodings and returns them when disposed.</summary>
@@ -103,10 +103,10 @@ internal static class PayloadBodiesHandlerHelper
     {
         using ArrayPoolList<StoredBlock?> blocks = stored.Blocks;
         ReadOnlyMemory<byte> rlps = stored.Rlps.AsMemory();
-        PayloadBodyV2?[] results = new PayloadBodyV2?[blocks.Count];
+        ArrayPoolList<PayloadBodyV2?> results = new(blocks.Count, blocks.Count);
         try
         {
-            for (int i = 0; i < results.Length; i++)
+            for (int i = 0; i < results.Count; i++)
             {
                 if (blocks[i] is { } block)
                 {
@@ -116,12 +116,13 @@ internal static class PayloadBodiesHandlerHelper
         }
         catch
         {
-            PayloadBodiesV2DirectResponse.DisposeItems(results);
+            PayloadBodiesV2DirectResponse.DisposeItems(results.AsSpan());
+            results.Dispose();
             stored.Rlps.Dispose();
             throw;
         }
 
-        return new PayloadBodiesV2DirectResponse(results, stored.Rlps);
+        return new PayloadBodiesV2DirectResponse(results.AsMemory(), new Owner(results, stored.Rlps));
     }
 
     /// <summary>A stored block and where its encoding is in <see cref="StoredBlocks.Rlps"/>.</summary>
@@ -129,4 +130,14 @@ internal static class PayloadBodiesHandlerHelper
 
     /// <summary>The blocks found, <see langword="null"/> where not stored, and their encodings one after another.</summary>
     public readonly record struct StoredBlocks(ArrayPoolList<StoredBlock?> Blocks, ArrayPoolList<byte> Rlps);
+
+    /// <summary>Returns the pooled bodies and the encodings they point into.</summary>
+    private sealed class Owner(IDisposable bodies, ArrayPoolList<byte> rlps) : IDisposable
+    {
+        public void Dispose()
+        {
+            bodies.Dispose();
+            rlps.Dispose();
+        }
+    }
 }

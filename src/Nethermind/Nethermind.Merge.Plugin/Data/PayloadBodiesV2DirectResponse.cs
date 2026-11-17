@@ -17,13 +17,13 @@ namespace Nethermind.Merge.Plugin.Data;
 /// <summary>Wraps payload body V2 results and writes JSON directly into a <see cref="PipeWriter"/>.</summary>
 public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnlyList<ExecutionPayloadBodyV2Result?>, IDisposable
 {
-    private readonly PayloadBody?[] _items;
+    private readonly ReadOnlyMemory<PayloadBody?> _items;
     private readonly IDisposable? _itemsOwner;
     private bool _disposed;
 
     /// <param name="items">The bodies to write.</param>
     /// <param name="itemsOwner">The owner of the memory the bodies are in, disposed with this response.</param>
-    internal PayloadBodiesV2DirectResponse(PayloadBody?[] items, IDisposable? itemsOwner = null)
+    internal PayloadBodiesV2DirectResponse(ReadOnlyMemory<PayloadBody?> items, IDisposable? itemsOwner = null)
     {
         _items = items;
         _itemsOwner = itemsOwner;
@@ -36,7 +36,7 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
         get
         {
             ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual((uint)index, (uint)_items.Length, nameof(index));
-            return _items[index]?.ToResult();
+            return _items.Span[index]?.ToResult();
         }
     }
 
@@ -61,7 +61,7 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
         }
 
         _disposed = true;
-        DisposeItems(_items);
+        DisposeItems(_items.Span);
         _itemsOwner?.Dispose();
     }
 
@@ -96,7 +96,7 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
         }
     }
 
-    internal static void DisposeItems(PayloadBody?[] items)
+    internal static void DisposeItems(ReadOnlySpan<PayloadBody?> items)
     {
         for (int i = 0; i < items.Length; i++)
         {
@@ -104,11 +104,11 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
         }
     }
 
-    private readonly struct ItemWriter(PayloadBody?[] items) : IJsonArrayItemWriter
+    private readonly struct ItemWriter(ReadOnlyMemory<PayloadBody?> items) : IJsonArrayItemWriter
     {
         public void WriteItem(PipeWriter writer, int index)
         {
-            PayloadBody? item = items[index];
+            PayloadBody? item = items.Span[index];
             if (item is null)
             {
                 writer.Write("null"u8);

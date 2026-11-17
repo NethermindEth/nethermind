@@ -22,34 +22,34 @@ namespace Nethermind.Merge.Plugin.Data;
 public sealed class PayloadBodiesV1DirectResponse : IStreamableResult, IReadOnlyList<ExecutionPayloadBodyV1Result?>, IDisposable
 {
     private readonly ExecutionPayloadBodyV1Result?[]? _items;
-    private readonly PayloadBody?[]? _payloadBodies;
+    private readonly ReadOnlyMemory<PayloadBody?> _payloadBodies;
     private readonly IDisposable? _payloadBodiesOwner;
 
     public PayloadBodiesV1DirectResponse(ExecutionPayloadBodyV1Result?[] items) => _items = items;
 
     /// <param name="payloadBodies">The bodies to write.</param>
     /// <param name="payloadBodiesOwner">The owner of the memory the bodies are in, disposed with this response.</param>
-    internal PayloadBodiesV1DirectResponse(PayloadBody?[] payloadBodies, IDisposable? payloadBodiesOwner = null)
+    internal PayloadBodiesV1DirectResponse(ReadOnlyMemory<PayloadBody?> payloadBodies, IDisposable? payloadBodiesOwner = null)
     {
         _payloadBodies = payloadBodies;
         _payloadBodiesOwner = payloadBodiesOwner;
     }
 
-    public int Count => _payloadBodies?.Length ?? _items!.Length;
+    public int Count => _items?.Length ?? _payloadBodies.Length;
 
     public ExecutionPayloadBodyV1Result? this[int index]
     {
         get
         {
             ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual((uint)index, (uint)Count, nameof(index));
-            return _payloadBodies is { } payloadBodies ? payloadBodies[index]?.ToResult() : _items![index];
+            return _items is null ? _payloadBodies.Span[index]?.ToResult() : _items[index];
         }
     }
 
     public ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken) =>
-        _payloadBodies is { } payloadBodies
-            ? StreamableResultWriter.WriteArrayAsync(writer, payloadBodies.Length, new RawItemWriter(payloadBodies), cancellationToken)
-            : StreamableResultWriter.WriteArrayAsync(writer, _items!.Length, new ItemWriter(_items!), cancellationToken);
+        _items is null
+            ? StreamableResultWriter.WriteArrayAsync(writer, _payloadBodies.Length, new RawItemWriter(_payloadBodies), cancellationToken)
+            : StreamableResultWriter.WriteArrayAsync(writer, _items.Length, new ItemWriter(_items), cancellationToken);
 
     public Enumerator GetEnumerator() => new(this);
 
@@ -92,11 +92,11 @@ public sealed class PayloadBodiesV1DirectResponse : IStreamableResult, IReadOnly
         }
     }
 
-    private readonly struct RawItemWriter(PayloadBody?[] items) : IJsonArrayItemWriter
+    private readonly struct RawItemWriter(ReadOnlyMemory<PayloadBody?> items) : IJsonArrayItemWriter
     {
         public void WriteItem(PipeWriter writer, int index)
         {
-            PayloadBody? item = items[index];
+            PayloadBody? item = items.Span[index];
             if (item is null)
             {
                 writer.Write("null"u8);

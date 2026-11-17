@@ -44,7 +44,7 @@ public sealed class GetPayloadBodiesByRangeV2Handler(
     {
         ulong headNumber = blockTree.Head?.Number ?? 0;
         ulong end = Math.Min(start + count - 1, headNumber);
-        if (end < start) return new PayloadBodiesV2DirectResponse([]);
+        if (end < start) return new PayloadBodiesV2DirectResponse(Array.Empty<PayloadBodiesV2DirectResponse.PayloadBody?>());
 
         return CreateResponseV2(balStore, ReadCanonicalBlocks(chainLevels, blockStore, start, end));
     }
