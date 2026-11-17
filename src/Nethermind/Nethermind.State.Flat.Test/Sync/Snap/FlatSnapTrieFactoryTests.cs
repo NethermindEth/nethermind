@@ -57,7 +57,7 @@ public class FlatSnapTrieFactoryTests
         public void SetAccountRaw(in ValueHash256 addrHash, Account account) { }
         public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) { }
         public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) { }
-        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath) { }
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount = null) { }
         public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) { }
         public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) { }
         public void Dispose() { }

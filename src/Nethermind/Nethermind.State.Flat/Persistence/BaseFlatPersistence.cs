@@ -352,7 +352,7 @@ public static class BaseFlatPersistence
         }
 
         [SkipLocalsInit]
-        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath)
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount = null)
         {
             int prefixLength = StoragePrefixLength(fullAddressStorageKey);
             Span<byte> lastKey = stackalloc byte[StorageKeyLength + 1];
@@ -360,7 +360,8 @@ public static class BaseFlatPersistence
             lastKey[prefixLength..].Fill(0xff);
             BasePersistence.DeleteKeysOfAccountRange(storageSnap, storage, fromPath.Bytes[..prefixLength], lastKey,
                 StorageKeyLength, prefixOffset: 0, prefixLength, suffixOffset: prefixLength + StorageSlotKeySize,
-                fromPath.Bytes[..AccountKeyLength], toPath.Bytes[..AccountKeyLength], flags);
+                fromPath.Bytes[..AccountKeyLength], toPath.Bytes[..AccountKeyLength],
+                keptAccount is { } kept ? kept.Bytes[..AccountKeyLength] : default, flags);
         }
 
         public void RemoveAccount(in ValueHash256 addrHash)

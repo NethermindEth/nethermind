@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -160,6 +161,27 @@ public class FlatTreeSyncStoreTests
         }
     }
 
+    [Test]
+    public void SaveNode_self_destructs_each_replaced_range_once_keeping_the_leaf_account()
+    {
+        Address kept = TestItem.AddressB;
+        using (FlatTestContainer container = CreateContainer(_persistence))
+        {
+            SaveRootAccountLeaf(container.Resolve<FlatTreeSyncStore>(), TestItem.AddressA);
+        }
+
+        FakeWriteBatch batch = new();
+        using FlatTestContainer recording = CreateContainer(new BatchRecordingPersistence(_persistence, batch));
+        SaveRootAccountLeaf(recording.Resolve<FlatTreeSyncStore>(), kept);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batch.SelfDestructRangeCalls, Is.Not.Empty);
+            Assert.That(batch.SelfDestructRangeCalls, Has.Count.EqualTo(batch.DeleteAccountRangeCalls.Count));
+            Assert.That(batch.SelfDestructRangeCalls.Select(static call => call.KeptAccount), Is.All.EqualTo(Keccak.Compute(kept.Bytes).ValueHash256));
+        }
+    }
+
     private static void SaveRootAccountLeaf(FlatTreeSyncStore store, Address address)
     {
         TrieNode leaf = TrieNodeFactory.CreateLeaf(Nibbles.BytesToNibbleBytes(Keccak.Compute(address.Bytes).Bytes), Rlp.Encode(new Account(1, 1)));
@@ -229,6 +251,17 @@ public class FlatTreeSyncStoreTests
         BlockHeader pivot = Build.A.BlockHeader.WithNumber(123).WithStateRoot(TestItem.KeccakA).TestObject;
 
         Assert.DoesNotThrow(() => store.FinalizeSync(pivot));
+    }
+
+    private sealed class BatchRecordingPersistence(IPersistence inner, FakeWriteBatch batch) : IPersistence
+    {
+        public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None) => inner.CreateReader(flags);
+
+        public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None) => batch;
+
+        public void Flush() => inner.Flush();
+
+        public void Clear() => inner.Clear();
     }
 
     private sealed class OrderRecordingPersistence(IPersistence inner, List<string> log) : IPersistence
