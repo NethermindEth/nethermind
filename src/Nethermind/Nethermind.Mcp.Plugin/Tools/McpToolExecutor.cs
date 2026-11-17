@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.Json;
 using ModelContextProtocol.Protocol;
 using Nethermind.Blockchain.Find;
+using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
@@ -480,7 +481,11 @@ internal sealed class McpToolExecutor(
             }
 
             cancellationToken.ThrowIfCancellationRequested();
-            return await body(typedModule, cancellationToken);
+            Task<CallToolResult> run;
+            // A tool call is an external request of its own, entered until its body first yields, as a JSON-RPC method is.
+            using (ExternalRequest.Enter(ExternalRequest.NewId()))
+                run = body(typedModule, cancellationToken);
+            return await run;
         }
         catch (OperationCanceledException)
         {

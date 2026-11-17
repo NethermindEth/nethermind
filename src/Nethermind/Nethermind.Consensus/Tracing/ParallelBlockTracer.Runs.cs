@@ -169,6 +169,7 @@ public sealed partial class ParallelBlockTracer
         private int _queued;
         private int _cursor;
         private int _running;
+        private long _request;
         private ExceptionDispatchInfo? _helperFailure;
 
         public static BlockRun<TTrace> Rent()
@@ -202,6 +203,7 @@ public sealed partial class ParallelBlockTracer
             _cursor = -1;
             _queued = 0;
             _running = 0;
+            _request = ExternalRequest.Current;
             _helperFailure = null;
             if (!_stop.TryReset())
             {
@@ -320,6 +322,7 @@ public sealed partial class ParallelBlockTracer
         {
             try
             {
+                using ExternalRequest.Scope request = ExternalRequest.Enter(_request);
                 TraceMany(helper.Seeds!);
             }
             catch (Exception exception)

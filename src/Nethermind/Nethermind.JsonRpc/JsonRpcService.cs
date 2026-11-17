@@ -16,6 +16,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Memory;
@@ -153,6 +154,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         bool returnImmediately = methodName != GetLogsMethodName;
         Action? returnAction = returnImmediately ? null : CreateReturnAction(method, rpcModule);
         IResultWrapper? resultWrapper = null;
+        long requestId = ExternalRequest.NewId();
         try
         {
             JsonRpcErrorResponse? value;
@@ -182,7 +184,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                 return value;
             }
 
-            object? invocationResult = Invoke(method, rpcModule, parameters, parameterCount, context);
+            object? invocationResult = Invoke(method, rpcModule, parameters, parameterCount, context, requestId);
             ReturnParameters(parameters, returnParametersToPool);
 
             switch (invocationResult)
@@ -227,6 +229,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         if (resultWrapper is JsonRpcResponse response)
         {
             response = response.WithResponseContext(in request.IdRef, returnAction);
+            response.RequestId = requestId;
             if (response.TryGetStreamableResult(out IStreamableResult? streamable) && streamable is IDeferredExecutionResult)
             {
                 response.Streaming = new StreamingContext(this, request, methodName);
@@ -237,11 +240,15 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         return HandleUnsupportedResultWrapper(request, methodName, returnAction);
     }
 
-    /// <summary>Invokes the method with <paramref name="context"/> as <see cref="JsonRpcContext.Current"/> until it returns or yields.</summary>
-    private static object? Invoke(ResolvedMethodInfo method, IRpcModule rpcModule, object?[]? parameters, int parameterCount, JsonRpcContext context)
+    /// <summary>
+    /// Invokes the method with <paramref name="context"/> as <see cref="JsonRpcContext.Current"/>, and as the request
+    /// <paramref name="requestId"/> (<see cref="ExternalRequest"/>), until it returns or yields.
+    /// </summary>
+    private static object? Invoke(ResolvedMethodInfo method, IRpcModule rpcModule, object?[]? parameters, int parameterCount, JsonRpcContext context, long requestId)
     {
         JsonRpcContext? outerContext = JsonRpcContext.Current;
         JsonRpcContext.Current = context;
+        using ExternalRequest.Scope request = ExternalRequest.Enter(requestId);
         try
         {
             return parameterCount switch

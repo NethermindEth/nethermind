@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 
@@ -28,4 +29,8 @@ public abstract partial class FrameCodeRunner<TGasPolicy>
 
     /// <summary>The opcodes after which the dispatch loop polls at its next taken jump.</summary>
     protected static int CancellationPollInterval => VirtualMachine<TGasPolicy>.CancellationPollInterval;
+
+    /// <summary>The external request the offered frame runs for, or <see cref="ExternalRequest.None"/> when its thread runs none.</summary>
+    /// <remarks>Read on the thread of the offer. Every frame of one request reads the same id (<see cref="ExternalRequest"/>).</remarks>
+    protected static long RequestId => ExternalRequest.Current;
 }
