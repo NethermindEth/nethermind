@@ -124,16 +124,18 @@ public class GloasEpochProcessingTests
     }
 
     [Test]
-    public void ProcessBuilderPendingPayments_queues_only_quorum_reaching_previous_epoch_payments_and_rotates_the_window()
+    public void ProcessBuilderPendingPayments_queues_only_quorum_reaching_previous_epoch_payments_and_rotates_the_window([Values] bool reachesQuorum)
     {
         BeaconStateGloas state = CreateGloasState(out _, out _);
         EpochCache cache = new();
         ulong quorum = state.GetBuilderPaymentQuorumThreshold(cache);
         Assert.That(quorum, Is.GreaterThan(1ul), "fixture bug: a quorum this small cannot distinguish reaching it from missing it");
 
-        BuilderPendingPayment reaching = Payment(weight: quorum, amount: 3 * Gwei, feeRecipientFill: 0xA1);
+        BuilderPendingPayment reaching = Payment(weight: reachesQuorum ? quorum : quorum - 1, amount: 3 * Gwei, feeRecipientFill: 0xA1);
         BuilderPendingPayment justShort = Payment(weight: quorum - 1, amount: 5 * Gwei, feeRecipientFill: 0xA2);
         BuilderPendingPayment currentEpoch = Payment(weight: 0, amount: 7 * Gwei, feeRecipientFill: 0xA3);
+        BuilderPendingWithdrawal[] queued = [justShort.Withdrawal!];
+        state.BuilderPendingWithdrawals = queued;
         state.BuilderPendingPayments![3] = reaching;
         state.BuilderPendingPayments[5] = justShort;
         state.BuilderPendingPayments[40] = currentEpoch;
@@ -141,8 +143,10 @@ public class GloasEpochProcessingTests
         GloasEpochProcessing.ProcessBuilderPendingPayments(state, cache);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(state.BuilderPendingWithdrawals, Has.Length.EqualTo(1));
-        Assert.That(state.BuilderPendingWithdrawals![0], Is.SameAs(reaching.Withdrawal), "exactly the payment that reached the quorum is queued");
+        if (reachesQuorum)
+            Assert.That(state.BuilderPendingWithdrawals, Is.EqualTo(new[] { queued[0], reaching.Withdrawal }));
+        else
+            Assert.That(state.BuilderPendingWithdrawals, Is.SameAs(queued));
         Assert.That(state.BuilderPendingPayments[8], Is.SameAs(currentEpoch), "the current-epoch half becomes the previous-epoch half");
         Assert.That(state.BuilderPendingPayments.Take(32).Where((p, i) => i != 8).Select(p => p.Withdrawal!.Amount), Has.All.EqualTo(0ul));
         Assert.That(state.BuilderPendingPayments.Skip(32).Select(p => p.Withdrawal!.Amount), Has.All.EqualTo(0ul), "the new current-epoch half is zeroed");
