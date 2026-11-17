@@ -57,7 +57,7 @@ public class LogFinderRocksScanBenchmarks
 
         BlockTreeBuilder builder = Build.A.BlockTree().WithHeadersDb(_headersDb).WithBlockInfoDb(_blockInfosDb);
         int chainLength = Blocks + BlocksAboveRange;
-        List<BlockHeader> headers = new(chainLength);
+        List<BlockHeader> headers = [with(chainLength)];
         BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
         headers.Add(parent);
         for (int i = 1; i < chainLength; i++)
