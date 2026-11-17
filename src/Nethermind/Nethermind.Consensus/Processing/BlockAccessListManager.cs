@@ -122,7 +122,8 @@ public partial class BlockAccessListManager(
     /// </summary>
     /// <remarks>
     /// Always on in the zkEVM guest through <see cref="ZkEvmFlag"/>: it runs every block sequentially and needs only
-    /// the verdict, never the constructed list. Tests set it to cover the route on the host.
+    /// the verdict, never the constructed list. The host stateless executor sets it, so the host fixtures take the
+    /// guest's route.
     /// </remarks>
     internal bool VerifySequentialBlocks { get; init; }
 
