@@ -323,7 +323,7 @@ public static class FuluDriverSupport
         using StreamReader reader = new(path);
         YamlStream yaml = [];
         yaml.Load(reader);
-        Dictionary<string, string> result = new(StringComparer.Ordinal);
+        Dictionary<string, string> result = [with(StringComparer.Ordinal)];
         if (yaml.Documents.Count == 0 || yaml.Documents[0].RootNode is not YamlMappingNode mapping)
             return result;
 

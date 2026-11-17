@@ -62,13 +62,13 @@ public class SszStaticTests
 
     private static Dictionary<string, IReadOnlyDictionary<string, Entry>> BuildRegistry()
     {
-        Dictionary<string, Dictionary<string, Entry>> r = new(StringComparer.Ordinal);
+        Dictionary<string, Dictionary<string, Entry>> r = [with(StringComparer.Ordinal)];
 
         // SSZ vector/list bounds must match the preset compiled into this assembly.
         void Map<T>(string name, IEnumerable<string> forks, bool presetDependent = false) where T : ISszCodec<T>
         {
             if (!r.TryGetValue(name, out Dictionary<string, Entry>? byFork))
-                r[name] = byFork = new Dictionary<string, Entry>(StringComparer.Ordinal);
+                r[name] = byFork = [with(StringComparer.Ordinal)];
             foreach (string fork in forks)
                 byFork[fork] = new Entry(new Handler<T>(), presetDependent);
         }
@@ -158,7 +158,7 @@ public class SszStaticTests
         Map<NewPayloadRequest>("NewPayloadRequest", ElectraFulu, presetDependent: true);
         Map<NewPayloadRequestGloas>("NewPayloadRequest", GloasOnly);
 
-        Dictionary<string, IReadOnlyDictionary<string, Entry>> result = new(StringComparer.Ordinal);
+        Dictionary<string, IReadOnlyDictionary<string, Entry>> result = [with(StringComparer.Ordinal)];
         foreach (KeyValuePair<string, Dictionary<string, Entry>> kv in r)
             result[kv.Key] = kv.Value;
         return result;
