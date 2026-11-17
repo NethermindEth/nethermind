@@ -159,6 +159,33 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void GetMany_OnLinux_PrefetchesUncachedBatchKeys([Values("default", "column")] string backend, [Values(15, 16)] int count)
+        {
+            using IDisposable owner = CreateBatchDatabase(backend);
+            IDb store = owner is ColumnsDb<ReceiptsColumns> columns ? columns.GetColumnDb(ReceiptsColumns.Blocks) : (IDb)owner;
+            byte[] keys = new byte[count * sizeof(int)];
+            for (int i = 0; i < count; i++)
+            {
+                BinaryPrimitives.WriteInt32BigEndian(keys.AsSpan(i * sizeof(int)), i);
+                store.PutSpan(keys.AsSpan(i * sizeof(int), sizeof(int)), [(byte)i]);
+            }
+            store.Flush();
+            long?[] output = new long?[count];
+
+            long before = Metrics.PrefetchedKeys;
+            store.GetMany<long?, CountingValueDecoder>(keys, sizeof(int), output, default);
+            long afterUncached = Metrics.PrefetchedKeys;
+            store.GetMany<long?, CountingValueDecoder>(keys, sizeof(int), output, default);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(afterUncached - before, Is.EqualTo(OperatingSystem.IsLinux() && count >= 16 ? count : 0));
+                Assert.That(Metrics.PrefetchedKeys - afterUncached, Is.Zero);
+                Assert.That(output, Is.All.Not.Null);
+            }
+        }
+
+        [Test]
         public void GetMany_ThroughBatchCapability_WithInvalidBuffers_PreservesOutput(
             [Values("default", "column")] string backend, [Values(1, 2, 3, 257)] int count)
         {

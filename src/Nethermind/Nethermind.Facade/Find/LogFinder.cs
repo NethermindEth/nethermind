@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -11,6 +13,7 @@ using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
@@ -161,22 +164,48 @@ namespace Nethermind.Facade.Find
             RunParallel(blockNumbers,
                 number => FindLogsInBlock<TBlockLogs, TLog>(filter, FindHeaderOrLogError(number, cancellationToken), cancellationToken), tryParallel, cancellationToken);
 
-        private IEnumerable<TLog> RunParallel<T, TLog>(IEnumerable<T> source, Func<T, IEnumerable<TLog>> worker, bool tryParallel, CancellationToken cancellationToken)
+        private IEnumerable<TLog> RunParallel<T, TLog>(IEnumerable<T> source, Func<T, IEnumerable<TLog>> worker, bool tryParallel, CancellationToken cancellationToken) =>
+            RunParallelInBatches(source, _ => worker, tryParallel, cancellationToken);
+
+        /// <param name="workerFor">
+        /// Gives the worker of a batch of consecutive items, which it can prepare at once. The batch is pooled, so it must not
+        /// be kept after the call.
+        /// </param>
+        private IEnumerable<TLog> RunParallelInBatches<T, TLog>(IEnumerable<T> source, Func<ReadOnlyMemory<T>, Func<T, IEnumerable<TLog>>> workerFor, bool tryParallel, CancellationToken cancellationToken)
         {
             if (!tryParallel)
             {
-                return source.SelectMany(worker);
+                return InBatches(source, workerFor);
             }
 
             // we want to support one parallel eth_getLogs call for maximum performance
             // we don't want support more than one eth_getLogs call so we don't starve CPU and threads
-            return RunParallelLazy(source, worker, cancellationToken);
+            return RunParallelLazy(source, workerFor, cancellationToken);
+        }
+
+        private static IEnumerable<TLog> InBatches<T, TLog>(IEnumerable<T> source, Func<ReadOnlyMemory<T>, Func<T, IEnumerable<TLog>>> workerFor)
+        {
+            const int batchSize = MinBlocksPerParallelWorker << MaxChunkDoublings;
+            using IEnumerator<T> items = source.GetEnumerator();
+            using ArrayPoolList<T> batch = new(batchSize);
+            while (true)
+            {
+                batch.Clear();
+                while (batch.Count < batchSize && items.MoveNext()) batch.Add(items.Current);
+                if (batch.Count == 0) yield break;
+
+                Func<T, IEnumerable<TLog>> worker = workerFor(batch.AsMemory());
+                foreach (T item in batch)
+                {
+                    foreach (TLog log in worker(item)) yield return log;
+                }
+            }
         }
 
         // Must stay a lazy iterator: the lock is acquired on the first MoveNext and released in the finally,
         // so acquire and release share one enumerator lifetime. An eager version would leak the lock when the
         // result is never enumerated.
-        private IEnumerable<TLog> RunParallelLazy<T, TLog>(IEnumerable<T> source, Func<T, IEnumerable<TLog>> worker, CancellationToken cancellationToken)
+        private IEnumerable<TLog> RunParallelLazy<T, TLog>(IEnumerable<T> source, Func<ReadOnlyMemory<T>, Func<T, IEnumerable<TLog>>> workerFor, CancellationToken cancellationToken)
         {
             bool canRunParallel = Interlocked.CompareExchange(ref ParallelLock, 1, 0) == 0;
             int parallelExecutions = Interlocked.Increment(ref ParallelExecutions) - 1;
@@ -187,8 +216,8 @@ namespace Nethermind.Facade.Find
                     : $"Not allowing parallel eth_getLogs, already parallel executions: {parallelExecutions}.");
 
                 IEnumerable<TLog> logs = canRunParallel
-                    ? ScanInOrderedChunks(source, worker)
-                    : source.SelectMany(worker);
+                    ? ScanInOrderedBatches(source, workerFor)
+                    : InBatches(source, workerFor);
 
                 foreach (TLog log in logs)
                 {
@@ -211,9 +240,14 @@ namespace Nethermind.Facade.Find
         /// At most one chunk per worker is in flight, so memory is bounded by that window rather than the range.
         /// Logs scanned but never yielded are disposed when they are <see cref="IDisposable"/>, as <see cref="SerializedLogs"/> hold pooled buffers.
         /// </remarks>
-        internal IEnumerable<TLog> ScanInOrderedChunks<T, TLog>(IEnumerable<T> source, Func<T, IEnumerable<TLog>> worker)
+        internal IEnumerable<TLog> ScanInOrderedChunks<T, TLog>(IEnumerable<T> source, Func<T, IEnumerable<TLog>> worker) =>
+            ScanInOrderedBatches(source, _ => worker);
+
+        /// <inheritdoc cref="ScanInOrderedChunks{T, TLog}(IEnumerable{T}, Func{T, IEnumerable{TLog}})"/>
+        /// <param name="workerFor">Gives the worker of a chunk, which it can prepare at once.</param>
+        private IEnumerable<TLog> ScanInOrderedBatches<T, TLog>(IEnumerable<T> source, Func<ReadOnlyMemory<T>, Func<T, IEnumerable<TLog>>> workerFor)
         {
-            Queue<Task<List<TLog>>> pending = new(_rpcConfigGetLogsThreads);
+            Queue<Task<List<TLog>?>> pending = new(_rpcConfigGetLogsThreads);
             using CancellationTokenSource abandoned = new();
             using IEnumerator<T> items = source.GetEnumerator();
             List<TLog>? current = null;
@@ -227,16 +261,19 @@ namespace Nethermind.Facade.Find
                     while (!sourceDrained && pending.Count < _rpcConfigGetLogsThreads)
                     {
                         int chunkSize = MinBlocksPerParallelWorker << Math.Min(MaxChunkDoublings, chunksStarted++ / _rpcConfigGetLogsThreads);
-                        List<T> chunk = [with(chunkSize)];
-                        while (chunk.Count < chunkSize && items.MoveNext()) chunk.Add(items.Current);
-                        sourceDrained = chunk.Count < chunkSize;
-                        if (chunk.Count != 0) pending.Enqueue(Task.Run(() => ScanChunk(chunk, worker, abandoned.Token)));
+                        T[] chunk = ArrayPool<T>.Shared.Rent(chunkSize);
+                        int count = 0;
+                        while (count < chunkSize && items.MoveNext()) chunk[count++] = items.Current;
+                        sourceDrained = count < chunkSize;
+                        // Task.Run with a state object, which saves a closure and a delegate per chunk.
+                        if (count != 0) pending.Enqueue(Task.Factory.StartNew(ScanChunk<T, TLog>, (new ArraySegment<T>(chunk, 0, count), workerFor, abandoned.Token), CancellationToken.None, TaskCreationOptions.DenyChildAttach, TaskScheduler.Default));
+                        else ArrayPool<T>.Shared.Return(chunk);
                     }
 
-                    if (!pending.TryDequeue(out Task<List<TLog>>? next)) yield break;
+                    if (!pending.TryDequeue(out Task<List<TLog>?>? next)) yield break;
 
                     current = next.GetAwaiter().GetResult();
-                    for (delivered = 0; delivered < current.Count;)
+                    for (delivered = 0; current is not null && delivered < current.Count;)
                     {
                         yield return current[delivered++];
                     }
@@ -249,22 +286,30 @@ namespace Nethermind.Facade.Find
                 ((Task)Task.WhenAll(pending)).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing).GetAwaiter().GetResult();
 
                 if (current is not null) DisposeFrom(current, delivered);
-                foreach (Task<List<TLog>> task in pending)
+                foreach (Task<List<TLog>?> task in pending)
                 {
                     if (task.IsCompletedSuccessfully) DisposeFrom(task.Result, 0);
                 }
             }
         }
 
-        private static List<TLog> ScanChunk<T, TLog>(List<T> chunk, Func<T, IEnumerable<TLog>> worker, CancellationToken abandoned)
+        private static List<TLog>? ScanChunk<T, TLog>(object? state)
         {
-            List<TLog> logs = [];
+            (ArraySegment<T> chunk, Func<ReadOnlyMemory<T>, Func<T, IEnumerable<TLog>>> workerFor, CancellationToken abandoned) =
+                ((ArraySegment<T>, Func<ReadOnlyMemory<T>, Func<T, IEnumerable<TLog>>>, CancellationToken))state!;
+            // Stays null while the blocks have no logs, as most chunks of a selective filter do.
+            List<TLog>? logs = null;
             try
             {
-                foreach (T item in chunk)
+                if (!abandoned.IsCancellationRequested)
                 {
-                    if (abandoned.IsCancellationRequested) break;
-                    logs.AddRange(worker(item));
+                    Func<T, IEnumerable<TLog>> worker = workerFor(chunk);
+                    foreach (T item in chunk)
+                    {
+                        if (abandoned.IsCancellationRequested) break;
+                        IEnumerable<TLog> found = worker(item);
+                        if (!found.TryGetNonEnumeratedCount(out int count) || count != 0) (logs ??= []).AddRange(found);
+                    }
                 }
             }
             catch
@@ -273,11 +318,15 @@ namespace Nethermind.Facade.Find
                 throw;
             }
 
+            ArrayPool<T>.Shared.Return(chunk.Array!, RuntimeHelpers.IsReferenceOrContainsReferences<T>());
+
             return logs;
         }
 
-        private static void DisposeFrom<TLog>(List<TLog> logs, int start)
+        private static void DisposeFrom<TLog>(List<TLog>? logs, int start)
         {
+            if (logs is null) return;
+
             for (int i = start; i < logs.Count; i++)
             {
                 if (logs[i] is IDisposable disposable) disposable.Dispose();
@@ -307,12 +356,67 @@ namespace Nethermind.Facade.Find
                 return RunParallel([fromBlock], header => FindLogsInBlock<TBlockLogs, TLog>(filter, header, cancellationToken), tryParallel: false, cancellationToken);
             }
 
-            return RunParallel(BlockNumbers(fromBlock.Number, rangeSize),
-                number => FindHeaderIfBloomMatchesOrLogError(number, bloomMatches, cancellationToken) is { } header
-                    ? FindLogsInBlock<TBlockLogs, TLog>(filter, header.Hash, header.Number, header.Timestamp, cancellationToken)
-                    : [],
+            return RunParallelInBatches(BlockNumbers(fromBlock.Number, rangeSize),
+                numbers => FindLogsInBlocksIfBloomMatches<TBlockLogs, TLog>(filter, numbers, bloomMatches, cancellationToken),
                 tryParallel, cancellationToken);
         }
+
+        /// <summary>
+        /// Finds the canonical headers of <paramref name="blockNumbers"/> whose bloom matches in one batch, logs the
+        /// missing blocks, and returns the worker that finds the logs of one of these blocks.
+        /// </summary>
+        /// <param name="blockNumbers">Consecutive block numbers.</param>
+        private Func<ulong, IEnumerable<TLog>> FindLogsInBlocksIfBloomMatches<TBlockLogs, TLog>(LogFilter filter, ReadOnlyMemory<ulong> blockNumbers,
+            Func<ReadOnlySpan<byte>, bool> bloomMatches, CancellationToken cancellationToken)
+            where TBlockLogs : struct, IBlockLogs<TBlockLogs, TLog>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            ulong firstNumber = blockNumbers.Span[0];
+            BlockHeader[]? matches = null;
+            using (ArrayPoolSpan<BlockHeader?> headers = new(blockNumbers.Length))
+            using (ArrayPoolSpan<bool> found = new(blockNumbers.Length))
+            {
+                _blockFinder.FindCanonicalHeadersIfBloomMatches(firstNumber, bloomMatches, headers.AsMemory(), found.AsMemory());
+
+                int matchCount = 0;
+                for (int i = 0; i < headers.Length; i++)
+                {
+                    if (!found[i]) LogMissingBlock(firstNumber + (ulong)i);
+                    if (headers[i] is not null) matchCount++;
+                }
+
+                if (matchCount != 0)
+                {
+                    matches = new BlockHeader[matchCount];
+                    matchCount = 0;
+                    for (int i = 0; i < headers.Length; i++)
+                    {
+                        if (headers[i] is { } header) matches[matchCount++] = header;
+                    }
+                }
+
+                // The rented array goes back to a shared pool, which must not keep the headers alive.
+                ((Span<BlockHeader?>)headers).Clear();
+            }
+
+            return matches is null ? static _ => [] : FindLogsInMatches<TBlockLogs, TLog>(filter, matches, cancellationToken);
+        }
+
+        // Separate from the batch read so that a chunk with no match does not allocate the closure.
+        private Func<ulong, IEnumerable<TLog>> FindLogsInMatches<TBlockLogs, TLog>(LogFilter filter, BlockHeader[] matches, CancellationToken cancellationToken)
+            where TBlockLogs : struct, IBlockLogs<TBlockLogs, TLog> =>
+            number =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                foreach (BlockHeader header in matches)
+                {
+                    if (header.Number == number) return FindLogsInBlock<TBlockLogs, TLog>(filter, header.Hash, header.Number, header.Timestamp, cancellationToken);
+                }
+
+                return [];
+            };
 
         internal static bool ScansInParallel(ulong rangeSize, int workers) => rangeSize >= (ulong)(workers * MinBlocksPerParallelWorker);
 
@@ -474,16 +578,6 @@ namespace Nethermind.Facade.Find
 
             BlockHeader? block = _blockFinder.FindHeader(blockNumber);
             if (block is null) LogMissingBlock(blockNumber);
-
-            return block;
-        }
-
-        private BlockHeader? FindHeaderIfBloomMatchesOrLogError(ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, CancellationToken token)
-        {
-            token.ThrowIfCancellationRequested();
-
-            BlockHeader? block = _blockFinder.FindCanonicalHeaderIfBloomMatches(blockNumber, bloomMatches, out bool found);
-            if (!found) LogMissingBlock(blockNumber);
 
             return block;
         }

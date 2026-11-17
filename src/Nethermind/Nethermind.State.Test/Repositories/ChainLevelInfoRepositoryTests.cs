@@ -20,7 +20,6 @@ using Nethermind.Db.Rocks.Config;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.FluentRlp;
-using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using NUnit.Framework;
 using Testably.Abstractions;
@@ -145,6 +144,7 @@ public class ChainLevelInfoRepositoryTests
         IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
         ulong[] requested = mixedLengths ? [65_536, 255, 256, 255, 65_536] : [1, 2, 1];
         foreach (ulong number in requested) repository.PersistLevel(number, CreateBatchLevel(number));
+        ((IClearableCache)repository).ClearCache();
 
         using ArrayPoolListRef<ulong> numbers = new(requested);
         using IOwnedReadOnlyList<ChainLevelInfo> levels = repository.MultiLoadLevel(numbers);
@@ -154,21 +154,29 @@ public class ChainLevelInfoRepositoryTests
     }
 
     [Test]
-    public void MultiLoadLevel_WhenStoredValueChanges_BypassesSingleLevelCache([Values] bool native)
+    public void MultiLoadLevel_serves_a_level_persisted_in_an_open_batch_and_reads_the_others([Values] bool native)
     {
         using TempPath directory = TempPath.GetTempDirectory();
         using IDb db = CreateBatchDb(native, directory);
         using IContainer container = CreateContainer(db);
         IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
-        ChainLevelInfo cached = CreateBatchLevel(1);
-        ChainLevelInfo replacement = CreateBatchLevel(2);
-        repository.PersistLevel(1, cached);
-        db.PutSpan(1UL.ToBigEndianSpanWithoutLeadingZeros(out _), Rlp.Encode(replacement));
-        Assert.That(repository.LoadLevel(1), Is.SameAs(cached), "precondition: the single-key cache still has the old level");
+        ChainLevelInfo stored = CreateBatchLevel(2);
+        repository.PersistLevel(1, CreateBatchLevel(1));
+        repository.PersistLevel(2, stored);
+        ((IClearableCache)repository).ClearCache();
 
-        using ArrayPoolListRef<ulong> numbers = new(1, 1UL);
+        using BatchWrite batch = repository.StartBatch();
+        ChainLevelInfo pending = CreateBatchLevel(3);
+        repository.PersistLevel(1, pending, batch);
+
+        using ArrayPoolListRef<ulong> numbers = new(3, 2UL, 1UL, 4UL);
         using IOwnedReadOnlyList<ChainLevelInfo> levels = repository.MultiLoadLevel(numbers);
-        AssertChainLevelInfo(levels[0], replacement);
+        using (Assert.EnterMultipleScope())
+        {
+            AssertChainLevelInfo(levels[0], stored);
+            Assert.That(levels[1], Is.SameAs(pending), "the level of the uncommitted batch must win over the stored one");
+            Assert.That(levels[2], Is.Null);
+        }
     }
 
     [Test]
@@ -396,6 +404,33 @@ public class ChainLevelInfoRepositoryTests
 
         Assert.Throws<IndexOutOfRangeException>(() => _ = repository.LoadLevelWithoutCaching(1)?.MainChainBlock);
         Assert.Throws<IndexOutOfRangeException>(() => repository.TryGetMainChainBlockWithoutCaching(1, out _, out _));
+    }
+
+    [Test]
+    public void GetMainChainBlocksWithoutCaching_reads_each_level_as_the_single_read_does([Values] bool native, [Values] bool mixedLengths)
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using IDb db = CreateBatchDb(native, directory);
+        using IContainer container = CreateContainer(db);
+        IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
+        ulong[] numbers = mixedLengths ? [300, 2, 301, 302, 303] : [300, 301, 302, 303, 304];
+        repository.PersistLevel(numbers[0], CreateBatchLevel(numbers[0]));
+        repository.PersistLevel(numbers[2], new ChainLevelInfo(false, new BlockInfo(TestItem.KeccakC, 3)));
+        repository.PersistLevel(numbers[3], CreateBatchLevel(numbers[3]));
+        ((IClearableCache)repository).ClearCache();
+        ChainLevelInfo cached = new(true, new BlockInfo(TestItem.KeccakD, 7));
+        repository.PersistLevel(numbers[4], cached);
+
+        (ValueHash256 BlockHash, UInt256 TotalDifficulty)[] blocks = new (ValueHash256, UInt256)[numbers.Length];
+        repository.GetMainChainBlocksWithoutCaching(numbers, blocks);
+
+        for (int i = 0; i < numbers.Length; i++)
+        {
+            bool expectedFound = repository.TryGetMainChainBlockWithoutCaching(numbers[i], out ValueHash256 expectedHash, out UInt256 expectedTotalDifficulty);
+            Assert.That(blocks[i], Is.EqualTo(expectedFound ? (expectedHash, expectedTotalDifficulty) : default((ValueHash256, UInt256))), $"level {numbers[i]}");
+        }
+
+        Assert.That(blocks[4].BlockHash, Is.EqualTo(TestItem.KeccakD.ValueHash256), "a cached level is served");
     }
 
     [Test]
