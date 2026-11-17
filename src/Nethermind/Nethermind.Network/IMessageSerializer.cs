@@ -17,7 +17,7 @@ public interface IMessageSerializer<T> where T : MessageBase
     int GetLength(T message);
 
     /// <summary>
-    /// Writes <paramref name="message"/> to the start of <paramref name="destination"/>.
+    /// Writes <paramref name="message"/> to <paramref name="destination"/>, which must be exactly <see cref="GetLength"/> bytes long.
     /// </summary>
     /// <returns>The number of bytes written, which equals <see cref="GetLength"/>.</returns>
     int Serialize(Span<byte> destination, T message);
@@ -25,6 +25,12 @@ public interface IMessageSerializer<T> where T : MessageBase
     /// <summary>
     /// Reads a message from <paramref name="data"/>.
     /// </summary>
-    /// <remarks>The message must not keep references to <paramref name="data"/>, which the caller may reuse.</remarks>
+    /// <remarks>
+    /// <para>The message must not keep references to <paramref name="data"/>, which the caller may reuse.</para>
+    /// <para>
+    /// <see cref="MessageSerializationService"/> treats all of <paramref name="data"/> as read. To reject bytes after
+    /// the message, the serializer checks that it read all of them, and disposes what it decoded before it throws.
+    /// </para>
+    /// </remarks>
     T Deserialize(ReadOnlySpan<byte> data);
 }

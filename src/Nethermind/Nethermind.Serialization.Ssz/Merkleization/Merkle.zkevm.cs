@@ -30,14 +30,27 @@ public static partial class Merkle
             HashPairWithSha256(in left, in right, out parent);
     }
 
+    /// <remarks>
+    /// Siblings that already lie side by side, as those of a merkle level do, are hashed where they are, unless the
+    /// parent overwrites them.
+    /// </remarks>
     [SkipLocalsInit]
     private static void HashPairWithSha256(in UInt256 left, in UInt256 right, out UInt256 parent)
     {
+        Unsafe.SkipInit(out parent);
+        if (Unsafe.AreSame(ref Unsafe.Add(ref Unsafe.AsRef(in left), 1), ref Unsafe.AsRef(in right)) &&
+            !Unsafe.AreSame(ref parent, ref Unsafe.AsRef(in left)) && !Unsafe.AreSame(ref parent, ref Unsafe.AsRef(in right)))
+        {
+            Accelerators.Sha256(
+                MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in left, 2)),
+                MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref parent, 1)));
+            return;
+        }
+
         Span<UInt256> concatenation = stackalloc UInt256[2];
         concatenation[0] = left;
         concatenation[1] = right;
 
-        Unsafe.SkipInit(out parent);
         Accelerators.Sha256(
             MemoryMarshal.AsBytes(concatenation),
             MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref parent, 1)));
@@ -222,8 +235,8 @@ public static partial class Merkle
     /// Since ZisK v1.4.0-alpha the precompile takes the state and input addresses directly, with no parameter
     /// block; the new state overwrites <paramref name="state"/>. This mirrors the ZiskOS <c>syscall_sha256_f</c>
     /// ABI and nothing checks the two agree at compile time, so recheck it when Nethermind.ZiskOS.Runtime is bumped.
-    /// <see cref="Accelerators.Sha256F"/> of Nethermind.Zkvm.Abstractions 1.0.0-preview.8 still passes the pre-1.4
-    /// parameter block, which the ZisK transpiler rejects; do not switch to it until that package follows.
+    /// <see cref="Accelerators.Sha256F"/> binds the same import, but calling through it costs up to about 1,400
+    /// more ZisK steps per guest run.
     /// </remarks>
     [DllImport("__Internal", EntryPoint = "syscall_sha256_f", ExactSpelling = true), SuppressGCTransition]
     private static extern unsafe void Sha256F(ulong* state, ulong* input);

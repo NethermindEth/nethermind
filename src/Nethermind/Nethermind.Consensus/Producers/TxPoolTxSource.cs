@@ -62,9 +62,10 @@ namespace Nethermind.Consensus.Producers
             IComparer<Transaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, targetBlock.Number))
                 .ThenBy(ByHashTxComparer.Instance); // in order to sort properly and not lose transactions we need to differentiate on their identity which provided comparer might not be doing
 
+            TxFilterContext filterContext = new(parent, spec, baseFee);
             // EIP-8141: the pool ranks a max_fee by a per-gas view that leaves out intrinsic gas, so the budget the
             // processor checks is checked here too, rather than failing at execution in every block built.
-            Func<Transaction, bool> filter = tx => _txFilterPipeline.Execute(tx, parent, spec)
+            Func<Transaction, bool> filter = tx => _txFilterPipeline.Execute(tx, in filterContext)
                 && FrameTxValidation.CoversRequiredMaxFee(tx, spec, baseFee, UInt256.Zero);
             bool BlobFilter(Transaction tx) => HasFullBlobData(tx) && filter(tx);
             // A revalidated pool has already rejected everything whose validity changes with the target spec.
@@ -250,7 +251,7 @@ namespace Nethermind.Consensus.Producers
                     }
                     else
                     {
-                        candidates ??= new(16);
+                        candidates ??= [with(16)];
 
                         candidates.Add((blobTx, blobChain));
                         countOfRemainingBlobs += txBlobCount;
@@ -298,7 +299,7 @@ namespace Nethermind.Consensus.Producers
                     return fullBlobTxs;
                 }
 
-                Dictionary<Hash256, Transaction> selectedFullBlobTxs = new(selectedBlobTxs.Count);
+                Dictionary<Hash256, Transaction> selectedFullBlobTxs = [with(selectedBlobTxs.Count)];
                 foreach (Transaction selectedBlobTx in selectedBlobTxs)
                 {
                     if (selectedBlobTx.Hash is Hash256 hash

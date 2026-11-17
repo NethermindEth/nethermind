@@ -4,6 +4,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Crypto;
 using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Evm.Precompiles;
@@ -14,7 +15,7 @@ public partial class BN254AddPrecompile
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static string? Add(ReadOnlySpan<byte> input, byte[] output) =>
-        Accelerators.BN254G1Add(
+        CurveAccelerators.BN254G1Add(
             input[..(InputLength / 2)],
             input[(InputLength / 2)..],
             output

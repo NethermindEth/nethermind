@@ -37,7 +37,7 @@ public class ReceiptTxHashesMigrationTests
         using Chain chain = new(3);
         for (ulong number = 1; number <= 3; number++)
         {
-            chain.Store(number, CompactDecoder.EncodeAsBytes(chain.ReceiptsWithoutTxHashes(number), RlpBehaviors.Storage));
+            chain.Store(number, CompactDecoder.Encode(chain.ReceiptsWithoutTxHashes(number), RlpBehaviors.Storage));
         }
 
         await chain.RunMigration();
@@ -46,11 +46,11 @@ public class ReceiptTxHashesMigrationTests
         {
             for (ulong number = 1; number <= 3; number++)
             {
-                Assert.That(chain.Read(number), Is.EqualTo(CompactDecoder.EncodeAsBytes(chain.ReceiptsWithTxHashes(number), RlpBehaviors.Storage)));
+                Assert.That(chain.Read(number), Is.EqualTo(CompactDecoder.Encode(chain.ReceiptsWithTxHashes(number), RlpBehaviors.Storage)));
             }
         }
 
-        byte[] writtenAfterCompletion = CompactDecoder.EncodeAsBytes(chain.ReceiptsWithoutTxHashes(3), RlpBehaviors.Storage);
+        byte[] writtenAfterCompletion = CompactDecoder.Encode(chain.ReceiptsWithoutTxHashes(3), RlpBehaviors.Storage);
         chain.Store(3, writtenAfterCompletion);
         await chain.RunMigration();
         Assert.That(chain.Read(3), Is.EqualTo(writtenAfterCompletion));
@@ -60,9 +60,9 @@ public class ReceiptTxHashesMigrationTests
     public async Task Leaves_values_that_cannot_take_transaction_hashes_unchanged()
     {
         using Chain chain = new(4);
-        byte[] withHashes = CompactDecoder.EncodeAsBytes(chain.ReceiptsWithTxHashes(1), RlpBehaviors.Storage);
-        byte[] full = new ReceiptArrayStorageDecoder(compactEncoding: false).EncodeAsBytes(chain.ReceiptsWithTxHashes(2), RlpBehaviors.Storage);
-        byte[] withoutBody = CompactDecoder.EncodeAsBytes(chain.ReceiptsWithoutTxHashes(4), RlpBehaviors.Storage);
+        byte[] withHashes = CompactDecoder.Encode(chain.ReceiptsWithTxHashes(1), RlpBehaviors.Storage);
+        byte[] full = new ReceiptArrayStorageDecoder(compactEncoding: false).Encode(chain.ReceiptsWithTxHashes(2), RlpBehaviors.Storage);
+        byte[] withoutBody = CompactDecoder.Encode(chain.ReceiptsWithoutTxHashes(4), RlpBehaviors.Storage);
         chain.Store(1, withHashes);
         chain.Store(2, full);
         chain.Store(4, withoutBody);
@@ -83,7 +83,7 @@ public class ReceiptTxHashesMigrationTests
     public async Task Waits_until_block_processing_stops_before_a_block()
     {
         using Chain chain = new(1);
-        byte[] withoutHashes = CompactDecoder.EncodeAsBytes(chain.ReceiptsWithoutTxHashes(1), RlpBehaviors.Storage);
+        byte[] withoutHashes = CompactDecoder.Encode(chain.ReceiptsWithoutTxHashes(1), RlpBehaviors.Storage);
         chain.Store(1, withoutHashes);
         chain.ProcessingQueue.IsProcessingBlocks(Arg.Any<ulong?>()).Returns(true, true, false);
 
@@ -97,7 +97,7 @@ public class ReceiptTxHashesMigrationTests
     public async Task Waits_while_blocks_are_queued_for_processing()
     {
         using Chain chain = new(1);
-        byte[] withoutHashes = CompactDecoder.EncodeAsBytes(chain.ReceiptsWithoutTxHashes(1), RlpBehaviors.Storage);
+        byte[] withoutHashes = CompactDecoder.Encode(chain.ReceiptsWithoutTxHashes(1), RlpBehaviors.Storage);
         chain.Store(1, withoutHashes);
         chain.ProcessingQueue.IsEmpty.Returns(false, false, true);
 
@@ -114,7 +114,7 @@ public class ReceiptTxHashesMigrationTests
         byte[][] withoutHashes = new byte[4][];
         for (ulong number = 1; number <= 3; number++)
         {
-            withoutHashes[number] = CompactDecoder.EncodeAsBytes(chain.ReceiptsWithoutTxHashes(number), RlpBehaviors.Storage);
+            withoutHashes[number] = CompactDecoder.Encode(chain.ReceiptsWithoutTxHashes(number), RlpBehaviors.Storage);
             chain.Store(number, withoutHashes[number]);
         }
 
@@ -125,7 +125,7 @@ public class ReceiptTxHashesMigrationTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(chain.Read(3), Is.EqualTo(CompactDecoder.EncodeAsBytes(chain.ReceiptsWithTxHashes(3), RlpBehaviors.Storage)));
+            Assert.That(chain.Read(3), Is.EqualTo(CompactDecoder.Encode(chain.ReceiptsWithTxHashes(3), RlpBehaviors.Storage)));
             Assert.That(chain.Read(2), Is.EqualTo(withoutHashes[2]));
             Assert.That(chain.Read(1), Is.EqualTo(withoutHashes[1]));
             Assert.That(logger.LogList.Last(static line => line.StartsWith("Receipt hashes")), Does.Match(@"^Receipt hashes\s+1 /\s+1 "));
@@ -133,10 +133,77 @@ public class ReceiptTxHashesMigrationTests
     }
 
     [Test]
+    public async Task Migrates_below_the_ancient_barrier_once_the_pruner_loads_its_pointers([Values] bool restarted)
+    {
+        using Chain chain = new(3);
+        byte[][] withoutHashes = new byte[4][];
+        for (ulong number = 1; number <= 3; number++)
+        {
+            withoutHashes[number] = CompactDecoder.Encode(chain.ReceiptsWithoutTxHashes(number), RlpBehaviors.Storage);
+            chain.Store(number, withoutHashes[number]);
+        }
+
+        bool pointersLoaded = false;
+        chain.BlockTree.NewOldestBlock(3);
+        chain.HistoryPruner.OldestUnreclaimedBlockNumber.Returns(_ => pointersLoaded ? 1UL : 3UL);
+        chain.HistoryPruner.OldestBlockHeader.Returns(_ =>
+        {
+            pointersLoaded = true;
+            chain.BlockTree.NewOldestBlock(1);
+            return chain.Blocks[1].Header;
+        });
+        if (restarted) chain.SavePosition(2);
+
+        await chain.RunMigration();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.Read(3), Is.EqualTo(restarted ? withoutHashes[3] : CompactDecoder.Encode(chain.ReceiptsWithTxHashes(3), RlpBehaviors.Storage)));
+            Assert.That(chain.Read(2), Is.EqualTo(CompactDecoder.Encode(chain.ReceiptsWithTxHashes(2), RlpBehaviors.Storage)));
+            Assert.That(chain.Read(1), Is.EqualTo(CompactDecoder.Encode(chain.ReceiptsWithTxHashes(1), RlpBehaviors.Storage)));
+        }
+    }
+
+    [Test]
+    public async Task Keeps_its_position_at_the_ancient_barrier_until_the_pruner_loads_its_pointers()
+    {
+        using Chain chain = new(3);
+        for (ulong number = 1; number <= 3; number++)
+        {
+            chain.Store(number, CompactDecoder.Encode(chain.ReceiptsWithoutTxHashes(number), RlpBehaviors.Storage));
+        }
+
+        bool pointersLoaded = false;
+        chain.BlockTree.NewOldestBlock(3);
+        chain.HistoryPruner.OldestUnreclaimedBlockNumber.Returns(_ => pointersLoaded ? 2UL : 3UL);
+        chain.HistoryPruner.OldestBlockHeader.Returns(_ => pointersLoaded ? chain.Blocks[2].Header : null);
+
+        await chain.RunMigration();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.Read(2), Is.EqualTo(CompactDecoder.Encode(chain.ReceiptsWithoutTxHashes(2), RlpBehaviors.Storage)));
+            Assert.That(chain.ReadPosition(), Is.EqualTo(2UL));
+        }
+
+        pointersLoaded = true;
+        chain.BlockTree.NewOldestBlock(2);
+        await chain.RunMigration();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.Read(3), Is.EqualTo(CompactDecoder.Encode(chain.ReceiptsWithTxHashes(3), RlpBehaviors.Storage)));
+            Assert.That(chain.Read(2), Is.EqualTo(CompactDecoder.Encode(chain.ReceiptsWithTxHashes(2), RlpBehaviors.Storage)));
+            Assert.That(chain.Read(1), Is.EqualTo(CompactDecoder.Encode(chain.ReceiptsWithoutTxHashes(1), RlpBehaviors.Storage)));
+            Assert.That(chain.ReadPosition(), Is.EqualTo(1UL));
+        }
+    }
+
+    [Test]
     public async Task Keeps_a_margin_above_the_history_pruning_cutoff()
     {
         using Chain chain = new(2);
-        byte[] withoutHashes = CompactDecoder.EncodeAsBytes(chain.ReceiptsWithoutTxHashes(2), RlpBehaviors.Storage);
+        byte[] withoutHashes = CompactDecoder.Encode(chain.ReceiptsWithoutTxHashes(2), RlpBehaviors.Storage);
         chain.Store(2, withoutHashes);
         chain.HistoryPruner.CutoffBlockNumber.Returns(0UL);
 
@@ -151,17 +218,17 @@ public class ReceiptTxHashesMigrationTests
         using Chain chain = new(2);
         for (ulong number = 1; number <= 2; number++)
         {
-            chain.Store(number, CompactDecoder.EncodeAsBytes(chain.ReceiptsWithoutTxHashes(number), RlpBehaviors.Storage));
+            chain.Store(number, CompactDecoder.Encode(chain.ReceiptsWithoutTxHashes(number), RlpBehaviors.Storage));
         }
 
         await chain.RunMigration();
-        byte[] writtenWhileDisabled = CompactDecoder.EncodeAsBytes(chain.ReceiptsWithoutTxHashes(2), RlpBehaviors.Storage);
+        byte[] writtenWhileDisabled = CompactDecoder.Encode(chain.ReceiptsWithoutTxHashes(2), RlpBehaviors.Storage);
         chain.Store(2, writtenWhileDisabled);
         await chain.RunMigration(new ReceiptConfig { StoreTxHashes = false });
 
         await chain.RunMigration();
 
-        Assert.That(chain.Read(2), Is.EqualTo(CompactDecoder.EncodeAsBytes(chain.ReceiptsWithTxHashes(2), RlpBehaviors.Storage)));
+        Assert.That(chain.Read(2), Is.EqualTo(CompactDecoder.Encode(chain.ReceiptsWithTxHashes(2), RlpBehaviors.Storage)));
     }
 
     [Test]
@@ -178,7 +245,7 @@ public class ReceiptTxHashesMigrationTests
         using Chain chain = new(3);
         for (ulong number = 1; number <= 3; number++)
         {
-            chain.Store(number, CompactDecoder.EncodeAsBytes(chain.ReceiptsWithoutTxHashes(number), RlpBehaviors.Storage));
+            chain.Store(number, CompactDecoder.Encode(chain.ReceiptsWithoutTxHashes(number), RlpBehaviors.Storage));
         }
 
         TestLogger logger = new();
@@ -193,7 +260,7 @@ public class ReceiptTxHashesMigrationTests
         using Chain chain = new(3);
         for (ulong number = 1; number <= 3; number++)
         {
-            chain.Store(number, CompactDecoder.EncodeAsBytes(chain.ReceiptsWithoutTxHashes(number), RlpBehaviors.Storage));
+            chain.Store(number, CompactDecoder.Encode(chain.ReceiptsWithoutTxHashes(number), RlpBehaviors.Storage));
         }
 
         chain.SavePosition(2);
@@ -209,7 +276,7 @@ public class ReceiptTxHashesMigrationTests
         using Chain chain = new(3);
         for (ulong number = 1; number <= 3; number++)
         {
-            chain.Store(number, CompactDecoder.EncodeAsBytes(chain.ReceiptsWithoutTxHashes(number), RlpBehaviors.Storage));
+            chain.Store(number, CompactDecoder.Encode(chain.ReceiptsWithoutTxHashes(number), RlpBehaviors.Storage));
         }
 
         TestLogger logger = new();
@@ -222,7 +289,7 @@ public class ReceiptTxHashesMigrationTests
     public async Task Does_nothing_when_disabled()
     {
         using Chain chain = new(1);
-        byte[] withoutHashes = CompactDecoder.EncodeAsBytes(chain.ReceiptsWithoutTxHashes(1), RlpBehaviors.Storage);
+        byte[] withoutHashes = CompactDecoder.Encode(chain.ReceiptsWithoutTxHashes(1), RlpBehaviors.Storage);
         chain.Store(1, withoutHashes);
 
         await chain.RunMigration(new ReceiptConfig { StoreTxHashes = false });
@@ -279,8 +346,15 @@ public class ReceiptTxHashesMigrationTests
 
         public byte[] Read(ulong number) => _receipts.Get(Key(number));
 
+        public IBlockTree BlockTree => _container.Resolve<IBlockTree>();
+
         public void SavePosition(ulong next) =>
             _container.Resolve<IColumnsDb<ReceiptsColumns>>().GetColumnDb(ReceiptsColumns.Default).PutSpan(ReceiptTxHashesMigration.NextBlockKey.Bytes, next.ToBigEndianSpanWithoutLeadingZeros(out _));
+
+        public ulong? ReadPosition() =>
+            _container.Resolve<IColumnsDb<ReceiptsColumns>>().GetColumnDb(ReceiptsColumns.Default).Get(ReceiptTxHashesMigration.NextBlockKey.Bytes) is { } value
+                ? value.AsSpan().ToULongFromBigEndianByteArrayWithoutLeadingZeros()
+                : null;
 
         public void DeleteBody(ulong number) => _container.Resolve<IBlockStore>().Delete(number, Blocks[number].Hash!);
 

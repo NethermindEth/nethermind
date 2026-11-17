@@ -5,7 +5,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 
 namespace Nethermind.Db.LogIndex;
 
@@ -26,7 +25,8 @@ public partial class LogIndexStorage
         private readonly int _to;
         private readonly ISortedView _view;
 
-        private ArrayPoolList<int>? _value;
+        private int[]? _value;
+        private int _count;
         private int _index;
 
         public LogIndexEnumerator(ISortedKeyValueStore db, CompressionAlgorithm compressionAlgorithm, byte[] key, int from, int to)
@@ -86,7 +86,7 @@ public partial class LogIndexStorage
             _index++;
 
             // Shift the view until we can continue
-            while (_index >= _value!.Count && _view.MoveNext())
+            while (_index >= _count && _view.MoveNext())
             {
                 SetValue();
                 _index = 0;
@@ -111,43 +111,25 @@ public partial class LogIndexStorage
             return _view.StartBefore(startKey) || _view.MoveNext();
         }
 
-        private void SetValue()
-        {
-            _value?.Dispose();
-
-            ReadOnlySpan<byte> viewValue = _view.CurrentValue;
-
-            if (IsCompressed(viewValue, out int length))
-            {
-                // +1 fixes TurboPFor reading outside of array bounds
-                _value = new(capacity: length + 1, count: length);
-                DecompressDbValue(_compressionAlgorithm, viewValue, _value.AsSpan());
-            }
-            else
-            {
-                length = viewValue.Length / BlockNumberSize;
-                _value = new(capacity: length, count: length);
-                ReadBlockNumbers(viewValue, _value.AsSpan());
-            }
-
-            ReverseBlocksIfNeeded(_value.AsSpan());
-        }
+        private void SetValue() => _count = ReadDbValue(_compressionAlgorithm, _view.CurrentValue, ref _value);
 
         private int FindFromIndex()
         {
-            int index = BinarySearch(_value!.AsSpan(), _from);
+            int index = BinarySearch(_value.AsSpan(0, _count), _from);
             return index >= 0 ? index : ~index;
         }
 
         public void Reset() => throw new NotSupportedException($"{nameof(LogIndexEnumerator)} can not be reset.");
 
-        public int Current => _value is not null && _index >= 0 && _index < _value.Count ? _value[_index] : -1;
+        public int Current => _value is not null && _index >= 0 && _index < _count ? _value[_index] : -1;
         object? IEnumerator.Current => Current;
 
         public void Dispose()
         {
             _view.Dispose();
-            _value?.Dispose();
+            _index = CompletedIndex;
+            ReturnDbValueBuffer(_value);
+            _value = null;
         }
     }
 }

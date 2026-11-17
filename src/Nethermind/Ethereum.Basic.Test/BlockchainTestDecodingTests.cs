@@ -33,7 +33,7 @@ public class BlockchainTestDecodingTests : BlockchainTestBase
             Network = new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = true },
             GenesisRlp = Rlp.Encode(genesis),
             GenesisBlockHeader = new TestBlockHeaderJson { Hash = genesis.Hash!.ToString() },
-            Blocks = [new TestBlockJson { Rlp = Rlp.Encode(block).Bytes.ToHexString(true), ExpectException = "BlockException.INVALID_BLOCK_TIMESTAMP_OLDER_THAN_PARENT" }],
+            Blocks = [new TestBlockJson { Rlp = Rlp.Encode(block).ToHexString(true), ExpectException = "BlockException.INVALID_BLOCK_TIMESTAMP_OLDER_THAN_PARENT" }],
             Pre = [],
             PostState = [],
             LastBlockHash = genesis.Hash,

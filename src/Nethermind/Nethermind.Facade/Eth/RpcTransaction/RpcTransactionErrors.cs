@@ -18,6 +18,11 @@ public static class RpcTransactionErrors
     public const string ZeroMaxFeePerBlobGas = "maxFeePerBlobGas, if specified, must be non-zero";
     public const string BlobFeeCapWithoutBlobHashes = "maxFeePerBlobGas specified without blobVersionedHashes";
 
+    internal const string FeeFieldsBeforeLondon = "maxFeePerGas and maxPriorityFeePerGas are not valid before London is active";
+    internal const string FeeCapBelowBaseFee = "max fee per gas less than block base fee";
+
+    internal static string DebugTrace(string inner) => $"tracing failed: {inner}";
+
     public static string MaxFeePerGasSmallerThanMaxPriorityFeePerGas(UInt256? maxFeePerGas, UInt256? maxPriorityFeePerGas)
         => $"maxFeePerGas ({maxFeePerGas}) < maxPriorityFeePerGas ({maxPriorityFeePerGas})";
 

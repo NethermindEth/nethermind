@@ -20,8 +20,8 @@ public class TxCertifierFilter(ICertifierContract certifierContract, ITxFilter n
     private readonly ILogger _logger = logManager.GetClassLogger<TxCertifierFilter>();
     private Hash256 _cachedBlock;
 
-    public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec currentSpec) =>
-        IsCertified(tx, parentHeader, currentSpec) ? AcceptTxResult.Accepted : notCertifiedFilter.IsAllowed(tx, parentHeader, currentSpec);
+    public AcceptTxResult IsAllowed(Transaction tx, in TxFilterContext context) =>
+        IsCertified(tx, context.Parent, context.Spec) ? AcceptTxResult.Accepted : notCertifiedFilter.IsAllowed(tx, in context);
 
     private bool IsCertified(Transaction tx, BlockHeader parentHeader, IReleaseSpec currentSpec)
     {

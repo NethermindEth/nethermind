@@ -6,6 +6,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
@@ -29,15 +30,13 @@ public class FlatTreeSyncStore(
     public bool NodeExists(Hash256? address, in TreePath path, in ValueHash256 hash)
     {
         using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
-        byte[]? data = address is null
-            ? reader.TryLoadStateRlp(path, ReadFlags.None)
-            : reader.TryLoadStorageRlp(address, path, ReadFlags.None);
-
-        if (data is null) return false;
 
         // Rehash and verify
-        ValueHash256 computedHash = ValueKeccak.Compute(data);
-        return computedHash == hash;
+        ValueHash256 computedHash = default;
+        bool found = address is null
+            ? reader.TryLoadStateRlp(path, ReadFlags.None, static (data, result) => result[0] = ValueKeccak.Compute(data), new Span<ValueHash256>(ref computedHash))
+            : reader.TryLoadStorageRlp(address, path, ReadFlags.None, static (data, result) => result[0] = ValueKeccak.Compute(data), new Span<ValueHash256>(ref computedHash));
+        return found && computedHash == hash;
     }
 
     public void SaveNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> data)
@@ -70,9 +69,10 @@ public class FlatTreeSyncStore(
 
     private static TrieNode? ReadExistingNode(IPersistence.IPersistenceReader reader, Hash256? address, TreePath path)
     {
-        byte[]? existingData = address is null
-            ? reader.TryLoadStateRlp(path, ReadFlags.None)
-            : reader.TryLoadStorageRlp(address, path, ReadFlags.None);
+        byte[]? existingData = null;
+        _ = address is null
+            ? reader.TryLoadStateRlp(path, ReadFlags.None, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref existingData))
+            : reader.TryLoadStorageRlp(address, path, ReadFlags.None, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref existingData));
         if (existingData is null) return null;
 
         TrieNode existingNode = new(NodeType.Unknown, existingData);
@@ -84,11 +84,59 @@ public class FlatTreeSyncStore(
     {
         RefList16<DeletionRange> ranges = new();
         ComputeDeletionRanges(path, newNode, existingNode, ref ranges);
+        if (ranges.Count == 0) return;
+
+        ValueHash256 keptAccount = newNode.IsLeaf ? path.Append(newNode.Key).ToLowerBoundPath() : default;
         foreach (DeletionRange range in ranges.AsSpan())
         {
+            if (newNode.IsLeaf)
+            {
+                SelfDestructRangeExcept(writeBatch, range, keptAccount);
+            }
+            else
+            {
+                writeBatch.SelfDestructRange(range.From, range.To);
+            }
+
             writeBatch.DeleteAccountRange(range.From, range.To);
             writeBatch.DeleteStateTrieNodeRange(range.From, range.To);
         }
+    }
+
+    private static void SelfDestructRangeExcept(IPersistence.IWriteBatch writeBatch, in DeletionRange range, in ValueHash256 keptAccount)
+    {
+        ReadOnlySpan<byte> kept = keptAccount.Bytes[..BaseFlatPersistence.AccountKeyLength];
+        if (kept.SequenceCompareTo(range.From.Bytes[..BaseFlatPersistence.AccountKeyLength]) > 0
+            && TryStepAccountKey(keptAccount, up: false, out ValueHash256 below))
+        {
+            writeBatch.SelfDestructRange(range.From, below.CompareTo(range.To) < 0 ? below : range.To);
+        }
+
+        if (kept.SequenceCompareTo(range.To.Bytes[..BaseFlatPersistence.AccountKeyLength]) < 0
+            && TryStepAccountKey(keptAccount, up: true, out ValueHash256 above))
+        {
+            writeBatch.SelfDestructRange(above.CompareTo(range.From) > 0 ? above : range.From, range.To);
+        }
+    }
+
+    private static bool TryStepAccountKey(in ValueHash256 path, bool up, out ValueHash256 result)
+    {
+        Span<byte> bytes = stackalloc byte[ValueHash256.MemorySize];
+        path.Bytes[..BaseFlatPersistence.AccountKeyLength].CopyTo(bytes);
+        bytes[BaseFlatPersistence.AccountKeyLength..].Fill(up ? byte.MinValue : byte.MaxValue);
+        for (int i = BaseFlatPersistence.AccountKeyLength - 1; i >= 0; i--)
+        {
+            byte previous = bytes[i];
+            bytes[i] = up ? (byte)(previous + 1) : (byte)(previous - 1);
+            if (previous != (up ? byte.MaxValue : byte.MinValue))
+            {
+                result = new ValueHash256(bytes);
+                return true;
+            }
+        }
+
+        result = default;
+        return false;
     }
 
     private void RequestStorageDeletion(IPersistence.IWriteBatch writeBatch, Hash256 address, in TreePath path, TrieNode newNode, TrieNode? existingNode)
@@ -226,15 +274,14 @@ public class FlatTreeSyncStore(
     private static DeletionRange ComputeSubtreeRangeForNibble(TreePath path, int from, int to) =>
         new(path.Append(from).ToLowerBoundPath(), path.Append(to).ToUpperBoundPath());
 
-    public void EnsureStorageEmpty(Hash256 address)
+    public void EnsureStorageEmpty(in ValueHash256 address)
     {
         // Only need to clean flat storage entries. Orphaned storage trie nodes are not a problem
         // because the trie is always traversed from the account's storage root hash — when the
         // account has EmptyTreeHash or the account no longer exists, no storage trie nodes will
         // ever be reached.
         using IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
-        ValueHash256 addressHash = address.ValueHash256;
-        writeBatch.DeleteStorageRange(addressHash, ValueKeccak.Zero, ValueKeccak.MaxValue);
+        writeBatch.DeleteStorageRange(address, ValueKeccak.Zero, ValueKeccak.MaxValue);
     }
 
     public void FinalizeSync(BlockHeader pivotHeader)
@@ -309,7 +356,11 @@ public class FlatTreeSyncStore(
         public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
             new(NodeType.Unknown, hash);
 
-        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-            reader.TryLoadStateRlp(path, flags);
+        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+        {
+            byte[]? rlp = null;
+            reader.TryLoadStateRlp(path, flags, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref rlp));
+            return rlp;
+        }
     }
 }

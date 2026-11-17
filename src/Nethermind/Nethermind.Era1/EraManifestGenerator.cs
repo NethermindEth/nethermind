@@ -43,7 +43,7 @@ public static class EraManifestGenerator
     /// </summary>
     /// <returns>A description of each missing, extra or mismatched manifest line; empty when the manifests match.</returns>
     /// <remarks>
-    /// Lines are compared by position because <see cref="EraStore"/> looks up the checksum of an epoch by its offset from the first epoch.
+    /// Lines are compared by position because geth reads checksums.txt that way, and <see cref="EraStore"/> does for lines without a file name.
     /// Only the hash column is compared, matching the importer; older exports can contain stale file names or just hashes.
     /// The accumulator manifest is optional, as it is for import. The checksum manifest is required.
     /// </remarks>

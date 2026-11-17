@@ -63,6 +63,8 @@ public class PersistenceManager(
     private StateId? _lastWarnedStall;
     private bool _warnedHeldPastBackstop;
     private const int InitialShutdownTailCapacity = 256;
+    private static readonly StableStringLabel _stateNodesLabel = StableStringLabel.Get("state_nodes");
+    private static readonly StableStringLabel _storageNodesLabel = StableStringLabel.Get("storage_nodes");
 
     // StateId is a 40-byte struct (ulong + ValueHash256), so a direct field read/write is not atomic and
     // query threads calling GetCurrentPersistedStateId could observe a torn (BlockNumber, StateRoot) pair
@@ -393,7 +395,7 @@ public class PersistenceManager(
     {
         // Ownership of allStateIds transfers to the compactor on the EnqueueAsync handoff below; until then
         // this method owns it and must dispose it on any early exit (e.g. conversion cancellation).
-        ArrayPoolList<StateId> allStateIds = new(64);
+        ArrayPoolList<StateId> allStateIds = [with(64)];
         bool handedOff = false;
         try
         {
@@ -569,7 +571,8 @@ public class PersistenceManager(
     /// <remarks>
     /// Requires stopped block processing and persistence workers. Keeps the tail reorgable in the
     /// persisted-snapshot tier without advancing RocksDB; blocks become durable oldest first.
-    /// Without long finality there is no persisted tier. Restarted snapshots remain uncompacted until finality.
+    /// Without long finality there is no persisted tier. The next start compacts what this converts
+    /// (<see cref="CompactReloadedSnapshots"/>).
     /// </remarks>
     public int PersistInMemoryTailForShutdown(CancellationToken cancellationToken)
     {
@@ -610,6 +613,14 @@ public class PersistenceManager(
             foreach (Snapshot snapshot in tail.AsSpan()) snapshot.Dispose();
         }
     }
+
+    /// <inheritdoc/>
+    /// <remarks>Takes no lock: it runs before the workers start, so nothing else uses the tier yet.</remarks>
+    public int CompactReloadedSnapshots(CancellationToken cancellationToken) =>
+        // An empty tier is the steady state, a crash and a new node: nothing is read and nothing is written.
+        snapshotRepository.PersistedSnapshotCount == 0
+            ? 0
+            : compactor.CompactReloaded(GetCurrentPersistedStateId().BlockNumber, cancellationToken);
 
     public void ResetPersistedStateId()
     {
@@ -694,8 +705,8 @@ public class PersistenceManager(
                 batch.SetStorageTrieNode(address, path, rlp);
             }
 
-            Metrics.FlatPersistenceSnapshotSize.Observe(stateNodesSize, labels: new StringLabel("state_nodes"));
-            Metrics.FlatPersistenceSnapshotSize.Observe(storageNodesSize, labels: new StringLabel("storage_nodes"));
+            Metrics.FlatPersistenceSnapshotSize.Observe(stateNodesSize, labels: _stateNodesLabel);
+            Metrics.FlatPersistenceSnapshotSize.Observe(storageNodesSize, labels: _storageNodesLabel);
         }
 
         Metrics.FlatPersistenceTime.Observe(Stopwatch.GetTimestamp() - sw);

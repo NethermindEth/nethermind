@@ -17,8 +17,8 @@ export HOME="${HOME:-$BOOTSTRAP_DIR/home}" DOTNET_CLI_HOME="$BOOTSTRAP_DIR"
 export DOTNET_NOLOGO=1 DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1
 mkdir -p "$BOOTSTRAP_DIR/dotnet" "$HOME"
 cd "$BOOTSTRAP_DIR"
-curl -fsSL --retry 3 https://builds.dotnet.microsoft.com/dotnet/Sdk/10.0.402/dotnet-sdk-10.0.402-linux-x64.tar.gz -o sdk.tar.gz
-echo '1904a98dda2db34ba78ba3c4fb1b224455329af91c341d83547843c1839e112b04ae699ee92fa2449a8f62249196a938723078c0c60b9f65c88539d5687729c2  sdk.tar.gz' | sha512sum -c -
+curl -fsSL --retry 3 https://builds.dotnet.microsoft.com/dotnet/Sdk/11.0.100/dotnet-sdk-11.0.100-linux-x64.tar.gz -o sdk.tar.gz
+echo '1bec9cca2ec689b1e80245b84f2b53c9441d1aa6daccf2ceb27490768bffa95954fa585bd275def31069d874d543d9ba9e6591fe9ade2dbd9f34ec5c0fd0050c  sdk.tar.gz' | sha512sum -c -
 tar xzf sdk.tar.gz -C dotnet
 rm sdk.tar.gz
 curl -sf -H 'Metadata-Flavor: Google' "$MD/attributes/runner-startup-source" -o startup.cs

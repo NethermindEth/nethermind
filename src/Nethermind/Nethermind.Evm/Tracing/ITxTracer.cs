@@ -198,6 +198,14 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
                       || IsTracingLogs;
 
     /// <summary>
+    /// Whether the tracer can see the fee payment: the fees, the state changes, or the logs
+    /// </summary>
+    /// <remarks>
+    /// The logs include the EIP-8037 burn log of a destroyed beneficiary, which includes its fee.
+    /// </remarks>
+    bool IsObservingFeePayment => IsTracingFees || IsTracingState || IsCollectingLogs || IsTracingLogs;
+
+    /// <summary>
     /// Transaction completed successfully
     /// </summary>
     /// <param name="recipient">Transaction recipient</param>
@@ -444,7 +452,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="gasLeft">Gas returned to the caller: all of <paramref name="gas"/> after a failed precheck, none after a collision.</param>
     /// <param name="value">Value the operation would have transferred.</param>
     /// <param name="from">The calling or creating account.</param>
-    /// <param name="to">The callee, or the creation address; <c>null</c> for a creation that failed its precheck, whose address is not derived.</param>
+    /// <param name="to">The callee, or the address the creation would have used.</param>
     /// <param name="input">Call data or init code.</param>
     /// <param name="callType">The CALL-family or CREATE operation.</param>
     /// <param name="error"><see cref="EvmExceptionType.NotEnoughBalance"/>, <see cref="EvmExceptionType.CallDepthExceeded"/> or <see cref="EvmExceptionType.TransactionCollision"/>.</param>
@@ -454,7 +462,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// follows. From EIP-8037 a creation runs its precheck in the creating operation, so only its collision is reported.
     /// The default implementation drops it.
     /// </remarks>
-    void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address? to, ReadOnlyMemory<byte> input,
+    void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
         ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
     { }
 

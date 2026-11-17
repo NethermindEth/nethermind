@@ -249,8 +249,12 @@ public class ExecutionProcessorTests
     }
 
     [Test]
-    public void ListSystemContracts_reports_the_request_contracts_configured_by_spec()
+    public void ListSystemContracts_reports_the_contracts_configured_by_spec()
     {
+        _spec.IsEip4788Enabled.Returns(true);
+        _spec.IsEip2935Enabled.Returns(true);
+        _spec.Eip4788ContractAddress.Returns(TestItem.AddressC);
+        _spec.Eip2935ContractAddress.Returns(TestItem.AddressD);
         _spec.Eip7002ContractAddress.Returns(TestItem.AddressA);
         _spec.Eip7251ContractAddress.Returns(TestItem.AddressB);
 
@@ -258,6 +262,8 @@ public class ExecutionProcessorTests
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(systemContracts[Eip4788Constants.ContractAddressKey], Is.EqualTo(TestItem.AddressC));
+            Assert.That(systemContracts[Eip2935Constants.ContractAddressKey], Is.EqualTo(TestItem.AddressD));
             Assert.That(systemContracts[Eip7002Constants.ContractAddressKey], Is.EqualTo(TestItem.AddressA));
             Assert.That(systemContracts[Eip7251Constants.ContractAddressKey], Is.EqualTo(TestItem.AddressB));
         }

@@ -106,6 +106,11 @@ public class ShutterTxSource(
             {
                 return;
             }
+
+            if (slotWaitTasks.Count == 0)
+            {
+                _keyWaitTasks.Remove(slot);
+            }
         }
 
         waitTask.Tcs.TrySetException(new OperationCanceledException());

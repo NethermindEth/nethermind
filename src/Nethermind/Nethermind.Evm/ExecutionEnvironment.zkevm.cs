@@ -6,4 +6,6 @@ namespace Nethermind.Evm;
 public sealed partial class ExecutionEnvironment
 {
     private static EvmObjectPool<ExecutionEnvironment> _pool => field ??= new();
+
+    internal const bool KeepsCachedReferences = false;
 }

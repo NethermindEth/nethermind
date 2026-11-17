@@ -16,8 +16,8 @@
     "FastSync": true,
     "SnapSync": true,
     "UseGethLimitsInFastBlocks": true,
-    "PivotNumber": 11986000,
-    "PivotHash": "0x06e2c3b8b3c01ad4aa4b165b8de0ab926e32efe0defa0296b2f12b3c7523c233",
+    "PivotNumber": 12135000,
+    "PivotHash": "0x5d2c8d3ca0f027b5a8daebf528f7bcb9379201f0e0e7556874f9a87237e7752a",
     "PivotTotalDifficulty": "17000018015853232",
     "AncientReceiptsBarrier": 1450409,
     "AncientBodiesBarrier": 1450409

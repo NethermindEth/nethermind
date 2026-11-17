@@ -33,8 +33,15 @@ namespace Nethermind.Consensus.Validators
 
         public static bool ValidateHash(BlockHeader header, out Hash256 actualHash)
         {
-            actualHash = header.CalculateHash();
-            return header.Hash == actualHash;
+            ValueHash256 calculatedHash = header.CalculateValueHash();
+            if (header.Hash is { } hash && hash.ValueHash256 == calculatedHash)
+            {
+                actualHash = hash;
+                return true;
+            }
+
+            actualHash = new Hash256(calculatedHash);
+            return false;
         }
 
         public static bool ValidateHash(BlockHeader header) => ValidateHash(header, out _);
@@ -90,12 +97,12 @@ namespace Nethermind.Consensus.Validators
                    && (!validateHash || ValidateHash(header, ref error))
                    && ValidateExtraData(header, spec = _specProvider.GetSpec(header), isUncle, ref error)
                    && (orphaned || ValidateParent(header, parent, ref error))
+                   && (orphaned || ValidateBlockNumber(header, parent, ref error))
                    && (orphaned || ValidateTotalDifficulty(header, parent, ref error))
                    && (orphaned || ValidateSeal(header, parent, isUncle, ref error))
                    && ValidateGasUsed(header, ref error)
                    && (orphaned || ValidateGasLimitRange(header, parent, spec, ref error))
                    && (orphaned || ValidateTimestamp(header, parent, ref error))
-                   && (orphaned || ValidateBlockNumber(header, parent, ref error))
                    && (orphaned || Validate1559(header, parent, spec, ref error))
                    && ValidateWithdrawalsRoot(header, spec, ref error)
                    && ValidateBlobGasFields(header, spec, ref error)

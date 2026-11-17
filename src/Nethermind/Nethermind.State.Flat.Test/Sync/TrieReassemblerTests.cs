@@ -337,8 +337,8 @@ public class TrieReassemblerTests
         using ArrayPoolListRef<BulkSetEntry> bulkSetEntries = new();
         foreach ((Hash256 path, Account account) in accounts)
         {
-            Rlp rlp = account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : AccountDecoder.Instance.Encode(account);
-            bulkSetEntries.Add(new BulkSetEntry(path, rlp.Bytes));
+            byte[] rlp = account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : AccountDecoder.Instance.Encode(account);
+            bulkSetEntries.Add(new BulkSetEntry(path, rlp));
             writeBatch.SetAccountRaw(path.ValueHash256, account);
         }
 
@@ -358,7 +358,7 @@ public class TrieReassemblerTests
         using ArrayPoolListRef<BulkSetEntry> bulkSetEntries = new();
         foreach ((Hash256 path, byte[] value) in slots)
         {
-            byte[] rlpValue = Rlp.Encode(value).Bytes;
+            byte[] rlpValue = Rlp.Encode(value);
             bulkSetEntries.Add(new BulkSetEntry(path, rlpValue));
             writeBatch.SetStorageRawEncoded(addressHash, path, rlpValue);
         }

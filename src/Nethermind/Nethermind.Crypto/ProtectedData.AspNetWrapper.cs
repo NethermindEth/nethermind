@@ -5,6 +5,7 @@ using System;
 using System.IO;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.DataProtection;
+using Nethermind.Logging;
 
 namespace Nethermind.Crypto
 {
@@ -36,7 +37,7 @@ namespace Nethermind.Crypto
 
             private IDataProtector GetUserProtector(byte[] optionalEntropy)
             {
-                string path = Path.Combine(_keyStoreDir, ProtectionDir);
+                string path = Path.Combine(_keyStoreDir.GetApplicationResourcePath(), ProtectionDir);
                 DirectoryInfo info = new(path);
                 IDataProtectionProvider provider = DataProtectionProvider.Create(info);
                 string purpose = CreatePurpose(optionalEntropy);

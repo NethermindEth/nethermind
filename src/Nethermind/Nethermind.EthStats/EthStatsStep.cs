@@ -48,7 +48,7 @@ public class EthStatsStep(
         string instanceId = $"{ethStatsConfig.Name}-{Keccak.Compute(enode!.Info)}";
         if (_logger.IsInfo)
         {
-            _logger.Info($"Initializing ETH Stats for the instance: {instanceId}, server: {ethStatsConfig.Server}");
+            _logger.Info($"Initializing ETH Stats for the instance: {instanceId:hide}, server: {SensitiveLogMasking.SafeUrl(ethStatsConfig.Server)}");
         }
         MessageSender sender = new(instanceId, logManager);
         const int reconnectionInterval = 5000;

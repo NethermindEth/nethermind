@@ -41,11 +41,11 @@ public sealed class DictionaryNodeSource(IReadOnlyDictionary<TreePath, byte[]> n
         return rlp is not null && ValueKeccak.Compute(rlp) == hash && Persistence.Pass(rlp, action, arg);
     }
 
-    /// <param name="buffer">The buffer holding the trie, which the warmed nodes are combined with.</param>
+    /// <param name="buffer">The buffer holding the trie; transient pointers resolve in the warmed nodes.</param>
     public void WarmUp(INodeRecordBuffer buffer, (ValueHash256 Hash, ulong Pointer) root, in ValueHash256 key, bool forDelete)
     {
         using ReadOnlySnapshotBundle reader = new(new SnapshotPooledList(0), new Persistence(this), false, PersistedSnapshotStack.Empty(), bufferPin: null);
-        BufferWarmUp.WarmUp(new WarmedNodeRecordBuffer(buffer, warmed), warmed, reader, address, root, key, forDelete);
+        BufferWarmUp.WarmUp(buffer, warmed, reader, address, root, key, forDelete);
     }
 
     private byte[]? LoadRlp(in TreePath path)
@@ -61,8 +61,6 @@ public sealed class DictionaryNodeSource(IReadOnlyDictionary<TreePath, byte[]> n
         public Account? GetAccount(Address address) => throw new NotSupportedException();
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => throw new NotSupportedException();
         public StateId CurrentState => throw new NotSupportedException();
-        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => source.LoadRlp(path);
-        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => source.LoadRlp(path);
 
         public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg)
             where TArg : allows ref struct => Pass(source.LoadRlp(path), action, arg);

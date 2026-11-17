@@ -320,7 +320,7 @@ namespace Nethermind.KeyStore
             catch (Exception e)
             {
                 string msg = "Error during getting addresses";
-                if (_logger.IsError) _logger.Error(msg, e);
+                if (_logger.IsError) LogIoFailure(msg, e);
                 return ([], Result.Fail(msg));
             }
         }
@@ -372,7 +372,7 @@ namespace Nethermind.KeyStore
             catch (Exception e)
             {
                 string msg = $"Error during persisting key for address: {address}";
-                if (_logger.IsError) _logger.Error(msg, e);
+                if (_logger.IsError) LogIoFailure(msg, e);
                 return Result.Fail(msg);
             }
         }
@@ -398,7 +398,7 @@ namespace Nethermind.KeyStore
             catch (Exception e)
             {
                 string msg = $"Error during deleting key for address: {address}";
-                if (_logger.IsError) _logger.Error(msg, e);
+                if (_logger.IsError) LogIoFailure(msg, e);
                 return Result.Fail(msg);
             }
         }
@@ -415,7 +415,7 @@ namespace Nethermind.KeyStore
                 string[] files = FindKeyFiles(address);
                 if (files.Length == 0)
                 {
-                    if (_logger.IsError) _logger.Error($"A {_keyStoreIOSettingsProvider.KeyName} for address: {address} does not exists in directory {Path.GetFullPath(_keyStoreIOSettingsProvider.StoreDirectory)}.");
+                    if (_logger.IsError) _logger.Error($"A {_keyStoreIOSettingsProvider.KeyName} for address: {address} does not exists in directory {Path.GetFullPath(_keyStoreIOSettingsProvider.StoreDirectory):hide}.");
                     return null;
                 }
 
@@ -423,9 +423,15 @@ namespace Nethermind.KeyStore
             }
             catch (Exception e)
             {
-                if (_logger.IsError) _logger.Error($"Error during reading key for address: {address}", e);
+                if (_logger.IsError) LogIoFailure($"Error during reading key for address: {address}", e);
                 return null;
             }
+        }
+
+        private void LogIoFailure(string message, Exception error)
+        {
+            bool maskSensitiveData = SensitiveLogMasking.Enabled;
+            _logger.Error(maskSensitiveData ? $"{message}: {error.GetType().Name}" : message, maskSensitiveData ? null : error);
         }
 
         internal string[] FindKeyFiles(Address address)

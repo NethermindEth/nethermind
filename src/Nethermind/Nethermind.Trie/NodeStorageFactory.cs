@@ -41,11 +41,11 @@ public class NodeStorageFactory(INodeStorage.KeyScheme preferredKeyScheme, ILogM
                            _currentKeyScheme == INodeStorage.KeyScheme.HalfPath ||
                            _preferredKeyScheme == INodeStorage.KeyScheme.HalfPath;
 
-        return new NodeStorage(
+        return new EOACompressingNodeStorage(new NodeStorage(
             keyValueStore,
             effectiveKeyScheme,
             requirePath
-        );
+        ));
     }
 
     private static INodeStorage.KeyScheme? DetectKeyScheme(IDb db)

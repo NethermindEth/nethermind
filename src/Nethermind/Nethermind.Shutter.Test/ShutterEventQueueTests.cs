@@ -26,17 +26,19 @@ public class ShutterEventQueueTests
         GasLimit = TxGas
     };
 
-    [TestCase(Eon, 2, 2)]
-    [TestCase(Eon, 3, 3)]
-    [TestCase(Eon - 1, 3, 0)]
+    [TestCase(Eon, 2, 2, 0UL)]
+    [TestCase(Eon, 3, 3, 0UL)]
+    [TestCase(Eon - 1, 3, 0, 0UL)]
+    [TestCase(Eon, 2, 2, 1UL)]
+    [TestCase(Eon, 3, 2, 1UL)]
     [NonParallelizable]
-    public void Reports_encrypted_gas_used_for_dequeued_events(ulong dequeueEon, int gasLimitInTxs, int expectedDequeued)
+    public void Reports_encrypted_gas_used_for_dequeued_events(ulong dequeueEon, int gasLimitInTxs, int expectedDequeued, ulong txPointer)
     {
         ShutterEventQueue queue = new(gasLimitInTxs * TxGas, LimboLogs.Instance);
         queue.EnqueueEvents([Event(0), Event(1), Event(2)], Eon);
         Metrics.ShutterEncryptedGasUsed = ulong.MaxValue;
 
-        int dequeued = queue.DequeueToGasLimit(dequeueEon, 0).Count();
+        int dequeued = queue.DequeueToGasLimit(dequeueEon, txPointer).Count();
 
         using (Assert.EnterMultipleScope())
         {

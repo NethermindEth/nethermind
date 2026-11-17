@@ -17,6 +17,7 @@ using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
@@ -558,7 +559,7 @@ public class PatriciaTreeBulkSetterTests
             {
                 TreeDumper td = new(expectAccounts: false);
                 pTree.Commit();
-                pTree.Accept(td, pTree.RootHash);
+                pTree.Accept(new NodeRecordVisitorAdapter<OldStyleTrieVisitContext>(td), pTree.RootHash);
                 if (pTree.RootHash != root)
                 {
                     TestContext.Error.WriteLine($"Baseline {originalDump}");
@@ -647,7 +648,7 @@ public class PatriciaTreeBulkSetterTests
             {
                 TreeDumper td = new(expectAccounts: false);
                 pTree.Commit();
-                pTree.Accept(td, pTree.RootHash);
+                pTree.Accept(new NodeRecordVisitorAdapter<OldStyleTrieVisitContext>(td), pTree.RootHash);
                 if (pTree.RootHash != root)
                 {
                     TestContext.Error.WriteLine($"Baseline {originalDump}");
@@ -703,7 +704,7 @@ public class PatriciaTreeBulkSetterTests
             {
                 TreeDumper td = new(expectAccounts: false);
                 pTree.Commit();
-                pTree.Accept(td, pTree.RootHash);
+                pTree.Accept(new NodeRecordVisitorAdapter<OldStyleTrieVisitContext>(td), pTree.RootHash);
                 if (pTree.RootHash != root)
                 {
                     TestContext.Error.WriteLine($"Baseline {originalDump}");
@@ -749,7 +750,7 @@ public class PatriciaTreeBulkSetterTests
             {
                 pTree.Commit();
                 TreeDumper td = new(expectAccounts: false);
-                pTree.Accept(td, pTree.RootHash);
+                pTree.Accept(new NodeRecordVisitorAdapter<OldStyleTrieVisitContext>(td), pTree.RootHash);
                 originalDump = td.ToString();
             }
             root = pTree.RootHash;

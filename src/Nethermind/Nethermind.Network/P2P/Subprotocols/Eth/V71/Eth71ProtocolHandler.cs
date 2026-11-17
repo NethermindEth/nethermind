@@ -68,14 +68,14 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
 
     protected override bool HandleMessageCore(ZeroPacket message)
     {
-        int size = message.Content.ReadableBytes;
+        int size = message.Content.Length;
         switch (message.PacketType)
         {
             case Eth71MessageCode.GetBlockAccessLists:
                 HandleInBackground<GetBlockAccessListsMessage, BlockAccessListsMessage>(message, Handle);
                 return true;
             case Eth71MessageCode.BlockAccessLists:
-                HandleCorrelatedResponse(_balRequests, message.Content, size, SelectBlockAccessLists);
+                HandleCorrelatedResponse(_balRequests, message, size, SelectBlockAccessLists);
                 return true;
             default:
                 return base.HandleMessageCore(message);
@@ -88,7 +88,7 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
         IOwnedReadOnlyList<Hash256> hashes = req.Hashes;
         ReadOnlySpan<Hash256> hashesSpan = hashes.AsSpan();
         long totalSize = 0;
-        ArrayPoolList<byte[]?> results = new(hashesSpan.Length);
+        ArrayPoolList<byte[]?> results = [with(hashesSpan.Length)];
 
         try
         {
@@ -126,7 +126,7 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
             return IOwnedReadOnlyList<byte[]?>.Empty;
         }
 
-        ArrayPoolList<Hash256> hashList = new(blockHashes.Count);
+        ArrayPoolList<Hash256> hashList = [with(blockHashes.Count)];
         for (int i = 0; i < blockHashes.Count; i++)
         {
             hashList.Add(blockHashes[i]);

@@ -179,7 +179,8 @@ public class FrameTxProducerRetryMeasurement
         BlockProcessor.BlockProductionTransactionsExecutor executor =
             BuildExecutor(NullTxPool.Instance, out CountingAdapter adapter);
 
-        Transaction tx = FrameTx(verifyGas);
+        // Under the EIP-8141 max_fee budget the tip is capped by max_fee, so a paying control needs one.
+        Transaction tx = FrameTx(verifyGas, approves ? 1.Ether : UInt256.Zero);
         UInt256 beneficiaryBefore = _stateProvider.GetBalance(Beneficiary);
         UInt256 senderBefore = _stateProvider.GetBalance(Sender);
 
@@ -659,7 +660,7 @@ public class FrameTxProducerRetryMeasurement
         public override BlockHeader FindBestSuggestedHeader() => BestSuggestedHeader!;
     }
 
-    private static Transaction FrameTx(ulong verifyGas)
+    private static Transaction FrameTx(ulong verifyGas, UInt256 maxFee = default)
     {
         Transaction tx = new()
         {
@@ -671,6 +672,7 @@ public class FrameTxProducerRetryMeasurement
             FrameSignatures = [],
             GasPrice = 1,
             DecodedMaxFeePerGas = 1,
+            MaxFee = maxFee,
         };
         tx.GasLimit = verifyGas;
         tx.Hash = tx.CalculateHash();

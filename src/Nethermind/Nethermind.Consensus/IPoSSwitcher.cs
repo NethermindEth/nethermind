@@ -51,5 +51,24 @@ namespace Nethermind.Consensus
         public static bool MisconfiguredTerminalTotalDifficulty(this IPoSSwitcher poSSwitcher) => poSSwitcher.TerminalTotalDifficulty is null;
 
         public static bool BlockBeforeTerminalTotalDifficulty(this IPoSSwitcher poSSwitcher, BlockHeader blockHeader) => blockHeader.TotalDifficulty < poSSwitcher.TerminalTotalDifficulty;
+
+        /// <summary>
+        /// Restores <see cref="BlockHeader.IsPostMerge"/> on <paramref name="callHeader"/>, the private header copy an RPC
+        /// call or trace runs on, which skipped the preprocessing step that restores the flag for block processing.
+        /// </summary>
+        /// <remarks>
+        /// A set flag is kept and a zero difficulty is post-merge on every chain; otherwise the chain's switcher
+        /// decides, as it does for block processing (Taiko keeps a nonzero difficulty in post-merge headers). Block 0
+        /// follows its difficulty alone, as in geth. The flag is written on the header passed in, by this method and
+        /// by some switchers, so pass the call's own copy, before block overrides. Not a consensus rule: block
+        /// processing must not use it.
+        /// </remarks>
+        public static void RestorePostMergeForCall(this IPoSSwitcher poSSwitcher, BlockHeader callHeader)
+        {
+            if (callHeader.IsGenesis)
+                callHeader.IsPostMerge = callHeader.Difficulty.IsZero;
+            else if (!callHeader.IsPostMerge)
+                callHeader.IsPostMerge = callHeader.Difficulty.IsZero || poSSwitcher.IsPostMerge(callHeader);
+        }
     }
 }
