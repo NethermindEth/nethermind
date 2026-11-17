@@ -262,6 +262,7 @@ jobs:
   fixtures:
     name: Extract the fixture cases
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       # <name> <fixture file> <test>
       CASES: |
@@ -305,6 +306,7 @@ jobs:
           extract Trusted --trusted
           [ "$(wc -l < fixture-cases/Ssz.txt)" -eq "$(awk NF <<< "$CASES" | wc -l)" ] || \
             { echo "::error::Every case must have an expected result"; exit 1; }
+          [ -s fixture-cases/Trusted.txt ] || { echo "::error::No trusted case has an expected result"; exit 1; }
 
       - name: Upload the fixture cases
         uses: actions/upload-artifact@v7
@@ -384,9 +386,10 @@ jobs:
           failed=0
           while read -r input output digest; do
             echo "::group::$input"
+            # The shell runs with -e, which a failing case must not trip
+            status=0
             make ${{ matrix.vm == 'airbender' && 'verify' || 'run' }} INPUT="$input" GUEST_INPUT=${{ matrix.input }} EXPECTED_DIGEST="$digest" \
-              < /dev/null 2>&1 | tee "$RUNNER_TEMP/run.log"
-            status=${PIPESTATUS[0]}
+              < /dev/null 2>&1 | tee "$RUNNER_TEMP/run.log" || status=$?
             echo "::endgroup::"
             if [ "$status" -ne 0 ]; then
               echo "::error::$input: the guest run failed"

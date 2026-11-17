@@ -184,9 +184,12 @@ internal static class InputExtractor
                             }
 
                             output = forZisk ? ZiskFrame.Wrap(converted) : converted;
-                            expected = expected is null ? null : GetTrustedResult(statelessInput, converted, expected);
-                            if (expected is null)
-                                AnsiConsole.MarkupLine($"[yellow]-[/] `{test.Name.EscapeMarkup()}`, block {blockIndex}: no expected result, as the envelope alone invalidates the block");
+                            if (expected is not null)
+                            {
+                                expected = GetTrustedResult(statelessInput, converted, expected);
+                                if (expected is null)
+                                    AnsiConsole.MarkupLine($"[yellow]-[/] `{test.Name.EscapeMarkup()}`, block {blockIndex}: no expected result, as the envelope alone invalidates the block");
+                            }
                         }
                         else
                         {
