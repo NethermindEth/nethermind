@@ -5516,7 +5516,7 @@ namespace Nethermind.TxPool.Test
             return (storage, pool, target);
         }
 
-        private sealed class CountingBlobTxStorage : IBlobTxStorage, IBlobTxMetadataStorage
+        private sealed class CountingBlobTxStorage : IBlobTxStorage, IBlobTxMetadataStorage, IBlobTxElidedReadStorage
         {
             private readonly MemColumnsDb<BlobTxsColumns> _columnsDb = new();
             private readonly BlobTxStorage _inner;
@@ -5548,6 +5548,12 @@ namespace Nethermind.TxPool.Test
             {
                 TryGetCount++;
                 return _inner.TryGet(hash, sender, timestamp, out transaction);
+            }
+
+            public bool TryGetFullRecordWithoutBlobs(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction)
+            {
+                TryGetCount++;
+                return ((IBlobTxElidedReadStorage)_inner).TryGetFullRecordWithoutBlobs(hash, sender, timestamp, out transaction);
             }
 
             public bool TryGetWithoutBlobs(in ValueHash256 hash, Address sender, out Transaction transaction)
@@ -5894,7 +5900,7 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        private sealed class BlockingReadBlobTxStorage : IBlobTxStorage, IBlobTxMetadataStorage, IDisposable
+        private sealed class BlockingReadBlobTxStorage : IBlobTxStorage, IBlobTxMetadataStorage, IBlobTxElidedReadStorage, IDisposable
         {
             private readonly MemColumnsDb<BlobTxsColumns> _columnsDb = new();
             private readonly BlobTxStorage _inner;
@@ -5925,21 +5931,27 @@ namespace Nethermind.TxPool.Test
             public void RemoveWithoutBlobs(in ValueHash256 hash) => GetElidedDb().Remove(GetElidedKey(hash));
 
             public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction)
+                => ReadFullRecord(hash, sender, timestamp, withoutBlobs: false, out transaction);
+
+            public bool TryGetFullRecordWithoutBlobs(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction)
+                => ReadFullRecord(hash, sender, timestamp, withoutBlobs: true, out transaction);
+
+            private bool ReadFullRecord(in ValueHash256 hash, Address sender, in UInt256 timestamp, bool withoutBlobs, out Transaction transaction)
             {
                 Interlocked.Increment(ref _fullReadCount);
-                if (Interlocked.Exchange(ref _blockNextRead, 0) == 0)
+                bool block = Interlocked.Exchange(ref _blockNextRead, 0) != 0;
+                bool found = withoutBlobs
+                    ? ((IBlobTxElidedReadStorage)_inner).TryGetFullRecordWithoutBlobs(hash, sender, timestamp, out transaction)
+                    : _inner.TryGet(hash, sender, timestamp, out transaction);
+                if (block)
                 {
-                    return _inner.TryGet(hash, sender, timestamp, out transaction);
+                    _readEntered.Set();
+                    if (!_releaseRead.Wait(BlockedStorageReleaseTimeout))
+                    {
+                        throw new TimeoutException("Timed out waiting to release the stale blob transaction read.");
+                    }
                 }
 
-                bool found = _inner.TryGet(hash, sender, timestamp, out Transaction snapshot);
-                _readEntered.Set();
-                if (!_releaseRead.Wait(BlockedStorageReleaseTimeout))
-                {
-                    throw new TimeoutException("Timed out waiting to release the stale blob transaction read.");
-                }
-
-                transaction = snapshot;
                 return found;
             }
 

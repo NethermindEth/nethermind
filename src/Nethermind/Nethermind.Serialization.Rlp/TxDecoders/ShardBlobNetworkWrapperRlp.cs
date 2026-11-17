@@ -48,9 +48,15 @@ internal static class ShardBlobNetworkWrapperRlp
             }
         }
 
+        bool excludeBlobs = (rlpBehaviors & RlpBehaviors.ExcludeBlobs) != 0;
         byte[][] blobs;
         if (reader.TryReadEmptyBytes())
         {
+            blobs = [];
+        }
+        else if (excludeBlobs)
+        {
+            reader.SkipItem<TCanonicalChecks>();
             blobs = [];
         }
         else
@@ -72,9 +78,17 @@ internal static class ShardBlobNetworkWrapperRlp
 
             if ((rlpBehaviors & RlpBehaviors.Storage) != 0 && HasTwoItems<TCanonicalChecks>(in reader))
             {
-                cellMask = BlobCellMask.FromBytes(reader.DecodeByteArraySpan<TCanonicalChecks>());
-                byte[][] decodedCells = reader.DecodeByteArrays<TCanonicalChecks>(CellProofsCountLimit);
-                cells = cellMask.IsEmpty && decodedCells.Length == 0 ? null : decodedCells;
+                if (excludeBlobs)
+                {
+                    reader.SkipItem<TCanonicalChecks>();
+                    reader.SkipItem<TCanonicalChecks>();
+                }
+                else
+                {
+                    cellMask = BlobCellMask.FromBytes(reader.DecodeByteArraySpan<TCanonicalChecks>());
+                    byte[][] decodedCells = reader.DecodeByteArrays<TCanonicalChecks>(CellProofsCountLimit);
+                    cells = cellMask.IsEmpty && decodedCells.Length == 0 ? null : decodedCells;
+                }
             }
 
             return new ShardBlobNetworkWrapper(blobs, commitments, proofs, version, cellMask, cells)
