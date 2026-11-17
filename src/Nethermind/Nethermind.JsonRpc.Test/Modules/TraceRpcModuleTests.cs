@@ -2263,6 +2263,63 @@ public class TraceRpcModuleTests
     }
 
     [Test]
+    public async Task Trace_call_and_rawTransaction_ignore_the_rewards_trace_type(
+        [Values("trace_call", "trace_rawTransaction")] string method,
+        [Values("trace,rewards", "stateDiff,rewards", "all")] string traceTypes,
+        [Values] bool streaming)
+    {
+        using Context context = new();
+        await context.Build();
+        TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+
+        // The head pays a block reward on this chain, so tracing rewards adds a reward trace to the block.
+        string blockTraces = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_block", "latest");
+        Assert.That(JToken.Parse(blockTraces)["result"]!.Select(static t => (string?)t["type"]), Does.Contain("reward"), blockTraces);
+
+        object call = new { from = TestItem.AddressA, to = TestItem.AddressC, value = "0x1", gas = "0x186a0" };
+        Transaction transaction = Build.A.Transaction
+            .WithNonce(blockchain.ReadOnlyState.GetNonce(TestItem.AddressA))
+            .WithTo(TestItem.AddressC)
+            .WithValue(1)
+            .WithGasLimit(100_000)
+            .WithMaxFeePerGas(0)
+            .WithMaxPriorityFeePerGas(0)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        Task<string> Trace(string[] types) => method == "trace_call"
+            ? RpcTest.TestSerializedRequest(context.TraceRpcModule, method, call, types, "latest")
+            : RpcTest.TestSerializedRequest(context.TraceRpcModule, method, TxDecoder.Instance.Encode(transaction), types);
+
+        string response = await Trace(traceTypes.Split(','));
+        string withoutRewards = await Trace(traceTypes == "all" ? ["vmTrace", "stateDiff", "trace"] : [traceTypes.Split(',')[0]]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(response)["result"]?.Type, Is.EqualTo(JTokenType.Object), response);
+            Assert.That(response, Is.EqualTo(withoutRewards));
+        }
+    }
+
+    [Test]
+    public async Task Trace_call_streams_its_own_trace_with_rewards_on_a_block_without_reward()
+    {
+        using Context context = new();
+        await context.Build();
+        context.Blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = true;
+
+        // Genesis stands in for a block that pays no reward, as no block after the merge does.
+        object call = new { from = TestItem.AddressA, to = TestItem.AddressC, value = "0x0", gas = "0x186a0" };
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call", call, new[] { "stateDiff", "rewards" }, "earliest");
+        string withoutRewards = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call", call, new[] { "stateDiff" }, "earliest");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response, Is.EqualTo(withoutRewards));
+            Assert.That(JToken.Parse(response)["result"]?["stateDiff"]?.Type, Is.EqualTo(JTokenType.Object), response);
+        }
+    }
+
+    [Test]
     public async Task Trace_rawTransaction_returns_invalid_rlp_for_empty_list()
     {
         using Context context = new();

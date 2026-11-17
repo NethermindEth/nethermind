@@ -324,6 +324,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return InvalidTraceTypes<ParityTxTraceFromReplay>();
             }
 
+            // A reward belongs to a block, not to a call, so the call is traced alone, as in trace_callMany.
+            parityTypes &= ~ParityTraceTypes.Rewards;
+
             if (headerSearch.IsError)
             {
                 return ResultWrapper<ParityTxTraceFromReplay>.Fail(headerSearch);
@@ -350,7 +353,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 {
                     using Scope<ITracer> env = tracerEnv.BuildAndOverride(header, stateOverride);
                     IReadOnlyCollection<ParityLikeTxTrace> result = TraceBlockDirect(env.Component, block, new(parityTypes, specProvider), isSigned);
-                    return new ParityTxTraceFromReplay(result.SingleOrDefault());
+                    // More than one trace still throws, so no other trace can stand in for the call's own.
+                    ParityLikeTxTrace? trace = result.SingleOrDefault();
+                    return trace is null ? new ParityTxTraceFromReplay() : new ParityTxTraceFromReplay(trace);
                 });
         }
 
