@@ -10,7 +10,7 @@ SRC_DIR := /nethermind/src
 GUEST_LIBC := openvm
 # The order of the moduli and curves in the package is part of the ABI: a guest
 # and a VM that disagree compute in the wrong field and do not fail to load.
-# Package 2.1.0.61 agrees with SdkVmConfig::standard() of the runner; check it
+# Package 2.1.0.70 agrees with SdkVmConfig::standard() of the runner; check it
 # again whenever the pin of Nethermind.OpenVM.Runtime moves.
 GUEST_PACKAGE := Nethermind.OpenVM.Runtime
 
@@ -50,7 +50,7 @@ ifeq ($(strip $(OPENVM_RUNNER)),)
 	docker run --rm -e RUST_BACKTRACE=full \
 		--mount type=bind,source="$(GUEST_DIR)/bin",target=/n \
 		$(OPENVM_IMAGE) \
-		/n/nethermind - /n/$(INPUT).raw
+		/n/$(GUEST_NAME) - /n/$(INPUT).raw
 else
-	$(OPENVM_RUNNER) $(GUEST_DIR)/bin/nethermind - $(GUEST_DIR)/bin/$(INPUT).raw
+	$(OPENVM_RUNNER) $(GUEST_DIR)/bin/$(GUEST_NAME) - $(GUEST_DIR)/bin/$(INPUT).raw
 endif

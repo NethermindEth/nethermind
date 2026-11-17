@@ -946,6 +946,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         return _diagnostics.RecordResponse(response, new RpcReport("# parsing error #", (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds, false));
     }
 
+    /// <remarks><paramref name="cancellationToken"/> is the transport's abort signal; a request it abandons in the module queue throws instead of answering.</remarks>
     private ValueTask<JsonRpcResult.Entry> HandleSingleRequest(JsonRpcRequest request, JsonRpcContext context, CancellationToken cancellationToken)
     {
         Metrics.JsonRpcRequests++;
@@ -954,18 +955,34 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         ValueTask<JsonRpcResponse> responseTask = _jsonRpcService.SendRequestAsync(request, context, cancellationToken);
         return responseTask.IsCompletedSuccessfully
             ? ValueTask.FromResult(CreateSingleRequestEntry(request, responseTask.Result, context, startTime))
-            : AwaitAndCreateEntryAsync(responseTask, request, context, startTime);
+            : AwaitAndCreateEntryAsync(responseTask, request, context, startTime, cancellationToken);
 
         async ValueTask<JsonRpcResult.Entry> AwaitAndCreateEntryAsync(
             ValueTask<JsonRpcResponse> responseTask,
             JsonRpcRequest request,
             JsonRpcContext context,
-            long startTime)
+            long startTime,
+            CancellationToken cancellationToken)
         {
-            JsonRpcResponse response = await responseTask;
+            JsonRpcResponse response;
+            try
+            {
+                response = await responseTask;
+            }
+            catch (OperationCanceledException exception) when (IsTransportCancellation(exception, cancellationToken))
+            {
+                // Counted as requested but never answered, so it is neither a success nor an error.
+                Metrics.IncrementJsonRpcAbandonedRequests();
+                throw;
+            }
+
             return CreateSingleRequestEntry(request, response, context, startTime);
         }
     }
+
+    /// <summary>Whether <paramref name="exception"/> is the transport abandoning a queued request, the one cancellation <see cref="IJsonRpcService"/> lets escape.</summary>
+    private static bool IsTransportCancellation(OperationCanceledException exception, CancellationToken cancellationToken) =>
+        cancellationToken.IsCancellationRequested && exception.CancellationToken == cancellationToken;
 
     private static string DescribeErrorResponse(JsonRpcRequest request, Error responseError) =>
         $"Error response handling JsonRpc Id:{request.Id} Method:{request.Method} | Code: {responseError.Code} Message: {(SensitiveLogMasking.Enabled ? "[redacted]" : responseError.Message)}";
@@ -1136,6 +1153,10 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                 {
                     Task<JsonRpcResult.Entry>? execution = Take(out _);
                     if (execution is not null) (await execution).Dispose();
+                }
+                catch (OperationCanceledException exception) when (IsTransportCancellation(exception, cancellationToken))
+                {
+                    // Abandoned in the module queue along with its batch: cancelled, not failed.
                 }
                 catch (Exception exception)
                 {

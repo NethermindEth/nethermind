@@ -20,6 +20,7 @@ using Nethermind.Db;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Test.Data;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Blockchain.Headers;
@@ -27,6 +28,7 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Int256;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Specs.Forks;
 using Nethermind.State.Repositories;
 using Newtonsoft.Json.Linq;
@@ -567,18 +569,15 @@ public class HashesOnlyBlockReaderTests
     // A later fork's body field: one more item after the withdrawals.
     private static byte[] WithTrailingBodyField(byte[] storedBlock)
     {
-        RlpReader reader = new(storedBlock);
-        int end = reader.ReadSequenceLength() + reader.Position;
-        List<Rlp> items = [];
-        while (reader.Position < end)
+        RlpReader reader = new RlpReader(storedBlock).EnterSequence(out _);
+        List<byte[]> items = [];
+        while (reader.HasNext)
         {
-            int length = reader.PeekNextRlpLength();
-            items.Add(new Rlp(reader.Peek(length).ToArray()));
-            reader.SkipBytes(length);
+            items.Add(reader.ReadEncodedItem().ToArray());
         }
 
-        items.Add(Rlp.OfEmptyList);
-        return Rlp.Encode([.. items]).Bytes;
+        items.Add(RlpTestHelper.OfEmptyList);
+        return RlpTestHelper.EncodeSequence([.. items]);
     }
 
     private static string Serialize(IBlockForRpcFactory factory, HashesOnlyBlock hashesOnly) =>

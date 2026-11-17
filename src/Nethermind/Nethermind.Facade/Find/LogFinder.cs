@@ -14,7 +14,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 using Autofac.Features.AttributeFilters;
 
 namespace Nethermind.Facade.Find
@@ -227,7 +227,7 @@ namespace Nethermind.Facade.Find
                     while (!sourceDrained && pending.Count < _rpcConfigGetLogsThreads)
                     {
                         int chunkSize = MinBlocksPerParallelWorker << Math.Min(MaxChunkDoublings, chunksStarted++ / _rpcConfigGetLogsThreads);
-                        List<T> chunk = new(chunkSize);
+                        List<T> chunk = [with(chunkSize)];
                         while (chunk.Count < chunkSize && items.MoveNext()) chunk.Add(items.Current);
                         sourceDrained = chunk.Count < chunkSize;
                         if (chunk.Count != 0) pending.Enqueue(Task.Run(() => ScanChunk(chunk, worker, abandoned.Token)));

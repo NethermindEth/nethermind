@@ -27,6 +27,7 @@ using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.DebugModule;
@@ -1380,6 +1381,26 @@ public class McpTransactionToolsTests
         {
             Assert.That(result.GetProperty("status").GetString(), Is.EqualTo("fee_unavailable"));
             Assert.That(result.GetProperty("fees").GetProperty("nextBaseFeeWei").ValueKind, Is.EqualTo(JsonValueKind.Null));
+        }
+        await McpToolCalls.AssertConformsToOutputSchema(client, "diagnose_transaction", call);
+    }
+
+    [Test]
+    public async Task Diagnose_fee_history_at_its_limit_falls_back_to_base_fees()
+    {
+        Transaction tx = DiagnosisPoolTransaction(5);
+        await using McpTestNode node = await DiagnosisPoolNode([tx], lookup: tx, configureEth: eth =>
+            eth.eth_feeHistory(Arg.Any<ulong>(), Arg.Any<BlockParameter>(), Arg.Any<double[]>())
+                .Returns<ResultWrapper<FeeHistoryResults>>(_ => throw new LimitExceededException("limit reached")));
+        await using McpClient client = await node.CreateClient();
+        CallToolResult call = await McpToolCalls.Call(client, "diagnose_transaction", [("hash", tx.Hash!.ToString())]);
+        JsonElement result = McpAssert.Success(call);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("status").GetString(), Is.EqualTo("fee_unavailable"));
+            Assert.That(result.GetProperty("fees").GetProperty("nextBaseFeeWei").ValueKind, Is.EqualTo(JsonValueKind.String), "the base fee comes from eth_baseFee");
+            Assert.That(result.GetProperty("notes").EnumerateArray().Select(static note => note.GetString()),
+                Has.Some.StartsWith("Recent fee history could not be read"));
         }
         await McpToolCalls.AssertConformsToOutputSchema(client, "diagnose_transaction", call);
     }

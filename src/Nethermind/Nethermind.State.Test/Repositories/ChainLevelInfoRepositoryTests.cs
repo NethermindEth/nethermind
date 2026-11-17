@@ -3,10 +3,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -17,6 +19,7 @@ using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using NUnit.Framework;
@@ -164,7 +167,7 @@ public class ChainLevelInfoRepositoryTests
         ChainLevelInfo cached = CreateBatchLevel(1);
         ChainLevelInfo replacement = CreateBatchLevel(2);
         repository.PersistLevel(1, cached);
-        db.PutSpan(1UL.ToBigEndianSpanWithoutLeadingZeros(out _), Rlp.Encode(replacement).Bytes);
+        db.PutSpan(1UL.ToBigEndianSpanWithoutLeadingZeros(out _), Rlp.Encode(replacement));
         Assert.That(repository.LoadLevel(1), Is.SameAs(cached), "precondition: the single-key cache still has the old level");
 
         using ArrayPoolListRef<ulong> numbers = new(1, 1UL);
@@ -183,7 +186,7 @@ public class ChainLevelInfoRepositoryTests
         repository.PersistLevel(1, CreateBatchLevel(1));
         db.PutSpan(secondNumber.ToBigEndianSpanWithoutLeadingZeros(out _), [0x01]);
 
-        Assert.Throws<RlpException>(() =>
+        Assert.Throws<RlpReaderException>(() =>
         {
             using ArrayPoolListRef<ulong> invalid = new(2, 1UL, secondNumber);
             using IOwnedReadOnlyList<ChainLevelInfo> ignored = repository.MultiLoadLevel(invalid);
@@ -365,6 +368,158 @@ public class ChainLevelInfoRepositoryTests
 
         ((IClearableCache)repository).ClearCache();
         AssertChainLevelInfo(repository.LoadLevel(1), replacement);
+    }
+
+    [TestCaseSource(nameof(StoredLevels))]
+    public void TryGetMainChainBlockWithoutCaching_reads_what_the_decoded_level_holds(bool native, byte[] rlp)
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using IDb db = CreateBatchDb(native, directory);
+        using IContainer container = CreateContainer(db);
+        IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
+        if (rlp is not null) db.PutSpan(1UL.ToBigEndianSpanWithoutLeadingZeros(out _), rlp);
+
+        BlockInfo expected = repository.LoadLevelWithoutCaching(1)?.MainChainBlock;
+        bool found = repository.TryGetMainChainBlockWithoutCaching(1, out ValueHash256 blockHash, out UInt256 totalDifficulty);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.EqualTo(expected is not null));
+            Assert.That(blockHash, Is.EqualTo(expected?.BlockHash.ValueHash256 ?? default));
+            Assert.That(totalDifficulty, Is.EqualTo(expected?.TotalDifficulty ?? UInt256.Zero));
+        }
+    }
+
+    [Test]
+    public void TryGetMainChainBlockWithoutCaching_fails_as_the_decoded_level_does_for_a_main_level_without_blocks()
+    {
+        MemDb db = new();
+        using IContainer container = CreateContainer(db);
+        IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
+        db.Set(1UL.ToBigEndianByteArrayWithoutLeadingZeros(), Level(true, List()));
+
+        Assert.Throws<IndexOutOfRangeException>(() => _ = repository.LoadLevelWithoutCaching(1)?.MainChainBlock);
+        Assert.Throws<IndexOutOfRangeException>(() => repository.TryGetMainChainBlockWithoutCaching(1, out _, out _));
+    }
+
+    [Test]
+    public void TryGetMainChainBlockWithoutCaching_serves_a_cached_level_without_a_read()
+    {
+        MemDb db = new();
+        using IContainer container = CreateContainer(db);
+        IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
+        repository.PersistLevel(1, new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, 7)));
+        db.Set(1UL.ToBigEndianByteArrayWithoutLeadingZeros(), Level(true, List(Info(TestItem.KeccakB, 9))));
+
+        long readsBefore = db.ReadsCount;
+        bool found = repository.TryGetMainChainBlockWithoutCaching(1, out ValueHash256 blockHash, out UInt256 totalDifficulty);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(blockHash, Is.EqualTo(TestItem.KeccakA.ValueHash256));
+            Assert.That(totalDifficulty, Is.EqualTo((UInt256)7));
+            Assert.That(db.ReadsCount, Is.EqualTo(readsBefore));
+        }
+    }
+
+    [Test]
+    public void TryGetMainChainBlockWithoutCaching_keeps_a_level_persisted_while_the_read_ran()
+    {
+        TestMemDb db = new();
+        using IContainer container = CreateContainer(db);
+        IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
+        ChainLevelInfo persisted = new(true, new BlockInfo(TestItem.KeccakB, 2));
+        byte[] staleRlp = PersistUncached(repository, db, new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, 1)));
+
+        db.ReadFunc = _ =>
+        {
+            db.ReadFunc = null;
+            repository.PersistLevel(1, persisted);
+            return staleRlp;
+        };
+
+        bool found = repository.TryGetMainChainBlockWithoutCaching(1, out ValueHash256 blockHash, out UInt256 totalDifficulty);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(blockHash, Is.EqualTo(TestItem.KeccakB.ValueHash256));
+            Assert.That(totalDifficulty, Is.EqualTo((UInt256)2));
+        }
+    }
+
+    [Test]
+    public void TryGetMainChainBlockWithoutCaching_reads_a_historical_level_without_allocating()
+    {
+        MemDb db = new();
+        using IContainer container = CreateContainer(db);
+        IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
+        PersistUncached(repository, db, new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, 3), new BlockInfo(TestItem.KeccakB, 4)));
+        repository.TryGetMainChainBlockWithoutCaching(1, out _, out _);
+
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        bool found = repository.TryGetMainChainBlockWithoutCaching(1, out _, out _);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(allocated, Is.Zero);
+        }
+    }
+
+    private static IEnumerable<TestCaseData> StoredLevels()
+    {
+        (string Name, byte[] Rlp)[] levels =
+        [
+            ("missing", null),
+            ("empty value", []),
+            ("null level", List()),
+            ("not on main chain", Level(false, List(Info(TestItem.KeccakA, 5)))),
+            ("main", Level(true, List(Info(TestItem.KeccakA, 5)))),
+            ("main with zero difficulty", Level(true, List(Info(TestItem.KeccakA, 0)))),
+            ("main with metadata", Level(true, List(Info(TestItem.KeccakA, UInt256.MaxValue, (int)BlockMetadata.Finalized)))),
+            ("main with siblings", Level(true, List(Info(TestItem.KeccakA, 5), Info(TestItem.KeccakB, 6)))),
+            ("main zero hash", Level(true, List(Info(Keccak.Zero, 5)))),
+            ("main after an empty info", Level(true, List(List(), Info(TestItem.KeccakB, 6)))),
+            ("main after an info without hash", Level(true, List(List(Item([]), Item([1]), Item([])), Info(TestItem.KeccakB, 6)))),
+            ("main in a legacy trailing item", Level(true, List(), Info(TestItem.KeccakC, 8))),
+            ("main before a legacy trailing item", Level(true, List(Info(TestItem.KeccakA, 5)), Info(TestItem.KeccakC, 8))),
+        ];
+
+        foreach ((string name, byte[] rlp) in levels)
+        {
+            yield return new TestCaseData(false, rlp).SetArgDisplayNames("mem", name);
+            yield return new TestCaseData(true, rlp).SetArgDisplayNames("native", name);
+        }
+    }
+
+    private static byte[] Level(bool hasMainChainBlock, params byte[][] items) =>
+        List([Item(hasMainChainBlock ? [1] : []), .. items]);
+
+    private static byte[] Info(Hash256 hash, UInt256 totalDifficulty, int? metadata = null)
+    {
+        byte[] difficulty = totalDifficulty.IsZero ? [] : totalDifficulty.ToBigEndian().WithoutLeadingZeros().ToArray();
+        return metadata is null
+            ? List(Item(hash.BytesToArray()), Item([1]), Item(difficulty))
+            : List(Item(hash.BytesToArray()), Item([1]), Item(difficulty), Item([(byte)metadata.Value]));
+    }
+
+    private static byte[] Item(byte[] bytes) =>
+        bytes.Length == 1 && bytes[0] < 0x80 ? bytes : [.. Prefix(0x80, bytes.Length), .. bytes];
+
+    private static byte[] List(params byte[][] items)
+    {
+        byte[] content = items.SelectMany(static i => i).ToArray();
+        return [.. Prefix(0xc0, content.Length), .. content];
+    }
+
+    private static byte[] Prefix(byte offset, int length)
+    {
+        if (length < 56) return [(byte)(offset + length)];
+        byte[] lengthBytes = ((ulong)length).ToBigEndianByteArrayWithoutLeadingZeros();
+        return [(byte)(offset + 55 + lengthBytes.Length), .. lengthBytes];
     }
 
     private static IContainer CreateContainer(IDb blockInfosDb) => new ContainerBuilder()

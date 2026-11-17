@@ -17,6 +17,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Memory;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
@@ -32,6 +33,7 @@ namespace Nethermind.JsonRpc;
 public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig, GCKeeper gcKeeper) : IJsonRpcService
 {
     private const int MaxPooledParameterCount = 8;
+    private const int MaxLoggedExceptionChainDepth = 8;
 
     private readonly ILogger _logger = logManager.GetClassLogger<JsonRpcService>();
     private readonly IRpcModuleProvider _rpcModuleProvider = rpcModuleProvider;
@@ -61,25 +63,29 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             ValueTask<JsonRpcResponse> responseTask = ExecuteAsync(rpcRequest, methodName, method!, context, cancellationToken);
             return responseTask.IsCompletedSuccessfully
                 ? responseTask
-                : AwaitRequestAsync(responseTask, rpcRequest);
+                : AwaitRequestAsync(responseTask, rpcRequest, cancellationToken);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!IsTransportCancellation(ex, cancellationToken))
         {
             return ValueTask.FromResult<JsonRpcResponse>(ReturnErrorResponse(rpcRequest, ex));
         }
 
-        async ValueTask<JsonRpcResponse> AwaitRequestAsync(ValueTask<JsonRpcResponse> responseTask, JsonRpcRequest rpcRequest)
+        async ValueTask<JsonRpcResponse> AwaitRequestAsync(ValueTask<JsonRpcResponse> responseTask, JsonRpcRequest rpcRequest, CancellationToken cancellationToken)
         {
             try
             {
                 return await responseTask;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (!IsTransportCancellation(ex, cancellationToken))
             {
                 return ReturnErrorResponse(rpcRequest, ex);
             }
         }
     }
+
+    /// <summary>Whether <paramref name="ex"/> is the caller abandoning the request, which is not answered: nobody is left to read the answer.</summary>
+    private static bool IsTransportCancellation(Exception ex, CancellationToken cancellationToken) =>
+        ex is OperationCanceledException canceled && cancellationToken.IsCancellationRequested && canceled.CancellationToken == cancellationToken;
 
     private JsonRpcErrorResponse ReturnErrorResponse(JsonRpcRequest rpcRequest, Exception ex)
     {
@@ -98,7 +104,12 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             _ => (ErrorCodes.InternalError, "Internal error", false),
         };
 
-        if (!suppressWarning && _logger.IsError) _logger.Error($"Error during method execution, request: {DescribeRequestForLog(rpcRequest)}, exception: {ex.GetType().Name}{DiagnosticStackTrace(ex)}");
+        if (!suppressWarning)
+        {
+            if (_logger.IsError) _logger.Error($"Error during method execution, request: {DescribeRequestForLog(rpcRequest)}, exception: {ex.GetType().Name}{DiagnosticStackTrace(ex)}");
+            LogInternalErrorCause(rpcRequest, ex);
+        }
+
         return GetErrorResponse(rpcRequest.Method, errorCode, errorText, in rpcRequest.IdRef, suppressWarning: suppressWarning);
     }
 
@@ -107,12 +118,32 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     private static string DiagnosticStackTrace(Exception ex) =>
         SensitiveLogMasking.Enabled || ex.StackTrace is not { } stack ? string.Empty : Environment.NewLine + stack;
 
+    /// <summary>
+    /// Logs the type and message of each exception behind an internal error. Neither the response nor the Error
+    /// line carries them, so without this line the cause of a -32603 is recorded nowhere.
+    /// </summary>
+    /// <remarks>
+    /// Messages are free-form and can repeat values from the request, so the chain stays at Debug, below the
+    /// default level, and is marked <c>:hide</c> so that <c>Init.MaskSensitiveData</c> replaces it as a whole.
+    /// </remarks>
+    private void LogInternalErrorCause(JsonRpcRequest? request, Exception ex)
+    {
+        if (_logger.IsDebug) _logger.Debug($"Internal error cause, request: {DescribeRequestForLog(request)}, exception chain: {ex.DescribeChain(MaxLoggedExceptionChainDepth):hide}");
+    }
+
     private async ValueTask<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context, CancellationToken cancellationToken)
     {
         const string GetLogsMethodName = "eth_getLogs";
 
+        LogRequest(methodName);
+
+        if (request.ParamsKind is not (JsonValueKind.Undefined or JsonValueKind.Null or JsonValueKind.Array))
+        {
+            return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "non-array args", in request.IdRef);
+        }
+
         // Rented before decoding so that requests the pool queues or sheds do not pay for, or hold, decoded params.
-        IRpcModule rpcModule = await _rpcModuleProvider.Rent(method);
+        IRpcModule rpcModule = await _rpcModuleProvider.Rent(method, cancellationToken);
         if (rpcModule is IContextAwareRpcModule contextAwareModule)
         {
             contextAwareModule.Context = context;
@@ -297,8 +328,6 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         ExpectedParameter[] expectedParameters = method.ExpectedParameters;
         bool useUtf8Parameters = CanDeserializeParametersFromUtf8(request, expectedParameters);
         JsonElement providedParameters = useUtf8Parameters ? default : request.Params;
-
-        LogRequest(methodName);
 
         return expectedParameters.Length == 0
             ? PrepareNoParameters(
@@ -732,6 +761,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         {
             ex = (ex as TargetInvocationException)?.InnerException ?? ex;
             if (_logger.IsError) _logger.Error($"Error during method execution, request: {DescribeRequestForLog(request)}, exception: {ex.GetType().Name}{DiagnosticStackTrace(ex)}");
+            LogInternalErrorCause(request, ex);
             return GetErrorResponse(methodName, ErrorCodes.InternalError, "Internal error", in request.IdRef, returnAction);
         }
 

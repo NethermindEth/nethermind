@@ -7,6 +7,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Collections;
 using Nethermind.State.Flat.Persistence;
@@ -439,10 +440,10 @@ public class FlatTrieVerifier
         ReadOnlySpan<byte> trieAccountRlp = trieLeaf.Value.AsSpan();
 
         RlpReader flatReader = new(flatAccountRlp);
-        Account? flatAccount = AccountDecoder.Slim.Decode(ref flatReader);
+        Account? flatAccount = AccountDecoder.Slim.Decode(ref flatReader, RlpBehaviors.TrustedInput);
 
         RlpReader trieReader = new(trieAccountRlp);
-        Account? trieAccount = AccountDecoder.Instance.Decode(ref trieReader);
+        Account? trieAccount = AccountDecoder.Instance.Decode(ref trieReader, RlpBehaviors.TrustedInput);
 
         if (flatAccount != trieAccount)
         {
@@ -819,7 +820,7 @@ public class FlatTrieVerifier
         }
 
         RlpReader ctx = new(trieValue);
-        byte[] decodedTrieValue = ctx.DecodeByteArray();
+        byte[] decodedTrieValue = ctx.DecodeByteArray<OffFlag>();
 
         ReadOnlySpan<byte> flatTrimmed = flatValue.WithoutLeadingZeros();
         ReadOnlySpan<byte> trieTrimmed = decodedTrieValue.AsSpan().WithoutLeadingZeros();

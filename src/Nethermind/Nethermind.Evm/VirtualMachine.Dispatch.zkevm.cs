@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using InlineIL;
 using Nethermind.Core;
+using Nethermind.Evm.CodeAnalysis;
 
 namespace Nethermind.Evm;
 
@@ -24,8 +25,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public ref TGasPolicy Gas;
 
         /// <summary>The table the chain dispatches through, for handlers that reload it after their body.</summary>
-        /// <remarks>In the form <see cref="RawCalliHelper.DispatchTable"/> gives, so read only through the chain's table helpers.</remarks>
+        /// <remarks>
+        /// In the form <see cref="RawCalliHelper.DispatchTable"/> gives, or the handler cache's bias where
+        /// <see cref="RawCalliHelper.CachesHandlers"/> is on, so read only through the chain's table helpers.
+        /// </remarks>
         public nint* OpcodeHandlers;
+
+        /// <summary>The paired table in the form <see cref="RawCalliHelper.DispatchTable"/> gives, where the chain carries a handler cache instead.</summary>
+        public nint* PairedHandlers;
+
+        /// <summary>Whether handlers may write the handler cache the chain carries: not the shared one past the caches' memory bound.</summary>
+        public bool HandlerCacheWritable;
 
         public VirtualMachine<TGasPolicy> Vm;
 
@@ -95,16 +105,57 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowGasOutOfRange() => throw new InvalidOperationException("The frame's gas does not fit the 32-bit dispatch chain.");
 
+    /// <summary>The table <see cref="GetCheckedPairedHandlers"/> paired last.</summary>
+    private static PairedHandlers? _checkedPairedHandlers;
+
+    /// <summary>Whether the chain <see cref="RunDispatchLoop{TTracingInst, TCancelable}"/> entered last runs on <see cref="GetCheckedPairedHandlers"/>.</summary>
+    private bool _chainTestsEveryCharge;
+
+    /// <summary>The entries of the untraced table (<see cref="OpcodeTable.NoTrace"/>) before the guest's handlers replaced them.</summary>
+    /// <remarks>Null when the guest's handlers replace none, as under a gas policy other than <see cref="EthereumGasPolicy"/>.</remarks>
+    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[]? _sharedHandlers;
+
+    /// <summary>The paired table of the shared handlers only, which test the gas before every charge.</summary>
+    /// <remarks>
+    /// The entries are those the untraced table had before the guest's handlers replaced them, so the shared handlers
+    /// are the instantiations the guest table falls back to: a table of other instantiations would add a copy of every
+    /// handler to the guest image. Only the untraced table runs a frame here, as the traced and cancelable ones hold
+    /// only the shared handlers already.
+    /// </remarks>
+    private nint[] GetCheckedPairedHandlers() =>
+        PairHandlersOnce<OffFlag>(_sharedHandlers ?? _opcodeHandlers, ref _checkedPairedHandlers);
+
+    /// <summary>Whether a frame with <paramref name="executionGas"/> left must run on <see cref="GetCheckedPairedHandlers"/>.</summary>
+    /// <remarks>
+    /// The guest's handlers charge some opcodes untested, so past a shortfall they run on to the next test, at the
+    /// latest the end of the code. Without this test a frame called with no gas would run all of its code, for the
+    /// cost of the call. With it, the frame has at least one unit of gas for each opcode it can run past a shortfall,
+    /// and it consumes all of that gas as it halts: no more than any code buys, as every opcode that does not halt
+    /// costs at least one unit. The bound is the whole code, not the bytes after the program counter: a frame can jump
+    /// back before its shortfall.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool TestsEveryCharge(ulong executionGas, nint codeLength) => executionGas < (ulong)codeLength;
+
     /// <summary>Runs the current frame on the dispatch chain.</summary>
-    /// <remarks>The guest never consults a frame code runner, so a frame always runs on the dispatch chain.</remarks>
+    /// <remarks>
+    /// The guest never consults a frame code runner, so a frame always runs on the dispatch chain. A chain that leaves
+    /// with <c>Suspend</c> and no staged child ran that child nested, and the frame continues on the handlers its gas
+    /// now allows (<see cref="TryRunStagedFrameNested"/>).
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private EvmExceptionType RunFrameCode<TTracingInst, TCancelable>(
         scoped ref EvmStack stack,
         scoped ref TGasPolicy gas,
         ref nint programCounter)
         where TTracingInst : struct, IFlag
-        where TCancelable : struct, IFlag =>
-        RunDispatchLoop<TTracingInst, TCancelable>(ref stack, ref gas, ref programCounter);
+        where TCancelable : struct, IFlag
+    {
+        EvmExceptionType exceptionType;
+        do exceptionType = RunDispatchLoop<TTracingInst, TCancelable>(ref stack, ref gas, ref programCounter);
+        while (exceptionType == EvmExceptionType.Suspend && ReturnData is null);
+        return exceptionType;
+    }
 
     /// <summary>Runs the current frame's bytecode until it halts, faults, or yields a child frame.</summary>
     /// <param name="programCounter">On entry the offset to resume from; on exit the offset reached.</param>
@@ -113,8 +164,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// indicates a yielded child frame.
     /// </returns>
     /// <remarks>
+    /// <para>
     /// The guest cannot be cancelled (<see cref="DispatchFlags.ConstCancelable"/>), so a cancelable table runs the
     /// chain to its end like any other.
+    /// </para>
+    /// <para>
+    /// A frame with less gas than its code has bytes runs on the shared handlers (<see cref="TestsEveryCharge"/>). The
+    /// traced and cancelable tables hold only those already.
+    /// </para>
     /// </remarks>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -128,7 +185,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         if ((nuint)programCounter >= (nuint)stack.CodeLength)
             return EvmExceptionType.None;
 
-        nint[] handlers = GetPairedHandlers<TTracingInst>(_opcodeHandlers);
+        ulong executionGas = GetExecutionGas(ref gas);
+        bool testsEveryCharge = !TTracingInst.IsActive && !TCancelable.IsActive && TestsEveryCharge(executionGas, stack.CodeLength);
+        _chainTestsEveryCharge = testsEveryCharge;
+        nint[] handlers = testsEveryCharge
+            ? GetCheckedPairedHandlers()
+            : GetPairedHandlers<TTracingInst>(_opcodeHandlers);
 
         // Safety: PairHandlers allocates the table pinned. Every bytecode read lands in the code or in the padding that
         // follows CodeInfo.ExecutionCodeSpan, and any two bytes are a valid table index.
@@ -136,13 +198,42 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             nint* entries = (nint*)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(handlers));
             nint* table = CompactsHandlers ? (nint*)((uint*)entries + FollowerHandlersLength) : entries + FollowerHandlersLength;
             nint* dispatched = RawCalliHelper.DispatchTable(table);
+            nint* carried = dispatched;
+            nint uncached = 0;
+            nint outerUncached = 0;
+            bool readOnly = true;
+            if (RawCalliHelper.CachesHandlers)
+            {
+                // The code's own cache serves one table; a frame on the shared handlers reads the empty shared cache instead.
+                nint[] cache = testsEveryCharge
+                    ? CodeInfo.ReadOnlyHandlerCache((int)stack.CodeLength)
+                    : stack.GetHandlerCache(handlers, out readOnly);
+                outerUncached = RawCalliHelper.ResolveEmptySlots(readOnly, out uncached);
+                carried = RawCalliHelper.HandlerCacheBias(cache, ref stack.Code);
+            }
             // Unscoped because a function pointer cannot declare its parameters scoped; the chain ends before this call does.
-            DispatchState state = new() { Gas = ref Unsafe.AsRef(in gas), OpcodeHandlers = dispatched, Vm = this, Memory = ref VmState.Memory };
+            DispatchState state = new()
+            {
+                Gas = ref Unsafe.AsRef(in gas),
+                OpcodeHandlers = carried,
+                PairedHandlers = dispatched,
+                HandlerCacheWritable = !readOnly,
+                Vm = this,
+                Memory = ref VmState.Memory
+            };
 
-            ushort opcodes = Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref stack.Code, programCounter));
+            // The cache resolves the entries the paired table tags (see RawCalliHelper.ResolveHandler).
+            nint first = RawCalliHelper.CachesHandlers
+                ? RawCalliHelper.FirstHandler(carried, ref Unsafe.Add(ref stack.Code, programCounter), uncached)
+                : CompactsHandlers
+                    ? (nint)((uint*)table)[Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref stack.Code, programCounter))]
+                    : table[Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref stack.Code, programCounter))];
             EvmExceptionType exceptionType =
-                ((delegate*<ref EvmStack, nuint, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)(CompactsHandlers ? (nint)((uint*)table)[opcodes] : table[opcodes]))(
-                    ref stack, ChainGas(GetExecutionGas(ref gas)), ref state, ref Unsafe.Add(ref stack.Code, programCounter), stack.Head, dispatched, ref stack.Code, ref Unsafe.Add(ref stack.Bottom, stack.Head * EvmStack.WordSize));
+                ((delegate*<ref EvmStack, nuint, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)first)(
+                    ref stack, ChainGas(executionGas), ref state, ref Unsafe.Add(ref stack.Code, programCounter), stack.Head, carried, ref stack.Code, ref Unsafe.Add(ref stack.Bottom, stack.Head * EvmStack.WordSize));
+            // The guest fails fast on any exception, so the chain always returns here.
+            if (RawCalliHelper.CachesHandlers)
+                RawCalliHelper.RestoreEmptySlots(outerUncached);
             stack.Head = state.Head;
             programCounter = state.FinalProgramCounter;
             return exceptionType;
@@ -297,7 +388,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             // Padded code reads STOP past its end, so wherever a successful opcode leaves the counter it resolves to a
             // handler. A failed one can leave it anywhere, so this read waits for the status.
             ip = ref Unsafe.Add(ref code, pc);
-            nint next = HandlerAt(handlers, PairAt(ref ip));
+            nint next = NextHandler(handlers, ref ip);
 
             Debug.Assert(state.Vm.ReturnData is null,
                 "A handler that stages ReturnData must report a non-None status, or dispatch will continue past the halt");
@@ -403,7 +494,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             if (pc != fallthroughPc)
             {
                 ip = ref Unsafe.Add(ref code, pc);
-                nint taken = HandlerAt(handlers, ip);
+                nint taken = NextHandler(handlers, ref ip, ip);
                 IL.EnsureLocal(in taken);
 
                 IL.Emit.Ldarg(nameof(stack));
@@ -432,7 +523,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             else
             {
                 ip = ref Unsafe.Add(ref code, fallthroughPc);
-                nint notTaken = HandlerAt(handlers, ip);
+                nint notTaken = NextHandler(handlers, ref ip, ip);
                 IL.EnsureLocal(in notTaken);
 
                 IL.Emit.Ldarg(nameof(stack));

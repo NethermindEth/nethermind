@@ -24,9 +24,10 @@ public sealed partial class UInt256Comparer : IEqualityComparer<UInt256>
 
     /// <summary>The comparer a slot-keyed container should be given, or <c>null</c> to let it pick.</summary>
     /// <remarks>
-    /// Mirrors <see cref="GenericEqualityComparer.GetOptimized{T}()"/>: <c>null</c> on the host, where
-    /// <see cref="EqualityComparer{T}.Default"/> is an intrinsic the JIT devirtualizes at each call site
-    /// and the package's own per-process seed already applies. The guest has neither and takes this.
+    /// <c>null</c> on the host, where <see cref="EqualityComparer{T}.Default"/> is an intrinsic the JIT
+    /// devirtualizes at each call site and the package's own per-process seed already applies. The guest
+    /// takes this only for its hash seed, unlike <see cref="GenericEqualityComparer.GetOptimized{T}()"/>,
+    /// which gives <c>null</c> for value types there.
     /// </remarks>
     public static partial IEqualityComparer<UInt256>? GetOptimized();
 

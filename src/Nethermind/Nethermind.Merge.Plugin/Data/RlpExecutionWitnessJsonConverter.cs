@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core.Collections;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 
@@ -41,30 +42,31 @@ internal sealed class RlpExecutionWitnessJsonConverter : JsonConverter<Witness>
         using ArrayPoolSpan<byte> buffer = new(pool, totalLength);
 
         Span<byte> rlp = buffer;
-        RlpWriter rlpWriter = new(rlp);
+        RlpWriter rlpWriter = RlpWriter.ContentWriter(rlp);
 
-        rlpWriter.StartSequence(contentLength);
+        RlpSequence sequence = rlpWriter.StartSequence(contentLength);
         WriteRaw(ref rlpWriter, headers, headersLength);
         WriteByteStrings(ref rlpWriter, codes, codesLength);
         WriteByteStrings(ref rlpWriter, state, stateLength);
+        rlpWriter.EndSequence(sequence);
 
-        ByteArrayConverter.Convert(writer, rlp[..rlpWriter.Position], skipLeadingZeros: false);
+        ByteArrayConverter.Convert(writer, rlp[..rlpWriter.Length], skipLeadingZeros: false);
     }
 
-    private static void WriteRaw<TWriter>(ref TWriter writer, ReadOnlySpan<byte[]> items, int contentLength)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    private static void WriteRaw(ref RlpWriter writer, ReadOnlySpan<byte[]> items, int contentLength)
     {
-        writer.StartSequence(contentLength);
+        RlpSequence sequence = writer.StartSequence(contentLength);
         for (int i = 0; i < items.Length; i++)
-            writer.Write(items[i]);
+            writer.WriteEncoded(items[i]);
+        writer.EndSequence(sequence);
     }
 
-    private static void WriteByteStrings<TWriter>(ref TWriter writer, ReadOnlySpan<byte[]> items, int contentLength)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    private static void WriteByteStrings(ref RlpWriter writer, ReadOnlySpan<byte[]> items, int contentLength)
     {
-        writer.StartSequence(contentLength);
+        RlpSequence sequence = writer.StartSequence(contentLength);
         for (int i = 0; i < items.Length; i++)
             writer.Encode(items[i]);
+        writer.EndSequence(sequence);
     }
 
     private static int RawContentLength(ReadOnlySpan<byte[]> items)

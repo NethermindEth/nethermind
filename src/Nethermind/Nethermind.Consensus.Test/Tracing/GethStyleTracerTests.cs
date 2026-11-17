@@ -19,6 +19,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Logging;
 using Nethermind.State.OverridableEnv;
 using NSubstitute;
 using NUnit.Framework;
@@ -526,7 +527,8 @@ public class GethStyleTracerTests
             Substitute.For<IFileSystem>(),
             Substitute.For<IOverridableEnv<GethStyleTracer.BlockProcessingComponents>>(),
             NullPrefixStateSeedSource.Instance,
-            Substitute.For<IOverridableCodeInfoRepository>());
+            Substitute.For<IOverridableCodeInfoRepository>(),
+            LimboLogs.Instance);
 
 #pragma warning disable CS0618
         InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>

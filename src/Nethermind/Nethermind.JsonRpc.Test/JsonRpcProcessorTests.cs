@@ -646,6 +646,36 @@ public class JsonRpcProcessorTests
     }
 
     [Test]
+    public async Task Batch_rejects_non_array_params_without_aborting_other_items()
+    {
+        JsonRpcConfig config = new();
+        RpcModuleProvider provider = new(new Testably.Abstractions.RealFileSystem(), config, new EthereumJsonSerializer(), LimboLogs.Instance);
+        IEthRpcModule module = Substitute.For<IEthRpcModule>();
+        module.eth_chainId().Returns(ResultWrapper<ulong>.Success(1));
+        provider.Register(new SingletonModulePool<IEthRpcModule>(new SingletonFactory<IEthRpcModule>(module), true));
+        using GCKeeper gcKeeper = new(NoGCStrategy.Instance, LimboLogs.Instance);
+        JsonRpcProcessor processor = CreateProcessor(new JsonRpcService(provider, LimboLogs.Instance, config, gcKeeper), config);
+
+        using CollectedJsonRpcResponses responses = await ProcessAsync(
+            processor,
+            CreateBatchRequest(
+                CreateRequest("1", "eth_chainId", "{\"a\":1}"),
+                CreateRequest("2", "eth_chainId", "[]")),
+            CreateHttpContext());
+
+        List<JsonRpcResponse> items = AssertOnlyResult(responses).BatchItems!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(items, Has.Count.EqualTo(2));
+            Assert.That(items[0], Is.TypeOf<JsonRpcErrorResponse>());
+            Assert.That(((JsonRpcErrorResponse)items[0]).Error?.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(((JsonRpcErrorResponse)items[0]).Error?.Message, Is.EqualTo("non-array args"));
+            Assert.That(RpcTest.AssertSuccess<ulong>(items[1]), Is.EqualTo(1));
+        }
+        module.Received(1).eth_chainId();
+    }
+
+    [Test]
     public async Task Batch_executes_consecutive_calls_concurrently_and_answers_in_order()
     {
         List<string> events = [];
@@ -1931,6 +1961,69 @@ public class JsonRpcProcessorTests
         }
 
         return sink.Responses;
+    }
+
+    public enum QueuedRoute { Single, SerialBatch, InlineWindowHead, ConcurrentWindow }
+
+    public enum QueuedCaller { Plain, Authenticated, Ipc }
+
+    /// <remarks>
+    /// Each row reaches the module queue from its own dispatch site; the service and the processor log to <c>logger</c>
+    /// at Debug, so a cancelled item reported as failed would show.
+    /// </remarks>
+    [TestCase(QueuedRoute.Single, RequestTransport.HttpMemory, QueuedCaller.Plain)]
+    [TestCase(QueuedRoute.Single, RequestTransport.HttpMemory, QueuedCaller.Authenticated)]
+    [TestCase(QueuedRoute.Single, RequestTransport.WsSegmentedPipe, QueuedCaller.Plain)]
+    [TestCase(QueuedRoute.Single, RequestTransport.WsMemory, QueuedCaller.Ipc)]
+    [TestCase(QueuedRoute.SerialBatch, RequestTransport.HttpMemory, QueuedCaller.Plain)]
+    [TestCase(QueuedRoute.InlineWindowHead, RequestTransport.HttpMemory, QueuedCaller.Plain)]
+    [TestCase(QueuedRoute.ConcurrentWindow, RequestTransport.HttpMemory, QueuedCaller.Plain)]
+    [TestCase(QueuedRoute.ConcurrentWindow, RequestTransport.WsSegmentedPipe, QueuedCaller.Plain)]
+    public async Task Aborted_queued_requests_end_unanswered_and_unexecuted(QueuedRoute route, RequestTransport transport, QueuedCaller caller)
+    {
+        TestLogger logger = new() { IsDebug = true, IsTrace = false };
+        OneLoggerLogManager logManager = new(new(logger));
+        using QueuedRentalFixture fixture = new(new JsonRpcConfig { EthModuleConcurrentInstances = 4 }, logManager);
+        IBatchConcurrencyStrategy strategy = Substitute.For<IBatchConcurrencyStrategy>();
+        strategy.Methods.Returns([QueuedRentalFixture.Method]);
+        strategy.CanExecuteConcurrently(Arg.Any<JsonRpcRequest>(), Arg.Any<int>()).Returns(true);
+        JsonRpcProcessor processor = fixture.CreateProcessor(logManager, strategy);
+        (string body, int queued) = route switch
+        {
+            QueuedRoute.Single => (QueuedRentalFixture.Request(), 1),
+            QueuedRoute.SerialBatch => (CreateBatchRequest(QueuedRentalFixture.Request("1", QueuedRentalFixture.SerialMethod), QueuedRentalFixture.Request("2", QueuedRentalFixture.SerialMethod)), 1),
+            QueuedRoute.InlineWindowHead => (CreateBatchRequest(QueuedRentalFixture.Request("1"), QueuedRentalFixture.Request("2", QueuedRentalFixture.SerialMethod)), 1),
+            _ => (CreateBatchRequest(QueuedRentalFixture.Request("1"), QueuedRentalFixture.Request("2"), QueuedRentalFixture.Request("3")), 3),
+        };
+        JsonRpcContext context = caller switch
+        {
+            QueuedCaller.Authenticated => new(RpcEndpoint.Http, url: new JsonRpcUrl("http", "127.0.0.1", 8551, RpcEndpoint.Http, true, [ModuleType.Eth])),
+            QueuedCaller.Ipc => new(RpcEndpoint.IPC),
+            _ => CreateContext(transport),
+        };
+        QueuedRentalFixture.IProbeRpcModule held = fixture.Hold();
+        using CancellationTokenSource abort = new();
+        CollectingJsonRpcResponseSink sink = new();
+        long abandoned = Metrics.JsonRpcAbandonedRequests;
+        long errors = Metrics.JsonRpcErrors;
+
+        Task processing = ProcessAsync(processor, Encoding.UTF8.GetBytes(body), transport, sink, context, abort.Token).AsTask();
+        await fixture.WaitUntilQueued(queued);
+        await abort.CancelAsync();
+        OperationCanceledException? canceled = await Assert.CatchAsync<OperationCanceledException>(() => processing.WaitAsync(QueuedRentalFixture.Watchdog));
+        await fixture.ReleaseAndAssertUsable(held);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(canceled!.CancellationToken, Is.EqualTo(abort.Token));
+            Assert.That(fixture.Invocations, Is.Zero);
+            Assert.That(sink.Responses, Is.Empty);
+            // Each queued request is counted once, by the dispatch that saw it abandoned, and not as an error.
+            Assert.That(Metrics.JsonRpcAbandonedRequests - abandoned, Is.EqualTo(queued));
+            Assert.That(Metrics.JsonRpcErrors - errors, Is.Zero);
+            Assert.That(logger.LogList, Has.All.Matches<string?>(static line => line is not null
+                && (line.StartsWith("JSON RPC request ", StringComparison.Ordinal) || line.StartsWith("JSON RPC batch request ", StringComparison.Ordinal))));
+        }
     }
 
     private static readonly string[] NotOneDocumentBodies =

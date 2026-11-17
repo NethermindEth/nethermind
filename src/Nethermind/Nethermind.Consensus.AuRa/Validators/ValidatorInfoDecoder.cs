@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.AuRa.Validators
@@ -10,34 +11,28 @@ namespace Nethermind.Consensus.AuRa.Validators
     {
         protected override ValidatorInfo? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (decoderContext.IsNextItemEmptyList())
+            if (decoderContext.TryReadEmptySequence())
             {
-                decoderContext.ReadByte();
                 return null;
             }
 
-            int length = decoderContext.ReadSequenceLength();
-            int check = decoderContext.Position + length;
-            ulong finalizingBlockNumber = decoderContext.DecodeULong();
-            ulong previousFinalizingBlockNumber = decoderContext.DecodeULong();
+            RlpReader fields = decoderContext.EnterSequence(out int itemLength);
+            ulong finalizingBlockNumber = fields.DecodeULong();
+            ulong previousFinalizingBlockNumber = fields.DecodeULong();
 
-            int addressesSequenceLength = decoderContext.ReadSequenceLength();
-            int addressesCheck = decoderContext.Position + addressesSequenceLength;
-            int count = addressesSequenceLength / Rlp.LengthOfAddressRlp;
-            decoderContext.GuardLimit(count);
-            Address[] addresses = new Address[count];
-            int i = 0;
-            while (decoderContext.Position < addressesCheck)
+            RlpReader addressesReader = fields.EnterSequence(out int addressesItemLength);
+            Address[] addresses = new Address[addressesReader.CountItems(RlpLimit.DefaultLimit)];
+            for (int i = 0; i < addresses.Length; i++)
             {
-                addresses[i++] = decoderContext.DecodeAddress();
+                addresses[i] = addressesReader.DecodeAddress();
             }
-            decoderContext.Check(addressesCheck);
-            decoderContext.Check(check);
+            fields.ExitSequence(addressesReader, addressesItemLength);
+            decoderContext.ExitSequence(fields, itemLength);
 
             return new ValidatorInfo(finalizingBlockNumber, previousFinalizingBlockNumber, addresses);
         }
 
-        public override void Encode<TWriter>(ref TWriter writer, ValidatorInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode(ref RlpWriter writer, ValidatorInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -46,14 +41,16 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
 
             (int contentLength, int validatorLength) = GetContentLength(item, rlpBehaviors);
-            writer.StartSequence(contentLength);
+            RlpSequence sequence = writer.StartSequence(contentLength);
             writer.Encode(item.FinalizingBlockNumber);
             writer.Encode(item.PreviousFinalizingBlockNumber);
-            writer.StartSequence(validatorLength);
+            RlpSequence validators = writer.StartSequence(validatorLength);
             for (int i = 0; i < item.Validators.Length; i++)
             {
                 writer.Encode(item.Validators[i]);
             }
+            writer.EndSequence(validators);
+            writer.EndSequence(sequence);
         }
 
         public override int GetLength(ValidatorInfo? item, RlpBehaviors rlpBehaviors) => item is null ? 1 : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);

@@ -182,6 +182,33 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
 
     /// <inheritdoc/>
     /// <remarks>
+    /// A transaction held in the cache or by a pending update is served from memory instead, as
+    /// <see cref="TryGetValueNonLocked"/> does. Unlike that read, this one does not add the transaction to the cache.
+    /// </remarks>
+    internal override bool TryGetAvailableCellMask(ValueHash256 hash, out BlobCellMask availableMask, out IOwnedReadOnlyList<byte>? networkForm)
+    {
+        networkForm = null;
+        using McsLock.Disposable lockRelease = Lock.Acquire();
+        if (!base.TryGetValueNonLocked(hash, out Transaction? lightTx))
+        {
+            availableMask = default;
+            return false;
+        }
+
+        availableMask = GetAvailableCellMask(lightTx);
+        if (lightTx is LightTransaction { Type: TxType.Blob, BlobCellMask.IsFull: true }
+            && !(_pendingBlobUpdates.TryGetValue(hash, out PendingBlobUpdate? pendingUpdate) && pendingUpdate.Transaction is not null)
+            && !_blobTxCache.Contains(hash)
+            && _blobTxStorage is IBlobTxNetworkFormStorage storage)
+        {
+            storage.TryGetNetworkForm(hash, lightTx.Timestamp, out networkForm);
+        }
+
+        return true;
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
     /// A concurrent second caller reports the transaction as absent rather than waiting for the
     /// in-progress storage read, which keeps the read de-duplicated without blocking a pool thread.
     /// The miss is safe: callers treat it as "not in the pool yet" and retry on a later announcement.
@@ -548,7 +575,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         }
         else
         {
-            Dictionary<TxLookupKey, int> indices = new(count);
+            Dictionary<TxLookupKey, int> indices = [with(count)];
             for (int i = 0; i < count; i++)
             {
                 if (!indices.TryGetValue(keys[i], out int index))
@@ -644,7 +671,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
                 return false;
             }
 
-            candidates = new(Math.Min(txHashes.Count, MaxBlobCellCandidates));
+            candidates = [with(Math.Min(txHashes.Count, MaxBlobCellCandidates))];
             BlobCellMask capturedMask = BlobCellMask.Empty;
             foreach (Hash256 hash in CollectionsMarshal.AsSpan(txHashes))
             {
@@ -678,7 +705,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         }
 
         candidates.Sort(static (x, y) => y.AvailableMask.Count.CompareTo(x.AvailableMask.Count));
-        List<BlobCellsCandidate> loadedCandidates = new(Math.Min(candidates.Count, requestedMask.Count));
+        List<BlobCellsCandidate> loadedCandidates = [with(Math.Min(candidates.Count, requestedMask.Count))];
         BlobCellMask loadedMask = BlobCellMask.Empty;
         int candidateLoads = 0;
         for (int i = 0;

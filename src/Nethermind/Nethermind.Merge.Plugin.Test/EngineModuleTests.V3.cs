@@ -173,7 +173,7 @@ public partial class EngineModuleTests
         ExecutionPayloadV3 payload = (await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
 
         RlpBehaviors rlpBehaviors = (inMempoolForm ? RlpBehaviors.InMempoolForm : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping;
-        payload.Transactions = transactions.Select(tx => TxDecoder.Instance.Encode(tx, rlpBehaviors).Bytes).ToArray();
+        payload.Transactions = transactions.Select(tx => TxDecoder.Instance.Encode(tx, rlpBehaviors)).ToArray();
         Hash256[] blobVersionedHashes = transactions.SelectMany(tx => tx.BlobVersionedHashes ?? []).Select(h => new Hash256(h!)).ToArray();
 
         ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
@@ -265,7 +265,7 @@ public partial class EngineModuleTests
         ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
 
         Block? b = payload.TryGetBlock().Data;
-        byte[] txRlp = TxDecoder.Instance.EncodeTx(payload.TryGetTransactions().Data![0], RlpBehaviors.SkipTypedWrapping).Bytes;
+        byte[] txRlp = TxDecoder.Instance.EncodeTx(payload.TryGetTransactions().Data![0], RlpBehaviors.SkipTypedWrapping);
         txRlp[0] = 100; // set TxType to 100
         payload.Transactions = [txRlp];
         payload.BlockHash = b!.CalculateHash();
@@ -957,7 +957,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
-        List<byte[]> request = new(requestSize);
+        List<byte[]> request = [with(requestSize)];
         for (int i = 0; i < requestSize; i++)
         {
             request.Add(Bytes.FromHexString(i.ToString("X64")));
@@ -1061,8 +1061,8 @@ public partial class EngineModuleTests
 
         Assert.That(chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
-        List<byte[]> blobVersionedHashesRequest = new(requestSize);
-        List<BlobAndProofV1?> blobsAndProofs = new(requestSize);
+        List<byte[]> blobVersionedHashesRequest = [with(requestSize)];
+        List<BlobAndProofV1?> blobsAndProofs = [with(requestSize)];
 
         int actualIndex = 0;
         for (int i = 0; i < requestSize; i++)

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
 
@@ -16,6 +17,5 @@ public class SyncInfo(QuorumCertificate highestQuorumCert, TimeoutCertificate hi
     /// <summary>Whether this is our own announcement rather than one relayed from a peer.</summary>
     public bool IsMine { get; } = isMine;
 
-    protected override void Encode(ref KeccakRlpWriter writer) =>
-        _decoder.Encode(ref writer, this, RlpBehaviors.None);
+    protected override Hash256 CalculateHash() => _decoder.ComputeHash(this);
 }

@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Db;
@@ -43,7 +44,7 @@ public class FlatStateReaderTests
     [
         new TestCaseData((Action<FlatStateReader>)(reader => reader.TryGetAccount(_header, TestItem.AddressA, out _))) { TestName = "TryGetAccount" },
         new TestCaseData((Action<FlatStateReader>)(reader => reader.GetStorage(_header, TestItem.AddressA, 1, out _))) { TestName = "GetStorage" },
-        new TestCaseData((Action<FlatStateReader>)(reader => reader.RunTreeVisitor(new TreeDumper(), _header))) { TestName = "RunTreeVisitor" },
+        new TestCaseData((Action<FlatStateReader>)(reader => reader.RunTreeVisitor(new TreeDumper(), _header, visitingOptions: null, diagnostics: null))) { TestName = "RunTreeVisitor" },
     ];
 
     [TestCaseSource(nameof(UnavailableStateReads))]
@@ -59,7 +60,7 @@ public class FlatStateReaderTests
     {
         FlatStateReader reader = CreateReader(new HistoricalStateFlatDbManager());
 
-        MissingTrieNodeException? exception = Assert.Throws<MissingTrieNodeException>(() => reader.RunTreeVisitor(new TreeDumper(), _header));
+        MissingTrieNodeException? exception = Assert.Throws<MissingTrieNodeException>(() => reader.RunTreeVisitor(new TreeDumper(), _header, visitingOptions: null, diagnostics: null));
         Assert.That(exception!.Message, Does.Contain("historical"));
     }
 
@@ -68,7 +69,7 @@ public class FlatStateReaderTests
     {
         FlatStateReader reader = CreateReader(new LateHistoricalFlatDbManager());
 
-        MissingTrieNodeException? exception = Assert.Throws<MissingTrieNodeException>(() => reader.RunTreeVisitor(new TreeDumper(), _header));
+        MissingTrieNodeException? exception = Assert.Throws<MissingTrieNodeException>(() => reader.RunTreeVisitor(new TreeDumper(), _header, visitingOptions: null, diagnostics: null));
         Assert.That(exception!.Message, Does.Contain("historical"));
     }
 
@@ -80,7 +81,7 @@ public class FlatStateReaderTests
         CurrentBundleFlatDbManager flatDbManager = new(trieReader, snapshot: null, persisted: null);
         FlatStateReader reader = CreateReader(flatDbManager);
 
-        if (fullScan) reader.RunTreeVisitor(new TreeDumper(), header);
+        if (fullScan) reader.RunTreeVisitor(new TreeDumper(), header, visitingOptions: null, diagnostics: null);
         else reader.RunTreeVisitor(new AccountProofCollector(TestItem.AddressA, [(UInt256)1]), header);
 
         using (Assert.EnterMultipleScope())
@@ -156,6 +157,19 @@ public class FlatStateReaderTests
     }
 
     [Test]
+    public void RunTreeVisitor_ReportsTheAccountOfEachStorageTrie([Values(1, 4)] int parallelism)
+    {
+        CountingTrieReader trieReader = CountingTrieReader.WithAccountsAndSlot(out Hash256 stateRoot, TestItem.AddressA, TestItem.AddressC);
+        BlockHeader header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(stateRoot).TestObject;
+        FlatStateReader reader = CreateReader(new CurrentBundleFlatDbManager(trieReader, snapshot: null, persisted: null));
+        StorageAddressCollector collector = new();
+
+        reader.RunTreeVisitor(collector, header, new VisitingOptions { MaxDegreeOfParallelism = parallelism });
+
+        Assert.That(collector.Addresses, Is.EquivalentTo(new[] { Keccak.Compute(TestItem.AddressA.Bytes), Keccak.Compute(TestItem.AddressC.Bytes) }));
+    }
+
+    [Test]
     public void Record_walk_on_one_thread_does_not_allocate([Values] bool fromPersistence)
     {
         // Sixteen leaves under a branch, held either in the buffer or only by persistence.
@@ -178,15 +192,22 @@ public class FlatStateReaderTests
         using ReadOnlySnapshotBundle bundle = new CurrentBundleFlatDbManager(new PathRlpReader(nodes), stateSnapshot, persisted: null).GatherReadOnlySnapshotBundle(new StateId(_header));
         NodeCounter counter = new();
         NodeRecordBufferVisitor<EmptyContext> walk = new(bundle, stateSnapshot, counter, new VisitingOptions { MaxDegreeOfParallelism = 1 }, diagnostics: null);
-        walk.Accept(rootHash);
+        walk.Accept(rootHash, null);
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        walk.Accept(rootHash);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        // A per-walk allocation shows in every window. A one-off runtime allocation on the test thread, seen in CI
+        // while methods tier up, shows in one window only, so the minimum excludes it.
+        const int windows = 5;
+        long allocated = long.MaxValue;
+        for (int window = 0; window < windows; window++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            walk.Accept(rootHash, null);
+            allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(counter.Nodes, Is.EqualTo(2 * 17));
+            Assert.That(counter.Nodes, Is.EqualTo((1 + windows) * 17));
             Assert.That(allocated, Is.Zero);
         }
     }
@@ -196,7 +217,7 @@ public class FlatStateReaderTests
         if (fullScan)
         {
             TreeDumper dumper = new();
-            reader.RunTreeVisitor(dumper, header);
+            reader.RunTreeVisitor(dumper, header, visitingOptions: null, diagnostics: null);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(dumper.ToString(), Does.Contain("STATE TREE"));
@@ -246,6 +267,7 @@ public class FlatStateReaderTests
     {
         public int Nodes;
         public bool IsFullDbScan => true;
+        public bool IsRangeScan => true;
         public bool ExpectAccounts => false;
         public bool ShouldVisit(in EmptyContext nodeContext, in ValueHash256 nextNode) => true;
         public void VisitTree(in EmptyContext nodeContext, in ValueHash256 rootHash) { }

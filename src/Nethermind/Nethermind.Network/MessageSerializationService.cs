@@ -2,16 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using DotNetty.Buffers;
-using DotNetty.Common.Utilities;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
-using Nethermind.Network.P2P.Messages;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Network.Rlpx;
 
 namespace Nethermind.Network;
 
@@ -56,52 +53,21 @@ public class MessageSerializationService : IMessageSerializationService
 
     public T Deserialize<T>(ArraySegment<byte> bytes) where T : MessageBase => GetSerializer<T>().Deserialize(bytes);
 
-    public T Deserialize<T>(IByteBuffer buffer) where T : MessageBase
+    public T Deserialize<T>(ZeroPacket packet) where T : MessageBase
     {
         IMessageSerializer<T> serializer = GetSerializer<T>();
-        T message = serializer is IOwningMessageSerializer<T> owningSerializer
-            ? DeserializeOwned(owningSerializer, buffer)
-            : serializer.Deserialize(buffer.AsSpan());
-        // The serializer does not report how much it read, so the whole message counts as read.
-        buffer.SetReaderIndex(buffer.WriterIndex);
-        return message;
+        Memory<byte> content = packet.Content;
+        return serializer is IOwningMessageSerializer<T> owningSerializer
+            ? owningSerializer.Deserialize(packet.LeaseContent(), content)
+            : serializer.Deserialize(content.Span);
     }
 
-    private static T DeserializeOwned<T>(IOwningMessageSerializer<T> serializer, IByteBuffer buffer) where T : MessageBase
+    public void Serialize<T>(T message, IBufferWriter<byte> writer) where T : MessageBase
     {
-        NettyBufferMemoryOwner owner = new(buffer);
-        // The owner's memory follows the reader index, which moves once the message is read.
-        return serializer.Deserialize(owner, owner.Memory);
-    }
-
-    public IByteBuffer ZeroSerialize<T>(T message, IByteBufferAllocator? allocator = null) where T : MessageBase
-        => ZeroSerialize(GetSerializer<T>(), message, allocator ?? NethermindBuffers.Default);
-
-    private static IByteBuffer ZeroSerialize<T>(IMessageSerializer<T> serializer, T message, IByteBufferAllocator allocator) where T : MessageBase
-    {
-        P2PMessage? p2PMessage = message as P2PMessage;
-        int packetTypeLength = p2PMessage is null ? 0 : Rlp.LengthOf(p2PMessage.AdaptivePacketType);
-        int length = packetTypeLength + serializer.GetLength(message);
-        IByteBuffer byteBuffer = allocator.Buffer(length);
-        try
-        {
-            // DotNetty allocators return array-backed buffers, the direct ones included.
-            Span<byte> packet = byteBuffer.Array.AsSpan(byteBuffer.ArrayOffset + byteBuffer.WriterIndex, length);
-            if (p2PMessage is not null)
-            {
-                RlpWriter writer = new(packet);
-                writer.Encode(p2PMessage.AdaptivePacketType);
-            }
-
-            SerializeExactly(serializer, packet[packetTypeLength..], message);
-            byteBuffer.SetWriterIndex(byteBuffer.WriterIndex + length);
-            return byteBuffer;
-        }
-        catch
-        {
-            byteBuffer.SafeRelease();
-            throw;
-        }
+        IMessageSerializer<T> serializer = GetSerializer<T>();
+        int length = serializer.GetLength(message);
+        SerializeExactly(serializer, writer.GetSpan(length)[..length], message);
+        writer.Advance(length);
     }
 
     // A short write would leave stale pooled bytes in the message.

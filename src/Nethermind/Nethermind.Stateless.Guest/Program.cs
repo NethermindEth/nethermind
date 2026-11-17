@@ -4,7 +4,6 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using Nethermind.Core;
 using Nethermind.Stateless.Execution;
 using Nethermind.Zkvm.Abstractions;
 
@@ -25,12 +24,16 @@ partial class Program
     static int Main()
     {
         ReadOnlySpan<byte> input = IO.ReadInput();
-        ReadOnlySpan<byte> output = StatelessExecutor.Execute(input);
+        ReadOnlySpan<byte> output = Execute(input);
 
         WriteOutput(output);
 
         return 0;
     }
+
+    /// <summary>Validates the input this guest takes, returning the encoded result.</summary>
+    /// <remarks>Implemented per input format, in <c>Input.Ssz.cs</c> or <c>Input.Trusted.cs</c>, whichever the build includes.</remarks>
+    private static partial ReadOnlySpan<byte> Execute(ReadOnlySpan<byte> input);
 
     /// <summary>Publishes the validation result as this guest's proven output.</summary>
     /// <remarks>Implemented per target; see the guest's own Program.cs.</remarks>
@@ -44,9 +47,7 @@ partial class Program
     /// a guest that failed validation still has a result to prove, and the
     /// distinction lives in the output rather than in the exit code. The
     /// <see cref="_handlingException"/> guard covers a second exception raised
-    /// while reporting the first, which would otherwise recurse. Airbender prints
-    /// only the message: the type name needs reflection metadata, which its guest,
-    /// built without it to fit its ROM, does not have.
+    /// while reporting the first, which would otherwise recurse.
     /// </remarks>
     [UnmanagedCallersOnly(EntryPoint = "ZkvmThrow")]
     static unsafe void HandleException(void* exception)
@@ -67,7 +68,7 @@ partial class Program
             nint ptr = (nint)exception;
             Exception ex = Unsafe.As<nint, Exception>(ref ptr);
 
-            IO.PrintLine(AirbenderFlag.IsActive ? ex.Message : $"{ex.GetType().FullName}: {ex.Message}");
+            IO.PrintLine($"{ex.GetType().FullName}: {ex.Message}");
         }
 
         WriteOutput(StatelessExecutor.FailureOutput.Span);
