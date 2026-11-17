@@ -609,7 +609,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
             blockFinder.FindBlock(header.Hash!, BlockTreeLookupOptions.None, header.Number)
             ?? throw new ResourceNotFoundException($"{ErrorMessages.PrunedHistoryUnavailable} for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
 
-        public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_block(BlockParameter blockParameter, string? fork = null)
+        public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_block(BlockParameter blockParameter, string? fork = null) =>
+            TraceBlockWithCancellation(blockParameter, fork, CancellationToken.None);
+
+        public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> TraceBlockWithCancellation(BlockParameter blockParameter, string? fork, CancellationToken cancellationToken)
         {
             if (IsPending(blockParameter))
             {
@@ -664,8 +667,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 runBuffered: () =>
                 {
                     IReadOnlyCollection<ParityLikeTxTrace> txTraces = forkSpec is null
-                        ? ExecuteBlockParallelOrReplay(parentHeader, block, types)
-                        : ExecuteBlock(parentHeader, block, new(types, tracerSpecs), forkSpec);
+                        ? ExecuteBlockParallelOrReplay(parentHeader, block, types, cancellationToken)
+                        : ExecuteBlock(parentHeader, block, new(types, tracerSpecs), forkSpec, cancellationToken: cancellationToken);
                     return txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace);
                 });
         }

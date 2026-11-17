@@ -26,6 +26,7 @@ using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -428,7 +429,7 @@ public class TraceStoreRpcModuleTests
     }
 
     [Test]
-    public async Task trace_filter_from_store_reads_stored_traces_only_when_the_result_is_written([Values] bool streaming)
+    public async Task trace_filter_from_store_reads_stored_traces_before_return_unless_streamed([Values] bool streaming)
     {
         TestContext test = new(streaming: streaming);
         CountingTraceSerializer serializer = new(new ParityLikeTraceSerializer(LimboLogs.Instance));
@@ -442,7 +443,7 @@ public class TraceStoreRpcModuleTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(readBeforeWrite, Is.Zero);
+            Assert.That(readBeforeWrite, Is.EqualTo(streaming ? 0 : 2));
             Assert.That(serializer.DeserializeCount, Is.EqualTo(2));
             test.InnerModule.DidNotReceive().trace_filter(Arg.Any<TraceFilterForRpc>());
         }
@@ -475,9 +476,9 @@ public class TraceStoreRpcModuleTests
     }
 
     [Test]
-    public async Task trace_filter_from_store_traces_block_live_when_stored_traces_are_gone_before_write([Values] bool streaming)
+    public async Task trace_filter_from_store_traces_block_live_when_stored_traces_are_gone_before_write()
     {
-        TestContext test = new(streaming: streaming);
+        TestContext test = new(streaming: true);
         Hash256 head = test.BlockFinder.Head!.Hash!;
         ParityLikeTxTrace liveTrace = new() { BlockHash = head, TransactionHash = TestItem.KeccakB, Action = Call(TestItem.AddressA, TestItem.AddressC) };
         test.InnerModule.trace_block(Arg.Is<BlockParameter>(p => p.BlockHash == head), Arg.Any<string?>())
@@ -491,6 +492,122 @@ public class TraceStoreRpcModuleTests
         {
             Assert.That(result, Is.EqualTo(JToken.Parse(Serializer.Serialize(ParityTxTraceFromStore.FromTxTrace(liveTrace)))).Using(JToken.EqualityComparer));
             test.InnerModule.DidNotReceive().trace_filter(Arg.Any<TraceFilterForRpc>());
+        }
+    }
+
+    [Test]
+    public async Task trace_filter_from_store_traces_unreadable_blocks_live_before_return_unless_streamed([Values] bool streaming)
+    {
+        StoreWithUnreadableBlocks test = new(streaming, readableBlocks: 0);
+        ParityLikeTxTrace liveTrace = new() { BlockHash = test.Hashes[0], TransactionHash = TestItem.KeccakB, Action = Call(TestItem.AddressA, TestItem.AddressC) };
+        test.InnerModule.trace_block(Arg.Any<BlockParameter>(), Arg.Any<string?>())
+            .Returns(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(ParityTxTraceFromStore.FromTxTrace(liveTrace).ToArray()));
+
+        using JsonRpcResponse response = test.Module.trace_filter(new TraceFilterForRpc { FromBlock = new BlockParameter(1), ToBlock = new BlockParameter(1) });
+        int liveBeforeWrite = test.InnerModule.ReceivedCalls().Count(static call => call.GetMethodInfo().Name == nameof(ITraceRpcModule.trace_block));
+        JToken result = JToken.Parse(Encoding.UTF8.GetString(await Serialize(response)))["result"]!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(liveBeforeWrite, Is.EqualTo(streaming ? 0 : 1));
+            Assert.That(result, Is.EqualTo(JToken.Parse(Serializer.Serialize(ParityTxTraceFromStore.FromTxTrace(liveTrace)))).Using(JToken.EqualityComparer));
+        }
+    }
+
+    [Test]
+    public async Task trace_filter_from_store_does_not_trace_live_after_count_is_reached([Values] bool streaming)
+    {
+        StoreWithUnreadableBlocks test = new(streaming, readableBlocks: 1);
+
+        using JsonRpcResponse response = test.Module.trace_filter(new TraceFilterForRpc { FromBlock = new BlockParameter(1), ToBlock = new BlockParameter(2), Count = 1 });
+        JToken result = JToken.Parse(Encoding.UTF8.GetString(await Serialize(response)))["result"]!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Count(), Is.EqualTo(1));
+            test.InnerModule.DidNotReceive().trace_block(Arg.Any<BlockParameter>(), Arg.Any<string?>());
+        }
+    }
+
+    [Test]
+    public async Task trace_filter_from_store_stops_live_tracing_when_the_request_times_out([Values] bool streaming)
+    {
+        const int timeoutMs = 50;
+        StoreWithUnreadableBlocks test = new(streaming, readableBlocks: 0, timeoutMs);
+        test.InnerModule.trace_block(Arg.Any<BlockParameter>(), Arg.Any<string?>())
+            .Returns(_ =>
+            {
+                Thread.Sleep(4 * timeoutMs);
+                return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success([]);
+            });
+
+        Exception? failure = await Assert.CatchAsync(async () =>
+        {
+            using JsonRpcResponse response = test.Module.trace_filter(new TraceFilterForRpc { FromBlock = new BlockParameter(1), ToBlock = new BlockParameter(2) });
+            await Serialize(response);
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failure, Is.InstanceOf<OperationCanceledException>());
+            test.InnerModule.Received(1).trace_block(Arg.Any<BlockParameter>(), Arg.Any<string?>());
+        }
+    }
+
+    [Test]
+    public async Task trace_filter_from_store_keeps_the_live_trace_block_error([Values] bool streaming)
+    {
+        StoreWithUnreadableBlocks test = new(streaming, readableBlocks: 0);
+        test.InnerModule.trace_block(Arg.Any<BlockParameter>(), Arg.Any<string?>())
+            .Returns(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail("No state available", ErrorCodes.ResourceUnavailable));
+
+        Exception? failure = await Assert.CatchAsync(async () =>
+        {
+            using JsonRpcResponse response = test.Module.trace_filter(new TraceFilterForRpc { FromBlock = new BlockParameter(1), ToBlock = new BlockParameter(1) });
+            await Serialize(response);
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failure, Is.InstanceOf<RpcErrorException>());
+            Assert.That((failure as RpcErrorException)?.Code, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+            Assert.That(failure?.Message, Is.EqualTo("No state available"));
+        }
+    }
+
+    private sealed class StoreWithUnreadableBlocks
+    {
+        private static readonly byte[] Unreadable = [0];
+
+        public ITraceRpcModule InnerModule { get; } = Substitute.For<ITraceRpcModule>();
+        public Hash256[] Hashes { get; }
+        public TraceStoreRpcModule Module { get; }
+
+        public StoreWithUnreadableBlocks(bool streaming, int readableBlocks, int timeoutMs = 20000)
+        {
+            IBlockFinder blockFinder = Build.A.BlockTree().OfChainLength(3).TestObject;
+            MemDb store = new();
+            ParityLikeTraceSerializer serializer = new(LimboLogs.Instance);
+            Hashes = [blockFinder.FindHeader(1)!.Hash!, blockFinder.FindHeader(2)!.Hash!];
+            for (int i = 0; i < Hashes.Length; i++)
+            {
+                store.Set(Hashes[i], i < readableBlocks
+                    ? serializer.Serialize([new ParityLikeTxTrace { BlockHash = Hashes[i], TransactionHash = TestItem.KeccakA, Action = Call(TestItem.AddressA, TestItem.AddressB) }])
+                    : Unreadable);
+            }
+
+            Module = new TraceStoreRpcModule(InnerModule, store, blockFinder, Substitute.For<IReceiptFinder>(), new UnreadableTraceSerializer(serializer), ParityTraceTypes.All,
+                new JsonRpcConfig { EnableTracingStreamMode = streaming, Timeout = timeoutMs }, LimboLogs.Instance, parallelization: 1);
+        }
+
+        private sealed class UnreadableTraceSerializer(ITraceSerializer<ParityLikeTxTrace> inner) : ITraceSerializer<ParityLikeTxTrace>
+        {
+            public List<ParityLikeTxTrace>? Deserialize(Span<byte> serialized) =>
+                serialized.SequenceEqual(Unreadable) ? null : inner.Deserialize(serialized);
+
+            public List<ParityLikeTxTrace>? Deserialize(Stream serialized) => inner.Deserialize(serialized);
+
+            public byte[] Serialize(IReadOnlyCollection<ParityLikeTxTrace> traces) => inner.Serialize(traces);
         }
     }
 

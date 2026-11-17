@@ -598,6 +598,20 @@ public class TraceRpcModuleTests
         }
     }
 
+    [Test]
+    public async Task Trace_block_with_cancellation_stops_on_a_canceled_token()
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = false;
+        TraceRpcModule module = (TraceRpcModule)context.TraceRpcModule;
+        using CancellationTokenSource cancellation = new();
+        await cancellation.CancelAsync();
+
+        Assert.Throws<OperationCanceledException>(() => module.TraceBlockWithCancellation(BlockParameter.Latest, null, cancellation.Token));
+    }
+
     private sealed class HeaderAfterBodyRecordingBlockTree(IBlockTree inner) : BlockTreeTestDouble(inner)
     {
         private bool _bodyLoaded;

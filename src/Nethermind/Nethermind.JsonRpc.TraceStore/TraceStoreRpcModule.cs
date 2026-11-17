@@ -6,6 +6,7 @@ using System.Text.Json;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
@@ -13,6 +14,7 @@ using Nethermind.Evm;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
@@ -70,14 +72,18 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
 
     private ResultWrapper<IEnumerable<T>> BuildStoreStreamingResult<T>(
         Action<Utf8JsonWriter, PipeWriter?, CancellationToken> runStreaming,
-        Func<IEnumerable<T>> runBuffered)
+        Func<IEnumerable<T>> runBuffered,
+        CancellationTokenSource? timeoutCts = null)
     {
         if (!_jsonRpcConfig.EnableTracingStreamMode)
         {
-            return ResultWrapper<IEnumerable<T>>.Success(runBuffered());
+            using (timeoutCts)
+            {
+                return ResultWrapper<IEnumerable<T>>.Success(runBuffered());
+            }
         }
 
-        CancellationTokenSource timeoutCts = _jsonRpcConfig.BuildTimeoutCancellationToken();
+        timeoutCts ??= _jsonRpcConfig.BuildTimeoutCancellationToken();
         try
         {
             return ResultWrapper<IEnumerable<T>>.Success(new ParityTxTraceStreamingResult<T>(runStreaming, timeoutCts, _logger)
@@ -266,81 +272,112 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(filter.FilterTxTraces([]));
         }
 
+        CancellationTokenSource timeout = _jsonRpcConfig.BuildTimeoutCancellationToken();
+        CancellationToken cancellationToken = timeout.Token;
         return BuildStoreStreamingResult<ParityTxTraceFromStore>(
-            runStreaming: (writer, pipeWriter, ct) =>
-            {
-                foreach ((Hash256 blockHash, List<ParityLikeTxTrace>? blockTraces) in ReadStoredBlockTraces(blockHashes, filter))
-                {
-                    if (filter.IsExhausted) break;
-                    if (blockTraces is null)
-                    {
-                        foreach (ParityTxTraceFromStore liveTrace in filter.FilterTxTraces(TraceBlockLive(blockHash)))
-                        {
-                            ct.ThrowIfCancellationRequested();
-                            TypeInfoJsonSerializer.Serialize(writer, liveTrace, EthereumJsonSerializer.JsonOptions);
-                            FlushPipe(writer, pipeWriter, ct);
-                        }
-
-                        continue;
-                    }
-
-                    foreach (ParityLikeTxTrace trace in blockTraces)
-                    {
-                        ct.ThrowIfCancellationRequested();
-                        ParityTxTraceFromStore.Write(writer, trace, filter, EthereumJsonSerializer.JsonOptions);
-                        FlushPipe(writer, pipeWriter, ct);
-                    }
-                }
-            },
-            runBuffered: () => filter.FilterTxTraces(ReadBlockTraceItems(blockHashes, filter)));
+            runStreaming: (writer, pipeWriter, ct) => WriteTraceFilter(blockHashes, filter, writer, pipeWriter, ct),
+            runBuffered: () => ReadTraceFilter(blockHashes, filter, cancellationToken),
+            timeout);
     }
 
-    private IEnumerable<ParityTxTraceFromStore> ReadBlockTraceItems(List<Hash256> blockHashes, TxTraceFilter filter)
+    private void WriteTraceFilter(List<Hash256> blockHashes, TxTraceFilter filter, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken)
     {
         foreach ((Hash256 blockHash, List<ParityLikeTxTrace>? blockTraces) in ReadStoredBlockTraces(blockHashes, filter))
         {
-            foreach (ParityTxTraceFromStore item in blockTraces is null ? TraceBlockLive(blockHash) : FlattenStoreItems(blockTraces))
+            if (filter.IsExhausted) break;
+            cancellationToken.ThrowIfCancellationRequested();
+            if (blockTraces is null)
             {
-                yield return item;
+                foreach (ParityTxTraceFromStore liveTrace in filter.FilterTxTraces(TraceBlockLive(blockHash, cancellationToken)))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    TypeInfoJsonSerializer.Serialize(writer, liveTrace, EthereumJsonSerializer.JsonOptions);
+                    FlushPipe(writer, pipeWriter, cancellationToken);
+                }
+
+                continue;
+            }
+
+            foreach (ParityLikeTxTrace trace in blockTraces)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                ParityTxTraceFromStore.Write(writer, trace, filter, EthereumJsonSerializer.JsonOptions);
+                FlushPipe(writer, pipeWriter, cancellationToken);
             }
         }
     }
 
-    private IEnumerable<ParityTxTraceFromStore> TraceBlockLive(Hash256 blockHash)
+    private ArrayPoolList<ParityTxTraceFromStore> ReadTraceFilter(List<Hash256> blockHashes, TxTraceFilter filter, CancellationToken cancellationToken)
     {
-        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = _traceModule.trace_block(new BlockParameter(blockHash));
-        if (result.Result.ResultType == Core.ResultType.Failure || result.Data is null)
+        ArrayPoolList<ParityTxTraceFromStore> result = [with(16)];
+        try
         {
-            throw new ResourceNotFoundException(result.Result.Error ?? $"Traces unavailable for block {blockHash}");
+            foreach ((Hash256 blockHash, List<ParityLikeTxTrace>? blockTraces) in ReadStoredBlockTraces(blockHashes, filter))
+            {
+                if (filter.IsExhausted) break;
+                cancellationToken.ThrowIfCancellationRequested();
+                result.AddRange(filter.FilterTxTraces(blockTraces is null ? TraceBlockLive(blockHash, cancellationToken) : FlattenStoreItems(blockTraces)));
+            }
+        }
+        catch
+        {
+            result.Dispose();
+            throw;
         }
 
-        using (result.Data as IDisposable)
+        return result;
+    }
+
+    private IEnumerable<ParityTxTraceFromStore> TraceBlockLive(Hash256 blockHash, CancellationToken cancellationToken)
+    {
+        BlockParameter blockParameter = new(blockHash);
+        using ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = _traceModule is TraceRpcModule liveModule
+            ? liveModule.TraceBlockWithCancellation(blockParameter, null, cancellationToken)
+            : _traceModule.trace_block(blockParameter);
+        if (result.Result.ResultType == Core.ResultType.Failure)
         {
-            foreach (ParityTxTraceFromStore item in result.Data)
-            {
-                yield return item;
-            }
+            throw new RpcErrorException(result.ErrorCode, result.Result.Error ?? $"Traces unavailable for block {blockHash}");
+        }
+
+        if (result.Data is null) yield break;
+
+        foreach (ParityTxTraceFromStore item in result.Data)
+        {
+            yield return item;
         }
     }
 
     private IEnumerable<(Hash256 BlockHash, List<ParityLikeTxTrace>? Traces)> ReadStoredBlockTraces(List<Hash256> blockHashes, TxTraceFilter filter)
     {
-        foreach (Hash256[] window in blockHashes.Chunk(StoredTraceReadWindow))
+        List<ParityLikeTxTrace>?[] windowTraces = new List<ParityLikeTxTrace>?[Math.Min(StoredTraceReadWindow, blockHashes.Count)];
+        for (int start = 0; start < blockHashes.Count; start += StoredTraceReadWindow)
         {
             if (filter.IsExhausted) yield break;
 
-            List<ParityLikeTxTrace>?[] windowTraces = _parallelization switch
-            {
-                1 => window.Select(ReadStoredTraces).ToArray(),
-                0 => window.AsParallel().AsOrdered().Select(ReadStoredTraces).ToArray(),
-                int n => window.AsParallel().AsOrdered().WithDegreeOfParallelism(n).Select(ReadStoredTraces).ToArray()
-            };
+            int length = Math.Min(StoredTraceReadWindow, blockHashes.Count - start);
+            ReadStoredTraceWindow(blockHashes, start, windowTraces, length);
 
-            for (int i = 0; i < window.Length; i++)
+            for (int i = 0; i < length; i++)
             {
-                yield return (window[i], windowTraces[i]);
+                yield return (blockHashes[start + i], windowTraces[i]);
             }
         }
+    }
+
+    private void ReadStoredTraceWindow(List<Hash256> blockHashes, int start, List<ParityLikeTxTrace>?[] windowTraces, int length)
+    {
+        if (_parallelization == 1)
+        {
+            for (int i = 0; i < length; i++)
+            {
+                windowTraces[i] = ReadStoredTraces(blockHashes[start + i]);
+            }
+
+            return;
+        }
+
+        ParallelOptions options = new() { MaxDegreeOfParallelism = _parallelization == 0 ? -1 : _parallelization };
+        Parallel.For(0, length, options, i => windowTraces[i] = ReadStoredTraces(blockHashes[start + i]));
     }
 
     private List<ParityLikeTxTrace>? ReadStoredTraces(Hash256 blockHash) =>
