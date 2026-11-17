@@ -84,7 +84,7 @@ internal sealed partial record SweepArm(string Client, string Image, string Envi
 
 internal sealed partial class SweepConfiguration
 {
-    internal readonly Dictionary<string, string> Values = new(StringComparer.Ordinal);
+    internal readonly Dictionary<string, string> Values = [with(StringComparer.Ordinal)];
     internal string this[string name] => Values[name];
     internal SweepArm[] Arms { get; }
     internal long[] Rates { get; }
@@ -155,10 +155,10 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
 {
     private readonly List<string> _summaries = [];
     private readonly List<string> _labels = [];
-    private readonly Dictionary<string, (string State, string Label, bool Saved)> _baselines = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, long> _records = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (string State, string Label, bool Saved)> _baselines = [with(StringComparer.Ordinal)];
+    private readonly Dictionary<string, long> _records = [with(StringComparer.Ordinal)];
     private readonly List<(string Corpus, string Label, string Report)> _parityRows = [];
-    private readonly Dictionary<string, int> _failures = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, int> _failures = [with(StringComparer.Ordinal)];
     private string _baselineLabel = "";
     private bool _usingSaved;
     private string[] _corpora = [];

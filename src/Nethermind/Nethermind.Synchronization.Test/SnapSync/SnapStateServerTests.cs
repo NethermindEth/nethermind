@@ -261,7 +261,7 @@ public class SnapStateServerTests
             context.Server.GetAccountRanges(context.RootHash, path, path.IncrementPath(), 4000, CancellationToken.None);
 
         // Drop the leaf nodes from the proof; the leaves are still present in the returned accounts.
-        ArrayPoolList<byte[]> trimmedProofs = new(proofs.Count);
+        ArrayPoolList<byte[]> trimmedProofs = [with(proofs.Count)];
         for (int i = 0; i < proofs.Count; i++)
         {
             byte[] proof = proofs[i].ToArray();
@@ -706,7 +706,7 @@ public class SnapStateServerTests
             context.Server.GetStorageRanges(context.RootHash, accounts, null, null, byteLimit, CancellationToken.None);
         using IByteArrayList? servedProofs = proofs;
         using StorageRangeMessage servedMessage = new() { RequestId = 1, Slots = served, Proofs = EmptyByteArrayList.Instance };
-        ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>> decoded = new(served.Count);
+        ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>> decoded = [with(served.Count)];
         for (int i = 0; i < served.Count; i++) decoded.Add(new ArrayPoolList<PathWithStorageSlot>(served[i].Count, expected[i].Take(served[i].Count)));
         using StorageRangeMessage decodedMessage = new() { RequestId = 1, Slots = decoded, Proofs = EmptyByteArrayList.Instance };
         StorageRangesMessageSerializer serializer = new();

@@ -61,9 +61,7 @@ public class BlockHeadersMessageSerializerTests
         BlockHeader first = Build.A.BlockHeader.WithNumber(1).TestObject;
         BlockHeader second = Build.A.BlockHeader.WithParent(first).WithExtraData([0x77, 0x88]).TestObject;
         HeaderDecoder decoder = new();
-        ArrayPoolList<byte> encoded = new(0);
-        encoded.AddRange(decoder.Encode(first));
-        encoded.AddRange(decoder.Encode(second));
+        ArrayPoolList<byte> encoded = [with(0), .. decoder.Encode(first), .. decoder.Encode(second)];
 
         using BlockHeadersMessage decodedMessage = new(new ArrayPoolList<BlockHeader>(2) { first, second });
         using BlockHeadersMessage encodedMessage = new() { EncodedHeaders = encoded };
