@@ -66,7 +66,7 @@ public class Startup : IStartup
     private IJsonRpcConfig _jsonRpcConfig = null!;
     private IRpcAuthentication? _rpcAuthentication;
     private ILogger _logger = default;
-    private static readonly TimeSpan MinResponseDataRateGracePeriod = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan MinResponseDataRateGracePeriod = TimeSpan.FromSeconds(10);
     private readonly UnsentResponseCounter _unsentResponses = new();
 
     public Startup() { }
@@ -476,9 +476,9 @@ public class Startup : IStartup
 
     private void LimitUnauthenticatedResponse(HttpContext ctx)
     {
-        if (_jsonRpcConfig.MinResponseDataRate > 0 && ctx.Features.Get<IHttpMinResponseDataRateFeature>() is { } dataRate)
+        if (ctx.Features.Get<IHttpMinResponseDataRateFeature>() is { } dataRate)
         {
-            dataRate.MinDataRate = new MinDataRate(_jsonRpcConfig.MinResponseDataRate, MinResponseDataRateGracePeriod);
+            dataRate.MinDataRate = _jsonRpcConfig.MinResponseDataRate > 0 ? new MinDataRate(_jsonRpcConfig.MinResponseDataRate, MinResponseDataRateGracePeriod) : null;
         }
     }
 

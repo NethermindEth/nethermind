@@ -9,46 +9,48 @@ namespace Nethermind.Runner.JsonRpc;
 
 internal sealed class UnsentResponseCounter
 {
-    internal const int ConnectionShareDivisor = 16;
+    internal const int CallerShareDivisor = 16;
 
     private readonly Lock _lock = new();
-    private readonly Dictionary<string, long> _connections = [];
+    private readonly Dictionary<string, (long Bytes, int Responses)> _callers = [];
     private long _bytes;
 
-    public bool TryReserve(string connectionId, long bytes, long limit)
+    public bool TryReserve(string caller, long bytes, bool isNewResponse, long limit, int maxResponsesPerCaller)
     {
-        long connectionLimit = Math.Max(1, limit / ConnectionShareDivisor);
+        long callerLimit = Math.Max(1, limit / CallerShareDivisor);
         lock (_lock)
         {
-            _connections.TryGetValue(connectionId, out long connectionBytes);
-            if (connectionBytes + bytes > connectionLimit || _bytes + bytes > limit)
+            _callers.TryGetValue(caller, out (long Bytes, int Responses) state);
+            if (state.Bytes + bytes > callerLimit
+                || _bytes + bytes > limit
+                || (isNewResponse && maxResponsesPerCaller > 0 && state.Responses >= maxResponsesPerCaller))
             {
                 return false;
             }
 
-            _connections[connectionId] = connectionBytes + bytes;
+            _callers[caller] = (state.Bytes + bytes, isNewResponse ? state.Responses + 1 : state.Responses);
             _bytes += bytes;
             return true;
         }
     }
 
-    public void Release(string connectionId, long bytes)
+    public void Release(string caller, long bytes)
     {
         lock (_lock)
         {
-            if (!_connections.TryGetValue(connectionId, out long connectionBytes))
+            if (!_callers.TryGetValue(caller, out (long Bytes, int Responses) state))
             {
                 return;
             }
 
-            long released = Math.Min(bytes, connectionBytes);
-            if (connectionBytes == released)
+            long released = Math.Min(bytes, state.Bytes);
+            if (state.Responses <= 1)
             {
-                _connections.Remove(connectionId);
+                _callers.Remove(caller);
             }
             else
             {
-                _connections[connectionId] = connectionBytes - released;
+                _callers[caller] = (state.Bytes - released, state.Responses - 1);
             }
 
             _bytes -= released;

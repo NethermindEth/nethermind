@@ -1087,18 +1087,23 @@ public class StartupTests
     }
 
     [Test]
-    public async Task ProcessJsonRpcRequest_SetsMinResponseDataRateOnlyForUnauthenticatedUrls([Values] bool isAuthenticated, [Values(0, 4096)] int minResponseDataRate)
+    public async Task ProcessJsonRpcRequest_SetsMinResponseDataRateOnlyForUnauthenticatedUrls([Values] bool isAuthenticated, [Values(0, 65536)] int minResponseDataRate)
     {
         Startup startup = CreateStartup(NoAuthentication.Instance, rpcConfig: new JsonRpcConfig { EnabledModules = [ModuleType.Engine], MinResponseDataRate = minResponseDataRate });
         (DefaultHttpContext context, TaskCompletionSource sent) = CreateUnreadContext();
-        MinResponseDataRateFeature dataRate = new();
+        MinDataRate serverDefault = new(240, TimeSpan.FromSeconds(5));
+        MinResponseDataRateFeature dataRate = new() { MinDataRate = serverDefault };
         context.Features.Set<IHttpMinResponseDataRateFeature>(dataRate);
         sent.SetResult();
         JsonRpcUrl url = isAuthenticated ? new("http", "127.0.0.1", 0, RpcEndpoint.Http, true, [ModuleType.Engine]) : UnauthenticatedEngineUrl;
 
         await startup.ProcessJsonRpcRequestCoreAsync(context, url).WaitAsync(TimeSpan.FromSeconds(10));
 
-        if (isAuthenticated || minResponseDataRate == 0)
+        if (isAuthenticated)
+        {
+            Assert.That(dataRate.MinDataRate, Is.SameAs(serverDefault));
+        }
+        else if (minResponseDataRate == 0)
         {
             Assert.That(dataRate.MinDataRate, Is.Null);
         }
@@ -1212,6 +1217,71 @@ public class StartupTests
         Assert.That(secondSent.Task.IsFaulted, Is.False);
     }
 
+    [Test]
+    public async Task ProcessJsonRpcRequest_SharesTheUnsentLimitAcrossConnectionsOfOneAddress()
+    {
+        int responseSize = await SingleResponseSize();
+        Startup startup = CreateStartup(NoAuthentication.Instance, rpcConfig: new JsonRpcConfig
+        {
+            EnabledModules = [ModuleType.Engine],
+            MaxUnsentResponsesSize = 16 * responseSize + responseSize / 2
+        });
+        (DefaultHttpContext first, TaskCompletionSource firstSent) = CreateUnreadContext(remoteAddress: IPAddress.Parse("10.0.0.1"));
+        (DefaultHttpContext second, TaskCompletionSource secondSent) = CreateUnreadContext(remoteAddress: IPAddress.Parse("10.0.0.1"));
+        (DefaultHttpContext other, TaskCompletionSource otherSent) = CreateUnreadContext(remoteAddress: IPAddress.Parse("10.0.0.2"));
+
+        Task firstProcessing = startup.ProcessJsonRpcRequestCoreAsync(first, UnauthenticatedEngineUrl);
+        await startup.ProcessJsonRpcRequestCoreAsync(second, UnauthenticatedEngineUrl).WaitAsync(TimeSpan.FromSeconds(10));
+        Task otherProcessing = startup.ProcessJsonRpcRequestCoreAsync(other, UnauthenticatedEngineUrl);
+        firstSent.SetResult();
+        otherSent.SetResult();
+        await Task.WhenAll(firstProcessing, otherProcessing).WaitAsync(TimeSpan.FromSeconds(10));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(secondSent.Task.IsFaulted, Is.True);
+            Assert.That(firstSent.Task.IsFaulted, Is.False);
+            Assert.That(otherSent.Task.IsFaulted, Is.False);
+        }
+    }
+
+    [Test]
+    public async Task ProcessJsonRpcRequest_LimitsUnsentResponsesPerAddress()
+    {
+        Startup startup = CreateStartup(NoAuthentication.Instance, rpcConfig: new JsonRpcConfig
+        {
+            EnabledModules = [ModuleType.Engine],
+            MaxUnsentResponsesPerAddress = 2
+        });
+        IPAddress address = IPAddress.Parse("10.0.0.3");
+        List<(Task Processing, TaskCompletionSource Sent)> pending = [];
+        for (int i = 0; i < 2; i++)
+        {
+            (DefaultHttpContext context, TaskCompletionSource sent) = CreateUnreadContext(remoteAddress: address);
+            pending.Add((startup.ProcessJsonRpcRequestCoreAsync(context, UnauthenticatedEngineUrl), sent));
+        }
+
+        (DefaultHttpContext rejected, TaskCompletionSource rejectedSent) = CreateUnreadContext(remoteAddress: address);
+        await startup.ProcessJsonRpcRequestCoreAsync(rejected, UnauthenticatedEngineUrl).WaitAsync(TimeSpan.FromSeconds(10));
+        foreach ((Task processing, TaskCompletionSource sent) in pending)
+        {
+            sent.SetResult();
+            await processing.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+
+        (DefaultHttpContext next, TaskCompletionSource nextSent) = CreateUnreadContext(remoteAddress: address);
+        Task nextProcessing = startup.ProcessJsonRpcRequestCoreAsync(next, UnauthenticatedEngineUrl);
+        nextSent.SetResult();
+        await nextProcessing.WaitAsync(TimeSpan.FromSeconds(10));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rejectedSent.Task.IsFaulted, Is.True);
+            Assert.That(pending.Select(static item => item.Sent.Task.IsFaulted), Is.All.False);
+            Assert.That(nextSent.Task.IsFaulted, Is.False);
+        }
+    }
+
     private static async Task<int> SingleResponseSize()
     {
         (string single, _) = await ProcessJsonRpcRequestWithStatus(CreateJsonRpcRequest());
@@ -1225,12 +1295,13 @@ public class StartupTests
 
     private static readonly JsonRpcUrl UnauthenticatedEngineUrl = new("http", "127.0.0.1", 0, RpcEndpoint.Http, false, [ModuleType.Engine]);
 
-    private static (DefaultHttpContext Context, TaskCompletionSource Sent) CreateUnreadContext(string? requestJson = null, string? connectionId = null)
+    private static (DefaultHttpContext Context, TaskCompletionSource Sent) CreateUnreadContext(string? requestJson = null, string? connectionId = null, IPAddress? remoteAddress = null)
     {
         TaskCompletionSource sent = new(TaskCreationOptions.RunContinuationsAsynchronously);
         byte[] request = Encoding.UTF8.GetBytes(requestJson ?? CreateJsonRpcRequest());
         DefaultHttpContext context = new();
         context.Connection.Id = connectionId ?? Guid.NewGuid().ToString();
+        context.Connection.RemoteIpAddress = remoteAddress;
         context.Request.Method = "POST";
         context.Request.ContentType = "application/json";
         context.Request.Body = new MemoryStream(request);

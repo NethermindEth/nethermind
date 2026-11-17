@@ -35,7 +35,7 @@ internal sealed class HttpJsonRpcResponseSink(
     private bool _completed;
     private long _accountedBytes;
     private long _reservedBytes;
-    private string? _connectionId;
+    private string? _caller;
     private bool _overLimit;
 
     public long BytesWritten => _writer?.WrittenCount ?? 0;
@@ -117,14 +117,14 @@ internal sealed class HttpJsonRpcResponseSink(
             return;
         }
 
-        _connectionId ??= context.Connection.Id ?? string.Empty;
-        if (unsentResponses.TryReserve(_connectionId, bytes, jsonRpcConfig.MaxUnsentResponsesSize))
+        _caller ??= context.Connection.RemoteIpAddress?.ToString() ?? context.Connection.Id ?? string.Empty;
+        if (unsentResponses.TryReserve(_caller, bytes, _reservedBytes == 0, jsonRpcConfig.MaxUnsentResponsesSize, jsonRpcConfig.MaxUnsentResponsesPerAddress))
         {
             _reservedBytes += bytes;
             return;
         }
 
-        if (logger.IsWarn) logger.Warn($"Aborted a JSON-RPC response of {written} bytes, the unsent responses of its connection or of the node are above the share of JsonRpc.{nameof(jsonRpcConfig.MaxUnsentResponsesSize)} = {jsonRpcConfig.MaxUnsentResponsesSize}");
+        if (logger.IsWarn) logger.Warn($"Aborted a JSON-RPC response of {written} bytes to {_caller}, its unsent responses or those of the node are above JsonRpc.{nameof(jsonRpcConfig.MaxUnsentResponsesSize)} = {jsonRpcConfig.MaxUnsentResponsesSize} or JsonRpc.{nameof(jsonRpcConfig.MaxUnsentResponsesPerAddress)} = {jsonRpcConfig.MaxUnsentResponsesPerAddress}");
         _overLimit = true;
         StopRequested = true;
     }
@@ -136,7 +136,7 @@ internal sealed class HttpJsonRpcResponseSink(
             return;
         }
 
-        unsentResponses!.Release(_connectionId!, _reservedBytes);
+        unsentResponses!.Release(_caller!, _reservedBytes);
         _reservedBytes = 0;
     }
 
