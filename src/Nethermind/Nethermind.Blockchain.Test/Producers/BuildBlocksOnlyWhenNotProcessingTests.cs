@@ -103,6 +103,29 @@ public class BuildBlocksOnlyWhenNotProcessingTests
         }
     }
 
+    [Test, MaxTime(Timeout.MaxTestTime), NonParallelizable]
+    public async Task should_report_that_blocks_cannot_be_produced_while_production_waits_for_processing()
+    {
+        Context context = new();
+        context.BlockProcessingQueue.ProcessingQueueEmpty += Raise.Event();
+        context.BlockProcessingQueue.IsEmpty.Returns(false);
+
+        Task<Block?> buildTask = context.MainBlockProductionTrigger.BuildBlock();
+        long whileWaiting = Metrics.CanProduceBlocks;
+
+        context.BlockProcessingQueue.IsEmpty.Returns(true);
+        context.BlockProcessingQueue.ProcessingQueueEmpty += Raise.Event();
+        long afterProcessing = Metrics.CanProduceBlocks;
+        Block? block = await buildTask;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(whileWaiting, Is.Zero);
+            Assert.That(afterProcessing, Is.EqualTo(1));
+            Assert.That(block, Is.EqualTo(context.DefaultBlock));
+        }
+    }
+
     private class Context
     {
         public Context()
