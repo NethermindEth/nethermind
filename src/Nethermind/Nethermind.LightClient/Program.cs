@@ -410,7 +410,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
                     {
                         if (!await rollupPublisher.UpdateAsync(settlementHead, cancellationToken)) continue;
                     }
-                    catch (ExecutionDataUnavailableException exception)
+                    catch (Exception exception) when (exception is ExecutionDataUnavailableException or RpcException)
                     {
                         logger.LogDebug("Waiting for EEZ rollup data: {Reason}", exception.Message);
                         continue;

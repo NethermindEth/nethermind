@@ -12,6 +12,7 @@ internal sealed record ExecutionNetwork(string Name, string ChainSpecFile, Hash2
     NetworkNode[] Bootnodes)
 {
     internal Module? ExecutionRules { get; init; }
+    internal string? StaticPeers { get; init; }
 
     private const string EthereumDnsTree = "enrtree://AKA3AM6LPBYEUDMVNU3BSVQJ5AD45Y7YPOHJLEF6W26QOE4VTUDPE@snap.{0}.ethdisco.net";
 
@@ -28,12 +29,14 @@ internal sealed record ExecutionNetwork(string Name, string ChainSpecFile, Hash2
     {
         if (string.IsNullOrWhiteSpace(name) || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || name is "." or "..")
             throw new ArgumentException("Execution network name must be a plain directory name.", nameof(name));
-        NetworkNode[] nodes = bootnodes is null ? [] :
-            Array.ConvertAll(bootnodes.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
-                static node => new NetworkNode(node));
+        string[] entries = bootnodes?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [];
+        NetworkNode[] nodes = Array.ConvertAll(entries, static node => new NetworkNode(node));
         if (discoveryDns is null && nodes.Length == 0)
             throw new ArgumentException("A custom execution network needs a discovery DNS tree or bootnodes.");
-        return new(name, Path.GetFullPath(genesisFile), genesisHash, discoveryDns, nodes);
+        return new(name, Path.GetFullPath(genesisFile), genesisHash, discoveryDns, nodes)
+        {
+            StaticPeers = entries.Length == 0 ? null : string.Join(',', entries),
+        };
     }
 
     private static ExecutionNetwork Known(string name, string chainSpecFile, Hash256 genesisHash) =>

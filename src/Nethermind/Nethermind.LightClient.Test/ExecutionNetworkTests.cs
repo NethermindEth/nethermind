@@ -45,6 +45,7 @@ public class ExecutionNetworkTests
             Assert.That(network.ChainSpecFile, Is.EqualTo(chainSpec));
             Assert.That(network.DiscoveryDns, Is.EqualTo($"enrtree://AKA3AM6LPBYEUDMVNU3BSVQJ5AD45Y7YPOHJLEF6W26QOE4VTUDPE@snap.{name}.ethdisco.net"));
             Assert.That(network.Bootnodes, Is.Empty);
+            Assert.That(network.StaticPeers, Is.Null);
         }
     }
 
@@ -82,6 +83,7 @@ public class ExecutionNetworkTests
             Assert.That(services.Resolve<ISpecProvider>().ChainId, Is.EqualTo(ChainId));
             Assert.That(configuration.DiscoveryDns, Is.Empty);
             Assert.That(transport.DiscoveryDomain, Is.EqualTo("<unset>"));
+            Assert.That(configuration.StaticPeers, Is.EqualTo(Bootnode));
             Assert.That(configuration.Bootnodes.Select(static node => node.NodeId), Is.EqualTo(new[] { new NetworkNode(Bootnode).NodeId }));
             Assert.That(services.Resolve<IInitConfig>().DataDir, Is.EqualTo(Path.Combine(directory, "el", "rollupx")));
         }

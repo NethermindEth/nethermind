@@ -164,6 +164,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         {
             DiscoveryDns = network.DiscoveryDns ?? string.Empty,
             Bootnodes = network.Bootnodes,
+            StaticPeers = network.StaticPeers,
             P2PPort = port,
             DiscoveryPort = port,
             MaxActivePeers = 32,
