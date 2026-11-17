@@ -302,6 +302,55 @@ public class JsonRpcSocketsClientTests
     }
 
     [Test]
+    public async Task Socket_response_to_a_caller_that_does_not_read_is_aborted_after_the_send_deadline([Values] bool batch)
+    {
+        StalledMessageStream stream = new();
+        using SocketSendLock sendLock = new(maxUnsentBytes: 64 * 1024 * 1024, sendTimeout: 100);
+
+        Task write = WriteSocketResponseAsync(stream, RpcEndpoint.Ws, sendLock, batch ? 2 : null,
+            static () => Enumerable.Repeat("0x0102030405060708091011121314151617181920212223242526272829303132", 1024).ToArray(), CancellationToken.None).AsTask();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(async () => await write.WaitAsync(TimeSpan.FromSeconds(10)), Throws.InstanceOf<OperationCanceledException>());
+            Assert.That(sendLock.IsFaulted, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task Socket_response_above_the_unsent_limit_faults_the_connection([Values] bool batch)
+    {
+        using MemoryMessageStream stream = new();
+        using SocketSendLock sendLock = new(maxUnsentBytes: 1024, sendTimeout: 60_000);
+
+        Task write = WriteSocketResponseAsync(stream, RpcEndpoint.Ws, sendLock, batch ? 2 : null,
+            static () => Enumerable.Repeat("0x0102030405060708091011121314151617181920212223242526272829303132", 1024).ToArray(), CancellationToken.None).AsTask();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(async () => await write, Throws.InstanceOf<IOException>());
+            Assert.That(sendLock.IsFaulted, Is.True);
+            Assert.That(stream.Length, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task Socket_response_within_the_limits_is_sent([Values] bool batch)
+    {
+        using MemoryMessageStream stream = new();
+        using SocketSendLock sendLock = new(maxUnsentBytes: 64 * 1024 * 1024, sendTimeout: 60_000);
+
+        await WriteSocketResponseAsync(stream, RpcEndpoint.Ws, sendLock, batch ? 2 : null,
+            static () => Enumerable.Repeat("0x0102030405060708091011121314151617181920212223242526272829303132", 1024).ToArray(), CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sendLock.IsFaulted, Is.False);
+            Assert.DoesNotThrow(() => JsonDocument.Parse(stream.ToArray()).Dispose());
+        }
+    }
+
+    [Test]
     public async Task Socket_sink_reports_deferred_failure([Values] bool committed, [Values] bool batch)
     {
         using MemoryMessageStream stream = new();
@@ -728,6 +777,15 @@ public class JsonRpcSocketsClientTests
             Write(buffer, offset, count);
             return Task.CompletedTask;
         }
+    }
+
+    private sealed class StalledMessageStream : MemoryMessageStream
+    {
+        public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) =>
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+
+        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+            Task.Delay(Timeout.Infinite, cancellationToken);
     }
 
     private sealed class AsyncWriteOnlyMessageStream : MemoryMessageStream

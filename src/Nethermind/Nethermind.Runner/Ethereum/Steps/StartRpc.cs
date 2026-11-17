@@ -94,7 +94,9 @@ public class StartRpc(INethermindApi api, Lazy<IJsonRpcServiceConfigurer[]> serv
                 auth,
                 jsonRpcConfig.MaxBatchResponseBodySize,
                 jsonRpcConfig.WebSocketsProcessingConcurrency,
-                jsonRpcConfig.MaxRequestBodySize);
+                jsonRpcConfig.MaxRequestBodySize,
+                jsonRpcConfig.MaxUnsentWebSocketResponseSize,
+                jsonRpcConfig.Timeout);
 
             webSocketsManager!.AddModule(webSocketsModule, true);
         }
