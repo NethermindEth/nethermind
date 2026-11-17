@@ -63,6 +63,20 @@ public sealed class NodeFilter
     /// Returns <c>true</c> if the address was not seen recently, <c>false</c> if it was.
     /// </summary>
     public bool TryAccept(IPAddress ipAddress, bool exactOnly = false)
+        => TryAccept(ipAddress, owner: null, exactOnly);
+
+    /// <summary>
+    /// Checks whether <paramref name="ipAddress"/> should be accepted and records <paramref name="owner"/> as
+    /// holding the entry when it does.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="owner"/> is an opaque identity compared with <see cref="object.Equals(object)"/>, so it
+    /// must implement value equality. A null owner makes no claim and leaves an existing owner in place, which
+    /// keeps a caller that cannot claim the entry from clearing the identity that holds it. Instances whose
+    /// callers claim ownership should not be shared with owner-less callers, since both compete for the same
+    /// entry.
+    /// </remarks>
+    internal bool TryAccept(IPAddress ipAddress, object? owner, bool exactOnly = false)
     {
         if (_cache is null) return true;
 
@@ -78,10 +92,11 @@ public sealed class NodeFilter
                 return false;
 
             Volatile.Write(ref lastSeen.Timestamp, now);
+            if (owner is not null) lastSeen.Owner = owner;
         }
         else
         {
-            _cache.Set(key, new LastSeen(now));
+            _cache.Set(key, new LastSeen(now, owner));
         }
         return true;
     }
@@ -97,11 +112,28 @@ public sealed class NodeFilter
     }
 
     /// <summary>
-    /// Whether both addresses map to the same filter entry (the same subnet or the same exact IP, depending
-    /// on how the filter is configured).
+    /// Extends a live entry only while <paramref name="owner"/> still holds it.
     /// </summary>
-    internal bool HasSameFilterKey(IPAddress first, IPAddress second)
-        => GetKey(first, exactOnly: false).Equals(GetKey(second, exactOnly: false));
+    /// <returns>
+    /// <c>false</c> when the entry is missing, expired, or held by someone else. The caller must then run a
+    /// full acceptance check instead of refreshing.
+    /// </returns>
+    internal bool TryRefresh(IPAddress ipAddress, object owner, bool exactOnly = false)
+    {
+        if (_cache is null) return true;
+
+        using Lock.Scope scope = _lock.EnterScope();
+        long now = NowMs();
+        if (!_cache.TryGet(GetKey(ipAddress, exactOnly), out LastSeen lastSeen)
+            || now - lastSeen.Timestamp >= _timeoutMs
+            || !object.Equals(lastSeen.Owner, owner))
+        {
+            return false;
+        }
+
+        Volatile.Write(ref lastSeen.Timestamp, now);
+        return true;
+    }
 
     public void Touch(IPAddress ipAddress, bool exactOnly = false)
     {
@@ -119,7 +151,7 @@ public sealed class NodeFilter
         }
         else
         {
-            _cache.Set(key, new LastSeen(now));
+            _cache.Set(key, new LastSeen(now, owner: null));
         }
     }
 
@@ -127,9 +159,10 @@ public sealed class NodeFilter
     private long NowMs() => _timeProvider is null ? Environment.TickCount64 : (long)_timeProvider.GetElapsedTime(0).TotalMilliseconds;
 
     // Mutate the timestamp without replacing ClockCache's dictionary entry on every packet.
-    private sealed class LastSeen(long timestamp)
+    private sealed class LastSeen(long timestamp, object? owner)
     {
         public long Timestamp = timestamp;
+        public object? Owner = owner;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

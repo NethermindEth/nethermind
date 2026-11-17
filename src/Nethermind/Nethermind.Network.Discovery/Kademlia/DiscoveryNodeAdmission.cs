@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net;
 using System.Threading;
@@ -19,9 +18,11 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// </summary>
 /// <remarks>
 /// The IP filter is stateful and keyed by address, so <see cref="TryAdmit"/> is the one call that records a
-/// new address, <see cref="Touch"/> refreshes an admitted node, and the exempt set identifies nodes that
-/// bypass the filter. Admission decides who enters the routing table and the peer-candidate stream; it
-/// deliberately does not decide whether a discovery message is answered.
+/// new address and reserves it for the sending identity, a refresh extends that reservation only while the
+/// same identity still holds it, and the exempt set identifies nodes that bypass the filter. The filter
+/// instance belongs to this class: callers that do not claim ownership use their own instance, or they would
+/// compete for discovery's entries. Admission decides who enters the routing table and the peer-candidate
+/// stream; it deliberately does not decide whether a discovery message is answered.
 /// <para>
 /// Exemption is tracked by node identity rather than by the flags on the instance being admitted, because
 /// a node rebuilt from a packet carries no flags. The identity set is built once from configuration and
@@ -52,9 +53,7 @@ internal sealed class DiscoveryNodeAdmission(
     private readonly NodeFilter _filter = filter;
     private readonly bool _enabled = enabled;
     private readonly IRoutingTable<Node, ValueHash256> _routingTable = routingTable;
-    private readonly int _admittedCapacity = Math.Max(1, admittedCapacity);
     private readonly RecentNodeFilter<PublicKey> _admitted = new(Math.Max(1, admittedCapacity));
-    private readonly ConcurrentDictionary<PublicKey, IPAddress> _admittedAddresses = new();
     private readonly IStaticNodesManager? _staticNodes = staticNodes;
     private readonly ITrustedNodesManager? _trustedNodes = trustedNodes;
     private readonly HashSet<PublicKey> _exemptNodeIds = enabled
@@ -75,9 +74,10 @@ internal sealed class DiscoveryNodeAdmission(
     /// <remarks>
     /// Safe to call from both the adapter gate and the routing-table decorator for the same message: a node
     /// admitted by the first call is recognized as known by the second. Self and exempt nodes bypass the
-    /// filter without consuming IP capacity. A known node refreshes its own address window, but a node that
-    /// moves to a different address must pass the filter again for the new address: identity proves who the
-    /// sender is, not that it owns an address in the subnet it now claims.
+    /// filter without consuming IP capacity. A known node refreshes its own address window, but only while it
+    /// still holds that reservation: identity proves who the sender is, not that it owns an address in the
+    /// subnet it now claims, so a node that moves to a different address or whose window was taken over by
+    /// another identity must pass the filter again.
     /// </remarks>
     public bool TryAdmit(Node node)
     {
@@ -120,22 +120,13 @@ internal sealed class DiscoveryNodeAdmission(
 
     private bool RefreshKnownNode(Node node)
     {
-        if (!TryGetAdmittedAddress(node.Id, out IPAddress admittedAddress))
-        {
-            return AdmitAddress(node);
-        }
+        // Only the identity holding the live reservation may extend it. A returning identity whose window
+        // was taken over by another node must pass the same admission check as any other address.
+        if (_filter.TryRefresh(node.Address.Address, node.Id)) return true;
 
-        if (_filter.HasSameFilterKey(admittedAddress, node.Address.Address))
-        {
-            Touch(node);
-            return true;
-        }
-
-        // A known identity may only claim a new subnet when that subnet is still free; otherwise N
-        // identities could each be admitted from a distinct subnet and then all move into one target subnet.
         if (!AdmitAddress(node))
         {
-            if (_logger.IsTrace) _logger.Trace($"Discovery node filtered after changing its IP: {node:hide}.");
+            if (_logger.IsTrace) _logger.Trace($"Discovery node filtered after losing its address admission: {node:hide}.");
             return false;
         }
 
@@ -145,53 +136,10 @@ internal sealed class DiscoveryNodeAdmission(
     private bool AdmitAddress(Node node)
     {
         IPAddress address = node.Address.Address;
-        if (!_filter.TryAccept(address)) return false;
+        if (!_filter.TryAccept(address, node.Id)) return false;
 
         _admitted.TryReserve(node.Id);
-        RecordAdmittedAddress(node.Id, address);
         return true;
-    }
-
-    private bool TryGetAdmittedAddress(PublicKey nodeId, out IPAddress address)
-    {
-        if (_admittedAddresses.TryGetValue(nodeId, out address!)) return true;
-
-        if (_routingTable.TryGet(nodeId.Hash.ValueHash256, out Node? knownNode))
-        {
-            address = knownNode.DiscoveryAddress.Address;
-            return true;
-        }
-
-        address = IPAddress.None;
-        return false;
-    }
-
-    private void RecordAdmittedAddress(PublicKey nodeId, IPAddress address)
-    {
-        _admittedAddresses[nodeId] = address;
-        if (_admittedAddresses.Count <= _admittedCapacity * 2) return;
-
-        // Keep the map bounded alongside the admitted identities it describes.
-        foreach (KeyValuePair<PublicKey, IPAddress> entry in _admittedAddresses)
-        {
-            if (!_admitted.Contains(entry.Key))
-            {
-                _admittedAddresses.TryRemove(entry.Key, out _);
-            }
-        }
-    }
-
-    /// <summary>
-    /// Refreshes the address window for a node that is already admitted under the same filter key.
-    /// </summary>
-    /// <remarks>
-    /// Do not use this to admit a new address: <see cref="NodeFilter.Touch"/> inserts a missing entry, which
-    /// would reserve the address without passing the admission check.
-    /// </remarks>
-    private void Touch(Node node)
-    {
-        if (!_enabled) return;
-        _filter.Touch(node.Address.Address);
     }
 
     private bool IsSelf(Node node) => _selfId is { } selfId && node.Id == selfId;

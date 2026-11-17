@@ -180,6 +180,32 @@ public class DiscoveryNodeAdmissionTests
     }
 
     [Test]
+    public void Returning_identity_is_rejected_after_another_identity_takes_its_reservation()
+    {
+        ManualTimeProvider clock = new();
+        Fixture fixture = CreateAdmission(timeProvider: clock);
+        Node first = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
+        Node second = CreateNode(TestItem.PublicKeyB, "203.0.113.20");
+
+        Assert.That(fixture.Admission.TryAdmit(first), Is.True);
+        clock.Advance(TimeSpan.FromMinutes(5));
+        Assert.That(fixture.Admission.TryAdmit(second), Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            // The first identity's window expired, but the reservation now belongs to the second identity.
+            Assert.That(fixture.Admission.TryAdmit(first), Is.False);
+            // The holder can still extend its own reservation.
+            Assert.That(fixture.Admission.TryAdmit(second), Is.True);
+        }
+
+        clock.Advance(TimeSpan.FromMinutes(5));
+
+        // Once the new holder is silent for a full window the subnet is free again.
+        Assert.That(fixture.Admission.TryAdmit(first), Is.True);
+    }
+
+    [Test]
     public void Exempt_nodes_bypass_the_filter_without_consuming_capacity()
     {
         Fixture fixture = CreateAdmission(

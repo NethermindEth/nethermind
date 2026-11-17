@@ -348,6 +348,25 @@ public class NodeFilterTests
         Assert.That(filter.TryAccept(ip2), Is.True, "attempt after timeout expiry should be accepted again");
     }
 
+    [Test]
+    public void OwnerlessAcceptance_DoesNotClearOwner()
+    {
+        ManualTimeProvider clock = new();
+        NodeFilter filter = CreateFilter(exactMatchOnly: true, timeoutMs: 100, timeProvider: clock);
+        IPAddress ip = IPAddress.Parse("203.0.113.1");
+        const string owner = "identity";
+
+        Assert.That(filter.TryAccept(ip, owner), Is.True);
+
+        clock.Advance(TimeSpan.FromMilliseconds(500));
+
+        // An owner-less acceptance re-stamps the expired entry but must leave the reservation with its identity.
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
+        Assert.That(filter.TryAccept(ip), Is.True);
+#pragma warning restore NUnit2045
+        Assert.That(filter.TryRefresh(ip, owner), Is.True);
+    }
+
     [TestCase(true, "192.0.2.1", "192.0.2.1", Description = "Touch refreshes exact match timeout")]
     [TestCase(false, "203.0.113.1", "203.0.113.50", Description = "Touch refreshes subnet bucket timeout")]
     public void Touch_RefreshesTimeout(bool exactMatchOnly, string firstAddr, string touchAddr)
