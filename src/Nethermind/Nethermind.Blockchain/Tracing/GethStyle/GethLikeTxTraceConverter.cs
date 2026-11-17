@@ -138,7 +138,7 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
                 {
                     if (!runningByAddress.TryGetValue(delta.Address, out map))
                     {
-                        map = new PooledDictionary<UInt256, UInt256>(8);
+                        map = [with(8)];
                         runningByAddress[delta.Address] = map;
                     }
                     map[delta.Key] = delta.Value;

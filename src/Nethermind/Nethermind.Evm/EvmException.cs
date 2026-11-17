@@ -77,4 +77,32 @@ public static class EvmExceptionTypeExtensions
         EvmExceptionType.ReturnStackUnderflow => nameof(EvmExceptionType.ReturnStackUnderflow),
         _ => ((int)type).ToString(),
     };
+
+    /// <summary>
+    /// Returns the <see cref="EvmExceptionType"/> whose <see cref="FastToString"/> name is <paramref name="name"/>,
+    /// or <see cref="EvmExceptionType.None"/> when no member has that name.
+    /// </summary>
+    /// <remarks>Reflection-free for the same reason as <see cref="FastToString"/>.</remarks>
+    public static EvmExceptionType FastParse(string? name) => name switch
+    {
+        nameof(EvmExceptionType.Stop) => EvmExceptionType.Stop,
+        nameof(EvmExceptionType.BadInstruction) => EvmExceptionType.BadInstruction,
+        nameof(EvmExceptionType.StackOverflow) => EvmExceptionType.StackOverflow,
+        nameof(EvmExceptionType.StackUnderflow) => EvmExceptionType.StackUnderflow,
+        nameof(EvmExceptionType.OutOfGas) => EvmExceptionType.OutOfGas,
+        nameof(EvmExceptionType.InvalidJumpDestination) => EvmExceptionType.InvalidJumpDestination,
+        nameof(EvmExceptionType.AccessViolation) => EvmExceptionType.AccessViolation,
+        nameof(EvmExceptionType.StaticCallViolation) => EvmExceptionType.StaticCallViolation,
+        nameof(EvmExceptionType.PrecompileFailure) => EvmExceptionType.PrecompileFailure,
+        nameof(EvmExceptionType.TransactionCollision) => EvmExceptionType.TransactionCollision,
+        nameof(EvmExceptionType.NotEnoughBalance) => EvmExceptionType.NotEnoughBalance,
+        nameof(EvmExceptionType.Other) => EvmExceptionType.Other,
+        nameof(EvmExceptionType.Revert) => EvmExceptionType.Revert,
+        nameof(EvmExceptionType.InvalidCode) => EvmExceptionType.InvalidCode,
+        nameof(EvmExceptionType.Suspend) => EvmExceptionType.Suspend,
+        nameof(EvmExceptionType.CallDepthExceeded) => EvmExceptionType.CallDepthExceeded,
+        nameof(EvmExceptionType.ReturnStackOverflow) => EvmExceptionType.ReturnStackOverflow,
+        nameof(EvmExceptionType.ReturnStackUnderflow) => EvmExceptionType.ReturnStackUnderflow,
+        _ => EvmExceptionType.None,
+    };
 }

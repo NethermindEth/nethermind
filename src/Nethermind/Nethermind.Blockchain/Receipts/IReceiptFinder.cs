@@ -3,6 +3,7 @@
 
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
@@ -25,6 +26,19 @@ namespace Nethermind.Blockchain.Receipts
         TxReceipt[] Get(Hash256 blockHash, bool recover = true);
         bool CanGetReceiptsByHash(ulong blockNumber);
         bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator);
+
+        /// <summary>Adds the stored receipts of a block, as a receipts message carries them, without decoding them.</summary>
+        /// <remarks>
+        /// The receipts are byte-identical to the ones <see cref="Get(Hash256, bool)"/> gives once encoded by
+        /// <see cref="ReceiptMessageDecoder"/> (<paramref name="withBloom"/> set) or the eth/69 receipt decoder.
+        /// An implementation that cannot give this form returns <see langword="false"/>; the caller then encodes the
+        /// receipts that <see cref="Get(Hash256, bool)"/> gives.
+        /// </remarks>
+        /// <param name="header">The header of the block.</param>
+        /// <param name="withBloom">Whether the receipts have blooms: the eth/63 to eth/68 form; otherwise the eth/69 form.</param>
+        /// <param name="destination">The list that the encoded sequence of the block's receipts is added to.</param>
+        /// <returns><see langword="false"/> when the receipts are not in a form this gives; nothing is then added.</returns>
+        bool TryAppendNetworkReceipts(BlockHeader header, bool withBloom, ArrayPoolList<byte> destination) => false;
 
         /// <summary>Gets the recovered receipt of one transaction without decoding the other receipts or transactions of its block.</summary>
         /// <param name="block">The block containing the transaction. Its memory stays owned by the caller.</param>
