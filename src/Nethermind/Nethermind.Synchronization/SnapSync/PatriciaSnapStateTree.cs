@@ -22,8 +22,9 @@ public class PatriciaSnapStateTree(StateTree tree, SnapUpperBoundAdapter adapter
     public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithAccount> entries) =>
         ISnapTree<PathWithAccount>.DoBulkSetAndUpdateRootHash(tree, entries);
 
-    public void Commit(ValueHash256 upperBound)
+    public void Commit(ValueHash256 lowerBound, ValueHash256 upperBound)
     {
+        adapter.LowerBound = lowerBound;
         adapter.UpperBound = upperBound;
         tree.Commit(skipRoot: true, WriteFlags.DisableWAL);
     }

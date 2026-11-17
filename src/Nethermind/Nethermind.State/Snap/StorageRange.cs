@@ -32,6 +32,15 @@ namespace Nethermind.State.Snap
         /// </summary>
         public ValueHash256? LimitHash { get; set; }
 
+        /// <summary>
+        /// The storage root the range this one continues was verified against, or <c>null</c> when it continues none.
+        /// Snap sync bookkeeping only; not part of the wire format.
+        /// </summary>
+        public Hash256? PrevRunRoot { get; set; }
+
+        /// <summary>Where the consecutive ranges of the storage downloaded at <see cref="PrevRunRoot"/> begin.</summary>
+        public ValueHash256 PrevRunStart { get; set; }
+
         public StorageRange Copy() => new()
         {
             BlockNumber = BlockNumber,
@@ -39,6 +48,8 @@ namespace Nethermind.State.Snap
             Accounts = Accounts.AsSpan().ToPooledList(),
             StartingHash = StartingHash,
             LimitHash = LimitHash,
+            PrevRunRoot = PrevRunRoot,
+            PrevRunStart = PrevRunStart,
         };
 
         public override string ToString() => $"StorageRange: ({BlockNumber}, {RootHash}, {StartingHash}, {LimitHash})";

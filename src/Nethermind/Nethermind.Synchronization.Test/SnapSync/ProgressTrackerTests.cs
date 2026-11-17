@@ -526,7 +526,7 @@ public class ProgressTrackerTests
             StartingHash = new ValueHash256(start),
             LimitHash = limitHash
         };
-        progressTracker.EnqueueNextSlot(storageRange, 0, lastProcessedHash, 1_000_000_000);
+        progressTracker.EnqueueNextSlot(storageRange, 0, lastProcessedHash, 1_000_000_000, Keccak.EmptyTreeHash, Keccak.Zero);
 
         //ignore account range
         bool isFinished = progressTracker.IsFinished(out _);
@@ -572,7 +572,7 @@ public class ProgressTrackerTests
             StartingHash = new ValueHash256(start),
             LimitHash = limitHash
         };
-        progressTracker.EnqueueNextSlot(storageRange, 0, lastProcessedHash, 100000000);
+        progressTracker.EnqueueNextSlot(storageRange, 0, lastProcessedHash, 100000000, Keccak.EmptyTreeHash, Keccak.Zero);
 
         //ignore account range
         bool isFinished = progressTracker.IsFinished(out _);
