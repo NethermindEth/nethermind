@@ -617,6 +617,17 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_call_with_r_and_s_but_no_v_reports_the_missing_v()
+    {
+        using Context ctx = await Context.Create();
+        using JsonDocument call = JsonDocument.Parse($"{{\"from\":\"{TestItem.AddressA}\",\"to\":\"{TestItem.AddressB}\",\"r\":\"0x1\",\"s\":\"0x2\"}}");
+
+        string response = await ctx.Test.TestEthRpc("eth_call", call.RootElement, "latest");
+
+        Assert.That(response, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":-32000,"message":"missing or invalid v for the signature in r and s"},"id":67}"""));
+    }
+
+    [Test]
     public async Task Eth_call_web3_sample_not_enough_gas_other_account()
     {
         using Context ctx = await Context.Create();

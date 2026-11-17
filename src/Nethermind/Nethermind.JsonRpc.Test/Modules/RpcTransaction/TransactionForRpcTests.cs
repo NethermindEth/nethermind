@@ -557,6 +557,44 @@ public class TransactionForRpcTests
     public void Signature_v_is_read_as_the_transaction_type_carries_it(string fields, ulong expectedV) =>
         Assert.That(ToTransaction($$"""{"chainId":"0x1","r":"0x1","s":"0x2",{{fields}}}""").Signature?.V, Is.EqualTo(expectedV));
 
+    /// <remarks>A signature carries a <c>v</c> of 27 or more, so <c>r</c> or <c>s</c> without one is an error to report, not a signature to build.</remarks>
+    [TestCase("\"gasPrice\":\"0x1\"", TestName = "Legacy without v")]
+    [TestCase("\"gasPrice\":\"0x1\",\"v\":\"0x2\"", TestName = "Legacy with v 2")]
+    [TestCase("\"gasPrice\":\"0x1\",\"v\":\"0x1a\"", TestName = "Legacy with v 26")]
+    [TestCase("\"gasPrice\":\"0x1\",\"v\":\"0x1000000000000001b\"", TestName = "v above a ulong")]
+    [TestCase("\"accessList\":[],\"gasPrice\":\"0x1\"", TestName = "Access list without v or yParity")]
+    [TestCase("\"maxFeePerGas\":\"0x2\",\"maxPriorityFeePerGas\":\"0x1\",\"yParity\":\"0x2\"", TestName = "Dynamic fee with yParity 2")]
+    [TestCase("\"maxFeePerGas\":\"0x2\",\"maxPriorityFeePerGas\":\"0x1\",\"v\":\"0x2\",\"yParity\":\"0x1\"", TestName = "Dynamic fee with v 2 and yParity 1")]
+    [TestCase("\"yParity\":\"0x1\"", TestName = "No fee fields with yParity 1")]
+    [TestCase("\"gasPrice\":\"0x1\"", false, TestName = "r alone without v")]
+    public void Signature_without_a_usable_v_is_a_conversion_error(string fields, bool withS = true)
+    {
+        string signature = withS ? "\"r\":\"0x1\",\"s\":\"0x2\"" : "\"r\":\"0x1\"";
+        TransactionForRpc rpcTx = DeserializeTransactionForRpc($$"""{"chainId":"0x1",{{signature}},{{fields}}}""");
+
+        Assert.That(rpcTx.ToTransaction().Error, Is.EqualTo(RpcTransactionErrors.InvalidSignatureV));
+    }
+
+    // A y-parity v with no EIP-155 value for the chain id keeps its own error, which the check for an unusable v follows.
+    [Test]
+    public void Signature_v_with_no_EIP155_value_keeps_its_error() =>
+        Assert.That(DeserializeTransactionForRpc("""{"chainId":"0x7fffffffffffffff","gasPrice":"0x1","r":"0x1","s":"0x2","v":"0x1"}""").ToTransaction().Error,
+            Is.EqualTo(RpcTransactionErrors.NoEip155V(0x7fffffffffffffff)));
+
+    [TestCase("{}", null, TestName = "No signature")]
+    [TestCase("""{"r":"0x0","s":"0x0","v":"0x0"}""", null, TestName = "Zero signature, as an unsigned transaction is serialized")]
+    [TestCase("""{"r":"0x1","v":"0x1b"}""", 27UL, TestName = "r alone with v 27")]
+    public void Signature_is_built_from_r_or_s_only_with_a_usable_v(string json, ulong? expectedV)
+    {
+        Result<Transaction> result = DeserializeTransactionForRpc(json).ToTransaction();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.Null);
+            Assert.That(result.Data?.Signature?.V, Is.EqualTo(expectedV));
+        }
+    }
+
     private Transaction ToTransaction(string json)
     {
         TransactionForRpc rpcTx = DeserializeTransactionForRpc(json);
