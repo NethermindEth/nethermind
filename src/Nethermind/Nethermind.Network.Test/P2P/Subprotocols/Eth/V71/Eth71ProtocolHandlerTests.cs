@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Linq;
 using System.Net;
 using System.Threading;
@@ -205,6 +206,51 @@ public class Eth71ProtocolHandlerTests
             Assert.That(response!.RequestId, Is.EqualTo(333));
             Assert.That(response.BlockAccessLists, Has.Count.EqualTo(oversizedFirstEntry ? 1 : 2));
             Assert.That(response.BlockAccessLists[0], Is.EqualTo(entries[0]));
+        }
+    }
+
+    [Test]
+    public void Serves_full_BAL_response_as_the_stored_lists()
+    {
+        const int count = 20;
+        Hash256[] hashes = [.. Enumerable.Range(0, count).Select(static i => Keccak.Compute(i.ToString()))];
+        byte[]?[] entries = new byte[]?[count];
+        for (int i = 0; i < count; i++)
+        {
+            if (i == 1)
+            {
+                _syncManager.GetBlockAccessListRlp(hashes[i]).Returns((MemoryManager<byte>?)null);
+                continue;
+            }
+
+            byte[] payload = new byte[200_000 + i];
+            new Random(i).NextBytes(payload);
+            entries[i] = RlpTestHelper.EncodeSequence([Rlp.Encode(payload)]);
+            _syncManager.GetBlockAccessListRlp(hashes[i]).Returns(ArrayMemoryManager.From(entries[i]!));
+        }
+
+        BlockAccessListsMessageSerializer serializer = new();
+        byte[]? response = null;
+        int servedCount = 0;
+        _session.When(s => s.DeliverMessage(Arg.Any<BlockAccessListsMessage>())).Do(call =>
+        {
+            BlockAccessListsMessage message = (BlockAccessListsMessage)call[0];
+            servedCount = message.BlockAccessLists.Count;
+            response = new byte[serializer.GetLength(message)];
+            serializer.Serialize(response, message);
+        });
+        HandleIncomingStatusMessage();
+
+        using GetBlockAccessListsMessage request = new(1111, hashes.ToPooledList(count));
+        HandleZeroMessage(request, Eth71MessageCode.GetBlockAccessLists);
+
+        using BlockAccessListsMessage expectedMessage = new(1111, entries[..servedCount].ToPooledList());
+        byte[] expected = new byte[serializer.GetLength(expectedMessage)];
+        serializer.Serialize(expected, expectedMessage);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expected, Has.Length.GreaterThan(2 * MemorySizes.MiB));
+            Assert.That(response, Is.EqualTo(expected));
         }
     }
 
