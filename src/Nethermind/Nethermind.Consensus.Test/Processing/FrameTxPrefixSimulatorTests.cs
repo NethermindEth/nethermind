@@ -546,8 +546,8 @@ public class FrameTxPrefixSimulatorTests
     }
 
     [TestCase(0ul, 300_000ul)]
-    [TestCase(1ul, 100_000ul)]
-    [TestCase(100_000ul, 100_000ul)]
+    [TestCase(1ul, 300_000ul)]
+    [TestCase(100_000ul, 300_000ul)]
     [TestCase(300_000ul, 300_000ul)]
     [TestCase(500_000ul, 500_000ul)]
     public void Simulate_RunsThePrefixUnderTheConfiguredVerifyGasButNeverBelowTheSharedFloor(ulong configured, ulong expected)

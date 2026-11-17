@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -32,6 +33,7 @@ using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using Eth65GetPooledTransactionsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages.GetPooledTransactionsMessage;
 using Eth65PooledTransactionsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages.PooledTransactionsMessage;
+using Eth65PooledTransactionsMessageSerializer = Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages.PooledTransactionsMessageSerializer;
 using NSubstitute;
 using NUnit.Framework;
 using System;
@@ -616,10 +618,11 @@ public class Eth68ProtocolHandlerTests
         }
 
         BlobCellMask sparseMask = BlobCellMask.FromIndices([0]);
-        _transactionPool.TryGetPendingBlobCellMask(Arg.Any<ValueHash256>(), out Arg.Any<BlobCellMask>())
+        _transactionPool.TryGetPendingBlobCellMaskAndNetworkForm(Arg.Any<ValueHash256>(), out Arg.Any<BlobCellMask>(), out Arg.Any<IOwnedReadOnlyList<byte>>())
             .Returns(x =>
             {
                 x[1] = sparseMask;
+                x[2] = null;
                 return true;
             });
 
@@ -628,7 +631,8 @@ public class Eth68ProtocolHandlerTests
             await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
 
         Assert.That(response.Transactions, Is.Empty);
-        _transactionPool.Received(hashCount).TryGetPendingBlobCellMask(Arg.Any<ValueHash256>(), out Arg.Any<BlobCellMask>());
+        _transactionPool.Received(hashCount).TryGetPendingBlobCellMaskAndNetworkForm(Arg.Any<ValueHash256>(), out Arg.Any<BlobCellMask>(), out Arg.Any<IOwnedReadOnlyList<byte>>());
+        _transactionPool.DidNotReceive().TryGetPendingBlobCellMask(Arg.Any<ValueHash256>(), out Arg.Any<BlobCellMask>());
         _transactionPool.DidNotReceive().TryGetPendingTransaction(Arg.Any<ValueHash256>(), out Arg.Any<Transaction>());
     }
 
@@ -960,7 +964,7 @@ public class Eth68ProtocolHandlerTests
                 return true;
             });
 
-        ArrayPoolList<ValueHash256> hashes = new(transactionCount);
+        ArrayPoolList<ValueHash256> hashes = [with(transactionCount)];
         for (int i = 0; i < transactionCount; i++)
         {
             hashes.Add(new Hash256(i.ToString("X64")));
@@ -988,6 +992,145 @@ public class Eth68ProtocolHandlerTests
         using Eth65PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
 
         Assert.That(response.Transactions.Count, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task Should_serve_stored_blob_tx_encoding_as_the_decoded_tx_in_request_order([Values(0, 1, 2)] int blobTxIndex)
+    {
+        Transaction blobTx = BuildFullBlobTransaction();
+        Transaction[] txs = new Transaction[3];
+        for (int i = 0; i < txs.Length; i++)
+        {
+            txs[i] = i == blobTxIndex ? blobTx : Build.A.Transaction.WithNonce((ulong)i + 1).SignedAndResolved().TestObject;
+        }
+
+        ReturnStoredEncoding(blobTx);
+        _transactionPool.TryGetPendingTransaction(Arg.Any<ValueHash256>(), out Arg.Any<Transaction>())
+            .Returns(x =>
+            {
+                x[1] = txs.First(tx => tx.Hash!.ValueHash256 == x.ArgAt<ValueHash256>(0));
+                return true;
+            });
+
+        using Eth65GetPooledTransactionsMessage request = new(txs.Select(static tx => tx.Hash!.ValueHash256).ToArray().ToPooledList());
+        using Eth65PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
+        using Eth65PooledTransactionsMessage decodedResponse = new(txs.ToPooledList());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Transactions, Has.Count.EqualTo(txs.Length - 1));
+            Assert.That(response.EncodedTransactions, Has.Count.EqualTo(1));
+            Assert.That(response.ToString(), Is.EqualTo($"PooledTransactionsMessage({txs.Length})"));
+            Assert.That(Serialize(response), Is.EqualTo(Serialize(decodedResponse)));
+        }
+    }
+
+    [Test]
+    public async Task Should_look_up_the_blob_pool_once_for_each_requested_hash()
+    {
+        Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
+        _transactionPool.TryGetPendingTransaction(tx.Hash!, out Arg.Any<Transaction>())
+            .Returns(x =>
+            {
+                x[1] = tx;
+                return true;
+            });
+
+        using Eth65GetPooledTransactionsMessage request = new(new ArrayPoolList<ValueHash256>(1) { tx.Hash! });
+        using Eth65PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Transactions, Has.Count.EqualTo(1));
+            _transactionPool.Received(1).TryGetPendingBlobCellMaskAndNetworkForm(tx.Hash!, out Arg.Any<BlobCellMask>(), out Arg.Any<IOwnedReadOnlyList<byte>>());
+            _transactionPool.DidNotReceive().TryGetPendingBlobCellMask(Arg.Any<ValueHash256>(), out Arg.Any<BlobCellMask>());
+        }
+    }
+
+    [Test]
+    public async Task Should_serve_full_blob_tx_from_memory_when_it_has_no_stored_encoding()
+    {
+        Transaction blobTx = BuildFullBlobTransaction();
+        _transactionPool.TryGetPendingBlobCellMaskAndNetworkForm(blobTx.Hash!, out Arg.Any<BlobCellMask>(), out Arg.Any<IOwnedReadOnlyList<byte>>())
+            .Returns(x =>
+            {
+                x[1] = BlobCellMask.Full;
+                x[2] = null;
+                return true;
+            });
+        _transactionPool.TryGetPendingTransaction(blobTx.Hash!, out Arg.Any<Transaction>())
+            .Returns(x =>
+            {
+                x[1] = blobTx;
+                return true;
+            });
+
+        using Eth65GetPooledTransactionsMessage request = new(new ArrayPoolList<ValueHash256>(1) { blobTx.Hash! });
+        using Eth65PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Transactions, Is.EqualTo(new[] { blobTx }));
+            Assert.That(response.EncodedTransactions, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task Should_count_stored_blob_tx_encodings_against_the_soft_limit()
+    {
+        const int transactionCount = 32;
+        Transaction blobTx = BuildFullBlobTransaction();
+        List<ArrayPoolList<byte>> encodings = ReturnStoredEncoding(blobTx, forAnyHash: true);
+        int servedCount = (int)(2.MiB / blobTx.GetLength());
+
+        ArrayPoolList<ValueHash256> hashes = [with(transactionCount)];
+        for (int i = 0; i < transactionCount; i++)
+        {
+            hashes.Add(new Hash256(i.ToString("X64")));
+        }
+
+        using Eth65GetPooledTransactionsMessage request = new(hashes);
+        Eth65PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
+
+        // A disposed ArrayPoolList returns its array and reports no items. The encoding that does not fit is read,
+        // then dropped, and the lookup stops there.
+        using (response)
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Transactions, Is.Empty);
+            Assert.That(response.EncodedTransactions, Has.Count.EqualTo(servedCount));
+            Assert.That(encodings, Has.Count.EqualTo(servedCount + 1));
+            Assert.That(encodings.Take(servedCount).Select(static e => e.Count), Has.All.Not.Zero, "served encodings are not disposed");
+            Assert.That(encodings[^1].Count, Is.Zero, "encoding over the soft limit is disposed");
+            _transactionPool.DidNotReceive().TryGetPendingTransaction(Arg.Any<ValueHash256>(), out Arg.Any<Transaction>());
+        }
+
+        Assert.That(encodings.Select(static e => e.Count), Has.All.Zero, "served encodings are disposed with the response");
+    }
+
+    private List<ArrayPoolList<byte>> ReturnStoredEncoding(Transaction blobTx, bool forAnyHash = false)
+    {
+        byte[] encoding = TxDecoder.Instance.Encode(blobTx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping);
+        List<ArrayPoolList<byte>> encodings = [];
+        _transactionPool.TryGetPendingBlobCellMaskAndNetworkForm(Arg.Any<ValueHash256>(), out Arg.Any<BlobCellMask>(), out Arg.Any<IOwnedReadOnlyList<byte>>())
+            .Returns(x =>
+            {
+                bool found = forAnyHash || x.ArgAt<ValueHash256>(0) == blobTx.Hash!.ValueHash256;
+                ArrayPoolList<byte>? networkForm = found ? [with(encoding)] : null;
+                if (networkForm is not null) encodings.Add(networkForm);
+                x[1] = found ? BlobCellMask.Full : default;
+                x[2] = networkForm;
+                return found;
+            });
+        return encodings;
+    }
+
+    private static byte[] Serialize(Eth65PooledTransactionsMessage message)
+    {
+        Eth65PooledTransactionsMessageSerializer serializer = new();
+        byte[] bytes = new byte[serializer.GetLength(message)];
+        Assert.That(serializer.Serialize(bytes, message), Is.EqualTo(bytes.Length));
+        return bytes;
     }
 
     [Test]
@@ -1093,6 +1236,23 @@ public class Eth68ProtocolHandlerTests
         }
     }
 
+    [Test]
+    public void Should_size_receipts_with_bloom_for_soft_message_size_limit()
+    {
+        const int count = 512;
+        using GetReceiptsMessage msg = new(1111, new(Enumerable.Repeat(Keccak.Zero, count).ToPooledList(count)));
+        TxReceipt[] receipts = SoftLimitTestHelper.CreateLogHeavyReceipts(100);
+        int expectedCount = SoftLimitTestHelper.CountReceiptBlocksWithinSoftLimit(
+            ReceiptsServingTestHelper.Encode(receipts, Rlp.GetDecoderOrThrow<TxReceipt>(), _specProvider).Length, count);
+        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(receipts);
+        _syncManager.ServeReceipts(_specProvider);
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(msg, Eth66MessageCode.GetReceipts);
+
+        _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage>(r => r.EthMessage.TxReceipts.Count == expectedCount));
+    }
+
     private void HandleIncomingStatusMessage()
     {
         StatusMessage statusMsg = new();
@@ -1101,7 +1261,7 @@ public class Eth68ProtocolHandlerTests
 
         using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
         statusPacket.ReadByte();
-        _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
+        _handler.HandleMessage(new NettyBufferPacket(statusPacket) { PacketType = 0 });
     }
 
     private Eth68ProtocolHandler CreateHandler(ITxPoolConfig txPoolConfig, IChainHeadSpecProvider? specProvider = null) =>
@@ -1171,7 +1331,7 @@ public class Eth68ProtocolHandlerTests
         HandleZeroMessage(announcement, Eth68MessageCode.NewPooledTransactionHashes);
         _session.DidNotReceive().DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
 
-        ArrayPoolList<Transaction> transactions = new(2);
+        ArrayPoolList<Transaction> transactions = [with(2)];
         using PooledTransactionsMessage response = new(1111, new(transactions));
         if (correlated)
         {
@@ -1197,11 +1357,11 @@ public class Eth68ProtocolHandlerTests
     private long LastPooledRequestId() => _session.ReceivedCalls()
         .SelectMany(static call => call.GetArguments().OfType<GetPooledTransactionsMessage>()).Last().RequestId;
 
-    private void HandleZeroMessage<T>(T msg, byte messageCode) where T : MessageBase
+    private void HandleZeroMessage<T>(T msg, byte messageCode) where T : P2PMessage
     {
         using DisposableByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg).AsDisposable();
         getBlockHeadersPacket.ReadByte();
-        _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = messageCode });
+        _handler.HandleMessage(new NettyBufferPacket(getBlockHeadersPacket) { PacketType = messageCode });
     }
 
     private void RecreateHandlerWithBlobSupport()
@@ -1222,10 +1382,10 @@ public class Eth68ProtocolHandlerTests
     private void GenerateTxLists(int txCount, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<ValueHash256> hashes, out ArrayPoolList<Transaction> txs)
     {
         TxDecoder txDecoder = TxDecoder.Instance;
-        types = new(txCount);
-        sizes = new(txCount);
-        hashes = new(txCount);
-        txs = new(txCount);
+        types = [with(txCount)];
+        sizes = [with(txCount)];
+        hashes = [with(txCount)];
+        txs = [with(txCount)];
 
         for (int i = 0; i < txCount; ++i)
         {

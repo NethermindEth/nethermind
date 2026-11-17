@@ -292,7 +292,7 @@ public class BlockValidatorTests
                 .WithBlobGasUsed(0)
                 .WithWithdrawals([])
                 .WithBlockAccessList(new ReadOnlyBlockAccessList())
-                .WithEncodedBlockAccessList(Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes).TestObject,
+                .WithEncodedBlockAccessList(Rlp.Encode(new ReadOnlyBlockAccessList())).TestObject,
             parent,
             new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)),
             "InvalidBlockLevelAccessListHash")
@@ -478,7 +478,7 @@ public class BlockValidatorTests
         // ValidateProcessedBlock must catch the floor against the BAL produced during execution.
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithPrecompileChanges(parent.Hash!, timestamp: 12).TestObject;
-        byte[] encodedBal = Rlp.Encode(bal).Bytes;
+        byte[] encodedBal = Rlp.Encode(bal);
         Hash256 balHash = new(ValueKeccak.Compute(encodedBal).Bytes);
 
         Block suggestedBlock = Build.A.Block
@@ -740,13 +740,38 @@ public class BlockValidatorTests
             Assert.That(error, Does.StartWith(failPrefix));
         }
     }
+
+    [Test]
+    public void ValidateBlockLevelAccessListHashMatches_reports_calculated_hash([Values(true, false, null)] bool? hashMatches)
+    {
+        byte[] encoded = Rlp.Encode(new ReadOnlyBlockAccessList());
+        Hash256 calculatedHash = Keccak.Compute(encoded);
+        Block block = Build.A.Block
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
+            .WithEncodedBlockAccessList(encoded)
+            .WithBlockAccessListHash(hashMatches switch
+            {
+                true => calculatedHash,
+                false => TestItem.KeccakA,
+                null => null
+            })
+            .TestObject;
+
+        bool result = BlockValidator.ValidateBlockLevelAccessListHashMatches(block, out Hash256? balRoot);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(hashMatches is true));
+            Assert.That(balRoot, Is.EqualTo(calculatedHash));
+        }
+    }
 }
 
 file static class BalBuilderExtensions
 {
     public static BlockBuilder WithBal(this BlockBuilder builder, ReadOnlyBlockAccessList bal)
     {
-        byte[] encoded = Rlp.Encode(bal).Bytes;
+        byte[] encoded = Rlp.Encode(bal);
         return builder
             .WithBlockAccessList(bal)
             .WithEncodedBlockAccessList(encoded)

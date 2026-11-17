@@ -125,26 +125,40 @@ public class EncodingTest
     [Test]
     public void Span_built_byte_lists_match_byte_array_lists()
     {
-        ByteListItself[] arrays = [new() { Bytes = [] }, new() { Bytes = [1, 2, 3] }];
+        ByteListItself[] arrays = [new() { Bytes = [4, 5] }, new() { Bytes = [] }, new() { Bytes = [1, 2, 3] }];
         byte[] encoded = ByteListItself.Encode(arrays);
 
         SpanBuiltByteListItself.Decode(encoded, out SpanBuiltByteListItself[] decoded);
         SpanBuiltByteStructListItself.Decode(encoded, out SpanBuiltByteStructListItself[] decodedStructs);
-        ByteListItself.Merkleize(arrays[1], out UInt256 expectedRoot);
-        SpanBuiltByteListItself.Merkleize(decoded[1], out UInt256 root);
-        SpanBuiltByteStructListItself.Merkleize(decodedStructs[1], out UInt256 structRoot);
+        SpanBuiltByteListItselfNamedIndex.Decode(encoded, out SpanBuiltByteListItselfNamedIndex[] decodedNamedIndex);
+        ByteListItself.Merkleize(arrays[2], out UInt256 expectedRoot);
+        SpanBuiltByteListItself.Merkleize(decoded[2], out UInt256 root);
+        SpanBuiltByteStructListItself.Merkleize(decodedStructs[2], out UInt256 structRoot);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(decoded, Has.Length.EqualTo(2));
-            Assert.That(decoded[0].Bytes!.AsSpan().ToArray(), Is.Empty);
-            Assert.That(decoded[1].Bytes!.AsSpan().ToArray(), Is.EqualTo(new byte[] { 1, 2, 3 }));
+            Assert.That(decoded, Has.Length.EqualTo(3));
+            Assert.That(decoded[0].Bytes!.AsSpan().ToArray(), Is.EqualTo(new byte[] { 4, 5 }));
+            Assert.That(decoded[1].Bytes!.AsSpan().ToArray(), Is.Empty);
+            Assert.That(decoded[2].Bytes!.AsSpan().ToArray(), Is.EqualTo(new byte[] { 1, 2, 3 }));
             Assert.That(SpanBuiltByteListItself.Encode(decoded), Is.EqualTo(encoded));
             Assert.That(root, Is.EqualTo(expectedRoot));
-            Assert.That(decodedStructs[1].Bytes.AsSpan().ToArray(), Is.EqualTo(new byte[] { 1, 2, 3 }));
+            Assert.That(decodedStructs[0].Bytes.AsSpan().ToArray(), Is.EqualTo(new byte[] { 4, 5 }));
+            Assert.That(decodedStructs[2].Bytes.AsSpan().ToArray(), Is.EqualTo(new byte[] { 1, 2, 3 }));
             Assert.That(SpanBuiltByteStructListItself.Encode(decodedStructs), Is.EqualTo(encoded));
             Assert.That(structRoot, Is.EqualTo(expectedRoot));
+            Assert.That(SpanBuiltByteListItselfNamedIndex.Encode(decodedNamedIndex), Is.EqualTo(encoded));
         }
+    }
+
+    [Test]
+    public void Decode_collection_itself_runs_the_item_parameterless_constructor()
+    {
+        byte[] encoded = ByteListItself.Encode([new() { Bytes = [4, 5] }, new() { Bytes = [1, 2, 3] }]);
+
+        SpanBuiltByteStructListItselfWithConstructor.Decode(encoded, out SpanBuiltByteStructListItselfWithConstructor[] decoded);
+
+        Assert.That(decoded.Select(static item => item.Marker), Is.EqualTo(new[] { 7, 7 }));
     }
 
     [Test]

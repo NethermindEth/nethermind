@@ -4,7 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
@@ -57,7 +57,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             NewBlockMessageSerializer serializer = new();
 
-            Assert.That(() => serializer.Deserialize([0xc2, 0xc0, 0x01]), Throws.TypeOf<RlpException>());
+            Assert.That(() => serializer.Deserialize([0xc2, 0xc0, 0x01]), Throws.TypeOf<RlpReaderException>());
         }
     }
 }

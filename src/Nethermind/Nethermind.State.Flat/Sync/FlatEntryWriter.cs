@@ -4,6 +4,7 @@
 using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
@@ -131,9 +132,8 @@ internal static class FlatEntryWriter
             _currentRlp = default;
 
             // Skip list prefix to position at first child
-            RlpReader ctx = new(_rlp);
-            ctx.SkipLength();
-            _rlpPosition = ctx.Position;
+            RlpReader children = new RlpReader(_rlp).EnterSequence(out int itemLength);
+            _rlpPosition = itemLength - children.Remaining;
         }
 
         public ValueHash256 CurrentPath => _currentFullPath;
@@ -157,27 +157,25 @@ internal static class FlatEntryWriter
         public bool MoveNext()
         {
             _path.TruncateMut(_originalPathLength);
-            RlpReader ctx = new(_rlp) { Position = _rlpPosition };
+            RlpReader ctx = new(_rlp[_rlpPosition..]);
 
             while (++_index < 16)
             {
-                int prefix = ctx.ReadByte();
+                int prefix = ctx.PeekByte();
 
                 switch (prefix)
                 {
                     case 0:
                     case 128: // Empty/null child (0x80)
+                        ctx.ReadRaw(1);
                         continue;
 
                     case 160: // Hash reference (0xa0 = 32-byte Keccak)
-                        ctx.Position--;
                         ctx.SkipItem();
                         continue;
 
                     default: // Inline node
-                        ctx.Position--;
-                        int length = ctx.PeekNextRlpLength();
-                        ReadOnlySpan<byte> inlineRlp = ctx.PeekNextItem();
+                        ReadOnlySpan<byte> inlineRlp = ctx.ReadEncodedItem();
 
                         if (!TryExtractLeafData(inlineRlp, out ReadOnlySpan<byte> currentKey, out _currentValue))
                             throw new UnreachableException("There should not be any non-leaf inline child node");
@@ -186,7 +184,7 @@ internal static class FlatEntryWriter
                         _currentFullPath = _path.Append(_index).Append(currentKey).Path;
 
                         // Save position for next loop
-                        _rlpPosition = ctx.Position + length;
+                        _rlpPosition += ctx.BytesRead;
                         return true;
 
                 }
@@ -202,8 +200,7 @@ internal static class FlatEntryWriter
         out ReadOnlySpan<byte> key,
         out ReadOnlySpan<byte> value)
     {
-        RlpReader ctx = new(nodeRlp);
-        ctx.ReadSequenceLength();
+        RlpReader ctx = new RlpReader(nodeRlp).EnterSequence(out _);
 
         ReadOnlySpan<byte> keySpan = ctx.DecodeByteArraySpan();
         (byte[] keyBytes, bool isLeaf) = HexPrefix.FromBytes(keySpan);

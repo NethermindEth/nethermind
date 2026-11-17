@@ -15,6 +15,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Db;
 using Nethermind.Init.Modules;
 using Nethermind.Serialization.Rlp;
@@ -138,7 +139,7 @@ public class NodeRecordBufferTests
     [Test]
     public void Flat_module_compacts_only_within_a_budget_and_without_the_trie_node_log([Values] bool trieNodeLog, [Values(0UL, 1UL << 20)] ulong budget)
     {
-        FlatDbConfig config = new() { TrieNodeLogEnabled = trieNodeLog, CompressedNodeRecordBufferMemoryBudget = budget };
+        FlatDbConfig config = new() { Layout = FlatLayout.Flat, TrieNodeLogEnabled = trieNodeLog, CompressedNodeRecordBufferMemoryBudget = budget };
         using IContainer container = new ContainerBuilder()
             .AddModule(new FlatWorldStateModule(config))
             .AddSingleton<IFlatDbConfig>(config)
@@ -671,7 +672,7 @@ public class NodeRecordBufferTests
     {
         byte[] value = new byte[valueLength];
         BinaryPrimitives.WriteInt32LittleEndian(value, seed);
-        return Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes([1, 2], isLeaf: true)), Rlp.Encode(value)).Bytes;
+        return RlpTestHelper.EncodeSequence(Rlp.Encode(HexPrefix.ToBytes([1, 2], isLeaf: true)), Rlp.Encode(value));
     }
 
     /// <remarks>Retired native owners are freed in the background.</remarks>

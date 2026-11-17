@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.Trie;
@@ -48,7 +49,8 @@ internal static class ArchiveProofPathWalker
     {
         if (TryWalk(storage, storageRoot, slot, collector.StorageProofItems(index), diagnostics, collector.CancellationToken, out ReadOnlySpan<byte> value))
         {
-            collector.SetStorageValue(index, new RlpReader(value).DecodeByteArray());
+            RlpReader reader = new(value);
+            collector.SetStorageValue(index, reader.DecodeByteArray<OffFlag>());
         }
     }
 
@@ -70,16 +72,19 @@ internal static class ArchiveProofPathWalker
         {
             token.ThrowIfCancellationRequested();
 
-            RlpReader reader = new(node);
-            int end = reader.ReadSequenceLength() + reader.Position;
-            if (reader.PeekNumberOfItemsRemaining(end) == BranchItems)
+            RlpReader reader = new RlpReader(node).EnterSequence<OffFlag>(out _);
+            if (reader.CountItems<OffFlag>(int.MaxValue) == BranchItems)
             {
-                reader.SkipItems(NibbleAt(key, depth));
+                for (int i = NibbleAt(key, depth); i > 0; i--)
+                {
+                    reader.SkipItem<OffFlag>();
+                }
+
                 depth++;
             }
             else
             {
-                ReadOnlySpan<byte> hexPrefix = reader.DecodeByteArraySpan();
+                ReadOnlySpan<byte> hexPrefix = reader.ReadBytes<OffFlag>();
                 bool isLeaf = (hexPrefix[0] & 0x20) != 0;
                 if (!MatchesKey(hexPrefix, key, ref depth)) return false;
 
@@ -87,22 +92,21 @@ internal static class ArchiveProofPathWalker
                 {
                     if (depth != CommitmentDepthPolicy.MaxTrieDepth) return false;
 
-                    value = reader.DecodeByteArraySpan();
+                    value = reader.ReadBytes<OffFlag>();
                     return true;
                 }
             }
 
-            (int prefixLength, int contentLength) = reader.PeekPrefixAndContentLength();
-            if (contentLength == 0) return false;
+            ReadOnlySpan<byte> child = reader.ReadEncodedItem<OffFlag>();
+            if (BranchRlp.IsEmptyItem(child)) return false;
 
-            if (!reader.IsSequenceNext() && contentLength == Hash256.Size)
+            if (BranchRlp.IsHashItem(child))
             {
-                reader.SkipBytes(prefixLength);
-                node = Load(builder, key, depth, new ValueHash256(reader.Read(Hash256.Size)), proof, diagnostics);
+                node = Load(builder, key, depth, new ValueHash256(child[1..]), proof, diagnostics);
             }
             else
             {
-                node = reader.Read(prefixLength + contentLength);
+                node = child;
             }
         }
     }

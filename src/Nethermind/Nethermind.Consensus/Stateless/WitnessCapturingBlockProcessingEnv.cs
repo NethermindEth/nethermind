@@ -9,7 +9,6 @@ using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
-using Nethermind.Core.Container;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
@@ -24,20 +23,19 @@ namespace Nethermind.Consensus.Stateless;
 /// real block import as a side effect via a <see cref="WitnessGeneratingWorldState"/> recorder.
 /// </summary>
 /// <remarks>
-/// Built off the <em>root</em> lifetime scope (not the main-processing child scope) to avoid inheriting
-/// the selector decorator and forming a cycle, while the recorder still wraps the exact main-pipeline
-/// <see cref="IWorldState"/> instance so scope/commit and witness execution stay coherent. Construction
-/// is deferred to the first witnessed block; the recorder is reused across serially-processed blocks,
-/// cleared via <see cref="ResetForBlock"/>.
+/// Built as a child of the main-processing scope, so the graph is the main pipeline's own processor chain, decorators
+/// included, over a recorder that wraps the exact main-pipeline <see cref="IWorldState"/> instance, which keeps
+/// scope/commit and witness execution coherent. The selector built inside the graph hands over the processors it wraps
+/// (<see cref="WitnessGraphCore"/>), so a witnessed block runs the decorators below the selector once, on the graph, and
+/// those above it once, on the main pipeline. Construction is deferred to the first witnessed block; the recorder is
+/// reused across serially-processed blocks, cleared via <see cref="ResetForBlock"/>.
 /// </remarks>
 public sealed class WitnessCapturingBlockProcessingEnv(
     ILifetimeScope rootLifetimeScope,
     IWorldStateManager worldStateManager,
-    IHeaderStore headerStore,
-    IBlockValidationModule[] validationModules) : IDisposable
+    IHeaderStore headerStore) : IDisposable
 {
-    private readonly Lazy<Graph> _graph = new(() =>
-        Build(rootLifetimeScope, worldStateManager, headerStore, validationModules));
+    private readonly Lazy<Graph> _graph = new(() => Build(rootLifetimeScope, worldStateManager, headerStore));
 
     /// <summary>The witness-wired block processor; the same instance is reused for every witnessed block.</summary>
     public IBlockProcessor Processor => _graph.Value.Processor;
@@ -59,25 +57,22 @@ public sealed class WitnessCapturingBlockProcessingEnv(
         if (_graph.IsValueCreated) _graph.Value.Dispose();
     }
 
-    private static Graph Build(
-        ILifetimeScope rootLifetimeScope,
-        IWorldStateManager worldStateManager,
-        IHeaderStore headerStore,
-        IBlockValidationModule[] validationModules)
+    private static Graph Build(ILifetimeScope rootLifetimeScope, IWorldStateManager worldStateManager, IHeaderStore headerStore)
     {
-        IWorldState parentWorldState = rootLifetimeScope.Resolve<IMainProcessingContext>().WorldState;
+        IMainProcessingContext mainProcessing = rootLifetimeScope.Resolve<IMainProcessingContext>();
 
         IReadOnlyTrieStore trieStore = worldStateManager.CreateReadOnlyTrieStore();
         WitnessHeaderRecorder headerRecorder = new();
         WitnessGeneratingWorldState recorder = new(
-            parentWorldState,
+            mainProcessing.WorldState,
             worldStateManager.GlobalStateReader,
             trieStore,
             headerRecorder,
             headerStore);
         WitnessCapturingHeaderFinder recordingFinder = new(headerStore, headerRecorder);
+        WitnessGraphCore core = new();
 
-        ILifetimeScope scope = rootLifetimeScope.BeginLifetimeScope(builder => builder
+        ILifetimeScope scope = mainProcessing.LifetimeScope.BeginLifetimeScope(builder => builder
             // Registered by instance, so the decorator wraps the captured parent instance rather than re-resolving itself (no cycle).
             .AddScoped<IWorldState>(recorder)
             .AddScoped<IHeaderFinder>(recordingFinder)
@@ -90,10 +85,12 @@ public sealed class WitnessCapturingBlockProcessingEnv(
                 ctx.Resolve<IWithdrawalProcessorFactory>(),
                 ctx.Resolve<BalTxProcessorFactory>(),
                 zeroNonceStorageAccountsTransition: ctx.Resolve<ZeroNonceStorageAccountsTransition>()))
-            // Validation tx executor; everything else is inherited from root and re-resolved against the overridden world state.
-            .AddModule(validationModules));
+            .AddScoped(core));
 
-        IBlockProcessor processor = scope.Resolve<IBlockProcessor>();
+        // Resolving the pipeline builds its selector, which hands the chain below it to the core.
+        scope.Resolve<IBlockProcessor>();
+        IBlockProcessor processor = core.Processor
+            ?? throw new InvalidOperationException($"{nameof(WitnessCapturingBlockProcessor)} is not in the main processing pipeline");
         IBlockhashCache blockhashCache = scope.Resolve<IBlockhashCache>();
         return new Graph(scope, trieStore, recorder, headerRecorder, processor, blockhashCache);
     }
@@ -118,4 +115,11 @@ public sealed class WitnessCapturingBlockProcessingEnv(
             finally { trieStore.Dispose(); }
         }
     }
+}
+
+/// <summary>Holds what the <see cref="WitnessCapturingBlockProcessor"/> built inside the witness graph wraps: the decorators
+/// below the selector over the witness-wired core, which the graph runs a witnessed block on.</summary>
+public sealed class WitnessGraphCore
+{
+    public IBlockProcessor? Processor { get; set; }
 }

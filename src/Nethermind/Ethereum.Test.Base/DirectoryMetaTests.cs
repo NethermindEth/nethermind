@@ -12,10 +12,11 @@ namespace Ethereum.Test.Base;
 /// <summary>
 /// Base class for MetaTests that verify every test directory has a corresponding test class.
 /// Scans directories matching <typeparamref name="TPrefix"/> and checks the assembly for matching types.
+/// Also verifies, through <see cref="FixtureCaseMetaTests"/>, that every test class finds cases.
 /// </summary>
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
-public abstract class DirectoryMetaTests<TPrefix> where TPrefix : ITestDirectoryPrefix
+public abstract class DirectoryMetaTests<TPrefix> : FixtureCaseMetaTests where TPrefix : ITestDirectoryPrefix
 {
     protected virtual string GetTestsDirectory() => AppDomain.CurrentDomain.BaseDirectory;
 

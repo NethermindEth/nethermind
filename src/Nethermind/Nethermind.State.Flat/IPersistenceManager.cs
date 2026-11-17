@@ -19,6 +19,14 @@ public interface IPersistenceManager
     /// </summary>
     /// <returns>The number of blocks converted.</returns>
     int PersistInMemoryTailForShutdown(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Compacts the persisted snapshots the last run left one per block, so reads after a restart do not walk each
+    /// of them. For the start only, before anything else uses the persisted tier.
+    /// </summary>
+    /// <returns>The number of compacted snapshots written.</returns>
+    int CompactReloadedSnapshots(CancellationToken cancellationToken);
+
     void ResetPersistedStateId();
 
     /// <summary>Drops every snapshot not on the ancestry of <paramref name="head"/>, serialized against

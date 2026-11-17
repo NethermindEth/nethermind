@@ -10,7 +10,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeBuffer;
@@ -119,7 +119,7 @@ public sealed class FlatStorageTree(
             ValueHash256 key = default;
             StorageTree.ComputeKeyWithLookup(index, ref key);
             byte[]? encoded = GetTrie().TryGet(key);
-            UInt256 treeValue = encoded is null ? default : new UInt256(new RlpReader(encoded).DecodeByteArraySpan(), isBigEndian: true);
+            UInt256 treeValue = encoded is null ? default : new UInt256(new RlpReader(encoded).ReadBytes<OffFlag>(), isBigEndian: true);
             if (treeValue != value)
             {
                 throw new TrieException($"Get slot got wrong value. Address {_address}, {GetTrie().RootHash}, {index}. Tree: {treeValue} vs Flat: {value}. Self destruct it {selfDestructKnownStateIdx}");
@@ -172,7 +172,7 @@ public sealed class FlatStorageTree(
         try
         {
             Dictionary<UInt256, UInt256> applied = _earlyApplied ??= [];
-            Dictionary<UInt256, UInt256> latest = new(writes.Count);
+            Dictionary<UInt256, UInt256> latest = [with(writes.Count)];
             while (writes.TryDequeue(out (UInt256 Slot, UInt256 Value) write)) latest[write.Slot] = write.Value;
             using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(latest.Count);
             Unsafe.SkipInit(out EvmWord word);
@@ -341,7 +341,7 @@ public sealed class FlatStorageTree(
         Action<Address, Hash256> onRootUpdated,
         Dictionary<UInt256, UInt256>? earlyApplied) : IWorldStateScopeProvider.IStorageWriteBatch
     {
-        private readonly ArrayPoolList<PatriciaTree.BulkSetEntry> _entries = new(estimatedEntries);
+        private readonly ArrayPoolList<PatriciaTree.BulkSetEntry> _entries = [with(estimatedEntries)];
         private bool _hasSelfDestruct;
         private Dictionary<UInt256, UInt256>? _earlyApplied = earlyApplied;
         private int _reused;
