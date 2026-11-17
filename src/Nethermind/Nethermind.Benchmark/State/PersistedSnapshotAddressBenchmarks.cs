@@ -2,15 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO;
+using Autofac;
 using BenchmarkDotNet.Attributes;
+using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.IO;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Int256;
-using Nethermind.Logging;
-using Nethermind.State;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.PersistedSnapshots;
@@ -30,10 +31,8 @@ public class PersistedSnapshotAddressBenchmarks
     private const int Addresses = 10_000;
     private const int SlotsPerContract = 4;
 
-    private string _directory = null!;
-    private ArenaManager _arena = null!;
-    private BlobArenaManager _blobs = null!;
-    private SnapshotRepository _repository = null!;
+    private TempPath _dbPath = null!;
+    private IContainer _container = null!;
     private FlatSnapshot _snapshot = null!;
     private BlobArenaWriter _blobWriter = null!;
     private BloomFilter _bloom = null!;
@@ -43,18 +42,18 @@ public class PersistedSnapshotAddressBenchmarks
     [GlobalSetup]
     public void Setup()
     {
-        FlatDbConfig config = new();
-        ResourcePool resourcePool = new(config);
+        _dbPath = TempPath.GetTempDirectory();
+        _container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true }, new InitConfig { BaseDbPath = _dbPath.Path }))
+            .AddSingleton<IPersistedSnapshotCompactor>(NullPersistedSnapshotCompactor.Instance)
+            .Build();
+        ResourcePool resourcePool = _container.Resolve<ResourcePool>();
+        ISnapshotRepository repository = _container.Resolve<ISnapshotRepository>();
+        // The test module turns off long finality, so the interface resolves to the no-op loader.
+        PersistedSnapshotLoader loader = _container.Resolve<PersistedSnapshotLoader>();
         StateId genesis = new(0, Keccak.EmptyTreeHash);
         StateId first = new(1, Keccak.Compute("1"));
         StateId second = new(2, Keccak.Compute("2"));
-
-        _directory = Path.Combine(Path.GetTempPath(), $"{nameof(PersistedSnapshotAddressBenchmarks)}-{Guid.NewGuid():N}");
-        _arena = new ArenaManager(Path.Combine(_directory, "arena"), config, NullLogManager.Instance);
-        _blobs = new BlobArenaManager(Path.Combine(_directory, "blob"), config.ArenaFileSizeBytes);
-        SnapshotCatalog catalog = new(new MemDb());
-        _repository = new SnapshotRepository(_arena, _blobs, catalog, config, UnavailableStateHeaderProvider.Instance, NullLogManager.Instance);
-        PersistedSnapshotLoader loader = new(_repository, _arena, _blobs, catalog, config, NullLogManager.Instance);
         loader.Load();
 
         _snapshot = CreateSnapshot(resourcePool, genesis, first, balance: 1);
@@ -64,9 +63,9 @@ public class PersistedSnapshotAddressBenchmarks
             loader.ConvertAndRegister(next);
         }
 
-        _persisted = _repository.LeaseBaseSnapshotsInRange(genesis, second);
+        _persisted = repository.LeaseBaseSnapshotsInRange(genesis, second);
         _output = new byte[(int)(2 * PersistedSnapshotBuilder.EstimateSize(_snapshot))];
-        _blobWriter = _blobs.CreateWriter(PersistedSnapshotBuilder.EstimateTotalRlpSize(_snapshot));
+        _blobWriter = _container.Resolve<BlobArenaManager>().CreateWriter(PersistedSnapshotBuilder.EstimateTotalRlpSize(_snapshot));
         _bloom = new BloomFilter(Addresses * (SlotsPerContract + 1), 10);
     }
 
@@ -77,10 +76,8 @@ public class PersistedSnapshotAddressBenchmarks
         _blobWriter.Dispose();
         _persisted.Dispose();
         _snapshot.Dispose();
-        _repository.Dispose();
-        _blobs.Dispose();
-        _arena.Dispose();
-        Directory.Delete(_directory, recursive: true);
+        _container.Dispose();
+        _dbPath.Dispose();
     }
 
     [Benchmark]
