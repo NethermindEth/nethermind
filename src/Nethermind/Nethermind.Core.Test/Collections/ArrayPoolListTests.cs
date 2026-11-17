@@ -26,6 +26,41 @@ public class ArrayPoolListTests
         }
     }
 
+    [TestCase(1 << 30, 1, ExpectedResult = 0x7FFFFFC7)]
+    [TestCase(1 << 30, 0x3FFFFFC8, ExpectedResult = 0x7FFFFFC8)]
+    public int Growth_past_1_GiB_rents_at_most_the_largest_array(int count, int itemsToAdd)
+    {
+        RentRecordingPool pool = new();
+        byte[] array = [];
+        int capacity = 1 << 30;
+
+        Assert.Throws<NotSupportedException>(() => ArrayPoolListCore<byte>.GuardResize(pool, ref array, ref capacity, count, itemsToAdd));
+        return pool.RentedLength;
+    }
+
+    [Test]
+    public void Growth_past_int_MaxValue_items_throws()
+    {
+        byte[] array = [];
+        int capacity = 1 << 30;
+
+        Assert.Throws<OverflowException>(() => ArrayPoolListCore<byte>.GuardResize(new RentRecordingPool(), ref array, ref capacity, int.MaxValue, 1));
+    }
+
+    /// <summary>Records the requested length and throws, so no large array is allocated.</summary>
+    private sealed class RentRecordingPool : ArrayPool<byte>
+    {
+        public int RentedLength { get; private set; }
+
+        public override byte[] Rent(int minimumLength)
+        {
+            RentedLength = minimumLength;
+            throw new NotSupportedException();
+        }
+
+        public override void Return(byte[] array, bool clearArray = false) { }
+    }
+
     [Test]
     public void Should_not_hang_when_capacity_is_zero()
     {
