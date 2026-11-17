@@ -267,9 +267,6 @@ public static partial class BlockProcessing
     /// <summary>Spec <c>process_eth1_data</c>: records the vote and adopts it once it has a majority of the voting period.</summary>
     public static partial void ProcessEth1Data(BeaconStateFulu state, BeaconBlockBody body);
 
-    private static bool Eth1DataEquals(Eth1Data a, Eth1Data b) =>
-        a.DepositRoot == b.DepositRoot && a.DepositCount == b.DepositCount && a.BlockHash == b.BlockHash;
-
     /// <summary>
     /// Spec <c>process_operations</c> (Electra): checks the expected Eth1 deposit count, then
     /// dispatches every operation list in spec order.

@@ -542,6 +542,8 @@ internal static class GloasTestFixtures
 
             switch (value)
             {
+                case Eth1VoteList votes:
+                    return votes.Clone();
                 case BitArray bits:
                     BitArray bitsCopy = new(bits);
                     copies.Add(value, bitsCopy);
@@ -577,7 +579,7 @@ internal static class GloasTestFixtures
                 {
                     if (IsLeaf(field.FieldType))
                         continue;
-                    if (field.FieldType.IsValueType)
+                    if (field.FieldType.IsValueType && field.FieldType != typeof(Eth1VoteList))
                         throw new NotSupportedException($"{type}.{field.Name} is a {field.FieldType} holding a reference that a copy would share");
                     fields.Add(field);
                 }

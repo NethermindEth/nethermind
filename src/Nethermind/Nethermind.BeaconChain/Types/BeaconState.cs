@@ -25,7 +25,12 @@ public partial class BeaconStateElectra
     public Hash256[]? HistoricalRoots { get; set; }
     public Eth1Data? Eth1Data { get; set; }
     [SszList(Presets.DefaultEth1DataVotesLimit, AlternateLimit = 1024)]
-    public Eth1Data[]? Eth1DataVotes { get; set; }
+    public Eth1Data[]? Eth1DataVotes
+    {
+        get => VoteList.AsArray();
+        set => VoteList = new(value);
+    }
+    internal Eth1VoteList VoteList;
     public ulong Eth1DepositIndex { get; set; }
     [SszList(1_099_511_627_776)]
     public Validator[]? Validators { get; set; }
@@ -109,7 +114,12 @@ public partial class BeaconStateGloas
     /// <remarks>Unmodified in Gloas: still a plain bounded list, not progressive.</remarks>
     [SszField(9)]
     [SszList(Presets.DefaultEth1DataVotesLimit, AlternateLimit = 1024)]
-    public Eth1Data[]? Eth1DataVotes { get; set; }
+    public Eth1Data[]? Eth1DataVotes
+    {
+        get => VoteList.AsArray();
+        set => VoteList = new(value);
+    }
+    internal Eth1VoteList VoteList;
     [SszField(10)]
     public ulong Eth1DepositIndex { get; set; }
     [SszField(11)]

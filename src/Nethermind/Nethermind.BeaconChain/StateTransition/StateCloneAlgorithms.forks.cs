@@ -34,9 +34,9 @@ public static partial class BeaconStateClone
         StateRoots = (Hash256[]?)state.StateRoots?.Clone(),
         // Frozen since Capella; nothing in the transition writes it.
         HistoricalRoots = state.HistoricalRoots,
-        // ProcessEth1Data replaces the Eth1Data instance and reassigns the votes array wholesale.
+        // ProcessEth1Data replaces the Eth1Data instance.
         Eth1Data = state.Eth1Data,
-        Eth1DataVotes = state.Eth1DataVotes,
+        VoteList = state.VoteList.Clone(),
         Eth1DepositIndex = state.Eth1DepositIndex,
         // Mutators replace Validator elements in place; the elements are immutable by convention.
         Validators = (Validator[]?)state.Validators?.Clone(),

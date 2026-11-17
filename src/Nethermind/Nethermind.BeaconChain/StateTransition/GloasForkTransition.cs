@@ -50,7 +50,7 @@ public static class GloasForkTransition
             StateRoots = pre.StateRoots,
             HistoricalRoots = pre.HistoricalRoots,
             Eth1Data = pre.Eth1Data,
-            Eth1DataVotes = pre.Eth1DataVotes,
+            VoteList = pre.VoteList.Clone(),
             Eth1DepositIndex = pre.Eth1DepositIndex,
             // [Modified in Gloas:EIP7688] (Validators/Balances/... retype to ProgressiveList; the
             // underlying CLR array is unaffected, so this is a plain copy either way)

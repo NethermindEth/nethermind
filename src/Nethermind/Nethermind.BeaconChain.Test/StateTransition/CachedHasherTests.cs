@@ -10,6 +10,7 @@ using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 using static Nethermind.BeaconChain.Test.ForkChoice.TestHashes;
 
@@ -18,6 +19,136 @@ namespace Nethermind.BeaconChain.Test.StateTransition;
 public class CachedHasherTests
 {
     private const ulong Gwei = 1_000_000_000;
+
+    [Test]
+    public void Cloning_while_reading_votes_keeps_arrays_independent()
+    {
+        Eth1VoteList original = new([]);
+        original.Append(new Eth1Data { DepositCount = 1 });
+        for (int i = 0; i < 128; i++)
+        {
+            Eth1VoteList source = original.Clone();
+            Eth1VoteList sibling = default;
+            Parallel.Invoke(() => _ = source.AsArray(), () => sibling = source.Clone());
+            source.AsArray()![0].DepositCount++;
+            Assert.That(sibling.AsArray()![0].DepositCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Vote_majority_and_period_reset_match_full_hashing([Values] bool gloas)
+    {
+        dynamic state = gloas ? (object)GloasTestFixtures.CreateGloasState(out _, out _) : CreateState(64);
+        Eth1Data data = new() { DepositRoot = FromFirstByte(42), DepositCount = 42, BlockHash = FromFirstByte(43) };
+        dynamic body = gloas ? (object)new BeaconBlockBodyGloas { Eth1Data = data } : new BeaconBlockBody { Eth1Data = data };
+        Eth1Data initial = state.Eth1Data;
+        state.Eth1DataVotes = Enumerable.Repeat(data, (int)(Presets.Eth1DataVotesLimit / 2) - 1).ToArray();
+        void Append()
+        {
+            if (gloas)
+                GloasBlockProcessing.ProcessEth1Data(state, body);
+            else
+                BlockProcessing.ProcessEth1Data(state, body);
+        }
+
+        Append();
+        Assert.That((Eth1Data)state.Eth1Data, Is.SameAs(initial));
+        Append();
+        Assert.That((Eth1Data)state.Eth1Data, Is.SameAs(data));
+        AssertRootsMatch(new CachedBeaconStateHasher(), state, "strict majority");
+
+        state.Slot = Presets.Eth1DataVotesLimit - 1;
+        if (gloas)
+            GloasEpochProcessing.ProcessEth1DataReset(state);
+        else
+            EpochProcessing.ProcessEth1DataReset(state);
+        Append();
+        Assert.That((Eth1Data[])state.Eth1DataVotes, Has.Length.EqualTo(1));
+        AssertRootsMatch(new CachedBeaconStateHasher(), state, "new voting period");
+    }
+
+    [Test]
+    public void Vote_history_matches_full_list_and_isolates_mutable_arrays()
+    {
+        Eth1VoteList list = new([]);
+        Eth1Data[] expected = new Eth1Data[35];
+        for (int i = 0; i < expected.Length; i++)
+        {
+            Eth1Data data = new() { DepositCount = (ulong)(i % 3) };
+            expected[i] = data;
+            Assert.That(list.Append(data), Is.EqualTo(i / 3 + 1));
+            Eth1Data.MerkleizeList(expected[..(i + 1)], Presets.Eth1DataVotesLimit, out UInt256 root);
+            Assert.That(list.HashTreeRoot(), Is.EqualTo(root));
+        }
+
+        Eth1VoteList sibling = list.Clone();
+        Eth1Data[] exposed = list.AsArray()!;
+        exposed[0].DepositCount = 2;
+        exposed[1] = new Eth1Data { DepositCount = 2 };
+        Eth1VoteList copy = list.Clone();
+        exposed[0].DepositCount = 1;
+        Eth1Data next = new() { DepositCount = 2 };
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list.Append(next), Is.EqualTo(13));
+            Assert.That(copy.Append(next), Is.EqualTo(14));
+            Assert.That(sibling.Append(next), Is.EqualTo(12));
+        }
+    }
+
+    [Test]
+    [Explicit("Mainnet Eth1 voting period performance measurement")]
+    public void Benchmark_eth1_voting_period()
+    {
+        int length = (int)Presets.Eth1DataVotesLimit;
+        Eth1Data[] inputs = Enumerable.Range(0, length).Select(i => new Eth1Data
+        {
+            DepositRoot = FromFirstByte((byte)(i % 4)),
+            DepositCount = (ulong)(i % 4),
+            BlockHash = FromFirstByte((byte)(i % 4 + 1)),
+        }).ToArray();
+        (int Votes, UInt256 Root)[] expected = new (int, UInt256)[length];
+        (int Votes, UInt256 Root)[] actual = new (int, UInt256)[length];
+        (int Votes, UInt256 Root)[] checkpointed = new (int, UInt256)[length];
+        for (int iteration = 0; iteration < 4; iteration++)
+        {
+            foreach (string mode in iteration % 2 == 0 ? new[] { "array", "incremental", "epoch-read" } : new[] { "epoch-read", "incremental", "array" })
+            {
+                Eth1Data[] votes = [];
+                Eth1VoteList history = new([]);
+                long allocated = GC.GetAllocatedBytesForCurrentThread();
+                long start = Stopwatch.GetTimestamp();
+                for (int i = 0; i < length; i++)
+                {
+                    Eth1Data data = inputs[i];
+                    if (mode != "array")
+                    {
+                        (mode == "incremental" ? actual : checkpointed)[i] = (history.Append(data), history.HashTreeRoot());
+                        if (mode == "epoch-read" && (i + 1) % (int)Presets.SlotsPerEpoch == 0)
+                            _ = history.AsArray();
+                    }
+                    else
+                    {
+                        votes = [.. votes, data];
+                        int count = 0;
+                        foreach (Eth1Data previous in votes)
+                            if (previous.DepositRoot == data.DepositRoot && previous.DepositCount == data.DepositCount && previous.BlockHash == data.BlockHash)
+                                count++;
+                        Eth1Data.MerkleizeList(votes, Presets.Eth1DataVotesLimit, out UInt256 root);
+                        expected[i] = (count, root);
+                    }
+                }
+                TimeSpan elapsed = Stopwatch.GetElapsedTime(start);
+                long bytes = GC.GetAllocatedBytesForCurrentThread() - allocated;
+                TestContext.Progress.WriteLine($"Iteration {iteration}, mode={mode}, {elapsed.TotalMilliseconds:F2} ms, {bytes} B");
+            }
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual, Is.EqualTo(expected));
+                Assert.That(checkpointed, Is.EqualTo(expected));
+            }
+        }
+    }
 
     [Test]
     public void Skipped_slots_match_full_hashing_across_epochs_and_lineages([Values] bool gloas)

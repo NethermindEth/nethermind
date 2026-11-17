@@ -175,7 +175,7 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
         roots[6] = _stateRoots.Root(state.StateRoots);
         roots[7] = _historicalRoots.Root(state.HistoricalRoots);
         Eth1Data.Merkleize(state.Eth1Data ?? s_defaultEth1Data, out roots[8]);
-        Eth1Data.MerkleizeList(state.Eth1DataVotes ?? [], Presets.Eth1DataVotesLimit, out roots[9]);
+        roots[9] = state.VoteList.HashTreeRoot();
         roots[10] = new UInt256(state.Eth1DepositIndex);
         roots[11] = _validators.Root(state.Validators);
         roots[12] = _balances.Root(MemoryMarshal.AsBytes<ulong>(state.Balances), state.Balances?.Length ?? 0);
@@ -244,7 +244,7 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
         roots[6] = _stateRoots.Root(state.StateRoots);
         roots[7] = _historicalRoots.Root(state.HistoricalRoots);
         Eth1Data.Merkleize(state.Eth1Data ?? s_defaultEth1Data, out roots[8]);
-        Eth1Data.MerkleizeList(state.Eth1DataVotes ?? [], Presets.Eth1DataVotesLimit, out roots[9]);
+        roots[9] = state.VoteList.HashTreeRoot();
         roots[10] = new UInt256(state.Eth1DepositIndex);
         roots[11] = _gloasValidators.Root(state.Validators);
         roots[12] = _gloasBalances.Root(MemoryMarshal.AsBytes<ulong>(state.Balances), state.Balances?.Length ?? 0);

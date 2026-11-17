@@ -480,17 +480,7 @@ public static partial class BlockProcessing
 
     public static partial void ProcessEth1Data(ForkState state, ForkBody body)
     {
-        state.Eth1DataVotes = [.. state.Eth1DataVotes!, body.Eth1Data!];
-        int votes = 0;
-        foreach (Eth1Data vote in state.Eth1DataVotes)
-        {
-#if GLOAS
-            if (vote.DepositRoot == body.Eth1Data!.DepositRoot && vote.DepositCount == body.Eth1Data.DepositCount && vote.BlockHash == body.Eth1Data.BlockHash)
-#else
-            if (Eth1DataEquals(vote, body.Eth1Data!))
-#endif
-                votes++;
-        }
+        int votes = state.VoteList.Append(body.Eth1Data!);
         if ((ulong)votes * 2 > Presets.EpochsPerEth1VotingPeriod * Presets.SlotsPerEpoch)
             state.Eth1Data = body.Eth1Data;
     }
