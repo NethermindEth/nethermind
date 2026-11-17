@@ -8,8 +8,9 @@ namespace Nethermind.BeaconChain.StateTransition;
 /// <summary>Cheap copy-on-clone of <see cref="BeaconStateFulu"/> for forking a state lineage.</summary>
 /// <remarks>
 /// Per field the copy-vs-share decision follows how the state transition writes it: arrays whose
-/// slots are written in place (balances, slashings, participation, inactivity scores, the
-/// validator/root/mix arrays, the proposer lookahead) are copied, while everything the transition
+/// slots are written in place (balances, slashings, participation, root/mix arrays and the
+/// proposer lookahead) are copied. Validator and inactivity-score snapshots are shared until a
+/// writable array is requested, while everything the transition
 /// only ever replaces wholesale (checkpoints, sync committees, the payload header, the pending
 /// queues and other container lists) is shared. Shared objects are immutable by convention —
 /// e.g. <see cref="Validator"/> mutations install a <see cref="BeaconStateMutators.Clone"/>d copy

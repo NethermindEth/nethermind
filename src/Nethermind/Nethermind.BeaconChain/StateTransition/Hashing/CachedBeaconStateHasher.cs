@@ -177,7 +177,7 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
         Eth1Data.Merkleize(state.Eth1Data ?? s_defaultEth1Data, out roots[8]);
         roots[9] = state.VoteList.HashTreeRoot();
         roots[10] = new UInt256(state.Eth1DepositIndex);
-        roots[11] = _validators.Root(state.Validators);
+        roots[11] = _validators.Root(state.ValidatorBuffer?.Items);
         roots[12] = _balances.Root(MemoryMarshal.AsBytes<ulong>(state.Balances), state.Balances?.Length ?? 0);
         roots[13] = _randaoMixes.Root(state.RandaoMixes);
         Merkle.Merkleize(out roots[14], MemoryMarshal.AsBytes<ulong>(state.Slashings), SlashingsChunkCount);
@@ -187,7 +187,7 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
         Checkpoint.Merkleize(state.PreviousJustifiedCheckpoint ?? s_defaultCheckpoint, out roots[18]);
         Checkpoint.Merkleize(state.CurrentJustifiedCheckpoint ?? s_defaultCheckpoint, out roots[19]);
         Checkpoint.Merkleize(state.FinalizedCheckpoint ?? s_defaultCheckpoint, out roots[20]);
-        roots[21] = _inactivityScores.Root(MemoryMarshal.AsBytes<ulong>(state.InactivityScores), state.InactivityScores?.Length ?? 0);
+        roots[21] = _inactivityScores.Root(MemoryMarshal.AsBytes<ulong>(state.InactivityScoreBuffer?.Items), state.InactivityScoreBuffer?.Items.Length ?? 0);
         roots[22] = _currentSyncCommittee.Root(state.CurrentSyncCommittee);
         roots[23] = _nextSyncCommittee.Root(state.NextSyncCommittee);
         roots[24] = _latestExecutionPayloadHeader.Root(state.LatestExecutionPayloadHeader);
@@ -246,7 +246,7 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
         Eth1Data.Merkleize(state.Eth1Data ?? s_defaultEth1Data, out roots[8]);
         roots[9] = state.VoteList.HashTreeRoot();
         roots[10] = new UInt256(state.Eth1DepositIndex);
-        roots[11] = _gloasValidators.Root(state.Validators);
+        roots[11] = _gloasValidators.Root(state.ValidatorBuffer?.Items);
         roots[12] = _gloasBalances.Root(MemoryMarshal.AsBytes<ulong>(state.Balances), state.Balances?.Length ?? 0);
         roots[13] = _randaoMixes.Root(state.RandaoMixes);
         Merkle.Merkleize(out roots[14], MemoryMarshal.AsBytes<ulong>(state.Slashings), SlashingsChunkCount);
@@ -256,7 +256,7 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
         Checkpoint.Merkleize(state.PreviousJustifiedCheckpoint ?? s_defaultCheckpoint, out roots[18]);
         Checkpoint.Merkleize(state.CurrentJustifiedCheckpoint ?? s_defaultCheckpoint, out roots[19]);
         Checkpoint.Merkleize(state.FinalizedCheckpoint ?? s_defaultCheckpoint, out roots[20]);
-        roots[21] = _gloasInactivityScores.Root(MemoryMarshal.AsBytes<ulong>(state.InactivityScores), state.InactivityScores?.Length ?? 0);
+        roots[21] = _gloasInactivityScores.Root(MemoryMarshal.AsBytes<ulong>(state.InactivityScoreBuffer?.Items), state.InactivityScoreBuffer?.Items.Length ?? 0);
         roots[22] = _currentSyncCommittee.Root(state.CurrentSyncCommittee);
         roots[23] = _nextSyncCommittee.Root(state.NextSyncCommittee);
         roots[24] = state.LatestBlockHash is null ? default : new UInt256(state.LatestBlockHash.Bytes);

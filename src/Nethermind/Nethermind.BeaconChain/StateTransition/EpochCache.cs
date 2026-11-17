@@ -187,7 +187,7 @@ public sealed class EpochCache
         Hash256 boundaryRoot = GetEpochBoundaryRoot(state.Slot, s => state.GetBlockRootAtSlot(s));
         if (_totalActiveBalance is not { } cached || cached.Epoch != epoch)
         {
-            ulong balance = GetTotalActiveBalance(state.Validators!, epoch);
+            ulong balance = GetTotalActiveBalance(state.ValidatorBuffer!.Items, epoch);
             _totalActiveBalance = cached = (epoch, balance, boundaryRoot);
         }
         else if (cached.BoundaryRoot != boundaryRoot)
@@ -209,7 +209,7 @@ public sealed class EpochCache
         Hash256 boundaryRoot = GetEpochBoundaryRoot(state.Slot, s => state.GetBlockRootAtSlot(s));
         if (_totalActiveBalance is not { } cached || cached.Epoch != epoch)
         {
-            ulong balance = GetTotalActiveBalance(state.Validators!, epoch);
+            ulong balance = GetTotalActiveBalance(state.ValidatorBuffer!.Items, epoch);
             _totalActiveBalance = cached = (epoch, balance, boundaryRoot);
         }
         else if (cached.BoundaryRoot != boundaryRoot)

@@ -209,11 +209,11 @@ public static class ForkedStateTransition
         if (state.Slot < block.Slot)
             GloasSlotProcessing.ProcessSlots(state, block.Slot, cache);
 
-        if (verifySignatures && state.Validators!.Length > pubkeys.Count)
-            pubkeys.Extend(state.Validators, pubkeys.Count);
+        if (verifySignatures && state.ReadOnlyValidators.Length > pubkeys.Count)
+            pubkeys.Extend(state.ValidatorBuffer!.Items, pubkeys.Count);
 
-        if (verifySignatures && block.ProposerIndex >= (ulong)state.Validators!.Length)
-            throw new BeaconStateException($"Block proposer index {block.ProposerIndex} is not a validator index (registry size {state.Validators.Length})") { RejectGossip = true };
+        if (verifySignatures && block.ProposerIndex >= (ulong)state.ReadOnlyValidators.Length)
+            throw new BeaconStateException($"Block proposer index {block.ProposerIndex} is not a validator index (registry size {state.ReadOnlyValidators.Length})") { RejectGossip = true };
 
         if (verifySignatures && !proposerSignatureVerified && !GloasBlockProcessing.VerifyProposerSignature(state, signedBlock, pubkeys))
             throw new ProposerSignatureException($"Invalid proposer signature for the block at slot {block.Slot}");

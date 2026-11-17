@@ -49,7 +49,7 @@ public static partial class BlockProcessing
         if (sourceIndex is null)
             return false;
 
-        Validator sourceValidator = state.Validators![sourceIndex.Value];
+        Validator sourceValidator = state.ReadOnlyValidators[sourceIndex.Value];
         if (!sourceValidator.WithdrawalCredentials!.Bytes[12..].SequenceEqual(request.SourceAddress!.Bytes))
             return false;
         if (!sourceValidator.HasEth1WithdrawalCredential())
@@ -65,7 +65,7 @@ public static partial class BlockProcessing
     /// <summary>Returns the index of the validator with <paramref name="pubkey"/>, or null when unregistered.</summary>
     private static partial int? FindValidatorIndex(ForkState state, BlsPublicKey pubkey)
     {
-        Validator[] validators = state.Validators!;
+        ReadOnlySpan<Validator> validators = state.ReadOnlyValidators;
         for (int i = 0; i < validators.Length; i++)
         {
             if (validators[i].Pubkey == pubkey)
@@ -98,7 +98,7 @@ public static partial class BlockProcessing
         {
             while (second < indices2.Length && indices2[second] < index) second++;
             if (second == indices2.Length) break;
-            if (indices2[second] == index && state.Validators![(int)index].IsSlashableValidator(currentEpoch))
+            if (indices2[second] == index && state.ReadOnlyValidators[(int)index].IsSlashableValidator(currentEpoch))
             {
                 state.SlashValidator((int)index, cache);
                 slashedAny = true;
@@ -115,10 +115,10 @@ public static partial class BlockProcessing
     private static void ProcessVoluntaryExitCore(ForkState state, SignedVoluntaryExit signedExit, EpochCache cache, PubkeyCache pubkeys, bool verifySignature, BlockSignatureBatch? batch, PendingWithdrawalBatch? withdrawals)
     {
         VoluntaryExit exit = signedExit.Message!;
-        if (exit.ValidatorIndex >= (ulong)state.Validators!.Length)
+        if (exit.ValidatorIndex >= (ulong)state.ReadOnlyValidators.Length)
             throw new BeaconStateException($"Voluntary exit validator index {exit.ValidatorIndex} is out of range");
 
-        Validator validator = state.Validators[(int)exit.ValidatorIndex];
+        Validator validator = state.ReadOnlyValidators[(int)exit.ValidatorIndex];
         ulong currentEpoch = state.GetCurrentEpoch();
         if (!validator.IsActiveValidator(currentEpoch))
             throw new BeaconStateException($"Exiting validator {exit.ValidatorIndex} is not active");
@@ -142,10 +142,10 @@ public static partial class BlockProcessing
     public static partial void ProcessBlsToExecutionChange(ForkState state, SignedBlsToExecutionChange signedChange, bool verifySignature, BlockSignatureBatch? batch, BeaconChainSpec? spec)
     {
         BlsToExecutionChange change = signedChange.Message!;
-        if (change.ValidatorIndex >= (ulong)state.Validators!.Length)
+        if (change.ValidatorIndex >= (ulong)state.ReadOnlyValidators.Length)
             throw new BeaconStateException($"BLS change validator index {change.ValidatorIndex} is out of range");
 
-        Validator validator = state.Validators[(int)change.ValidatorIndex];
+        Validator validator = state.ReadOnlyValidators[(int)change.ValidatorIndex];
         ReadOnlySpan<byte> credentials = validator.WithdrawalCredentials!.Bytes;
         if (credentials[0] != Presets.BlsWithdrawalPrefix)
             throw new BeaconStateException($"Validator {change.ValidatorIndex} does not have BLS withdrawal credentials");
@@ -160,7 +160,7 @@ public static partial class BlockProcessing
         change.ToExecutionAddress!.Bytes.CopyTo(newCredentials[12..]);
         Validator updated = validator.Clone();
         updated.WithdrawalCredentials = new Hash256(newCredentials);
-        state.Validators[(int)change.ValidatorIndex] = updated;
+        state.Validators![(int)change.ValidatorIndex] = updated;
     }
 
     /// <summary>Spec <c>process_deposit_request</c> (EIP-6110).</summary>
@@ -216,9 +216,9 @@ public static partial class BlockProcessing
         if ((withdrawals?.Count ?? state.PendingPartialWithdrawals!.Length) == Presets.PendingPartialWithdrawalsLimit && !isFullExitRequest)
             return;
 
-        if (cache.FindRequestValidator(state.Validators!, request.ValidatorPubkey) is not int index)
+        if (cache.FindRequestValidator(state.ValidatorBuffer!.Items, request.ValidatorPubkey) is not int index)
             return;
-        Validator validator = state.Validators![index];
+        Validator validator = state.ReadOnlyValidators[index];
 
         bool isCorrectSourceAddress = validator.WithdrawalCredentials!.Bytes[12..].SequenceEqual(request.SourceAddress!.Bytes);
         if (!validator.HasExecutionWithdrawalCredential() || !isCorrectSourceAddress)
@@ -276,7 +276,7 @@ public static partial class BlockProcessing
 
     private static void ProcessConsolidationRequestCore(ForkState state, ConsolidationRequest request, EpochCache cache, PendingWithdrawalBatch? withdrawals)
     {
-        int? source = cache.FindRequestValidator(state.Validators!, request.SourcePubkey);
+        int? source = cache.FindRequestValidator(state.ValidatorBuffer!.Items, request.SourcePubkey);
         if (IsValidSwitchToCompoundingRequest(state, request, source))
         {
             SwitchToCompoundingValidator(state, source!.Value);
@@ -293,10 +293,10 @@ public static partial class BlockProcessing
 
         if (source is not int sourceIndex)
             return;
-        if (cache.FindRequestValidator(state.Validators!, request.TargetPubkey) is not int targetIndex)
+        if (cache.FindRequestValidator(state.ValidatorBuffer!.Items, request.TargetPubkey) is not int targetIndex)
             return;
-        Validator sourceValidator = state.Validators![sourceIndex];
-        Validator targetValidator = state.Validators[targetIndex];
+        Validator sourceValidator = state.ReadOnlyValidators[sourceIndex];
+        Validator targetValidator = state.ReadOnlyValidators[targetIndex];
 
         bool isCorrectSourceAddress = sourceValidator.WithdrawalCredentials!.Bytes[12..].SequenceEqual(request.SourceAddress!.Bytes);
         if (!sourceValidator.HasExecutionWithdrawalCredential() || !isCorrectSourceAddress)
@@ -316,7 +316,7 @@ public static partial class BlockProcessing
         Validator updatedSource = sourceValidator.Clone();
         updatedSource.ExitEpoch = state.ComputeConsolidationEpochAndUpdateChurn(sourceValidator.EffectiveBalance, cache);
         updatedSource.WithdrawableEpoch = EpochArithmetic.CheckedEpochSum(updatedSource.ExitEpoch, Presets.MinValidatorWithdrawabilityDelay);
-        state.Validators[sourceIndex] = updatedSource;
+        state.Validators![sourceIndex] = updatedSource;
 
         state.PendingConsolidations = [.. state.PendingConsolidations, new PendingConsolidation
         {
@@ -358,9 +358,9 @@ public static partial class BlockProcessing
 
         const string invalidSignature = "Invalid sync aggregate signature";
 #if GLOAS
-        if (verifySignature && !VerifySyncAggregate(state, syncAggregate, cache.FindSyncCommitteeIndices(state.CurrentSyncCommittee!, state.Validators!), pubkeys, batch?.Defer(invalidSignature)))
+        if (verifySignature && !VerifySyncAggregate(state, syncAggregate, cache.FindSyncCommitteeIndices(state.CurrentSyncCommittee!, state.ValidatorBuffer!.Items), pubkeys, batch?.Defer(invalidSignature)))
 #else
-        if (verifySignature && !ForkSignatureSets.VerifySyncAggregate(state, syncAggregate, cache.FindSyncCommitteeIndices(state.CurrentSyncCommittee!, state.Validators!), pubkeys, batch?.Defer(invalidSignature)))
+        if (verifySignature && !ForkSignatureSets.VerifySyncAggregate(state, syncAggregate, cache.FindSyncCommitteeIndices(state.CurrentSyncCommittee!, state.ValidatorBuffer!.Items), pubkeys, batch?.Defer(invalidSignature)))
 #endif
             throw new BeaconStateException(invalidSignature);
 
@@ -375,7 +375,7 @@ public static partial class BlockProcessing
         ulong proposerReward = participantReward * Presets.ProposerWeight / (Presets.WeightDenominator - Presets.ProposerWeight);
 
         // The committee's (possibly repeated) pubkeys mapped back to validator indices.
-        int[] participantIndices = cache.GetSyncCommitteeIndices(state.CurrentSyncCommittee!, state.Validators!);
+        int[] participantIndices = cache.GetSyncCommitteeIndices(state.CurrentSyncCommittee!, state.ValidatorBuffer!.Items);
 
         int proposerIndex = (int)state.GetBeaconProposerIndex();
 #if GLOAS
@@ -410,9 +410,9 @@ public static partial class BlockProcessing
             throw new BeaconStateException("Proposer slashing proposer indices do not match");
         if (HeaderEquals(header1, header2))
             throw new BeaconStateException("Proposer slashing headers are identical");
-        if (header1.ProposerIndex >= (ulong)state.Validators!.Length)
+        if (header1.ProposerIndex >= (ulong)state.ReadOnlyValidators.Length)
             throw new BeaconStateException($"Proposer slashing index {header1.ProposerIndex} is out of range");
-        if (!state.Validators[(int)header1.ProposerIndex].IsSlashableValidator(state.GetCurrentEpoch()))
+        if (!state.ReadOnlyValidators[(int)header1.ProposerIndex].IsSlashableValidator(state.GetCurrentEpoch()))
             throw new BeaconStateException($"Proposer {header1.ProposerIndex} is not slashable");
 
         if (verifySignatures)
@@ -447,7 +447,7 @@ public static partial class BlockProcessing
         {
             if (i > 0 && indices[i - 1] >= indices[i])
                 return false;
-            if (indices[i] >= (ulong)state.Validators!.Length)
+            if (indices[i] >= (ulong)state.ReadOnlyValidators.Length)
                 return false;
         }
         return !verifySignature || ForkSignatureSets.VerifyIndexedAttestation(state, attestation, pubkeys, deferral);
@@ -474,7 +474,7 @@ public static partial class BlockProcessing
             BodyRoot = SszRoots.HashTreeRoot(block.Body!),
         };
 
-        if (state.Validators![(int)block.ProposerIndex].Slashed)
+        if (state.ReadOnlyValidators[(int)block.ProposerIndex].Slashed)
             throw new BeaconStateException($"Proposer {block.ProposerIndex} is slashed");
     }
 
@@ -559,7 +559,7 @@ public static partial class BlockProcessing
                 {
                     epochParticipation[index] |= flag;
                     baseRewardPerIncrement ??= state.GetBaseRewardPerIncrement(cache);
-                    baseReward ??= state.Validators![(int)index].EffectiveBalance / Presets.EffectiveBalanceIncrement * baseRewardPerIncrement.Value;
+                    baseReward ??= state.ReadOnlyValidators[(int)index].EffectiveBalance / Presets.EffectiveBalanceIncrement * baseRewardPerIncrement.Value;
                     proposerRewardNumerator += baseReward.Value * Presets.ParticipationFlagWeights[flagIndex];
 #if GLOAS
                     willSetNewFlag = true;
@@ -568,7 +568,7 @@ public static partial class BlockProcessing
             }
 #if GLOAS
             if (willSetNewFlag && hadNoParticipation && weighsForPayment)
-                addedWeight += state.Validators![(int)index].EffectiveBalance;
+                addedWeight += state.ReadOnlyValidators[(int)index].EffectiveBalance;
 #endif
         }
 
@@ -636,11 +636,11 @@ public static partial class BlockProcessing
     private static partial void SwitchToCompoundingValidator(ForkState state, int index)
     {
         Span<byte> credentials = stackalloc byte[32];
-        Validator validator = state.Validators![index].Clone();
+        Validator validator = state.ReadOnlyValidators[index].Clone();
         validator.WithdrawalCredentials!.Bytes.CopyTo(credentials);
         credentials[0] = Presets.CompoundingWithdrawalPrefix;
         validator.WithdrawalCredentials = new Hash256(credentials);
-        state.Validators[index] = validator;
+        state.Validators![index] = validator;
 #if GLOAS
 
         ulong balance = state.Balances![index];

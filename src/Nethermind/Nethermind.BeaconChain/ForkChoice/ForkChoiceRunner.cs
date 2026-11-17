@@ -598,7 +598,7 @@ public sealed class ForkChoiceRunner
 
         if (!availability.IsDataAvailable(block, blockRoot, _spec))
             throw new ForkChoiceException($"Block {blockRoot} at slot {block.Slot} does not have all its blob data available");
-        ExtendPubkeys(postState.Validators!);
+        ExtendPubkeys(postState.ValidatorBuffer!.Items);
 
         RegisterBlock(
             block.Slot,
@@ -666,7 +666,7 @@ public sealed class ForkChoiceRunner
                 blockPtcVotes.Add(write);
         }
 
-        ExtendPubkeys(postState.Validators!);
+        ExtendPubkeys(postState.ValidatorBuffer!.Items);
 
         ExecutionPayloadBid bid = block.Body!.SignedExecutionPayloadBid!.Message!;
         RegisterBlock(
@@ -1211,8 +1211,8 @@ public sealed class ForkChoiceRunner
     {
         int count = state switch
         {
-            ForkedBeaconState.OfFulu fulu => fulu.State.Validators!.Length,
-            ForkedBeaconState.OfGloas gloas => gloas.State.Validators!.Length,
+            ForkedBeaconState.OfFulu fulu => fulu.State.ReadOnlyValidators.Length,
+            ForkedBeaconState.OfGloas gloas => gloas.State.ReadOnlyValidators.Length,
             _ => throw new NotSupportedException($"Unhandled state {state.GetType().Name}"),
         };
         foreach (ulong index in indices)
@@ -2308,8 +2308,8 @@ public sealed class ForkChoiceRunner
 
     private static Validator[] ValidatorsOf(ForkedBeaconState state) => state switch
     {
-        ForkedBeaconState.OfFulu fulu => fulu.State.Validators!,
-        ForkedBeaconState.OfGloas gloas => gloas.State.Validators!,
+        ForkedBeaconState.OfFulu fulu => fulu.State.ValidatorBuffer!.Items,
+        ForkedBeaconState.OfGloas gloas => gloas.State.ValidatorBuffer!.Items,
         _ => throw new NotSupportedException($"Unhandled state {state.GetType().Name}"),
     };
 

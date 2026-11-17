@@ -509,7 +509,7 @@ public sealed class BlockImporter : IBlockImporter
         }
 
         // An uncached key within the registry is checked by the transition; a known forgery must not buy a state copy.
-        if (verifySignatures && (block.ProposerIndex >= (ulong)parentState.Validators!.Length
+        if (verifySignatures && (block.ProposerIndex >= (ulong)parentState.ReadOnlyValidators.Length
             || proposerSignatureValid == false))
         {
             RejectGossip = true;
@@ -972,7 +972,7 @@ public sealed class BlockImporter : IBlockImporter
                 }
 
                 // Checked before the clone and multi-epoch advance, which a forged block must not buy.
-                switch (block.ProposerIndex >= (ulong)ancestorState.Validators!.Length ? false
+                switch (block.ProposerIndex >= (ulong)ancestorState.ReadOnlyValidators.Length ? false
                     : proposerSignatureValid)
                 {
                     case false:
@@ -1040,8 +1040,8 @@ public sealed class BlockImporter : IBlockImporter
                 return $"proposer {block.ProposerIndex} is not the expected proposer";
             }
 
-            if (block.ProposerIndex >= (ulong)state.Validators!.Length)
-                return $"Block proposer index {block.ProposerIndex} is not a validator index (registry size {state.Validators.Length})";
+            if (block.ProposerIndex >= (ulong)state.ReadOnlyValidators.Length)
+                return $"Block proposer index {block.ProposerIndex} is not a validator index (registry size {state.ReadOnlyValidators.Length})";
             return (proposerSignatureValid ?? GloasBlockProcessing.VerifyProposerSignature(state, signedBlock, _pubkeys)) ? null : "invalid proposer signature";
         }
         catch (BeaconStateException e) when (e.RejectGossip)
@@ -1231,14 +1231,14 @@ public sealed class BlockImporter : IBlockImporter
         bool gloasFinalized = SignedBeaconBlockCodec.IsGloasSlot(finalizedSlot, _spec);
         if (gloasFinalized && _states.GetGloasBlockState(finalized.Root) is { } gloasState)
         {
-            PersistAnchor(finalized.Root, finalizedSlot, BeaconStateGloas.Encode(gloasState), gloasState.Validators!.Length);
+            PersistAnchor(finalized.Root, finalizedSlot, BeaconStateGloas.Encode(gloasState), gloasState.ReadOnlyValidators.Length);
             _states.PinGloas(finalized.Root, gloasState);
             // No Fulu block can extend the lineage below a Gloas finalized checkpoint; release its hasher trees and registry index.
             _lineageCache = new EpochCache();
         }
         else if (!gloasFinalized && _states.GetBlockState(finalized.Root) is { } finalizedState)
         {
-            PersistAnchor(finalized.Root, finalizedSlot, BeaconStateFulu.Encode(finalizedState), finalizedState.Validators!.Length);
+            PersistAnchor(finalized.Root, finalizedSlot, BeaconStateFulu.Encode(finalizedState), finalizedState.ReadOnlyValidators.Length);
         }
         else if (_logger.IsDebug)
         {

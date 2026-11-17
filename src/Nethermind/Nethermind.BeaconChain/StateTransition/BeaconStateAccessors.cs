@@ -207,7 +207,7 @@ public static partial class BeaconStateAccessors
             BinaryPrimitives.WriteUInt64LittleEndian(preimage[32..], i / 16);
             SHA256.HashData(preimage, randomBytes);
             ulong randomValue = BinaryPrimitives.ReadUInt16LittleEndian(randomBytes[(int)(i % 16 * 2)..]);
-            ulong effectiveBalance = state.Validators![candidateIndex].EffectiveBalance;
+            ulong effectiveBalance = state.ReadOnlyValidators[candidateIndex].EffectiveBalance;
             if (effectiveBalance * MaxRandomValue >= Presets.MaxEffectiveBalanceElectra * randomValue)
                 return candidateIndex;
             i++;

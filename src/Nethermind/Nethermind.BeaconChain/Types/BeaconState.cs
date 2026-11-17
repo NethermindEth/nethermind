@@ -35,7 +35,13 @@ public partial class BeaconStateElectra
     internal Eth1VoteList VoteList;
     public ulong Eth1DepositIndex { get; set; }
     [SszList(1_099_511_627_776)]
-    public Validator[]? Validators { get; set; }
+    public Validator[]? Validators
+    {
+        get => ForkableArray<Validator>.Expose(ref ValidatorBuffer);
+        set => ValidatorBuffer = ForkableArray<Validator>.FromArray(value);
+    }
+    internal ForkableArray<Validator>? ValidatorBuffer;
+    internal ReadOnlySpan<Validator> ReadOnlyValidators => ValidatorBuffer?.Items;
     [SszList(1_099_511_627_776)]
     public ulong[]? Balances { get; set; }
     [SszVector((int)Presets.EpochsPerHistoricalVector)]
@@ -52,7 +58,12 @@ public partial class BeaconStateElectra
     public Checkpoint? CurrentJustifiedCheckpoint { get; set; }
     public Checkpoint? FinalizedCheckpoint { get; set; }
     [SszList(1_099_511_627_776)]
-    public ulong[]? InactivityScores { get; set; }
+    public ulong[]? InactivityScores
+    {
+        get => ForkableArray<ulong>.Expose(ref InactivityScoreBuffer);
+        set => InactivityScoreBuffer = ForkableArray<ulong>.FromArray(value);
+    }
+    internal ForkableArray<ulong>? InactivityScoreBuffer;
     public SyncCommittee? CurrentSyncCommittee { get; set; }
     public SyncCommittee? NextSyncCommittee { get; set; }
     public ExecutionPayloadHeader? LatestExecutionPayloadHeader { get; set; }
@@ -130,7 +141,13 @@ public partial class BeaconStateGloas
     public ulong Eth1DepositIndex { get; set; }
     [SszField(11)]
     [SszProgressiveList]
-    public Validator[]? Validators { get; set; }
+    public Validator[]? Validators
+    {
+        get => ForkableArray<Validator>.Expose(ref ValidatorBuffer);
+        set => ValidatorBuffer = ForkableArray<Validator>.FromArray(value);
+    }
+    internal ForkableArray<Validator>? ValidatorBuffer;
+    internal ReadOnlySpan<Validator> ReadOnlyValidators => ValidatorBuffer?.Items;
     [SszField(12)]
     [SszProgressiveList]
     public ulong[]? Balances { get; set; }
@@ -157,7 +174,12 @@ public partial class BeaconStateGloas
     public Checkpoint? FinalizedCheckpoint { get; set; }
     [SszField(21)]
     [SszProgressiveList]
-    public ulong[]? InactivityScores { get; set; }
+    public ulong[]? InactivityScores
+    {
+        get => ForkableArray<ulong>.Expose(ref InactivityScoreBuffer);
+        set => InactivityScoreBuffer = ForkableArray<ulong>.FromArray(value);
+    }
+    internal ForkableArray<ulong>? InactivityScoreBuffer;
     [SszField(22)]
     public SyncCommittee? CurrentSyncCommittee { get; set; }
     [SszField(23)]

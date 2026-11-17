@@ -90,7 +90,7 @@ public static partial class BeaconStateMutators
     /// <exception cref="BeaconStateException">The withdrawable epoch overflows uint64.</exception>
     public static partial void InitiateValidatorExit(this AccessorState state, int index, EpochCache cache)
     {
-        Validator validator = state.Validators![index];
+        Validator validator = state.ReadOnlyValidators[index];
         if (validator.ExitEpoch != Presets.FarFutureEpoch)
             return;
 
@@ -99,7 +99,7 @@ public static partial class BeaconStateMutators
         Validator updated = validator.Clone();
         updated.ExitEpoch = exitQueueEpoch;
         updated.WithdrawableEpoch = CheckedEpochSum(exitQueueEpoch, Presets.MinValidatorWithdrawabilityDelay);
-        state.Validators[index] = updated;
+        state.Validators![index] = updated;
     }
 
     /// <summary>

@@ -87,7 +87,7 @@ public static partial class BeaconStateAccessors
     /// <summary>Returns the indices of validators active in <paramref name="epoch"/>, in ascending order.</summary>
     public static partial int[] GetActiveValidatorIndices(this LegacyState state, ulong epoch)
     {
-        Validator[] validators = state.Validators!;
+        ReadOnlySpan<Validator> validators = state.ReadOnlyValidators;
         int count = 0;
         foreach (Validator validator in validators)
             if (validator.IsActiveValidator(epoch)) count++;
@@ -104,7 +104,7 @@ public static partial class BeaconStateAccessors
         ulong total = 0;
         foreach (int index in indices)
         {
-            total += state.Validators![index].EffectiveBalance;
+            total += state.ReadOnlyValidators[index].EffectiveBalance;
         }
         return Math.Max(Presets.EffectiveBalanceIncrement, total);
     }

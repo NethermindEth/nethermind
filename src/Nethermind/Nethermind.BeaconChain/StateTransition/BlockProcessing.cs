@@ -136,7 +136,7 @@ public static partial class BlockProcessing
         if (expected.Count != 0)
             state.NextWithdrawalIndex = expected[^1].Index + 1;
 
-        ulong validatorCount = (ulong)state.Validators!.Length;
+        ulong validatorCount = (ulong)state.ReadOnlyValidators.Length;
         state.NextWithdrawalValidatorIndex = expected.Count == Presets.MaxWithdrawalsPerPayload
             ? (expected[^1].ValidatorIndex + 1) % validatorCount
             : (state.NextWithdrawalValidatorIndex + (ulong)Presets.MaxValidatorsPerWithdrawalsSweep) % validatorCount;
@@ -156,7 +156,7 @@ public static partial class BlockProcessing
             if (pending.WithdrawableEpoch > epoch || withdrawals.Count == Presets.MaxPendingPartialsPerWithdrawalsSweep)
                 break;
 
-            Validator validator = state.Validators![(int)pending.ValidatorIndex];
+            Validator validator = state.ReadOnlyValidators[(int)pending.ValidatorIndex];
             bool hasSufficientEffectiveBalance = validator.EffectiveBalance >= Presets.MinActivationBalance;
             ulong balance = state.Balances![(int)pending.ValidatorIndex] - TotalWithdrawn(withdrawals.AsSpan(), pending.ValidatorIndex);
             if (validator.ExitEpoch == Presets.FarFutureEpoch && hasSufficientEffectiveBalance && balance > Presets.MinActivationBalance)
@@ -172,10 +172,10 @@ public static partial class BlockProcessing
             processedPartialWithdrawalsCount++;
         }
 
-        int bound = Math.Min(state.Validators!.Length, Presets.MaxValidatorsPerWithdrawalsSweep);
+        int bound = Math.Min(state.ReadOnlyValidators.Length, Presets.MaxValidatorsPerWithdrawalsSweep);
         for (int i = 0; i < bound; i++)
         {
-            Validator validator = state.Validators[(int)validatorIndex];
+            Validator validator = state.ReadOnlyValidators[(int)validatorIndex];
             ulong balance = state.Balances![(int)validatorIndex] - TotalWithdrawn(withdrawals.AsSpan(), validatorIndex);
             if (validator.IsFullyWithdrawableValidator(balance, epoch))
             {
@@ -199,7 +199,7 @@ public static partial class BlockProcessing
             }
             if (withdrawals.Count == Presets.MaxWithdrawalsPerPayload)
                 break;
-            validatorIndex = (validatorIndex + 1) % (ulong)state.Validators.Length;
+            validatorIndex = (validatorIndex + 1) % (ulong)state.ReadOnlyValidators.Length;
         }
 
         return processedPartialWithdrawalsCount;
@@ -297,7 +297,7 @@ public static partial class BlockProcessing
         {
             ProcessAttestation(state, attestation, cache, pubkeys, verifySignatures, batch);
         }
-        cache.IndexDepositPubkeys(state.Validators!, body.Deposits ?? []);
+        cache.IndexDepositPubkeys(state.ValidatorBuffer!.Items, body.Deposits ?? []);
         foreach (Deposit deposit in body.Deposits ?? [])
         {
             ProcessDeposit(state, deposit, cache.SigningSpec, cache);
@@ -313,7 +313,7 @@ public static partial class BlockProcessing
         }
         ExecutionRequests requests = body.ExecutionRequests!;
         ProcessDepositRequests(state, requests.Deposits ?? [], cache.SigningSpec);
-        cache.IndexRequestPubkeys(state.Validators!, requests.Withdrawals, requests.Consolidations);
+        cache.IndexRequestPubkeys(state.ValidatorBuffer!.Items, requests.Withdrawals, requests.Consolidations);
         foreach (WithdrawalRequest request in requests.Withdrawals ?? [])
         {
             ProcessWithdrawalRequestCore(state, request, cache, withdrawals);
@@ -388,12 +388,12 @@ public static partial class BlockProcessing
     /// </summary>
     private static void ApplyDeposit(BeaconStateFulu state, BlsPublicKey pubkey, Hash256 withdrawalCredentials, ulong amount, BlsSignature signature, BeaconChainSpec? spec, EpochCache? cache)
     {
-        if ((cache is null ? FindValidatorIndex(state, pubkey) : cache.FindRequestValidator(state.Validators!, pubkey)) is null)
+        if ((cache is null ? FindValidatorIndex(state, pubkey) : cache.FindRequestValidator(state.ValidatorBuffer!.Items, pubkey)) is null)
         {
             if (!DepositSignatureVerifier.IsValid(spec ?? BeaconChainSpec.ForGenesisValidatorsRoot(state.GenesisValidatorsRoot!), pubkey, withdrawalCredentials, amount, signature))
                 return;
             state.AddValidatorToRegistry(pubkey, withdrawalCredentials, 0);
-            cache?.RegisterDepositedValidator(state.Validators!);
+            cache?.RegisterDepositedValidator(state.ValidatorBuffer!.Items);
         }
 
         state.PendingDeposits = [.. state.PendingDeposits!, new PendingDeposit
@@ -426,7 +426,7 @@ public static partial class BlockProcessing
             return;
 
         state.Balances[index] = Presets.MinActivationBalance;
-        Validator validator = state.Validators![index];
+        Validator validator = state.ReadOnlyValidators[index];
         state.PendingDeposits = [.. state.PendingDeposits!, new PendingDeposit
         {
             Pubkey = validator.Pubkey,

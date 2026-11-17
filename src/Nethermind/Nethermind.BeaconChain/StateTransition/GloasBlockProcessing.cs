@@ -64,9 +64,9 @@ public static partial class GloasBlockProcessing
         BeaconBlockGloas block = signedBlock.Message!;
         // verify_block_signature indexes state.validators with the untrusted proposer_index (p2p beacon_block: [REJECT] a valid validator index).
         ulong proposerIndex = block.ProposerIndex;
-        if (proposerIndex >= (ulong)state.Validators!.Length)
+        if (proposerIndex >= (ulong)state.ReadOnlyValidators.Length)
             // ethereum/consensus-specs gloas/p2p-interface.md: "[REJECT] The proposer index is a valid validator index".
-            throw new BeaconStateException($"Block proposer index {proposerIndex} is not a validator index (registry size {state.Validators.Length})") { RejectGossip = true };
+            throw new BeaconStateException($"Block proposer index {proposerIndex} is not a validator index (registry size {state.ReadOnlyValidators.Length})") { RejectGossip = true };
         // Epoch processing inside process_slots can grow the registry past the cache.
         if (proposerIndex >= (ulong)pubkeys.Count)
             throw new BeaconStateException($"Block proposer index {proposerIndex} has no cached public key ({pubkeys.Count} cached)");
@@ -188,7 +188,7 @@ public static partial class GloasBlockProcessing
         {
             if (i > 0 && indices[i - 1] > indices[i])
                 return false;
-            if (indices[i] >= (ulong)state.Validators!.Length)
+            if (indices[i] >= (ulong)state.ReadOnlyValidators.Length)
                 return false;
         }
         return !verifySignature || GloasSignatureSets.VerifyIndexedPayloadAttestation(state, attestation, pubkeys, deferral);
@@ -515,7 +515,7 @@ public static partial class GloasBlockProcessing
         PendingDeposit[] pendingDeposits = state.PendingDeposits!;
         state.PendingDeposits = [];
         ProcessDepositRequests(state, requests.Deposits ?? []);
-        cache.IndexRequestPubkeys(state.Validators!, requests.Withdrawals, requests.Consolidations);
+        cache.IndexRequestPubkeys(state.ValidatorBuffer!.Items, requests.Withdrawals, requests.Consolidations);
         PendingWithdrawalBatch withdrawals = new(state.PendingPartialWithdrawals!);
         foreach (WithdrawalRequest request in requests.Withdrawals ?? [])
             ProcessWithdrawalRequestCore(state, request, cache, withdrawals);
@@ -705,7 +705,7 @@ public static partial class GloasBlockProcessing
             state.NextWithdrawalBuilderIndex = (state.NextWithdrawalBuilderIndex + (ulong)processedBuildersSweep) % (ulong)state.Builders.Length;
 
         // Earlier withdrawal stages stop before filling the payload, so its final entry is a validator when full.
-        ulong validatorCount = (ulong)state.Validators!.Length;
+        ulong validatorCount = (ulong)state.ReadOnlyValidators.Length;
         state.NextWithdrawalValidatorIndex = withdrawals.Length == Presets.MaxWithdrawalsPerPayload
             ? (withdrawals[^1].ValidatorIndex + 1) % validatorCount
             : (state.NextWithdrawalValidatorIndex + (ulong)Presets.MaxValidatorsPerWithdrawalsSweep) % validatorCount;
@@ -806,8 +806,8 @@ public static partial class GloasBlockProcessing
             if (pending.WithdrawableEpoch > epoch || accumulated.Count >= withdrawalsLimit)
                 break;
 
-            int index = RequireRegistryIndex(pending.ValidatorIndex, state.Validators!.Length, "Validator");
-            Validator validator = state.Validators[index];
+            int index = RequireRegistryIndex(pending.ValidatorIndex, state.ReadOnlyValidators.Length, "Validator");
+            Validator validator = state.ReadOnlyValidators[index];
             ulong balance = state.Balances![index] - TotalWithdrawn(accumulated.AsSpan(), pending.ValidatorIndex);
             bool isEligible = validator.ExitEpoch == Presets.FarFutureEpoch && validator.EffectiveBalance >= Presets.MinActivationBalance && balance > Presets.MinActivationBalance;
             if (isEligible)
@@ -829,7 +829,7 @@ public static partial class GloasBlockProcessing
     private static void GetValidatorsSweepWithdrawals(BeaconStateGloas state, ref ulong withdrawalIndex, ref RefList16<Withdrawal> accumulated)
     {
         ulong epoch = state.GetCurrentEpoch();
-        int bound = Math.Min(state.Validators!.Length, Presets.MaxValidatorsPerWithdrawalsSweep);
+        int bound = Math.Min(state.ReadOnlyValidators.Length, Presets.MaxValidatorsPerWithdrawalsSweep);
         ulong validatorIndex = state.NextWithdrawalValidatorIndex;
 
         for (int i = 0; i < bound; i++)
@@ -837,8 +837,8 @@ public static partial class GloasBlockProcessing
             if (accumulated.Count >= Presets.MaxWithdrawalsPerPayload)
                 break;
 
-            int index = RequireRegistryIndex(validatorIndex, state.Validators.Length, "Validator");
-            Validator validator = state.Validators[index];
+            int index = RequireRegistryIndex(validatorIndex, state.ReadOnlyValidators.Length, "Validator");
+            Validator validator = state.ReadOnlyValidators[index];
             ulong balance = state.Balances![index] - TotalWithdrawn(accumulated.AsSpan(), validatorIndex);
             if (validator.IsFullyWithdrawableValidator(balance, epoch))
             {
@@ -860,7 +860,7 @@ public static partial class GloasBlockProcessing
                     Amount = balance - validator.GetMaxEffectiveBalance(),
                 });
             }
-            validatorIndex = (validatorIndex + 1) % (ulong)state.Validators.Length;
+            validatorIndex = (validatorIndex + 1) % (ulong)state.ReadOnlyValidators.Length;
         }
     }
 
