@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
+using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Logging;
@@ -24,6 +26,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             Id = string.Concat("0x", Convert.ToHexStringLower(id));
             JsonRpcDuplexClient = jsonRpcDuplexClient;
             _maxQueuedMessages = maxQueuedMessages;
+            _connectionQueue = ConnectionQueues.GetValue(jsonRpcDuplexClient, static _ => new ConnectionQueue());
             SendChannel = Channel.CreateBounded<QueuedSend>(new BoundedChannelOptions(maxQueuedMessages) { SingleReader = true });
             ProcessMessages();
         }
@@ -59,6 +62,12 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         /// Queue limit for subscriptions that send once per transaction or p2p message: about 30 s of a busy mempool.
         /// </summary>
         internal const int MaxQueuedEvents = 10_000;
+
+        internal const int MaxQueuedPerConnection = 2 * MaxQueuedEvents;
+
+        private static readonly ConditionalWeakTable<IJsonRpcDuplexClient, ConnectionQueue> ConnectionQueues = [];
+
+        private readonly ConnectionQueue _connectionQueue;
 
         private readonly int _maxQueuedMessages;
         private volatile bool _overflowed;
@@ -120,11 +129,29 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void Enqueue(QueuedSend queued)
         {
-            // TryComplete fails once disposed, so only an overflow gets past it.
-            if (SendChannel.Writer.TryWrite(queued) || !SendChannel.Writer.TryComplete()) return;
+            if (SendChannel.Writer.TryWrite(queued))
+            {
+                if (Interlocked.Increment(ref _connectionQueue.Count) > MaxQueuedPerConnection)
+                {
+                    Disconnect($"Client fell {MaxQueuedPerConnection} sends behind across its subscriptions and is disconnected.");
+                }
 
+                return;
+            }
+
+            // TryComplete fails once disposed, so only an overflow gets past it.
+            if (!SendChannel.Writer.TryComplete()) return;
+
+            Disconnect($"Client fell {_maxQueuedMessages} sends behind and is disconnected.");
+        }
+
+        private void Disconnect(string reason)
+        {
             _overflowed = true;
-            if (_logger.IsWarn) _logger.Warn($"{GetErrorMsg()} Client fell {_maxQueuedMessages} sends behind and is disconnected.");
+            SendChannel.Writer.TryComplete();
+            if (Interlocked.Exchange(ref _connectionQueue.Disconnected, 1) == 1) return;
+
+            if (_logger.IsWarn) _logger.Warn($"{GetErrorMsg()} {reason}");
             // Off the caller's thread, which may be block processing.
             _ = Task.Run(JsonRpcDuplexClient.Dispose);
         }
@@ -141,6 +168,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 {
                     while (SendChannel.Reader.TryRead(out QueuedSend queued))
                     {
+                        Interlocked.Decrement(ref _connectionQueue.Count);
                         if (_overflowed) continue;
 
                         try
@@ -165,6 +193,12 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         /// <see cref="TypedSend{TState}.Invoke"/> or <see cref="TypedSendWithArgument{TState}.Invoke"/>, which only the
         /// matching <c>ScheduleAction</c> overload pairs with it.
         /// </remarks>
+        private sealed class ConnectionQueue
+        {
+            public int Count;
+            public int Disconnected;
+        }
+
         private readonly record struct QueuedSend(Delegate Send, object? State, long Argument, Func<Delegate, object?, long, Task> Invoke);
 
         private static class TypedSend<TState> where TState : class?

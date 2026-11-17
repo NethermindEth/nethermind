@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Text.Json;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
@@ -32,6 +34,21 @@ public class ValueHash256ConverterTests
         {
             Assert.That(json, Is.EqualTo("\"" + ValidHex + "\""));
             Assert.That(deserialized, Is.EqualTo(hash));
+        }
+    }
+
+    [Test]
+    public void Roundtrips_hash_as_dictionary_key()
+    {
+        Dictionary<ValueHash256, int> map = new() { [new ValueHash256(Bytes.FromHexString(ValidHex))] = 1 };
+
+        string json = JsonSerializer.Serialize(map, _options);
+        Dictionary<ValueHash256, int>? deserialized = JsonSerializer.Deserialize<Dictionary<ValueHash256, int>>(json, _options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json, Is.EqualTo($$"""{"{{ValidHex}}":1}"""));
+            Assert.That(deserialized, Is.EquivalentTo(map));
         }
     }
 

@@ -132,6 +132,16 @@ public interface IJsonRpcConfig : IConfig
     public int MaxLogsPerResponse { get; set; }
 
     [ConfigItem(
+        Description = "The max number of `eth_subscribe` and `admin_subscribe` subscriptions of one WebSocket or IPC connection. A call above this limit returns a `LimitExceeded` error. `0` to lift the limit.",
+        DefaultValue = "1000")]
+    public int MaxSubscriptionsPerConnection { get; set; }
+
+    [ConfigItem(
+        Description = "The max number of `eth_subscribe` and `admin_subscribe` subscriptions of all connections together. A call above this limit returns a `LimitExceeded` error. IPC and authenticated connections are not refused by this limit. `0` to lift the limit.",
+        DefaultValue = "10000")]
+    public int MaxSubscriptions { get; set; }
+
+    [ConfigItem(
         Description = "The max number of blocks the `overlay_getLogs` JSON-RPC method re-executes in one call. `0` to lift the limit.",
         DefaultValue = "1000")]
     int OverlayMaxBlockRange { get; set; }
@@ -227,6 +237,12 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The max block count limit for the `eth_simulate` JSON-RPC method.", DefaultValue = "256")]
     long? MaxSimulateBlocksCap { get; set; }
 
+    [ConfigItem(Description = "The max total call count, across all blocks, for `eth_simulateV1`, `debug_simulateV1`, `trace_simulateV1` and, with bundle overrides, `debug_traceCallMany`.", DefaultValue = "10000")]
+    long? MaxSimulateCallsCap { get; set; }
+
+    [ConfigItem(Description = "The max call count per block (per bundle for `debug_traceCallMany`) for the methods that `MaxSimulateCallsCap` covers.", DefaultValue = "5000")]
+    long? MaxSimulateCallsPerBlockCap { get; set; }
+
     [ConfigItem(Description = "The error margin used in the `eth_estimateGas` JSON-RPC method, in basis points.", DefaultValue = "150")]
     int EstimateErrorMargin { get; set; }
 
@@ -247,6 +263,9 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(Description = "The number of requests one public WebSocket connection processes at a time. Requests pipelined on one connection are processed and answered in any order; each response carries its request id, and a batch is still processed and answered in order as one message. Connections that are authenticated or enable the Engine module always process their requests one by one. Set to 1 if a client relies on the order, for example when it pipelines dependent transactions such as blob transactions with consecutive nonces.", DefaultValue = "16")]
     int WebSocketsProcessingConcurrency { get; set; }
+
+    [ConfigItem(Description = "The max size, in bytes, of a written but not yet sent response on one WebSocket connection to an unauthenticated URL. A connection is closed when its response is larger, or when the send does not complete within `JsonRpc.Timeout` plus one second for each 64 KiB of the response, at most five minutes more. `0` or negative to disable both.", DefaultValue = "67108864")]
+    long MaxUnsentWebSocketResponseSize { get; set; }
 
     [ConfigItem(Description = "The number of requests one IPC connection processes at a time. Requests pipelined on one connection are processed and answered in any order; each response carries its request id, and a batch is still processed and answered in order as one message. When `JsonRpc.EnabledModules` includes the Engine module, IPC always processes its requests one by one. Set to 1 if a client relies on the order, for example when it pipelines dependent transactions such as blob transactions with consecutive nonces.", DefaultValue = "16")]
     int IpcProcessingConcurrency { get; set; }

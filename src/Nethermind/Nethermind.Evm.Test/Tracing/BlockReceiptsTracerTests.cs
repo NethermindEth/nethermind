@@ -242,6 +242,22 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.That(tracer.TxReceipts[0].TxType, Is.EqualTo(TxType.AccessList));
         }
 
+        [TestCase(7ul, 30ul, 12ul)]
+        [TestCase(7ul, 10ul, 10ul)]
+        public void Sets_effective_gas_price(ulong baseFee, ulong maxFeePerGas, ulong expected)
+        {
+            Transaction transaction = Build.A.Transaction.WithType(TxType.EIP1559).WithMaxFeePerGas(maxFeePerGas).WithMaxPriorityFeePerGas(5).TestObject;
+            Block block = Build.A.Block.WithBaseFeePerGas(baseFee).WithTransactions(transaction).TestObject;
+
+            BlockReceiptsTracer tracer = new();
+            tracer.SetOtherTracer(NullBlockTracer.Instance);
+            tracer.StartNewBlockTrace(block);
+            tracer.StartNewTxTrace(transaction);
+            tracer.MarkAsSuccess(TestItem.AddressA, 100, [], []);
+
+            Assert.That(tracer.TxReceipts[0].EffectiveGasPrice, Is.EqualTo((UInt256)expected));
+        }
+
         [Test]
         public void Sets_state_root_if_provided_on_failure()
         {

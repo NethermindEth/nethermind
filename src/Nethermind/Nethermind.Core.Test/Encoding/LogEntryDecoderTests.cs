@@ -433,6 +433,37 @@ public class LogEntryDecoderTests
     }
 
     [Test]
+    public void Decoders_accept_data_above_default_rlp_limit([Values] bool compact, [Values] bool useStructRef, [Values] bool zeroData)
+    {
+        byte[] data = new byte[RlpLimit.DefaultLimit.Limit + 1];
+        if (!zeroData) data.AsSpan().Fill(0xab);
+
+        LogEntry logEntry = new(TestItem.AddressA, data, [TestItem.KeccakA]);
+        RlpDecoder<LogEntry?> decoder = compact ? CompactLogEntryDecoder.Instance : LogEntryDecoder.Instance;
+        RlpReader reader = new(decoder.Encode(logEntry));
+
+        byte[] decoded;
+        if (!useStructRef)
+        {
+            decoded = decoder.Decode(ref reader)!.Data;
+        }
+        else if (compact)
+        {
+            CompactLogEntryDecoder.DecodeLogEntryStructRef(ref reader, RlpBehaviors.None, out LogEntryStructRef item);
+            decoded = new byte[item.DataLength];
+            item.CopyDataTo(decoded);
+        }
+        else
+        {
+            LogEntryDecoder.DecodeStructRef(ref reader, RlpBehaviors.None, out LogEntryStructRef item);
+            decoded = new byte[item.DataLength];
+            item.CopyDataTo(decoded);
+        }
+
+        Assert.That(decoded, Is.EqualTo(data));
+    }
+
+    [Test]
     public void Compact_decoder_rejects_zero_prefix_that_expands_data_beyond_limit([Values] bool useStructRef)
     {
         byte[] malformed = CreateCompactLogEntryWithTooLargeZeroPrefix();

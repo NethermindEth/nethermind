@@ -134,7 +134,7 @@ public static partial class StatelessExecutor
         }
 
         StatelessBlockProcessingEnv blockProcessingEnv = new(
-            witness, specProvider, Always.Valid, NullLogManager.Instance, blockTree);
+            witness, specProvider, Always.Valid, NullLogManager.Instance, blockTree, blockValidator);
 
         if (!blockProcessingEnv.WorldState.TryBeginScope(parentHeader, out IDisposable? scope))
         {
