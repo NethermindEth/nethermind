@@ -61,11 +61,13 @@ public class WitnessCollector(
         {
             // NoValidation is required, not an optimisation: the shared validator is the merge plugin's
             // InvalidBlockInterceptor, which records into the process-wide InvalidChainTracker, so a replay that
-            // diverges on this node would make the Engine API reject the block and its descendants. The header is
-            // compared with the execution outcome below instead.
+            // diverges on this node would make the Engine API reject the block and its descendants. The execution
+            // outcome is checked below instead.
+            IReleaseSpec spec = specProvider.GetSpec(header);
             (Block processed, TxReceipt[] receipts) = blockProcessor.ProcessOne(isolated,
-                ProcessingOptions.ReadOnlyChain | ProcessingOptions.NoValidation, tracer, specProvider.GetSpec(header), token);
+                ProcessingOptions.ReadOnlyChain | ProcessingOptions.NoValidation, tracer, spec, token);
             ThrowIfNotReproduced(block, processed, receipts);
+            ThrowIfOverItemLimit(block, processed, spec);
 
             // Trusted inputs serialize the block's access list, which import may have released after storing it.
             block.EncodedBlockAccessList ??= isolated.EncodedBlockAccessList;
@@ -84,8 +86,24 @@ public class WitnessCollector(
         Hash256 expected = block.Hash ?? block.Header.CalculateHash();
         if (processed.Hash == expected) return;
 
+        if (_logger.IsWarn) _logger.Warn($"Witness re-execution of block {block.ToString(Block.Format.FullHashAndNumber)} did not reproduce its header; the block is not marked invalid.");
         string error = BlockValidator.DescribeMismatch(processed, receipts, block, _logger)
             ?? BlockErrorMessages.InvalidHeaderHash(expected, processed.Hash!);
         throw new InvalidBlockException(block, error);
+    }
+
+    /// <remarks>
+    /// The header hash does not commit to the EIP-7928 item limit, which the block validator checks on a reproduced
+    /// block: against the block's own access list, or the generated one when the block came without it.
+    /// </remarks>
+    private static void ThrowIfOverItemLimit(Block block, Block processed, IReleaseSpec spec)
+    {
+        if (!spec.BlockLevelAccessListsEnabled) return;
+
+        int? itemCount = block.BlockAccessList?.ItemCount ?? processed.GeneratedBlockAccessList?.ItemCount;
+        if (itemCount is not null && BlockValidator.ItemLimitError(block.Header, itemCount.Value) is { } error)
+        {
+            throw new InvalidBlockException(block, error);
+        }
     }
 }

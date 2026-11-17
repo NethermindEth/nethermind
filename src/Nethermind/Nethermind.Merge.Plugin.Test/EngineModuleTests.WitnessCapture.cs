@@ -21,6 +21,7 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
@@ -33,6 +34,7 @@ using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.Eip7928;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.Specs.Forks;
@@ -949,6 +951,38 @@ public partial class EngineModuleTests
 
         Assert.That(block.EncodedBlockAccessList is null ? null : Keccak.Compute(block.EncodedBlockAccessList),
             Is.EqualTo(block.Header.BlockAccessListHash));
+    }
+
+    /// <summary>
+    /// The header hash does not commit to the EIP-7928 item limit, so a replay that reproduces a block over its limit
+    /// still fails, as validating the processed block would, whether or not the block carries its access list.
+    /// </summary>
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Witness_of_a_reproduced_block_over_the_access_list_item_limit_fails(bool withAccessList)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+        await ProduceCanonicalBlock(chain);
+        Block block = chain.BlockTree.Head!;
+        BlockHeader parent = chain.BlockTree.FindHeader(block.ParentHash!)!;
+        IWitnessGeneratingBlockProcessingEnvFactory envFactory = chain.Container.Resolve<IWitnessGeneratingBlockProcessingEnvFactory>();
+        // Import may release the access-list encoding once the block is stored; a replay that reproduces it restores it.
+        using (IWitnessGeneratingBlockProcessingEnvScope replayScope = envFactory.CreateScope())
+        using (replayScope.Env.CreateExistingBlockWitnessCollector().GetWitnessForExistingBlock(parent, block)) { }
+        Assert.That(block.EncodedBlockAccessList, Is.Not.Null, "precondition: the replay restores the access-list encoding");
+
+        // An empty block executes no transaction, so its outcome does not depend on the gas limit, while its system
+        // contract calls put it over a one-item limit.
+        BlockHeader header = block.Header.Clone();
+        header.GasLimit = Eip7928Constants.ItemCost;
+        header.Hash = header.CalculateHash();
+        Block overLimit = new(header, block.Body, withAccessList ? BlockAccessListDecoder.Instance.Decode(block.EncodedBlockAccessList!) : null);
+
+        using IWitnessGeneratingBlockProcessingEnvScope scope = envFactory.CreateScope();
+        InvalidBlockException? failure = Assert.Throws<InvalidBlockException>(() =>
+            scope.Env.CreateExistingBlockWitnessCollector().GetWitnessForExistingBlock(parent, overLimit));
+
+        Assert.That(failure!.Message, Does.StartWith("BlockAccessListGasLimitExceeded"));
     }
 
     /// <summary>

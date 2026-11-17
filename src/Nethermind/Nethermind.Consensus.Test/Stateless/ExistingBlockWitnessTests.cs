@@ -16,6 +16,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
@@ -78,12 +79,17 @@ public class ExistingBlockWitnessTests
         Assert.That(processed.Header.StateRoot, Is.EqualTo(block.Header.StateRoot));
     }
 
-    /// <summary>A replay that reproduces the state but not another execution outcome still fails, naming that outcome.</summary>
+    /// <summary>
+    /// A replay that reproduces the state but not another execution outcome still fails, naming that outcome, and logs
+    /// that it was a witness replay, as the mismatch lines read like those of a block rejected on import.
+    /// </summary>
     [Test]
     public async Task Witness_of_a_block_whose_replay_differs_outside_the_state_fails_naming_the_field()
     {
+        TestLogger logger = new();
         using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
-            .AddSingleton<ISpecProvider>(new TestSpecProvider(Osaka.Instance)));
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(Osaka.Instance))
+            .AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger))));
         Block block = await chain.AddBlock();
         BlockHeader header = block.Header.Clone();
         header.ReceiptsRoot = Keccak.Zero;
@@ -95,7 +101,11 @@ public class ExistingBlockWitnessTests
         InvalidBlockException failure = Assert.Throws<InvalidBlockException>(() =>
             scope.Env.CreateExistingBlockWitnessCollector().GetWitnessForExistingBlock(parent, differing));
 
-        Assert.That(failure.Message, Does.StartWith("InvalidReceiptsRoot"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failure.Message, Does.StartWith("InvalidReceiptsRoot"));
+            Assert.That(logger.LogList, Has.Some.StartsWith($"Witness re-execution of block {differing.ToString(Block.Format.FullHashAndNumber)} did not reproduce its header"));
+        }
     }
 
     // PREVRANDAO, MSTORE at 0, LOG0 the 32 bytes, RETURN nothing: the receipts root commits to the value the opcode reads.

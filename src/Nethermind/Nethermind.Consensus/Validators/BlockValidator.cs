@@ -547,16 +547,22 @@ public class BlockValidator(
 
     private bool ValidateBlockLevelAccessListSize(Block block, int itemCount, ref string? error)
     {
-        if (Eip7928Constants.ExceedsItemLimit(itemCount, block.Header.GasLimit))
+        if (ItemLimitError(block.Header, itemCount) is { } limitError)
         {
-            ulong maxBalItems = block.Header.GasLimit / Eip7928Constants.ItemCost;
-            error = BlockErrorMessages.BlockAccessListGasLimitExceeded((ulong)itemCount, maxBalItems);
+            error = limitError;
             if (_logger.IsWarn) _logger.Warn($"{Invalid(block)} {error}");
             return false;
         }
 
         return true;
     }
+
+    /// <summary>EIP-7928: the error for an access list of <paramref name="itemCount"/> items over the limit of
+    /// <paramref name="header"/>'s gas limit / <see cref="Eip7928Constants.ItemCost"/>, or <c>null</c> within it.</summary>
+    internal static string? ItemLimitError(BlockHeader header, int itemCount) =>
+        Eip7928Constants.ExceedsItemLimit(itemCount, header.GasLimit)
+            ? BlockErrorMessages.BlockAccessListGasLimitExceeded((ulong)itemCount, header.GasLimit / Eip7928Constants.ItemCost)
+            : null;
 
     // EIP-7928: BlockAccessIndex valid range is [0, txCount + 1]
     // (0 = pre-execution, 1..n = transactions, n+1 = post-execution).
