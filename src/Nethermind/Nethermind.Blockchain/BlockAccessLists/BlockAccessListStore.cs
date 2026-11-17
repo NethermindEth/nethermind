@@ -108,6 +108,37 @@ public class BlockAccessListStore : IBlockAccessListStore
         return _balDb.GetOwnedMemory(key);
     }
 
+    /// <inheritdoc/>
+    /// <remarks>Reads the keys in one batch. Pending access lists are taken before the batch, as <see cref="GetRlp"/> does,
+    /// so one whose write lands during the batch is not missed.</remarks>
+    public void GetRlps(ReadOnlySpan<(ulong Number, ValueHash256 Hash)> blocks, PooledSegmentedBuffer destination, Span<ReadOnlyMemory<byte>?> rlps)
+    {
+        ArgumentOutOfRangeException.ThrowIfNotEqual(rlps.Length, blocks.Length);
+        using ArrayPoolListRef<(int Index, ReadOnlyMemory<byte> Rlp)> pending = new(0);
+        if (_pending is not null)
+        {
+            for (int i = 0; i < blocks.Length; i++)
+            {
+                if (_pending.TryGet(in blocks[i].Hash, out byte[] pendingRlp)) pending.Add((i, destination.Add(pendingRlp)));
+            }
+        }
+
+        using ArrayPoolSpan<byte> keys = new(blocks.Length * KeyLength);
+        for (int i = 0; i < blocks.Length; i++)
+        {
+            KeyValueStoreExtensions.GetBlockNumPrefixedKey(blocks[i].Number, blocks[i].Hash, keys.Slice(i * KeyLength, KeyLength));
+        }
+
+        _balDb.GetMany(keys, KeyLength, rlps, new AddingDecoder(destination));
+        foreach ((int index, ReadOnlyMemory<byte> rlp) in pending.AsSpan()) rlps[index] = rlp;
+    }
+
+    /// <remarks>An empty value reads as missing, as <see cref="IReadOnlyKeyValueStore.GetOwnedMemory"/> reads it.</remarks>
+    private readonly struct AddingDecoder(PooledSegmentedBuffer destination) : IValueDecoder<ReadOnlyMemory<byte>?>
+    {
+        public ReadOnlyMemory<byte>? Decode(ReadOnlySpan<byte> buffer) => buffer.IsEmpty ? default(ReadOnlyMemory<byte>?) : destination.Add(buffer);
+    }
+
     [SkipLocalsInit]
     public bool Exists(ulong blockNumber, Hash256 blockHash)
     {

@@ -7,7 +7,6 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
@@ -1224,12 +1223,12 @@ public partial class EngineModuleTests
 
         PayloadBodiesV2DirectResponse.PayloadBody?[] items =
         [
-            PayloadBodiesV2DirectResponse.CreatePayloadBody(
+            new PayloadBodiesV2DirectResponse.PayloadBody(
                 [transaction],
                 withdrawals,
-                ArrayMemoryManager.From([0x01, 0x02, 0x03])),
+                new byte[] { 0x01, 0x02, 0x03 }),
             null,
-            PayloadBodiesV2DirectResponse.CreatePayloadBody([], null, null)
+            new PayloadBodiesV2DirectResponse.PayloadBody([], null, null)
         ];
 
         using PayloadBodiesV2DirectResponse response = new(items);

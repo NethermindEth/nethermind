@@ -144,7 +144,7 @@ internal static class PayloadBodiesDirectResponseWriter
         IBufferWriter<byte> writer,
         byte[][] transactions,
         Withdrawal[]? withdrawals,
-        MemoryManager<byte>? blockAccessList = null,
+        ReadOnlyMemory<byte>? blockAccessList = null,
         bool includeBlockAccessList = false)
     {
         writer.Write("{\"transactions\":"u8);
@@ -156,7 +156,7 @@ internal static class PayloadBodiesDirectResponseWriter
         IBufferWriter<byte> writer,
         Transaction[] transactions,
         Withdrawal[]? withdrawals,
-        MemoryManager<byte>? blockAccessList = null,
+        ReadOnlyMemory<byte>? blockAccessList = null,
         bool includeBlockAccessList = false)
     {
         writer.Write("{\"transactions\":"u8);
@@ -167,7 +167,7 @@ internal static class PayloadBodiesDirectResponseWriter
     public static void WritePayloadBody(
         IBufferWriter<byte> writer,
         ReadOnlySpan<byte> blockRlp,
-        MemoryManager<byte>? blockAccessList = null,
+        ReadOnlyMemory<byte>? blockAccessList = null,
         bool includeBlockAccessList = false)
     {
         RlpReader ctx = new RlpReader(blockRlp).EnterSequence(out _);
@@ -188,7 +188,7 @@ internal static class PayloadBodiesDirectResponseWriter
     private static void WritePayloadBodySuffix(
         IBufferWriter<byte> writer,
         Withdrawal[]? withdrawals,
-        MemoryManager<byte>? blockAccessList,
+        ReadOnlyMemory<byte>? blockAccessList,
         bool includeBlockAccessList)
     {
         writer.Write(",\"withdrawals\":"u8);
@@ -200,7 +200,7 @@ internal static class PayloadBodiesDirectResponseWriter
     /// <summary>V2 bodies always carry the key (literal <c>null</c> when absent); V1 bodies omit it.</summary>
     private static void WriteBlockAccessList(
         IBufferWriter<byte> writer,
-        MemoryManager<byte>? blockAccessList,
+        ReadOnlyMemory<byte>? blockAccessList,
         bool includeBlockAccessList)
     {
         if (!includeBlockAccessList)
@@ -215,7 +215,7 @@ internal static class PayloadBodiesDirectResponseWriter
         }
         else
         {
-            HexWriter.WriteHexString(writer, blockAccessList.Memory.Span, chunked: true);
+            HexWriter.WriteHexString(writer, blockAccessList.Value.Span, chunked: true);
         }
     }
 

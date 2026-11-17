@@ -108,23 +108,27 @@ internal static class PayloadBodiesHandlerHelper
     public static PayloadBodiesV2DirectResponse CreateResponseV2(IBlockAccessListStore balStore, StoredBlocks stored)
     {
         using ArrayPoolList<StoredBlock?> blocks = stored.Blocks;
-        ArrayPoolList<PayloadBodyV2?> results = new(blocks.Count, blocks.Count);
+        using ArrayPoolListRef<(ulong Number, ValueHash256 Hash)> found = new(blocks.Count);
+        foreach (StoredBlock? block in blocks.AsSpan())
+        {
+            if (block is { } b) found.Add((b.Number, b.Hash));
+        }
+
+        using ArrayPoolListRef<ReadOnlyMemory<byte>?> bals = new(found.Count, found.Count);
         try
         {
-            for (int i = 0; i < results.Count; i++)
-            {
-                if (blocks[i] is { } block)
-                {
-                    results[i] = PayloadBodiesV2DirectResponse.CreatePayloadBody(block.Rlp, balStore.GetRlp(block.Number, new Hash256(block.Hash)));
-                }
-            }
+            balStore.GetRlps(found.AsSpan(), stored.Rlps, bals.AsSpan());
         }
         catch
         {
-            PayloadBodiesV2DirectResponse.DisposeItems(results.AsSpan());
-            results.Dispose();
             stored.Rlps.Dispose();
             throw;
+        }
+
+        ArrayPoolList<PayloadBodyV2?> results = new(blocks.Count, blocks.Count);
+        for (int i = 0, j = 0; i < results.Count; i++)
+        {
+            if (blocks[i] is { } block) results[i] = new PayloadBodyV2(block.Rlp, bals[j++]);
         }
 
         return new PayloadBodiesV2DirectResponse(results.AsMemory(), new Owner(results, stored.Rlps));

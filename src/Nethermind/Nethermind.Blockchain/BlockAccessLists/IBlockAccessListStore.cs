@@ -8,6 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.BlockAccessLists;
@@ -49,6 +50,20 @@ public interface IBlockAccessListStore
     void Insert(ulong blockNumber, Hash256 blockHash, scoped ReadOnlySpan<byte> bal);
     void Insert(ulong blockNumber, Hash256 blockHash, ReadOnlyBlockAccessList bal);
     MemoryManager<byte>? GetRlp(ulong blockNumber, Hash256 blockHash);
+
+    /// <summary>Copies the stored encoding of each block's access list, as <see cref="GetRlp"/> reads it, to <paramref name="destination"/>.</summary>
+    /// <param name="blocks">The number and hash of each block.</param>
+    /// <param name="destination">The buffer the encodings are copied to.</param>
+    /// <param name="rlps">Receives the encoding of each access list in <paramref name="destination"/>, or <see langword="null"/> when it is not stored.</param>
+    void GetRlps(ReadOnlySpan<(ulong Number, ValueHash256 Hash)> blocks, PooledSegmentedBuffer destination, Span<ReadOnlyMemory<byte>?> rlps)
+    {
+        for (int i = 0; i < blocks.Length; i++)
+        {
+            using MemoryManager<byte>? rlp = GetRlp(blocks[i].Number, new Hash256(in blocks[i].Hash));
+            rlps[i] = rlp is null ? default(ReadOnlyMemory<byte>?) : destination.Add(rlp.Memory.Span);
+        }
+    }
+
     ReadOnlyBlockAccessList? Get(ulong blockNumber, Hash256 blockHash);
     bool Exists(ulong blockNumber, Hash256 blockHash);
     void Delete(ulong blockNumber, Hash256 blockHash);
