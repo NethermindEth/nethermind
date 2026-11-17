@@ -474,6 +474,26 @@ public class TraceStoreRpcModuleTests
         }
     }
 
+    [Test]
+    public async Task trace_filter_from_store_traces_block_live_when_stored_traces_are_gone_before_write([Values] bool streaming)
+    {
+        TestContext test = new(streaming: streaming);
+        Hash256 head = test.BlockFinder.Head!.Hash!;
+        ParityLikeTxTrace liveTrace = new() { BlockHash = head, TransactionHash = TestItem.KeccakB, Action = Call(TestItem.AddressA, TestItem.AddressC) };
+        test.InnerModule.trace_block(Arg.Is<BlockParameter>(p => p.BlockHash == head), Arg.Any<string?>())
+            .Returns(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(ParityTxTraceFromStore.FromTxTrace(liveTrace).ToArray()));
+
+        using JsonRpcResponse response = test.Module.trace_filter(new TraceFilterForRpc { FromBlock = BlockParameter.Latest, ToBlock = BlockParameter.Latest });
+        test.Store.Remove(head.Bytes);
+        JToken result = JToken.Parse(Encoding.UTF8.GetString(await Serialize(response)))["result"]!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(JToken.Parse(Serializer.Serialize(ParityTxTraceFromStore.FromTxTrace(liveTrace)))).Using(JToken.EqualityComparer));
+            test.InnerModule.DidNotReceive().trace_filter(Arg.Any<TraceFilterForRpc>());
+        }
+    }
+
     private sealed class CountingTraceSerializer(ITraceSerializer<ParityLikeTxTrace> inner) : ITraceSerializer<ParityLikeTxTrace>
     {
         private int _deserializeCount;

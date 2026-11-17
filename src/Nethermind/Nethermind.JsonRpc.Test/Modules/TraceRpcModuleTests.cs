@@ -604,10 +604,10 @@ public class TraceRpcModuleTests
 
         public int HeadersFoundAfterFirstBody { get; private set; }
 
-        public override bool HasBlock(ulong blockNumber, Hash256 blockHash)
+        public override BlockHeader? FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null)
         {
             if (_bodyLoaded) HeadersFoundAfterFirstBody++;
-            return base.HasBlock(blockNumber, blockHash);
+            return base.FindHeader(blockHash, options, blockNumber);
         }
 
         public override Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null)

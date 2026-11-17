@@ -483,8 +483,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
                     return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(BlockFinderExtensions.BlockRangeInFuture, ErrorCodes.InvalidParams);
                 }
 
-                BlockHeader? first = null;
-                BlockHeader? last = null;
+                List<Hash256> blockHashes = [];
+                BlockHeader? previous = null;
                 ResultWrapper<IEnumerable<ParityTxTraceFromStore>>? stateFailure = null;
                 foreach (SearchResult<BlockHeader> blockSearch in blockFinder.SearchForHeadersOnMainChain(fromBlock, toBlock, ErrorCodes.StandardResourceNotFound))
                 {
@@ -497,9 +497,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
                     BlockHeader header = blockSearch.Object!;
                     if (header.IsGenesis) continue;
 
-                    stateFailure ??= GetTraceFilterStateFailure(header, last, cancellationToken);
-                    first ??= header;
-                    last = header;
+                    stateFailure ??= GetTraceFilterStateFailure(header, previous, cancellationToken);
+                    blockHashes.Add(header.Hash!);
+                    previous = header;
                 }
 
                 if (stateFailure is not null)
@@ -518,7 +518,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                         using StreamingParityLikeBlockTracer streamingTracer = new(
                             types, ParityTraceStreamMode.Store, includeTxHash: false,
                             writer, pipeWriter, ct, storeFilter: filter, specProvider: specProvider);
-                        foreach ((BlockHeader header, BlockHeader parentHeader) in GetTraceFilterBlocks(first, last))
+                        foreach ((BlockHeader header, BlockHeader parentHeader) in GetTraceFilterBlocks(blockHashes))
                         {
                             if (filter.IsExhausted) break;
                             Block block = LoadBlock(header);
@@ -526,7 +526,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                                 ExecuteBlockStreaming(parentHeader, block, streamingTracer, ct);
                         }
                     },
-                    runBuffered: () => RunBufferedTraceFilter(GetTraceFilterBlocks(first, last), filter, cancellationToken),
+                    runBuffered: () => RunBufferedTraceFilter(GetTraceFilterBlocks(blockHashes), filter, cancellationToken),
                     timeoutCts: timeout);
             }
             finally
@@ -560,28 +560,25 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 : GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(parentSearch.Object!);
         }
 
-        private IEnumerable<(BlockHeader Header, BlockHeader Parent)> GetTraceFilterBlocks(BlockHeader? first, BlockHeader? last)
+        private IEnumerable<(BlockHeader Header, BlockHeader Parent)> GetTraceFilterBlocks(List<Hash256> blockHashes)
         {
-            if (first is null || last is null) yield break;
-
             BlockHeader? previous = null;
-            foreach (SearchResult<BlockHeader> blockSearch in blockFinder.SearchForHeadersOnMainChain(new BlockParameter(first.Number), new BlockParameter(last.Number), ErrorCodes.StandardResourceNotFound))
+            foreach (Hash256 blockHash in blockHashes)
             {
-                BlockHeader header = blockSearch.Object ?? throw new ResourceNotFoundException(blockSearch.Error ?? ErrorMessages.PrunedHistoryUnavailable);
-                BlockHeader parent;
-                if (previous is not null && previous.Hash == header.ParentHash)
-                {
-                    parent = previous;
-                }
-                else
-                {
-                    SearchResult<BlockHeader> parentSearch = blockFinder.SearchForHeader(new BlockParameter(header.ParentHash));
-                    parent = parentSearch.Object ?? throw new ResourceNotFoundException(parentSearch.Error ?? ErrorMessages.PrunedHistoryUnavailable);
-                }
+                BlockHeader header = FindTraceFilterHeader(blockHash);
+                BlockHeader parent = previous is not null && previous.Hash == header.ParentHash
+                    ? previous
+                    : FindTraceFilterHeader(header.ParentHash!);
 
                 yield return (header, parent);
                 previous = header;
             }
+        }
+
+        private BlockHeader FindTraceFilterHeader(Hash256 blockHash)
+        {
+            SearchResult<BlockHeader> search = blockFinder.SearchForHeader(new BlockParameter(blockHash));
+            return search.Object ?? throw new ResourceNotFoundException(search.Error ?? ErrorMessages.PrunedHistoryUnavailable);
         }
 
         private IEnumerable<ParityTxTraceFromStore> RunBufferedTraceFilter(IEnumerable<(BlockHeader Header, BlockHeader Parent)> blocks, TxTraceFilter filter, CancellationToken cancellationToken)
