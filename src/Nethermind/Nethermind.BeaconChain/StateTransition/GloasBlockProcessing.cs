@@ -113,9 +113,10 @@ public static partial class GloasBlockProcessing
         {
             ProcessAttestation(state, attestation, parentSlot, cache, pubkeys, verifySignatures, batch);
         }
+        PendingWithdrawalBatch withdrawals = new(state.PendingPartialWithdrawals!);
         foreach (SignedVoluntaryExit exit in body.VoluntaryExits ?? [])
         {
-            ProcessVoluntaryExit(state, exit, cache, pubkeys, verifySignatures, batch);
+            ProcessVoluntaryExitCore(state, exit, cache, pubkeys, verifySignatures, batch, withdrawals);
         }
         foreach (SignedBlsToExecutionChange change in body.BlsToExecutionChanges ?? [])
         {
@@ -515,10 +516,12 @@ public static partial class GloasBlockProcessing
         state.PendingDeposits = [];
         ProcessDepositRequests(state, requests.Deposits ?? []);
         cache.IndexRequestPubkeys(state.Validators!, requests.Withdrawals, requests.Consolidations);
+        PendingWithdrawalBatch withdrawals = new(state.PendingPartialWithdrawals!);
         foreach (WithdrawalRequest request in requests.Withdrawals ?? [])
-            ProcessWithdrawalRequest(state, request, cache);
+            ProcessWithdrawalRequestCore(state, request, cache, withdrawals);
         foreach (ConsolidationRequest request in requests.Consolidations ?? [])
-            ProcessConsolidationRequest(state, request, cache);
+            ProcessConsolidationRequestCore(state, request, cache, withdrawals);
+        state.PendingPartialWithdrawals = withdrawals.ToArray();
         state.PendingDeposits = state.PendingDeposits.Length == 0 ? pendingDeposits : [.. pendingDeposits, .. state.PendingDeposits];
         foreach (BuilderDepositRequest request in requests.BuilderDeposits ?? [])
             ProcessBuilderDepositRequest(state, request, cache.SigningSpec);

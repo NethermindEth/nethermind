@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO;
+using System.Collections;
 using Ethereum.Ssz.Test;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using static Ethereum.ConsensusSpec.Test.OperationVectorHandlers;
 
 namespace Ethereum.ConsensusSpec.Test;
@@ -14,6 +17,73 @@ namespace Ethereum.ConsensusSpec.Test;
 [TestFixture]
 public class OperationsTests
 {
+    [Test]
+    public void Withdrawal_batch_enforces_capacity_sequentially_and_still_processes_full_exits([Values] bool gloas, [Values(0, 1)] int remaining)
+    {
+#if !MINIMAL_PRESET
+        Assert.Ignore("The minimal queue bound exercises capacity without allocating a mainnet-sized queue.");
+#endif
+        ulong slot = (Presets.ShardCommitteePeriod + 1) * Presets.SlotsPerEpoch + 1;
+        byte[] credentials = new byte[32];
+        credentials[0] = Presets.CompoundingWithdrawalPrefix;
+        Validator[] validators = [.. Enumerable.Range(0, 4).Select(i => new Validator
+        {
+            Pubkey = new BlsPublicKey(Enumerable.Repeat((byte)(i + 1), BlsPublicKey.Length).ToArray()),
+            WithdrawalCredentials = new Hash256(credentials), EffectiveBalance = Presets.MinActivationBalance,
+            ActivationEpoch = 0, ExitEpoch = Presets.FarFutureEpoch, WithdrawableEpoch = Presets.FarFutureEpoch,
+        })];
+        ulong[] balances = [.. Enumerable.Repeat(3 * Presets.MinActivationBalance, validators.Length)];
+        PendingPartialWithdrawal[] pending = [.. Enumerable.Range(0, Presets.PendingPartialWithdrawalsLimit - remaining)
+            .Select(_ => new PendingPartialWithdrawal { ValidatorIndex = 0, Amount = 1, WithdrawableEpoch = Presets.FarFutureEpoch })];
+        Hash256[] roots = [.. Enumerable.Repeat(Hash256.Zero, (int)Presets.SlotsPerHistoricalRoot)];
+        WithdrawalRequest Request(int index, ulong amount) => new() { ValidatorPubkey = validators[index].Pubkey, SourceAddress = Address.Zero, Amount = amount };
+        WithdrawalRequest[] requests = [Request(1, 1), Request(2, 1), Request(3, 0)];
+        PendingPartialWithdrawal[] actual;
+        if (gloas)
+        {
+            ExecutionRequestsGloas executionRequests = new() { Withdrawals = requests };
+            BeaconStateGloas state = new()
+            {
+                Slot = slot,
+                GenesisValidatorsRoot = Hash256.Zero,
+                Validators = validators,
+                Balances = balances,
+                BlockRoots = roots,
+                PendingPartialWithdrawals = pending,
+                PendingDeposits = [],
+                PendingConsolidations = [],
+                LatestBlockHeader = new() { Slot = slot - 1 },
+                LatestExecutionPayloadBid = new() { BlockHash = Hash256.Zero, ExecutionRequestsRoot = SszRoots.HashTreeRoot(executionRequests) },
+                BuilderPendingPayments = [.. Enumerable.Range(0, (int)Presets.BuilderPendingPaymentsLength).Select(_ => new BuilderPendingPayment { Withdrawal = new() })],
+                ExecutionPayloadAvailability = new BitArray((int)Presets.SlotsPerHistoricalRoot),
+            };
+            BeaconBlockGloas block = new() { Body = new() { SignedExecutionPayloadBid = new() { Message = new() { ParentBlockHash = Hash256.Zero } }, ParentExecutionRequests = executionRequests } };
+            GloasBlockProcessing.ProcessParentExecutionPayload(state, block, new EpochCache());
+            actual = state.PendingPartialWithdrawals!;
+        }
+        else
+        {
+            BeaconStateFulu state = new()
+            {
+                Slot = slot,
+                GenesisValidatorsRoot = Hash256.Zero,
+                Validators = validators,
+                Balances = balances,
+                BlockRoots = roots,
+                PendingPartialWithdrawals = pending,
+                PendingDeposits = [],
+                PendingConsolidations = [],
+                Eth1Data = new(),
+            };
+            BlockProcessing.ProcessOperations(state, new() { ExecutionRequests = new() { Withdrawals = requests } }, new EpochCache(), new PubkeyCache(), verifySignatures: false);
+            actual = state.PendingPartialWithdrawals!;
+        }
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(actual.Length, Is.EqualTo(Presets.PendingPartialWithdrawalsLimit));
+        Assert.That(actual.Skip(pending.Length).Select(w => w.ValidatorIndex), Is.EqualTo(remaining == 0 ? Array.Empty<ulong>() : new ulong[] { 1 }));
+        Assert.That(validators[3].ExitEpoch, Is.Not.EqualTo(Presets.FarFutureEpoch));
+    }
+
     [TestCaseSource(nameof(MinimalCases))]
     public void Vector(OperationCase testCase) => Execute(testCase);
     [TestCaseSource(nameof(MainnetCases))]

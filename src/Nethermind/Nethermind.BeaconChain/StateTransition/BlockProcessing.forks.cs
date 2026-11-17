@@ -110,6 +110,9 @@ public static partial class BlockProcessing
 
     /// <summary>Spec <c>process_voluntary_exit</c> (Electra).</summary>
     public static partial void ProcessVoluntaryExit(ForkState state, SignedVoluntaryExit signedExit, EpochCache cache, PubkeyCache pubkeys, bool verifySignature, BlockSignatureBatch? batch)
+        => ProcessVoluntaryExitCore(state, signedExit, cache, pubkeys, verifySignature, batch, null);
+
+    private static void ProcessVoluntaryExitCore(ForkState state, SignedVoluntaryExit signedExit, EpochCache cache, PubkeyCache pubkeys, bool verifySignature, BlockSignatureBatch? batch, PendingWithdrawalBatch? withdrawals)
     {
         VoluntaryExit exit = signedExit.Message!;
         if (exit.ValidatorIndex >= (ulong)state.Validators!.Length)
@@ -126,7 +129,7 @@ public static partial class BlockProcessing
         if (currentEpoch < validator.ActivationEpoch + Presets.ShardCommitteePeriod)
             throw new BeaconStateException($"Validator {exit.ValidatorIndex} has not been active long enough");
         // [New in Electra:EIP7251] Only exit when no withdrawals are pending in the queue.
-        if (state.GetPendingBalanceToWithdraw((int)exit.ValidatorIndex) != 0)
+        if ((withdrawals?.GetTotal((int)exit.ValidatorIndex) ?? state.GetPendingBalanceToWithdraw((int)exit.ValidatorIndex)) != 0)
             throw new BeaconStateException($"Validator {exit.ValidatorIndex} has pending partial withdrawals");
         const string invalidSignature = "Invalid voluntary exit signature";
         if (verifySignature && !ForkSignatureSets.VerifyVoluntaryExit(state, signedExit, pubkeys, batch?.Defer(invalidSignature), cache.SigningSpec))
@@ -203,11 +206,14 @@ public static partial class BlockProcessing
 #else
     public static partial void ProcessWithdrawalRequest(ForkState state, WithdrawalRequest request, EpochCache cache)
 #endif
+        => ProcessWithdrawalRequestCore(state, request, cache, null);
+
+    private static void ProcessWithdrawalRequestCore(ForkState state, WithdrawalRequest request, EpochCache cache, PendingWithdrawalBatch? withdrawals)
     {
         bool isFullExitRequest = request.Amount == Presets.FullExitRequestAmount;
 
         // When the partial withdrawal queue is full, only full exits are processed.
-        if (state.PendingPartialWithdrawals!.Length == Presets.PendingPartialWithdrawalsLimit && !isFullExitRequest)
+        if ((withdrawals?.Count ?? state.PendingPartialWithdrawals!.Length) == Presets.PendingPartialWithdrawalsLimit && !isFullExitRequest)
             return;
 
         if (cache.FindRequestValidator(state.Validators!, request.ValidatorPubkey) is not int index)
@@ -225,7 +231,7 @@ public static partial class BlockProcessing
         if (currentEpoch < validator.ActivationEpoch + Presets.ShardCommitteePeriod)
             return;
 
-        ulong pendingBalanceToWithdraw = state.GetPendingBalanceToWithdraw(index);
+        ulong pendingBalanceToWithdraw = withdrawals?.GetTotal(index) ?? state.GetPendingBalanceToWithdraw(index);
 
         if (isFullExitRequest)
         {
@@ -243,12 +249,16 @@ public static partial class BlockProcessing
         {
             ulong toWithdraw = Math.Min(state.Balances[index] - Presets.MinActivationBalance - pendingBalanceToWithdraw, request.Amount);
             ulong exitQueueEpoch = state.ComputeExitEpochAndUpdateChurn(toWithdraw, cache);
-            state.PendingPartialWithdrawals = [.. state.PendingPartialWithdrawals, new PendingPartialWithdrawal
+            PendingPartialWithdrawal withdrawal = new()
             {
                 ValidatorIndex = (ulong)index,
                 Amount = toWithdraw,
                 WithdrawableEpoch = EpochArithmetic.CheckedEpochSum(exitQueueEpoch, Presets.MinValidatorWithdrawabilityDelay),
-            }];
+            };
+            if (withdrawals is null)
+                state.PendingPartialWithdrawals = [.. state.PendingPartialWithdrawals!, withdrawal];
+            else
+                withdrawals.Add(withdrawal);
         }
     }
 
@@ -262,6 +272,9 @@ public static partial class BlockProcessing
 #else
     public static partial void ProcessConsolidationRequest(ForkState state, ConsolidationRequest request, EpochCache cache)
 #endif
+        => ProcessConsolidationRequestCore(state, request, cache, null);
+
+    private static void ProcessConsolidationRequestCore(ForkState state, ConsolidationRequest request, EpochCache cache, PendingWithdrawalBatch? withdrawals)
     {
         int? source = cache.FindRequestValidator(state.Validators!, request.SourcePubkey);
         if (IsValidSwitchToCompoundingRequest(state, request, source))
@@ -297,7 +310,7 @@ public static partial class BlockProcessing
             return;
         if (currentEpoch < sourceValidator.ActivationEpoch + Presets.ShardCommitteePeriod)
             return;
-        if (state.GetPendingBalanceToWithdraw(sourceIndex) > 0)
+        if ((withdrawals?.GetTotal(sourceIndex) ?? state.GetPendingBalanceToWithdraw(sourceIndex)) > 0)
             return;
 
         Validator updatedSource = sourceValidator.Clone();

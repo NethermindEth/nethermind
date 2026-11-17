@@ -304,9 +304,10 @@ public static partial class BlockProcessing
         {
             ProcessDeposit(state, deposit, cache.SigningSpec, cache);
         }
+        PendingWithdrawalBatch withdrawals = new(state.PendingPartialWithdrawals!);
         foreach (SignedVoluntaryExit exit in body.VoluntaryExits ?? [])
         {
-            ProcessVoluntaryExit(state, exit, cache, pubkeys, verifySignatures, batch);
+            ProcessVoluntaryExitCore(state, exit, cache, pubkeys, verifySignatures, batch, withdrawals);
         }
         foreach (SignedBlsToExecutionChange change in body.BlsToExecutionChanges ?? [])
         {
@@ -317,12 +318,13 @@ public static partial class BlockProcessing
         cache.IndexRequestPubkeys(state.Validators!, requests.Withdrawals, requests.Consolidations);
         foreach (WithdrawalRequest request in requests.Withdrawals ?? [])
         {
-            ProcessWithdrawalRequest(state, request, cache);
+            ProcessWithdrawalRequestCore(state, request, cache, withdrawals);
         }
         foreach (ConsolidationRequest request in requests.Consolidations ?? [])
         {
-            ProcessConsolidationRequest(state, request, cache);
+            ProcessConsolidationRequestCore(state, request, cache, withdrawals);
         }
+        state.PendingPartialWithdrawals = withdrawals.ToArray();
         state.PendingDeposits = state.PendingDeposits.Length == 0 ? pendingDeposits : [.. pendingDeposits, .. state.PendingDeposits];
     }
 

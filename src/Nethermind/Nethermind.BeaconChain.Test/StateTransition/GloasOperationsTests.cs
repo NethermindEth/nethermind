@@ -19,6 +19,101 @@ public class GloasOperationsTests
     private static readonly ulong SlotsPerEpoch = Presets.SlotsPerEpoch;
 
     [Test]
+    public void Pending_withdrawal_totals_include_additions_before_and_after_the_second_validator_query()
+    {
+        PendingPartialWithdrawal[] initial = [new() { ValidatorIndex = 1, Amount = ulong.MaxValue }, new() { ValidatorIndex = 2, Amount = 5 }];
+        PendingWithdrawalBatch batch = new(initial);
+        batch.Add(new() { ValidatorIndex = 1, Amount = 1 });
+        Assert.That(batch.GetTotal(1), Is.Zero);
+        batch.Add(new() { ValidatorIndex = 1, Amount = 3 });
+        Assert.That(batch.GetTotal(1), Is.EqualTo(3));
+        batch.Add(new() { ValidatorIndex = 2, Amount = 7 });
+        Assert.That((batch.GetTotal(2), batch.GetTotal(1)), Is.EqualTo((12ul, 3ul)));
+        batch.Add(new() { ValidatorIndex = 1, Amount = 4 });
+        batch.Add(new() { ValidatorIndex = 2, Amount = 2 });
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(batch.GetTotal(1), Is.EqualTo(7));
+        Assert.That(batch.GetTotal(2), Is.EqualTo(14));
+        Assert.That(batch.Count, Is.EqualTo(7));
+        Assert.That(batch.ToArray().Select(w => w.Amount), Is.EqualTo(new ulong[] { ulong.MaxValue, 5, 1, 3, 7, 4, 2 }));
+        Assert.That(initial.Select(w => w.Amount), Is.EqualTo(new ulong[] { ulong.MaxValue, 5 }));
+    }
+
+    [Test]
+    public void Withdrawal_batches_match_sequential_operations([Values] bool gloas, [Values(0, 31)] int queued, [Values] bool overflow)
+    {
+        BeaconStateFulu fuluState = CreateFuluState(8);
+        BeaconStateGloas gloasState = CreateGloasState(out _, out _);
+        Validator[] validators = gloas ? gloasState.Validators! : fuluState.Validators!;
+        ulong[] balances = gloas ? gloasState.Balances! : fuluState.Balances!;
+        byte[] credentials = new byte[32];
+        credentials[0] = Presets.CompoundingWithdrawalPrefix;
+        for (int i = 0; i < 8; i++)
+        {
+            validators[i].WithdrawalCredentials = new Hash256(credentials);
+            validators[i].ActivationEpoch = 0;
+            balances[i] = 100 * Gwei;
+        }
+        // Enough active balance to exercise consolidation's pending-withdrawal check.
+        validators[7].EffectiveBalance = 100_000_000 * Gwei;
+        PendingPartialWithdrawal[] pending = [.. Enumerable.Range(0, queued).Select(i => new PendingPartialWithdrawal
+        {
+            ValidatorIndex = (ulong)(i % 2), Amount = Gwei, WithdrawableEpoch = Presets.FarFutureEpoch,
+        })];
+        if (overflow) pending = [new() { ValidatorIndex = 0, Amount = ulong.MaxValue, WithdrawableEpoch = Presets.FarFutureEpoch }, .. pending];
+        ulong slot = (Presets.ShardCommitteePeriod + 1) * Presets.SlotsPerEpoch + 1;
+        fuluState.Slot = gloasState.Slot = slot;
+        fuluState.PendingPartialWithdrawals = gloasState.PendingPartialWithdrawals = pending;
+        WithdrawalRequest Request(int index, ulong amount) => new() { ValidatorPubkey = validators[index].Pubkey, SourceAddress = Address.Zero, Amount = amount };
+        WithdrawalRequest[] requests =
+        [
+            Request(0, 10 * Gwei), Request(0, ulong.MaxValue), Request(0, 0),
+            new() { ValidatorPubkey = validators[1].Pubkey, SourceAddress = new Address(Hash(0xAB).Bytes[12..]), Amount = Gwei },
+            Request(2, 0), Request(2, Gwei), Request(3, Gwei),
+        ];
+        ConsolidationRequest consolidation = new() { SourcePubkey = validators[3].Pubkey, TargetPubkey = validators[4].Pubkey, SourceAddress = Address.Zero };
+        PendingPartialWithdrawal[] actualQueue;
+        PendingPartialWithdrawal[] expectedQueue;
+        Validator[] expectedValidators;
+        if (gloas)
+        {
+            BeaconStateGloas expected = gloasState.Clone();
+            EpochCache cache = new();
+            foreach (WithdrawalRequest request in requests) GloasBlockProcessing.ProcessWithdrawalRequest(expected, request, cache);
+            GloasBlockProcessing.ProcessConsolidationRequest(expected, consolidation, cache);
+            ExecutionRequestsGloas executionRequests = new() { Withdrawals = requests, Consolidations = [consolidation] };
+            gloasState.LatestBlockHeader!.Slot = slot - 1;
+            gloasState.LatestExecutionPayloadBid!.ExecutionRequestsRoot = SszRoots.HashTreeRoot(executionRequests);
+            BeaconBlockGloas block = MinimalBlock(gloasState, SelfBuildBid(gloasState, gloasState.LatestExecutionPayloadBid.BlockHash!, Hash(0xAA))).Message!;
+            block.Body!.ParentExecutionRequests = executionRequests;
+            GloasBlockProcessing.ProcessParentExecutionPayload(gloasState, block, new EpochCache());
+            actualQueue = gloasState.PendingPartialWithdrawals!;
+            expectedQueue = expected.PendingPartialWithdrawals!;
+            expectedValidators = expected.Validators!;
+            Assert.That((gloasState.EarliestExitEpoch, gloasState.ExitBalanceToConsume), Is.EqualTo((expected.EarliestExitEpoch, expected.ExitBalanceToConsume)));
+        }
+        else
+        {
+            BeaconStateFulu expected = fuluState.Clone();
+            EpochCache cache = new();
+            foreach (WithdrawalRequest request in requests) BlockProcessing.ProcessWithdrawalRequest(expected, request, cache);
+            BlockProcessing.ProcessConsolidationRequest(expected, consolidation, cache);
+            BeaconBlockBody body = new() { ExecutionRequests = new ExecutionRequests { Withdrawals = requests, Consolidations = [consolidation] } };
+            BlockProcessing.ProcessOperations(fuluState, body, new EpochCache(), new PubkeyCache(), verifySignatures: false);
+            actualQueue = fuluState.PendingPartialWithdrawals!;
+            expectedQueue = expected.PendingPartialWithdrawals!;
+            expectedValidators = expected.Validators!;
+            Assert.That((fuluState.EarliestExitEpoch, fuluState.ExitBalanceToConsume), Is.EqualTo((expected.EarliestExitEpoch, expected.ExitBalanceToConsume)));
+        }
+
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(actualQueue.Select(w => (w.ValidatorIndex, w.Amount, w.WithdrawableEpoch)), Is.EqualTo(expectedQueue.Select(w => (w.ValidatorIndex, w.Amount, w.WithdrawableEpoch))));
+        Assert.That(validators.Select(v => (v.ExitEpoch, v.WithdrawableEpoch)), Is.EqualTo(expectedValidators.Select(v => (v.ExitEpoch, v.WithdrawableEpoch))));
+        Assert.That(actualQueue.Length, Is.EqualTo(pending.Length + 3));
+        Assert.That(validators[3].ExitEpoch, Is.EqualTo(Presets.FarFutureEpoch));
+    }
+
+    [Test]
     public void ProcessProposerSlashing_slashes_the_proposer_and_clears_the_pending_builder_payment_for_its_proposal()
     {
         BeaconStateGloas state = CreateGloasState(out Bls.SecretKey builderSk, out _);
