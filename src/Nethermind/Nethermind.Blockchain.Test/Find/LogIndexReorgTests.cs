@@ -97,7 +97,7 @@ public class LogIndexReorgTests
                 Assert.That(() => builder.LastError, Is.TypeOf<LogIndexStateException>().After(CatchUpTimeoutMs, 20));
                 using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(storage.MaxBlockNumber, Is.EqualTo(forkPoint));
+                    Assert.That(storage.MaxBlockNumber, Is.Null, "the index must not be used once a reorg could not be reverted");
                     Assert.That(logManager.Errors.Select(static e => e.Exception), Has.Some.TypeOf<LogIndexStateException>());
                 }
             }
@@ -116,6 +116,48 @@ public class LogIndexReorgTests
     }
 
     [Test]
+    public async Task Indexed_logs_match_a_full_scan_after_a_deeper_reorg_follows_an_unrevertable_one()
+    {
+        const int chainLength = 60;
+        const int firstFork = 45;
+        const int secondFork = 40;
+        InMemoryReceiptStorage receipts = new();
+        BlockTree tree = Build.A.BlockTree().OfChainLength(1).TestObject;
+
+        List<Block> chainA = Extend(tree, tree.FindBlock(0, BlockTreeLookupOptions.None)!, chainLength, TestItem.AddressA, 0, receipts);
+        MoveHead(tree, chainA[..10], receipts);
+        tree.SyncPivot = (tree.Head!.Number, tree.Head.Hash!);
+
+        using TempPath dbPath = TempPath.GetTempDirectory();
+        using HyperClockCacheWrapper cache = new();
+        LogIndexConfig config = new() { Enabled = true, MaxReorgDepth = MaxReorgDepth, MaxBatchSize = 4 };
+        LogIndexStorage storage = new(CreateDbFactory(dbPath, cache), LimboLogs.Instance, config);
+        LogIndexBuilder builder = new(storage, config, tree, new SyncConfig { FastSync = false }, receipts, LimboLogs.Instance);
+        try
+        {
+            await builder.StartAsync();
+            await builder.BackwardSyncCompletion.WaitAsync(TimeSpan.FromMilliseconds(CatchUpTimeoutMs));
+            MoveHead(tree, chainA, receipts);
+            WaitForIndexToCatchUp(builder, storage);
+
+            MoveHead(tree, Extend(tree, chainA[firstFork - 1], chainLength + 10, TestItem.AddressB, 7, receipts), receipts);
+            Assert.That(() => builder.LastError, Is.TypeOf<LogIndexStateException>().After(CatchUpTimeoutMs, 20));
+
+            // The stopped builder does not revert this reorg, so the index keeps chain A below the first fork
+            MoveHead(tree, Extend(tree, chainA[secondFork - 1], chainLength + 20, TestItem.AddressC, 9, receipts, TestItem.KeccakB), receipts);
+            AssertIndexedLogsMatchScan(tree, receipts, storage);
+        }
+        finally
+        {
+            await builder.StopAsync();
+            await builder.DisposeAsync();
+        }
+
+        await using LogIndexStorage reopened = new(CreateDbFactory(dbPath, cache), LimboLogs.Instance, config);
+        AssertIndexedLogsMatchScan(tree, receipts, reopened);
+    }
+
+    [Test]
     public async Task Reorg_of_a_queued_batch_after_a_revert_is_reverted_once_the_batch_is_written()
     {
         InMemoryReceiptStorage receipts = new();
@@ -125,7 +167,7 @@ public class LogIndexReorgTests
         MoveHead(tree, chainA, receipts);
         tree.SyncPivot = (tree.Head!.Number, tree.Head.Hash!);
 
-        // The forward walk starts at the pivot, 26. Reverting chain A from block 24 brings it back to the pivot after queueing blocks 24-25 of chain B.
+        // The pivot is 26 and the forward walk starts at 23, as deep below it as a revert reaches. Reverting chain A from block 24 brings it back to the pivot after queueing blocks 24-25 of chain B.
         const int pivot = ChainALength - MaxReorgDepth;
         List<Block> chainB = Extend(tree, chainA[pivot - 4], pivot + MaxReorgDepth - 1, TestItem.AddressB, 7, receipts);
         List<Block> chainC = Extend(tree, chainB[0], ChainBLength, TestItem.AddressB, 9, receipts);
@@ -216,22 +258,25 @@ public class LogIndexReorgTests
 
         using (Assert.EnterMultipleScope())
         {
-            foreach (Address address in new[] { TestItem.AddressA, TestItem.AddressB })
-            {
-                LogFilter filter = FilterBuilder.New().FromBlock(0UL).ToBlock(to.Number).WithAddress(address).Build();
-                Assert.That(indexed.FindLogs(filter, from, to).Select(static l => l.BlockNumber).ToArray(),
-                    Is.EqualTo(scan.FindLogs(filter, from, to).Select(static l => l.BlockNumber).ToArray()), $"logs of {address}");
-            }
+            foreach (Address address in new[] { TestItem.AddressA, TestItem.AddressB, TestItem.AddressC })
+                AssertMatch(FilterBuilder.New().FromBlock(0UL).ToBlock(to.Number).WithAddress(address).Build(), $"logs of {address}");
+
+            foreach (Hash256 topic in new[] { TestItem.KeccakA, TestItem.KeccakB })
+                AssertMatch(FilterBuilder.New().FromBlock(0UL).ToBlock(to.Number).WithTopicExpressions(TestTopicExpressions.Specific(topic)).Build(), $"logs with {topic}");
         }
+
+        void AssertMatch(LogFilter filter, string message) =>
+            Assert.That(indexed.FindLogs(filter, from, to).Select(static l => l.BlockNumber).ToArray(),
+                Is.EqualTo(scan.FindLogs(filter, from, to).Select(static l => l.BlockNumber).ToArray()), message);
     }
 
-    private static List<Block> Extend(BlockTree tree, Block from, int toNumber, Address emitter, ulong variant, InMemoryReceiptStorage receipts)
+    private static List<Block> Extend(BlockTree tree, Block from, int toNumber, Address emitter, ulong variant, InMemoryReceiptStorage receipts, Hash256? topic = null)
     {
         List<Block> blocks = [];
         Block parent = from;
         while ((int)parent.Number < toNumber)
         {
-            parent = CreateBlock(parent, emitter, variant, receipts);
+            parent = CreateBlock(parent, emitter, variant, receipts, topic ?? TestItem.KeccakA);
             Assert.That(tree.SuggestBlock(parent), Is.EqualTo(AddBlockResult.Added));
             blocks.Add(parent);
         }
@@ -239,7 +284,7 @@ public class LogIndexReorgTests
         return blocks;
     }
 
-    private static Block CreateBlock(Block parent, Address emitter, ulong variant, InMemoryReceiptStorage receipts)
+    private static Block CreateBlock(Block parent, Address emitter, ulong variant, InMemoryReceiptStorage receipts, Hash256 topic)
     {
         Transaction tx = Build.A.Transaction
             .WithValue(1)
@@ -255,7 +300,7 @@ public class LogIndexReorgTests
             .WithBloom(new Bloom())
             .TestObject;
 
-        LogEntry[] logs = [Build.A.LogEntry.WithAddress(emitter).WithTopics(TestItem.KeccakA).TestObject];
+        LogEntry[] logs = [Build.A.LogEntry.WithAddress(emitter).WithTopics(topic).TestObject];
         TxReceipt receipt = new() { Logs = logs, TxHash = tx.Hash, Bloom = new Bloom(logs), BlockNumber = block.Number };
         block.Bloom!.Add(receipt.Logs);
         block.Header.TxRoot = TxTrie.CalculateRoot(block.Transactions);

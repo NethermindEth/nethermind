@@ -88,7 +88,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     private int _stallTicks;
     private bool _stallWarned;
     private bool _forwardBelowBarrierWarned;
-    // The forward walk starts below the pivot when the stored index ends below the barrier the pivot is raised to.
+    // The first block the forward walk indexes: below the pivot when the stored index ends below the barrier the pivot is raised to,
+    // and on an empty index as deep below it as the storage reverts (see GetForwardStart).
     private ulong _forwardProgressStart;
     private long _lowestReplacedBlock = long.MaxValue;
     private int _forwardBatchesInFlight;
@@ -189,7 +190,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
                 _logger.Info($"{GetLogPrefix()}: waiting for the first block...");
 
             ulong pivot = await _pivotTask;
-            _forwardProgressStart = GetNextBlockNumber(isForward: true) is { } next ? ulong.Min(pivot, (ulong)next) : pivot;
+            _forwardProgressStart = GetNextBlockNumber(isForward: true) is { } next ? ulong.Min(pivot, (ulong)next) : GetForwardStart(pivot);
 
             StartProcessing(isForward: true);
             StartProcessing(isForward: false);
@@ -339,6 +340,16 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
             ? finalized.Number
             : (_blockTree.Head?.Number ?? 0UL).SaturatingSub(MaxReorgDepth);
 
+    /// <summary>The first block the forward walk indexes on an empty index, with the backward walk starting below it.</summary>
+    /// <remarks>
+    /// The storage reverts blocks up to the max reorg depth below the highest indexed block, but only the ones the forward walk added:
+    /// the backward walk writes to separate keys, compressed regardless of the reorg depth. So the forward walk also indexes the blocks
+    /// below the pivot a revert can reach, unless the pivot is above the forward target: then it is below the sync pivot, which does not reorg.
+    /// </remarks>
+    private ulong GetForwardStart(ulong pivot) => pivot > MaxTargetBlockNumber
+        ? pivot
+        : ulong.Max(pivot.SaturatingSub(MaxReorgDepth.SaturatingSub(1)), ulong.Min(MinTargetBlockNumber, pivot));
+
     // Block 0 should always be present
     public ulong MinTargetBlockNumber => AncientReceiptsBarrier <= 1
         ? 0UL
@@ -458,11 +469,9 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     {
         try
         {
-            ulong pivotNumber = await _pivotTask;
-
             ProcessingQueue queue = Direction(isForward).Queue!;
 
-            int start = GetNextBlockNumber(isForward) ?? (isForward ? (int)pivotNumber : (int)pivotNumber - 1);
+            int start = GetNextBlockNumber(isForward) ?? (isForward ? (int)_forwardProgressStart : (int)_forwardProgressStart - 1);
 
             BlockReceipts[] buffer = new BlockReceipts[_config.MaxBatchSize];
             while (!CancellationToken.IsCancellationRequested)

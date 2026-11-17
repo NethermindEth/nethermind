@@ -91,6 +91,7 @@ namespace Nethermind.Db.LogIndex
             public static readonly byte[] CompressionAlgo = "alg"u8.ToArray();
             public static readonly byte[] UnrevertedReorg = "unr"u8.ToArray();
             public static readonly byte[] PeakMaxBlockNum = "pmx"u8.ToArray();
+            public static readonly byte[] MinReorgDepth = "mrd"u8.ToArray();
         }
 
         public static class Postfix
@@ -190,6 +191,11 @@ namespace Nethermind.Db.LogIndex
 
         private readonly int _maxReorgDepth;
 
+        /// <summary>
+        /// The smallest <see cref="_maxReorgDepth"/> the index has run with, as values may have been compressed with it.
+        /// </summary>
+        private readonly int _minReorgDepth;
+
         private readonly AllMergeOperators _mergeOperators;
         private readonly ICompressor _compressor;
         private readonly ICompactor _compactor;
@@ -206,7 +212,7 @@ namespace Nethermind.Db.LogIndex
         /// </summary>
         private int? _peakMaxBlock;
 
-        public int? MaxBlockNumber => _maxBlock;
+        public int? MaxBlockNumber => _unrevertedReorg is null ? _maxBlock : null;
         public int? MinBlockNumber => _minBlock;
 
         private Exception? _lastBackgroundError;
@@ -263,6 +269,11 @@ namespace Nethermind.Db.LogIndex
                 (_minBlock, _maxBlock) = (LoadRangeBound(SpecialKey.MinBlockNum), LoadRangeBound(SpecialKey.MaxBlockNum));
                 _unrevertedReorg = LoadRangeBound(SpecialKey.UnrevertedReorg);
                 _peakMaxBlock = LoadRangeBound(SpecialKey.PeakMaxBlockNum);
+
+                int? storedReorgDepth = LoadRangeBound(SpecialKey.MinReorgDepth);
+                _minReorgDepth = Math.Min(storedReorgDepth ?? _maxReorgDepth, _maxReorgDepth);
+                if (storedReorgDepth != _minReorgDepth)
+                    SaveRangeBound(_metaDb, SpecialKey.MinReorgDepth, _minReorgDepth);
 
                 if (Enabled)
                     _compressor.Start();
@@ -569,7 +580,7 @@ namespace Nethermind.Db.LogIndex
 
         private int? GetLastReorgableBlockNumber() => _maxBlock - _maxReorgDepth;
 
-        private int? GetLastPossiblyCompressedBlockNumber() => (_peakMaxBlock > _maxBlock ? _peakMaxBlock : _maxBlock) - _maxReorgDepth;
+        private int? GetLastPossiblyCompressedBlockNumber() => (_peakMaxBlock > _maxBlock ? _peakMaxBlock : _maxBlock) - _minReorgDepth;
 
         private static bool IsBlockNewer(int next, int? lastMin, int? lastMax, bool isBackwardSync) => isBackwardSync
             ? lastMin is null || next < lastMin
@@ -696,7 +707,10 @@ namespace Nethermind.Db.LogIndex
             }
         }
 
-        /// <summary>Caps the index below <paramref name="blockNumber"/> and blocks further forward writes, also after a restart.</summary>
+        /// <summary>
+        /// Caps the index below <paramref name="blockNumber"/>, stops queries from using it and blocks further forward writes, also after a restart.
+        /// </summary>
+        /// <remarks>Later reorgs are no longer reverted, so even the blocks below <paramref name="blockNumber"/> may go stale.</remarks>
         private void StopAtUnrevertableReorg(int blockNumber)
         {
             using (DbBatches batches = new(_rootDb))
@@ -715,7 +729,7 @@ namespace Nethermind.Db.LogIndex
             if (_unrevertedReorg is { } block)
             {
                 throw new LogIndexStateException(
-                    $"Log index: block {block} was replaced by a reorg deeper than the index can revert, so the index is used only below it. " +
+                    $"Log index: block {block} was replaced by a reorg deeper than the index can revert, so the index is no longer used. " +
                     "Restart with LogIndex.Reset=true to rebuild the log index.");
             }
         }

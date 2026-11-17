@@ -640,7 +640,7 @@ namespace Nethermind.Db.Test.LogIndex
             {
                 using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(logIndexStorage.MaxBlockNumber, Is.EqualTo(reorged.BlockNumber - 1));
+                    Assert.That(logIndexStorage.MaxBlockNumber, Is.Null, "queries must not use the index once a reorg could not be reverted");
                     await Assert.ThatAsync(() => logIndexStorage.AddReceiptsAsync([reorged], false), Throws.TypeOf<LogIndexStateException>());
                 }
             }
@@ -663,6 +663,26 @@ namespace Nethermind.Db.Test.LogIndex
             }
 
             await Assert.ThatAsync(() => logIndexStorage.RemoveReorgedAsync(blocks[^((int)maxReorgDepth + 1)]), Throws.TypeOf<LogIndexStateException>());
+        }
+
+        [Test]
+        public async Task Set_Compact_ReorgBeyondFirstDepth_AfterDepthRaised_Throws_Test()
+        {
+            const ulong firstDepth = 4;
+            const ulong raisedDepth = firstDepth * 2;
+            BlockReceipts[] blocks = testData.Batches.SelectMany(b => b).ToArray();
+
+            await using (ILogIndexStorage logIndexStorage = CreateLogIndexStorage(maxReorgDepth: firstDepth))
+            {
+                await AddReceiptsAsync(logIndexStorage, testData.Batches);
+                await CompactAsync(logIndexStorage);
+            }
+
+            // A second open at the raised depth must not replace the smallest depth the index has run with
+            await CreateLogIndexStorage(maxReorgDepth: raisedDepth).DisposeAsync();
+
+            await using (ILogIndexStorage logIndexStorage = CreateLogIndexStorage(maxReorgDepth: raisedDepth))
+                await Assert.ThatAsync(() => logIndexStorage.RemoveReorgedAsync(blocks[^((int)firstDepth + 1)]), Throws.TypeOf<LogIndexStateException>());
         }
 
         [Combinatorial]
