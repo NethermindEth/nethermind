@@ -3,7 +3,9 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -12,6 +14,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
@@ -172,21 +175,61 @@ public class HeaderStoreTests
     [Test]
     public async Task GetBlockNumbers_resolves_each_block_as_GetBlockNumber_does()
     {
-        IDb headerDb = new MemDb();
+        MemDb headerDb = new();
+        MemDb blockNumberDb = new();
         await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
-        HeaderStore store = new(headerDb, new MemDb(), deferredWriter: writer);
+        using IContainer container = BuildContainer(headerDb, blockNumberDb, writer);
+        IHeaderStore store = container.Resolve<IHeaderStore>();
         BlockHeader stored = Build.A.BlockHeader.WithNumber(100).TestObject;
         BlockHeader hashOnly = Build.A.BlockHeader.WithNumber(101).TestObject;
         BlockHeader pending = Build.A.BlockHeader.WithNumber(102).TestObject;
+        BlockHeader emptyNumber = Build.A.BlockHeader.WithNumber(103).TestObject;
         store.Insert(stored);
         headerDb.Set(hashOnly.Hash!, new HeaderDecoder().Encode(hashOnly));
+        headerDb.Set(emptyNumber.Hash!, new HeaderDecoder().Encode(emptyNumber));
+        blockNumberDb.Set(emptyNumber.Hash!, Array.Empty<byte>());
         store.InsertDeferred(pending);
-        ValueHash256[] hashes = [pending.Hash!, TestItem.KeccakA, hashOnly.Hash!, stored.Hash!];
+        ValueHash256[] hashes = [pending.Hash!, TestItem.KeccakA, hashOnly.Hash!, stored.Hash!, emptyNumber.Hash!];
 
         ulong?[] numbers = new ulong?[hashes.Length];
         store.GetBlockNumbers(hashes, numbers);
 
-        Assert.That(numbers, Is.EqualTo(new ulong?[] { 102, null, 101, 100 }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(numbers, Is.EqualTo(new ulong?[] { 102, null, 101, 100, 103 }));
+            Assert.That(numbers, Is.EqualTo(hashes.Select(h => store.GetBlockNumber(new Hash256(h)))));
+        }
+    }
+
+    [Test]
+    public async Task Block_number_of_an_unknown_hash_reads_each_database_once([Values] bool batched)
+    {
+        MemDb headerDb = new();
+        MemDb blockNumberDb = new();
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
+        using IContainer container = BuildContainer(headerDb, blockNumberDb, writer);
+        IHeaderStore store = container.Resolve<IHeaderStore>();
+
+        ulong?[] numbers = new ulong?[1];
+        if (batched) store.GetBlockNumbers([TestItem.KeccakA.ValueHash256], numbers);
+        else numbers[0] = store.GetBlockNumber(TestItem.KeccakA);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(numbers[0], Is.Null);
+            Assert.That(blockNumberDb.ReadsCount, Is.EqualTo(1), "block number reads");
+            Assert.That(headerDb.ReadsCount, Is.EqualTo(1), "header reads");
+        }
+    }
+
+    private static IContainer BuildContainer(MemDb headerDb, MemDb blockNumberDb, DeferredBlockDataWriter writer)
+    {
+        ContainerBuilder builder = new();
+        builder.RegisterModule(new TestNethermindModule());
+        builder.RegisterInstance(headerDb).Keyed<IDb>(DbNames.Headers);
+        builder.RegisterInstance(blockNumberDb).Keyed<IDb>(DbNames.BlockNumbers);
+        builder.RegisterInstance(writer).As<IDeferredBlockDataWriter>().ExternallyOwned();
+        return builder.Build();
     }
 
     [Test]

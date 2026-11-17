@@ -316,7 +316,7 @@ public class HeaderStore : IHeaderStore, IClearableCache
         if (blockNumber is not null) return blockNumber.Value;
 
         // Probably still hash based
-        return Get(blockHash)?.Number;
+        return GetHashKeyedBlockNumber(blockHash);
     }
 
     /// <inheritdoc/>
@@ -344,16 +344,25 @@ public class HeaderStore : IHeaderStore, IClearableCache
         {
             int i = stored[j];
             // Probably still hash based
-            numbers[i] = storedNumbers[j] ?? Get(new Hash256(in blockHashes[i]))?.Number;
+            numbers[i] = storedNumbers[j] ?? GetHashKeyedBlockNumber(new Hash256(in blockHashes[i]));
         }
     }
 
     private readonly struct BlockNumberDecoder : IValueDecoder<ulong?>
     {
-        public ulong? Decode(ReadOnlySpan<byte> buffer) => buffer.Length == BlockNumberLength
-            ? BinaryPrimitives.ReadUInt64BigEndian(buffer)
-            : throw new InvalidDataException($"Unexpected number span length: {buffer.Length}");
+        public ulong? Decode(ReadOnlySpan<byte> buffer) => buffer.Length switch
+        {
+            0 => null,
+            BlockNumberLength => BinaryPrimitives.ReadUInt64BigEndian(buffer),
+            _ => throw new InvalidDataException($"Unexpected number span length: {buffer.Length}")
+        };
     }
+
+    /// <summary>Gets the number of a block whose header is cached or stored under its hash alone.</summary>
+    /// <remarks>For callers that already checked the deferred-write overlay and the block number database.</remarks>
+    private ulong? GetHashKeyedBlockNumber(Hash256 blockHash) =>
+        _headerCache.Get(in blockHash.ValueHash256)?.Number
+        ?? _headerDb.Get(blockHash, _headerDecoder, (AssociativeCache<ValueHash256, BlockHeader>?)null, RlpBehaviors.ExcludeHashes, shouldCache: false)?.Number;
 
     [SkipLocalsInit]
     private ulong? GetBlockNumberFromBlockNumberDb(Hash256 blockHash)
