@@ -3,6 +3,7 @@
 
 using System;
 using System.IO;
+using Autofac;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -11,6 +12,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
@@ -171,20 +173,20 @@ public class HeaderStoreTests
     [Test]
     public void GetBlockNumbers_finds_each_number_as_GetBlockNumber_does([Values] bool batching)
     {
-        MemDb headerDb = new();
         MemDb blockNumberDb = batching ? new BatchReadMemDb() : new MemDb();
-        HeaderStore store = new(headerDb, blockNumberDb);
+        using IContainer container = BuildContainer(blockNumberDb);
+        IHeaderStore store = container.Resolve<IHeaderStore>();
         BlockHeader stored = Build.A.BlockHeader.WithNumber(100).TestObject;
         BlockHeader hashKeyed = Build.A.BlockHeader.WithNumber(101).TestObject;
         store.Insert(stored);
-        headerDb.Set(hashKeyed.Hash!, new HeaderDecoder().Encode(hashKeyed));
+        container.ResolveKeyed<IDb>(DbNames.Headers).Set(hashKeyed.Hash!, new HeaderDecoder().Encode(hashKeyed));
 
-        ulong?[] numbers = new ulong?[4];
-        store.GetBlockNumbers([TestItem.KeccakA, stored.Hash!, hashKeyed.Hash!, stored.Hash!], numbers);
+        ulong?[] numbers = new ulong?[5];
+        store.GetBlockNumbers([TestItem.KeccakA, stored.Hash!, null, hashKeyed.Hash!, stored.Hash!], numbers);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(numbers, Is.EqualTo(new ulong?[] { null, 100, 101, 100 }));
+            Assert.That(numbers, Is.EqualTo(new ulong?[] { null, 100, null, 101, 100 }));
             if (blockNumberDb is BatchReadMemDb batch) Assert.That(batch.BatchReads, Is.EqualTo(1));
         }
     }
@@ -193,10 +195,19 @@ public class HeaderStoreTests
     public void GetBlockNumbers_rejects_a_malformed_block_number_entry([Values] bool batching, [Values(7, 9)] int length)
     {
         MemDb blockNumberDb = batching ? new BatchReadMemDb() : new MemDb();
-        HeaderStore store = new(new MemDb(), blockNumberDb);
+        using IContainer container = BuildContainer(blockNumberDb);
+        IHeaderStore store = container.Resolve<IHeaderStore>();
         blockNumberDb.Set(TestItem.KeccakA, new byte[length]);
 
         Assert.Throws<InvalidDataException>(() => store.GetBlockNumbers([TestItem.KeccakA], new ulong?[1]));
+    }
+
+    private static IContainer BuildContainer(IDb blockNumberDb)
+    {
+        ContainerBuilder builder = new();
+        builder.RegisterModule(new TestNethermindModule());
+        builder.RegisterInstance(blockNumberDb).Keyed<IDb>(DbNames.BlockNumbers);
+        return builder.Build();
     }
 
     [Test]

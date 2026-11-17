@@ -321,19 +321,21 @@ public class HeaderStore : IHeaderStore, IClearableCache
 
     /// <inheritdoc/>
     /// <remarks>Reads the stored numbers in one batch, then looks up each missing one as <see cref="GetBlockNumber"/> does.</remarks>
-    public void GetBlockNumbers(IReadOnlyList<Hash256> blockHashes, Span<ulong?> blockNumbers)
+    public void GetBlockNumbers(IReadOnlyList<Hash256?> blockHashes, Span<ulong?> blockNumbers)
     {
         ArgumentOutOfRangeException.ThrowIfNotEqual(blockNumbers.Length, blockHashes.Count);
         using ArrayPoolSpan<byte> keys = new(blockHashes.Count * Hash256.Size);
         for (int i = 0; i < blockHashes.Count; i++)
         {
-            blockHashes[i].Bytes.CopyTo(keys.Slice(i * Hash256.Size, Hash256.Size));
+            Span<byte> key = keys.Slice(i * Hash256.Size, Hash256.Size);
+            if (blockHashes[i] is { } blockHash) blockHash.Bytes.CopyTo(key);
+            else key.Clear();
         }
 
         _blockNumberDb.GetMany(keys, Hash256.Size, blockNumbers, default(BlockNumberDecoder));
         for (int i = 0; i < blockNumbers.Length; i++)
         {
-            blockNumbers[i] ??= GetBlockNumber(blockHashes[i]);
+            blockNumbers[i] = blockHashes[i] is { } blockHash ? blockNumbers[i] ?? GetBlockNumber(blockHash) : null;
         }
     }
 

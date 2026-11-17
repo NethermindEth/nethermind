@@ -59,11 +59,11 @@ public interface IHeaderStore : IHeaderFinder
     ulong? GetBlockNumber(Hash256 blockHash);
 
     /// <summary>Looks up the number of each block as <see cref="GetBlockNumber"/> does.</summary>
-    /// <param name="blockHashes">The hashes of the blocks.</param>
+    /// <param name="blockHashes">The hashes of the blocks; a <see langword="null"/> hash gets a <see langword="null"/> number.</param>
     /// <param name="blockNumbers">Receives the number of each block, or <see langword="null"/> when it is not known.</param>
-    void GetBlockNumbers(IReadOnlyList<Hash256> blockHashes, Span<ulong?> blockNumbers)
+    void GetBlockNumbers(IReadOnlyList<Hash256?> blockHashes, Span<ulong?> blockNumbers)
     {
-        for (int i = 0; i < blockHashes.Count; i++) blockNumbers[i] = GetBlockNumber(blockHashes[i]);
+        for (int i = 0; i < blockHashes.Count; i++) blockNumbers[i] = blockHashes[i] is { } blockHash ? GetBlockNumber(blockHash) : null;
     }
 
     /// <summary>
