@@ -190,13 +190,6 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
         _errorDetails = error;
     }
 
-    // Geth reports a failed depth or balance precheck only in the rejected action's exit record.
-    public override void ReportOperationError(EvmExceptionType error)
-    {
-        if (error is not (EvmExceptionType.NotEnoughBalance or EvmExceptionType.CallDepthExceeded))
-            base.ReportOperationError(error);
-    }
-
     public override void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address? to,
         ReadOnlyMemory<byte> input, ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
     {

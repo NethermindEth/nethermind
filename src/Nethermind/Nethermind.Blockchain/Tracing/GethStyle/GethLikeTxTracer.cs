@@ -59,6 +59,10 @@ public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop, ITraceOpe
         EvmExceptionType.BadInstruction or EvmExceptionType.InvalidJumpDestination or
         EvmExceptionType.AccessViolation;
 
+    // Geth reports a failed depth or balance precheck only in the rejected action's exit, not on its opcode.
+    protected static bool IsRejectedActionPrecheck(EvmExceptionType error) => error is
+        EvmExceptionType.NotEnoughBalance or EvmExceptionType.CallDepthExceeded;
+
     protected static string? GetErrorDescription(EvmExceptionType evmExceptionType) => evmExceptionType switch
     {
         EvmExceptionType.None => null,
@@ -170,7 +174,7 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? d
 
     public override void ReportOperationError(EvmExceptionType error)
     {
-        if (CurrentTraceEntry is null)
+        if (CurrentTraceEntry is null || IsRejectedActionPrecheck(error))
             return;
 
         CurrentTraceEntry.Error ??= GetErrorDescription(error);

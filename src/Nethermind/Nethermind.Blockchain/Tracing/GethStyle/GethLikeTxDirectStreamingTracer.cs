@@ -200,7 +200,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
 
     public override void ReportOperationError(EvmExceptionType error)
     {
-        if (!_hasPendingOpcode) return;
+        if (!_hasPendingOpcode || IsRejectedActionPrecheck(error)) return;
         if (_pendingOpcode == Instruction.INVALID)
         {
             _pendingGasCost = 0;
