@@ -122,8 +122,11 @@ public class ProcessStallWatchdogTests
             return stop.WaitOne();
         });
         context.Watchdog.Start();
-        Assert.That(waiting.Wait(TimeSpan.FromSeconds(5)), Is.True);
-        Assert.That(context.Watchdog.IsRunning, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(waiting.Wait(TimeSpan.FromSeconds(5)), Is.True);
+            Assert.That(context.Watchdog.IsRunning, Is.True);
+        }
         context.Watchdog.Dispose();
         context.Watchdog.Dispose();
         context.Watchdog.Start();

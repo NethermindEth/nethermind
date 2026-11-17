@@ -5,10 +5,11 @@ using System;
 using DotNetty.Buffers;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network;
@@ -18,9 +19,12 @@ using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -44,9 +48,12 @@ public class XdcProtocolVersionTests
     {
         using Peer peer = Peer.Create(version);
 
-        Assert.That(peer.Handler.ProtocolVersion, Is.EqualTo(version));
-        Assert.That(peer.Handler.Name, Is.EqualTo(name));
-        Assert.That(peer.Handler.MessageIdSpaceSize, Is.EqualTo(messageIdSpaceSize));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.Handler.ProtocolVersion, Is.EqualTo(version));
+            Assert.That(peer.Handler.Name, Is.EqualTo(name));
+            Assert.That(peer.Handler.MessageIdSpaceSize, Is.EqualTo(messageIdSpaceSize));
+        }
     }
 
     [Test]
@@ -68,7 +75,7 @@ public class XdcProtocolVersionTests
         peer.ReceiveStatus();
 
         Vote vote = new(new BlockRoundInfo(TestItem.KeccakA, 5, 100), 0, new Signature(new byte[64], 0));
-        peer.Serializer.Deserialize<VoteMsg>(Arg.Any<IByteBuffer>()).Returns(new VoteMsg { Vote = vote });
+        peer.Serializer.Deserialize<VoteMsg>(Arg.Any<ZeroPacket>()).Returns(new VoteMsg { Vote = vote });
 
         peer.Receive(XdcMessageCode.VoteMsg);
 
@@ -93,7 +100,7 @@ public class XdcProtocolVersionTests
         peer.ReceiveStatus();
         peer.TxPool.NotifyAboutTx(Arg.Any<ValueHash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
             .Returns(AnnounceResult.RequestRequired);
-        peer.Serializer.Deserialize<NewPooledTransactionHashesMessage>(Arg.Any<IByteBuffer>())
+        peer.Serializer.Deserialize<NewPooledTransactionHashesMessage>(Arg.Any<ZeroPacket>())
             .Returns(new NewPooledTransactionHashesMessage(new[] { TestItem.KeccakA }.ToPooledList()));
 
         peer.Receive(XdcMessageCode.NewPooledTransactionHashes);
@@ -114,16 +121,30 @@ public class XdcProtocolVersionTests
         peer.Session.Received(1).InitiateDisconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
     }
 
+    [Test]
+    public void Receipts_are_served_with_bloom_on_every_version([Values(XdcProtocolVersions.Legacy, XdcProtocolVersions.Xdc164, XdcProtocolVersions.Xdc165)] byte version)
+    {
+        using Peer peer = Peer.Create(version);
+        peer.ReceiveStatus();
+        peer.Serializer.Deserialize<GetReceiptsMessage>(Arg.Any<ZeroPacket>())
+            .Returns(_ => new GetReceiptsMessage(new[] { TestItem.KeccakA }.ToPooledList()));
+
+        peer.Receive(Eth63MessageCode.GetReceipts);
+
+        peer.SyncServer.Received(1).TryAppendReceipts(TestItem.KeccakA, Rlp.GetDecoderOrThrow<TxReceipt>(), true, Arg.Any<ArrayPoolList<byte>>());
+    }
+
     private sealed class Peer : IDisposable
     {
         private Peer(ZeroProtocolHandlerBase handler, ISession session, IMessageSerializationService serializer,
-            IVotesManager votesManager, ITxPool txPool)
+            IVotesManager votesManager, ITxPool txPool, ISyncServer syncServer)
         {
             Handler = handler;
             Session = session;
             Serializer = serializer;
             VotesManager = votesManager;
             TxPool = txPool;
+            SyncServer = syncServer;
         }
 
         public ZeroProtocolHandlerBase Handler { get; }
@@ -131,6 +152,7 @@ public class XdcProtocolVersionTests
         public IMessageSerializationService Serializer { get; }
         public IVotesManager VotesManager { get; }
         public ITxPool TxPool { get; }
+        public ISyncServer SyncServer { get; }
 
         public static Peer Create(byte version)
         {
@@ -163,31 +185,31 @@ public class XdcProtocolVersionTests
             {
                 XdcProtocolVersions.Legacy => new XdcProtocolHandler(
                     consensusMessages, session, serializer, nodeStatsManager, syncServer,
-                    Substitute.For<IBackgroundTaskScheduler>(), txPool, Substitute.For<IGossipPolicy>(),
+                    RunImmediatelyScheduler.Instance, txPool, Substitute.For<IGossipPolicy>(),
                     LimboLogs.Instance, txGossipPolicy),
                 XdcProtocolVersions.Xdc164 => new Xdc164ProtocolHandler(
                     consensusMessages, session, serializer, nodeStatsManager, syncServer,
-                    Substitute.For<IBackgroundTaskScheduler>(), txPool, Substitute.For<IGossipPolicy>(), forkInfo,
+                    RunImmediatelyScheduler.Instance, txPool, Substitute.For<IGossipPolicy>(), forkInfo,
                     LimboLogs.Instance, txGossipPolicy),
                 XdcProtocolVersions.Xdc165 => new Xdc165ProtocolHandler(
                     consensusMessages, session, serializer, nodeStatsManager, syncServer,
-                    Substitute.For<IBackgroundTaskScheduler>(), txPool, Substitute.For<IGossipPolicy>(), forkInfo,
+                    RunImmediatelyScheduler.Instance, txPool, Substitute.For<IGossipPolicy>(), forkInfo,
                     LimboLogs.Instance, txGossipPolicy),
                 _ => throw new ArgumentOutOfRangeException(nameof(version), version, "Unknown XDC protocol version")
             };
 
-            return new Peer(handler, session, serializer, votesManager, txPool);
+            return new Peer(handler, session, serializer, votesManager, txPool, syncServer);
         }
 
         public void ReceiveStatus()
         {
-            Serializer.Deserialize<StatusMessage>(Arg.Any<IByteBuffer>()).Returns(new StatusMessage());
+            Serializer.Deserialize<StatusMessage>(Arg.Any<ZeroPacket>()).Returns(new StatusMessage());
             Receive(Eth62MessageCode.Status);
         }
 
         public void Receive(int packetType)
         {
-            ZeroPacket packet = new(Unpooled.Buffer()) { PacketType = (byte)packetType };
+            NettyBufferPacket packet = new(Unpooled.Buffer()) { PacketType = (byte)packetType };
             Handler.HandleMessage(packet);
         }
 

@@ -734,8 +734,11 @@ public class ColumnGossipRouterGloasTests
         List<MessageValidity> given = [];
         GossipVerdict verdict = new(validity => { given.Add(validity); return true; }, null);
 
-        Assert.That(router.Handle(Column, true, Encode(sidecar), verdict, DeliveringPeer), Is.EqualTo(MessageValidity.Ignored));
-        Assert.That((given.Count, verdict.IsHandedOff), Is.EqualTo((0, true)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(router.Handle(Column, true, Encode(sidecar), verdict, DeliveringPeer), Is.EqualTo(MessageValidity.Ignored));
+            Assert.That((given.Count, verdict.IsHandedOff), Is.EqualTo((0, true)));
+        }
         SignedBeaconBlockGloas namedBlock = CreateMinimalGloasBlock(wrongSlot ? BlockSlot + 1 : BlockSlot);
         namedBlock.Message!.Body!.SignedExecutionPayloadBid!.Message!.BlobKzgCommitments = DataColumnSidecarGloasTestFixture.Commitments();
         store!.PutForkedBlock(UnknownRoot, new ForkedSignedBeaconBlock.OfGloas(namedBlock));
@@ -871,12 +874,12 @@ public class ColumnGossipRouterGloasTests
         using IDisposable scope = Assert.EnterMultipleScope();
         Assert.That(first.IsHandedOff, Is.True);
         Assert.That(second.IsHandedOff, Is.False);
-        Assert.That(pool.PendingGloasCount, Is.EqualTo(1));
+        Assert.That(pool.PendingGloasCount, Is.EqualTo(2), "a candidate beyond the verdict allowance remains available for recovery");
         first.Abandon();
         router.Handle(Column, true, Encode(Sidecar(root: Hash256.Zero)), second, DeliveringPeer);
         Assert.That(second.IsHandedOff, Is.True, "abandonment releases the peer's queue allowance");
         second.Abandon();
-        Assert.That(pool.PendingGloasCount, Is.Zero);
+        Assert.That(pool.PendingGloasCount, Is.EqualTo(1), "the candidate without a retained verdict remains available for recovery");
     }
 
     private static SszKzgCommitment DistinctProof(int variant)

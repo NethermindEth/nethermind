@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
 
@@ -225,6 +226,13 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
             _flatWriteBatch.SetAccount(fakeAddrHash, rlp);
         }
 
+        public void SetSlimAccount(Address addr, scoped ReadOnlySpan<byte> slimRlp)
+        {
+            ValueHash256 fakeAddrHash = ValueKeccak.Zero;
+            addr.Bytes.CopyTo(fakeAddrHash.BytesAsSpan);
+            _flatWriteBatch.SetAccount(fakeAddrHash, slimRlp);
+        }
+
         public void SetStorage(Address addr, in UInt256 slot, in UInt256? value)
         {
             ValueHash256 fakeAddrHash = ValueKeccak.Zero;
@@ -246,6 +254,9 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
             throw new NotSupportedException("Snap sync not supported in preimage mode");
 
         public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) =>
+            throw new NotSupportedException("Snap sync not supported in preimage mode");
+
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath) =>
             throw new NotSupportedException("Snap sync not supported in preimage mode");
     }
 
@@ -270,7 +281,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
             }
 
             RlpReader ctx = new(valueBuffer[..responseSize]);
-            return AccountDecoder.Slim.Decode(ref ctx);
+            return AccountDecoder.Slim.Decode(ref ctx, RlpBehaviors.TrustedInput);
         }
 
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue)

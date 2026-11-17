@@ -221,14 +221,18 @@ public class BeaconApiEnvelopeTests : BeaconApiFixture
         SignedBeaconBlock head = BeaconApiTestHost.MinimalBlock(start + (ulong)offset);
         head.Message!.ParentRoot = current;
         head.Message.StateRoot = TestRoot(34);
-        host.Store.PutBlock(previous, older);
-        host.Store.PutBlock(current, parent);
         host.Store.PutBlock(headRoot, head);
         ManualTimestamper time = new(DateTimeOffset.FromUnixTimeSeconds((long)Spec.GenesisTime).UtcDateTime);
         BeaconApiContext ctx = new(new BeaconChainConfig(), Spec, host.StatusHolder, new SlotClock(Spec, time), host.Store,
             new LocalMetadataSource(), new NoOpEngineDriver(), LimboLogs.Instance, null, null, null, snapshots);
 
         ctx = ctx.ForRequest();
+        EventsEndpoint.EventCache cache = new();
+        Assert.That(cache.Head(ctx, headRoot, start - 1), Is.Null);
+        host.Store.PutBlock(previous, older);
+        host.Store.PutBlock(current, parent);
+        time.Add(TimeSpan.FromSeconds(Spec.SecondsPerSlot));
+        Assert.That(cache.Head(ctx, headRoot, start - 1), Is.Not.Null, "a missing ancestor is retried in the next slot after backfill");
         EventsEndpoint.HeadEventDto? payload = EventsEndpoint.CreateHeadEvent(ctx, headRoot, start - 1);
         Assert.That(payload, Is.Not.Null);
         using JsonDocument body = JsonDocument.Parse(JsonSerializer.Serialize(payload));
@@ -245,7 +249,6 @@ public class BeaconApiEnvelopeTests : BeaconApiFixture
             Assert.That(finalized.RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.EqualTo(optimistic));
         }
         Assert.That(EventsEndpoint.CreateHeadEvent(ctx, headRoot, start)?.EpochTransition, Is.False);
-        EventsEndpoint.EventCache cache = new();
         EventsEndpoint.HeadEventDto? cached = cache.Head(ctx, headRoot, start - 1);
         host.Store.DeleteBlock(previous);
         host.Store.DeleteBlock(current);

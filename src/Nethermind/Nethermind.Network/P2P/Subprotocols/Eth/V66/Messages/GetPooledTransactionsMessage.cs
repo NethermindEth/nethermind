@@ -4,10 +4,11 @@
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Network.P2P.Messages;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 
-public class GetPooledTransactionsMessage : Eth66Message<V65.Messages.GetPooledTransactionsMessage>, INew<IOwnedReadOnlyList<ValueHash256>, GetPooledTransactionsMessage>
+public class GetPooledTransactionsMessage : Eth66Message<V65.Messages.GetPooledTransactionsMessage>, INew<IOwnedReadOnlyList<ValueHash256>, GetPooledTransactionsMessage>, ITxServeRequest
 {
     public GetPooledTransactionsMessage()
     {

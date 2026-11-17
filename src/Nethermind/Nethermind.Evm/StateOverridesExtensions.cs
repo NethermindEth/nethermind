@@ -27,9 +27,13 @@ public static class StateOverridesExtensions
         overridableCodeInfoRepository.ResetPrecompileOverrides(spec);
         if (overrides is not null)
         {
-            foreach ((Address address, AccountOverride? value) in overrides)
+            // As in geth, accounts are overridden in ascending address order, so of two precompiles moved to one
+            // address the higher one is at the destination.
+            Address[] addresses = [.. overrides.Keys];
+            Array.Sort(addresses);
+            foreach (Address address in addresses)
             {
-                AccountOverride accountOverride = value ?? new AccountOverride();
+                AccountOverride accountOverride = overrides[address] ?? new AccountOverride();
                 if (accountOverride.Nonce is not null && accountOverride.Nonce.Value > MaxNonce)
                     throw new ArgumentException($"Nonce override {accountOverride.Nonce.Value} exceeds the maximum supported value ({MaxNonce})");
 
@@ -52,16 +56,25 @@ public static class StateOverridesExtensions
         }
     }
 
+    /// <summary>Applies <paramref name="overrides"/> to <paramref name="state"/> and commits them.</summary>
+    /// <remarks>
+    /// With <paramref name="merkleize"/> set to <c>false</c>, the commit leaves storage roots, the trie at <paramref name="blockNumber"/>
+    /// and the state root alone. The overrides are then visible only through <paramref name="state"/>, which suits a call
+    /// that reads the overridden state and never resolves it through a root.
+    /// </remarks>
     public static void ApplyStateOverrides(
         this IWorldState state,
         IOverridableCodeInfoRepository overridableCodeInfoRepository,
         Dictionary<Address, AccountOverride>? overrides,
         IReleaseSpec spec,
-        ulong blockNumber)
+        ulong blockNumber,
+        bool merkleize = true)
     {
         spec = spec.WithoutEip158();
         state.ApplyStateOverridesNoCommit(overridableCodeInfoRepository, overrides, spec);
-        state.Commit(spec, commitRoots: true);
+        state.Commit(spec, commitRoots: merkleize);
+        if (!merkleize) return;
+
         state.CommitTree(blockNumber);
         state.RecalculateStateRoot();
     }
@@ -95,7 +108,7 @@ public static class StateOverridesExtensions
     /// <param name="isPrecompile">Whether the caller's code repository resolves the source as a precompile.</param>
     /// <param name="overrides">The account overrides to apply.</param>
     public static string? GetPrecompileMoveError(Address source, Address destination, bool isPrecompile, Dictionary<Address, AccountOverride> overrides) =>
-        !isPrecompile ? $"Account {source} is not a precompile"
+        !isPrecompile ? $"account {source.ToString(withEip55Checksum: true)} is not a precompile"
         : overrides.ContainsKey(destination) ? $"account {destination} is already overridden"
         : null;
 

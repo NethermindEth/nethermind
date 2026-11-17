@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -29,6 +30,7 @@ public class NodeStorage(
             ? GetHalfPathNodeStoragePathSpan(pathSpan, address, path, keccak)
             : GetHashBasedStoragePath(pathSpan, keccak);
 
+    [SkipLocalsInit]
     public static byte[] GetHalfPathNodeStoragePath(in ValueHash256? address, in TreePath path, in ValueHash256 keccak) =>
         GetHalfPathNodeStoragePathSpan(stackalloc byte[StoragePathLength], address, path, keccak).ToArray();
 
@@ -99,6 +101,7 @@ public class NodeStorage(
         return pathSpan[..32];
     }
 
+    [SkipLocalsInit]
     public byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None)
     {
         // Some of the code does not save empty tree at all so this is more about correctness than optimization.
@@ -130,6 +133,7 @@ public class NodeStorage(
                ?? _keyValueStore.Get(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags);
     }
 
+    [SkipLocalsInit]
     public bool KeyExists(in ValueHash256? address, in TreePath path, in ValueHash256 keccak)
     {
         if (keccak == Keccak.EmptyTreeHash.ValueHash256)
@@ -157,6 +161,7 @@ public class NodeStorage(
         return new WriteBatch(batch, this);
     }
 
+    [SkipLocalsInit]
     public void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadOnlySpan<byte> data, WriteFlags writeFlags = WriteFlags.None)
     {
         if (keccak == Keccak.EmptyTreeHash.ValueHash256)
@@ -194,6 +199,7 @@ public class NodeStorage(
     {
         public void Dispose() => writeBatch.Dispose();
 
+        [SkipLocalsInit]
         public void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadOnlySpan<byte> data, WriteFlags writeFlags)
         {
             if (keccak != Keccak.EmptyTreeHash.ValueHash256)

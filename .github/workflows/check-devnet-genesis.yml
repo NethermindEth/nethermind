@@ -33,12 +33,12 @@ jobs:
           persist-credentials: false
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v6
+        uses: ./.github/actions/setup-dotnet
 
       - name: Fetch genesis files
         env:
           GH_TOKEN: ${{ github.token }}
-        run: bash scripts/ci/fetch-devnet-genesis.sh
+        run: dotnet run --file scripts/ci/fetch-devnet-genesis.cs
 
       - name: Run devnet genesis tests
         working-directory: src/Nethermind/Nethermind.Specs.Test

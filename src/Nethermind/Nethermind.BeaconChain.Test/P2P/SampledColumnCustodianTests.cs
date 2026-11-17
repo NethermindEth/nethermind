@@ -186,8 +186,11 @@ public class SampledColumnCustodianTests
         await using PeerHostScope hosts = new(client, partial, supernode);
         await StartAsync(token, supernode, partial, client);
         PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, discovery);
-        Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(supernode.P2P), token), Is.True);
-        Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(partial.P2P), token), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(supernode.P2P), token), Is.True);
+            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(partial.P2P), token), Is.True);
+        }
         IReadOnlyList<ulong> wantedWhileHealthy = [.. discovery.WantedColumns];
         Stopwatch parked = Stopwatch.StartNew();
         Task admission = peerManager.WaitForAdmissionCapacityAsync(token);
@@ -232,8 +235,11 @@ public class SampledColumnCustodianTests
         await using PeerHostScope hosts = new(client, failing, partial, replacement);
         await StartAsync(token, failing, partial, replacement, client);
         PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, discovery);
-        Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(failing.P2P), token), Is.True);
-        Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(partial.P2P), token), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(failing.P2P), token), Is.True);
+            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(partial.P2P), token), Is.True);
+        }
         IReadOnlyList<ulong> uncustodiedWhileHealthy = peerManager.UncustodiedSampledColumns();
         ReportFailures(peerManager.GetBestPeers(0).Single(p => p.Id == LoopbackAddress(failing.P2P)));
 
@@ -274,8 +280,11 @@ public class SampledColumnCustodianTests
         await using PeerHostScope hosts = new(client, failing, bystander, replacement);
         await StartAsync(token, failing, bystander, replacement, client);
         PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, discovery);
-        Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(failing.P2P), token), Is.True);
-        Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(bystander.P2P), token), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(failing.P2P), token), Is.True);
+            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(bystander.P2P), token), Is.True);
+        }
         IBeaconSyncPeer failingPeer = peerManager.GetBestPeers(0).Single(p => p.Id == LoopbackAddress(failing.P2P));
         string[] expected;
         if (overTheCeiling)

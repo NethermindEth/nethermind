@@ -62,9 +62,12 @@ public class PeerRequestCooldownTests
     {
         await using Fixture fixture = await Fixture.CreateAsync(token);
 
-        Assert.That(fixture.Manager.TryReportInboundViolation(fixture.AheadNode.P2P.LocalPeerId!, "bytes after the request"), Is.True, "test setup: the peer is connected");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.Manager.TryReportInboundViolation(fixture.AheadNode.P2P.LocalPeerId!, "bytes after the request"), Is.True, "test setup: the peer is connected");
 
-        Assert.That(fixture.Listed, Is.EqualTo(new[] { fixture.Ahead.Id, fixture.Behind.Id }));
+            Assert.That(fixture.Listed, Is.EqualTo(new[] { fixture.Ahead.Id, fixture.Behind.Id }));
+        }
     }
 
     [Test]

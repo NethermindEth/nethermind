@@ -102,8 +102,11 @@ public class LocalBlobTests
         try
         {
             await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            Assert.That(await lookup.WaitAsync(TimeSpan.FromSeconds(5)), Is.Empty);
-            Assert.That(await driver.GetLocalColumns(block.Block).WaitAsync(TimeSpan.FromSeconds(5)), Is.Empty);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(await lookup.WaitAsync(TimeSpan.FromSeconds(5)), Is.Empty);
+                Assert.That(await driver.GetLocalColumns(block.Block).WaitAsync(TimeSpan.FromSeconds(5)), Is.Empty);
+            }
             _ = engine.Received(1).engine_getBlobsV2(Arg.Any<byte[][]>());
             Assert.That(detector.WaitForEmbeddedCallsAsync().IsCompleted, Is.False, "shutdown must still drain the timed-out call");
         }

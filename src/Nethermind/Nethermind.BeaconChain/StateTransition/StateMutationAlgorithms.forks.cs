@@ -48,7 +48,7 @@ public static partial class BeaconStateMutators
         {
             ulong balanceToProcess = exitBalance - exitBalanceToConsume;
             ulong additionalEpochs = (balanceToProcess - 1) / perEpochChurn + 1;
-            earliestExitEpoch += additionalEpochs;
+            earliestExitEpoch = CheckedEpochSum(earliestExitEpoch, additionalEpochs);
             exitBalanceToConsume += additionalEpochs * perEpochChurn;
         }
 
@@ -74,7 +74,7 @@ public static partial class BeaconStateMutators
         {
             ulong balanceToProcess = consolidationBalance - balanceToConsume;
             ulong additionalEpochs = (balanceToProcess - 1) / perEpochChurn + 1;
-            earliestConsolidationEpoch += additionalEpochs;
+            earliestConsolidationEpoch = CheckedEpochSum(earliestConsolidationEpoch, additionalEpochs);
             balanceToConsume += additionalEpochs * perEpochChurn;
         }
 
@@ -109,7 +109,7 @@ public static partial class BeaconStateMutators
 #if GLOAS
     internal static partial ulong CheckedEpochSum(ulong epoch, ulong delta) =>
 #else
-    private static partial ulong CheckedEpochSum(ulong epoch, ulong delta) =>
+    internal static partial ulong CheckedEpochSum(ulong epoch, ulong delta) =>
 #endif
         epoch <= Presets.FarFutureEpoch - delta
             ? epoch + delta

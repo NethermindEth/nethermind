@@ -393,8 +393,11 @@ public class IdentifyTests
         if (nodeDials)
         {
             Task<ISession> dial = node.DialPeerAsync(peer.Address, token);
-            Assert.That(await Task.WhenAny(dial, Task.Delay(within, token)), Is.SameAs(dial), "the dial ended within the identify bound");
-            Assert.That(dial.Status, Is.EqualTo(TaskStatus.Faulted), "no session with a misidentified peer is handed back");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(await Task.WhenAny(dial, Task.Delay(within, token)), Is.SameAs(dial), "the dial ended within the identify bound");
+                Assert.That(dial.Status, Is.EqualTo(TaskStatus.Faulted), "no session with a misidentified peer is handed back");
+            }
         }
         else
         {
@@ -488,8 +491,11 @@ public class IdentifyTests
         try
         {
             ProductInfo.InitializePublicClientId("probe/{version}");
-            Assert.That(ProductInfo.PublicClientId, Is.Not.EqualTo(ProductInfo.ClientId), "fixture: the public id differs");
-            Assert.That(BeaconP2P.ClientAgentVersion, Is.EqualTo(ProductInfo.ClientId));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ProductInfo.PublicClientId, Is.Not.EqualTo(ProductInfo.ClientId), "fixture: the public id differs");
+                Assert.That(BeaconP2P.ClientAgentVersion, Is.EqualTo(ProductInfo.ClientId));
+            }
         }
         finally
         {

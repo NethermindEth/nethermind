@@ -52,9 +52,9 @@ public class PeerAdmissionMetadataTests
         // A band of exactly two: the pending admission must count once, or the second peer is refused at the ceiling.
         client.Config.TargetPeerCount = 2;
         client.Config.MaxPeerCount = 2;
-        // Answers identify and status like a beacon node but not metadata: its na leaves our metadata request waiting for its bound.
+        // Answers identify and status but keeps the metadata response pending until the request is cancelled.
         await using PlainPeer silent = await PlainPeer.StartAsync(static settings => new Nethermind.Libp2p.Protocols.IdentifyProtocol(settings), token,
-            new ScriptedStatusSource(_ => client.StatusHolder.CurrentStatus));
+            new ScriptedStatusSource(_ => client.StatusHolder.CurrentStatus), additionalProtocol: new StallingMetadataProtocol());
 
         await using PeerHostScope hosts = new(client, other);
         await hosts.StartAsync(token, client.P2P, other.P2P);
@@ -88,7 +88,7 @@ public class PeerAdmissionMetadataTests
         await using BeaconDiscovery discovery = new(client.Config, BeaconChainSpec.Mainnet, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()),
             new RangeSyncTests.FixedIPResolver(IPAddress.Loopback), new ManualTimestamper(), LimboLogs.Instance);
         await using PlainPeer silent = await PlainPeer.StartAsync(static settings => new Nethermind.Libp2p.Protocols.IdentifyProtocol(settings), token,
-            new ScriptedStatusSource(_ => client.StatusHolder.CurrentStatus));
+            new ScriptedStatusSource(_ => client.StatusHolder.CurrentStatus), additionalProtocol: new StallingMetadataProtocol());
 
         await using PeerHostScope hosts = new(client);
         await client.P2P.StartAsync(token);
@@ -111,5 +111,12 @@ public class PeerAdmissionMetadataTests
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(admitted, Is.False, "the session closed before the admission ended");
         Assert.That(discovery.DialHistory.Quality(silentAddress), Is.EqualTo(-1), "the address stays backed off, one step for one failed dial");
+    }
+
+    internal sealed class StallingMetadataProtocol : ISessionListenerProtocol
+    {
+        public string Id => "/eth2/beacon_chain/req/metadata/3/ssz_snappy";
+        public async Task ListenAsync(IChannel channel, ISessionContext context) =>
+            await Task.Delay(Timeout.InfiniteTimeSpan, context.Token);
     }
 }

@@ -137,9 +137,12 @@ public class DataColumnSidecarsByRangeLoopbackTests
 
         long startedAt = Stopwatch.GetTimestamp();
         ReqRespTimeoutException? cut = await Assert.ThrowsAsync<ReqRespTimeoutException>(async () => await client.RequestDataColumnSidecarsByRangeAsync(session, 100, 16, [0, 1, 2, 3, 4, 5, 6, 7], token));
-        Assert.That(cut!.Message, Does.Match(@"^timed out after [23](\.\d)? s: the request budget ran out$"), "the failure names the bound that fired");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cut!.Message, Does.Match(@"^timed out after [23](\.\d)? s: the request budget ran out$"), "the failure names the bound that fired");
 
-        Assert.That(Stopwatch.GetElapsedTime(startedAt), Is.LessThan(TimeSpan.FromSeconds(16)), "cut well before the 16 s minimum of any scaled budget");
+            Assert.That(Stopwatch.GetElapsedTime(startedAt), Is.LessThan(TimeSpan.FromSeconds(16)), "cut well before the 16 s minimum of any scaled budget");
+        }
     }
 
     [Test]

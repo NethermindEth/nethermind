@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Collections.Specialized;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -33,6 +32,7 @@ public class OptimismGossipLoopbackTests
     [TestCase(64, TestName = "A small block message reaches the other host")]
     [TestCase(280 * 1024, TestName = "A block message over one yamux window reaches the other host")]
     [TestCase(1024 * 1024 + 4096, TestName = "A block message over one mebibyte reaches the other host")]
+    [TestCase(10 * 1024 * 1024, TestName = "A maximum size block message reaches the other host")]
     [CancelAfter(60_000)]
     public Task A_block_message_reaches_the_other_host(int size, CancellationToken token) => PublishAndReceiveAsync(size, token);
 
@@ -108,6 +108,38 @@ public class OptimismGossipLoopbackTests
         }
 
         await KeepUntilConnectedAsync(keeper, node, routing, sequencerId, token);
+    }
+
+    [Test]
+    public async Task A_stalled_static_peer_dial_times_out_before_the_next_peer()
+    {
+        Multiaddress first = Multiaddress.Decode($"/ip4/127.0.0.1/tcp/1/p2p/{new Nethermind.Libp2p.Core.Identity().PeerId}");
+        Multiaddress second = Multiaddress.Decode($"/ip4/127.0.0.1/tcp/2/p2p/{new Nethermind.Libp2p.Core.Identity().PeerId}");
+        ILocalPeer localPeer = Substitute.For<ILocalPeer>();
+        localPeer.DialAsync(first, Arg.Any<CancellationToken>()).Returns(async call =>
+        {
+            await Task.Delay(Timeout.Infinite, call.Arg<CancellationToken>());
+            return Substitute.For<ISession>();
+        });
+        localPeer.DialAsync(second, Arg.Any<CancellationToken>()).Returns(Substitute.For<ISession>());
+        IRoutingStateContainer router = Substitute.For<IRoutingStateContainer>();
+        router.ConnectedPeers.Returns([]);
+        TimeProvider time = Substitute.For<TimeProvider>();
+        TimerCallback? callback = null;
+        object? state = null;
+        time.CreateTimer(Arg.Any<TimerCallback>(), Arg.Any<object>(), Arg.Any<TimeSpan>(), Arg.Any<TimeSpan>()).Returns(call =>
+        {
+            callback = call.Arg<TimerCallback>();
+            state = call.ArgAt<object>(1);
+            return Substitute.For<ITimer>();
+        });
+        using StaticPeerKeeper keeper = new(localPeer, router, [first, second], LimboLogs.Instance.GetClassLogger<OptimismGossipLoopbackTests>(),
+            static (_, _) => Task.CompletedTask, time);
+        Task check = keeper.CheckAsync(CancellationToken.None);
+        Assert.That(check.IsCompleted, Is.False);
+        callback!(state);
+        await check.WaitAsync(TimeSpan.FromSeconds(5));
+        await localPeer.Received(1).DialAsync(second, Arg.Any<CancellationToken>());
     }
 
     [Test]
@@ -449,12 +481,6 @@ public class OptimismGossipLoopbackTests
     private static async Task AssertNoSessionAfterShutdownAsync(ILocalPeer dialer, Host remote, Func<ValueTask> shutdown, bool callerStopsWaiting, CancellationToken token)
     {
         LocalPeer remotePeer = (LocalPeer)remote.Peer;
-        // The dialer's own session: closed as soon as it is added after disposal, so the remote may never list it.
-        TaskCompletionSource reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        ((LocalPeer)dialer).Sessions.CollectionChanged += (_, change) =>
-        {
-            if (change.Action == NotifyCollectionChangedAction.Add) reached.TrySetResult();
-        };
         using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
         Task<ISession> dial = dialer.DialAsync(remote.Address, caller.Token);
         Task<ISession> remaining = dial;
@@ -478,8 +504,6 @@ public class OptimismGossipLoopbackTests
             }
         }
 
-        await reached.Task.WaitAsync(TimeSpan.FromSeconds(15), token);
-
         // Dial timeout is 15 s; a remote losing the connection mid-handshake can take another 30 s to drop it.
         using CancellationTokenSource bounded = CancellationTokenSource.CreateLinkedTokenSource(token);
         bounded.CancelAfter(TimeSpan.FromSeconds(45));
@@ -488,7 +512,11 @@ public class OptimismGossipLoopbackTests
             await Task.Delay(50, CancellationToken.None);
         }
 
-        Assert.That(remotePeer.Sessions, Is.Empty, "the dial finished after shutdown and its session stayed open");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(((LocalPeer)dialer).Sessions, Is.Empty, "shutdown prevents a late dial from admitting a session");
+            Assert.That(remotePeer.Sessions, Is.Empty, "the dial finished after shutdown and its session stayed open");
+        }
     }
 
     [Test]

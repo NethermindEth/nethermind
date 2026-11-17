@@ -55,8 +55,11 @@ public class GloasSeedAndEpochCacheTests
 
         foreach (ulong epoch in new[] { currentEpoch - 1, currentEpoch, currentEpoch + 1 })
         {
-            Assert.That(gloas.GetSeed(epoch, DomainType.BeaconAttester), Is.EqualTo(fulu.GetSeed(epoch, DomainType.BeaconAttester)));
-            Assert.That(gloas.GetSeed(epoch, DomainType.PtcAttester), Is.EqualTo(fulu.GetSeed(epoch, DomainType.PtcAttester)));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(gloas.GetSeed(epoch, DomainType.BeaconAttester), Is.EqualTo(fulu.GetSeed(epoch, DomainType.BeaconAttester)));
+                Assert.That(gloas.GetSeed(epoch, DomainType.PtcAttester), Is.EqualTo(fulu.GetSeed(epoch, DomainType.PtcAttester)));
+            }
         }
         Assert.That(gloas.GetSeed(currentEpoch, DomainType.BeaconAttester), Is.Not.EqualTo(gloas.GetSeed(currentEpoch, DomainType.PtcAttester)), "the domain must reach the preimage");
     }
@@ -68,9 +71,12 @@ public class GloasSeedAndEpochCacheTests
         ulong startSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(epoch);
         Hash256 expected = FromFirstByte(0xE5);
 
-        Assert.That(EpochCache.GetEpochBoundaryRoot(startSlot + 7, slot => slot == startSlot - 1 ? expected : FromFirstByte(0x00)), Is.EqualTo(expected));
-        Assert.That(EpochCache.GetEpochBoundaryRoot(startSlot, slot => slot == startSlot - 1 ? expected : FromFirstByte(0x00)), Is.EqualTo(expected), "the first slot of the epoch keys on the same root as the rest of it");
-        Assert.That(EpochCache.GetEpochBoundaryRoot(3, _ => throw new InvalidOperationException("no block precedes the genesis epoch")), Is.EqualTo(Hash256.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(EpochCache.GetEpochBoundaryRoot(startSlot + 7, slot => slot == startSlot - 1 ? expected : FromFirstByte(0x00)), Is.EqualTo(expected));
+            Assert.That(EpochCache.GetEpochBoundaryRoot(startSlot, slot => slot == startSlot - 1 ? expected : FromFirstByte(0x00)), Is.EqualTo(expected), "the first slot of the epoch keys on the same root as the rest of it");
+            Assert.That(EpochCache.GetEpochBoundaryRoot(3, _ => throw new InvalidOperationException("no block precedes the genesis epoch")), Is.EqualTo(Hash256.Zero));
+        }
     }
 
     [Test]
@@ -84,8 +90,11 @@ public class GloasSeedAndEpochCacheTests
         EpochCache cache = new();
         CommitteeCache committeesA = cache.GetCommitteeCache(branchA, epoch);
 
-        Assert.That(cache.GetCommitteeCache(branchB, epoch), Is.SameAs(committeesA), "a shuffling is fixed by the decision root; branches diverging after it share it");
-        Assert.That(cache.GetCommitteeCache(otherShuffling, epoch), Is.Not.SameAs(committeesA), "a branch that diverged before the decision slot has its own shuffling");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.GetCommitteeCache(branchB, epoch), Is.SameAs(committeesA), "a shuffling is fixed by the decision root; branches diverging after it share it");
+            Assert.That(cache.GetCommitteeCache(otherShuffling, epoch), Is.Not.SameAs(committeesA), "a branch that diverged before the decision slot has its own shuffling");
+        }
     }
 
     [Test]

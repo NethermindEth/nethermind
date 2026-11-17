@@ -74,7 +74,7 @@ public sealed class ExecutionPayloadEnvelopesByRangeProtocol(BeaconChainSpec spe
                 throw new Eth2ReqRespException("Execution-payload-envelopes-by-range request count must be positive");
             }
 
-            ChargeRequest(context, Math.Min(request.Count, MaxRequestPayloads), MaxRequestPayloads);
+            await ChargeRequestAsync(context, Math.Min(request.Count, MaxRequestPayloads), MaxRequestPayloads, cts);
 
             foreach (SignedExecutionPayloadEnvelope envelope in pool.GetCanonical(request.StartSlot, Math.Min(request.Count, MaxRequestPayloads)))
             {

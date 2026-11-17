@@ -8,6 +8,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
 using NUnit.Framework;
@@ -34,8 +35,11 @@ public class BlockAccessListsMessageSerializerTests
         serializer.Serialize(buffer2, deserialized);
         buffer.SetReaderIndex(0);
         string allHex = buffer.ReadAllHex();
-        Assert.That(buffer2.ReadAllHex(), Is.EqualTo(allHex), "test zero");
-        Assert.That(allHex, Is.EqualTo(expectedData));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(buffer2.ReadAllHex(), Is.EqualTo(allHex), "test zero");
+            Assert.That(allHex, Is.EqualTo(expectedData));
+        }
     }
 
     [TestCaseSource(nameof(BlockAccessListsRejectionCases))]
@@ -76,11 +80,11 @@ public class BlockAccessListsMessageSerializerTests
     {
         yield return new TestCaseData(
                 new Func<IByteBuffer>(() => Unpooled.WrappedBuffer([0xc5, 0x01, 0xc2, 0x81, 0x80, 0xc0])),
-                typeof(RlpException))
+                typeof(RlpReaderException))
             .SetName("Rejects_extra_outer_payload");
         yield return new TestCaseData(
                 new Func<IByteBuffer>(() => Unpooled.WrappedBuffer([0xcb, 0x89, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0xc0])),
-                typeof(RlpException))
+                typeof(RlpReaderException))
             .SetName("Rejects_request_id_longer_than_8_bytes");
         yield return new TestCaseData(
                 new Func<IByteBuffer>(BuildTooManyBlockAccessListsPayload),
@@ -94,7 +98,7 @@ public class BlockAccessListsMessageSerializerTests
         byte[]?[] blockAccessLists = new byte[]?[GethSyncLimits.MaxBodyFetch + 1];
 
         using BlockAccessListsMessage msg = BuildMessage(45, blockAccessLists);
-        IByteBuffer payload = Unpooled.Buffer(serializer.GetLength(msg, out _));
+        IByteBuffer payload = Unpooled.Buffer(serializer.GetLength(msg));
         serializer.Serialize(payload, msg);
         return payload;
     }
@@ -129,7 +133,7 @@ public class GetBlockAccessListsMessageSerializerTests
     {
         GetBlockAccessListsMessageSerializer serializer = new();
         using GetBlockAccessListsMessage msg = buildMessage();
-        SerializerTester.TestZero(serializer, msg, expectedData);
+        SerializerTester.Test(serializer, msg, expectedData);
     }
 
     [Test]
@@ -138,7 +142,7 @@ public class GetBlockAccessListsMessageSerializerTests
         GetBlockAccessListsMessageSerializer serializer = new();
         using DisposableByteBuffer payload = Unpooled.WrappedBuffer([0xc3, 0x01, 0xc1, 0x80]).AsDisposable();
 
-        Assert.That(() => serializer.Deserialize(payload), Throws.InstanceOf<RlpException>());
+        Assert.That(() => serializer.Deserialize(payload), Throws.InstanceOf<RlpReaderException>());
     }
 
     private static IEnumerable<TestCaseData> GetBlockAccessListsRoundtripCases()

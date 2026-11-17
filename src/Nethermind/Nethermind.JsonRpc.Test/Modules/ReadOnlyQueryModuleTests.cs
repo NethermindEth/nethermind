@@ -152,7 +152,7 @@ public class ReadOnlyQueryModuleTests
             "debug_traceTransactionByBlockAndIndex" => RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, "latest", 1, GethOptions(tracer)),
             "debug_traceBlockByNumber" => RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, "latest", GethOptions(tracer)),
             "debug_traceBlockByHash" => RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, block.Hash!, GethOptions(tracer)),
-            "debug_traceBlock" => RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, Rlp.Encode(block).ToString(), GethOptions(tracer)),
+            "debug_traceBlock" => RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, Rlp.Encode(block).ToHexString(true), GethOptions(tracer)),
             "trace_call" => RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, CallTo(Target), types, "latest"),
             "trace_callMany" => RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, new[] { new[] { CallTo(Target), types } }, "latest"),
             "trace_rawTransaction" => RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, Encoded(SignedCallTo(chain, Target)), types),
@@ -173,7 +173,7 @@ public class ReadOnlyQueryModuleTests
     }
 
     /// <summary><paramref name="transaction"/> encoded for trace_rawTransaction.</summary>
-    private static byte[] Encoded(Transaction transaction) => TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes;
+    private static byte[] Encoded(Transaction transaction) => TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping);
 
     /// <summary>Runs <paramref name="method"/> with one call to <see cref="Target"/> in one simulated block.</summary>
     private static Task<string> Simulate(TestRpcBlockchain chain, string method)
@@ -235,8 +235,11 @@ public class ReadOnlyQueryModuleTests
             .WithNonce(nonce).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
         Block deployment = await chain.AddBlock(deploy);
         Address deployed = ContractAddress.From(TestItem.AddressB, nonce);
-        Assert.That(deployment.Transactions, Has.Length.EqualTo(1), "precondition: the deployment is included");
-        Assert.That(probe.Offers, Is.Zero, "block production and processing must not run on a query module's runner");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deployment.Transactions, Has.Length.EqualTo(1), "precondition: the deployment is included");
+            Assert.That(probe.Offers, Is.Zero, "block production and processing must not run on a query module's runner");
+        }
 
         string call = await chain.TestEthRpc("eth_call", Query(chain, deployed), "latest");
         int afterCall = probe.Offers;
@@ -491,7 +494,8 @@ public class ReadOnlyQueryModuleTests
         }
     }
 
-    // A traced call and a block traced whole have no untraced transaction, but their blocks end with untraced system calls.
+    // A traced call and a block traced whole have no untraced transaction. A block traced whole ends with untraced
+    // system calls; a traced call stops after the call, so nothing after it runs.
     [TestCase("debug_traceCall", StructLogger)]
     [TestCase("debug_traceCall", "prestateTracer")]
     [TestCase("debug_traceCall", JavaScriptTracer)]
@@ -512,8 +516,11 @@ public class ReadOnlyQueryModuleTests
             AssertSucceeded(response);
             foreach (Address contract in Contracts)
                 Assert.That(probe.OffersFor(contract), Is.Zero, "a transaction traced opcode by opcode must never reach the runner");
-            Assert.That(probe.OffersFor(Eip7002Constants.WithdrawalRequestPredeployAddress) + probe.OffersFor(Eip7251Constants.ConsolidationRequestPredeployAddress),
-                Is.GreaterThan(0), "the execution request system calls that end the block still do");
+            int systemCallOffers = probe.OffersFor(Eip7002Constants.WithdrawalRequestPredeployAddress) + probe.OffersFor(Eip7251Constants.ConsolidationRequestPredeployAddress);
+            if (method == "debug_traceCall")
+                Assert.That(systemCallOffers, Is.Zero, "a traced call stops before the execution request system calls that end the block");
+            else
+                Assert.That(systemCallOffers, Is.GreaterThan(0), "the execution request system calls that end the block still do");
         }
     }
 

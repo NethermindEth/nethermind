@@ -187,7 +187,7 @@ public class PeerHealthCheckRoundTests
 
     [Test]
     [CancelAfter(120_000)]
-    public async Task A_round_checks_at_most_eight_peers_at_once_and_stops_when_cancelled(CancellationToken token)
+    public async Task A_round_checks_at_most_eight_peers_at_once_and_stops_when_cancelled([Values] bool continuousMaintenance, CancellationToken token)
     {
         const int peers = 2 * MaxConcurrentChecks;
         Node client = CreateNode();
@@ -226,11 +226,25 @@ public class PeerHealthCheckRoundTests
         {
             PeerManager peerManager = await StartAndAdmitAsync(client, servers, token, new OneLoggerLogManager(failedChecks.Logger));
             using CancellationTokenSource roundCancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
+            if (continuousMaintenance) client.Config.MinPeerCount = peers + 1;
             roundStarted.Set();
-            Task round = peerManager.RunMaintenanceRoundAsync(roundCancellation.Token);
+            Task round = continuousMaintenance ? peerManager.Run(roundCancellation.Token) : peerManager.RunMaintenanceRoundAsync(roundCancellation.Token);
             Assert.That(await Task.WhenAny(maxHeld.Task, round), Is.SameAs(maxHeld.Task), "the round ended before it asked enough peers at once");
-            await Task.Delay(TimeSpan.FromSeconds(1), token);
             int observedMax = Volatile.Read(ref held);
+            if (continuousMaintenance)
+            {
+                client.Config.MaxPeerCount = peers - 1;
+                Stopwatch maintenance = Stopwatch.StartNew();
+                while (peerManager.PeerCount == peers)
+                    await Task.Delay(10, token);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(peerManager.PeerCount, Is.EqualTo(peers - 1), "band maintenance proceeds while health checks are unanswered");
+                    Assert.That(maintenance.Elapsed, Is.LessThan(RendezvousWait), "maintenance completes before the 15-second status timeout");
+                }
+            }
+            await Task.Delay(TimeSpan.FromSeconds(1), token);
+            if (!continuousMaintenance) observedMax = Volatile.Read(ref held);
             Stopwatch stopped = Stopwatch.StartNew();
             await roundCancellation.CancelAsync();
             await Task.WhenAny(round, Task.Delay(System.Threading.Timeout.Infinite, token));
@@ -242,8 +256,8 @@ public class PeerHealthCheckRoundTests
                 // Under the 15 s request timeout, so only the round's token can have ended the held checks in time.
                 Assert.That(stopped.Elapsed, Is.LessThan(RendezvousWait), "cancelling the round ends the checks in flight");
                 Assert.That(round.IsCanceled, Is.True);
-                Assert.That(peerManager.PeerCount, Is.EqualTo(peers), "a cancelled check does not count against its peer");
-                Assert.That(failedChecks.Count, Is.Zero, $"the round's token, not a failed request, ended the checks; last failure: {failedChecks.Last}");
+                Assert.That(peerManager.PeerCount, Is.EqualTo(continuousMaintenance ? peers - 1 : peers), "a cancelled check does not count against its peer");
+                if (!continuousMaintenance) Assert.That(failedChecks.Count, Is.Zero, $"the round's token, not a failed request, ended the checks; last failure: {failedChecks.Last}");
             }
         }
         finally

@@ -54,11 +54,14 @@ public class BeaconChainStoreStatePruningTests
 
         _store.SetAnchor(Root(4), 96);
 
-        Assert.That(new[] { Has(1), Has(2), Has(3), Has(4), Has(5), Has(6), Has(7) },
-            Is.EqualTo(new[] { false, false, false, true, false, true, true }),
-            "old anchor, snapshot, candidate and a fork state at the anchor slot go; the anchor and everything above stay");
-        Assert.That(_store.TryGetAnchor(out Hash256? root, out ulong slot), Is.True);
-        Assert.That((root, slot), Is.EqualTo((Root(4), 96ul)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new[] { Has(1), Has(2), Has(3), Has(4), Has(5), Has(6), Has(7) },
+                    Is.EqualTo(new[] { false, false, false, true, false, true, true }),
+                    "old anchor, snapshot, candidate and a fork state at the anchor slot go; the anchor and everything above stay");
+            Assert.That(_store.TryGetAnchor(out Hash256? root, out ulong slot), Is.True);
+            Assert.That((root, slot), Is.EqualTo((Root(4), 96ul)));
+        }
     }
 
     [TestCase(true, 10ul, 50ul, 10 * 1024 * 1024 + 5, TestName = "A_deleted_multi_chunk_state_leaves_no_manifest_or_chunk_behind")]
@@ -95,8 +98,11 @@ public class BeaconChainStoreStatePruningTests
 
         _store.SetAnchor(Root(1), 32);
 
-        Assert.That(Enumerable.Range(10, 20).All(i => Has((byte)i)), Is.True);
-        Assert.That(Has(1), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Enumerable.Range(10, 20).All(i => Has((byte)i)), Is.True);
+            Assert.That(Has(1), Is.True);
+        }
     }
 
     [Test]
@@ -110,8 +116,11 @@ public class BeaconChainStoreStatePruningTests
 
         _store.SetAnchor(Root(2), 40);
 
-        Assert.That(StateKeyCount(), Is.EqualTo(keysAfterFirst));
-        Assert.That(new[] { Has(1), Has(2), Has(3) }, Is.EqualTo(new[] { false, true, true }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(StateKeyCount(), Is.EqualTo(keysAfterFirst));
+            Assert.That(new[] { Has(1), Has(2), Has(3) }, Is.EqualTo(new[] { false, true, true }));
+        }
     }
 
     // An empty rewrite leaves old chunk 0; the manifest determines whether a slot exists.
@@ -146,11 +155,14 @@ public class BeaconChainStoreStatePruningTests
         BeaconChainStore reopened = new(_db);
         reopened.EnsureSchemaVersion();
 
-        Assert.That(reopened.TryGetAnchor(out Hash256? root, out ulong slot), Is.True);
-        Assert.That((root, slot), Is.EqualTo((Root(3), 64ul)));
-        Assert.That(reopened.TryGetState(root!, out byte[]? loaded), Is.True);
-        Assert.That(loaded, Is.EqualTo(anchorState));
-        Assert.That(reopened.TryGetState(Root(4), out _), Is.True, "a state above the anchor is still there to replay from");
-        Assert.That(reopened.TryGetState(Root(1), out _) || reopened.TryGetState(Root(2), out _), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reopened.TryGetAnchor(out Hash256? root, out ulong slot), Is.True);
+            Assert.That((root, slot), Is.EqualTo((Root(3), 64ul)));
+            Assert.That(reopened.TryGetState(root!, out byte[]? loaded), Is.True);
+            Assert.That(loaded, Is.EqualTo(anchorState));
+            Assert.That(reopened.TryGetState(Root(4), out _), Is.True, "a state above the anchor is still there to replay from");
+            Assert.That(reopened.TryGetState(Root(1), out _) || reopened.TryGetState(Root(2), out _), Is.False);
+        }
     }
 }

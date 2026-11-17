@@ -170,7 +170,7 @@ public class BlockHeaderTests
 
         BlockHeader child = parent.CreateSimulatedChild(112);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(child, Is.TypeOf<BlockHeader>());
             Assert.That(child.ParentHash, Is.EqualTo(parent.Hash!));
@@ -192,7 +192,7 @@ public class BlockHeaderTests
             Assert.That(child.ExcessBlobGas, Is.Null);
             Assert.That(child.ParentBeaconBlockRoot, Is.Null);
             Assert.That(child.SlotNumber, Is.EqualTo(parent.SlotNumber + 1));
-        });
+        }
     }
 
     [Test]

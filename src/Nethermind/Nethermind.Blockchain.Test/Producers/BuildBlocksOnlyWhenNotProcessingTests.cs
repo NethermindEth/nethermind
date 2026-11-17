@@ -23,8 +23,11 @@ public class BuildBlocksOnlyWhenNotProcessingTests
         Context context = new();
         context.BlockProcessingQueue.IsEmpty.Returns(true);
         Block block = (await context.MainBlockProductionTrigger.BuildBlock())!;
-        Assert.That(block, Is.EqualTo(context.DefaultBlock));
-        Assert.That(context.TriggeredCount, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block, Is.EqualTo(context.DefaultBlock));
+            Assert.That(context.TriggeredCount, Is.EqualTo(1));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -38,8 +41,11 @@ public class BuildBlocksOnlyWhenNotProcessingTests
 
         context.BlockProcessingQueue.IsEmpty.Returns(true);
         Block? block = await buildTask;
-        Assert.That(block, Is.EqualTo(context.DefaultBlock));
-        Assert.That(context.TriggeredCount, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block, Is.EqualTo(context.DefaultBlock));
+            Assert.That(context.TriggeredCount, Is.EqualTo(1));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -56,6 +62,45 @@ public class BuildBlocksOnlyWhenNotProcessingTests
 
         Func<Task> f = async () => { await buildTask; };
         Assert.That(async () => await f(), Throws.InstanceOf<OperationCanceledException>());
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task should_trigger_block_production_after_a_rejected_block_was_processed_before_its_suggestion_event()
+    {
+        Context context = new();
+        context.BlockProcessingQueue.IsEmpty.Returns(true);
+        Block rejected = Build.A.Block.WithNumber(1).TestObject;
+        context.BlockTree.Head.Returns(context.DefaultBlock);
+
+        context.BlockProcessingQueue.ProcessingQueueEmpty += Raise.Event();
+        context.BlockTree.NewBestSuggestedBlock += Raise.EventWith(new BlockEventArgs(rejected));
+
+        using CancellationTokenSource cancellation = new();
+        Task<Block?> buildTask = context.MainBlockProductionTrigger.BuildBlock(cancellationToken: cancellation.Token);
+        bool producedAtOnce = buildTask.IsCompletedSuccessfully;
+        await cancellation.CancelAsync();
+
+        Assert.That(producedAtOnce, Is.True);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task should_delay_block_production_while_the_processing_queue_is_not_empty()
+    {
+        Context context = new();
+        context.BlockProcessingQueue.ProcessingQueueEmpty += Raise.Event();
+        context.BlockProcessingQueue.IsEmpty.Returns(false);
+
+        Task<Block?> buildTask = context.MainBlockProductionTrigger.BuildBlock();
+        Assert.That(buildTask.IsCompleted, Is.False);
+
+        context.BlockProcessingQueue.IsEmpty.Returns(true);
+        Block? block = await buildTask;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block, Is.EqualTo(context.DefaultBlock));
+            Assert.That(context.TriggeredCount, Is.EqualTo(1));
+        }
     }
 
     private class Context

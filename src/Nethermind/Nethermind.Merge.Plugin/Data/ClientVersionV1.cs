@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text.Json.Serialization;
 using Nethermind.Core;
 
 namespace Nethermind.Merge.Plugin.Data;
@@ -12,6 +13,20 @@ namespace Nethermind.Merge.Plugin.Data;
 public readonly struct ClientVersionV1
 {
     public ClientVersionV1() { }
+
+    /// <summary>Creates a client version from the given fields only.</summary>
+    /// <remarks>
+    /// The JSON deserialization constructor, so fields a consensus client omits stay empty instead of
+    /// defaulting to this client's identity as the parameterless constructor does.
+    /// </remarks>
+    [JsonConstructor]
+    public ClientVersionV1(string code, string name, string version, string commit)
+    {
+        Code = code;
+        Name = name;
+        Version = version;
+        Commit = commit;
+    }
 
     public string Code { get; init; } = ProductInfo.ClientCode;
     public string Name { get; init; } = ProductInfo.Name;

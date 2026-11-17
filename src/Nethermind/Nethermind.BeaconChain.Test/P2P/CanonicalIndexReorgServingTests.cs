@@ -28,7 +28,7 @@ public class CanonicalIndexReorgServingTests
         (SignedBeaconBlock anchor, Hash256 anchorRoot, SignedBeaconBlock[] blocks) = TestChain.BuildLinkedChain(64, 96, 128);
         TestChain.Persist(store, anchor, anchorRoot, blocks);
         store.SetAnchor(SszRoots.HashTreeRoot(blocks[^1].Message!), 128);
-        store.BackfilledBlockFloor = 64;
+        store.LowerBackfilledBlockFloor(64);
         store.PruneCanonicalBlocks(Presets.MinValidatorWithdrawabilityDelay + Presets.ChurnLimitQuotient / 2 + 3, 128);
         BeaconBlocksByRangeProtocolV2 protocol = new(spec, restart ? new BeaconChainStore(db, spec) : store);
 
@@ -104,7 +104,7 @@ public class CanonicalIndexReorgServingTests
         TestChain.Persist(store, anchor, anchorRoot, blocks);
         store.SetAnchor(SszRoots.HashTreeRoot(blocks[^1].Message!), start + 2);
         store.PutMetadata(BeaconChainMetadataKeys.EarliestBlockSlot, []);
-        store.BackfilledBlockFloor = start + 1;
+        store.LowerBackfilledBlockFloor(start + 1);
         BeaconBlocksByRangeProtocolV2 protocol = new(spec, store);
         BeaconBlocksByRangeDial request = new(new BeaconBlocksByRangeRequest { StartSlot = belowFloor ? start : start + 1, Count = 2, Step = 1 });
 

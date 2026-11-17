@@ -7,9 +7,11 @@ using System.Formats.Tar;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Security.Cryptography;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Ethereum.Test.Base;
 
@@ -22,7 +24,10 @@ namespace Ethereum.Test.Base;
 public static class TestFixtureDownloader
 {
     private static readonly string CacheRoot = Path.Combine(Path.GetTempPath(), "nethermind-eest");
-    private const string MarkerFileName = ".completed";
+    internal const string MarkerFileName = ".completed";
+    internal const int MaxAttempts = 5;
+    internal const string TempDirectoryInfix = ".tmp-";
+    private static readonly TimeSpan RetryBaseDelay = TimeSpan.FromSeconds(2);
 
     // consensus-specs archives: tests/{preset}/{fork}/{suite}; record missing suites without walking every file.
     private const int SubtreeDepth = 4;
@@ -41,10 +46,14 @@ public static class TestFixtureDownloader
     /// <param name="expectedSha256">Optional pinned SHA-256 hex digest of the compressed archive.</param>
     /// <returns>The path to the extracted fixtures directory.</returns>
     public static string EnsureDownloaded(string suiteName, string urlTemplate, string version, string archiveName, Func<string, bool>? shouldExtract = null, string? extractionTag = null, string? expectedSha256 = null)
+        => EnsureDownloaded(CacheRoot, suiteName, urlTemplate, version, archiveName, null, RetryBaseDelay, shouldExtract, extractionTag, expectedSha256);
+
+    internal static string EnsureDownloaded(string cacheRoot, string suiteName, string urlTemplate, string version, string archiveName,
+        HttpMessageHandler? handler, TimeSpan retryBaseDelay, Func<string, bool>? shouldExtract = null, string? extractionTag = null, string? expectedSha256 = null)
     {
         if (expectedSha256 is not null) extractionTag = $"{extractionTag ?? version};sha256={expectedSha256}";
         string archiveStem = StripExtensions(archiveName);
-        string targetDir = Path.Combine(CacheRoot, suiteName, version, archiveStem);
+        string targetDir = Path.Combine(cacheRoot, suiteName, version, archiveStem);
         string markerPath = Path.Combine(targetDir, MarkerFileName);
 
         if (IsComplete(targetDir, markerPath, extractionTag))
@@ -64,8 +73,9 @@ public static class TestFixtureDownloader
             }
 
             Console.WriteLine($"Downloading {suiteName} fixtures ({archiveName} {version})...");
-            DownloadAndExtract(urlTemplate, version, archiveName, targetDir, shouldExtract, expectedSha256);
-            File.WriteAllLines(markerPath, [extractionTag ?? version, .. PopulatedSubtrees(targetDir)]);
+            string url = string.Format(urlTemplate, version, archiveName);
+            DeleteStaleTempDirectories(targetDir);
+            DownloadWithRetries(url, extractionTag ?? version, targetDir, handler, retryBaseDelay, shouldExtract, expectedSha256);
             Console.WriteLine($"{suiteName} fixtures extracted to {targetDir}");
         }
         finally
@@ -147,19 +157,72 @@ public static class TestFixtureDownloader
         return Path.GetFileNameWithoutExtension(archiveName);
     }
 
-    private static void DownloadAndExtract(string urlTemplate, string version, string archiveName, string targetDir, Func<string, bool>? shouldExtract, string? expectedSha256)
+    private static void DeleteStaleTempDirectories(string targetDir)
     {
-        // Clean up any partial extraction from a previous interrupted attempt.
-        if (Directory.Exists(targetDir))
-            Directory.Delete(targetDir, true);
+        string parentDir = Path.GetDirectoryName(targetDir)!;
+        if (!Directory.Exists(parentDir))
+            return;
 
-        Directory.CreateDirectory(targetDir);
+        foreach (string staleDir in Directory.EnumerateDirectories(parentDir, Path.GetFileName(targetDir) + TempDirectoryInfix + "*"))
+            Directory.Delete(staleDir, true);
+    }
 
-        using HttpClient httpClient = new();
-        string url = string.Format(urlTemplate, version, archiveName);
+    private static void DownloadWithRetries(string url, string marker, string targetDir, HttpMessageHandler? handler, TimeSpan retryBaseDelay,
+        Func<string, bool>? shouldExtract, string? expectedSha256)
+    {
+        using HttpClient httpClient = handler is null ? new() : new(handler, disposeHandler: false);
+        for (int attempt = 1; ; attempt++)
+        {
+            string tempDir = targetDir + TempDirectoryInfix + Guid.NewGuid().ToString("N");
+            try
+            {
+                DownloadAndExtract(httpClient, url, tempDir, shouldExtract, expectedSha256);
+                File.WriteAllLines(Path.Combine(tempDir, MarkerFileName), [marker, .. PopulatedSubtrees(tempDir)]);
+                DeleteIfExists(targetDir);
+                Directory.Move(tempDir, targetDir);
+                return;
+            }
+            catch (Exception exception) when (IsTransient(exception))
+            {
+                DeleteIfExists(tempDir);
+                if (attempt >= MaxAttempts)
+                    throw new HttpRequestException($"Failed to download test fixtures from {url} after {MaxAttempts} attempts.", exception,
+                        (exception as HttpRequestException)?.StatusCode);
+
+                TimeSpan delay = retryBaseDelay * (1 << (attempt - 1));
+                Console.WriteLine($"Attempt {attempt} of {MaxAttempts} to download {url} failed ({exception.Message}). Retrying in {delay.TotalSeconds:0.#} s.");
+                Thread.Sleep(delay);
+            }
+            catch
+            {
+                DeleteIfExists(tempDir);
+                throw;
+            }
+        }
+    }
+
+    private static bool IsTransient(Exception exception) => exception switch
+    {
+        HttpRequestException { StatusCode: null } => true,
+        HttpRequestException { StatusCode: HttpStatusCode status } => status is HttpStatusCode.RequestTimeout or HttpStatusCode.TooManyRequests || (int)status >= 500,
+        TaskCanceledException { InnerException: TimeoutException } => true,
+        HttpIOException or EndOfStreamException or InvalidDataException => true,
+        _ => false
+    };
+
+    private static void DeleteIfExists(string directory)
+    {
+        if (Directory.Exists(directory))
+            Directory.Delete(directory, true);
+    }
+
+    private static void DownloadAndExtract(HttpClient httpClient, string url, string targetDir, Func<string, bool>? shouldExtract, string? expectedSha256)
+    {
         using HttpRequestMessage request = new(HttpMethod.Get, url);
         using HttpResponseMessage response = httpClient.Send(request, HttpCompletionOption.ResponseHeadersRead);
         response.EnsureSuccessStatusCode();
+
+        Directory.CreateDirectory(targetDir);
 
         long? expectedLength = response.Content.Headers.ContentLength;
         using CountingStream contentStream = new(response.Content.ReadAsStream());
@@ -181,12 +244,12 @@ public static class TestFixtureDownloader
         // GZipStream can report clean EOF after a truncated download without validating the declared length.
         if (expectedLength is { } expected && contentStream.TotalBytesRead != expected)
         {
-            throw new IOException(
+            throw new EndOfStreamException(
                 $"Download of '{url}' was truncated: expected {expected} bytes but the stream yielded {contentStream.TotalBytesRead} before EOF.");
         }
 
         if (expectedSha256 is not null && !string.Equals(contentStream.Digest(), expectedSha256, StringComparison.OrdinalIgnoreCase))
-            throw new IOException($"SHA-256 mismatch for fixture archive {archiveName} ({version}).");
+            throw new InvalidDataException($"SHA-256 mismatch for fixture archive {url}.");
 
         if (!HasExtractedContent(targetDir))
         {
@@ -202,20 +265,21 @@ public static class TestFixtureDownloader
         public string Digest() => Convert.ToHexString(_hash.GetHashAndReset());
         public long TotalBytesRead { get; private set; }
 
-        public override int Read(byte[] buffer, int offset, int count)
-        {
-            int read = inner.Read(buffer, offset, count);
-            _hash.AppendData(buffer.AsSpan(offset, read));
-            TotalBytesRead += read;
-            return read;
-        }
+        public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
 
         public override int Read(Span<byte> buffer)
         {
-            int read = inner.Read(buffer);
-            _hash.AppendData(buffer[..read]);
-            TotalBytesRead += read;
-            return read;
+            try
+            {
+                int read = inner.Read(buffer);
+                _hash.AppendData(buffer[..read]);
+                TotalBytesRead += read;
+                return read;
+            }
+            catch (IOException exception) when (exception is not HttpIOException)
+            {
+                throw new HttpIOException(HttpRequestError.ResponseEnded, exception.Message, exception);
+            }
         }
 
         protected override void Dispose(bool disposing)

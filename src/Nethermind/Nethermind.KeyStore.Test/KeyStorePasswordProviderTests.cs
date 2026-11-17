@@ -115,8 +115,11 @@ public class KeyStorePasswordProviderTests
         {
             SecureString actualPassword = passwordProvider.GetPassword(test.UnlockAccounts[index]);
             string expectedPassword = test.ExpectedPasswords[index];
-            Assert.That(actualPassword.IsReadOnly(), Is.True);
-            Assert.That(actualPassword.Unsecure(), Is.EqualTo(expectedPassword));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actualPassword.IsReadOnly(), Is.True);
+                Assert.That(actualPassword.Unsecure(), Is.EqualTo(expectedPassword));
+            }
         }
     }
 
@@ -130,8 +133,20 @@ public class KeyStorePasswordProviderTests
         keyStoreConfig.UnlockAccounts.Returns(test.UnlockAccounts.Select(a => a.ToString()).ToArray());
         KeyStorePasswordProvider passwordProvider = new(keyStoreConfig);
         SecureString blockAuthorPassword = passwordProvider.GetPassword(new Address(Bytes.FromHexString(keyStoreConfig.BlockAuthorAccount)));
-        Assert.That(blockAuthorPassword.IsReadOnly(), Is.True);
-        Assert.That(blockAuthorPassword.Unsecure(), Is.EqualTo(test.ExpectedBlockAuthorAccountPassword), test.TestName);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockAuthorPassword.IsReadOnly(), Is.True);
+            Assert.That(blockAuthorPassword.Unsecure(), Is.EqualTo(test.ExpectedBlockAuthorAccountPassword), test.TestName);
+        }
+    }
+
+    [Test]
+    public void Unlock_account_matches_by_value([Values] bool withZeroX)
+    {
+        IKeyStoreConfig keyStoreConfig = Substitute.For<IKeyStoreConfig>();
+        keyStoreConfig.UnlockAccounts.Returns(["not an address", new string('z', 40), TestItem.AddressA.ToString(withZeroX, withEip55Checksum: true)]);
+
+        Assert.That(keyStoreConfig.FindUnlockAccountIndex(TestItem.AddressA), Is.EqualTo(2));
     }
 }
 

@@ -16,6 +16,59 @@ public partial class BeaconSyncOrchestratorTests
     private const ulong NearHeadAnchorSlot = WallSlot - 5;
 
     [Test]
+    public async Task Only_authenticated_gossip_blocks_reserve_data_retry_places([Values(true, false, null)] bool? signature)
+    {
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearHeadAnchorSlot, WallSlot - 3);
+        ForkedSignedBeaconBlock block = new ForkedSignedBeaconBlock.OfFulu(chain[0]);
+        Harness harness = CreateHarness(anchorSlot: NearHeadAnchorSlot, blockSignature: signature);
+        harness.Importer.Known.Add(anchorRoot);
+        harness.Importer.Unavailable.Add(block.ComputeMessageRoot());
+
+        await harness.Orchestrator.ProcessGossipBlockAsync(block, CancellationToken.None);
+
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(harness.Orchestrator.PendingRetryBlockCount, Is.EqualTo(signature == true ? 1 : 0));
+        Assert.That(harness.Router.IsProposalSeen(block.Slot, block.ProposerIndex), Is.EqualTo(signature == true));
+    }
+
+    [Test]
+    public async Task A_fetched_parent_outside_the_importable_slot_interval_ends_the_walk([Values] bool belowAnchor)
+    {
+        ForkedSignedBeaconBlock parent = new ForkedSignedBeaconBlock.OfFulu(TestChain.CreateBlock(belowAnchor ? NearHeadAnchorSlot : WallSlot, Hash256.Zero));
+        (Harness harness, IBeaconSyncPeer peer) = CreateBackfillHarness(parent);
+
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(ChildOf(parent, WallSlot), CancellationToken.None);
+
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(ByRootRequests(peer), Is.EqualTo(1));
+        peer.Received(1).ReportFailure(PeerFailureReason.ProtocolViolation, Arg.Any<string>());
+    }
+
+    [Test]
+    public async Task Repeated_ancestor_fetches_reach_the_peer_after_three_empty_suppliers()
+    {
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearHeadAnchorSlot, WallSlot - 3);
+        ForkedSignedBeaconBlock parent = new ForkedSignedBeaconBlock.OfFulu(chain[0]);
+        IBeaconSyncPeer[] peers = [.. Enumerable.Range(0, 4).Select(i =>
+        {
+            IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
+            peer.Id.Returns($"peer-{i}");
+            peer.RequestBlocksByRootAsync(Arg.Any<Hash256[]>(), Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>(i == 3 ? [parent] : []));
+            return peer;
+        })];
+        Harness harness = CreateHarness(anchorSlot: NearHeadAnchorSlot, peers: peers);
+        harness.Importer.Known.Add(anchorRoot);
+
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(ChildOf(parent, WallSlot - 1), CancellationToken.None);
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(ChildOf(parent, WallSlot), CancellationToken.None);
+
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(peers.Select(ByRootRequests), Is.EqualTo(new[] { 1, 1, 1, 1 }));
+        Assert.That(harness.Importer.Known, Does.Contain(parent.ComputeMessageRoot()));
+    }
+
+    [Test]
     public async Task Unknown_parent_flood_while_behind_keeps_room_for_range_blocks()
     {
         Harness harness = CreateHarness();

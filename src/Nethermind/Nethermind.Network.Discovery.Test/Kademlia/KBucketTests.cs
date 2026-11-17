@@ -17,13 +17,19 @@ public class KBucketTests
         // Again
         AddNodes(bucket, toAdd);
 
-        Assert.That(bucket.GetAll().ToHashSet(), Is.EquivalentTo(toAdd[..5].ToHashSet()));
-        Assert.That(bucket.GetAllWithHash().ToHashSet(), Is.EquivalentTo(toAdd[..5].Select(static it => (it, it)).ToHashSet()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bucket.GetAll().ToHashSet(), Is.EquivalentTo(toAdd[..5].ToHashSet()));
+            Assert.That(bucket.GetAllWithHash().ToHashSet(), Is.EquivalentTo(toAdd[..5].Select(static it => (it, it)).ToHashSet()));
+        }
 
         foreach (int node in toAdd[..5])
         {
-            Assert.That(bucket.ContainsNode(node), Is.True);
-            Assert.That(bucket.GetByHash(node), Is.EqualTo(node));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bucket.ContainsNode(node), Is.True);
+                Assert.That(bucket.GetByHash(node), Is.EqualTo(node));
+            }
         }
     }
 
@@ -61,9 +67,12 @@ public class KBucketTests
         bucket.TryAddOrRefresh(hash, 10, out _);
         bucket.TryAddOrRefresh(hash, 11, out _);
 
-        Assert.That(bucket.GetByHash(hash), Is.EqualTo(11));
-        Assert.That(bucket.GetAll(), Is.EqualTo(new[] { 11 }));
-        Assert.That(bucket.GetAllWithHash(), Is.EqualTo(new[] { (hash, 11) }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bucket.GetByHash(hash), Is.EqualTo(11));
+            Assert.That(bucket.GetAll(), Is.EqualTo(new[] { 11 }));
+            Assert.That(bucket.GetAllWithHash(), Is.EqualTo(new[] { (hash, 11) }));
+        }
     }
 
     [Test]
@@ -74,8 +83,11 @@ public class KBucketTests
         bucket.RemoveAndReplace(toAdd[0]);
 
         int[] expected = [.. toAdd[1..5], toAdd[9]];
-        Assert.That(bucket.GetAll().ToHashSet(), Is.EquivalentTo(expected.ToHashSet()));
-        Assert.That(bucket.GetAllWithHash().ToHashSet(), Is.EquivalentTo(expected.Select(static it => (it, it)).ToHashSet()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bucket.GetAll().ToHashSet(), Is.EquivalentTo(expected.ToHashSet()));
+            Assert.That(bucket.GetAllWithHash().ToHashSet(), Is.EquivalentTo(expected.Select(static it => (it, it)).ToHashSet()));
+        }
     }
 
     [Test]

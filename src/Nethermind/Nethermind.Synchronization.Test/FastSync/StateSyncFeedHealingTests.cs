@@ -44,10 +44,13 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
         DetailedProgress data = ctx.TreeFeed.GetDetailedProgress();
 
         local.CompareTrees(remote, _logger, "END");
-        Assert.That(local.RootHash, Is.EqualTo(remote.StateTree.RootHash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(local.RootHash, Is.EqualTo(remote.StateTree.RootHash));
 
-        // I guess state root will be requested regardless
-        Assert.That(data.RequestedNodesCount, Is.EqualTo(1));   // 4 boundary proof nodes stitched together => 0
+            // I guess state root will be requested regardless
+            Assert.That(data.RequestedNodesCount, Is.EqualTo(1));   // 4 boundary proof nodes stitched together => 0
+        }
     }
 
     [Test]
@@ -92,7 +95,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
         for (ulong blockNumber = 1; blockNumber <= blockJumps; blockNumber++)
         {
             // Store snapshot of accounts and root hash at this block
-            accountsAtBlock[blockNumber] = new SortedDictionary<Hash256, Account>(accounts);
+            accountsAtBlock[blockNumber] = [with(accounts)];
             rootHashAtBlock[blockNumber] = remote.StateTree.RootHash;
 
             // Modify tree for next block

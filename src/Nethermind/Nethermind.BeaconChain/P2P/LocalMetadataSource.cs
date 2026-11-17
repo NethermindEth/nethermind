@@ -33,6 +33,7 @@ public class LocalMetadataSource(IBeaconChainConfig? config = null, BeaconChainS
     private static ulong Sequence(ulong count, BeaconChainStore? store)
     {
         if (store is null) return 1;
+        store.EnsureSchemaVersion();
         const string key = "p2pMetadata";
         // Previously every configuration advertised sequence 1, so the first persisted version supersedes it.
         ulong sequence = 2;

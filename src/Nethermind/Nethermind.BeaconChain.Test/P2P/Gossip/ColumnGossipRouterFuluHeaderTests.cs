@@ -224,7 +224,7 @@ public class ColumnGossipRouterFuluHeaderTests
     // fulu/das-core.md "Reconstruction and cross-seeding": a reconstructed column of a subscribed subnet is sent to its mesh, so an equal gossip copy is a duplicate.
     // A failed send must not mark it, or the gossip copy, the only other way this node relays the column, would be dropped too.
     [Test]
-    public void A_reconstructed_column_is_published_once_and_an_equal_gossip_copy_is_forwarded_only_when_the_publish_failed([Values] bool publishFails)
+    public async Task A_reconstructed_column_is_published_once_and_an_equal_gossip_copy_is_forwarded_only_when_the_publish_failed([Values] bool publishFails)
     {
         const ulong reconstructedColumn = Eip7594DasConstants.RequiredColumnsForReconstruction;
         Dictionary<string, SilentTopic> topics = [];
@@ -235,6 +235,7 @@ public class ColumnGossipRouterFuluHeaderTests
             .Select(i => router.Handle((ulong)i, gloasTopic: false, Message(DataColumnSidecarTestFixture.BuildValidSidecar((ulong)i, CurrentSlot))))];
         long batchesBefore = router.KzgBatchCount;
         DataColumnSidecar honest = DataColumnSidecarTestFixture.BuildValidSidecar(reconstructedColumn, CurrentSlot);
+        await router.WhenReconstructed().WaitAsync(TimeSpan.FromSeconds(30));
         bool reconstructed = pool.TryGet(SszRoots.HashTreeRoot(honest.SignedBlockHeader!.Message!), reconstructedColumn, out _);
         string reconstructedTopic = GossipTopics.Topic(ForkDigest.Compute(Spec, Spec.GetEpoch(CurrentSlot)), GossipTopics.DataColumnSidecarTopicName(reconstructedColumn));
 

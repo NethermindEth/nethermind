@@ -67,6 +67,46 @@ public class TxBroadcasterTests
     public void TearDown() => _broadcaster?.Dispose();
 
     [Test]
+    public void Broadcast_failure_restarts_timer()
+    {
+        IChainHeadInfoProvider headInfo = Substitute.For<IChainHeadInfoProvider>();
+        headInfo.IsProcessingBlock.Returns(_ => throw new InvalidOperationException());
+        ITimer timer = CreateBroadcasterWithManualTimer(headInfo);
+
+        Assert.Throws<InvalidOperationException>(() => timer.Elapsed += Raise.Event());
+
+        timer.Received(1).Enabled = true;
+    }
+
+    [Test]
+    public void Broadcast_failure_drops_the_failed_batch()
+    {
+        ITxGossipPolicy policy = Substitute.For<ITxGossipPolicy>();
+        policy.CanGossipTransactions.Returns(_ => throw new InvalidOperationException(), _ => true);
+        policy.ShouldGossipTransaction(Arg.Any<Transaction>()).Returns(true);
+        ITimer timer = CreateBroadcasterWithManualTimer(Substitute.For<IChainHeadInfoProvider>(), policy);
+        RecordingTxPoolPeer peer = new(TestItem.PublicKeyA);
+        _broadcaster.AddPeer(peer);
+        _broadcaster.Broadcast(Build.A.Transaction.SignedAndResolved().TestObject, isPersistent: false);
+
+        Assert.Throws<InvalidOperationException>(() => timer.Elapsed += Raise.Event());
+        timer.Elapsed += Raise.Event();
+        timer.Elapsed += Raise.Event();
+
+        Assert.That(peer.Sent, Is.Empty);
+    }
+
+    private ITimer CreateBroadcasterWithManualTimer(IChainHeadInfoProvider headInfo, ITxGossipPolicy policy = null)
+    {
+        ITimer timer = Substitute.For<ITimer>();
+        ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+        timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(timer);
+        _broadcaster = new TxBroadcaster(_comparer, timerFactory, _txPoolConfig, headInfo, _logManager, policy);
+        timer.ClearReceivedCalls();
+        return timer;
+    }
+
+    [Test]
     public void should_not_broadcast_persisted_tx_to_peer_too_quickly()
     {
         ManualTimestamper timestamper = new(DateTime.UtcNow);
@@ -166,10 +206,13 @@ public class TxBroadcasterTests
 
         _broadcaster.Broadcast(tx, true);
         Assert.That(_broadcaster.GetSnapshot().Length, Is.EqualTo(1));
-        Assert.That(_broadcaster.GetSnapshot().FirstOrDefault(), Is.EqualTo(isBlob ? new LightTransaction(tx) : tx).UsingTransactionComparer());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_broadcaster.GetSnapshot().FirstOrDefault(), Is.EqualTo(isBlob ? new LightTransaction(tx) : tx).UsingTransactionComparer());
 
-        Assert.That(_broadcaster.TryGetPersistentTx(tx.Hash, out Transaction returnedTx), Is.EqualTo(!isBlob));
-        Assert.That(returnedTx, Is.EqualTo(isBlob ? null : tx).UsingTransactionComparer());
+            Assert.That(_broadcaster.TryGetPersistentTx(tx.Hash, out Transaction returnedTx), Is.EqualTo(!isBlob));
+            Assert.That(returnedTx, Is.EqualTo(isBlob ? null : tx).UsingTransactionComparer());
+        }
     }
 
     [Test]
@@ -184,8 +227,11 @@ public class TxBroadcasterTests
         Transaction lightTx = new LightTransaction(tx);
 
         int size = tx.GetLength();
-        Assert.That(size, Is.EqualTo(131320));
-        Assert.That(lightTx.GetLength(), Is.EqualTo(size));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(size, Is.EqualTo(131320));
+            Assert.That(lightTx.GetLength(), Is.EqualTo(size));
+        }
 
         _broadcaster.Broadcast(tx, true);
         Assert.That(_broadcaster.GetSnapshot().Length, Is.EqualTo(1));
@@ -248,8 +294,11 @@ public class TxBroadcasterTests
 
         // Guards the discrimination this test exists for: the two predicates must disagree on this fixture,
         // or it cannot tell them apart and the regression it covers would pass unnoticed.
-        Assert.That(tx.CarriesBlobs, Is.True);
-        Assert.That(tx.SupportsBlobs, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.CarriesBlobs, Is.True);
+            Assert.That(tx.SupportsBlobs, Is.False);
+        }
 
         _broadcaster.Broadcast(tx, isPersistent: true);
 
@@ -309,8 +358,11 @@ public class TxBroadcasterTests
         CheckCorrectness(pickedHashes, expectedCountOfHashes);
 
         // check if full transactions and hashes returned by broadcaster are as expected
-        Assert.That(pickedFullTxs, Is.EquivalentTo(expectedFullTxs).UsingTransactionComparer());
-        Assert.That(expectedHashes, Is.EquivalentTo(pickedHashes.Select(static t => t.Hash).ToArray()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pickedFullTxs, Is.EquivalentTo(expectedFullTxs).UsingTransactionComparer());
+            Assert.That(expectedHashes, Is.EquivalentTo(pickedHashes.Select(static t => t.Hash).ToArray()));
+        }
     }
 
     [Test]
@@ -475,10 +527,13 @@ public class TxBroadcasterTests
         IList<Transaction> pickedHashes = _broadcaster.GetPersistentTxsToSend().HashesToSend;
 
         // check if number of hashes to broadcast is correct
-        Assert.That(pickedHashes.Count, Is.EqualTo(expectedCount));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pickedHashes.Count, Is.EqualTo(expectedCount));
 
-        // check if number of hashes to broadcast (with MaxFeePerBlobGas >= current) is correct
-        Assert.That(expectedTxs.Count(static t => t.MaxFeePerBlobGas >= (UInt256)currentFeePerBlobGas), Is.EqualTo(expectedCount));
+            // check if number of hashes to broadcast (with MaxFeePerBlobGas >= current) is correct
+            Assert.That(expectedTxs.Count(static t => t.MaxFeePerBlobGas >= (UInt256)currentFeePerBlobGas), Is.EqualTo(expectedCount));
+        }
     }
 
     [Test]
@@ -861,7 +916,6 @@ public class TxBroadcasterTests
         {
             Type = TxType.FrameTx,
             BlobVersionedHashes = [new byte[32]],
-            MaxFeePerBlobGas = 1,
             NetworkWrapper = new ShardBlobNetworkWrapper([], [], [], wrapperVersion),
         };
 
@@ -879,12 +933,14 @@ public class TxBroadcasterTests
         {
             Type = TxType.FrameTx,
             BlobVersionedHashes = [new byte[32]],
-            MaxFeePerBlobGas = 1,
         };
         Transaction bloblessFrameTx = new() { Type = TxType.FrameTx };
 
-        Assert.That(gossipPolicy.ShouldGossipTransaction(frameBlobTxNoWrapper), Is.False);
-        Assert.That(gossipPolicy.ShouldGossipTransaction(bloblessFrameTx), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(gossipPolicy.ShouldGossipTransaction(frameBlobTxNoWrapper), Is.False);
+            Assert.That(gossipPolicy.ShouldGossipTransaction(bloblessFrameTx), Is.True);
+        }
     }
 
     [Test]
@@ -1086,9 +1142,9 @@ public class TxBroadcasterTests
             Frames = [FrameTxTestFrames.ExpiryAt(deadline, gasLimit: 50_000), FrameTxTestFrames.SelfVerify(gasLimit: 50_000)],
             FrameSignatures = [],
             BlobVersionedHashes = carriesBlobs ? [new byte[32]] : null,
-            MaxFeePerBlobGas = carriesBlobs ? 1 : null,
             GasLimit = 100_000,
             GasPrice = 1.GWei,
+            MaxFee = (UInt256)100_000 * 1.GWei,
             DecodedMaxFeePerGas = 1.GWei,
         };
         tx.Hash = tx.CalculateHash();

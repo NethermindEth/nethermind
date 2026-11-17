@@ -10,12 +10,18 @@ public static class RpcTransactionErrors
     public const string ContractCreationWithoutData = "contract creation without any data provided";
     public const string DataAndInputDiffer = "both \"data\" and \"input\" are set and not equal. Please use \"input\" to pass transaction call data";
     public const string GasPriceInEip1559 = "both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified";
+    public const string MaxFeeWithPerGasFees = "both maxFee and (maxFeePerGas or maxFeePerBlobGas) specified";
     public const string AtLeastOneBlobInBlobTransaction = "need at least 1 blob for a blob transaction";
     public const string InvalidBlobVersionedHashSize = "blob versioned hash must be 32 bytes";
     public const string InvalidBlobVersionedHashVersion = "blob versioned hash version must be 0x01";
     public const string MissingToInBlobTx = "missing \"to\" in blob transaction";
     public const string ZeroMaxFeePerBlobGas = "maxFeePerBlobGas, if specified, must be non-zero";
     public const string BlobFeeCapWithoutBlobHashes = "maxFeePerBlobGas specified without blobVersionedHashes";
+
+    internal const string FeeFieldsBeforeLondon = "maxFeePerGas and maxPriorityFeePerGas are not valid before London is active";
+    internal const string FeeCapBelowBaseFee = "max fee per gas less than block base fee";
+
+    internal static string DebugTrace(string inner) => $"tracing failed: {inner}";
 
     public static string MaxFeePerGasSmallerThanMaxPriorityFeePerGas(UInt256? maxFeePerGas, UInt256? maxPriorityFeePerGas)
         => $"maxFeePerGas ({maxFeePerGas}) < maxPriorityFeePerGas ({maxPriorityFeePerGas})";

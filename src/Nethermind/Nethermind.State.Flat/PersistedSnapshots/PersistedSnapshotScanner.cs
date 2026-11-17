@@ -5,6 +5,7 @@ using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.PersistedSnapshots.Sorted;
@@ -77,19 +78,22 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
             HasAccount = hasAccount;
         }
 
-        /// <summary>Decoded account, or <c>null</c> when the on-disk marker is <c>[0x00]</c>
-        /// (deleted). Branch on <see cref="HasAccount"/> first to tell "no account update in this
-        /// snapshot" from "explicitly deleted".</summary>
-        public Account? Account
+        /// <summary>Pins the account update of this address; <see cref="SlimAccount"/> reads it without decoding.</summary>
+        /// <remarks>Call only when <see cref="HasAccount"/> is true.</remarks>
+        internal TPin PinAccount() => _reader.PinBuffer(_accountBound);
+
+        /// <summary>The slim account RLP of a pinned account update, empty when the update deletes the account.</summary>
+        internal static ReadOnlySpan<byte> SlimAccount(ReadOnlySpan<byte> update) =>
+            update is [PersistedSnapshotTags.AccountDeletedMarkerByte] ? ReadOnlySpan<byte>.Empty : update;
+
+        /// <summary>Writes the account update of this address to <paramref name="batch"/> without decoding it.</summary>
+        /// <remarks>Call only when <see cref="HasAccount"/> is true.</remarks>
+        public void WriteAccount(IPersistence.IWriteBatch batch)
         {
-            get
-            {
-                if (!HasAccount) return null;
-                using TPin pin = _reader.PinBuffer(_accountBound);
-                ReadOnlySpan<byte> rlp = pin.Buffer;
-                if (rlp.Length == 1 && rlp[0] == PersistedSnapshotTags.AccountDeletedMarkerByte) return null;
-                return AccountDecoder.Slim.Decode(rlp);
-            }
+            using TPin pin = _reader.PinBuffer(_accountBound);
+            ReadOnlySpan<byte> rlp = pin.Buffer;
+            if (rlp.Length == 1 && rlp[0] == PersistedSnapshotTags.AccountDeletedMarkerByte) batch.SetAccount(Address, null);
+            else batch.SetSlimAccount(Address, rlp);
         }
 
         /// <summary>Streams the address's slots straight off the shared per-address cursor rather than
@@ -209,7 +213,8 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
             {
                 if (_value.Length == 0) return null;
                 using TPin pin = _reader.PinBuffer(_value);
-                ReadOnlySpan<byte> value = new RlpReader(pin.Buffer).DecodeByteArraySpan();
+                RlpReader valueReader = new(pin.Buffer);
+                ReadOnlySpan<byte> value = valueReader.DecodeByteArraySpan<OffFlag>();
                 return BaseFlatPersistence.DecodeSlotValue(value);
             }
         }
@@ -291,6 +296,10 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
             PersistedSnapshotKey.StatePathBytes(_key), StateStage(_key[0]));
 
         public ReadOnlySpan<byte> Rlp => _snapshot.ResolveTrieRlp(_value);
+
+        /// <summary>Writes this node to <paramref name="batch"/> without copying its RLP to the heap.</summary>
+        public void Write(IPersistence.IWriteBatch batch) =>
+            _snapshot.ResolveTrieRlp(_value, static (rlp, arg) => arg.Batch.SetStateTrieNode(arg.Path, rlp), (Batch: batch, Path: Path));
     }
 
     public readonly ref struct StateNodeEnumerable(PersistedSnapshot snapshot, TReader reader)
@@ -358,6 +367,10 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
             PersistedSnapshotKey.StoragePathBytes(_key), StorageStage(PersistedSnapshotKey.StorageSubColumn(_key)));
 
         public ReadOnlySpan<byte> Rlp => _snapshot.ResolveTrieRlp(_value);
+
+        /// <summary>Writes this node to <paramref name="batch"/> without copying its RLP to the heap.</summary>
+        public void Write(IPersistence.IWriteBatch batch) =>
+            _snapshot.ResolveTrieRlp(_value, static (rlp, arg) => arg.Batch.SetStorageTrieNode(arg.AddressHash, arg.Path, rlp), (Batch: batch, AddressHash, Path: Path));
     }
 
     public readonly ref struct StorageNodeEnumerable(PersistedSnapshot snapshot, TReader reader)

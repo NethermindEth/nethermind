@@ -256,8 +256,11 @@ public partial class BeaconSyncOrchestratorTests
         string[] banners = [.. logs.Messages.Where(static message => message.Contains("Wild hard fork appeared (Gloas)"))];
         Assert.That(banners, Has.Length.EqualTo(1), "only the step that moves the head from a Fulu slot to a Gloas slot shows it");
         Assert.That(banners[0], Does.Contain($"slot {gloasSlot} (epoch {spec.GloasForkEpoch})"));
-        Assert.That(banners[0].Split('\n'), Has.Length.LessThanOrEqualTo(GloasForkBanner.MaxLines), "the banner must fit a terminal");
-        Assert.That(banners[0].All(char.IsAscii), Is.True, "log sinks may not render non-ASCII art");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(banners[0].Split('\n'), Has.Length.LessThanOrEqualTo(GloasForkBanner.MaxLines), "the banner must fit a terminal");
+            Assert.That(banners[0].All(char.IsAscii), Is.True, "log sinks may not render non-ASCII art");
+        }
     }
 
     [Test]

@@ -41,6 +41,20 @@ public static class HexWriter
             skipInputValidation: true);
     }
 
+    /// <summary>Writes a 32-byte big-endian value as a JSON property name of <c>0x</c> and 64 lowercase hex chars.</summary>
+    [SkipLocalsInit]
+    public static void WriteFixed32HexPropertyName(Utf8JsonWriter writer, ReadOnlySpan<byte> data)
+    {
+        Unsafe.SkipInit(out HexBuffer72 rawBuf);
+        ref byte b = ref Unsafe.As<HexBuffer72, byte>(ref rawBuf);
+
+        Unsafe.WriteUnaligned(ref b, (ushort)0x7830); // "0x" LE
+        Debug.Assert(data.Length == 32);
+        HexEncoder.Encode32Bytes(ref Unsafe.Add(ref b, 2), ref MemoryMarshal.GetReference(data));
+
+        writer.WritePropertyName(MemoryMarshal.CreateReadOnlySpan(ref b, 66));
+    }
+
     [SkipLocalsInit]
     internal static void WriteUlongHexRawValue(Utf8JsonWriter writer, ulong value)
     {
@@ -197,7 +211,7 @@ public static class HexWriter
     }
 
     [InlineArray(9)]
-    internal struct HexBuffer72
+    private struct HexBuffer72
     {
         private ulong _element0;
     }
@@ -213,7 +227,7 @@ public static class HexWriter
         ReadOnlySpan<byte> remaining = data;
         while (remaining.Length > 0)
         {
-            Span<byte> hex = writer.GetSpan(Math.Min(remaining.Length * 2, MaxHexRequest));
+            Span<byte> hex = writer.GetSpan(Math.Min(remaining.Length, MaxHexRequest / 2) * 2);
             int inputLen = Math.Min(remaining.Length, hex.Length / 2);
             HexEncoder.EncodeToHex(ref MemoryMarshal.GetReference(hex), remaining[..inputLen]);
             writer.Advance(inputLen * 2);
@@ -262,6 +276,7 @@ public static class HexWriter
     public static void WriteHexStringValue(Utf8JsonWriter writer, ReadOnlySpan<byte> data)
     {
         const int StackThreshold = 512;
+        ByteArrayConverter.ThrowIfTooLongForHexString(data.Length);
         int tokenLength = 4 + data.Length * 2;
         // data is unbounded (e.g. a whole memory snapshot), so only stay on the stack while small.
         byte[]? rented = tokenLength > StackThreshold ? ArrayPool<byte>.Shared.Rent(tokenLength) : null;

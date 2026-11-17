@@ -63,8 +63,11 @@ internal class SignTransactionFilterTests
         Transaction tx = Build.A.Transaction.WithTo(TestItem.AddressC).TestObject;
         TxFilteringState state = default;
 
-        Assert.That(filter.Accept(tx, ref state, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
-        Assert.That(tx.IsServiceTransaction, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Accept(tx, ref state, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(tx.IsServiceTransaction, Is.False);
+        }
     }
 
     [Test]
@@ -77,8 +80,11 @@ internal class SignTransactionFilterTests
         Transaction tx = SignTransactionManager.CreateTxSign(99, Hash256.Zero, 0, BlockSignerContract, candidate);
         TxFilteringState state = default;
 
-        Assert.That(filter.Accept(tx, ref state, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
-        Assert.That(tx.IsServiceTransaction, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Accept(tx, ref state, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(tx.IsServiceTransaction, Is.True);
+        }
     }
 
     [Test]

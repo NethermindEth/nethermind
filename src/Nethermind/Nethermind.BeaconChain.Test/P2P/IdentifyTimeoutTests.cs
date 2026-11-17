@@ -28,10 +28,11 @@ public class IdentifyTimeoutTests
         await node.StartAsync(token);
 
         Task<ISession> dial = node.DialPeerAsync(peer.Address, token);
-        await WaitUntilAsync(() => node.SessionCountForTest == 1, "fixture: the dial never opened a session", token);
+        if (stall == Stall.Answer)
+            await WaitUntilAsync(() => node.SessionCountForTest == 1, "fixture: the dial never opened a session", token);
         // The library removes a closed session under this lock, so holding it keeps the failed session listed while the dial fails:
         // the window in which the dial could hand that session back. The dial's own lookup takes the lock too, so it waits here.
-        Task heldListing = Task.Run(() =>
+        Task heldListing = stall == Stall.Negotiation ? Task.CompletedTask : Task.Run(() =>
         {
             lock (node.LocalPeerForTest!.Sessions)
             {
@@ -42,10 +43,13 @@ public class IdentifyTimeoutTests
         await heldListing;
         Assert.That(dial.Status, Is.EqualTo(TaskStatus.Faulted), $"no unidentified session is handed back ({dial.Exception?.GetBaseException().Message})");
         Exception failure = dial.Exception!.InnerException!;
-        Assert.That(PeerManager.DescribeFailure(failure), Is.Not.EqualTo(new AggregateException().Message), $"the dial failed with {failure.GetType().Name}: {failure.Message}");
-        Assert.That(failure.Message, Does.Not.Contain("closed before it was established"), "an identify timeout is not reported as a closed session");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(PeerManager.DescribeFailure(failure), Is.Not.EqualTo(new AggregateException().Message), $"the dial failed with {failure.GetType().Name}: {failure.Message}");
+            Assert.That(failure.Message, Does.Not.Contain("closed before it was established"), "an identify timeout is not reported as a closed session");
+        }
         await WaitUntilAsync(() => node.SessionCountForTest == 0, "the unidentified session was left open", token, Within);
-        Assert.That(node.IdentifyTimeoutsForTest, Is.EqualTo(1), "the stall is counted as an identify timeout");
+        Assert.That(node.IdentifyTimeoutsForTest, Is.EqualTo(stall == Stall.Answer ? 1 : 0), "unsupported negotiation is refused promptly; a missing answer times out");
     }
 
     [Test]
@@ -60,7 +64,10 @@ public class IdentifyTimeoutTests
         ISession session = await peer.Peer.DialAsync(LoopbackAddress(node), token).WaitAsync(token);
         // The node completes its side of the upgrade only once the dialer sends on the connection.
         _ = session.DialAsync<PingProtocol>(token);
-        await WaitUntilAsync(() => node.SessionCountForTest == 1, "fixture: the peer's session never reached the node", token);
+        if (stall == Stall.Answer)
+            await WaitUntilAsync(() => node.SessionCountForTest == 1, "fixture: the peer's session never reached the node", token);
+        else
+            await WaitUntilAsync(() => session.Closed.IsCancellationRequested, "the unsupported identify session stayed open", token, Within);
         await WaitUntilAsync(() => node.SessionCountForTest == 0, "the unidentified session was left open", token, Within);
         Assert.That(Volatile.Read(ref established), Is.Zero, "an unidentified session is never reported as established");
     }
@@ -86,12 +93,18 @@ public class IdentifyTimeoutTests
             await session.DisconnectAsync();
         }
 
-        Assert.That(await Task.WhenAny(dial, Task.Delay(Within, token)), Is.SameAs(dial), "the dial ended");
-        Assert.That(dial.Status, Is.EqualTo(TaskStatus.Faulted), "fixture: the dial failed");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await Task.WhenAny(dial, Task.Delay(Within, token)), Is.SameAs(dial), "the dial ended");
+            Assert.That(dial.Status, Is.EqualTo(TaskStatus.Faulted), "fixture: the dial failed");
+        }
         Exception failure = dial.Exception!.InnerException!;
         string description = $"the dial failed with {failure.GetType().Name}: {failure.Message}";
-        Assert.That(PeerManager.DescribeFailure(failure), Is.Not.EqualTo("request timed out").And.Not.EqualTo(new AggregateException().Message), description);
-        Assert.That(PeerFailureClassifier.Classify(failure), Is.EqualTo(PeerFailureReason.RequestFailed), description);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(PeerManager.DescribeFailure(failure), Is.Not.EqualTo("request timed out").And.Not.EqualTo(new AggregateException().Message), description);
+            Assert.That(PeerFailureClassifier.Classify(failure), Is.EqualTo(PeerFailureReason.RequestFailed), description);
+        }
         await WaitUntilAsync(() => node.SessionCountForTest == 0, "fixture: the closed session stayed listed", token, Within);
         await Task.Delay(BeaconP2P.IdentifyTimeout, token);
         Assert.That(node.IdentifyTimeoutsForTest, Is.Zero, "a closed session is not counted as an identify timeout");

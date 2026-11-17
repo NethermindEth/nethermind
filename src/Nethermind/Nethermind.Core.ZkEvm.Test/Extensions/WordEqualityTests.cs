@@ -70,7 +70,10 @@ public class WordEqualityTests
         a[32] = 0xFF;
         b[39] = 0xFF;
 
-        Assert.That(Bytes.AreEqual32(ref a[0], ref b[0]), Is.True);
-        Assert.That(Bytes.IsZero32(ref a[0]), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Bytes.AreEqual32(ref a[0], ref b[0]), Is.True);
+            Assert.That(Bytes.IsZero32(ref a[0]), Is.True);
+        }
     }
 }

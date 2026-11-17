@@ -91,8 +91,11 @@ public class BeaconChainStoreEnvelopeRetentionTests
         if (overLimit == 0)
         {
             store.PutExecutionPayloadEnvelope(root, envelope);
-            Assert.That(store.TryGetExecutionPayloadEnvelope(root, out SignedExecutionPayloadEnvelope? read), Is.True);
-            Assert.That(read!.Message!.Payload!.Transactions![0].Bytes, Has.Length.EqualTo(envelope.Message.Payload.Transactions[0].Bytes!.Length));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(store.TryGetExecutionPayloadEnvelope(root, out SignedExecutionPayloadEnvelope? read), Is.True);
+                Assert.That(read!.Message!.Payload!.Transactions![0].Bytes, Has.Length.EqualTo(envelope.Message.Payload.Transactions[0].Bytes!.Length));
+            }
         }
         else
         {

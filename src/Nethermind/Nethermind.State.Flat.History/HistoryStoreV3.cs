@@ -63,6 +63,24 @@ internal sealed class HistoryStoreV3
         Span<byte> seekKey = stackalloc byte[flatKey.Length + BlockBytes];
         WriteHistoryKey(seekKey, flatKey, block + 1);
 
+        // A change at the very next block is the answer whenever it exists. A point read finds it without
+        // positioning an iterator on every level. An empty pre-value reads as a miss, so it takes the seek.
+        Span<byte> nextBlockValue = _history.GetSpan(seekKey);
+        try
+        {
+            if (!nextBlockValue.IsEmpty)
+            {
+                nextChangeBlock = block + 1;
+                ValidateValueLength(nextBlockValue.Length, outBuffer.Length, nextChangeBlock);
+                nextBlockValue.CopyTo(outBuffer);
+                return nextBlockValue.Length;
+            }
+        }
+        finally
+        {
+            _history.DangerousReleaseMemory(nextBlockValue);
+        }
+
         Span<byte> upperBound = stackalloc byte[flatKey.Length + BlockBytes + 1];
         flatKey.CopyTo(upperBound);
         upperBound[flatKey.Length..].Fill(0xFF);

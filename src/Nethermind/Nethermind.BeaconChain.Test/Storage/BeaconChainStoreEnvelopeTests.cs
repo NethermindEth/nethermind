@@ -19,6 +19,29 @@ public class BeaconChainStoreEnvelopeTests
 {
     private static readonly ulong SlotsPerEpoch = Sepolia.SlotsPerEpoch;
 
+    [Test]
+    public void Invalidated_envelope_and_verdict_stay_removed_after_reopening()
+    {
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStore store = new(db, Sepolia);
+        ulong slot = FirstGloasSlot + 3;
+        SignedExecutionPayloadEnvelope invalid = Envelope(slot);
+        SignedExecutionPayloadEnvelope sibling = Envelope(slot, salt: 1);
+        store.PutExecutionPayloadEnvelope(RootOf(invalid), invalid, valid: true);
+        store.PutExecutionPayloadEnvelope(RootOf(sibling), sibling);
+        store.DeleteExecutionPayloadEnvelope(RootOf(invalid), slot);
+        BeaconChainStore reopened = new(db, Sepolia);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reopened.TryGetExecutionPayloadEnvelope(RootOf(invalid), out _), Is.False);
+            Assert.That(reopened.IsExecutionPayloadValid(RootOf(invalid)), Is.False);
+            Assert.That(reopened.TryGetExecutionPayloadEnvelope(RootOf(sibling), out _), Is.True);
+        }
+        Span<byte> slotKey = stackalloc byte[sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64BigEndian(slotKey, slot);
+        Assert.That(db.GetColumnDb(BeaconChainDbColumns.ExecutionPayloadEnvelopes).Get(slotKey), Is.EqualTo(RootOf(sibling).Bytes.ToArray()));
+    }
+
     [TestCase(false, false)]
     [TestCase(true, false)]
     [TestCase(true, true)]

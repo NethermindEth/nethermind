@@ -49,8 +49,11 @@ public class BeaconStatesValidatorsAndCommitteesTests : BeaconApiFixture
 
         HttpResponseMessage response = await _host.Client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/validators");
         string raw = await response.Content.ReadAsStringAsync();
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), $"body: {raw}");
-        Assert.That(response.Content.Headers.ContentType?.MediaType, Is.EqualTo("application/json"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), $"body: {raw}");
+            Assert.That(response.Content.Headers.ContentType?.MediaType, Is.EqualTo("application/json"));
+        }
 
         JsonDocument body = JsonDocument.Parse(raw);
         JsonElement data = body.RootElement.GetProperty("data");
@@ -59,11 +62,14 @@ public class BeaconStatesValidatorsAndCommitteesTests : BeaconApiFixture
         for (int i = 0; i < StatusFixture.Length; i++)
         {
             JsonElement entry = data[i];
-            Assert.That(entry.GetProperty("index").GetString(), Is.EqualTo(i.ToString()));
-            Assert.That(entry.GetProperty("status").GetString(), Is.EqualTo(StatusFixture[i].ExpectedStatus),
-                $"validator {i} ({StatusFixture[i].ExpectedStatus}) misclassified");
-            Assert.That(entry.GetProperty("validator").GetProperty("pubkey").GetString(),
-                Is.EqualTo(StatusFixture[i].Validator.Pubkey.ToString()));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(entry.GetProperty("index").GetString(), Is.EqualTo(i.ToString()));
+                Assert.That(entry.GetProperty("status").GetString(), Is.EqualTo(StatusFixture[i].ExpectedStatus),
+                    $"validator {i} ({StatusFixture[i].ExpectedStatus}) misclassified");
+                Assert.That(entry.GetProperty("validator").GetProperty("pubkey").GetString(),
+                    Is.EqualTo(StatusFixture[i].Validator.Pubkey.ToString()));
+            }
         }
     }
 
@@ -132,8 +138,11 @@ public class BeaconStatesValidatorsAndCommitteesTests : BeaconApiFixture
         HttpResponseMessage response = await _host.Client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/validator_balances");
         JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         JsonElement entry = body.RootElement.GetProperty("data")[0];
-        Assert.That(entry.GetProperty("balance").GetString(), Is.EqualTo("32100000000"));
-        Assert.That(entry.GetProperty("index").GetString(), Is.EqualTo("0"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entry.GetProperty("balance").GetString(), Is.EqualTo("32100000000"));
+            Assert.That(entry.GetProperty("index").GetString(), Is.EqualTo("0"));
+        }
     }
 
     [Test]
@@ -160,10 +169,13 @@ public class BeaconStatesValidatorsAndCommitteesTests : BeaconApiFixture
         }
 
         distinctSlots = seenSlots.Count;
-        // compute_committee partitions active validators once per epoch, independently of the shuffling implementation.
-        Assert.That(allMembers.Distinct().Count(), Is.EqualTo(validatorCount), "every validator must appear exactly once");
-        Assert.That(allMembers, Has.Count.EqualTo(validatorCount), "no validator may be duplicated across committees");
-        Assert.That(distinctSlots, Is.EqualTo(32), "one committee-index-0 entry for every slot in the epoch (32 slots), given 50 active validators clamps to 1 committee/slot");
+        using (Assert.EnterMultipleScope())
+        {
+            // compute_committee partitions active validators once per epoch, independently of the shuffling implementation.
+            Assert.That(allMembers.Distinct().Count(), Is.EqualTo(validatorCount), "every validator must appear exactly once");
+            Assert.That(allMembers, Has.Count.EqualTo(validatorCount), "no validator may be duplicated across committees");
+            Assert.That(distinctSlots, Is.EqualTo(32), "one committee-index-0 entry for every slot in the epoch (32 slots), given 50 active validators clamps to 1 committee/slot");
+        }
     }
 
     [Test]
@@ -185,9 +197,12 @@ public class BeaconStatesValidatorsAndCommitteesTests : BeaconApiFixture
         JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         JsonElement data = body.RootElement.GetProperty("data");
 
-        Assert.That(data.GetArrayLength(), Is.EqualTo(1));
-        Assert.That(data[0].GetProperty("slot").GetString(), Is.EqualTo(targetSlot.ToString()));
-        Assert.That(data[0].GetProperty("index").GetString(), Is.EqualTo("0"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(data.GetArrayLength(), Is.EqualTo(1));
+            Assert.That(data[0].GetProperty("slot").GetString(), Is.EqualTo(targetSlot.ToString()));
+            Assert.That(data[0].GetProperty("index").GetString(), Is.EqualTo("0"));
+        }
     }
 
     [Test]

@@ -202,7 +202,7 @@ public sealed class ColumnBackfill(
             }
         }
 
-        store.BackfilledBlockFloor = floor;
+        store.LowerBackfilledBlockFloor(floor);
         pool.LowerCompletelyServableFloor(floor, verifiedThrough, failureVersion);
         Volatile.Write(ref _completeFrom, (long)floor);
         if (_logger.IsDebug) _logger.Debug($"Blocks and sampled columns are held from slot {floor}");

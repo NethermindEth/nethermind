@@ -19,6 +19,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Hosting.Internal;
+using Nethermind.Config;
+using Nethermind.JsonRpc;
 using Nethermind.Logging;
 
 namespace Nethermind.Runner.JsonRpc;
@@ -92,7 +94,7 @@ internal sealed partial class WebHost : IHost, IAsyncDisposable
     }
 
     [MemberNotNull(nameof(Server))]
-    private RequestDelegate BuildApplication()
+    internal RequestDelegate BuildApplication()
     {
         Debug.Assert(_applicationServices != null, "Initialize must be called first.");
 
@@ -113,6 +115,12 @@ internal sealed partial class WebHost : IHost, IAsyncDisposable
                 foreach (IStartupFilter filter in startupFilters.Reverse())
                     configure = filter.Configure(configure);
             }
+
+            // Ahead of the startup filters, so that plugin middleware such as SSZ-REST cannot bypass it.
+            builder.UseAllowedHosts(
+                _applicationServices.GetRequiredService<IConfigProvider>().GetConfig<IJsonRpcConfig>(),
+                _applicationServices.GetRequiredService<IJsonRpcUrlCollection>(),
+                _logger);
             configure(builder);
 
             return builder.Build();

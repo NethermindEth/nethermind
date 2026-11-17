@@ -64,10 +64,13 @@ public class GCSchedulerTests
     {
         _scheduler.SweepBaselineAllocatedBytes = 0;
 
-        Assert.That(_scheduler.GCCollect(1, GCCollectionMode.Forced, blocking: false, compacting: false), Is.True);
-        Assert.That(_scheduler.SweepBaselineAllocatedBytes, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_scheduler.GCCollect(1, GCCollectionMode.Forced, blocking: false, compacting: false), Is.True);
+            Assert.That(_scheduler.SweepBaselineAllocatedBytes, Is.Zero);
 
-        Assert.That(_scheduler.GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false), Is.True);
+            Assert.That(_scheduler.GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false), Is.True);
+        }
         Assert.That(_scheduler.SweepBaselineAllocatedBytes, Is.GreaterThan(0));
     }
 

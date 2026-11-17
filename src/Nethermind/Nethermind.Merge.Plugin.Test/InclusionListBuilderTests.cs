@@ -16,6 +16,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
@@ -106,8 +107,11 @@ public class InclusionListBuilderTests
 
         using InclusionListBytes il = BuildBuilder(PoolOf(txs)).GetInclusionList();
 
-        Assert.That(il.Sum(t => t.Count), Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
-        Assert.That(il, Is.Not.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(il.Sum(t => t.Count), Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
+            Assert.That(il, Is.Not.Empty);
+        }
     }
 
     // An entry too big for the remaining budget is skipped rather than ending the encoding, so another

@@ -28,7 +28,7 @@ public class BeaconApiHeadSnapshotTests
     private static readonly Hash256 Head = BeaconApiTestHost.TestRoot(0x71);
 
     [Test]
-    public async Task Checkpoint_routes_serve_the_epoch_start_state_across_a_missed_fork_slot([Values("justified", "finalized")] string alias)
+    public async Task Checkpoint_routes_serve_the_epoch_start_state_across_a_missed_fork_slot([Values("justified", "finalized", "32")] string alias)
     {
         ForkCrossingChain chain = ForkCrossingChain.Instance;
         CheckpointRef checkpoint = new(1, chain.AnchorRoot);

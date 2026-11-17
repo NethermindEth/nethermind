@@ -50,13 +50,16 @@ public class ColumnGossipRouterTests
 
         Assert.That(received, Is.Not.Null);
         Hash256 blockRoot = SszRoots.HashTreeRoot(sidecar.SignedBlockHeader!.Message!);
-        Assert.That(pool.TryGet(blockRoot, ColumnIndex, out DataColumnSidecar? pooled), Is.True, "an accepted sidecar is added to the serving pool");
-        Assert.That(pooled!.Index, Is.EqualTo(ColumnIndex));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pool.TryGet(blockRoot, ColumnIndex, out DataColumnSidecar? pooled), Is.True, "an accepted sidecar is added to the serving pool");
+            Assert.That(pooled!.Index, Is.EqualTo(ColumnIndex));
+        }
     }
 
     [Test]
     [Repeat(20)]
-    public void Concurrent_gossip_arrivals_across_subnets_do_not_race_the_held_column_accumulator()
+    public async Task Concurrent_gossip_arrivals_across_subnets_do_not_race_the_held_column_accumulator()
     {
         const int required = 64;
         ulong[] subscribedSubnets = [.. Enumerable.Range(0, 128).Select(i => (ulong)i)];
@@ -80,14 +83,16 @@ public class ColumnGossipRouterTests
             });
         }
 
-        Task.WaitAll(tasks);
+        await Task.WhenAll(tasks);
+
+        await router.WhenReconstructed().WaitAsync(TimeSpan.FromSeconds(30));
 
         Assert.That(receivedEvents.Select(s => s.Index).Distinct().Count(), Is.EqualTo(Eip7594DasConstants.NumberOfColumns),
             $"expected all 128 columns raised, got {receivedEvents.Select(s => s.Index).Distinct().Count()} distinct, {receivedEvents.Count} total events");
     }
 
     [Test]
-    public void Crossing_the_reconstruction_threshold_publishes_verified_columns_exactly_once([Values] bool headerVerified, [Values] bool crossSeed)
+    public async Task Crossing_the_reconstruction_threshold_publishes_verified_columns_exactly_once([Values] bool headerVerified, [Values] bool crossSeed)
     {
         // Held directly over gossip: columns 0..63 (crosses the 64-column threshold on the last one).
         // Subscribed but not held: subnets 64..70, the ones a reconstructed column could be published to.
@@ -114,6 +119,8 @@ public class ColumnGossipRouterTests
             DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(column, CurrentSlot);
             router.Handle(column, gloasTopic: false, Message(sidecar));
         }
+
+        await router.WhenReconstructed().WaitAsync(TimeSpan.FromSeconds(30));
 
         using (Assert.EnterMultipleScope())
         {
@@ -145,13 +152,16 @@ public class ColumnGossipRouterTests
         }
 
         Hash256 blockRoot = SszRoots.HashTreeRoot(replay.SignedBlockHeader!.Message!);
-        Assert.That(pool.TryGet(blockRoot, (ulong)required, out DataColumnSidecar? pooled), Is.True);
-        Assert.That(pooled!.Index, Is.EqualTo((ulong)required));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pool.TryGet(blockRoot, (ulong)required, out DataColumnSidecar? pooled), Is.True);
+            Assert.That(pooled!.Index, Is.EqualTo((ulong)required));
+        }
     }
 
     // fulu/p2p-interface.md data_column_sidecar_{subnet_id}: the header proposer signature must be valid.
     [Test]
-    public void Reconstructed_columns_carry_the_verified_signature_when_a_column_under_another_one_is_held_first()
+    public async Task Reconstructed_columns_carry_the_verified_signature_when_a_column_under_another_one_is_held_first()
     {
         const int required = Eip7594DasConstants.RequiredColumnsForReconstruction;
         DataColumnSidecarPool pool = new();
@@ -167,6 +177,8 @@ public class ColumnGossipRouterTests
         MessageValidity[] received = [.. Enumerable.Range(1, required - 1).Select(column =>
             router.Handle((ulong)column, gloasTopic: false, Message(DataColumnSidecarTestFixture.BuildValidSidecar((ulong)column, CurrentSlot))))];
 
+        await router.WhenReconstructed().WaitAsync(TimeSpan.FromSeconds(30));
+
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(received, Is.All.EqualTo(MessageValidity.Accepted), "the gossip columns pass every check under the imported header");
         Assert.That(pool.TryGet(SszRoots.HashTreeRoot(forged.SignedBlockHeader.Message!), (ulong)required, out DataColumnSidecar? served), Is.True, "fixture: the block was reconstructed");
@@ -178,7 +190,7 @@ public class ColumnGossipRouterTests
 
     // fulu/p2p-interface.md: first sidecar per tuple; das-core.md exposes reconstructed columns as received.
     [Test]
-    public void Reconstructed_column_of_an_equivocating_block_is_not_published_for_a_tuple_already_forwarded()
+    public async Task Reconstructed_column_of_an_equivocating_block_is_not_published_for_a_tuple_already_forwarded()
     {
         const int required = Eip7594DasConstants.RequiredColumnsForReconstruction;
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), Spec);
@@ -192,6 +204,8 @@ public class ColumnGossipRouterTests
 
         MessageValidity forwarded = router.Handle(required, gloasTopic: false, Message(first));
         MessageValidity[] equivocations = [.. Enumerable.Range(0, required).Select(column => router.Handle((ulong)column, gloasTopic: false, Message(Equivocation((ulong)column))))];
+
+        await router.WhenReconstructed().WaitAsync(TimeSpan.FromSeconds(30));
 
         using (Assert.EnterMultipleScope())
         {
@@ -227,12 +241,13 @@ public class ColumnGossipRouterTests
 
         Task subscribe = Task.Run(() => router.SubscribeDigest(ForkDigest.Compute(Spec, 412_672)), token);
         await subscribing.Task.WaitAsync(token);
-        Task reconstruct = Task.Run(() =>
+        Task reconstruct = Task.Run(async () =>
         {
             for (ulong column = 0; column < required; column++)
             {
                 router.Handle(column, gloasTopic: false, Message(DataColumnSidecarTestFixture.BuildValidSidecar(column, CurrentSlot)));
             }
+            await router.WhenReconstructed().WaitAsync(token);
         }, token);
         bool finished = await Task.WhenAny(reconstruct, Task.Delay(TimeSpan.FromSeconds(30), token)) == reconstruct;
         release.Set();
@@ -245,7 +260,7 @@ public class ColumnGossipRouterTests
 
     // das-core.md: reconstruction works from every column the node holds, however it got them; range sync adds to the pool without gossip.
     [Test]
-    public void Columns_added_to_the_pool_by_sync_count_toward_reconstruction()
+    public async Task Columns_added_to_the_pool_by_sync_count_toward_reconstruction()
     {
         const int required = Eip7594DasConstants.RequiredColumnsForReconstruction;
         DataColumnSidecarPool pool = new();
@@ -263,6 +278,8 @@ public class ColumnGossipRouterTests
 
         router.Handle(required - 1, gloasTopic: false, Message(last));
 
+        await router.WhenReconstructed().WaitAsync(TimeSpan.FromSeconds(30));
+
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(pool.TryGet(blockRoot, Eip7594DasConstants.NumberOfColumns - 1, out _), Is.True, "the 64th held column, the only one gossip delivered, completes the matrix");
         Assert.That(received.Select(s => s.Index), Is.EquivalentTo(Enumerable.Range(required - 1, required + 1).Select(i => (ulong)i)), "the gossip column plus the 64 reconstructed ones");
@@ -270,7 +287,7 @@ public class ColumnGossipRouterTests
 
     // das-core.md: a node SHOULD reconstruct once it holds half the columns, including ones an earlier run verified and stored.
     [Test]
-    public void Columns_stored_before_a_restart_count_toward_reconstruction()
+    public async Task Columns_stored_before_a_restart_count_toward_reconstruction()
     {
         const int required = Eip7594DasConstants.RequiredColumnsForReconstruction;
         Nethermind.Db.MemColumnsDb<Nethermind.BeaconChain.Storage.BeaconChainDbColumns> db = new();
@@ -288,6 +305,8 @@ public class ColumnGossipRouterTests
         router.Start(id => new GossipDigestWindowTests.RecordingTopic(), ForkDigest.Compute(Spec, 419_072), [.. Enumerable.Range(0, required).Select(i => (ulong)i)]);
 
         router.Handle(required - 1, gloasTopic: false, Message(last));
+
+        await router.WhenReconstructed().WaitAsync(TimeSpan.FromSeconds(30));
 
         Assert.That(pool.TryGet(blockRoot, Eip7594DasConstants.NumberOfColumns - 1, out _), Is.True, "the stored columns and the one gossip delivered complete the matrix");
     }

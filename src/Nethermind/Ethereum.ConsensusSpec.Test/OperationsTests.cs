@@ -77,6 +77,7 @@ public class OperationsTests
 
         BeaconStateException exception = Assert.Throws<BeaconStateException>(() => apply(context, operand, null))!;
 
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(exception.Message, Does.Contain(expectedMessage));
         Assert.That(SszRoots.HashTreeRoot(state), Is.EqualTo(rootBefore), "a rejected operation must leave the state untouched");
     }

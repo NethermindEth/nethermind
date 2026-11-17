@@ -284,8 +284,11 @@ public partial class BeaconSyncOrchestratorTests
         (ulong slot, GossipRouter router, Harness harness) = CreatePayloadVoteHarness();
         harness.Importer.AcceptsGossipOperations = accepted;
         harness.Orchestrator.RouteGossipEvents();
-        Assert.That(Handle(Aggregate(participants: 2, aggregator: 7)), Is.EqualTo(MessageValidity.Ignored), "fixture: the aggregate is raised");
-        Assert.That(Handle(Aggregate(participants: 1, aggregator: 8)), Is.EqualTo(MessageValidity.Ignored), "fixture: the covered copy is raised before the first verifies");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Handle(Aggregate(participants: 2, aggregator: 7)), Is.EqualTo(MessageValidity.Ignored), "fixture: the aggregate is raised");
+            Assert.That(Handle(Aggregate(participants: 1, aggregator: 8)), Is.EqualTo(MessageValidity.Ignored), "fixture: the covered copy is raised before the first verifies");
+        }
 
         await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
         long duplicatesBefore = router.GetDropCount(GossipDropReason.Duplicate);

@@ -98,7 +98,7 @@ namespace Nethermind.JsonRpc.Data
         public Address From { get; set; }
 
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-        public Address To { get; set; }
+        public Address? To { get; set; }
 
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public Address? ContractAddress { get; set; }

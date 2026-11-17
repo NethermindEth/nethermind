@@ -21,7 +21,9 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Evm.State;
+using Nethermind.State;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using NSubstitute.ReceivedExtensions;
 using NUnit.Framework;
 
@@ -46,7 +48,7 @@ namespace Nethermind.AuRa.Test
             public TimeSpan StepDelay { get; }
             private BuildBlocksOnlyWhenNotProcessing _trigger;
 
-            public Context(IAuraConfig auraConfig = null)
+            public Context(IAuraConfig auraConfig = null, IGasLimitCalculator gasLimitCalculator = null)
             {
                 StepDelay = TimeSpan.FromMilliseconds(20);
                 TransactionSource = Substitute.For<ITxSource>();
@@ -73,10 +75,10 @@ namespace Nethermind.AuRa.Test
                     return block;
                 });
                 StateProvider.HasStateForTargetBlock(Arg.Any<BlockHeader>()).Returns(x => true);
-                InitProducer(auraConfig ?? new AuRaConfig { ForceSealing = true });
+                InitProducer(auraConfig ?? new AuRaConfig { ForceSealing = true }, gasLimitCalculator ?? new FollowOtherMiners(MainnetSpecProvider.Instance));
             }
 
-            private void InitProducer(IAuraConfig auraConfig)
+            private void InitProducer(IAuraConfig auraConfig, IGasLimitCalculator gasLimitCalculator)
             {
                 IBlockProductionTrigger onAuRaSteps = new BuildBlocksOnAuRaSteps(AuRaStepCalculator, LimboLogs.Instance);
                 _trigger = new BuildBlocksOnlyWhenNotProcessing(
@@ -86,7 +88,6 @@ namespace Nethermind.AuRa.Test
                     LimboLogs.Instance,
                     !auraConfig.AllowAuRaPrivateChains);
                 IBlocksConfig blocksConfig = new BlocksConfig();
-                FollowOtherMiners gasLimitCalculator = new(MainnetSpecProvider.Instance);
 
                 AuRaBlockProducer = new AuRaBlockProducer(
                     TransactionSource,
@@ -132,7 +133,7 @@ namespace Nethermind.AuRa.Test
 
         [Test]
         public async Task Does_not_produce_block_when_ProcessingQueueEmpty_not_raised() =>
-            await StartStop(new Context(), expectBlock: false, processingQueueEmpty: false, newBestSuggestedBlock: true);
+            await StartStop(new Context(), expectBlock: false, processingQueueEmpty: false, queueBecomesBusy: true);
 
         [Test]
         public async Task Does_not_produce_block_when_QueueNotEmpty()
@@ -210,10 +211,47 @@ namespace Nethermind.AuRa.Test
         }
 
         [Test]
-        public async Task Does_not_produce_block_when_there_is_new_best_suggested_block_not_yet_processed() =>
-            await StartStop(new Context(), expectBlock: false, newBestSuggestedBlock: true);
+        public async Task Does_not_produce_block_when_parent_state_is_unavailable_while_preparing()
+        {
+            IGasLimitCalculator gasLimitCalculator = Substitute.For<IGasLimitCalculator>();
+            gasLimitCalculator.GetGasLimit(Arg.Any<BlockHeader>(), Arg.Any<ulong?>()).Throws(new StateNotRetainedException("Parent state is not retained"));
+            Context context = new(gasLimitCalculator: gasLimitCalculator);
 
-        private async Task StartStop(Context context, bool expectBlock, bool processingQueueEmpty = true, bool newBestSuggestedBlock = false)
+            try
+            {
+                Block block = await context.AuRaBlockProducer.BuildBlock(Build.A.BlockHeader.TestObject);
+
+                Assert.That(block, Is.Null);
+                context.BlockchainProcessor.DidNotReceive().Process(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>());
+            }
+            finally
+            {
+                await context.StopAsync();
+            }
+        }
+
+        [Test]
+        public async Task Rethrows_other_exceptions_while_preparing()
+        {
+            IGasLimitCalculator gasLimitCalculator = Substitute.For<IGasLimitCalculator>();
+            gasLimitCalculator.GetGasLimit(Arg.Any<BlockHeader>(), Arg.Any<ulong?>()).Throws(new InvalidOperationException("Not a state error"));
+            Context context = new(gasLimitCalculator: gasLimitCalculator);
+
+            try
+            {
+                await Assert.ThrowsAsync<InvalidOperationException>(async () => await context.AuRaBlockProducer.BuildBlock(Build.A.BlockHeader.TestObject));
+            }
+            finally
+            {
+                await context.StopAsync();
+            }
+        }
+
+        [Test]
+        public async Task Does_not_produce_block_when_the_processing_queue_becomes_busy() =>
+            await StartStop(new Context(), expectBlock: false, queueBecomesBusy: true);
+
+        private async Task StartStop(Context context, bool expectBlock, bool processingQueueEmpty = true, bool queueBecomesBusy = false)
         {
             TaskCompletionSource processedEvent = new(TaskCreationOptions.RunContinuationsAsynchronously);
             context.BlockTree.SuggestBlock(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
@@ -236,9 +274,9 @@ namespace Nethermind.AuRa.Test
                     context.BlockProcessingQueue.ProcessingQueueEmpty += Raise.Event();
                 }
 
-                if (newBestSuggestedBlock)
+                if (queueBecomesBusy)
                 {
-                    context.BlockTree.NewBestSuggestedBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.TestObject));
+                    context.BlockProcessingQueue.IsEmpty.Returns(false);
                     await Task.Delay(context.StepDelay * 5);
                     context.BlockTree.ClearReceivedCalls();
                     Interlocked.Exchange(ref processedEvent, new(TaskCreationOptions.RunContinuationsAsynchronously));

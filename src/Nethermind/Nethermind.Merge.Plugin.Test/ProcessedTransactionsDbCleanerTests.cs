@@ -56,7 +56,9 @@ public class ProcessedTransactionsDbCleanerTests
             }
         }
 
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
         Assert.That(blobTxStorage.TryGetBlobTransactionsFromBlock(blockOfTxs, out Transaction[]? returnedTxs), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(returnedTxs!.Length, Is.EqualTo(2));
 
         IBlockTree blockTree = Substitute.For<IBlockTree>();

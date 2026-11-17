@@ -169,7 +169,7 @@ internal sealed class PlainPeer(ServiceProvider services, LocalPeer peer) : IAsy
     public Multiaddress Address => peer.ListenAddresses.First();
 
     public static async Task<PlainPeer> StartAsync(Func<IProtocolStackSettings, IdentifyProtocol> identify, CancellationToken token, IBeaconChainStatusSource? statusSource = null,
-        bool pingOnDial = false, Identity? identity = null)
+        bool pingOnDial = false, Identity? identity = null, IProtocol? additionalProtocol = null)
     {
         ServiceCollection collection = new();
         collection.AddSingleton<Microsoft.Extensions.Logging.ILoggerFactory>(new Logging.Microsoft.NethermindLoggerFactory(LimboLogs.Instance));
@@ -180,7 +180,12 @@ internal sealed class PlainPeer(ServiceProvider services, LocalPeer peer) : IAsy
         }
 
         ServiceProvider services = collection
-            .AddLibp2p(builder => statusSource is null ? builder : builder.AddProtocol<StatusProtocolV2>())
+            .AddLibp2p(builder =>
+            {
+                if (statusSource is not null) builder.AddProtocol<StatusProtocolV2>();
+                if (additionalProtocol is not null) builder.AddProtocol(additionalProtocol);
+                return builder;
+            })
             .BuildServiceProvider();
         // Building the factory is what fills the stack settings the peer runs on.
         services.GetRequiredService<IPeerFactory>();

@@ -23,6 +23,74 @@ public class StateTransitionFoundationTests
     private const ulong Gwei = 1_000_000_000;
 
     [Test]
+    public void Proposer_selection_accepts_maximum_balance_on_the_largest_random_draw()
+    {
+        BeaconStateFulu state = CreateState(64, Presets.MaxEffectiveBalanceElectra);
+        byte[] seed = Convert.FromHexString("A63A6E1CB8C82332B7BBE43EBA9B49886EFCFE7AA503BCFC9AD30C95314D625E");
+        int[] indices = Enumerable.Range(0, 64).ToArray();
+        int firstCandidate = SwapOrNotShuffle.ComputeShuffledIndex(0, indices.Length, seed);
+        byte[] preimage = new byte[40];
+        seed.CopyTo(preimage, 0);
+
+        int proposer = state.ComputeProposerIndex(indices, seed);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(BinaryPrimitives.ReadUInt16LittleEndian(SHA256.HashData(preimage)), Is.EqualTo(ushort.MaxValue), "the first draw must exercise equality");
+        Assert.That(proposer, Is.EqualTo(firstCandidate));
+    }
+
+    [Test]
+    public void Deposit_request_bridge_index_changes_only_before_Fulu([Values] bool fulu)
+    {
+        BeaconStateFulu state = CreateState(64);
+        state.DepositRequestsStartIndex = Presets.UnsetDepositRequestsStartIndex;
+        state.PendingDeposits = [];
+        BeaconChainSpec spec = BeaconChainSpec.Mainnet with { FuluForkEpoch = fulu ? 0ul : ulong.MaxValue };
+        DepositRequest request = new() { Index = 42, Amount = Gwei };
+
+        BlockProcessing.ProcessDepositRequest(state, request, spec);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(state.DepositRequestsStartIndex, Is.EqualTo(fulu ? Presets.UnsetDepositRequestsStartIndex : 42ul));
+        Assert.That(state.PendingDeposits, Has.Length.EqualTo(1));
+    }
+
+    [Test]
+    public void Pending_deposits_wait_for_the_Eth1_bridge_only_before_Fulu([Values] bool fulu)
+    {
+        BeaconStateFulu state = CreateFuluState(64);
+        state.Slot = Presets.SlotsPerEpoch;
+        state.FinalizedCheckpoint!.Epoch = 1;
+        state.DepositRequestsStartIndex = 1;
+        state.Eth1DepositIndex = 0;
+        state.PendingDeposits = [new PendingDeposit
+        {
+            Pubkey = state.Validators![0].Pubkey,
+            WithdrawalCredentials = state.Validators[0].WithdrawalCredentials,
+            Amount = Gwei,
+            Slot = 1,
+        }];
+        ulong balance = state.Balances![0];
+        EpochCache cache = new() { SigningSpec = BeaconChainSpec.Mainnet with { FuluForkEpoch = fulu ? 0ul : ulong.MaxValue } };
+
+        EpochProcessing.ProcessPendingDeposits(state, cache);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(state.Balances[0], Is.EqualTo(balance + (fulu ? Gwei : 0)));
+        Assert.That(state.PendingDeposits, Has.Length.EqualTo(fulu ? 0 : 1));
+    }
+
+    [Test]
+    public void Exit_churn_rejects_epoch_overflow()
+    {
+        BeaconStateFulu state = CreateState(64);
+        state.EarliestExitEpoch = ulong.MaxValue;
+        state.ExitBalanceToConsume = 0;
+
+        Assert.That(() => state.ComputeExitEpochAndUpdateChurn(Gwei, new EpochCache()), Throws.TypeOf<BeaconStateException>());
+    }
+
+    [Test]
     public void Bulk_shuffle_matches_per_index_shuffle_and_round_trips([Values(1, 2, 33, 100, 1000, 6271)] int count)
     {
         byte[] seed = SHA256.HashData(BitConverter.GetBytes(count));

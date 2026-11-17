@@ -47,8 +47,11 @@ public class ConcurrentDictionaryTests
     {
         ConcurrentDictionary<int, int> dictionary = new(new Dictionary<int, int> { { 0, 0 }, { 1, 1 }, { 2, 2 } });
 
-        Assert.That(dictionary.NoLockClear(), Is.True);
-        Assert.That(dictionary, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(dictionary.NoLockClear(), Is.True);
+            Assert.That(dictionary, Is.Empty);
+        }
         // A cleared map must stay coherent for reuse: counts and lookups after re-population.
         Assert.That(dictionary.NoLockClear(), Is.False, "clearing an empty map is a no-op");
 
@@ -78,8 +81,11 @@ public class ConcurrentDictionaryTests
             // deadlock guard, not a wall-clock assertion.
             Task clearTask = Task.Run(() =>
             {
-                Assert.That(populated.NoLockClear(), Is.True);
-                Assert.That(empty.NoLockClear(), Is.False);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(populated.NoLockClear(), Is.True);
+                    Assert.That(empty.NoLockClear(), Is.False);
+                }
             });
             clearTask.Wait(testToken);
         }

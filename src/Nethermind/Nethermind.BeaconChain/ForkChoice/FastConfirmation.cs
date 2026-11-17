@@ -204,8 +204,8 @@ internal sealed class FastConfirmation(
         : throw new ForkChoiceException($"Fast confirmation block {root} has no retained parent");
     private CheckpointRef VotingSource(Hash256 root) => Epoch(root) < store.CurrentEpoch
         ? Node(root).UnrealizedJustifiedCheckpoint!.Value : Node(root).JustifiedCheckpoint;
-    private CheckpointRef Checkpoint(Hash256 root, ulong epoch) => new(epoch,
-        tree.GetAncestor(root, epoch * spec.SlotsPerEpoch) ?? throw new ForkChoiceException($"No retained checkpoint for {root} at epoch {epoch}"));
+    private CheckpointRef? Checkpoint(Hash256 root, ulong epoch) =>
+        tree.GetAncestor(root, epoch * spec.SlotsPerEpoch) is { } ancestor ? new(epoch, ancestor) : null;
 
     private List<Hash256> Ancestors(Hash256 root, Hash256 terminal)
     {
@@ -280,10 +280,17 @@ internal sealed class FastConfirmation(
         private readonly Dictionary<BalanceSource, ulong[]> _scores = [];
         private readonly Dictionary<(ulong Start, ulong End), HashSet<int>> _participants = [];
         private readonly Dictionary<ulong, int[]> _duties = [];
+        private readonly Dictionary<(Hash256 Root, ulong Epoch), CheckpointRef?> _checkpoints = [];
         private BalanceSource? _headBalances;
         private ulong? _honestFfgSupport;
         private BalanceSource HeadBalances => _headBalances ??= rule.HeadBalances(Head);
-        internal bool NoConflictingCheckpoint => rule.Checkpoint(Head, rule.Store.CurrentEpoch) == rule.Store.UnrealizedJustifiedCheckpoint
+        private CheckpointRef? Checkpoint(Hash256 root, ulong epoch)
+        {
+            if (!_checkpoints.TryGetValue((root, epoch), out CheckpointRef? checkpoint))
+                _checkpoints[(root, epoch)] = checkpoint = rule.Checkpoint(root, epoch);
+            return checkpoint;
+        }
+        internal bool NoConflictingCheckpoint => Checkpoint(Head, rule.Store.CurrentEpoch) == rule.Store.UnrealizedJustifiedCheckpoint
             || 3 * (UInt128)HonestFfgSupport > HeadBalances.Total;
         internal bool CurrentTargetWillBeJustified => 3 * (UInt128)HonestFfgSupport >= 2 * (UInt128)HeadBalances.Total;
 
@@ -293,13 +300,14 @@ internal sealed class FastConfirmation(
             {
                 if (_honestFfgSupport is ulong cached) return cached;
                 BalanceSource source = HeadBalances;
-                CheckpointRef target = rule.Checkpoint(Head, rule.Store.CurrentEpoch);
+                CheckpointRef? target = Checkpoint(Head, rule.Store.CurrentEpoch);
+                if (target is null) return 0;
                 ulong support = 0;
                 for (int i = 0; i < source.Balances.Length; i++)
                 {
                     if (!source.Slashed[i] && source.Balances[i] != 0 && !rule.Equivocators.Contains((ulong)i)
                         && rule.Tree.LatestVote((ulong)i) is VoteTracker vote && vote.NextEpoch == rule.Store.CurrentEpoch
-                        && rule.Tree.ContainsBlock(vote.NextRoot) && rule.Checkpoint(vote.NextRoot, vote.NextEpoch) == target)
+                        && rule.Tree.ContainsBlock(vote.NextRoot) && Checkpoint(vote.NextRoot, vote.NextEpoch) == target)
                         support += source.Balances[i];
                 }
                 ulong start = rule.Store.CurrentEpoch * rule.Spec.SlotsPerEpoch;

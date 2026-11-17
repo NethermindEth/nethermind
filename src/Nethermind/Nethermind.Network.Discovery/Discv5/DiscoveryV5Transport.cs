@@ -35,7 +35,7 @@ public sealed class DiscoveryV5Transport(ILogManager logManager)
     {
         if (_inboundQueue.Writer.TryWrite(result))
         {
-            if (_logger.IsTrace) _logger.Trace($"Queued discv5 UDP packet from {result.RemoteEndPoint}, bytes: {result.Buffer.Length}.");
+            if (_logger.IsTrace) _logger.Trace($"Queued discv5 UDP packet from {result.RemoteEndPoint:hide}, bytes: {result.Buffer.Length}.");
             return;
         }
 
@@ -51,7 +51,7 @@ public sealed class DiscoveryV5Transport(ILogManager logManager)
 
         try
         {
-            if (_logger.IsTrace) _logger.Trace($"Sending discv5 UDP packet to {destination}, bytes: {data.Length}.");
+            if (_logger.IsTrace) _logger.Trace($"Sending discv5 UDP packet to {destination:hide}, bytes: {data.Length}.");
             await socket.SendToAsync(data, destination, token);
             Interlocked.Add(ref Metrics.DiscoveryBytesSent, data.Length);
         }
@@ -62,13 +62,13 @@ public sealed class DiscoveryV5Transport(ILogManager logManager)
         }
         catch (SocketException exception)
         {
-            _logger.DebugError("Error sending data", exception);
+            _logger.DebugError($"Error sending data: {exception.SocketErrorCode}", SensitiveLogMasking.Enabled ? null : exception);
             throw;
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceAddressNotAvailable(IPEndPoint failedDestination, SocketException exception) =>
-            _logger.TraceError($"Failed to send discv5 UDP packet to {failedDestination}", exception);
+            _logger.TraceError($"Failed to send discv5 UDP packet to {failedDestination:hide}", SensitiveLogMasking.Enabled ? null : exception);
     }
 
     internal async IAsyncEnumerable<PooledUdpReceiveResult> ReadMessagesAsync([EnumeratorCancellation] CancellationToken token = default)

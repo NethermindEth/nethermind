@@ -116,9 +116,12 @@ public class GloasCachedHasherTests
         property.SetValue(state, Perturb(property, property.GetValue(state), salt));
 
         Hash256 full = SszRoots.HashTreeRoot(state);
-        Assert.That(full, Is.Not.EqualTo(before), "the change reaches the generated root");
-        Assert.That(hasher.HashTreeRoot(state), Is.EqualTo(full), "warm caches");
-        Assert.That(new CachedBeaconStateHasher().HashTreeRoot(state), Is.EqualTo(full), "cold caches");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(full, Is.Not.EqualTo(before), "the change reaches the generated root");
+            Assert.That(hasher.HashTreeRoot(state), Is.EqualTo(full), "warm caches");
+            Assert.That(new CachedBeaconStateHasher().HashTreeRoot(state), Is.EqualTo(full), "cold caches");
+        }
     }
 
     private static IEnumerable<string> GloasStateFields() =>

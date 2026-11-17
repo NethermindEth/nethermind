@@ -43,18 +43,24 @@ public class CachedHasherFixedVectorTests
         CachedBeaconStateHasher hasher = new();
         BeaconStateFulu fulu = CreateFuluStateAtBoundary(ValidatorCount);
         hasher.HashTreeRoot(fulu);
-        Assert.That(SnapshotLength(hasher, "_validators"), Is.GreaterThan(0), "fixture: the Fulu hash fills the validator cache");
-        Assert.That(SnapshotLength(hasher, "_balances"), Is.GreaterThan(0), "fixture: the Fulu hash fills the balance cache");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(SnapshotLength(hasher, "_validators"), Is.GreaterThan(0), "fixture: the Fulu hash fills the validator cache");
+            Assert.That(SnapshotLength(hasher, "_balances"), Is.GreaterThan(0), "fixture: the Fulu hash fills the balance cache");
+        }
 
         BeaconStateGloas gloas = CreateGloasState(out _, out _);
-        Assert.That(hasher.HashTreeRoot(gloas), Is.EqualTo(SszRoots.HashTreeRoot(gloas)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hasher.HashTreeRoot(gloas), Is.EqualTo(SszRoots.HashTreeRoot(gloas)));
 
-        Assert.That(SnapshotLength(hasher, "_validators"), Is.Zero, "validators");
-        Assert.That(SnapshotLength(hasher, "_balances"), Is.Zero, "balances");
-        Assert.That(SnapshotLength(hasher, "_inactivityScores"), Is.Zero, "inactivity scores");
-        Assert.That(SnapshotLength(hasher, "_previousEpochParticipation"), Is.Zero, "previous participation");
-        Assert.That(SnapshotLength(hasher, "_currentEpochParticipation"), Is.Zero, "current participation");
-        Assert.That(hasher.HashTreeRoot(fulu), Is.EqualTo(SszRoots.HashTreeRoot(fulu)), "a Fulu sibling after the Gloas state");
+            Assert.That(SnapshotLength(hasher, "_validators"), Is.Zero, "validators");
+            Assert.That(SnapshotLength(hasher, "_balances"), Is.Zero, "balances");
+            Assert.That(SnapshotLength(hasher, "_inactivityScores"), Is.Zero, "inactivity scores");
+            Assert.That(SnapshotLength(hasher, "_previousEpochParticipation"), Is.Zero, "previous participation");
+            Assert.That(SnapshotLength(hasher, "_currentEpochParticipation"), Is.Zero, "current participation");
+            Assert.That(hasher.HashTreeRoot(fulu), Is.EqualTo(SszRoots.HashTreeRoot(fulu)), "a Fulu sibling after the Gloas state");
+        }
     }
 
     [Test]
@@ -68,8 +74,11 @@ public class CachedHasherFixedVectorTests
 
         Assert.Throws<InvalidDataException>(() => hasher.HashTreeRoot(gloas));
 
-        Assert.That(SnapshotLength(hasher, "_validators"), Is.GreaterThan(0), "a refused state must not touch any cache");
-        Assert.That(SnapshotLength(hasher, "_balances"), Is.GreaterThan(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(SnapshotLength(hasher, "_validators"), Is.GreaterThan(0), "a refused state must not touch any cache");
+            Assert.That(SnapshotLength(hasher, "_balances"), Is.GreaterThan(0));
+        }
     }
 
     // An earlier changed element plus a later null proves a refusal cannot leave a half-updated tree behind.
@@ -120,8 +129,11 @@ public class CachedHasherFixedVectorTests
         }
         else
         {
-            Assert.That(actualFailure, Is.Null, $"{label}: the generated hasher accepts it but the cached one threw {actualFailure}");
-            Assert.That(actual, Is.EqualTo(expected), label);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actualFailure, Is.Null, $"{label}: the generated hasher accepts it but the cached one threw {actualFailure}");
+                Assert.That(actual, Is.EqualTo(expected), label);
+            }
         }
     }
 

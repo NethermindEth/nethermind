@@ -30,7 +30,7 @@ internal static class OperationVectorHandlers
         ["deposit"] = ("deposit.ssz_snappy", (ctx, ssz, batch) =>
             BlockProcessing.ProcessDeposit(ctx.State, Decode<Deposit>(ssz))),
         ["deposit_request"] = ("deposit_request.ssz_snappy", (ctx, ssz, batch) =>
-            BlockProcessing.ProcessDepositRequest(ctx.State, Decode<DepositRequest>(ssz))),
+            BlockProcessing.ProcessDepositRequest(ctx.State, Decode<DepositRequest>(ssz), ctx.Cache.SigningSpec)),
         ["execution_payload"] = ("body.ssz_snappy", (ctx, ssz, batch) =>
         {
             BeaconBlockBody.Decode(ssz, out BeaconBlockBody value);

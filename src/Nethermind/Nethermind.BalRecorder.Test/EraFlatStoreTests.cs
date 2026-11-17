@@ -70,8 +70,11 @@ public class EraFlatStoreTests
             store.Write(0UL, [0xAA]);
             store.Write(1UL, [0xBB, 0xCC]);
 
-            Assert.That(TryReadBytes(store, 0UL), Is.EqualTo([0xAA]));
-            Assert.That(TryReadBytes(store, 1UL), Is.EqualTo([0xBB, 0xCC]));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(TryReadBytes(store, 0UL), Is.EqualTo([0xAA]));
+                Assert.That(TryReadBytes(store, 1UL), Is.EqualTo([0xBB, 0xCC]));
+            }
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -86,10 +89,13 @@ public class EraFlatStoreTests
             store.Write(0UL, [0xAA]);
             store.Write(8192UL, [0xBB]);
 
-            Assert.That(Directory.GetFiles(dir, "*.bin").Length, Is.EqualTo(2));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Directory.GetFiles(dir, "*.bin").Length, Is.EqualTo(2));
 
-            Assert.That(TryReadBytes(store, 0UL), Is.EqualTo([0xAA]));
-            Assert.That(TryReadBytes(store, 8192UL), Is.EqualTo([0xBB]));
+                Assert.That(TryReadBytes(store, 0UL), Is.EqualTo([0xAA]));
+                Assert.That(TryReadBytes(store, 8192UL), Is.EqualTo([0xBB]));
+            }
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -118,8 +124,11 @@ public class EraFlatStoreTests
             using SlotStore store = new(dir, "bal");
             store.Write(0UL, [0x01]);
 
-            Assert.That((Directory.GetFiles(dir, "*.bal")).Length, Is.EqualTo(1));
-            Assert.That((Directory.GetFiles(dir, "*.bin")).Length, Is.EqualTo(0));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((Directory.GetFiles(dir, "*.bal")).Length, Is.EqualTo(1));
+                Assert.That((Directory.GetFiles(dir, "*.bin")).Length, Is.EqualTo(0));
+            }
         }
         finally { Directory.Delete(dir, true); }
     }

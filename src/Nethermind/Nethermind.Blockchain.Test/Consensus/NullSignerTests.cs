@@ -16,8 +16,11 @@ namespace Nethermind.Blockchain.Test.Consensus
         public void Test()
         {
             NullSigner signer = NullSigner.Instance;
-            Assert.That(signer.Address, Is.EqualTo(Address.Zero));
-            Assert.That(signer.CanSign, Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(signer.Address, Is.EqualTo(Address.Zero));
+                Assert.That(signer.CanSign, Is.False);
+            }
         }
 
         [Test, MaxTime(Timeout.MaxTestTime)]
@@ -26,8 +29,11 @@ namespace Nethermind.Blockchain.Test.Consensus
             NullSigner signer = NullSigner.Instance;
             Assert.That(signer.TrySign((Transaction)null!), Is.False, "null signer cannot sign");
             ValueHash256 hash = default;
-            Assert.That(signer.TrySign(in hash, out Signature signature), Is.False, "null signer cannot sign a hash");
-            Assert.That(signature, Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(signer.TrySign(in hash, out Signature signature), Is.False, "null signer cannot sign a hash");
+                Assert.That(signature, Is.Null);
+            }
         }
     }
 }

@@ -15,7 +15,6 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
@@ -52,7 +51,9 @@ public class DisposableScopeOverridableEnvTests
     {
         using TestContext ctx = new();
 
+#pragma warning disable NUnit2045 // The type assertion must pass before casting the result.
         Assert.That(ctx.ChildComponents.WorldState, Is.Not.EqualTo(ctx.WorldStateManager.GlobalWorldState));
+#pragma warning restore NUnit2045
         Assert.That(ctx.ChildComponents.StateReader, Is.Not.EqualTo(ctx.WorldStateManager.GlobalStateReader));
         Assert.That(ctx.ChildComponents.CodeInfoRepository, Is.AssignableTo<OverridableCodeInfoRepository>());
         Assert.That(ctx.ChildComponents.TransactionProcessor, Is.AssignableTo<TestTransactionProcessor>());
@@ -71,18 +72,20 @@ public class DisposableScopeOverridableEnvTests
                 { TestItem.AddressA, new AccountOverride { Balance = 123 } }
             });
 
-        Assert.That(ctx.ChildComponents.WorldState.StateRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash));
-        Assert.That(scope.Component.WorldState.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)123));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.ChildComponents.WorldState.StateRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash));
+            Assert.That(scope.Component.WorldState.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)123));
+        }
     }
 
-    // Idle is what keeps state overrides in the prestate, and the processor must share the very
-    // instance the scope hands out or the opcodes see no diff.
-    [TestCase(false, TestName = "BuildAndOverride_ForkNeverScheduled_NoDiffRecorder")]
-    [TestCase(true, TestName = "BuildAndOverride_ForkScheduled_CarriesAnIdleDiffRecorderSharedWithTheProcessor")]
-    public void BuildAndOverride_DiffRecorderFollowsTheForkSchedule(bool schedulesEip7906)
+    // The processor records the EIP-7906 ASSERT diff itself, so eth_call, eth_estimateGas and eth_simulateV1
+    // run on the plain world state the scope hands out. Checked on a chain that schedules the fork, where a
+    // scope-level recorder used to be wired in.
+    [Test]
+    public void BuildAndOverride_CarriesNoDiffRecorder()
     {
-        using TestContext ctx = new(new TestSpecProvider(
-            new OverridableReleaseSpec(Cancun.Instance) { IsEip7906Enabled = schedulesEip7906, IsEip7928Enabled = schedulesEip7906 }));
+        using TestContext ctx = new(new OverridableReleaseSpec(Cancun.Instance) { IsEip7906Enabled = true, IsEip7928Enabled = true });
 
         using Scope<Components> scope = ctx.Env.BuildAndOverride(
             Build.A.BlockHeader.TestObject,
@@ -93,8 +96,7 @@ public class DisposableScopeOverridableEnvTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(scope.Component.WorldState is IBlockAccessListSource, Is.EqualTo(schedulesEip7906));
-            Assert.That(scope.Component.WorldState is not IBlockAccessListSource { GeneratedBlockAccessList: not null });
+            Assert.That(scope.Component.WorldState, Is.Not.InstanceOf<IBlockAccessListSource>());
             Assert.That(((TestTransactionProcessor)scope.Component.TransactionProcessor).WorldState,
                 Is.SameAs(scope.Component.WorldState));
         }
@@ -148,7 +150,7 @@ public class DisposableScopeOverridableEnvTests
                 { TestItem.AddressA, new AccountOverride { MovePrecompileToAddress = TestItem.AddressB } }
             });
 
-        Assert.That(invalidOverride, Throws.TypeOf<ArgumentException>().With.Message.Contains($"Account {TestItem.AddressA} is not a precompile"));
+        Assert.That(invalidOverride, Throws.TypeOf<ArgumentException>().With.Message.Contains($"account {TestItem.AddressA.ToString(withEip55Checksum: true)} is not a precompile"));
 
         using Scope<Components> scope = ctx.Env.BuildAndOverride(
             Build.A.BlockHeader.TestObject,
@@ -163,13 +165,14 @@ public class DisposableScopeOverridableEnvTests
     [Test]
     public void PrecompileMoveError_ChecksSourceBeforeDestination([Values] bool isPrecompile, [Values] bool destinationOverridden)
     {
+        Address source = new("0x000000000000000000000000000000000000dead");
         Dictionary<Address, AccountOverride> overrides = [];
         if (destinationOverridden) overrides.Add(TestItem.AddressB, new());
-        string? expected = !isPrecompile ? $"Account {TestItem.AddressA} is not a precompile"
+        string? expected = !isPrecompile ? "account 0x000000000000000000000000000000000000dEaD is not a precompile"
             : destinationOverridden ? $"account {TestItem.AddressB} is already overridden" : null;
 
         string? actual = StateOverridesExtensions.GetPrecompileMoveError(
-            TestItem.AddressA, TestItem.AddressB, isPrecompile, overrides);
+            source, TestItem.AddressB, isPrecompile, overrides);
 
         using (Assert.EnterMultipleScope())
         {
@@ -188,20 +191,18 @@ public class DisposableScopeOverridableEnvTests
         public IOverridableEnv<Components> Env { get; }
         public TestStateHeaderProvider StateHeaderProvider { get; } = new();
 
-        public TestContext(ISpecProvider? specProvider = null)
+        public TestContext(IReleaseSpec? releaseSpec = null)
         {
             _container = new ContainerBuilder()
-                .AddModule(new TestNethermindModule())
+                .AddModule(new TestNethermindModule(releaseSpec))
                 .AddSingleton<IStateHeaderProvider>(StateHeaderProvider)
                 .AddScoped<ITransactionProcessor, TestTransactionProcessor>()
                 .Add<Components>()
                 .Build();
 
             WorldStateManager = _container.Resolve<IWorldStateManager>();
+            IOverridableEnvFactory envFactory = _container.Resolve<IOverridableEnvFactory>();
             ILifetimeScope rootLifetime = _container.Resolve<ILifetimeScope>();
-            IOverridableEnvFactory envFactory = specProvider is null
-                ? _container.Resolve<IOverridableEnvFactory>()
-                : new OverridableEnvFactory(WorldStateManager, rootLifetime, specProvider);
             IOverridableEnv envModule = envFactory.Create();
 
             _childLifetime = rootLifetime.BeginLifetimeScope(builder => builder.AddModule(envModule));

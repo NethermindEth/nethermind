@@ -52,7 +52,7 @@ public static class InclusionListValidator
     private static bool IsSatisfied(Block block, Transaction[] il, Span<bool> included, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator)
     {
         // Duplicate IL entries stay unmarked but fail the appendability check (nonce advanced).
-        Dictionary<Hash256, int> ilByHash = new(il.Length);
+        Dictionary<Hash256, int> ilByHash = [with(il.Length)];
         for (int i = 0; i < il.Length; i++)
         {
             Hash256? h = il[i].Hash;
@@ -93,7 +93,7 @@ public static class InclusionListValidator
         if (!cached) state.TryGetAccount(tx.SenderAddress, out account);
 
         // EIP-3607: a sender with non-delegated code cannot send a tx.
-        if (account.HasCode && !state.IsDelegatedCode(tx.SenderAddress)) return false;
+        if (account.HasCode && !state.IsDelegatedCode(account.CodeHash)) return false;
 
         // Overflow-checked like TransactionProcessor.BuyGas: an adversarial MaxFeePerGas must not wrap the cost.
         if (UInt256.MultiplyOverflow((UInt256)tx.GasLimit, tx.MaxFeePerGas, out UInt256 txCost)

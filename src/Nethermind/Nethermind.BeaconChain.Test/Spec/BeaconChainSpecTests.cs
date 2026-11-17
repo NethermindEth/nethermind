@@ -108,23 +108,23 @@ public class BeaconChainSpecTests
 
     // Independent sources: eth-clients/sepolia metadata, public beacon genesis/fork_schedule, Lighthouse/Prysm config; Gloas parameters: ethereum/pm#2205 and lodestar#10119.
     [Test]
-    public void Sepolia_spec_matches_its_published_network_parameters() =>
-        Assert.Multiple(() =>
-        {
-            Assert.That(BeaconChainSpec.Sepolia.ChainId, Is.EqualTo(BlockchainIds.Sepolia));
-            Assert.That(BeaconChainSpec.Sepolia.GenesisValidatorsRoot.ToString(),
-                Is.EqualTo("0xd8ea171f3c94aea21ebc42a1ed61052acf3f9209c00e4efbaaddac09ed9b8078"));
-            Assert.That(BeaconChainSpec.Sepolia.GenesisTime, Is.EqualTo(1655733600ul));
-            Assert.That(BeaconChainSpec.Sepolia.SecondsPerSlot, Is.EqualTo(12ul));
-            Assert.That(BeaconChainSpec.Sepolia.SlotsPerEpoch, Is.EqualTo(32ul));
-            Assert.That(BeaconChainSpec.Sepolia.ElectraForkEpoch, Is.EqualTo(222464ul));
-            Assert.That(BeaconChainSpec.Sepolia.FuluForkEpoch, Is.EqualTo(272640ul));
-            Assert.That(BeaconChainSpec.Sepolia.GloasForkEpoch, Is.EqualTo(353024ul));
-            Assert.That(BeaconChainSpec.Sepolia.MaxBlobsPerBlockElectra, Is.EqualTo(9ul));
-            Assert.That(BeaconChainSpec.Sepolia.Forks, Has.Length.EqualTo(8),
-                "Sepolia has a confirmed Gloas entry");
-            Assert.That(BeaconChainSpec.Sepolia.BlobSchedule, Has.Length.EqualTo(2));
-        });
+    public void Sepolia_spec_matches_its_published_network_parameters()
+    {
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(BeaconChainSpec.Sepolia.ChainId, Is.EqualTo(BlockchainIds.Sepolia));
+        Assert.That(BeaconChainSpec.Sepolia.GenesisValidatorsRoot.ToString(),
+            Is.EqualTo("0xd8ea171f3c94aea21ebc42a1ed61052acf3f9209c00e4efbaaddac09ed9b8078"));
+        Assert.That(BeaconChainSpec.Sepolia.GenesisTime, Is.EqualTo(1655733600ul));
+        Assert.That(BeaconChainSpec.Sepolia.SecondsPerSlot, Is.EqualTo(12ul));
+        Assert.That(BeaconChainSpec.Sepolia.SlotsPerEpoch, Is.EqualTo(32ul));
+        Assert.That(BeaconChainSpec.Sepolia.ElectraForkEpoch, Is.EqualTo(222464ul));
+        Assert.That(BeaconChainSpec.Sepolia.FuluForkEpoch, Is.EqualTo(272640ul));
+        Assert.That(BeaconChainSpec.Sepolia.GloasForkEpoch, Is.EqualTo(353024ul));
+        Assert.That(BeaconChainSpec.Sepolia.MaxBlobsPerBlockElectra, Is.EqualTo(9ul));
+        Assert.That(BeaconChainSpec.Sepolia.Forks, Has.Length.EqualTo(8),
+            "Sepolia has a confirmed Gloas entry");
+        Assert.That(BeaconChainSpec.Sepolia.BlobSchedule, Has.Length.EqualTo(2));
+    }
 
     [TestCaseSource(nameof(ShippedNetworks))]
     public void Every_shipped_spec_carries_bootnodes(string name, ulong chainId, BeaconChainSpec spec) =>

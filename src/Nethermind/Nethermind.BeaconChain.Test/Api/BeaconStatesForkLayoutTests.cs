@@ -66,8 +66,11 @@ public class BeaconStatesForkLayoutTests : BeaconApiFixture
         Assert.That(root.GetProperty("data").EnumerateArray().Select(e => e.GetString()), Is.EqualTo(Enumerable.Range(0, 64).Select(i => LookaheadAt(fork, i).ToString())));
 
         using HttpResponseMessage ssz = await _host.GetAsync($"/eth/v1/beacon/states/{SlotOf(fork)}/proposer_lookahead", Octet);
-        Assert.That(ssz.Headers.GetValues("Eth-Consensus-Version").Single(), Is.EqualTo(fork));
-        Assert.That((await ssz.Content.ReadAsByteArrayAsync()).Length, Is.EqualTo(64 * sizeof(ulong)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ssz.Headers.GetValues("Eth-Consensus-Version").Single(), Is.EqualTo(fork));
+            Assert.That((await ssz.Content.ReadAsByteArrayAsync()).Length, Is.EqualTo(64 * sizeof(ulong)));
+        }
     }
 
     [Test]
@@ -127,8 +130,11 @@ public class BeaconStatesForkLayoutTests : BeaconApiFixture
     {
         JsonElement root = await ReadVersioned($"/eth/v2/debug/beacon/states/{SlotOf(fork)}", fork);
         JsonElement data = root.GetProperty("data");
-        Assert.That(data.TryGetProperty("proposer_lookahead", out _), Is.EqualTo(hasLookahead));
-        Assert.That(data.GetProperty("pending_consolidations")[0].GetProperty("source_index").GetString(), Is.EqualTo(Marker(fork).ToString()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(data.TryGetProperty("proposer_lookahead", out _), Is.EqualTo(hasLookahead));
+            Assert.That(data.GetProperty("pending_consolidations")[0].GetProperty("source_index").GetString(), Is.EqualTo(Marker(fork).ToString()));
+        }
     }
 
     [Test]
@@ -152,16 +158,22 @@ public class BeaconStatesForkLayoutTests : BeaconApiFixture
         }
 
         using HttpResponseMessage ssz = await _host.GetAsync($"/eth/v2/debug/beacon/states/{SlotOf("gloas")}", Octet);
-        Assert.That(ssz.StatusCode, Is.EqualTo(HttpStatusCode.OK));
-        Assert.That(await ssz.Content.ReadAsByteArrayAsync(), Is.EqualTo(EncodedState("gloas")));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ssz.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            Assert.That(await ssz.Content.ReadAsByteArrayAsync(), Is.EqualTo(EncodedState("gloas")));
+        }
     }
 
     private async Task<JsonElement> ReadVersioned(string path, string fork)
     {
         using HttpResponseMessage response = await _host.GetAsync(path, Json);
         string raw = await response.Content.ReadAsStringAsync();
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw.Length > 500 ? raw[..500] : raw);
-        Assert.That(response.Headers.GetValues("Eth-Consensus-Version").Single(), Is.EqualTo(fork));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw.Length > 500 ? raw[..500] : raw);
+            Assert.That(response.Headers.GetValues("Eth-Consensus-Version").Single(), Is.EqualTo(fork));
+        }
         JsonElement root = JsonDocument.Parse(raw).RootElement;
         Assert.That(root.GetProperty("version").GetString(), Is.EqualTo(fork));
         return root;

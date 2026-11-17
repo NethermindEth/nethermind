@@ -58,6 +58,9 @@ namespace Nethermind.Blockchain
         public AddBlockResult Insert(Block block, BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None, BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None, WriteFlags blockWriteFlags = WriteFlags.None) =>
             throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(Insert)} calls");
 
+        public AddBlockResult Insert(BlockHeader header, ReadOnlySpan<byte> body, BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None, BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None, WriteFlags bodiesWriteFlags = WriteFlags.None) =>
+            throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(Insert)} calls");
+
         public void Insert(IEnumerable<Block> blocks) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(Insert)} calls");
 
         public void UpdateHeadBlock(Hash256 blockHash) =>
@@ -110,6 +113,8 @@ namespace Nethermind.Blockchain
         public Block FindBlock(ulong blockNumber, BlockTreeLookupOptions options) => _wrapped.FindBlock(blockNumber, options);
 
         public void DeleteInvalidBlock(Block invalidBlock) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(DeleteInvalidBlock)} calls");
+
+        public void DeleteBranchWithoutBadBlockReport(BlockHeader branchRoot) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(DeleteBranchWithoutBadBlockReport)} calls");
 
         public void ReportBadBlock(Block badBlock) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(ReportBadBlock)} calls");
 

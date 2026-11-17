@@ -2,13 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Abi;
+using Nethermind.Blockchain.Contracts;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 
@@ -23,8 +22,9 @@ PermissionBasedTxFilter.Cache cache,
         private readonly Cache _cache = cache ?? throw new ArgumentNullException(nameof(cache));
         private readonly ILogger _logger = logManager?.GetClassLogger<PermissionBasedTxFilter>() ?? throw new ArgumentNullException(nameof(logManager));
 
-        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec spec)
+        public AcceptTxResult IsAllowed(Transaction tx, in TxFilterContext context)
         {
+            BlockHeader parentHeader = context.Parent;
             if (parentHeader.Number + 1 < _contract.Activation)
             {
                 return AcceptTxResult.Accepted;
@@ -67,7 +67,7 @@ PermissionBasedTxFilter.Cache cache,
                 {
                     (txPermissions, shouldCache, contractExists) = versionedContract.AllowedTxTypes(parentHeader, tx);
                 }
-                catch (AbiException e)
+                catch (ContractException e)
                 {
                     if (_logger.IsError) _logger.Error($"Error calling tx permissions contract on {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} for tx {tx.ToShortString()}.", e);
                 }

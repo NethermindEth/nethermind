@@ -5,9 +5,7 @@ using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Text.Json;
-using System.Threading.RateLimiting;
 using Autofac;
-using CkzgLib;
 using Microsoft.AspNetCore.Http;
 using Nethermind.BeaconChain.Api;
 using Nethermind.BeaconChain.Api.Endpoints;
@@ -219,8 +217,11 @@ public class BeaconApiBlobsTests : BeaconApiFixture
 
         HttpResponseMessage response = await _host.GetAsync(path, OctetStream);
 
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), await response.Content.ReadAsStringAsync());
-        Assert.That(await response.Content.ReadAsByteArrayAsync(), Is.EqualTo(expectedSeeds.SelectMany(DataColumnKzgFixture.MakeBlob).ToArray()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), await response.Content.ReadAsStringAsync());
+            Assert.That(await response.Content.ReadAsByteArrayAsync(), Is.EqualTo(expectedSeeds.SelectMany(DataColumnKzgFixture.MakeBlob).ToArray()));
+        }
     }
 
     [Test]
@@ -255,35 +256,61 @@ public class BeaconApiBlobsTests : BeaconApiFixture
     }
 
     [Test]
-    public async Task Rebuilds_past_the_bound_are_refused_until_one_completes()
+    public async Task Rebuilds_past_the_bound_are_refused_until_one_response_completes([Values(Json, OctetStream)] string accept)
     {
         ManualTimestamper time = new(DateTimeOffset.FromUnixTimeSeconds((long)Spec.GenesisTime).UtcDateTime);
         BeaconApiContext ctx = new(new BeaconChainConfig(), Spec, _host.StatusHolder, new SlotClock(Spec, time), _host.Store,
             new LocalMetadataSource(), new NoOpEngineDriver(), LimboLogs.Instance, null, null, null);
-        List<RateLimitLease> leases = [.. Enumerable.Range(0, BlobsEndpoint.MaxConcurrentRebuilds).Select(_ => ctx.BlobRebuilds.AttemptAcquire())];
-        Assert.That(leases.Select(l => l.IsAcquired), Is.All.True, "fixture");
-
-        DefaultHttpContext busy = Request();
-        await BlobsEndpoint.GetBlobs(busy, SystematicRoot.ToString(), ctx);
-        leases[0].Dispose();
-        DefaultHttpContext served = Request();
-        await BlobsEndpoint.GetBlobs(served, SystematicRoot.ToString(), ctx);
-        leases[1].Dispose();
-
-        using (Assert.EnterMultipleScope())
+        using BlockingResponse first = new();
+        using BlockingResponse second = new();
+        Task firstRequest = BlobsEndpoint.GetBlobs(Request(first), SystematicRoot.ToString(), ctx);
+        Task secondRequest = BlobsEndpoint.GetBlobs(Request(second), SystematicRoot.ToString(), ctx);
+        try
         {
+            await Task.WhenAll(first.Entered.Task, second.Entered.Task).WaitAsync(TimeSpan.FromSeconds(20));
+            using MemoryStream busyBody = new();
+            DefaultHttpContext busy = Request(busyBody);
+            await BlobsEndpoint.GetBlobs(busy, SystematicRoot.ToString(), ctx);
             Assert.That(busy.Response.StatusCode, Is.EqualTo(StatusCodes.Status503ServiceUnavailable));
+
+            first.Release.TrySetResult();
+            await firstRequest;
+            using MemoryStream servedBody = new();
+            DefaultHttpContext served = Request(servedBody);
+            await BlobsEndpoint.GetBlobs(served, SystematicRoot.ToString(), ctx);
             Assert.That(served.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
-            Assert.That(((MemoryStream)served.Response.Body).ToArray(), Has.Length.EqualTo(2 * Ckzg.BytesPerBlob));
+        }
+        finally
+        {
+            first.Release.TrySetResult();
+            second.Release.TrySetResult();
+            await Task.WhenAll(firstRequest, secondRequest);
+            ctx.BlobRebuilds.Dispose();
         }
 
-        static DefaultHttpContext Request()
+        DefaultHttpContext Request(Stream stream)
         {
             DefaultHttpContext context = new();
-            context.Request.Headers.Accept = OctetStream;
-            context.Response.Body = new MemoryStream();
+            context.Request.Headers.Accept = accept;
+            context.Response.Body = stream;
             return context;
         }
+    }
+
+    private sealed class BlockingResponse : MemoryStream
+    {
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            Entered.TrySetResult();
+            await Release.Task.WaitAsync(cancellationToken);
+            base.Write(buffer.Span);
+        }
+
+        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+            WriteAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
     }
 
     private void PutFulu(Hash256 root, DataColumnKzgFixture.BlobFixture[] blobs, IEnumerable<int> columns)

@@ -26,9 +26,12 @@ public class HeadersByParentPruneRaceTests
 
         HttpResponseMessage response = await host.GetAsync($"/eth/v1/beacon/headers?parent_root={parent}", "application/json");
 
-        Assert.That(db.BeforeNextIndexRead, Is.Null, "the prune must have run before the index read");
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), "a block pruned mid-request is not retained; the pending entry a stored child keeps alive is not damage");
-        Assert.That((await BeaconApiTestHost.ReadJsonAsync(response)).RootElement.GetProperty("data").GetArrayLength(), Is.EqualTo(1), "the stored child is still listed");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db.BeforeNextIndexRead, Is.Null, "the prune must have run before the index read");
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), "a block pruned mid-request is not retained; the pending entry a stored child keeps alive is not damage");
+            Assert.That((await BeaconApiTestHost.ReadJsonAsync(response)).RootElement.GetProperty("data").GetArrayLength(), Is.EqualTo(1), "the stored child is still listed");
+        }
     }
 
     [Test]
@@ -41,9 +44,12 @@ public class HeadersByParentPruneRaceTests
 
         HttpResponseMessage response = await host.GetAsync($"/eth/v1/beacon/headers?parent_root={parent}", "application/json");
 
-        Assert.That(db.AfterNextIndexRead, Is.Null, "the import must have run after the index read");
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), "a parent imported mid-request is not a damaged index");
-        Assert.That((await BeaconApiTestHost.ReadJsonAsync(response)).RootElement.GetProperty("data").GetArrayLength(), Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db.AfterNextIndexRead, Is.Null, "the import must have run after the index read");
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), "a parent imported mid-request is not a damaged index");
+            Assert.That((await BeaconApiTestHost.ReadJsonAsync(response)).RootElement.GetProperty("data").GetArrayLength(), Is.EqualTo(0));
+        }
     }
 
     private sealed class HookedColumnsDb : TestColumnsDb

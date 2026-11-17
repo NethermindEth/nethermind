@@ -4,16 +4,14 @@
     "ChainSpecPath": "chainspec/foundation.json",
     "GenesisHash": "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3",
     "BaseDbPath": "nethermind_db/mainnet",
-    "LogFileName": "mainnet.log",
-    "MemoryHint": 1024000000
+    "LogFileName": "mainnet.log"
   },
   "Sync": {
     "FastSync": true,
     "SnapSync": true,
-    "PivotNumber": 26214000,
-    "PivotHash": "0xb70d816165168b6b380e94f480ab7f66dcc156b95dbbc9825f84191ecb36e90c",
+    "PivotNumber": 26415000,
+    "PivotHash": "0x0b5be6b9dd969ed1290b67aa50f063655f1c19cb4fbfe60562821c1de3796e1b",
     "PivotTotalDifficulty": "58750003716598352816469",
-    "FastSyncCatchUpHeightDelta": 10000000000,
     "AncientReceiptsBarrier": 24600000,
     "AncientBodiesBarrier": 24600000
   },

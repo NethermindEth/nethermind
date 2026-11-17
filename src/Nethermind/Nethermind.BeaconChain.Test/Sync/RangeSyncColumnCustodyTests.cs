@@ -368,6 +368,23 @@ public class RangeSyncColumnCustodyTests
         Assert.That(peer.Reports, Is.EqualTo(Enumerable.Repeat(PeerFailureReason.ProtocolViolation, served.Length)), "each (root, index) is penalized once, not once per copy");
     }
 
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_range_custodian_serving_a_competing_block_is_not_penalized(CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        BeaconBlock.Decode(BeaconBlock.Encode(fixture.Chain.Block.Message!), out BeaconBlock message);
+        SignedBeaconBlock block = new() { Message = message, Signature = fixture.Chain.Block.Signature };
+        block.Message!.StateRoot = Keccak.Compute("competing block");
+        StubPeer custodian = new("custodian", block.Message.Slot,
+            (_, _) => [new ForkedSignedBeaconBlock.OfFulu(block)],
+            (_, _, columns) => fixture.ServeColumns(columns), custody: StubPeer.AllColumns);
+
+        await fixture.RunOneRoundAsync([custodian], token);
+
+        Assert.That(custodian.Reports, Is.Empty);
+    }
+
     // fulu/p2p-interface.md: a sidecar's signed_block_header is the block's header, and its root is the block root, so it carries the block's signature.
     // Neither signature is verified here, so altered bytes on either side keep the column out of the pool without blaming the custodian.
     [Test]

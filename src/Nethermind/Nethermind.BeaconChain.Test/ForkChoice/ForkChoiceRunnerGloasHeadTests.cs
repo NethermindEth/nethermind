@@ -82,9 +82,12 @@ public class ForkChoiceRunnerGloasHeadTests
         harness.TickTo(decided.Slot + 1);
         GloasForkChoiceHarness.Block sibling = harness.Child(first, decided.Slot + 1, full: false, 0xD1);
         harness.Import(sibling);
-        Assert.That(harness.Runner.ProposerBoostRoot, Is.EqualTo(sibling.Root), "fixture bug");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Runner.ProposerBoostRoot, Is.EqualTo(sibling.Root), "fixture bug");
 
-        Assert.That(harness.Runner.GetHeadNode(), Is.EqualTo(new ForkChoiceNode(decided.Root, ForkChoicePayloadStatus.Full)));
+            Assert.That(harness.Runner.GetHeadNode(), Is.EqualTo(new ForkChoiceNode(decided.Root, ForkChoicePayloadStatus.Full)));
+        }
     }
 
     [Test]
@@ -146,8 +149,11 @@ public class ForkChoiceRunnerGloasHeadTests
         harness.TickTo(boostedSlot);
         GloasForkChoiceHarness.Block boosted = harness.Child(parent, boostedSlot, full: false, 0xB1);
         harness.Import(boosted);
-        Assert.That(harness.Runner.ProposerBoostRoot, Is.EqualTo(boosted.Root), "fixture bug");
-        Assert.That(harness.Runner.EnumerateAncestors(boosted.Root).Skip(1).First().Root, Is.EqualTo(parent.Root), "fixture bug");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Runner.ProposerBoostRoot, Is.EqualTo(boosted.Root), "fixture bug");
+            Assert.That(harness.Runner.EnumerateAncestors(boosted.Root).Skip(1).First().Root, Is.EqualTo(parent.Root), "fixture bug");
+        }
 
         harness.Runner.OnExecutionPayloadVerified(boosted.Root);
 
@@ -170,15 +176,19 @@ public class ForkChoiceRunnerGloasHeadTests
         harness.TickTo(anchor.Slot + 1);
         GloasForkChoiceHarness.Block child = harness.Child(anchor, anchor.Slot + 1, full: false, 0xC1);
         harness.Import(child);
-        Assert.That(harness.Runner.ProposerBoostRoot, Is.EqualTo(child.Root), "fixture bug");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Runner.ProposerBoostRoot, Is.EqualTo(child.Root), "fixture bug");
 
-        Assert.That(harness.Runner.GetWeight(new ForkChoiceNode(child.Root, ForkChoicePayloadStatus.Pending)), Is.EqualTo(GloasForkChoiceHarness.ProposerScore));
+            Assert.That(harness.Runner.GetWeight(new ForkChoiceNode(child.Root, ForkChoicePayloadStatus.Pending)), Is.EqualTo(GloasForkChoiceHarness.ProposerScore));
+        }
     }
 
     [Test]
     public void A_boosted_child_of_the_finalized_block_keeps_its_boost_after_pruning()
     {
         GloasForkChoiceHarness harness = new();
+        harness.Runner.PruneThreshold = 0;
         GloasForkChoiceHarness.Block first = harness.First;
         harness.TickTo(first.Slot);
         harness.Import(first);
@@ -189,12 +199,47 @@ public class ForkChoiceRunnerGloasHeadTests
         finalizing.CurrentJustifiedCheckpoint = finalized;
         finalizing.FinalizedCheckpoint = finalized;
         harness.Runner.OnBlock(child.Signed, finalizing);
-        Assert.That(harness.Runner.FinalizedCheckpoint, Is.EqualTo(new CheckpointRef(ForkCrossingChain.ForkEpoch, first.Root)), "fixture bug");
-        Assert.That(harness.Runner.ProposerBoostRoot, Is.EqualTo(child.Root), "fixture bug");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Runner.FinalizedCheckpoint, Is.EqualTo(new CheckpointRef(ForkCrossingChain.ForkEpoch, first.Root)), "fixture bug");
+            Assert.That(harness.Runner.ProposerBoostRoot, Is.EqualTo(child.Root), "fixture bug");
+        }
 
         harness.Runner.Prune();
 
-        Assert.That(harness.Runner.GetWeight(new ForkChoiceNode(child.Root, ForkChoicePayloadStatus.Pending)), Is.EqualTo(GloasForkChoiceHarness.ProposerScore));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Runner.EnumerateAncestors(child.Root).Last().Root, Is.EqualTo(first.Root));
+            Assert.That(harness.Runner.GetWeight(new ForkChoiceNode(child.Root, ForkChoicePayloadStatus.Pending)), Is.EqualTo(GloasForkChoiceHarness.ProposerScore));
+        }
+    }
+
+    [Test]
+    public void A_boosted_fork_whose_parent_was_pruned_does_not_interrupt_head_selection()
+    {
+        GloasForkChoiceHarness harness = new();
+        harness.Runner.PruneThreshold = 0;
+        GloasForkChoiceHarness.Block first = harness.First;
+        harness.TickTo(first.Slot);
+        harness.Import(first);
+        harness.TickTo(first.Slot + 1);
+        GloasForkChoiceHarness.Block finalized = harness.Child(first, first.Slot + 1, full: false, 0xC1);
+        harness.Import(finalized);
+        harness.TickTo(first.Slot + 2);
+        GloasForkChoiceHarness.Block fork = harness.Child(first, first.Slot + 2, full: false, 0xC2);
+        harness.Import(fork);
+        GloasForkChoiceHarness.Block head = harness.Child(finalized, first.Slot + 2, full: false, 0xC3);
+        BeaconStateGloas state = head.PostState.Clone();
+        Checkpoint checkpoint = new() { Epoch = ForkCrossingChain.ForkEpoch, Root = finalized.Root };
+        state.CurrentJustifiedCheckpoint = checkpoint;
+        state.FinalizedCheckpoint = checkpoint;
+        harness.Runner.OnBlock(head.Signed, state);
+        Assert.That(harness.Runner.ProposerBoostRoot, Is.EqualTo(fork.Root));
+
+        harness.Runner.Prune();
+
+        Assert.That(harness.Runner.EnumerateAncestors(fork.Root).Count(), Is.EqualTo(1), "fixture: the fork lost its parent");
+        Assert.That(() => harness.Runner.GetHead(), Throws.Nothing);
     }
 
     [Test]
@@ -226,8 +271,11 @@ public class ForkChoiceRunnerGloasHeadTests
         finalizing.CurrentJustifiedCheckpoint = checkpoint;
         finalizing.FinalizedCheckpoint = checkpoint;
         harness.Runner.OnBlock(parent.Signed, finalizing);
-        Assert.That(harness.Runner.FinalizedCheckpoint, Is.EqualTo(new CheckpointRef(10, finalized.Root)), "fixture bug");
-        Assert.That(fork.ProposerIndex, Is.EqualTo(parent.ProposerIndex), "fixture bug: both blocks are the same proposer's");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Runner.FinalizedCheckpoint, Is.EqualTo(new CheckpointRef(10, finalized.Root)), "fixture bug");
+            Assert.That(fork.ProposerIndex, Is.EqualTo(parent.ProposerIndex), "fixture bug: both blocks are the same proposer's");
+        }
 
         harness.TickTo(FinalizedSlot + 2);
         GloasForkChoiceHarness.Block boosted = harness.Child(parent, FinalizedSlot + 2, full: false, 0xB1);
@@ -282,8 +330,11 @@ public class ForkChoiceRunnerGloasHeadTests
 
         harness.TickTo(3 * Presets.SlotsPerEpoch);
 
-        Assert.That(harness.Runner.JustifiedCheckpoint, Is.EqualTo(new CheckpointRef(ForkCrossingChain.ForkEpoch, first.Root)), "fixture bug");
-        Assert.That(harness.Runner.GetHeadNode(), Is.EqualTo(new ForkChoiceNode(chain.Voting[^1].Root, ForkChoicePayloadStatus.Empty)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Runner.JustifiedCheckpoint, Is.EqualTo(new CheckpointRef(ForkCrossingChain.ForkEpoch, first.Root)), "fixture bug");
+            Assert.That(harness.Runner.GetHeadNode(), Is.EqualTo(new ForkChoiceNode(chain.Voting[^1].Root, ForkChoicePayloadStatus.Empty)));
+        }
     }
 
     [Test]
@@ -330,9 +381,12 @@ public class ForkChoiceRunnerGloasHeadTests
         ImportFulu(runner, equivocation);
         runner.OnTick(runner.GenesisTime + boostedSlot * Presets.SecondsPerSlot);
         ImportFulu(runner, boosted);
-        Assert.That(runner.ProposerBoostRoot, Is.EqualTo(boosted.Root), "fixture bug");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runner.ProposerBoostRoot, Is.EqualTo(boosted.Root), "fixture bug");
 
-        Assert.That(runner.GetHeadNode(), Is.EqualTo(new ForkChoiceNode(boosted.Root, ForkChoicePayloadStatus.Empty)));
+            Assert.That(runner.GetHeadNode(), Is.EqualTo(new ForkChoiceNode(boosted.Root, ForkChoicePayloadStatus.Empty)));
+        }
     }
 
     [Test]
@@ -355,9 +409,15 @@ public class ForkChoiceRunnerGloasHeadTests
         GloasForkChoiceHarness.Block child = harness.Child(first, first.Slot + 1, full: true, 0xC1);
         harness.Import(child);
 
+        List<Hash256> invalidated = [];
+        harness.Runner.PayloadInvalidated = (root, _) => invalidated.Add(root);
         harness.Runner.InvalidateExecutionChain(first.Root, first.BidBlockHash, latestValidHash: null);
 
-        Assert.That(harness.Runner.GetHeadNode(), Is.EqualTo(new ForkChoiceNode(first.Root, ForkChoicePayloadStatus.Empty)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Runner.GetHeadNode(), Is.EqualTo(new ForkChoiceNode(first.Root, ForkChoicePayloadStatus.Empty)));
+            Assert.That(invalidated, Is.EquivalentTo(new[] { first.Root, child.Root }));
+        }
     }
 
     private static void ImportFulu(ForkChoiceRunner runner, UnsignedChain.ChainBlock block) =>

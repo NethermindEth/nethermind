@@ -83,7 +83,17 @@ public class SszGenerator : IIncrementalGenerator
             if (generatedCode is not null)
             {
                 if (decl.AlternateType is not null && GenerateClassCode(spc, decl.AlternateType, decl.Location) is { } alternateCode)
-                    generatedCode = SelectPresetBodies(generatedCode, alternateCode, decl.PresetSelector!);
+                {
+                    try
+                    {
+                        generatedCode = SelectPresetBodies(generatedCode, alternateCode, decl.PresetSelector!);
+                    }
+                    catch (InvalidOperationException exception)
+                    {
+                        spc.ReportDiagnostic(Diagnostic.Create(GenerationFailureRule, decl.Location ?? Location.None, decl.TypeName, exception.Message));
+                        return;
+                    }
+                }
                 spc.AddSource($"Serialization.SszCodec.{decl.Type.HintName}.cs", SourceText.From(generatedCode, Encoding.UTF8));
             }
         });
@@ -102,12 +112,32 @@ public class SszGenerator : IIncrementalGenerator
         {
             MethodDeclarationSyntax method = methods[i];
             MethodDeclarationSyntax alternate = alternateMethods[i];
-            if (method.Body is null || alternate.Body is null || method.Body.IsEquivalentTo(alternate.Body)) continue;
+            if (!Signature(method).IsEquivalentTo(Signature(alternate)))
+                throw new InvalidOperationException($"SSZ preset method signatures differ for '{method.Identifier}'.");
+            if (method.IsEquivalentTo(alternate)) continue;
+            BlockSyntax body = Body(method);
+            BlockSyntax alternateBody = Body(alternate);
             replacements.Add(method, method.WithBody(SyntaxFactory.Block(
-                SyntaxFactory.IfStatement(SyntaxFactory.ParseExpression(selector), alternate.Body,
-                    SyntaxFactory.ElseClause(method.Body)))));
+                SyntaxFactory.IfStatement(SyntaxFactory.ParseExpression(selector), alternateBody,
+                    SyntaxFactory.ElseClause(body)))).WithExpressionBody(null).WithSemicolonToken(default));
         }
         return root.ReplaceNodes(replacements.Keys, (original, _) => replacements[original]).NormalizeWhitespace().ToFullString();
+
+        static MethodDeclarationSyntax Signature(MethodDeclarationSyntax method) =>
+            method.WithBody(null).WithExpressionBody(null).WithSemicolonToken(default);
+
+        static BlockSyntax Body(MethodDeclarationSyntax method)
+        {
+            if (method.Body is { } body) return body;
+            if (method.ExpressionBody is not { Expression: { } expression })
+                throw new InvalidOperationException($"SSZ preset method '{method.Identifier}' has no body.");
+            StatementSyntax statement = expression is ThrowExpressionSyntax thrown
+                ? SyntaxFactory.ThrowStatement(thrown.Expression)
+                : method.ReturnType is PredefinedTypeSyntax type && type.Keyword.IsKind(SyntaxKind.VoidKeyword)
+                    ? SyntaxFactory.ExpressionStatement(expression)
+                    : SyntaxFactory.ReturnStatement(expression);
+            return SyntaxFactory.Block(statement);
+        }
     }
 
     private static string PartialTypeDeclaration(SszType decl) =>
@@ -1153,7 +1183,7 @@ internal static partial class SszCodecHelpers
             return false;
         }
 
-        return (property.IsNullable && CanEncodeNullAsDefault(property)) || !property.Type.IsStruct;
+        return (property.IsNullable && CanEncodeNullAsDefault(property)) || (!property.Type.IsStruct && property.IsReferenceType);
     }
 
     private static string UsingsBlock(SszType decl) =>
@@ -1283,12 +1313,17 @@ internal static partial class SszCodecHelpers
                     "merkleizer.CalculateRoot(out root);",
                 ]);
             }
-            bool isByteListItself = decl.IsSszListItself && decl.IsStruct && IsByteList(variables[0]);
-            string byteListVariableName = isByteListItself ? VarName(variables[0].Name) : string.Empty;
-            string byteListAssignment = isByteListItself ? DecodeAssignmentExpression(variables[0], byteListVariableName, sourceIsArray: true) : string.Empty;
+            // The item is built in a local before its slot is addressed, so the slot address is not held across the build.
+            // Skipping `new()` is only safe when it runs no user constructor. The locals have fixed names that cannot clash with the decoder's own locals.
+            bool decodesItemDirectly = decl.IsSszListItself && decl.IsStruct && !decl.HasExplicitParameterlessConstructor;
+            bool isByteListItself = decodesItemDirectly && IsByteList(variables[0]);
+            bool isConstructedByteListItself = decodesItemDirectly && IsConstructedByteList(variables[0]);
+            string byteListAssignment = isByteListItself ? DecodeAssignmentExpression(variables[0], "__value", sourceIsArray: true) : string.Empty;
             string DecodeCollectionItem(string sliceExpression, string destination) => isByteListItself
-                ? $"{{ byte[] {byteListVariableName} = DecodeSszByteList({sliceExpression}, {variables[0].Limit}UL, nameof({decl.TypeReferenceName}), nameof({variables[0].Name})); {destination}.{variables[0].Name} = {byteListAssignment}; }}"
-                : $"Decode({sliceExpression}, out {destination});";
+                ? $"{{ byte[] __value = DecodeSszByteList({sliceExpression}, {variables[0].Limit}UL, nameof({decl.TypeReferenceName}), nameof({variables[0].Name})); {destination}.{variables[0].Name} = {byteListAssignment}; }}"
+                : isConstructedByteListItself
+                    ? $"{{ ReadOnlySpan<byte> __item = {sliceExpression}; ValidateSszListLimit(__item.Length, {variables[0].Limit}UL, nameof({decl.TypeReferenceName}), nameof({variables[0].Name})); {variables[0].CollectionTypeReferenceName} __value = new {variables[0].CollectionTypeReferenceName}(__item); {destination}.{variables[0].Name} = __value; }}"
+                    : $"Decode({sliceExpression}, out {destination});";
             string result = FixWhitespace(decl.IsSszListItself ?
 $@"using Nethermind.Serialization.Ssz.Merkleization;
 using Nethermind.Serialization.Ssz;

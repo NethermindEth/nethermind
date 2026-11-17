@@ -97,18 +97,19 @@ public class ExecutionPayloadEnvelopeImporterTests
     }
 
     [Test]
-    public void An_envelope_whose_blob_data_is_unavailable_is_deferred_without_an_engine_call()
+    public void Only_a_signed_envelope_whose_blob_data_is_unavailable_is_deferred([Values] bool validSignature)
     {
         BeaconStateGloas state = StateWithCommittedBid(out SignedExecutionPayloadBid bid, out Bls.SecretKey builderSk);
         SignedExecutionPayloadEnvelope envelope = ValidEnvelope(state, bid.Message!, builderSk, builderIndex: 0);
+        if (!validSignature) envelope.Signature = default;
         IEngineRpcModule engine = ScriptedEngine(ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1 { Status = PayloadStatus.Valid }));
         long rejectionsBefore = Rejections();
 
         ExecutionPayloadEnvelopeImportResult result = CreateImporter(new BlockStates().Add(state), engine, (_, _) => false).Import(envelope);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(result, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.DataUnavailable));
-        Assert.That(Rejections(), Is.EqualTo(rejectionsBefore));
+        Assert.That(result, Is.EqualTo(validSignature ? ExecutionPayloadEnvelopeImportResult.DataUnavailable : ExecutionPayloadEnvelopeImportResult.Invalid));
+        Assert.That(Rejections(), Is.EqualTo(rejectionsBefore + (validSignature ? 0 : 1)));
         engine.DidNotReceiveWithAnyArgs().engine_newPayloadV5(default!, default!, default, default);
     }
 

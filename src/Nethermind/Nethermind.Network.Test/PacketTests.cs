@@ -15,9 +15,12 @@ namespace Nethermind.Network.Test
         {
             byte[] data = { 3, 4, 5 };
             Packet packet = new("eth", 2, data);
-            Assert.That(packet.Protocol, Is.EqualTo("eth"));
-            Assert.That(packet.PacketType, Is.EqualTo(2));
-            Assert.That(packet.Data, Is.EqualTo(data));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(packet.Protocol, Is.EqualTo("eth"));
+                Assert.That(packet.PacketType, Is.EqualTo(2));
+                Assert.That(packet.Data, Is.EqualTo(data));
+            }
         }
     }
 }

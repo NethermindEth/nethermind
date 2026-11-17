@@ -16,10 +16,13 @@ public class ReceiveResultTests
     {
         ReceiveResult result = new() { Read = 5, EndOfMessage = true, Closed = true };
 
-        Assert.That(default(ReceiveResult).IsNull, Is.True);
-        Assert.That(result.IsNull, Is.False);
-        Assert.That(result.Read, Is.EqualTo(5));
-        Assert.That(result.EndOfMessage, Is.True);
-        Assert.That(result.Closed, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(default(ReceiveResult).IsNull, Is.True);
+            Assert.That(result.IsNull, Is.False);
+            Assert.That(result.Read, Is.EqualTo(5));
+            Assert.That(result.EndOfMessage, Is.True);
+            Assert.That(result.Closed, Is.True);
+        }
     }
 }

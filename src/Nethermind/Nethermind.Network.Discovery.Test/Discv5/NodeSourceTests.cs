@@ -39,7 +39,9 @@ public class NodeSourceTests
         Node firstNode = CreateNode(1);
         RaiseNode(kademlia, firstNode);
 
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That(await firstMove.AsTask(), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(enumerator.Current, Is.EqualTo(firstNode));
 
         for (int i = 2; i < 66; i++)
@@ -59,7 +61,9 @@ public class NodeSourceTests
         await Task.Yield();
         RaiseNode(kademlia, droppedNode);
 
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That(await droppedMove.AsTask(), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(enumerator.Current, Is.EqualTo(droppedNode));
     }
 
@@ -168,7 +172,9 @@ public class NodeSourceTests
 
         await using IAsyncEnumerator<Node> enumerator = source.DiscoverNodes(token).GetAsyncEnumerator(token);
 
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That(await enumerator.MoveNextAsync(), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(enumerator.Current.Id, Is.EqualTo(TestItem.PrivateKeys[2].PublicKey));
     }
 
@@ -184,7 +190,9 @@ public class NodeSourceTests
 
         await using IAsyncEnumerator<Node> enumerator = source.DiscoverNodes(token).GetAsyncEnumerator(token);
 
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That(await enumerator.MoveNextAsync(), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(enumerator.Current.Id, Is.EqualTo(TestItem.PrivateKeys[2].PublicKey));
     }
 
@@ -202,7 +210,9 @@ public class NodeSourceTests
 
         await using IAsyncEnumerator<Node> enumerator = source.DiscoverNodes(token).GetAsyncEnumerator(token);
 
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That(await enumerator.MoveNextAsync(), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(enumerator.Current.Id, Is.EqualTo(currentNode.Id));
     }
 

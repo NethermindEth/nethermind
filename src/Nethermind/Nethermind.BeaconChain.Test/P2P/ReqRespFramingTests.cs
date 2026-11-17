@@ -214,8 +214,11 @@ public class ReqRespFramingTests
 
         Eth2ReqRespException exception = await Assert.ThrowsAsync<Eth2ReqRespException>(
             () => ReqRespFraming.ReadRequestAsync(stream, maxSize: 8, default));
-        Assert.That(exception.Message, Does.Contain("bound"));
-        Assert.That(stream.Position, Is.LessThan(stream.Length));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Does.Contain("bound"));
+            Assert.That(stream.Position, Is.LessThan(stream.Length));
+        }
     }
 
     [TestCase("0xff060000734e61507059", Description = "repeated stream identifiers")]
@@ -234,8 +237,11 @@ public class ReqRespFramingTests
 
         Eth2ReqRespException exception = await Assert.ThrowsAsync<Eth2ReqRespException>(
             () => ReqRespFraming.ReadRequestAsync(stream, maxSize: 8, default, allowEmpty: true));
-        Assert.That(exception.Message, Does.Contain("bound"));
-        Assert.That(stream.Position, Is.LessThan(128), "the read stops at the bound, not at the end of the input");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Does.Contain("bound"));
+            Assert.That(stream.Position, Is.LessThan(128), "the read stops at the bound, not at the end of the input");
+        }
     }
 
     // A 10-byte stream identifier plus a padding frame of 4 header bytes and this much data: max_compressed_len(0) = 32 bytes is the most an empty request reads.
@@ -263,8 +269,11 @@ public class ReqRespFramingTests
         byte[] wire = [.. Bytes.FromHexString("0x08ff060000734e61507059"), 0xfe, 11, 0, 0, .. new byte[11], .. Bytes.FromHexString("0x010c00000175de410100000000000000"), 0x2a];
         using MemoryStream stream = new(wire);
 
-        Assert.That(await ReqRespFraming.ReadRequestAsync(stream, maxSize: 8, default), Is.EqualTo(Bytes.FromHexString(PingSsz)));
-        Assert.That(stream.Position, Is.EqualTo(wire.Length - 1), "the byte past max_compressed_len(n) stays unread");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await ReqRespFraming.ReadRequestAsync(stream, maxSize: 8, default), Is.EqualTo(Bytes.FromHexString(PingSsz)));
+            Assert.That(stream.Position, Is.EqualTo(wire.Length - 1), "the byte past max_compressed_len(n) stays unread");
+        }
     }
 
     [Test]
@@ -289,6 +298,35 @@ public class ReqRespFramingTests
 
     private static Task<ResponseChunk?> ReadChunkAsync(Stream stream) =>
         ReqRespFraming.ReadResponseChunkAsync(stream, ReqRespFraming.ForkContextLength, ReqRespFraming.MaxPayloadSize, default);
+
+    [Test]
+    public async Task Oversized_snappy_frames_are_rejected_before_payload_allocation([Values] bool compressedLength)
+    {
+        byte[] frame = compressedLength ? [0, 255, 255, 255] : [0, 8, 0, 0, 0, 0, 0, 0, 0x80, 0x80, 0x80, 5];
+        using MemoryStream stream = new([0x80, 0x80, 0x80, 5, 255, 6, 0, 0, .. "sNaPpY"u8, .. frame]);
+        Eth2ReqRespException error = (await Assert.ThrowsAsync<Eth2ReqRespException>(() =>
+            ReqRespFraming.ReadRequestAsync(stream, ReqRespFraming.MaxPayloadSize, default)))!;
+        Assert.That(error.Message, Does.Contain(compressedLength ? "limit" : "65536"));
+    }
+
+    [Test]
+    [CancelAfter(5_000)]
+    public async Task Empty_error_on_an_open_channel_returns_without_waiting_for_eof(CancellationToken token)
+    {
+        Channel channel = new();
+        using ChannelStreamAdapter input = new(channel);
+        using ChannelStreamAdapter output = new(channel.Reverse);
+        Task<ResponseChunk?> read = ReqRespFraming.ReadResponseChunkAsync(input, 0, 8, token);
+        try
+        {
+            await output.WriteAsync(Bytes.FromHexString("0x0300ff060000734e61507059"), token);
+            AssertChunk(await read.WaitAsync(token), ReqRespFraming.ResponseCode.ResourceUnavailable, [], []);
+        }
+        finally
+        {
+            await channel.CloseAsync();
+        }
+    }
 
     private static void AssertChunk(ResponseChunk? actual, byte result, byte[] contextBytes, byte[] payload)
     {

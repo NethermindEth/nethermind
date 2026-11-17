@@ -89,7 +89,7 @@ public class CheckpointSync(
     public string EffectiveCheckpointSyncUrl => !string.IsNullOrWhiteSpace(config.CheckpointSyncUrl)
         ? config.CheckpointSyncUrl
         : spec.CheckpointSyncUrl
-            ?? throw new InvalidOperationException($"No checkpoint sync URL is configured and chain id {spec.ChainId} has no default; set Beacon.CheckpointSyncUrl explicitly.");
+            ?? throw new InvalidOperationException($"No checkpoint sync URL is configured and chain id {spec.ChainId} has no default; set BeaconChain.CheckpointSyncUrl explicitly.");
 
     /// <summary>The configured checkpoint sync URL reduced to scheme and host for logs, or a placeholder when none is configured or it is not an absolute URI; never throws.</summary>
     internal string CheckpointSyncUrlForLog

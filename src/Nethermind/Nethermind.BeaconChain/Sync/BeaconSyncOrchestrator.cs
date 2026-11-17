@@ -177,6 +177,7 @@ public sealed class BeaconSyncOrchestrator(
 
     private readonly LruCache<Hash256, ulong> _envelopeRequestedAtSlot = new(RecentEnvelopeRequestCapacity, "beacon sync envelope by-root requests");
     private readonly LruCache<Hash256, RangeSync.ColumnFetchRotation> _envelopePeerSelections = new(RecentEnvelopeRequestCapacity, "beacon sync envelope peers");
+    private readonly LruCache<Hash256, int> _ancestorPeerSelections = new(RecentEnvelopeRequestCapacity, "beacon sync ancestor peers");
 
     private readonly LruCache<Hash256, RangeSync.ColumnFetchRotation> _rangeEnvelopePeerSelections = new(RecentEnvelopeRequestCapacity, "beacon sync range envelope peers");
 
@@ -372,6 +373,8 @@ public sealed class BeaconSyncOrchestrator(
         finally
         {
             await timerCancellation.CancelAsync();
+            if (columnRouter is not null) await columnRouter.DisposeAsync();
+            if (discovery is not null) await discovery.Stop();
             try
             {
                 await timer;
@@ -1215,6 +1218,10 @@ public sealed class BeaconSyncOrchestrator(
         }
         else if (regenerationDeferred || result is BlockImportResult.DataUnavailable or BlockImportResult.EngineUnavailable or BlockImportResult.ParentPayloadUnverified or BlockImportResult.FutureSlot)
         {
+            if (origin == ImportOrigin.Gossip && result == BlockImportResult.DataUnavailable
+                && (rangeSync.VerifyBlockSignature is null || await rangeSync.VerifyBlockSignature(block) != true))
+                return result;
+
             if (!QueuePendingRetry(root, block, origin, servedBy, regenerationDeferred))
             {
                 ReleaseImporterDeferral(root);
@@ -1236,6 +1243,7 @@ public sealed class BeaconSyncOrchestrator(
             }
             else if (result == BlockImportResult.DataUnavailable && !retryingOnColumns)
             {
+                if (origin == ImportOrigin.Gossip) gossipRouter.MarkProposalSeen(block.Slot, block.ProposerIndex);
                 AwaitColumns(block, root, token);
             }
 
@@ -2531,16 +2539,21 @@ public sealed class BeaconSyncOrchestrator(
         }
 
         _ancestorFetches[root] = [(chain, sources)];
-        _ = RunAncestorFetchAsync(root, token);
+        IReadOnlyList<IBeaconSyncPeer> candidates = peerPool.GetBestPeers(0);
+        _ancestorPeerSelections.TryGet(root, out int cursor);
+        IBeaconSyncPeer[] peers = new IBeaconSyncPeer[Math.Min(candidates.Count, MaxBackfillPeersPerRequest)];
+        for (int i = 0; i < peers.Length; i++) peers[i] = candidates[(cursor + i) % candidates.Count];
+        if (candidates.Count != 0) _ancestorPeerSelections.Set(root, (cursor + peers.Length) % candidates.Count);
+        _ = RunAncestorFetchAsync(root, peers, token);
     }
 
     /// <remarks>Touches no worker state: the result is reported as an <see cref="AncestorFetchedItem"/>, also after a fault, so the fetch always frees its place.</remarks>
-    private async Task RunAncestorFetchAsync(Hash256 root, CancellationToken token)
+    private async Task RunAncestorFetchAsync(Hash256 root, IReadOnlyList<IBeaconSyncPeer> peers, CancellationToken token)
     {
         (ForkedSignedBeaconBlock Block, IBeaconSyncPeer Source)? fetched = null;
         try
         {
-            fetched = await FetchBlockByRootAsync(root, token);
+            fetched = await FetchBlockByRootAsync(root, peers, token);
         }
         catch (Exception e)
         {
@@ -2594,6 +2607,15 @@ public sealed class BeaconSyncOrchestrator(
                     continue;
                 }
 
+                if (fetched.Block.Slot >= chain[^1].Slot || fetched.Block.Slot <= Math.Max(_anchorSlot, FinalizedSlot))
+                {
+                    fetched.Source?.ReportFailure(PeerFailureReason.ProtocolViolation, "Fetched ancestor is not between finality and its child's slot");
+                    HoldRefusedBackfill(chain[0]);
+                    WakeRangeSyncForAncestors();
+                    EndBackfill(chain[0]);
+                    continue;
+                }
+
                 chain.Add(fetched.Block);
                 sources.Add(fetched.Source);
             }
@@ -2636,9 +2658,8 @@ public sealed class BeaconSyncOrchestrator(
             _ => false,
         };
 
-    private async Task<(ForkedSignedBeaconBlock Block, IBeaconSyncPeer Source)?> FetchBlockByRootAsync(Hash256 root, CancellationToken token)
+    private static async Task<(ForkedSignedBeaconBlock Block, IBeaconSyncPeer Source)?> FetchBlockByRootAsync(Hash256 root, IReadOnlyList<IBeaconSyncPeer> peers, CancellationToken token)
     {
-        IReadOnlyList<IBeaconSyncPeer> peers = peerPool.GetBestPeers(0);
         for (int i = 0; i < peers.Count && i < MaxBackfillPeersPerRequest; i++)
         {
             IBeaconSyncPeer peer = peers[i];

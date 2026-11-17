@@ -55,8 +55,11 @@ public class BeaconBlockRootHandlerTests
         (Address? toAddress, AccessList? accessList) = _beaconBlockRootHandler
             .BeaconRootsAccessList(block, Shanghai.Instance);
 
-        Assert.That(accessList, Is.Null);
-        Assert.That(toAddress, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accessList, Is.Null);
+            Assert.That(toAddress, Is.Null);
+        }
     }
 
     [Test]
@@ -69,8 +72,11 @@ public class BeaconBlockRootHandlerTests
         (Address? toAddress, AccessList? accessList) = _beaconBlockRootHandler
             .BeaconRootsAccessList(block, Cancun.Instance);
 
-        Assert.That(accessList, Is.Null);
-        Assert.That(toAddress, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accessList, Is.Null);
+            Assert.That(toAddress, Is.Null);
+        }
     }
 
     [Test]
@@ -83,8 +89,11 @@ public class BeaconBlockRootHandlerTests
         (Address? toAddress, AccessList? accessList) = _beaconBlockRootHandler
             .BeaconRootsAccessList(block, Cancun.Instance);
 
-        Assert.That(accessList, Is.Null);
-        Assert.That(toAddress, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accessList, Is.Null);
+            Assert.That(toAddress, Is.Null);
+        }
     }
 
     [Test]
@@ -97,8 +106,11 @@ public class BeaconBlockRootHandlerTests
         (Address? toAddress, AccessList? accessList) = _beaconBlockRootHandler
             .BeaconRootsAccessList(block, Cancun.Instance);
 
-        Assert.That(accessList, Is.Null);
-        Assert.That(toAddress, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accessList, Is.Null);
+            Assert.That(toAddress, Is.Null);
+        }
     }
 
     [Test]
@@ -111,8 +123,11 @@ public class BeaconBlockRootHandlerTests
             .BeaconRootsAccessList(block, Cancun.Instance, includeStorageCells: true);
 
         Assert.That(accessList, Is.Not.Null);
-        Assert.That(accessList.Count.AddressesCount, Is.EqualTo(1));
-        Assert.That(accessList.Count.StorageKeysCount, Is.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accessList.Count.AddressesCount, Is.EqualTo(1));
+            Assert.That(accessList.Count.StorageKeysCount, Is.EqualTo(2));
+        }
     }
 
     [Test]
@@ -125,8 +140,11 @@ public class BeaconBlockRootHandlerTests
             .BeaconRootsAccessList(block, Cancun.Instance, false);
 
         Assert.That(accessList, Is.Not.Null);
-        Assert.That(accessList.Count.AddressesCount, Is.EqualTo(1));
-        Assert.That(accessList.Count.StorageKeysCount, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accessList.Count.AddressesCount, Is.EqualTo(1));
+            Assert.That(accessList.Count.StorageKeysCount, Is.EqualTo(0));
+        }
     }
 
     [Test]
@@ -215,7 +233,9 @@ public class BeaconBlockRootHandlerTests
 
         Transaction userTransaction = Build.A.Transaction.WithTo(TestItem.AddressB).WithGasLimit(100_000)
             .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+#pragma warning disable NUnit2045 // Transaction execution must succeed before inspecting its output or performing the next execution.
         Assert.That(processor.Execute(userTransaction, NullTxTracer.Instance), Is.EqualTo(TransactionResult.Ok));
+#pragma warning restore NUnit2045
         Assert.That(block.GasUsed, Is.EqualTo(userTransaction.BlockGasUsed).And.GreaterThan(0),
             "system execution and state gas must not leak into the next user transaction's block counters");
     }

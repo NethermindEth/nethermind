@@ -27,11 +27,11 @@ public class GloasStateCloneTests
         // Bid, RANDAO, header and root vectors, then the boundary (registry, lookahead, payment and
         // PTC window rotation, availability bits), then a settlement that replaces a Builder element.
         Advance(clone, builderSk);
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(SszRoots.HashTreeRoot(source), Is.EqualTo(sourceRoot), "advancing the clone must not reach the source through any shared field");
             Assert.That(SszRoots.HashTreeRoot(clone), Is.Not.EqualTo(sourceRoot), "fixture bug: advancing must actually have changed the clone");
-        });
+        }
 
         Hash256 cloneRoot = SszRoots.HashTreeRoot(clone);
         Advance(source, builderSk);
@@ -50,9 +50,12 @@ public class GloasStateCloneTests
         {
             object? expected = property.GetValue(source);
             object? actual = property.GetValue(clone);
-            Assert.That(expected, Is.Not.Null, $"fixture bug: {property.Name} must be populated for this test to see it");
-            Assert.That(actual, Is.Not.Null, $"{property.Name} was not cloned");
-            Assert.That(SameContent(expected!, actual!), Is.True, $"{property.Name} differs between source and clone");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(expected, Is.Not.Null, $"fixture bug: {property.Name} must be populated for this test to see it");
+                Assert.That(actual, Is.Not.Null, $"{property.Name} was not cloned");
+                Assert.That(SameContent(expected!, actual!), Is.True, $"{property.Name} differs between source and clone");
+            }
             if (property.PropertyType.IsValueType)
                 continue;
             bool copied = CopiedFields.Contains(property.Name);

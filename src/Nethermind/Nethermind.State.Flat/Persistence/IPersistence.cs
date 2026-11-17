@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Persistence;
@@ -15,9 +17,10 @@ public enum ReaderFlags
     Sync = 1,
 
     /// <summary>
-    /// The reader serves long sequential scans (e.g. flat-trie verification): backing snapshots may enable
-    /// readahead iterators for <see cref="ReadFlags.HintReadAhead"/> reads, and the shared reader cache in
-    /// <see cref="CachedReaderPersistence"/> is bypassed so the hint reaches the storage layer.
+    /// The reader serves long sequential scans (e.g. flat-trie verification, snap range serving): backing
+    /// snapshots may enable readahead iterators for <see cref="ReadFlags.HintReadAhead"/> reads, which do not
+    /// fill the block cache, and the shared reader cache in <see cref="CachedReaderPersistence"/> is bypassed so
+    /// the hint reaches the storage layer.
     /// </summary>
     FullScan = 2,
 }
@@ -39,8 +42,14 @@ public interface IPersistence
         // zero and missing to conform to a potential verkle need.
         bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue);
         StateId CurrentState { get; }
-        byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags);
-        byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags);
+
+        /// <summary>Passes the RLP of the state trie node at <paramref name="path"/> to <paramref name="action"/>, which must not keep it.</summary>
+        /// <returns>Whether the node was found.</returns>
+        bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct;
+
+        /// <summary>Passes the RLP of the storage trie node at <paramref name="path"/> to <paramref name="action"/>, which must not keep it.</summary>
+        /// <returns>Whether the node was found.</returns>
+        bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct;
 
         // Raw operations are used in importer
         byte[]? GetAccountRaw(in ValueHash256 addrHash);
@@ -95,9 +104,14 @@ public interface IPersistence
     {
         void SelfDestruct(Address addr);
         void SetAccount(Address addr, Account? account);
+
+        /// <summary>Writes an account that is already in the slim account encoding, as persisted snapshots hold it.</summary>
+        /// <remarks>Lets a store that keeps accounts in this encoding write the bytes as they are, without decoding them.</remarks>
+        void SetSlimAccount(Address addr, scoped ReadOnlySpan<byte> slimRlp) => SetAccount(addr, AccountDecoder.Slim.Decode(slimRlp));
+
         void SetStorage(Address addr, in UInt256 slot, in UInt256? value);
         void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp);
-        void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp);
+        void SetStorageTrieNode(in ValueHash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp);
 
         /// <summary>
         /// Writes a slot whose value is already the trie-leaf RLP byte string (<c>RLP(stripped)</c>), as produced
@@ -109,6 +123,16 @@ public interface IPersistence
 
         void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath);
         void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath);
+
+        /// <summary>
+        /// Does what <see cref="SelfDestruct"/> does, deleting the storage slots and storage trie nodes, for every
+        /// account whose path is within <c>[<paramref name="fromPath"/>, <paramref name="toPath"/>]</c>.
+        /// </summary>
+        /// <remarks>
+        /// Storage is keyed by the first 20 bytes of the account path, so the bounds are compared on those bytes only,
+        /// as in <see cref="DeleteAccountRange"/>.
+        /// </remarks>
+        void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath);
 
         /// <summary>
         /// Deletes every state trie node whose node and subtree are entirely contained within the value range

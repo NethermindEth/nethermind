@@ -55,11 +55,14 @@ namespace Nethermind.Config.Test
             Enode enode = new(publicKey, mapped, 0, 40306);
 
             // HostIp is preserved verbatim (matches legacy persisted-node decoding behavior)...
-            Assert.That(enode.HostIp, Is.EqualTo(mapped));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(enode.HostIp, Is.EqualTo(mapped));
 
-            // ...but Info must bracket-free normalize it to plain IPv4, otherwise it produces an
-            // invalid URI that fails to reload as a persisted node on the next startup.
-            Assert.That(Enode.IsEnode(enode.Info, out _), Is.True);
+                // ...but Info must bracket-free normalize it to plain IPv4, otherwise it produces an
+                // invalid URI that fails to reload as a persisted node on the next startup.
+                Assert.That(Enode.IsEnode(enode.Info, out _), Is.True);
+            }
             Enode reparsed = new(enode.Info);
             Assert.That(reparsed.HostIp, Is.EqualTo(IPAddress.Parse("192.168.2.54")));
         }
@@ -73,8 +76,11 @@ namespace Nethermind.Config.Test
             IPAddress hostIp = IPAddress.Parse(host);
             Enode enode = new(publicKey, hostIp, 30303, discoveryPort);
 
-            Assert.That(enode.Info, Does.EndWith(expectedTail));
-            Assert.That(Enode.IsEnode(enode.Info, out _), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(enode.Info, Does.EndWith(expectedTail));
+                Assert.That(Enode.IsEnode(enode.Info, out _), Is.True);
+            }
             Enode reparsed = new(enode.Info);
             using (Assert.EnterMultipleScope())
             {

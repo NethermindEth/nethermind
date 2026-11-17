@@ -4,6 +4,9 @@
 using System;
 using Autofac;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
@@ -11,9 +14,11 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Db;
 using Nethermind.Db;
 using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.TxPool;
 
 namespace Nethermind.Evm.Benchmark;
 
@@ -40,6 +45,32 @@ internal static class BlockProcessingBenchmarkSetup
             b.RegisterInstance(wsm).As<IWorldStateManager>().ExternallyOwned();
             b.AddModule(validationModules);
             b.AddModule(mainProcessingModules);
+        });
+    }
+
+    /// <summary>Opens a scope over one in-memory world state wired as a block producer's environment.</summary>
+    /// <remarks>The registrations mirror <see cref="GlobalWorldStateBlockProducerEnvFactory"/>: the build-up
+    /// transaction adapter, the production transactions executor, which asks the picker about each candidate, and the
+    /// production withdrawal processor. Neither the validation nor the main processing modules apply to a producer.</remarks>
+    /// <param name="container">The container built from the production modules.</param>
+    /// <param name="stateHeaderProvider">Receives the parent header once the caller has seeded the state.</param>
+    public static ILifetimeScope BeginProductionScope(IContainer container, out TestStateHeaderProvider stateHeaderProvider)
+    {
+        IDbProvider dbProvider = TestMemDbProvider.Init();
+        stateHeaderProvider = new TestStateHeaderProvider();
+        IWorldStateManager wsm = TestWorldStateFactory.CreateWorldStateManagerForTest(dbProvider, stateHeaderProvider, NullLogManager.Instance);
+        IWorldStateScopeProvider scopeProvider = wsm.GlobalWorldState;
+        TransactionProcessorAdapterFactory buildUpAdapter = static transactionProcessor => new BuildUpTransactionProcessorAdapter(transactionProcessor);
+
+        return container.BeginLifetimeScope(b =>
+        {
+            b.RegisterInstance(scopeProvider).As<IWorldStateScopeProvider>().ExternallyOwned();
+            b.RegisterInstance(wsm).As<IWorldStateManager>().ExternallyOwned();
+            b.AddScoped(buildUpAdapter)
+                .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockProductionTransactionsExecutor>()
+                .AddDecorator<IWithdrawalProcessor, BlockProductionWithdrawalProcessor>()
+                // The executor only evicts unpaid frame transactions through the pool.
+                .AddSingleton<ITxPool>(NullTxPool.Instance);
         });
     }
 

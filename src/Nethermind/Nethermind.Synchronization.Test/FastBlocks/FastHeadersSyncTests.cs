@@ -90,8 +90,11 @@ public class FastHeadersSyncTests
 
         feed.InitializeFeed();
 
-        Assert.That(syncReport.FastBlocksHeaders.CurrentValue, Is.EqualTo(0));
-        Assert.That(syncReport.FastBlocksHeaders.TargetValue, Is.EqualTo(pivotNumber));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(syncReport.FastBlocksHeaders.CurrentValue, Is.EqualTo(0));
+            Assert.That(syncReport.FastBlocksHeaders.TargetValue, Is.EqualTo(pivotNumber));
+        }
     }
 
     [Test]
@@ -333,10 +336,13 @@ public class FastHeadersSyncTests
 
         // HandleDependantBatch would start from first batch in batches, stopped at second in batch (only process 2 batch)
         using HeadersSyncBatch newBatch = (await feed.PrepareRequest())!;
-        Assert.That(blockTree.LowestInsertedHeader!.Number, Is.EqualTo(batches[1].StartNumber));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTree.LowestInsertedHeader!.Number, Is.EqualTo(batches[1].StartNumber));
 
-        // New batch would be at end of batch 5 (batch 6).
-        Assert.That(newBatch.EndNumber, Is.EqualTo(batches[^1].StartNumber - 1));
+            // New batch would be at end of batch 5 (batch 6).
+            Assert.That(newBatch.EndNumber, Is.EqualTo(batches[^1].StartNumber - 1));
+        }
         batches.DisposeItems();
     }
 
@@ -461,8 +467,11 @@ public class FastHeadersSyncTests
 
         using HeadersSyncBatch? firstBatch = await feed.PrepareRequest();
         Assert.That(firstBatch, Is.Not.Null);
-        Assert.That(firstBatch!.StartNumber, Is.EqualTo(995));
-        Assert.That(firstBatch.RequestSize, Is.EqualTo(6));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstBatch!.StartNumber, Is.EqualTo(995));
+            Assert.That(firstBatch.RequestSize, Is.EqualTo(6));
+        }
 
         feed.DestinationNumber = 996;
 
@@ -498,9 +507,12 @@ public class FastHeadersSyncTests
         blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).TestObject);
         using HeadersSyncBatch? result = await feed.PrepareRequest();
 
-        Assert.That(result, Is.Null);
-        Assert.That(feed.CurrentState, Is.EqualTo(SyncFeedState.Finished));
-        Assert.That(report.FastBlocksHeaders.HasEnded, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Null);
+            Assert.That(feed.CurrentState, Is.EqualTo(SyncFeedState.Finished));
+            Assert.That(report.FastBlocksHeaders.HasEnded, Is.True);
+        }
     }
 
     [Test]
@@ -574,7 +586,7 @@ public class FastHeadersSyncTests
         void FillBatch(HeadersSyncBatch batch, ulong start, bool applyNulls)
         {
             int c = count;
-            List<BlockHeader?> list = new(batch.RequestSize);
+            List<BlockHeader?> list = [with(batch.RequestSize)];
             ulong current = start;
             for (int j = 0; j < batch.RequestSize; j++, current++)
             {
@@ -679,7 +691,7 @@ public class FastHeadersSyncTests
         HeadersSyncBatch dependentBatch = scenario.DependentBatch;
 
         string[] tokens = offsets.Split(',');
-        ArrayPoolList<BlockHeader?> response = new(tokens.Length);
+        ArrayPoolList<BlockHeader?> response = [with(tokens.Length)];
         foreach (string token in tokens)
         {
             response.Add(token == "x"
@@ -696,8 +708,11 @@ public class FastHeadersSyncTests
         // the batch itself when none of it was held. InsertHeaders asserts the two add up to the whole.
         using HeadersSyncBatch? retry = await feed.PrepareRequest();
         Assert.That(retry, Is.Not.Null);
-        Assert.That(retry!.StartNumber, Is.GreaterThanOrEqualTo(startNumber));
-        Assert.That(retry.EndNumber, Is.LessThanOrEqualTo(endNumber));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retry!.StartNumber, Is.GreaterThanOrEqualTo(startNumber));
+            Assert.That(retry.EndNumber, Is.LessThanOrEqualTo(endNumber));
+        }
     }
 
     // The highest header is correct for its position, so the batch is parked; every header below it
@@ -712,7 +727,7 @@ public class FastHeadersSyncTests
 
         // Every header claims EndNumber. The highest is then correct for its position, no upward
         // jump trips the old gap check, and the first pushes the upper bound past the response.
-        ArrayPoolList<BlockHeader?> response = new(dependentBatch.RequestSize);
+        ArrayPoolList<BlockHeader?> response = [with(dependentBatch.RequestSize)];
         for (int i = 0; i < dependentBatch.RequestSize; i++)
         {
             ulong number = i == 0 ? dependentBatch.EndNumber + 1 : dependentBatch.EndNumber;
@@ -730,8 +745,11 @@ public class FastHeadersSyncTests
         scenario.SyncPeerPool.Received().ReportBreachOfProtocol(
             dependentBatch.ResponseSourcePeer!, DisconnectReason.HeaderBatchOnDifferentBranch, Arg.Any<string>());
         Assert.That(retry, Is.Not.Null);
-        Assert.That(retry!.StartNumber, Is.EqualTo(dependentBatch.StartNumber));
-        Assert.That(retry.RequestSize, Is.EqualTo(dependentBatch.RequestSize));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retry!.StartNumber, Is.EqualTo(dependentBatch.StartNumber));
+            Assert.That(retry.RequestSize, Is.EqualTo(dependentBatch.RequestSize));
+        }
     }
 
     // The drain path removes a batch from `_dependencies` and disposes it, so a failed insert
@@ -743,7 +761,7 @@ public class FastHeadersSyncTests
         TestableHeadersSyncFeed feed = scenario.Feed;
         HeadersSyncBatch dependentBatch = scenario.DependentBatch;
 
-        ArrayPoolList<BlockHeader?> response = new(dependentBatch.RequestSize);
+        ArrayPoolList<BlockHeader?> response = [with(dependentBatch.RequestSize)];
         for (int i = 0; i < dependentBatch.RequestSize; i++)
         {
             response.Add(Build.A.BlockHeader.WithNumber(dependentBatch.StartNumber + (ulong)i).TestObject);
@@ -759,8 +777,11 @@ public class FastHeadersSyncTests
         feed.ThrowOnInsert = new InvalidOperationException("insert failed");
         using HeadersSyncBatch? retry = await feed.PrepareRequest();
         Assert.That(retry, Is.Not.Null);
-        Assert.That(retry!.StartNumber, Is.EqualTo(dependentBatch.StartNumber));
-        Assert.That(retry.RequestSize, Is.EqualTo(dependentBatch.RequestSize));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retry!.StartNumber, Is.EqualTo(dependentBatch.StartNumber));
+            Assert.That(retry.RequestSize, Is.EqualTo(dependentBatch.RequestSize));
+        }
     }
 
     // Cancellation is not a failed insert: it ends the dispatch loop and must propagate untouched,
@@ -772,7 +793,7 @@ public class FastHeadersSyncTests
         TestableHeadersSyncFeed feed = scenario.Feed;
         HeadersSyncBatch dependentBatch = scenario.DependentBatch;
 
-        ArrayPoolList<BlockHeader?> response = new(dependentBatch.RequestSize);
+        ArrayPoolList<BlockHeader?> response = [with(dependentBatch.RequestSize)];
         for (int i = 0; i < dependentBatch.RequestSize; i++)
         {
             response.Add(Build.A.BlockHeader.WithNumber(dependentBatch.StartNumber + (ulong)i).TestObject);
@@ -844,7 +865,7 @@ public class FastHeadersSyncTests
 
     private static void RespondWithChainHeaders(DependentBatchScenario scenario, HeadersSyncBatch batch)
     {
-        ArrayPoolList<BlockHeader?> headers = new(batch.RequestSize);
+        ArrayPoolList<BlockHeader?> headers = [with(batch.RequestSize)];
         for (ulong number = batch.StartNumber; number <= batch.EndNumber; number++)
         {
             headers.Add(scenario.PeerChain.FindBlock(number, BlockTreeLookupOptions.None)?.Header);
@@ -864,7 +885,7 @@ public class FastHeadersSyncTests
         using DependentBatchScenario scenario = new();
         HeadersSyncBatch dependentBatch = scenario.DependentBatch;
 
-        ArrayPoolList<BlockHeader?> response = new(dependentBatch.RequestSize);
+        ArrayPoolList<BlockHeader?> response = [with(dependentBatch.RequestSize)];
         for (int i = 0; i < dependentBatch.RequestSize; i++)
         {
             response.Add(Build.A.BlockHeader.WithNumber(dependentBatch.StartNumber + (ulong)i).TestObject);
@@ -875,15 +896,20 @@ public class FastHeadersSyncTests
             .WithNumber(dependentBatch.StartNumber + (ulong)storedFromOffset).TestObject;
 
         // Accounted for, so the batch is not re-queued whole.
+#pragma warning disable NUnit2045 // Keep the state-changing response or range admission separate from dependent state checks.
         Assert.That(scenario.Feed.HandleResponse(dependentBatch), Is.EqualTo(SyncResponseHandlingResult.OK));
+#pragma warning restore NUnit2045
         Assert.That(Dependencies(scenario.Feed).Count, Is.Zero, "batch must not reach _dependencies");
 
         using HeadersSyncBatch? next = await scenario.Feed.PrepareRequest();
         Assert.That(next, Is.Not.Null);
         if (expectedFillerSize > 0)
         {
-            Assert.That(next!.StartNumber, Is.EqualTo(dependentBatch.StartNumber));
-            Assert.That(next.RequestSize, Is.EqualTo(expectedFillerSize));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(next!.StartNumber, Is.EqualTo(dependentBatch.StartNumber));
+                Assert.That(next.RequestSize, Is.EqualTo(expectedFillerSize));
+            }
         }
         else
         {
@@ -901,7 +927,7 @@ public class FastHeadersSyncTests
         using DependentBatchScenario scenario = new();
         HeadersSyncBatch dependentBatch = scenario.DependentBatch;
 
-        ArrayPoolList<BlockHeader?> response = new(dependentBatch.RequestSize);
+        ArrayPoolList<BlockHeader?> response = [with(dependentBatch.RequestSize)];
         for (int i = 0; i < dependentBatch.RequestSize; i++)
         {
             response.Add(Build.A.BlockHeader.WithNumber(dependentBatch.StartNumber + (ulong)i).TestObject);
@@ -918,9 +944,12 @@ public class FastHeadersSyncTests
             dependentBatch.ResponseSourcePeer!, DisconnectReason.MultipleHeaderDependencies, Arg.Any<string>());
         Assert.That(scenario.Feed.Pending, Has.Exactly(1).Items);
         HeadersSyncBatch queued = scenario.Feed.Pending.Single();
-        Assert.That(queued.StartNumber, Is.EqualTo(dependentBatch.StartNumber));
-        Assert.That(queued.RequestSize, Is.EqualTo(dependentBatch.RequestSize));
-        Assert.That(queued.Response, Is.Null, "queued through the added <= 0 path, which drops the response");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(queued.StartNumber, Is.EqualTo(dependentBatch.StartNumber));
+            Assert.That(queued.RequestSize, Is.EqualTo(dependentBatch.RequestSize));
+            Assert.That(queued.Response, Is.Null, "queued through the added <= 0 path, which drops the response");
+        }
     }
 
     // Hand-picked shapes miss combinations: the trailing-null-after-a-gap bug needed two conditions
@@ -934,7 +963,7 @@ public class FastHeadersSyncTests
             HeadersSyncBatch dependentBatch = scenario.DependentBatch;
             Assert.That(dependentBatch.RequestSize, Is.EqualTo(requestSize), "stubbed request size did not take");
 
-            ArrayPoolList<BlockHeader?> response = new(requestSize);
+            ArrayPoolList<BlockHeader?> response = [with(requestSize)];
             for (int i = 0; i < requestSize; i++)
             {
                 response.Add((mask & (1 << i)) != 0
@@ -972,7 +1001,7 @@ public class FastHeadersSyncTests
         HeadersSyncBatch dependentBatch = scenario.DependentBatch;
         Assert.That(dependentBatch.StartNumber, Is.Zero, "batch should reach genesis");
 
-        ArrayPoolList<BlockHeader?> response = new(dependentBatch.RequestSize);
+        ArrayPoolList<BlockHeader?> response = [with(dependentBatch.RequestSize)];
         for (int i = 0; i < dependentBatch.RequestSize; i++)
         {
             response.Add(Build.A.BlockHeader.WithNumber(dependentBatch.StartNumber + (ulong)i).TestObject);
@@ -1011,7 +1040,7 @@ public class FastHeadersSyncTests
 
         void FillBatch(HeadersSyncBatch batch)
         {
-            List<BlockHeader?> list = new(batch.RequestSize);
+            List<BlockHeader?> list = [with(batch.RequestSize)];
             ulong current = batch.StartNumber;
             for (int j = 0; j < batch.RequestSize; j++, current++)
             {
@@ -1027,7 +1056,9 @@ public class FastHeadersSyncTests
         Assert.That(batch2.StartNumber, Is.EqualTo(616));
 
         using HeadersSyncBatch batch3 = (await feed.PrepareRequest())!;
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That(batch3.StartNumber, Is.EqualTo(424));
+#pragma warning restore NUnit2045
 
         Assert.That((await feed.PrepareRequest()), Is.EqualTo(null));
 
@@ -1040,7 +1071,9 @@ public class FastHeadersSyncTests
         feed.HandleResponse(batch3);
 
         // The dependency batch is processed during prepare request.
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That((await feed.PrepareRequest()), Is.EqualTo(null));
+#pragma warning restore NUnit2045
 
         Assert.That(localBlockTree.LowestInsertedHeader?.Number, Is.EqualTo(0));
     }
@@ -1315,7 +1348,7 @@ public class FastHeadersSyncTests
         HeadersSyncFeed feed = container.Resolve<HeadersSyncFeed>();
         feed.InitializeFeed();
         HeadersSyncBatch batch = (await feed.PrepareRequest())!;
-        ArrayPoolList<BlockHeader?> response = new(batch.RequestSize + 1);
+        ArrayPoolList<BlockHeader?> response = [with(batch.RequestSize + 1)];
         if (rejection == RejectedResponse.TooLong)
         {
             response.AddRange(headers);
@@ -1394,7 +1427,9 @@ public class FastHeadersSyncTests
             batch.Response = response.ToPooledList();
             retain(batch);
         }
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That(queuedHeaders(), Is.EqualTo(12));
+#pragma warning restore NUnit2045
         Assert.That(await feed.PrepareRequest(), Is.Null);
         int replayLimit = highMemoryPressure ? 4 : 2;
         using (Assert.EnterMultipleScope())
@@ -1484,10 +1519,11 @@ public class FastHeadersSyncTests
         feed.InitializeFeed();
 
         HeadersSyncBatch batch = (await feed.PrepareRequest())!;
-        ArrayPoolList<BlockHeader?> response = new(batch.RequestSize)
-        {
+        ArrayPoolList<BlockHeader?> response =
+        [
+            with(batch.RequestSize),
             Build.A.BlockHeader.WithNumber(batch.StartNumber).TestObject
-        };
+        ];
         batch.Response = response;
         GetFeedMethod<Action<HeadersSyncBatch>>(feed, "RetainResponse")(batch);
         feed.ThrowOnInsert = new OperationCanceledException();
@@ -1584,9 +1620,12 @@ public class FastHeadersSyncTests
             else
                 Assert.That(await feed.PrepareRequest(), Is.Null);
 
-            Assert.That(visit, Is.Not.Null, "maintenance starts after request preparation's readiness check");
-            Assert.That(tree.CanAcceptNewBlocks, Is.False);
-            Assert.That(tree.LowestInsertedHeader, Is.SameAs(lowestBefore));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(visit, Is.Not.Null, "maintenance starts after request preparation's readiness check");
+                Assert.That(tree.CanAcceptNewBlocks, Is.False);
+                Assert.That(tree.LowestInsertedHeader, Is.SameAs(lowestBefore));
+            }
             logger.DidNotReceiveWithAnyArgs().Error(default!, default);
             Assert.That(await feed.PrepareRequest(), Is.Null);
             Assert.That(await feed.PrepareRequest(), Is.Null);
@@ -1623,8 +1662,11 @@ public class FastHeadersSyncTests
             Assert.That(feed.HandleResponse(retry), Is.EqualTo(SyncResponseHandlingResult.OK));
         }
         HeadersSyncBatch? nextRequest = await feed.PrepareRequest();
-        Assert.That(nextRequest, Is.Not.Null);
-        Assert.That(tree.LowestInsertedHeader, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nextRequest, Is.Not.Null);
+            Assert.That(tree.LowestInsertedHeader, Is.Not.Null);
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tree.LowestInsertedHeader!.Number, Is.EqualTo(expectedStart));
@@ -1684,8 +1726,11 @@ public class FastHeadersSyncTests
 
         using HeadersSyncBatch? retried = await feed.PrepareRequest();
         Assert.That(retried, Is.Not.Null);
-        Assert.That(retried!.StartNumber, Is.EqualTo(sent.StartNumber));
-        Assert.That(retried.RequestSize, Is.EqualTo(sent.RequestSize));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retried!.StartNumber, Is.EqualTo(sent.StartNumber));
+            Assert.That(retried.RequestSize, Is.EqualTo(sent.RequestSize));
+        }
     }
 
 

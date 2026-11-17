@@ -11,10 +11,15 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.IO;
+using Nethermind.Core;
 using Nethermind.Core.Resettables;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Trace;
+using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Core.Memory;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -77,10 +82,13 @@ public class JsonRpcResponseWriterStreamingIdTests
     }
 
     [Test]
-    public async Task Validation_failure_replaces_only_uncommitted_response([Values(0, 1, 2)] int commitMode)
+    public async Task Validation_failure_replaces_only_uncommitted_response(
+        [Values(0, 1, 2)] int commitMode, [Values] bool rpcError)
     {
         Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0));
-        using JsonRpcSuccessResponse response = CreateInvalidTransactionResponse(commitMode);
+        Exception failure = rpcError ? new RpcErrorException(ErrorCodes.ResourceNotFound, "transaction not found")
+            : new InsufficientBalanceException(TestItem.AddressA);
+        using JsonRpcSuccessResponse response = CreateInvalidTransactionResponse(commitMode, failure);
 
         if (commitMode != 2)
         {
@@ -88,8 +96,9 @@ public class JsonRpcResponseWriterStreamingIdTests
         }
         else
         {
-            await Assert.ThrowsAsync<InsufficientBalanceException>(async () =>
+            Exception? thrown = await Assert.CatchAsync(async () =>
                 await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None));
+            Assert.That(thrown, Is.SameAs(failure));
         }
         await pipe.Writer.CompleteAsync();
         ReadResult read = await pipe.Reader.ReadAsync();
@@ -102,7 +111,9 @@ public class JsonRpcResponseWriterStreamingIdTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(document.RootElement.GetProperty("id").GetInt32(), Is.EqualTo(42));
-                Assert.That(document.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidInput));
+                Assert.That(document.RootElement.GetProperty("error").GetProperty("code").GetInt32(),
+                    Is.EqualTo(rpcError ? ErrorCodes.ResourceNotFound : ErrorCodes.InvalidInput));
+                if (rpcError) Assert.That(document.RootElement.GetProperty("error").GetProperty("message").GetString(), Is.EqualTo("transaction not found"));
                 Assert.That(document.RootElement.TryGetProperty("result", out _), Is.False);
             }
         }
@@ -113,6 +124,103 @@ public class JsonRpcResponseWriterStreamingIdTests
                 Assert.That(envelope, Does.StartWith("{\"jsonrpc\":\"2.0\",\"result\":"));
                 Assert.That(envelope, Does.Not.Contain("\"error\""));
             }
+        }
+    }
+
+    [Test]
+    public void Module_selected_error_keeps_its_code_without_method_identity([Values] bool reflectionWrapped)
+    {
+        RpcErrorException failure = new(ErrorCodes.InvalidParams, "explicit failure");
+        Exception exception = reflectionWrapped ? new System.Reflection.TargetInvocationException(failure) : failure;
+        using JsonRpcErrorResponse response = CreateStreamingContext().MapException(exception);
+        Assert.That(response.Error, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Error!.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(response.Error!.Message, Is.EqualTo("explicit failure"));
+            Assert.That(response.Error!.Data, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task Deferred_single_trace_error_preserves_previous_batch_response(
+        [Values] bool isBatch, [Values] bool rpcError)
+    {
+        using RecyclableMemoryStream stream = RecyclableStream.GetStream("test");
+        RewindableStreamPipeWriter transport = new(stream, initialWrittenCount: 1234);
+        using JsonRpcSuccessResponse previous = new() { Id = new JsonRpcId("previous"), Result = new StubStreamable() };
+        using JsonRpcSuccessResponse response = new()
+        {
+            Id = new JsonRpcId(42L),
+            Result = new GethLikeTxTraceStreamingSingleResult((writer, _, _) =>
+            {
+                writer.WriteStartObject();
+                writer.WriteNumber("pc", 0);
+                writer.WriteEndObject();
+                writer.Flush();
+                throw rpcError ? new RpcErrorException(ErrorCodes.ResourceNotFound, "transaction not found")
+                    : new InvalidOperationException("host failure");
+            }, new CancellationTokenSource(), NullLogger.Instance),
+            Streaming = CreateStreamingContext()
+        };
+        try
+        {
+            if (isBatch)
+            {
+                JsonRpcResponseWriter.WriteBatchStart(transport);
+                await JsonRpcResponseWriter.WriteAsync(transport, previous, EthereumJsonSerializer.JsonOptions,
+                    isBatch: true, CancellationToken.None);
+                JsonRpcResponseWriter.WriteBatchSeparator(transport);
+            }
+            byte[] prefix = stream.ToArray();
+            await JsonRpcResponseWriter.WriteAsync(transport, response, EthereumJsonSerializer.JsonOptions,
+                isBatch, CancellationToken.None);
+            if (isBatch) JsonRpcResponseWriter.WriteBatchEnd(transport);
+            await transport.CompleteAsync();
+            byte[] json = stream.ToArray();
+            using JsonDocument document = JsonDocument.Parse(json);
+            JsonElement item = document.RootElement;
+            if (isBatch)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(item.ValueKind, Is.EqualTo(JsonValueKind.Array));
+                    Assert.That(item.GetArrayLength(), Is.EqualTo(2));
+                }
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(json.AsSpan().StartsWith(prefix), Is.True);
+                    Assert.That(item[0].GetProperty("id").GetString(), Is.EqualTo("previous"));
+                    Assert.That(item[0].GetProperty("result").GetString(), Is.EqualTo("ok"));
+                }
+                item = item[1];
+            }
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(item.GetProperty("jsonrpc").GetString(), Is.EqualTo("2.0"));
+                Assert.That(item.GetProperty("id").GetInt32(), Is.EqualTo(42));
+                Assert.That(item.TryGetProperty("_streamStatus", out _), Is.False);
+                Assert.That(transport.WrittenCount, Is.EqualTo(1234 + stream.Length));
+                if (rpcError)
+                {
+                    Assert.That(item.TryGetProperty("result", out _), Is.False);
+                    Assert.That(item.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.ResourceNotFound));
+                    Assert.That(item.GetProperty("error").GetProperty("message").GetString(), Is.EqualTo("transaction not found"));
+                    Assert.That(item.GetProperty("error").TryGetProperty("data", out _), Is.False);
+                }
+                else
+                {
+                    Assert.That(item.TryGetProperty("error", out _), Is.False);
+                    Assert.That(item.GetProperty("result").GetProperty("failed").GetBoolean(), Is.True);
+                    Assert.That(item.GetProperty("result").GetProperty("errorCode").GetInt32(), Is.EqualTo(ErrorCodes.InternalError));
+                    Assert.That(item.GetProperty("result").GetProperty("error").GetString(), Is.EqualTo("tracing failed: host failure"));
+                    Assert.That(item.GetProperty("result").GetProperty("structLogs")[0].GetProperty("pc").GetInt32(), Is.Zero);
+                }
+            }
+        }
+        finally
+        {
+            await transport.CompleteAsync();
         }
     }
 
@@ -157,19 +265,23 @@ public class JsonRpcResponseWriterStreamingIdTests
     }
 
     [Test]
-    public async Task Stream_failure_propagates_without_handler_or_after_transport_cancellation([Values] bool cancelTransport)
+    public async Task Stream_failure_propagates_without_handler_or_after_transport_cancellation(
+        [Values] bool cancelTransport, [Values] bool rpcError)
     {
         using CancellationTokenSource cancellation = new();
+        Exception failure = rpcError ? new RpcErrorException(ErrorCodes.ResourceNotFound, "transaction not found")
+            : new InsufficientBalanceException(TestItem.AddressA);
         using JsonRpcSuccessResponse response = new()
         {
-            Result = new InvalidTransactionResult(0, cancelTransport ? cancellation.Cancel : null),
+            Result = new InvalidTransactionResult(0, cancelTransport ? cancellation.Cancel : null, failure),
             Streaming = cancelTransport ? CreateStreamingContext() : null
         };
         Pipe pipe = new();
         try
         {
-            await Assert.ThrowsAsync<InsufficientBalanceException>(async () =>
+            Exception? thrown = await Assert.CatchAsync(async () =>
                 await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, EthereumJsonSerializer.JsonOptions, cancellation.Token));
+            Assert.That(thrown, Is.SameAs(failure));
             await pipe.Writer.CompleteAsync();
             ReadResult read = await pipe.Reader.ReadAsync();
             Assert.That(read.Buffer.IsEmpty, Is.EqualTo(cancelTransport));
@@ -391,14 +503,14 @@ public class JsonRpcResponseWriterStreamingIdTests
         }
     }
 
-    private JsonRpcSuccessResponse CreateInvalidTransactionResponse(int commitMode) => new()
+    private JsonRpcSuccessResponse CreateInvalidTransactionResponse(int commitMode, Exception? failure = null) => new()
     {
         Id = new JsonRpcId(42L),
-        Result = new InvalidTransactionResult(commitMode),
+        Result = new InvalidTransactionResult(commitMode, failure: failure),
         Streaming = CreateStreamingContext()
     };
 
-    private sealed class InvalidTransactionResult(int commitMode, Action? beforeThrow = null) : IStreamableResult
+    private sealed class InvalidTransactionResult(int commitMode, Action? beforeThrow = null, Exception? failure = null) : IStreamableResult
     {
         public async ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
         {
@@ -406,7 +518,226 @@ public class JsonRpcResponseWriterStreamingIdTests
             if (commitMode == 1) await writer.FlushAsync(cancellationToken);
             if (commitMode == 2) writer.Write(new byte[20_000]);
             beforeThrow?.Invoke();
-            throw new InsufficientBalanceException(TestItem.AddressA);
+            throw failure ?? new InsufficientBalanceException(TestItem.AddressA);
+        }
+    }
+
+    public enum TransportKind { Pipe, Counting, Rewindable }
+
+    [Test]
+    public async Task Observer_receives_the_result_the_client_received([Values] TransportKind transport, [Values] bool deferred, [Values] bool isBatch)
+    {
+        RecordingObserver observer = new();
+        using JsonRpcSuccessResponse response = new() { Id = new JsonRpcId(7L), Result = new ChunkedResult(), Streaming = deferred ? CreateStreamingContext() : null };
+        response.ObserveStreamedResult(observer, NullLogger.Instance);
+
+        string envelope = await WriteAsync(transport, response, isBatch);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(observer.Result, Is.EqualTo(ResultOf(envelope)));
+            Assert.That(observer.Succeeded, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task Observed_counting_writer_stays_a_counting_writer()
+    {
+        using RecyclableMemoryStream stream = RecyclableStream.GetStream("test");
+        CountingStreamPipeWriter transport = new(stream, initialWrittenCount: 1234);
+        CountingResult result = new();
+        using JsonRpcSuccessResponse response = new() { Result = result };
+        response.ObserveStreamedResult(new RecordingObserver(), NullLogger.Instance);
+
+        await JsonRpcResponseWriter.WriteAsync(transport, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None);
+        await transport.CompleteAsync();
+
+        Assert.That(result.InitialBytes, Is.EqualTo(1234 + "{\"jsonrpc\":\"2.0\",\"result\":"u8.Length));
+    }
+
+    [Test]
+    public async Task Observer_is_told_a_replaced_or_unfinished_result_did_not_succeed([Values] bool replaced)
+    {
+        Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0));
+        RecordingObserver observer = new();
+        using JsonRpcSuccessResponse response = replaced ? CreateInvalidTransactionResponse(commitMode: 0) : new() { Result = new TruncatedResult() };
+        response.ObserveStreamedResult(observer, NullLogger.Instance);
+
+        await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None);
+        await pipe.Writer.CompleteAsync();
+        await pipe.Reader.CompleteAsync();
+
+        Assert.That(observer.Succeeded, Is.False);
+    }
+
+    [Test]
+    public void Observer_is_told_a_cancelled_or_failed_write_did_not_succeed([Values] bool cancelled)
+    {
+        RecordingObserver observer = new();
+        using JsonRpcSuccessResponse response = new() { Result = new StubStreamable() };
+        response.ObserveStreamedResult(observer, NullLogger.Instance);
+
+        Assert.That(async () => await JsonRpcResponseWriter.WriteAsync(
+                cancelled ? new Pipe().Writer : new FailingPipeWriter(), response, EthereumJsonSerializer.JsonOptions,
+                cancelled ? new CancellationToken(canceled: true) : CancellationToken.None),
+            cancelled ? Throws.InstanceOf<OperationCanceledException>() : Throws.InstanceOf<IOException>());
+        Assert.That(observer.Succeeded, Is.False);
+    }
+
+    [Test]
+    public async Task Observer_is_told_a_result_stopped_by_its_flush_did_not_succeed([Values] bool readerCompleted)
+    {
+        Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0));
+        RecordingObserver observer = new();
+        using JsonRpcSuccessResponse response = new() { Result = new StopsOnFlushResult(cancelFlush: !readerCompleted) };
+        response.ObserveStreamedResult(observer, NullLogger.Instance);
+        if (readerCompleted) await pipe.Reader.CompleteAsync();
+
+        await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None);
+        await pipe.Writer.CompleteAsync();
+        await pipe.Reader.CompleteAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(observer.Result, Is.EqualTo("[1]"));
+            Assert.That(observer.Succeeded, Is.False);
+        }
+    }
+
+    [Test]
+    public async Task Observer_that_throws_does_not_change_the_response([Values] bool deferred)
+    {
+        using JsonRpcSuccessResponse unobserved = new() { Id = new JsonRpcId(7L), Result = new ChunkedResult(), Streaming = deferred ? CreateStreamingContext() : null };
+        using JsonRpcSuccessResponse observed = new() { Id = new JsonRpcId(7L), Result = new ChunkedResult(), Streaming = deferred ? CreateStreamingContext() : null };
+        ThrowingObserver observer = new();
+        TestLogger logger = new();
+        observed.ObserveStreamedResult(observer, new ILogger(logger));
+
+        string expected = await WriteAsync(TransportKind.Pipe, unobserved, isBatch: false);
+        string actual = await WriteAsync(TransportKind.Pipe, observed, isBatch: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual, Is.EqualTo(expected));
+            Assert.That(observer.Chunks, Is.EqualTo(1));
+            Assert.That(observer.Succeeded, Is.False);
+            Assert.That(logger.LogList, Has.Count.EqualTo(2));
+        }
+    }
+
+    [Test]
+    public async Task Observer_receives_a_deferred_block_trace_as_the_client_received_it()
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        await chain.AddBlock(Build.A.Transaction.WithNonce(chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressB))
+            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject);
+        JsonRpcConfig config = new() { EnabledModules = [ModuleType.Debug] };
+        RpcModuleProvider moduleProvider = new(new Testably.Abstractions.RealFileSystem(), config, new EthereumJsonSerializer(), NullLogManager.Instance);
+        moduleProvider.Register(new SingletonModulePool<IDebugRpcModule>(new SingletonFactory<IDebugRpcModule>(chain.DebugRpcModule), true));
+        JsonRpcService service = new(moduleProvider, NullLogManager.Instance, config, _keeper);
+        RecordingObserver observer = new();
+
+        using JsonRpcResponse response = await service.SendRequestAsync(
+            RpcTest.BuildJsonRequest("debug_traceBlockByNumber", "latest", new { tracer = "callTracer" }), new JsonRpcContext(RpcEndpoint.Http));
+        response.ObserveStreamedResult(observer, NullLogger.Instance);
+        string envelope = await WriteAsync(TransportKind.Pipe, response, isBatch: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Streaming, Is.Not.Null, "precondition: a deferred result");
+            Assert.That(observer.Result, Is.EqualTo(ResultOf(envelope)));
+            Assert.That(observer.Succeeded, Is.True);
+        }
+    }
+
+    private static async Task<string> WriteAsync(TransportKind transport, JsonRpcResponse response, bool isBatch)
+    {
+        using RecyclableMemoryStream stream = RecyclableStream.GetStream("test");
+        Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0));
+        PipeWriter writer = transport switch
+        {
+            TransportKind.Counting => new CountingStreamPipeWriter(stream),
+            TransportKind.Rewindable => new RewindableStreamPipeWriter(stream),
+            _ => pipe.Writer,
+        };
+
+        await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, isBatch, CancellationToken.None);
+        await writer.CompleteAsync();
+        if (transport != TransportKind.Pipe)
+        {
+            return Encoding.UTF8.GetString(stream.ToArray());
+        }
+
+        ReadResult read = await pipe.Reader.ReadAsync();
+        string envelope = Encoding.UTF8.GetString(read.Buffer.ToArray());
+        await pipe.Reader.CompleteAsync();
+        return envelope;
+    }
+
+    private static string ResultOf(string envelope)
+    {
+        const string start = "{\"jsonrpc\":\"2.0\",\"result\":";
+        Assert.That(envelope, Does.StartWith(start));
+        return envelope[start.Length..envelope.LastIndexOf(",\"id\":", StringComparison.Ordinal)];
+    }
+
+    internal sealed class RecordingObserver : IStreamedResultObserver
+    {
+        private readonly ArrayBufferWriter<byte> _written = new();
+
+        public string Result => Encoding.UTF8.GetString(_written.WrittenSpan);
+
+        public bool? Succeeded { get; private set; }
+
+        public void OnWritten(ReadOnlySpan<byte> utf8Json) => _written.Write(utf8Json);
+
+        public void OnCompleted(bool succeeded)
+        {
+            Assert.That(Succeeded, Is.Null, "completed once");
+            Succeeded = succeeded;
+        }
+    }
+
+    private sealed class ThrowingObserver : IStreamedResultObserver
+    {
+        public int Chunks { get; private set; }
+
+        public bool? Succeeded { get; private set; }
+
+        public void OnWritten(ReadOnlySpan<byte> utf8Json)
+        {
+            Chunks++;
+            throw new InvalidOperationException();
+        }
+
+        public void OnCompleted(bool succeeded)
+        {
+            Succeeded = succeeded;
+            throw new InvalidOperationException();
+        }
+    }
+
+    /// <summary>Stops like the status-less in-tree results do when a flush reports the reader completed or the flush cancelled.</summary>
+    private sealed class StopsOnFlushResult(bool cancelFlush) : IStreamableResult
+    {
+        public async ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
+        {
+            writer.Write("[1"u8);
+            if (cancelFlush) writer.CancelPendingFlush();
+            FlushResult flush = await writer.FlushAsync(cancellationToken);
+            if (!flush.IsCompleted && !flush.IsCanceled) writer.Write(",2"u8);
+            writer.Write("]"u8);
+        }
+    }
+
+    private sealed class TruncatedResult : IStreamableResultWithStatus
+    {
+        public ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public ValueTask<StreamableResultStatus> WriteToWithStatusAsync(PipeWriter writer, CancellationToken cancellationToken)
+        {
+            writer.Write("[1]"u8);
+            return ValueTask.FromResult(StreamableResultStatus.Truncated);
         }
     }
 

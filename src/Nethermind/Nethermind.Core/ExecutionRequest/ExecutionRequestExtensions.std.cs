@@ -8,5 +8,5 @@ namespace Nethermind.Core.ExecutionRequest;
 
 public static partial class ExecutionRequestExtensions
 {
-    private static partial byte[] Sha256(ReadOnlySpan<byte> data) => SHA256.HashData(data);
+    private static partial void Sha256(ReadOnlySpan<byte> data, Span<byte> output) => SHA256.HashData(data, output);
 }

@@ -40,8 +40,11 @@ public class TdxRpcModuleTests
 
         ResultWrapper<TdxBlockHeaderSignature> result = await _rpcModule.taiko_tdxSignBlockHeader(new BlockParameter(1));
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
-        Assert.That(result.Result.Error, Does.Contain("not enabled"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.Result.Error, Does.Contain("not enabled"));
+        }
     }
 
     [Test]
@@ -52,8 +55,11 @@ public class TdxRpcModuleTests
 
         ResultWrapper<TdxBlockHeaderSignature> result = await _rpcModule.taiko_tdxSignBlockHeader(new BlockParameter(1));
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
-        Assert.That(result.Result.Error, Does.Contain("not bootstrapped"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.Result.Error, Does.Contain("not bootstrapped"));
+        }
     }
 
     [Test]
@@ -65,8 +71,11 @@ public class TdxRpcModuleTests
 
         ResultWrapper<TdxBlockHeaderSignature> result = await _rpcModule.taiko_tdxSignBlockHeader(new BlockParameter(1));
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
-        Assert.That(result.Result.Error, Does.Contain("not found"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.Result.Error, Does.Contain("not found"));
+        }
     }
 
     [Test]
@@ -89,8 +98,11 @@ public class TdxRpcModuleTests
 
         ResultWrapper<TdxBlockHeaderSignature> result = await _rpcModule.taiko_tdxSignBlockHeader(new BlockParameter(1));
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.That(result.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(result.Data, Is.Not.Null);
+        }
         Assert.That(result.Data!.Header.Hash, Is.EqualTo(header.Hash!));
     }
 
@@ -106,8 +118,11 @@ public class TdxRpcModuleTests
 
         ResultWrapper<TdxBlockHeaderSignature> result = await _rpcModule.taiko_tdxSignBlockHeader(new BlockParameter(1));
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
-        Assert.That(result.Result.Error, Does.Contain("Signing failed"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.Result.Error, Does.Contain("Signing failed"));
+        }
     }
 
     [Test]
@@ -117,8 +132,11 @@ public class TdxRpcModuleTests
 
         ResultWrapper<TdxGuestInfo> result = await _rpcModule.taiko_getTdxGuestInfo();
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
-        Assert.That(result.Result.Error, Does.Contain("not enabled"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.Result.Error, Does.Contain("not enabled"));
+        }
     }
 
     [Test]
@@ -129,8 +147,11 @@ public class TdxRpcModuleTests
 
         ResultWrapper<TdxGuestInfo> result = await _rpcModule.taiko_getTdxGuestInfo();
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
-        Assert.That(result.Result.Error, Does.Contain("not bootstrapped"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.Result.Error, Does.Contain("not bootstrapped"));
+        }
     }
 
     [Test]
@@ -148,8 +169,11 @@ public class TdxRpcModuleTests
 
         ResultWrapper<TdxGuestInfo> result = await _rpcModule.taiko_getTdxGuestInfo();
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.That(result.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(result.Data, Is.Not.Null);
+        }
         Assert.That(result.Data!.IssuerType, Is.EqualTo("test"));
     }
 
@@ -160,8 +184,11 @@ public class TdxRpcModuleTests
 
         ResultWrapper<TdxGuestInfo> result = await _rpcModule.taiko_tdxBootstrap();
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
-        Assert.That(result.Result.Error, Does.Contain("not enabled"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.Result.Error, Does.Contain("not enabled"));
+        }
     }
 
     [Test]
@@ -179,8 +206,11 @@ public class TdxRpcModuleTests
 
         ResultWrapper<TdxGuestInfo> result = await _rpcModule.taiko_tdxBootstrap();
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.That(result.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(result.Data, Is.Not.Null);
+        }
         Assert.That(result.Data!.IssuerType, Is.EqualTo("azure"));
     }
 
@@ -192,8 +222,11 @@ public class TdxRpcModuleTests
 
         ResultWrapper<TdxGuestInfo> result = await _rpcModule.taiko_tdxBootstrap();
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
-        Assert.That(result.Result.Error, Does.Contain("Connection failed"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.Result.Error, Does.Contain("Connection failed"));
+        }
     }
 
 }

@@ -124,6 +124,15 @@ public class SnapshotHttpStreamTests
         Assert.Throws<IOException>(() => SnapshotHttpClient.ResolveRedirect(new Uri(from), new Uri(to)),
             "following a redirect off https would expose the headers the integrity policy relies on");
 
+    [Test]
+    public void ResolveRedirect_Downgrade_DoesNotExposeUrlCredentials()
+    {
+        IOException? error = Assert.Throws<IOException>(() => SnapshotHttpClient.ResolveRedirect(
+            new Uri("https://user:secret@host/private?token=abc"), new Uri("http://other/private?token=xyz")));
+
+        Assert.That(error!.Message, Does.Not.Contain("secret").And.Not.Contain("token"));
+    }
+
     [TestCase("https://host/a", "https://other/b", TestName = "HttpsToHttps")]
     [TestCase("http://host/a", "http://other/b", TestName = "HttpToHttp")]
     [TestCase("https://host/a", "/b", TestName = "RelativeKeepsScheme")]
@@ -132,15 +141,31 @@ public class SnapshotHttpStreamTests
             Is.Not.Empty, "a redirect that keeps or raises the transport must be followed");
 
     [Test]
-    public async Task Read_ServerReturnsNotFoundMidDownload_ThrowsWithoutRetrying()
+    public async Task Read_ServerReturnsNotFoundMidDownload_ThrowsWithoutRetrying([Values] bool supportsRanges)
     {
         _server.Content = BuildContent(100_000);
-        _server.FailWithNotFoundAfterRequests = 1;
+        _server.SupportsRanges = supportsRanges;
+        _server.FailRequestWithStatus = (2, 404);
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(60));
 
         await Assert.ThrowsAsync<HttpRequestException>(
             () => DownloadAsync(connections: 2, cancellationToken: timeout.Token),
             "a permanent HTTP error must abort the stream instead of retrying forever");
+    }
+
+    [Test]
+    public async Task Read_ServerReturnsTransientErrorMidDownload_RetriesAndDeliversExactContent(
+        [Values(408, 429, 503)] int statusCode, [Values] bool supportsRanges)
+    {
+        byte[] content = BuildContent(100_000);
+        _server.Content = content;
+        _server.SupportsRanges = supportsRanges;
+        _server.FailRequestWithStatus = (2, statusCode);
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(60));
+
+        (byte[] delivered, byte[] hash) = await DownloadAsync(connections: 2, cancellationToken: timeout.Token);
+
+        AssertDeliveredExactly(delivered, hash, content, "a transient HTTP error must be retried instead of aborting the stream", "the retried request must be hashed exactly once");
     }
 
     [Test]
@@ -153,6 +178,22 @@ public class SnapshotHttpStreamTests
         (byte[] delivered, byte[] hash) = await DownloadAsync(connections: 2);
 
         AssertDeliveredExactly(delivered, hash, content, "a single 200 answer to a range request must be retried instead of corrupting the stream", "the retried chunk must be hashed exactly once");
+    }
+
+    [Test]
+    public async Task Probe_ServerAnswersSingleByteRangeWithFullBody_ReportsRangeSupport()
+    {
+        _server.Content = BuildContent(100_000);
+        _server.IgnoreFirstByteRange = true;
+        using SnapshotHttpClient client = new();
+
+        SnapshotRemoteInfo remoteInfo = await client.ProbeAsync(_server.Url, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(remoteInfo.SupportsRanges, Is.True, "a CDN that answers only bytes=0-0 with 200 must not disable parallel resumable downloads");
+            Assert.That(remoteInfo.Length, Is.EqualTo(100_000));
+        }
     }
 
     [Test]
@@ -185,6 +226,37 @@ public class SnapshotHttpStreamTests
         AssertDeliveredExactly(delivered, hash, content, "a connection that stops delivering bytes must be detected as stalled and the chunk re-fetched", "bytes received before the stall must be hashed exactly once");
     }
 
+    [Test]
+    public async Task ServerDispose_HandlerFailsAfterShutdownBegan_DoesNotReportFailure()
+    {
+        TaskCompletionSource handlerStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource handlerFailing = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        FlakySnapshotServer server = CreateServerWithFailingHandler(async shutdown =>
+        {
+            handlerStarted.SetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, shutdown).ContinueWith(static _ => { }, TaskScheduler.Default);
+            handlerFailing.SetResult();
+        });
+        using HttpClient client = new();
+        _ = client.GetAsync(server.Url);
+        await handlerStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.That(server.Dispose, Throws.Nothing,
+            "closing the listener races in-flight handlers, so their failures during shutdown must not fail the test");
+        await handlerFailing.Task.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    [Test]
+    public async Task ServerDispose_HandlerFailsWhileRunning_ReportsFailure()
+    {
+        FlakySnapshotServer server = CreateServerWithFailingHandler(static _ => Task.CompletedTask);
+        using HttpClient client = new();
+        await client.GetAsync(server.Url).ContinueWith(static _ => { }, TaskScheduler.Default);
+
+        Assert.That(server.Dispose, Throws.InstanceOf<AggregateException>().With.InnerException.InstanceOf<InvalidOperationException>(),
+            "a handler failure while the server is running must still surface");
+    }
+
     private async Task<(byte[] Delivered, byte[] Hash)> DownloadAsync(
         int connections, TimeSpan? stallTimeout = null, bool computeChecksum = true, int maxNoProgressRetries = 20, CancellationToken cancellationToken = default)
     {
@@ -207,6 +279,16 @@ public class SnapshotHttpStreamTests
             Assert.That(hash, Is.EqualTo(SHA256.HashData(expected)), hashReason);
         }
     }
+
+    private static FlakySnapshotServer CreateServerWithFailingHandler(Func<CancellationToken, Task> beforeFailure) => new()
+    {
+        Content = BuildContent(1000),
+        BeforeResponse = async shutdown =>
+        {
+            await beforeFailure(shutdown);
+            throw new InvalidOperationException("This operation cannot be performed after the response has been submitted.");
+        },
+    };
 
     private static byte[] BuildContent(int length)
     {

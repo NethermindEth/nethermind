@@ -72,8 +72,11 @@ public partial class EthRpcModuleTests
 
                 try
                 {
-                    Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Failure));
-                    Assert.That(response.Result.Error, Is.EqualTo("invalid block range params"));
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Failure));
+                        Assert.That(response.Result.Error, Is.EqualTo("invalid block range params"));
+                    }
                 }
                 finally
                 {

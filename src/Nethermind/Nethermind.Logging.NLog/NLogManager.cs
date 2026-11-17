@@ -78,7 +78,8 @@ public partial class NLogManager : ILogManager, IDisposable
 
     public ILogger GetLogger(string loggerName) => s_namedLoggers.GetOrAdd(loggerName, s_namedLoggerBuilder);
 
-    public void SetGlobalVariable(string name, object? value) => GlobalDiagnosticsContext.Set(name, value);
+    public void SetGlobalVariable(string name, object? value) =>
+        GlobalDiagnosticsContext.Set(name, value is string text ? IpMasker.MaskIfEnabled(text) : value);
 
     private static void SetupLogRules(string? logRules)
     {

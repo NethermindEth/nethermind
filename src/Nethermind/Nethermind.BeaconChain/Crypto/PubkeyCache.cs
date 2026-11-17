@@ -3,6 +3,7 @@
 
 using System.Buffers;
 using System.Buffers.Binary;
+using System.IO;
 using System.Runtime.InteropServices;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Threading;
@@ -228,7 +229,8 @@ public class PubkeyCache
         _persistedCount = Math.Min(_persistedCount, fromIndex);
 
         bool reuse = fromIndex == Count && validators.Length <= _subgroupChecks.Length;
-        int capacity = Math.Max(validators.Length, Math.Max(4, _subgroupChecks.Length * 2));
+        int growth = Math.Min(ValidatorsPerChunk, Math.Max(4, _subgroupChecks.Length / 8));
+        int capacity = checked((int)Math.Max(validators.Length, (long)_subgroupChecks.Length + growth));
         long[] points = reuse ? _points : new long[checked(capacity * G1Affine.Sz)];
         if (!reuse) _points.AsSpan(0, fromIndex * G1Affine.Sz).CopyTo(points);
         byte[] subgroupChecks = reuse ? _subgroupChecks : new byte[capacity];
@@ -315,9 +317,7 @@ public class PubkeyCache
             byte[]? compressed = store.GetMetadata(ChunkKey(chunk));
             int offset = chunk * ValidatorsPerChunk * G1Affine.Sz * sizeof(long);
             int expected = Math.Min(ValidatorsPerChunk * G1Affine.Sz * sizeof(long), bytes.Length - offset);
-            if (compressed is null
-                || Snappy.GetUncompressedLength(compressed) != expected
-                || Snappy.Decompress(compressed, bytes.Slice(offset, expected)) != expected)
+            if (compressed is null || !TryDecompressChunk(compressed, bytes.Slice(offset, expected)))
             {
                 return false;
             }
@@ -339,6 +339,19 @@ public class PubkeyCache
         if (Count < validators.Length)
             Extend(validators, Count);
         return true;
+    }
+
+    private static bool TryDecompressChunk(byte[] compressed, Span<byte> destination)
+    {
+        try
+        {
+            return Snappy.GetUncompressedLength(compressed) == destination.Length
+                && Snappy.Decompress(compressed, destination) == destination.Length;
+        }
+        catch (InvalidDataException)
+        {
+            return false;
+        }
     }
 
     private static string ChunkKey(int chunk) => $"pubkeys:{chunk}";

@@ -7,7 +7,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Core.Crypto;
 using Nethermind.Facade.Eth;
 using System.Text.Json.Serialization;
-using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
@@ -15,8 +14,13 @@ public class BadBlock(Block block, bool includeFullTransactionData, ISpecProvide
 {
     public BlockForRpc Block { get; } = blockForRpcFactory.Create(block, includeFullTransactionData, specProvider);
     public Hash256 Hash { get; } = block.Header.Hash;
-    public byte[] Rlp { get; } = blockDecoder.EncodeAsBytes(block);
+    public byte[] Rlp { get; } = blockDecoder.Encode(block);
 
+    /// <summary>RLP of the block access list that the block was suggested with, if any.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public GeneratedBlockAccessList? GeneratedBlockAccessList { get; } = block.GeneratedBlockAccessList;
+    public byte[]? BlockAccessList { get; } = block.EncodedBlockAccessList;
+
+    /// <summary>RLP of the block access list that processing generated, if any.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public byte[]? GeneratedBlockAccessList { get; } = block.EncodedGeneratedBlockAccessList;
 }

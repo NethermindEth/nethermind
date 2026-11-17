@@ -555,10 +555,10 @@ public static partial class GloasBlockProcessing
         state.BuilderPendingPayments[(int)paymentIndex] = EmptyBuilderPendingPayment();
     }
 
-    internal static partial void ProcessDepositRequest(BeaconStateGloas state, DepositRequest request);
+    internal static partial void ProcessDepositRequest(BeaconStateGloas state, DepositRequest request, BeaconChainSpec? spec = null);
     internal static partial void ProcessWithdrawalRequest(BeaconStateGloas state, WithdrawalRequest request, EpochCache cache);
     internal static partial void ProcessConsolidationRequest(BeaconStateGloas state, ConsolidationRequest request, EpochCache cache);
-    private static partial void ProcessDepositRequests(BeaconStateGloas state, DepositRequest[] requests);
+    private static partial void ProcessDepositRequests(BeaconStateGloas state, DepositRequest[] requests, BeaconChainSpec? spec = null);
     private static partial bool IsValidSwitchToCompoundingRequest(BeaconStateGloas state, ConsolidationRequest request, int? sourceIndex);
     private static partial void SwitchToCompoundingValidator(BeaconStateGloas state, int index);
 
@@ -674,22 +674,10 @@ public static partial class GloasBlockProcessing
         if (state.Builders!.Length > 0)
             state.NextWithdrawalBuilderIndex = (state.NextWithdrawalBuilderIndex + (ulong)processedBuildersSweep) % (ulong)state.Builders.Length;
 
-        // Spec update_next_withdrawal_validator_index (unchanged from Electra): only the plain
-        // (non-builder-flagged) validator sweep advances this cursor, and only full sweep
-        // withdrawals (not the earlier builder/partial/builder-sweep stages) count toward whether
-        // the sweep filled MAX_WITHDRAWALS_PER_PAYLOAD.
+        // Earlier withdrawal stages stop before filling the payload, so its final entry is a validator when full.
         ulong validatorCount = (ulong)state.Validators!.Length;
-        ulong? lastValidatorIndex = null;
-        for (int i = withdrawals.Length - 1; i >= 0; i--)
-        {
-            if (!IsBuilderIndex(withdrawals[i].ValidatorIndex))
-            {
-                lastValidatorIndex = withdrawals[i].ValidatorIndex;
-                break;
-            }
-        }
-        state.NextWithdrawalValidatorIndex = withdrawals.Length == Presets.MaxWithdrawalsPerPayload && lastValidatorIndex is { } last
-            ? (last + 1) % validatorCount
+        state.NextWithdrawalValidatorIndex = withdrawals.Length == Presets.MaxWithdrawalsPerPayload
+            ? (withdrawals[^1].ValidatorIndex + 1) % validatorCount
             : (state.NextWithdrawalValidatorIndex + (ulong)Presets.MaxValidatorsPerWithdrawalsSweep) % validatorCount;
     }
 

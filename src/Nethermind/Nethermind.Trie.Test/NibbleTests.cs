@@ -67,8 +67,11 @@ public class NibbleTests
         // Verify each byte was correctly split into two nibbles
         for (int i = 0; i < input.Length; i++)
         {
-            Assert.That(result[i * 2], Is.EqualTo((byte)(input[i] >> 4)), $"high nibble at position {i}");
-            Assert.That(result[i * 2 + 1], Is.EqualTo((byte)(input[i] & 0x0F)), $"low nibble at position {i}");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result[i * 2], Is.EqualTo((byte)(input[i] >> 4)), $"high nibble at position {i}");
+                Assert.That(result[i * 2 + 1], Is.EqualTo((byte)(input[i] & 0x0F)), $"low nibble at position {i}");
+            }
         }
     }
 
@@ -99,8 +102,11 @@ public class NibbleTests
             byte expectedHigh = (byte)(input[i] >> 4);
             byte expectedLow = (byte)(input[i] & 0x0F);
 
-            Assert.That(result[i * 2], Is.EqualTo(expectedHigh), $"high nibble at position {i} (byte value 0x{input[i]:X2})");
-            Assert.That(result[i * 2 + 1], Is.EqualTo(expectedLow), $"low nibble at position {i} (byte value 0x{input[i]:X2})");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result[i * 2], Is.EqualTo(expectedHigh), $"high nibble at position {i} (byte value 0x{input[i]:X2})");
+                Assert.That(result[i * 2 + 1], Is.EqualTo(expectedLow), $"low nibble at position {i} (byte value 0x{input[i]:X2})");
+            }
         }
     }
 
@@ -122,8 +128,11 @@ public class NibbleTests
         // Verify each byte was correctly split into two nibbles
         for (int i = 0; i < input.Length; i++)
         {
-            Assert.That(result[i * 2], Is.EqualTo((byte)(input[i] >> 4)), $"high nibble at position {i}");
-            Assert.That(result[i * 2 + 1], Is.EqualTo((byte)(input[i] & 0x0F)), $"low nibble at position {i}");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result[i * 2], Is.EqualTo((byte)(input[i] >> 4)), $"high nibble at position {i}");
+                Assert.That(result[i * 2 + 1], Is.EqualTo((byte)(input[i] & 0x0F)), $"low nibble at position {i}");
+            }
         }
     }
 
@@ -154,8 +163,11 @@ public class NibbleTests
             byte expectedHigh = (byte)(input[i] >> 4);
             byte expectedLow = (byte)(input[i] & 0x0F);
 
-            Assert.That(result[i * 2], Is.EqualTo(expectedHigh), $"high nibble at position {i} (byte value 0x{input[i]:X2})");
-            Assert.That(result[i * 2 + 1], Is.EqualTo(expectedLow), $"low nibble at position {i} (byte value 0x{input[i]:X2})");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result[i * 2], Is.EqualTo(expectedHigh), $"high nibble at position {i} (byte value 0x{input[i]:X2})");
+                Assert.That(result[i * 2 + 1], Is.EqualTo(expectedLow), $"low nibble at position {i} (byte value 0x{input[i]:X2})");
+            }
         }
     }
 
@@ -180,8 +192,11 @@ public class NibbleTests
             byte expectedHigh = (byte)(input[i] >> 4);
             byte expectedLow = (byte)(input[i] & 0x0F);
 
-            Assert.That(result[i * 2], Is.EqualTo(expectedHigh), $"high nibble at position {i} (byte value 0x{input[i]:X2}, expected from input[{i}])");
-            Assert.That(result[i * 2 + 1], Is.EqualTo(expectedLow), $"low nibble at position {i} (byte value 0x{input[i]:X2}, expected from input[{i}])");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result[i * 2], Is.EqualTo(expectedHigh), $"high nibble at position {i} (byte value 0x{input[i]:X2}, expected from input[{i}])");
+                Assert.That(result[i * 2 + 1], Is.EqualTo(expectedLow), $"low nibble at position {i} (byte value 0x{input[i]:X2}, expected from input[{i}])");
+            }
         }
     }
 
@@ -206,8 +221,11 @@ public class NibbleTests
             byte expectedHigh = (byte)(input[i] >> 4);
             byte expectedLow = (byte)(input[i] & 0x0F);
 
-            Assert.That(result[i * 2], Is.EqualTo(expectedHigh), $"high nibble at position {i} (byte value 0x{input[i]:X2})");
-            Assert.That(result[i * 2 + 1], Is.EqualTo(expectedLow), $"low nibble at position {i} (byte value 0x{input[i]:X2})");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result[i * 2], Is.EqualTo(expectedHigh), $"high nibble at position {i} (byte value 0x{input[i]:X2})");
+                Assert.That(result[i * 2 + 1], Is.EqualTo(expectedLow), $"low nibble at position {i} (byte value 0x{input[i]:X2})");
+            }
         }
     }
 
@@ -229,8 +247,11 @@ public class NibbleTests
         // Verify each byte was correctly split into two nibbles
         for (int i = 0; i < input.Length; i++)
         {
-            Assert.That(result[i * 2], Is.EqualTo((byte)(input[i] >> 4)), $"high nibble at position {i}");
-            Assert.That(result[i * 2 + 1], Is.EqualTo((byte)(input[i] & 0x0F)), $"low nibble at position {i}");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result[i * 2], Is.EqualTo((byte)(input[i] >> 4)), $"high nibble at position {i}");
+                Assert.That(result[i * 2 + 1], Is.EqualTo((byte)(input[i] & 0x0F)), $"low nibble at position {i}");
+            }
         }
     }
 
@@ -251,8 +272,11 @@ public class NibbleTests
         // Verify each byte was correctly split into two nibbles
         for (int i = 0; i < input.Length; i++)
         {
-            Assert.That(result[i * 2], Is.EqualTo((byte)(input[i] >> 4)), $"high nibble at position {i}");
-            Assert.That(result[i * 2 + 1], Is.EqualTo((byte)(input[i] & 0x0F)), $"low nibble at position {i}");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result[i * 2], Is.EqualTo((byte)(input[i] >> 4)), $"high nibble at position {i}");
+                Assert.That(result[i * 2 + 1], Is.EqualTo((byte)(input[i] & 0x0F)), $"low nibble at position {i}");
+            }
         }
     }
 }

@@ -34,6 +34,7 @@ public static class BeaconChainMetadataKeys
     public const string CheckpointSyncAnchor = "checkpointSyncAnchor";
     /// <summary>8-byte big-endian lower bound of retained canonical history, including verified backfill.</summary>
     public const string EarliestBlockSlot = "earliestBlockSlot";
+    public const string CanonicalPruneCursor = "canonicalPruneCursor";
     /// <summary>8-byte big-endian exclusive end of pruned canonical history; late backfill cannot lower the retained floor past it.</summary>
     public const string PrunedBlockSlot = "prunedBlockSlot";
     /// <summary>8-byte big-endian finalized slot of the last completed prune, at or below which every stored block is canonical; absent until every summary has its slot key.</summary>
@@ -624,22 +625,11 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         return written == result.Length ? result : result[..written];
     }
 
-    private long _backfilledBlockFloor = long.MaxValue;
-
-    /// <summary>The earliest block range verified by backfill in this process (fulu/p2p-interface.md).</summary>
-    internal ulong? BackfilledBlockFloor
+    internal void LowerBackfilledBlockFloor(ulong floor)
     {
-        get => Volatile.Read(ref _backfilledBlockFloor) is long floor && floor != long.MaxValue ? (ulong)floor : null;
-        set
-        {
-            using Lock.Scope retentionScope = _canonicalRetentionLock.EnterScope();
-            if (value is { } floor)
-            {
-                using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
-                LowerBlockFloor(floor, batch.GetColumnBatch(BeaconChainDbColumns.Metadata));
-            }
-            Volatile.Write(ref _backfilledBlockFloor, value is { } available ? (long)available : long.MaxValue);
-        }
+        using Lock.Scope retentionScope = _canonicalRetentionLock.EnterScope();
+        using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
+        LowerBlockFloor(floor, batch.GetColumnBatch(BeaconChainDbColumns.Metadata));
     }
 
     public void SetCanonicalRoot(ulong slot, Hash256 root)
@@ -1009,6 +999,31 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
             ? payload.SlotNumber
             : throw new ArgumentException($"The envelope for {blockRoot} has no payload or names beacon block {envelope.Message?.BeaconBlockRoot?.ToString() ?? "none"}", nameof(envelope));
 
+    internal void DeleteExecutionPayloadEnvelope(Hash256 blockRoot, ulong slot)
+    {
+        Span<byte> slotKey = stackalloc byte[sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64BigEndian(slotKey, slot);
+        lock (_envelopeIndexLock)
+        {
+            using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
+            IWriteBatch envelopes = batch.GetColumnBatch(BeaconChainDbColumns.ExecutionPayloadEnvelopes);
+            envelopes.Remove(blockRoot.Bytes);
+            envelopes.Remove(ExecutionPayloadVerdictKey(blockRoot.Bytes));
+            if (_envelopes.Get(slotKey) is not { } roots) return;
+            roots = (byte[])roots.Clone();
+            int kept = 0;
+            for (int offset = 0; offset + Hash256.Size <= roots.Length; offset += Hash256.Size)
+            {
+                ReadOnlySpan<byte> root = roots.AsSpan(offset, Hash256.Size);
+                if (root.SequenceEqual(blockRoot.Bytes)) continue;
+                root.CopyTo(roots.AsSpan(kept));
+                kept += Hash256.Size;
+            }
+            if (kept == 0) envelopes.Remove(slotKey);
+            else envelopes.Set(slotKey, roots.AsSpan(0, kept).ToArray());
+        }
+    }
+
     internal void SetExecutionPayloadValid(Hash256 blockRoot)
     {
         lock (_envelopeIndexLock)
@@ -1075,9 +1090,24 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         ulong windowStart = epoch > ulong.MaxValue / networkSpec.SlotsPerEpoch ? ulong.MaxValue : epoch * networkSpec.SlotsPerEpoch;
         ulong keepFrom = Math.Min(windowStart, replaySlot);
         if (TryGetAnchor(out _, out ulong anchorSlot)) keepFrom = Math.Min(keepFrom, anchorSlot);
-        if (!TryGetEarliestBlockSlot(out ulong lowest) || lowest >= keepFrom) return;
+        if (!TryGetEarliestBlockSlot(out ulong servedFloor)) return;
+        ulong lowest = GetMetadata(BeaconChainMetadataKeys.CanonicalPruneCursor) is { Length: sizeof(ulong) } cursor
+            ? Math.Min(servedFloor, BinaryPrimitives.ReadUInt64BigEndian(cursor)) : servedFloor;
+        if (lowest >= keepFrom) return;
 
         ulong end = lowest + Math.Min(keepFrom - lowest, CanonicalPruneBatchSlots);
+        byte[] floor = new byte[sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64BigEndian(floor, end);
+        // Hide the range before deleting its blocks; the cursor advances only after its index is removed.
+        using (IColumnsWriteBatch<BeaconChainDbColumns> start = db.StartWriteBatch())
+        {
+            IWriteBatch metadata = start.GetColumnBatch(BeaconChainDbColumns.Metadata);
+            byte[] resume = new byte[sizeof(ulong)];
+            BinaryPrimitives.WriteUInt64BigEndian(resume, lowest);
+            metadata.Set(Encoding.UTF8.GetBytes(BeaconChainMetadataKeys.CanonicalPruneCursor), resume);
+            metadata.Set(Encoding.UTF8.GetBytes(BeaconChainMetadataKeys.PrunedBlockSlot), floor);
+            metadata.Set(Encoding.UTF8.GetBytes(BeaconChainMetadataKeys.EarliestBlockSlot), floor);
+        }
         for (ulong slot = lowest; slot < end; slot++)
         {
             if (TryGetCanonicalRoot(slot, out Hash256? root)) DeleteBlock(root);
@@ -1093,10 +1123,7 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
             index.Remove(key);
         }
 
-        byte[] floor = new byte[sizeof(ulong)];
-        BinaryPrimitives.WriteUInt64BigEndian(floor, end);
-        batch.GetColumnBatch(BeaconChainDbColumns.Metadata).Set(Encoding.UTF8.GetBytes(BeaconChainMetadataKeys.EarliestBlockSlot), floor);
-        batch.GetColumnBatch(BeaconChainDbColumns.Metadata).Set(Encoding.UTF8.GetBytes(BeaconChainMetadataKeys.PrunedBlockSlot), floor);
+        batch.GetColumnBatch(BeaconChainDbColumns.Metadata).Set(Encoding.UTF8.GetBytes(BeaconChainMetadataKeys.CanonicalPruneCursor), floor);
     }
 
     /// <summary>Deletes every stored execution payload envelope whose slot is below both the ExecutionPayloadEnvelopesByRange/ByRoot retention window as of <paramref name="currentEpoch"/> and <paramref name="finalizedSlot"/>.</summary>

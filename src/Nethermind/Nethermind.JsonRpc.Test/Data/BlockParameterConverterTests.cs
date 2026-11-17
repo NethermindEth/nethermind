@@ -139,8 +139,11 @@ namespace Nethermind.JsonRpc.Test.Data
 
             BlockParameter blockParameter = serializer.Deserialize<BlockParameter>(input)!;
 
-            Assert.That(blockParameter.BlockHash, Is.EqualTo(new Hash256(output)));
-            Assert.That(blockParameter.RequireCanonical, Is.EqualTo(requireCanonical));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(blockParameter.BlockHash, Is.EqualTo(new Hash256(output)));
+                Assert.That(blockParameter.RequireCanonical, Is.EqualTo(requireCanonical));
+            }
         }
 
         [Test]

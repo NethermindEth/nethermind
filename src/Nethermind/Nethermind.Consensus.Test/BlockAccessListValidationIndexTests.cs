@@ -33,14 +33,14 @@ public class BlockAccessListValidationIndexTests
 
         BlockAccessListValidationIndex generatedIndex = BuildPair(suggested, generated, txCount: 3, out BlockAccessListValidationIndex suggestedIndex);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(generatedIndex.ChangesEqual(suggestedIndex, 0), Is.True);
             Assert.That(generatedIndex.ChangesEqual(suggestedIndex, 1), Is.True);
             Assert.That(generatedIndex.ChangesEqual(suggestedIndex, 2), Is.True);
             Assert.That(generatedIndex.ChangesEqual(suggestedIndex, 3), Is.True);
             Assert.That(generatedIndex.ChangesEqual(suggestedIndex, 4), Is.True);
-        });
+        }
     }
 
     [Test]
@@ -54,6 +54,27 @@ public class BlockAccessListValidationIndexTests
             Account(TestItem.AddressB, nonce: new NonceChange(1, 2)));
 
         BlockAccessListValidationIndex generatedIndex = BuildPair(suggested, generated, txCount: 1, out BlockAccessListValidationIndex suggestedIndex);
+
+        Assert.That(generatedIndex.ChangesEqual(suggestedIndex, 1), Is.True);
+    }
+
+    [Test]
+    public void ChangesEqual_sorts_generated_scalar_row_added_out_of_account_order()
+    {
+        ReadOnlyBlockAccessList suggested = Bal(
+            Account(TestItem.AddressA, balance: new BalanceChange(1, 1)),
+            Account(TestItem.AddressB, balance: new BalanceChange(1, 2)),
+            Account(TestItem.AddressC, balance: new BalanceChange(1, 3)));
+        using BlockAccessListValidationIndex suggestedIndex = BlockAccessListValidationIndex.Build(suggested, Header, txCount: 1, _addressIndex);
+        using BlockAccessListValidationIndex generatedIndex = new(1, _addressIndex, suggestedIndex, suggested.TotalStorageReads, suggested.TotalStorageChangeEvents);
+        BlockAccessListAtIndex slice = new() { Index = 1 };
+        foreach (int i in (ReadOnlySpan<int>)[0, 2, 1])
+        {
+            ReadOnlyAccountChanges account = suggested.AccountChanges.AsSpan()[i];
+            UInt256 value = account.BalanceChanges[0].Value;
+            slice.AddBalanceChange(account.Address, before: value + UInt256.One, after: value);
+        }
+        generatedIndex.Add(slice);
 
         Assert.That(generatedIndex.ChangesEqual(suggestedIndex, 1), Is.True);
     }
@@ -114,11 +135,11 @@ public class BlockAccessListValidationIndexTests
 
         BlockAccessListValidationIndex generatedIndex = BuildPair(suggested, generated, txCount: 2, out BlockAccessListValidationIndex suggestedIndex);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(generatedIndex.ChangesEqual(suggestedIndex, 1), Is.False);
             Assert.That(generatedIndex.ChangesEqual(suggestedIndex, 2), Is.True);
-        });
+        }
     }
 
     [TestCase(ValidationIndexMismatch.MissingBalance, 0u)]
@@ -206,12 +227,12 @@ public class BlockAccessListValidationIndexTests
 
         BlockAccessListValidationIndex generatedIndex = BuildPair(suggested, generated, txCount: 1, out BlockAccessListValidationIndex suggestedIndex);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(generatedIndex.ChangesEqual(suggestedIndex, 1), Is.True);
             Assert.That(suggestedIndex.HasAccount(TestItem.AddressA), Is.True);
             Assert.That(suggestedIndex.HasAccount(TestItem.AddressB), Is.False);
-        });
+        }
     }
 
     [Test]
@@ -222,11 +243,11 @@ public class BlockAccessListValidationIndexTests
 
         BlockAccessListValidationIndex generatedIndex = BuildPair(suggested, generated, txCount: 2, out BlockAccessListValidationIndex suggestedIndex);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(generatedIndex.ChangesEqual(suggestedIndex, 3), Is.True);
             Assert.That(generatedIndex.ChangesEqual(suggestedIndex, 4), Is.False);
-        });
+        }
     }
 
     [Test]
@@ -270,7 +291,7 @@ public class BlockAccessListValidationIndexTests
             foreach (BalanceChange bc in acc.BalanceChanges)
                 GetSlice(slicesByIndex, bc.Index).AddBalanceChange(acc.Address, before: bc.Value + UInt256.One, after: bc.Value);
             foreach (NonceChange nc in acc.NonceChanges)
-                GetSlice(slicesByIndex, nc.Index).AddNonceChange(acc.Address, nc.Value);
+                GetSlice(slicesByIndex, nc.Index).AddNonceChange(acc.Address, 0, nc.Value);
             foreach (CodeChange cc in acc.CodeChanges)
             {
                 if (cc.IsAdopted) GetSlice(slicesByIndex, cc.Index).AddAdoptedCodeChange(acc.Address, before: Array.Empty<byte>(), after: cc.Code, cc.CodeHash);

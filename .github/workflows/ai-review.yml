@@ -35,11 +35,9 @@ jobs:
       !github.event.pull_request.draft &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.user.login != 'dependabot[bot]'
-    uses: NethermindEth/github-workflows/.github/workflows/ai-review.yaml@v5.1.1
+    uses: NethermindEth/github-workflows/.github/workflows/ai-review.yaml@main
     with:
       secret_path: /apps/litellm/nethermind-ai-reviewer
-      # GitHub cannot return a combined diff above 300 files; bypass diff-size selection.
-      model: ${{ github.event.pull_request.changed_files > 300 && 'openai/gemini/gemini-pro-latest' || '' }}
       num_max_findings: 8
       extra_instructions: ${{ needs.instructions.outputs.instructions }}
       # Advisory, not a required check: no label, and LLM/gateway failures stay green.

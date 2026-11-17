@@ -37,7 +37,10 @@ public class BulkFillImportProgressTests
     [Test]
     public void ImportEta_WhenComplete_IsZeroEvenForEmptyColumn()
     {
-        Assert.That(BulkFillImportProgress.Remaining(0, 0, TimeSpan.Zero, true), Is.EqualTo(TimeSpan.Zero));
-        Assert.That(BulkFillImportProgress.Fraction([]), Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(BulkFillImportProgress.Remaining(0, 0, TimeSpan.Zero, true), Is.EqualTo(TimeSpan.Zero));
+            Assert.That(BulkFillImportProgress.Fraction([]), Is.Zero);
+        }
     }
 }

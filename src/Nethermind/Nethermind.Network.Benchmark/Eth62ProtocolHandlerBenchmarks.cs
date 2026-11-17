@@ -23,6 +23,7 @@ using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Network.Test;
 using Nethermind.Specs;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
@@ -78,7 +79,7 @@ namespace Nethermind.Network.Benchmarks
             statusMessage.TotalDifficulty = 131200;
             statusMessage.NetworkId = 1;
             IByteBuffer bufStatus = _ser.ZeroSerialize(statusMessage);
-            _zeroPacket = new ZeroPacket(bufStatus);
+            _zeroPacket = new NettyBufferPacket(bufStatus);
             _zeroPacket.PacketType = bufStatus.ReadByte();
 
             _handler.HandleMessage(_zeroPacket);
@@ -96,7 +97,7 @@ namespace Nethermind.Network.Benchmarks
         public void Current()
         {
             IByteBuffer buf = _ser.ZeroSerialize(_txMsg);
-            _zeroPacket = new ZeroPacket(buf);
+            _zeroPacket = new NettyBufferPacket(buf);
             _zeroPacket.PacketType = buf.ReadByte();
             _zeroPacket.PacketType = Eth62MessageCode.Transactions;
             _handler.HandleMessage(_zeroPacket);
@@ -109,7 +110,7 @@ namespace Nethermind.Network.Benchmarks
         public void SerializeAndCreatePacket()
         {
             IByteBuffer buf = _ser.ZeroSerialize(_txMsg);
-            _zeroPacket = new ZeroPacket(buf);
+            _zeroPacket = new NettyBufferPacket(buf);
             _zeroPacket.PacketType = buf.ReadByte();
             _zeroPacket.PacketType = Eth62MessageCode.Transactions;
         }

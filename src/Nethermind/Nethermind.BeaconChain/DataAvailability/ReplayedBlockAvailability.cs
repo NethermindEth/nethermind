@@ -8,9 +8,7 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.BeaconChain.DataAvailability;
 
 /// <summary>
-/// The <c>is_data_available</c> reading for a block this node already imported once: <c>on_block</c>
-/// asserted its availability before the block was persisted, and the sidecars that satisfied it are
-/// not persisted, so a replay from the store can neither re-check them nor needs to.
+/// Treats a block already admitted to this node's store as data-available during trusted replay.
 /// </summary>
 /// <remarks>
 /// Only valid for blocks that came out of this node's own store. Applying it to a block from the

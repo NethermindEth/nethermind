@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Globalization;
 using Evm.T8n.Errors;
 using Evm.T8n.JsonTypes;
 using Nethermind.Core;
@@ -34,7 +35,8 @@ public static class T8nInputProcessor
         GethTraceOptions gethTraceOptions = new()
         {
             EnableMemory = arguments.TraceMemory,
-            DisableStack = arguments.TraceNoStack
+            DisableStack = arguments.TraceNoStack,
+            EnableReturnData = arguments.TraceReturnData,
         };
 
         T8nTest test = new(spec, specProvider, inputData.Env.CurrentCoinbase)
@@ -59,10 +61,11 @@ public static class T8nInputProcessor
             CurrentExcessBlobGas = inputData.Env.CurrentExcessBlobGas,
             ParentBlobGasUsed = inputData.Env.ParentBlobGasUsed,
             Ommers = inputData.Env.Ommers,
-            BlockHashes = inputData.Env.BlockHashes,
+            BlockHashes = inputData.Env.BlockHashes?.ToDictionary(kvp => ParseBlockNumber(kvp.Key), kvp => kvp.Value),
             StateChainId = arguments.StateChainId,
             GethTraceOptions = gethTraceOptions,
             IsTraceEnabled = arguments.Trace,
+            AreRewardsEnabled = !IsRewardDisabled(arguments),
         };
 
         return test;
@@ -81,7 +84,7 @@ public static class T8nInputProcessor
         }
         OverridableReleaseSpec overridableReleaseSpec = new(spec);
 
-        if (!string.IsNullOrEmpty(arguments.StateReward) && arguments.StateReward != "-1") // (-1 means rewards are disabled)
+        if (!string.IsNullOrEmpty(arguments.StateReward) && !IsRewardDisabled(arguments))
         {
             overridableReleaseSpec.BlockReward = UInt256.Parse(arguments.StateReward);
         }
@@ -90,11 +93,19 @@ public static class T8nInputProcessor
             : new CustomSpecProvider(((ForkActivation)0, Frontier.Instance),
                 ((ForkActivation)1, overridableReleaseSpec));
 
-        if (spec is Paris)
+        if (spec is NamedReleaseSpec { IsPostMerge: true })
         {
             specProvider.UpdateMergeTransitionInfo(env.CurrentNumber, 0);
         }
 
         return (specProvider, overridableReleaseSpec);
     }
+
+    /// <remarks>As in geth, a negative <c>--state.reward</c> skips the block and ommer rewards.</remarks>
+    private static bool IsRewardDisabled(T8nCommandArguments arguments) => arguments.StateReward.StartsWith('-');
+
+    private static ulong ParseBlockNumber(string number) =>
+        number.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+            ? ulong.Parse(number.AsSpan(2), NumberStyles.HexNumber, CultureInfo.InvariantCulture)
+            : ulong.Parse(number, CultureInfo.InvariantCulture);
 }

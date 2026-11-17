@@ -23,9 +23,10 @@ public partial class GossipRouterTests
         await using DeferredFixture fixture = await DeferredFixture.Create(maxPending: 8, maxPendingBytes: 1 << 20, TimeSpan.FromSeconds(30), PubsubRouter.GossipsubProtocolVersionV12);
         byte[] block = LargeBlockMessage(CurrentSlot);
 
-        fixture.Receive(fixture.Sender, block);
+        await fixture.Receive(fixture.Sender, block);
         int announcedWhilePending = fixture.IdontwantsTo(fixture.Neighbor).Count();
         fixture.Raised.Single().Complete(validity);
+        await FlushOutboundAsync(fixture.Pubsub);
 
         Rpc[] toNeighbor = [.. fixture.SentTo(fixture.Neighbor)];
         int announcement = Array.FindIndex(toNeighbor, static rpc => rpc.Control?.Idontwant.Count > 0);
@@ -62,14 +63,15 @@ public partial class GossipRouterTests
         }
 
         announcements.Control.Idontwant.Add(new ControlIDontWant { MessageIDs = { ByteString.CopyFrom(Eth2MessageId.Compute(BlockTopic, block)) } });
-        fixture.ReceiveRpc(fixture.Neighbor, announcements);
+        await fixture.ReceiveRpc(fixture.Neighbor, announcements);
         for (int i = 0; i < heartbeats; i++)
         {
             await fixture.Pubsub.Heartbeat();
         }
 
-        fixture.Receive(fixture.Sender, block);
+        await fixture.Receive(fixture.Sender, block);
         fixture.Raised.Single().Complete(MessageValidity.Accepted);
+        await FlushOutboundAsync(fixture.Pubsub);
 
         Assert.That(fixture.SentToNeighbor(block), Is.EqualTo(expectSent));
     }

@@ -19,6 +19,21 @@ public class GloasEpochProcessingTests
     private static readonly ulong SlotsPerEpoch = Presets.SlotsPerEpoch;
 
     [Test]
+    public void Churn_rejects_epoch_overflow([Values] bool consolidation)
+    {
+        BeaconStateGloas state = StateWithRegistry(8192, 2048);
+        state.EarliestExitEpoch = ulong.MaxValue;
+        state.EarliestConsolidationEpoch = ulong.MaxValue;
+        state.ExitBalanceToConsume = 0;
+        state.ConsolidationBalanceToConsume = 0;
+        EpochCache cache = new();
+
+        Assert.That(() => consolidation
+            ? state.ComputeConsolidationEpochAndUpdateChurn(Gwei, cache)
+            : state.ComputeExitEpochAndUpdateChurn(Gwei, cache), Throws.TypeOf<BeaconStateException>());
+    }
+
+    [Test]
     public void A_bid_at_the_same_slot_in_epoch_as_an_unsettled_payment_from_the_previous_epoch_lands_beside_it_not_on_top_of_it()
     {
         BeaconStateGloas state = CreateGloasState(out Bls.SecretKey builderSk, out _);
@@ -35,8 +50,11 @@ public class GloasEpochProcessingTests
 
         // Cross the epoch boundary: the rotation moves the unsettled payment to the lower half.
         GloasSlotProcessing.ProcessSlots(state, 2 * SlotsPerEpoch, cache);
-        Assert.That(state.BuilderPendingPayments[0].Withdrawal!.Amount, Is.EqualTo(firstBidValue), "the rotation must carry the unsettled payment into the previous-epoch half");
-        Assert.That(state.BuilderPendingPayments[32].Withdrawal!.Amount, Is.EqualTo(0ul), "the rotation must clear the current-epoch half");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(state.BuilderPendingPayments[0].Withdrawal!.Amount, Is.EqualTo(firstBidValue), "the rotation must carry the unsettled payment into the previous-epoch half");
+            Assert.That(state.BuilderPendingPayments[32].Withdrawal!.Amount, Is.EqualTo(0ul), "the rotation must clear the current-epoch half");
+        }
 
         // Slot 64, slot-in-epoch 0 again: a second real payment at the same address as the first.
         SignedExecutionPayloadBid secondBid = ValidBuilderBid(state, builderSk, builderIndex: 0, value: secondBidValue, blockHashFill: 0x8B);
@@ -407,14 +425,14 @@ public class GloasEpochProcessingTests
 
         GloasEpochProcessing.ProcessPendingDeposits(state, cache);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(state.Balances![3], Is.EqualTo(132 * Gwei));
             Assert.That(state.Balances[5], Is.EqualTo(32 * Gwei), "the deposit that overflows the churn is not applied");
             Assert.That(state.Balances[7], Is.EqualTo(32 * Gwei), "the queue stops at the first overflow; a later deposit that would fit is not pulled ahead of it");
             Assert.That(state.PendingDeposits, Is.EqualTo(new[] { second, third }).AsCollection);
             Assert.That(state.DepositBalanceToConsume, Is.EqualTo(28 * Gwei), "the churn the stopped deposit left unused carries over");
-        });
+        }
 
         GloasEpochProcessing.ProcessPendingDeposits(state, cache);
 

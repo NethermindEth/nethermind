@@ -52,18 +52,18 @@ public class ForkChoiceStoreTests
         ForkChoiceStore store = new(slotsPerEpoch: 8, currentSlot: 9, GetCheckpoint(3), GetCheckpoint(2));
 
         store.UpdateCheckpoints(GetCheckpoint(2), GetCheckpoint(1));
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(store.JustifiedCheckpoint.Epoch, Is.EqualTo(3ul), "an earlier justified epoch must not roll the store back");
             Assert.That(store.FinalizedCheckpoint.Epoch, Is.EqualTo(2ul), "an earlier finalized epoch must not roll the store back");
-        });
+        }
 
         store.UpdateCheckpoints(GetCheckpoint(3), GetCheckpoint(2));
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(store.JustifiedCheckpoint.Epoch, Is.EqualTo(3ul), "an equal epoch is not a later one");
             Assert.That(store.FinalizedCheckpoint.Epoch, Is.EqualTo(2ul));
-        });
+        }
 
         store.UpdateCheckpoints(GetCheckpoint(5), GetCheckpoint(4));
         using System.IDisposable assertionScope = Assert.EnterMultipleScope();

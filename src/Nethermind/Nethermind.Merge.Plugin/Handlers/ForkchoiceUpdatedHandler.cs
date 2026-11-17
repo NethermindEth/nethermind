@@ -180,11 +180,7 @@ public class ForkchoiceUpdatedHandler(
             // The cache does not survive a restart, so persist the hashes like the resolved-head paths do.
             // Safe while the finalized header is unknown: finalized blocks cannot reorg, TryUpdateSyncPivot
             // no-ops on an unresolvable hash, and OnForkChoiceUpdated briefly reports finalized/safe as 0.
-            // A zero finalized hash must not overwrite one already persisted that a restart relies on.
-            if (forkchoiceState.FinalizedBlockHash != Keccak.Zero)
-            {
-                _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash, forkchoiceState.SafeBlockHash);
-            }
+            _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash, forkchoiceState.SafeBlockHash);
 
             if (_logger.IsInfo) _logger.Info($"Syncing Unknown ForkChoiceState head hash Request: {simpleRequestStr}.");
             return ForkchoiceUpdatedV1Result.Syncing;

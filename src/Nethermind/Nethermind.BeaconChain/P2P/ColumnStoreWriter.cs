@@ -8,8 +8,7 @@ namespace Nethermind.BeaconChain.P2P;
 
 /// <summary>Runs the store writes of <see cref="DataColumnSidecarPool"/> in arrival order on one dedicated thread.</summary>
 /// <remarks>
-/// Gossip validation runs inside the pubsub router's lock, which every peer's read loop takes on a thread-pool thread, so a store write
-/// or an epoch's prune there stalls the messages of all peers and parks a pool thread per peer on that lock.
+/// Store writes and pruning run independently of gossip validation so disk latency does not stall the delivering peer's read loop.
 /// </remarks>
 public sealed class ColumnStoreWriter : IDisposable
 {

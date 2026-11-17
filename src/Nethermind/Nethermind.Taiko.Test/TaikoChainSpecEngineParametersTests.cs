@@ -46,10 +46,13 @@ public class TaikoChainSpecEngineParametersTests
 
         parameters.AddTransitions(blockNumbers, timestamps);
 
-        Assert.That(blockNumbers, Is.Empty,
-            "Ontake/Pacaya at block 0 must be filtered — EIP-2124 skips activations at or before genesis");
-        Assert.That(timestamps, Is.EqualTo(new[] { 0x69df3615ul }),
-            "Shasta=0 must be filtered; Unzen at a future ts must be folded");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockNumbers, Is.Empty,
+                "Ontake/Pacaya at block 0 must be filtered — EIP-2124 skips activations at or before genesis");
+            Assert.That(timestamps, Is.EqualTo(new[] { 0x69df3615ul }),
+                "Shasta=0 must be filtered; Unzen at a future ts must be folded");
+        }
     }
 
     [Test]
@@ -68,8 +71,11 @@ public class TaikoChainSpecEngineParametersTests
 
         parameters.AddTransitions(blockNumbers, timestamps);
 
-        Assert.That(blockNumbers, Is.EqualTo(new[] { 0x836c0UL, 0x11CAB0UL }));
-        Assert.That(timestamps, Is.EqualTo(new[] { 0x69CE6BD4ul }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockNumbers, Is.EqualTo(new[] { 0x836c0UL, 0x11CAB0UL }));
+            Assert.That(timestamps, Is.EqualTo(new[] { 0x69CE6BD4ul }));
+        }
     }
 
     [Test]
@@ -82,8 +88,11 @@ public class TaikoChainSpecEngineParametersTests
 
         parameters.AddTransitions(blockNumbers, timestamps);
 
-        Assert.That(blockNumbers, Is.Empty);
-        Assert.That(timestamps, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockNumbers, Is.Empty);
+            Assert.That(timestamps, Is.Empty);
+        }
     }
 
     [Test]
@@ -330,11 +339,14 @@ public class TaikoChainSpecEngineParametersTests
         Assert.That(parameters.UnzenZkGasSchedules!, Has.Count.EqualTo(1));
 
         TaikoUnzenZkGasSchedule schedule = parameters.UnzenZkGasSchedules[0];
-        Assert.That(schedule.Timestamp, Is.EqualTo(0x100ul));
-        Assert.That(schedule.OpcodeMultipliers![0x20], Is.EqualTo(85L), "hex opcode value parses");
-        Assert.That(schedule.OpcodeMultipliers[0xf1], Is.EqualTo(25L), "decimal opcode value parses");
-        Assert.That(schedule.PrecompileMultipliers!["0x0000000000000000000000000000000000000005"], Is.EqualTo(1363L));
-        Assert.That(schedule.PrecompileMultipliers["0x0000000000000000000000000000000000010001"], Is.EqualTo(200L),
-            "Taiko-extended precompile address coexists with canonical low-byte EVM precompiles");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(schedule.Timestamp, Is.EqualTo(0x100ul));
+            Assert.That(schedule.OpcodeMultipliers![0x20], Is.EqualTo(85L), "hex opcode value parses");
+            Assert.That(schedule.OpcodeMultipliers[0xf1], Is.EqualTo(25L), "decimal opcode value parses");
+            Assert.That(schedule.PrecompileMultipliers!["0x0000000000000000000000000000000000000005"], Is.EqualTo(1363L));
+            Assert.That(schedule.PrecompileMultipliers["0x0000000000000000000000000000000000010001"], Is.EqualTo(200L),
+                "Taiko-extended precompile address coexists with canonical low-byte EVM precompiles");
+        }
     }
 }

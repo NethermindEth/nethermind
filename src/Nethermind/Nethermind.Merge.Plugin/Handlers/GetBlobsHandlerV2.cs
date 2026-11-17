@@ -5,17 +5,24 @@ using System;
 using Nethermind.Core.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class GetBlobsHandlerV2(ITxPool txPool) : IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?>
+public class GetBlobsHandlerV2(ITxPool txPool, IEthSyncingInfo? ethSyncingInfo) : IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?>
 {
     private const int MaxRequest = 128;
 
     private static readonly Task<ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>> NotFound = Task.FromResult(ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>.Success(null));
+
+    public GetBlobsHandlerV2(ITxPool txPool)
+        : this(txPool, null)
+    {
+    }
 
     public Task<ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>> HandleAsync(GetBlobsHandlerV2Request request)
     {
@@ -26,6 +33,11 @@ public class GetBlobsHandlerV2(ITxPool txPool) : IAsyncHandler<GetBlobsHandlerV2
         }
 
         Metrics.GetBlobsRequestsTotal += request.BlobVersionedHashes.Length;
+
+        if (IsBehindHead())
+        {
+            return ReturnEmptyArray();
+        }
 
         int n = request.BlobVersionedHashes.Length;
         if (n == 0)
@@ -60,6 +72,14 @@ public class GetBlobsHandlerV2(ITxPool txPool) : IAsyncHandler<GetBlobsHandlerV2
             throw;
         }
     }
+
+    /// <summary>Whether the node has not reached the chain head yet, so the spec requires a <c>null</c> response.</summary>
+    /// <remarks>
+    /// <see cref="IEthSyncingInfo.IsSyncing"/> alone also holds while old bodies and receipts download after state sync,
+    /// when the node already follows the head and its pool takes gossip (<see cref="SyncMode.WaitingForBlock"/>, see <see cref="SyncedTxGossipPolicy"/>).
+    /// </remarks>
+    private bool IsBehindHead() =>
+        ethSyncingInfo is not null && (ethSyncingInfo.SyncMode & SyncMode.WaitingForBlock) == 0 && ethSyncingInfo.IsSyncing();
 
     private Task<ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>> ReturnEmptyArray()
     {

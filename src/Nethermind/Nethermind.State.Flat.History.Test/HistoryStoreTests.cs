@@ -85,8 +85,11 @@ public class HistoryStoreTests
         Record(20, KeyA, [0xBB, 0xCC]);
 
         Span<byte> buffer = stackalloc byte[64];
-        Assert.That(_store.TryGetAt(block, KeyA, buffer, out ulong foundAtBlock), Is.GreaterThan(0));
-        Assert.That(foundAtBlock, Is.EqualTo(expectedFoundAt));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_store.TryGetAt(block, KeyA, buffer, out ulong foundAtBlock), Is.GreaterThan(0));
+            Assert.That(foundAtBlock, Is.EqualTo(expectedFoundAt));
+        }
     }
 
     private void Record(ulong block, ReadOnlySpan<byte> flatKey, ReadOnlySpan<byte> value)

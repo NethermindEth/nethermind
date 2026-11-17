@@ -620,7 +620,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         }
     }
 
-    /// <summary>Adds each sidecar that verifies against the block it names in <paramref name="blocksByRoot"/>; any other, except one whose header signature differs from that block's, penalizes <paramref name="peer"/>, once per (root, index) of the reply.</summary>
+    /// <summary>Adds verified sidecars of batch blocks; invalid sidecars penalize the supplier once per (root, index).</summary>
     /// <remarks>Only KZG failures shadow later copies of a requested column; consensus-specs v1.7.0-beta.2 fulu/p2p-interface.md defines the three independent checks.</remarks>
     private void AddVerifiedSidecars(IBeaconSyncPeer peer, IReadOnlyList<DataColumnSidecar> sidecars, Dictionary<Hash256, SignedBeaconBlock> blocksByRoot)
     {
@@ -642,6 +642,12 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             }
 
             bool requested = blocksByRoot.TryGetValue(sidecarBlockRoot, out SignedBeaconBlock? block);
+            // By-range custodians serve their own fork choice, which can differ from the block supplier's.
+            if (!requested && DataColumnSidecarVerifier.VerifyStructure(sidecar)
+                && DataColumnSidecarVerifier.VerifyBlobCount(sidecar, spec)
+                && DataColumnSidecarVerifier.VerifyInclusionProof(sidecar)
+                && DataColumnSidecarVerifier.VerifyKzgProofs(sidecar))
+                continue;
             // A column an earlier reply already supplied is not verified again.
             if (requested && sidecarPool.TryGet(sidecarBlockRoot, sidecar.Index, out _))
             {
@@ -924,6 +930,10 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
                 continue;
             }
 
+            if (i + 1 < blocks.Count && blocks[i + 1] is ForkedSignedBeaconBlock.OfGloas { Block.Message.Body.SignedExecutionPayloadBid.Message: { } childBid }
+                && childBid.ParentBlockHash != bid.BlockHash)
+                continue;
+
             startSlot = Math.Min(startSlot, message.Slot);
             endSlot = Math.Max(endSlot, message.Slot);
             lastBlobSlot = Math.Max(lastBlobSlot, message.Slot);
@@ -1037,6 +1047,8 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         HashSet<(Hash256 Root, ulong Index)> rejected = [];
         foreach (DataColumnSidecarGloas sidecar in sidecars)
         {
+            // A by-range reply may describe the custodian's competing fork.
+            if (sidecar.BeaconBlockRoot is { } otherRoot && !bidsByRoot.ContainsKey(otherRoot)) continue;
             // A repeat of a (root, index) this reply already failed is neither verified nor penalized again.
             if (sidecar.BeaconBlockRoot is { } rejectedRoot && rejected.Contains((rejectedRoot, sidecar.Index)))
             {

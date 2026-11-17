@@ -45,11 +45,11 @@ public class PeerRequestFailureTests
 
     [Test]
     [CancelAfter(90_000)]
-    public async Task A_peer_that_stops_answering_is_retained_unless_it_also_violated_the_protocol([Values] bool violated, CancellationToken token)
+    public async Task A_lone_peer_that_stops_answering_is_retained_unless_it_also_violated_the_protocol([Values] bool violated, [Values] bool aboveFloor, CancellationToken token)
     {
         await using Fixture fixture = await Fixture.CreateAsync(token, hangable: true);
         fixture.Config.FaultDisconnectsBeforeBan = 1;
-        fixture.CountTimeoutsAsDrops();
+        fixture.Config.MinPeerCount = aboveFloor ? 0 : 1;
         fixture.Fail(violated ? PeerFailureReason.ProtocolViolation : PeerFailureReason.RequestFailed, Limit - 1);
         string peerId = fixture.Manager.Peers.Single().PeerId;
         fixture.StopAnswering();
@@ -57,7 +57,7 @@ public class PeerRequestFailureTests
         await fixture.Manager.RunMaintenanceRoundAsync(token);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(fixture.Manager.PeerCount, Is.EqualTo(violated ? 0 : 1));
+        Assert.That(fixture.Manager.PeerCount, Is.EqualTo(violated ? 0 : 1), "a lone peer's timeout has no independently successful peer request to corroborate it");
         Assert.That(fixture.Manager.IsBannedForTest(peerId), Is.EqualTo(violated), "silence alone must not ban, a violation in the run must");
     }
 
@@ -110,14 +110,18 @@ public class PeerRequestFailureTests
             await fixture.Manager.HandleHealthFailureAsync(fixture.Peer, new TimeoutException(), fixture.Time.UtcNow.Ticks, token);
         }
 
-        Assert.That(fixture.Manager.PeerCount, Is.EqualTo(2));
-        Assert.That(fixture.IsSelectable, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.Manager.PeerCount, Is.EqualTo(2));
+            Assert.That(fixture.IsSelectable, Is.False);
+        }
     }
 
     [Test]
     public async Task Independently_confirmed_timeouts_keep_the_floor_and_do_not_share_the_request_failure_budget([Values] bool keepFloor, CancellationToken token)
     {
         await using Fixture fixture = await Fixture.CreateAsync(token);
+        fixture.Config.FaultDisconnectsBeforeBan = 1;
         Node other = CreateNode();
         SetMatchingStatus(other);
         await using (other.P2P)
@@ -135,7 +139,11 @@ public class PeerRequestFailureTests
                 if (i < Limit - 1) Assert.That(fixture.Manager.PeerCount, Is.EqualTo(2));
             }
 
-            Assert.That(fixture.Manager.PeerCount, Is.EqualTo(keepFloor ? 2 : 1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(fixture.Manager.PeerCount, Is.EqualTo(keepFloor ? 2 : 1));
+                Assert.That(fixture.Manager.IsBannedForTest(fixture.Peer.Id), Is.False, "a confirmed silence drop must not record a protocol fault");
+            }
             if (!keepFloor) Assert.That(await fixture.Manager.TryAddPeerAsync(fixture.Peer.Id, token), Is.False, "a dropped endpoint also observes backoff");
         }
     }

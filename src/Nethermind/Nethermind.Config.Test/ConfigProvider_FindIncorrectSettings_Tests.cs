@@ -73,11 +73,11 @@ public class ConfigProvider_FindIncorrectSettings_Tests
         (string ErrorMsg, IList<(IConfigSource Source, string? Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
 
         Assert.That(Errors.Count, Is.EqualTo(1));
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(Errors[0].Name, Is.EqualTo("XYZ"));
             Assert.That(ErrorMsg, Is.EqualTo($"ConfigType:EnvironmentVariable(NETHERMIND_*)|Category:|Name:XYZ"));
-        });
+        }
     }
 
     [Test]
@@ -99,13 +99,13 @@ public class ConfigProvider_FindIncorrectSettings_Tests
         (string ErrorMsg, IList<(IConfigSource Source, string? Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
 
         Assert.That(Errors.Count, Is.EqualTo(3));
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(Errors[0].Name, Is.EqualTo("Concurrenc"));
             Assert.That(Errors[1].Category, Is.EqualTo("BloomsConfig"));
             Assert.That(Errors[2].Name, Is.EqualTo("MAXCANDIDATEPERCOUNT"));
             Assert.That(ErrorMsg, Is.EqualTo($"ConfigType:JsonConfigFile|Category:DiscoveRyConfig|Name:Concurrenc{Environment.NewLine}ConfigType:JsonConfigFile|Category:BloomsConfig|Name:IndexLevelBucketSizes{Environment.NewLine}ConfigType:EnvironmentVariable(NETHERMIND_*)|Category:NETWORKCONFIG|Name:MAXCANDIDATEPERCOUNT"));
-        });
+        }
     }
 
     [Test]
@@ -124,11 +124,11 @@ public class ConfigProvider_FindIncorrectSettings_Tests
         (string ErrorMsg, IList<(IConfigSource Source, string? Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
 
         Assert.That(Errors.Count, Is.EqualTo(1));
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(Errors[0].Name, Is.EqualTo("NETWORKCONFIGMAXCANDIDATEPEERCOUNT"));
             Assert.That(ErrorMsg, Is.EqualTo($"ConfigType:EnvironmentVariable(NETHERMIND_*)|Category:|Name:NETWORKCONFIGMAXCANDIDATEPEERCOUNT"));
-        });
+        }
     }
 
     [Test]
@@ -147,11 +147,11 @@ public class ConfigProvider_FindIncorrectSettings_Tests
 
         (bool isSet, object? value) = envSource.GetValue(typeof(string), "BlocksConfig", "ExtraData");
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(isSet, Is.True);
             Assert.That(value, Is.Empty);
-        });
+        }
     }
 
     [Test]
@@ -173,18 +173,18 @@ public class ConfigProvider_FindIncorrectSettings_Tests
 
         (bool isSet, object? value) = envSource.GetValue(typeof(bool), "SyncConfig", "FastSync");
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(isSet, Is.False);
             Assert.That(value, Is.False);
-        });
+        }
 
         (isSet, value) = envSource.GetValue(typeof(bool), "SyncConfig", "SnapSync");
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(isSet, Is.False);
             Assert.That(value, Is.False);
-        });
+        }
     }
 }

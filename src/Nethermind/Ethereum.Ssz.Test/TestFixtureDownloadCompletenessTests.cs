@@ -7,6 +7,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Net;
 using System.Net.Sockets;
+using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -30,12 +31,13 @@ public class TestFixtureDownloadCompletenessTests
         byte[] archive = BuildArchive(64 * 1024, EntryPath);
         using StubArchiveServer server = new(archive, contentLength: archive.Length + 4096);
         using CacheCleanup cleanup = CreateCache("TruncatedDownloadTest", out string suite, out string target);
-        IOException ex = Assert.Catch<IOException>(
-            () => TestFixtureDownloader.EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz",
+        HttpRequestException ex = Assert.Throws<HttpRequestException>(
+            () => EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz",
                 selective ? _ => true : null))!;
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(ex.Message, Does.Contain("expected"));
+        Assert.That(ex.InnerException, Is.InstanceOf<IOException>());
+        Assert.That(server.RequestCount, Is.EqualTo(TestFixtureDownloader.MaxAttempts));
         Assert.That(File.Exists(Path.Combine(target, ".completed")), Is.False,
             "a truncated archive marked complete is cached and read as green by every suite using it");
     }
@@ -48,7 +50,7 @@ public class TestFixtureDownloadCompletenessTests
         byte[] archive = BuildArchive(trailingPadding, EntryPath);
         using StubArchiveServer server = new(archive, contentLength: archive.Length);
         using CacheCleanup cleanup = CreateCache("CompleteDownloadTest", out string suite, out string target);
-        string extracted = TestFixtureDownloader.EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz",
+        string extracted = EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz",
             selective ? _ => true : null);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
@@ -70,7 +72,7 @@ public class TestFixtureDownloadCompletenessTests
         Directory.CreateDirectory(target);
         File.WriteAllText(Path.Combine(target, ".completed"), "v0");
 
-        string extracted = TestFixtureDownloader.EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz");
+        string extracted = EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz");
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(server.RequestCount, Is.EqualTo(1),
@@ -92,7 +94,7 @@ public class TestFixtureDownloadCompletenessTests
         File.WriteAllBytes(entryOnDisk, EntryContent);
         File.WriteAllLines(Path.Combine(target, ".completed"), recordsSubtree ? ["v0", EntrySubtree] : ["v0"]);
 
-        TestFixtureDownloader.EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz");
+        EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz");
 
         Assert.That(server.RequestCount, Is.EqualTo(0),
             "the content check must only defeat the fast path when there is nothing to run, not on every call");
@@ -105,12 +107,12 @@ public class TestFixtureDownloadCompletenessTests
         using CacheCleanup cleanup = CreateCache("MissingSubtreeCacheTest", out string suite, out string target);
         using (StubArchiveServer first = new(archive, contentLength: archive.Length))
         {
-            TestFixtureDownloader.EnsureDownloaded(suite, first.UrlTemplate, "v0", "general.tar.gz");
+            EnsureDownloaded(suite, first.UrlTemplate, "v0", "general.tar.gz");
         }
         Directory.Delete(Path.Combine(target, SecondSubtree.Replace('/', Path.DirectorySeparatorChar)), true);
 
         using StubArchiveServer second = new(archive, contentLength: archive.Length);
-        TestFixtureDownloader.EnsureDownloaded(suite, second.UrlTemplate, "v0", "general.tar.gz");
+        EnsureDownloaded(suite, second.UrlTemplate, "v0", "general.tar.gz");
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(second.RequestCount, Is.EqualTo(1),
@@ -130,7 +132,7 @@ public class TestFixtureDownloadCompletenessTests
         File.WriteAllBytes(staleEntry, [9]);
         File.WriteAllText(Path.Combine(target, ".completed"), "ssz_static=*");
 
-        TestFixtureDownloader.EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz", _ => true, "ssz_static=*;operations=fulu");
+        EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz", _ => true, "ssz_static=*;operations=fulu");
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(server.RequestCount, Is.EqualTo(1),
@@ -152,7 +154,7 @@ public class TestFixtureDownloadCompletenessTests
         File.WriteAllBytes(entryOnDisk, EntryContent);
         File.WriteAllText(Path.Combine(target, ".completed"), "v0");
 
-        TestFixtureDownloader.EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz", null, extractionTag);
+        EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz", null, extractionTag);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(server.RequestCount, Is.EqualTo(expectedDownloads));
@@ -167,7 +169,7 @@ public class TestFixtureDownloadCompletenessTests
         using StubArchiveServer server = new(archive, contentLength: archive.Length);
         using CacheCleanup cleanup = CreateCache(selective ? "FilteredToNothingTest" : "DirectoryOnlyArchiveTest", out string suite, out string target);
         IOException ex = Assert.Throws<IOException>(
-            () => TestFixtureDownloader.EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz",
+            () => EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz",
                 selective ? _ => false : null))!;
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
@@ -185,11 +187,18 @@ public class TestFixtureDownloadCompletenessTests
         using CacheCleanup cleanup = CreateCache("DigestTest", out string suite, out string target);
 
         if (matches)
-            Assert.That(TestFixtureDownloader.EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz", expectedSha256: digest), Is.EqualTo(target));
+            Assert.That(EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz", expectedSha256: digest), Is.EqualTo(target));
         else
-            Assert.That(() => TestFixtureDownloader.EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz", expectedSha256: digest), Throws.TypeOf<IOException>());
+            Assert.That(() => EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz", expectedSha256: digest), Throws.TypeOf<HttpRequestException>().With.InnerException.TypeOf<InvalidDataException>());
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(File.Exists(Path.Combine(target, ".completed")), Is.EqualTo(matches));
+        Assert.That(server.RequestCount, Is.EqualTo(matches ? 1 : TestFixtureDownloader.MaxAttempts));
     }
+
+    private static string EnsureDownloaded(string suite, string urlTemplate, string version, string archiveName,
+        Func<string, bool>? shouldExtract = null, string? extractionTag = null, string? expectedSha256 = null)
+        => TestFixtureDownloader.EnsureDownloaded(Path.Combine(Path.GetTempPath(), "nethermind-eest"), suite,
+            urlTemplate, version, archiveName, null, TimeSpan.Zero, shouldExtract, extractionTag, expectedSha256);
 
     // Cache roots are shared across processes; fixed suite names let concurrent runs delete each other's directories.
     private static CacheCleanup CreateCache(string name, out string suite, out string target)
@@ -259,16 +268,19 @@ public class TestFixtureDownloadCompletenessTests
             {
                 try
                 {
-                    using TcpClient client = _listener.AcceptTcpClient();
-                    Interlocked.Increment(ref _requestCount);
-                    using NetworkStream stream = client.GetStream();
-                    ReadRequestHeaders(stream);
+                    while (true)
+                    {
+                        using TcpClient client = _listener.AcceptTcpClient();
+                        Interlocked.Increment(ref _requestCount);
+                        using NetworkStream stream = client.GetStream();
+                        ReadRequestHeaders(stream);
 
-                    byte[] header = Encoding.ASCII.GetBytes(
-                        $"HTTP/1.1 200 OK\r\nContent-Type: application/gzip\r\nContent-Length: {contentLength}\r\nConnection: close\r\n\r\n");
-                    stream.Write(header);
-                    stream.Write(body);
-                    stream.Flush();
+                        byte[] header = Encoding.ASCII.GetBytes(
+                            $"HTTP/1.1 200 OK\r\nContent-Type: application/gzip\r\nContent-Length: {contentLength}\r\nConnection: close\r\n\r\n");
+                        stream.Write(header);
+                        stream.Write(body);
+                        stream.Flush();
+                    }
                 }
                 catch (Exception)
                 {

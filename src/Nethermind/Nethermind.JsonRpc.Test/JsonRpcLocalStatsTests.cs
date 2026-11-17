@@ -132,8 +132,11 @@ namespace Nethermind.JsonRpc.Test
             MakeTimePass();
             _localStats.ReportCall("A", 300, true);
             await WaitForLog();
-            Assert.That(_testLogger.LogList[0].IndexOf("A   ", StringComparison.Ordinal), Is.LessThan(_testLogger.LogList[0].IndexOf("B   ", StringComparison.Ordinal)));
-            Assert.That(_testLogger.LogList[0].IndexOf("B   ", StringComparison.Ordinal), Is.LessThan(_testLogger.LogList[0].IndexOf("C   ", StringComparison.Ordinal)));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_testLogger.LogList[0].IndexOf("A   ", StringComparison.Ordinal), Is.LessThan(_testLogger.LogList[0].IndexOf("B   ", StringComparison.Ordinal)));
+                Assert.That(_testLogger.LogList[0].IndexOf("B   ", StringComparison.Ordinal), Is.LessThan(_testLogger.LogList[0].IndexOf("C   ", StringComparison.Ordinal)));
+            }
         }
 
         [Test]
@@ -174,8 +177,11 @@ namespace Nethermind.JsonRpc.Test
                 localStats.ReportCall(new RpcReport("eth_call", 0, false), elapsedMicroseconds: 1);
             });
 
-            Assert.That(silentLogger.LogList, Is.Empty);
-            Assert.That(observer.Observations, Has.Count.EqualTo(3));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(silentLogger.LogList, Is.Empty);
+                Assert.That(observer.Observations, Has.Count.EqualTo(3));
+            }
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(observer.Observations[0].Value, Is.EqualTo(123));

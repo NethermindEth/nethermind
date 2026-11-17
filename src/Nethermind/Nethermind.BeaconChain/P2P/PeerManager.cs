@@ -182,20 +182,44 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
     public async Task Run(CancellationToken token)
     {
-        _runToken = token;
-        _ = Task.Run(() => RefreshStatusesOnCadenceAsync(token));
-        while (!token.IsCancellationRequested)
+        using CancellationTokenSource lifetime = CancellationTokenSource.CreateLinkedTokenSource(token);
+        _runToken = lifetime.Token;
+        Task refresh = RefreshStatusesOnCadenceAsync(lifetime.Token);
+        Task health = Task.CompletedTask;
+        try
         {
+            while (!token.IsCancellationRequested)
+            {
+                try
+                {
+                    await MaintainPeerBandAsync(token);
+                    if (health.IsCompleted)
+                    {
+                        Task completed = health;
+                        health = Task.CompletedTask;
+                        await completed;
+                        health = CheckHealthRoundAsync(lifetime.Token);
+                    }
+                }
+                catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
+                {
+                    if (_logger.IsError) _logger.Error("Beacon chain peer maintenance failed.", e);
+                }
+
+                await Task.Delay(NextMaintenanceInterval, token);
+            }
+        }
+        finally
+        {
+            await lifetime.CancelAsync();
             try
             {
-                await RunMaintenanceRoundAsync(token);
+                await Task.WhenAll(refresh, health);
             }
-            catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
+            catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
             {
-                if (_logger.IsError) _logger.Error("Beacon chain peer maintenance failed.", e);
+                // Both owned loops have ended before the manager releases its lifetime token.
             }
-
-            await Task.Delay(NextMaintenanceInterval, token);
         }
     }
 
@@ -285,7 +309,14 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             TimeSpan interval = StatusRefreshInterval;
             await Task.Delay(interval, token);
             long receivedBefore = _timestamper.UtcNowOffset.UtcTicks - interval.Ticks;
-            RefreshStatuses(peer => peer.StatusReceivedTicks < receivedBefore, $"no status for {interval.TotalSeconds:F0} s");
+            try
+            {
+                RefreshStatuses(peer => peer.StatusReceivedTicks < receivedBefore, $"no status for {interval.TotalSeconds:F0} s");
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error("Failed to refresh beacon peer statuses", e);
+            }
         }
     }
 
@@ -359,6 +390,14 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// <summary>Reconnects static peers, checks status/ping, prunes unhealthy peers, and trims to the high watermark.</summary>
     public async Task RunMaintenanceRoundAsync(CancellationToken token)
     {
+        await MaintainPeerBandAsync(token, trim: false);
+        await CheckHealthRoundAsync(token);
+        await TrimToPeerBandAsync(StaticPeerAddresses(), token);
+        PublishCustodyShortfall();
+    }
+
+    private async Task MaintainPeerBandAsync(CancellationToken token, bool trim = true)
+    {
         string[] staticAddresses = StaticPeerAddresses();
         foreach (string address in staticAddresses)
         {
@@ -368,13 +407,16 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             }
         }
 
-        // Enumerating the concurrent dictionary tolerates a check dropping a peer meanwhile.
-        await Parallel.ForEachAsync(_peers, new ParallelOptions { MaxDegreeOfParallelism = MaxConcurrentHealthChecks, CancellationToken = token },
-            (peer, checkToken) => new ValueTask(CheckHealthAsync(peer.Value, checkToken)));
-
-        await TrimToPeerBandAsync(staticAddresses, token);
-        PublishCustodyShortfall();
+        if (trim)
+        {
+            await TrimToPeerBandAsync(staticAddresses, token);
+            PublishCustodyShortfall();
+        }
     }
+
+    private Task CheckHealthRoundAsync(CancellationToken token) =>
+        Parallel.ForEachAsync(_peers, new ParallelOptions { MaxDegreeOfParallelism = MaxConcurrentHealthChecks, CancellationToken = token },
+            (peer, checkToken) => new ValueTask(CheckHealthAsync(peer.Value, checkToken)));
 
     /// <summary>Trims back down to MaxPeerCount when above it.</summary>
     /// <remarks>Keep static peers and the last custodian of each sampled column (fulu/das-core.md). Rank others by health failures, then
@@ -478,6 +520,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
         foreach (ManagedPeer peer in TrimmableWorstFirst(StaticPeerAddresses()))
         {
+            if (peer.Direction == PeerDirection.Outbound && OutboundCount <= OutboundFloor) continue;
             if (!IsLastCustodian(peer.Custody, sampled, custodians))
             {
                 return peer;
@@ -842,7 +885,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
             bool trusted = IsStaticPeer(peerId);
             int ceiling = _config.MaxPeerCount + (overCeiling || trusted ? 1 : 0);
-            if (direction == PeerDirection.Inbound && !trusted) ceiling -= OutboundFloor;
+            if (direction == PeerDirection.Inbound && !trusted) ceiling -= Math.Max(0, OutboundFloor - OutboundCount);
             atCeiling = _peers.Count + InFlightCount >= ceiling;
             if (atCeiling)
             {
@@ -1490,7 +1533,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         if (_logger.IsDebug) _logger.Debug($"Connected to beacon chain peer {address} ({info.Direction.ToString().ToLowerInvariant()}, head slot {peer.HeadSlot})");
         await RefreshCustodyAsync(peer, token, AdmissionMetadataTimeout);
         // The dial then records a failure: a success would clear the backoff the close of a peer that broke the protocol set (see RecordClosedSession).
-        if (peer.RemovedOnClose)
+        if (peer.RemovedOnClose || peer.IsSessionClosed)
         {
             return false;
         }
@@ -2102,11 +2145,12 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
     /// <summary>
     /// Folds a dropped session's counters into its peer id's durable record, and bans the id once it
-    /// has caused <see cref="IBeaconChainConfig.FaultDisconnectsBeforeBan"/> consecutive fault
-    /// disconnects; the ban lasts <see cref="IBeaconChainConfig.PeerBanMinutes"/>. A non-fault disconnect (fork rotation,
-    /// our own shutdown) resets that streak: it is not evidence of misbehaviour, and BPO digest rotations legitimately cause
-    /// fork-mismatch drops of otherwise-healthy peers. A drop for silence alone leaves the streak as it is.
+    /// has caused <see cref="IBeaconChainConfig.FaultDisconnectsBeforeBan"/> recent fault disconnects.
     /// </summary>
+    /// <remarks>
+    /// Fault history expires after <see cref="IBeaconChainConfig.PeerBanMinutes"/> without another fault.
+    /// Non-fault disconnects and silence preserve recent history so reconnecting with a different fork digest cannot reset it.
+    /// </remarks>
     private void RecordDisconnect(ManagedPeer peer, ulong reason, string detail, bool unresponsive) =>
         RecordDisconnect(peer.PeerId, peer.MessagesSent, peer.FailuresReported, reason, detail, unresponsive);
 
@@ -2137,10 +2181,12 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             bool banned = IsBanActive(record, now);
             if (reason != GoodbyeReason.Fault)
             {
-                record.ConsecutiveFaultDisconnects = 0;
                 return;
             }
 
+            if (now.UtcTicks - record.LastFaultTicks > BanDuration.Ticks)
+                record.ConsecutiveFaultDisconnects = 0;
+            record.LastFaultTicks = now.UtcTicks;
             consecutiveFaults = ++record.ConsecutiveFaultDisconnects;
             if (consecutiveFaults < _config.FaultDisconnectsBeforeBan || banned)
             {
@@ -2220,6 +2266,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         /// <summary>UTC ticks at which the ban ends; 0 when the id is not banned.</summary>
         public long BannedUntilTicks;
         public int ConsecutiveFaultDisconnects;
+        public long LastFaultTicks;
         public int DisconnectCount;
         public long MessagesSent;
         public long FailuresReported;
@@ -2508,7 +2555,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             {
                 if (_closeRecorded) return false;
                 _closeRecorded = true;
-                _closeCountedAsFault = reason == GoodbyeReason.Fault || ViolatedProtocolSinceLastHealthyCheck;
+                _closeCountedAsFault = (reason == GoodbyeReason.Fault && !unresponsive) || ViolatedProtocolSinceLastHealthyCheck;
                 manager.RecordDisconnect(this, _closeCountedAsFault ? GoodbyeReason.Fault : reason, detail, unresponsive && !_closeCountedAsFault);
                 return true;
             }

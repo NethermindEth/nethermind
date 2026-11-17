@@ -6,13 +6,12 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using Autofac;
+using Nethermind.Api.Monitoring;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Logging;
-using Nethermind.Monitoring;
-using Nethermind.Monitoring.Config;
 
 namespace Nethermind.Init.Modules;
 
@@ -52,7 +51,7 @@ public class DbMonitoringModule : Module
         private readonly HashSet<string> _failingDbs = [];
         private readonly Lock _publishLock = new();
         private readonly int _intervalSec;
-        private readonly bool _publishOnCreation;
+        private readonly bool _publishDbMetrics;
         private readonly Lazy<HyperClockCacheWrapper> _sharedBlockCache;
         private long _lastDbMetricsUpdate = long.MinValue;
         private volatile bool _stopped;
@@ -64,9 +63,9 @@ public class DbMonitoringModule : Module
             _intervalSec = metricsConfig.DbMetricIntervalSeconds;
             _logger = logManager.GetClassLogger<DbTracker>();
             _sharedBlockCache = sharedBlockCache;
-            _publishOnCreation = metricsConfig.Enabled && metricsConfig.EnableDbSizeMetrics;
+            _publishDbMetrics = metricsConfig.Enabled && metricsConfig.EnableDbSizeMetrics;
 
-            if (metricsConfig.EnableDbSizeMetrics)
+            if (_publishDbMetrics)
             {
                 monitoringService.AddMetricsUpdateAction(UpdateDbMetrics);
             }
@@ -74,7 +73,7 @@ public class DbMonitoringModule : Module
 
         public void AddDb(string name, IDbMeta dbMeta)
         {
-            if (_createdDbs.TryAdd(name, dbMeta) && _publishOnCreation)
+            if (_publishDbMetrics && _createdDbs.TryAdd(name, dbMeta))
             {
                 PublishDbMetrics(name, dbMeta);
             }

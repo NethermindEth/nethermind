@@ -169,8 +169,11 @@ public class ForkChoiceRunnerPayloadTests
             ? () => runner.OnAttestation(ToFuluAttestation(attestation), isFromBlock, verifySignature: false)
             : () => runner.OnAttestation(attestation, isFromBlock, verifySignature: false);
 
-        Assert.That(attest, vote.Refusal is null ? Throws.Nothing : Throws.TypeOf<ForkChoiceException>().With.Message.Contains(vote.Refusal));
-        Assert.That(Weight(runner, chain.First.Root), Is.EqualTo(vote.Refusal is null ? CommitteeSize * EffectiveBalance : 0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(attest, vote.Refusal is null ? Throws.Nothing : Throws.TypeOf<ForkChoiceException>().With.Message.Contains(vote.Refusal));
+            Assert.That(Weight(runner, chain.First.Root), Is.EqualTo(vote.Refusal is null ? CommitteeSize * EffectiveBalance : 0));
+        }
     }
 
     [Test]

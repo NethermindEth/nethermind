@@ -49,9 +49,12 @@ public class HeadersByParentSlotFilterTests
 
         List<string> roots = await ListedRootsAsync($"&slot={Slot + 1}");
 
-        Assert.That(roots, Is.EqualTo(new[] { Kept.ToString() }));
-        Assert.That(_log.LogList.Where(entry => entry.Contains(Broken.ToString())), Is.Empty,
-            "a decode attempt on the filtered-out child's bodyless record is the only thing that logs its root");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(roots, Is.EqualTo(new[] { Kept.ToString() }));
+            Assert.That(_log.LogList.Where(entry => entry.Contains(Broken.ToString())), Is.Empty,
+                "a decode attempt on the filtered-out child's bodyless record is the only thing that logs its root");
+        }
     }
 
     [Test]

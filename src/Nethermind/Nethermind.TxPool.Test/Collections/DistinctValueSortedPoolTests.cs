@@ -182,9 +182,12 @@ namespace Nethermind.TxPool.Test.Collections
 
             CollectAndFinalize();
 
-            Assert.That(_allCount, Is.EqualTo(expectedAllCount));
-            Assert.That(_finalizedCount, Is.LessThanOrEqualTo(expectedAllCount - Capacity));
-            Assert.That(pool.Count, Is.EqualTo(Capacity));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_allCount, Is.EqualTo(expectedAllCount));
+                Assert.That(_finalizedCount, Is.LessThanOrEqualTo(expectedAllCount - Capacity));
+                Assert.That(pool.Count, Is.EqualTo(Capacity));
+            }
         }
 
         [TestCase(0, 16)]
@@ -228,17 +231,23 @@ namespace Nethermind.TxPool.Test.Collections
 
             CollectAndFinalize();
 
-            Assert.That(_finalizedCount, Is.LessThanOrEqualTo(Capacity * (capacityMultiplier - 1)));
-            Assert.That(_allCount, Is.EqualTo(Capacity * capacityMultiplier));
-            Assert.That(pool.Count, Is.EqualTo(Capacity));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_finalizedCount, Is.LessThanOrEqualTo(Capacity * (capacityMultiplier - 1)));
+                Assert.That(_allCount, Is.EqualTo(Capacity * capacityMultiplier));
+                Assert.That(pool.Count, Is.EqualTo(Capacity));
+            }
         }
 
         [Test]
         public async Task Capacity_is_never_exceeded_with_multiple_threads()
         {
             int capacityMultiplier = 10;
-            Assert.That(_finalizedCount, Is.EqualTo(0));
-            Assert.That(_allCount, Is.EqualTo(0));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_finalizedCount, Is.EqualTo(0));
+                Assert.That(_allCount, Is.EqualTo(0));
+            }
 
             WithFinalizerDistinctPool pool = new(Capacity, _comparer, new WithFinalizerComparer(), LimboLogs.Instance);
 
@@ -273,8 +282,11 @@ namespace Nethermind.TxPool.Test.Collections
             CollectAndFinalize();
 
             int expectedAllCount = Capacity * capacityMultiplier * 3;
-            Assert.That(_allCount, Is.EqualTo(expectedAllCount));
-            Assert.That(_finalizedCount, Is.GreaterThanOrEqualTo(expectedAllCount - Capacity));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_allCount, Is.EqualTo(expectedAllCount));
+                Assert.That(_finalizedCount, Is.GreaterThanOrEqualTo(expectedAllCount - Capacity));
+            }
         }
 
         [Test]

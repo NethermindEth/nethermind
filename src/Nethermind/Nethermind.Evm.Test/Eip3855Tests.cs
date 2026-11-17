@@ -34,8 +34,11 @@ namespace Nethermind.Evm.Test
         public void Test_Eip3855_should_pass(ulong repeat, bool isShanghai)
         {
             TestAllTracerWithOutput receipt = testBase(repeat, isShanghai);
-            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
-            Assert.That(receipt.GasSpent, Is.EqualTo(repeat * GasCostOf.Base + GasCostOf.Transaction));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+                Assert.That(receipt.GasSpent, Is.EqualTo(repeat * GasCostOf.Base + GasCostOf.Transaction));
+            }
         }
 
 

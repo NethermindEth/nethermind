@@ -63,6 +63,43 @@ public class EngineTests
     }
 
     [Test]
+    public async Task Fulu_newPayloadV4_receives_the_parent_root_versioned_hashes_and_execution_requests()
+    {
+        IEngineRpcModule engine = Substitute.For<IEngineRpcModule>();
+        engine.engine_newPayloadV4(default!, default!, default, default)
+            .ReturnsForAnyArgs(Task.FromResult(ResultWrapper<PayloadStatusV1>.Success(PayloadStatusV1.Syncing)));
+        using IContainer container = BeaconChainTestContainer.Builder(engine: engine).Build();
+        _ = container.Resolve<IEngineRpcModule>();
+        SignedBeaconBlock block = CreateBlock();
+        block.Message!.ParentRoot = CreateHash(0x22);
+        block.Message.StateRoot = CreateHash(0x33);
+        byte[] commitment = Enumerable.Repeat((byte)0xaa, 48).ToArray();
+        block.Message.Body!.BlobKzgCommitments = [SszKzgCommitment.FromSpan(commitment)];
+        ConsolidationRequest consolidation = new()
+        {
+            SourceAddress = Address.SystemUser,
+            SourcePubkey = new BlsPublicKey(Enumerable.Repeat((byte)0x03, 48).ToArray()),
+            TargetPubkey = new BlsPublicKey(Enumerable.Repeat((byte)0x04, 48).ToArray()),
+        };
+        block.Message.Body.ExecutionRequests = new ExecutionRequests { Consolidations = [consolidation] };
+        byte[] expectedHash = SHA256.HashData(commitment);
+        expectedHash[0] = 1;
+        byte[] expectedRequest = new byte[117];
+        expectedRequest[0] = 2;
+        Address.SystemUser.Bytes.CopyTo(expectedRequest.AsSpan(1));
+        consolidation.SourcePubkey.Bytes.CopyTo(expectedRequest.AsSpan(21));
+        consolidation.TargetPubkey.Bytes.CopyTo(expectedRequest.AsSpan(69));
+
+        await container.Resolve<EngineDriver>().NewPayload(block);
+
+        await engine.Received(1).engine_newPayloadV4(
+            Arg.Any<ExecutionPayloadV3>(),
+            Arg.Is<Hash256?[]>(hashes => hashes.Length == 1 && hashes[0] == new Hash256(expectedHash)),
+            block.Message.ParentRoot,
+            Arg.Is<byte[][]>(requests => requests.Length == 1 && requests[0].SequenceEqual(expectedRequest)));
+    }
+
+    [Test]
     public async Task The_embedded_driver_receives_invalid_from_the_real_engine_for_a_mismatched_payload_hash()
     {
         using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
@@ -296,15 +333,21 @@ public class EngineTests
         Task<PayloadStatusV1> embedded = TestEngineDriver.Create(detector).ForkchoiceUpdated(TestHash, TestHash, TestHash);
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Task<ResultWrapper<ForkchoiceUpdatedV1Result>> external = decorator.engine_forkchoiceUpdatedV3(new ForkchoiceStateV1(TestHash, TestHash, TestHash));
-        Assert.That(calls, Is.EqualTo(1), "the external call must wait for the embedded update");
-        Assert.That(external.IsCompleted, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls, Is.EqualTo(1), "the external call must wait for the embedded update");
+            Assert.That(external.IsCompleted, Is.False);
+        }
         if (embeddedFails) completion.SetException(new InvalidOperationException("engine failure"));
         else completion.SetResult(ForkchoiceUpdatedV1Result.Syncing);
         if (embeddedFails) await Assert.ThrowsAsync<EngineUnavailableException>(async () => await embedded);
         else await embedded;
         await external.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.That(calls, Is.EqualTo(2));
-        Assert.That(detector.HasStoodDown, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls, Is.EqualTo(2));
+            Assert.That(detector.HasStoodDown, Is.True);
+        }
     }
 
     private static IEnumerable<MethodInfo> ProgressionMethods() => typeof(IEngineRpcModule).GetMethods()
@@ -379,14 +422,14 @@ public class EngineTests
         await decorated.engine_forkchoiceUpdatedV3(new ForkchoiceStateV1(TestHash, TestHash, TestHash));
         await decorated.engine_forkchoiceUpdatedV3(new ForkchoiceStateV1(TestHash, TestHash, TestHash));
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(decorated, Is.InstanceOf<ExternalClInterceptingEngineRpcModule>());
             Assert.That(detectedBeforeExternalCall, Is.False);
             Assert.That(detector.IsExternalClDetected, Is.True);
             Assert.That(detections, Is.EqualTo(1), "detection must latch and fire once");
             inner.ReceivedWithAnyArgs(3).engine_forkchoiceUpdatedV3(default!, default);
-        });
+        }
     }
 
     [Test]

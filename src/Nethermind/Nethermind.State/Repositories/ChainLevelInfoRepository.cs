@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers;
-using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -11,8 +10,11 @@ using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.State.Repositories
@@ -115,6 +117,57 @@ namespace Nethermind.State.Repositories
             return _blockInfoCache.TryGetNoRefresh(in key, out ChainLevelInfo? cached) ? cached : level;
         }
 
+        public bool TryGetMainChainBlockWithoutCaching(ulong number, out ValueHash256 blockHash, out UInt256 totalDifficulty)
+        {
+            LevelNumber key = new(number);
+            if (_blockInfoCache.TryGetNoRefresh(in key, out ChainLevelInfo? level)) return IChainLevelInfoRepository.TryGetMainChainBlock(level, out blockHash, out totalDifficulty);
+
+            bool found = ReadMainChainBlock(number, out blockHash, out totalDifficulty);
+            return _blockInfoCache.TryGetNoRefresh(in key, out ChainLevelInfo? cached)
+                ? IChainLevelInfoRepository.TryGetMainChainBlock(cached, out blockHash, out totalDifficulty)
+                : found;
+        }
+
+        private bool ReadMainChainBlock(ulong number, out ValueHash256 blockHash, out UInt256 totalDifficulty)
+        {
+            ReadOnlySpan<byte> key = number.ToBigEndianSpanWithoutLeadingZeros(out ulong _);
+            if (_blockInfoDb is IReadOnlyNativeKeyValueStore native)
+            {
+                ReadOnlySpan<byte> slice = native.GetNativeSlice(key, out IntPtr handle);
+                if (slice.IsNull()) return NotFound(out blockHash, out totalDifficulty);
+
+                try
+                {
+                    return ReadMainChainBlock(slice, out blockHash, out totalDifficulty);
+                }
+                finally
+                {
+                    native.DangerousReleaseHandle(handle);
+                }
+            }
+
+            Span<byte> data = _blockInfoDb.GetSpan(key);
+            if (data.IsNull()) return NotFound(out blockHash, out totalDifficulty);
+
+            try
+            {
+                return ReadMainChainBlock(data, out blockHash, out totalDifficulty);
+            }
+            finally
+            {
+                _blockInfoDb.DangerousReleaseMemory(data);
+            }
+        }
+
+        private bool ReadMainChainBlock(ReadOnlySpan<byte> rlp, out ValueHash256 blockHash, out UInt256 totalDifficulty)
+        {
+            if (rlp.Length == 0) return NotFound(out blockHash, out totalDifficulty);
+            if (ChainLevelDecoder.TryReadMainChainBlock(rlp, out bool hasMainChainBlock, out blockHash, out totalDifficulty)) return hasMainChainBlock;
+
+            RlpReader reader = new(rlp);
+            return IChainLevelInfoRepository.TryGetMainChainBlock(_decoder.Decode(ref reader, RlpBehaviors.AllowExtraBytes | RlpBehaviors.TrustedInput), out blockHash, out totalDifficulty);
+        }
+
         public IOwnedReadOnlyList<ChainLevelInfo?> MultiLoadLevel(in ArrayPoolListRef<ulong> blockNumbers)
         {
             int count = blockNumbers.Count;
@@ -167,21 +220,30 @@ namespace Nethermind.State.Repositories
 
         private IOwnedReadOnlyList<ChainLevelInfo?> ReadVariableLengthLevels(in ArrayPoolListRef<ulong> blockNumbers)
         {
-            byte[][] keys = new byte[blockNumbers.Count][];
-            for (int i = 0; i < blockNumbers.Count; i++)
-            {
-                keys[i] = blockNumbers[i].ToBigEndianByteArrayWithoutLeadingZeros();
-            }
-
-            KeyValuePair<byte[], byte[]?>[] data = _blockInfoDb[keys];
-
-            ArrayPoolList<ChainLevelInfo?> levels = new(data.Length, data.Length);
-            LevelDecoder decoder = new(_decoder);
+            int count = blockNumbers.Count;
+            ArrayPoolList<ChainLevelInfo?> levels = new(count, count);
             try
             {
-                for (int i = 0; i < data.Length; i++)
+                using ArrayPoolListRef<ulong> group = new(count);
+                using ArrayPoolListRef<int> positions = new(count);
+                for (int keyLength = 1; keyLength <= sizeof(ulong); keyLength++)
                 {
-                    levels[i] = data[i].Value is byte[] value ? decoder.Decode(value) : null;
+                    group.Clear();
+                    positions.Clear();
+                    for (int i = 0; i < count; i++)
+                    {
+                        if (GetKeyLength(blockNumbers[i]) != keyLength) continue;
+                        group.Add(blockNumbers[i]);
+                        positions.Add(i);
+                    }
+
+                    if (group.Count == 0) continue;
+
+                    using IOwnedReadOnlyList<ChainLevelInfo?> groupLevels = ReadFixedLengthLevels(group, keyLength);
+                    for (int i = 0; i < positions.Count; i++)
+                    {
+                        levels[positions[i]] = groupLevels[i];
+                    }
                 }
 
                 return levels;
@@ -201,7 +263,7 @@ namespace Nethermind.State.Repositories
             {
                 if (buffer.IsEmpty) return null;
                 RlpReader reader = new(buffer);
-                return decoder.Decode(ref reader, RlpBehaviors.AllowExtraBytes);
+                return decoder.Decode(ref reader, RlpBehaviors.AllowExtraBytes | RlpBehaviors.TrustedInput);
             }
         }
 
@@ -218,6 +280,13 @@ namespace Nethermind.State.Repositories
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public bool Equals(in LevelNumber other) => _number == other._number;
+        }
+
+        private static bool NotFound(out ValueHash256 blockHash, out UInt256 totalDifficulty)
+        {
+            blockHash = default;
+            totalDifficulty = default;
+            return false;
         }
     }
 }

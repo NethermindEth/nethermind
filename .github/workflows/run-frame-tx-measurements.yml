@@ -162,15 +162,23 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
+      - name: Check ICU is available
+        run: |
+          if ! /sbin/ldconfig -p | grep -q 'libicuuc\.so'; then
+            echo "::error::ICU is not installed, so .NET cannot build without invariant globalization."
+            exit 1
+          fi
+          /sbin/ldconfig -p | grep 'libicuuc\.so'
+
+      - name: Set up .NET
+        uses: ./.github/actions/setup-dotnet
+
       - name: Fetch the Groth16 sweep artifacts
         if: inputs.suite == 'cost'
         env:
           GH_TOKEN: ${{ github.token }}
           REQUESTED_VERSION: ${{ inputs.groth16_artifacts_version }}
-        run: scripts/frame-verify-gas/fetch-artifacts.sh
-
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        run: dotnet run --file scripts/frame-verify-gas/fetch-artifacts.cs --
 
       - name: Run measurement harnesses
         id: measure
@@ -183,6 +191,11 @@ jobs:
 
           # Guards against a leftover value from a prior run on this persistent runner.
           unset FRAME_FLOOD_ALLOW_MULTICORE
+          # The GCE runner service sets invariant globalization, under which the culture-bound [GeneratedRegex] in
+          # Nethermind.Core fails to compile. Unset, the compiler uses ICU and the test hosts keep their invariant runtimeconfig.
+          unset DOTNET_SYSTEM_GLOBALIZATION_INVARIANT
+          # The cost suite's fetch step started the compiler server under the inherited value; do not reuse it.
+          dotnet build-server shutdown || true
 
           projects=()
           case "${SUITE}" in

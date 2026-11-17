@@ -105,8 +105,11 @@ public class BeaconChainStoreTests
 
         store.EnsureSchemaVersion();
 
-        Assert.That(store.TryGetSchemaVersion(out uint version), Is.True);
-        Assert.That(version, Is.EqualTo(BeaconChainStore.CurrentSchemaVersion));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.TryGetSchemaVersion(out uint version), Is.True);
+            Assert.That(version, Is.EqualTo(BeaconChainStore.CurrentSchemaVersion));
+        }
     }
 
     [Test]
@@ -179,10 +182,15 @@ public class BeaconChainStoreTests
         store.PutBlock(fuluRoot, fulu);
         store.PutForkedBlock(BlockRoot, new ForkedSignedBeaconBlock.OfGloas(gloas));
 
-        Assert.That(store.TryGetForkedBlock(fuluRoot, out ForkedSignedBeaconBlock? readFulu), Is.True);
-        Assert.That(store.TryGetForkedBlock(BlockRoot, out ForkedSignedBeaconBlock? readGloas), Is.True);
-        Assert.That(readFulu, Is.TypeOf<ForkedSignedBeaconBlock.OfFulu>());
-        Assert.That(readGloas, Is.TypeOf<ForkedSignedBeaconBlock.OfGloas>());
+        ForkedSignedBeaconBlock? readFulu;
+        ForkedSignedBeaconBlock? readGloas;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.TryGetForkedBlock(fuluRoot, out readFulu), Is.True);
+            Assert.That(store.TryGetForkedBlock(BlockRoot, out readGloas), Is.True);
+            Assert.That(readFulu, Is.TypeOf<ForkedSignedBeaconBlock.OfFulu>());
+            Assert.That(readGloas, Is.TypeOf<ForkedSignedBeaconBlock.OfGloas>());
+        }
         bool hasChildren = store.TryGetChildren(fuluRoot, out Hash256[] children, out _);
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(SignedBeaconBlock.Encode(((ForkedSignedBeaconBlock.OfFulu)readFulu!).Block), Is.EqualTo(SignedBeaconBlock.Encode(fulu)));

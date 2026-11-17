@@ -31,8 +31,11 @@ public class ChainSpecTest
 
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
-        Assert.That(provider.GenesisSpec.DifficultyBoundDivisor, Is.EqualTo(19));
-        Assert.That(provider.GenesisSpec.GasLimitBoundDivisor, Is.EqualTo(17UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GenesisSpec.DifficultyBoundDivisor, Is.EqualTo(19));
+            Assert.That(provider.GenesisSpec.GasLimitBoundDivisor, Is.EqualTo(17UL));
+        }
     }
 
     [Test]
@@ -56,11 +59,14 @@ public class ChainSpecTest
             });
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
-        Assert.That(provider.GetSpec((ForkActivation)3).DifficultyBombDelay, Is.EqualTo(100));
-        Assert.That(provider.GetSpec((ForkActivation)7).DifficultyBombDelay, Is.EqualTo(300));
-        Assert.That(provider.GetSpec((ForkActivation)13).DifficultyBombDelay, Is.EqualTo(600));
-        Assert.That(provider.GetSpec((ForkActivation)17).DifficultyBombDelay, Is.EqualTo(1000));
-        Assert.That(provider.GetSpec((ForkActivation)19).DifficultyBombDelay, Is.EqualTo(1500));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetSpec((ForkActivation)3).DifficultyBombDelay, Is.EqualTo(100));
+            Assert.That(provider.GetSpec((ForkActivation)7).DifficultyBombDelay, Is.EqualTo(300));
+            Assert.That(provider.GetSpec((ForkActivation)13).DifficultyBombDelay, Is.EqualTo(600));
+            Assert.That(provider.GetSpec((ForkActivation)17).DifficultyBombDelay, Is.EqualTo(1000));
+            Assert.That(provider.GetSpec((ForkActivation)19).DifficultyBombDelay, Is.EqualTo(1500));
+        }
     }
 
     [Test]
@@ -137,9 +143,12 @@ public class ChainSpecTest
 
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
-        Assert.That(provider.GetSpec((ForkActivation)(maxCodeTransition - 1)).MaxCodeSize, Is.EqualTo(long.MaxValue), "one before");
-        Assert.That(provider.GetSpec((ForkActivation)maxCodeTransition).MaxCodeSize, Is.EqualTo(maxCodeSize), "at transition");
-        Assert.That(provider.GetSpec((ForkActivation)(maxCodeTransition + 1)).MaxCodeSize, Is.EqualTo(maxCodeSize), "one after");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetSpec((ForkActivation)(maxCodeTransition - 1)).MaxCodeSize, Is.EqualTo(long.MaxValue), "one before");
+            Assert.That(provider.GetSpec((ForkActivation)maxCodeTransition).MaxCodeSize, Is.EqualTo(maxCodeSize), "at transition");
+            Assert.That(provider.GetSpec((ForkActivation)(maxCodeTransition + 1)).MaxCodeSize, Is.EqualTo(maxCodeSize), "one after");
+        }
 
         OverridableReleaseSpec expected = new(new ReleaseSpec());
 
@@ -217,8 +226,9 @@ public class ChainSpecTest
         TestTransitions((40001L, 1000000032), r => { r.IsEip7702Enabled = true; });
     }
 
-    private static void AssertReleaseSpecEquivalent(IReleaseSpec actual, IReleaseSpec expected) =>
-        Assert.Multiple(() =>
+    private static void AssertReleaseSpecEquivalent(IReleaseSpec actual, IReleaseSpec expected)
+    {
+        using (Assert.EnterMultipleScope())
         {
             foreach (PropertyInfo property in typeof(IReleaseSpec).GetProperties())
             {
@@ -229,5 +239,6 @@ public class ChainSpecTest
 
                 Assert.That(property.GetValue(actual), Is.EqualTo(property.GetValue(expected)), property.Name);
             }
-        });
+        }
+    }
 }

@@ -179,8 +179,6 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         }
         // It can be missing when the warmer lags so much behind that the node is now gone.
         catch (TrieNodeException) { }
-        // Because it runs in parallel, it could happen that the bundle changed, which causes this.
-        catch (NodeHashMismatchException) { }
         // Because it runs in parallel, it could be that the scope is disposed of early.
         catch (ObjectDisposedException) { }
         // Scope disposal can null pooled snapshot maps while a queued warmup is already inside trie traversal.

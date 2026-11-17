@@ -123,7 +123,9 @@ public class NodeSourceToDiscV4FeederTests
             LimboLogs.Instance,
             1);
         NodeRecord record = CreateAsymmetricDualStackRecord();
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(Node.TryFromEnr(record, out Node? node), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(node!.HasDiscoveryEndpoint, Is.False);
 
         Task feederTask = feeder.Run();

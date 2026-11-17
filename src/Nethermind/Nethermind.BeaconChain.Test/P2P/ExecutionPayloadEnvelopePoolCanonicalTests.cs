@@ -255,8 +255,11 @@ public class ExecutionPayloadEnvelopePoolCanonicalTests
         chain.SetHead(siblingHead, Base + 2, full: true);
 
         using IEnumerator<SignedExecutionPayloadEnvelope> reader = range.GetEnumerator();
-        Assert.That(reader.MoveNext(), Is.True);
-        Assert.That(reader.Current.Message!.BeaconBlockRoot, Is.EqualTo(first));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.MoveNext(), Is.True);
+            Assert.That(reader.Current.Message!.BeaconBlockRoot, Is.EqualTo(first));
+        }
         if (prune) db.GetColumnDb(BeaconChainDbColumns.ExecutionPayloadEnvelopes).Remove(second.Bytes);
         List<Hash256> remaining = [];
         while (reader.MoveNext()) remaining.Add(reader.Current.Message!.BeaconBlockRoot!);
@@ -278,8 +281,11 @@ public class ExecutionPayloadEnvelopePoolCanonicalTests
         chain.AddEnvelopes(first);
         chain.SetHead(root, Base + 8193);
         long before = chain.BlockReads;
-        Assert.That(chain.ServedRoots(Base, 1), Is.EqualTo(new[] { first }));
-        Assert.That(chain.BlockReads - before, Is.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.ServedRoots(Base, 1), Is.EqualTo(new[] { first }));
+            Assert.That(chain.BlockReads - before, Is.EqualTo(2));
+        }
         before = chain.BlockReads;
         chain.ServedRoots(Base, 1);
         Assert.That(chain.BlockReads - before, Is.Zero);

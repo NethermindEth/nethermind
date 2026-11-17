@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.IO;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
@@ -74,14 +75,53 @@ public class BeaconChainStoreBlockSummaryTests
         store.SetAnchor(anchor, anchorSlot);
         ulong epoch = BeaconChainStore.MinEpochsForBlockRequests + 100;
         store.PruneCanonicalBlocks(epoch, anchorSlot);
-        Assert.That(store.TryGetEarliestBlockSlot(out ulong floor), Is.True);
-        Assert.That(floor, Is.EqualTo(BeaconChainStore.CanonicalPruneBatchSlots));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.TryGetEarliestBlockSlot(out ulong floor), Is.True);
+            Assert.That(floor, Is.EqualTo(BeaconChainStore.CanonicalPruneBatchSlots));
+        }
 
         BeaconChainStore restarted = new(_db, Sepolia with { GloasForkEpoch = 128 });
         restarted.PruneCanonicalBlocks(epoch, anchorSlot);
-        Assert.That(restarted.TryGetEarliestBlockSlot(out floor), Is.True);
-        Assert.That(floor, Is.EqualTo(anchorSlot));
-        Assert.That(restarted.TryGetBlockSummary(anchor, out _), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(restarted.TryGetEarliestBlockSlot(out ulong floor), Is.True);
+            Assert.That(floor, Is.EqualTo(anchorSlot));
+            Assert.That(restarted.TryGetBlockSummary(anchor, out _), Is.True);
+        }
+    }
+
+    [Test]
+    public void An_interrupted_canonical_prune_hides_deleted_blocks_and_resumes_after_restart()
+    {
+        using InterruptedPruneDb db = new();
+        BeaconChainSpec spec = Sepolia with { GloasForkEpoch = 128 };
+        BeaconChainStore store = new(db, spec);
+        Hash256 first = StoreBlock(store, "first deleted", 32, canonical: true);
+        Hash256 second = StoreBlock(store, "pending delete", 33, canonical: true);
+        Hash256 anchor = StoreBlock(store, "anchor", 128, canonical: true);
+        store.SetAnchor(anchor, 128);
+        db.Index.Interrupt = true;
+
+        Assert.That(() => store.PruneCanonicalBlocks(BeaconChainStore.MinEpochsForBlockRequests + 3, 128), Throws.TypeOf<IOException>());
+        BeaconChainStore restarted = new(db, spec);
+        restarted.LowerBackfilledBlockFloor(0);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(restarted.HasBlock(first), Is.False);
+            Assert.That(restarted.HasBlock(second), Is.True);
+            Assert.That(restarted.TryGetEarliestBlockSlot(out ulong floor) ? (ulong?)floor : null, Is.EqualTo(96UL));
+        }
+
+        restarted.PruneCanonicalBlocks(BeaconChainStore.MinEpochsForBlockRequests + 3, 128);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(restarted.HasBlock(second), Is.False);
+            Assert.That(restarted.TryGetCanonicalRoot(32, out _), Is.False);
+            Assert.That(restarted.TryGetCanonicalRoot(33, out _), Is.False);
+            Assert.That(restarted.HasBlock(anchor), Is.True);
+        }
     }
 
     [Test]
@@ -92,21 +132,24 @@ public class BeaconChainStoreBlockSummaryTests
         Hash256 anchor = StoreBlock(store, "anchor", 128, canonical: true);
         store.SetAnchor(anchor, 128);
         Hash256 old = StoreBlock(store, "backfill", 32, canonical: true);
-        store.BackfilledBlockFloor = emptyPrefix ? 0UL : 32UL;
-        Assert.That(store.TryGetEarliestBlockSlot(out ulong floor), Is.True);
-        Assert.That(floor, Is.EqualTo(emptyPrefix ? 0UL : 32UL));
+        store.LowerBackfilledBlockFloor(emptyPrefix ? 0UL : 32UL);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.TryGetEarliestBlockSlot(out ulong floor), Is.True);
+            Assert.That(floor, Is.EqualTo(emptyPrefix ? 0UL : 32UL));
+        }
 
         BeaconChainStore restarted = new(_db, spec);
         restarted.PruneCanonicalBlocks(BeaconChainStore.MinEpochsForBlockRequests + 3, 128);
         restarted = new(_db, spec);
-        restarted.BackfilledBlockFloor = 0;
+        restarted.LowerBackfilledBlockFloor(0);
         StoreBlock(restarted, "late backfill", 32, canonical: true);
 
         using IDisposable assertions = Assert.EnterMultipleScope();
         Assert.That(restarted.TryGetBlockSummary(old, out _), Is.False);
         Assert.That(restarted.TryGetCanonicalRoot(32, out _), Is.False);
-        Assert.That(restarted.TryGetEarliestBlockSlot(out floor), Is.True);
-        Assert.That(floor, Is.EqualTo(96UL));
+        Assert.That(restarted.TryGetEarliestBlockSlot(out ulong resumedFloor), Is.True);
+        Assert.That(resumedFloor, Is.EqualTo(96UL));
         Assert.That(restarted.TryGetBlockSummary(Keccak.Compute("late backfill"), out _), Is.False);
         Assert.That(restarted.TryGetBlockSummary(anchor, out _), Is.True);
     }
@@ -339,6 +382,26 @@ public class BeaconChainStoreBlockSummaryTests
         SignedBeaconBlockGloas block = CreateMinimalGloasBlock(FirstGloasSlot + 1);
         block.Message!.Body!.SignedExecutionPayloadBid!.Message!.BlobKzgCommitments = DataColumnSidecarGloasTestFixture.Commitments();
         return block;
+    }
+
+    private sealed class InterruptedPruneDb : TestColumnsDb
+    {
+        public InterruptedPruneIndex Index { get; } = new();
+        protected override IDb CreateColumn(BeaconChainDbColumns key) => key == BeaconChainDbColumns.BlockIndex ? Index : base.CreateColumn(key);
+    }
+
+    private sealed class InterruptedPruneIndex : MemDb
+    {
+        public bool Interrupt { get; set; }
+        public override byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            if (Interrupt && key.Length == sizeof(ulong) && BinaryPrimitives.ReadUInt64BigEndian(key) == 33)
+            {
+                Interrupt = false;
+                throw new IOException("Interrupted after deleting the first canonical block");
+            }
+            return base.Get(key, flags);
+        }
     }
 
     private sealed class GatedSummaryDb(MemColumnsDb<BeaconChainDbColumns> inner, ManualResetEventSlim entered, ManualResetEventSlim release) : TestColumnsDb

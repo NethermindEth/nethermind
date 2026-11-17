@@ -60,9 +60,12 @@ public class ArenaManagerEvictionQueueTests
         using ArenaManager manager = NewManager(pageCacheBytes: 0);
         Assert.That(manager.PageTracker.MaxCapacity, Is.EqualTo(0));
         manager.QueueEviction(0, 0);
-        Assert.That(manager.EvictionsQueued, Is.EqualTo(0));
-        Assert.That(manager.EvictionsInlineFallback, Is.EqualTo(0));
-        Assert.That(manager.EvictionsDispatched, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(manager.EvictionsQueued, Is.EqualTo(0));
+            Assert.That(manager.EvictionsInlineFallback, Is.EqualTo(0));
+            Assert.That(manager.EvictionsDispatched, Is.EqualTo(0));
+        }
     }
 
     [Test]
@@ -75,10 +78,13 @@ public class ArenaManagerEvictionQueueTests
         // on the dictionary miss. We're testing the queue mechanics, not the syscall.
         manager.QueueEviction(arenaId: 42, pageIdx: 3);
         WaitFor(() => manager.EvictionsDispatched + manager.EvictionsSkippedRetouched == 1);
-        Assert.That(manager.EvictionsQueued, Is.EqualTo(1));
-        Assert.That(manager.EvictionsInlineFallback, Is.EqualTo(0));
-        Assert.That(manager.EvictionsDispatched, Is.EqualTo(1));
-        Assert.That(manager.EvictionsSkippedRetouched, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(manager.EvictionsQueued, Is.EqualTo(1));
+            Assert.That(manager.EvictionsInlineFallback, Is.EqualTo(0));
+            Assert.That(manager.EvictionsDispatched, Is.EqualTo(1));
+            Assert.That(manager.EvictionsSkippedRetouched, Is.EqualTo(0));
+        }
     }
 
     [Test]
@@ -204,9 +210,12 @@ public class ArenaManagerEvictionQueueTests
         manager.Dispose();
         // Every queued (or inline-fallback) eviction must have been resolved — either dispatched
         // or skipped — by the time Dispose returns.
-        Assert.That(manager.EvictionsQueued, Is.EqualTo(batch));
-        Assert.That(
-            manager.EvictionsDispatched + manager.EvictionsSkippedRetouched,
-            Is.EqualTo(manager.EvictionsQueued + manager.EvictionsInlineFallback));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(manager.EvictionsQueued, Is.EqualTo(batch));
+            Assert.That(
+                manager.EvictionsDispatched + manager.EvictionsSkippedRetouched,
+                Is.EqualTo(manager.EvictionsQueued + manager.EvictionsInlineFallback));
+        }
     }
 }

@@ -30,6 +30,31 @@ public class BeaconApiHostTests : BeaconApiFixture
 
     private NoOpEngineDriver _engine = null!;
 
+    [TestCase("Host", "attacker.example", HttpStatusCode.BadRequest)]
+    [TestCase("Origin", "https://attacker.example", HttpStatusCode.Forbidden)]
+    [TestCase("Origin", "null", HttpStatusCode.Forbidden)]
+    [TestCase("Sec-Fetch-Site", "cross-site", HttpStatusCode.Forbidden)]
+    [TestCase("Sec-Fetch-Site", "same-site", HttpStatusCode.Forbidden)]
+    public async Task Loopback_rejects_rebinding_and_cross_origin_requests(string header, string value, HttpStatusCode expected)
+    {
+        using HttpRequestMessage request = new(HttpMethod.Get, "/eth/v1/node/version");
+        request.Headers.Add(header, value);
+        using HttpResponseMessage response = await _host.Client.SendAsync(request);
+        Assert.That(response.StatusCode, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public async Task Loopback_accepts_same_origin_requests([Values] bool localhost)
+    {
+        using HttpRequestMessage request = new(HttpMethod.Get, "/eth/v1/node/version");
+        Uri baseAddress = _host.Client.BaseAddress!;
+        request.Headers.Host = $"{(localhost ? "localhost" : baseAddress.Host)}:{baseAddress.Port}";
+        request.Headers.Add("Origin", $"http://{request.Headers.Host}");
+        request.Headers.Add("Sec-Fetch-Site", "same-origin");
+        using HttpResponseMessage response = await _host.Client.SendAsync(request);
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+    }
+
     [Test]
     public async Task Stopping_the_driver_closes_live_event_streams()
     {
@@ -132,8 +157,11 @@ public class BeaconApiHostTests : BeaconApiFixture
         HttpResponseMessage response = await _host.Client.GetAsync("/eth/v1/node/peers");
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
         JsonDocument body = await ReadJsonAsync(response);
-        Assert.That(body.RootElement.GetProperty("data").GetArrayLength(), Is.EqualTo(0));
-        Assert.That(body.RootElement.GetProperty("meta").GetProperty("count").GetInt32(), Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(body.RootElement.GetProperty("data").GetArrayLength(), Is.EqualTo(0));
+            Assert.That(body.RootElement.GetProperty("meta").GetProperty("count").GetInt32(), Is.EqualTo(0));
+        }
     }
 
     [Test]
@@ -172,8 +200,11 @@ public class BeaconApiHostTests : BeaconApiFixture
         HttpResponseMessage response = await host.Client.GetAsync($"/eth/v1/node/peers?{query}");
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
         JsonDocument body = await ReadJsonAsync(response);
-        Assert.That(body.RootElement.GetProperty("data").GetArrayLength(), Is.EqualTo(expectedCount));
-        Assert.That(body.RootElement.GetProperty("meta").GetProperty("count").GetInt32(), Is.EqualTo(expectedCount));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(body.RootElement.GetProperty("data").GetArrayLength(), Is.EqualTo(expectedCount));
+            Assert.That(body.RootElement.GetProperty("meta").GetProperty("count").GetInt32(), Is.EqualTo(expectedCount));
+        }
     }
 
     [Test]
@@ -246,11 +277,17 @@ public class BeaconApiHostTests : BeaconApiFixture
         HttpRequestMessage present = new(HttpMethod.Get, path);
         present.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(ContentTypeOctet));
         HttpResponseMessage presentResponse = await _host.Client.SendAsync(present);
-        Assert.That(presentResponse.StatusCode, Is.EqualTo(HttpStatusCode.OK));
-        Assert.That(presentResponse.Content.Headers.ContentType?.MediaType, Is.EqualTo(ContentTypeOctet));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(presentResponse.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            Assert.That(presentResponse.Content.Headers.ContentType?.MediaType, Is.EqualTo(ContentTypeOctet));
+        }
         byte[] received = await presentResponse.Content.ReadAsByteArrayAsync();
-        Assert.That(received, Is.EqualTo(stateBytes), "checkpoint-provider path must serve the exact stored bytes");
-        Assert.That(presentResponse.Headers.GetValues("Eth-Consensus-Version"), Is.EqualTo(new[] { fulu ? "fulu" : "electra" }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(received, Is.EqualTo(stateBytes), "checkpoint-provider path must serve the exact stored bytes");
+            Assert.That(presentResponse.Headers.GetValues("Eth-Consensus-Version"), Is.EqualTo(new[] { fulu ? "fulu" : "electra" }));
+        }
     }
 
     [Test]
@@ -292,15 +329,21 @@ public class BeaconApiHostTests : BeaconApiFixture
         _host.StatusHolder.CurrentStatus = new StatusMessageV2 { ForkDigest = [], FinalizedRoot = Hash256.Zero, HeadRoot = Hash256.Zero, FinalizedEpoch = 0 };
 
         HttpResponseMessage found = await _host.Client.GetAsync($"/eth/v1/beacon/headers/{root}");
-        Assert.That(found.StatusCode, Is.EqualTo(HttpStatusCode.OK));
-        Assert.That(found.Headers.TryGetValues("Eth-Consensus-Version", out System.Collections.Generic.IEnumerable<string>? versions)
-                    && versions is not null && new System.Collections.Generic.List<string>(versions)[0] == "fulu",
-            "Eth-Consensus-Version must name the fork live at the block's slot");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            Assert.That(found.Headers.TryGetValues("Eth-Consensus-Version", out System.Collections.Generic.IEnumerable<string>? versions)
+                        && versions is not null && new System.Collections.Generic.List<string>(versions)[0] == "fulu",
+                "Eth-Consensus-Version must name the fork live at the block's slot");
+        }
 
         JsonDocument body = await ReadJsonAsync(found);
-        Assert.That(body.RootElement.GetProperty("data").GetProperty("canonical").GetBoolean(), Is.True);
-        Assert.That(body.RootElement.GetProperty("data").GetProperty("header").GetProperty("message").GetProperty("slot").GetString(), Is.EqualTo(slot.ToString()));
-        Assert.That(body.RootElement.GetProperty("finalized").GetBoolean(), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(body.RootElement.GetProperty("data").GetProperty("canonical").GetBoolean(), Is.True);
+            Assert.That(body.RootElement.GetProperty("data").GetProperty("header").GetProperty("message").GetProperty("slot").GetString(), Is.EqualTo(slot.ToString()));
+            Assert.That(body.RootElement.GetProperty("finalized").GetBoolean(), Is.False);
+        }
     }
 
     [Test]
@@ -326,8 +369,11 @@ public class BeaconApiHostTests : BeaconApiFixture
         HttpResponseMessage response = await _host.Client.GetAsync("/not/a/real/endpoint");
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
         JsonDocument body = await ReadJsonAsync(response);
-        Assert.That(body.RootElement.GetProperty("code").GetInt32(), Is.EqualTo(404));
-        Assert.That(body.RootElement.TryGetProperty("message", out _), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(body.RootElement.GetProperty("code").GetInt32(), Is.EqualTo(404));
+            Assert.That(body.RootElement.TryGetProperty("message", out _), Is.True);
+        }
     }
 
     [Test]
@@ -400,7 +446,11 @@ public class BeaconApiHostTests : BeaconApiFixture
     }
 
     [Test]
-    public async Task Malformed_peer_id_is_bad_request([Values("localhost", "0invalid", "16Uiu2HAmNoSuchPeer", "11", "11111111111111111111111111111111111111111111111111111111111111111")] string peerId)
+    public async Task Malformed_peer_id_is_bad_request([Values("localhost", "0invalid", "16Uiu2HAmNoSuchPeer", "11", "11111111111111111111111111111111111111111111111111111111111111111",
+        "16Uiu2HAmPLe7Mzm8TsYUubgCAW1aJoeFScxrLj8ppIFivPo97bUZ",
+        "16Uiu2HAmPLe7Mzm8TsYUubgCAW1aJoeFScxrLj8pp0FivPo97bUZ",
+        "16Uiu2HAmPLe7Mzm8TsYUubgCAW1aJoeFScxrLj8ppOFivPo97bUZ",
+        "16Uiu2HAmPLe7Mzm8TsYUubgCAW1aJoeFScxrLj8pplFivPo97bUZ")] string peerId)
     {
         using HttpResponseMessage response = await _host.Client.GetAsync($"/eth/v1/node/peers/{peerId}");
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));

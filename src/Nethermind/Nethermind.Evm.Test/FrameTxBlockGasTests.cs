@@ -5,6 +5,7 @@ using System;
 using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -64,7 +65,9 @@ public class FrameTxBlockGasTests
 
         TestAllTracerWithOutput writing = new();
         TestAllTracerWithOutput inert = new();
+#pragma warning disable NUnit2045 // Transaction execution must succeed before inspecting its output or performing the next execution.
         Assert.That(Process(FrameTx(nonce: 0, Writer), writing).TransactionExecuted, Is.True);
+#pragma warning restore NUnit2045
         Assert.That(Process(FrameTx(nonce: 1, Inert), inert).TransactionExecuted, Is.True);
 
         const ulong stateCharge = (ulong)GasCostOf.SSetState;
@@ -90,7 +93,9 @@ public class FrameTxBlockGasTests
             .PushData(0).PushData(0).Op(Instruction.REVERT).Done);
 
         TestAllTracerWithOutput tracer = new();
+#pragma warning disable NUnit2045 // Transaction execution must succeed before inspecting its output or performing the next execution.
         Assert.That(Process(FrameTx(nonce: 0, Writer), tracer).TransactionExecuted, Is.True);
+#pragma warning restore NUnit2045
 
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero,
             "a reverted frame commits no state, so it grows none");
@@ -259,7 +264,9 @@ public class FrameTxBlockGasTests
             new TxFrame(FrameMode.Sender, FrameFlags.AtomicBatch, Writer, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default),
             new TxFrame(FrameMode.Sender, 0, Inert, gasLimit: 400_000, UInt256.Zero, default));
 
+#pragma warning disable NUnit2045 // Transaction execution must succeed before inspecting its output or performing the next execution.
         Assert.That(Process(tx, tracer).TransactionExecuted, Is.True);
+#pragma warning restore NUnit2045
 
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero,
             "the batch was rolled back, so the slot its first frame wrote never grew the state");
@@ -495,7 +502,7 @@ public class FrameTxBlockGasTests
             Frames = frames,
             FrameSignatures = [],
             GasPrice = 1,
-            DecodedMaxFeePerGas = 1,
+            MaxFee = 1.Ether,
         };
 
     private TransactionResult Process(Transaction tx, ITxTracer tracer)

@@ -38,8 +38,8 @@ namespace Nethermind.Crypto.Blake2
 
         public unsafe void Compress(ReadOnlySpan<byte> input, Span<byte> output, Blake2CompressMethod method = Blake2CompressMethod.Optimal)
         {
-            // sh length = h words length + t[0] + t[1] + f[0]
-            ulong* sh = stackalloc ulong[NumberOfHWords + 3];
+            // sh length = h words length + t[0] + t[1] + f[0] + f[1]; f[1] stays zero, and the SIMD paths load f[] as one vector
+            ulong* sh = stackalloc ulong[NumberOfHWords + 4];
             ulong* m = stackalloc ulong[NumberOfMWords];
 
             uint rounds = BinaryPrimitives.ReadUInt32BigEndian(input);

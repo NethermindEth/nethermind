@@ -52,40 +52,46 @@ public class ColumnGossipRouterReconstructionTests
         }
         finally { release.Set(); }
         await reconstruction.WaitAsync(Timeout);
+        await router.WhenReconstructed().WaitAsync(Timeout);
+        await router.DisposeAsync();
         Assert.That(acquired, Is.True, "disk backpressure must not hold the cross-block reconstruction lock");
     }
 
     [TestCase(false, TestName = "Sidecars_of_another_root_are_not_blocked_while_one_root_recovers")]
     [TestCase(true, TestName = "A_root_is_never_recovered_twice_concurrently")]
-    public void Concurrent_sidecars_do_not_wait_for_recovery_or_claim_a_recovering_root(bool sameRoot)
+    public async Task Concurrent_sidecars_do_not_wait_for_recovery_or_claim_a_recovering_root(bool sameRoot)
     {
         using GatedRecovery recovery = new(CurrentSlot);
-        (ColumnGossipRouter router, DataColumnSidecarPool pool, ConcurrentBag<DataColumnSidecar> received) = Create(recovery);
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStore store = new(db, Spec);
+        DataColumnSidecarTestFixture.StoreAsImported(store, DataColumnSidecarTestFixture.BuildValidSidecar(0, CurrentSlot));
+        (ColumnGossipRouter router, DataColumnSidecarPool pool, ConcurrentBag<DataColumnSidecar> received) = Create(recovery.Recover, store: store);
         Hash256 gatedRoot = Seed(pool, CurrentSlot);
         Hash256 otherRoot = sameRoot ? gatedRoot : Seed(pool, CurrentSlot - 1);
 
-        Task gated = Task.Run(() => router.Handle(Required - 1, gloasTopic: false, Message(Required - 1, CurrentSlot)));
+        Task<MessageValidity> gated = Task.Run(() => router.Handle(Required - 1, gloasTopic: false, Message(Required - 1, CurrentSlot)));
         bool entered = recovery.Entered.Wait(Timeout);
         Task<MessageValidity> other = Task.Run(() => router.Handle((ulong)(sameRoot ? Required : Required - 1), gloasTopic: false,
             Message((ulong)(sameRoot ? Required : Required - 1), sameRoot ? CurrentSlot : CurrentSlot - 1)));
-        bool otherFinishedWhileGated = other.Wait(Timeout);
-        bool gatedStillRecovering = !gated.IsCompleted;
+        MessageValidity gatedVerdict;
+        try
+        {
+            gatedVerdict = await gated.WaitAsync(Timeout);
+            await other.WaitAsync(Timeout);
+        }
+        finally { recovery.Release.Set(); }
         int callsWhileGated = recovery.Calls;
-        recovery.Release.Set();
-        bool gatedFinished = gated.Wait(Timeout);
-        bool otherFinished = other.Wait(Timeout);
+        await router.WhenReconstructed().WaitAsync(Timeout);
         if (sameRoot)
         {
             typeof(ColumnGossipRouter).GetMethod("TrackHeldColumnAndMaybeReconstruct", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
                 .Invoke(router, [gatedRoot, CurrentSlot]);
         }
 
+        await router.DisposeAsync();
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(entered, Is.True, "fixture: the first root's recovery started");
-        Assert.That(otherFinishedWhileGated, Is.True, "a sidecar is validated while the first root recovers");
-        Assert.That(gatedStillRecovering, Is.True, "fixture: the first root was still recovering");
-        Assert.That(gatedFinished, Is.True);
-        Assert.That(otherFinished, Is.True);
+        Assert.That(gatedVerdict, Is.EqualTo(MessageValidity.Accepted), "the triggering column can be forwarded before recovery is released");
         Assert.That(pool.TryGet(gatedRoot, Eip7594DasConstants.NumberOfColumns - 1, out _), Is.True);
         if (sameRoot)
         {
@@ -101,7 +107,7 @@ public class ColumnGossipRouterReconstructionTests
     }
 
     [Test]
-    public void A_reconstructed_column_callback_can_wait_for_another_roots_sidecar()
+    public async Task A_reconstructed_column_callback_can_wait_for_another_roots_sidecar()
     {
         (ColumnGossipRouter router, DataColumnSidecarPool pool, _) = Create(DataColumnReconstruction.TryReconstruct);
         Seed(pool, CurrentSlot);
@@ -118,13 +124,18 @@ public class ColumnGossipRouterReconstructionTests
         };
 
         router.Handle(Required - 1, gloasTopic: false, Message(Required - 1, CurrentSlot));
+        await router.WhenReconstructed().WaitAsync(Timeout);
+        await router.DisposeAsync();
         Assert.That(other, Is.Not.Null);
-        Assert.That(other!.Wait(Timeout), Is.True);
-        Assert.That(finishedInCallback, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(other!.IsCompletedSuccessfully, Is.True);
+            Assert.That(finishedInCallback, Is.True);
+        }
     }
 
     [Test]
-    public void A_recovery_that_fails_or_throws_releases_its_root_for_the_next_column([Values] bool throws)
+    public async Task A_recovery_that_fails_or_throws_releases_its_root_for_the_next_column([Values] bool throws)
     {
         int calls = 0;
         (ColumnGossipRouter router, DataColumnSidecarPool pool, _) = Create((IReadOnlyList<DataColumnSidecar> held, out DataColumnSidecar[] full) =>
@@ -139,17 +150,13 @@ public class ColumnGossipRouterReconstructionTests
         });
         Hash256 root = Seed(pool, CurrentSlot);
 
-        if (throws)
-        {
-            Assert.Throws<InvalidOperationException>(() => router.Handle(Required - 1, gloasTopic: false, Message(Required - 1, CurrentSlot)));
-        }
-        else
-        {
-            router.Handle(Required - 1, gloasTopic: false, Message(Required - 1, CurrentSlot));
-        }
+        router.Handle(Required - 1, gloasTopic: false, Message(Required - 1, CurrentSlot));
+        await router.WhenReconstructed().WaitAsync(Timeout);
 
         bool recoveredEarly = pool.TryGet(root, Eip7594DasConstants.NumberOfColumns - 1, out _);
         router.Handle(Required, gloasTopic: false, Message(Required, CurrentSlot));
+        await router.WhenReconstructed().WaitAsync(Timeout);
+        await router.DisposeAsync();
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(recoveredEarly, Is.False, "fixture: the first recovery produced nothing");
@@ -157,11 +164,47 @@ public class ColumnGossipRouterReconstructionTests
         Assert.That(pool.TryGet(root, Eip7594DasConstants.NumberOfColumns - 1, out _), Is.True);
     }
 
-    private static (ColumnGossipRouter Router, DataColumnSidecarPool Pool, ConcurrentBag<DataColumnSidecar> Received) Create(ColumnGossipRouter.DataColumnReconstructor reconstruct, DataColumnSidecarPool? pool = null)
+    [Test]
+    public async Task Shutdown_discards_bounded_queued_recovery_and_joins_the_active_recovery()
+    {
+        using GatedRecovery recovery = new(CurrentSlot);
+        (ColumnGossipRouter router, DataColumnSidecarPool pool, ConcurrentBag<DataColumnSidecar> received) = Create(recovery);
+        Hash256 root = Seed(pool, CurrentSlot);
+        router.Handle(Required - 1, gloasTopic: false, Message(Required - 1, CurrentSlot));
+        Assert.That(recovery.Entered.Wait(Timeout), Is.True);
+        Task stopped;
+        try
+        {
+            for (int i = 1; i <= ColumnGossipRouter.MaxPendingReconstructions + 1; i++)
+            {
+                ulong slot = CurrentSlot - (ulong)i;
+                Hash256 queuedRoot = Seed(pool, slot);
+                pool.Add(queuedRoot, slot, DataColumnSidecarTestFixture.BuildValidSidecar(Required - 1, slot));
+                typeof(ColumnGossipRouter).GetMethod("TrackHeldColumnAndMaybeReconstruct", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                    .Invoke(router, [queuedRoot, slot]);
+            }
+            System.Collections.ICollection pending = (System.Collections.ICollection)typeof(ColumnGossipRouter)
+                .GetField("_pendingReconstructions", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(router)!;
+            Assert.That(pending.Count, Is.EqualTo(ColumnGossipRouter.MaxPendingReconstructions));
+            stopped = router.DisposeAsync().AsTask();
+            Assert.That(stopped.IsCompleted, Is.False, "shutdown joins native recovery before dependencies can be disposed");
+        }
+        finally { recovery.Release.Set(); }
+        await stopped.WaitAsync(Timeout);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pool.TryGet(root, Eip7594DasConstants.NumberOfColumns - 1, out _), Is.False, "cancelled recovery is not exposed");
+            Assert.That(recovery.Calls, Is.EqualTo(1));
+            Assert.That(received, Has.Count.EqualTo(1), "cancelled recovery raises no reconstructed-column callbacks");
+            Assert.That(router.DisposeAsync().IsCompletedSuccessfully, Is.True);
+        }
+    }
+
+    private static (ColumnGossipRouter Router, DataColumnSidecarPool Pool, ConcurrentBag<DataColumnSidecar> Received) Create(ColumnGossipRouter.DataColumnReconstructor reconstruct, DataColumnSidecarPool? pool = null, BeaconChainStore? store = null)
     {
         pool ??= new();
         DateTime now = DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + CurrentSlot * Spec.SecondsPerSlot + 6);
-        ColumnGossipRouter router = new(Spec, new SlotClock(Spec, new ManualTimestamper(now)), LimboLogs.Instance, pool) { Reconstruct = reconstruct };
+        ColumnGossipRouter router = new(Spec, new SlotClock(Spec, new ManualTimestamper(now)), LimboLogs.Instance, pool, store) { Reconstruct = reconstruct };
         router.Start(_ => new GossipDigestWindowTests.SilentTopic(), ForkDigest.Compute(Spec, 419_072), [.. Enumerable.Range(0, Eip7594DasConstants.NumberOfColumns).Select(static i => (ulong)i)]);
         ConcurrentBag<DataColumnSidecar> received = [];
         router.DataColumnSidecarReceived += received.Add;
@@ -199,9 +242,9 @@ public class ColumnGossipRouterReconstructionTests
 
         public bool Recover(IReadOnlyList<DataColumnSidecar> held, out DataColumnSidecar[] fullMatrix)
         {
+            Interlocked.Increment(ref _calls);
             if (held[0].SignedBlockHeader!.Message!.Slot == gatedSlot)
             {
-                Interlocked.Increment(ref _calls);
                 Entered.Set();
                 if (!Release.Wait(TimeSpan.FromSeconds(60)))
                 {

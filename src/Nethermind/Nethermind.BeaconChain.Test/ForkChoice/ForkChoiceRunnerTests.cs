@@ -33,6 +33,28 @@ public class ForkChoiceRunnerTests
 
     private const ulong DoctoredJustifiedEpoch = 2;
 
+    public enum ConfirmedCandidate { ValidAncestor, OptimisticAncestor, OtherBranch, Unknown }
+
+    [Test]
+    public void Safe_confirmation_requires_a_valid_ancestor_of_the_head([Values] ConfirmedCandidate candidate)
+    {
+        (UnsignedChain chain, ForkChoiceRunner runner) = CreateRunner();
+        TickToSlot(runner, 2);
+        UnsignedChain.ChainBlock first = chain.Extend(chain.AnchorRoot, 1, 0x81);
+        UnsignedChain.ChainBlock child = chain.Extend(first.Root, 2, 0x82);
+        UnsignedChain.ChainBlock fork = chain.Extend(chain.AnchorRoot, 2, 0x83);
+        runner.OnBlock(first.Block, first.PostState, candidate == ConfirmedCandidate.OptimisticAncestor ? ExecutionStatus.Optimistic : ExecutionStatus.Valid,
+            (IReadOnlyList<DataColumnSidecar>?)null);
+        runner.OnBlock(child.Block, child.PostState, ExecutionStatus.Optimistic, (IReadOnlyList<DataColumnSidecar>?)null);
+        runner.OnBlock(fork.Block, fork.PostState, ExecutionStatus.Valid, (IReadOnlyList<DataColumnSidecar>?)null);
+        Hash256 confirmed = candidate == ConfirmedCandidate.OtherBranch ? fork.Root
+            : candidate == ConfirmedCandidate.Unknown ? Keccak.Compute("unknown confirmation") : first.Root;
+        typeof(FastConfirmation).GetProperty(nameof(FastConfirmation.ConfirmedRoot), System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .SetValue(runner.FastConfirmation, confirmed);
+
+        Assert.That(runner.GetConfirmedRoot(child.Root), Is.EqualTo(candidate == ConfirmedCandidate.ValidAncestor ? first.Root : runner.FinalizedCheckpoint.Root));
+    }
+
     [Test]
     public void Fast_confirmation_observes_a_slot_only_once()
     {
@@ -1048,8 +1070,11 @@ public class ForkChoiceRunnerTests
             ? () => runner.OnAttesterSlashing(new AttesterSlashing { Attestation1 = ToFuluIndexed(attestation1), Attestation2 = ToFuluIndexed(attestation2) })
             : () => runner.OnAttesterSlashing(new AttesterSlashingGloas { Attestation1 = attestation1, Attestation2 = attestation2 });
 
-        Assert.That(chain.Committee32, Has.Length.EqualTo((int)CommitteeSize), "fixture bug");
-        Assert.That(runner.JustifiedCheckpoint.Root, Is.EqualTo(chain.First.Root), "fixture bug");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.Committee32, Has.Length.EqualTo((int)CommitteeSize), "fixture bug");
+            Assert.That(runner.JustifiedCheckpoint.Root, Is.EqualTo(chain.First.Root), "fixture bug");
+        }
         if (forged)
             Assert.That(slash, Throws.TypeOf<ForkChoiceException>().With.Message.Contains("attestation 2 is invalid"));
         else
@@ -1076,8 +1101,11 @@ public class ForkChoiceRunnerTests
             Attestation2 = SignedUnder(domain, GloasTestFixtures.Vote(GloasTestFixtures.BoundarySlot, 0, ForkCrossingChain.ForkEpoch, 0x41), signers),
         };
 
-        Assert.That(runner.JustifiedCheckpoint, Is.EqualTo(new CheckpointRef(ForkCrossingChain.ForkEpoch, chain.AnchorRoot)), "fixture bug");
-        Assert.That(blockStateDomain, Is.Not.EqualTo(checkpointStateDomain), "fixture bug: the two states must sign under different fork versions");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runner.JustifiedCheckpoint, Is.EqualTo(new CheckpointRef(ForkCrossingChain.ForkEpoch, chain.AnchorRoot)), "fixture bug");
+            Assert.That(blockStateDomain, Is.Not.EqualTo(checkpointStateDomain), "fixture bug: the two states must sign under different fork versions");
+        }
         if (signedUnderBlockStateFork)
             Assert.That(() => runner.OnAttesterSlashing(slashing), Throws.Nothing);
         else
@@ -1164,9 +1192,12 @@ public class ForkChoiceRunnerTests
                 Attestation2 = new IndexedAttestationGloas { AttestingIndices = invalid, Data = vote2 },
             }, verifySignatures: false);
 
-        Assert.That(runner.JustifiedCheckpoint.Root, Is.EqualTo(chain.First.Root), "fixture bug");
-        Assert.That(slash, Throws.TypeOf<ForkChoiceException>().With.Message.Contains("invalid"));
-        Assert.That(Weight(runner, chain.First.Root), Is.EqualTo(weightBefore), "a refused slashing discounts nobody");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runner.JustifiedCheckpoint.Root, Is.EqualTo(chain.First.Root), "fixture bug");
+            Assert.That(slash, Throws.TypeOf<ForkChoiceException>().With.Message.Contains("invalid"));
+            Assert.That(Weight(runner, chain.First.Root), Is.EqualTo(weightBefore), "a refused slashing discounts nobody");
+        }
     }
 
     [Test]

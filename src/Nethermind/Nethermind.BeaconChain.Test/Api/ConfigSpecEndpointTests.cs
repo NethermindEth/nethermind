@@ -54,6 +54,17 @@ public class ConfigSpecEndpointTests
         Assert.That(data["GAS_LIMIT_SCHEDULE"].GetArrayLength(), Is.Zero);
     }
 
+    [Test]
+    public async Task Sepolia_serves_its_gas_limit_schedule()
+    {
+        JsonElement served = await ServedSpecAsync(BeaconChainSpec.Sepolia);
+        JsonElement schedule = served.GetProperty("GAS_LIMIT_SCHEDULE");
+        Assert.That(schedule.GetArrayLength(), Is.EqualTo(1));
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(schedule[0].GetProperty("EPOCH").GetString(), Is.EqualTo("353024"));
+        Assert.That(schedule[0].GetProperty("GAS_LIMIT").GetString(), Is.EqualTo("200000000"));
+    }
+
     private const string ArrayConstant = "PARTICIPATION_FLAG_WEIGHTS";
 
     private static string Rendered(string name, JsonElement value) =>
@@ -128,8 +139,11 @@ public class ConfigSpecEndpointTests
             if (actual != expected) mismatched.Add($"{key}: served {actual}, Presets.{constant.Name} = {expected}");
         }
 
-        Assert.That(compared, Has.Count.GreaterThan(60), "the comparison must reach most preset constants");
-        Assert.That(mismatched, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(compared, Has.Count.GreaterThan(60), "the comparison must reach most preset constants");
+            Assert.That(mismatched, Is.Empty);
+        }
     }
 
     // eth-clients hoodi and sepolia metadata/config.yaml.
@@ -141,7 +155,7 @@ public class ConfigSpecEndpointTests
             ("GENESIS_DELAY", "600"), ("TERMINAL_TOTAL_DIFFICULTY", "0"), ("MIN_GENESIS_ACTIVE_VALIDATOR_COUNT", "16384"), ("SECONDS_PER_ETH1_BLOCK", "12"),
             ("ALTAIR_FORK_VERSION", "0x20000910"), ("ALTAIR_FORK_EPOCH", "0"), ("DENEB_FORK_VERSION", "0x50000910"), ("ELECTRA_FORK_VERSION", "0x60000910"),
             ("ELECTRA_FORK_EPOCH", "2048"), ("FULU_FORK_VERSION", "0x70000910"), ("FULU_FORK_EPOCH", "50688"),
-            ("GLOAS_FORK_EPOCH", "18446744073709551615"), ("DEPOSIT_CHAIN_ID", "560048"), ("DEPOSIT_NETWORK_ID", "560048"),
+            ("DEPOSIT_CHAIN_ID", "560048"), ("DEPOSIT_NETWORK_ID", "560048"),
             ("DEPOSIT_CONTRACT_ADDRESS", "0x00000000219ab540356cBB839Cbe05303d7705Fa"), ("SLOT_DURATION_MS", "12000"),
         ];
         (string Key, string Value)[] sepolia =
@@ -193,7 +207,9 @@ public class ConfigSpecEndpointTests
         JsonElement served = await ServedSpecAsync(spec);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(PinnedScalars().Keys.Except(served.EnumerateObject().Select(p => p.Name)), Is.Empty);
+        string[] omittedKeys = network == "sepolia" ? [] : ["GLOAS_FORK_EPOCH", "GLOAS_FORK_VERSION"];
+        Assert.That(PinnedScalars().Keys.Except(omittedKeys).Except(served.EnumerateObject().Select(p => p.Name)), Is.Empty);
+        Assert.That(served.EnumerateObject().Select(p => p.Name).Intersect(omittedKeys), Is.Empty);
         Assert.That(ConstantMismatches(served), Is.Empty);
         Assert.That(served.GetProperty("BLOB_SCHEDULE").EnumerateArray().Select(e => (e.GetProperty("EPOCH").GetString(), e.GetProperty("MAX_BLOBS_PER_BLOCK").GetString())),
             Is.EqualTo(spec.BlobSchedule.Select(e => (e.Epoch.ToString(), e.MaxBlobsPerBlock.ToString()))));

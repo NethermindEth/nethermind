@@ -174,11 +174,11 @@ public class SimpleDispatcher<T>(
             }
             catch (ConcurrencyLimitReachedException)
             {
-                if (_logger.IsDebug) _logger.Debug($"{request} - concurrency limit reached. Peer: {peer}");
+                if (_logger.IsDebug) _logger.Debug($"{request} - concurrency limit reached. Peer: {peer:hide}");
             }
             catch (TimeoutException)
             {
-                if (_logger.IsDebug) _logger.Debug($"{request} - timed out. Peer: {peer}");
+                if (_logger.IsDebug) _logger.Debug($"{request} - timed out. Peer: {peer:hide}");
             }
             catch (OperationCanceledException)
             {
@@ -186,7 +186,7 @@ public class SimpleDispatcher<T>(
             }
             catch (Exception e)
             {
-                if (_logger.IsWarn) _logger.Warn($"Failure when executing request {e}");
+                if (_logger.IsWarn) _logger.Warn($"Failure when executing request ({e.GetType().Name}) {e:hide}");
             }
             Metrics.SyncDispatcherDispatchTimeMicros.Observe(
                 Stopwatch.GetElapsedTime(dispatchTime).TotalMicroseconds, new StringLabel(_feedName));

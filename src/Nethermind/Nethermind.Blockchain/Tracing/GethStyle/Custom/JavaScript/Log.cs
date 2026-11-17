@@ -112,9 +112,7 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript
                 }
 
                 int length = (int)(end - start);
-                return MemoryTrace.Slice((int)start, length, limit: InputErrorEngine is null)
-                    .ToArray()
-                    .ToTypedScriptArray();
+                return MemoryTrace.Slice((int)start, length, limit: InputErrorEngine is null).ToTypedScriptArray();
             }
 
             public IJavaScriptObject getUint(int offset)
@@ -138,9 +136,9 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript
             private IJavaScriptObject? _valueConverted;
             public Address Caller { get; } = caller;
 
-            public ITypedArray<byte> getAddress() => _address.Bytes.ToArray().ToTypedScriptArray();
-            public ITypedArray<byte> getCaller() => Caller.Bytes.ToArray().ToTypedScriptArray();
-            public object getInput() => _input?.ToArray().ToTypedScriptArray() ?? (object)Undefined.Value;
+            public ITypedArray<byte> getAddress() => _address.Bytes.ToTypedScriptArray();
+            public ITypedArray<byte> getCaller() => Caller.Bytes.ToTypedScriptArray();
+            public object getInput() => _input?.ToTypedScriptArray() ?? (object)Undefined.Value;
 
             public IJavaScriptObject getValue() => _valueConverted ??= _value.ToBigInteger();
         }

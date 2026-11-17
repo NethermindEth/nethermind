@@ -24,6 +24,7 @@ public sealed class StaticPeerKeeper : IDisposable
     private readonly IReadOnlyList<Multiaddress> _staticPeers;
     private readonly ILogger _logger;
     private readonly Func<ISession, CancellationToken, Task> _openGossip;
+    private readonly TimeProvider _timeProvider;
 
     public StaticPeerKeeper(ILocalPeer localPeer, IRoutingStateContainer router, IReadOnlyList<Multiaddress> staticPeers, ILogger logger)
         : this(localPeer, router, staticPeers, logger, openGossip: null)
@@ -32,13 +33,14 @@ public sealed class StaticPeerKeeper : IDisposable
 
     /// <param name="openGossip">Opens gossipsub on a session and completes when that channel ends; gossipsub v1.1 when null.</param>
     internal StaticPeerKeeper(ILocalPeer localPeer, IRoutingStateContainer router, IReadOnlyList<Multiaddress> staticPeers, ILogger logger,
-        Func<ISession, CancellationToken, Task>? openGossip)
+        Func<ISession, CancellationToken, Task>? openGossip, TimeProvider? timeProvider = null)
     {
         _localPeer = localPeer;
         _router = router;
         _staticPeers = staticPeers;
         _logger = logger;
         _openGossip = openGossip ?? (static (session, token) => session.DialAsync<GossipsubProtocolV11>(token));
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     /// <summary>Decodes the entries of <paramref name="setting"/> a dial can reach; each other entry is skipped with an error that names it.</summary>
@@ -70,7 +72,7 @@ public sealed class StaticPeerKeeper : IDisposable
         return [.. peers];
     }
 
-    /// <summary>Long enough not to race the router's own reconnect, short enough to win back a lost peer within a minute.</summary>
+    /// <summary>Interval between static-peer checks, in seconds.</summary>
     public static TimeSpan CheckInterval { get; } = TimeSpan.FromSeconds(30);
 
     /// <summary>Checks <paramref name="staticPeers"/> at once and then every <paramref name="interval"/> until <paramref name="token"/> is cancelled.</summary>
@@ -109,7 +111,9 @@ public sealed class StaticPeerKeeper : IDisposable
             Abandon(peerId);
             try
             {
-                ISession session = await _localPeer.DialAsync(address, token);
+                using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(5), _timeProvider);
+                using CancellationTokenSource connect = CancellationTokenSource.CreateLinkedTokenSource(token, timeout.Token);
+                ISession session = await _localPeer.DialAsync(address, connect.Token);
                 _failureCauses.Remove(address);
                 // A connect the router made meanwhile wins, so the peer gets no second gossip channel.
                 if (_router.ConnectedPeers.Contains(peerId))

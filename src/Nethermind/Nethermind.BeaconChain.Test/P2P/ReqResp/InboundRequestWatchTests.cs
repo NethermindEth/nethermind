@@ -259,7 +259,7 @@ public class InboundRequestWatchTests
         if (belowAnchor)
         {
             store.SetAnchor(SszRoots.HashTreeRoot(blocks[^1].Message!), start + 3);
-            store.BackfilledBlockFloor = start;
+            store.LowerBackfilledBlockFloor(start);
         }
 
         DataColumnSidecarPool pool = new();

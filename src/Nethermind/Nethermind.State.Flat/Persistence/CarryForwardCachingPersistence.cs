@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Collections.Concurrent;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -292,8 +293,8 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         }
 
         public StateId CurrentState => inner.CurrentState;
-        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => inner.TryLoadStateRlp(path, flags);
-        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => inner.TryLoadStorageRlp(address, path, flags);
+        public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => inner.TryLoadStateRlp(path, flags, action, arg);
+        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => inner.TryLoadStorageRlp(address, path, flags, action, arg);
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) => inner.GetAccountRaw(addrHash);
         public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => inner.TryGetStorageRaw(addrHash, slotHash, ref value);
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => inner.CreateAccountIterator(startKey, endKey);
@@ -377,6 +378,12 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             inner.SetAccount(addr, account);
         }
 
+        public void SetSlimAccount(Address addr, scoped ReadOnlySpan<byte> slimRlp)
+        {
+            if (!_clearAll) TrackWrite(_writtenAccounts ??= parent.RentWrittenAccounts(), addr);
+            inner.SetSlimAccount(addr, slimRlp);
+        }
+
         public void SetStorage(Address addr, in UInt256 slot, in UInt256? value)
         {
             if (!_clearAll) TrackWrite(_writtenSlots ??= parent.RentWrittenSlots(), (addr, slot));
@@ -421,8 +428,14 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             inner.DeleteStorageRange(addressHash, fromPath, toPath);
         }
 
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath)
+        {
+            _clearAll = true;
+            inner.SelfDestructRange(fromPath, toPath);
+        }
+
         public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStateTrieNode(path, rlp);
-        public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStorageTrieNode(address, path, rlp);
+        public void SetStorageTrieNode(in ValueHash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStorageTrieNode(address, path, rlp);
         public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) => inner.DeleteStateTrieNodeRange(from, to);
         public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) => inner.DeleteStorageTrieNodeRange(addressHash, from, to);
 

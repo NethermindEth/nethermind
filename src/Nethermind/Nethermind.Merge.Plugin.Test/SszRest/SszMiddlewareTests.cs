@@ -275,8 +275,11 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
-        Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream));
+        }
         await _engineModule.Received(version == 1 ? 1 : 0).engine_newPayloadV1(Arg.Any<ExecutionPayload>());
         await _engineModule.Received(version == 2 ? 1 : 0).engine_newPayloadV2(Arg.Any<ExecutionPayload>());
     }
@@ -298,8 +301,11 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
-        Assert.That(ctx.Response.Headers["Cache-Control"].ToString(), Does.Contain("no-store"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(ctx.Response.Headers["Cache-Control"].ToString(), Does.Contain("no-store"));
+        }
         await _engineModule.DidNotReceive().engine_getPayloadV1(Arg.Any<byte[]>());
         await _engineModule.Received(1).engine_getPayloadV2(Arg.Any<byte[]>());
     }
@@ -474,8 +480,11 @@ public class SszMiddlewareTests
 
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
         await _engineModule.Received(1).engine_getBlobsV4(Arg.Any<byte[][]>(), Arg.Any<System.Collections.BitArray>());
-        Assert.That(forwardedHashes, Is.Not.Null);
-        Assert.That(forwardedIndices, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forwardedHashes, Is.Not.Null);
+            Assert.That(forwardedIndices, Is.Not.Null);
+        }
         GetBlobsV4ResponseWire.Decode(new ReadOnlySequence<byte>(ResponseBytes(ctx)), out GetBlobsV4ResponseWire decoded);
 
         using (Assert.EnterMultipleScope())
@@ -676,8 +685,11 @@ public class SszMiddlewareTests
 
         ulong capturedStart = version == 1 ? v1Start : v2Start;
         ulong capturedCount = version == 1 ? v1Count : v2Count;
-        Assert.That(capturedStart, Is.EqualTo(expectedStart));
-        Assert.That(capturedCount, Is.EqualTo(expectedCount));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(capturedStart, Is.EqualTo(expectedStart));
+            Assert.That(capturedCount, Is.EqualTo(expectedCount));
+        }
     }
 
     [Test]
@@ -729,9 +741,12 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
-        Assert.That(ctx.Response.ContentType, Does.Contain("application/json"));
-        Assert.That(ResponseBytes(ctx).Length, Is.GreaterThan(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(ctx.Response.ContentType, Does.Contain("application/json"));
+            Assert.That(ResponseBytes(ctx).Length, Is.GreaterThan(0));
+        }
     }
 
     [Test]
@@ -770,8 +785,11 @@ public class SszMiddlewareTests
 
         await mw.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound));
-        Assert.That(nextInvoked, Is.False, "SSZ middleware should reply 404 itself, not delegate to JSON-RPC");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound));
+            Assert.That(nextInvoked, Is.False, "SSZ middleware should reply 404 itself, not delegate to JSON-RPC");
+        }
     }
 
     // Each case is a different routing rejection that must NOT reach the engine module:
@@ -834,8 +852,11 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status204NoContent));
-        Assert.That(ResponseBytes(ctx), Is.Empty, "204 responses must have no body");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status204NoContent));
+            Assert.That(ResponseBytes(ctx), Is.Empty, "204 responses must have no body");
+        }
     }
 
     [Test]
@@ -873,8 +894,11 @@ public class SszMiddlewareTests
         // With the fix: the outer catch sees RequestAborted is cancelled and does NOT
         // call WriteErrorAsync. StatusCode remains the DefaultHttpContext default (200);
         // crucially it must NOT be 500.
-        Assert.That(ctx.Response.StatusCode, Is.Not.EqualTo(StatusCodes.Status500InternalServerError));
-        Assert.That(ResponseBytes(ctx), Is.Empty, "aborted request must not have an error body written");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.Not.EqualTo(StatusCodes.Status500InternalServerError));
+            Assert.That(ResponseBytes(ctx), Is.Empty, "aborted request must not have an error body written");
+        }
     }
 
     [Test]
@@ -891,8 +915,11 @@ public class SszMiddlewareTests
 
         await middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status204NoContent));
-        Assert.That(ResponseBytes(ctx), Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status204NoContent));
+            Assert.That(ResponseBytes(ctx), Is.Empty);
+        }
     }
 
     private sealed class ZeroLengthEncodeHandler : SszEndpointHandlerBase
@@ -1044,10 +1071,13 @@ public class SszMiddlewareTests
             .ToArray();
         Assert.That(calls.Length, Is.EqualTo(1));
         ClientVersionV1 arg = (ClientVersionV1)calls[0].GetArguments()[0]!;
-        Assert.That(arg.Code, Is.EqualTo("NB"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(arg.Code, Is.EqualTo("NB"));
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
-        Assert.That(ctx.Response.ContentType, Does.Contain("application/json"));
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(ctx.Response.ContentType, Does.Contain("application/json"));
+        }
     }
 
     [Test]
@@ -1266,8 +1296,11 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
-        Assert.That(ctx.Response.ContentType, Does.Contain("application/json"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(ctx.Response.ContentType, Does.Contain("application/json"));
+        }
         string body = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
         Assert.That(body, Does.Contain("supported_forks"));
     }
@@ -1285,8 +1318,11 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
-        Assert.That(ctx.Response.ContentType, Does.Contain("application/json"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(ctx.Response.ContentType, Does.Contain("application/json"));
+        }
     }
 
     // Unknown extra path segments still 404; trailing slashes are accepted (covered below).
@@ -1454,9 +1490,12 @@ public class SszMiddlewareTests
         string body = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
         using System.Text.Json.JsonDocument doc = System.Text.Json.JsonDocument.Parse(body);
         System.Text.Json.JsonElement root = doc.RootElement;
-        Assert.That(root.TryGetProperty("type", out _), Is.True, "RFC 7807 body must contain 'type'");
-        Assert.That(root.TryGetProperty("detail", out _), Is.False, "ssz-decode-error must NOT include 'detail'");
-        Assert.That(root.EnumerateObject().Count(), Is.EqualTo(1), "ssz-decode-error body must have exactly one key");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root.TryGetProperty("type", out _), Is.True, "RFC 7807 body must contain 'type'");
+            Assert.That(root.TryGetProperty("detail", out _), Is.False, "ssz-decode-error must NOT include 'detail'");
+            Assert.That(root.EnumerateObject().Count(), Is.EqualTo(1), "ssz-decode-error body must have exactly one key");
+        }
     }
 
     [Test]
@@ -1469,9 +1508,12 @@ public class SszMiddlewareTests
         string body = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
         using System.Text.Json.JsonDocument doc = System.Text.Json.JsonDocument.Parse(body);
         System.Text.Json.JsonElement root = doc.RootElement;
-        Assert.That(root.TryGetProperty("type", out _), Is.True);
-        Assert.That(root.TryGetProperty("detail", out _), Is.True, "unsupported-fork must include 'detail'");
-        Assert.That(root.EnumerateObject().Count(), Is.EqualTo(2), "error body must have exactly two keys: type + detail");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root.TryGetProperty("type", out _), Is.True);
+            Assert.That(root.TryGetProperty("detail", out _), Is.True, "unsupported-fork must include 'detail'");
+            Assert.That(root.EnumerateObject().Count(), Is.EqualTo(2), "error body must have exactly two keys: type + detail");
+        }
     }
 
     private const string WitnessPath = "/engine/v1/payloads/witness";
@@ -1506,20 +1548,26 @@ public class SszMiddlewareTests
 
         await _engineModule.Received(1).engine_newPayloadWithWitnessV5(
             Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>());
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK),
-            "a VALID status must return 200 OK whether or not a witness was produced");
-        Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream),
-            "successful SSZ responses must use application/octet-stream");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK),
+                "a VALID status must return 200 OK whether or not a witness was produced");
+            Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream),
+                "successful SSZ responses must use application/octet-stream");
+        }
 
         byte[] responseBody = ResponseBytes(ctx);
         Assert.That(responseBody, Is.Not.Empty, "the SSZ body must contain the encoded response");
 
         (byte decodedStatus, Hash256? decodedLvh, bool witnessPresent) = SszCodec.DecodeNewPayloadWithWitnessResponse(responseBody);
-        Assert.That(decodedStatus, Is.EqualTo(0), "decoded status byte must match VALID");
-        Assert.That(decodedLvh, Is.EqualTo(TestItem.KeccakA),
-            "latest_valid_hash Union Some variant must round-trip the hash correctly");
-        Assert.That(witnessPresent, Is.EqualTo(withWitness),
-            "the witness Union must be Some iff a witness was generated");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decodedStatus, Is.EqualTo(0), "decoded status byte must match VALID");
+            Assert.That(decodedLvh, Is.EqualTo(TestItem.KeccakA),
+                "latest_valid_hash Union Some variant must round-trip the hash correctly");
+            Assert.That(witnessPresent, Is.EqualTo(withWitness),
+                "the witness Union must be Some iff a witness was generated");
+        }
     }
 
     [Test]
@@ -1571,9 +1619,12 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status415UnsupportedMediaType),
-            "a POST with wrong Content-Type must receive 415, like every other SSZ POST endpoint");
-        Assert.That(ctx.Response.ContentType, Does.Contain("application/problem+json"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status415UnsupportedMediaType),
+                "a POST with wrong Content-Type must receive 415, like every other SSZ POST endpoint");
+            Assert.That(ctx.Response.ContentType, Does.Contain("application/problem+json"));
+        }
     }
 
     [Test]
@@ -1591,10 +1642,13 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK),
-            "SYNCING is a normal processing outcome and must return 200, not an HTTP error");
-        Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream));
-        Assert.That(ResponseBytes(ctx), Is.Not.Empty, "the SSZ body must contain the status fields");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK),
+                "SYNCING is a normal processing outcome and must return 200, not an HTTP error");
+            Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream));
+            Assert.That(ResponseBytes(ctx), Is.Not.Empty, "the SSZ body must contain the status fields");
+        }
     }
 
     [Test]
@@ -1604,9 +1658,12 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound),
-            "the witness resource is POST-only; a GET resolves no handler, like every other POST endpoint");
-        Assert.That(ctx.Response.ContentType, Does.Contain("application/problem+json"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound),
+                "the witness resource is POST-only; a GET resolves no handler, like every other POST endpoint");
+            Assert.That(ctx.Response.ContentType, Does.Contain("application/problem+json"));
+        }
     }
 
     [Test]
@@ -1646,8 +1703,11 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(expectedStatus));
-        Assert.That(ctx.Response.ContentType, Does.Contain("application/problem+json"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(expectedStatus));
+            Assert.That(ctx.Response.ContentType, Does.Contain("application/problem+json"));
+        }
         string responseBody = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
         Assert.That(responseBody, Does.Contain(expectedTypeUri));
     }
@@ -1817,8 +1877,11 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
-        Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream));
+        }
         await _engineModule.Received(1).engine_newPayloadV6(
             Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>(), Arg.Any<byte[][]?>());
     }
@@ -1853,8 +1916,11 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
-        Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream));
+        }
         await _engineModule.Received(1).engine_getInclusionListV1();
     }
 

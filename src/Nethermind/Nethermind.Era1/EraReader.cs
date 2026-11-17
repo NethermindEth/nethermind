@@ -10,6 +10,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Era1.Exceptions;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 
@@ -37,7 +38,7 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
     {
         foreach (ulong blockNumber in EnumerateBlockNumber())
         {
-            EntryReadResult result = await ReadBlockAndReceipts(blockNumber, false, cancellation);
+            EntryReadResult result = await ReadBlockAndReceipts(blockNumber, false, BodyForm.Decoded, cancellation);
             yield return (result.Block, result.Receipts);
         }
     }
@@ -57,9 +58,14 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
     /// It also validate the block with IBlockValidator. Ideally all verification is done here so that
     /// the file is easy to read directly without having to import.
     /// </summary>
+    /// <param name="validateTransactions">
+    /// Whether to decode the transactions and validate the blocks with <see cref="IBlockValidator.ValidateOrphanedBlock"/>.
+    /// Without it, the body is checked against the header with its transactions kept encoded; this is enough when the
+    /// accumulator is trusted, as the trusted header hashes then bind the bodies.
+    /// </param>
     /// <param name="cancellation"></param>
     /// <returns>Returns <see cref="true"/> if the expected accumulator matches, and <see cref="false"/> if there is no match.</returns>
-    public async Task<ValueHash256> VerifyContent(ISpecProvider specProvider, IBlockValidator blockValidator, int verifyConcurrency = 0, CancellationToken cancellation = default)
+    public async Task<ValueHash256> VerifyContent(ISpecProvider specProvider, IBlockValidator blockValidator, int verifyConcurrency = 0, bool validateTransactions = true, CancellationToken cancellation = default)
     {
         ArgumentNullException.ThrowIfNull(specProvider);
         if (verifyConcurrency == 0) verifyConcurrency = Environment.ProcessorCount;
@@ -71,32 +77,45 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
         using ArrayPoolList<(Hash256, UInt256)> blockHashes = new(blockCount, blockCount);
 
         ConcurrentQueue<ulong> blockNumbers = new(EnumerateBlockNumber());
+        BodyForm bodyForm = validateTransactions ? BodyForm.Decoded : BodyForm.EncodedTransactions;
 
         using ArrayPoolList<Task> workers = Enumerable.Range(0, verifyConcurrency).Select((_) => Task.Run(async () =>
         {
             while (blockNumbers.TryDequeue(out ulong blockNumber))
             {
-                EntryReadResult? result = await ReadBlockAndReceipts(blockNumber, true, cancellation);
+                EntryReadResult? result = await ReadBlockAndReceipts(blockNumber, true, bodyForm, cancellation);
                 EntryReadResult err = result.Value;
 
-                if (!blockValidator.ValidateBodyAgainstHeader(err.Block.Header, err.Block.Body, out string? error))
+                try
                 {
-                    throw new EraVerificationException($"Mismatched block body against header: {error}. Block number {blockNumber}.");
-                }
+                    if (err.Block.Header.Number != blockNumber)
+                    {
+                        throw new EraVerificationException($"Mismatched header number {err.Block.Header.Number}. Block number {blockNumber}.");
+                    }
 
-                if (!blockValidator.ValidateOrphanedBlock(err.Block, out error))
+                    if (!blockValidator.ValidateBodyAgainstHeader(err.Block.Header, err.Block.Body, out string? error))
+                    {
+                        throw new EraVerificationException($"Mismatched block body against header: {error}. Block number {blockNumber}.");
+                    }
+
+                    if (validateTransactions && !blockValidator.ValidateOrphanedBlock(err.Block, out error))
+                    {
+                        throw new EraVerificationException($"Invalid block {error}");
+                    }
+
+                    Hash256 receiptRoot = ReceiptTrie.CalculateRoot(specProvider.GetReceiptSpec(err.Block.Number), err.Receipts, _receiptDecoder);
+                    if (err.Block.Header.ReceiptsRoot != receiptRoot)
+                    {
+                        throw new EraVerificationException($"Mismatched receipt root. Block number {blockNumber}.");
+                    }
+
+                    // Note: Header.Hash is calculated by HeaderDecoder.
+                    blockHashes[(int)(err.Block.Header.Number - startBlock)] = (err.Block.Header.Hash!, err.Block.TotalDifficulty!.Value);
+                }
+                finally
                 {
-                    throw new EraVerificationException($"Invalid block {error}");
+                    ArchiveBodyDecoder.Release(err.Block.Body, err.EncodedBody, bodyForm);
                 }
-
-                Hash256 receiptRoot = ReceiptTrie.CalculateRoot(specProvider.GetReceiptSpec(err.Block.Number), err.Receipts, _receiptDecoder);
-                if (err.Block.Header.ReceiptsRoot != receiptRoot)
-                {
-                    throw new EraVerificationException($"Mismatched receipt root. Block number {blockNumber}.");
-                }
-
-                // Note: Header.Hash is calculated by HeaderDecoder.
-                blockHashes[(int)(err.Block.Header.Number - startBlock)] = (err.Block.Header.Hash!, err.Block.TotalDifficulty!.Value);
             }
         }, cancellation)).ToPooledList(verifyConcurrency);
         await Task.WhenAll(workers.AsSpan());
@@ -138,7 +157,7 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
         using AccumulatorCalculator calculator = new();
         foreach (ulong blockNumber in EnumerateBlockNumber())
         {
-            EntryReadResult result = await ReadBlockAndReceipts(blockNumber, true, cancellation);
+            EntryReadResult result = await ReadBlockAndReceipts(blockNumber, true, BodyForm.Decoded, cancellation);
             calculator.Add(result.Block.Header.Hash!, result.Block.TotalDifficulty!.Value);
         }
 
@@ -151,11 +170,19 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
             throw new ArgumentOutOfRangeException(nameof(number), $"Cannot be less than the first block number {_fileReader.First}. Number is {number}.");
         if (number > _fileReader.LastBlock)
             throw new ArgumentOutOfRangeException(nameof(number), $"Cannot be more than the last block number {_fileReader.LastBlock}. Number is {number}.");
-        EntryReadResult result = await ReadBlockAndReceipts(number, false, cancellation);
+        EntryReadResult result = await ReadBlockAndReceipts(number, false, BodyForm.Decoded, cancellation);
         return (result.Block, result.Receipts);
     }
 
-    private async Task<EntryReadResult> ReadBlockAndReceipts(ulong blockNumber, bool computeHeaderHash, CancellationToken cancellationToken)
+    /// <summary>Reads a block, its body as stored in the archive, and the receipts.</summary>
+    /// <remarks>Dispose the body when done.</remarks>
+    public async Task<(Block Block, ArrayPoolList<byte> Body, TxReceipt[] Receipts)> GetEncodedBlockByNumber(ulong number, CancellationToken cancellation = default)
+    {
+        EntryReadResult result = await ReadBlockAndReceipts(number, false, BodyForm.DecodedAndEncoded, cancellation);
+        return (result.Block, result.EncodedBody!, result.Receipts);
+    }
+
+    private async Task<EntryReadResult> ReadBlockAndReceipts(ulong blockNumber, bool computeHeaderHash, BodyForm bodyForm, CancellationToken cancellationToken)
     {
         if (blockNumber < _fileReader.First
             || blockNumber > _fileReader.LastBlock)
@@ -171,35 +198,37 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
 
         position += readSize;
 
-        (BlockBody body, readSize) = await _fileReader.ReadSnappyCompressedEntryAndDecode(
+        ((BlockBody body, ArrayPoolList<byte>? encodedBody), readSize) = await _fileReader.ReadSnappyCompressedEntryAndDecode(
             position,
-            DecodeBody,
+            buffer => ArchiveBodyDecoder.Decode(buffer, bodyForm, _blockBodyDecoder),
             EntryTypes.CompressedBody, cancellationToken);
 
-        position += readSize;
+        try
+        {
+            position += readSize;
 
-        (TxReceipt[] receipts, readSize) = await _fileReader.ReadSnappyCompressedEntryAndDecode(
-            position,
-            DecodeReceipts,
-            EntryTypes.CompressedReceipts, cancellationToken);
+            (TxReceipt[] receipts, readSize) = await _fileReader.ReadSnappyCompressedEntryAndDecode(
+                position,
+                DecodeReceipts,
+                EntryTypes.CompressedReceipts, cancellationToken);
 
-        position += readSize;
+            position += readSize;
 
-        _ = _fileReader.ReadEntryAndDecode(
-            position,
-            static (buffer) => new UInt256(buffer.Span, isBigEndian: false),
-            EntryTypes.TotalDifficulty,
-            out UInt256 currentTotalDifficulty);
-        header.TotalDifficulty = currentTotalDifficulty;
+            _ = _fileReader.ReadEntryAndDecode(
+                position,
+                static (buffer) => new UInt256(buffer.Span, isBigEndian: false),
+                EntryTypes.TotalDifficulty,
+                out UInt256 currentTotalDifficulty);
+            header.TotalDifficulty = currentTotalDifficulty;
 
-        Block block = new(header, body);
-        return new EntryReadResult(block, receipts);
-    }
-
-    private BlockBody DecodeBody(Memory<byte> buffer)
-    {
-        RlpReader ctx = new(buffer.Span);
-        return _blockBodyDecoder.Decode(ref ctx, RlpBehaviors.SkipPooledTransactions)!;
+            Block block = new(header, body);
+            return new EntryReadResult(block, receipts, encodedBody);
+        }
+        catch
+        {
+            ArchiveBodyDecoder.Release(body, encodedBody, bodyForm);
+            throw;
+        }
     }
 
     private BlockHeader DecodeHeader(Memory<byte> buffer)
@@ -219,9 +248,10 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
 
     public void Dispose() => _fileReader.Dispose();
 
-    private struct EntryReadResult(Block block, TxReceipt[] receipts)
+    private struct EntryReadResult(Block block, TxReceipt[] receipts, ArrayPoolList<byte>? encodedBody)
     {
         public Block Block { get; } = block;
         public TxReceipt[] Receipts { get; } = receipts;
+        public ArrayPoolList<byte>? EncodedBody { get; } = encodedBody;
     }
 }

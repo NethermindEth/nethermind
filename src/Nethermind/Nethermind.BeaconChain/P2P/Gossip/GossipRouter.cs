@@ -117,6 +117,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     /// <summary>The most (peer, validator) pairs whose verify attempts are counted per slot; the least recently claimed one is evicted past it.</summary>
     internal const int PayloadAttestationPairsPerSlot = (int)Presets.PtcSize * PayloadAttestationVerifyAttempts;
     private const int MaxDeferredMessages = 64;
+    internal const int MaxDeferredBytes = 32 * 1024 * 1024;
 
     /// <summary>The most stored blocks decoded per slot for envelopes whose block is not cached and not canonical at a recent slot.</summary>
     /// <remarks>
@@ -190,7 +191,8 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     // A held block never changes, so its bid is decoded once, not once per envelope; a root not held is never cached, as it may arrive a moment later.
     private readonly LruCache<Hash256, EnvelopeBlock> _envelopeBlocks = new(EnvelopeBlockCacheSize, "beacon gossip envelope blocks");
     private readonly Lock _deferredLock = new();
-    private readonly List<(ulong Slot, Action Raise)> _deferred = [];
+    private readonly ByteBudget _deferredBytes = new(MaxDeferredBytes, MaxDeferredMessages);
+    private readonly List<(ulong Slot, Action Raise, ByteBudget.Charge Charge)> _deferred = [];
     private int _deferredCount;
 
     private Func<string, ITopic>? _getTopic;
@@ -515,12 +517,12 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     /// <see cref="MessageValidity.Rejected"/> or <see cref="MessageValidity.Ignored"/>. A message whose event is raised is
     /// <see cref="MessageValidity.Ignored"/> too: its signature and state checks run later, and its verdict is the event subscriber's to give.
     /// </returns>
-    internal MessageValidity Handle(string name, bool gloasTopic, byte[] message) => Handle(name, gloasTopic, message, GossipVerdict.None);
+    internal MessageValidity Handle(string name, bool gloasTopic, ReadOnlySpan<byte> message) => Handle(name, gloasTopic, message, GossipVerdict.None);
 
     /// <inheritdoc cref="Handle(string, bool, byte[])"/>
     /// <param name="verdict">The message's pending verdict, handed off with a raised event or a message held for the next slot.</param>
     /// <param name="source">The authenticated delivering peer; direct local calls share the null-source budget.</param>
-    internal MessageValidity Handle(string name, bool gloasTopic, byte[] message, GossipVerdict verdict, PeerId? source = null) => name switch
+    internal MessageValidity Handle(string name, bool gloasTopic, ReadOnlySpan<byte> message, GossipVerdict verdict, PeerId? source = null) => name switch
     {
         GossipTopics.BeaconBlock => HandleBeaconBlock(message, gloasTopic, verdict),
         GossipTopics.BeaconAggregateAndProof => gloasTopic ? HandleGloasAggregateAndProof(message, verdict) : HandleFuluAggregateAndProof(message, verdict),
@@ -531,26 +533,26 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     };
 
     /// <summary>Handles a <c>beacon_block</c> message on the topic of the digest passed to <see cref="Start"/>.</summary>
-    public MessageValidity HandleBeaconBlock(byte[] message) => HandleBeaconBlock(message, _gloasDigest, GossipVerdict.None);
+    public MessageValidity HandleBeaconBlock(ReadOnlySpan<byte> message) => HandleBeaconBlock(message, _gloasDigest, GossipVerdict.None);
 
     // phase0 p2p: MUST reject messages containing an incorrect type, so the topic's fork fixes the decoded shape.
-    private MessageValidity HandleBeaconBlock(byte[] message, bool gloasTopic, GossipVerdict verdict) =>
+    private MessageValidity HandleBeaconBlock(ReadOnlySpan<byte> message, bool gloasTopic, GossipVerdict verdict) =>
         Handle(GossipTopics.BeaconBlock, message, verdict,
             payload => DecodeBlock(payload, gloasTopic),
             block => ValidateBlock(block, gloasTopic),
             (block, pending) => BeaconBlockReceived?.Invoke(block, pending));
 
     /// <summary>Handles a <c>beacon_aggregate_and_proof</c> message on the topic of the digest passed to <see cref="Start"/>.</summary>
-    public MessageValidity HandleAggregateAndProof(byte[] message) =>
+    public MessageValidity HandleAggregateAndProof(ReadOnlySpan<byte> message) =>
         _gloasDigest ? HandleGloasAggregateAndProof(message, GossipVerdict.None) : HandleFuluAggregateAndProof(message, GossipVerdict.None);
 
-    private MessageValidity HandleFuluAggregateAndProof(byte[] message, GossipVerdict verdict) =>
+    private MessageValidity HandleFuluAggregateAndProof(ReadOnlySpan<byte> message, GossipVerdict verdict) =>
         Handle(GossipTopics.BeaconAggregateAndProof, message, verdict,
             static payload => { SignedAggregateAndProof.Decode(payload, out SignedAggregateAndProof aggregate); return aggregate; },
             aggregate => ValidateAggregate(aggregate.Message!.Aggregate!.Data!, aggregate.Message.Aggregate.CommitteeBits!, aggregate.Message.Aggregate.AggregationBits!, aggregate.Message.AggregatorIndex, gloas: false),
             (aggregate, pending) => AggregateAndProofReceived?.Invoke(aggregate, pending));
 
-    private MessageValidity HandleGloasAggregateAndProof(byte[] message, GossipVerdict verdict) =>
+    private MessageValidity HandleGloasAggregateAndProof(ReadOnlySpan<byte> message, GossipVerdict verdict) =>
         Handle(GossipTopics.BeaconAggregateAndProof, message, verdict,
             static payload => { SignedAggregateAndProofGloas.Decode(payload, out SignedAggregateAndProofGloas aggregate); return aggregate; },
             aggregate => ValidateAggregate(aggregate.Message!.Aggregate!.Data!, aggregate.Message.Aggregate.CommitteeBits!, aggregate.Message.Aggregate.AggregationBits!, aggregate.Message.AggregatorIndex, gloas: true),
@@ -558,17 +560,17 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
             MaxSignedAggregateAndProofSizeGloas);
 
     /// <summary>Handles an <c>attester_slashing</c> message on the topic of the digest passed to <see cref="Start"/>.</summary>
-    public MessageValidity HandleAttesterSlashing(byte[] message) =>
+    public MessageValidity HandleAttesterSlashing(ReadOnlySpan<byte> message) =>
         _gloasDigest ? HandleGloasAttesterSlashing(message, GossipVerdict.None) : HandleFuluAttesterSlashing(message, GossipVerdict.None);
 
-    private MessageValidity HandleFuluAttesterSlashing(byte[] message, GossipVerdict verdict) =>
+    private MessageValidity HandleFuluAttesterSlashing(ReadOnlySpan<byte> message, GossipVerdict verdict) =>
         Handle(GossipTopics.AttesterSlashing, message, verdict,
             static payload => { AttesterSlashing.Decode(payload, out AttesterSlashing slashing); return slashing; },
             slashing => ValidateAttesterSlashing(
                 slashing.Attestation1!.AttestingIndices!, slashing.Attestation1.Data!, slashing.Attestation2!.AttestingIndices!, slashing.Attestation2.Data!, gloas: false),
             (slashing, pending) => AttesterSlashingReceived?.Invoke(slashing, pending));
 
-    private MessageValidity HandleGloasAttesterSlashing(byte[] message, GossipVerdict verdict) =>
+    private MessageValidity HandleGloasAttesterSlashing(ReadOnlySpan<byte> message, GossipVerdict verdict) =>
         Handle(GossipTopics.AttesterSlashing, message, verdict,
             static payload => { AttesterSlashingGloas.Decode(payload, out AttesterSlashingGloas slashing); return slashing; },
             slashing => ValidateAttesterSlashing(
@@ -580,9 +582,9 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     /// Runs every <c>execution_payload</c> rule except the envelope signature, which needs the block's state: an envelope
     /// passing them, or naming a block not held yet, is raised for the import pipeline to verify, which gives its verdict.
     /// </summary>
-    public MessageValidity HandleExecutionPayloadEnvelope(byte[] message) => HandleExecutionPayloadEnvelope(message, GossipVerdict.None);
+    public MessageValidity HandleExecutionPayloadEnvelope(ReadOnlySpan<byte> message) => HandleExecutionPayloadEnvelope(message, GossipVerdict.None);
 
-    private MessageValidity HandleExecutionPayloadEnvelope(byte[] message, GossipVerdict verdict) =>
+    private MessageValidity HandleExecutionPayloadEnvelope(ReadOnlySpan<byte> message, GossipVerdict verdict) =>
         Handle(GossipTopics.ExecutionPayload, message, verdict,
             static payload => { SignedExecutionPayloadEnvelope.Decode(payload, out SignedExecutionPayloadEnvelope envelope); return envelope; },
             ValidateEnvelope,
@@ -603,7 +605,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     /// member's index would cost fork choice a BLS verify: a pair from each peer is raised at most <see cref="PayloadAttestationVerifyAttempts"/> times
     /// until <see cref="MarkPayloadAttestationVerified"/> records a vote that verified, and none once <see cref="MarkPayloadAttestationRejected"/> records a vote of the peer for the slot.
     /// </remarks>
-    private MessageValidity HandlePayloadAttestationMessage(byte[] message, GossipVerdict verdict, PeerId? source)
+    private MessageValidity HandlePayloadAttestationMessage(ReadOnlySpan<byte> message, GossipVerdict verdict, PeerId? source)
     {
         // Direct callers still need throttle callbacks to return their verification budget when the vote queue is full.
         if (ReferenceEquals(verdict, GossipVerdict.None))
@@ -618,7 +620,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
             vote => ReleasePayloadAttestationAttempt(vote, source));
     }
 
-    private MessageValidity Handle<T>(string name, byte[] message, GossipVerdict pendingVerdict, Func<byte[], T> decode, Func<T, Verdict?> validate, Action<T, GossipVerdict> raise,
+    private MessageValidity Handle<T>(string name, ReadOnlySpan<byte> message, GossipVerdict pendingVerdict, Func<byte[], T> decode, Func<T, Verdict?> validate, Action<T, GossipVerdict> raise,
         int maxSize = Eth2MessageId.MaxGossipSize, LruKeyCache<ValueHash256>? seenMessages = null, Action<T>? releaseClaim = null) where T : class
     {
         seenMessages ??= _seenMessages;
@@ -684,7 +686,15 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
             // phase0 p2p: [IGNORE] a future slot, which MAY be queued; the message is ignored now, so no verdict waits for its slot.
             GossipVerdict held = GossipVerdict.Local();
             held.ReleaseOnThrottle(releaseSeen);
-            return Defer(slot, () => Raise(raise, value, held)) ? MessageValidity.Ignored : Drop(name, GossipDropReason.FutureSlot, MessageValidity.Ignored);
+            ByteBudget.Charge? deferredCharge = _deferredBytes.TryCharge(payload!.Length);
+            if (deferredCharge is not null && Defer(slot, () => Raise(raise, value, held), deferredCharge))
+                return MessageValidity.Ignored;
+
+            deferredCharge?.Release();
+            releaseSeen();
+            releaseClaim?.Invoke(value);
+            Interlocked.Increment(ref Metrics.GossipThrottledCount);
+            return MessageValidity.Throttled;
         }
 
         pendingVerdict.ReleaseOnThrottle(releaseSeen);
@@ -1059,6 +1069,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
         }
 
         Hash256 blockRoot = data.BeaconBlockRoot!;
+        // Exhausting this local read budget leaves the slot unknown; independent membership checks can still reject the vote.
         return _storedBlockSlots!.TryRead(blockRoot, _ptcBlockSlotReads, out ulong blockSlot) && blockSlot != data.Slot
             ? Verdict.Ignore(GossipDropReason.InvalidField)
             : ClaimPayloadAttestationPair(vote, source);
@@ -1221,7 +1232,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
         return epoch <= spec.GetEpoch(latestSlot) && epoch + 1 >= spec.GetEpoch(earliestSlot);
     }
 
-    private bool Defer(ulong slot, Action raise)
+    private bool Defer(ulong slot, Action raise, ByteBudget.Charge charge)
     {
         lock (_deferredLock)
         {
@@ -1230,7 +1241,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
                 return false;
             }
 
-            _deferred.Add((slot, raise));
+            _deferred.Add((slot, raise, charge));
             Volatile.Write(ref _deferredCount, _deferred.Count);
             return true;
         }
@@ -1253,6 +1264,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
                 if (CheckNotFromFuture(_deferred[i].Slot) is null)
                 {
                     (due ??= []).Insert(0, _deferred[i].Raise);
+                    _deferred[i].Charge.Release();
                     _deferred.RemoveAt(i);
                 }
             }

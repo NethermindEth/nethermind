@@ -163,8 +163,11 @@ public class RequestFailureCauseTests
             Task<IReadOnlyList<DataColumnSidecar>> abandoned = peer.RequestDataColumnSidecarsByRootAsync(Identifiers(3), stopping.Token);
             await stopping.CancelAsync();
             await Assert.CatchAsync<OperationCanceledException>(() => abandoned);
-            Assert.That(PeerManager.RequestsInFlightForTest(peer), Is.EqualTo(4), "cancelled slot wait releases its count");
-            Assert.That(logs.Lines.Where(static l => l.Text.Contains("request not sent, cancelled by this node")).Select(static l => l.Text), Has.Some.Contains("requests in flight 4,"));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(PeerManager.RequestsInFlightForTest(peer), Is.EqualTo(4), "cancelled slot wait releases its count");
+                Assert.That(logs.Lines.Where(static l => l.Text.Contains("request not sent, cancelled by this node")).Select(static l => l.Text), Has.Some.Contains("requests in flight 4,"));
+            }
             held.ColumnDials[0].SetResult(new ForkedDataColumnSidecars([], []));
             await first.WaitAsync(token);
         }
@@ -769,8 +772,11 @@ public class RequestFailureCauseTests
         }
 
         ulong attempts = Metrics.BeaconChainDialAttempts;
-        Assert.That(await manager.TryAddPeerAsync(failed.Id, default), Is.False, "the dropped address must observe backoff before another dial");
-        Assert.That(Metrics.BeaconChainDialAttempts, Is.EqualTo(attempts), "a cooling endpoint must not consume a dial slot");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await manager.TryAddPeerAsync(failed.Id, default), Is.False, "the dropped address must observe backoff before another dial");
+            Assert.That(Metrics.BeaconChainDialAttempts, Is.EqualTo(attempts), "a cooling endpoint must not consume a dial slot");
+        }
     }
 
     private static Task InvokeStatusAsync(PeerManager manager, IBeaconSyncPeer peer, string method, CancellationToken token) =>

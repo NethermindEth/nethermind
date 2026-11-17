@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -42,8 +44,32 @@ class ShutterTxSourceTests
         IShutterKeyValidator.ValidatedKeys keys = new() { Slot = ShutterTestsCommon.InitialSlot, Keys = new([], 0) };
         Task load = Task.Run(() => txSource.LoadTransactions(null, Build.A.BlockHeader.TestObject, keys));
 
-        Assert.That(load.Wait(TimeSpan.FromSeconds(10)), Is.True, "LoadTransactions deadlocked against the cancel callback");
-        Assert.That(waitTasks, Is.All.Matches<Task>(static t => t is { IsCompletedSuccessfully: true }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(load.Wait(TimeSpan.FromSeconds(10)), Is.True, "LoadTransactions deadlocked against the cancel callback");
+            Assert.That(waitTasks, Is.All.Matches<Task>(static t => t is { IsCompletedSuccessfully: true }));
+        }
+    }
+
+    [Test]
+    public void Cancelled_waits_do_not_keep_their_slots()
+    {
+        Random rnd = new(ShutterTestsCommon.Seed);
+        Timestamper timestamper = ShutterTestsCommon.InitTimestamper(ShutterTestsCommon.InitialSlotTimestamp, 0);
+        ShutterTxSource txSource = ShutterTestsCommon.InitApi(rnd, timestamper).TxSource;
+
+        for (ulong slot = ShutterTestsCommon.InitialSlot; slot < ShutterTestsCommon.InitialSlot + 5; slot++)
+        {
+            using CancellationTokenSource source = new();
+            Task wait = txSource.WaitForTransactions(slot, source.Token);
+            source.Cancel();
+            Assert.That(wait.IsCompleted, Is.True);
+        }
+
+        IDictionary keyWaitTasks = (IDictionary)typeof(ShutterTxSource)
+            .GetField("_keyWaitTasks", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .GetValue(txSource)!;
+        Assert.That(keyWaitTasks, Is.Empty);
     }
 
     // Register runs the callback inline for an already cancelled token, before the wait could be stored.

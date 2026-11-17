@@ -6,7 +6,6 @@ using Autofac;
 using Autofac.Core.Resolving.Pipeline;
 using Nethermind.Core;
 using Nethermind.BeaconChain.Api;
-using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Test.Spec;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.ChainSpecStyle;

@@ -124,8 +124,11 @@ public class StateRequestLimiterTests
         Assert.That(reads, Is.EqualTo(1), "a refused request must not touch the state column");
         release.Set();
         HttpResponseMessage served = await holder;
-        Assert.That(served.StatusCode, Is.EqualTo(HttpStatusCode.OK));
-        Assert.That(await served.Content.ReadAsByteArrayAsync(), Is.EqualTo(StateBytes));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(served.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            Assert.That(await served.Content.ReadAsByteArrayAsync(), Is.EqualTo(StateBytes));
+        }
 
         HttpResponseMessage afterRelease = await host.GetAsync(Download, Octet);
         Assert.That(afterRelease.StatusCode, Is.EqualTo(HttpStatusCode.OK), "the permit must be returned once a request completes, and a refused download must not spend the client's rate");
@@ -288,10 +291,12 @@ public class StateRequestLimiterTests
                 : "loading a state is the node's own time, not a stalled reader, so only the total cap bounds it");
     }
 
-    [TestCase(1, 120, TestName = "A client that stops reading a state cannot hold its permit past the total cap")]
-    [TestCase(40, 1, TestName = "A client that stops reading a state cannot hold its permit past the idle bound")]
-    public async Task A_client_that_stops_reading_a_state_cannot_hold_its_permit_past_the_deadline(int totalSeconds, int idleSeconds)
+    [Test]
+    public async Task A_client_that_stops_reading_cannot_hold_its_permit_past_the_deadline(
+        [Values(1, 40)] int totalSeconds,
+        [Values(Download, "/eth/v2/beacon/blocks/head", "/eth/v1/beacon/execution_payload_envelopes/head", "/eth/v1/beacon/blobs/head", "/eth/v1/debug/fork_choice")] string path)
     {
+        int idleSeconds = totalSeconds == 1 ? 120 : 1;
         using StateRequestLimiter limiter = new(new BeaconApiConfig { StateDownloadsPerMinutePerClient = 0, StateResponseTimeoutSeconds = totalSeconds, StateResponseIdleTimeoutSeconds = idleSeconds });
         WebApplicationBuilder builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();
@@ -299,7 +304,7 @@ public class StateRequestLimiterTests
         await using WebApplication app = builder.Build();
         app.Use(limiter.InvokeAsync);
         using SemaphoreSlim started = new(0);
-        app.MapGet(Download, async c =>
+        app.MapGet(path, async c =>
         {
             started.Release();
             byte[] chunk = new byte[64 * 1024];
@@ -314,12 +319,12 @@ public class StateRequestLimiterTests
 
         using TcpClient slowReader = new() { ReceiveBufferSize = 1024 };
         await slowReader.ConnectAsync(IPAddress.Loopback, port);
-        await slowReader.GetStream().WriteAsync(Encoding.ASCII.GetBytes($"GET {Download} HTTP/1.1\r\nHost: localhost\r\nAccept: {Octet}\r\n\r\n"));
+        await slowReader.GetStream().WriteAsync(Encoding.ASCII.GetBytes($"GET {path} HTTP/1.1\r\nHost: localhost\r\nAccept: {Octet}\r\n\r\n"));
         Assert.That(await started.WaitAsync(Wait), Is.True, "the slow reader's request must reach the endpoint");
 
         using HttpClient client = new() { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
         await Task.Delay(200);
-        using (HttpResponseMessage held = await client.GetAsync(Download, HttpCompletionOption.ResponseHeadersRead))
+        using (HttpResponseMessage held = await client.GetAsync(path, HttpCompletionOption.ResponseHeadersRead))
         {
             Assert.That(held.StatusCode, Is.EqualTo(HttpStatusCode.TooManyRequests), "the stalled response must hold the client's permit before the deadline");
         }
@@ -330,7 +335,7 @@ public class StateRequestLimiterTests
         do
         {
             await Task.Delay(100);
-            using HttpResponseMessage probe = await client.GetAsync(Download, HttpCompletionOption.ResponseHeadersRead);
+            using HttpResponseMessage probe = await client.GetAsync(path, HttpCompletionOption.ResponseHeadersRead);
             status = probe.StatusCode;
         }
         while (status == HttpStatusCode.TooManyRequests && DateTime.UtcNow < giveUp);

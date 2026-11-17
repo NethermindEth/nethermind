@@ -63,9 +63,12 @@ public class BlockSignatureBatchTests
         Assert.That(BlsSigner.Verify(publicKey, validSignature.Bytes, Message.Bytes), Is.True);
         BlsSignature signature = OffSubgroupKeys.WithG2Torsion(validSignature);
         Bls.P2 point = new(new long[Bls.P2.Sz]);
-        Assert.That(point.TryDecode(signature.Bytes, out _), Is.True);
-        Assert.That(point.OnCurve(), Is.True);
-        Assert.That(point.ToAffine().InGroup(), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(point.TryDecode(signature.Bytes, out _), Is.True);
+            Assert.That(point.OnCurve(), Is.True);
+            Assert.That(point.ToAffine().InGroup(), Is.False);
+        }
         bool decodedAccepted = BlsSigner.Verify(publicKey, new BlsSigner.Signature(point), Message.Bytes);
 
         BlockSignatureBatch batch = new();

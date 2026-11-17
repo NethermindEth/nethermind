@@ -45,7 +45,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     // Code staged for CodeDb by the current transaction, paired with the change-log position of the
     // code-hash update referencing it, so Restore can drop code whose deployment an ancestor frame reverted.
     private readonly List<(int Position, ValueHash256 CodeHash, int Length)> _codeInsertJournal = [];
-    private readonly OptimizedDictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
+    private readonly OptimizedDictionary<AddressAsKey, ChangeTrace> _blockChanges = [with(4_096)];
     private Dictionary<AddressAsKey, ChangeTrace>? _commitTrace;
     private List<AddressAsKey> _removedWithStorage = [];
     // Handed back by a detached write-back once it is done with the list it took.
@@ -59,7 +59,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     private Dictionary<Hash256AsKey, byte[]>? _transientCode;
     private Dictionary<Hash256AsKey, byte[]>.AlternateLookup<ValueHash256> _transientCodeAlternate;
 
-    private readonly List<Change> _changes = new(Resettable.StartCapacity);
+    private readonly List<Change> _changes = [with(Resettable.StartCapacity)];
     // Positions in _changes where each transaction still in the journal started; GetOriginalBalance reads below the top one.
     private readonly Stack<int> _transactionChangesSnapshots = new();
     // Changes at or below the newest snapshot or restore point are observable by a later restore and must not be rewritten.
@@ -192,7 +192,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         {
             if (_codeBatch is null)
             {
-                _codeBatch = new(Hash256AsKeyComparer.Instance);
+                _codeBatch = [with(Hash256AsKeyComparer.Instance)];
                 _codeBatchAlternate = _codeBatch.GetAlternateLookup<ValueHash256>();
             }
 
@@ -231,7 +231,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         {
             if (_transientCode is null)
             {
-                _transientCode = new(Hash256AsKeyComparer.Instance);
+                _transientCode = [with(Hash256AsKeyComparer.Instance)];
                 _transientCodeAlternate = _transientCode.GetAlternateLookup<ValueHash256>();
             }
 
@@ -688,12 +688,12 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         }
 
         InvalidateFrontCache();
+        ClearIntraTxCache(changes);
         _changes.Clear();
         _transactionChangesSnapshots.Clear();
         _protectedPosition = Resettable.EmptyPosition;
         _committedThisRound.ClearAndTrim();
         _nullAccountReads.ClearAndTrim();
-        _intraTxCache.ClearAndTrim();
         // A commit ends the transaction, which has finalized its TCREATE accounts by then.
         ResetTransientCode();
 
@@ -764,6 +764,23 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         [DoesNotReturn, StackTraceHidden]
         static void ThrowStartOfCommitIsNull(int currentPosition)
             => throw new InvalidOperationException($"Change at current position {currentPosition} was null when committing {nameof(StateProvider)}");
+    }
+
+    private void ClearIntraTxCache(ReadOnlySpan<Change> changes)
+    {
+        if (!Core.Collections.CollectionExtensions.IsSparseForRemoval(_intraTxCache.Count, _intraTxCache.Capacity))
+        {
+            _intraTxCache.ClearAndTrim();
+            return;
+        }
+
+        foreach (ref readonly Change change in changes)
+        {
+            if (change.PrevIdx == -1) _intraTxCache.Remove(change.Address);
+        }
+
+        Debug.Assert(_intraTxCache.Count == 0, "Every cached address has a change without a previous one.");
+        if (_intraTxCache.Count != 0) _intraTxCache.ClearAndTrim();
     }
 
     private void CommitChanges<TStateTracing>(
@@ -930,7 +947,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     /// <returns>The copied accounts; the caller owns the list.</returns>
     internal ArrayPoolList<KeyValuePair<AddressAsKey, Account?>> CopyAccountChanges()
     {
-        ArrayPoolList<KeyValuePair<AddressAsKey, Account?>> accounts = new(_blockChanges.Count);
+        ArrayPoolList<KeyValuePair<AddressAsKey, Account?>> accounts = [with(_blockChanges.Count)];
         foreach (KeyValuePair<AddressAsKey, ChangeTrace> change in _blockChanges)
         {
             accounts.Add(new KeyValuePair<AddressAsKey, Account?>(change.Key, change.Value.After));
@@ -963,13 +980,12 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         int writes = 0;
         int skipped = 0;
 
-        foreach (AddressAsKey key in _blockChanges.Keys)
+        foreach (KeyValuePair<AddressAsKey, ChangeTrace> entry in _blockChanges)
         {
-            ref ChangeTrace change = ref _blockChanges.GetValueRefOrNullRef(key);
-            if (change.Before != change.After)
+            if (entry.Value.Before != entry.Value.After)
             {
-                change.Before = change.After;
-                writeBatch.Set(key, change.After);
+                _blockChanges.GetValueRefOrNullRef(entry.Key).Before = entry.Value.After;
+                writeBatch.Set(entry.Key, entry.Value.After);
                 writes++;
             }
             else
@@ -1000,10 +1016,9 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         _nullAccountReads.ClearAndTrim();
         if (_blockChanges.Count == 0) return;
 
-        foreach (AddressAsKey key in _blockChanges.Keys)
+        foreach (KeyValuePair<AddressAsKey, ChangeTrace> entry in _blockChanges)
         {
-            ref ChangeTrace change = ref _blockChanges.GetValueRefOrNullRef(key);
-            if (overlay.TryGetAccount(key.Value, change.After, out Account? account)) change.After = account;
+            if (overlay.TryGetAccount(entry.Key.Value, entry.Value.After, out Account? account)) _blockChanges.GetValueRefOrNullRef(entry.Key).After = account;
         }
     }
 
@@ -1178,11 +1193,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         }
         else
         {
-            ArrayPoolList<AddressAsKey> addresses = new(count);
-            foreach (AddressAsKey address in _blockChanges.Keys)
-            {
-                addresses.Add(address);
-            }
+            ArrayPoolList<AddressAsKey> addresses = [with(count), .. _blockChanges.Keys];
             return addresses;
         }
     }

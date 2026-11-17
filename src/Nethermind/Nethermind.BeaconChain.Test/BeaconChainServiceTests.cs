@@ -64,8 +64,11 @@ public class BeaconChainServiceTests
 
         store.PutForkedBlock(TestItem.KeccakA, new ForkedSignedBeaconBlock.OfGloas(SignedBeaconBlockBuilders.CreateMinimalGloasBlock(firstGloasSlot)));
 
-        Assert.That(store.TryGetForkedBlock(TestItem.KeccakA, out ForkedSignedBeaconBlock? block), Is.True);
-        Assert.That(block, Is.TypeOf<ForkedSignedBeaconBlock.OfGloas>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.TryGetForkedBlock(TestItem.KeccakA, out ForkedSignedBeaconBlock? block), Is.True);
+            Assert.That(block, Is.TypeOf<ForkedSignedBeaconBlock.OfGloas>());
+        }
     }
 
     [Test]
@@ -111,6 +114,25 @@ public class BeaconChainServiceTests
         }
         await stopping.WaitAsync(TimeSpan.FromSeconds(2));
         Assert.That(() => source.Token, Throws.TypeOf<ObjectDisposedException>().After(2000, 10));
+    }
+
+    [Test]
+    public async Task StopAsync_waits_for_an_embedded_engine_call_that_outlives_the_run()
+    {
+        using IContainer container = BuildContainer();
+        BeaconChainService service = container.Resolve<BeaconChainService>();
+        IDisposable call = container.Resolve<ExternalClDetector>().EnterEmbeddedCall("newPayloadV4");
+        Task stopping = service.StopAsync();
+        try
+        {
+            Assert.That(stopping.IsCompleted, Is.False, "execution dependencies must stay alive while an embedded engine call is in flight");
+        }
+        finally
+        {
+            call.Dispose();
+        }
+
+        await stopping.WaitAsync(TimeSpan.FromSeconds(2));
     }
 
     [Test]

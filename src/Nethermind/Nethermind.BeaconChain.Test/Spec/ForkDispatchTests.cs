@@ -164,8 +164,11 @@ public class ForkDispatchTests
 
         HttpResponseMessage response = await host.GetAsync($"/eth/v2/beacon/blocks/{root}", "application/json");
 
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), await response.Content.ReadAsStringAsync());
-        Assert.That(response.Headers.GetValues("Eth-Consensus-Version").Single(), Is.EqualTo(header));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), await response.Content.ReadAsStringAsync());
+            Assert.That(response.Headers.GetValues("Eth-Consensus-Version").Single(), Is.EqualTo(header));
+        }
     }
 
     [Test]
@@ -183,8 +186,11 @@ public class ForkDispatchTests
         }
 
         NotSupportedException ex = (await Assert.ThrowsAsync<NotSupportedException>(() => sync.RunAsync(CancellationToken.None)))!;
-        Assert.That(ex.Message, Does.Contain(refusal));
-        Assert.That(store.TryGetAnchor(out _, out _), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ex.Message, Does.Contain(refusal));
+            Assert.That(store.TryGetAnchor(out _, out _), Is.False);
+        }
     }
 
     [Test]
@@ -206,8 +212,11 @@ public class ForkDispatchTests
 
         Exception ex = (await Assert.CatchAsync(() => sync.RunAsync(CancellationToken.None)))!;
         Assert.That(ex, Is.InstanceOf<NotSupportedException>().Or.InstanceOf<InvalidDataException>());
-        Assert.That(ex.Message, Does.Contain(refusal));
-        Assert.That(store.TryGetAnchor(out _, out _), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ex.Message, Does.Contain(refusal));
+            Assert.That(store.TryGetAnchor(out _, out _), Is.False);
+        }
     }
 
     [Test]

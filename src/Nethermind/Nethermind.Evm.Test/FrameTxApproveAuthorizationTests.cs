@@ -71,8 +71,11 @@ public class FrameTxApproveAuthorizationTests
 
         TransactionResult result = Process(FrameTx(FrameTxTestFrames.SelfVerify(200_000), SenderFrameTo(Target)));
 
-        Assert.That(result.TransactionExecuted, Is.True);
-        Assert.That(RecordedCaller(), Is.EqualTo(AsWord(Account)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(RecordedCaller(), Is.EqualTo(AsWord(Account)));
+        }
     }
 
     [TestCase(true, false, TestName = "observed storage set withholds the approval")]
@@ -111,8 +114,11 @@ public class FrameTxApproveAuthorizationTests
     {
         if (expectedExecuted)
         {
-            Assert.That(result.TransactionExecuted, Is.True);
-            Assert.That(RecordedCaller(), Is.EqualTo(AsWord(Account)));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.TransactionExecuted, Is.True);
+                Assert.That(RecordedCaller(), Is.EqualTo(AsWord(Account)));
+            }
             return;
         }
 
@@ -195,7 +201,7 @@ public class FrameTxApproveAuthorizationTests
             Frames = frames,
             FrameSignatures = [],
             GasPrice = 1,
-            DecodedMaxFeePerGas = 1,
+            MaxFee = 1.Ether,
         };
 
     private TransactionResult Process(Transaction tx, ulong? slot = null)

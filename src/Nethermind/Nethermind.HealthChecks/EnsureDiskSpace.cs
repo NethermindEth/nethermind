@@ -28,7 +28,7 @@ public class EnsureDiskSpace(
     {
         if (healthChecksConfig.LowStorageSpaceShutdownThreshold > 0)
         {
-            freeDiskSpaceChecker.EnsureEnoughFreeSpaceOnStart(timerFactory);
+            freeDiskSpaceChecker.EnsureEnoughFreeSpaceOnStart(timerFactory, cancellationToken);
         }
 
         if (healthChecksConfig.LowStorageSpaceWarningThreshold > 0 || healthChecksConfig.LowStorageSpaceShutdownThreshold > 0)

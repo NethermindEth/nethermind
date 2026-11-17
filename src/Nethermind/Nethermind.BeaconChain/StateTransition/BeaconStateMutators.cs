@@ -34,7 +34,7 @@ public static partial class BeaconStateMutators
     public static partial ulong ComputeExitEpochAndUpdateChurn(this BeaconStateFulu state, ulong exitBalance, EpochCache cache);
     public static partial ulong ComputeConsolidationEpochAndUpdateChurn(this BeaconStateFulu state, ulong consolidationBalance, EpochCache cache);
     public static partial void InitiateValidatorExit(this BeaconStateFulu state, int index, EpochCache cache);
-    private static partial ulong CheckedEpochSum(ulong epoch, ulong delta);
+    internal static partial ulong CheckedEpochSum(ulong epoch, ulong delta);
 
     /// <summary>
     /// Spec <c>add_validator_to_registry</c> (Electra): appends a deposit-derived validator and its

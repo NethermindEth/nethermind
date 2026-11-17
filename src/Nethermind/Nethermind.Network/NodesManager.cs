@@ -107,13 +107,13 @@ public abstract class NodesManager(string path, ILogger logger)
                     moved = false;
 
                     if (_logger.IsWarn)
-                        _logger.Warn($"Failed to move {oldPath} to {Path.GetFullPath(path)}: {ex.Message}\n  {resource} is ignored and will not be used");
+                        _logger.Warn($"Failed to move {oldPath:hide} to {Path.GetFullPath(path):hide}: {ex.Message:hide}\n  {resource} is ignored and will not be used");
                 }
 
                 if (moved)
                 {
                     if (_logger.IsWarn)
-                        _logger.Warn($"{oldPath} has been moved to {Path.GetFullPath(path)}");
+                        _logger.Warn($"{oldPath:hide} has been moved to {Path.GetFullPath(path):hide}");
 
                     return;
                 }
@@ -123,7 +123,7 @@ public abstract class NodesManager(string path, ILogger logger)
         // Create the directory if needed
         Directory.CreateDirectory(Path.GetDirectoryName(path));
 
-        if (_logger.IsDebug) _logger.Debug($"Nodes file was not found, creating one at {Path.GetFullPath(path)}");
+        if (_logger.IsDebug) _logger.Debug($"Nodes file was not found, creating one at {Path.GetFullPath(path):hide}");
 
         using Stream actualNodes = File.Create(path);
         using Stream embeddedNodes = typeof(NodesManager).Assembly.GetManifestResourceStream(resource);
@@ -146,7 +146,7 @@ public abstract class NodesManager(string path, ILogger logger)
         {
             string separator = $"{Environment.NewLine}  ";
 
-            _logger.Debug($"{title}:{separator}{string.Join(separator, nodes.Values.Select(n => n.ToString()))}");
+            _logger.Debug($"{title}:{separator}{string.Join(separator, nodes.Values.Select(n => n.ToString())):hide}");
         }
     }
 
@@ -179,7 +179,7 @@ public abstract class NodesManager(string path, ILogger logger)
             }
             catch (ArgumentException ex)
             {
-                if (_logger.IsError) _logger.Error($"Failed to parse node: {n}", ex);
+                if (_logger.IsError) _logger.Error($"Failed to parse node: {n:hide}", SensitiveLogMasking.Enabled ? null : ex);
 
                 continue;
             }
@@ -188,7 +188,7 @@ public abstract class NodesManager(string path, ILogger logger)
         }
 
         if (_logger.IsInfo)
-            _logger.Info($"Loaded {nodes.Count} nodes from {Path.GetFullPath(path)}");
+            _logger.Info($"Loaded {nodes.Count} nodes from {Path.GetFullPath(path):hide}");
 
         return nodes;
     }

@@ -30,7 +30,7 @@ public class TraceSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<P
     [TestCaseSource(typeof(EthRpcSimulateTestsBase), nameof(EthRpcSimulateTestsBase.GasCapSimulateCases))]
     public async Task Test_trace_simulate_respects_gas_cap(ulong gasCap, ulong? requestGas, bool expectCapped)
     {
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         chain.Container.Resolve<IJsonRpcConfig>().GasCap = gasCap;
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> result = chain.TraceRpcModule.trace_simulateV1(
@@ -53,7 +53,7 @@ public class TraceSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<P
     public async Task TestTransferLogsAddress()
     {
         SimulatePayload<TransactionForRpc> payload = EthSimulateTestsBlocksAndTransactions.CreateTransferLogsAddressPayload();
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateTransferOverBlockStateCalls");
         ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> result = chain.TraceRpcModule.trace_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Data.First().Traces.First().BlockHash, Is.EqualTo(new Core.Crypto.Hash256("0x899d78f0d7cbc0a6e384edf93ceea71ee9ae96612b3ddb1d99e2a1c1d2ef129f")));
@@ -63,7 +63,7 @@ public class TraceSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<P
     public async Task TestSerializationEthSimulate()
     {
         SimulatePayload<TransactionForRpc> payload = EthSimulateTestsBlocksAndTransactions.CreateTransferLogsAddressPayload();
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         JsonRpcResponse response = await RpcTest.TestRequest(chain.TraceRpcModule, "trace_simulateV1", payload!, "latest");
         IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>> data = RpcTest.AssertSuccess<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>>(response);
         Assert.That(data.First().Traces.First().BlockHash, Is.EqualTo(new Core.Crypto.Hash256("0x899d78f0d7cbc0a6e384edf93ceea71ee9ae96612b3ddb1d99e2a1c1d2ef129f")));
@@ -73,7 +73,7 @@ public class TraceSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<P
     public async Task TestSerializationTraceSimulate_ensure_have_traces_no_Calls()
     {
         SimulatePayload<TransactionForRpc> payload = EthSimulateTestsBlocksAndTransactions.CreateTransferLogsAddressPayload();
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         string serialized = await RpcTest.TestSerializedRequest(chain.TraceRpcModule, "trace_simulateV1", payload!, "latest");
         Assert.That(serialized, Does.Contain("\"traces\":"));
     }
@@ -82,14 +82,14 @@ public class TraceSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<P
     public async Task State_diff_is_serialized_as_stateDiff()
     {
         SimulatePayload<TransactionForRpc> payload = EthSimulateTestsBlocksAndTransactions.CreateTransferLogsAddressPayload();
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         string serialized = await RpcTest.TestSerializedRequest(
             chain.TraceRpcModule, "trace_simulateV1", payload!, "latest", new[] { nameof(ParityTraceTypes.StateDiff) });
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(serialized, Does.Contain("\"stateDiff\":"));
             Assert.That(serialized, Does.Not.Contain("stateChanges"));
-        });
+        }
     }
 }

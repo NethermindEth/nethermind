@@ -2,29 +2,27 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac.Features.AttributeFilters;
-using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Discv4.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Discv4.Serializers;
 
-public sealed class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver) : DiscoveryMsgSerializerBase(ecdsa, nodeKey, nodeIdResolver), IZeroInnerMessageSerializer<PongMsg>
+public sealed class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver) : DiscoveryMsgSerializerBase(ecdsa, nodeKey, nodeIdResolver), IMessageSerializer<PongMsg>
 {
-    public void Serialize(IByteBuffer byteBuffer, PongMsg msg)
+    public int Serialize(Span<byte> destination, PongMsg msg)
     {
         if (msg.FarAddress is null)
         {
             throw new NetworkingException($"Sending discovery message without {nameof(msg.FarAddress)} set.", NetworkExceptionType.Discovery);
         }
 
-        (int totalLength, int contentLength, int farAddressLength) = GetLength(msg);
+        (_, int contentLength, int farAddressLength) = GetDataLength(msg);
 
-        byteBuffer.MarkIndex();
-        PrepareBufferForSerialization(byteBuffer, totalLength, (byte)msg.MsgType);
-        ByteBufferRlpWriter writer = new(byteBuffer);
-        writer.StartSequence(contentLength);
+        RlpWriter writer = StartPacket(destination, (byte)msg.MsgType);
+        RlpSequence sequence = writer.StartSequence(contentLength);
         Encode(ref writer, msg.FarAddress, farAddressLength);
         ValueHash256? pingMdc = msg.PingMdc;
         writer.Encode(in pingMdc);
@@ -34,24 +32,22 @@ public sealed class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivate
             writer.Encode(msg.EnrSequence.Value);
         }
 
-        byteBuffer.ResetIndex();
-
-        AddSignatureAndMdc(byteBuffer, totalLength + 1);
+        writer.EndSequence(sequence);
+        return CompletePacket(destination, in writer, out _);
     }
 
-    public PongMsg Deserialize(IByteBuffer msgBytes)
+    public PongMsg Deserialize(ReadOnlySpan<byte> msgBytes)
     {
-        (PublicKey farPublicKey, _, IByteBuffer data) = PrepareForDeserialization(msgBytes);
+        (PublicKey farPublicKey, _) = PrepareForDeserialization(msgBytes, out ReadOnlySpan<byte> data);
 
-        RlpReader ctx = new(data.AsSpan());
+        RlpReader ctx = new RlpReader(data).EnterSequence(out _);
 
-        int messageEnd = ctx.ReadSequenceLength() + ctx.Position;
-        int addressEnd = ctx.ReadSequenceLength() + ctx.Position;
+        RlpReader address = ctx.EnterSequence(out int addressLength);
 
-        ctx.DecodeByteArraySpan(IpAddressRlpLimit);
-        ctx.DecodeInt(); // UDP port (we ignore and take it from Netty)
-        ctx.DecodeInt(); // TCP port
-        ctx.Check(addressEnd);
+        address.DecodeByteArraySpan(IpAddressRlpLimit);
+        address.DecodeInt(); // UDP port (we ignore and take it from Netty)
+        address.DecodeInt(); // TCP port
+        ctx.ExitSequence(address, addressLength);
         ReadOnlySpan<byte> token = ctx.DecodeByteArraySpan(RlpLimit.L32);
         if (token.Length != Hash256.Size)
         {
@@ -61,29 +57,23 @@ public sealed class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivate
         long expirationTime = ctx.DecodeLong();
 
         ulong? enrSequence = null;
-        if (ctx.Position < messageEnd && IsNextEnrSequence(ctx))
+        if (ctx.HasNext && IsNextEnrSequence(ctx))
         {
             enrSequence = ctx.DecodeULong();
         }
 
-        while (ctx.Position < messageEnd)
+        while (ctx.HasNext)
         {
             ctx.SkipItem();
         }
 
-        ctx.Check(messageEnd);
-        data.SetReaderIndex(data.ReaderIndex + ctx.Position);
         PongMsg msg = new(farPublicKey, expirationTime, new ValueHash256(token), enrSequence);
         return msg;
     }
 
-    public int GetLength(PongMsg message, out int contentLength)
-    {
-        (int totalLength, contentLength, int _) = GetLength(message);
-        return totalLength;
-    }
+    public int GetLength(PongMsg message) => GetPacketLength(GetDataLength(message).totalLength);
 
-    private static (int totalLength, int contentLength, int farAddressLength) GetLength(PongMsg message)
+    private static (int totalLength, int contentLength, int farAddressLength) GetDataLength(PongMsg message)
     {
         if (message.FarAddress is null)
         {

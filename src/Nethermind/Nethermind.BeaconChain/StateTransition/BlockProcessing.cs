@@ -280,7 +280,8 @@ public static partial class BlockProcessing
         // [Modified in Electra:EIP6110] The former deposit mechanism is disabled once all
         // pre-request deposits are processed.
         ulong eth1DepositIndexLimit = Math.Min(state.Eth1Data!.DepositCount, state.DepositRequestsStartIndex);
-        ulong expectedDeposits = state.Eth1DepositIndex < eth1DepositIndexLimit
+        bool fulu = state.GetCurrentEpoch() >= cache.ResolveSigningSpec(state.GenesisValidatorsRoot!).FuluForkEpoch;
+        ulong expectedDeposits = !fulu && state.Eth1DepositIndex < eth1DepositIndexLimit
             ? Math.Min(Presets.MaxDeposits, eth1DepositIndexLimit - state.Eth1DepositIndex)
             : 0;
         if ((ulong)(body.Deposits?.Length ?? 0) != expectedDeposits)
@@ -312,7 +313,7 @@ public static partial class BlockProcessing
             ProcessBlsToExecutionChange(state, change, verifySignatures, batch, cache.SigningSpec);
         }
         ExecutionRequests requests = body.ExecutionRequests!;
-        ProcessDepositRequests(state, requests.Deposits ?? []);
+        ProcessDepositRequests(state, requests.Deposits ?? [], cache.SigningSpec);
         cache.IndexRequestPubkeys(state.Validators!, requests.Withdrawals, requests.Consolidations);
         foreach (WithdrawalRequest request in requests.Withdrawals ?? [])
         {
@@ -408,10 +409,10 @@ public static partial class BlockProcessing
 
     public static partial void ProcessVoluntaryExit(BeaconStateFulu state, SignedVoluntaryExit signedExit, EpochCache cache, PubkeyCache pubkeys, bool verifySignature = true, BlockSignatureBatch? batch = null);
     public static partial void ProcessBlsToExecutionChange(BeaconStateFulu state, SignedBlsToExecutionChange signedChange, bool verifySignature = true, BlockSignatureBatch? batch = null, BeaconChainSpec? spec = null);
-    public static partial void ProcessDepositRequest(BeaconStateFulu state, DepositRequest request);
+    public static partial void ProcessDepositRequest(BeaconStateFulu state, DepositRequest request, BeaconChainSpec? spec = null);
     public static partial void ProcessWithdrawalRequest(BeaconStateFulu state, WithdrawalRequest request, EpochCache cache);
     public static partial void ProcessConsolidationRequest(BeaconStateFulu state, ConsolidationRequest request, EpochCache cache);
-    private static partial void ProcessDepositRequests(BeaconStateFulu state, DepositRequest[] requests);
+    private static partial void ProcessDepositRequests(BeaconStateFulu state, DepositRequest[] requests, BeaconChainSpec? spec = null);
     private static partial bool IsValidSwitchToCompoundingRequest(BeaconStateFulu state, ConsolidationRequest request, int? sourceIndex);
 
     /// <summary>Spec <c>switch_to_compounding_validator</c>.</summary>

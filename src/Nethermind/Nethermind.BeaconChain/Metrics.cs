@@ -129,6 +129,6 @@ public class Metrics
     [Description("Work items the embedded driver's import worker skipped because handling them threw.")]
     public static ulong BeaconChainWorkerFaults { get => Volatile.Read(ref WorkerFaultsCount); set => Volatile.Write(ref WorkerFaultsCount, value); }
     [GaugeMetric]
-    [Description("Whether the embedded driver stopped after a fault (1) while the execution layer keeps running; reset by a restart.")]
+    [Description("Embedded driver stopped after a fault (1) or external consensus client takeover (2); zero until either event, reset by a restart.")]
     public static int BeaconChainDriverStopped { get; set; }
 }

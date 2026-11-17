@@ -223,7 +223,9 @@ public class StateProviderTests(bool useFlat)
         Assert.That(state.GetBalance(_address1), Is.EqualTo(UInt256.Zero));
         state.Commit(Frontier.Instance);
 
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
         Assert.That(state.TryApplyAccountOverlay(new BalanceOverlay(_address1)), Is.True);
+#pragma warning restore NUnit2045
 
         Assert.That(state.GetBalance(_address1), Is.EqualTo((UInt256)99), "cached misses must not hide the prefix-created account");
     }
@@ -560,15 +562,21 @@ public class StateProviderTests(bool useFlat)
 
         // After a commit the committed state is the transaction start.
         provider.AddToBalance(_address1, 2, Frontier.Instance);
-        Assert.That(provider.GetOriginalBalance(_address1), Is.EqualTo((UInt256)1));
-        Assert.That(provider.GetOriginalBalance(TestItem.AddressB), Is.EqualTo(UInt256.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetOriginalBalance(_address1), Is.EqualTo((UInt256)1));
+            Assert.That(provider.GetOriginalBalance(TestItem.AddressB), Is.EqualTo(UInt256.Zero));
+        }
 
         // A transaction stacked without a commit starts at its snapshot.
         Snapshot txStart = provider.TakeSnapshot(newTransactionStart: true);
         provider.AddToBalance(_address1, 4, Frontier.Instance);
         provider.AddToBalance(_address1, 8, Frontier.Instance);
-        Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)15));
-        Assert.That(provider.GetOriginalBalance(_address1), Is.EqualTo((UInt256)3));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)15));
+            Assert.That(provider.GetOriginalBalance(_address1), Is.EqualTo((UInt256)3));
+        }
 
         // Reverting the transaction drops its start, back to the commit.
         provider.Restore(new Snapshot(Snapshot.Storage.Empty, txStart.StateSnapshot - 1));
@@ -746,25 +754,40 @@ public class StateProviderTests(bool useFlat)
         provider.InsertCode(_address1, new byte[] { 1 }, Frontier.Instance, false);
         Snapshot afterCode = provider.TakeSnapshot();
 
-        Assert.That(provider.GetNonce(_address1), Is.EqualTo(1UL));
-        Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One + 1));
-        Assert.That(provider.GetCode(_address1), Is.SequenceEqualTo(code));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetNonce(_address1), Is.EqualTo(1UL));
+            Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One + 1));
+            Assert.That(provider.GetCode(_address1), Is.SequenceEqualTo(code));
+        }
         provider.Restore(afterCode);
-        Assert.That(provider.GetNonce(_address1), Is.EqualTo(1UL));
-        Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One + 1));
-        Assert.That(provider.GetCode(_address1), Is.SequenceEqualTo(code));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetNonce(_address1), Is.EqualTo(1UL));
+            Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One + 1));
+            Assert.That(provider.GetCode(_address1), Is.SequenceEqualTo(code));
+        }
         provider.Restore(afterNonce);
-        Assert.That(provider.GetNonce(_address1), Is.EqualTo(1UL));
-        Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One + 1));
-        Assert.That(provider.GetCode(_address1), Is.SequenceEqualTo(Array.Empty<byte>()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetNonce(_address1), Is.EqualTo(1UL));
+            Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One + 1));
+            Assert.That(provider.GetCode(_address1), Is.SequenceEqualTo(Array.Empty<byte>()));
+        }
         provider.Restore(afterBalance);
-        Assert.That(provider.GetNonce(_address1), Is.EqualTo(0UL));
-        Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One + 1));
-        Assert.That(provider.GetCode(_address1), Is.SequenceEqualTo(Array.Empty<byte>()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetNonce(_address1), Is.EqualTo(0UL));
+            Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One + 1));
+            Assert.That(provider.GetCode(_address1), Is.SequenceEqualTo(Array.Empty<byte>()));
+        }
         provider.Restore(afterCreate);
-        Assert.That(provider.GetNonce(_address1), Is.EqualTo(0UL));
-        Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One));
-        Assert.That(provider.GetCode(_address1), Is.SequenceEqualTo(Array.Empty<byte>()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetNonce(_address1), Is.EqualTo(0UL));
+            Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One));
+            Assert.That(provider.GetCode(_address1), Is.SequenceEqualTo(Array.Empty<byte>()));
+        }
         provider.Restore(Snapshot.Empty);
         Assert.That(provider.AccountExists(_address1), Is.EqualTo(false));
     }
@@ -786,15 +809,24 @@ public class StateProviderTests(bool useFlat)
         provider.IncrementNonce(_address1);
         provider.SubtractFromBalance(_address1, 2, Frontier.Instance);
 
-        Assert.That(provider.TakeSnapshot().StateSnapshot, Is.EqualTo(afterFirstUpdates.StateSnapshot + 1), "updates after the first overwrite it in place");
-        Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)11));
-        Assert.That(provider.GetNonce(_address1), Is.EqualTo(2UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.TakeSnapshot().StateSnapshot, Is.EqualTo(afterFirstUpdates.StateSnapshot + 1), "updates after the first overwrite it in place");
+            Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)11));
+            Assert.That(provider.GetNonce(_address1), Is.EqualTo(2UL));
+        }
         provider.Restore(afterFirstUpdates);
-        Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)9));
-        Assert.That(provider.GetNonce(_address1), Is.EqualTo(1UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)9));
+            Assert.That(provider.GetNonce(_address1), Is.EqualTo(1UL));
+        }
         provider.Restore(beforeUpdates);
-        Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)10));
-        Assert.That(provider.GetNonce(_address1), Is.EqualTo(0UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)10));
+            Assert.That(provider.GetNonce(_address1), Is.EqualTo(0UL));
+        }
     }
 
     [Test]
@@ -855,12 +887,18 @@ public class StateProviderTests(bool useFlat)
             Account account = ((WorldState)provider).GetAccount(_address1);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.IncrementNonce(_address1);
-            Assert.That(account.Balance, Is.EqualTo((UInt256)2));
-            Assert.That(account.Nonce, Is.EqualTo(0UL));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(account.Balance, Is.EqualTo((UInt256)2));
+                Assert.That(account.Nonce, Is.EqualTo(0UL));
+            }
         }
 
-        Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)3));
-        Assert.That(provider.GetNonce(_address1), Is.EqualTo(1UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)3));
+            Assert.That(provider.GetNonce(_address1), Is.EqualTo(1UL));
+        }
     }
 
     [Test(Description = "It was failing before as touch was marking the accounts as committed but not adding to trace list")]
@@ -1029,8 +1067,11 @@ public class StateProviderTests(bool useFlat)
 
         // Transient storage is discarded between EIP-8141 frames, but the code lasts the whole transaction.
         provider.ResetTransient();
-        Assert.That(provider.GetCode(TestItem.AddressB), Is.SequenceEqualTo(code));
-        Assert.That(provider.GetCode(codeHash), Is.SequenceEqualTo(code));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetCode(TestItem.AddressB), Is.SequenceEqualTo(code));
+            Assert.That(provider.GetCode(codeHash), Is.SequenceEqualTo(code));
+        }
 
         // The transaction's finalization removes the account before it ends.
         provider.DeleteAccount(TestItem.AddressB);
@@ -1077,8 +1118,11 @@ public class StateProviderTests(bool useFlat)
 
         provider.Commit(spec);
 
-        Assert.That(provider.AccountExists(TestItem.AddressB), Is.True);
-        Assert.That(provider.GetCode(codeHash), Is.SequenceEqualTo(code));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.AccountExists(TestItem.AddressB), Is.True);
+            Assert.That(provider.GetCode(codeHash), Is.SequenceEqualTo(code));
+        }
     }
 
     [Test]
@@ -1109,8 +1153,11 @@ public class StateProviderTests(bool useFlat)
 
         provider.Commit(spec);
 
-        Assert.That(provider.AccountExists(TestItem.AddressB), Is.True);
-        Assert.That(provider.GetCode(codeHash), Is.SequenceEqualTo(code));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.AccountExists(TestItem.AddressB), Is.True);
+            Assert.That(provider.GetCode(codeHash), Is.SequenceEqualTo(code));
+        }
     }
 
     [Test]
@@ -1128,8 +1175,11 @@ public class StateProviderTests(bool useFlat)
         provider.InsertCode(TestItem.AddressB, code, spec);
 
         (long stagedWrites, long stagedBytes) = ReadCodeWriteCounters((WorldState)provider);
-        Assert.That(stagedWrites, Is.EqualTo(1));
-        Assert.That(stagedBytes, Is.EqualTo(code.Length));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stagedWrites, Is.EqualTo(1));
+            Assert.That(stagedBytes, Is.EqualTo(code.Length));
+        }
 
         // Folds the counters into the globals and resets them, leaving the batch entry in place.
         provider.Commit(spec, commitRoots: false);
@@ -1142,8 +1192,11 @@ public class StateProviderTests(bool useFlat)
         // The batch already holds the only entry that reaches CodeDb, and no journal entry backs a
         // second count, so counting the re-insert would drift permanently.
         (long codeWrites, long codeBytesWritten) = ReadCodeWriteCounters((WorldState)provider);
-        Assert.That(codeWrites, Is.Zero);
-        Assert.That(codeBytesWritten, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(codeWrites, Is.Zero);
+            Assert.That(codeBytesWritten, Is.Zero);
+        }
     }
 
     [Test]
@@ -1177,16 +1230,22 @@ public class StateProviderTests(bool useFlat)
 
         provider.Restore(snapshot);
 
-        Assert.That(CodeBatchContains((WorldState)provider, codeHash), Is.False,
-            "the re-stage outlived the changes it was made under");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(CodeBatchContains((WorldState)provider, codeHash), Is.False,
+                "the re-stage outlived the changes it was made under");
 
-        // Dropping the re-stage is only safe because the code is already durable, which is what lets
-        // the account keep carrying its hash.
-        Assert.That(provider.GetCode(codeHash), Is.SequenceEqualTo(code));
+            // Dropping the re-stage is only safe because the code is already durable, which is what lets
+            // the account keep carrying its hash.
+            Assert.That(provider.GetCode(codeHash), Is.SequenceEqualTo(code));
+        }
 
         (long codeWrites, long codeBytesWritten) = ReadCodeWriteCounters((WorldState)provider);
-        Assert.That(codeWrites, Is.Zero);
-        Assert.That(codeBytesWritten, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(codeWrites, Is.Zero);
+            Assert.That(codeBytesWritten, Is.Zero);
+        }
     }
 
     [Test]
@@ -1208,8 +1267,11 @@ public class StateProviderTests(bool useFlat)
 
         // The reset is the second RestoreCodeInserts caller, so it rolls the counters back too.
         (long codeWrites, long codeBytesWritten) = ReadCodeWriteCounters((WorldState)provider);
-        Assert.That(codeWrites, Is.Zero);
-        Assert.That(codeBytesWritten, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(codeWrites, Is.Zero);
+            Assert.That(codeBytesWritten, Is.Zero);
+        }
 
         provider.Commit(spec);
 
@@ -1266,8 +1328,11 @@ public class StateProviderTests(bool useFlat)
                 worldState.InsertCode(addr, code, spec);
 
                 Action getCode = () => worldState.GetCode(addr);
-                Assert.That(getCode, Throws.Nothing);
-                Assert.That(worldState.GetCode(addr), Is.SequenceEqualTo(code));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(getCode, Throws.Nothing);
+                    Assert.That(worldState.GetCode(addr), Is.SequenceEqualTo(code));
+                }
             }
         }
         finally

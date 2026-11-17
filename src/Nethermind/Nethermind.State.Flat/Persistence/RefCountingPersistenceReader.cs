@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Crypto;
@@ -43,11 +44,11 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
 
     public StateId CurrentState => _innerReader.CurrentState;
 
-    public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) =>
-        _innerReader.TryLoadStateRlp(in path, flags);
+    public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+        _innerReader.TryLoadStateRlp(in path, flags, action, arg);
 
-    public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) =>
-        _innerReader.TryLoadStorageRlp(address, in path, flags);
+    public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+        _innerReader.TryLoadStorageRlp(address, in path, flags, action, arg);
 
     public byte[]? GetAccountRaw(in ValueHash256 addrHash) =>
         _innerReader.GetAccountRaw(addrHash);

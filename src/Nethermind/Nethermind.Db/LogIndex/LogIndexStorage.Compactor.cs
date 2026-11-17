@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Nethermind.Logging;
 
 [assembly: InternalsVisibleTo("Nethermind.Db.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Benchmark")]
 namespace Nethermind.Db.LogIndex;
 
 partial class LogIndexStorage

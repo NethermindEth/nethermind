@@ -7,6 +7,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Update="Fixtures\*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Nethermind.Test.Runner\Nethermind.Test.Runner.csproj" />
     <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj" />
     <ProjectReference Include="..\Nethermind.Db\Nethermind.Db.csproj" />

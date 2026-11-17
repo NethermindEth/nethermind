@@ -63,11 +63,11 @@ internal static class BlobsEndpoint
         };
 
         List<int> rows = SelectRows(commitments, wanted);
+        using RateLimitLease? lease = rows.Count > 0 ? ctx.BlobRebuilds.AttemptAcquire() : null;
         byte[][] blobs = [];
         if (rows.Count > 0)
         {
-            using RateLimitLease lease = ctx.BlobRebuilds.AttemptAcquire();
-            if (!lease.IsAcquired)
+            if (!lease!.IsAcquired)
             {
                 await ApiErrors.Write(c, StatusCodes.Status503ServiceUnavailable,
                     $"The node is already rebuilding blobs for {MaxConcurrentRebuilds} requests; retry later.", c.RequestAborted);

@@ -47,7 +47,7 @@ public class OptimismCLP2P : IDisposable
     private readonly Random _random = new();
 
     private PubsubRouter? _router;
-    private ILocalPeer? _localPeer;
+    private LocalPeer? _localPeer;
     private ITopic? _blocksV2Topic;
     private PeerStore? _peerStore;
     private CancellationTokenSource? _staticPeerKeeperStop;
@@ -126,7 +126,8 @@ public class OptimismCLP2P : IDisposable
         GetMessageId = static message => new MessageId(Eth2MessageId.Compute(message.Topic, message.Data)),
         // rollup-node-p2p.md "Message compression and limits": gossip carries up to 10 MiB, beyond the library's 1 MiB RPC and 512 KiB IWANT bounds.
         MaxRpcBytes = Eth2MessageId.MaxMessageSize,
-        MaxIwantResponseBytes = Eth2MessageId.MaxMessageSize,
+        MaxOutboundRpcBytesPerPeer = 2L * Eth2MessageId.MaxMessageSize,
+        MaxIwantResponseBytes = MaxGossipSize,
     };
 
     private void OnMessage(byte[] msg, CancellationToken token)
@@ -264,14 +265,14 @@ public class OptimismCLP2P : IDisposable
         try
         {
             ExecutionPayloadV3? response = null;
-            foreach (ISession peer in ((LocalPeer)_localPeer!).Sessions.ToList().Shuffle(_random))
+            foreach (ISession peer in _localPeer!.Sessions.ToList().Shuffle(_random))
             {
                 response = await TryRequestPayload(peer, payloadNumber, expectedHash, token);
                 if (response is not null)
                 {
                     break;
                 }
-                if (_logger.IsWarn) _logger.Warn($"Unable to get Payload from peer {peer.RemoteAddress}");
+                if (_logger.IsWarn) _logger.Warn($"Unable to get Payload from peer {peer.RemoteAddress:hide}");
             }
 
             if (response is null)
@@ -358,7 +359,7 @@ public class OptimismCLP2P : IDisposable
         }
 
         string address = NetworkHelper.ToTcpMultiaddress(hostIp, _config.ClP2PPort);
-        _localPeer = peerFactory.Create(new Identity());
+        _localPeer = (LocalPeer)peerFactory.Create(new Identity());
 
         _router = _serviceProvider.GetService<PubsubRouter>()!;
         _blocksV2Topic = _router.GetTopic(_blocksV2TopicId);

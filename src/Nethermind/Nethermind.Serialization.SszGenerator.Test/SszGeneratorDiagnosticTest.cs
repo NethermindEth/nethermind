@@ -18,6 +18,34 @@ public class SszGeneratorDiagnosticTest
 {
     private const int ProgressiveContainerStackAllocationLimit = 32;
 
+    [TestCase("=> 4;", "=> 8;")]
+    [TestCase("{ return 4; }", "=> 8;")]
+    [TestCase("=> 4;", "{ return 8; }")]
+    public void Preset_selection_preserves_expression_and_block_bodies(string defaultBody, string alternateBody)
+    {
+        string declaration = "public static class Preset { public static bool Alternate; public static int Length() ";
+        MethodInfo select = CreateSszGenerator().GetType().GetMethod("SelectPresetBodies", BindingFlags.NonPublic | BindingFlags.Static)!;
+        string generated = (string)select.Invoke(null, [declaration + defaultBody + "}", declaration + alternateBody + "}", "Alternate"])!;
+        CSharpCompilation compilation = CSharpCompilation.Create("Preset" + Guid.NewGuid().ToString("N"),
+            [CSharpSyntaxTree.ParseText(generated)], BuildMetadataReferences(), new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        using MemoryStream stream = new();
+        Microsoft.CodeAnalysis.Emit.EmitResult result = compilation.Emit(stream);
+        Assert.That(result.Success, Is.True, string.Join(Environment.NewLine, result.Diagnostics));
+        Type preset = Assembly.Load(stream.ToArray()).GetType("Preset")!;
+        Assert.That(preset.GetMethod("Length")!.Invoke(null, null), Is.EqualTo(4));
+        preset.GetField("Alternate")!.SetValue(null, true);
+        Assert.That(preset.GetMethod("Length")!.Invoke(null, null), Is.EqualTo(8));
+    }
+
+    [Test]
+    public void Preset_selection_rejects_mismatched_signatures()
+    {
+        MethodInfo select = CreateSszGenerator().GetType().GetMethod("SelectPresetBodies", BindingFlags.NonPublic | BindingFlags.Static)!;
+        TargetInvocationException exception = Assert.Throws<TargetInvocationException>(() => select.Invoke(null,
+            ["class C { int Length() => 4; }", "class C { int Other() => 8; }", "true"]))!;
+        Assert.That(exception.InnerException, Is.TypeOf<InvalidOperationException>().With.Message.Contains("signatures differ"));
+    }
+
     [TestCase(0, false)]
     [TestCase(3, false)]
     [TestCase(4, false)]

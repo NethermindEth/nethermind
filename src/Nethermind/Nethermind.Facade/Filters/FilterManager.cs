@@ -175,7 +175,7 @@ namespace Nethermind.Facade.Filters
             if (_pendingTransactions.Read(filterId, advance: true, out _) is not { } transactions)
                 return ArrayPoolList<Hash256>.Empty();
 
-            ArrayPoolList<Hash256> result = new(transactions.Count);
+            ArrayPoolList<Hash256> result = [with(transactions.Count)];
             using PooledSet<Hash256>? reported = transactions.Count > 1 ? new PooledSet<Hash256>(transactions.Count) : null;
             foreach (PendingTransaction transaction in transactions)
             {
@@ -253,6 +253,11 @@ namespace Nethermind.Facade.Filters
             }
 
             if (logFilter.ToBlock.Type == BlockParameterType.BlockNumber && logFilter.ToBlock.BlockNumber < txReceipt.BlockNumber)
+            {
+                return null;
+            }
+
+            if (logFilter.IsBlockHashFilter && logFilter.FromBlock.BlockHash != txReceipt.BlockHash)
             {
                 return null;
             }

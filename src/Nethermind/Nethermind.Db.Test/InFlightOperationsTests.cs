@@ -26,9 +26,9 @@ public class InFlightOperationsTests
 
         operations.End();
 
+        Assert.That(wait.Wait(Long), Is.True);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(wait.Wait(Long), Is.True);
             Assert.That(wait.Result, Is.True);
             Assert.That(operations.Count, Is.Zero);
         }

@@ -75,6 +75,10 @@ public sealed class FrameMacProcessor : IFrameMacProcessor
         }
     }
 
+    /// <summary>Absorbs payload ciphertext into the ingress MAC, as <see cref="UpdateIngressMac(byte[], bool)"/> does for a payload block.</summary>
+    /// <remarks>Never use it for a header: the header MAC is checked through the <see langword="true"/> branch of the other overload instead.</remarks>
+    public void UpdateIngressMac(ReadOnlySpan<byte> input) => _ingressMac.Update(input);
+
     public void CalculateMac(byte[] output)
     {
         DoFinalNoReset(_egressMac, _egressMacCopy, _addMacBuffer); // frame MAC seed

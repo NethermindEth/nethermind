@@ -80,8 +80,11 @@ public class CheckpointSyncHttpTests
 
         System.IO.InvalidDataException refusal = (await Assert.ThrowsAsync<System.IO.InvalidDataException>(() => sync.RunAsync(CancellationToken.None)))!;
 
-        Assert.That(refusal.Message, Does.Contain(files.PostStateFile));
-        Assert.That(store.TryGetAnchor(out _, out _), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refusal.Message, Does.Contain(files.PostStateFile));
+            Assert.That(store.TryGetAnchor(out _, out _), Is.False);
+        }
     }
 
     public enum ConfiguredCheckpoint
@@ -120,10 +123,13 @@ public class CheckpointSyncHttpTests
         }
 
         System.IO.InvalidDataException refusal = Assert.Throws<System.IO.InvalidDataException>(() => restarted.ThrowIfResumedAnchorMissesWeakSubjectivityCheckpoint(anchor.State, anchor.BlockRoot))!;
-        Assert.That(refusal.Message, Does.Contain(configured == ConfiguredCheckpoint.LaterEpoch
-            ? $"checkpoint sync anchor has its state at slot {advancedSlot}, before epoch {epoch}"
-            : $"checkpoint sync anchor has block {root}, not the checkpoint block"));
-        Assert.That(store.GetMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint), Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refusal.Message, Does.Contain(configured == ConfiguredCheckpoint.LaterEpoch
+                    ? $"checkpoint sync anchor has its state at slot {advancedSlot}, before epoch {epoch}"
+                    : $"checkpoint sync anchor has block {root}, not the checkpoint block"));
+            Assert.That(store.GetMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint), Is.Null);
+        }
     }
 
     [Test]
@@ -144,8 +150,11 @@ public class CheckpointSyncHttpTests
         };
 
         System.IO.InvalidDataException refusal = (await Assert.ThrowsAsync<System.IO.InvalidDataException>(() => sync.RunAsync(CancellationToken.None)))!;
-        Assert.That(refusal.Message, Does.Contain("byte limit"));
-        Assert.That(store.TryGetAnchor(out _, out _), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refusal.Message, Does.Contain("byte limit"));
+            Assert.That(store.TryGetAnchor(out _, out _), Is.False);
+        }
     }
 
     [TestCase("gloas")]
@@ -177,8 +186,11 @@ public class CheckpointSyncHttpTests
 
         NotSupportedException ex = (await Assert.ThrowsAsync<NotSupportedException>(() => sync.RunAsync(CancellationToken.None)))!;
 
-        Assert.That(ex.Message, Does.Contain("'heze'"));
-        Assert.That(store.TryGetAnchor(out _, out _), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ex.Message, Does.Contain("'heze'"));
+            Assert.That(store.TryGetAnchor(out _, out _), Is.False);
+        }
     }
 
     private static (byte[] AdvancedState, ForkedSignedBeaconBlock Block, byte[] PostState, Hash256 StateRoot, ulong AdvancedSlot) BuildAdvancedCheckpoint(AdvancedCheckpoint advancedCheckpoint)

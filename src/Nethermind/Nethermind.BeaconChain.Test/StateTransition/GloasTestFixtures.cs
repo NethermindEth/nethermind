@@ -357,8 +357,11 @@ internal static class GloasTestFixtures
     {
         Hash256 rootBefore = SszRoots.HashTreeRoot(state);
         BeaconStateException exception = Assert.Throws<BeaconStateException>(() => process())!;
-        Assert.That(exception.Message, Does.Contain(expectedMessage));
-        Assert.That(SszRoots.HashTreeRoot(state), Is.EqualTo(rootBefore), mutationMessage);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Does.Contain(expectedMessage));
+            Assert.That(SszRoots.HashTreeRoot(state), Is.EqualTo(rootBefore), mutationMessage);
+        }
     }
 
     public static SignedExecutionPayloadBid ValidBuilderBid(BeaconStateGloas state, Bls.SecretKey builderSk, ulong builderIndex, ulong value, byte blockHashFill = 0x88)

@@ -10,7 +10,7 @@ public interface IBeaconChainConfig : IConfig
     [ConfigItem(Description = "Whether to enable the embedded beacon chain consensus driver. Supports Mainnet, Sepolia, Hoodi, Gnosis and Chiado, selected by the execution layer's configured network, without an external consensus client.", DefaultValue = "false")]
     bool Enabled { get; set; }
 
-    [ConfigItem(Description = "Use the Fast Confirmation Rule for the execution layer's safe block tag. Assumes slot synchrony and at most 25% Byzantine stake; falls back to finalized when confirmation conditions fail. When disabled, safe follows the justified checkpoint. Does not change finalized.", DefaultValue = "false")]
+    [ConfigItem(Description = "Use the Fast Confirmation Rule for the execution layer's safe block tag, as required by consensus-specs v1.7.0-beta.4. Assumes slot synchrony and at most 25% Byzantine stake; falls back to finalized when confirmation conditions fail. Disabled by default pending validation of these assumptions; safe then follows the justified checkpoint instead of the beta.4 rule. Does not change finalized.", DefaultValue = "false")]
     bool EnableFastConfirmation { get; set; }
 
     [ConfigItem(Description = "The beacon API URL to checkpoint-sync the finalized beacon state and block from. When unset, defaults to a provider for the network selected via the execution layer's chain id.", DefaultValue = "null")]
@@ -55,10 +55,10 @@ public interface IBeaconChainConfig : IConfig
     [ConfigItem(Description = "The max number of outbound dials the peer manager will have in flight at once, static and discovered peers combined.", DefaultValue = "8")]
     int MaxConcurrentOutboundDials { get; set; }
 
-    [ConfigItem(Description = "Consecutive goodbye-Fault disconnects from the same peer id before it is added to the in-memory ban list, which then refuses every further dial or reconnection attempt for that id regardless of the address it is next seen at.", DefaultValue = "3")]
+    [ConfigItem(Description = "Recent fault disconnects from the same peer id before it is added to the in-memory ban list, which then refuses every further dial or reconnection attempt for that id regardless of the address it is next seen at.", DefaultValue = "3")]
     int FaultDisconnectsBeforeBan { get; set; }
 
-    [ConfigItem(Description = "How long, in minutes, a banned peer id is refused before it may connect again.", DefaultValue = "30")]
+    [ConfigItem(Description = "How long, in minutes, a banned peer id is refused before it may connect again. Fault history expires after this duration without another fault.", DefaultValue = "30")]
     int PeerBanMinutes { get; set; }
 
     [ConfigItem(Description = "The Gloas fork version, as 4 bytes of hex (for example 0x90000076), for a network whose chainspec schedules Amsterdam before this release knows its published Gloas version. The Gloas epoch always follows the Amsterdam timestamp of the chainspec (see Init.ChainSpecPath). Must differ from every earlier fork version of the network. When unset, the published version is used.", DefaultValue = "null")]

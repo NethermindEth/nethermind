@@ -10,10 +10,12 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.EraE.Config;
 using EraImportException = Nethermind.Era1.EraImportException;
+using KnownHeaders = Nethermind.Era1.KnownHeaders;
 using EraVerificationException = Nethermind.Era1.Exceptions.EraVerificationException;
 using Nethermind.EraE.Export;
 using Nethermind.EraE.Store;
@@ -61,7 +63,7 @@ public sealed class EraImporter(
 
         (ulong firstBlockInStore, ulong lastBlockInStore) = eraStore.BlockRange;
         if (to is 0 or ulong.MaxValue)
-            to = lastBlockInStore;
+            to = eraStore.NextEraStart(lastBlockInStore) - 1;
         else if (to > lastBlockInStore)
             throw new EraImportException($"Store highest block {lastBlockInStore} is lower than requested end {to}.");
 
@@ -102,6 +104,9 @@ public sealed class EraImporter(
         ulong suggestFromBlock = (blockTree.Head?.Number ?? 0UL) + 1;
         if (syncConfig.FastSync && suggestFromBlock == 1)
             suggestFromBlock = ulong.MaxValue;
+
+        await KnownHeaders.EnsureHeaderlessHeightsLinkToKnownHeaders(blockTree, from, to,
+            async number => (await eraStore.FindBlockAndReceipts(number, cancellation: cancellation)).Item1, cancellation);
 
         // Align to era boundary for parallel section
         ulong nextEraStart = eraStore.NextEraStart(blockNumber);
@@ -149,7 +154,8 @@ public sealed class EraImporter(
             if (_logger.IsTrace) _logger.Trace($"Importing EraE block {number}");
             cancellation.ThrowIfCancellationRequested();
 
-            (Block? block, TxReceipt[]? receipts) = await eraStore.FindBlockAndReceipts(number, cancellation: cancellation);
+            (Block? block, ArrayPoolList<byte>? body, TxReceipt[]? receipts) = await eraStore.FindEncodedBlockAndReceipts(number, cancellation: cancellation);
+            using ArrayPoolList<byte>? _ = body;
 
             if (block is null)
                 throw new EraImportException($"Block {number} not found in archive.");
@@ -162,6 +168,8 @@ public sealed class EraImporter(
             if (block.IsBodyMissing)
                 throw new EraImportException($"Block {number} body is missing — archive may be corrupted.");
 
+            KnownHeaders.EnsureMatch(blockTree, block);
+
             if (suggestFromBlock <= block.Number)
             {
                 await pacer.WaitForQueue(block.Number, cancellation);
@@ -170,14 +178,15 @@ public sealed class EraImporter(
             }
             else
             {
-                InsertBlockAndReceipts(block, receipts, to);
+                InsertBlockAndReceipts(block, body!.AsSpan(), receipts, to);
             }
 
             progress.Update(Interlocked.Increment(ref blocksProcessed));
         }
     }
 
-    private void InsertBlockAndReceipts(Block block, TxReceipt[] receipts, ulong lastBlockNumber)
+    /// <param name="body">The encoded body of <paramref name="block"/>, stored as it is.</param>
+    private void InsertBlockAndReceipts(Block block, ReadOnlySpan<byte> body, TxReceipt[] receipts, ulong lastBlockNumber)
     {
         Block? existing = blockTree.FindBlock(block.Number);
         if (existing is null)
@@ -185,7 +194,7 @@ public sealed class EraImporter(
             BlockTreeInsertHeaderOptions headerOptions = block.Header.IsPostMerge
                 ? BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded
                 : BlockTreeInsertHeaderOptions.None;
-            AddBlockResult result = blockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, headerOptions, bodiesWriteFlags: WriteFlags.DisableWAL);
+            AddBlockResult result = blockTree.Insert(block.Header, body, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, headerOptions, WriteFlags.DisableWAL);
             if (result is not AddBlockResult.Added and not AddBlockResult.AlreadyKnown)
                 if (_logger.IsWarn) _logger.Warn($"Unexpected block tree insert result {result} for block {block.Number}.");
         }
@@ -194,7 +203,7 @@ public sealed class EraImporter(
             // Block body already exists (e.g. downloaded during snap sync ancient-bodies phase) but
             // TotalDifficulty was not stored at that time. Re-insert so the block tree stores the
             // correct TD — either from the era file (if available) or computed via SetTotalDifficulty.
-            AddBlockResult result = blockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, bodiesWriteFlags: WriteFlags.DisableWAL);
+            AddBlockResult result = blockTree.Insert(block.Header, body, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, bodiesWriteFlags: WriteFlags.DisableWAL);
             if (result is not AddBlockResult.Added and not AddBlockResult.AlreadyKnown)
                 if (_logger.IsWarn) _logger.Warn($"Unexpected block tree insert result {result} for block {block.Number} (TD re-insert).");
         }

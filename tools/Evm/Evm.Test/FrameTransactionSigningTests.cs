@@ -10,6 +10,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -81,8 +82,11 @@ public class FrameTransactionSigningTests
         // The digest is recomputed from the decoded form, so a fill over a stale preimage fails here.
         Transaction decoded = EncodeDecode(transaction);
 
-        Assert.That(FrameTxValidation.IsWellFormed(decoded, assertEnabled: true, out error), Is.True, error);
-        Assert.That(transaction.Hash, Is.EqualTo(decoded.Hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FrameTxValidation.IsWellFormed(decoded, assertEnabled: true, out error), Is.True, error);
+            Assert.That(transaction.Hash, Is.EqualTo(decoded.Hash));
+        }
         AssertSignatureRecoversSigner(decoded, 0, key.Address);
     }
 
@@ -178,7 +182,7 @@ public class FrameTransactionSigningTests
     {
         TxDecoder decoder = TxDecoder.Instance;
         byte[] bytes = new byte[decoder.GetLength(transaction, RlpBehaviors.None)];
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
         decoder.Encode(ref writer, transaction, RlpBehaviors.None);
         RlpReader reader = new(bytes);
         return decoder.Decode(ref reader, RlpBehaviors.None)!;

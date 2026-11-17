@@ -39,6 +39,7 @@ namespace Nethermind.BeaconChain.ForkChoice;
 /// </remarks>
 public sealed class ForkChoiceRunner
 {
+    internal Action<Hash256, ulong>? PayloadInvalidated { get; set; }
     /// <summary>Percent of the justified balance below which a head is "weak" enough to be overpowered by a proposer re-org; the spec's <c>REORG_HEAD_WEIGHT_THRESHOLD</c>.</summary>
     public const ulong ReorgHeadWeightThresholdPercent = 20;
 
@@ -360,6 +361,7 @@ public sealed class ForkChoiceRunner
     public IEnumerable<ProtoNode> EnumerateAncestors(Hash256 blockRoot) => _protoArray.EnumerateAncestorNodes(blockRoot);
     /// <summary>The execution status of <paramref name="blockRoot"/>'s payload, or <c>null</c> when the block is unknown.</summary>
     internal ExecutionStatus? GetBlockExecutionStatus(Hash256 blockRoot) => _protoArray.GetBlockExecutionStatus(blockRoot);
+    internal int PruneThreshold { set => _protoArray.PruneThreshold = value; }
 
     /// <summary>An immutable copy of the store for readers off the import thread; see <see cref="ForkChoiceSnapshot"/>.</summary>
     /// <remarks>O(nodes): the tree is pruned at finalization, so this stays a few hundred entries and is taken on every head computation.</remarks>
@@ -1505,7 +1507,8 @@ public sealed class ForkChoiceRunner
             return false;
 
         ulong slot = _protoArray.GetBlockSlot(boostRoot) ?? throw new ForkChoiceException($"Proposer boost root {boostRoot} is unknown to fork choice");
-        Hash256 parentRoot = _protoArray.GetParentRoot(boostRoot) ?? throw new ForkChoiceException($"Parent of the proposer boost root {boostRoot} is unknown to fork choice");
+        if (_protoArray.GetParentRoot(boostRoot) is not { } parentRoot)
+            return true;
         ulong parentSlot = _protoArray.GetBlockSlot(parentRoot)!.Value;
         if (parentSlot + 1 < slot)
             return true;
@@ -1646,6 +1649,7 @@ public sealed class ForkChoiceRunner
                 continue;
             _payloads.Remove(node.Root);
             _invalidPayloads.Add(node.Root);
+            PayloadInvalidated?.Invoke(node.Root, node.Slot);
         }
     }
 
@@ -1715,6 +1719,7 @@ public sealed class ForkChoiceRunner
             node.ExecutionStatus = ExecutionStatus.Invalid;
             node.BestChild = null;
             node.BestDescendant = null;
+            if (node.IsGloas) PayloadInvalidated?.Invoke(node.Root, node.Slot);
         }
     }
 

@@ -13,6 +13,7 @@ using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
+using Nethermind.Merge.Plugin.SszRest;
 using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 using FuluStateTransition = Nethermind.BeaconChain.StateTransition.StateTransition;
 
@@ -363,6 +364,20 @@ public class BlockSignatureBatchProcessingTests
         }
     }
 
+    [TestCase(10, true)]
+    [TestCase(13, false)]
+    public void Fulu_state_transition_applies_the_BPO_blob_limit(int count, bool accepted)
+    {
+        ImportableBlobBlock chain = ImportableBlobBlock.CreateWithoutBlobs();
+        BeaconChainSpec spec = chain.Spec with { BlobSchedule = [new BlobScheduleEntry(0, 12)] };
+        chain.Block.Message!.Body!.BlobKzgCommitments = new SszKzgCommitment[count];
+
+        string? refusal = Refusal(() => FuluStateTransition.Apply(chain.AnchorState.Clone(), chain.Block, new EpochCache(),
+            chain.Pubkeys, new AcceptingNotifier(), spec, validateResult: false, verifySignatures: false));
+
+        Assert.That(refusal, accepted ? Is.Null : Does.Contain("exceeds limit 12"));
+    }
+
     private static Outcome RunFulu(BeaconBlock block, bool batched, BlockSignatureBatch? batch = null)
     {
         FuluFixture fixture = SharedFulu.Value;
@@ -474,10 +489,10 @@ public class BlockSignatureBatchProcessingTests
         return new SignedBeaconBlock { Message = block, Signature = Sign(ValidatorKey((int)block.ProposerIndex), Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(block), domain)) };
     }
 
-    private static string? ApplyGloasBlock(SignedBeaconBlockGloas signedBlock)
+    private static string? ApplyGloasBlock(SignedBeaconBlockGloas signedBlock, bool proposerSignatureVerified = false)
     {
         GloasFixture fixture = SharedGloas.Value;
-        return Refusal(() => ForkedStateTransition.Apply(new ForkedBeaconState.OfGloas(fixture.BeforeSlots.Clone()), new ForkedSignedBeaconBlock.OfGloas(signedBlock), new EpochCache(), fixture.Pubkeys, new AcceptingNotifier(), UpgradeEpochSpec(), validateResult: false));
+        return Refusal(() => ForkedStateTransition.Apply(new ForkedBeaconState.OfGloas(fixture.BeforeSlots.Clone()), new ForkedSignedBeaconBlock.OfGloas(signedBlock), new EpochCache(), fixture.Pubkeys, new AcceptingNotifier(), UpgradeEpochSpec(), validateResult: false, verifySignatures: true, proposerSignatureVerified));
     }
 
     private sealed class CountingNotifier : INewPayloadNotifier
@@ -491,10 +506,10 @@ public class BlockSignatureBatchProcessingTests
         }
     }
 
-    private static string? ApplyFuluBlock(SignedBeaconBlock signedBlock, INewPayloadNotifier? notifier = null)
+    private static string? ApplyFuluBlock(SignedBeaconBlock signedBlock, INewPayloadNotifier? notifier = null, bool proposerSignatureVerified = false)
     {
         FuluFixture fixture = SharedFulu.Value;
-        return Refusal(() => FuluStateTransition.Apply(fixture.Anchor.Clone(), signedBlock, new EpochCache(), fixture.Pubkeys, notifier ?? new AcceptingNotifier(), fixture.Chain.Spec, validateResult: false));
+        return Refusal(() => FuluStateTransition.Apply(fixture.Anchor.Clone(), signedBlock, new EpochCache(), fixture.Pubkeys, notifier ?? new AcceptingNotifier(), fixture.Chain.Spec, validateResult: false, verifySignatures: true, proposerSignatureVerified));
     }
 
     [Test]
@@ -544,7 +559,7 @@ public class BlockSignatureBatchProcessingTests
         if (notifier is not null) Assert.That(notifier.Calls, Is.Zero);
     }
     [Test]
-    public void A_bad_operation_signature_behind_a_valid_proposer_signature_is_refused_through_the_state_transition()
+    public void A_bad_operation_signature_behind_a_valid_proposer_signature_is_refused_through_the_state_transition([Values] bool proposerSignatureVerified)
     {
         BeaconBlockGloas gloasBlock = SignedGloasBlock();
         Replace(gloasBlock, SignedPart.SyncAggregate, WrongSignature);
@@ -552,8 +567,38 @@ public class BlockSignatureBatchProcessingTests
         fuluBlock.Body!.RandaoReveal = WrongSignature;
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(ApplyGloasBlock(SignedByProposer(gloasBlock)), Is.EqualTo(SerialRefusal(SignedPart.SyncAggregate)), "gloas");
-        Assert.That(ApplyFuluBlock(SignedFuluBlockByProposer(fuluBlock)), Is.EqualTo(SerialRefusal(SignedPart.Randao)), "fulu");
+        Assert.That(ApplyGloasBlock(SignedByProposer(gloasBlock), proposerSignatureVerified), Is.EqualTo(SerialRefusal(SignedPart.SyncAggregate)), "gloas");
+        Assert.That(ApplyFuluBlock(SignedFuluBlockByProposer(fuluBlock), proposerSignatureVerified: proposerSignatureVerified), Is.EqualTo(SerialRefusal(SignedPart.Randao)), "fulu");
+    }
+
+    [Test]
+    public void A_reused_proposer_verdict_skips_only_the_proposer_pairing([Values] bool gloas)
+    {
+        string? refusal = gloas
+            ? ApplyGloasBlock(new SignedBeaconBlockGloas { Message = SignedGloasBlock(), Signature = WrongSignature }, proposerSignatureVerified: true)
+            : ApplyFuluBlock(new SignedBeaconBlock { Message = SignedFuluBlock(), Signature = WrongSignature }, proposerSignatureVerified: true);
+
+        Assert.That(refusal, Is.Null);
+    }
+
+    [Test]
+    public void A_reused_proposer_verdict_still_requires_a_registry_index([Values] bool gloas)
+    {
+        string? refusal;
+        if (gloas)
+        {
+            BeaconBlockGloas block = SignedGloasBlock();
+            block.ProposerIndex = (ulong)SharedGloas.Value.Pre.Validators!.Length;
+            refusal = ApplyGloasBlock(new SignedBeaconBlockGloas { Message = block }, proposerSignatureVerified: true);
+        }
+        else
+        {
+            BeaconBlock block = SignedFuluBlock();
+            block.ProposerIndex = (ulong)SharedFulu.Value.Anchor.Validators!.Length;
+            refusal = ApplyFuluBlock(new SignedBeaconBlock { Message = block }, proposerSignatureVerified: true);
+        }
+
+        Assert.That(refusal, Does.Contain("is not a validator index"));
     }
 
     // Batched RANDAO rejection occurs after mixing; an eager signature check would leave a different state.

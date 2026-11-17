@@ -79,7 +79,7 @@ public static partial class GloasEpochProcessing
         }
         state.BuilderPendingWithdrawals = [.. queued];
 
-        // Matches spec slicing in place: shared arrays observe the rotation; the Fulu upgrade creates a fresh array.
+        // Rotate this state's private payment window as in spec slicing.
         Array.Copy(payments, slotsPerEpoch, payments, 0, slotsPerEpoch);
         for (int i = slotsPerEpoch; i < payments.Length; i++)
         {

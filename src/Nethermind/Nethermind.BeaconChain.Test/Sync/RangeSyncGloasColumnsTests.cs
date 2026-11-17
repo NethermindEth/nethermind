@@ -172,7 +172,7 @@ public class RangeSyncGloasColumnsTests
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         PeerFailureReason? failure = reply == ColumnReply.Failed ? PeerFailureReason.RequestFailed
-            : reply is ColumnReply.Duplicate or ColumnReply.AlreadySupplied ? null : PeerFailureReason.ProtocolViolation;
+            : reply is ColumnReply.Duplicate or ColumnReply.AlreadySupplied || !byRoot && bad == BadSidecar.RootOutsideBatch ? null : PeerFailureReason.ProtocolViolation;
         if (reply != ColumnReply.CheapRejection) Assert.That(first.Reports, Is.EqualTo(failure is { } reason ? new[] { reason } : []));
         if (reply is ColumnReply.BadSidecar or ColumnReply.Failed && !byRoot)
             Assert.That(yielded, Has.Count.EqualTo(2), "a bad sidecar or failed request never fails the batch");
@@ -337,6 +337,26 @@ public class RangeSyncGloasColumnsTests
 
         Assert.That(requests, Is.EqualTo(new[] { (GloasSlot, 2UL), (expectedStart, expectedCount) }),
             firstSlotComplete ? "round 0 covers the Gloas blocks, the next round only the slot still lacking the column" : null);
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task An_empty_payload_parent_does_not_consume_column_requests(CancellationToken token)
+    {
+        await using BeaconDiscovery discovery = CreateDiscovery();
+        StraddlingChain chain = StraddlingChain.Create(withSecondGloas: true, anchorSlot: FuluSlot - 1, firstPayloadWithheld: true);
+        List<(ulong Start, ulong Count)> requests = [];
+        RangeSyncTests.StubPeer peer = chain.CreatePeer((start, count, columns) =>
+        {
+            requests.Add((start, count));
+            return [.. columns.Select(chain.SecondGloasSidecar)];
+        }, headSlot: SecondGloasSlot, custody: RangeSyncTests.StubPeer.AllColumns);
+
+        await RunAsync(new DataColumnSidecarPool(), discovery, clock: null, chain, SecondGloasSlot, token, peer);
+
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(requests, Is.EqualTo(new[] { (SecondGloasSlot, 1UL) }));
+        Assert.That(peer.Reports, Is.Empty);
     }
 
     public enum CustodianReply
@@ -645,7 +665,7 @@ public class RangeSyncGloasColumnsTests
         public Hash256? SecondGloasRoot { get; init; }
         public ulong Anchor { get; init; } = AnchorSlot;
 
-        public static StraddlingChain Create(ulong bidSlot = GloasSlot, bool withSecondGloas = false, ulong anchorSlot = AnchorSlot)
+        public static StraddlingChain Create(ulong bidSlot = GloasSlot, bool withSecondGloas = false, ulong anchorSlot = AnchorSlot, bool firstPayloadWithheld = false)
         {
             SignedBeaconBlock anchor = TestChain.CreateBlock(anchorSlot, Hash256.Zero);
             Hash256 anchorRoot = SszRoots.HashTreeRoot(anchor.Message!);
@@ -664,6 +684,7 @@ public class RangeSyncGloasColumnsTests
                 ExecutionPayloadBid secondBid = second.Message!.Body!.SignedExecutionPayloadBid!.Message!;
                 secondBid.BlobKzgCommitments = DataColumnSidecarGloasTestFixture.Commitments();
                 secondBid.Slot = SecondGloasSlot;
+                if (firstPayloadWithheld) secondBid.ParentBlockHash = OtherRoot;
                 secondRoot = SszRoots.HashTreeRoot(second.Message);
                 blocks.Add(new ForkedSignedBeaconBlock.OfGloas(second));
             }

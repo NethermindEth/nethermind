@@ -15,7 +15,7 @@ namespace Nethermind.Optimism.CL.P2P;
 /// <summary>Reserves an inbound RPC allowance before the library reads or decodes an RPC body.</summary>
 /// <remarks>The library reads one RPC at a time per stream. All protocol versions share the same allowance,
 /// including duplicate streams on different sessions of one peer.
-/// libp2p 1.1.0's PubsubProtocol awaits each ReadPrefixedProtobufAsync and processes it synchronously;
+/// PubsubProtocol awaits each ReadPrefixedProtobufAsync and processes it synchronously;
 /// IReader reads the prefix through ReadVarintUlongAsync. No read outlives ListenAsync, so releasing
 /// its last allowance in finally cannot race a later acquisition.
 /// </remarks>
@@ -58,6 +58,7 @@ internal sealed class BoundedGossipProtocol(ISessionProtocol inner, GossipStream
             using CancellationTokenSource waiting = CancellationTokenSource.CreateLinkedTokenSource(token, _closed);
             if (!await budget.AcquireAsync(peer, waiting.Token))
             {
+                // One peer must not occupy multiple body-read allowances; the retained stream remains usable and later block gaps use req/resp.
                 await channel.CloseAsync();
                 throw new ChannelClosedException();
             }

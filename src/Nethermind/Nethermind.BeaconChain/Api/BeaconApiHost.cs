@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Net;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Nethermind.BeaconChain.Engine;
@@ -63,6 +65,8 @@ public sealed class BeaconApiHost(
         builder.Services.AddRoutingCore();
 
         WebApplication app = builder.Build();
+        if (IsLoopbackHost(apiConfig.Host))
+            app.Use(ValidateLoopbackRequest);
         app.Use(stateLimiter.InvokeAsync);
         BeaconApiContext ctx = new(chainConfig, spec, statusSource, slotClock, store, metadataSource, engine, logManager, p2p, peerManager, discovery, forkChoiceSnapshots, headSnapshots, columnPool);
         BeaconApiEndpoints.MapAll(app, ctx);
@@ -81,6 +85,30 @@ public sealed class BeaconApiHost(
         _driverRegistration = driver?.Stopping.Register(static state => _ = ((BeaconApiHost)state!).StopAsync(), this) ?? default;
 
         if (_logger.IsInfo) _logger.Info($"Beacon API listening on http://{apiConfig.Host}:{port}");
+    }
+
+    private static bool IsLoopbackHost(string host) =>
+        host.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
+        (IPAddress.TryParse(host.Trim('[', ']'), out IPAddress? address) && IPAddress.IsLoopback(address));
+
+    private static Task ValidateLoopbackRequest(HttpContext context, RequestDelegate next)
+    {
+        if (!IsLoopbackHost(context.Request.Host.Host))
+        {
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            return Task.CompletedTask;
+        }
+
+        string origin = context.Request.Headers.Origin.ToString();
+        string fetchSite = context.Request.Headers["Sec-Fetch-Site"].ToString();
+        if ((origin.Length > 0 && !origin.Equals($"{context.Request.Scheme}://{context.Request.Host}", StringComparison.OrdinalIgnoreCase)) ||
+            (fetchSite.Length > 0 && fetchSite is not "same-origin" and not "none"))
+        {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return Task.CompletedTask;
+        }
+
+        return next(context);
     }
 
     public async Task StopAsync()

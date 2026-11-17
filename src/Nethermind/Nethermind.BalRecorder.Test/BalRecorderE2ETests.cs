@@ -57,8 +57,11 @@ public class BalRecorderE2ETests
                 BlockBuilder builder = recorder.Resolve<BlockBuilder>();
                 await builder.StartAndBuildBlocks(BlocksToBuild, cts.Token);
                 recorded = CaptureRecordedBals(recorder, BlocksToBuild);
-                Assert.That(recorded, Has.Count.EqualTo(BlocksToBuild));
-                Assert.That(Directory.GetFiles(dir, "*.bal"), Is.Not.Empty);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(recorded, Has.Count.EqualTo(BlocksToBuild));
+                    Assert.That(Directory.GetFiles(dir, "*.bal"), Is.Not.Empty);
+                }
             }
 
             await using IContainer replayContainer = CreateNode(dir, recording: false, replay: true);
@@ -186,7 +189,9 @@ public class BalRecorderE2ETests
             Assert.That(payloadId, Is.Not.Null.And.Not.Empty);
 
             IBlockProductionContext? ctx = await payloadPreparationService.GetPayload(payloadId!, skipCancel: true);
+#pragma warning disable NUnit2045 // The context must exist before suggesting its block.
             Assert.That(ctx, Is.Not.Null);
+#pragma warning restore NUnit2045
             Assert.That((await blockTree.SuggestBlockAsync(ctx!.CurrentBestBlock!)), Is.EqualTo(AddBlockResult.Added));
             await newBlock;
         }

@@ -77,8 +77,8 @@ public sealed class GossipMessageValidator(GossipRouter gossip, ColumnGossipRout
         }
 
         return column
-            ? columns.Handle(subnetId, gloas, message.Data.ToByteArray(), verdict, source)
-            : gossip.Handle(topicName!, gloas, message.Data.ToByteArray(), verdict, source);
+            ? columns.Handle(subnetId, gloas, message.Data.Span, verdict, source)
+            : gossip.Handle(topicName!, gloas, message.Data.Span, verdict, source);
     }
 
     /// <summary>Finds the router and fork of a message on <paramref name="topic"/>.</summary>

@@ -4,6 +4,7 @@
 using System.Buffers.Binary;
 using System.Collections;
 using System.Diagnostics;
+using System.Reflection;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.StateTransition.Hashing;
@@ -17,6 +18,24 @@ namespace Nethermind.BeaconChain.Test.StateTransition;
 public class CachedHasherTests
 {
     private const ulong Gwei = 1_000_000_000;
+
+    [Test]
+    public void Shrinking_a_pending_queue_releases_removed_snapshot_references([Values(0, 1)] int remaining)
+    {
+        BeaconStateFulu state = CreateState(64);
+        state.PendingDeposits = [new PendingDeposit { Amount = 1 }, new PendingDeposit { Amount = 2 }];
+        CachedBeaconStateHasher hasher = new();
+        hasher.HashTreeRoot(state);
+        state.PendingDeposits = state.PendingDeposits[..remaining];
+        Hash256 root = hasher.HashTreeRoot(state);
+        object cache = typeof(CachedBeaconStateHasher).GetField("_pendingDeposits", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(hasher)!;
+        PendingDeposit?[] snapshot = (PendingDeposit?[])cache.GetType().GetField("_snapshot", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(cache)!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshot[remaining..], Is.All.Null);
+            Assert.That(root, Is.EqualTo(SszRoots.HashTreeRoot(state)));
+        }
+    }
 
     [TestCase(false, 64)]
     [TestCase(false, 10_000)]
@@ -219,10 +238,13 @@ public class CachedHasherTests
         BeaconStateFulu clone = state.Clone();
         long cloneMs = stopwatch.ElapsedMilliseconds;
         TestContext.Progress.WriteLine($"Clone:                              {cloneMs} ms");
-        Assert.That(clone.Balances![0], Is.EqualTo(state.Balances![0]));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(clone.Balances![0], Is.EqualTo(state.Balances![0]));
 
-        Assert.That(warmBlockMs, Is.LessThan(500), "warm per-block hash budget");
-        Assert.That(cloneMs, Is.LessThan(200), "clone budget");
+            Assert.That(warmBlockMs, Is.LessThan(500), "warm per-block hash budget");
+            Assert.That(cloneMs, Is.LessThan(200), "clone budget");
+        }
     }
 
     private static void AssertRootsMatch(CachedBeaconStateHasher hasher, dynamic state, string stage) =>

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Buffers.Binary;
 using Nethermind.Core.Extensions;
 using NUnit.Framework;
@@ -40,4 +41,8 @@ public partial class BytesTests
 
         Assert.That(equalPairs, Is.LessThan(2), $"structured pairs produced {equalPairs}/{count} equal chained hashes");
     }
+
+    [Test]
+    public void ReadUInt256BigEndian_rejects_a_span_that_is_not_32_bytes([Values(0, 31, 33)] int length) =>
+        Assert.Throws<ArgumentOutOfRangeException>(() => Bytes.ReadUInt256BigEndian(new byte[length]));
 }

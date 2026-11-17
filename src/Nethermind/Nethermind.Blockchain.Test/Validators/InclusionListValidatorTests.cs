@@ -162,13 +162,14 @@ public class InclusionListValidatorTests
     public bool Sender_with_code_appendability_depends_on_delegation(bool isDelegated)
     {
         IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
+        ValueHash256 codeHash = new("0x" + new string('a', 64));
         state.TryGetAccount(TestItem.AddressA, out Arg.Any<AccountStruct>()).Returns(call =>
         {
             // Any non-empty codehash → HasCode = true.
-            call[1] = new AccountStruct(0UL, 10.Ether, Keccak.EmptyTreeHash, new ValueHash256("0x" + new string('a', 64)));
+            call[1] = new AccountStruct(0UL, 10.Ether, Keccak.EmptyTreeHash, codeHash);
             return true;
         });
-        state.IsDelegatedCode(TestItem.AddressA).Returns(isDelegated);
+        state.IsDelegatedCode(codeHash).Returns(isDelegated);
 
         Block block = Build.A.Block
             .WithGasLimit(30_000_000)

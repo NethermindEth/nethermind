@@ -101,9 +101,12 @@ public partial class ColumnBackfillTests
         BlockImporterFactory factory = new(spec, store, pubkeys, new SignedGloasChain.EnvelopeEngine(),
             new BeaconChainConfig(), LimboLogs.Instance, pool, clock);
         BlockImporter importer = (BlockImporter)factory.Create(new ForkedBeaconState.OfGloas(gloas.PostState), gloas.Forked, gloas.Root);
-        Assert.That(importer.VerifyCachedProposerSignature(fulu.Forked), Is.True);
-        Assert.That(importer.VerifyCachedProposerSignature(new ForkedSignedBeaconBlock.OfFulu(
-            new SignedBeaconBlock { Message = fulu.Signed.Message, Signature = default })), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(importer.VerifyCachedProposerSignature(fulu.Forked), Is.True);
+            Assert.That(importer.VerifyCachedProposerSignature(new ForkedSignedBeaconBlock.OfFulu(
+                new SignedBeaconBlock { Message = fulu.Signed.Message, Signature = default })), Is.False);
+        }
 
         await using BeaconDiscovery discovery = new(new BeaconChainConfig { Discv5Port = 0 }, spec, store,
             new FixedIPResolver(IPAddress.Loopback), time, LimboLogs.Instance);
@@ -147,8 +150,11 @@ public partial class ColumnBackfillTests
 
         Task run = fixture.StartBackfill(token, peer);
         await checkedSignature.Task.WaitAsync(token);
-        Assert.That(fixture.Store.HasBlock(fixture.Roots[3]), Is.False);
-        Assert.That(fixture.Backfill.CompleteFrom, Is.Not.EqualTo(0UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.Store.HasBlock(fixture.Roots[3]), Is.False);
+            Assert.That(fixture.Backfill.CompleteFrom, Is.Not.EqualTo(0UL));
+        }
         Volatile.Write(ref known, 1);
         await fixture.UntilFloorAsync(0, token);
         await run.WaitAsync(token);
@@ -163,8 +169,11 @@ public partial class ColumnBackfillTests
         IReadOnlyList<ForkedSignedBeaconBlock> chain = await honest.RequestBlocksByRangeAsync(0, AnchorSlot, token);
         ForkedSignedBeaconBlock.OfFulu original = (ForkedSignedBeaconBlock.OfFulu)chain.Single(b => b.Slot == 1);
         ForkedSignedBeaconBlock forged = new ForkedSignedBeaconBlock.OfFulu(new SignedBeaconBlock { Message = original.Block.Message, Signature = default });
-        Assert.That(forged.ComputeMessageRoot(), Is.EqualTo(fixture.Roots[1]));
-        Assert.That(original.Block.Signature, Is.Not.EqualTo(default(BlsSignature)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forged.ComputeMessageRoot(), Is.EqualTo(fixture.Roots[1]));
+            Assert.That(original.Block.Signature, Is.Not.EqualTo(default(BlsSignature)));
+        }
         if (source is ForgedHistorySource.Stored or ForgedHistorySource.Root)
         {
             foreach (ForkedSignedBeaconBlock block in chain)
@@ -219,7 +228,7 @@ public partial class ColumnBackfillTests
         Assert.That(fixture.Sampled.Any(column => fixture.Store.HasDataColumnRecord(fixture.Roots[2], column)), Is.False, "a block without blobs has no columns");
         Assert.That(peer.RequestedColumns.SelectMany(static c => c).Distinct(), Is.EquivalentTo(fixture.Sampled), "only the sampled columns are asked for");
         Assert.That(fixture.Backfill.CompleteFrom, Is.EqualTo(0UL));
-        Assert.That(fixture.Store.BackfilledBlockFloor, Is.EqualTo(0UL));
+        Assert.That(fixture.Store.TryGetEarliestBlockSlot(out ulong floor) ? (ulong?)floor : null, Is.EqualTo(0UL));
         Assert.That(fixture.Store.GetMetadata(ColumnBackfill.ProgressKey), Is.EqualTo(new byte[sizeof(ulong)]), "the stored progress is the floor");
     }
 

@@ -23,7 +23,7 @@ internal static class ConfigEndpoints
 
     /// <summary>The network config's <c>DEPOSIT_CONTRACT_ADDRESS</c>, or <c>null</c> for a chain this driver has no network config for.</summary>
     /// <remarks>
-    /// From consensus-specs v1.7.0-beta.2 <c>configs/mainnet.yaml</c> and the eth-clients <c>hoodi</c> and
+    /// From consensus-specs v1.7.0-beta.4 <c>configs/mainnet.yaml</c> and the eth-clients <c>hoodi</c> and
     /// <c>sepolia</c> <c>metadata/config.yaml</c>, whose <c>DEPOSIT_CHAIN_ID</c> equals the chain id each is keyed by.
     /// </remarks>
     private static string? DepositContractAddress(ulong chainId) => chainId switch
@@ -86,11 +86,18 @@ internal static class ConfigEndpoints
         data["FULU_FORK_VERSION"] = spec.VersionForEpoch(spec.FuluForkEpoch).ToHexString(withZeroX: true);
         data["GLOAS_FORK_EPOCH"] = spec.GloasForkEpoch.ToString();
         data["GLOAS_FORK_VERSION"] = spec.GloasForkVersion.ToHexString(withZeroX: true);
+        if (spec.GloasForkEpoch == Presets.FarFutureEpoch && spec.ChainId is BlockchainIds.Gnosis or BlockchainIds.Chiado or BlockchainIds.Hoodi)
+        {
+            data.Remove("GLOAS_FORK_EPOCH");
+            data.Remove("GLOAS_FORK_VERSION");
+        }
         data["MAX_BLOBS_PER_BLOCK_ELECTRA"] = spec.MaxBlobsPerBlockElectra.ToString();
         data["BLOB_SCHEDULE"] = spec.BlobSchedule
             .Select(entry => new Dictionary<string, string> { ["EPOCH"] = entry.Epoch.ToString(), ["MAX_BLOBS_PER_BLOCK"] = entry.MaxBlobsPerBlock.ToString() })
             .ToArray();
-        data["GAS_LIMIT_SCHEDULE"] = Array.Empty<string>();
+        data["GAS_LIMIT_SCHEDULE"] = spec.ChainId == BlockchainIds.Sepolia
+            ? new Dictionary<string, string>[] { new() { ["EPOCH"] = "353024", ["GAS_LIMIT"] = "200000000" } }
+            : Array.Empty<Dictionary<string, string>>();
 
         return BeaconApiJson.WriteDataAsync(c, data, c.RequestAborted);
     }

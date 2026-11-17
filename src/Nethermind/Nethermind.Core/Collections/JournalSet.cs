@@ -22,7 +22,7 @@ namespace Nethermind.Core.Collections
     public sealed partial class JournalSet<T>(EqualityComparer<T> equalityComparer) : ICollection<T>, IJournal<int> where T : notnull, IEquatable<T>
     {
         private readonly List<T> _items = [];
-        private readonly OptimizedHashSet<T> _set = new(GenericEqualityComparer.GetOptimized(equalityComparer));
+        private readonly OptimizedHashSet<T> _set = [with(GenericEqualityComparer.GetOptimized(equalityComparer))];
 
         // The list holds what the set does; its count is one field where the set's is two.
         public int TakeSnapshot() => _items.Count - 1;
@@ -53,7 +53,7 @@ namespace Nethermind.Core.Collections
             if (_set.Add(item))
             {
                 // we use dictionary in order to track item positions
-                _items.Add(item);
+                AddItem(in item);
                 return true;
             }
 
@@ -62,6 +62,7 @@ namespace Nethermind.Core.Collections
 
         public partial void Clear();
         private partial void Truncate(int count);
+        private partial void AddItem(in T item);
 
         /// <summary>Enumerates the items in the order they were first added, excluding those dropped by <see cref="Restore"/>.</summary>
         public List<T>.Enumerator GetEnumerator() => _items.GetEnumerator();

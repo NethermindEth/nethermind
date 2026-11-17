@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Net.WebSockets;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -58,7 +59,7 @@ namespace Nethermind.EthStats.Clients
                     ThrowIncorrectUrl();
                 }
                 websocketUrl = uriBuilder.ToString();
-                if (_logger.IsInfo) _logger.Info($"Moved ETH stats to: {websocketUrl}");
+                if (_logger.IsInfo) _logger.Info($"Moved ETH stats to: {SensitiveLogMasking.SafeUrl(websocketUrl)}");
 
             }
             return websocketUrl;
@@ -66,7 +67,7 @@ namespace Nethermind.EthStats.Clients
 
         public async Task<IWebsocketClient> InitAsync()
         {
-            if (_logger.IsInfo) _logger.Info($"Starting ETH stats [{_urlFromConfig}]...");
+            if (_logger.IsInfo) _logger.Info($"Starting ETH stats [{SensitiveLogMasking.SafeUrl(_urlFromConfig)}]...");
             string websocketUrl = BuildUrl();
             Uri url = new(websocketUrl);
             _client = new WebsocketClient(url)
@@ -95,17 +96,21 @@ namespace Nethermind.EthStats.Clients
             }
             catch (Exception)
             {
-                if (!_client.Url.AbsoluteUri.EndsWith("/api"))
+                // A failed StartOrFail leaves the client marked as started with no retry scheduled,
+                // so any further Start call would be ignored until the client is stopped.
+                await _client.Stop(WebSocketCloseStatus.Empty, string.Empty);
+
+                if (!_client.Url.AbsoluteUri.TrimEnd('/').EndsWith("/api"))
                 {
-                    if (_logger.IsInfo) _logger.Info($"Failed to connect to ethstats at {websocketUrl}. Adding '/api' at the end and trying again.");
-                    _client.Url = new Uri(websocketUrl + "/api");
+                    if (_logger.IsInfo) _logger.Info($"Failed to connect to ethstats at {SensitiveLogMasking.SafeUrl(websocketUrl)}. Adding '/api' at the end and trying again.");
+                    _client.Url = new Uri(websocketUrl.TrimEnd('/') + "/api");
                 }
                 else
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Failed to connect to ethstats at {websocketUrl}. Trying once again.");
+                    if (_logger.IsWarn) _logger.Warn($"Failed to connect to ethstats at {SensitiveLogMasking.SafeUrl(websocketUrl)}. Retrying every {_reconnectionInterval} ms.");
                 }
 
-                await _client.StartOrFail();
+                await _client.Start();
             }
 
             if (_logger.IsDebug) _logger.Debug($"Started ETH stats.");
@@ -115,8 +120,8 @@ namespace Nethermind.EthStats.Clients
 
         private void ThrowIncorrectUrl()
         {
-            if (_logger.IsError) _logger.Error($"Incorrect ETH stats url: {_urlFromConfig}");
-            throw new ArgumentException($"Incorrect ETH stats url: {_urlFromConfig}");
+            if (_logger.IsError) _logger.Error("Incorrect ETH stats URL");
+            throw new ArgumentException("Incorrect ETH stats URL");
         }
 
         private async Task HandlePingAsync(string message)

@@ -61,9 +61,12 @@ public class GloasAnchorImportTests
         DataColumnSidecarGloas sidecar = DataColumnSidecarGloasTestFixture.BuildSidecar(0, child.Bid.Slot, child.Root);
         PeerId peer = new Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId;
         router.Handle(0, true, Snappy.CompressToArray(DataColumnSidecarGloas.Encode(sidecar)), verdict, peer);
-        Assert.That(given, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(given, Is.Empty);
 
-        Assert.That(await orchestrator.ImportBlockAsync(child.Forked, CancellationToken.None), Is.EqualTo(BlockImportResult.Imported));
+            Assert.That(await orchestrator.ImportBlockAsync(child.Forked, CancellationToken.None), Is.EqualTo(BlockImportResult.Imported));
+        }
         Assert.That(given, earlyColumn ? Is.Empty : Is.EqualTo(new[] { MessageValidity.Accepted }));
         columnTime.Add(TimeSpan.FromSeconds(chain.Spec.SecondsPerSlot));
         await orchestrator.ProcessSlotAsync(child.Bid.Slot, CancellationToken.None);
@@ -104,8 +107,11 @@ public class GloasAnchorImportTests
         orchestrator.GossipStarted = true;
         orchestrator.Initialize(importer, anchor.Block, anchor.BlockRoot);
 
-        Assert.That(importer.ImportEnvelope(anchorBlock.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.DataUnavailable));
-        Assert.That(await orchestrator.ImportBlockAsync(child.Forked, CancellationToken.None), Is.EqualTo(BlockImportResult.ParentPayloadUnverified));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(importer.ImportEnvelope(anchorBlock.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.DataUnavailable));
+            Assert.That(await orchestrator.ImportBlockAsync(child.Forked, CancellationToken.None), Is.EqualTo(BlockImportResult.ParentPayloadUnverified));
+        }
         await orchestrator.SettleColumnFetchesAsync(CancellationToken.None);
         await orchestrator.ProcessSlotAsync(ForkSlot + 2, CancellationToken.None);
         time.Set(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + (ForkSlot + 3) * chain.Spec.SecondsPerSlot));
@@ -445,8 +451,11 @@ public class GloasAnchorImportTests
 
         Assert.That(importer.Import(lone.Forked, lone.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported));
         HeadView before = importer.ComputeHead();
-        Assert.That(importer.Import(branch.Forked, branch.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported));
-        Assert.That(importer.Import(branchTip.Forked, branchTip.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(importer.Import(branch.Forked, branch.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported));
+            Assert.That(importer.Import(branchTip.Forked, branchTip.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported));
+        }
         HeadView after = importer.ComputeHead();
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
@@ -500,18 +509,28 @@ public class GloasAnchorImportTests
         // Near the chain: a leaf whose justification is two epochs behind the clock is not viable for the head.
         SlotClock clock = new(chain.Spec, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + (2 * ForkSlot + 4) * chain.Spec.SecondsPerSlot)));
         IBlockImporter importer = CreateFactoryImporter(chain, anchor, new SignedGloasChain.EnvelopeEngine(), store, clock);
-        Assert.That(importer.Import(checkpoint.Forked, checkpoint.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.Imported));
-        Assert.That(importer.ImportEnvelope(checkpoint.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid));
-        Assert.That(importer.Import(fullChild.Forked, fullChild.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.Imported));
-        Assert.That(importer.Import(tip.Forked, tip.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.Imported));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(importer.Import(checkpoint.Forked, checkpoint.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.Imported));
+            Assert.That(importer.ImportEnvelope(checkpoint.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid));
+            Assert.That(importer.Import(fullChild.Forked, fullChild.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.Imported));
+            Assert.That(importer.Import(tip.Forked, tip.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.Imported));
+        }
         importer.ComputeHead();
 
         importer.OnFinalized(new CheckpointRef(2, checkpoint.Root));
 
-        Assert.That(importer.ImportEnvelope(anchor.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "no tier retains the anchor state; it is still fork choice's justified checkpoint, so the justified pin serves it");
-        Assert.That(store.TryGetAnchor(out Hash256? anchorRoot, out ulong anchorSlot), Is.True);
-        Assert.That(store.TryGetState(anchorRoot!, out byte[]? stateSsz), Is.True);
-        Assert.That(store.TryGetForkedBlock(anchorRoot!, out ForkedSignedBeaconBlock? anchorBlock), Is.True);
+        Hash256? anchorRoot;
+        ulong anchorSlot;
+        byte[]? stateSsz;
+        ForkedSignedBeaconBlock? anchorBlock;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(importer.ImportEnvelope(anchor.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "no tier retains the anchor state; it is still fork choice's justified checkpoint, so the justified pin serves it");
+            Assert.That(store.TryGetAnchor(out anchorRoot, out anchorSlot), Is.True);
+            Assert.That(store.TryGetState(anchorRoot!, out stateSsz), Is.True);
+            Assert.That(store.TryGetForkedBlock(anchorRoot!, out anchorBlock), Is.True);
+        }
         ForkedBeaconState anchorState = BeaconStateCodec.DecodeForked(stateSsz, chain.Spec);
         using (Assert.EnterMultipleScope())
         {
@@ -659,8 +678,11 @@ public class GloasAnchorImportTests
         RetainDistinct(states, block.PostState, 7, checkpointCandidate: true, seed: 0);
         RetainDistinct(states, block.PostState, 2 * (int)ForkSlot, checkpointCandidate: false, seed: 1000);
 
-        Assert.That(states.GetGloasBlockState(block.Root), Is.Not.Null, "fixture: the persisted state is read back");
-        Assert.That(states.GetGloasBlockState(candidate), Is.SameAs(block.PostState));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(states.GetGloasBlockState(block.Root), Is.Not.Null, "fixture: the persisted state is read back");
+            Assert.That(states.GetGloasBlockState(candidate), Is.SameAs(block.PostState));
+        }
     }
 
     [Test]

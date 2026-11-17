@@ -78,8 +78,11 @@ internal static class SszFuzzer
             }
         });
 
-        Assert.That(run.Wait(TargetBound), Is.True, $"{label}: the target did not finish {count} inputs within {TargetBound}");
-        Assert.That(failures, Is.Empty, label);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(run.Wait(TargetBound), Is.True, $"{label}: the target did not finish {count} inputs within {TargetBound}");
+            Assert.That(failures, Is.Empty, label);
+        }
     }
 
     public static void RoundTrip<T>(byte[] ssz) where T : ISszCodec<T>

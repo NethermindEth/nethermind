@@ -4,6 +4,7 @@
 using System;
 using Autofac;
 using Nethermind.Api;
+using Nethermind.Api.Monitoring;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -26,6 +27,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
@@ -93,7 +95,6 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<IBlockAccessListManager, BlockAccessListManager>()
 
             .AddScoped<IProcessingStats, ProcessingStats>()
-            .AddScoped<IRewardCalculator, IRewardCalculatorSource, ITransactionProcessor>((rewardSource, txP) => rewardSource.Get(txP))
             .AddScoped<BlockProcessor.IBlockProductionTransactionPicker, ISpecProvider, IBlocksConfig>((specProvider, blocksConfig) =>
                 new BlockProcessor.BlockProductionTransactionPicker(specProvider, blocksConfig.BlockProductionMaxTxKilobytes))
             .AddSingleton<IReadOnlyTxProcessingEnvFactory, AutoReadOnlyTxProcessingEnvFactory>()
@@ -103,7 +104,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             // journals the process-wide cache, and the prefix is rolled back — including when it is rejected.
             .AddSingleton<IFrameTxPrefixSimulator, ILifetimeScope, IWorldStateManager, ISpecProvider, IBlockFinder, ITxPoolConfig, ILogManager>(
                 (lifetime, worldStateManager, specProvider, blockFinder, txPoolConfig, logManager) => new FrameTxPrefixSimulator(
-                    new AutoReadOnlyTxProcessingEnvFactory(lifetime, worldStateManager, specProvider, shareCodeCache: false),
+                    new AutoReadOnlyTxProcessingEnvFactory(lifetime, worldStateManager, shareCodeCache: false),
                     blockFinder, specProvider, txPoolConfig, logManager))
             .Add<BlockchainProcessorFacade>()
 
@@ -138,8 +139,8 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
                 ctx.Resolve<ITxGossipPolicy>(),
                 frameTxPrefixSimulator: ctx.ResolveOptional<IFrameTxPrefixSimulator>(),
                 stateHeaderProvider: ctx.Resolve<IStateHeaderProvider>()))
-            .AddSingleton<ITxSender, ITxPool, IWallet, ISpecProvider, ITimestamper, INonceManager, IEthereumEcdsa>((txPool, wallet, specProvider, timestamper, nonceManager, ecdsa) =>
-                new TxPoolSender(txPool, new TxSealer(new WalletTxSigner(wallet, specProvider.ChainId), timestamper), nonceManager, ecdsa))
+            .AddSingleton<ITxSender, ITxPool, IWallet, IChainHeadSpecProvider, ITimestamper, INonceManager, IEthereumEcdsa>((txPool, wallet, specProvider, timestamper, nonceManager, ecdsa) =>
+                new TxPoolSender(txPool, new TxSealer(new WalletTxSigner(wallet, specProvider.ChainId), timestamper), nonceManager, ecdsa, specProvider))
             .AddSingleton<IBackgroundTaskScheduler, IMainProcessingContext, IChainHeadInfoProvider, ILogManager>((mainProcessingContext, chainHeadInfoProvider, logManager) => new BackgroundTaskScheduler(
                 mainProcessingContext.BranchProcessor,
                 chainHeadInfoProvider,
@@ -152,7 +153,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddSingleton<IBlockValidationModule, StandardBlockValidationModule>()
 
             // Block production components
-            .AddSingleton<IRewardCalculatorSource>(NoBlockRewards.Instance)
+            .AddSingleton<IRewardCalculator>(NoBlockRewards.Instance)
             .AddSingleton<ISealValidator>(NullSealEngine.Instance)
             .AddSingleton<ISealer>(NullSealEngine.Instance)
             .AddSingleton<ISealEngine, SealEngine>()
@@ -184,6 +185,18 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .InstancePerLifetimeScope()
             .ExternallyOwned()
             .WithMetadata(PrewarmerEnvFactory.HandoffMetadata, true);
+
+        // Metering costs a virtual dispatch and an atomic per precompile call, so it is only installed
+        // when something is there to scrape it.
+        builder.AddDecorator<IPrecompileProvider>(static (ctx, inner) =>
+        {
+            IMetricsConfig metricsConfig = ctx.Resolve<IMetricsConfig>();
+            if (!metricsConfig.IsMonitoringEnabled()) return inner;
+
+            MeteredPrecompileProvider metered = new(inner);
+            ctx.Resolve<IMonitoringService>().AddMetricsUpdateAction(metered.PublishMetrics);
+            return metered;
+        });
 
         builder.AddSingleton<IMainStateBlockProducerEnvFactory, GlobalWorldStateBlockProducerEnvFactory>();
 

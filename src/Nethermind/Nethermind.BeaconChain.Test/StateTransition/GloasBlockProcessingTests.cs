@@ -35,9 +35,12 @@ public class GloasBlockProcessingTests
         BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
             GloasBlockProcessing.ProcessExecutionPayloadBid(state, bid, SyntheticSpec(), new PubkeyCache(), verifySignature: true))!;
 
-        Assert.That(ex.Message, Does.Contain("Invalid execution payload bid signature"));
-        Assert.That(state.LatestExecutionPayloadBid!.BuilderIndex, Is.EqualTo(Presets.BuilderIndexSelfBuild),
-            "a rejected bid must never be committed to state");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ex.Message, Does.Contain("Invalid execution payload bid signature"));
+            Assert.That(state.LatestExecutionPayloadBid!.BuilderIndex, Is.EqualTo(Presets.BuilderIndexSelfBuild),
+                "a rejected bid must never be committed to state");
+        }
     }
 
     [Test]
@@ -228,8 +231,11 @@ public class GloasBlockProcessingTests
 
         cache.RetainGloas(BlockRootOf(state), state);
 
-        Assert.That(cache.GetGloasBlockState(BlockRootOf(state)), Is.SameAs(state));
-        Assert.That(cache.GetGloasBlockState(Hash(0x77)), Is.Null, "a root that was never retained must not resolve to any state");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.GetGloasBlockState(BlockRootOf(state)), Is.SameAs(state));
+            Assert.That(cache.GetGloasBlockState(Hash(0x77)), Is.Null, "a root that was never retained must not resolve to any state");
+        }
         Assert.DoesNotThrow(() => GloasBlockProcessing.VerifyExecutionPayloadEnvelope(cache, envelope, new AcceptingNotifier(), new PubkeyCache()));
     }
 
@@ -280,6 +286,54 @@ public class GloasBlockProcessingTests
         Assert.That(state.Builders![0].Balance, Is.EqualTo(builderStartingBalance - bidValue), "the builder must actually have been paid the bid value");
         Assert.That(rootAfterBlock2, Is.EqualTo(SszRoots.HashTreeRoot(state)), "hash_tree_root must still be stable after the second block");
         Assert.That(rootAfterBlock2, Is.Not.EqualTo(rootAfterBlock1First), "settling and paying out the builder must actually change the state root");
+    }
+
+    [Test]
+    public void Parent_requests_append_deposits_and_consolidation_excess_after_the_existing_queue()
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        state.Slot = Presets.SlotsPerEpoch + 1;
+        state.LatestBlockHeader!.Slot = Presets.SlotsPerEpoch;
+        PendingDeposit first = new() { Amount = 1 };
+        PendingDeposit second = new() { Amount = 2 };
+        state.PendingDeposits = [first, second];
+        Validator validator = state.Validators![0];
+        byte[] credentials = new byte[32];
+        credentials[0] = Presets.EthWithdrawalPrefix;
+        validator.WithdrawalCredentials = new Hash256(credentials);
+        state.Balances![0] = Presets.MinActivationBalance + 4;
+        ExecutionRequestsGloas requests = new()
+        {
+            Deposits = [new DepositRequest { Amount = 3, WithdrawalCredentials = Hash256.Zero }],
+            Consolidations = [new ConsolidationRequest { SourcePubkey = validator.Pubkey, TargetPubkey = validator.Pubkey, SourceAddress = Address.Zero }],
+        };
+        ExecutionPayloadBid parent = state.LatestExecutionPayloadBid!;
+        parent.BlockHash = Hash(0x88);
+        parent.ExecutionRequestsRoot = SszRoots.HashTreeRoot(requests);
+        BeaconBlockGloas block = MinimalBlock(state, SelfBuildBid(state, parent.BlockHash, Hash(0x99))).Message!;
+        block.Body!.ParentExecutionRequests = requests;
+
+        GloasBlockProcessing.ProcessParentExecutionPayload(state, block, new EpochCache());
+
+        Assert.That(state.PendingDeposits!.Select(deposit => deposit.Amount), Is.EqualTo(new ulong[] { 1, 2, 3, 4 }));
+    }
+
+    [Test]
+    public void Parent_request_root_is_checked_before_any_state_mutation()
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        state.Slot = Presets.SlotsPerEpoch + 1;
+        state.LatestBlockHeader!.Slot = Presets.SlotsPerEpoch;
+        ExecutionPayloadBid parent = state.LatestExecutionPayloadBid!;
+        parent.BlockHash = Hash(0x88);
+        parent.ExecutionRequestsRoot = Hash(0x77);
+        BeaconBlockGloas block = MinimalBlock(state, SelfBuildBid(state, parent.BlockHash, Hash(0x99))).Message!;
+        block.Body!.ParentExecutionRequests = new ExecutionRequestsGloas();
+        Hash256 before = SszRoots.HashTreeRoot(state);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(() => GloasBlockProcessing.ProcessParentExecutionPayload(state, block, new EpochCache()), Throws.TypeOf<BeaconStateException>());
+        Assert.That(SszRoots.HashTreeRoot(state), Is.EqualTo(before));
     }
 
     [Test]

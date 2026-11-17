@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
@@ -87,8 +88,11 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         ReadOnlySequence<byte> seq = MakeSequence(json.AsMemory(0, 2), json.AsMemory(2)); // split at index 2 between 'A'|'B'
 
         (byte[]? res, Exception? err) = InvokeOnBareString(seq);
-        Assert.That(err, Is.Null);
-        Assert.That(res, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(err, Is.Null);
+            Assert.That(res, Is.Not.Null);
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(res!.Length, Is.EqualTo(1));
@@ -243,6 +247,29 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         Assert.That(output, Is.EqualTo($"\"0x{System.Convert.ToHexString(input).ToLowerInvariant()}\""));
     }
 
+    [Test]
+    public void Write_InputLongerThanHexStringLimit_ThrowsJsonException(
+        [Values(1_073_741_794, 1 << 30, 0x7FFFFFC7)] int length,
+        [Values] bool withWriteAction)
+    {
+        using System.IO.MemoryStream ms = new();
+        using Utf8JsonWriter writer = new(ms);
+
+        Assert.That(() =>
+        {
+            byte first = 1;
+            ReadOnlySpan<byte> input = MemoryMarshal.CreateReadOnlySpan(ref first, length);
+            if (withWriteAction)
+            {
+                ByteArrayConverter.Convert(writer, input, static (w, hex) => w.WriteRawValue(hex, skipInputValidation: true), skipLeadingZeros: false);
+            }
+            else
+            {
+                ByteArrayConverter.Convert(writer, input, skipLeadingZeros: false);
+            }
+        }, Throws.TypeOf<JsonException>());
+    }
+
     [TestCase(new byte[] { 0xab, 0xcd }, "{\"0xabcd\":1}")]
     [TestCase(new byte[] { 0x00, 0x00 }, "{\"0x0000\":1}")]
     public void WriteAsPropertyName(byte[] input, string expected)
@@ -379,8 +406,11 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         }
         else
         {
-            Assert.That(firstErr, Is.Not.Null);
-            Assert.That(err, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(firstErr, Is.Not.Null);
+                Assert.That(err, Is.Not.Null);
+            }
             Assert.That(err!.GetType(), Is.EqualTo(firstErr!.GetType()));
         }
     }
@@ -391,7 +421,9 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
     private static (byte[]? Result, Exception? Error) InvokeOnBareString(ReadOnlySequence<byte> json)
     {
         Utf8JsonReader reader = new(json);
+#pragma warning disable NUnit2045 // Each operation advances state required by the following check.
         Assert.That(reader.Read(), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(reader.TokenType, Is.EqualTo(JsonTokenType.String));
 
         try { return (ByteArrayConverter.Convert(ref reader), null); }
@@ -401,7 +433,9 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
     private static (byte[]? Result, Exception? Error) InvokeOnPropertyName(ReadOnlySequence<byte> json)
     {
         Utf8JsonReader reader = new(json);
+#pragma warning disable NUnit2045 // Each operation advances state required by the following check.
         Assert.That(reader.Read(), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(reader.TokenType, Is.EqualTo(JsonTokenType.StartObject));
         Assert.That(reader.Read(), Is.True);
         Assert.That(reader.TokenType, Is.EqualTo(JsonTokenType.PropertyName));

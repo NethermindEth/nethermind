@@ -58,8 +58,11 @@ public class ChannelTransportTests
     {
         Channel channel = new();
 
-        Assert.That(await channel.Reverse.WriteEofAsync(token), Is.EqualTo(IOResult.Ok));
-        Assert.That((await channel.ReadAsync(1, ReadBlockingMode.WaitAny, token)).Result, Is.EqualTo(IOResult.Ended), "the request end reaches the peer");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await channel.Reverse.WriteEofAsync(token), Is.EqualTo(IOResult.Ok));
+            Assert.That((await channel.ReadAsync(1, ReadBlockingMode.WaitAny, token)).Result, Is.EqualTo(IOResult.Ended), "the request end reaches the peer");
+        }
         Task<IOResult> response = channel.WriteAsync(new ReadOnlySequence<byte>([1, 2, 3]), token).AsTask();
         ReadResult received = await channel.Reverse.ReadAsync(3, ReadBlockingMode.WaitAll, token);
 

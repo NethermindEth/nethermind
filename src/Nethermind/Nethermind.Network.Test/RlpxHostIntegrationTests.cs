@@ -45,8 +45,11 @@ public class RlpxHostIntegrationTests
         RlpxHost host = container.Resolve<RlpxHost>();
         try
         {
-            Assert.That(host.ShouldContact(IPAddress.Parse(addr1)), Is.True, "first IP should be accepted");
-            Assert.That(host.ShouldContact(IPAddress.Parse(addr2)), Is.EqualTo(secondExpected));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(host.ShouldContact(IPAddress.Parse(addr1)), Is.True, "first IP should be accepted");
+                Assert.That(host.ShouldContact(IPAddress.Parse(addr2)), Is.EqualTo(secondExpected));
+            }
         }
         finally
         {
@@ -202,6 +205,142 @@ public class RlpxHostIntegrationTests
     }
 
     [Test]
+    public async Task Shutdown_ReturnsOnlyAfterEventLoopsTerminate()
+    {
+        int port = GetAvailablePort();
+        await using IContainer container = CreateListenerContainer(null, IPAddress.Loopback, port, shutdownCloseTimeoutMs: 6_000);
+        RlpxHost host = container.Resolve<RlpxHost>();
+        TaskCompletionSource sessionCreated = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        host.SessionCreated += (_, _) => sessionCreated.TrySetResult();
+        await host.Init();
+        using Socket client = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        await client.ConnectAsync(new IPEndPoint(IPAddress.Loopback, port));
+        await sessionCreated.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.That(host.ActiveChannelCount, Is.EqualTo(1));
+
+        Task<int> received = client.ReceiveAsync(new byte[1], SocketFlags.None);
+        Task shutdown = host.Shutdown();
+        int got = await received.WaitAsync(TimeSpan.FromSeconds(1));
+        bool shutdownDoneAtEof = shutdown.IsCompleted;
+        await shutdown.WaitAsync(TimeSpan.FromSeconds(30));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(got, Is.Zero);
+            Assert.That(shutdownDoneAtEof, Is.False);
+            Assert.That(host.EventLoopsTerminated, Is.True);
+            Assert.That(host.ActiveChannelCount, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task Shutdown_ClosesOutboundChannelsBeforeEventLoopsTerminate()
+    {
+        using TcpListener listener = new(IPAddress.Loopback, 0);
+        listener.Start();
+        int listenerPort = ((IPEndPoint)listener.LocalEndpoint).Port;
+        await using IContainer container = CreateListenerContainer(null, IPAddress.Loopback, GetAvailablePort(), shutdownCloseTimeoutMs: 6_000);
+        RlpxHost host = container.Resolve<RlpxHost>();
+        TaskCompletionSource sessionCreated = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        host.SessionCreated += (_, _) => sessionCreated.TrySetResult();
+        await host.Init();
+        Assert.That(await host.ConnectAsync(new Node(TestItem.PublicKeyA, "127.0.0.1", listenerPort)), Is.True);
+        using Socket accepted = await listener.AcceptSocketAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        await sessionCreated.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.That(host.ActiveChannelCount, Is.EqualTo(1));
+
+        using CancellationTokenSource eofTimeout = new(TimeSpan.FromSeconds(1));
+        Task closed = ReceiveUntilClosedAsync(accepted, eofTimeout.Token);
+        Task shutdown = host.Shutdown();
+        await closed;
+        bool shutdownDoneAtEof = shutdown.IsCompleted;
+        await shutdown.WaitAsync(TimeSpan.FromSeconds(30));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(shutdownDoneAtEof, Is.False);
+            Assert.That(host.EventLoopsTerminated, Is.True);
+            Assert.That(host.ActiveChannelCount, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task Shutdown_ClosesInboundChannelRegisteredAfterChannelsAreClosed()
+    {
+        int port = GetAvailablePort();
+        await using IContainer container = CreateListenerContainer(null, IPAddress.Loopback, port, shutdownCloseTimeoutMs: 6_000);
+        RlpxHost host = container.Resolve<RlpxHost>();
+        int sessionCount = 0;
+        host.SessionCreated += (_, _) => Interlocked.Increment(ref sessionCount);
+        await host.Init();
+        TaskCompletionSource accepted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        host.BootstrapChannel!.Pipeline.AddFirst(new AcceptSignalHandler(accepted));
+        using ManualResetEventSlim gate = new();
+        Task shutdown = Task.CompletedTask;
+        using Socket client = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        try
+        {
+            HoldWorkerLoops(host, gate);
+            await client.ConnectAsync(new IPEndPoint(IPAddress.Loopback, port));
+            await accepted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            shutdown = host.Shutdown();
+            await host.ActiveChannelsClosing.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            gate.Set();
+        }
+
+        int got = await client.ReceiveAsync(new byte[1], SocketFlags.None).WaitAsync(TimeSpan.FromSeconds(2));
+        await shutdown.WaitAsync(TimeSpan.FromSeconds(30));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(got, Is.Zero);
+            Assert.That(sessionCount, Is.Zero);
+            Assert.That(host.ActiveChannelCount, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task Shutdown_ClosesOutboundChannelRegisteredAfterChannelsAreClosed()
+    {
+        using TcpListener listener = new(IPAddress.Loopback, 0);
+        listener.Start();
+        int listenerPort = ((IPEndPoint)listener.LocalEndpoint).Port;
+        await using IContainer container = CreateListenerContainer(null, IPAddress.Loopback, GetAvailablePort(), shutdownCloseTimeoutMs: 6_000);
+        RlpxHost host = container.Resolve<RlpxHost>();
+        int sessionCount = 0;
+        host.SessionCreated += (_, _) => Interlocked.Increment(ref sessionCount);
+        await host.Init();
+        using ManualResetEventSlim gate = new();
+        Task<bool> dial = Task.FromResult(false);
+        Task shutdown = Task.CompletedTask;
+        try
+        {
+            HoldWorkerLoops(host, gate);
+            dial = host.ConnectAsync(new Node(TestItem.PublicKeyA, "127.0.0.1", listenerPort));
+            shutdown = host.Shutdown();
+            await host.ActiveChannelsClosing.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            gate.Set();
+        }
+
+        bool connected = await dial.WaitAsync(TimeSpan.FromSeconds(5));
+        await shutdown.WaitAsync(TimeSpan.FromSeconds(30));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(connected, Is.False);
+            Assert.That(listener.Pending(), Is.False);
+            Assert.That(sessionCount, Is.Zero);
+            Assert.That(host.ActiveChannelCount, Is.Zero);
+        }
+    }
+
+    [Test]
     public async Task DefaultListener_UsesSupportedFamiliesAndNormalizesIpv4Session()
     {
         int port = GetAvailablePort();
@@ -220,7 +359,9 @@ public class RlpxHostIntegrationTests
         {
             await host.Init();
 
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
             Assert.That(listenerState.RlpxAddress, Is.EqualTo(acceptsIpv6 ? IPAddress.IPv6Any : IPAddress.Any));
+#pragma warning restore NUnit2045
             Assert.That(await CanConnect(AddressFamily.InterNetwork, port), Is.True);
             Assert.That(await remoteHost.Task.WaitAsync(TimeSpan.FromSeconds(5)), Is.EqualTo(IPAddress.Loopback.ToString()));
             privilegedIpProvider.Received().IsPrivileged(Arg.Is<IPAddress>(ip => ip.Equals(IPAddress.Loopback)));
@@ -253,7 +394,9 @@ public class RlpxHostIntegrationTests
         {
             await host.Init();
 
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
             Assert.That(listenerState.RlpxAddress, Is.EqualTo(IPAddress.Any));
+#pragma warning restore NUnit2045
             Assert.That(await CanConnect(AddressFamily.InterNetwork, port), Is.True);
             underlyingLogger.Received(1).Warn(Arg.Is<string>(message =>
                 message.StartsWith("Failed to bind RlpxHost") && message.Contains(typeof(SocketException).FullName!)));
@@ -475,7 +618,9 @@ public class RlpxHostIntegrationTests
         Node node = CreateDualStackNode(refusedPort, listeningPort);
         IPEndPoint originalAddress = node.Address;
         int originalDiscoveryPort = node.DiscoveryPort;
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
         Assert.That(RlpxHost.TryCreateAlternateDialNode(node, allowNonRoutable: true, out Node? alternate), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(alternate!.Address, Is.EqualTo(new IPEndPoint(IPAddress.IPv6Loopback, listeningPort)));
 
         try
@@ -526,7 +671,9 @@ public class RlpxHostIntegrationTests
         try
         {
             await host.Init();
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
             Assert.That(host.ShouldContact(IPAddress.IPv6Loopback), Is.True);
+#pragma warning restore NUnit2045
 
             Assert.That(await host.ConnectAsync(CreateDualStackNode(refusedPort, listeningPort)), Is.False);
             Assert.That(ipv6Listener.Pending(), Is.False, "a filtered fallback endpoint must not be dialed");
@@ -555,9 +702,42 @@ public class RlpxHostIntegrationTests
         {
             await host.Init();
 
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
             Assert.That(await host.ConnectAsync(CreateDualStackNode(((IPEndPoint)refusedIpv4.LocalEndPoint!).Port, ((IPEndPoint)refusedIpv6.LocalEndPoint!).Port)), Is.False);
+#pragma warning restore NUnit2045
             Assert.That(host.ShouldContact(IPAddress.IPv6Loopback), Is.True,
                 "a failed speculative fallback must not suppress inbound peers from the same filter bucket");
+        }
+        finally
+        {
+            await host.Shutdown();
+        }
+    }
+
+    [Test]
+    public async Task ConnectAsync_ReleasesChannelWhenConnectFailsAsynchronously()
+    {
+        AsyncRefusingClientChannelFactory channelFactory = new();
+        await using IContainer container = CreateListenerContainer(
+            null,
+            IPAddress.Loopback,
+            GetAvailablePort(),
+            channelFactory: channelFactory);
+        RlpxHost host = container.Resolve<RlpxHost>();
+
+        try
+        {
+            await host.Init();
+
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
+            Assert.That(await host.ConnectAsync(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303)), Is.False);
+#pragma warning restore NUnit2045
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(channelFactory.CreatedClientChannels, Is.EqualTo(1));
+                Assert.That(() => channelFactory.ClientChannel!.Open, Is.False.After(5000, 10));
+                Assert.That(() => host.ActiveChannelCount, Is.Zero.After(5000, 10));
+            }
         }
         finally
         {
@@ -785,7 +965,9 @@ public class RlpxHostIntegrationTests
             ipv4Primary ? primary : alternate, 30303,
             ipv4Primary ? alternate : primary, 30304,
             sequence: 0);
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
         Assert.That(Node.TryFromEnr(record, primary.AddressFamily, out Node? node), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(node!.SetVerifiedEnr(record), Is.True);
 
         Assert.That(RlpxHost.TryCreateAlternateDialNode(node, allowNonRoutable: true, out _), Is.EqualTo(expected));
@@ -817,7 +999,9 @@ public class RlpxHostIntegrationTests
             IPAddress.Parse("8.8.8.8"), 30303,
             ipv6: null, ipv6Port: 30304,
             sequence: 1);
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
         Assert.That(publicToPrivate.SetVerifiedEnr(withdrawal), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(RlpxHost.TryCreateAlternateDialNode(publicToPrivate, allowNonRoutable: false, out _), Is.False);
     }
 
@@ -894,7 +1078,8 @@ public class RlpxHostIntegrationTests
         NetworkListenerState? listenerState = null,
         IChannelFactory? channelFactory = null,
         IPrivilegedIpProvider? privilegedIpProvider = null,
-        ILogManager? logManager = null)
+        ILogManager? logManager = null,
+        long shutdownCloseTimeoutMs = 100)
     {
         NetworkConfig networkConfig = new()
         {
@@ -902,7 +1087,7 @@ public class RlpxHostIntegrationTests
             P2PPort = port,
             LocalIp = localIpConfig,
             MaxActivePeers = 50,
-            RlpxHostShutdownCloseTimeoutMs = 100
+            RlpxHostShutdownCloseTimeoutMs = shutdownCloseTimeoutMs
         };
         IIPResolver ipResolver = Substitute.For<IIPResolver>();
         ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(
@@ -939,6 +1124,22 @@ public class RlpxHostIntegrationTests
         }
 
         return builder.Build();
+    }
+
+    private static void HoldWorkerLoops(RlpxHost host, ManualResetEventSlim gate)
+    {
+        foreach (IEventLoop loop in host.WorkerGroup!.Items)
+        {
+            loop.Execute(() => gate.Wait());
+        }
+    }
+
+    private static async Task ReceiveUntilClosedAsync(Socket socket, CancellationToken cancellationToken)
+    {
+        byte[] buffer = new byte[256];
+        while (await socket.ReceiveAsync(buffer.AsMemory(), SocketFlags.None, cancellationToken) > 0)
+        {
+        }
     }
 
     private static async Task<bool> CanConnect(AddressFamily addressFamily, int port)
@@ -993,6 +1194,15 @@ public class RlpxHostIntegrationTests
         {
             socket.Dispose();
             throw;
+        }
+    }
+
+    private sealed class AcceptSignalHandler(TaskCompletionSource accepted) : ChannelHandlerAdapter
+    {
+        public override void ChannelRead(IChannelHandlerContext context, object message)
+        {
+            accepted.TrySetResult();
+            context.FireChannelRead(message);
         }
     }
 
@@ -1083,6 +1293,28 @@ public class RlpxHostIntegrationTests
     {
         protected override bool DoConnect(EndPoint remoteAddress, EndPoint localAddress) =>
             throw new SocketException((int)SocketError.ConnectionRefused);
+    }
+
+    private sealed class AsyncRefusingClientChannelFactory : ClientChannelFactory
+    {
+        public IChannel? ClientChannel { get; private set; }
+
+        public override IChannel CreateClient()
+        {
+            CreatedClientChannels++;
+            return ClientChannel = new AsyncRefusingTcpSocketChannel();
+        }
+    }
+
+    private sealed class AsyncRefusingTcpSocketChannel : TcpSocketChannel
+    {
+        protected override bool DoConnect(EndPoint remoteAddress, EndPoint localAddress)
+        {
+            SocketChannelAsyncOperation operation = new(this, false) { SocketError = SocketError.ConnectionRefused };
+            AbstractSocketUnsafe socketUnsafe = (AbstractSocketUnsafe)Unsafe;
+            EventLoop.Execute(() => socketUnsafe.FinishConnect(operation));
+            return false;
+        }
     }
 
     private sealed class StubHandshakeService : IHandshakeService

@@ -11,6 +11,11 @@ using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
+#if GLOAS
+using EpochArithmetic = Nethermind.BeaconChain.StateTransition.GloasStateAccessors;
+#else
+using EpochArithmetic = Nethermind.BeaconChain.StateTransition.BeaconStateMutators;
+#endif
 using Withdrawal = Nethermind.Merge.Plugin.SszRest.SszWithdrawal;
 
 namespace Nethermind.BeaconChain.StateTransition;
@@ -157,17 +162,20 @@ public static partial class BlockProcessing
 
     /// <summary>Spec <c>process_deposit_request</c> (EIP-6110).</summary>
 #if GLOAS
-    internal static partial void ProcessDepositRequest(ForkState state, DepositRequest request)
+    internal static partial void ProcessDepositRequest(ForkState state, DepositRequest request, BeaconChainSpec? spec)
 #else
-    public static partial void ProcessDepositRequest(ForkState state, DepositRequest request)
+    public static partial void ProcessDepositRequest(ForkState state, DepositRequest request, BeaconChainSpec? spec)
 #endif
-        => ProcessDepositRequests(state, [request]);
+        => ProcessDepositRequests(state, [request], spec);
 
-    private static partial void ProcessDepositRequests(ForkState state, DepositRequest[] requests)
+    private static partial void ProcessDepositRequests(ForkState state, DepositRequest[] requests, BeaconChainSpec? spec)
     {
         if (requests.Length == 0) return;
-        if (state.DepositRequestsStartIndex == Presets.UnsetDepositRequestsStartIndex)
+#if !GLOAS
+        if (state.GetCurrentEpoch() < (spec ?? BeaconChainSpec.ForGenesisValidatorsRoot(state.GenesisValidatorsRoot!)).FuluForkEpoch
+            && state.DepositRequestsStartIndex == Presets.UnsetDepositRequestsStartIndex)
             state.DepositRequestsStartIndex = requests[0].Index;
+#endif
         PendingDeposit[] existing = state.PendingDeposits!;
         PendingDeposit[] deposits = new PendingDeposit[existing.Length + requests.Length];
         existing.CopyTo(deposits, 0);
@@ -239,7 +247,7 @@ public static partial class BlockProcessing
             {
                 ValidatorIndex = (ulong)index,
                 Amount = toWithdraw,
-                WithdrawableEpoch = exitQueueEpoch + Presets.MinValidatorWithdrawabilityDelay,
+                WithdrawableEpoch = EpochArithmetic.CheckedEpochSum(exitQueueEpoch, Presets.MinValidatorWithdrawabilityDelay),
             }];
         }
     }
@@ -294,7 +302,7 @@ public static partial class BlockProcessing
 
         Validator updatedSource = sourceValidator.Clone();
         updatedSource.ExitEpoch = state.ComputeConsolidationEpochAndUpdateChurn(sourceValidator.EffectiveBalance, cache);
-        updatedSource.WithdrawableEpoch = updatedSource.ExitEpoch + Presets.MinValidatorWithdrawabilityDelay;
+        updatedSource.WithdrawableEpoch = EpochArithmetic.CheckedEpochSum(updatedSource.ExitEpoch, Presets.MinValidatorWithdrawabilityDelay);
         state.Validators[sourceIndex] = updatedSource;
 
         state.PendingConsolidations = [.. state.PendingConsolidations, new PendingConsolidation

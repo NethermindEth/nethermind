@@ -44,7 +44,7 @@ public sealed class BeaconBlocksByHeadProtocolV1(BeaconChainSpec spec, BeaconCha
             Hash256 root = new(request.AsSpan(0, Hash256.Size));
             ulong count = BinaryPrimitives.ReadUInt64LittleEndian(request.AsSpan(Hash256.Size));
             if (count == 0 || count > MaxRequestBlocks) throw new Eth2ReqRespException("Blocks-by-head count must be between 1 and 128");
-            ChargeRequest(context, count, MaxRequestBlocks);
+            await ChargeRequestAsync(context, count, MaxRequestBlocks, cts);
             ulong currentEpoch = clock?.CurrentEpoch ?? 0;
             ulong servedEpochs = currentEpoch >= Spec.GloasForkEpoch ? BeaconChainStore.MinEpochsForBlockRequests : MinEpochsForBlockRequestsBeforeGloas;
             ulong minimumEpoch = currentEpoch > servedEpochs ? currentEpoch - servedEpochs : 0;
@@ -68,7 +68,6 @@ public sealed class BeaconBlocksByHeadProtocolV1(BeaconChainSpec spec, BeaconCha
         catch (OperationCanceledException)
         {
             RecordFailure(Id, ReqRespFailureReason.Timeout);
-            throw;
         }
     }
 }

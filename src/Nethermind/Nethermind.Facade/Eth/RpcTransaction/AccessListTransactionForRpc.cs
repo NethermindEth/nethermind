@@ -3,6 +3,8 @@
 
 using System.Text.Json.Serialization;
 using Nethermind.Core;
+using Nethermind.Core.Messages;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -55,6 +57,50 @@ public class AccessListTransactionForRpc : LegacyTransactionForRpc, IFromTransac
         }
 
         return tx;
+    }
+
+    internal override string? GetTraceCallForkError(IReleaseSpec spec, UInt256 baseFee) =>
+        GetTraceCallUnsupportedField(spec) is { } unsupported
+            ? GetTraceCallPrecheckError(unsupported, spec, baseFee)
+            : null;
+
+    // Inspect RPC fields, not the inferred envelope: conversion supplies empty access lists for newer types.
+    internal virtual string? GetTraceCallUnsupportedField(IReleaseSpec spec) =>
+        AccessList is not null && !spec.IsEip2930Enabled ? "access list" : null;
+
+    internal virtual string GetTraceCallPrecheckError(string? unsupported, IReleaseSpec spec, UInt256 baseFee) =>
+        GetTraceCallExecutionError(unsupported, spec, baseFee, GasPrice ?? UInt256.Zero, GasPrice ?? UInt256.Zero);
+
+    internal string GetTraceCallExecutionError(string? unsupported, IReleaseSpec spec, UInt256 baseFee, UInt256 feeCap, UInt256 tipCap)
+    {
+        string sender = (From ?? Address.Zero).ToString(withEip55Checksum: true);
+        // Geth's message precheck rejects fees before unsupported fields, and fields before intrinsic gas or balance.
+        if (spec.IsEip1559Enabled)
+        {
+            if (feeCap < tipCap)
+                return RpcTransactionErrors.DebugTrace($"{TxErrorMessages.TipAboveFeeCap}: address {sender}, maxPriorityFeePerGas: {tipCap}, maxFeePerGas: {feeCap}");
+            if (feeCap < baseFee && (!feeCap.IsZero || !tipCap.IsZero))
+                return RpcTransactionErrors.DebugTrace($"{RpcTransactionErrors.FeeCapBelowBaseFee}: address {sender}, maxFeePerGas: {feeCap}, baseFee: {baseFee}");
+        }
+        return RpcTransactionErrors.DebugTrace($"transaction type not supported: {unsupported} tx (sender {sender})");
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// A typed transaction signs with a y-parity, which its signature carries offset by 27, as a decoded one does: a
+    /// <c>v</c> of 0 or 1 is that y-parity, and so is a <see cref="YParity"/> of 0 or 1 when <c>v</c> is left out. Any other
+    /// <c>v</c> is taken as given. A request whose fields select no typed envelope, and so got this type by default, keeps
+    /// the legacy reading.
+    /// </remarks>
+    internal override bool TryGetSignatureV(out ulong v)
+    {
+        if (!IsTypeDefaulted && (V ?? YParity) is { } yParity && yParity <= UInt256.One)
+        {
+            v = Signature.VOffset + yParity.ToUInt64(null);
+            return true;
+        }
+
+        return base.TryGetSignatureV(out v);
     }
 
     public new static AccessListTransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData)

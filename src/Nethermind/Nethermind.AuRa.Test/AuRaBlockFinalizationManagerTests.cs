@@ -120,8 +120,11 @@ namespace Nethermind.AuRa.Test
 
             IEnumerable<bool> isBlockFinalized = Enumerable.Range(start, chainLength).Select(i => blockTreeBuilder.ChainLevelInfoRepository.LoadLevel((ulong)i).MainChainBlock.IsFinalized);
             IEnumerable<bool> expected = Enumerable.Range(start, chainLength).Select(i => i < chainLength - notFinalizedExpectedCount);
-            Assert.That(finalizedBlocks.Count, Is.EqualTo(chainLength - notFinalizedExpectedCount));
-            Assert.That(isBlockFinalized, Is.EqualTo(expected));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(finalizedBlocks.Count, Is.EqualTo(chainLength - notFinalizedExpectedCount));
+                Assert.That(isBlockFinalized, Is.EqualTo(expected));
+            }
         }
 
         [Test]

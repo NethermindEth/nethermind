@@ -45,7 +45,7 @@ TxPriorityContract.DestinationSource source = TxPriorityContract.DestinationSour
 
             public static Destination GetTransactionKey(Transaction tx)
             {
-                byte[] fnSignature = tx.Data.Length >= 4 ? AbiSignature.GetAddress(tx.Data.AsArray()) : FnSignatureEmpty;
+                byte[] fnSignature = tx.Data.Length >= 4 ? tx.Data.Span[..AbiSignature.MethodIdLength].ToArray() : FnSignatureEmpty;
                 return new Destination(tx.To, fnSignature, UInt256.Zero);
             }
 

@@ -10,13 +10,34 @@ using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
-using Nethermind.Evm;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
 
 public class AddressTests
 {
+    [Test]
+    public void AddressAsKeyComparer_span_overloads_match_the_key_overloads()
+    {
+        AddressAsKeyComparer comparer = AddressAsKeyComparer.Instance;
+        AddressAsKey keyA = TestItem.AddressA;
+        byte[] bytesA = TestItem.AddressA.Bytes.ToArray();
+        byte[] bytesALastByteChanged = TestItem.AddressA.Bytes.ToArray();
+        bytesALastByteChanged[^1] ^= 1;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(comparer.GetHashCode(bytesA), Is.EqualTo(comparer.GetHashCode(keyA)));
+            Assert.That(comparer.Equals(bytesA, keyA), Is.True);
+            Assert.That(comparer.Equals(bytesALastByteChanged, keyA), Is.False);
+            Assert.That(comparer.Equals(TestItem.AddressB.Bytes, keyA), Is.False);
+            Assert.That(comparer.Equals(bytesA.AsSpan(0, Address.Size - 1), keyA), Is.False);
+            Assert.That(comparer.Equals(bytesA, default), Is.False);
+            Assert.That(comparer.Equals(keyA, new AddressAsKey(new Address(bytesA))), Is.True);
+            Assert.That(comparer.Create(bytesA).Value, Is.EqualTo(TestItem.AddressA));
+        }
+    }
+
     [TestCase("0x5A4EAB120fB44eb6684E5e32785702FF45ea344D", "0x5a4eab120fb44eb6684e5e32785702ff45ea344d")]
     [TestCase("0x5a4eab120fb44eb6684e5e32785702ff45ea344d", "0x5a4eab120fb44eb6684e5e32785702ff45ea344d")]
     public void String_representation_is_correct(string init, string expected)
@@ -184,27 +205,6 @@ public class AddressTests
     {
         Address address = Address.FromNumber((UInt256)number);
         Assert.That(Byzantium.Instance.IsPrecompile(address), Is.EqualTo(isPrecompile));
-    }
-
-    [TestCase(0UL, "0x24cd2edba056b7c654a50e8201b619d4f624fdda")]
-    [TestCase(1UL, "0xdc98b4d0af603b4fb5ccdd840406a0210e5deff8")]
-    // RLP nonce-encoding boundaries: single-byte (< 0x80), the 0x80 length-prefix boundary, and
-    // a multi-byte nonce. The derived address is consensus-critical, so these guard the encoding.
-    [TestCase(0x7fUL, "0xb0099f030fbd2b512080790d100a3a3819ce577f")]
-    [TestCase(0x80UL, "0x3b71de3573667d0860bff1e4d40d9e07264623aa")]
-    [TestCase(0xffUL, "0x198411bfc0fbbeef7194152584c712412e2f3ea5")]
-    [TestCase(0x100UL, "0x66136d11dbd7227e6f5ac5588797899704be8348")]
-    public void Of_contract(ulong nonce, string expectedAddress)
-    {
-        Address address = ContractAddress.From(TestItem.AddressA, (UInt256)nonce);
-        Assert.That(new Address(expectedAddress), Is.EqualTo(address));
-    }
-
-    [Test]
-    public void Of_contract_max_ulong_nonce()
-    {
-        Address address = ContractAddress.From(TestItem.AddressA, (UInt256)ulong.MaxValue);
-        Assert.That(new Address("0x7d707106c1e88d29f7585d237f9848e1c33cacfd"), Is.EqualTo(address));
     }
 
     [TestCaseSource(nameof(PointEvaluationPrecompileTestCases))]

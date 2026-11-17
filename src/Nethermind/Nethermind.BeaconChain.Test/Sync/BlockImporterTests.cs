@@ -111,8 +111,11 @@ public class BlockImporterTests
             Assert.That(importer.Import(parent.Block, parent.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported));
         }
         UnsignedChain.ChainBlock child = chain.Extend(parent.Root, 32, 0xA2);
-        Assert.That(importer.Import(child.Block, child.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported));
-        Assert.That(SszRoots.HashTreeRoot(((ForkedBeaconState.OfFulu)importer.GetStateForApi(child.Root)!).State), Is.EqualTo(child.Block.Message!.StateRoot));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(importer.Import(child.Block, child.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported));
+            Assert.That(SszRoots.HashTreeRoot(((ForkedBeaconState.OfFulu)importer.GetStateForApi(child.Root)!).State), Is.EqualTo(child.Block.Message!.StateRoot));
+        }
     }
 
     [Test]
@@ -294,7 +297,9 @@ public class BlockImporterTests
         DateTime slotStart = TickFinalityFixture.SlotStart(chain.Spec, 1);
         ManualTimestamper time = new(slotStart.AddMilliseconds(-GossipRouter.MaximumGossipClockDisparityMs - (beyondClockAllowance ? 1 : 0)));
         FailedBlockRoots failed = new();
-        BlockImporter importer = CreateImporter(chain, custody: null, new DataColumnSidecarPool(), importClock: new SlotClock(chain.Spec, time), failedBlocks: failed);
+        int payloadCalls = 0;
+        BlockImporter importer = CreateImporter(chain, custody: null, new DataColumnSidecarPool(), importClock: new SlotClock(chain.Spec, time), failedBlocks: failed,
+            engine: new ValidPayloadEngine(() => payloadCalls++));
         BlsSignature genuine = chain.Block.Signature;
         chain.Block.Signature = new BlsSignature(SignatureSets.G2PointAtInfinity);
         BlockImportResult forged = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
@@ -319,6 +324,66 @@ public class BlockImporterTests
         Assert.That(knownEarly, Is.False, "fork choice has not seen the block before its slot");
         Assert.That(failed.Contains(chain.BlockRoot), Is.False);
         Assert.That(onTime, Is.EqualTo(BlockImportResult.Imported));
+        Assert.That(payloadCalls, Is.EqualTo(1), "a VALID early transition is reused at admission");
+    }
+
+    [Test]
+    public void An_early_optimistic_payload_is_checked_again_at_admission()
+    {
+        ImportableBlobBlock chain = ImportableBlobBlock.CreateWithoutBlobs();
+        DateTime slotStart = TickFinalityFixture.SlotStart(chain.Spec, 1);
+        ManualTimestamper time = new(slotStart.AddMilliseconds(-GossipRouter.MaximumGossipClockDisparityMs));
+        BlockImporter importer = CreateImporter(chain, custody: null, new DataColumnSidecarPool(), importClock: new SlotClock(chain.Spec, time),
+            engine: new ScriptedPayloadEngine(ExecutionStatus.Optimistic, ExecutionStatus.Invalid));
+
+        Assert.That(importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true), Is.EqualTo(BlockImportResult.FutureSlot));
+        time.Set(slotStart);
+
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true), Is.EqualTo(BlockImportResult.Invalid));
+        Assert.That(importer.IsKnown(chain.BlockRoot), Is.False);
+    }
+
+    [Test]
+    public void An_early_valid_transition_does_not_authenticate_a_replaced_signature()
+    {
+        ImportableBlobBlock chain = ImportableBlobBlock.CreateWithoutBlobs();
+        DateTime slotStart = TickFinalityFixture.SlotStart(chain.Spec, 1);
+        ManualTimestamper time = new(slotStart.AddMilliseconds(-GossipRouter.MaximumGossipClockDisparityMs));
+        int payloadCalls = 0;
+        BlockImporter importer = CreateImporter(chain, custody: null, new DataColumnSidecarPool(), importClock: new SlotClock(chain.Spec, time),
+            engine: new ValidPayloadEngine(() => payloadCalls++));
+
+        Assert.That(importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true), Is.EqualTo(BlockImportResult.FutureSlot));
+        time.Set(slotStart);
+        chain.Block.Signature = new BlsSignature(SignatureSets.G2PointAtInfinity);
+
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true), Is.EqualTo(BlockImportResult.Invalid));
+        Assert.That(importer.IsKnown(chain.BlockRoot), Is.False);
+        Assert.That(payloadCalls, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void An_early_valid_transition_rechecks_availability_and_expires_after_its_slot([Values] bool dataAvailable, [Values] bool nextSlot)
+    {
+        ImportableBlobBlock chain = ImportableBlobBlock.CreateWithoutBlobs();
+        DateTime slotStart = TickFinalityFixture.SlotStart(chain.Spec, 1);
+        ManualTimestamper time = new(slotStart.AddMilliseconds(-GossipRouter.MaximumGossipClockDisparityMs));
+        IDataAvailabilityRule availability = Substitute.For<IDataAvailabilityRule>();
+        availability.IsDataAvailable(Arg.Any<BeaconBlock>(), Arg.Any<Hash256>(), Arg.Any<BeaconChainSpec>()).Returns(true, dataAvailable);
+        int payloadCalls = 0;
+        BlockImporter importer = CreateImporter(chain, custody: null, new DataColumnSidecarPool(), importClock: new SlotClock(chain.Spec, time),
+            engine: new ValidPayloadEngine(() => payloadCalls++), availability: availability);
+
+        Assert.That(importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true), Is.EqualTo(BlockImportResult.FutureSlot));
+        time.Set(nextSlot ? slotStart.AddSeconds(chain.Spec.SecondsPerSlot) : slotStart);
+
+        BlockImportResult result = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
+
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(dataAvailable ? BlockImportResult.Imported : BlockImportResult.DataUnavailable));
+        Assert.That(payloadCalls, Is.EqualTo(dataAvailable && nextSlot ? 2 : 1));
     }
 
     [TestCase(0UL, 11500L, 1UL, true)]
@@ -686,8 +751,11 @@ public class BlockImporterTests
         UnsignedChain.ChainBlock b = chain.Extend(a.Root, a.Block.Message!.Slot + 1, payloadHashByte: 0x62);
         UnsignedChain.ChainBlock c = chain.Extend(b.Root, b.Block.Message!.Slot + 1, payloadHashByte: 0x63);
         importer.OnSlotTick(c.Block.Message!.Slot);
-        Assert.That(importer.Import(a.Block, a.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported), "fixture bug");
-        Assert.That(importer.Import(b.Block, b.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported), "fixture bug");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(importer.Import(a.Block, a.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported), "fixture bug");
+            Assert.That(importer.Import(b.Block, b.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported), "fixture bug");
+        }
 
         Hash256 head = importer.ComputeHead().HeadRoot;
         Hash256? lineageAfterHeadStep = importer.LineageRoot;
@@ -711,9 +779,12 @@ public class BlockImporterTests
         UnsignedChain.ChainBlock invalid = chain.Extend(ancestor.Root, slot: Presets.SlotsPerEpoch, payloadHashByte: 0x71);
         UnsignedChain.ChainBlock invalidChild = chain.Extend(invalid.Root, slot: Presets.SlotsPerEpoch + 1, payloadHashByte: 0x72);
         importer.OnSlotTick(invalidChild.Block.Message!.Slot);
-        Assert.That(importer.Import(ancestor.Block, ancestor.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported), "fixture bug");
-        Assert.That(importer.Import(invalid.Block, invalid.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported), "fixture bug");
-        Assert.That(importer.Import(invalidChild.Block, invalidChild.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported), "fixture bug");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(importer.Import(ancestor.Block, ancestor.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported), "fixture bug");
+            Assert.That(importer.Import(invalid.Block, invalid.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported), "fixture bug");
+            Assert.That(importer.Import(invalidChild.Block, invalidChild.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported), "fixture bug");
+        }
 
         importer.OnForkchoiceUpdated(invalid.Root, invalid.Block.Message!.Body!.ExecutionPayload!.BlockHash!, new PayloadStatusV1 { Status = PayloadStatus.Invalid });
         Hash256 head = importer.ComputeHead().HeadRoot;
@@ -749,8 +820,11 @@ public class BlockImporterTests
             return importer.Import(block.Block, block.Root, verifySignatures: gossip);
         }
 
-        Assert.That(new[] { first, parent, late }.Select(b => ImportAt(b, 1000)), Is.All.EqualTo(BlockImportResult.Imported), "fixture bug");
-        Assert.That((importer.ComputeHead().HeadRoot, importer.LineageRoot), Is.EqualTo((late.Root, (Hash256?)late.Root)), "fixture bug");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new[] { first, parent, late }.Select(b => ImportAt(b, 1000)), Is.All.EqualTo(BlockImportResult.Imported), "fixture bug");
+            Assert.That((importer.ComputeHead().HeadRoot, importer.LineageRoot), Is.EqualTo((late.Root, (Hash256?)late.Root)), "fixture bug");
+        }
 
         BlockImportResult b1Imported = ImportAt(b1, 1000);
         BlockImportResult[] siblingsImported = [.. siblings.Select(s => ImportAt(s, 5000))];
@@ -799,19 +873,28 @@ public class BlockImporterTests
         }
 
         BeaconStateFulu? coldCopy = states.CopyBlockState(third.Root);
-        Assert.That(coldCopy, Is.Not.Null, "a cold copy regenerates from the nearest held or persisted ancestor");
-        Assert.That(SszRoots.HashTreeRoot(coldCopy!), Is.EqualTo(third.Block.Message!.StateRoot));
-        Assert.That(states.GetHeldBlockState(third.Root), Is.Null, "the cold copy is the caller's alone");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(coldCopy, Is.Not.Null, "a cold copy regenerates from the nearest held or persisted ancestor");
+            Assert.That(SszRoots.HashTreeRoot(coldCopy!), Is.EqualTo(third.Block.Message!.StateRoot));
+            Assert.That(states.GetHeldBlockState(third.Root), Is.Null, "the cold copy is the caller's alone");
+        }
         BeaconStateFulu? regenerated = states.GetBlockState(third.Root);
         Assert.That(regenerated, Is.Not.Null);
-        Assert.That(regenerated, Is.Not.SameAs(coldCopy), "an import regenerates its own state after a caller's cold copy");
-        Assert.That(SszRoots.HashTreeRoot(regenerated!), Is.EqualTo(third.Block.Message!.StateRoot));
-        Assert.That(SszRoots.HashTreeRoot(first.PostState), Is.EqualTo(first.Block.Message!.StateRoot));
-        Assert.That(SszRoots.HashTreeRoot(chain.Anchor.AnchorState), Is.EqualTo(chain.Anchor.AnchorBlock.Message!.StateRoot));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(regenerated, Is.Not.SameAs(coldCopy), "an import regenerates its own state after a caller's cold copy");
+            Assert.That(SszRoots.HashTreeRoot(regenerated!), Is.EqualTo(third.Block.Message!.StateRoot));
+            Assert.That(SszRoots.HashTreeRoot(first.PostState), Is.EqualTo(first.Block.Message!.StateRoot));
+            Assert.That(SszRoots.HashTreeRoot(chain.Anchor.AnchorState), Is.EqualTo(chain.Anchor.AnchorBlock.Message!.StateRoot));
+        }
         if (!persisted)
         {
-            Assert.That(states.GetHeldBlockState(first.Root), Is.SameAs(first.PostState), "regeneration leaves the retained parent held");
-            Assert.That(filler.Select(states.GetHeldBlockState), Has.All.SameAs(chain.Anchor.AnchorState), "regeneration cannot evict a live retained state");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(states.GetHeldBlockState(first.Root), Is.SameAs(first.PostState), "regeneration leaves the retained parent held");
+                Assert.That(filler.Select(states.GetHeldBlockState), Has.All.SameAs(chain.Anchor.AnchorState), "regeneration cannot evict a live retained state");
+            }
         }
         Assert.That(states.GetHeldBlockState(third.Root), Is.SameAs(regenerated));
         store.DeleteBlock(second.Root);
@@ -840,8 +923,11 @@ public class BlockImporterTests
             ancestors: root => missing == "unknown" ? [] : [second.Root, first.Root, chain.AnchorRoot]);
 
         Assert.That(states.GetBlockState(second.Root), Is.Null);
-        Assert.That(states.GetBlockState(second.Root), Is.Null);
-        Assert.That(SszRoots.HashTreeRoot(chain.Anchor.AnchorState), Is.EqualTo(expectedAnchor));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(states.GetBlockState(second.Root), Is.Null);
+            Assert.That(SszRoots.HashTreeRoot(chain.Anchor.AnchorState), Is.EqualTo(expectedAnchor));
+        }
     }
 
     [Test]
@@ -1140,8 +1226,11 @@ public class BlockImporterTests
             engine: new ScriptedPayloadEngine(ExecutionStatus.Invalid, ExecutionStatus.Valid));
         importer.OnSlotTick(1);
 
-        Assert.That(importer.Import(refused.Block, refused.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Invalid));
-        Assert.That(importer.Import(sibling.Block, sibling.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(importer.Import(refused.Block, refused.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Invalid));
+            Assert.That(importer.Import(sibling.Block, sibling.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported));
+        }
     }
 
     [Test]
@@ -1364,6 +1453,34 @@ public class BlockImporterTests
         Assert.That(allocated, Is.LessThan(128 * 1024), "a forged proposal must not buy a state copy and a multi-epoch advance");
         if (!proposerPastRegistry)
             Assert.That(failed.Contains(branchRoot), Is.False, "the signature is not part of the block root, so the honest block must stay importable");
+    }
+
+    [Test]
+    public void A_signed_wrong_proposer_cannot_repeat_an_unbounded_state_advance([Values] bool pastLookahead)
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool());
+        ulong slot = pastLookahead ? 3 * chain.Spec.SlotsPerEpoch : 1;
+        UnsignedChain.ChainBlock block = chain.Extend(chain.AnchorRoot, slot, payloadHashByte: 0x81, signed: true);
+        block.Block.Message!.ProposerIndex = (block.Block.Message.ProposerIndex + 1) % (ulong)chain.Anchor.AnchorState.Validators!.Length;
+        BlockImportResult first = ImportWrongProposal();
+        block.Block.Message.StateRoot = Keccak.Compute("second wrong proposal");
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        BlockImportResult second = ImportWrongProposal();
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(first, Is.EqualTo(BlockImportResult.Invalid));
+        Assert.That(second, Is.EqualTo(pastLookahead ? BlockImportResult.UnknownParent : BlockImportResult.Invalid));
+        Assert.That(allocated, Is.LessThan(128 * 1024));
+
+        BlockImportResult ImportWrongProposal()
+        {
+            Hash256 root = SszRoots.HashTreeRoot(block.Block.Message);
+            block.Block.Signature = ImportableBlobBlock.SignAs(block.Block.Message.ProposerIndex, root,
+                chain.Anchor.AnchorState.GetDomain(DomainType.BeaconProposer, chain.Spec.GetEpoch(slot)));
+            return importer.Import(block.Block, root, verifySignatures: true);
+        }
     }
 
     [TestCase(0UL, false, TestName = "Block_at_the_finalized_slot_is_not_recorded_as_failed")]
@@ -1599,9 +1716,16 @@ public class BlockImporterTests
         store.PutState(anchorRoot, stateSsz);
         store.SetAnchor(anchorRoot, anchor.Slot);
         BeaconChainStore resumedStore = new(db, spec);
-        Assert.That(resumedStore.TryGetAnchor(out Hash256? resumedRoot, out ulong resumedSlot), Is.True);
-        Assert.That(resumedStore.TryGetForkedBlock(resumedRoot!, out ForkedSignedBeaconBlock? resumedBlock), Is.True);
-        Assert.That(resumedStore.TryGetState(resumedRoot!, out byte[]? resumedSsz), Is.True);
+        Hash256? resumedRoot;
+        ulong resumedSlot;
+        ForkedSignedBeaconBlock? resumedBlock;
+        byte[]? resumedSsz;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resumedStore.TryGetAnchor(out resumedRoot, out resumedSlot), Is.True);
+            Assert.That(resumedStore.TryGetForkedBlock(resumedRoot!, out resumedBlock), Is.True);
+            Assert.That(resumedStore.TryGetState(resumedRoot!, out resumedSsz), Is.True);
+        }
         ForkedBeaconState resumedState = BeaconStateCodec.DecodeForked(resumedSsz!, spec);
         SlotClock clock = new(spec, new ManualTimestamper(DateTimeOffset.FromUnixTimeSeconds((long)(spec.GenesisTime + child.Slot * spec.SecondsPerSlot)).UtcDateTime));
         BlockImporter importer = new(spec, resumedStore, pubkeys, new SignedGloasChain.EnvelopeEngine(), new BeaconChainConfig(),
@@ -1750,8 +1874,11 @@ public class BlockImporterTests
         chain.Pubkeys.Build([]);
         await BeaconSyncOrchestratorTests.AssertBlockVerdictAsync(importer, new ForkedSignedBeaconBlock.OfFulu(chain.Block),
             Snappy.CompressToArray(SignedBeaconBlock.Encode(chain.Block)), MessageValidity.Accepted);
-        Assert.That(failed.Contains(chain.BlockRoot), Is.False);
-        Assert.That(chain.Pubkeys.Count, Is.EqualTo(chain.AnchorState.Validators!.Length));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failed.Contains(chain.BlockRoot), Is.False);
+            Assert.That(chain.Pubkeys.Count, Is.EqualTo(chain.AnchorState.Validators!.Length));
+        }
     }
 
     [Test]
@@ -1965,8 +2092,11 @@ public class BlockImporterTests
             PostStateCache states = (PostStateCache)typeof(BlockImporter).GetField("_states", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!;
             states.Retain(chain.AnchorRoot, chain.Anchor.AnchorState.Clone());
             UnsignedChain.ChainBlock head = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0xa1);
-            Assert.That(importer.Import(head.Block, head.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported));
-            Assert.That(runner.GetHead(), Is.EqualTo(head.Root));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(importer.Import(head.Block, head.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported));
+                Assert.That(runner.GetHead(), Is.EqualTo(head.Root));
+            }
             states.SetLineage(UnknownBlockRoot, chain.Anchor.AnchorState);
             Assert.That(states.GetHeldBlockState(head.Root), Is.Null);
         }

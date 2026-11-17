@@ -2,14 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
-using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Network;
 using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv4.Messages;
-using Nethermind.Network.Test;
 using Nethermind.Xdc.Discovery;
 using NSubstitute;
 using NUnit.Framework;
@@ -33,9 +31,9 @@ public class XdcDiscoveryTests
             new byte[32]
             );
 
-        using DisposableByteBuffer buffer = Unpooled.Buffer().AsDisposable();
-        serializer.Serialize(buffer, msg);
-        Assert.That(buffer.GetByte(97), Is.EqualTo((byte)5));
+        byte[] packet = new byte[serializer.GetLength(msg)];
+        serializer.Serialize(packet, msg);
+        Assert.That(packet[97], Is.EqualTo((byte)5));
     }
 
     private sealed class ExposedXdcDiscoveryHandler : XdcDiscoveryHandler

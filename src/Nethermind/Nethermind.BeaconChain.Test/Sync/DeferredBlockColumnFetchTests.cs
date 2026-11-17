@@ -1355,6 +1355,8 @@ public class DeferredBlockColumnFetchTests
         StuckBlocksImporter importer = new(fixture.Importer);
         BeaconSyncOrchestrator orchestrator = fixture.CreateOrchestrator(logs: logs);
         orchestrator.Initialize(importer, new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.AnchorBlock), fixture.Chain.AnchorRoot);
+        fixture.RangeSync.VerifyBlockSignature = block => Task.FromResult(importer.IsScripted(block.ComputeMessageRoot())
+            ? (bool?)true : ((BlockImporter)fixture.Importer).VerifyCachedProposerSignature(block));
         for (int i = 0; i < fillers; i++)
         {
             ForkedSignedBeaconBlock filler = new ForkedSignedBeaconBlock.OfFulu(Test.P2P.TestChain.CreateBlock(fixture.Chain.Block.Message!.Slot + 100 + (ulong)i, fixture.Chain.AnchorRoot));
@@ -1378,6 +1380,8 @@ public class DeferredBlockColumnFetchTests
         public HashSet<Hash256> Accepted { get; } = [];
         public List<Hash256> ImportCalls { get; } = [];
 
+        public bool IsScripted(Hash256 root) => Stuck.Contains(root) || Accepted.Contains(root) || EngineDown.Contains(root) || Invalid.Contains(root);
+
         public void AcceptOnceColumnsAreHeld(Hash256[] roots, DataColumnSidecarPool pool, ulong[] columns)
         {
             Accepted.UnionWith(roots);
@@ -1389,7 +1393,7 @@ public class DeferredBlockColumnFetchTests
         public BlockImportResult Import(ForkedSignedBeaconBlock block, Hash256 blockRoot, bool verifySignatures)
         {
             ImportCalls.Add(blockRoot);
-            bool scripted = Stuck.Contains(blockRoot) || Accepted.Contains(blockRoot) || EngineDown.Contains(blockRoot) || Invalid.Contains(blockRoot);
+            bool scripted = IsScripted(blockRoot);
             if (scripted && !IsKnown(block.ParentRoot))
             {
                 return BlockImportResult.UnknownParent;
@@ -1538,10 +1542,12 @@ public class DeferredBlockColumnFetchTests
         }
 
         public int AdmissionSubscribers => _pool.Subscribers;
+        public RangeSync RangeSync { get; private set; } = null!;
 
         public BeaconSyncOrchestrator CreateOrchestrator(bool routeAdmissions = true, ILogManager? logs = null, HeadSnapshotHolder? headSnapshots = null)
         {
             MutablePool pool = _pool = new(Peers);
+            RangeSync = new RangeSync(pool, LimboLogs.Instance, SidecarPool, Chain.Spec, Clock, _discovery);
             BeaconSyncOrchestrator orchestrator = new(
                 new BeaconChainConfig(),
                 Chain.Spec,
@@ -1549,7 +1555,7 @@ public class DeferredBlockColumnFetchTests
                 new BlockImporterFactory(Chain.Spec, _store, Chain.Pubkeys, Engine, new BeaconChainConfig(), LimboLogs.Instance, SidecarPool, Clock, _discovery),
                 Engine,
                 pool,
-                new RangeSync(pool, LimboLogs.Instance, SidecarPool, Chain.Spec, Clock, _discovery),
+                RangeSync,
                 Clock,
                 new GossipRouter(Chain.Spec, Clock, LimboLogs.Instance),
                 new BeaconChainStatusHolder(Chain.Spec, Timestamper.Default),

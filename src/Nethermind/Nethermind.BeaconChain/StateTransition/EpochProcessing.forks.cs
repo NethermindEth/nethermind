@@ -337,7 +337,8 @@ public static partial class EpochProcessing
         {
 #if !GLOAS
             // Do not process deposit requests if the Eth1 bridge deposits are not yet applied.
-            if (deposit.Slot > Presets.GenesisSlot && state.Eth1DepositIndex < state.DepositRequestsStartIndex)
+            if (state.GetCurrentEpoch() < cache.ResolveSigningSpec(state.GenesisValidatorsRoot!).FuluForkEpoch
+                && deposit.Slot > Presets.GenesisSlot && state.Eth1DepositIndex < state.DepositRequestsStartIndex)
                 break;
             // Check if the deposit has been finalized, otherwise stop processing.
 #endif

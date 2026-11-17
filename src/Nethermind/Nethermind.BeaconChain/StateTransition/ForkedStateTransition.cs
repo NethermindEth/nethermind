@@ -107,6 +107,12 @@ public static class ForkedStateTransition
         BeaconChainSpec spec,
         bool validateResult = true,
         bool verifySignatures = true)
+        => Apply(state, signedBlock, cache, pubkeys, notifier, spec, validateResult, verifySignatures, proposerSignatureVerified: false);
+
+    /// <remarks>A verified proposer verdict must authenticate this exact block and signature under its fork domain. Registry bounds and operation signatures remain checked.</remarks>
+    internal static ForkedBeaconState Apply(ForkedBeaconState state, ForkedSignedBeaconBlock signedBlock, EpochCache cache,
+        PubkeyCache pubkeys, INewPayloadNotifier notifier, BeaconChainSpec spec, bool validateResult, bool verifySignatures,
+        bool proposerSignatureVerified)
     {
         // process_slots asserts state.slot < block.slot before any slot is processed, whichever fork the block targets.
         if (state.Slot >= signedBlock.Slot)
@@ -119,8 +125,8 @@ public static class ForkedStateTransition
 
         return (state, targetFork) switch
         {
-            (ForkedBeaconState.OfFulu fulu, BeaconFork.Fulu) => ApplyFulu(fulu, RequireFulu(signedBlock), cache, pubkeys, notifier, spec, validateResult, verifySignatures),
-            (ForkedBeaconState.OfGloas gloas, BeaconFork.Gloas) => ApplyGloas(gloas, RequireGloas(signedBlock), cache, pubkeys, notifier, spec, validateResult, verifySignatures),
+            (ForkedBeaconState.OfFulu fulu, BeaconFork.Fulu) => ApplyFulu(fulu, RequireFulu(signedBlock), cache, pubkeys, notifier, spec, validateResult, verifySignatures, proposerSignatureVerified),
+            (ForkedBeaconState.OfGloas gloas, BeaconFork.Gloas) => ApplyGloas(gloas, RequireGloas(signedBlock), cache, pubkeys, notifier, spec, validateResult, verifySignatures, proposerSignatureVerified),
             (ForkedBeaconState.OfFulu, BeaconFork.Gloas) => throw new BeaconStateException(
                 "State is still Fulu after attempting the boundary crossing; the block's slot is not yet at GloasForkEpoch's boundary but claims fork Gloas"),
             (ForkedBeaconState.OfGloas, BeaconFork.Fulu) => throw new BeaconStateException(
@@ -167,9 +173,10 @@ public static class ForkedStateTransition
         INewPayloadNotifier notifier,
         BeaconChainSpec spec,
         bool validateResult,
-        bool verifySignatures)
+        bool verifySignatures,
+        bool proposerSignatureVerified)
     {
-        StateTransition.Apply(fulu.State, signedBlock, cache, pubkeys, notifier, spec, validateResult, verifySignatures);
+        StateTransition.Apply(fulu.State, signedBlock, cache, pubkeys, notifier, spec, validateResult, verifySignatures, proposerSignatureVerified);
         return fulu;
     }
 
@@ -193,7 +200,8 @@ public static class ForkedStateTransition
         INewPayloadNotifier notifier,
         BeaconChainSpec spec,
         bool validateResult,
-        bool verifySignatures)
+        bool verifySignatures,
+        bool proposerSignatureVerified)
     {
         BeaconStateGloas state = gloas.State;
         BeaconBlockGloas block = signedBlock.Message!;
@@ -204,7 +212,10 @@ public static class ForkedStateTransition
         if (verifySignatures && state.Validators!.Length > pubkeys.Count)
             pubkeys.Extend(state.Validators, pubkeys.Count);
 
-        if (verifySignatures && !GloasBlockProcessing.VerifyProposerSignature(state, signedBlock, pubkeys))
+        if (verifySignatures && block.ProposerIndex >= (ulong)state.Validators!.Length)
+            throw new BeaconStateException($"Block proposer index {block.ProposerIndex} is not a validator index (registry size {state.Validators.Length})") { RejectGossip = true };
+
+        if (verifySignatures && !proposerSignatureVerified && !GloasBlockProcessing.VerifyProposerSignature(state, signedBlock, pubkeys))
             throw new ProposerSignatureException($"Invalid proposer signature for the block at slot {block.Slot}");
 
         GloasBlockProcessing.ProcessBlock(state, block, cache, pubkeys, notifier, spec, verifySignatures);

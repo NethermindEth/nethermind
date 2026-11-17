@@ -267,8 +267,11 @@ public class GloasOperationsTests
         BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
             GloasBlockProcessing.ProcessAttestation(state, attestation, parentSlot: 32, cache, new PubkeyCache(), verifySignature: false))!;
 
-        Assert.That(ex.Message, Does.Contain(expectedMessage));
-        Assert.That(state.CurrentEpochParticipation, Has.All.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ex.Message, Does.Contain(expectedMessage));
+            Assert.That(state.CurrentEpochParticipation, Has.All.EqualTo(0));
+        }
     }
 
     [TestCase("target two epochs back", "not the previous or current epoch")]
@@ -317,12 +320,12 @@ public class GloasOperationsTests
 
         GloasBlockProcessing.ProcessAttestation(state, attestation, parentSlot: 32, cache, pubkeys, verifySignature: true);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(state.BuilderPendingPayments[paymentIndex].Weight, Is.EqualTo(expectedWeight));
             Assert.That(state.BuilderPendingPayments[paymentIndex].Withdrawal!.Amount, Is.EqualTo(5 * Gwei), "weighing the payment must not disturb the payment itself");
             Assert.That(attesters.Select(i => state.CurrentEpochParticipation![i]), Has.All.EqualTo(0b111));
-        });
+        }
 
         // The same participants again set no new flag, so they weigh nothing more.
         GloasBlockProcessing.ProcessAttestation(state, attestation, parentSlot: 32, cache, pubkeys, verifySignature: true);
@@ -343,8 +346,11 @@ public class GloasOperationsTests
         AttestationGloas wrongHead = CommitteeAttestation(state, VoteFor(state, slot: 32, targetEpoch: 1, Hash(0x33)), committees, committeeIndex: 0, sign: false);
         GloasBlockProcessing.ProcessAttestation(state, wrongHead, parentSlot: 32, cache, new PubkeyCache(), verifySignature: false);
         ulong[] attesters = state.GetAttestingIndices(wrongHead, committees);
-        Assert.That(attesters.Select(i => state.CurrentEpochParticipation![i]), Has.All.EqualTo(0b011), "fixture bug: the flags must have been newly set");
-        Assert.That(state.BuilderPendingPayments![paymentIndex].Weight, Is.EqualTo(0ul), "a vote that is not for the slot's own block weighs nothing");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(attesters.Select(i => state.CurrentEpochParticipation![i]), Has.All.EqualTo(0b011), "fixture bug: the flags must have been newly set");
+            Assert.That(state.BuilderPendingPayments![paymentIndex].Weight, Is.EqualTo(0ul), "a vote that is not for the slot's own block weighs nothing");
+        }
 
         // The correct same-slot vote from the same validators sets a new (head) flag, but they had participated already.
         AttestationGloas sameSlot = CommitteeAttestation(state, VoteFor(state, slot: 32, targetEpoch: 1, state.GetBlockRootAtSlot(32)), committees, committeeIndex: 0, sign: false);
@@ -396,8 +402,11 @@ public class GloasOperationsTests
         BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
             GloasBlockProcessing.ProcessAttestation(state, attestation, parentSlot: 0, cache, pubkeys, verifySignature: true))!;
 
-        Assert.That(ex.Message, Does.Contain("Invalid indexed attestation"));
-        Assert.That(state.CurrentEpochParticipation, Has.All.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ex.Message, Does.Contain("Invalid indexed attestation"));
+            Assert.That(state.CurrentEpochParticipation, Has.All.EqualTo(0));
+        }
     }
 
     private static BeaconStateGloas StateProcessingBlock33(out PubkeyCache pubkeys, out Hash256 parentRoot)

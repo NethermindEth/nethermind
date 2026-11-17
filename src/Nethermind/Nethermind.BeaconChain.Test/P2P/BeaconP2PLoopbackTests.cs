@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections;
-using System.Collections.Specialized;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using Autofac;
@@ -64,11 +64,7 @@ public class BeaconP2PLoopbackTests
         await server.StartAsync(token);
         await client.StartAsync(token);
         LocalPeer serverPeer = server.LocalPeerForTest!;
-        TaskCompletionSource reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        client.LocalPeerForTest!.Sessions.CollectionChanged += (_, change) =>
-        {
-            if (change.Action == NotifyCollectionChangedAction.Add) reached.TrySetResult();
-        };
+        LocalPeer clientPeer = client.LocalPeerForTest!;
         Multiaddress address = PeerSessionNodes.LoopbackAddress(server);
         using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
         Task<ISession> dial = client.DialPeerAsync(address, caller.Token);
@@ -93,8 +89,6 @@ public class BeaconP2PLoopbackTests
             }
         }
 
-        await reached.Task.WaitAsync(TimeSpan.FromSeconds(15), token);
-
         // The library ends a dial within 15 s, and a remote that loses a connection mid-handshake drops it up to 30 s later;
         // a session left open was still open after 40 s.
         using CancellationTokenSource bounded = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -104,7 +98,11 @@ public class BeaconP2PLoopbackTests
             await Task.Delay(50, CancellationToken.None);
         }
 
-        Assert.That(serverPeer.Sessions, Is.Empty, "the dial finished after disposal and its session stayed open");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(clientPeer.Sessions, Is.Empty, "disposal prevents a late dial from admitting a session");
+            Assert.That(serverPeer.Sessions, Is.Empty, "the dial finished after disposal and its session stayed open");
+        }
     }
 
     [Test]
@@ -228,9 +226,12 @@ public class BeaconP2PLoopbackTests
                 {
                     peer.Sessions.Add(candidate);
                     reader.Start();
-                    Assert.That(SpinWait.SpinUntil(() => lookup.Task.IsCompleted || (reader.ThreadState & ThreadState.WaitSleepJoin) != 0,
-                        TimeSpan.FromSeconds(5)), Is.True, "the lookup thread did not run");
-                    Assert.That(lookup.Task.IsCompleted, Is.False, "lookup must wait for the library's session lock");
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(SpinWait.SpinUntil(() => lookup.Task.IsCompleted || (reader.ThreadState & System.Threading.ThreadState.WaitSleepJoin) != 0,
+                                            TimeSpan.FromSeconds(5)), Is.True, "the lookup thread did not run");
+                        Assert.That(lookup.Task.IsCompleted, Is.False, "lookup must wait for the library's session lock");
+                    }
                     peer.Sessions.Remove(candidate);
                 }
 
@@ -259,8 +260,11 @@ public class BeaconP2PLoopbackTests
         BeaconP2P p2p = container.Resolve<BeaconP2P>();
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(20));
         await Assert.CatchAsync<Exception>(() => p2p.StartAsync(timeout.Token));
-        Assert.That(p2p.ListenAddresses, Is.Empty);
-        Assert.That(p2p.LocalPeerForTest, Is.Null, "a failed bind disposes the peer before retrying");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(p2p.ListenAddresses, Is.Empty);
+            Assert.That(p2p.LocalPeerForTest, Is.Null, "a failed bind disposes the peer before retrying");
+        }
         occupied.Stop();
         await p2p.StartAsync(timeout.Token);
 
@@ -281,14 +285,15 @@ public class BeaconP2PLoopbackTests
 
         // The empty store answers ResourceUnavailable, but only after the request is charged.
         List<byte> codes = [];
+        Stopwatch elapsed = Stopwatch.StartNew();
         for (int i = 0; i < clients.Length; i++)
         {
             codes.Add((await Assert.CatchAsync<Eth2ReqRespException>(() => clients[i].P2P.RequestBlocksByRangeAsync(sessions[i], AnchorSlot, 128, token)))!.ResponseCode);
         }
 
         using IDisposable scope = Assert.EnterMultipleScope();
-        Assert.That(codes[..^1], Is.All.EqualTo(ReqRespFraming.ResponseCode.ResourceUnavailable), "honest nodes behind one address are served after the first spent a peer's budget");
-        Assert.That(codes[^1], Is.EqualTo(ReqRespFraming.ResponseCode.RateLimited), "every key connects from 127.0.0.1, so one more has no budget of its own");
+        Assert.That(codes, Is.All.EqualTo(ReqRespFraming.ResponseCode.ResourceUnavailable), "requests exceeding the shared host budget are served after refill");
+        Assert.That(elapsed.Elapsed, Is.GreaterThanOrEqualTo(TimeSpan.FromSeconds(2)), "five peer budgets require refilling the four-peer host bucket");
     }
 
     [Test]
@@ -342,9 +347,12 @@ public class BeaconP2PLoopbackTests
         Assert.That(blocks.Select(b => b.ComputeMessageRoot()), Is.EqualTo(chainRoots), "blocks by range roots");
 
         IReadOnlyList<ForkedSignedBeaconBlock> byRoot = await client.P2P.RequestBlocksByRootAsync(toServer, [chainRoots[1]], token);
-        Assert.That(byRoot.Select(b => b.ComputeMessageRoot()), Is.EqualTo(new[] { chainRoots[1] }), "blocks by root");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(byRoot.Select(b => b.ComputeMessageRoot()), Is.EqualTo(new[] { chainRoots[1] }), "blocks by root");
 
-        Assert.That(await client.P2P.PingAsync(toServer, token), Is.EqualTo(42ul), "ping returns the server metadata seq");
+            Assert.That(await client.P2P.PingAsync(toServer, token), Is.EqualTo(42ul), "ping returns the server metadata seq");
+        }
 
         MetaDataV3 metadata = await client.P2P.RequestMetaDataAsync(toServer, token);
         using (Assert.EnterMultipleScope())
@@ -403,14 +411,20 @@ public class BeaconP2PLoopbackTests
 
         IReadOnlyList<DataColumnSidecarGloas> byRoot = await peer.RequestGloasDataColumnSidecarsByRootAsync(
             [new DataColumnsByRootIdentifier { BlockRoot = heldRoot, Columns = [7, 5, 3] }, new DataColumnsByRootIdentifier { BlockRoot = pendingRoot, Columns = [3] }], token);
-        Assert.That(byRoot.Select(static s => (s.BeaconBlockRoot, s.Index, s.Slot)), Is.EqualTo(new[] { (heldRoot, 7UL, gloasSlot), (heldRoot, 3UL, gloasSlot) }),
-            "served verified Gloas columns in request order under the Gloas digest, never the pending candidate");
-        Assert.That(PeerManager.MessagesSentForTest(peer), Is.EqualTo(messagesSent + 1), "the by-root ask counts as a message sent");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(byRoot.Select(static s => (s.BeaconBlockRoot, s.Index, s.Slot)), Is.EqualTo(new[] { (heldRoot, 7UL, gloasSlot), (heldRoot, 3UL, gloasSlot) }),
+                    "served verified Gloas columns in request order under the Gloas digest, never the pending candidate");
+            Assert.That(PeerManager.MessagesSentForTest(peer), Is.EqualTo(messagesSent + 1), "the by-root ask counts as a message sent");
+        }
 
         IReadOnlyList<DataColumnSidecarGloas> byRange = await peer.RequestGloasDataColumnSidecarsByRangeAsync(gloasSlot, 1, [3], token);
-        Assert.That(byRange.Select(static s => (s.BeaconBlockRoot, s.Index, s.Slot)), Is.EqualTo(new[] { (heldRoot, 3UL, gloasSlot) }),
-            "served the canonical block's verified Gloas column by range, read in the Gloas shape");
-        Assert.That(PeerManager.MessagesSentForTest(peer), Is.EqualTo(messagesSent + 2), "the by-range ask counts as a message sent");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(byRange.Select(static s => (s.BeaconBlockRoot, s.Index, s.Slot)), Is.EqualTo(new[] { (heldRoot, 3UL, gloasSlot) }),
+                    "served the canonical block's verified Gloas column by range, read in the Gloas shape");
+            Assert.That(PeerManager.MessagesSentForTest(peer), Is.EqualTo(messagesSent + 2), "the by-range ask counts as a message sent");
+        }
 
         ISession toServer = await PeerSessionNodes.DialAsync(client.P2P, server.P2P, token);
         IReadOnlyList<DataColumnSidecar> fuluByRoot = await client.P2P.RequestDataColumnSidecarsByRootAsync(toServer, [new DataColumnsByRootIdentifier { BlockRoot = fuluRoot, Columns = [3] }], token);
@@ -418,8 +432,11 @@ public class BeaconP2PLoopbackTests
 
         using CancellationTokenSource quick = CancellationTokenSource.CreateLinkedTokenSource(token);
         quick.CancelAfter(TimeSpan.FromSeconds(5));
-        Assert.That(await peer.RequestGloasDataColumnSidecarsByRootAsync([], quick.Token), Is.Empty, "an empty ask returns at once, not after the response timeout");
-        Assert.That(await client.P2P.RequestDataColumnSidecarsByRootAsync(toServer, [], quick.Token), Is.Empty, "an empty ask returns at once, not after the response timeout");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await peer.RequestGloasDataColumnSidecarsByRootAsync([], quick.Token), Is.Empty, "an empty ask returns at once, not after the response timeout");
+            Assert.That(await client.P2P.RequestDataColumnSidecarsByRootAsync(toServer, [], quick.Token), Is.Empty, "an empty ask returns at once, not after the response timeout");
+        }
     }
 
     [Test]
@@ -435,8 +452,11 @@ public class BeaconP2PLoopbackTests
 
         using CancellationTokenSource quick = CancellationTokenSource.CreateLinkedTokenSource(token);
         quick.CancelAfter(TimeSpan.FromSeconds(5));
-        Assert.That(await client.P2P.RequestExecutionPayloadEnvelopesByRootAsync(toServer, [], quick.Token), Is.Empty, "envelopes by root");
-        Assert.That(await client.P2P.RequestBlocksByRootAsync(toServer, [], quick.Token), Is.Empty, "blocks by root");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await client.P2P.RequestExecutionPayloadEnvelopesByRootAsync(toServer, [], quick.Token), Is.Empty, "envelopes by root");
+            Assert.That(await client.P2P.RequestBlocksByRootAsync(toServer, [], quick.Token), Is.Empty, "blocks by root");
+        }
     }
 
     public enum ColumnDial

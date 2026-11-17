@@ -52,7 +52,7 @@ public class ColumnGossipRouterSubscriptionTests
     }
 
     [Test]
-    public void Reconstructed_column_is_published_only_on_its_active_digest([Values] bool retired)
+    public async Task Reconstructed_column_is_published_only_on_its_active_digest([Values] bool retired)
     {
         const int required = Eip7594DasConstants.RequiredColumnsForReconstruction;
         using IContainer container = BuildContainer();
@@ -78,6 +78,8 @@ public class ColumnGossipRouterSubscriptionTests
         {
             router.Handle(column, gloasTopic: false, Snappy.CompressToArray(DataColumnSidecar.Encode(DataColumnSidecarTestFixture.BuildValidSidecar(column, Bpo2Slot))));
         }
+
+        await router.WhenReconstructed().WaitAsync(TimeSpan.FromSeconds(30));
 
         using System.IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(container.Resolve<DataColumnSidecarPool>().TryGet(blockRoot, required, out _), Is.True, "the missing column was reconstructed");

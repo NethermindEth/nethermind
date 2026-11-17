@@ -40,6 +40,7 @@ public class StaticCodeCacheTests
     [TestCase(1)]
     [TestCase(StaticCodeCache.SmallCodeSize + 1)]
     [TestCase(StaticCodeCache.MediumCodeSize + 1)]
+    [TestCase(StaticCodeCache.LargeCodeSize)]
     public void Code_of_every_size_is_found_and_cleared(int codeLength)
     {
         StaticCodeCache cache = new(smallCapacity: 64, mediumCapacity: 64, largeCapacity: 64);
@@ -50,6 +51,21 @@ public class StaticCodeCacheTests
         Assert.That(cache.Get(in hash), Is.SameAs(code));
         cache.Clear();
         Assert.That(cache.Get(in hash), Is.Null);
+    }
+
+    [Test]
+    public void Code_above_the_largest_code_size_limit_is_not_kept()
+    {
+        StaticCodeCache cache = new(smallCapacity: 64, mediumCapacity: 64, largeCapacity: 64);
+        ValueHash256 hash = Hash(0);
+        CodeInfo code = new(new byte[StaticCodeCache.LargeCodeSize + 1]);
+        cache.Set(in hash, code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.Get(in hash), Is.Null);
+            Assert.That(code.CodeHash, Is.EqualTo(hash));
+        }
     }
 
     private static void Flood(StaticCodeCache cache, int codeLength, int count)

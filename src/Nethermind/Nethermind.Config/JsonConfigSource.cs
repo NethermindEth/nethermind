@@ -17,12 +17,18 @@ public class JsonConfigSource : IConfigSource
 
     public JsonConfigSource(string configFilePath) => LoadJsonConfig(configFilePath);
 
+    public JsonConfigSource(Stream stream)
+    {
+        using StreamReader reader = new(stream, leaveOpen: true);
+        ApplyJsonConfig(reader.ReadToEnd());
+    }
+
     private void ApplyJsonConfig(string jsonContent)
     {
         try
         {
             using JsonDocument json = JsonDocument.Parse(jsonContent);
-            HashSet<string> loadedModules = new(StringComparer.InvariantCultureIgnoreCase);
+            HashSet<string> loadedModules = [with(StringComparer.InvariantCultureIgnoreCase)];
             foreach (JsonProperty moduleEntry in json.RootElement.EnumerateObject())
             {
                 if (moduleEntry.Name == SchemaKey)
@@ -82,7 +88,7 @@ public class JsonConfigSource : IConfigSource
 
     private void LoadModule(string moduleName, JsonElement configItems)
     {
-        Dictionary<string, string> itemsDict = new(StringComparer.InvariantCultureIgnoreCase);
+        Dictionary<string, string> itemsDict = [with(StringComparer.InvariantCultureIgnoreCase)];
 
         foreach (JsonProperty configItem in configItems.EnumerateObject())
         {
@@ -107,6 +113,10 @@ public class JsonConfigSource : IConfigSource
                 {
                     itemsDict[key] = "false";
                 }
+                else if (value.ValueKind == JsonValueKind.Null)
+                {
+                    itemsDict[key] = "null";
+                }
                 else
                 {
                     itemsDict[key] = configItem.Value.ToString();
@@ -121,16 +131,16 @@ public class JsonConfigSource : IConfigSource
         ApplyConfigValues(moduleName, itemsDict);
     }
 
-    private readonly Dictionary<string, Dictionary<string, string>> _values = new(StringComparer.InvariantCultureIgnoreCase);
+    private readonly Dictionary<string, Dictionary<string, string>> _values = [with(StringComparer.InvariantCultureIgnoreCase)];
 
-    private readonly Dictionary<string, Dictionary<string, object>> _parsedValues = new(StringComparer.InvariantCultureIgnoreCase);
+    private readonly Dictionary<string, Dictionary<string, object>> _parsedValues = [with(StringComparer.InvariantCultureIgnoreCase)];
 
     private void ApplyConfigValues(string configModule, Dictionary<string, string> items)
     {
         configModule = NormalizeModuleName(configModule);
 
         _values[configModule] = items;
-        _parsedValues[configModule] = new Dictionary<string, object>(StringComparer.InvariantCultureIgnoreCase);
+        _parsedValues[configModule] = [with(StringComparer.InvariantCultureIgnoreCase)];
     }
 
     private static string NormalizeModuleName(string configModule) =>
@@ -173,9 +183,10 @@ public class JsonConfigSource : IConfigSource
 
     private string ParseNumber(JsonElement value)
     {
-        if (value.TryGetInt64(out long result))
+        string rawText = value.GetRawText();
+        if (rawText.AsSpan().IndexOfAny('.', 'e', 'E') < 0)
         {
-            return result.ToString();
+            return rawText;
         }
         else if (value.TryGetDouble(out double doubleResult))
         {
@@ -183,7 +194,7 @@ public class JsonConfigSource : IConfigSource
         }
         else
         {
-            throw new System.Configuration.ConfigurationErrorsException($"Failed to parse the JSON number '{value}' as either Int64 or Double.");
+            throw new System.Configuration.ConfigurationErrorsException($"Failed to parse the JSON number '{value}' as Double.");
         }
     }
 }

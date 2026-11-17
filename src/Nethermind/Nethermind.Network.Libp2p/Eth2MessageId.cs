@@ -5,7 +5,6 @@ using System;
 using System.Buffers;
 using System.Buffers.Binary;
 using System.IO;
-using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
 using Google.Protobuf;
@@ -51,32 +50,8 @@ public static class Eth2MessageId
     private static ReadOnlySpan<byte> MessageDomainValidSnappy => [0x01, 0x00, 0x00, 0x00];
     private static ReadOnlySpan<byte> MessageDomainInvalidSnappy => [0x00, 0x00, 0x00, 0x00];
 
-    // One pair per payload: a payload instance belongs to one message, so a second topic only replaces it and never grows the table.
-    private static readonly ConditionalWeakTable<ByteString, MemoizedId> MessageIds = [];
-
-    private sealed record MemoizedId(string Topic, byte[] Id);
-
-    /// <summary>Computes an id once per immutable payload, including when pubsub clones the message.</summary>
-    /// <remarks>An empty payload is not memoized: protobuf hands every message without data the shared <see cref="ByteString.Empty"/>, which is never collected.</remarks>
-    public static byte[] Compute(string topic, ByteString data)
-    {
-        if (data.IsEmpty)
-        {
-            return Compute(topic, data.Span);
-        }
-
-        if (MessageIds.TryGetValue(data, out MemoizedId? memo) && string.Equals(memo.Topic, topic, StringComparison.Ordinal))
-        {
-            return memo.Id;
-        }
-
-        byte[] id = Compute(topic, data.Span);
-        MessageIds.AddOrUpdate(data, new MemoizedId(topic, id));
-        return id;
-    }
-
-    /// <summary>How many topic ids are memoized for <paramref name="data"/>; internal so a test can bound the memo.</summary>
-    internal static int MemoizedTopicCount(ByteString data) => MessageIds.TryGetValue(data, out _) ? 1 : 0;
+    /// <summary>Computes the topic-specific id of an immutable protobuf payload.</summary>
+    public static byte[] Compute(string topic, ByteString data) => Compute(topic, data.Span);
 
     public static byte[] Compute(string topic, ReadOnlySpan<byte> data)
     {

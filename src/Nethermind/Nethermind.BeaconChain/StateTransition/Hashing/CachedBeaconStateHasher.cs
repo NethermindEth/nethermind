@@ -312,7 +312,10 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
             int count = items?.Length ?? 0;
             bool shrunk = count < _count;
             if (shrunk)
+            {
+                Array.Clear(_snapshot, count, _count - count);
                 _count = 0;
+            }
             _tree.SetLeafCount(count);
             if (_snapshot.Length < count)
                 Array.Resize(ref _snapshot, Math.Max(count, _snapshot.Length * 2));

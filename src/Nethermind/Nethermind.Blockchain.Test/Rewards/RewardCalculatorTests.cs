@@ -27,8 +27,11 @@ public class RewardCalculatorTests
         RewardCalculator calculator = new(MainnetSpecProvider.Instance);
         BlockReward[] rewards = calculator.CalculateRewards(block);
 
-        Assert.That(rewards.Length, Is.EqualTo(1 + uncleCount));
-        Assert.That((long)rewards[0].Value, Is.EqualTo(expectedMinerReward), "miner");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rewards.Length, Is.EqualTo(1 + uncleCount));
+            Assert.That((long)rewards[0].Value, Is.EqualTo(expectedMinerReward), "miner");
+        }
         for (int i = 1; i < rewards.Length; i++)
             Assert.That((long)rewards[i].Value, Is.EqualTo(expectedUncleReward), $"uncle{i}");
     }
@@ -48,9 +51,12 @@ public class RewardCalculatorTests
         RewardCalculator calculator = new(MainnetSpecProvider.Instance);
         BlockReward[] rewards = calculator.CalculateRewards(block);
 
-        Assert.That(rewards.Length, Is.EqualTo(3));
-        Assert.That((long)rewards[0].Value, Is.EqualTo(expectedMinerReward), "miner");
-        Assert.That((long)rewards[1].Value, Is.EqualTo(expectedUncleReward), "uncle1");
-        Assert.That((long)rewards[2].Value, Is.EqualTo(expectedUncleReward), "uncle2");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rewards.Length, Is.EqualTo(3));
+            Assert.That((long)rewards[0].Value, Is.EqualTo(expectedMinerReward), "miner");
+            Assert.That((long)rewards[1].Value, Is.EqualTo(expectedUncleReward), "uncle1");
+            Assert.That((long)rewards[2].Value, Is.EqualTo(expectedUncleReward), "uncle2");
+        }
     }
 }

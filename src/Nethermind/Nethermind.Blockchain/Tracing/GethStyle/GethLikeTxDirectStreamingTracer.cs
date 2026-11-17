@@ -30,7 +30,7 @@ namespace Nethermind.Blockchain.Tracing.GethStyle;
 /// a large memory or storage dump, so a slow reader holds execution back instead of letting the response
 /// buffer grow with the size of each entry.
 /// </remarks>
-public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOperationGasCost
+public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOperationGasCost, ITraceOperationStart
 {
     internal const int DefaultFlushThresholdBytes = 1024 * 1024;
     private const int EvmWordSize = EvmPooledMemory.WordSize;
@@ -53,6 +53,9 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
     private string? _pendingError;
     private long _pendingRefund;
     private bool _gasCostAlreadySet;
+    private bool _gasCostReported;
+    private ulong? _calculatedGasCost;
+    private string? _stackFailure;
     private bool _pendingStorageTouched;
 
     private UInt256[]? _stackBuffer;
@@ -64,11 +67,13 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
     private byte[]? _returnDataBuffer;
     private int _returnDataByteCount;
 
-    private readonly PooledDictionary<AddressAsKey, PooledDictionary<UInt256, UInt256>> _storageByAddress = new(InitialStorageMapCapacity);
+    private readonly PooledDictionary<AddressAsKey, PooledDictionary<UInt256, UInt256>> _storageByAddress = [with(InitialStorageMapCapacity)];
     private readonly Stack<PooledDictionary<UInt256, UInt256>> _storageMapPool = new();
     private PooledDictionary<UInt256, UInt256>? _pendingStorageMap;
 
     private readonly long _limit;
+    private readonly long _stepLimit;
+    private long _capturedSteps;
     private long _resultSize;
     private long _flushedBytes;
     private bool _disposed;
@@ -88,6 +93,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
 
         _transaction = transaction;
         _limit = options.Limit;
+        _stepLimit = options.OpcodeStepLimit;
         _writer = writer;
         _pipeWriter = pipeWriter;
         _cancellationToken = cancellationToken;
@@ -111,6 +117,9 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
         _pendingError = null;
         _pendingRefund = 0;
         _gasCostAlreadySet = false;
+        _gasCostReported = false;
+        _calculatedGasCost = null;
+        _stackFailure = null;
         _pendingStorageTouched = false;
         ResetRefund();
         _stackCount = 0;
@@ -126,6 +135,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
         _storageByAddress.Dispose();
         _pendingStorageMap = null;
         _resultSize = 0;
+        _capturedSteps = 0;
         ResetTrace();
     }
 
@@ -138,7 +148,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
     public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
         FinalizePendingOpcode();
-        if (_limit != 0 && _resultSize > _limit) return;
+        if ((_limit != 0 && _resultSize > _limit) || (_stepLimit > 0 && _capturedSteps >= _stepLimit)) return;
 
         _hasPendingOpcode = true;
         _pendingPc = pc;
@@ -149,6 +159,9 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
         _pendingError = null;
         _pendingRefund = CurrentRefund;
         _gasCostAlreadySet = false;
+        _gasCostReported = false;
+        _calculatedGasCost = null;
+        _stackFailure = null;
         _pendingStorageTouched = false;
         _pendingStorageMap = null;
         _stackCount = 0;
@@ -171,8 +184,19 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
         {
             _pendingGasCost = gasCost;
             _gasCostAlreadySet = true;
+            _gasCostReported = true;
         }
     }
+
+    /// <inheritdoc/>
+    public void ReportOperationStart(ulong gasCost, int stackHead, int stackInputs, int stackGrowth)
+    {
+        _calculatedGasCost = gasCost;
+        _stackFailure = GetStackFailure(stackHead, stackInputs, stackGrowth);
+    }
+
+    /// <inheritdoc/>
+    public void ReportOperationReady(ulong gasCost, string? error) => _calculatedGasCost = gasCost;
 
     /// <inheritdoc/>
     public override void ReportActionErrorDetails(string error)
@@ -190,8 +214,12 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
             return;
         }
         if (error == EvmExceptionType.BadInstruction) _pendingGasCost = 0;
+        // As in Geth, an opcode that runs out of gas reports the cost it could not pay rather than the gas it had.
+        if (error == EvmExceptionType.OutOfGas && !_gasCostReported && _calculatedGasCost is ulong gasCost)
+            _pendingGasCost = gasCost;
         if (error == EvmExceptionType.StaticCallViolation && _pendingOpcode == Instruction.SSTORE)
             _pendingError = "out of gas: write protection";
+        if (error == EvmExceptionType.OutOfGas) _pendingError ??= _stackFailure;
         if (!IsExecutionFault(error)) _pendingError ??= GetErrorDescription(error);
     }
 
@@ -251,7 +279,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
         {
             contractStorage = _storageMapPool.TryPop(out PooledDictionary<UInt256, UInt256>? pooled)
                 ? pooled
-                : new PooledDictionary<UInt256, UInt256>(InitialStorageMapCapacity);
+                : [with(InitialStorageMapCapacity)];
             _storageByAddress[address] = contractStorage;
         }
         contractStorage[storageIndex] = new UInt256(value, isBigEndian: true);
@@ -339,6 +367,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
         if (IsTracingReturnData && _returnDataByteCount > 0) WriteReturnDataValue();
 
         _writer.WriteEndObject();
+        if (_stepLimit > 0) _capturedSteps++;
         if (_limit > 0)
             _resultSize += _writer.BytesCommitted + _writer.BytesPending - entryStart;
     }

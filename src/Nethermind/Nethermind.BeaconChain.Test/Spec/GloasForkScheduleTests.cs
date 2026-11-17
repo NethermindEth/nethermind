@@ -55,13 +55,13 @@ public class GloasForkScheduleTests
     }
 
     [Test]
-    public void ForkAtEpoch_on_sepolia_selects_gloas_at_its_confirmed_epoch_and_fulu_immediately_before_it() =>
-        Assert.Multiple(() =>
-        {
-            Assert.That(BeaconChainSpec.Sepolia.ForkAtEpoch(353024), Is.EqualTo(BeaconFork.Gloas),
-                "Sepolia's confirmed GLOAS_FORK_EPOCH (ethereum/pm#2205, lodestar#10119)");
-            Assert.That(BeaconChainSpec.Sepolia.ForkAtEpoch(353023), Is.EqualTo(BeaconFork.Fulu));
-        });
+    public void ForkAtEpoch_on_sepolia_selects_gloas_at_its_confirmed_epoch_and_fulu_immediately_before_it()
+    {
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(BeaconChainSpec.Sepolia.ForkAtEpoch(353024), Is.EqualTo(BeaconFork.Gloas),
+            "Sepolia's confirmed GLOAS_FORK_EPOCH (ethereum/pm#2205, lodestar#10119)");
+        Assert.That(BeaconChainSpec.Sepolia.ForkAtEpoch(353023), Is.EqualTo(BeaconFork.Fulu));
+    }
 
     // Expected digest reproduced independently in Python: sha256(fork_version ++ 28 zero bytes ++
     // genesis_validators_root)[:4], XOR-masked per EIP-7892 with sha256(le64(419072) ++ le64(21))[:4]
@@ -100,29 +100,43 @@ public class GloasForkScheduleTests
 
     // ForkAtEpoch reads scalar epochs; VersionForEpoch reads Forks. They must agree or signatures and advertised digests diverge.
     [TestCaseSource(nameof(ShippedSpecs))]
-    public void Scalar_fork_epochs_match_the_fork_schedule(string name, BeaconChainSpec spec) =>
-        Assert.Multiple(() =>
-        {
-            Assert.That(spec.Forks.Any(f => f.Epoch == spec.ElectraForkEpoch), Is.True,
-                $"{name}: no Forks entry at ElectraForkEpoch {spec.ElectraForkEpoch}");
-            Assert.That(spec.Forks.Any(f => f.Epoch == spec.FuluForkEpoch), Is.True,
-                $"{name}: no Forks entry at FuluForkEpoch {spec.FuluForkEpoch}");
+    public void Scalar_fork_epochs_match_the_fork_schedule(string name, BeaconChainSpec spec)
+    {
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(spec.Forks.Any(f => f.Epoch == spec.ElectraForkEpoch), Is.True,
+            $"{name}: no Forks entry at ElectraForkEpoch {spec.ElectraForkEpoch}");
+        Assert.That(spec.Forks.Any(f => f.Epoch == spec.FuluForkEpoch), Is.True,
+            $"{name}: no Forks entry at FuluForkEpoch {spec.FuluForkEpoch}");
 
-            if (spec.GloasForkEpoch != Presets.FarFutureEpoch)
-            {
-                Assert.That(spec.Forks.Any(f => f.Epoch == spec.GloasForkEpoch), Is.True,
-                    $"{name}: no Forks entry at GloasForkEpoch {spec.GloasForkEpoch}");
-                Assert.That(spec.GloasForkVersion,
-                    Is.EqualTo(spec.Forks.Single(f => f.Epoch == spec.GloasForkEpoch).Version),
-                    $"{name}: GloasForkVersion disagrees with the Forks entry at GloasForkEpoch");
-            }
-        });
+        if (spec.GloasForkEpoch != Presets.FarFutureEpoch)
+        {
+            Assert.That(spec.Forks.Any(f => f.Epoch == spec.GloasForkEpoch), Is.True,
+                $"{name}: no Forks entry at GloasForkEpoch {spec.GloasForkEpoch}");
+            Assert.That(spec.GloasForkVersion,
+                Is.EqualTo(spec.Forks.Single(f => f.Epoch == spec.GloasForkEpoch).Version),
+                $"{name}: GloasForkVersion disagrees with the Forks entry at GloasForkEpoch");
+        }
+    }
 
     private static IEnumerable<object[]> ShippedSpecs() =>
     [
         ["Mainnet", BeaconChainSpec.Mainnet],
         ["Hoodi", BeaconChainSpec.Hoodi],
         ["Sepolia", BeaconChainSpec.Sepolia],
+        ["Gnosis", BeaconChainSpec.Gnosis],
+        ["Chiado", BeaconChainSpec.Chiado],
         ["SyntheticGloas", SyntheticGloasSpec()],
     ];
+
+    [TestCase(false, "7d5aab40", "3237dab6")]
+    [TestCase(true, "ff15abe1", "25f9148e")]
+    public void Gnosis_network_fork_digests_match_published_configurations(bool chiado, string electra, string fulu)
+    {
+        BeaconChainSpec spec = chiado ? BeaconChainSpec.Chiado : BeaconChainSpec.Gnosis;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ForkDigest.Compute(spec, spec.ElectraForkEpoch), Is.EqualTo(Bytes.FromHexString(electra)));
+            Assert.That(ForkDigest.Compute(spec, spec.FuluForkEpoch), Is.EqualTo(Bytes.FromHexString(fulu)));
+        }
+    }
 }

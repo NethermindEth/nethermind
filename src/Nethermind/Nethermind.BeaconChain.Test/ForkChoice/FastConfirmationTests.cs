@@ -35,6 +35,34 @@ public class FastConfirmationTests
         Assert.That(rule.ConfirmedRoot, Is.EqualTo(previousEpoch ? GetRoot(2) : finalized.Root));
     }
 
+    [Test]
+    public void A_current_epoch_vote_on_a_pruned_orphan_supplies_no_checkpoint_support()
+    {
+        BeaconChainSpec spec = BeaconChainSpec.Mainnet with { SlotsPerEpoch = Presets.SlotsPerEpoch };
+        CheckpointRef initial = new(0, GetRoot(1));
+        CheckpointRef finalized = new(1, GetRoot(3));
+        ForkChoiceStore store = new(spec.SlotsPerEpoch, spec.SlotsPerEpoch * 3 - 1, finalized, finalized);
+        ProtoArrayForkChoice tree = new(store.CurrentSlot, 0, Hash256.Zero, initial, initial, ExecutionStatus.Valid, initial.Root)
+        {
+            PruneThreshold = 0,
+        };
+        Add(2, 1, spec.SlotsPerEpoch - 1);
+        Add(3, 2, spec.SlotsPerEpoch);
+        Add(5, 2, spec.SlotsPerEpoch * 2 + 1);
+        Add(4, 3, spec.SlotsPerEpoch * 2 + 1);
+        tree.ProcessAttestation(0, GetRoot(5), 2);
+        tree.MaybePrune(finalized.Root);
+        Assert.That(tree.GetParentRoot(GetRoot(5)), Is.Null, "fixture: the competing block lost its parent");
+        ForkedBeaconState source = State(spec.SlotsPerEpoch, activation: false, laterEpoch: false);
+        FastConfirmation rule = new(spec, store, tree, new HashSet<ulong>(), _ => source, _ => source, (_, _) => source);
+
+        Assert.That(() => rule.OnSlot(GetRoot(4)), Throws.Nothing);
+        Assert.That(rule.ConfirmedRoot, Is.EqualTo(finalized.Root));
+
+        void Add(ulong root, ulong parent, ulong slot) => tree.ProcessBlock(new ProtoBlock(slot, GetRoot(root), GetRoot(parent),
+            Hash256.Zero, finalized, finalized, ExecutionStatus.Valid, GetRoot(root), finalized, finalized), store.CurrentSlot, initial, initial);
+    }
+
     /// <remarks>
     /// 10 votes of 32 ETH and one of 1,317 ETH score 1,637 ETH. The safety threshold is about 1,636.35 ETH when the proposer score leaves
     /// the 8 slashed validators out (<c>calculate_committee_fraction</c>), and about 1,637.95 ETH when it counts them.

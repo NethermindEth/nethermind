@@ -5,7 +5,6 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.IO;
-using Google.Protobuf;
 using Microsoft.Extensions.DependencyInjection;
 using Multiformats.Address;
 using Nethermind.BeaconChain.P2P;
@@ -24,7 +23,6 @@ using Nethermind.Libp2p.Core.Dto;
 using Nethermind.Network.Libp2p;
 using NSubstitute;
 using NUnit.Framework.Constraints;
-using Libp2pPublicKey = Nethermind.Libp2p.Core.Dto.PublicKey;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
@@ -172,14 +170,15 @@ public class ReqRespLimitsTests
 
     [Test]
     [CancelAfter(10000)]
-    public async Task A_rate_limited_request_is_recorded_as_a_limit_not_as_an_invalid_message([Values] bool blocksByHead, CancellationToken token)
+    public async Task A_rate_limited_request_waits_for_refill_without_an_error_chunk([Values] bool blocksByHead, CancellationToken token)
     {
+        RefillTime time = new();
         string id;
         Func<Task<byte?>> send;
         int servedBeforeTheLimit;
         if (blocksByHead)
         {
-            BeaconBlocksByHeadProtocolV1 protocol = new(Spec, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>())) { QuotaTime = new FixedTime() };
+            BeaconBlocksByHeadProtocolV1 protocol = new(Spec, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>())) { QuotaTime = time };
             byte[] request = new byte[40];
             BinaryPrimitives.WriteUInt64LittleEndian(request.AsSpan(32), 128);
             (id, servedBeforeTheLimit) = (protocol.Id, 1);
@@ -187,7 +186,7 @@ public class ReqRespLimitsTests
         }
         else
         {
-            Eth2PingProtocol protocol = new(new LocalMetadataSource()) { QuotaTime = new FixedTime() };
+            Eth2PingProtocol protocol = new(new LocalMetadataSource()) { QuotaTime = time };
             ISessionContext context = NewPeerContext();
             (id, servedBeforeTheLimit) = (protocol.Id, 32);
             send = () => PingAsync(protocol, context, token);
@@ -196,12 +195,16 @@ public class ReqRespLimitsTests
         for (int i = 0; i < servedBeforeTheLimit; i++) await send();
         long invalidBefore = FailureCount(id, ReqRespFailureReason.InvalidMessage);
         long limitBefore = FailureCount(id, ReqRespFailureReason.LimitExceeded);
-        byte? refused = await send();
+        Task<byte?> waiting = send();
+        Action refill = await time.Waiting.Task.WaitAsync(token);
+        Assert.That(waiting.IsCompleted, Is.False);
+        refill();
+        byte? result = await waiting;
 
         using IDisposable scope = Assert.EnterMultipleScope();
-        Assert.That(refused, Is.EqualTo(ReqRespFraming.ResponseCode.RateLimited));
+        Assert.That(result, blocksByHead ? Is.Null : Is.EqualTo(ReqRespFraming.ResponseCode.Success));
         Assert.That(FailureCount(id, ReqRespFailureReason.InvalidMessage) - invalidBefore, Is.Zero, "a request over budget is well formed");
-        Assert.That(FailureCount(id, ReqRespFailureReason.LimitExceeded) - limitBefore, Is.EqualTo(1), "the refusal is a cap this node enforces");
+        Assert.That(FailureCount(id, ReqRespFailureReason.LimitExceeded) - limitBefore, Is.Zero, "waiting is not an error");
     }
 
     private static async Task<byte?> PingAsync(Eth2PingProtocol protocol, ISessionContext context, CancellationToken token)
@@ -245,9 +248,12 @@ public class ReqRespLimitsTests
         while ((second = protocol.TryEnter(context, TestReqRespProtocol.ProtocolId)) is null)
             await Task.Delay(1, token);
         await using IAsyncDisposable secondSlot = second;
-        Assert.That(first, Is.Not.Null, "completed response releases admission while lingering");
-        Assert.That(second, Is.Not.Null);
-        Assert.That(protocol.TryEnter(context, TestReqRespProtocol.ProtocolId), Is.Null, "admission remains bounded");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.Not.Null, "completed response releases admission while lingering");
+            Assert.That(second, Is.Not.Null);
+            Assert.That(protocol.TryEnter(context, TestReqRespProtocol.ProtocolId), Is.Null, "admission remains bounded");
+        }
         if (closeRequester)
         {
             await channel.CloseAsync();
@@ -275,8 +281,11 @@ public class ReqRespLimitsTests
                 writing.Add(channel.WriteAsync(new ReadOnlySequence<byte>(new byte[] { 2, 9 }), token).AsTask());
                 Task listener = protocol.ServeRejectedAsync(new ChannelStreamAdapter(channel.Reverse), context, false, token);
                 serving.Add(listener);
-                Assert.That((await channel.ReadAsync(1, ReadBlockingMode.WaitAll, token)).Result, Is.EqualTo(IOResult.Ok));
-                Assert.That((await channel.ReadAsync(1, ReadBlockingMode.WaitAny, token)).Result, Is.EqualTo(IOResult.Ended));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That((await channel.ReadAsync(1, ReadBlockingMode.WaitAll, token)).Result, Is.EqualTo(IOResult.Ok));
+                    Assert.That((await channel.ReadAsync(1, ReadBlockingMode.WaitAny, token)).Result, Is.EqualTo(IOResult.Ended));
+                }
                 if (i == 6)
                 {
                     await listener.WaitAsync(token);
@@ -302,7 +311,7 @@ public class ReqRespLimitsTests
     }
 
     [Test]
-    public void Production_timeouts_match_the_spec_and_are_unaffected_by_test_overrides()
+    public void Production_timeouts_follow_local_policy_and_are_unaffected_by_test_overrides()
     {
         TestReqRespProtocol shortened = new() { TtfbTimeout = ShortTtfbTimeout, RespTimeout = ShortRespTimeout };
         TestReqRespProtocol production = new();
@@ -372,6 +381,10 @@ public class ReqRespLimitsTests
         {
             await Assert.CatchAsync<IOException>(Dial);
         }
+        else if (protocolKind == 1 && failure == 2)
+        {
+            await Assert.ThrowsAsync<Eth2ReqRespException>(Dial);
+        }
         else
         {
             await Assert.CatchAsync(Dial);
@@ -432,14 +445,20 @@ public class ReqRespLimitsTests
 
         IAsyncDisposable? slot1 = protocol.TryEnter(peerA, TestReqRespProtocol.ProtocolId);
         IAsyncDisposable? slot2 = protocol.TryEnter(peerA, TestReqRespProtocol.ProtocolId);
-        Assert.That(slot1, Is.Not.Null, "first concurrent request admitted");
-        Assert.That(slot2, Is.Not.Null, "second concurrent request admitted (at the cap)");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(slot1, Is.Not.Null, "first concurrent request admitted");
+            Assert.That(slot2, Is.Not.Null, "second concurrent request admitted (at the cap)");
+        }
 
         // A breakage that removed the cap (e.g. always returning a slot) would let this pass too,
         // so the sibling assert below on FailureCount is what actually pins the cap at 2.
         IAsyncDisposable? slot3 = protocol.TryEnter(peerA, TestReqRespProtocol.ProtocolId);
-        Assert.That(slot3, Is.Null, "third concurrent request from the same peer refused");
-        Assert.That(FailureCount(TestReqRespProtocol.ProtocolId, ReqRespFailureReason.LimitExceeded), Is.EqualTo(before + 1), "limit violation recorded");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(slot3, Is.Null, "third concurrent request from the same peer refused");
+            Assert.That(FailureCount(TestReqRespProtocol.ProtocolId, ReqRespFailureReason.LimitExceeded), Is.EqualTo(before + 1), "limit violation recorded");
+        }
 
         ISessionContext peerB = NewPeerContext();
         IAsyncDisposable? otherPeerSlot = protocol.TryEnter(peerB, TestReqRespProtocol.ProtocolId);
@@ -603,8 +622,11 @@ public class ReqRespLimitsTests
 
         ReqRespTimeoutException? cut = await Assert.ThrowsAsync<ReqRespTimeoutException>(() =>
             protocol.ReadBlocksAsync(stream, blockCount, TimeSpan.FromMilliseconds(80)));
-        Assert.That(FailureCount(TestBlocksProtocol.ProtocolId, ReqRespFailureReason.Timeout), Is.EqualTo(before + 1), "timeout recorded");
-        Assert.That(cut!.Message, Does.Match(@"^timed out after 0\.1 s, the bound for the whole response, with \d chunks read$"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FailureCount(TestBlocksProtocol.ProtocolId, ReqRespFailureReason.Timeout), Is.EqualTo(before + 1), "timeout recorded");
+            Assert.That(cut!.Message, Does.Match(@"^timed out after 0\.1 s, the bound for the whole response, with \d chunks read$"));
+        }
     }
 
     [TestCase(1, 1_000, "timed out after 0.7 s waiting for the first chunk")]
@@ -674,8 +696,11 @@ public class ReqRespLimitsTests
         try
         {
             MetaDataV3 response = await protocol.DialAsync(channel, NewPeerContext(), timing.Track(new Uint64Request(0))).WaitAsync(token);
-            Assert.That(MetaDataV3.Encode(response), Is.EqualTo(MetaDataV3.Encode(source.Current)));
-            Assert.That((timing.ChannelOpened, timing.Chunks, timing.Settled().IsCompletedSuccessfully), Is.EqualTo((true, 1, true)));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(MetaDataV3.Encode(response), Is.EqualTo(MetaDataV3.Encode(source.Current)));
+                Assert.That((timing.ChannelOpened, timing.Chunks, timing.Settled().IsCompletedSuccessfully), Is.EqualTo((true, 1, true)));
+            }
             await reply;
         }
         finally
@@ -791,6 +816,84 @@ public class ReqRespLimitsTests
         return encoded.ToArray();
     }
 
+    [Test]
+    [CancelAfter(10_000)]
+    public async Task Range_order_and_root_uniqueness_are_checked_below_the_chunk_limit([Values] bool byRoot, [Values] bool duplicate, CancellationToken token)
+    {
+        (_, _, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(2_999, 3_000, 3_001);
+        using MemoryStream response = new();
+        await WriteBlockChunkAsync(response, chain[1]);
+        await WriteBlockChunkAsync(response, duplicate || byRoot ? chain[1] : chain[0]);
+        Channel channel = new();
+        Task reply = Task.Run(async () =>
+        {
+            using ChannelStreamAdapter wire = new(channel.Reverse);
+            await ReqRespFraming.ReadRequestAsync(wire, byRoot ? 64 : 24, token);
+            await wire.WriteAsync(response.ToArray(), token);
+            await channel.Reverse.WriteEofAsync(token);
+        }, token);
+        try
+        {
+            if (byRoot)
+            {
+                BeaconBlocksByRootProtocolV2 protocol = new(Spec, null!);
+                await Assert.ThrowsAsync<Eth2ReqRespException>(() => protocol.DialAsync(channel, null!,
+                    [SszRoots.HashTreeRoot(chain[0].Message!), SszRoots.HashTreeRoot(chain[1].Message!)]).WaitAsync(token));
+            }
+            else
+            {
+                BeaconBlocksByRangeProtocolV2 protocol = new(Spec, null!);
+                await Assert.ThrowsAsync<Eth2ReqRespException>(() => protocol.DialAsync(channel, null!,
+                    new BeaconBlocksByRangeDial(new() { StartSlot = 3_000, Count = 2, Step = 1 })).WaitAsync(token));
+            }
+            await reply.WaitAsync(token);
+        }
+        finally
+        {
+            await channel.CloseAsync();
+        }
+    }
+
+    [Test]
+    [CancelAfter(10_000)]
+    public async Task Block_listeners_apply_their_count_boundaries([Values] bool byHead, [Values(0UL, 129UL)] ulong count, CancellationToken token)
+    {
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
+        byte[] request;
+        Func<IChannel, ISessionContext, Task> listen;
+        if (byHead)
+        {
+            request = new byte[40];
+            BinaryPrimitives.WriteUInt64LittleEndian(request.AsSpan(32), count);
+            listen = new BeaconBlocksByHeadProtocolV1(Spec, store).ListenAsync;
+        }
+        else
+        {
+            if (count > 0)
+            {
+                (SignedBeaconBlock anchor, Hash256 anchorRoot, SignedBeaconBlock[] chain) =
+                    TestChain.BuildLinkedChain(2_999, [.. Enumerable.Range(3_000, 129).Select(static slot => (ulong)slot)]);
+                TestChain.Persist(store, anchor, anchorRoot, chain);
+            }
+            request = BeaconBlocksByRangeRequest.Encode(new BeaconBlocksByRangeRequest { StartSlot = 3_000, Count = count, Step = 1 });
+            listen = new BeaconBlocksByRangeProtocolV2(Spec, store).ListenAsync;
+        }
+        List<ResponseChunk> chunks = await ReqRespTestChannel.ReadResponseAsync(listen, request, token);
+        if (!byHead && count > 0)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(chunks.Select(static c => c.Result), Is.All.EqualTo(ReqRespFraming.ResponseCode.Success));
+                Assert.That(chunks.Select(chunk => SignedBeaconBlockCodec.Decode(chunk.Payload, Spec).Slot),
+                    Is.EqualTo(Enumerable.Range(3_000, 128).Select(static slot => (ulong)slot)), "by-range clamps oversized requests to 128 slots");
+            }
+        }
+        else
+        {
+            Assert.That(chunks.Select(static c => c.Result), Is.EqualTo(new[] { ReqRespFraming.ResponseCode.InvalidRequest }));
+        }
+    }
+
     private static async Task ReplyRangeAsync(IChannel channel, byte[] response, CancellationToken token)
     {
         using ChannelStreamAdapter wire = new(channel);
@@ -837,7 +940,11 @@ public class ReqRespLimitsTests
 
         public IAsyncDisposable? TryEnter(ISessionContext context, string protocolId) => TryEnterInbound(context, protocolId);
 
-        public void Charge(ISessionContext context, ulong items) => ChargeRequest(context, items, 128);
+        public void Charge(ISessionContext context, ulong items)
+        {
+            if (TryChargeRequest(context, items, 128) > TimeSpan.Zero)
+                throw new Eth2ReqRespException("budget unavailable", ReqRespFraming.ResponseCode.RateLimited);
+        }
 
         public async Task ServeRejectedAsync(Stream stream, ISessionContext context, bool emptyRequest, CancellationToken token)
         {
@@ -875,6 +982,24 @@ public class ReqRespLimitsTests
             ReadBlockChunksAsync(response, maxBlocks, ProtocolId, overallTimeout, timing);
     }
 
+    private sealed class RefillTime : TimeProvider
+    {
+        private DateTimeOffset _now = DateTimeOffset.UnixEpoch;
+        public TaskCompletionSource<Action> Waiting { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public override DateTimeOffset GetUtcNow() => _now;
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            Waiting.TrySetResult(() => { _now += dueTime; callback(state); });
+            return new NoopTimer();
+        }
+        private sealed class NoopTimer : ITimer
+        {
+            public bool Change(TimeSpan dueTime, TimeSpan period) => true;
+            public void Dispose() { }
+            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        }
+    }
+
     private sealed class FixedTime : TimeProvider
     {
         private readonly DateTimeOffset _now = DateTimeOffset.UnixEpoch;
@@ -883,9 +1008,7 @@ public class ReqRespLimitsTests
 
     private static ISessionContext NewPeerContext(string host = "")
     {
-        byte[] keyBytes = new byte[33];
-        Random.Shared.NextBytes(keyBytes);
-        PeerId peerId = new(new Libp2pPublicKey { Type = KeyType.Secp256K1, Data = ByteString.CopyFrom(keyBytes) });
+        PeerId peerId = new Identity(privateKey: null, KeyType.Secp256K1).PeerId;
         ISessionContext context = ReqRespTestChannel.Context();
         context.State.RemoteAddress = Multiaddress.Decode($"{host}/p2p/{peerId}");
         return context;

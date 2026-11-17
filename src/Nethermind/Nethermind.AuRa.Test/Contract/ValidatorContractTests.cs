@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Contracts;
@@ -52,7 +51,6 @@ namespace Nethermind.AuRa.Test.Contract
             Action action =
                 () => new ValidatorContract(
                     _transactionProcessor,
-                    AbiEncoder.Instance,
                     null,
                     _stateProvider,
                     _readOnlyTxProcessorSource,
@@ -78,7 +76,6 @@ namespace Nethermind.AuRa.Test.Contract
 
             ValidatorContract contract = new(
                 _transactionProcessor,
-                AbiEncoder.Instance,
                 _contractAddress,
                 _stateProvider,
                 _readOnlyTxProcessorSource,

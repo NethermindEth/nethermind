@@ -26,6 +26,7 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
     private byte[] _memoryBuffer = [];
     private TopLevelGasTracker _gasTracker;
     private bool _captureStopped;
+    private string? _invalidOpcodeError;
 
     /// <summary>
     /// Creates a streaming Geth-style transaction tracer.
@@ -63,6 +64,9 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
         IsTracingActions = true;
         if (options.Limit < 0) StopCapture();
     }
+
+    /// <summary>The error the outermost frame ended with, which Geth reports in the transaction summary.</summary>
+    internal string? TopLevelError { get; private set; }
 
     internal void StopCapture()
     {
@@ -168,13 +172,36 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
     public override void ReportActionRevert(ulong gasLeft, ReadOnlyMemory<byte> output)
     {
         base.ReportActionRevert(gasLeft, output);
-        CompleteAction(gasLeft, output, EvmExceptionType.Revert.GetEvmExceptionDescription());
+        string error = EvmExceptionType.Revert.GetEvmExceptionDescription()!;
+        if (CurrentTraceEntry?.OpcodeRaw == Instruction.REVERT)
+            WriteFault(error);
+        CompleteAction(gasLeft, output, error);
     }
 
     public override void ReportActionError(EvmExceptionType evmExceptionType)
     {
         base.ReportActionError(evmExceptionType);
-        CompleteAction(0, default, evmExceptionType.GetEvmExceptionDescription());
+        string? error = _invalidOpcodeError ?? evmExceptionType.GetEvmExceptionDescription();
+        _invalidOpcodeError = null;
+        CompleteAction(0, default, error);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// As in Geth, the designated INVALID opcode is written as an executed step that costs no gas, followed by its
+    /// fault record. Defined opcodes that fail on their operands with the same error keep a single error record.
+    /// </remarks>
+    public override void ReportOperationError(EvmExceptionType error)
+    {
+        if (error != EvmExceptionType.BadInstruction || CurrentTraceEntry?.OpcodeRaw != Instruction.INVALID)
+        {
+            base.ReportOperationError(error);
+            return;
+        }
+
+        CurrentTraceEntry.GasCost = 0;
+        _invalidOpcodeError = $"invalid opcode: {CurrentTraceEntry.Opcode}";
+        WriteFault(_invalidOpcodeError);
     }
 
     protected override void AddTraceEntry(GethTxFileTraceEntry entry)
@@ -210,12 +237,67 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
         return entry;
     }
 
+    /// <summary>
+    /// Writes the faulting opcode's record, then the same record with <paramref name="error"/>, as Geth's JSON logger
+    /// does for an opcode that fails while executing.
+    /// </summary>
+    private void WriteFault(string error)
+    {
+        if (CurrentTraceEntry is not { } entry)
+            return;
+
+        CurrentTraceEntry = null;
+        AddTraceEntry(entry);
+        if (entry.OpcodeRaw == Instruction.REVERT)
+            ApplyExecutedRevert(entry);
+        entry.Error = error;
+        entry.ReturnData = null;
+        AddTraceEntry(entry);
+    }
+
+    /// <summary>
+    /// Updates a REVERT record to the frame state after the opcode ran: its offset and size are popped, and the memory
+    /// they cover is allocated.
+    /// </summary>
+    /// <remarks>
+    /// Geth's JSON logger reads the stack and memory again when it writes the fault record, after the interpreter
+    /// expanded the memory and executed the opcode.
+    /// </remarks>
+    private void ApplyExecutedRevert(GethTxFileTraceEntry entry)
+    {
+        const int OperandsLength = 2 * EvmStack.WordSize;
+        if (entry.Stack is not { Length: >= OperandsLength } stack)
+            return;
+
+        ReadOnlySpan<byte> operands = stack.Span[^OperandsLength..];
+        UInt256 size = new(operands[..EvmStack.WordSize], isBigEndian: true);
+        UInt256 offset = new(operands[EvmStack.WordSize..], isBigEndian: true);
+        entry.Stack = stack[..^OperandsLength];
+        if (size.IsZero)
+            return;
+
+        // A REVERT that ran had the gas to expand memory to its end, so the end fits in a ulong.
+        ulong memorySize = Math.Max(entry.MemorySize ?? 0, (offset.u0 + size.u0 + EvmStack.WordSize - 1) / EvmStack.WordSize * EvmStack.WordSize);
+        entry.MemorySize = memorySize;
+        if (IsTracingFullMemory && entry.Memory is { } memory && (ulong)memory.Length < memorySize)
+        {
+            byte[] expanded = new byte[memorySize];
+            memory.Span.CopyTo(expanded);
+            entry.Memory = expanded;
+        }
+    }
+
     private void CompleteAction(ulong gas, ReadOnlyMemory<byte> output, string? error = null)
     {
         if (_gasTracker.EndAction(gas) is ulong gasUsed)
             Trace.Gas = gasUsed;
 
-        if (_actionGas?.TryPop(out ulong initialGas) == true && _actionGas.Count != 0)
+        if (_actionGas?.TryPop(out ulong initialGas) != true)
+            return;
+
+        if (_actionGas.Count == 0)
+            TopLevelError = error;
+        else
         {
             // The terminal opcode (or caller's CALL for an empty child) precedes the exit record.
             if (CurrentTraceEntry is not null)

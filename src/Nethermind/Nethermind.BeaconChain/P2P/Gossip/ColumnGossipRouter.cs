@@ -133,7 +133,7 @@ public sealed class ColumnGossipRouter(
     ForkChoiceSnapshotHolder? forkChoice = null,
     PubkeyCache? pubkeys = null,
     ProposerLookaheadHolder? proposerLookahead = null,
-    FailedBlockRoots? failedBlocks = null)
+    FailedBlockRoots? failedBlocks = null) : IAsyncDisposable
 {
     private readonly ConditionalWeakTable<DataColumnSidecar, PeerId> _sources = [];
 
@@ -244,6 +244,27 @@ public sealed class ColumnGossipRouter(
     private readonly LruCache<Hash256, BlsSignature> _acceptedHeaders = new(SeenCacheSize, "beacon column gossip accepted headers");
     private readonly HashSet<Hash256> _reconstructionsInFlight = [];
     private readonly Lock _reconstructionLock = new();
+    internal const int MaxPendingReconstructions = 16;
+    private readonly Queue<(Hash256 Root, ulong Slot)> _pendingReconstructions = new();
+    private Task _reconstructionWorker = Task.CompletedTask;
+    private volatile bool _reconstructionStopped;
+
+    internal Task WhenReconstructed()
+    {
+        lock (_reconstructionLock) return _reconstructionWorker;
+    }
+
+    /// <summary>Cancels queued reconstruction and waits for active recovery to finish.</summary>
+    public ValueTask DisposeAsync()
+    {
+        lock (_reconstructionLock)
+        {
+            _reconstructionStopped = true;
+            while (_pendingReconstructions.TryDequeue(out (Hash256 Root, ulong Slot) entry))
+                _reconstructionsInFlight.Remove(entry.Root);
+            return new ValueTask(_reconstructionWorker);
+        }
+    }
 
     internal DataColumnReconstructor Reconstruct { private get; init; } = DataColumnReconstruction.TryReconstruct;
 
@@ -338,7 +359,7 @@ public sealed class ColumnGossipRouter(
     /// passed every check under an imported block's header or the expected proposer's; otherwise <see cref="MessageValidity.Rejected"/> or <see cref="MessageValidity.Ignored"/>,
     /// including for a consumed Fulu sidecar whose header this node cannot verify.
     /// </returns>
-    internal MessageValidity Handle(ulong subnetId, bool gloasTopic, byte[] message, GossipVerdict? verdict = null, PeerId? source = null)
+    internal MessageValidity Handle(ulong subnetId, bool gloasTopic, ReadOnlySpan<byte> message, GossipVerdict? verdict = null, PeerId? source = null)
     {
         bool retrying = _retrying;
         _retrying = false;
@@ -352,7 +373,7 @@ public sealed class ColumnGossipRouter(
         }
     }
 
-    private MessageValidity HandleReceived(ulong subnetId, bool gloasTopic, byte[] message, GossipVerdict? verdict, PeerId? source)
+    private MessageValidity HandleReceived(ulong subnetId, bool gloasTopic, ReadOnlySpan<byte> message, GossipVerdict? verdict, PeerId? source)
     {
         if (!IsSubscribed(subnetId))
         {
@@ -1224,21 +1245,33 @@ public sealed class ColumnGossipRouter(
             return Drop(reason, MessageValidity.Ignored);
         }
 
+        bool retainedVerdict = false;
         lock (_pendingGloasLock)
         {
             if (verdict.IsCompleted || _pendingGloasVerdicts.Count >= DataColumnSidecarPool.MaxPendingGloasSidecars)
                 return Drop(reason, MessageValidity.Ignored);
             int sameKey = 0;
             int sameSource = 0;
+            bool sourceLimit = false;
             foreach ((DataColumnSidecarGloas candidate, PendingGloasVerdict pending) in _pendingGloasVerdicts)
             {
                 if (pending.Source == source && (pending.Subnet == subnet || ++sameSource >= PendingGloasVerdictsPerSource))
-                    return Drop(reason, MessageValidity.Ignored);
+                    sourceLimit = true;
                 if (candidate.BeaconBlockRoot == sidecar.BeaconBlockRoot && candidate.Index == sidecar.Index) sameKey++;
             }
             if (sameKey >= DataColumnSidecarPool.MaxPendingGloasCandidatesPerKey)
                 return Drop(reason, MessageValidity.Ignored);
-            _pendingGloasVerdicts.Add(sidecar, new(subnet, source, verdict));
+            if (!sourceLimit)
+            {
+                _pendingGloasVerdicts.Add(sidecar, new(subnet, source, verdict));
+                retainedVerdict = true;
+            }
+        }
+
+        if (!retainedVerdict)
+        {
+            pool?.AddPendingGloas(sidecar, currentSlot);
+            return Drop(reason, MessageValidity.Ignored);
         }
 
         try
@@ -1413,22 +1446,55 @@ public sealed class ColumnGossipRouter(
         return false;
     }
 
-    /// <summary>Recovers and exposes missing columns once enough are held (fulu/das-core.md recover_matrix).</summary>
-    /// <remarks>A root stays claimed through publication; cell recovery and subscriber callbacks run outside the lock.</remarks>
+    /// <summary>Schedules bounded recovery of missing columns (fulu/das-core.md recover_matrix).</summary>
     private void TrackHeldColumnAndMaybeReconstruct(Hash256 blockRoot, ulong slot)
     {
-        DataColumnSidecar[] held;
         lock (_reconstructionLock)
         {
-            if (pool is null || _reconstructedBlockRoots.Get(blockRoot) || _reconstructionsInFlight.Contains(blockRoot)
-                || !pool.TryGetHeldColumns(blockRoot, slot, Eip7594DasConstants.RequiredColumnsForReconstruction, out held!))
+            if (_reconstructionStopped || pool is null || _pendingReconstructions.Count >= MaxPendingReconstructions
+                || _reconstructedBlockRoots.Get(blockRoot) || _reconstructionsInFlight.Contains(blockRoot)
+                || !pool.TryGetHeldColumns(blockRoot, slot, Eip7594DasConstants.RequiredColumnsForReconstruction, out _))
             {
                 return;
             }
-
             _reconstructionsInFlight.Add(blockRoot);
+            _pendingReconstructions.Enqueue((blockRoot, slot));
+            if (_reconstructionWorker.IsCompleted) _reconstructionWorker = Task.Run(ReconstructPending);
         }
+    }
 
+    private void ReconstructPending()
+    {
+        while (true)
+        {
+            (Hash256 Root, ulong Slot) entry;
+            lock (_reconstructionLock)
+            {
+                if (!_pendingReconstructions.TryDequeue(out entry))
+                {
+                    _reconstructionWorker = Task.CompletedTask;
+                    return;
+                }
+            }
+            try
+            {
+                if (!_reconstructionStopped && pool!.TryGetHeldColumns(entry.Root, entry.Slot,
+                    Eip7594DasConstants.RequiredColumnsForReconstruction, out DataColumnSidecar[]? held))
+                    ReconstructAndPublish(entry.Root, held);
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Could not reconstruct data columns for {entry.Root}: {e.Message}");
+            }
+            finally
+            {
+                lock (_reconstructionLock) _reconstructionsInFlight.Remove(entry.Root);
+            }
+        }
+    }
+
+    private void ReconstructAndPublish(Hash256 blockRoot, DataColumnSidecar[] held)
+    {
         // Recovered columns copy the first held column's signed header, and sync pools columns without checking its signature.
         if (_acceptedHeaders.TryGet(blockRoot, out BlsSignature accepted))
         {
@@ -1437,40 +1503,31 @@ public sealed class ColumnGossipRouter(
         }
 
         List<ReconstructedSidecarToPublish> exposed = [];
-        try
+        if (!Reconstruct(held, out DataColumnSidecar[] fullMatrix) || _reconstructionStopped)
         {
-            if (!Reconstruct(held, out DataColumnSidecar[] fullMatrix))
-            {
-                return;
-            }
-
-            IReadOnlyList<ReconstructedSidecarToPublish> entries = ReconstructionBroadcast.SelectNewlyReconstructed(held, fullMatrix);
-            foreach (ReconstructedSidecarToPublish entry in entries)
-            {
-                if (ExposeReconstructed(entry, blockRoot))
-                {
-                    exposed.Add(entry);
-                }
-            }
-            lock (_reconstructionLock)
-            {
-                _reconstructedBlockRoots.Set(blockRoot);
-            }
-        }
-        finally
-        {
-            lock (_reconstructionLock)
-            {
-                _reconstructionsInFlight.Remove(blockRoot);
-            }
+            return;
         }
 
+        IReadOnlyList<ReconstructedSidecarToPublish> entries = ReconstructionBroadcast.SelectNewlyReconstructed(held, fullMatrix);
+        foreach (ReconstructedSidecarToPublish entry in entries)
+        {
+            if (_reconstructionStopped) return;
+            if (ExposeReconstructed(entry, blockRoot))
+            {
+                exposed.Add(entry);
+            }
+        }
+        lock (_reconstructionLock)
+        {
+            _reconstructedBlockRoots.Set(blockRoot);
+        }
         foreach (ReconstructedSidecarToPublish entry in exposed)
         {
+            if (_reconstructionStopped) return;
             DataColumnSidecarReceived?.Invoke(entry.Sidecar);
         }
 
-        PublishReconstructed(blockRoot, exposed);
+        if (!_reconstructionStopped) PublishReconstructed(blockRoot, exposed);
     }
 
     /// <summary>Adds a locally reconstructed sidecar to the serving pool, unless a gossip copy of its (block root, index) already did.</summary>

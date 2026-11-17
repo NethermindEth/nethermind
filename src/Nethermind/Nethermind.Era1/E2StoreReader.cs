@@ -44,7 +44,7 @@ public class E2StoreReader : IDisposable
 
         int length = (int)entry.Length;
         using ArrayPoolListRef<byte> buffer = new(length, length);
-        RandomAccess.Read(_file, buffer.AsSpan(), position + HeaderSize);
+        ReadExactly(position + HeaderSize, buffer.AsSpan());
         value = decoder(buffer.AsMemory());
         return (long)(entry.Length + HeaderSize);
     }
@@ -58,13 +58,18 @@ public class E2StoreReader : IDisposable
 
     public Entry ReadEntry(long position, ushort? expectedType, CancellationToken token = default)
     {
-        ushort type = ReadUInt16(position);
-        uint length = ReadUInt32(position + 2);
-        ushort reserved = ReadUInt16(position + 6);
+        if (position < 0 || position > _fileLength - HeaderSize)
+            throw new EraFormatException($"Entry header at position {position} extends past the end of the file ({_fileLength} bytes).");
+
+        Span<byte> header = stackalloc byte[HeaderSize];
+        ReadExactly(position, header);
+        ushort type = BinaryPrimitives.ReadUInt16LittleEndian(header);
+        uint length = BinaryPrimitives.ReadUInt32LittleEndian(header[2..]);
+        ushort reserved = BinaryPrimitives.ReadUInt16LittleEndian(header[6..]);
 
         Entry entry = new(type, length);
         if (expectedType.HasValue && entry.Type != expectedType) throw new EraException($"Expected an entry of type {expectedType}, but got {entry.Type}.");
-        if ((long)entry.Length + position > _fileLength)
+        if (entry.Length > (ulong)(_fileLength - position - HeaderSize))
             throw new EraFormatException($"Entry has an invalid length of {entry.Length} at position {position}, which is longer than stream length of {_fileLength}.");
         if (entry.Length > ValueSizeLimit)
             throw new EraException($"Entry exceeds the maximum size limit of {ValueSizeLimit}. Entry is {entry.Length}.");
@@ -76,7 +81,7 @@ public class E2StoreReader : IDisposable
     private async Task<T> ReadEntryValueAsSnappy<T>(long offset, ulong length, Func<Memory<byte>, T> decoder, CancellationToken cancellation = default)
     {
         using ArrayPoolList<byte> inputBuffer = new((int)length, (int)length);
-        RandomAccess.Read(_file, inputBuffer.AsSpan(), offset);
+        ReadExactly(offset, inputBuffer.AsSpan());
         Stream inputStream = inputBuffer.AsMemory().AsStream();
 
         await using SnappyStream decompressor = new(inputStream, CompressionMode.Decompress, true);
@@ -198,31 +203,33 @@ public class E2StoreReader : IDisposable
         return new ValueHash256(sha.GetHashAndReset());
     }
 
-    private ushort ReadUInt16(long position)
-    {
-        Span<byte> buff = stackalloc byte[2];
-        RandomAccess.Read(_file, buff, position);
-        return BinaryPrimitives.ReadUInt16LittleEndian(buff);
-    }
-
-    private uint ReadUInt32(long position)
-    {
-        Span<byte> buff = stackalloc byte[4];
-        RandomAccess.Read(_file, buff, position);
-        return BinaryPrimitives.ReadUInt32LittleEndian(buff);
-    }
-
     private long ReadInt64(long position)
     {
         Span<byte> buff = stackalloc byte[8];
-        RandomAccess.Read(_file, buff, position);
+        ReadExactly(position, buff);
         return BinaryPrimitives.ReadInt64LittleEndian(buff);
     }
 
     private ulong ReadUInt64(long position)
     {
         Span<byte> buff = stackalloc byte[8];
-        RandomAccess.Read(_file, buff, position);
+        ReadExactly(position, buff);
         return BinaryPrimitives.ReadUInt64LittleEndian(buff);
+    }
+
+    // RandomAccess.Read may return fewer bytes than requested, so a truncated file has to be rejected
+    // here rather than decoded from a partially filled (and possibly pooled, non-zeroed) buffer.
+    private void ReadExactly(long offset, Span<byte> destination)
+    {
+        int totalRead = 0;
+        while (totalRead < destination.Length)
+        {
+            int read = RandomAccess.Read(_file, destination[totalRead..], offset + totalRead);
+            if (read <= 0) break;
+            totalRead += read;
+        }
+
+        if (totalRead != destination.Length)
+            throw new EraFormatException($"Unexpected end of file: expected {destination.Length} bytes at offset {offset}, but got {totalRead}.");
     }
 }

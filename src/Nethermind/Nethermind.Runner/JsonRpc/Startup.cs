@@ -19,6 +19,7 @@ using System.Threading.Tasks;
 using HealthChecks.UI.Client;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Connections;
+using Microsoft.AspNetCore.Cors.Infrastructure;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -26,6 +27,7 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.AspNetCore.Server.Kestrel.Core.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
@@ -62,8 +64,11 @@ public class Startup : IStartup
     private IJsonRpcLocalStats _jsonRpcLocalStats = null!;
     private EthereumJsonSerializer _jsonSerializer = null!;
     private IJsonRpcConfig _jsonRpcConfig = null!;
+    private MinDataRate? _minResponseDataRate;
     private IRpcAuthentication? _rpcAuthentication;
     private ILogger _logger = default;
+    private static readonly TimeSpan MinResponseDataRateGracePeriod = TimeSpan.FromSeconds(10);
+    private readonly UnsentResponseCounter _unsentResponses = new();
 
     public Startup() { }
 
@@ -82,6 +87,7 @@ public class Startup : IStartup
         _jsonRpcLocalStats = jsonRpcLocalStats;
         _jsonSerializer = jsonSerializer;
         _jsonRpcConfig = jsonRpcConfig;
+        _minResponseDataRate = CreateMinResponseDataRate(jsonRpcConfig);
         _logger = logger;
         _rpcAuthentication = rpcAuthentication;
     }
@@ -132,10 +138,7 @@ public class Startup : IStartup
 
         services.AddSingleton<MatcherPolicy, LocalPortMatcherPolicy>();
 
-        services.AddCors(options => options.AddDefaultPolicy(builder => builder
-            .AllowAnyMethod()
-            .AllowAnyHeader()
-            .WithOrigins(jsonRpcConfig.CorsOrigins)));
+        services.AddCors(options => options.AddDefaultPolicy(CreateCorsPolicy(jsonRpcConfig)));
 
         services.AddResponseCompression(options =>
         {
@@ -147,6 +150,12 @@ public class Startup : IStartup
     }
 
     private static ServiceProvider Build(IServiceCollection services) => services.BuildServiceProvider();
+
+    internal static CorsPolicy CreateCorsPolicy(IJsonRpcConfig jsonRpcConfig) => new CorsPolicyBuilder()
+        .AllowAnyMethod()
+        .AllowAnyHeader()
+        .WithOrigins(jsonRpcConfig.CorsOrigins)
+        .Build();
 
     public void Configure(IApplicationBuilder app)
     {
@@ -193,6 +202,7 @@ public class Startup : IStartup
         _jsonRpcLocalStats = jsonRpcLocalStats;
         _jsonSerializer = jsonSerializer;
         _jsonRpcConfig = jsonRpcConfig;
+        _minResponseDataRate = CreateMinResponseDataRate(jsonRpcConfig);
         _rpcAuthentication = rpcAuthentication;
         _logger = logger;
 
@@ -225,12 +235,7 @@ public class Startup : IStartup
 
         if (initConfig.WebSocketsEnabled)
         {
-            app.UseWebSockets(new WebSocketOptions());
-            app.UseWhen(ctx =>
-                ctx.WebSockets.IsWebSocketRequest &&
-                jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) &&
-                jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Ws),
-            builder => builder.UseWebSocketsModules());
+            UseJsonRpcWebSockets(app, jsonRpcConfig, jsonRpcUrlCollection, logger);
         }
 
         IReadOnlySet<int> healthPorts = jsonRpcUrlCollection.Values
@@ -275,6 +280,25 @@ public class Startup : IStartup
                     builder.UseStaticFiles(new StaticFileOptions { FileProvider = fileProvider });
                 });
         }
+    }
+
+    /// <summary>
+    /// Serves WebSockets on the ports that enable them. Clients that send an <c>Origin</c> that
+    /// <see cref="IJsonRpcConfig.CorsOrigins"/> does not allow are turned away before a socket is accepted.
+    /// </summary>
+    internal static void UseJsonRpcWebSockets(IApplicationBuilder app, IJsonRpcConfig jsonRpcConfig, IJsonRpcUrlCollection jsonRpcUrlCollection, ILogger logger)
+    {
+        CorsPolicy corsPolicy = CreateCorsPolicy(jsonRpcConfig);
+        app.UseWebSockets(new WebSocketOptions());
+        app.UseWhen(ctx =>
+            ctx.WebSockets.IsWebSocketRequest &&
+            jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) &&
+            jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Ws),
+        builder =>
+        {
+            builder.UseWebSocketOriginFilter(corsPolicy, logger);
+            builder.UseWebSocketsModules();
+        });
     }
 
     private static bool IsLocalhost(IPAddress remoteIp)
@@ -384,7 +408,7 @@ public class Startup : IStartup
     {
         if (cidrs is null || cidrs.Length == 0) return [];
 
-        List<TrustedCidr> parsed = new(cidrs.Length);
+        List<TrustedCidr> parsed = [with(cidrs.Length)];
         foreach (string? cidr in cidrs)
         {
             if (string.IsNullOrWhiteSpace(cidr)) continue;
@@ -453,6 +477,17 @@ public class Startup : IStartup
         await ctx.Response.CompleteAsync();
     }
 
+    private void LimitUnauthenticatedResponse(HttpContext ctx)
+    {
+        if (ctx.Features.Get<IHttpMinResponseDataRateFeature>() is { } dataRate)
+        {
+            dataRate.MinDataRate = _minResponseDataRate;
+        }
+    }
+
+    private static MinDataRate? CreateMinResponseDataRate(IJsonRpcConfig jsonRpcConfig) =>
+        jsonRpcConfig.MinResponseDataRate > 0 ? new MinDataRate(jsonRpcConfig.MinResponseDataRate, MinResponseDataRateGracePeriod) : null;
+
     internal async Task ProcessJsonRpcRequestCoreAsync(HttpContext ctx, JsonRpcUrl jsonRpcUrl)
     {
         long startTime = _jsonRpcLocalStats.IsEnabled ? Stopwatch.GetTimestamp() : 0;
@@ -490,7 +525,8 @@ public class Startup : IStartup
                 RemoteAddress = ctx.Connection.RemoteIpAddress,
                 ForwardedFor = ctx.Request.Headers["X-Forwarded-For"]
             };
-            responseSink = new HttpJsonRpcResponseSink(ctx, jsonRpcUrl, _jsonRpcConfig, _jsonRpcLocalStats, _logger, startTime);
+            if (!jsonRpcUrl.IsAuthenticated) LimitUnauthenticatedResponse(ctx);
+            responseSink = new HttpJsonRpcResponseSink(ctx, jsonRpcUrl, _jsonRpcConfig, _jsonRpcLocalStats, _logger, startTime, jsonRpcUrl.IsAuthenticated || _jsonRpcConfig.MaxUnsentResponsesSize <= 0 ? null : _unsentResponses);
 
             await _jsonRpcProcessor.ProcessAsync(
                 collectedBody.Memory,
@@ -498,6 +534,12 @@ public class Startup : IStartup
                 responseSink,
                 new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument),
                 ctx.RequestAborted);
+        }
+        catch (OperationCanceledException e) when (ctx.RequestAborted.IsCancellationRequested && e.CancellationToken == ctx.RequestAborted)
+        {
+            // The client went away: nobody is left to read an answer, so discard what is buffered instead of finishing it.
+            responseSink?.Abort(abortTransport: ctx.Response.HasStarted);
+            if (_logger.IsDebug) _logger.Debug("JSON-RPC request aborted by the client.");
         }
         catch (Exception e) when (responseSink is { BytesWritten: > 0 })
         {

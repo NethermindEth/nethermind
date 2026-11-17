@@ -72,6 +72,11 @@ internal sealed record BeaconApiContext(
         {
             if (stateId == "justified") return snapshot.JustifiedState;
             if (stateId == "finalized") return snapshot.FinalizedState;
+            if (ulong.TryParse(stateId, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out ulong slot))
+            {
+                if (snapshot.JustifiedState is { } justifiedAtSlot && justifiedAtSlot.State.Slot == slot) return justifiedAtSlot;
+                if (snapshot.FinalizedState is { } finalizedAtSlot && finalizedAtSlot.State.Slot == slot) return finalizedAtSlot;
+            }
             if (!HexConvert.TryParseHash(stateId, out Hash256? root)) return null;
             if (snapshot.JustifiedState is { } justified && justified.StateRoot == root) return justified;
             return snapshot.FinalizedState is { } finalized && finalized.StateRoot == root ? finalized : null;

@@ -120,8 +120,11 @@ public class DirtyNodeHasherTests
         bool handled = DirtyNodeHasher.HashBelowRoot(tree.RootRef!, tree.TrieStore, null,
             canBeParallel: false, maxCollectedNodes: budget);
 
-        Assert.That(handled, Is.False, "a budget this small cannot cover a two-hundred entry trie");
-        Assert.That(tree.RootRef!.Keccak, Is.Null, "the root is the caller's to hash");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(handled, Is.False, "a budget this small cannot cover a two-hundred entry trie");
+            Assert.That(tree.RootRef!.Keccak, Is.Null, "the root is the caller's to hash");
+        }
         // Below the minimum a level order is not worth it; above it, discarding the collection would
         // leave a bulk commit paying for the walk and getting no batching. Without AVX2 there is no level order.
         int hashed = CountHashedBelow(tree.RootRef!);
@@ -195,10 +198,13 @@ public class DirtyNodeHasherTests
         (int hashed, int embedded) = AssertSubtree(tree.RootRef!, isRoot: true);
 
         // Without these the assertions above would also pass on a trie the walk never visited.
-        Assert.That(hashed, Is.GreaterThanOrEqualTo(minimumHashed),
-            "the walk found too few hashed nodes to have proved anything");
-        Assert.That(embedded, Is.GreaterThanOrEqualTo(minimumEmbedded),
-            "the walk found no embedded node, so it did not cover that case");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hashed, Is.GreaterThanOrEqualTo(minimumHashed),
+                "the walk found too few hashed nodes to have proved anything");
+            Assert.That(embedded, Is.GreaterThanOrEqualTo(minimumEmbedded),
+                "the walk found no embedded node, so it did not cover that case");
+        }
     }
 
     private static (int Hashed, int Embedded) AssertSubtree(TrieNode node, bool isRoot)

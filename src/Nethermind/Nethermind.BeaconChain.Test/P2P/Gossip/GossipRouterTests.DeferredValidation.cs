@@ -22,6 +22,7 @@ using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Libp2p.Protocols.Pubsub.Dto;
 using Nethermind.Logging;
 using Nethermind.Network.Libp2p;
+using Nethermind.Merge.Plugin.SszRest;
 using Snappier;
 using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
 
@@ -49,11 +50,11 @@ public partial class GossipRouterTests
         await using DeferredFixture fixture = await DeferredFixture.Create(maxPending: 8, maxPendingBytes: 1 << 20, TimeSpan.FromSeconds(30), reportRejected: (peer, _) => rejected.Add(peer));
         byte[] block = BlockMessage(CurrentSlot);
 
-        fixture.Receive(fixture.Sender, block);
+        await fixture.Receive(fixture.Sender, block);
         bool forwardedWhilePending = fixture.SentToNeighbor(block);
         int pending = fixture.Pubsub.PendingValidationCount;
         bool applied = fixture.Raised.Single().Complete(validity);
-        fixture.Receive(fixture.Neighbor, block);
+        await fixture.Receive(fixture.Neighbor, block);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That((forwardedWhilePending, pending), Is.EqualTo((false, 1)), "the router holds a deferred message");
@@ -74,11 +75,11 @@ public partial class GossipRouterTests
         await using DeferredFixture fixture = await DeferredFixture.Create(maxPending: byBytes ? 64 : 1, maxPendingBytes: byBytes ? firstSize + 1 : 1 << 20, TimeSpan.FromSeconds(30));
         ulong throttledBefore = Metrics.BeaconChainGossipThrottled;
 
-        fixture.Receive(fixture.Sender, first);
-        fixture.Receive(fixture.Sender, second);
+        await fixture.Receive(fixture.Sender, first);
+        await fixture.Receive(fixture.Sender, second);
         int raisedWhileFull = fixture.Raised.Count;
         fixture.Raised[0].Complete(MessageValidity.Ignored);
-        fixture.Receive(fixture.Sender, second);
+        await fixture.Receive(fixture.Sender, second);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(raisedWhileFull, Is.EqualTo(1), "the message past the bound is not validated");
@@ -99,10 +100,10 @@ public partial class GossipRouterTests
             rpc.Publish.Add(new Message { Topic = BlockTopic, Data = ByteString.CopyFrom(BlockMessage(CurrentSlot - (ulong)i)) });
         }
 
-        fixture.ReceiveRpc(fixture.Sender, rpc);
+        await fixture.ReceiveRpc(fixture.Sender, rpc);
 
         int raisedFromSender = fixture.Raised.Count;
-        fixture.Receive(fixture.Neighbor, BlockMessage(CurrentSlot - (ulong)share - 1));
+        await fixture.Receive(fixture.Neighbor, BlockMessage(CurrentSlot - (ulong)share - 1));
         Message vote = new() { Topic = GossipTopics.Topic(ForkDigest.Compute(Spec, Spec.GetEpoch(CurrentSlot)), GossipTopics.BeaconAggregateAndProof), Data = ByteString.CopyFrom([1]) };
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
@@ -348,7 +349,7 @@ public partial class GossipRouterTests
         await using DeferredFixture fixture = await DeferredFixture.Create(maxPending: 16, maxPendingBytes: 1 << 20, TimeSpan.FromSeconds(30));
         await fixture.CompleteVoteFromAsync(fixture.Sender, aggregatorIndex: 1, MessageValidity.Rejected);
 
-        fixture.Receive(fixture.Sender, BlockMessage(CurrentSlot));
+        await fixture.Receive(fixture.Sender, BlockMessage(CurrentSlot));
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(fixture.Validation.Verify(fixture.Sender, DeferredFixture.Vote(2)), Is.EqualTo(MessageValidity.Throttled), "fixture: the peer's votes are refused");
@@ -360,7 +361,7 @@ public partial class GossipRouterTests
     public async Task Block_verdict_neither_promotes_nor_marks_its_peer_for_votes([Values(MessageValidity.Accepted, MessageValidity.Rejected)] MessageValidity validity)
     {
         await using DeferredFixture fixture = await DeferredFixture.Create(maxPending: 16, maxPendingBytes: 1 << 20, TimeSpan.FromSeconds(30));
-        fixture.Receive(fixture.Sender, BlockMessage(CurrentSlot));
+        await fixture.Receive(fixture.Sender, BlockMessage(CurrentSlot));
         fixture.Raised.Single().Complete(validity);
 
         MessageValidity[] votes = [.. Enumerable.Range(1, 3).Select(index => fixture.Validation.Verify(fixture.Sender, DeferredFixture.Vote((ulong)index)))];
@@ -395,7 +396,7 @@ public partial class GossipRouterTests
                 await fixture.CompleteVoteFromAsync(fixture.Sender, aggregatorIndex: 2, MessageValidity.Ignored);
                 break;
             case "block rejected":
-                fixture.Receive(fixture.Sender, BlockMessage(CurrentSlot));
+                await fixture.Receive(fixture.Sender, BlockMessage(CurrentSlot));
                 fixture.Raised[^1].Complete(MessageValidity.Rejected);
                 Assert.That(rejected, Is.EqualTo(new[] { fixture.Sender }), "fixture: the block is rejected");
                 break;
@@ -488,9 +489,9 @@ public partial class GossipRouterTests
         ulong refusedBefore = Metrics.BeaconChainGossipVotesRefusedAfterRejection;
         int raisedBefore = fixture.Raised.Count;
 
-        fixture.ReceiveRpc(fixture.Sender, publish);
+        await fixture.ReceiveRpc(fixture.Sender, publish);
         (int raised, int pending) refused = (fixture.Raised.Count, fixture.Pubsub.PendingValidationCount);
-        fixture.ReceiveRpc(fixture.Neighbor, publish);
+        await fixture.ReceiveRpc(fixture.Neighbor, publish);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(refused, Is.EqualTo((raisedBefore, 0)), "the router refuses the marked peer's vote and holds nothing for it");
@@ -508,21 +509,21 @@ public partial class GossipRouterTests
         List<PeerId> rejected = [];
         await using DeferredFixture fixture = await DeferredFixture.Create(maxPending: 16, maxPendingBytes: 1 << 20, TimeSpan.FromSeconds(30), reportRejected: (peer, _) => rejected.Add(peer));
         fixture.Pubsub.GetTopic(DeferredFixture.AggregateTopic);
-        (_, List<Rpc> sentToGossipPeer, Action<Rpc> fromGossipPeer) = ConnectSubscribedPeer(fixture.Pubsub, DeferredFixture.AggregateTopic);
+        (_, List<Rpc> sentToGossipPeer, Func<Rpc, Task> fromGossipPeer) = await ConnectSubscribedPeer(fixture.Pubsub, DeferredFixture.AggregateTopic);
         Message vote = DeferredFixture.Vote(2);
         MessageId id = new(Eth2MessageId.Compute(vote.Topic, vote.Data));
         Rpc publish = new();
         publish.Publish.Add(vote);
         await fixture.CompleteVoteFromAsync(fixture.Sender, aggregatorIndex: 1, MessageValidity.Rejected);
         int raisedBefore = fixture.Raised.Count;
-        fixture.ReceiveRpc(fixture.Sender, publish);
+        await fixture.ReceiveRpc(fixture.Sender, publish);
         Assert.That(fixture.Raised, Has.Count.EqualTo(raisedBefore), "fixture: the marked peer's vote is refused");
 
         Rpc ihave = new() { Control = new ControlMessage() };
         ihave.Control.Ihave.Add(new ControlIHave { TopicID = DeferredFixture.AggregateTopic, MessageIDs = { ByteString.CopyFrom(id.Bytes) } });
-        fromGossipPeer(ihave);
+        await fromGossipPeer(ihave);
         MessageId[] iwanted = [.. sentToGossipPeer.SelectMany(static rpc => rpc.Control?.Iwant ?? []).SelectMany(static iwant => iwant.MessageIDs).Select(static bytes => new MessageId(bytes.ToByteArray()))];
-        fromGossipPeer(publish);
+        await fromGossipPeer(publish);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(iwanted, Does.Contain(id), "the refused id is unknown to the router, so the IHAVE gets an IWANT");
@@ -590,7 +591,7 @@ public partial class GossipRouterTests
         ulong abandonedBefore = Metrics.BeaconChainGossipVerdictsAbandoned;
         ulong lateBefore = Metrics.BeaconChainGossipVerdictsLate;
 
-        fixture.Receive(fixture.Sender, block);
+        await fixture.Receive(fixture.Sender, block);
         GossipVerdict abandoned = fixture.Raised.Single();
         await abandoned.Completion.WaitAsync(TimeSpan.FromSeconds(10));
         bool lateApplied = abandoned.Complete(MessageValidity.Accepted);
@@ -600,7 +601,7 @@ public partial class GossipRouterTests
         }
 
         int pendingAfter = fixture.Pubsub.PendingValidationCount;
-        fixture.Receive(fixture.Neighbor, block);
+        await fixture.Receive(fixture.Neighbor, block);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(lateApplied, Is.False);
@@ -612,6 +613,41 @@ public partial class GossipRouterTests
     }
 
     // phase0 p2p-interface.md beacon_block: future slots are IGNOREd and MAY be queued.
+    [Test]
+    public void Early_blocks_are_bounded_and_can_be_retried_after_the_queue_drains([Values] bool byBytes)
+    {
+        ManualTimestamper time = new(DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + CurrentSlot * Spec.SecondsPerSlot + 10));
+        GossipRouter router = new(Spec, new SlotClock(Spec, time), LimboLogs.Instance);
+        int raised = 0;
+        router.BeaconBlockReceived += (_, _) => raised++;
+        byte[] transaction = new byte[byBytes ? 9 * 1024 * 1024 : 0];
+        new Random(42).NextBytes(transaction);
+        byte[] Message(int index)
+        {
+            SignedBeaconBlock block = CreateMinimalBlock(CurrentSlot + 1);
+            block.Message!.ProposerIndex = (ulong)index;
+            if (byBytes) block.Message.Body!.ExecutionPayload!.Transactions = [new SszTransaction { Bytes = transaction }];
+            return Snappy.CompressToArray(SignedBeaconBlock.Encode(block));
+        }
+
+        int capacity = byBytes ? 3 : 64;
+        for (int i = 0; i < capacity; i++)
+            Assert.That(router.HandleBeaconBlock(Message(i)), Is.EqualTo(MessageValidity.Ignored));
+        byte[] refused = Message(capacity);
+        Assert.That(router.HandleBeaconBlock(refused), Is.EqualTo(MessageValidity.Throttled));
+        Assert.That(router.HandleBeaconBlock(refused), Is.EqualTo(MessageValidity.Throttled), "refusal releases the seen claim");
+
+        time.UtcNow = time.UtcNow.AddSeconds(Spec.SecondsPerSlot);
+        router.ReleaseDueMessages();
+        router.HandleBeaconBlock(refused);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(raised, Is.EqualTo(capacity + 1));
+            time.UtcNow = time.UtcNow.AddSeconds(-(double)Spec.SecondsPerSlot);
+            Assert.That(router.HandleBeaconBlock(Message(capacity + 1)), Is.EqualTo(MessageValidity.Ignored), "draining returns the byte charge");
+        }
+    }
+
     [Test]
     public void Early_next_slot_block_is_ignored_at_once_and_imported_once_its_slot_starts()
     {
@@ -791,8 +827,8 @@ public partial class GossipRouterTests
         string topic = GossipTopics.Topic(ForkDigest.Compute(Spec, Spec.GetEpoch(CurrentSlot)), name);
         using PubsubRouter pubsub = new(new PeerStore(), GossipScoring.Configure(p2p.PubsubSettingsForTest, [topic], Spec));
         pubsub.GetTopic(topic);
-        (PeerId sender, _, Action<Rpc> receive) = ConnectSubscribedPeer(pubsub, topic);
-        (PeerId neighbor, List<Rpc> forwarded, _) = ConnectSubscribedPeer(pubsub, topic);
+        (PeerId sender, _, Func<Rpc, Task> receive) = await ConnectSubscribedPeer(pubsub, topic);
+        (PeerId neighbor, List<Rpc> forwarded, _) = await ConnectSubscribedPeer(pubsub, topic);
         IRoutingStateContainer routing = pubsub;
         routing.Mesh[topic].UnionWith([sender, neighbor]);
         TaskCompletionSource<GossipVerdict> pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -810,11 +846,12 @@ public partial class GossipRouterTests
         };
         Rpc rpc = new();
         rpc.Publish.Add(new Message { Topic = topic, Data = ByteString.CopyFrom(payload) });
-        receive(rpc);
+        await receive(rpc);
         GossipVerdict deferred = await pending.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.That(forwarded.SelectMany(static rpc => rpc.Publish), Is.Empty, "pending messages are not forwarded");
         await validate(deferred);
         await pubsub.Heartbeat();
+        await FlushOutboundAsync(pubsub);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(given, Is.EqualTo(expected), "the worker must distinguish invalid input from unavailable local data");
@@ -901,7 +938,7 @@ public partial class GossipRouterTests
     private static readonly string BlockTopic = GossipTopics.Topic(ForkDigest.Compute(Spec, Spec.GetEpoch(CurrentSlot)), GossipTopics.BeaconBlock);
 
     private sealed class DeferredFixture(IContainer container, PubsubRouter pubsub, GossipRouter router, DeferredGossipValidation validation, List<GossipVerdict> raised,
-        (PeerId Peer, List<Rpc> Sent, Action<Rpc> Receive) sender, (PeerId Peer, List<Rpc> Sent, Action<Rpc> Receive) neighbor) : IAsyncDisposable
+        (PeerId Peer, List<Rpc> Sent, Func<Rpc, Task> Receive) sender, (PeerId Peer, List<Rpc> Sent, Func<Rpc, Task> Receive) neighbor) : IAsyncDisposable
     {
         public PubsubRouter Pubsub { get; } = pubsub;
         public GossipRouter Router { get; } = router;
@@ -957,8 +994,8 @@ public partial class GossipRouterTests
             pubsub.VerifyMessage = validation.Verify;
             pubsub.OnDeferredMessage = validation.ValidateAsync;
             pubsub.GetTopic(BlockTopic);
-            (PeerId Peer, List<Rpc> Sent, Action<Rpc> Receive) sender = ConnectSubscribedPeer(pubsub, BlockTopic, protocol);
-            (PeerId Peer, List<Rpc> Sent, Action<Rpc> Receive) neighbor = ConnectSubscribedPeer(pubsub, BlockTopic, protocol);
+            (PeerId Peer, List<Rpc> Sent, Func<Rpc, Task> Receive) sender = await ConnectSubscribedPeer(pubsub, BlockTopic, protocol);
+            (PeerId Peer, List<Rpc> Sent, Func<Rpc, Task> Receive) neighbor = await ConnectSubscribedPeer(pubsub, BlockTopic, protocol);
             ((IRoutingStateContainer)pubsub).Mesh[BlockTopic].UnionWith([sender.Peer, neighbor.Peer]);
             return new DeferredFixture(container, pubsub, router, validation, raised, sender, neighbor) { Timestamper = timestamper };
         }
@@ -1025,14 +1062,14 @@ public partial class GossipRouterTests
             Data = ByteString.CopyFrom(Snappy.CompressToArray(PayloadAttestationMessage.Encode(PtcVote(PtcBlockRoot, PtcSlot, validator)))),
         };
 
-        public void Receive(PeerId from, byte[] data)
+        public Task Receive(PeerId from, byte[] data)
         {
             Rpc rpc = new();
             rpc.Publish.Add(new Message { Topic = BlockTopic, Data = ByteString.CopyFrom(data) });
-            ReceiveRpc(from, rpc);
+            return ReceiveRpc(from, rpc);
         }
 
-        public void ReceiveRpc(PeerId from, Rpc rpc) => (from == Sender ? sender.Receive : neighbor.Receive)(rpc);
+        public Task ReceiveRpc(PeerId from, Rpc rpc) => (from == Sender ? sender.Receive : neighbor.Receive)(rpc);
         public IReadOnlyList<Rpc> SentTo(PeerId peer) => peer == Sender ? sender.Sent : neighbor.Sent;
 
         public IEnumerable<MessageId> IdontwantsTo(PeerId peer) =>
