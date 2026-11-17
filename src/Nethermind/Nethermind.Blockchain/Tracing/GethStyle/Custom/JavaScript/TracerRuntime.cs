@@ -104,8 +104,9 @@ internal sealed partial class TracerRuntime : IDisposable
         if (IsBuiltIn(fileName)) return true;
 
         // Geth names the legacy tracers in camel case, e.g. callTracerLegacy for callTracer_legacy.
-        if (!tracer.EndsWith(GethLegacySuffix, StringComparison.Ordinal)) return false;
-        fileName = ToTracerFileName(tracer[..^GethLegacySuffix.Length] + LegacySuffix);
+        string name = Path.GetFileNameWithoutExtension(fileName);
+        if (!name.EndsWith(GethLegacySuffix, StringComparison.Ordinal)) return false;
+        fileName = ToTracerFileName(name[..^GethLegacySuffix.Length] + LegacySuffix);
         return IsBuiltIn(fileName);
     }
 

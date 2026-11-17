@@ -1331,7 +1331,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void call_tracer([Values("callTracer_legacy", "callTracerLegacy")] string name)
+    public void call_tracer([Values("callTracer_legacy", "callTracerLegacy", "callTracerLegacy.js")] string name)
     {
         using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
                 GetTracer(name),
