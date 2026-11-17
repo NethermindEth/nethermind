@@ -83,8 +83,6 @@ namespace Nethermind.Db
             }
         }
 
-        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]?>(k, _cache.TryGetValue(k, out byte[]? value) ? value : null)).ToArray();
-
         public void Remove(ReadOnlySpan<byte> key)
         {
             if (_cacheSpan.TryRemove(key, out _))
