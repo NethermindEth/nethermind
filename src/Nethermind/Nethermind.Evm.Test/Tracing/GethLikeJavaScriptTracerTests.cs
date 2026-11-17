@@ -1674,6 +1674,27 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         AssertResult(trace, expected);
     }
 
+    [TestCase(Instruction.INVALID, "invalid opcode: INVALID")]
+    [TestCase(Instruction.JUMP, "invalid jump destination")]
+    public void Child_revert_does_not_replace_the_root_halt_in_ctx_error(Instruction halt, string expected)
+    {
+        const string errorTracer = """
+            {
+                errors: [],
+                enter: function(frame) { },
+                exit: function(frame) { this.errors.push(frame.getError()); },
+                fault: function(log) { },
+                result: function(ctx) { return [ctx.error, this.errors]; }
+            }
+            """;
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Bytes.FromHexString("5f5ffd"), Spec);
+        byte[] code = Prepare.EvmCode.Call(TestItem.AddressC, 10000).Op(Instruction.POP).PushData(0).Op(halt).Done;
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(GetTracer(errorTracer), code, MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        AssertResult(trace, new object[] { expected, new[] { "execution reverted" } });
+    }
+
     [Test]
     [NonParallelizable]
     public void Heap_limit_violation_still_trips_after_an_earlier_transaction_re_armed_it()
