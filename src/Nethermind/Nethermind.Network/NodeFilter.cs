@@ -96,6 +96,13 @@ public sealed class NodeFilter
         return !WasSeenRecently(GetKey(ipAddress, exactOnly), NowMs());
     }
 
+    /// <summary>
+    /// Whether both addresses map to the same filter entry (the same subnet or the same exact IP, depending
+    /// on how the filter is configured).
+    /// </summary>
+    internal bool HasSameFilterKey(IPAddress first, IPAddress second)
+        => GetKey(first, exactOnly: false).Equals(GetKey(second, exactOnly: false));
+
     public void Touch(IPAddress ipAddress, bool exactOnly = false)
     {
         if (_cache is null)

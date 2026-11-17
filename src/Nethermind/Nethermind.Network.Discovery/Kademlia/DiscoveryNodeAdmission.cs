@@ -43,7 +43,9 @@ internal sealed class DiscoveryNodeAdmission(
     private readonly NodeFilter _filter = filter;
     private readonly bool _enabled = enabled;
     private readonly IRoutingTable<Node, ValueHash256> _routingTable = routingTable;
+    private readonly int _admittedCapacity = Math.Max(1, admittedCapacity);
     private readonly RecentNodeFilter<PublicKey> _admitted = new(Math.Max(1, admittedCapacity));
+    private readonly ConcurrentDictionary<PublicKey, IPAddress> _admittedAddresses = new();
     private readonly IStaticNodesManager? _staticNodes = staticNodes;
     private readonly ITrustedNodesManager? _trustedNodes = trustedNodes;
     private readonly ConcurrentDictionary<PublicKey, byte> _exemptNodeIds = enabled
@@ -64,8 +66,9 @@ internal sealed class DiscoveryNodeAdmission(
     /// <remarks>
     /// Safe to call from both the adapter gate and the routing-table decorator for the same message: a node
     /// admitted by the first call is recognized as known by the second. Self and exempt nodes bypass the
-    /// filter without consuming IP capacity. Already-known nodes refresh their address window through
-    /// <see cref="Touch"/>, so the subnet stays reserved for as long as the node remains active.
+    /// filter without consuming IP capacity. A known node refreshes its own address window, but a node that
+    /// moves to a different address must pass the filter again for the new address: identity proves who the
+    /// sender is, not that it owns an address in the subnet it now claims.
     /// </remarks>
     public bool TryAdmit(Node node)
     {
@@ -81,8 +84,7 @@ internal sealed class DiscoveryNodeAdmission(
         // Known nodes keep the refresh behavior of the old lifecycle-manager dictionary.
         if (IsKnown(node))
         {
-            Touch(node);
-            return true;
+            return RefreshKnownNode(node);
         }
 
         using Lock.Scope scope = _admitLock.EnterScope();
@@ -95,24 +97,89 @@ internal sealed class DiscoveryNodeAdmission(
 
         if (IsKnown(node))
         {
-            Touch(node);
-            return true;
+            return RefreshKnownNode(node);
         }
 
-        if (!_filter.TryAccept(node.Address.Address))
+        if (!AdmitAddress(node))
         {
             if (_logger.IsTrace) _logger.Trace($"Discovery node filtered by recent IP: {node:hide}.");
             return false;
         }
 
-        _admitted.TryReserve(node.Id);
         return true;
     }
 
+    private bool RefreshKnownNode(Node node)
+    {
+        if (!TryGetAdmittedAddress(node.Id, out IPAddress admittedAddress))
+        {
+            return AdmitAddress(node);
+        }
+
+        if (_filter.HasSameFilterKey(admittedAddress, node.Address.Address))
+        {
+            Touch(node);
+            return true;
+        }
+
+        // A known identity may only claim a new subnet when that subnet is still free; otherwise N
+        // identities could each be admitted from a distinct subnet and then all move into one target subnet.
+        if (!AdmitAddress(node))
+        {
+            if (_logger.IsTrace) _logger.Trace($"Discovery node filtered after changing its IP: {node:hide}.");
+            return false;
+        }
+
+        return true;
+    }
+
+    private bool AdmitAddress(Node node)
+    {
+        IPAddress address = node.Address.Address;
+        if (!_filter.TryAccept(address)) return false;
+
+        _admitted.TryReserve(node.Id);
+        RecordAdmittedAddress(node.Id, address);
+        return true;
+    }
+
+    private bool TryGetAdmittedAddress(PublicKey nodeId, out IPAddress address)
+    {
+        if (_admittedAddresses.TryGetValue(nodeId, out address!)) return true;
+
+        if (_routingTable.TryGet(nodeId.Hash.ValueHash256, out Node? knownNode))
+        {
+            address = knownNode.DiscoveryAddress.Address;
+            return true;
+        }
+
+        address = IPAddress.None;
+        return false;
+    }
+
+    private void RecordAdmittedAddress(PublicKey nodeId, IPAddress address)
+    {
+        _admittedAddresses[nodeId] = address;
+        if (_admittedAddresses.Count <= _admittedCapacity * 2) return;
+
+        // Keep the map bounded alongside the admitted identities it describes.
+        foreach (KeyValuePair<PublicKey, IPAddress> entry in _admittedAddresses)
+        {
+            if (!_admitted.Contains(entry.Key))
+            {
+                _admittedAddresses.TryRemove(entry.Key, out _);
+            }
+        }
+    }
+
     /// <summary>
-    /// Refreshes the address window for a node that is already admitted.
+    /// Refreshes the address window for a node that is already admitted under the same filter key.
     /// </summary>
-    public void Touch(Node node)
+    /// <remarks>
+    /// Do not use this to admit a new address: <see cref="NodeFilter.Touch"/> inserts a missing entry, which
+    /// would reserve the address without passing the admission check.
+    /// </remarks>
+    private void Touch(Node node)
     {
         if (!_enabled) return;
         _filter.Touch(node.Address.Address);

@@ -106,6 +106,61 @@ public class DiscoveryNodeAdmissionTests
     }
 
     [Test]
+    public void Known_node_moving_to_another_nodes_subnet_is_rejected()
+    {
+        Fixture fixture = CreateAdmission();
+        Node first = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
+        Node second = CreateNode(TestItem.PublicKeyB, "203.0.114.10");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.Admission.TryAdmit(first), Is.True);
+            Assert.That(fixture.Admission.TryAdmit(second), Is.True);
+            // Identity is not an address claim: the second node may not move into the first node's subnet.
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyB, "203.0.113.20")), Is.False);
+            // It can still refresh its own subnet, and so can the first node.
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyB, "203.0.114.20")), Is.True);
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyA, "203.0.113.20")), Is.True);
+        }
+    }
+
+    [Test]
+    public void Known_identities_cannot_concentrate_into_one_subnet()
+    {
+        Fixture fixture = CreateAdmission();
+        Node first = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
+        Node second = CreateNode(TestItem.PublicKeyB, "203.0.114.10");
+        Node third = CreateNode(TestItem.PublicKeyC, "203.0.115.10");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.Admission.TryAdmit(first), Is.True);
+            Assert.That(fixture.Admission.TryAdmit(second), Is.True);
+            Assert.That(fixture.Admission.TryAdmit(third), Is.True);
+            // Only the first identity can reserve the target subnet; the per-subnet limit still holds.
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyA, "203.0.116.10")), Is.True);
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyB, "203.0.116.20")), Is.False);
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyC, "203.0.116.30")), Is.False);
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyE, "203.0.116.40")), Is.False);
+        }
+    }
+
+    [Test]
+    public void Known_node_moving_to_a_free_subnet_reserves_it()
+    {
+        Fixture fixture = CreateAdmission();
+        Node node = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.Admission.TryAdmit(node), Is.True);
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyA, "203.0.114.10")), Is.True);
+            // The move reserved the new subnet against other nodes.
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyB, "203.0.114.20")), Is.False);
+        }
+    }
+
+    [Test]
     public void Same_subnet_node_is_admitted_after_the_holder_goes_silent_for_the_window()
     {
         ManualTimeProvider clock = new();
