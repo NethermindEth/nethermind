@@ -1459,11 +1459,15 @@ public class BlockCachePreWarmerTests
     /// Stopping a speculative session must also clear another parent's entries when the incoming spec disables warming.
     /// An idle session may finish asynchronously, but it must be cancelled and run no further pass over the cleared caches.
     /// </summary>
+    /// <remarks>
+    /// Osaka runs as block processing does, under the main state's scope. Amsterdam disables warming only with parallel
+    /// execution on, and runs without that scope: opening it clears the caches itself, which would hide a skipped clear.
+    /// </remarks>
     [Test]
     public async Task PreWarmCaches_ForAnotherParent_StopsTheSessionAndClearsOtherHeadEntries([Values] bool specDisablesPreWarming)
     {
         PreBlockCaches caches = _processingScope.Resolve<PreBlockCaches>();
-        using BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(parallelExecution: true, parallelExecutionBatchRead: false);
+        using BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(parallelExecution: specDisablesPreWarming, parallelExecutionBatchRead: false);
         BlockHeader head = BuildParentHeader();
         BlockHeader parent = BuildOtherStateHeader(head);
         using CancellationTokenSource cancellation = new();
@@ -1481,8 +1485,14 @@ public class BlockCachePreWarmerTests
         caches.StateCache.Set(in sentinel, new Account(123));
 
         // The block builds on another state, so the caches are cleared while the stopped session may not have ended yet.
-        IReleaseSpec spec = specDisablesPreWarming ? Amsterdam.Instance : Osaka.Instance;
-        await StartPrewarming(preWarmer, BuildChildBlock(parent), parent, spec);
+        if (specDisablesPreWarming)
+        {
+            await StartPrewarming(preWarmer, BuildChildBlock(parent), parent, Amsterdam.Instance);
+        }
+        else
+        {
+            await RunPreWarmCaches(preWarmer, BuildChildBlock(parent), parent, Osaka.Instance);
+        }
 
         using (Assert.EnterMultipleScope())
         {

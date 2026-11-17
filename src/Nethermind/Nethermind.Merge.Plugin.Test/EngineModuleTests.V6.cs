@@ -456,7 +456,7 @@ public partial class EngineModuleTests
         Assert.That(response, Does.Contain("\"status\":\"INVALID\""));
 
         IDebugRpcModule debug = chain.Container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
-        JsonNode badBlock = JsonNode.Parse(chain.JsonSerializer.Serialize(debug.debug_getBadBlocks().Data))!.AsArray().Single()!;
+        JsonNode badBlock = JsonNode.Parse(chain.JsonSerializer.Serialize((await debug.debug_getBadBlocks()).Data))!.AsArray().Single()!;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(badBlock["hash"]!.GetValue<string>(), Is.EqualTo(blockHash));

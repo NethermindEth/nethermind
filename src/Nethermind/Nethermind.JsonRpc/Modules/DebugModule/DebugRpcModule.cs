@@ -1240,7 +1240,7 @@ public class DebugRpcModule(
 
     private const string ExistingFileError = "location would overwrite an existing file";
 
-    public ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks(string? file = null)
+    public async Task<ResultWrapper<IEnumerable<BadBlock>>> debug_getBadBlocks(string? file = null)
     {
         IEnumerable<BadBlock> badBlocks = debugBridge.GetBadBlocks().Select(block => new BadBlock(block, true, specProvider, _blockDecoder, blockForRpcFactory));
         if (file is null)
@@ -1265,16 +1265,26 @@ public class DebugRpcModule(
         // Written next to the target and moved into place, so the target never holds a partial file and a failed
         // write only removes the file this call created.
         string temporaryFile = $"{file}.{Guid.NewGuid():N}.tmp";
+        CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         try
         {
-            using FileStream stream = new(temporaryFile, FileMode.CreateNew, FileAccess.Write);
-            EthereumJsonSerializer.SerializeToStream(stream, badBlocks);
+            await using FileStream stream = new(temporaryFile, new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, Options = FileOptions.Asynchronous });
+            await TypeInfoJsonSerializer.SerializeAsync(stream, badBlocks, EthereumJsonSerializer.JsonOptions, timeout.Token);
+        }
+        catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+        {
+            DeleteTemporaryFile(temporaryFile);
+            throw;
         }
         catch (Exception e)
         {
             if (_logger.IsWarn) _logger.Warn($"{nameof(debug_getBadBlocks)} failed to write {file}: {e.Message}");
             DeleteTemporaryFile(temporaryFile);
             return ResultWrapper<IEnumerable<BadBlock>>.Fail(e.Message, ErrorCodes.Default);
+        }
+        finally
+        {
+            JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout);
         }
 
         try

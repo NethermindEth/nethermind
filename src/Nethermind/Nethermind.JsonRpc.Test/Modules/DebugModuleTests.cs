@@ -1464,7 +1464,7 @@ public class DebugModuleTests
     }
 
     [Test]
-    public void DebugGetBadBlocks_WhenBadBlockStored_ReturnsBadBlock()
+    public async Task DebugGetBadBlocks_WhenBadBlockStored_ReturnsBadBlock()
     {
         BadBlockStore badBlocksStore = null!;
         BlockTree blockTree = BuildBlockTree(b => b.WithBadBlockStore(badBlocksStore = new BadBlockStore(b.BadBlocksDb, 100)));
@@ -1489,7 +1489,7 @@ public class DebugModuleTests
         AddBlockResult result = blockTree.SuggestBlock(block1);
         Assert.That(result, Is.EqualTo(AddBlockResult.InvalidBlock));
 
-        ResultWrapper<IEnumerable<BadBlock>> blocks = CreateModule().debug_getBadBlocks();
+        ResultWrapper<IEnumerable<BadBlock>> blocks = await CreateModule().debug_getBadBlocks();
         Assert.That(blocks.Data.Count(), Is.EqualTo(1));
         using (Assert.EnterMultipleScope())
         {
@@ -1725,6 +1725,35 @@ public class DebugModuleTests
         {
             yield return Build.A.Block.WithNumber(1).TestObject;
             File.WriteAllText(file, "other writer");
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void DebugGetBadBlocks_WhenTimedOutDuringWrite_StopsAndLeavesNoFile()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(directory.Path);
+        string file = Path.Combine(directory.Path, "bad-blocks.json");
+        TimeoutTestHelper.TrackingCancellationTokenSource timeout = TimeoutTestHelper.RentTrackingTimeoutSourceForNextRequest();
+        _debugBridge.GetBadBlocks().Returns(TimeOutAfter(Build.A.Block.WithNumber(1).TestObject));
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(async () => await CreateModule().debug_getBadBlocks(file), Throws.InstanceOf<OperationCanceledException>());
+                Assert.That(Directory.GetFileSystemEntries(directory.Path), Is.Empty, "neither the target nor a temporary file is left behind");
+            }
+        }
+        finally
+        {
+            TimeoutTestHelper.DisposeIfNotAlreadyObserved(timeout);
+        }
+
+        IEnumerable<Block> TimeOutAfter(Block block)
+        {
+            yield return block;
+            timeout.Cancel();
         }
     }
 
