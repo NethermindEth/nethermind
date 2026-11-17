@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -20,7 +21,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Find;
@@ -485,7 +486,7 @@ public class LogIndexBuilderTests
 
     [Test]
     [CancelAfter(60_000)]
-    public async Task Should_StopBackwardSync_AtTheOldestStoredBlock_InsteadOfWaitingForPrunedReceipts(CancellationToken cancellation)
+    public async Task Should_StopBackwardSync_AtTheOldestStoredBlock_InsteadOfWaitingForPrunedReceipts([Values] bool headerKept, CancellationToken cancellation)
     {
         const int oldestStored = 50;
         _syncConfig.AncientReceiptsBarrier = 1;
@@ -495,9 +496,19 @@ public class LogIndexBuilderTests
         prunedTree.SyncPivot.Returns(realTree.SyncPivot);
         prunedTree.Head.Returns(realTree.Head);
         prunedTree.GetLowestBlock().Returns((ulong)oldestStored);
-        ReturnBlocks(prunedTree, ci => ci.ArgAt<ulong>(0) < oldestStored
-                ? null
-                : realTree.FindBlock(ci.ArgAt<ulong>(0), ci.ArgAt<BlockTreeLookupOptions>(1)));
+        if (headerKept)
+        {
+            // History pruning deletes only the stored bodies and keeps the canonical headers.
+            prunedTree.FindHeader(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
+                .Returns(ci => realTree.FindHeader(ci.ArgAt<ulong>(0), ci.ArgAt<BlockTreeLookupOptions>(1)));
+            prunedTree.HasBlock(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(ci => ci.ArgAt<ulong>(0) >= oldestStored);
+        }
+        else
+        {
+            ReturnBlocks(prunedTree, ci => ci.ArgAt<ulong>(0) < oldestStored
+                    ? null
+                    : realTree.FindBlock(ci.ArgAt<ulong>(0), ci.ArgAt<BlockTreeLookupOptions>(1)));
+        }
 
         TestLogIndexStorage storage = new();
         LogIndexBuilder builder = GetService(storage, prunedTree);
@@ -928,11 +939,17 @@ public class LogIndexBuilderTests
         BlockTreeBuilder treeBuilder = Build.A.BlockTree().WithSpecProvider(specProvider);
         IBlockTree tree = treeBuilder.TestObject;
         TestMemColumnsDb<ReceiptsColumns> receiptsDb = new();
-        PersistentReceiptStorage CreateReceiptStorage() => new(receiptsDb, specProvider,
-            new ReceiptsRecovery(new EthereumEcdsa(specProvider.ChainId), specProvider), tree, treeBuilder.BlockStore,
-            new ReceiptConfig { CompactReceiptStore = compactReceipts });
+        IReceiptStorage CreateReceiptStorage() => new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new ReceiptConfig { CompactReceiptStore = compactReceipts, DeferredPersistence = false }))
+            .AddSingleton(specProvider)
+            .AddSingleton(tree)
+            .AddSingleton(treeBuilder.BlockStore)
+            .AddSingleton<IColumnsDb<ReceiptsColumns>>(receiptsDb)
+            .Build()
+            .AddTo(_testDisposables)
+            .Resolve<IReceiptStorage>();
 
-        PersistentReceiptStorage writer = CreateReceiptStorage();
+        IReceiptStorage writer = CreateReceiptStorage();
         Block[] blocks = new Block[blockCount + 1];
         TxReceipt[][] receipts = new TxReceipt[blocks.Length][];
         blocks[0] = Build.A.Block.Genesis.TestObject;
@@ -942,7 +959,8 @@ public class LogIndexBuilderTests
             Transaction tx = Build.A.Transaction.WithChainId(specProvider.ChainId).WithNonce((ulong)i).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             blocks[i] = Build.A.Block.WithParent(blocks[i - 1]).WithReceiptsRoot(TestItem.KeccakA).WithTransactions(tx).TestObject;
             BlockTreeBuilder.AddBlock(tree, blocks[i]);
-            Hash256[] topics = Enumerable.Range(0, LogIndexStorage.MaxTopics).Select(t => Keccak.Compute($"{i}-{t}")).ToArray();
+            // A topic with leading zero bytes checks the zero-prefix restore of compact receipts.
+            Hash256[] topics = Enumerable.Range(0, LogIndexStorage.MaxTopics).Select(t => t == 0 ? new Hash256($"0x{i:x64}") : Keccak.Compute($"{i}-{t}")).ToArray();
             receipts[i] =
             [
                 Build.A.Receipt.WithTransactionHash(tx.Hash).WithLogs(
@@ -956,7 +974,7 @@ public class LogIndexBuilderTests
         tree.SyncPivot = (blocks[^1].Number, blocks[^1].Hash!);
         _config.MaxReorgDepth = 0;
         // A fresh instance starts with an empty receipts cache; the writer filled its own.
-        PersistentReceiptStorage reader = source is ReceiptsSource.Cache ? writer : CreateReceiptStorage();
+        IReceiptStorage reader = source is ReceiptsSource.Cache ? writer : CreateReceiptStorage();
         if (source is ReceiptsSource.LegacyKey)
             reader.MigratedBlockNumber = (ulong)blocks.Length;
         _receiptStorage = reader;
