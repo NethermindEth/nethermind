@@ -8,7 +8,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Merge.Plugin.Data;
 using PayloadBodyV1 = Nethermind.Merge.Plugin.Data.PayloadBodiesV1DirectResponse.PayloadBody;
@@ -50,14 +49,14 @@ internal static class PayloadBodiesHandlerHelper
     {
         if (index % PrefetchWindow != 0 || headers.Length - index < 2) return;
 
-        using ArrayPoolSpan<(ulong Number, ValueHash256 Hash)> blocks = new(PrefetchWindow);
+        Span<(ulong Number, ValueHash256 Hash)> blocks = stackalloc (ulong, ValueHash256)[PrefetchWindow];
         int count = 0;
         foreach (BlockHeader? header in headers.Slice(index, Math.Min(PrefetchWindow, headers.Length - index)))
         {
             if (header?.Hash is { } hash) blocks[count++] = (header.Number, hash.ValueHash256);
         }
 
-        blockStore.Prefetch(blocks.AsReadOnlyMemory()[..count]);
+        blockStore.Prefetch(blocks[..count]);
     }
 
     public static PayloadBodyV1? CreatePayloadBodyV1(IBlockStore blockStore, BlockHeader? header, Hash256 blockHash) =>

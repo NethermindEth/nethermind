@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus.Producers;
@@ -19,7 +20,6 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
@@ -529,27 +529,26 @@ public partial class EngineModuleTests
             IReadOnlyList<ExecutionPayloadBodyV1Result?> Outcome) input)
     {
         IBlockTree? blockTree = Substitute.For<IBlockTree>();
-        IBlockStore? blockStore = Substitute.For<IBlockStore>();
-        BlockDecoder blockDecoder = new();
+        IBlockStore? blockStore = null;
 
         blockTree.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
         blockTree.FindHeader(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
-            .Returns(i => GetHeader(input.Impl(i)));
-        blockStore.GetRlp(Arg.Any<ulong>(), Arg.Any<Hash256>())
             .Returns(i =>
             {
                 Block? block = input.Impl(i);
-                return block is null ? null : blockDecoder.Encode(block);
+                BlockHeader? header = GetHeader(block);
+                if (block is not null) blockStore?.Insert(block);
+                return header;
             });
 
         using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance, configurer: (builder) =>
             builder
                 .AddSingleton<IBlockTree>(blockTree)
-                .AddSingleton<IBlockStore>(blockStore)
                 .AddSingleton(new TestBlockchain.Configuration()
                 {
                     SuggestGenesisOnStart = false,
                 }));
+        blockStore = chain.Container.Resolve<IBlockStore>();
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
         IReadOnlyList<ExecutionPayloadBodyV1Result?> payloadBodies =

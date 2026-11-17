@@ -608,7 +608,7 @@ namespace Nethermind.Synchronization
         public void PrefetchBlocks(IReadOnlyList<Hash256> hashes, int start, int count)
         {
             using ArrayPoolSpan<(ulong Number, ValueHash256 Hash)> blocks = new(count);
-            _blockStore.Prefetch(blocks.AsReadOnlyMemory()[.._headerStore.GetKnownBlocks(hashes, start, count, blocks)]);
+            _blockStore.Prefetch(blocks.Slice(0, _headerStore.GetKnownBlocks(hashes, start, count, blocks)));
         }
 
         /// <inheritdoc/>
