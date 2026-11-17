@@ -608,15 +608,18 @@ namespace Nethermind.Core
             Proofs.AsMemory(start * BytesPerProof, count * BytesPerProof);
 
         /// <summary>Copies each proof in <see cref="Proofs"/> to an array of its own.</summary>
-        public byte[][] SplitProofs()
+        public byte[][] SplitProofs() => SplitProofs(Proofs);
+
+        /// <summary>Copies each proof in <paramref name="proofs"/>, held back to back as in <see cref="Proofs"/>, to an array of its own.</summary>
+        public static byte[][] SplitProofs(ReadOnlySpan<byte> proofs)
         {
-            byte[][] proofs = new byte[ProofCount][];
-            for (int i = 0; i < proofs.Length; i++)
+            byte[][] split = new byte[proofs.Length / BytesPerProof][];
+            for (int i = 0; i < split.Length; i++)
             {
-                proofs[i] = Proofs.AsSpan(i * BytesPerProof, BytesPerProof).ToArray();
+                split[i] = proofs.Slice(i * BytesPerProof, BytesPerProof).ToArray();
             }
 
-            return proofs;
+            return split;
         }
 
         /// <summary>Copies separate proofs back to back, as <see cref="Proofs"/> holds them.</summary>
@@ -624,11 +627,16 @@ namespace Nethermind.Core
         public static bool TryJoinProofs(ReadOnlySpan<byte[]?> proofs, [NotNullWhen(true)] out byte[]? joined)
         {
             joined = null;
+            // Checked before the allocation, so that invalid input cannot make a large buffer.
+            foreach (byte[]? proof in proofs)
+            {
+                if (proof is not { Length: BytesPerProof }) return false;
+            }
+
             byte[] buffer = new byte[proofs.Length * BytesPerProof];
             for (int i = 0; i < proofs.Length; i++)
             {
-                if (proofs[i] is not { Length: BytesPerProof } proof) return false;
-                proof.CopyTo(buffer, i * BytesPerProof);
+                proofs[i]!.CopyTo(buffer, i * BytesPerProof);
             }
 
             joined = buffer;

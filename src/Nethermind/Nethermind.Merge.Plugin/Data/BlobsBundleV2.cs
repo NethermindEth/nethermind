@@ -42,14 +42,16 @@ public class BlobsBundleV2
                 throw new ArgumentException("Shard blob transaction should contain network wrapper data");
             }
 
-            byte[][] proofs = wrapper.SplitProofs();
             for (int txIndex = 0;
                  txIndex < wrapper.Blobs.Length;
                  blockIndex++, txIndex++)
             {
                 Commitments[blockIndex] = wrapper.Commitments[txIndex];
                 Blobs[blockIndex] = wrapper.Blobs[txIndex];
-                Array.Copy(proofs, txIndex * Ckzg.CellsPerExtBlob, Proofs, blockIndex * Ckzg.CellsPerExtBlob, Ckzg.CellsPerExtBlob);
+                for (int cellIndex = 0; cellIndex < Ckzg.CellsPerExtBlob; cellIndex++)
+                {
+                    Proofs[blockIndex * Ckzg.CellsPerExtBlob + cellIndex] = wrapper.GetProofs(txIndex * Ckzg.CellsPerExtBlob + cellIndex).ToArray();
+                }
             }
         }
     }

@@ -60,18 +60,7 @@ public sealed class BlobsV2DirectResponse : IStreamableResult, IReadOnlyList<Blo
     }
 
     private BlobAndProofV2? BuildBlobAndProofV2(int i) =>
-        _blobs[i] is { } blob ? new BlobAndProofV2(blob, SplitProofs(_proofs[i].Span)) : null;
-
-    private static byte[][] SplitProofs(ReadOnlySpan<byte> proofs)
-    {
-        byte[][] split = new byte[proofs.Length / ShardBlobNetworkWrapper.BytesPerProof][];
-        for (int i = 0; i < split.Length; i++)
-        {
-            split[i] = proofs.Slice(i * ShardBlobNetworkWrapper.BytesPerProof, ShardBlobNetworkWrapper.BytesPerProof).ToArray();
-        }
-
-        return split;
-    }
+        _blobs[i] is { } blob ? new BlobAndProofV2(blob, ShardBlobNetworkWrapper.SplitProofs(_proofs[i].Span)) : null;
 
     IEnumerator IEnumerable.GetEnumerator() => ((IEnumerable<BlobAndProofV2?>)this).GetEnumerator();
 

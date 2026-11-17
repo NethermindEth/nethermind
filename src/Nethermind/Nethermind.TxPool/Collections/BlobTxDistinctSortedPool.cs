@@ -562,13 +562,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
             }
 
             byte[][] selectedProofs = BlobCellsHelper.SelectProofs(candidate.Wrapper, candidate.BlobIndex, selectedMask);
-            bool proofsAreValid = selectedProofs.Length == selectedMask.Count;
-            for (int i = 0; proofsAreValid && i < selectedProofs.Length; i++)
-            {
-                proofsAreValid = selectedProofs[i] is { Length: Ckzg.BytesPerProof };
-            }
-
-            if (!proofsAreValid
+            if (selectedProofs.Length != selectedMask.Count
                 || !TryGetFlattenedCellsForBlob(candidate.Wrapper, candidate.BlobIndex, selectedMask, out byte[][]? selectedCells))
             {
                 availableMask = default;

@@ -5,10 +5,12 @@ using System;
 using System.IO;
 using System.IO.Pipelines;
 using System.Threading.Tasks;
+using Autofac;
 using BenchmarkDotNet.Attributes;
 using CkzgLib;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Specs.Forks;
@@ -25,7 +27,8 @@ public class GetBlobsV2Benchmarks
 {
     private const int BlobCount = 6;
 
-    private BlobTxStorage _storage = null!;
+    private IContainer _container = null!;
+    private IBlobTxStorage _storage = null!;
     private TxLookupKey[] _keys = null!;
     private readonly Transaction?[] _read = new Transaction?[1];
     private readonly byte[]?[] _blobs = new byte[BlobCount][];
@@ -39,10 +42,14 @@ public class GetBlobsV2Benchmarks
             .WithShardBlobTxTypeAndFields(BlobCount, spec: Osaka.Instance)
             .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Mainnet), TestItem.PrivateKeyA)
             .TestObject;
-        _storage = new BlobTxStorage();
+        _container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
+        _storage = _container.Resolve<IBlobTxStorage>();
         _storage.Add(tx);
         _keys = [new TxLookupKey(tx.Hash!.ValueHash256, tx.SenderAddress!, tx.Timestamp)];
     }
+
+    [GlobalCleanup]
+    public void Cleanup() => _container.Dispose();
 
     [Benchmark]
     public async Task ReadAndWriteResponse()

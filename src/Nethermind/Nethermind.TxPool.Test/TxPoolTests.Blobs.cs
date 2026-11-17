@@ -1937,7 +1937,7 @@ namespace Nethermind.TxPool.Test
                     using (Assert.EnterMultipleScope())
                     {
                         Assert.That(blobs[i], Is.EqualTo(wrapper.Blobs[i]), $"blob {i}");
-                        Assert.That(proofs[i].ToArray(), Is.EqualTo(wrapper.GetProofs(i * Ckzg.CellsPerExtBlob, Ckzg.CellsPerExtBlob).ToArray()), $"cell proofs {i}");
+                        Assert.That(proofs[i].ToArray(), Is.EqualTo(wrapper.Proofs.AsSpan(i * Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof, Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof).ToArray()), $"cell proofs {i}");
                     }
                 }
             }
@@ -3293,7 +3293,7 @@ namespace Nethermind.TxPool.Test
                     ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)(blobIndex == blobCount ? tx2 : tx1).NetworkWrapper!;
                     int index = blobIndex == blobCount ? 0 : blobIndex;
                     Assert.That(blobs[i].AsSpan().SequenceEqual(wrapper.Blobs[index]), Is.True, $"Blob at index {i}");
-                    Assert.That(proofs[i].ToArray(), Is.EqualTo(wrapper.GetProofs(index * Ckzg.CellsPerExtBlob, Ckzg.CellsPerExtBlob).ToArray()));
+                    Assert.That(proofs[i].ToArray(), Is.EqualTo(wrapper.Proofs.AsSpan(index * Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof, Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof).ToArray()));
                 }
                 Assert.That(blobTxStorage.LastTryGetManyCount, Is.EqualTo(2));
             }
