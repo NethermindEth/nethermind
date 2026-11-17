@@ -1969,6 +1969,45 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(Volatile.Read(ref refuserAdmissions) + (lateAdmitted ? 1 : 0), Is.EqualTo(1));
         }
 
+        [TestCase(0, TestName = "Removing_an_open_client_during_its_first_add_disposes_the_subscription")]
+        [TestCase(1, TestName = "Removing_an_open_client_during_a_later_add_disposes_the_subscription")]
+        public void Removing_an_open_client_during_an_add_disposes_the_subscription_and_frees_its_slot(int earlierSubscriptions)
+        {
+            const int nodeLimit = 2;
+            SubscriptionManager? manager = null;
+            bool removeClientOnCreate = false;
+            TrackingSubscription? created = null;
+            ISubscriptionFactory factory = Substitute.For<ISubscriptionFactory>();
+            factory
+                .CreateSubscription(Arg.Any<IJsonRpcDuplexClient>(), Arg.Any<string>(), Arg.Any<string?>())
+                .Returns(ci =>
+                {
+                    IJsonRpcDuplexClient client = (IJsonRpcDuplexClient)ci[0];
+                    if (removeClientOnCreate) manager!.RemoveClientSubscriptions(client);
+                    return created = new TrackingSubscription(client);
+                });
+            manager = new SubscriptionManager(factory, new JsonRpcConfig { MaxSubscriptions = nodeLimit, MaxSubscriptionsPerConnection = 0 }, LimboLogs.Instance);
+            IJsonRpcDuplexClient removedClient = Substitute.For<IJsonRpcDuplexClient>();
+            removedClient.Id.Returns("removed-client");
+            IJsonRpcDuplexClient otherClient = Substitute.For<IJsonRpcDuplexClient>();
+            otherClient.Id.Returns("other-client");
+
+            for (int i = 0; i < earlierSubscriptions; i++) manager.AddSubscription(removedClient, "test");
+
+            removeClientOnCreate = true;
+            string subscriptionId = manager.AddSubscription(removedClient, "test");
+            removeClientOnCreate = false;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(created!.Disposed, Is.True);
+                Assert.That(manager.RemoveSubscription(removedClient, subscriptionId), Is.False);
+                for (int i = 0; i < nodeLimit; i++) Assert.DoesNotThrow(() => manager.AddSubscription(otherClient, "test"));
+                Assert.That(() => manager.AddSubscription(otherClient, "test"),
+                    Throws.TypeOf<LimitExceededException>().With.Message.EqualTo($"Too many subscriptions. The node limit is {nodeLimit}."));
+            }
+        }
+
         [Test]
         public void AddSubscription_releases_both_slots_when_the_factory_throws()
         {
