@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections;
+using System.Globalization;
 using System.Linq;
 using System.Numerics;
 using Microsoft.ClearScript.JavaScript;
@@ -21,10 +22,23 @@ public static class JavaScriptConverter
         ITypedArray<byte> typedArray => typedArray.Length == 0 ? [] : typedArray.ToArray(),
         IArrayBuffer arrayBuffer => arrayBuffer.GetBytes(),
         IArrayBufferView arrayBufferView => arrayBufferView.GetBytes(),
-        // Geth truncates each element to an integer and wraps it into a byte.
-        IList list => list.ToEnumerable().Select(static item => unchecked((byte)(long)Convert.ToDouble(item))).ToArray(),
+        IList list => list.ToEnumerable().Select(ToWrappedByte).ToArray(),
         _ => throw new ArgumentException("Unsupported input type.", nameof(input))
     };
+
+    /// <remarks>
+    /// Geth truncates each element to an integer and wraps it into a byte; an element that is not a number counts as 0.
+    /// </remarks>
+    private static byte ToWrappedByte(object? item)
+    {
+        double value = item switch
+        {
+            string text => double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double parsed) ? parsed : 0,
+            IConvertible convertible => convertible.ToDouble(CultureInfo.InvariantCulture),
+            _ => 0
+        };
+        return double.IsFinite(value) ? unchecked((byte)(long)value) : (byte)0;
+    }
 
     public static byte[] ToWord(this object input) => input switch
     {

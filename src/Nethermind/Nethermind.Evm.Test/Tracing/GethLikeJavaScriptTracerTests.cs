@@ -49,7 +49,8 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase("[0, 1, 255]", "[0,1,255]")]
     [TestCase("toHex(new Uint8Array([]))", "\"0x\"")]
     [TestCase("toHex(new Uint8Array([0, 1, 255]))", "\"0x0001ff\"")]
-    [TestCase("toHex([256, 511, -1, 1.9])", "\"0x00ffff01\"")]
+    [TestCase("toHex([256, 511, -1, 1.9, Infinity, -Infinity, NaN])", "\"0x00ffff01000000\"")]
+    [TestCase("toHex([undefined, null, 'x', '2', true, , 3])", "\"0x00000002010003\"")]
     [TestCase("({ DUP1: 'a', PUSH1: 'b', LOG2: 'c', Foo: 'd', add: 'e' })", "{\"DUP1\":\"a\",\"PUSH1\":\"b\",\"LOG2\":\"c\",\"Foo\":\"d\",\"add\":\"e\"}")]
     [TestCase("({ counts: { SSTORE: 'x' } })", "{\"counts\":{\"SSTORE\":\"x\"}}")]
     [TestCase("[{ DUP1: 1 }]", "[{\"DUP1\":1}]")]
@@ -148,11 +149,11 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         Assert.That(() => input.ToAddress(), Throws.TypeOf<ArgumentException>());
 
     [Test]
-    public void Address_conversion_validates_even_discarded_bytes([Values(-1, 256)] int invalidByte, [Values(1, 21)] int length)
+    public void Address_conversion_wraps_out_of_range_elements([Values(-1, 256)] int element, [Values(1, 21)] int length)
     {
         int[] input = new int[length];
-        input[0] = invalidByte;
-        Assert.That(() => input.ToAddress(), Throws.TypeOf<OverflowException>());
+        input[^1] = element;
+        Assert.That(input.ToAddress(), Is.EqualTo(new Address(new byte[Address.Size - 1].Append((byte)element).ToArray())));
     }
 
     [Test]
