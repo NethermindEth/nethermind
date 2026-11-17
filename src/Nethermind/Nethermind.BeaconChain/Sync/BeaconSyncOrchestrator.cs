@@ -574,7 +574,7 @@ public sealed class BeaconSyncOrchestrator(
             await ImportEnvelopeAsync(anchorEnvelope, token);
         }
 
-        for (ulong slot = _syncTip.Slot + 1; slot <= wallSlot; slot++)
+        foreach (ulong slot in store.EnumerateCanonicalSlots(_syncTip.Slot + 1, wallSlot, token))
         {
             token.ThrowIfCancellationRequested();
             if (!store.TryGetCanonicalRoot(slot, out Hash256? root))

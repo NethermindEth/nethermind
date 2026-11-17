@@ -9,11 +9,11 @@ using Nethermind.Db;
 namespace Nethermind.BeaconChain.Test.Storage;
 
 // Sorted tables support disk-like seeking; otherwise range reads must walk keys.
-internal sealed class CountingStatesColumnsDb(bool sorted) : TestColumnsDb
+internal sealed class CountingStatesColumnsDb(bool sorted, BeaconChainDbColumns indexColumn = BeaconChainDbColumns.StateSlotIndex) : TestColumnsDb
 {
     public CountingStatesDb States { get; } = new();
     public CountingStatesDb Index { get; } = sorted ? new SeekableCountingStatesDb() : new CountingStatesDb();
-    protected override IDb CreateColumn(BeaconChainDbColumns key) => key == BeaconChainDbColumns.States ? States : key == BeaconChainDbColumns.StateSlotIndex ? Index : base.CreateColumn(key);
+    protected override IDb CreateColumn(BeaconChainDbColumns key) => key == BeaconChainDbColumns.States ? States : key == indexColumn ? Index : base.CreateColumn(key);
 
     internal class CountingStatesDb : MemDb, IDb
     {

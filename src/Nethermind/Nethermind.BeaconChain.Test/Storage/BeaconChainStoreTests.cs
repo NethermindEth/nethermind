@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
@@ -13,6 +14,25 @@ namespace Nethermind.BeaconChain.Test.Storage;
 
 public class BeaconChainStoreTests
 {
+    [Test]
+    public void Canonical_slot_iteration_filters_other_key_lengths_and_includes_max_slot([Values] bool sorted)
+    {
+        using CountingStatesColumnsDb db = new(sorted, BeaconChainDbColumns.BlockIndex);
+        BeaconChainStore store = new(db);
+        foreach (ulong slot in new ulong[] { 0, 10, 1_000_000, ulong.MaxValue })
+            store.SetCanonicalRoot(slot, Hash256.Zero);
+        byte[] middle = new byte[sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64BigEndian(middle, 500_000);
+        db.Index.Set(middle[..7], [1]);
+        db.Index.Set([.. middle, 1], [1]);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(store.EnumerateCanonicalSlots(10, ulong.MaxValue, CancellationToken.None), Is.EqualTo((ulong[])[10, 1_000_000, ulong.MaxValue]));
+        Assert.That(store.EnumerateCanonicalSlots(0, 0, CancellationToken.None), Is.EqualTo((ulong[])[0]));
+        Assert.That(store.EnumerateCanonicalSlots(11, 10, CancellationToken.None), Is.Empty);
+        Assert.Throws<OperationCanceledException>(() => store.EnumerateCanonicalSlots(0, ulong.MaxValue, new CancellationToken(true)).ToArray());
+    }
+
     [Test]
     public void Round_trips_blocks_canonical_index_chunked_states_metadata_and_anchor()
     {

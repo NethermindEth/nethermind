@@ -708,6 +708,39 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         return root is not null;
     }
 
+    internal IEnumerable<ulong> EnumerateCanonicalSlots(ulong first, ulong last, CancellationToken token) =>
+        EnumerateStoredSlots(_blockIndex, first, last, token);
+
+    private static IEnumerable<ulong> EnumerateStoredSlots(IDb table, ulong first, ulong last, CancellationToken token = default)
+    {
+        token.ThrowIfCancellationRequested();
+        if (first > last) yield break;
+        byte[] lower = new byte[sizeof(ulong)];
+        // Appending zero makes the exact last slot inclusive without overflowing ulong.MaxValue.
+        byte[] upper = new byte[sizeof(ulong) + 1];
+        BinaryPrimitives.WriteUInt64BigEndian(lower, first);
+        BinaryPrimitives.WriteUInt64BigEndian(upper, last);
+        if (table is ISortedKeyValueStore sorted)
+        {
+            using ISortedView view = sorted.GetViewBetween(lower, upper);
+            while (view.MoveNext())
+            {
+                token.ThrowIfCancellationRequested();
+                if (view.CurrentKey.Length == sizeof(ulong))
+                    yield return BinaryPrimitives.ReadUInt64BigEndian(view.CurrentKey);
+            }
+            yield break;
+        }
+
+        foreach (byte[] key in table.GetAllKeys(ordered: true))
+        {
+            token.ThrowIfCancellationRequested();
+            if (key.AsSpan().SequenceCompareTo(upper) >= 0) break;
+            if (key.Length == sizeof(ulong) && key.AsSpan().SequenceCompareTo(lower) >= 0)
+                yield return BinaryPrimitives.ReadUInt64BigEndian(key);
+        }
+    }
+
     /// <exception cref="ArgumentException"><paramref name="sszBytes"/> is longer than a stored state may be, so it could never be read back.</exception>
     public void PutState(Hash256 blockRoot, ReadOnlySpan<byte> sszBytes)
     {
@@ -1132,7 +1165,7 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
     /// (gloas/p2p-interface.md), where <paramref name="currentEpoch"/> is the wall-clock epoch; no envelope precedes the Gloas fork,
     /// so the fork term never prunes more and is left out. Envelopes from the finalized block on are kept even outside the window,
     /// because replay from the finalized state verifies each child against its parent's payload. Only the stored slot bounds are
-    /// visited, at most <see cref="EnvelopePruneBatchSlots"/> slots per write batch, and each batch moves the lower bound with its
+    /// visited, at most <see cref="EnvelopePruneBatchSlots"/> populated slots per write batch, and each batch moves the lower bound with its
     /// deletions, so an interrupted prune resumes where it stopped.
     /// </remarks>
     /// <param name="currentEpoch">The wall-clock epoch.</param>
@@ -1150,7 +1183,7 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         }
     }
 
-    /// <summary>Deletes the envelopes of at most <see cref="EnvelopePruneBatchSlots"/> slots from the lower slot bound up, stopping below <paramref name="keepFrom"/>.</summary>
+    /// <summary>Deletes the envelopes of at most <see cref="EnvelopePruneBatchSlots"/> populated slots from the lower slot bound up, stopping below <paramref name="keepFrom"/>.</summary>
     /// <returns><c>false</c> when no stored slot is below <paramref name="keepFrom"/>.</returns>
     /// <remarks>The bounds are read again for each batch, so <see cref="PutExecutionPayloadEnvelope(Hash256, SignedExecutionPayloadEnvelope)"/> waits for one batch only and a slot it adds meanwhile is still pruned.</remarks>
     private bool PruneExecutionPayloadEnvelopeBatch(ulong keepFrom)
@@ -1164,11 +1197,12 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
 
             bool prunesAll = keepFrom > highest;
             ulong last = prunesAll ? highest : keepFrom - 1;
-            ulong batchLast = last - lowest >= EnvelopePruneBatchSlots ? lowest + EnvelopePruneBatchSlots - 1 : last;
+            ulong batchLast = last;
+            ulong slots = 0;
             Span<byte> slotKey = stackalloc byte[sizeof(ulong)];
             using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
             IWriteBatch envelopes = batch.GetColumnBatch(BeaconChainDbColumns.ExecutionPayloadEnvelopes);
-            for (ulong slot = lowest; ; slot++)
+            foreach (ulong slot in EnumerateStoredSlots(_envelopes, lowest, last))
             {
                 BinaryPrimitives.WriteUInt64BigEndian(slotKey, slot);
                 if (_envelopes.Get(slotKey) is { } roots)
@@ -1182,8 +1216,9 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
                     envelopes.Remove(slotKey);
                 }
 
-                if (slot == batchLast)
+                if (++slots == EnvelopePruneBatchSlots)
                 {
+                    batchLast = slot;
                     break;
                 }
             }

@@ -15,6 +15,7 @@ using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.P2P;
 using Nethermind.BeaconChain.Test.P2P.Gossip;
+using Nethermind.BeaconChain.Test.Storage;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -1144,6 +1145,27 @@ public partial class BeaconSyncOrchestratorTests
         await CompleteWorkerAsync(harness.Orchestrator, CancellationToken.None);
 
         Assert.That(harness.Importer.Imports.Select(static i => i.Slot), Is.EqualTo(new[] { WallSlot + 1 }), "no later gossip message is needed to release the held block");
+    }
+
+    [Test]
+    public async Task Replay_seeks_populated_slots_across_large_gaps_and_stops_at_the_clock([Values] bool sorted)
+    {
+        using CountingStatesColumnsDb db = new(sorted, BeaconChainDbColumns.BlockIndex);
+        BeaconChainStore store = new(db);
+        const ulong wallSlot = 2_000_000;
+        (SignedBeaconBlock anchor, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 101, 1_000_000, wallSlot + 1);
+        TestChain.Persist(store, anchor, anchorRoot, chain);
+        Harness harness = CreateHarness(store: store, wallSlot: wallSlot);
+        harness.Importer.Known.Add(anchorRoot);
+        db.Index.ResetCount();
+        long reads = db.Index.ReadsCount;
+
+        await harness.Orchestrator.ReplayStoredBlocksAsync(CancellationToken.None);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(harness.Importer.Imports.Select(static i => i.Slot), Is.EqualTo((ulong[])[101, 1_000_000]));
+        Assert.That(db.Index.ReadsCount - reads, Is.LessThan(20));
+        Assert.That(db.Index.KeysRead, Is.LessThan(20), "empty slots must not cost index reads");
     }
 
     [Test]
