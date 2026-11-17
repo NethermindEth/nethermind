@@ -38,9 +38,14 @@ public class ShutterStaticPeerTests
         await WaitUntilAsync(() => node.RoutingStateForTest.ConnectedPeers.Contains(keyperId), "the node never connected to its bootnode", token);
 
         LocalPeer nodePeer = (LocalPeer)node.PeerForTest;
-        foreach (ShutterP2P host in new[] { node, keyper })
+        foreach (LocalPeer peer in new[] { nodePeer, (LocalPeer)keyperPeer })
         {
-            foreach (ISession session in ((LocalPeer)host.PeerForTest).Sessions.ToArray())
+            LocalPeer.Session[] sessions;
+            lock (peer.Sessions)
+            {
+                sessions = [.. peer.Sessions];
+            }
+            foreach (ISession session in sessions)
             {
                 await session.DisconnectAsync();
             }
