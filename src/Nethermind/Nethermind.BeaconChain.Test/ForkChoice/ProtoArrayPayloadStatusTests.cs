@@ -30,6 +30,35 @@ public class ProtoArrayPayloadStatusTests
         fc.GetHead(Anchor, Anchor, JustifiedBalances.FromEffectiveBalances(balances), null, slot);
     }
 
+    [Test]
+    public void Repeated_heads_apply_status_balance_and_equivocation_changes()
+    {
+        ProtoArrayForkChoice fc = NewForkChoice();
+        fc.ProcessBlock(Block(1, GetRoot(1), GetRoot(0), isGloas: true), 2, Anchor, Anchor);
+        JustifiedBalances balances = JustifiedBalances.FromEffectiveBalances([7]);
+        HashSet<ulong> equivocators = [];
+        fc.ProcessAttestation(0, GetRoot(1), 2, 0, payloadPresent: true);
+        Check(7, 0, 7);
+        Check(7, 0, 7);
+        fc.ProcessAttestation(0, GetRoot(1), 3, 0, payloadPresent: false);
+        Check(7, 7, 0);
+        Check(7, 7, 0);
+        balances = JustifiedBalances.FromEffectiveBalances([11]);
+        Check(11, 11, 0);
+        equivocators.Add(0);
+        Check(0, 0, 0);
+        Check(0, 0, 0);
+        equivocators.Clear();
+        Check(11, 11, 0);
+
+        void Check(ulong weight, ulong empty, ulong full)
+        {
+            fc.GetHead(Anchor, Anchor, balances, equivocators, 4);
+            ProtoNode node = Node(fc, GetRoot(1));
+            Assert.That((node.Weight, node.EmptyWeight, node.FullWeight), Is.EqualTo((weight, empty, full)));
+        }
+    }
+
     [TestCase(2ul, true, ForkChoicePayloadStatus.Full, TestName = "Later slot, index 1: FULL")]
     [TestCase(2ul, false, ForkChoicePayloadStatus.Empty, TestName = "Later slot, index 0: EMPTY")]
     [TestCase(1ul, false, ForkChoicePayloadStatus.Pending, TestName = "Block's own slot: PENDING")]

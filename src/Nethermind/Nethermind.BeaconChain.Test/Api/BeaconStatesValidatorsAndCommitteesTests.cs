@@ -4,6 +4,7 @@
 using System.Net;
 using System.Net.Http;
 using System.Text.Json;
+using Nethermind.BeaconChain.Api;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
@@ -25,7 +26,8 @@ public class BeaconStatesValidatorsAndCommitteesTests : BeaconApiFixture
     [OneTimeSetUp]
     public async Task StartHost()
     {
-        _host = await BeaconApiTestHost.StartAsync(Spec, forkAwareStore: false);
+        _host = await BeaconApiTestHost.StartAsync(Spec, forkAwareStore: false,
+            apiConfig: new BeaconApiConfig { StateDownloadsPerMinutePerClient = 0 });
         _host.Client.Timeout = TimeSpan.FromSeconds(5);
     }
 
@@ -80,6 +82,9 @@ public class BeaconStatesValidatorsAndCommitteesTests : BeaconApiFixture
     [TestCase("validators", "id={1}&id={4}", "index", new[] { "1", "4" })]
     [TestCase("validator_balances", "id=0&id={1}&id={4}", "index", new[] { "0", "1", "4" })]
     [TestCase("validators", "id=0,2", "index", new[] { "0", "2" })]
+    [TestCase("validators", "id=4,2,4,999999&id={2}", "index", new[] { "2", "4" })]
+    [TestCase("validators", "id=8,4,2,0&status=active", "index", new[] { "2", "4" })]
+    [TestCase("validators", "id=999999", "index", new string[0])]
     [TestCase("validators", "status=active_ongoing&status=exited_slashed", "status", new[] { "active_ongoing", "exited_slashed" })]
     public async Task Validator_filters_resolve_mixed_and_multiple_pubkeys_and_union_query_forms(string endpoint, string query, string field, string[] expected)
     {
@@ -87,7 +92,7 @@ public class BeaconStatesValidatorsAndCommitteesTests : BeaconApiFixture
         query = string.Format(query, validators.Select(v => (object)v.Pubkey.ToString()).ToArray());
         using HttpResponseMessage response = await _host.Client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/{endpoint}?{query}");
         using JsonDocument body = await ReadJsonAsync(response);
-        Assert.That(body.RootElement.GetProperty("data").EnumerateArray().Select(e => e.GetProperty(field).GetString()), Is.EquivalentTo(expected));
+        Assert.That(body.RootElement.GetProperty("data").EnumerateArray().Select(e => e.GetProperty(field).GetString()), Is.EqualTo(expected));
     }
 
     [Test]

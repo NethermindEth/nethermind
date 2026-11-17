@@ -1145,11 +1145,12 @@ public sealed class BeaconSyncOrchestrator(
     /// <param name="retryingOnColumns">A column-triggered retry; repeated deferral waits for a tick instead of watching and fetching again.</param>
     /// <param name="servedBy">The peer serving a by-root block; null otherwise.</param>
     /// <param name="otherCopyPending">Another signed copy still waits, so refusal must preserve its held children.</param>
-    internal async Task<BlockImportResult> ImportBlockAsync(ForkedSignedBeaconBlock block, CancellationToken token, bool retryingOnColumns = false, RangeBlockItem? rangeItem = null, bool fetchedByRoot = false, IBeaconSyncPeer? servedBy = null, bool otherCopyPending = false)
+    /// <param name="knownRoot">The message root computed for this work item or retained as its retry key.</param>
+    internal async Task<BlockImportResult> ImportBlockAsync(ForkedSignedBeaconBlock block, CancellationToken token, bool retryingOnColumns = false, RangeBlockItem? rangeItem = null, bool fetchedByRoot = false, IBeaconSyncPeer? servedBy = null, bool otherCopyPending = false, Hash256? knownRoot = null)
     {
         try
         {
-            return await ImportBlockCoreAsync(block, token, retryingOnColumns, rangeItem, fetchedByRoot, servedBy, otherCopyPending);
+            return await ImportBlockCoreAsync(block, token, retryingOnColumns, rangeItem, fetchedByRoot, servedBy, otherCopyPending, knownRoot);
         }
         catch (Exception e) when (e is not OutOfMemoryException)
         {
@@ -1159,9 +1160,9 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    private async Task<BlockImportResult> ImportBlockCoreAsync(ForkedSignedBeaconBlock block, CancellationToken token, bool retryingOnColumns, RangeBlockItem? rangeItem, bool fetchedByRoot, IBeaconSyncPeer? servedBy, bool otherCopyPending)
+    private async Task<BlockImportResult> ImportBlockCoreAsync(ForkedSignedBeaconBlock block, CancellationToken token, bool retryingOnColumns, RangeBlockItem? rangeItem, bool fetchedByRoot, IBeaconSyncPeer? servedBy, bool otherCopyPending, Hash256? knownRoot)
     {
-        Hash256 root = block.ComputeMessageRoot();
+        Hash256 root = knownRoot ?? block.ComputeMessageRoot();
         long startMs = Environment.TickCount64;
         // Provenance follows the exact signed block: a copy from gossip under the same message root may carry another signature.
         bool isQueued = _pendingRetry.TryGetValue(root, out PendingRetry queued) && IsSameSignedBlock(queued.Block, block);
@@ -1318,7 +1319,7 @@ public sealed class BeaconSyncOrchestrator(
         // The promoted copy now stands for the root, so a caller walking on to its children acts on its result.
         if (promoted is { } next)
         {
-            return await ImportBlockAsync(next.Block, token, retryingOnColumns);
+            return await ImportBlockAsync(next.Block, token, retryingOnColumns, knownRoot: root);
         }
 
         return result;
@@ -1446,7 +1447,7 @@ public sealed class BeaconSyncOrchestrator(
     {
         if (_pendingRetry.TryGetValue(root, out PendingRetry pending))
         {
-            await ImportBlockAsync(pending.Block, token, retryingOnColumns: true);
+            await ImportBlockAsync(pending.Block, token, retryingOnColumns: true, knownRoot: root);
         }
 
         foreach (ParkedEnvelope parked in _pendingEnvelopeRetry.HeldFor(root))
@@ -1704,7 +1705,7 @@ public sealed class BeaconSyncOrchestrator(
 
             try
             {
-                await ImportBlockAsync(retry.Block, token);
+                await ImportBlockAsync(retry.Block, token, knownRoot: root);
             }
             catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
             {
@@ -2265,7 +2266,7 @@ public sealed class BeaconSyncOrchestrator(
             return;
         }
 
-        await ImportBlockAsync(block, token);
+        await ImportBlockAsync(block, token, knownRoot: root);
     }
 
     /// <summary>Allows one backfill per unknown parent within the wall-slot budget. Signature verification follows ancestor retrieval, so key by parent rather than (slot, proposer); failed fetches still spend the budget.</summary>

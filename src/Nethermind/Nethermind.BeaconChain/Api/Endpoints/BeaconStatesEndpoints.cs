@@ -374,11 +374,15 @@ internal static class BeaconStatesEndpoints
             // unrecognized ids are dropped from the response, not treated as an error).
         }
 
+        int[]? selectedIndices = indexFilter is null ? null : [.. indexFilter];
+        selectedIndices?.AsSpan().Sort();
+
         IEnumerable<ValidatorEntryDto> SelectEntries()
         {
-            for (int i = 0; i < validators.Length; i++)
+            int count = selectedIndices?.Length ?? validators.Length;
+            for (int position = 0; position < count; position++)
             {
-                if (indexFilter is not null && !indexFilter.Contains(i)) continue;
+                int i = selectedIndices is null ? position : selectedIndices[position];
 
                 string status = ValidatorStatus.Classify(validators[i], epoch);
                 if (statusFilters.Count > 0 && !MatchesAny(status, statusFilters)) continue;

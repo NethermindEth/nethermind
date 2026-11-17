@@ -37,6 +37,8 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
     private readonly ILogger _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<DataColumnSidecarPool>();
 
     private readonly Lock _servedLock = new();
+    // Membership is an upper bound after eviction or pruning; collection checks actual readability.
+    private readonly LruCache<Hash256, UInt128> _reconstructionColumns = new(128, "reconstruction columns");
     private readonly SlotOrderedSidecars<DataColumnSidecar> _byRootAndColumn = new(store is null ? capacity : Math.Min(capacity, 512), store is null);
     private readonly SlotOrderedSidecars<DataColumnSidecarGloas> _gloasByRootAndColumn = new(store is null ? capacity : Math.Min(capacity, 512), store is null);
     private ulong? _firstGivenSlot;
@@ -224,28 +226,30 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
     }
 
     /// <summary>Collects the Fulu sidecars held for <paramref name="blockRoot"/> at <paramref name="slot"/>, memory and store together, one per column, once there are at least <paramref name="atLeast"/>.</summary>
-    /// <remarks>The store is asked for its column bitmap only when memory alone falls short, and reads only the columns it holds, so a block whose columns arrived before a restart still reconstructs.</remarks>
+    /// <remarks>A bounded membership cache is seeded from memory and storage. Collection checks readability once the cached count reaches the threshold.</remarks>
     /// <returns><c>false</c> when fewer are held.</returns>
     internal bool TryGetHeldColumns(Hash256 blockRoot, ulong slot, int atLeast, [NotNullWhen(true)] out DataColumnSidecar[]? held)
     {
         UInt128 columns = UInt128.Zero;
-        int inMemory = 0;
         lock (_servedLock)
         {
-            for (ulong column = 0; column < Eip7594DasConstants.NumberOfColumns; column++)
+            if (!_reconstructionColumns.TryGet(blockRoot, out columns))
             {
-                if (_byRootAndColumn.TryGet((blockRoot, column), out _)
-                    || (_unwritten.TryGetValue((blockRoot, column), out object? unwritten) && unwritten is DataColumnSidecar))
+                for (ulong column = 0; column < Eip7594DasConstants.NumberOfColumns; column++)
                 {
-                    columns |= UInt128.One << (int)column;
-                    inMemory++;
+                    if (_byRootAndColumn.TryGet((blockRoot, column), out _)
+                        || (_unwritten.TryGetValue((blockRoot, column), out object? unwritten) && unwritten is DataColumnSidecar))
+                        columns |= UInt128.One << (int)column;
+                }
+
+                UInt128 stored = UInt128.Zero;
+                // Serialize seeding with arrivals so a write followed by memory eviction cannot fall between the two snapshots.
+                if (store is null || TryReadStoredColumns(slot, blockRoot, out stored))
+                {
+                    if (store is not null) columns |= stored;
+                    _reconstructionColumns.Set(blockRoot, columns);
                 }
             }
-        }
-
-        if (inMemory < atLeast && store is not null)
-        {
-            columns |= ReadStoredColumns(slot, blockRoot);
         }
 
         int candidates = (int)UInt128.PopCount(columns);
@@ -267,6 +271,7 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
 
         if (next < atLeast)
         {
+            lock (_servedLock) _reconstructionColumns.Delete(blockRoot);
             held = null;
             return false;
         }
@@ -275,16 +280,18 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
         return true;
     }
 
-    private UInt128 ReadStoredColumns(ulong slot, Hash256 blockRoot)
+    private bool TryReadStoredColumns(ulong slot, Hash256 blockRoot, out UInt128 columns)
     {
         try
         {
-            return store!.GetStoredDataColumns(slot, blockRoot);
+            columns = store!.GetStoredDataColumns(slot, blockRoot);
+            return true;
         }
         catch (Exception e) when (e is not OutOfMemoryException)
         {
             ReportStoreReadFault(e);
-            return UInt128.Zero;
+            columns = UInt128.Zero;
+            return false;
         }
     }
 
@@ -328,6 +335,8 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
         {
             MarkGiven(slot);
             _byRootAndColumn.Set((blockRoot, sidecar.Index), slot, sidecar);
+            if (_reconstructionColumns.TryGet(blockRoot, out UInt128 columns))
+                _reconstructionColumns.Set(blockRoot, columns | (UInt128.One << (int)sidecar.Index));
             wake = TakeWakeOnArrival(blockRoot, sidecar.Index);
         }
 

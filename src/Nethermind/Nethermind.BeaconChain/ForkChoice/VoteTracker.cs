@@ -89,14 +89,29 @@ public sealed class VoteTrackerList
         IReadOnlyList<ulong> oldBalances,
         IReadOnlyList<ulong> newBalances,
         IReadOnlySet<ulong> equivocatingIndices)
+        => ComputeDeltasInto(indices, oldBalances, newBalances, equivocatingIndices,
+            new ScoreDeltas(new long[indices.Count], new long[indices.Count], new long[indices.Count]), null);
+
+    internal ScoreDeltas ComputeDeltasInto(
+        IReadOnlyDictionary<Hash256, int> indices,
+        IReadOnlyList<ulong> oldBalances,
+        IReadOnlyList<ulong> newBalances,
+        IReadOnlySet<ulong> equivocatingIndices,
+        ScoreDeltas buffers,
+        IReadOnlyList<int>? changedValidators)
     {
-        long[] deltas = new long[indices.Count];
-        long[] emptyDeltas = new long[indices.Count];
-        long[] fullDeltas = new long[indices.Count];
+        long[] deltas = buffers.Weight;
+        long[] emptyDeltas = buffers.Empty;
+        long[] fullDeltas = buffers.Full;
+        Array.Clear(deltas);
+        Array.Clear(emptyDeltas);
+        Array.Clear(fullDeltas);
         Span<VoteTracker> votes = _votes.AsSpan(0, Count);
 
-        for (int validatorIndex = 0; validatorIndex < votes.Length; validatorIndex++)
+        int count = changedValidators?.Count ?? votes.Length;
+        for (int position = 0; position < count; position++)
         {
+            int validatorIndex = changedValidators is null ? position : changedValidators[position];
             ref VoteTracker vote = ref votes[validatorIndex];
 
             // No score change if the validator has never voted or both votes are for the zero hash

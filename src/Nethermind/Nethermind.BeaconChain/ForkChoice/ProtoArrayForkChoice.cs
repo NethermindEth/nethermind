@@ -24,6 +24,10 @@ public sealed class ProtoArrayForkChoice
     private readonly VoteTrackerList _votes = new();
     private readonly HashSet<ulong> _equivocatingIndices = [];
     private JustifiedBalances _balances = JustifiedBalances.Empty;
+    private readonly HashSet<int> _dirtyVotes = [];
+    private readonly List<int> _changedVotes = [];
+    private readonly HashSet<ulong> _previousEquivocators = [];
+    private ScoreDeltas _deltaBuffers = new([], [], []);
 
     /// <summary>Creates a fork choice rooted at the given finalized (anchor) block.</summary>
     /// <param name="currentSlot">The wall-clock slot at creation time.</param>
@@ -105,6 +109,7 @@ public sealed class ProtoArrayForkChoice
         bool isLater = payloadPresent is null ? targetEpoch > vote.NextEpoch : slot > vote.NextSlot;
         if (!isLater && !vote.IsUnset) return;
 
+        _dirtyVotes.Add(checked((int)validatorIndex));
         vote.NextRoot = blockRoot;
         vote.NextEpoch = targetEpoch;
         vote.NextSlot = slot;
@@ -134,11 +139,31 @@ public sealed class ProtoArrayForkChoice
         IReadOnlySet<ulong>? equivocatingIndices,
         ulong currentSlot)
     {
-        ScoreDeltas deltas = _votes.ComputeDeltas(
+        IReadOnlySet<ulong> equivocators = equivocatingIndices ?? _equivocatingIndices;
+        foreach (ulong index in _previousEquivocators)
+            if (!equivocators.Contains(index) && index < (ulong)_votes.Count) _dirtyVotes.Add((int)index);
+        foreach (ulong index in equivocators)
+            if (!_previousEquivocators.Contains(index) && index < (ulong)_votes.Count) _dirtyVotes.Add((int)index);
+
+        if (_deltaBuffers.Weight.Length != _protoArray.Indices.Count)
+        {
+            int count = _protoArray.Indices.Count;
+            _deltaBuffers = new(new long[count], new long[count], new long[count]);
+        }
+
+        _changedVotes.Clear();
+        _changedVotes.AddRange(_dirtyVotes);
+        ScoreDeltas deltas = _votes.ComputeDeltasInto(
             _protoArray.Indices,
             _balances.EffectiveBalances,
             justifiedBalances.EffectiveBalances,
-            equivocatingIndices ?? _equivocatingIndices);
+            equivocators,
+            _deltaBuffers,
+            ReferenceEquals(_balances.EffectiveBalances, justifiedBalances.EffectiveBalances) ? _changedVotes : null);
+
+        _dirtyVotes.Clear();
+        _previousEquivocators.Clear();
+        _previousEquivocators.UnionWith(equivocators);
 
         _protoArray.ApplyScoreChanges(deltas, justifiedCheckpoint, finalizedCheckpoint, justifiedBalances, ProposerBoostRoot, currentSlot);
 
