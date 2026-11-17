@@ -195,8 +195,6 @@ public class PrewarmerReadAheadSafetyTests(IReleaseSpec spec) : PrewarmerReadAhe
     {
         const int seed = 0x4e4d_2026;
         int blocks = int.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_READAHEAD_CORPUS"), out int count) ? count : 500;
-        int heldBlocks = 0;
-        int heldBlocksWithoutReadAhead = 0;
         for (int i = 0; i < blocks; i++)
         {
             int blockSeed = seed + i;
@@ -212,8 +210,11 @@ public class PrewarmerReadAheadSafetyTests(IReleaseSpec spec) : PrewarmerReadAhe
                 Run run = held ? ProcessWithSessionAfterReadAhead(block) : ProcessWithSession(block);
                 if (held)
                 {
-                    heldBlocks++;
-                    if (PreWarmer.ReadAheadsStarted == readAheadsBefore) heldBlocksWithoutReadAhead++;
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(PreWarmer.ReadAheadsStarted, Is.GreaterThan(readAheadsBefore), "precondition: the held block started a read-ahead");
+                        Assert.That(WarmingHoldTimeouts, Is.Zero, "precondition: the prewarmer's reads were let go by a read-ahead");
+                    }
                 }
 
                 AssertSameRun(run, executed);
@@ -225,13 +226,8 @@ public class PrewarmerReadAheadSafetyTests(IReleaseSpec spec) : PrewarmerReadAhe
             }
         }
 
-        TestContext.Out.WriteLine($"{blocks} blocks, {Spec.Name}: read-aheads started {PreWarmer.ReadAheadsStarted}, held blocks without one {heldBlocksWithoutReadAhead} of {heldBlocks}");
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(PaceTimeouts, Is.Zero);
-            Assert.That(heldBlocksWithoutReadAhead, Is.Zero, "precondition: every block whose warming was held started a read-ahead");
-            Assert.That(WarmingHoldTimeouts, Is.Zero, "precondition: the prewarmer's reads were let go by a read-ahead");
-        }
+        TestContext.Out.WriteLine($"{blocks} blocks, {Spec.Name}: read-aheads started {PreWarmer.ReadAheadsStarted}");
+        Assert.That(PaceTimeouts, Is.Zero);
     }
 }
 
