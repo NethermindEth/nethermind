@@ -37,9 +37,9 @@ public class AccountChangesAtIndex(Address address)
     // resolves both with a single lookup. The records sit in a list, found through the index, so walking the changes
     // reads them in place.
     private readonly List<StorageSlot> _storageSlots = [];
-    private readonly Dictionary<UInt256, int> _storageSlotIndex = new(UInt256Comparer.GetOptimized());
+    private readonly Dictionary<UInt256, int> _storageSlotIndex = [with(UInt256Comparer.GetOptimized())];
     private int _storageChangeCount;
-    private readonly HashSet<UInt256> _storageReads = new(UInt256Comparer.GetOptimized());
+    private readonly HashSet<UInt256> _storageReads = [with(UInt256Comparer.GetOptimized())];
     private bool _storageReadsMayHoldChangedSlots;
 
     /// <summary>The slots changed at this index, each with its change.</summary>

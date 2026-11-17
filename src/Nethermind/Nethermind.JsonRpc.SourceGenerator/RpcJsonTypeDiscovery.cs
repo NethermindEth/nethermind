@@ -76,7 +76,7 @@ internal static class RpcJsonTypeDiscovery
 
     public static string[] GetSortedUniqueTypes(ImmutableArray<ImmutableArray<string>> typeGroups)
     {
-        HashSet<string> uniqueTypes = new(StringComparer.Ordinal);
+        HashSet<string> uniqueTypes = [with(StringComparer.Ordinal)];
         for (int i = 0; i < typeGroups.Length; i++)
         {
             ImmutableArray<string> group = typeGroups[i];

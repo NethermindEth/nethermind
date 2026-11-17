@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Processing;
@@ -9,10 +10,12 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Taiko.TaikoSpec;
 using NSubstitute;
@@ -56,6 +59,40 @@ public class TaikoPayloadPreparationServiceTests
             Assert.That(stored.L1BlockHash, Is.EqualTo(TestItem.KeccakD.ValueHash256));
         }
     }
+
+    [Test]
+    public async Task StartPreparingPayload_undecodable_proposed_tx_is_left_out_of_built_block()
+    {
+        Transaction first = Build.A.Transaction.WithNonce(0).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Transaction second = Build.A.Transaction.WithNonce(0).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        TaikoPayloadAttributes attributes = BuildAttributes();
+        attributes.BlockMetadata!.TxList = RlpTestHelper.EncodeSequence(Rlp.Encode(first), Rlp.Encode(Build.A.Transaction.TestObject), Rlp.Encode(second));
+
+        TaikoPayloadPreparationService service = CreateService();
+
+        string? payloadId = service.StartPreparingPayload(Build.A.BlockHeader.WithNumber(0).TestObject, attributes);
+        Block built = (await service.GetPayload(payloadId!))!.CurrentBestBlock!;
+
+        Assert.That(built.Transactions.Select(static tx => tx.Hash), Is.EqualTo(new[] { first.Hash, second.Hash }), "only the undecodable entry should be left out");
+    }
+
+    [Test]
+    public void StartPreparingPayload_undecodable_first_tx_throws()
+    {
+        Transaction second = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        TaikoPayloadAttributes attributes = BuildAttributes();
+        attributes.BlockMetadata!.TxList = RlpTestHelper.EncodeSequence(Rlp.Encode(Build.A.Transaction.TestObject), Rlp.Encode(second));
+
+        Assert.Throws<RlpReaderException>(() => CreateService().StartPreparingPayload(Build.A.BlockHeader.WithNumber(0).TestObject, attributes));
+    }
+
+    private static TaikoPayloadPreparationService CreateService() => new(
+        ProcessorReturningSuggestedBlock(),
+        WorldStateWithEveryState(),
+        new L1OriginStore(new TestMemDb(), new L1OriginDecoder()),
+        TaikoSpecProvider(),
+        LimboLogs.Instance,
+        TxDecoder.Instance);
 
     private static TaikoPayloadAttributes BuildAttributes() => new()
     {

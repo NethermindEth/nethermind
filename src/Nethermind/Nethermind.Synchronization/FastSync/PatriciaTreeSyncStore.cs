@@ -19,7 +19,7 @@ public class PatriciaTreeSyncStore(INodeStorage nodeStorage, IStateBoundaryWrite
     public void SaveNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> data) =>
         nodeStorage.Set(address, path, hash, data);
 
-    public void EnsureStorageEmpty(Hash256 address) { }
+    public void EnsureStorageEmpty(in ValueHash256 address) { }
 
     public void FinalizeSync(BlockHeader pivotHeader)
     {
