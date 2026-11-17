@@ -130,6 +130,25 @@ public class IpcSocketMessageStreamTests
     }
 
     [Test]
+    public async Task WriteEndOfMessageAsync_does_not_write_synchronously()
+    {
+        using SocketPair pair = await SocketPair.CreateAsync();
+        await using AsyncWriteOnlyIpcSocketMessageStream stream = new(pair.Server);
+
+        await stream.WriteEndOfMessageAsync("""{"id":1}"""u8.ToArray(), pair.Token);
+
+        byte[] expected = "{\"id\":1}\n"u8.ToArray();
+        byte[] received = new byte[expected.Length];
+        int total = 0;
+        while (total < expected.Length)
+        {
+            total += await pair.Client.ReceiveAsync(received.AsMemory(total), SocketFlags.None, pair.Token);
+        }
+
+        Assert.That(received, Is.EqualTo(expected));
+    }
+
+    [Test]
     public async Task Dispose_twice_returns_pooled_overflow_buffer_only_once()
     {
         const string firstMessage = """{"id":1}""";
@@ -197,6 +216,15 @@ public class IpcSocketMessageStreamTests
         }
 
         return offset;
+    }
+
+    private sealed class AsyncWriteOnlyIpcSocketMessageStream(Socket socket) : IpcSocketMessageStream(socket)
+    {
+        public override void Write(byte[] buffer, int offset, int count) => throw new InvalidOperationException("Synchronous write");
+
+        public override void Write(ReadOnlySpan<byte> buffer) => throw new InvalidOperationException("Synchronous write");
+
+        public override void WriteByte(byte value) => throw new InvalidOperationException("Synchronous write");
     }
 
     private sealed record SocketPair(string SocketPath, Socket Listener, Socket Server, Socket Client, CancellationTokenSource Cts) : IDisposable

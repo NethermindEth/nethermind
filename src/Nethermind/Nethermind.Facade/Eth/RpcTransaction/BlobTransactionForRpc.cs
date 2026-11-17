@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -98,6 +99,24 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
         }
 
         return tx;
+    }
+
+    internal override string? GetTraceCallUnsupportedField(IReleaseSpec spec) =>
+        base.GetTraceCallUnsupportedField(spec)
+        ?? (!spec.IsEip4844Enabled && (MaxFeePerBlobGas is not null || BlobVersionedHashes is not null) ? "blob" : null);
+
+    internal override string? GetTraceCallRecipientError() =>
+        To is null && BlobVersionedHashes is not null ? TxErrorMessages.TxMissingTo : null;
+
+    internal override Result<Transaction> ConvertTraceCallTransaction(IReleaseSpec spec, ulong? gasCap)
+    {
+        if (MaxFeePerBlobGas is { IsZero: false })
+            return base.ConvertTraceCallTransaction(spec, gasCap);
+
+        // Geth permits a zero blob fee cap for simulated calls, and defaults an omitted one to zero; retain all other RPC validation.
+        Result<Transaction> result = WithZeroBlobFeeCapOmitted(this).ToCallTransaction(spec, gasCap);
+        if (result) result.Data.MaxFeePerBlobGas = UInt256.Zero;
+        return result;
     }
 
     internal override bool ShouldCheckFeesBeforeConversion() => Blobs is null;
