@@ -4,9 +4,11 @@
 using System;
 using System.IO;
 using System.IO.Pipelines;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Serialization.Json;
+using Nethermind.Sockets;
 
 namespace Nethermind.JsonRpc.WebSockets;
 
@@ -20,6 +22,7 @@ internal sealed class SocketSendLock(long maxUnsentBytes = 0, int sendTimeout = 
     private bool _faulted;
     private Exception? _failure;
     private CountingStreamPipeWriter? _writer;
+    private SendLimitedPipeWriter? _bodyWriter;
 
     internal bool IsFaulted => _faulted;
 
@@ -48,15 +51,50 @@ internal sealed class SocketSendLock(long maxUnsentBytes = 0, int sendTimeout = 
     /// <summary>Faults the connection when <paramref name="writer"/> holds more unsent bytes than allowed. The caller must hold the send lock.</summary>
     internal void EnsureWithinUnsentLimit(CountingStreamPipeWriter writer)
     {
+        if (_failure is SocketSendLimitException failure)
+        {
+            ExceptionDispatchInfo.Throw(failure);
+        }
+
         if (maxUnsentBytes <= 0 || writer.UnflushedBytes <= maxUnsentBytes)
         {
             return;
         }
 
-        IOException exception = new($"The unsent JSON-RPC response of {writer.UnflushedBytes} bytes is above JsonRpc.MaxUnsentWebSocketResponseSize = {maxUnsentBytes}.");
-        Fault(exception);
-        throw exception;
+        throw FaultWithLimit(new SocketSendLimitException($"The unsent JSON-RPC response of {writer.UnflushedBytes} bytes is above JsonRpc.MaxUnsentWebSocketResponseSize = {maxUnsentBytes}."));
     }
+
+    internal PipeWriter GetBodyWriter(CountingStreamPipeWriter writer)
+    {
+        if (maxUnsentBytes <= 0)
+        {
+            return writer;
+        }
+
+        if (_bodyWriter is null || _bodyWriter.Inner != writer)
+        {
+            _bodyWriter = new SendLimitedPipeWriter(this, writer);
+        }
+
+        _bodyWriter.Sync();
+        return _bodyWriter;
+    }
+
+    internal async ValueTask<FlushResult> FlushAsync(CountingStreamPipeWriter writer, CancellationToken cancellationToken)
+    {
+        using CancellationTokenSource? deadline = StartSendDeadline(writer.UnflushedBytes, cancellationToken);
+        try
+        {
+            return await writer.FlushAsync(deadline?.Token ?? cancellationToken);
+        }
+        catch (OperationCanceledException ex) when (deadline is not null && !cancellationToken.IsCancellationRequested)
+        {
+            throw SendDeadlineExceeded(ex);
+        }
+    }
+
+    internal SocketSendLimitException SendDeadlineExceeded(OperationCanceledException cancellation) =>
+        FaultWithLimit(new SocketSendLimitException($"The JSON-RPC response was not sent before the send deadline of JsonRpc.Timeout = {sendTimeout} ms plus the time for its size.", cancellation));
 
     /// <summary>Returns a token that is cancelled when a send of <paramref name="bytes"/> takes too long, or <c>null</c> when sends have no deadline.</summary>
     internal CancellationTokenSource? StartSendDeadline(long bytes, CancellationToken cancellationToken)
@@ -69,6 +107,12 @@ internal sealed class SocketSendLock(long maxUnsentBytes = 0, int sendTimeout = 
         CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter((int)Math.Min(int.MaxValue - 1, sendTimeout + Math.Min(bytes * 1000 / MinSendBytesPerSecond, MaxSendExtensionMilliseconds)));
         return deadline;
+    }
+
+    private SocketSendLimitException FaultWithLimit(SocketSendLimitException exception)
+    {
+        Fault(exception);
+        return exception;
     }
 
     /// <summary>Returns the connection's response writer, reset to <paramref name="writtenCount"/>, or a new one if it was completed. The caller must hold the send lock.</summary>
@@ -94,6 +138,7 @@ internal sealed class SocketSendLock(long maxUnsentBytes = 0, int sendTimeout = 
         {
             _writer?.Complete(new ObjectDisposedException(nameof(SocketSendLock)));
             _writer = null;
+            _bodyWriter = null;
             _semaphore.Release();
         }
 

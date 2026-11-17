@@ -312,8 +312,69 @@ public class JsonRpcSocketsClientTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(async () => await write.WaitAsync(TimeSpan.FromSeconds(10)), Throws.InstanceOf<OperationCanceledException>());
+            Assert.That(async () => await write.WaitAsync(TimeSpan.FromSeconds(10)), Throws.InstanceOf<SocketSendLimitException>());
             Assert.That(sendLock.IsFaulted, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task Streamed_socket_response_to_a_caller_that_does_not_read_is_aborted_after_the_send_deadline([Values] bool batch)
+    {
+        StalledMessageStream stream = new();
+        using SocketSendLock sendLock = new(maxUnsentBytes: 64 * 1024 * 1024, sendTimeout: 100);
+
+        Task write = WriteSocketResponseAsync(stream, RpcEndpoint.Ws, sendLock, batch ? 2 : null,
+            static () => new FlushingStreamable(chunks: 4), CancellationToken.None).AsTask();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(async () => await write.WaitAsync(TimeSpan.FromSeconds(10)), Throws.InstanceOf<SocketSendLimitException>());
+            Assert.That(sendLock.IsFaulted, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task Socket_response_above_the_unsent_limit_stops_serialization([Values] bool batch)
+    {
+        const int items = 64 * 1024;
+        int produced = 0;
+        using MemoryMessageStream stream = new();
+        using SocketSendLock sendLock = new(maxUnsentBytes: 64 * 1024, sendTimeout: 60_000);
+
+        IEnumerable<string> Produce()
+        {
+            for (int i = 0; i < items; i++)
+            {
+                produced++;
+                yield return "0x0102030405060708091011121314151617181920212223242526272829303132";
+            }
+        }
+
+        Task write = WriteSocketResponseAsync(stream, RpcEndpoint.Ws, sendLock, batch ? 2 : null, () => Produce(), CancellationToken.None).AsTask();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(async () => await write, Throws.InstanceOf<SocketSendLimitException>());
+            Assert.That(produced, Is.LessThan(items / 8));
+            Assert.That(sendLock.IsFaulted, Is.True);
+            Assert.That(stream.Length, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task Streamed_socket_response_above_the_unsent_limit_is_not_flushed([Values] bool batch)
+    {
+        using MemoryMessageStream stream = new();
+        using SocketSendLock sendLock = new(maxUnsentBytes: 1024, sendTimeout: 60_000);
+
+        Task write = WriteSocketResponseAsync(stream, RpcEndpoint.Ws, sendLock, batch ? 2 : null,
+            static () => new UnflushedStreamable(chunkSize: 4096), CancellationToken.None).AsTask();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(async () => await write, Throws.InstanceOf<SocketSendLimitException>());
+            Assert.That(sendLock.IsFaulted, Is.True);
+            Assert.That(stream.Length, Is.Zero);
         }
     }
 
@@ -776,6 +837,17 @@ public class JsonRpcSocketsClientTests
         {
             Write(buffer, offset, count);
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class UnflushedStreamable(int chunkSize) : IStreamableResult
+    {
+        public async ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
+        {
+            writer.Write("\""u8);
+            writer.Write(Encoding.UTF8.GetBytes(new string('x', chunkSize)));
+            await writer.FlushAsync(cancellationToken);
+            writer.Write("\""u8);
         }
     }
 
