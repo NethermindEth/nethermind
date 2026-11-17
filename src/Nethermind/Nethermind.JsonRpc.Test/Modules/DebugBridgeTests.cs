@@ -107,7 +107,7 @@ public class DebugBridgeTests
         else if (lookup == RawTransactionLookup.Mismatched)
         {
             container.Resolve<IDbProvider>().ReceiptsDb!.GetColumnDb(ReceiptsColumns.Transactions)
-                .Set(hash.Bytes, compactIndex ? Rlp.Encode(genesis.Number).Bytes : genesis.Hash!.Bytes.ToArray());
+                .Set(hash.Bytes, compactIndex ? Rlp.Encode(genesis.Number) : genesis.Hash!.Bytes.ToArray());
             Assert.That(storage.FindBlockHash(hash), Is.EqualTo(genesis.Hash), "the stale locator must point to a block without the requested transaction");
         }
 
@@ -276,7 +276,7 @@ public class DebugBridgeTests
             Assert.That(tree.SyncPivot, Is.EqualTo(accepted ? (retainedHead, blocks[retainedHead].Hash!) : (expectedPivot, blocks[expectedPivot].Hash!)));
             Assert.That(db.MetadataDb.Get(MetadataDbKeys.LowestInsertedFastHeaderHash), Is.EqualTo(headerProgress));
             Assert.That(db.MetadataDb.Get(MetadataDbKeys.LowestInsertedBodyNumber), Is.EqualTo(bodyProgress));
-            Assert.That(db.MetadataDb.Get(MetadataDbKeys.LowestInsertedBlockAccessListBlockNumber), Is.EqualTo(accepted && activatesAccessLists ? Rlp.Encode(expectedAccessList).Bytes : accessListProgress));
+            Assert.That(db.MetadataDb.Get(MetadataDbKeys.LowestInsertedBlockAccessListBlockNumber), Is.EqualTo(accepted && activatesAccessLists ? Rlp.Encode(expectedAccessList) : accessListProgress));
         }
         if (accepted)
         {

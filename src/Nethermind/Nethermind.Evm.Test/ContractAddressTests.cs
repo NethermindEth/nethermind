@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -46,7 +47,7 @@ public class ContractAddressTests
 
     private static Address FromRlp(Address? deployer, in UInt256 nonce)
     {
-        byte[] list = Rlp.Encode(deployer is null ? Rlp.OfEmptyByteArray : Rlp.Encode(deployer.Bytes), Rlp.Encode(nonce)).Bytes;
+        byte[] list = RlpTestHelper.EncodeSequence(deployer is null ? RlpTestHelper.OfEmptyByteArray : Rlp.Encode(deployer.Bytes), Rlp.Encode(nonce));
         return new(ValueKeccak.Compute(list));
     }
 }

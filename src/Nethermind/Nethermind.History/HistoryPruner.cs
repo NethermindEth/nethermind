@@ -817,7 +817,7 @@ public class HistoryPruner : IHistoryPruner, IAsyncDisposable
 
             lock (_pruneLock)
             {
-                _metadataDb.Set(MetadataDbKeys.HistoryPruningBlobCompactionDone, Rlp.Encode(reclaimedThrough).Bytes);
+                _metadataDb.PutSpan(MetadataDbKeys.HistoryPruningBlobCompactionDone, Rlp.Encode(reclaimedThrough, stackalloc byte[Rlp.MaxLengthOfUInt64Rlp]));
                 _blobCompactionReclaimedThrough = reclaimedThrough;
             }
 
@@ -1001,8 +1001,7 @@ public class HistoryPruner : IHistoryPruner, IAsyncDisposable
         int lower = LowerBound(sortedAnswered, fromInclusive);
         int upper = LowerBound(sortedAnswered, toExclusive);
 
-        ArrayPoolList<ulong> candidates = new(upper - lower);
-        candidates.AddRange(sortedAnswered[lower..upper]);
+        ArrayPoolList<ulong> candidates = [with(sortedAnswered[lower..upper])];
         return candidates;
     }
 
@@ -1016,7 +1015,7 @@ public class HistoryPruner : IHistoryPruner, IAsyncDisposable
     /// and one sequential header pass rather than two random reads a height. A false positive only over-retains.</summary>
     private ArrayPoolList<ulong> CandidatesFromLevels(ulong fromInclusive, ulong toExclusive, IOwnedReadOnlyList<ChainLevelInfo?> levels)
     {
-        ArrayPoolList<ulong> candidates = new(64);
+        ArrayPoolList<ulong> candidates = [with(64)];
         Dictionary<ValueHash256, BlockHeader> prefetched = _headerStore.PrefetchByNumberRange(fromInclusive, toExclusive);
 
         for (int i = 0; i < levels.Count; i++)
@@ -1316,7 +1315,7 @@ public class HistoryPruner : IHistoryPruner, IAsyncDisposable
         {
             if (_hasLoadedBalsDeletePointer && _balsDeletePointer != _lastSavedBalsDeletePointer)
             {
-                _metadataDb.Set(MetadataDbKeys.BlockAccessListPruningDeletePointer, Rlp.Encode(_balsDeletePointer).Bytes);
+                _metadataDb.PutSpan(MetadataDbKeys.BlockAccessListPruningDeletePointer, Rlp.Encode(_balsDeletePointer, stackalloc byte[Rlp.MaxLengthOfUInt64Rlp]));
                 _lastSavedBalsDeletePointer = _balsDeletePointer;
             }
 
@@ -1345,12 +1344,13 @@ public class HistoryPruner : IHistoryPruner, IAsyncDisposable
         ulong boundaryToSave = _blocksDeletePointer;
         ulong cleanupToSave = _sliceCleanupCursor;
         ulong balsToSave = _balsDeletePointer;
+        Span<byte> buffer = stackalloc byte[Rlp.MaxLengthOfUInt64Rlp];
         using (IWriteBatch batch = _metadataDb.StartWriteBatch())
         {
-            if (cursorDirty) batch.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(cursorToSave).Bytes);
-            if (boundaryDirty) batch.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(boundaryToSave).Bytes);
-            if (cleanupDirty) batch.Set(MetadataDbKeys.HistoryPruningSliceCleanupCursor, Rlp.Encode(cleanupToSave).Bytes);
-            if (balsDirty) batch.Set(MetadataDbKeys.BlockAccessListPruningDeletePointer, Rlp.Encode(balsToSave).Bytes);
+            if (cursorDirty) batch.PutSpan(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(cursorToSave, buffer));
+            if (boundaryDirty) batch.PutSpan(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(boundaryToSave, buffer));
+            if (cleanupDirty) batch.PutSpan(MetadataDbKeys.HistoryPruningSliceCleanupCursor, Rlp.Encode(cleanupToSave, buffer));
+            if (balsDirty) batch.PutSpan(MetadataDbKeys.BlockAccessListPruningDeletePointer, Rlp.Encode(balsToSave, buffer));
         }
 
         // Only after the batch committed: a throwing commit must leave these claiming unsaved.

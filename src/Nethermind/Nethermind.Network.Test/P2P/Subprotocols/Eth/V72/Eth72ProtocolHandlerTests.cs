@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections;
 using System.Collections.Generic;
@@ -10,7 +11,6 @@ using System.Net;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Buffers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
@@ -101,6 +101,7 @@ public class Eth72ProtocolHandlerTests
         _gossipPolicy = Substitute.For<IGossipPolicy>();
         _txPoolConfig = Substitute.For<ITxPoolConfig>();
         _txPoolConfig.BlobsSupport.Returns(BlobsSupportMode.InMemory);
+        _txPoolConfig.InMemoryBlobPoolSize.Returns(new TxPoolConfig().InMemoryBlobPoolSize);
         _txPoolConfig.SparseBlobProviderProbabilityPercent.Returns(15);
         _genesisBlock = Build.A.Block.Genesis.TestObject;
         _syncManager.Head.Returns(_genesisBlock.Header);
@@ -380,6 +381,30 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
+    public void should_remember_announced_blob_masks_up_to_blob_pool_capacity([Values] bool exceedCapacity)
+    {
+        const int blobPoolSize = 2;
+        _txPoolConfig.InMemoryBlobPoolSize.Returns(blobPoolSize);
+        Transaction[] txs = Enumerable.Range(0, exceedCapacity ? blobPoolSize + 1 : blobPoolSize)
+            .Select(static nonce => Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithNonce((ulong)nonce)
+                .SignedAndResolved()
+                .TestObject)
+            .ToArray();
+
+        foreach (Transaction tx in txs)
+        {
+            _handler.SendNewTransaction(tx);
+        }
+
+        _session.ClearReceivedCalls();
+        _handler.SendNewTransaction(txs[0]);
+
+        _session.Received(exceedCapacity ? 1 : 0).DeliverMessage(Arg.Any<NewPooledTransactionHashesMessage72>());
+    }
+
+    [Test]
     public void should_batch_blob_announcements_with_same_cell_mask()
     {
         Transaction first = BuildBlobTransaction(fullProvider: true);
@@ -427,7 +452,7 @@ public class Eth72ProtocolHandlerTests
         // Peers compare the announced size with the decoded typed transaction envelope, excluding the enclosing
         // PooledTransactions list element's RLP string prefix.
         byte[] servedTxBytes = TxDecoder.Instance
-            .Encode(elidedTx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping).Bytes;
+            .Encode(elidedTx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping);
 
         using (Assert.EnterMultipleScope())
         {
@@ -1176,6 +1201,7 @@ public class Eth72ProtocolHandlerTests
 
         _transactionPool.Received(1).TryGetPendingTransactionWithoutBlobs(tx.Hash!, out Arg.Any<Transaction>());
         _transactionPool.DidNotReceive().TryGetPendingTransaction(Arg.Any<ValueHash256>(), out Arg.Any<Transaction>());
+        _transactionPool.DidNotReceive().TryGetPendingBlobCellMaskAndNetworkForm(Arg.Any<ValueHash256>(), out Arg.Any<BlobCellMask>(), out Arg.Any<IOwnedReadOnlyList<byte>>());
         _session.Received(1).DeliverMessage(Arg.Is<PooledTransactionsMessage>(m =>
             IsElidedBlobResponse(m, fullTxLength, ProofVersion.V1)));
     }
@@ -1237,7 +1263,7 @@ public class Eth72ProtocolHandlerTests
             .SignedAndResolved()
             .TestObject;
         int transactionCount = TransactionsMessage.MaxPacketSize / template.GetLength() + 2;
-        Dictionary<ValueHash256, Transaction> transactions = new(transactionCount);
+        Dictionary<ValueHash256, Transaction> transactions = [with(transactionCount)];
         Hash256[] hashes = new Hash256[transactionCount];
         for (int i = 0; i < transactionCount; i++)
         {
@@ -5763,7 +5789,7 @@ public class Eth72ProtocolHandlerTests
         _handler.HandleMessage(new NettyBufferPacket(statusPacket) { PacketType = 0 });
     }
 
-    private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
+    private void HandleZeroMessage<T>(T msg, int messageCode) where T : P2PMessage
     {
         using DisposableByteBuffer packet = _svc.ZeroSerialize(msg).AsDisposable();
         packet.ReadByte();
@@ -6345,8 +6371,8 @@ public class Eth72ProtocolHandlerTests
         public ArrayPoolSpan<byte> Serialize<T>(T message)
             where T : MessageBase => inner.Serialize(message);
 
-        public IByteBuffer ZeroSerialize<T>(T message, IByteBufferAllocator? allocator = null)
-            where T : MessageBase => inner.ZeroSerialize(message, allocator);
+        public void Serialize<T>(T message, IBufferWriter<byte> writer)
+            where T : MessageBase => inner.Serialize(message, writer);
 
         public T Deserialize<T>(ArraySegment<byte> bytes)
             where T : MessageBase => GetOverride<T>() ?? inner.Deserialize<T>(bytes);

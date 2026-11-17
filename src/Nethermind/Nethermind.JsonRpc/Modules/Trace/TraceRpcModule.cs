@@ -164,7 +164,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return GetStateFailureResult<IEnumerable<ParityTxTraceFromReplay>>(header);
             }
 
-            Dictionary<Hash256, ParityTraceTypes> traceTypeByTransaction = new(calls.Count);
+            Dictionary<Hash256, ParityTraceTypes> traceTypeByTransaction = [with(calls.Count)];
             Transaction[] txs = new Transaction[calls.Count];
             for (int i = 0; i < calls.Count; i++)
             {
@@ -560,7 +560,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         private IEnumerable<ParityTxTraceFromStore> RunBufferedTraceFilter(List<(BlockHeader Header, BlockHeader? Parent)> blocks, TxTraceFilter filter, CancellationToken cancellationToken)
         {
-            ArrayPoolList<ParityTxTraceFromStore> result = new(blocks.Count);
+            ArrayPoolList<ParityTxTraceFromStore> result = [with(blocks.Count)];
             try
             {
                 foreach ((BlockHeader header, BlockHeader? parentHeader) in blocks)
@@ -831,9 +831,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             using RentedTimeout timeout = cancellationToken.CanBeCanceled ? default : jsonRpcConfig.RentTimeout();
             CancellationToken token = cancellationToken.CanBeCanceled ? cancellationToken : timeout.Token;
             token.ThrowIfCancellationRequested();
-            // A prefix recorded under the block's own spec says nothing about the block run under another one, even
-            // though the header keeps its hash: no seed when the spec is overridden.
-            tracer2.Execute(blockToExecute, TransactionTraceBoundary.Wrap(tracer.WithCancellation(token), transactionHash, specOverride is null ? prefixSeeds : null));
+            tracer2.Execute(blockToExecute, WithTransactionBoundary(tracer.WithCancellation(token), blockToExecute, transactionHash, specOverride));
             return tracer.BuildResult();
         }
 
@@ -970,7 +968,15 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 blockToExecute = block.WithReplacedHeader(AdjustHeaderForSpec(block.Header, baseHeader, specOverride));
             }
             using Scope<ITracer> env = tracerEnv.BuildAndOverrideAtTarget(blockToExecute.Header, specOverride: specOverride);
-            env.Component.Execute(blockToExecute, TransactionTraceBoundary.Wrap(tracer.WithCancellation(ct), transactionHash, specOverride is null ? prefixSeeds : null));
+            env.Component.Execute(blockToExecute, WithTransactionBoundary(tracer.WithCancellation(ct), blockToExecute, transactionHash, specOverride));
+        }
+
+        private IBlockTracer WithTransactionBoundary(IBlockTracer tracer, Block block, Hash256? transactionHash, IReleaseSpec? specOverride)
+        {
+            // A prefix recorded under the block's own spec says nothing about the block run under another one, even
+            // though the header keeps its hash: no seed when the spec is overridden.
+            IPrefixStateSeedSource? seeds = specOverride is null ? prefixSeeds : null;
+            return TransactionTraceBoundary.WrapAtStoredIndex(tracer, receiptFinder, seeds, block, transactionHash);
         }
 
         /// <summary>

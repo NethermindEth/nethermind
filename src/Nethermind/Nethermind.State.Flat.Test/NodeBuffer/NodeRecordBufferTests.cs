@@ -15,6 +15,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Db;
 using Nethermind.Init.Modules;
 using Nethermind.Serialization.Rlp;
@@ -671,7 +672,7 @@ public class NodeRecordBufferTests
     {
         byte[] value = new byte[valueLength];
         BinaryPrimitives.WriteInt32LittleEndian(value, seed);
-        return Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes([1, 2], isLeaf: true)), Rlp.Encode(value)).Bytes;
+        return RlpTestHelper.EncodeSequence(Rlp.Encode(HexPrefix.ToBytes([1, 2], isLeaf: true)), Rlp.Encode(value));
     }
 
     /// <remarks>Retired native owners are freed in the background.</remarks>

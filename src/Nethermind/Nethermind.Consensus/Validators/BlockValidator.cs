@@ -642,9 +642,21 @@ public class BlockValidator(
             return header.BlockAccessListHash is null;
         }
 
-        balRoot = bal.WireHash ?? new Hash256(ValueKeccak.Compute(block.EncodedBlockAccessList!));
+        if (bal.WireHash is { } wireHash)
+        {
+            balRoot = wireHash;
+            return wireHash == header.BlockAccessListHash;
+        }
 
-        return balRoot == header.BlockAccessListHash;
+        ValueHash256 calculatedHash = ValueKeccak.Compute(block.EncodedBlockAccessList!);
+        if (header.BlockAccessListHash is { } expectedHash && expectedHash.ValueHash256 == calculatedHash)
+        {
+            balRoot = expectedHash;
+            return true;
+        }
+
+        balRoot = new Hash256(calculatedHash);
+        return false;
     }
 
     private static string Invalid(Block block) => $"Invalid block {block.ToString(Block.Format.FullHashAndNumber)}:";

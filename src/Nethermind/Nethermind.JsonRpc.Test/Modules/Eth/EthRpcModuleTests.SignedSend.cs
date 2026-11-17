@@ -41,7 +41,7 @@ public partial class EthRpcModuleTests
 
         string response = await test.TestEthRpc("eth_sendTransaction", SignedRequest(signed, TestItem.AddressC));
         int pooled = test.TxPool.GetPendingTransactionsCount();
-        string raw = await test.TestEthRpc("eth_sendRawTransaction", Rlp.Encode(signed, RlpBehaviors.SkipTypedWrapping).Bytes.ToHexString(true));
+        string raw = await test.TestEthRpc("eth_sendRawTransaction", Rlp.Encode(signed, RlpBehaviors.SkipTypedWrapping).ToHexString(true));
 
         using (Assert.EnterMultipleScope())
         {

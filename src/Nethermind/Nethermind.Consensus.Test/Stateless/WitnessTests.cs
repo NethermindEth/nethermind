@@ -28,12 +28,12 @@ public class WitnessTests
     [Test]
     public void Decoded_headers_preserve_chain_linkage([Values(1, 2, 256)] int count, [Values] bool breakChain)
     {
-        ArrayPoolList<byte[]> encoded = new(count);
+        ArrayPoolList<byte[]> encoded = [with(count)];
         Hash256 parent = Keccak.Zero;
         for (int i = 0; i < count; i++)
         {
             BlockHeader header = Build.A.BlockHeader.WithNumber(i).WithParentHash(breakChain ? Keccak.Zero : parent).TestObject;
-            byte[] bytes = Rlp.Encode(header).Bytes;
+            byte[] bytes = Rlp.Encode(header);
             encoded.Add(bytes);
             parent = Keccak.Compute(bytes);
         }
@@ -61,7 +61,7 @@ public class WitnessTests
     {
         using Witness witness = new()
         {
-            Headers = new ArrayPoolList<byte[]>([[.. Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes, 0x00]]),
+            Headers = new ArrayPoolList<byte[]>([[.. Rlp.Encode(Build.A.BlockHeader.TestObject), 0x00]]),
             Codes = IOwnedReadOnlyList<byte[]>.Empty,
             State = IOwnedReadOnlyList<byte[]>.Empty,
             Keys = IOwnedReadOnlyList<byte[]>.Empty

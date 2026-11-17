@@ -242,9 +242,13 @@ public sealed class SnapCheckpoint
     private static void WriteAccount(ArrayBufferWriter<byte> writer, PathWithAccount account)
     {
         writer.Write(account.Path.Bytes);
-        byte[] rlp = account.Account is null ? [] : AccountDecoder.Instance.EncodeAsBytes(account.Account);
-        WriteCount(writer, rlp.Length);
-        writer.Write(rlp);
+        int length = account.Account is null ? 0 : AccountDecoder.Instance.GetLength(account.Account);
+        WriteCount(writer, length);
+        if (account.Account is null) return;
+
+        RlpWriter rlp = RlpWriter.ContentWriter(writer.GetSpan(length)[..length]);
+        AccountDecoder.Instance.Encode(account.Account, ref rlp);
+        writer.Advance(length);
     }
 
     private ref struct Reader(ReadOnlySpan<byte> data)
