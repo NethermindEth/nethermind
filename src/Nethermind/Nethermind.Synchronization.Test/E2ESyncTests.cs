@@ -297,6 +297,9 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
         await configurer(configProvider, spec);
 
+        // Flat storage is on by default, so only the Flat mode keeps it; the other modes cover the Patricia trie.
+        configProvider.GetConfig<IFlatDbConfig>().Enabled = dbModeOverride == DbMode.Flat;
+
         switch (dbModeOverride)
         {
             case DbMode.Default:
@@ -317,7 +320,6 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             case DbMode.Flat:
                 {
                     IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
-                    flatDbConfig.Enabled = true;
                     flatDbConfig.VerifyWithTrie = true;
                     break;
                 }

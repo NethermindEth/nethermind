@@ -312,7 +312,7 @@ namespace Nethermind.Core.Test.Encoding
 
             Assert.Throws<RlpLimitException>(() =>
             {
-                RlpReader ctx = new(CreateCompactReceipt(CreateMalformedCompactLogEntry(RlpLimit.DefaultLimit.Limit + 1L)));
+                RlpReader ctx = new(CreateCompactReceipt(CreateMalformedCompactLogEntry((long)16.MB + 1)));
                 decoder.Decode(ref ctx, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
             });
         }
@@ -321,7 +321,7 @@ namespace Nethermind.Core.Test.Encoding
         public void Rejects_compact_log_entry_struct_ref_with_oversized_log_data() =>
             Assert.Throws<RlpLimitException>(() =>
             {
-                RlpReader ctx = new(CreateMalformedCompactLogEntry(RlpLimit.DefaultLimit.Limit + 1L));
+                RlpReader ctx = new(CreateMalformedCompactLogEntry((long)16.MB + 1));
                 CompactLogEntryDecoder.DecodeLogEntryStructRef(ref ctx, RlpBehaviors.Storage, out _);
             });
 

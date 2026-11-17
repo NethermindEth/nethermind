@@ -13,6 +13,7 @@
   <ItemGroup>
     <Compile Include="..\Nethermind.Trie.Test\BranchSpliceTests.cs" Link="BranchSpliceTests.cs" />
     <Compile Include="..\Nethermind.Trie.Test\TrieNodeKindTests.cs" Link="TrieNodeKindTests.cs" />
+    <Compile Include="..\Nethermind.Trie.Test\SecuredTrieNodeValidatorTests.cs" Link="SecuredTrieNodeValidatorTests.cs" />
   </ItemGroup>
 
   <Target Name="RequireZkEvm" BeforeTargets="PrepareForBuild" Condition="'$(EnableZkEvm)' != 'true'">

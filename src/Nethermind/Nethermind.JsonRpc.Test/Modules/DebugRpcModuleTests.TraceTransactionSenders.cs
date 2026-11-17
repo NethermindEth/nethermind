@@ -200,9 +200,8 @@ public partial class DebugRpcModuleTests
             }
             else
             {
-                // The set-code sender may come from the process-wide sender cache; its authority never does. A copy
-                // shares its authorization list with the block's transaction, so the recovered authority shows there.
-                Assert.That(recovered, Is.InRange(2, 3));
+                // A copy shares its authorization list with the block's transaction, so the recovered authority shows there.
+                Assert.That(recovered, Is.EqualTo(3));
                 Assert.That(tracedAuthorization.Authority, Is.EqualTo(TestItem.AddressC));
             }
             Assert.That(JToken.DeepEquals(single, fromBlock), Is.True, $"{single}{Environment.NewLine}{fromBlock}");

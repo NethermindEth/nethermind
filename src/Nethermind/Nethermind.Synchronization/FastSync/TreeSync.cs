@@ -940,8 +940,7 @@ namespace Nethermind.Synchronization.FastSync
                         else
                         {
                             TreePath finalPath = currentStateSyncItem.Path.Append(trieNode.Key);
-                            Hash256 address = finalPath.Path.ToCommitment();
-                            _store.EnsureStorageEmpty(address);
+                            _store.EnsureStorageEmpty(finalPath.Path);
                             isAccountComplete |= dependentItem.ResolveDependency();
                         }
 
@@ -996,7 +995,7 @@ namespace Nethermind.Synchronization.FastSync
                 ref HashSet<DependentItem>? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_dependencies, dependency, out bool exists);
                 if (!exists)
                 {
-                    value = new HashSet<DependentItem>(DependentItemComparer.Instance);
+                    value = [with(DependentItemComparer.Instance)];
                 }
 
                 value.Add(dependentItem);
