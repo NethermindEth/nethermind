@@ -19,13 +19,13 @@ public interface IKeyStoreConfig : IConfig
     [ConfigItem(Description = "See [Web3 secret storage definition][web3-secret-storage].", DefaultValue = "UTF-8")]
     string KeyStoreEncoding { get; set; }
 
-    [ConfigItem(Description = "See [Web3 secret storage definition][web3-secret-storage].", DefaultValue = "scrypt")]
+    [ConfigItem(Description = "The key derivation function for new key files. Only `scrypt` is supported, in any letter case; it is written in lower case. Key files derived with `pbkdf2` can still be read. Checked when a key file is written. See [Web3 secret storage definition][web3-secret-storage].", DefaultValue = "scrypt")]
     string Kdf { get; set; }
 
-    [ConfigItem(Description = "See [Web3 secret storage definition][web3-secret-storage].", DefaultValue = "aes-128-ctr")]
+    [ConfigItem(Description = "The cipher for new key files: `aes-128-ctr` or `aes-128-cbc`, in any letter case; it is written in lower case. Checked when a key file is written. See [Web3 secret storage definition][web3-secret-storage].", DefaultValue = "aes-128-ctr")]
     string Cipher { get; set; }
 
-    [ConfigItem(Description = "See [Web3 secret storage definition][web3-secret-storage].", DefaultValue = "32")]
+    [ConfigItem(Description = "The derived key length for new key files, in bytes. Must be `32`. Checked when a key file is written. See [Web3 secret storage definition][web3-secret-storage].", DefaultValue = "32")]
     int KdfparamsDklen { get; set; }
 
     [ConfigItem(Description = "See [Web3 secret storage definition][web3-secret-storage].", DefaultValue = "262144")]
@@ -37,7 +37,7 @@ public interface IKeyStoreConfig : IConfig
     [ConfigItem(Description = "See [Web3 secret storage definition][web3-secret-storage].", DefaultValue = "8")]
     int KdfparamsR { get; set; }
 
-    [ConfigItem(Description = "See [Web3 secret storage definition][web3-secret-storage].", DefaultValue = "32")]
+    [ConfigItem(Description = "The salt length for new key files, in bytes. Must be at least `16`. Checked when a key file is written. See [Web3 secret storage definition][web3-secret-storage].", DefaultValue = "32")]
     int KdfparamsSaltLen { get; set; }
 
     [ConfigItem(Description = "See [Web3 secret storage definition][web3-secret-storage].", DefaultValue = "128")]
