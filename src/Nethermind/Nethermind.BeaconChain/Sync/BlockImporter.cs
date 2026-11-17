@@ -1538,7 +1538,7 @@ public sealed class BlockImporter : IBlockImporter
             // Above the head, clear up to the index's top slot; below it, the slots between this block and its child.
             ulong clearTo = childSlot is ulong child ? child - 1 : Math.Max(Math.Min(_canonicalIndexTopSlot, _clock.CurrentSlot + 1), node.Slot);
             bool skippedSlotsWereEmpty = true;
-            for (ulong slot = node.Slot + 1; slot <= clearTo; slot++)
+            foreach (ulong slot in _store.EnumerateCanonicalSlots(node.Slot + 1, clearTo))
             {
                 if (_store.TryGetCanonicalRoot(slot, out _))
                 {

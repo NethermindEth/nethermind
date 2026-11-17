@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using System.Net;
+using System.Reflection;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P;
@@ -13,6 +14,7 @@ using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.P2P;
+using Nethermind.BeaconChain.Test.Storage;
 using Nethermind.BeaconChain.Test.Types;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
@@ -30,6 +32,51 @@ public partial class ColumnBackfillTests
     private const ulong HeadSlot = 5;
 
     public enum ForgedHistorySource { Range, Root, Stored }
+
+    private delegate bool FindWalkStart(ulong floor, CancellationToken token, out Hash256? parent, out ForkedSignedBeaconBlock? child);
+
+    [Test]
+    public async Task Sparse_walk_start_seeks_readable_entries_and_observes_canonical_changes([Values] bool sorted, [Values] bool forward, CancellationToken token)
+    {
+        using CountingStatesColumnsDb db = new(sorted, BeaconChainDbColumns.BlockIndex);
+        await using Fixture fixture = Fixture.Create(db: db);
+        const ulong floor = 500_000;
+        const ulong upperSlot = 1_000_000;
+        SignedBeaconBlock above = TestChain.CreateBlock(upperSlot, fixture.Roots[5]);
+        Hash256 aboveRoot = SszRoots.HashTreeRoot(above.Message!);
+        fixture.Store.PutBlock(aboveRoot, above);
+        fixture.Store.ApplyCanonicalIndexChanges([(upperSlot, aboveRoot), (forward ? 750_000UL : 400_000UL, Hash256.Zero)], forward ? upperSlot : floor);
+        FindWalkStart find = typeof(ColumnBackfill).GetMethod("TryFindWalkStart", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .CreateDelegate<FindWalkStart>(fixture.CreateBackfill(TimeSpan.Zero));
+        long reads = db.Index.ReadsCount;
+        db.Index.ResetCount();
+
+        for (ulong i = 0; i < 100; i++)
+        {
+            Assert.That(find(floor - i * ColumnBackfill.WindowSlots, token, out Hash256? parent, out ForkedSignedBeaconBlock? child), Is.True);
+            using IDisposable assertions = Assert.EnterMultipleScope();
+            Assert.That(parent, Is.EqualTo(fixture.Roots[5]));
+            Assert.That(child?.Slot, Is.EqualTo(forward ? upperSlot : (ulong?)null));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db.Index.ReadsCount - reads, Is.LessThan(300));
+            Assert.That(db.Index.KeysRead, Is.LessThan(2_000), "each window seeks the same populated entries without probing the gap");
+        }
+
+        if (forward)
+        {
+            SignedBeaconBlock replacement = TestChain.CreateBlock(upperSlot, fixture.Roots[4]);
+            Hash256 replacementRoot = SszRoots.HashTreeRoot(replacement.Message!);
+            fixture.Store.PutBlock(replacementRoot, replacement);
+            fixture.Store.SetCanonicalRoot(upperSlot, replacementRoot);
+        }
+        else fixture.Store.ApplyCanonicalIndexChanges([(5UL, null)], floor);
+        using IDisposable finalAssertions = Assert.EnterMultipleScope();
+        Assert.That(find(floor, token, out Hash256? changedParent, out _), Is.True);
+        Assert.That(changedParent, Is.EqualTo(fixture.Roots[4]));
+        Assert.Throws<OperationCanceledException>(() => find(floor, new CancellationToken(true), out _, out _));
+    }
 
     [Test]
     public async Task Successful_signature_checks_are_reused_without_authenticating_a_replacement_signature([Values] bool replaceSignature, CancellationToken token)
@@ -586,10 +633,10 @@ public partial class ColumnBackfillTests
         public Func<ForkedSignedBeaconBlock, Task<bool?>>? VerifyBlockSignature { get; set; }
         public IReadOnlyList<StubPeer> Peers => _peers;
 
-        public static Fixture Create(ILogManager? logManager = null, ColumnStoreWriter? storeWriter = null)
+        public static Fixture Create(ILogManager? logManager = null, ColumnStoreWriter? storeWriter = null, IColumnsDb<BeaconChainDbColumns>? db = null)
         {
             ImportableBlobBlock chain = ImportableBlobBlock.Create();
-            BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), chain.Spec);
+            BeaconChainStore store = new(db ?? new MemColumnsDb<BeaconChainDbColumns>(), chain.Spec);
             Fixture fixture = new(chain, store, StoppedAtSlot(chain.Spec, HeadSlot + 1), logManager);
 
             store.SetAnchor(fixture.Roots[4], AnchorSlot);
@@ -653,6 +700,13 @@ public partial class ColumnBackfillTests
 
         public Task StartBackfill(TimeSpan retryDelay, CancellationToken token, params StubPeer[] peers)
         {
+            Backfill = CreateBackfill(retryDelay, peers);
+            _cts = CancellationTokenSource.CreateLinkedTokenSource(token);
+            return _run = Backfill.RunAsync(_cts.Token);
+        }
+
+        public ColumnBackfill CreateBackfill(TimeSpan retryDelay, params StubPeer[] peers)
+        {
             StubPool pool = new(peers);
             RangeSync rangeSync = new(pool, LogManager, Pool, _chain.Spec, Clock, _discovery)
             {
@@ -660,14 +714,12 @@ public partial class ColumnBackfillTests
                     block is ForkedSignedBeaconBlock.OfFulu fulu && _blocksByRoot.TryGetValue(block.ComputeMessageRoot(), out ForkedSignedBeaconBlock? expected)
                     && fulu.Block.Signature == ((ForkedSignedBeaconBlock.OfFulu)expected).Block.Signature)),
             };
-            Backfill = new ColumnBackfill(Store, Pool, rangeSync, pool, Clock, _chain.Spec, Status, new DiscoveryNodeCustodySource(_discovery), LogManager)
+            return new ColumnBackfill(Store, Pool, rangeSync, pool, Clock, _chain.Spec, Status, new DiscoveryNodeCustodySource(_discovery), LogManager)
             {
                 RetryDelay = retryDelay,
                 WindowPause = TimeSpan.FromMilliseconds(1),
                 HeadPollDelay = TimeSpan.FromMilliseconds(10),
             };
-            _cts = CancellationTokenSource.CreateLinkedTokenSource(token);
-            return _run = Backfill.RunAsync(_cts.Token);
         }
 
         public async Task UntilFloorAsync(ulong floor, CancellationToken token)

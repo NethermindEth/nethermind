@@ -45,11 +45,23 @@ internal sealed class CountingStatesColumnsDb(bool sorted, BeaconChainDbColumns 
             return new CountingView(this, inRange);
         }
 
-        private sealed class CountingView(SeekableCountingStatesDb owner, List<KeyValuePair<byte[], byte[]>> entries) : ISortedView
+        private sealed class CountingView(SeekableCountingStatesDb owner, List<KeyValuePair<byte[], byte[]>> entries) : IReverseSortedView
         {
             private int _index = -1;
 
-            public bool StartBefore(ReadOnlySpan<byte> value) => throw new NotSupportedException();
+            public bool StartBefore(ReadOnlySpan<byte> value)
+            {
+                _index = entries.Count;
+                while (_index > 0 && entries[_index - 1].Key.AsSpan().SequenceCompareTo(value) > 0) _index--;
+                return MovePrevious();
+            }
+
+            public bool MovePrevious()
+            {
+                if (--_index < 0) return false;
+                owner.KeysRead++;
+                return true;
+            }
 
             public bool MoveNext()
             {

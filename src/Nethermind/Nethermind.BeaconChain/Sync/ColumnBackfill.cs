@@ -405,7 +405,7 @@ public sealed class ColumnBackfill(
     private bool TryFindWalkStart(ulong floor, CancellationToken token, out Hash256? parent, out ForkedSignedBeaconBlock? child)
     {
         ulong top = store.GetCanonicalIndexTopSlot() ?? 0;
-        for (ulong slot = floor; slot <= top; slot++)
+        foreach (ulong slot in store.EnumerateCanonicalSlots(floor, top, token))
         {
             token.ThrowIfCancellationRequested();
             if (store.TryGetCanonicalRoot(slot, out Hash256? root) && store.TryGetForkedBlock(root, out ForkedSignedBeaconBlock? above))
@@ -418,17 +418,12 @@ public sealed class ColumnBackfill(
 
         child = null;
         ulong lowestIndexed = store.TryGetAnchor(out _, out ulong anchorSlot) ? anchorSlot : 0;
-        for (ulong slot = Math.Min(floor - 1, top); slot >= lowestIndexed; slot--)
+        foreach (ulong slot in store.EnumerateCanonicalSlots(lowestIndexed, Math.Min(floor - 1, top), token, reverse: true))
         {
             token.ThrowIfCancellationRequested();
             if (store.TryGetCanonicalRoot(slot, out parent) && store.TryGetForkedBlock(parent, out _))
             {
                 return true;
-            }
-
-            if (slot == 0)
-            {
-                break;
             }
         }
 

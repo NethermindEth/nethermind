@@ -708,10 +708,10 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         return root is not null;
     }
 
-    internal IEnumerable<ulong> EnumerateCanonicalSlots(ulong first, ulong last, CancellationToken token) =>
-        EnumerateStoredSlots(_blockIndex, first, last, token);
+    internal IEnumerable<ulong> EnumerateCanonicalSlots(ulong first, ulong last, CancellationToken token = default, bool reverse = false) =>
+        EnumerateStoredSlots(_blockIndex, first, last, token, reverse);
 
-    private static IEnumerable<ulong> EnumerateStoredSlots(IDb table, ulong first, ulong last, CancellationToken token = default)
+    private static IEnumerable<ulong> EnumerateStoredSlots(IDb table, ulong first, ulong last, CancellationToken token = default, bool reverse = false)
     {
         token.ThrowIfCancellationRequested();
         if (first > last) yield break;
@@ -723,22 +723,49 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         if (table is ISortedKeyValueStore sorted)
         {
             using ISortedView view = sorted.GetViewBetween(lower, upper);
-            while (view.MoveNext())
+            if (reverse && view is IReverseSortedView backwards)
             {
-                token.ThrowIfCancellationRequested();
-                if (view.CurrentKey.Length == sizeof(ulong))
-                    yield return BinaryPrimitives.ReadUInt64BigEndian(view.CurrentKey);
+                if (backwards.StartBefore(upper))
+                {
+                    do
+                    {
+                        token.ThrowIfCancellationRequested();
+                        if (backwards.CurrentKey.Length == sizeof(ulong))
+                            yield return BinaryPrimitives.ReadUInt64BigEndian(backwards.CurrentKey);
+                    } while (backwards.MovePrevious());
+                }
+                yield break;
             }
-            yield break;
+            if (!reverse)
+            {
+                while (view.MoveNext())
+                {
+                    token.ThrowIfCancellationRequested();
+                    if (view.CurrentKey.Length == sizeof(ulong))
+                        yield return BinaryPrimitives.ReadUInt64BigEndian(view.CurrentKey);
+                }
+                yield break;
+            }
         }
 
+        List<ulong>? reversed = reverse ? [] : null;
         foreach (byte[] key in table.GetAllKeys(ordered: true))
         {
             token.ThrowIfCancellationRequested();
             if (key.AsSpan().SequenceCompareTo(upper) >= 0) break;
             if (key.Length == sizeof(ulong) && key.AsSpan().SequenceCompareTo(lower) >= 0)
-                yield return BinaryPrimitives.ReadUInt64BigEndian(key);
+            {
+                ulong slot = BinaryPrimitives.ReadUInt64BigEndian(key);
+                if (reversed is not null) reversed.Add(slot);
+                else yield return slot;
+            }
         }
+        if (reversed is not null)
+            for (int i = reversed.Count - 1; i >= 0; i--)
+            {
+                token.ThrowIfCancellationRequested();
+                yield return reversed[i];
+            }
     }
 
     /// <exception cref="ArgumentException"><paramref name="sszBytes"/> is longer than a stored state may be, so it could never be read back.</exception>
