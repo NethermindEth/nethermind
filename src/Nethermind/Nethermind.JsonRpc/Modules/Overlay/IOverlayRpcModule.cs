@@ -20,7 +20,7 @@ public interface IOverlayRpcModule : IRpcModule
         ExampleResponse = "{\"code\":\"0x6080604052600436106100295760003560e01c8063\"}")]
     ResultWrapper<OverlayCreationCode?> overlay_callConstructor(
         [JsonRpcParameter(ExampleValue = "\"0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2\"")] Address address,
-        [JsonRpcParameter(Description = "The creation code (init code with constructor arguments) to deploy in place of the original one.")] byte[] code, CancellationToken cancellationToken);
+        [JsonRpcParameter(Description = "The creation code (init code with constructor arguments) to deploy in place of the original one.")] byte[] code, CancellationToken cancellationToken = default);
 
     [JsonRpcMethod(IsImplemented = true,
         IsSharable = false,

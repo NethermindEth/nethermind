@@ -23,7 +23,7 @@ namespace Nethermind.Optimism.Rpc;
 /// </remarks>
 public class OptimismProofRpcModule(IProofRpcModule inner, IReceiptFinder receiptFinder) : IProofRpcModule
 {
-    public ResultWrapper<CallResultWithProof> proof_call(TransactionForRpc tx, BlockParameter blockParameter, CancellationToken cancellationToken) =>
+    public ResultWrapper<CallResultWithProof> proof_call(TransactionForRpc tx, BlockParameter blockParameter, CancellationToken cancellationToken = default) =>
         inner.proof_call(tx, blockParameter, cancellationToken);
 
     public ResultWrapper<TransactionForRpcWithProof?> proof_getTransactionByHash(Hash256 txHash, bool includeHeader)
@@ -47,6 +47,6 @@ public class OptimismProofRpcModule(IProofRpcModule inner, IReceiptFinder receip
     public ResultWrapper<ReceiptWithProof?> proof_getTransactionReceipt(Hash256 txHash, bool includeHeader) =>
         inner.proof_getTransactionReceipt(txHash, includeHeader);
 
-    public ResultWrapper<AccountProofWithMeta> proof_getProofWithMeta(Address accountAddress, StorageKeys storageKeys, BlockParameter? blockParameter, CancellationToken cancellationToken) =>
+    public ResultWrapper<AccountProofWithMeta> proof_getProofWithMeta(Address accountAddress, StorageKeys storageKeys, BlockParameter? blockParameter, CancellationToken cancellationToken = default) =>
         inner.proof_getProofWithMeta(accountAddress, storageKeys, blockParameter, cancellationToken);
 }

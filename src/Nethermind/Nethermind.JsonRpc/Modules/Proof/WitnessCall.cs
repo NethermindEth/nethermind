@@ -30,7 +30,7 @@ internal sealed class WitnessCall(
     /// <c>eth_call</c>); in-VM failures (revert, out-of-gas, ...) are surfaced in the payload alongside
     /// the witness so a verifier can re-prove them.
     /// </summary>
-    public ResultWrapper<CallResultWithProof> Execute(TransactionForRpc callRequest, BlockParameter? blockParameter, CancellationToken cancellationToken)
+    public ResultWrapper<CallResultWithProof> Execute(TransactionForRpc callRequest, BlockParameter? blockParameter, CancellationToken cancellationToken = default)
     {
         blockParameter ??= BlockParameter.Latest;
 

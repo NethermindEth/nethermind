@@ -371,7 +371,7 @@ public class EthSimulateTestsBlocksAndTransactions
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
         SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, chain.RpcConfig, chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest, CancellationToken.None);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult<SimulateCallResult>> data = result.Data;
         using (Assert.EnterMultipleScope())
         {
@@ -425,7 +425,7 @@ public class EthSimulateTestsBlocksAndTransactions
         SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder,
             new JsonRpcConfig { MaxSimulateCallsCap = callsCap, MaxSimulateCallsPerBlockCap = callsPerBlockCap, Timeout = -1 },
             chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest, CancellationToken.None);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
 
         using (Assert.EnterMultipleScope())
         {
@@ -466,7 +466,7 @@ public class EthSimulateTestsBlocksAndTransactions
         SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder,
             new JsonRpcConfig { MaxSimulateCallsCap = null, MaxSimulateCallsPerBlockCap = null, Timeout = -1 },
             chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest, CancellationToken.None);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
 
         using (Assert.EnterMultipleScope())
         {
@@ -871,7 +871,7 @@ public class EthSimulateTestsBlocksAndTransactions
         SimulatePayload<TransactionForRpc> payload = new() { BlockStateCalls = [new(), new()] };
 
         SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, chain.RpcConfig, chain.SpecProvider, new FixedTracerFactory(tracer));
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest, CancellationToken.None);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
 
         using (Assert.EnterMultipleScope())
         {
@@ -1065,7 +1065,7 @@ public class EthSimulateTestsBlocksAndTransactions
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
         SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, chain.RpcConfig, chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
-            executor.Execute(payload, BlockParameter.Latest, CancellationToken.None);
+            executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult<SimulateCallResult>> data = result.Data;
 
         Assert.That(data.Count, Is.EqualTo(9));
@@ -1107,7 +1107,7 @@ public class EthSimulateTestsBlocksAndTransactions
         SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, chain.RpcConfig, chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
-            executor.Execute(payload, BlockParameter.Latest, CancellationToken.None);
+            executor.Execute(payload, BlockParameter.Latest);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Result!.Error, Is.EqualTo(SimulateErrorMessages.InsufficientFunds));
@@ -1259,7 +1259,7 @@ public class EthSimulateTestsBlocksAndTransactions
         };
 
         SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, chain.RpcConfig, chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest, CancellationToken.None);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
 
         Assert.That((bool)result.Result, Is.True, result.Result.ToString());
 
@@ -2349,7 +2349,7 @@ public class EthSimulateTestsBlocksAndTransactions
         };
 
         SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig { GasCap = 20_000, Timeout = -1 }, chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest, CancellationToken.None);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
 
         // With the budget enforced, the first call spends most of it and the second call's clamped
         // gas falls below intrinsic. Without the adapter both calls run unclamped and the request succeeds.
@@ -2696,7 +2696,7 @@ public class EthSimulateTestsBlocksAndTransactions
         // would leave ~173k and let both writes through, spending ~250k against a 200k cap.
         SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder,
             new JsonRpcConfig { GasCap = TwoSstoreRequestGasCap, Timeout = -1 }, chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest, CancellationToken.None);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
 
         Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
         SimulateCallResult[] calls = result.Data![0].Calls.ToArray();

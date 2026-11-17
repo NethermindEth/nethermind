@@ -252,6 +252,11 @@ public class RpcModuleProviderTests
             Assert.That(method.ExpectedParameters, Has.Length.EqualTo(1));
             Assert.That(method.DirectParameterInvoker, Is.Not.Null);
             Assert.That(() => new RpcModuleProvider.ResolvedMethodInfo(ModuleType.Net, misplaced, true, RpcEndpoint.All), Throws.InvalidOperationException);
+            foreach (string fiveParameterMethod in new[] { nameof(IEthRpcModule.eth_call), nameof(IEthRpcModule.eth_estimateGas), nameof(IEthRpcModule.eth_createAccessList) })
+            {
+                MethodInfo ethMethod = typeof(IEthRpcModule).GetMethod(fiveParameterMethod)!;
+                Assert.That(new RpcModuleProvider.ResolvedMethodInfo(ModuleType.Eth, ethMethod, true, RpcEndpoint.All).DirectParameterInvoker, Is.Not.Null, fiveParameterMethod);
+            }
         }
     }
 

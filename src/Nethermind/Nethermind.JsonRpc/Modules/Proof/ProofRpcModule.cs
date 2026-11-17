@@ -42,7 +42,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
         private static readonly IRlpDecoder<TxReceipt> _receiptEncoder = Rlp.GetDecoder<TxReceipt>();
         private readonly WitnessCall _witnessCall = new(blockFinder, blockchainBridge, specProvider, jsonRpcConfig);
 
-        public ResultWrapper<CallResultWithProof> proof_call(TransactionForRpc tx, BlockParameter blockParameter, CancellationToken cancellationToken) =>
+        public ResultWrapper<CallResultWithProof> proof_call(TransactionForRpc tx, BlockParameter blockParameter, CancellationToken cancellationToken = default) =>
             _witnessCall.Execute(tx, blockParameter, cancellationToken);
 
         public ResultWrapper<TransactionForRpcWithProof?> proof_getTransactionByHash(Hash256 txHash, bool includeHeader)
@@ -150,7 +150,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             return ResultWrapper<ReceiptWithProof>.Success(receiptWithProof);
         }
 
-        public ResultWrapper<AccountProofWithMeta> proof_getProofWithMeta(Address accountAddress, StorageKeys storageKeys, BlockParameter? blockParameter, CancellationToken cancellationToken)
+        public ResultWrapper<AccountProofWithMeta> proof_getProofWithMeta(Address accountAddress, StorageKeys storageKeys, BlockParameter? blockParameter, CancellationToken cancellationToken = default)
         {
             if (storageKeys.Count > EthRpcModule.GetProofStorageKeyLimit)
             {

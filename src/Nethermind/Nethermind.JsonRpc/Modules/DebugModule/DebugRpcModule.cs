@@ -921,7 +921,7 @@ public class DebugRpcModule(
         return ResultWrapper<IReadOnlyCollection<Hash256>>.Success(roots);
     }
 
-    public ResultWrapper<StorageRangeResult> debug_storageRangeAt(BlockParameter blockParameter, int txIndex, Address address, byte[] keyStart, int maxResult, CancellationToken cancellationToken)
+    public ResultWrapper<StorageRangeResult> debug_storageRangeAt(BlockParameter blockParameter, int txIndex, Address address, byte[] keyStart, int maxResult, CancellationToken cancellationToken = default)
     {
         if (txIndex < 0)
             return ResultWrapper<StorageRangeResult>.Fail($"transaction index {txIndex} must not be negative", ErrorCodes.InvalidParams);
@@ -1284,7 +1284,7 @@ public class DebugRpcModule(
 
     public ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> debug_simulateV1(
         SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, GethTraceOptions? options = null, CancellationToken cancellationToken = default) => new SimulateTxExecutor<GethLikeTxTrace>(blockchainBridge, blockFinder, jsonRpcConfig, specProvider, new GethStyleSimulateBlockTracerFactory(options: WithBufferedLimit(options)), _secondsPerSlot)
-            .Execute(payload, blockParameter, cancellationToken);
+            .Execute(payload, blockParameter, cancellationToken: cancellationToken);
 
     public ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> debug_traceCallMany(TransactionBundle[] bundles, BlockParameter? blockParameter = null, GethTraceOptions? options = null, CancellationToken cancellationToken = default)
     {
@@ -1454,7 +1454,7 @@ public class DebugRpcModule(
                 readLoneBlobFeeCapAsAbsent: false,
                 // A bundle call runs as eth_call does: the block gas limit does not bound it, which FillOmittedGas relies on.
                 callSemantics: true
-            ).Execute(simulatePayload, null, cancellationToken, searchResult: new(header));
+            ).Execute(simulatePayload, null, searchResult: new(header), cancellationToken: cancellationToken);
 
         if (simulationResult.ErrorCode != 0)
         {

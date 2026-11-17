@@ -13,7 +13,7 @@ public interface IJsonRpcService
     /// A module rental the token abandons while still queued throws an <see cref="System.OperationCanceledException"/>
     /// for this token instead of returning a response.
     /// </remarks>
-    ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, JsonRpcContext context, CancellationToken cancellationToken);
+    ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, JsonRpcContext context, CancellationToken cancellationToken = default);
     JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage, in JsonRpcId id, string? methodName = null);
     JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage, string? methodName = null);
 }

@@ -300,6 +300,7 @@ namespace Nethermind.JsonRpc.Modules
             private static readonly MethodInfo _createTypedDirectTwoParameterInvokerMethod = GetStaticMethod(nameof(CreateTypedDirectTwoParameterInvoker));
             private static readonly MethodInfo _createTypedDirectThreeParameterInvokerMethod = GetStaticMethod(nameof(CreateTypedDirectThreeParameterInvoker));
             private static readonly MethodInfo _createTypedDirectFourParameterInvokerMethod = GetStaticMethod(nameof(CreateTypedDirectFourParameterInvoker));
+            private static readonly MethodInfo _createTypedDirectFiveParameterInvokerMethod = GetStaticMethod(nameof(CreateTypedDirectFiveParameterInvoker));
             private static readonly MethodInfo _readTaskResultMethod = GetStaticMethod(nameof(ReadTaskResult));
             private static readonly MethodInfo _createTypedValueReaderMethod = GetStaticMethod(nameof(CreateTypedValueReader));
 
@@ -599,6 +600,9 @@ namespace Nethermind.JsonRpc.Modules
                     4 => (Func<IRpcModule, object?[], object?>)_createTypedDirectFourParameterInvokerMethod
                         .MakeGenericMethod(declaringType, parameters[0].ParameterType, parameters[1].ParameterType, parameters[2].ParameterType, parameters[3].ParameterType, methodInfo.ReturnType)
                         .Invoke(null, [methodInfo])!,
+                    5 => (Func<IRpcModule, object?[], object?>)_createTypedDirectFiveParameterInvokerMethod
+                        .MakeGenericMethod(declaringType, parameters[0].ParameterType, parameters[1].ParameterType, parameters[2].ParameterType, parameters[3].ParameterType, parameters[4].ParameterType, methodInfo.ReturnType)
+                        .Invoke(null, [methodInfo])!,
                     _ => null,
                 };
             }
@@ -627,9 +631,15 @@ namespace Nethermind.JsonRpc.Modules
                 return (module, parameters) => typedInvoker((TModule)module, (T1)parameters[0]!, (T2)parameters[1]!, (T3)parameters[2]!, (T4)parameters[3]!);
             }
 
+            private static Func<IRpcModule, object?[], object?> CreateTypedDirectFiveParameterInvoker<TModule, T1, T2, T3, T4, T5, TResult>(MethodInfo methodInfo)
+            {
+                Func<TModule, T1, T2, T3, T4, T5, TResult> typedInvoker = methodInfo.CreateDelegate<Func<TModule, T1, T2, T3, T4, T5, TResult>>();
+                return (module, parameters) => typedInvoker((TModule)module, (T1)parameters[0]!, (T2)parameters[1]!, (T3)parameters[2]!, (T4)parameters[3]!, (T5)parameters[4]!);
+            }
+
             private static bool CanUseDirectParameterInvoker(Type returnType, ParameterInfo[] parameters)
             {
-                if (parameters.Length is 0 or > 4 || !CanUseDirectInvokerReturn(returnType))
+                if (parameters.Length is 0 or > 5 || !CanUseDirectInvokerReturn(returnType))
                 {
                     return false;
                 }

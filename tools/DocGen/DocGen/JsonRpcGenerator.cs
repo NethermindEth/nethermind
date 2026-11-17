@@ -413,9 +413,12 @@ internal static class JsonRpcGenerator
         AnsiConsole.MarkupLine($"[green]Generated[/] {fileName}");
     }
 
-    // The dispatcher supplies a CancellationToken, so clients never send it.
-    private static ParameterInfo[] GetJsonParameters(MethodInfo method) =>
-        [.. method.GetParameters().Where(p => p.ParameterType != typeof(CancellationToken))];
+    // The dispatcher supplies the trailing CancellationToken, so clients never send it.
+    private static ParameterInfo[] GetJsonParameters(MethodInfo method)
+    {
+        ParameterInfo[] parameters = method.GetParameters();
+        return parameters is [.., { ParameterType: var lastType }] && lastType == typeof(CancellationToken) ? parameters[..^1] : parameters;
+    }
 
     private static void WriteParameters(StreamWriter file, MethodInfo method)
     {

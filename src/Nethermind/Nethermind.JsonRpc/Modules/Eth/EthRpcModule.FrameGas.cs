@@ -25,12 +25,12 @@ public partial class EthRpcModule
     {
         // Requests the executor rejects before execution get its errors, as they would with explicit limits.
         if (request is not FrameTransactionForRpc frameTx || !NeedsFrameGas(frameTx) || blockOverride?.GasLimit > _rpcConfig.GasCap.EffectiveGasCap())
-            return executor.ExecuteTx(request, blockParameter, cancellationToken, stateOverride, blockOverride, searchResult);
+            return executor.ExecuteTx(request, blockParameter, stateOverride, blockOverride, cancellationToken, searchResult);
 
         SearchResult<BlockHeader> search = searchResult ?? _blockFinder.SearchForHeader(blockParameter);
         if (search.IsError) return ResultWrapper<TResult>.Fail(search);
         if (!_blockchainBridge.HasStateForBlock(search.Object!))
-            return executor.ExecuteTx(request, blockParameter, cancellationToken, stateOverride, blockOverride, search);
+            return executor.ExecuteTx(request, blockParameter, stateOverride, blockOverride, cancellationToken, search);
         Result<FrameForRpc[]> result = FillFrameGas(frameTx, search.Object!, cancellationToken, out int errorCode, stateOverride, blockOverride);
         if (!result) return ResultWrapper<TResult>.Fail(result.Error!, errorCode);
 
@@ -38,7 +38,7 @@ public partial class EthRpcModule
         frameTx.Frames = result.Data;
         try
         {
-            return executor.ExecuteTx(request, blockParameter, cancellationToken, stateOverride, blockOverride, search);
+            return executor.ExecuteTx(request, blockParameter, stateOverride, blockOverride, cancellationToken, search);
         }
         finally
         {

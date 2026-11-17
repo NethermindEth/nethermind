@@ -2512,13 +2512,13 @@ public partial class EthRpcModuleTests
             for (int i = 0; i < pendingCount; i++)
             {
                 Task<JsonRpcResponse> request = service.SendRequestAsync(
-                    RpcTest.BuildJsonRequest("eth_sendRawTransactionSync", raw), context, CancellationToken.None).AsTask();
+                    RpcTest.BuildJsonRequest("eth_sendRawTransactionSync", raw), context).AsTask();
                 pending.Add(request);
                 Assert.That(request.IsCompleted, Is.False);
             }
 
             using JsonRpcResponse filterResponse = await service.SendRequestAsync(
-                RpcTest.BuildJsonRequest("eth_newBlockFilter"), context, CancellationToken.None);
+                RpcTest.BuildJsonRequest("eth_newBlockFilter"), context);
             RpcTest.AssertSuccess(filterResponse);
 
             if (limit > 0)
@@ -2526,7 +2526,7 @@ public partial class EthRpcModuleTests
                 // A refusal completes synchronously. A call let through would wait forever on the submission,
                 // which only the finally releases, so leave it to the finally instead of awaiting it here.
                 Task<JsonRpcResponse> refusedTask = service.SendRequestAsync(
-                    RpcTest.BuildJsonRequest("eth_sendRawTransactionSync", raw), context, CancellationToken.None).AsTask();
+                    RpcTest.BuildJsonRequest("eth_sendRawTransactionSync", raw), context).AsTask();
                 if (!refusedTask.IsCompleted) pending.Add(refusedTask);
                 Assert.That(refusedTask.IsCompleted, Is.True);
 
@@ -2547,7 +2547,7 @@ public partial class EthRpcModuleTests
         }
 
         using JsonRpcResponse retry = await service.SendRequestAsync(
-            RpcTest.BuildJsonRequest("eth_sendRawTransactionSync", raw), context, CancellationToken.None);
+            RpcTest.BuildJsonRequest("eth_sendRawTransactionSync", raw), context);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(RpcTest.AssertError(retry).Code,

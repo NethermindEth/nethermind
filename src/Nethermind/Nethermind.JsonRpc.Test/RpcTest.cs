@@ -68,7 +68,7 @@ public static class RpcTest
 
         IJsonRpcService service = container.Resolve<IJsonRpcService>();
         JsonRpcRequest request = BuildJsonRequest(method, parameters);
-        return await service.SendRequestAsync(request, new JsonRpcContext(RpcEndpoint.Http), CancellationToken.None);
+        return await service.SendRequestAsync(request, new JsonRpcContext(RpcEndpoint.Http));
     }
 
     public static Task<string> TestSerializedRequest<T>(T module, string method, params object?[]? parameters) where T : class, IRpcModule =>
@@ -93,7 +93,7 @@ public static class RpcTest
         IJsonRpcService service = container.Resolve<IJsonRpcService>();
         JsonRpcRequest request = BuildJsonRequest(method, parameters);
 
-        using JsonRpcResponse response = await service.SendRequestAsync(request, context, CancellationToken.None).ConfigureAwait(false);
+        using JsonRpcResponse response = await service.SendRequestAsync(request, context).ConfigureAwait(false);
 
         if (response.TryGetStreamableResult(out _))
         {
@@ -126,7 +126,7 @@ public static class RpcTest
 
         IJsonRpcService service = container.Resolve<IJsonRpcService>();
         JsonRpcContext context = new(RpcEndpoint.Http);
-        using JsonRpcResponse response = await service.SendRequestAsync(BuildJsonRequest(method, parameters), context, CancellationToken.None);
+        using JsonRpcResponse response = await service.SendRequestAsync(BuildJsonRequest(method, parameters), context);
 
         Assert.That(response.TryGetStreamableResult(out _), Is.True, $"precondition: {method} must return a streamed result");
         await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None);

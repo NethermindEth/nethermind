@@ -109,9 +109,9 @@ public class SimulateTxExecutor<TTrace>(
     public ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(
         SimulatePayload<TransactionForRpc> call,
         BlockParameter? blockParameter,
-        CancellationToken cancellationToken,
         Dictionary<Address, AccountOverride>? stateOverride = null,
-        SearchResult<BlockHeader>? searchResult = null)
+        SearchResult<BlockHeader>? searchResult = null,
+        CancellationToken cancellationToken = default)
     {
         if (call.BlockStateCalls is null || call.BlockStateCalls.Count == 0)
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(SimulateErrorMessages.EmptyBlockStateCalls, ErrorCodes.InvalidParams);

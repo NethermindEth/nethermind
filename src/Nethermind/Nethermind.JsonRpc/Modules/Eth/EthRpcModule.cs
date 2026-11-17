@@ -795,7 +795,7 @@ public partial class EthRpcModule(
 
     public ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> eth_simulateV1(SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, CancellationToken cancellationToken = default) =>
         new SimulateTxExecutor<SimulateCallResult>(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider, new SimulateBlockMutatorTracerFactory(), secondsPerSlot: _secondsPerSlot)
-            .Execute(payload, blockParameter, cancellationToken);
+            .Execute(payload, blockParameter, cancellationToken: cancellationToken);
 
     public virtual ResultWrapper<UInt256?> eth_estimateGas(SignableTransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null, CancellationToken cancellationToken = default) =>
         ExecuteWithFrameGas(new EstimateGasTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider),
@@ -813,7 +813,7 @@ public partial class EthRpcModule(
         // A request whose fees are rejected gets that error as it would with explicit frame limits.
         return feeDefaults.Error is null
             ? ExecuteWithFrameGas(executor, transactionCall, blockParameter, stateOverride, cancellationToken, searchResult: search)
-            : executor.ExecuteTx(transactionCall, blockParameter, cancellationToken, stateOverride, searchResult: search);
+            : executor.ExecuteTx(transactionCall, blockParameter, stateOverride, cancellationToken: cancellationToken, searchResult: search);
     }
 
     public ResultWrapper<BlockForRpc> eth_getBlockByHash(Hash256 blockHash, bool returnFullTransactionObjects) => GetBlock(new BlockParameter(blockHash), returnFullTransactionObjects);
@@ -1210,7 +1210,7 @@ public partial class EthRpcModule(
         : ResultWrapper<IEnumerable<FilterLog>>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable, _ethSyncingInfo.SyncMode.HaveNotSyncedReceiptsYet());
 
     // https://github.com/ethereum/EIPs/issues/1186
-    public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, StorageKeys storageKeys, BlockParameter? blockParameter, CancellationToken cancellationToken)
+    public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, StorageKeys storageKeys, BlockParameter? blockParameter, CancellationToken cancellationToken = default)
     {
         if (storageKeys.Count > GetProofStorageKeyLimit)
         {

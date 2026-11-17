@@ -31,7 +31,7 @@ public class OverlayRpcModule(
     ISpecProvider specProvider,
     IJsonRpcConfig jsonRpcConfig) : IOverlayRpcModule
 {
-    public ResultWrapper<OverlayCreationCode?> overlay_callConstructor(Address address, byte[] code, CancellationToken cancellationToken)
+    public ResultWrapper<OverlayCreationCode?> overlay_callConstructor(Address address, byte[] code, CancellationToken cancellationToken = default)
     {
         BlockHeader? head = blockFinder.Head?.Header;
         if (head is null) return ResultWrapper<OverlayCreationCode?>.Fail("head block not found", ErrorCodes.ResourceNotFound);

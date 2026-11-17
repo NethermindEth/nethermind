@@ -3,7 +3,6 @@
 
 using System;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -142,7 +141,7 @@ public class L2Api(
     public Task<AccountProof?> GetProof(Address accountAddress, StorageKeys storageKeys, ulong blockNumber)
     {
         // TODO: Retry logic
-        ResultWrapper<AccountProof> result = l2EthRpc.eth_getProof(accountAddress, storageKeys, new BlockParameter(blockNumber), CancellationToken.None);
+        ResultWrapper<AccountProof> result = l2EthRpc.eth_getProof(accountAddress, storageKeys, new BlockParameter(blockNumber));
         if (result.Result.ResultType != ResultType.Success)
         {
             return Task.FromResult<AccountProof?>(null);

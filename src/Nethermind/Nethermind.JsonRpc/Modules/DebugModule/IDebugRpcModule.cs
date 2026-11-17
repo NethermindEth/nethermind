@@ -67,7 +67,7 @@ public interface IDebugRpcModule : IRpcModule
     ResultWrapper<IReadOnlyCollection<Hash256>> debug_intermediateRoots(Hash256 blockHash, GethTraceOptions? options = null, CancellationToken cancellationToken = default);
 
     [JsonRpcMethod(Description = "Returns up to maxResult storage slots of an account as they are before the transaction at the given index of the block runs. Slots are in hashed-key order from the hashed key keyStart. nextKey is the hashed key to continue from, or null when no slots follow. Slot key preimages are not kept, so each key is null. At most 1024 slots are returned per call. Not supported on chains whose block processor cannot stop before a transaction, such as AuRa and Taiko.", IsImplemented = true, IsSharable = false)]
-    ResultWrapper<StorageRangeResult> debug_storageRangeAt(BlockParameter blockParameter, int txIndex, Address address, byte[] keyStart, int maxResult, CancellationToken cancellationToken);
+    ResultWrapper<StorageRangeResult> debug_storageRangeAt(BlockParameter blockParameter, int txIndex, Address address, byte[] keyStart, int maxResult, CancellationToken cancellationToken = default);
 
     [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = false)]
     ResultWrapper<GethLikeTxTrace[]> debug_traceBlockFromFile(string fileName, GethTraceOptions options = null);

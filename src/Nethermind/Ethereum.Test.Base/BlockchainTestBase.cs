@@ -934,7 +934,7 @@ public abstract class BlockchainTestBase
     {
         using JsonDocument doc = JsonDocument.Parse(paramsJson);
         JsonRpcRequest request = new() { JsonRpc = "2.0", Id = 1, Method = method, Params = doc.RootElement.Clone() };
-        return await rpcService.SendRequestAsync(request, context, CancellationToken.None);
+        return await rpcService.SendRequestAsync(request, context);
     }
 
     private static Task<JsonRpcResponse> SendFcu(IJsonRpcService rpcService, JsonRpcContext context, int fcuVersion, string blockHash) =>

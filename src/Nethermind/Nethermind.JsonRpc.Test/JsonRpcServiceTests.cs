@@ -92,7 +92,7 @@ public class JsonRpcServiceTests
             .Returns(ModuleResolution.Unknown);
         JsonRpcService service = new(provider, NullLogManager.Instance, new JsonRpcConfig(), keeper);
         JsonRpcContext context = new(endpoint, url: new JsonRpcUrl("http", "localhost", 8551, RpcEndpoint.Http, authenticated, ["engine"]));
-        using JsonRpcResponse response = await service.SendRequestAsync(new JsonRpcRequest { Method = method! }, context, CancellationToken.None);
+        using JsonRpcResponse response = await service.SendRequestAsync(new JsonRpcRequest { Method = method! }, context);
         if (cancels) await pending.WaitAsync(TimeSpan.FromSeconds(5));
         else Assert.That(pending.IsCompleted, Is.False);
         keeper.Dispose();
@@ -350,7 +350,7 @@ public class JsonRpcServiceTests
         RpcModuleProvider moduleProvider = new(new RealFileSystem(), _configurationProvider.GetConfig<IJsonRpcConfig>(), new EthereumJsonSerializer(), LimboLogs.Instance);
         moduleProvider.Register(pool);
         _jsonRpcService = new JsonRpcService(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>(), _gcKeeper);
-        JsonRpcResponse response = _jsonRpcService.SendRequestAsync(request, _context, CancellationToken.None).Result;
+        JsonRpcResponse response = _jsonRpcService.SendRequestAsync(request, _context).Result;
         Assert.That(response.Id, Is.EqualTo(request.Id));
         return response;
     }
@@ -378,7 +378,7 @@ public class JsonRpcServiceTests
         try
         {
             using JsonRpcResponse response = await service.SendRequestAsync(RpcTest.BuildJsonRequest("test_cancellation_token", "a"), _context, requestAbort.Token);
-            using JsonRpcResponse extraArgument = await service.SendRequestAsync(RpcTest.BuildJsonRequest("test_cancellation_token", "a", "b"), _context, CancellationToken.None);
+            using JsonRpcResponse extraArgument = await service.SendRequestAsync(RpcTest.BuildJsonRequest("test_cancellation_token", "a", "b"), _context);
 
             using (Assert.EnterMultipleScope())
             {
@@ -1315,7 +1315,7 @@ public class JsonRpcServiceTests
         using JsonDocument parameters = JsonDocument.Parse($"[\"{secret}\"]");
         JsonRpcRequest request = new() { Id = 67, Method = "unknown_method", Params = parameters.RootElement };
 
-        using JsonRpcResponse response = await service.SendRequestAsync(request, _context, CancellationToken.None);
+        using JsonRpcResponse response = await service.SendRequestAsync(request, _context);
 
         string log = logger.LogList.Single(line => line.Contains("Validation error when handling request"));
         using (Assert.EnterMultipleScope())
@@ -1714,7 +1714,7 @@ public class JsonRpcServiceTests
 
         JsonRpcService service = new(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>(), _gcKeeper);
         JsonRpcRequest request = RpcTest.BuildJsonRequest("eth_test");
-        JsonRpcResponse response = await service.SendRequestAsync(request, _context, CancellationToken.None);
+        JsonRpcResponse response = await service.SendRequestAsync(request, _context);
 
         JsonRpcErrorResponse errorResponse = AssertJsonRpcError(response, ErrorCodes.InternalError, "Internal error");
         Assert.That(errorResponse.Error!.Data, Is.Null);
@@ -1807,7 +1807,7 @@ public class JsonRpcServiceTests
         JsonRpcService service = new(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>(), _gcKeeper);
         JsonRpcRequest request = RpcTest.BuildJsonRequest("debug_traceCall");
         JsonRpcContext context = new(endpoint);
-        using JsonRpcErrorResponse response = (JsonRpcErrorResponse)await service.SendRequestAsync(request, context, CancellationToken.None);
+        using JsonRpcErrorResponse response = (JsonRpcErrorResponse)await service.SendRequestAsync(request, context);
 
         using (Assert.EnterMultipleScope())
         {
@@ -2038,7 +2038,7 @@ public class JsonRpcServiceTests
             .Build();
 
         IJsonRpcService service = container.Resolve<IJsonRpcService>();
-        using JsonRpcResponse response = await service.SendRequestAsync(RpcTest.BuildJsonRequest("eth_chainId"), new JsonRpcContext(RpcEndpoint.Http), CancellationToken.None);
+        using JsonRpcResponse response = await service.SendRequestAsync(RpcTest.BuildJsonRequest("eth_chainId"), new JsonRpcContext(RpcEndpoint.Http));
 
         using (Assert.EnterMultipleScope())
         {
@@ -2052,7 +2052,7 @@ public class JsonRpcServiceTests
     {
         public List<string> Methods { get; } = [];
 
-        public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, JsonRpcContext context, CancellationToken cancellationToken)
+        public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, JsonRpcContext context, CancellationToken cancellationToken = default)
         {
             Methods.Add(request.Method);
             return inner.SendRequestAsync(request, context, cancellationToken);

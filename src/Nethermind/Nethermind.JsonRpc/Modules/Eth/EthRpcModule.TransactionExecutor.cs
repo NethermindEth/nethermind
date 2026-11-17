@@ -108,8 +108,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     : Execute(header, data, stateOverride, _cancellationToken);
             }
 
-            public ResultWrapper<TResult> ExecuteTx(TransactionForRpc transactionCall, BlockParameter? blockParameter, CancellationToken cancellationToken,
-                Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null, SearchResult<BlockHeader>? searchResult = null)
+            public ResultWrapper<TResult> ExecuteTx(TransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null,
+                BlockOverride? blockOverride = null, CancellationToken cancellationToken = default, SearchResult<BlockHeader>? searchResult = null)
             {
                 ulong gasCap = _rpcConfig.GasCap.EffectiveGasCap();
                 if (blockOverride?.GasLimit > gasCap)

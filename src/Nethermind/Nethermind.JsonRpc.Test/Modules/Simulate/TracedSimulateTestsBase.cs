@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -43,7 +42,7 @@ public abstract class TracedSimulateTestsBase<TTrace>
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         SimulateTxExecutor<TTrace> executor = new(chain.Bridge, chain.BlockFinder, chain.RpcConfig, chain.SpecProvider, CreateTracerFactory());
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> result = executor.Execute(payload, BlockParameter.Latest, CancellationToken.None);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> result = executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult<TTrace>> data = result.Data;
         Assert.That(data, Has.Count.EqualTo(7));
 
@@ -77,7 +76,7 @@ public abstract class TracedSimulateTestsBase<TTrace>
 
         SimulateTxExecutor<TTrace> executor = new(chain.Bridge, chain.BlockFinder, chain.RpcConfig, chain.SpecProvider, CreateTracerFactory());
         ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> result =
-            executor.Execute(payload, BlockParameter.Latest, CancellationToken.None);
+            executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult<TTrace>> data = result.Data;
 
         Assert.That(data, Has.Count.EqualTo(9));
@@ -113,7 +112,7 @@ public abstract class TracedSimulateTestsBase<TTrace>
         SimulateTxExecutor<TTrace> executor = new(chain.Bridge, chain.BlockFinder, chain.RpcConfig, chain.SpecProvider, CreateTracerFactory());
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> result =
-            executor.Execute(payload, BlockParameter.Latest, CancellationToken.None);
+            executor.Execute(payload, BlockParameter.Latest);
         Assert.That(result.Result!.Error!, Is.EqualTo(SimulateErrorMessages.InsufficientFunds));
     }
 }
