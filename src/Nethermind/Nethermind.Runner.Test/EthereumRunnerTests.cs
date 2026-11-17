@@ -1004,7 +1004,6 @@ public class EthereumRunnerTests
             NethermindPlugins.EmbeddedPlugins
         );
         pluginLoader.Load();
-        pluginLoader.OrderPlugins(testCase.configProvider.GetConfig<IPluginConfig>());
 
         ApiBuilder builder = new(Substitute.For<IProcessExitSource>(), testCase.configProvider, LimboLogs.Instance);
         IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(testCase.configProvider, builder.ChainSpec);
@@ -1208,7 +1207,6 @@ public class EthereumRunnerTests
                 NethermindPlugins.EmbeddedPlugins
             );
             pluginLoader.Load();
-            pluginLoader.OrderPlugins(configProvider.GetConfig<IPluginConfig>());
 
             ApiBuilder builder = new(Substitute.For<IProcessExitSource>(), configProvider, LimboLogs.Instance);
             IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, builder.ChainSpec);

@@ -64,12 +64,15 @@ namespace Nethermind.Facade
         /// <see langword="null"/> keeps <paramref name="tx"/>'s <c>max_fee</c>.</param>
         /// <param name="stateOverride">Account overrides applied before the estimate.</param>
         /// <param name="blockOverride">Block overrides applied to <paramref name="header"/>'s copy.</param>
+        /// <param name="underCallPolicy">Whether the limits are filled for <see cref="Call"/> or <see cref="CreateAccessList"/>,
+        /// whose runs, the probes included, follow the chain's <see cref="RpcCallExecutionPolicy"/>.</param>
         /// <param name="cancellationToken">Cancels the estimate between and within runs.</param>
         /// <param name="executionReverted"><see langword="true"/> only when the estimate fails because a frame of an
         /// otherwise valid transaction reverted, rather than ran out of gas or the transaction was invalid.</param>
         /// <returns>The frames with every requested limit filled, or the failure.</returns>
         Result<TxFrame[]> EstimateFrameGas(BlockHeader header, Transaction tx, bool[] fillExecution, bool[] fillState, ulong gasCap, int errorMargin,
-            Func<ulong, UInt256>? maxFeeAt, Dictionary<Address, AccountOverride>? stateOverride, BlockOverride? blockOverride, CancellationToken cancellationToken, out bool executionReverted);
+            Func<ulong, UInt256>? maxFeeAt, Dictionary<Address, AccountOverride>? stateOverride, BlockOverride? blockOverride, bool underCallPolicy,
+            CancellationToken cancellationToken, out bool executionReverted);
 
         CallOutput CreateAccessList(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, bool optimize, UInt256? blobBaseFeeOverride = null, bool noBaseFee = false, CancellationToken cancellationToken = default);
         ulong GetChainId();

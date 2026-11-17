@@ -24,7 +24,7 @@ public class OverridableCodeInfoRepository(
     private readonly Dictionary<Address, (CodeInfo codeInfo, ValueHash256 codeHash)> _precompileOverrides = overrides.Precompiles;
 
     public bool IsCodeOverridable => true;
-    public bool DisablePrecompileOnAccountOverride => precompileOverridePolicy?.DisableOnAccountOverride ?? true;
+    private bool DisablePrecompileOnAccountOverride => precompileOverridePolicy?.DisableOnAccountOverride ?? true;
 
     public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
     {

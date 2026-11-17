@@ -207,6 +207,86 @@ public class PrecompileOverrideCodeInfoRepositoryTests
         }
     }
 
+    /// <summary>
+    /// A retained native precompile's address can be an EIP-7702 authority, as a dynamically registered native address
+    /// can, so an authorization after the override changes the code it shows, and a revert brings the override back.
+    /// </summary>
+    [Test]
+    public void Retained_native_views_follow_a_later_authorization(
+        [Values] bool movedRepository, [Values] bool dynamicAddress, [Values] bool clearDelegation)
+    {
+        IReleaseSpec spec = Prague.Instance;
+        Address address = dynamicAddress ? TestItem.AddressB : IdentityPrecompile.Address;
+        IWorldState worldState = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = worldState.BeginScope(IWorldState.PreGenesis);
+        ICodeInfoRepository inner = dynamicAddress ? Substitute.For<ICodeInfoRepository>() : new EthereumCodeInfoRepository(worldState);
+        if (dynamicAddress) inner.GetPrecompile(address, spec).Returns(IdentityPrecompile.Instance);
+        CodeOverrideStore overrides = new();
+        OverridableCodeInfoRepository repository = new(inner, worldState, overrides, new(disableOnAccountOverride: false));
+        byte[] designator = [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressA.Bytes];
+        worldState.ApplyStateOverridesNoCommit(repository, new() { [address] = new() { Code = designator } }, spec);
+        ICodeInfoRepository reader = movedRepository ? new MovedPrecompileCodeInfoRepository(inner, worldState, overrides) : repository;
+        Snapshot beforeAuthorization = worldState.TakeSnapshot();
+
+        new EthereumCodeInfoRepository(worldState).SetDelegation(clearDelegation ? Address.Zero : TestItem.AddressC, address, spec);
+        byte[] authorized = worldState.GetCode(address).ToArray();
+        CodeInfo dispatch = reader.GetCachedCodeInfo(address, followDelegation: true, spec, out Address? delegated);
+        CodeInfo plain = reader.GetDelegatedCodeInfo(address, spec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(authorized, Has.Length.EqualTo(clearDelegation ? 0 : designator.Length));
+            Assert.That(dispatch.Precompile, Is.SameAs(IdentityPrecompile.Instance));
+            Assert.That(dispatch.CodeSpan, Is.SequenceEqualTo(authorized));
+            Assert.That(delegated, Is.Null, "a native precompile does not follow its visible designator");
+            Assert.That(plain.IsPrecompile, Is.False);
+            Assert.That(plain.CodeSpan, Is.SequenceEqualTo(authorized));
+            Assert.That(reader.GetPrecompile(address, spec), Is.SameAs(IdentityPrecompile.Instance));
+        }
+
+        worldState.Restore(beforeAuthorization);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.GetCachedCodeInfo(address, spec).Precompile, Is.SameAs(IdentityPrecompile.Instance));
+            Assert.That(reader.GetCachedCodeInfo(address, spec).CodeSpan, Is.SequenceEqualTo(designator));
+            Assert.That(reader.GetDelegatedCodeInfo(address, spec).CodeSpan, Is.SequenceEqualTo(designator));
+        }
+    }
+
+    /// <summary>A non-code override of a precompile with stored code shows that code under either policy.</summary>
+    [Test]
+    public void Non_code_override_keeps_the_stored_code_visible(
+        [Values] bool preservePrecompiles, [Values] bool movedRepository, [Values("balance", "nonce", "state")] string field)
+    {
+        IReleaseSpec spec = Prague.Instance;
+        Address address = IdentityPrecompile.Address;
+        byte[] stored = [(byte)Instruction.STOP];
+        IWorldState worldState = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = worldState.BeginScope(IWorldState.PreGenesis);
+        worldState.CreateAccount(address, 0);
+        worldState.InsertCode(address, stored, spec);
+        EthereumCodeInfoRepository inner = new(worldState);
+        CodeOverrideStore overrides = new();
+        OverridableCodeInfoRepository repository = new(inner, worldState, overrides, new(disableOnAccountOverride: !preservePrecompiles));
+        AccountOverride accountOverride = field switch
+        {
+            "balance" => new() { Balance = 7 },
+            "nonce" => new() { Nonce = 3 },
+            _ => new() { State = new() { [UInt256.One] = Hash256.FromBytesWithPadding([2]) } }
+        };
+
+        worldState.ApplyStateOverridesNoCommit(repository, new() { [address] = accountOverride }, spec);
+        ICodeInfoRepository reader = movedRepository ? new MovedPrecompileCodeInfoRepository(inner, worldState, overrides) : repository;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.GetCachedCodeInfo(address, spec).IsPrecompile, Is.EqualTo(preservePrecompiles));
+            Assert.That(reader.GetCachedCodeInfo(address, spec).CodeSpan, Is.SequenceEqualTo(stored));
+            Assert.That(reader.GetDelegatedCodeInfo(address, spec).CodeSpan, Is.SequenceEqualTo(stored));
+            Assert.That(reader.GetPrecompile(address, spec), Is.EqualTo(preservePrecompiles ? IdentityPrecompile.Instance : null));
+        }
+    }
+
     [Test]
     public void Account_overrides_preserve_native_dispatch_only_when_opted_in(
         [Values] bool preservePrecompiles,

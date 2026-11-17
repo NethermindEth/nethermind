@@ -12,6 +12,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Newtonsoft.Json.Linq;
@@ -203,15 +204,19 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task RpcCallFeePolicy_failure_text_rerun_keeps_options_and_restores_state()
+    public async Task RpcCallFeePolicy_failure_text_rerun_keeps_options_and_restores_state([Values("eth_call", "eth_createAccessList")] string method)
     {
         FeePolicyExecutions executions = new();
         using Context ctx = await FeePolicyContext(executions: executions);
         _ = ctx.Test;
         executions.Options.Clear();
         // SSTORE then INVALID forces the diagnostic rerun, not the REVERT shortcut.
-        JToken response = await FeePolicyCall(ctx, FeePolicyRequest(), FeePolicyState(code: "0x6001600055fe"));
-        Assert.That((string?)response["error"]?["message"], Does.Contain("invalid opcode"), response.ToString());
+        Dictionary<string, object> state = FeePolicyState(code: "0x6001600055fe");
+        JToken response = method == "eth_call"
+            ? await FeePolicyCall(ctx, FeePolicyRequest(), state)
+            : JToken.Parse(await ctx.Test.TestEthRpc(method, FeePolicyRequest(), "latest", state));
+        // Without the policy's options the rerun stops at the gas purchase and leaves the bare VM error.
+        Assert.That((string?)(response["error"]?["message"] ?? response["result"]?["error"]), Does.Contain("invalid opcode: INVALID"), response.ToString());
         ExecutionOptions[] options = executions.Options.ToArray();
         Assert.That(options.Length, Is.GreaterThanOrEqualTo(2), "the real processor must execute the diagnostic rerun");
         using (Assert.EnterMultipleScope())
@@ -221,6 +226,31 @@ public partial class EthRpcModuleTests
             Assert.That(options[0].HasFlag(ExecutionOptions.SkipLegacyGasPriceValidation), Is.True);
         }
         AssertFeePolicyOutput(await FeePolicyCall(ctx, FeePolicyRequest(), FeePolicyState(code: "0x60005460005260206000f3")), FeePolicyWords(0));
+    }
+
+    [Test]
+    public async Task RpcCallFeePolicy_frame_gas_filling_follows_call_fee_semantics(
+        [Values("eth_call", "eth_createAccessList")] string method, [Values] bool chargeFees, [Values] bool explicitLimits)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance),
+            configurer: builder => builder.AddSingleton(new RpcCallExecutionPolicy(chargeFees)));
+        FrameTransactionForRpc request = FrameGasRequest();
+        request.MaxFeePerGas = 1_000_000_000;
+        request.MaxPriorityFeePerGas = 1;
+        if (explicitLimits)
+        {
+            (request.Frames![0].ExecutionGas, request.Frames[0].StateGas) = (50_000, 0);
+            (request.Frames[1].ExecutionGas, request.Frames[1].StateGas) = (50_000, 200_000);
+        }
+        // The payer covers the sender frame's 1 wei transfer and none of the gas.
+        object overrides = JsonSerializer.Deserialize<object>($$$"""{"{{{request.From}}}":{"balance":"0x1"}}""")!;
+
+        JToken response = JToken.Parse(await ctx.Test.TestEthRpc(method, request, "latest", overrides));
+
+        // eth_call returns its output bytes; eth_createAccessList reports a failed run in its result object.
+        JToken? error = response["error"] ?? (response["result"] as JObject)?["error"];
+        if (chargeFees) Assert.That(error, Is.Not.Null, response.ToString());
+        else Assert.That(error, Is.Null, response.ToString());
     }
 
     [Test]

@@ -95,13 +95,26 @@ public class MovedPrecompileCodeInfoRepository(ICodeInfoRepository codeInfoRepos
     }
 
     /// <summary>Returns the env's dispatch or plain-code view of an overridden precompile, including a moved-away origin.</summary>
-    /// <remarks>No transaction can change the code at a precompile address, so the env's copy is current.</remarks>
+    /// <remarks>
+    /// The account's code can change after the override, for example through an EIP-7702 authorization of a
+    /// dynamically registered native address. As in <see cref="OverridableCodeInfoRepository"/>, a view whose recorded
+    /// code hash no longer matches is rebuilt from the world state, keeping a retained native precompile. The env's
+    /// store is shared, so that view is not written back.
+    /// </remarks>
     private bool TryGetOverriddenPrecompileAddress(Address codeSource, IReleaseSpec vmSpec, [NotNullWhen(true)] out CodeInfo? codeInfo, bool forDelegation = false)
     {
         if (overrides.Code.Count != 0 && overrides.Code.TryGetValue(codeSource, out (CodeInfo codeInfo, CodeInfo delegatedCodeInfo, ValueHash256 codeHash) entry) &&
             (vmSpec.IsPrecompile(codeSource) || entry.codeInfo.IsPrecompile))
         {
-            codeInfo = forDelegation ? entry.delegatedCodeInfo : entry.codeInfo;
+            ValueHash256 codeHash = worldState.GetCodeHash(codeSource);
+            if (codeHash == entry.codeHash)
+            {
+                codeInfo = forDelegation ? entry.delegatedCodeInfo : entry.codeInfo;
+                return true;
+            }
+
+            CodeInfo visibleCode = codeHash == ValueKeccak.OfAnEmptyString ? CodeInfo.Empty : new CodeInfo(worldState.GetCode(codeSource));
+            codeInfo = forDelegation || !entry.codeInfo.IsPrecompile ? visibleCode : new CodeInfo(entry.codeInfo.Precompile!, visibleCode.Code);
             return true;
         }
 
