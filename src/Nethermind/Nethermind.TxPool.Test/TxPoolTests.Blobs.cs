@@ -1917,7 +1917,7 @@ namespace Nethermind.TxPool.Test
                     using (Assert.EnterMultipleScope())
                     {
                         Assert.That(blob, Is.EqualTo(wrapper.Blobs[i]), $"blob {i}");
-                        Assert.That(proof, Is.EqualTo(wrapper.GetProofs(i).ToArray()), $"blob proof {i}");
+                        Assert.That(proof, Is.EqualTo(wrapper.Proofs.AsSpan(i * Ckzg.BytesPerProof, Ckzg.BytesPerProof).ToArray()), $"blob proof {i}");
                     }
                 }
             }
