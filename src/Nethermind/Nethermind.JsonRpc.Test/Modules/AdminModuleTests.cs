@@ -97,7 +97,7 @@ public class AdminModuleTests
 
         SubscriptionFactory subscriptionFactory = new();
         subscriptionFactory.RegisterPeerEventsSubscription(_logManager, _peerPool, _rlpxPeer);
-        _subscriptionManager = new SubscriptionManager(subscriptionFactory, _logManager);
+        _subscriptionManager = new SubscriptionManager(subscriptionFactory, new JsonRpcConfig(), _logManager);
 
         _adminRpcModule = new AdminRpcModule(
             _blockTree,
@@ -416,6 +416,32 @@ public class AdminModuleTests
         string serialized = await RpcTest.TestSerializedRequest(adminRpcModule, "admin_subscribe", "peerEvents");
 
         Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":-32602,"message":"bad subscription argument"},"id":67}"""));
+    }
+
+    [Test]
+    public void AdminSubscribe_AboveTheConnectionLimit_ReturnsLimitExceeded()
+    {
+        SubscriptionFactory subscriptionFactory = new();
+        subscriptionFactory.RegisterPeerEventsSubscription(_logManager, _peerPool, _rlpxPeer);
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new JsonRpcConfig { MaxSubscriptionsPerConnection = 1 }))
+            .AddSingleton<ISubscriptionFactory>(subscriptionFactory)
+            .Build();
+        using ILifetimeScope scope = container.BeginLifetimeScope();
+        _subscriptionManager = scope.Resolve<ISubscriptionManager>();
+        IAdminRpcModule adminRpcModule = BuildAdminRpcModuleWith();
+        adminRpcModule.Context = new JsonRpcContext(RpcEndpoint.Ws, _jsonRpcDuplexClient);
+
+        ResultWrapper<string> first = adminRpcModule.admin_subscribe("peerEvents");
+        ResultWrapper<string> refused = adminRpcModule.admin_subscribe("peerEvents");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(refused.ErrorCode, Is.EqualTo(ErrorCodes.LimitExceeded));
+            Assert.That(refused.Result.Error, Is.EqualTo("Too many subscriptions. The connection limit is 1."));
+            Assert.That(refused.IsTemporary, Is.True);
+        }
     }
 
     [Test]

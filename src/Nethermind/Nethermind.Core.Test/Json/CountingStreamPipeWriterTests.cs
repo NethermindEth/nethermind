@@ -48,6 +48,28 @@ public class CountingStreamPipeWriterTests
     }
 
     [Test]
+    public async Task Writer_without_threshold_flush_writes_only_on_FlushAsync()
+    {
+        using MemoryStream stream = new();
+        CountingStreamPipeWriter writer = new(stream, Options, flushOnThreshold: false);
+        const int ChunkSize = 16 * 1024;
+        const int Chunks = 8;
+
+        for (int i = 0; i < Chunks; i++) writer.Write(new byte[ChunkSize]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stream.Length, Is.Zero);
+            Assert.That(writer.MayHaveWrittenToStream, Is.False);
+        }
+
+        await writer.FlushAsync();
+        await writer.CompleteAsync();
+
+        Assert.That(stream.Length, Is.EqualTo(Chunks * ChunkSize));
+    }
+
+    [Test]
     public void Rewindable_writer_rejects_stream_positioned_before_end()
     {
         using RecyclableMemoryStream stream = RecyclableStream.GetStream("test");

@@ -43,6 +43,32 @@ public class BlockAccessListStoreTests
     }
 
     [Test]
+    public async Task AppendRlps_appends_stored_and_pending_lists_in_order()
+    {
+        TestMemDb db = new();
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
+        BlockAccessListStore store = new(db, null, writer);
+        byte[] storedBal = [0xc1, 0x80];
+        byte[] pendingBal = [0xc2, 0x80, 0x80];
+        store.Insert(7, TestItem.KeccakA, storedBal);
+        Block pendingBlock = BlockWithBal(8, pendingBal);
+        store.InsertFromBlockDeferred(pendingBlock);
+        ulong[] numbers = [8, 9, 7];
+        ValueHash256[] hashes = [pendingBlock.Hash!, TestItem.KeccakB, TestItem.KeccakA];
+
+        using ArrayPoolList<byte> lists = new(0);
+        Range?[] ranges = new Range?[hashes.Length];
+        store.AppendRlps(numbers, hashes, lists, ranges);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(lists.AsSpan()[ranges[0]!.Value].ToArray(), Is.EqualTo(pendingBal));
+            Assert.That(ranges[1], Is.Null);
+            Assert.That(lists.AsSpan()[ranges[2]!.Value].ToArray(), Is.EqualTo(storedBal));
+        }
+    }
+
+    [Test]
     public void Round_trips_decoded_block_access_list()
     {
         TestMemDb db = new();
@@ -343,34 +369,6 @@ public class BlockAccessListStoreTests
             finishReclaim.Set();
             await deletion.WaitAsync(TimeSpan.FromSeconds(10));
             if (insertion is not null) await insertion.WaitAsync(TimeSpan.FromSeconds(10));
-        }
-    }
-
-    [Test]
-    public async Task GetRlps_copies_stored_and_pending_lists_in_request_order()
-    {
-        TestMemDb db = new();
-        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
-        BlockAccessListStore store = new(db, null, writer);
-        Block stored = BlockWithBal(1, [0xc1, 0x80]);
-        Block pending = BlockWithBal(2, [0xc2, 0x80, 0x80]);
-        Block empty = Build.A.Block.WithNumber(3).TestObject;
-        Block missing = Build.A.Block.WithNumber(4).TestObject;
-        store.Insert(stored.Number, stored.Hash!, stored.EncodedBlockAccessList!);
-        store.InsertFromBlockDeferred(pending);
-        store.Insert(empty.Number, empty.Hash!, Array.Empty<byte>());
-
-        (ulong, ValueHash256)[] blocks = [(missing.Number, missing.Hash!.ValueHash256), (pending.Number, pending.Hash!.ValueHash256), (empty.Number, empty.Hash!.ValueHash256), (stored.Number, stored.Hash!.ValueHash256)];
-        using PooledSegmentedBuffer destination = new(1024);
-        ReadOnlyMemory<byte>?[] rlps = new ReadOnlyMemory<byte>?[blocks.Length];
-        store.GetRlps(blocks, destination, rlps);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(rlps[0], Is.Null);
-            Assert.That(rlps[1]?.ToArray(), Is.EqualTo(new byte[] { 0xc2, 0x80, 0x80 }));
-            Assert.That(rlps[2], Is.Null, "an empty value reads as missing, as GetRlp reads it");
-            Assert.That(rlps[3]?.ToArray(), Is.EqualTo(new byte[] { 0xc1, 0x80 }));
         }
     }
 

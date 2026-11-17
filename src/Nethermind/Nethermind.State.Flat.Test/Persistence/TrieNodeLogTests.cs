@@ -1082,7 +1082,6 @@ public class TrieNodeLogTests
     private sealed class UnflushableDb(IDb inner) : IDb
     {
         public string Name => inner.Name;
-        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => inner[keys];
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => inner.GetAll(ordered);
         public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => inner.GetAllKeys(ordered);
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => inner.GetAllValues(ordered);

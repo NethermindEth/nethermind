@@ -109,34 +109,40 @@ public class BlockAccessListStore : IBlockAccessListStore
     }
 
     /// <inheritdoc/>
-    /// <remarks>Reads the keys in one batch. Pending access lists are taken before the batch, as <see cref="GetRlp"/> does,
-    /// so one whose write lands during the batch is not missed.</remarks>
-    public void GetRlps(ReadOnlySpan<(ulong Number, ValueHash256 Hash)> blocks, PooledSegmentedBuffer destination, Span<ReadOnlyMemory<byte>?> rlps)
+    /// <remarks>Reads the lists that are not pending in one batch.</remarks>
+    public void AppendRlps(ReadOnlySpan<ulong> blockNumbers, ReadOnlySpan<ValueHash256> blockHashes, ArrayPoolList<byte> destination, Span<Range?> ranges)
     {
-        ArgumentOutOfRangeException.ThrowIfNotEqual(rlps.Length, blocks.Length);
-        using ArrayPoolListRef<(int Index, ReadOnlyMemory<byte> Rlp)> pending = new(0);
-        if (_pending is not null)
+        using ArrayPoolSpan<byte> keys = new(blockHashes.Length * KeyLength);
+        using ArrayPoolSpan<int> stored = new(blockHashes.Length);
+        int count = 0;
+        for (int i = 0; i < blockHashes.Length; i++)
         {
-            for (int i = 0; i < blocks.Length; i++)
+            if (_pending is not null && _pending.TryGet(in blockHashes[i], out byte[] pendingRlp))
             {
-                if (_pending.TryGet(in blocks[i].Hash, out byte[] pendingRlp)) pending.Add((i, destination.Add(pendingRlp)));
+                ranges[i] = new AppendingDecoder(destination).Decode(pendingRlp);
+                continue;
             }
+
+            KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumbers[i], blockHashes[i], keys.Slice(count * KeyLength, KeyLength));
+            stored[count++] = i;
         }
 
-        using ArrayPoolSpan<byte> keys = new(blocks.Length * KeyLength);
-        for (int i = 0; i < blocks.Length; i++)
+        using ArrayPoolSpan<Range?> storedRanges = new(count);
+        _balDb.GetMany<Range?, AppendingDecoder>(keys.Slice(0, count * KeyLength), KeyLength, storedRanges, new(destination));
+        for (int j = 0; j < count; j++)
         {
-            KeyValueStoreExtensions.GetBlockNumPrefixedKey(blocks[i].Number, blocks[i].Hash, keys.Slice(i * KeyLength, KeyLength));
+            ranges[stored[j]] = storedRanges[j];
         }
-
-        _balDb.GetMany(keys, KeyLength, rlps, new AddingDecoder(destination));
-        foreach ((int index, ReadOnlyMemory<byte> rlp) in pending.AsSpan()) rlps[index] = rlp;
     }
 
-    /// <remarks>An empty value reads as missing, as <see cref="IReadOnlyKeyValueStore.GetOwnedMemory"/> reads it.</remarks>
-    private readonly struct AddingDecoder(PooledSegmentedBuffer destination) : IValueDecoder<ReadOnlyMemory<byte>?>
+    private readonly struct AppendingDecoder(ArrayPoolList<byte> destination) : IValueDecoder<Range?>
     {
-        public ReadOnlyMemory<byte>? Decode(ReadOnlySpan<byte> buffer) => buffer.IsEmpty ? default(ReadOnlyMemory<byte>?) : destination.Add(buffer);
+        public Range? Decode(ReadOnlySpan<byte> buffer)
+        {
+            int start = destination.Count;
+            destination.AddRange(buffer);
+            return new Range(start, destination.Count);
+        }
     }
 
     [SkipLocalsInit]

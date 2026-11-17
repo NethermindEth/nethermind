@@ -20,6 +20,7 @@ internal static class PayloadBodiesHandlerHelper
     public const int MaxCount = 1024;
     // Holds several mainnet bodies, so a request rents arrays of this size instead of one array as large as all bodies.
     private const int SegmentSize = 1024 * 1024;
+    private const int AccessListReadBatchSize = 16;
 
     /// <summary>Reads the canonical blocks from <paramref name="start"/> to <paramref name="end"/>, both inclusive.</summary>
     /// <returns>The blocks in number order, <see langword="null"/> where a number has no canonical block or its body is not stored.</returns>
@@ -50,17 +51,29 @@ internal static class PayloadBodiesHandlerHelper
     public static StoredBlocks ReadBlocks(IHeaderStore headerStore, IBlockStore blockStore, IReadOnlyList<Hash256> blockHashes)
     {
         int count = blockHashes.Count;
-        using ArrayPoolSpan<ulong?> numbers = new(count);
-        headerStore.GetBlockNumbers(blockHashes, numbers);
-
-        using ArrayPoolListRef<(ulong Number, ValueHash256 Hash)> blocks = new(count);
-        using ArrayPoolListRef<int> positions = new(count);
+        using ArrayPoolListRef<ValueHash256> hashes = new(count);
+        using ArrayPoolListRef<int> requested = new(count);
         for (int i = 0; i < count; i++)
+        {
+            // A null hash from the request finds no block.
+            if (blockHashes[i] is { } hash)
+            {
+                hashes.Add(hash.ValueHash256);
+                requested.Add(i);
+            }
+        }
+
+        using ArrayPoolSpan<ulong?> numbers = new(hashes.Count);
+        headerStore.GetBlockNumbers(hashes.AsSpan(), numbers);
+
+        using ArrayPoolListRef<(ulong Number, ValueHash256 Hash)> blocks = new(hashes.Count);
+        using ArrayPoolListRef<int> positions = new(hashes.Count);
+        for (int i = 0; i < hashes.Count; i++)
         {
             if (numbers[i] is { } number)
             {
-                blocks.Add((number, blockHashes[i].ValueHash256));
-                positions.Add(i);
+                blocks.Add((number, hashes[i]));
+                positions.Add(requested[i]);
             }
         }
 
@@ -108,16 +121,21 @@ internal static class PayloadBodiesHandlerHelper
     public static PayloadBodiesV2DirectResponse CreateResponseV2(IBlockAccessListStore balStore, StoredBlocks stored)
     {
         using ArrayPoolList<StoredBlock?> blocks = stored.Blocks;
-        using ArrayPoolListRef<(ulong Number, ValueHash256 Hash)> found = new(blocks.Count);
+        using ArrayPoolListRef<ulong> numbers = new(blocks.Count);
+        using ArrayPoolListRef<ValueHash256> hashes = new(blocks.Count);
         foreach (StoredBlock? block in blocks.AsSpan())
         {
-            if (block is { } b) found.Add((b.Number, b.Hash));
+            if (block is { } b)
+            {
+                numbers.Add(b.Number);
+                hashes.Add(b.Hash);
+            }
         }
 
-        using ArrayPoolListRef<ReadOnlyMemory<byte>?> bals = new(found.Count, found.Count);
+        using ArrayPoolListRef<ReadOnlyMemory<byte>?> bals = new(hashes.Count, hashes.Count);
         try
         {
-            balStore.GetRlps(found.AsSpan(), stored.Rlps, bals.AsSpan());
+            ReadAccessLists(balStore, numbers.AsSpan(), hashes.AsSpan(), stored.Rlps, bals.AsSpan());
         }
         catch
         {
@@ -132,6 +150,28 @@ internal static class PayloadBodiesHandlerHelper
         }
 
         return new PayloadBodiesV2DirectResponse(results.AsMemory(), new Owner(results, stored.Rlps));
+    }
+
+    /// <summary>Copies the stored access list of each block to <paramref name="destination"/>.</summary>
+    /// <remarks>
+    /// Reads in batches of <see cref="AccessListReadBatchSize"/>, so the contiguous buffer the store appends to holds
+    /// a few lists and not all lists of the response.
+    /// </remarks>
+    private static void ReadAccessLists(
+        IBlockAccessListStore balStore, ReadOnlySpan<ulong> numbers, ReadOnlySpan<ValueHash256> hashes, PooledSegmentedBuffer destination, Span<ReadOnlyMemory<byte>?> rlps)
+    {
+        using ArrayPoolList<byte> lists = new(0);
+        Span<Range?> ranges = stackalloc Range?[AccessListReadBatchSize];
+        for (int start = 0; start < hashes.Length; start += AccessListReadBatchSize)
+        {
+            int count = Math.Min(AccessListReadBatchSize, hashes.Length - start);
+            lists.Clear();
+            balStore.AppendRlps(numbers.Slice(start, count), hashes.Slice(start, count), lists, ranges[..count]);
+            for (int i = 0; i < count; i++)
+            {
+                rlps[start + i] = ranges[i] is { } range ? destination.Add(lists.AsSpan()[range]) : null;
+            }
+        }
     }
 
     /// <summary>A stored block and its encoding in <see cref="StoredBlocks.Rlps"/>.</summary>

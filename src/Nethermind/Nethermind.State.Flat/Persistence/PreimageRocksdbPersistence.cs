@@ -226,6 +226,13 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
             _flatWriteBatch.SetAccount(fakeAddrHash, rlp);
         }
 
+        public void SetSlimAccount(Address addr, scoped ReadOnlySpan<byte> slimRlp)
+        {
+            ValueHash256 fakeAddrHash = ValueKeccak.Zero;
+            addr.Bytes.CopyTo(fakeAddrHash.BytesAsSpan);
+            _flatWriteBatch.SetAccount(fakeAddrHash, slimRlp);
+        }
+
         public void SetStorage(Address addr, in UInt256 slot, in UInt256? value)
         {
             ValueHash256 fakeAddrHash = ValueKeccak.Zero;

@@ -51,19 +51,21 @@ public interface IBlockAccessListStore
     void Insert(ulong blockNumber, Hash256 blockHash, ReadOnlyBlockAccessList bal);
     MemoryManager<byte>? GetRlp(ulong blockNumber, Hash256 blockHash);
 
-    /// <summary>Copies the stored encoding of each block's access list, as <see cref="GetRlp"/> reads it, to <paramref name="destination"/>.</summary>
-    /// <param name="blocks">The number and hash of each block.</param>
-    /// <param name="destination">The buffer the encodings are copied to.</param>
-    /// <param name="rlps">Receives the encoding of each access list in <paramref name="destination"/>, or <see langword="null"/> when it is not stored.</param>
-    void GetRlps(ReadOnlySpan<(ulong Number, ValueHash256 Hash)> blocks, PooledSegmentedBuffer destination, Span<ReadOnlyMemory<byte>?> rlps)
+    /// <summary>Appends the stored RLP of several blocks' access lists to <paramref name="destination"/>.</summary>
+    /// <param name="blockNumbers">The numbers of the blocks.</param>
+    /// <param name="blockHashes">The hashes of the blocks, in the order of <paramref name="blockNumbers"/>.</param>
+    /// <param name="destination">Receives the RLP of each stored list.</param>
+    /// <param name="ranges">Receives where each block's list lies in <paramref name="destination"/>, or null when none is stored.</param>
+    void AppendRlps(ReadOnlySpan<ulong> blockNumbers, ReadOnlySpan<ValueHash256> blockHashes, ArrayPoolList<byte> destination, Span<Range?> ranges)
     {
-        for (int i = 0; i < blocks.Length; i++)
+        for (int i = 0; i < blockHashes.Length; i++)
         {
-            using MemoryManager<byte>? rlp = GetRlp(blocks[i].Number, new Hash256(in blocks[i].Hash));
-            rlps[i] = rlp is null ? default(ReadOnlyMemory<byte>?) : destination.Add(rlp.Memory.Span);
+            using MemoryManager<byte>? rlp = GetRlp(blockNumbers[i], new Hash256(in blockHashes[i]));
+            int start = destination.Count;
+            if (rlp is not null) destination.AddRange(rlp.Memory.Span);
+            ranges[i] = rlp is null ? null : new Range(start, destination.Count);
         }
     }
-
     ReadOnlyBlockAccessList? Get(ulong blockNumber, Hash256 blockHash);
     bool Exists(ulong blockNumber, Hash256 blockHash);
     void Delete(ulong blockNumber, Hash256 blockHash);

@@ -54,20 +54,6 @@ namespace Nethermind.Db
             set => Set(key, value);
         }
 
-        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys]
-        {
-            get
-            {
-                if (_readDelay > 0)
-                {
-                    Thread.Sleep(_readDelay);
-                }
-
-                ReadsCount += keys.Length;
-                return keys.Select(k => new KeyValuePair<byte[], byte[]?>(k, _db.GetValueOrDefault(k))).ToArray();
-            }
-        }
-
         public bool KeyExists(ReadOnlySpan<byte> key) => _spanDb.ContainsKey(key);
 
         public virtual void Flush(bool onlyWal = false) { }

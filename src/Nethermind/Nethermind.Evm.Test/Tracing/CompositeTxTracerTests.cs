@@ -21,6 +21,44 @@ namespace Nethermind.Evm.Test.Tracing;
 public class CompositeTxTracerTests
 {
     [Test]
+    public void Action_error_details_follow_leaf_capabilities(
+        [Values] bool actions, [Values] bool instructions, [Values] bool memory, [Values] bool wrapped, [Values] bool actionOnly)
+    {
+        ActionErrorDetailsTracer observer = new(actions, instructions, memory);
+        ActionErrorDetailsTracer native = new(true, false, false);
+        CompositeTxTracer composite = new(observer, native);
+        using ITxTracer tracer = wrapped
+            ? new CancellationTxTracer(new CompositeTxTracer(NullTxTracer.Instance, composite.WithCancellation(CancellationToken.None)))
+            {
+                IsTracingInstructions = true,
+                IsTracingMemory = true
+            }
+            : composite;
+
+        tracer.ReportActionErrorDetails("fault", actionOnly);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(observer.Reports, Is.EqualTo(actions && (!actionOnly || (!instructions && !memory)) ? 1 : 0));
+            Assert.That(native.Reports, Is.EqualTo(1), "mixed aggregate capabilities must not suppress native details or duplicate delivery");
+        }
+    }
+
+    private sealed class ActionErrorDetailsTracer : TxTracer
+    {
+        public int Reports { get; private set; }
+
+        public ActionErrorDetailsTracer(bool actions, bool instructions, bool memory)
+        {
+            IsTracingActions = actions;
+            IsTracingInstructions = instructions;
+            IsTracingMemory = memory;
+        }
+
+        public override void ReportActionErrorDetails(string error) => Reports++;
+    }
+
+    [Test]
     public void Storage_instruction_reports_follow_instruction_tracing(
         [Values] bool instructions, [Values] bool storage)
     {

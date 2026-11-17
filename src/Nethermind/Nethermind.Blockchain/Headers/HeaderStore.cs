@@ -316,26 +316,35 @@ public class HeaderStore : IHeaderStore, IClearableCache
         if (blockNumber is not null) return blockNumber.Value;
 
         // Probably still hash based
-        return Get(blockHash)?.Number;
+        return GetHashKeyedBlockNumber(blockHash);
     }
 
     /// <inheritdoc/>
-    /// <remarks>Reads the stored numbers in one batch, then looks up each missing one as <see cref="GetBlockNumber"/> does.</remarks>
-    public void GetBlockNumbers(IReadOnlyList<Hash256?> blockHashes, Span<ulong?> blockNumbers)
+    /// <remarks>Reads the numbers of blocks that are not pending in one batch.</remarks>
+    public void GetBlockNumbers(ReadOnlySpan<ValueHash256> blockHashes, Span<ulong?> numbers)
     {
-        ArgumentOutOfRangeException.ThrowIfNotEqual(blockNumbers.Length, blockHashes.Count);
-        using ArrayPoolSpan<byte> keys = new(blockHashes.Count * Hash256.Size);
-        for (int i = 0; i < blockHashes.Count; i++)
+        using ArrayPoolSpan<byte> keys = new(blockHashes.Length * ValueHash256.MemorySize);
+        using ArrayPoolSpan<int> stored = new(blockHashes.Length);
+        int count = 0;
+        for (int i = 0; i < blockHashes.Length; i++)
         {
-            Span<byte> key = keys.Slice(i * Hash256.Size, Hash256.Size);
-            if (blockHashes[i] is { } blockHash) blockHash.Bytes.CopyTo(key);
-            else key.Clear();
+            if (_pending is not null && _pending.TryGet(in blockHashes[i], out BlockHeader pending))
+            {
+                numbers[i] = pending.Number;
+                continue;
+            }
+
+            blockHashes[i].Bytes.CopyTo(keys.Slice(count * ValueHash256.MemorySize, ValueHash256.MemorySize));
+            stored[count++] = i;
         }
 
-        _blockNumberDb.GetMany(keys, Hash256.Size, blockNumbers, default(BlockNumberDecoder));
-        for (int i = 0; i < blockNumbers.Length; i++)
+        using ArrayPoolSpan<ulong?> storedNumbers = new(count);
+        _blockNumberDb.GetMany<ulong?, BlockNumberDecoder>(keys.Slice(0, count * ValueHash256.MemorySize), ValueHash256.MemorySize, storedNumbers, default);
+        for (int j = 0; j < count; j++)
         {
-            blockNumbers[i] = blockHashes[i] is { } blockHash ? blockNumbers[i] ?? GetBlockNumber(blockHash) : null;
+            int i = stored[j];
+            // Probably still hash based
+            numbers[i] = storedNumbers[j] ?? GetHashKeyedBlockNumber(new Hash256(in blockHashes[i]));
         }
     }
 
@@ -348,6 +357,12 @@ public class HeaderStore : IHeaderStore, IClearableCache
             _ => throw new InvalidDataException($"Unexpected number span length: {buffer.Length}")
         };
     }
+
+    /// <summary>Gets the number of a block whose header is cached or stored under its hash alone.</summary>
+    /// <remarks>For callers that already checked the deferred-write overlay and the block number database.</remarks>
+    private ulong? GetHashKeyedBlockNumber(Hash256 blockHash) =>
+        _headerCache.Get(in blockHash.ValueHash256)?.Number
+        ?? _headerDb.Get(blockHash, _headerDecoder, (AssociativeCache<ValueHash256, BlockHeader>?)null, RlpBehaviors.ExcludeHashes, shouldCache: false)?.Number;
 
     [SkipLocalsInit]
     private ulong? GetBlockNumberFromBlockNumberDb(Hash256 blockHash)
