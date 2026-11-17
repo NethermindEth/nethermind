@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
@@ -900,6 +901,194 @@ namespace Nethermind.Db.Test
             }
 
             Assert.That(db.NativeCloses, Is.EqualTo(1), "the last release must close the database once");
+        }
+
+        [Test]
+        public void Dispose_under_concurrent_pinned_reads_lets_each_read_finish_or_throw_object_disposed([Values] bool snapshot)
+        {
+            const int Readers = 8;
+            byte[] key = [1, 2, 3];
+            NativeCloseTrackingDbOnTheRocks db;
+            IRocksDbConfig config = _rocksdbConfigFactory.GetForDatabase("Blocks", null);
+            using (RocksDbInstance instance = new TestRocksDbFactory(_rocksdbConfigFactory, new DbConfig(), LimboLogs.Instance, DbPath, new RealFileSystem())
+                       .Open(GetRocksDbSettings(DbPath, "Blocks"), config, null))
+            {
+                db = new(instance, config, LimboLogs.Instance);
+            }
+            db.PutSpan(key, new byte[64], WriteFlags.None);
+            IKeyValueStoreSnapshot? view = snapshot ? db.CreateSnapshot() : null;
+            IReadOnlyKeyValueStore store = (IReadOnlyKeyValueStore?)view ?? db;
+
+            using CountdownEvent started = new(Readers);
+            Task<int>[] readers = new Task<int>[Readers];
+            for (int i = 0; i < Readers; i++)
+            {
+                bool nativeSlice = !snapshot && i % 2 == 1;
+                readers[i] = Task.Factory.StartNew(() =>
+                {
+                    started.Signal();
+                    int reads = 0;
+                    try
+                    {
+                        while (true)
+                        {
+                            if (nativeSlice)
+                            {
+                                ReadOnlySpan<byte> value = db.GetNativeSlice(key, out nint handle, ReadFlags.None);
+                                int length = value.Length;
+                                db.DangerousReleaseHandle(handle);
+                                if (length != 64) throw new InvalidOperationException($"read {length} bytes");
+                            }
+                            else if (!store.TryGet(key, ReadFlags.None, CheckValueLength, 64))
+                            {
+                                throw new InvalidOperationException("the key was not found");
+                            }
+
+                            reads++;
+                        }
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        return reads;
+                    }
+                }, TaskCreationOptions.LongRunning);
+            }
+
+            Assert.That(started.Wait(TimeSpan.FromSeconds(10)), "the readers never started");
+            Thread.Sleep(50);
+            view?.Dispose();
+            db.Dispose();
+
+            Assert.That(Task.WaitAll(readers, TimeSpan.FromSeconds(10)), "a reader never stopped");
+            int reads = readers.Sum(static r => r.Result);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reads, Is.GreaterThan(0));
+                Assert.That(db.NativeCloses, Is.EqualTo(1));
+            }
+        }
+
+        [Test]
+        public void Snapshot_dispose_waits_for_a_pinned_read_in_flight([Values] bool hintCacheMiss)
+        {
+            byte[] key = [1, 2, 3];
+            using DbOnTheRocks db = TestRocksDbFactory.OpenDb(DbPath, GetRocksDbSettings(DbPath, "Blocks"), new DbConfig(), _rocksdbConfigFactory, LimboLogs.Instance);
+            db.PutSpan(key, new byte[64], WriteFlags.None);
+            IKeyValueStoreSnapshot snapshot = db.CreateSnapshot();
+            using ReadGate gate = new();
+            Task reading = gate.Read(snapshot, key, hintCacheMiss ? ReadFlags.HintCacheMiss : ReadFlags.None);
+
+            Task disposing = Task.Run(snapshot.Dispose);
+            Assert.That(disposing.Wait(TimeSpan.FromMilliseconds(200)), Is.False, "the snapshot was disposed under a pinned read");
+
+            gate.Release();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reading.Wait(TimeSpan.FromSeconds(10)), "the read never finished");
+                Assert.That(disposing.Wait(TimeSpan.FromSeconds(10)), "dispose never finished after the read ended");
+                Assert.That(() => snapshot.TryGet(key, ReadFlags.None, static (_, _) => { }, 0), Throws.InstanceOf<ObjectDisposedException>());
+            }
+        }
+
+        [Test]
+        public void A_snapshot_read_past_the_dispose_timeout_releases_the_snapshot_once_when_it_ends()
+        {
+            byte[] key = [1, 2, 3];
+            int warnings = 0;
+            WarnHookLogger logger = new(() => Interlocked.Increment(ref warnings));
+            IRocksDbConfig config = _rocksdbConfigFactory.GetForDatabase("Blocks", null);
+            NativeCloseTrackingDbOnTheRocks db;
+            using (RocksDbInstance instance = new TestRocksDbFactory(_rocksdbConfigFactory, new DbConfig(), LimboLogs.Instance, DbPath, new RealFileSystem())
+                       .Open(GetRocksDbSettings(DbPath, "Blocks"), config, null))
+            {
+                db = new(instance, config, new OneLoggerLogManager(new ILogger(logger)))
+                {
+                    PinnedSliceDrainTimeout = TimeSpan.FromMilliseconds(50)
+                };
+            }
+
+            using (db)
+            {
+                db.PutSpan(key, new byte[64], WriteFlags.None);
+                IKeyValueStoreSnapshot snapshot = db.CreateSnapshot();
+                using ReadGate gate = new();
+                Task reading = gate.Read(snapshot, key);
+
+                Assert.That(Task.Run(snapshot.Dispose).Wait(TimeSpan.FromSeconds(10)), "dispose waited past its timeout");
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(LiveSnapshots(db), Is.EqualTo(1), "the snapshot was released under a read");
+                    Assert.That(Volatile.Read(ref warnings), Is.EqualTo(1));
+                }
+
+                gate.Release();
+                Assert.That(reading.Wait(TimeSpan.FromSeconds(10)), "the read never finished");
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(LiveSnapshots(db), Is.Zero, "the last read did not release the snapshot");
+                    Assert.That(() => snapshot.TryGet(key, ReadFlags.None, static (_, _) => { }, 0), Throws.InstanceOf<ObjectDisposedException>());
+                }
+            }
+        }
+
+        [Test]
+        public void Snapshot_disposed_inside_its_own_read_does_not_wait_and_is_released_when_the_read_ends()
+        {
+            byte[] key = [1, 2, 3];
+            using DbOnTheRocks db = TestRocksDbFactory.OpenDb(DbPath, GetRocksDbSettings(DbPath, "Blocks"), new DbConfig(), _rocksdbConfigFactory, LimboLogs.Instance);
+            db.PutSpan(key, new byte[64], WriteFlags.None);
+            IKeyValueStoreSnapshot snapshot = db.CreateSnapshot();
+            long disposeTicks = 0;
+            ulong snapshotsInRead = 0;
+
+            snapshot.TryGet(key, ReadFlags.None, (_, _) =>
+            {
+                long start = Stopwatch.GetTimestamp();
+                snapshot.Dispose();
+                disposeTicks = Stopwatch.GetTimestamp() - start;
+                snapshotsInRead = LiveSnapshots(db);
+            }, 0);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Stopwatch.GetElapsedTime(0, disposeTicks), Is.LessThan(db.PinnedSliceDrainTimeout / 2), "dispose waited for its own read");
+                Assert.That(snapshotsInRead, Is.EqualTo(1), "the snapshot was released under its own read");
+                Assert.That(LiveSnapshots(db), Is.Zero, "the read did not release the snapshot when it ended");
+            }
+        }
+
+        internal static ulong LiveSnapshots(DbOnTheRocks db) =>
+            db._db.TryGetIntProperty("rocksdb.num-snapshots", out ulong count) ? count : throw new InvalidOperationException("no snapshot count");
+
+        internal static void CheckValueLength(ReadOnlySpan<byte> value, int expected)
+        {
+            if (value.Length != expected) throw new InvalidOperationException($"read {value.Length} bytes, expected {expected}");
+        }
+
+        internal sealed class ReadGate : IDisposable
+        {
+            private readonly ManualResetEventSlim _entered = new();
+            private readonly ManualResetEventSlim _release = new();
+
+            public Task Read(IReadOnlyKeyValueStore store, byte[] key, ReadFlags flags = ReadFlags.None)
+            {
+                Task reading = Task.Factory.StartNew(() => store.TryGet(key, flags, static (_, gate) =>
+                {
+                    gate._entered.Set();
+                    gate._release.Wait();
+                }, this), TaskCreationOptions.LongRunning);
+                Assert.That(_entered.Wait(TimeSpan.FromSeconds(10)), "the read never reached its value");
+                return reading;
+            }
+
+            public void Release() => _release.Set();
+
+            public void Dispose()
+            {
+                _release.Set();
+                _entered.Dispose();
+                _release.Dispose();
+            }
         }
 
         /// <summary>Runs an action on every warning.</summary>
