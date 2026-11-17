@@ -136,6 +136,6 @@ namespace Nethermind.Benchmark.Runner
         private static bool DeclaresJob(Type type) =>
             type.GetCustomAttributes(true).OfType<IConfigSource>()
                 .Concat(type.Assembly.GetCustomAttributes().OfType<IConfigSource>())
-                .Any(static source => source.Config.GetJobs().Any());
+                .Any(static source => source.Config.GetJobs().Any(static job => !job.Meta.IsMutator));
     }
 }
