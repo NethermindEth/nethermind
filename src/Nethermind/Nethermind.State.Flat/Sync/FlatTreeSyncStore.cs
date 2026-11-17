@@ -53,7 +53,7 @@ public class FlatTreeSyncStore(
 
         if (address is null)
         {
-            RequestStateDeletion(reader, writeBatch, path, node, existingNode);
+            RequestStateDeletion(writeBatch, path, node, existingNode);
 
             writeBatch.SetStateTrieNode(path, data);
             FlatEntryWriter.WriteAccountFlatEntries(writeBatch, path, node);
@@ -80,7 +80,7 @@ public class FlatTreeSyncStore(
         return existingNode;
     }
 
-    private void RequestStateDeletion(IPersistence.IPersistenceReader reader, IPersistence.IWriteBatch writeBatch, in TreePath path, TrieNode newNode, TrieNode? existingNode)
+    private void RequestStateDeletion(IPersistence.IWriteBatch writeBatch, in TreePath path, TrieNode newNode, TrieNode? existingNode)
     {
         RefList16<DeletionRange> ranges = new();
         ComputeDeletionRanges(path, newNode, existingNode, ref ranges);
@@ -89,23 +89,54 @@ public class FlatTreeSyncStore(
         ValueHash256 keptAccount = newNode.IsLeaf ? path.Append(newNode.Key).ToLowerBoundPath() : default;
         foreach (DeletionRange range in ranges.AsSpan())
         {
-            DeleteStorageOfAccounts(reader, writeBatch, range, newNode.IsLeaf, keptAccount);
+            if (newNode.IsLeaf)
+            {
+                SelfDestructRangeExcept(writeBatch, range, keptAccount);
+            }
+            else
+            {
+                writeBatch.SelfDestructRange(range.From, range.To);
+            }
+
             writeBatch.DeleteAccountRange(range.From, range.To);
             writeBatch.DeleteStateTrieNodeRange(range.From, range.To);
         }
     }
 
-    private static void DeleteStorageOfAccounts(IPersistence.IPersistenceReader reader, IPersistence.IWriteBatch writeBatch, in DeletionRange range, bool hasKeptAccount, in ValueHash256 keptAccount)
+    private static void SelfDestructRangeExcept(IPersistence.IWriteBatch writeBatch, in DeletionRange range, in ValueHash256 keptAccount)
     {
-        using IPersistence.IFlatIterator accounts = reader.CreateAccountIterator(range.From, range.To);
-        while (accounts.MoveNext())
+        ReadOnlySpan<byte> kept = keptAccount.Bytes[..BaseFlatPersistence.AccountKeyLength];
+        if (kept.SequenceCompareTo(range.From.Bytes[..BaseFlatPersistence.AccountKeyLength]) > 0
+            && TryStepAccountKey(keptAccount, up: false, out ValueHash256 below))
         {
-            ValueHash256 account = accounts.CurrentKey;
-            if (hasKeptAccount && account.Bytes[..BaseFlatPersistence.AccountKeyLength].SequenceEqual(keptAccount.Bytes[..BaseFlatPersistence.AccountKeyLength])) continue;
-
-            writeBatch.DeleteStorageRange(account, ValueKeccak.Zero, ValueKeccak.MaxValue);
-            writeBatch.DeleteStorageTrieNodeRange(account, ValueKeccak.Zero, ValueKeccak.MaxValue);
+            writeBatch.SelfDestructRange(range.From, below.CompareTo(range.To) < 0 ? below : range.To);
         }
+
+        if (kept.SequenceCompareTo(range.To.Bytes[..BaseFlatPersistence.AccountKeyLength]) < 0
+            && TryStepAccountKey(keptAccount, up: true, out ValueHash256 above))
+        {
+            writeBatch.SelfDestructRange(above.CompareTo(range.From) > 0 ? above : range.From, range.To);
+        }
+    }
+
+    private static bool TryStepAccountKey(in ValueHash256 path, bool up, out ValueHash256 result)
+    {
+        Span<byte> bytes = stackalloc byte[ValueHash256.MemorySize];
+        path.Bytes[..BaseFlatPersistence.AccountKeyLength].CopyTo(bytes);
+        bytes[BaseFlatPersistence.AccountKeyLength..].Fill(up ? byte.MinValue : byte.MaxValue);
+        for (int i = BaseFlatPersistence.AccountKeyLength - 1; i >= 0; i--)
+        {
+            byte previous = bytes[i];
+            bytes[i] = up ? (byte)(previous + 1) : (byte)(previous - 1);
+            if (previous != (up ? byte.MaxValue : byte.MinValue))
+            {
+                result = new ValueHash256(bytes);
+                return true;
+            }
+        }
+
+        result = default;
+        return false;
     }
 
     private void RequestStorageDeletion(IPersistence.IWriteBatch writeBatch, Hash256 address, in TreePath path, TrieNode newNode, TrieNode? existingNode)

@@ -128,6 +128,25 @@ public class FlatTreeSyncStoreTests
         }
     }
 
+    [Test]
+    public void SaveNode_deletes_storage_that_has_no_flat_account_entry()
+    {
+        Address orphaned = TestItem.AddressC;
+        Address kept = TestItem.AddressB;
+        FlatTreeSyncStore store = new(_persistence, Substitute.For<IPersistenceManager>(), LimboLogs.Instance);
+        SaveRootAccountLeaf(store, TestItem.AddressA);
+        WriteStorageDirectToDb(orphaned, 1, [0x01]);
+        WriteStorageDirectToDb(kept, 1, [0x02]);
+
+        SaveRootAccountLeaf(store, kept);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(HasStorageEntries(orphaned), Is.False);
+            Assert.That(HasStorageEntries(kept), Is.True);
+        }
+    }
+
     private static void SaveRootAccountLeaf(FlatTreeSyncStore store, Address address)
     {
         TrieNode leaf = TrieNodeFactory.CreateLeaf(Nibbles.BytesToNibbleBytes(Keccak.Compute(address.Bytes).Bytes), Rlp.Encode(new Account(1, 1)));
