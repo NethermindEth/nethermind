@@ -314,8 +314,11 @@ namespace Nethermind.Facade.Find
                 DisposeFrom(logs, 0);
                 throw;
             }
+            finally
+            {
+                ArrayPool<T>.Shared.Return(chunk.Array!, RuntimeHelpers.IsReferenceOrContainsReferences<T>());
+            }
 
-            ArrayPool<T>.Shared.Return(chunk.Array!, RuntimeHelpers.IsReferenceOrContainsReferences<T>());
             return logs;
         }
 
