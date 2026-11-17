@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Autofac;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Modules;
-using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Specs.Forks;
@@ -29,7 +29,7 @@ public class PrecompileCacheBenchmarks
     private const int Inputs = 1024;
 
     private IContainer _container = null!;
-    private ILifetimeScope _processingScope = null!;
+    private readonly List<ILifetimeScope> _processingScopes = [];
     private ReadOnlyMemory<byte>[] _inputs = null!;
     private IPrecompile _blockTier = null!;
     private IPrecompile _survivingTier = null!;
@@ -42,8 +42,6 @@ public class PrecompileCacheBenchmarks
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(Osaka.Instance))
             .Build();
-        IWorldStateScopeProvider scopeProvider = _container.Resolve<IWorldStateManager>().GlobalWorldState;
-        _processingScope = _container.BeginLifetimeScope(builder => builder.AddSingleton(scopeProvider));
 
         _inputs = new ReadOnlyMemory<byte>[Inputs];
         for (int i = 0; i < Inputs; i++)
@@ -66,7 +64,7 @@ public class PrecompileCacheBenchmarks
     [GlobalCleanup]
     public void Cleanup()
     {
-        _processingScope?.Dispose();
+        foreach (ILifetimeScope scope in _processingScopes) scope.Dispose();
         _container?.Dispose();
     }
 
@@ -93,14 +91,19 @@ public class PrecompileCacheBenchmarks
         }
     }
 
+    /// <summary>Opens a main processing scope with its own precompile caches and returns its cached SHA256.</summary>
     private (IPrecompile Precompile, PrecompileCaches Caches) CreateCachedSha256(int survivingMaxEntries)
     {
-        IPrecompileProvider precompileProvider = _processingScope.Resolve<IPrecompileProvider>();
-        PrecompileCaches caches = new(precompileProvider,
-            new PreBlockCachesConfig { SurvivingPrecompileCacheMaxEntries = survivingMaxEntries },
-            _processingScope.Resolve<IBlocksConfig>());
-        PrecompileCachedCodeInfoRepository repository = new(_processingScope.Resolve<IWorldState>(), precompileProvider,
-            _processingScope.Resolve<ICodeInfoRepository>(), caches);
-        return (repository.GetPrecompile(Sha256Precompile.Address, Osaka.Instance)!, caches);
+        IWorldStateScopeProvider scopeProvider = _container.Resolve<IWorldStateManager>().GlobalWorldState;
+        IMainProcessingModule[] mainModules = _container.Resolve<IMainProcessingModule[]>();
+        ILifetimeScope scope = _container.BeginLifetimeScope(builder => builder
+            .AddSingleton(scopeProvider)
+            .AddSingleton(TestPreBlockCachesConfig.Small with { SurvivingPrecompileCacheMaxEntries = survivingMaxEntries })
+            .AddModule(mainModules));
+        _processingScopes.Add(scope);
+
+        if (scope.Resolve<ICodeInfoRepository>() is not PrecompileCachedCodeInfoRepository repository)
+            throw new InvalidOperationException("Main processing modules did not register the precompile cache.");
+        return (repository.GetPrecompile(Sha256Precompile.Address, Osaka.Instance)!, scope.Resolve<PrecompileCaches>());
     }
 }
