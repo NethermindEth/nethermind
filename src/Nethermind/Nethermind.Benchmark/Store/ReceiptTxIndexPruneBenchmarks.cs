@@ -9,13 +9,13 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Specs;
-using NSubstitute;
 
 namespace Nethermind.Benchmarks.Store;
 
@@ -44,21 +44,24 @@ public class ReceiptTxIndexPruneBenchmarks
             transactions[i] = Build.A.Transaction.WithNonce((ulong)i).SignedAndResolved().TestObject;
         }
 
-        Block oldBlock = Build.A.Block.WithNumber(1).WithTransactions(transactions).TestObject;
-        BlockStore blockStore = new(new MemDb());
-        blockStore.Insert(oldBlock);
-
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.FindBlockHash(oldBlock.Number).Returns(oldBlock.Hash);
-        _newMain = Build.A.Block.WithNumber(oldBlock.Number + TxLookupLimit).TestObject;
-
         ContainerBuilder builder = new();
         builder.AddModule(new TestNethermindModule(new ReceiptConfig { TxLookupLimit = TxLookupLimit, DeferredPersistence = false }));
         builder.AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance);
-        builder.AddSingleton<IBlockTree>(blockTree);
-        builder.AddSingleton<IBlockStore>(blockStore);
         builder.AddSingleton<IColumnsDb<ReceiptsColumns>>(new TestMemColumnsDb<ReceiptsColumns>());
         _container = builder.Build();
+
+        IBlockTree blockTree = _container.Resolve<IBlockTree>();
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        Block oldBlock = Build.A.Block.WithParent(genesis).WithTransactions(transactions).TestObject;
+        foreach (Block block in (ReadOnlySpan<Block>)[genesis, oldBlock])
+        {
+            blockTree.SuggestBlock(block);
+            blockTree.TryUpdateMainChain(block.Header, wereProcessed: true, forceUpdateHeadBlock: true, block);
+        }
+
+        // An empty block cache makes the prune read the stored block body.
+        ((IClearableCache)_container.Resolve<IBlockStore>()).ClearCache();
+        _newMain = Build.A.Block.WithNumber(oldBlock.Number + TxLookupLimit).TestObject;
 
         PersistentReceiptStorage storage = (PersistentReceiptStorage)_container.Resolve<IReceiptStorage>();
         _pruneOldTxIndex = typeof(PersistentReceiptStorage)
