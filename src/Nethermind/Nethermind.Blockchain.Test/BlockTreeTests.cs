@@ -1557,6 +1557,26 @@ public class BlockTreeTests
         AssertPersistedForkChoice(builder, expectedFinalized, expectedSafe);
     }
 
+    [TestCase(2UL, 3UL, 3UL, TestName = "ForkChoiceUpdated_raises_a_kept_safe_hash_below_the_new_finalized_one")]
+    [TestCase(4UL, 3UL, 4UL, TestName = "ForkChoiceUpdated_keeps_a_kept_safe_hash_above_the_new_finalized_one")]
+    public void ForkChoiceUpdated_keeps_the_safe_hash_at_or_above_the_finalized_one(ulong safe, ulong newFinalized, ulong expectedSafe)
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(5);
+        BlockTree blockTree = builder.TestObject;
+        Hash256 HashOf(ulong number) => blockTree.FindHeader(number, BlockTreeLookupOptions.None)!.Hash!;
+        blockTree.ForkChoiceUpdated(HashOf(1), HashOf(safe));
+
+        blockTree.ForkChoiceUpdated(HashOf(newFinalized), Keccak.Zero);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTree.FinalizedHash, Is.EqualTo(HashOf(newFinalized)));
+            Assert.That(blockTree.SafeHash, Is.EqualTo(HashOf(expectedSafe)));
+        }
+
+        AssertPersistedForkChoice(builder, HashOf(newFinalized), HashOf(expectedSafe));
+    }
+
     private static IEnumerable<TestCaseData> ForkChoicePairs()
     {
         yield return new TestCaseData(TestItem.KeccakA, TestItem.KeccakB).SetArgDisplayNames("finalized", "safe");
