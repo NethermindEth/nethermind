@@ -129,32 +129,17 @@ internal static class BeaconStatesEndpoints
                 c.RequestAborted);
         }
 
-        // Indexes the 512 committee keys rather than the whole registry, then finds them in one registry scan.
         BlsPublicKey[] pubkeys = committee.Pubkeys!;
-        Dictionary<BlsPublicKey, List<int>> positions = [with(pubkeys.Length)];
-        for (int i = 0; i < pubkeys.Length; i++)
-        {
-            ref List<int>? at = ref CollectionsMarshal.GetValueRefOrAddDefault(positions, pubkeys[i], out _);
-            (at ??= []).Add(i);
-        }
-
+        Dictionary<BlsPublicKey, int> indices = ctx.ValidatorIndices.Get(state.Validators);
         string[] validators = new string[pubkeys.Length];
-        Validator[] registry = state.Validators!;
-        for (int index = 0; index < registry.Length && positions.Count > 0; index++)
-        {
-            if (!positions.Remove(registry[index].Pubkey, out List<int>? at)) continue;
-            string indexText = index.ToString();
-            foreach (int position in at) validators[position] = indexText;
-        }
-
         for (int i = 0; i < validators.Length; i++)
         {
-            // A committee member is always a registry entry; an unset position means the state is corrupt.
-            if (validators[i] is null)
+            if (!indices.TryGetValue(pubkeys[i], out int index))
             {
                 return ApiErrors.Write(c, StatusCodes.Status500InternalServerError,
                     $"Sync committee member {pubkeys[i]} at position {i} is not in the validator registry of the state for '{stateId}' ({resolved.Root}).", c.RequestAborted);
             }
+            validators[i] = index.ToString();
         }
 
         int subcommitteeSize = pubkeys.Length / SyncCommitteeSubnetCount;
@@ -676,7 +661,7 @@ internal static class BeaconStatesEndpoints
         CommitteeCache cache;
         try
         {
-            cache = state.BuildCommittees(epoch);
+            cache = ctx.Committees.Get(state, epoch);
         }
         catch (BeaconStateException e)
         {

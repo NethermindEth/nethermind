@@ -3,9 +3,12 @@
 
 using System.Net;
 using System.Net.Http;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Nethermind.BeaconChain.Api;
+using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 
@@ -22,6 +25,51 @@ public class BeaconStatesValidatorsAndCommitteesTests : BeaconApiFixture
 
     private const ulong StateEpoch = 412_500;
     private const ulong StateSlot = StateEpoch * 32;
+
+    [Test]
+    public async Task Committee_cache_shares_concurrent_requests_and_isolates_states_and_epochs([Values] bool gloas)
+    {
+        StateCommitteeCache cache = new();
+        BeaconStateFulu state = RichState(Spec, StateSlot);
+        ApiState apiState = gloas
+            ? ApiState.Of(new BeaconStateGloas { Slot = state.Slot, Validators = state.Validators, RandaoMixes = state.RandaoMixes })
+            : ApiState.Of(BeaconFork.Fulu, state);
+        CommitteeCache[] results = await Task.WhenAll(Enumerable.Range(0, 32)
+            .Select(_ => Task.Run(() => cache.Get(apiState, StateEpoch))));
+        ApiState sameState = gloas ? ApiState.Of(apiState.Gloas!) : ApiState.Of(BeaconFork.Fulu, state);
+        BeaconStateFulu replacement = RichState(Spec, StateSlot);
+        replacement.Validators = [replacement.Validators![0]];
+        CommitteeCache replaced = cache.Get(ApiState.Of(BeaconFork.Fulu, replacement), StateEpoch);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        foreach (CommitteeCache result in results) Assert.That(result, Is.SameAs(results[0]));
+        Assert.That(cache.Get(sameState, StateEpoch), Is.SameAs(results[0]));
+        Assert.That(replaced.ActiveValidatorCount, Is.EqualTo(1));
+        Assert.That(results[0].ActiveValidatorCount, Is.EqualTo(3));
+        foreach (ulong epoch in new[] { StateEpoch - 1, StateEpoch, StateEpoch + 1 })
+            Assert.That(cache.Get(apiState, epoch).Epoch, Is.EqualTo(epoch));
+        Assert.Throws<ArgumentOutOfRangeException>(() => cache.Get(apiState, StateEpoch + 2));
+    }
+
+    [Test]
+    public void Committee_cache_does_not_retain_expired_states()
+    {
+        StateCommitteeCache cache = new();
+        WeakReference state = CacheTemporaryState(cache);
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        Assert.That(state.IsAlive, Is.False);
+        GC.KeepAlive(cache);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static WeakReference CacheTemporaryState(StateCommitteeCache cache)
+    {
+        BeaconStateFulu state = RichState(Spec, StateSlot);
+        cache.Get(ApiState.Of(BeaconFork.Fulu, state), StateEpoch);
+        return new WeakReference(state);
+    }
 
     [OneTimeSetUp]
     public async Task StartHost()
