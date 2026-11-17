@@ -15,7 +15,6 @@ using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using Nethermind.State.SnapServer;
-using Nethermind.Synchronization.SnapSync;
 using Testably.Abstractions;
 
 namespace Nethermind.Benchmarks.Store;
@@ -30,7 +29,8 @@ public class SnapByteCodesServingBenchmark
 
     private TempPath _directory = null!;
     private DbOnTheRocks _db = null!;
-    private SnapServer _server = null!;
+    private IContainer _container = null!;
+    private ISnapServer _server = null!;
     private ValueHash256[][] _requests = null!;
     private int _nextRequest;
 
@@ -72,7 +72,11 @@ public class SnapByteCodesServingBenchmark
             _requests[i] = hashes[(i * RequestedCodes)..((i + 1) * RequestedCodes)];
         }
 
-        _server = new SnapServer(NoopSnapServer.Instance, _db, null!, null!);
+        _container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddKeyedSingleton<IDb>(DbNames.Code, _db)
+            .Build();
+        _server = _container.Resolve<ISnapServer>();
 
         using IByteArrayList codes = _server.GetByteCodes(_requests[0], ByteLimit, CancellationToken.None);
         if (codes.Count == 0 || ValueKeccak.Compute(codes[0]) != _requests[0][0])
@@ -90,6 +94,7 @@ public class SnapByteCodesServingBenchmark
     [GlobalCleanup]
     public void Cleanup()
     {
+        _container.Dispose();
         _db.Dispose();
         _directory.Dispose();
     }
