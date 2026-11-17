@@ -390,10 +390,13 @@ public class ImporterTests
         if (duringCommit)
         {
             await committing.Task;
-            Task wipe = Task.Run(migration.Persistence.Clear);
-            wipedFirst = await Task.WhenAny(wipe, Task.Delay(TimeSpan.FromMilliseconds(200))) == wipe;
+            // On a thread of its own, whose state shows the wipe blocked: it either waits for the commit or, unserialized, finishes first.
+            Thread wipe = new(migration.Persistence.Clear);
+            wipe.Start();
+            SpinWait.SpinUntil(() => !wipe.IsAlive || (wipe.ThreadState & ThreadState.WaitSleepJoin) != 0);
+            wipedFirst = !wipe.IsAlive;
             commit.Set();
-            await wipe;
+            wipe.Join();
         }
         await run;
 
