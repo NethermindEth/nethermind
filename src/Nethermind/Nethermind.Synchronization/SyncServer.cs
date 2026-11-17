@@ -600,7 +600,11 @@ namespace Nethermind.Synchronization
         }
 
         /// <inheritdoc/>
-        /// <remarks>Reads the block numbers in one batch, as <see cref="FindBlockRlp"/> needs them to find the blocks.</remarks>
+        /// <remarks>
+        /// Reads the block numbers in one batch, as <see cref="FindBlockRlp"/> needs them to find the blocks.
+        /// <see cref="FindBlockRlp"/> then reads each number again, which the block cache usually serves.
+        /// Blocks that only have a legacy hash-keyed number are not prefetched.
+        /// </remarks>
         public void PrefetchBlocks(IReadOnlyList<Hash256> hashes, int start, int count)
         {
             using ArrayPoolSpan<ValueHash256> blockHashes = new(count);
@@ -616,7 +620,7 @@ namespace Nethermind.Synchronization
                 if (numbers[i] is { } number) blocks[known++] = (number, blockHashes[i]);
             }
 
-            _blockStore.Prefetch(blocks.Slice(0, known));
+            _blockStore.Prefetch(blocks.AsReadOnlyMemory()[..known]);
         }
 
         public BlockHeader? FindHeader(Hash256 hash) => _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);

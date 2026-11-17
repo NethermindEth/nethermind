@@ -239,15 +239,16 @@ public class BlockStore : IBlockStore, IClearableCache
 
     /// <inheritdoc/>
     /// <remarks>Skips the prefetch when the last block is already cached.</remarks>
-    public void Prefetch(ReadOnlySpan<(ulong Number, ValueHash256 Hash)> blocks)
+    public void Prefetch(ReadOnlyMemory<(ulong Number, ValueHash256 Hash)> blocks)
     {
         if (blocks.IsEmpty || _blockDb is not IReadPrefetcher prefetcher) return;
 
         using ArrayPoolSpan<byte> keys = new(blocks.Length * BlockKeyLength);
         Span<byte> keySpan = keys;
-        for (int i = 0; i < blocks.Length; i++)
+        ReadOnlySpan<(ulong Number, ValueHash256 Hash)> blockSpan = blocks.Span;
+        for (int i = 0; i < blockSpan.Length; i++)
         {
-            KeyValueStoreExtensions.GetBlockNumPrefixedKey(blocks[i].Number, blocks[i].Hash, keySpan.Slice(i * BlockKeyLength, BlockKeyLength));
+            KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockSpan[i].Number, blockSpan[i].Hash, keySpan.Slice(i * BlockKeyLength, BlockKeyLength));
         }
 
         if (!prefetcher.IsCached(keySpan[^BlockKeyLength..])) prefetcher.Prefetch(keySpan, BlockKeyLength);
