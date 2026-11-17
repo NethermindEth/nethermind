@@ -530,6 +530,7 @@ public sealed class BeaconSyncOrchestrator(
     private ulong EarliestAvailableSlot()
     {
         ulong blocksFrom = Math.Min(_anchorSlot, columnBackfill?.CompleteFrom ?? _anchorSlot);
+        if (store.TryGetEarliestBlockSlot(out ulong retainedFrom)) blocksFrom = Math.Max(blocksFrom, retainedFrom);
         if (columnPool is null || slotClock.CurrentEpoch < spec.FuluForkEpoch)
         {
             return blocksFrom;

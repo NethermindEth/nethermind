@@ -263,10 +263,10 @@ public class BlockImporterTests
         Assert.That(result, Is.EqualTo(BlockImportResult.Imported), "a block with no blobs needs no columns");
     }
 
-    [TestCase(1UL, GossipRouter.MaximumGossipClockDisparityMs + 1, BlockImportResult.Invalid)]
+    [TestCase(1UL, GossipRouter.MaximumGossipClockDisparityMs + 1, BlockImportResult.TooEarly)]
     [TestCase(1UL, GossipRouter.MaximumGossipClockDisparityMs, BlockImportResult.FutureSlot)]
     [TestCase(1UL, -1_200_000L, BlockImportResult.Imported)]
-    [TestCase(1UL << 40, -1_200_000L, BlockImportResult.Invalid)]
+    [TestCase(1UL << 40, -1_200_000L, BlockImportResult.TooEarly)]
     public void Block_after_the_clock_slot_is_refused_before_its_state_transition(ulong slot, long millisecondsBeforeSlotOne, BlockImportResult expected)
     {
         ImportableBlobBlock chain = ImportableBlobBlock.CreateWithoutBlobs();
@@ -283,15 +283,16 @@ public class BlockImporterTests
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(result, Is.EqualTo(expected));
         Assert.That(failed.Contains(root), Is.False, "a block from a slot the clock has not reached may still become valid");
-        Assert.That(warnings.Messages.Any(w => w.Contains("before its state transition")), Is.EqualTo(expected == BlockImportResult.Invalid));
+        Assert.That(warnings.Messages.Any(w => w.Contains("before its state transition")), Is.EqualTo(expected == BlockImportResult.TooEarly));
+        Assert.That(((IBlockImporter)importer).RejectGossip, Is.False);
     }
 
     [Test]
-    public void Block_before_its_slot_starts_imports_once_the_slot_starts([Values] bool slotTickFirst, [Values] bool trusted)
+    public void Block_before_its_slot_starts_imports_once_the_slot_starts([Values] bool slotTickFirst, [Values] bool trusted, [Values] bool beyondClockAllowance)
     {
         ImportableBlobBlock chain = ImportableBlobBlock.CreateWithoutBlobs();
         DateTime slotStart = TickFinalityFixture.SlotStart(chain.Spec, 1);
-        ManualTimestamper time = new(slotStart.AddMilliseconds(-GossipRouter.MaximumGossipClockDisparityMs));
+        ManualTimestamper time = new(slotStart.AddMilliseconds(-GossipRouter.MaximumGossipClockDisparityMs - (beyondClockAllowance ? 1 : 0)));
         FailedBlockRoots failed = new();
         BlockImporter importer = CreateImporter(chain, custody: null, new DataColumnSidecarPool(), importClock: new SlotClock(chain.Spec, time), failedBlocks: failed);
         BlsSignature genuine = chain.Block.Signature;
@@ -305,7 +306,7 @@ public class BlockImporterTests
         {
             importer.OnSlotTick(1);
         }
-        else
+        if (!slotTickFirst || beyondClockAllowance)
         {
             time.Set(slotStart);
         }
@@ -313,8 +314,8 @@ public class BlockImporterTests
         BlockImportResult onTime = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: !trusted);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(forged, Is.EqualTo(BlockImportResult.Invalid));
-        Assert.That(early, Is.EqualTo(BlockImportResult.FutureSlot));
+        Assert.That(forged, Is.EqualTo(beyondClockAllowance ? BlockImportResult.TooEarly : BlockImportResult.Invalid));
+        Assert.That(early, Is.EqualTo(beyondClockAllowance ? BlockImportResult.TooEarly : BlockImportResult.FutureSlot));
         Assert.That(knownEarly, Is.False, "fork choice has not seen the block before its slot");
         Assert.That(failed.Contains(chain.BlockRoot), Is.False);
         Assert.That(onTime, Is.EqualTo(BlockImportResult.Imported));
@@ -1334,7 +1335,7 @@ public class BlockImporterTests
     }
 
     [Test]
-    public void Forged_branch_block_is_refused_before_its_parent_state_is_copied_and_advanced([Values] bool proposerPastRegistry)
+    public void Forged_block_is_refused_before_its_parent_state_is_copied_and_advanced([Values] bool proposerPastRegistry, [Values] bool onLineage)
     {
         UnsignedChain chain = UnsignedChain.Create();
         FailedBlockRoots failed = new();
@@ -1344,14 +1345,17 @@ public class BlockImporterTests
         // Importing a sibling regenerates and holds the parent's post-state, so the forged block reaches the branch path, not regeneration.
         UnsignedChain.ChainBlock sibling = chain.Extend(parent.Root, slot: 3, payloadHashByte: 0x84, signed: true);
         UnsignedChain.ChainBlock branch = chain.Extend(parent.Root, slot: 3 * chain.Spec.SlotsPerEpoch, payloadHashByte: 0x83, signed: true);
-        Assert.That(new[] { parent, lineage, sibling }.Select(b => importer.Import(b.Block, b.Root, verifySignatures: true)), Is.All.EqualTo(BlockImportResult.Imported), "fixture bug");
+        UnsignedChain.ChainBlock[] ancestors = onLineage ? [parent] : [parent, lineage, sibling];
+        Assert.That(ancestors.Select(b => importer.Import(b.Block, b.Root, verifySignatures: true)), Is.All.EqualTo(BlockImportResult.Imported), "fixture bug");
         // A proposer past the registry has no cached key to check the signature against.
         if (proposerPastRegistry) branch.Block.Message!.ProposerIndex = ulong.MaxValue;
         else branch.Block.Signature = ImportableBlobBlock.Altered(branch.Block.Signature);
         Hash256 branchRoot = SszRoots.HashTreeRoot(branch.Block.Message!);
 
         long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
-        BlockImportResult result = importer.Import(branch.Block, branchRoot, verifySignatures: true);
+        BlockImportResult result = onLineage
+            ? importer.ImportRequested(new ForkedSignedBeaconBlock.OfFulu(branch.Block), branchRoot)
+            : importer.Import(branch.Block, branchRoot, verifySignatures: true);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();

@@ -20,6 +20,25 @@ namespace Nethermind.BeaconChain.Test.P2P;
 public class CanonicalIndexReorgServingTests
 {
     [Test]
+    public async Task Blocks_by_range_refuses_pruned_backfill_even_with_a_stale_backfill_floor([Values] bool restart)
+    {
+        BeaconChainSpec spec = Sepolia with { GloasForkEpoch = ulong.MaxValue };
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStore store = new(db, spec);
+        (SignedBeaconBlock anchor, Hash256 anchorRoot, SignedBeaconBlock[] blocks) = TestChain.BuildLinkedChain(64, 96, 128);
+        TestChain.Persist(store, anchor, anchorRoot, blocks);
+        store.SetAnchor(SszRoots.HashTreeRoot(blocks[^1].Message!), 128);
+        store.BackfilledBlockFloor = 64;
+        store.PruneCanonicalBlocks(Presets.MinValidatorWithdrawabilityDelay + Presets.ChurnLimitQuotient / 2 + 3, 128);
+        BeaconBlocksByRangeProtocolV2 protocol = new(spec, restart ? new BeaconChainStore(db, spec) : store);
+
+        Eth2ReqRespException? refused = await Assert.ThrowsAsync<Eth2ReqRespException>(() => ServeAsync(
+            protocol, (channel, context) => protocol.DialAsync(channel, context, new(new BeaconBlocksByRangeRequest { StartSlot = 64, Count = 1, Step = 1 }))));
+
+        Assert.That(refused!.ResponseCode, Is.EqualTo(ReqRespFraming.ResponseCode.ResourceUnavailable));
+    }
+
+    [Test]
     public async Task Blocks_by_range_after_a_reorg_serves_only_the_new_chain()
     {
         CanonicalReorgFixture fixture = CanonicalReorgFixture.Create();

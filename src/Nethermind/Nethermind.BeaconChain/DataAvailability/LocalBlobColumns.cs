@@ -15,12 +15,12 @@ namespace Nethermind.BeaconChain.DataAvailability;
 
 internal static class LocalBlobColumns
 {
-    internal static DataColumnSidecar[] Create(SignedBeaconBlock signed, IReadOnlyList<BlobAndProofV2?> blobs)
+    internal static DataColumnSidecar[] Create(SignedBeaconBlock signed, IReadOnlyList<BlobAndProofV2?> blobs, IReadOnlyList<ulong> sampledColumns)
     {
         BeaconBlock block = signed.Message!;
         BeaconBlockBody body = block.Body!;
         SszKzgCommitment[] commitments = body.BlobKzgCommitments!;
-        if (blobs.Count != commitments.Length || blobs.Count == 0) return [];
+        if (blobs.Count != commitments.Length || blobs.Count == 0 || sampledColumns.Count == 0) return [];
         foreach (BlobAndProofV2? blob in blobs)
         {
             if (blob is not { Blob.Length: Ckzg.BytesPerBlob, Proofs.Length: Ckzg.CellsPerExtBlob }) return [];
@@ -34,12 +34,12 @@ internal static class LocalBlobColumns
             Message = new BeaconBlockHeader { Slot = block.Slot, ProposerIndex = block.ProposerIndex, ParentRoot = block.ParentRoot, StateRoot = block.StateRoot, BodyRoot = SszRoots.HashTreeRoot(body) },
             Signature = signed.Signature,
         };
-        DataColumnSidecar[] columns = new DataColumnSidecar[Ckzg.CellsPerExtBlob];
+        DataColumnSidecar[] columns = new DataColumnSidecar[sampledColumns.Count];
         for (int c = 0; c < columns.Length; c++)
         {
             columns[c] = new DataColumnSidecar
             {
-                Index = (ulong)c,
+                Index = sampledColumns[c],
                 Column = new SszBlobCell[blobs.Count],
                 KzgProofs = new SszKzgCommitment[blobs.Count],
                 KzgCommitments = commitments,
@@ -49,22 +49,26 @@ internal static class LocalBlobColumns
         }
 
         using ArrayPoolSpan<byte> cells = new(Ckzg.CellsPerExtBlob * Ckzg.BytesPerCell);
-        using ArrayPoolSpan<byte> proofs = new(Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof);
-        using ArrayPoolSpan<byte> rowCommitments = new(Ckzg.CellsPerExtBlob * Ckzg.BytesPerCommitment);
-        Span<ulong> indices = stackalloc ulong[Ckzg.CellsPerExtBlob];
-        for (int c = 0; c < indices.Length; c++) indices[c] = (ulong)c;
+        using ArrayPoolSpan<byte> sampledCells = new(columns.Length * Ckzg.BytesPerCell);
+        using ArrayPoolSpan<byte> proofs = new(columns.Length * Ckzg.BytesPerProof);
+        using ArrayPoolSpan<byte> rowCommitments = new(columns.Length * Ckzg.BytesPerCommitment);
+        Span<ulong> indices = stackalloc ulong[columns.Length];
+        for (int c = 0; c < indices.Length; c++) indices[c] = sampledColumns[c];
         for (int b = 0; b < blobs.Count; b++)
         {
             KzgPolynomialCommitments.ComputeCells(blobs[b]!.Blob, cells);
             for (int c = 0; c < columns.Length; c++)
             {
-                columns[c].Column![b] = SszBlobCell.FromSpan(cells.Slice(c * Ckzg.BytesPerCell, Ckzg.BytesPerCell));
-                columns[c].KzgProofs![b] = SszKzgCommitment.FromSpan(blobs[b]!.Proofs[c]);
-                blobs[b]!.Proofs[c].CopyTo(proofs.Slice(c * Ckzg.BytesPerProof, Ckzg.BytesPerProof));
+                int index = (int)indices[c];
+                Span<byte> cell = sampledCells.Slice(c * Ckzg.BytesPerCell, Ckzg.BytesPerCell);
+                cells.Slice(index * Ckzg.BytesPerCell, Ckzg.BytesPerCell).CopyTo(cell);
+                columns[c].Column![b] = SszBlobCell.FromSpan(cell);
+                columns[c].KzgProofs![b] = SszKzgCommitment.FromSpan(blobs[b]!.Proofs[index]);
+                blobs[b]!.Proofs[index].CopyTo(proofs.Slice(c * Ckzg.BytesPerProof, Ckzg.BytesPerProof));
                 commitments[b].AsSpan().CopyTo(rowCommitments.Slice(c * Ckzg.BytesPerCommitment, Ckzg.BytesPerCommitment));
             }
             // Verify local responses against the block before any column enters the verified pool.
-            if (!KzgPolynomialCommitments.VerifyCellProofBatch(rowCommitments, indices, cells, proofs, indices.Length)) return [];
+            if (!KzgPolynomialCommitments.VerifyCellProofBatch(rowCommitments, indices, sampledCells, proofs, indices.Length)) return [];
         }
         return columns;
     }

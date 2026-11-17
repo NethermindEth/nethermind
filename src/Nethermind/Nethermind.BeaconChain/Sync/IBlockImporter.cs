@@ -61,6 +61,9 @@ public enum BlockImportResult
     /// Untrusted blocks have passed their state transition and proposer signature verification; fork choice has not recorded them.
     /// </summary>
     FutureSlot,
+
+    /// <summary>The block is beyond the gossip clock allowance and has not been validated. Ignore it without recording invalidity or retaining it for retry.</summary>
+    TooEarly,
 }
 
 /// <summary>The current fork-choice head and checkpoints mapped to execution block hashes for <c>forkchoiceUpdated</c>.</summary>

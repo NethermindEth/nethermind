@@ -743,7 +743,7 @@ public partial class GossipRouterTests
             Router.Handle(GossipTopics.ExecutionPayload, gloasTopic: true, Snappy.CompressToArray(SignedExecutionPayloadEnvelope.Encode(envelope)));
     }
 
-    private static SignedAggregateAndProof CreateAggregate(ulong slot) => new()
+    internal static SignedAggregateAndProof CreateAggregate(ulong slot) => new()
     {
         Message = new AggregateAndProof
         {

@@ -1164,7 +1164,7 @@ public class GloasBlockImporterTests
     [TestCase(HeldProposal.ParentNotDeferred, BlockImportResult.UnknownParent)]
     [TestCase(HeldProposal.PastAncestorLookahead, BlockImportResult.UnknownParent)]
     [TestCase(HeldProposal.NotAfterParentSlot, BlockImportResult.Invalid)]
-    [TestCase(HeldProposal.FromTheFuture, BlockImportResult.Invalid)]
+    [TestCase(HeldProposal.FromTheFuture, BlockImportResult.TooEarly)]
     public async Task Child_of_a_deferred_block_is_deferred_only_when_its_expected_proposer_signed_it(HeldProposal proposal, BlockImportResult expected)
     {
         SlotClock? clock = proposal == HeldProposal.FromTheFuture ? ClockAt(_chain, ForkSlot + 2, millisecondsEarly: GossipRouter.MaximumGossipClockDisparityMs + 1) : null;
@@ -1201,7 +1201,7 @@ public class GloasBlockImporterTests
         Assert.That(importer.LastRefusal == ImportRefusal.LocalAdmission, Is.EqualTo(proposal is HeldProposal.FromTheFuture),
             "the on_block checks against this node's store are told apart from a forged proposal and from a slot not after the parent's");
         Assert.That(((IBlockImporter)importer).RejectGossip, Is.False, "a deferred parent is still unknown for gossip validation");
-        if (expected == BlockImportResult.Invalid)
+        if (expected is BlockImportResult.Invalid or BlockImportResult.TooEarly)
             await BeaconSyncOrchestratorTests.AssertBlockVerdictAsync(importer, held.Forked,
                 Snappy.CompressToArray(SignedBeaconBlockGloas.Encode(held.Signed)), MessageValidity.Ignored);
     }
@@ -1475,6 +1475,36 @@ public class GloasBlockImporterTests
             Assert.That(allocated, Is.LessThan(128 * 1024), "an invalid signature must be rejected before cloning and advancing the ancestor state");
     }
 
+    [Test]
+    public void Forged_block_is_refused_before_its_parent_state_is_copied_and_advanced([Values] bool gloasParent, [Values] bool proposerPastRegistry)
+    {
+        FailedBlockRoots failed = new();
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), failedBlocks: failed);
+        SignedGloasChain.Block? parent = gloasParent ? Import(importer, _chain.Next(null, ForkSlot, full: false, 0xA1)) : null;
+        SignedGloasChain.Block child = _chain.Next(parent, 3 * ForkSlot, full: false, 0xA2);
+        ulong proposer = child.Signed.Message!.ProposerIndex;
+        BlsSignature signature = child.Signed.Signature;
+        if (proposerPastRegistry) child.Signed.Message.ProposerIndex = ulong.MaxValue;
+        else child.Signed.Signature = ImportableBlobBlock.Altered(signature);
+        Hash256 root = SszRoots.HashTreeRoot(child.Signed.Message);
+
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        BlockImportResult result = importer.Import(child.Forked, root, verifySignatures: true);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
+            Assert.That(((IBlockImporter)importer).RejectGossip, Is.True);
+            Assert.That(allocated, Is.LessThan(128 * 1024), "a forged proposal must not buy a state copy and a multi-epoch advance");
+            Assert.That(failed.Contains(child.Root), Is.False, "the honest block must stay importable");
+        }
+
+        child.Signed.Message.ProposerIndex = proposer;
+        child.Signed.Signature = signature;
+        Assert.That(importer.Import(child.Forked, child.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.Imported));
+    }
+
     private static void MutateProposal(SignedBeaconBlockGloas block, BeaconStateGloas state, Forgery forgery)
     {
         BeaconBlockGloas message = block.Message!;
@@ -1550,7 +1580,7 @@ public class GloasBlockImporterTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
+            Assert.That(result, Is.EqualTo(assertion is OnBlockAssertion.CurrentSlot or OnBlockAssertion.FarFutureSlot ? BlockImportResult.TooEarly : BlockImportResult.Invalid));
             Assert.That(importer.LastRefusal, Is.EqualTo(assertion == OnBlockAssertion.AfterParentSlot ? ImportRefusal.None : ImportRefusal.LocalAdmission),
                 "a refusal by this node's own store says nothing of the block's data, while a slot not after the parent's is invalid data");
             Assert.That(logger.LogList, Has.One.Contains("before its state transition"));
@@ -1564,10 +1594,10 @@ public class GloasBlockImporterTests
     }
 
     [Test]
-    public void Block_before_its_slot_starts_waits_for_the_slot()
+    public void Block_before_its_slot_starts_waits_for_the_slot([Values] bool beyondClockAllowance)
     {
         DateTime slotStart = TickFinalityFixture.SlotStart(_chain.Spec, ForkSlot + 1);
-        ManualTimestamper time = new(slotStart.AddMilliseconds(-GossipRouter.MaximumGossipClockDisparityMs));
+        ManualTimestamper time = new(slotStart.AddMilliseconds(-GossipRouter.MaximumGossipClockDisparityMs - (beyondClockAllowance ? 1 : 0)));
         BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(_chain.Spec, time));
         SignedGloasChain.Block first = Import(importer, _chain.Next(null, ForkSlot, full: false, 0xA1));
         SignedGloasChain.Block block = _chain.Next(first, ForkSlot + 1, full: false, 0xA2);
@@ -1581,7 +1611,7 @@ public class GloasBlockImporterTests
         BlockImportResult onTime = importer.Import(block.Forked, block.Root, verifySignatures: true);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(early, Is.EqualTo(BlockImportResult.FutureSlot));
+        Assert.That(early, Is.EqualTo(beyondClockAllowance ? BlockImportResult.TooEarly : BlockImportResult.FutureSlot));
         Assert.That(knownEarly, Is.False);
         Assert.That(voteAccepted, Is.True, "the previous slot's signed PTC vote still counts before the next slot starts");
         Assert.That(onTime, Is.EqualTo(BlockImportResult.Imported));

@@ -38,6 +38,9 @@ public sealed class GossipMessageValidator(GossipRouter gossip, ColumnGossipRout
 
     private volatile DigestWindow? _window;
 
+    /// <summary>The wall-clock slot.</summary>
+    internal ulong CurrentSlot => slotClock.CurrentSlot;
+
     /// <summary>Whether a message on <paramref name="topic"/> is validated off the router's monitor: one on a topic this node handles under a digest in effect.</summary>
     /// <remarks>A message on any other topic is dropped by <see cref="Validate"/> without decoding, which may run under the monitor.</remarks>
     internal bool IsDeferred(string topic) => Route(topic, out _, out _, out _, out _) is null;

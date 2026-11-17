@@ -1006,6 +1006,32 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     [Test]
+    public async Task Unvalidated_future_block_is_not_marked_seen_or_retained_for_retry([Values] bool fromRange)
+    {
+        Harness harness = CreateHarness();
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, WallSlot);
+        Hash256 root = SszRoots.HashTreeRoot(chain[0].Message!);
+        harness.Importer.Known.Add(anchorRoot);
+        harness.Importer.TooEarly.Add(root);
+        ForkedSignedBeaconBlock block = new ForkedSignedBeaconBlock.OfFulu(chain[0]);
+        if (fromRange)
+        {
+            harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(block));
+            await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+        }
+        else
+        {
+            await harness.Orchestrator.ProcessGossipBlockAsync(block, CancellationToken.None);
+        }
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(harness.Router.IsProposalSeen(block.Slot, block.ProposerIndex), Is.False);
+        Assert.That(harness.Orchestrator.PendingRetryBlockCount, Is.Zero);
+        Assert.That(harness.Orchestrator.RangeHeldSlot, Is.Null);
+        Assert.That(harness.Importer.Known, Does.Not.Contain(root));
+    }
+
+    [Test]
     public async Task Gloas_gossip_aggregate_and_attester_slashing_reach_the_importer()
     {
         Harness harness = CreateHarness();
@@ -1560,6 +1586,7 @@ public partial class BeaconSyncOrchestratorTests
         public HashSet<Hash256> InvalidTransition { get; } = [];
         public HashSet<Hash256> EngineDown { get; } = [];
         public HashSet<Hash256> Early { get; } = [];
+        public HashSet<Hash256> TooEarly { get; } = [];
         public HashSet<Hash256> UnverifiedPayloads { get; } = [];
         public ExecutionPayloadEnvelopeImportResult EnvelopeResult { get; set; } = ExecutionPayloadEnvelopeImportResult.Valid;
         public Func<SignedExecutionPayloadEnvelope, ExecutionPayloadEnvelopeImportResult>? EnvelopeVerdict { get; set; }
@@ -1629,6 +1656,7 @@ public partial class BeaconSyncOrchestratorTests
             if (block is ForkedSignedBeaconBlock.OfFulu { Block.Signature: var signature } && ForgedSignatures.Contains(signature)) return BlockImportResult.Invalid;
             if (EngineDown.Contains(blockRoot)) return BlockImportResult.EngineUnavailable;
             if (Early.Contains(blockRoot) && (Ticks.Count == 0 || Ticks[^1] < block.Slot)) return BlockImportResult.FutureSlot;
+            if (TooEarly.Contains(blockRoot)) return BlockImportResult.TooEarly;
             Known.Add(blockRoot);
             OnImported?.Invoke(block, blockRoot);
             return BlockImportResult.Imported;

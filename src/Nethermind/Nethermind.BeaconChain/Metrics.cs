@@ -24,6 +24,7 @@ public class Metrics
     internal static ulong GossipDroppedCount;
     internal static ulong GossipForwardedCount;
     internal static ulong GossipThrottledCount;
+    internal static ulong GossipVotesRefusedAfterRejectionCount;
     internal static ulong GossipAbandonedVerdictCount;
     internal static ulong GossipLateVerdictCount;
     internal static ulong BlocksImportedCount;
@@ -89,8 +90,11 @@ public class Metrics
     [Description("Deferred gossip messages the pubsub router forwarded once their validation accepted them.")]
     public static ulong BeaconChainGossipForwarded { get => Volatile.Read(ref GossipForwardedCount); set => Volatile.Write(ref GossipForwardedCount, value); }
     [CounterMetric]
-    [Description("Gossip messages refused for validation because the messages or bytes awaiting a verdict reached their bound.")]
+    [Description("Gossip messages refused for validation because the messages or bytes awaiting a verdict reached their bound or the delivering peer's share of it.")]
     public static ulong BeaconChainGossipThrottled { get => Volatile.Read(ref GossipThrottledCount); set => Volatile.Write(ref GossipThrottledCount, value); }
+    [CounterMetric]
+    [Description("Aggregates and payload attestations refused for validation because a vote their delivering peer sent was rejected in the same slot.")]
+    public static ulong BeaconChainGossipVotesRefusedAfterRejection { get => Volatile.Read(ref GossipVotesRefusedAfterRejectionCount); set => Volatile.Write(ref GossipVotesRefusedAfterRejectionCount, value); }
     [CounterMetric]
     [Description("Deferred gossip messages whose verdict was not given before the pending validation timeout or shutdown.")]
     public static ulong BeaconChainGossipVerdictsAbandoned { get => Volatile.Read(ref GossipAbandonedVerdictCount); set => Volatile.Write(ref GossipAbandonedVerdictCount, value); }
