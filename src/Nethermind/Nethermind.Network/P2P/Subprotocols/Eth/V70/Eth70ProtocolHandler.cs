@@ -97,8 +97,9 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
     private ReceiptsResponse FulfillReceiptsRequest(GetReceiptsMessage70 getReceiptsMessage, CancellationToken cancellationToken)
     {
         ReadOnlySpan<Hash256> hashes = getReceiptsMessage.Hashes.AsSpan();
-        ArrayPoolList<byte> buffer = new(0);
-        using ArrayPoolList<Range> blocks = new(Math.Min(hashes.Length, MaxReceiptsLookups));
+        int maxBlocks = Math.Min(hashes.Length, MaxReceiptsLookups);
+        ArrayPoolList<byte> buffer = new(SafeArrayPool<byte>.Shared, GetReceiptsBufferCapacity(maxBlocks), clearFirst: false);
+        using ArrayPoolList<Range> blocks = new(maxBlocks);
         using ArrayPoolList<int> receiptStarts = new(0);
         bool lastBlockIncomplete = false;
         try

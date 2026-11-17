@@ -437,7 +437,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             // Before eth/69 the message encodes receipts with the registered decoder, which a plugin can replace.
             // Stored receipts are copied without this decoder, so such a plugin must also decorate IReceiptFinder.
             IRlpDecoder<TxReceipt> decoder = withBloom ? Rlp.GetDecoderOrThrow<TxReceipt>() : ReceiptDecoder69;
-            ArrayPoolList<byte> buffer = new(0);
+            ArrayPoolList<byte> buffer = new(SafeArrayPool<byte>.Shared, GetReceiptsBufferCapacity(hashes.Length), clearFirst: false);
             using ArrayPoolList<Range> blocks = new(hashes.Length);
             try
             {
@@ -479,6 +479,16 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         private static readonly RefRlpReaderFunc<TxReceipt[]> DecodeReceipts69 = static (ref RlpReader reader) =>
             reader.DecodeNonNullArray(static (ref RlpReader receipt) => ReceiptDecoder69.Decode(ref receipt)!);
+
+        /// <summary>The initial capacity of the buffer that the receipts of <paramref name="blocks"/> blocks are served from.</summary>
+        /// <remarks>
+        /// Sized up front, so the buffer does not double as it fills and copy the response at each step. A response stops
+        /// after the block that crosses the soft limit, so twice the limit holds it unless that block is larger than the limit.
+        /// </remarks>
+        private protected static int GetReceiptsBufferCapacity(int blocks) =>
+            (int)Math.Min((ulong)blocks * ReceiptsBufferBlockEstimate, 2 * SoftOutgoingMessageSizeLimit);
+
+        private const int ReceiptsBufferBlockEstimate = 128 * 1024;
 
         internal static ulong GetMaxReceiptsResponseSize(ulong receiptsContentSize) =>
             receiptsContentSize > int.MaxValue / 2
