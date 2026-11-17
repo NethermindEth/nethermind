@@ -133,21 +133,16 @@ internal static class GoSnappy
             if (offset == 0 || offset > (uint)d || copyLength > destination.Length - d) return false;
 
             int from = d - (int)offset;
-            if (offset >= (uint)copyLength)
+            int end = d + copyLength;
+            // When offset < copyLength, the copy repeats the last offset bytes; one CopyTo has memmove semantics and
+            // would copy the original bytes instead. Each chunk is at most d - from long, so it never overlaps its
+            // source, and d - from stays a multiple of offset, so the repeated region doubles with each chunk.
+            while (d < end)
             {
-                destination.Slice(from, copyLength).CopyTo(destination[d..]);
+                int chunk = Math.Min(d - from, end - d);
+                destination.Slice(from, chunk).CopyTo(destination[d..]);
+                d += chunk;
             }
-            else
-            {
-                // The source overlaps the bytes being written. Copying forwards one byte at a time repeats the last
-                // offset bytes, as the format requires; CopyTo would copy the original bytes instead.
-                for (int i = 0; i < copyLength; i++)
-                {
-                    destination[d + i] = destination[from + i];
-                }
-            }
-
-            d += copyLength;
         }
 
         return d == destination.Length;
