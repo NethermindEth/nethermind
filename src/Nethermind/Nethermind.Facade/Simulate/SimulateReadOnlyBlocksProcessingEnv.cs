@@ -5,11 +5,13 @@ using System;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.State.OverridableEnv;
+using Nethermind.State.Repositories;
 
 namespace Nethermind.Facade.Simulate;
 
@@ -27,15 +29,20 @@ public class SimulateReadOnlyBlocksProcessingEnv(
     IBlockProcessor blockProcessor,
     BlockTreeOverlay blockTreeOverlay,
     IOverridableEnv overridableEnv,
-    IReadOnlyDbProvider readOnlyDbProvider
+    IReadOnlyDbProvider readOnlyDbProvider,
+    SimulateDictionaryHeaderStore headerStore,
+    SimulateDictionaryBlockStore blockStore,
+    ChainLevelInfoRepository chainLevelInfoRepository
 ) : ISimulateReadOnlyBlocksProcessingEnv
 {
+    private readonly IClearableCache[] _requestStores = [headerStore, blockStore, chainLevelInfoRepository];
+
     public SimulateReadOnlyBlocksProcessingScope Begin(BlockHeader? baseBlock)
     {
         blockTreeOverlay.ResetMainChain();
         IDisposable envDisposer = overridableEnv.BuildAndOverride(baseBlock);
         return new SimulateReadOnlyBlocksProcessingScope(
-            worldState, specProvider, blockTree, codeInfoRepository, simulateState, blockProcessor, readOnlyDbProvider, envDisposer
+            worldState, specProvider, blockTree, codeInfoRepository, simulateState, blockProcessor, readOnlyDbProvider, envDisposer, _requestStores
         );
     }
 }
@@ -48,7 +55,8 @@ public class SimulateReadOnlyBlocksProcessingScope(
     SimulateRequestState simulateState,
     IBlockProcessor blockProcessor,
     IReadOnlyDbProvider readOnlyDbProvider,
-    IDisposable overridableWorldStateCloser
+    IDisposable overridableWorldStateCloser,
+    IClearableCache[] requestStores
 ) : IDisposable
 {
     public IWorldState WorldState => worldState;
@@ -60,6 +68,12 @@ public class SimulateReadOnlyBlocksProcessingScope(
 
     public void Dispose()
     {
+        foreach (IClearableCache store in requestStores)
+        {
+            store.ClearCache();
+        }
+
+        simulateState.Calls = [];
         overridableWorldStateCloser.Dispose();
         readOnlyDbProvider.ClearTempChanges(); // For blocktree. The read only db has a buffer that need to be cleared.
     }

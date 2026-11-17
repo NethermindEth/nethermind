@@ -53,7 +53,7 @@ internal static class JsonRpcGenerator
     private const string _blockTags = "`earliest`, `finalized`, `latest`, `pending`, or `safe`";
     private const string _blockNumberIfNotStrict = "_integer_ (block number, if `JsonRpc.StrictHexFormat` is `false`)";
     private const string _txPoolSenders = "_object_ with `pending` and `queued`, each a map of sender address to a map of nonce (decimal, or hash for an EIP-8250 keyed transaction) to ";
-    private static readonly SortedSet<string> _guessedTypeNames = new(StringComparer.Ordinal);
+    private static readonly SortedSet<string> _guessedTypeNames = [with(StringComparer.Ordinal)];
     private static readonly NullabilityInfoContext _nullabilityContext = new();
     private static readonly Dictionary<Type, string> _knownTypeNames = new()
     {

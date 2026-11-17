@@ -423,7 +423,7 @@ namespace Nethermind.Init.Steps.Migrations
         internal sealed class MigrationPointerTracker(IReceiptStorage receiptStorage, ulong to, int expectedBacklog = 16)
         {
             private readonly Lock _lock = new();
-            private readonly HashSet<ulong> _completedAwaitingContiguity = new(expectedBacklog);
+            private readonly HashSet<ulong> _completedAwaitingContiguity = [with(expectedBacklog)];
             private ulong _nextToConfirm = to;
             private ulong? _highestIncomplete;
 

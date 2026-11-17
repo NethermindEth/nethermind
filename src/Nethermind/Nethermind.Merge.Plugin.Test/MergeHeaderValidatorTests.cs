@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
@@ -8,6 +9,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Specs;
@@ -108,16 +110,7 @@ public class MergeHeaderValidatorTests
             .WithBaseFee(BaseFeeCalculator.Calculate(parent, Paris.Instance))
             .TestObject;
         header.TotalDifficulty = childHasTotalDifficulty ? parentTotalDifficulty : null;
-        using IContainer ctx = new ContainerBuilder()
-            .AddModule(new TestNethermindModule())
-            .AddSingleton<ISpecProvider>(specProvider)
-            .AddSingleton(new ChainSpec { Parameters = new ChainParameters { TerminalTotalDifficulty = specProvider.TerminalTotalDifficulty } })
-            .AddSingleton<IMergeConfig>(new MergeConfig())
-            .AddSingleton<IPoSSwitcher, PoSSwitcher>()
-            .AddSingleton<ISealValidator>(Always.Valid)
-            .AddSingleton<IHeaderValidator>(Substitute.For<IHeaderValidator>())
-            .AddDecorator<IHeaderValidator, MergeHeaderValidator>()
-            .Build();
+        using IContainer ctx = BuildContainer(specProvider, Substitute.For<IHeaderValidator>());
 
         if (parentTotalDifficultySource is not (ParentTotalDifficultySource.Header or ParentTotalDifficultySource.Unknown))
         {
@@ -156,10 +149,12 @@ public class MergeHeaderValidatorTests
         IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
         poSSwitcher.TerminalTotalDifficulty.Returns((UInt256?)new UInt256(ttd));
         poSSwitcher.IsPostMerge(Arg.Any<BlockHeader>()).Returns(true);
+        poSSwitcher.GetBlockConsensusInfo(Arg.Any<BlockHeader>()).Returns((false, true));
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         MergeHeaderValidator validator = new(poSSwitcher, Substitute.For<IHeaderValidator>(), blockTree, MainnetSpecProvider.Instance, Always.Valid, LimboLogs.Instance);
         BlockHeader parent = Build.A.BlockHeader.WithDifficulty(0).TestObject;
         parent.TotalDifficulty = parentTotalDifficulty;
+        poSSwitcher.GetBlockConsensusInfo(parent).Returns((false, false));
         BlockHeader header = Build.A.BlockHeader.WithParent(parent).WithDifficulty(headerDifficulty).TestObject;
 
         validator.Validate(header, parent);
@@ -173,9 +168,10 @@ public class MergeHeaderValidatorTests
         IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
         poSSwitcher.TerminalTotalDifficulty.Returns((UInt256?)new UInt256(10));
         poSSwitcher.IsPostMerge(Arg.Any<BlockHeader>()).Returns(true);
+        poSSwitcher.GetBlockConsensusInfo(Arg.Any<BlockHeader>()).Returns((false, true));
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         MergeHeaderValidator validator = new(poSSwitcher, Substitute.For<IHeaderValidator>(), blockTree, MainnetSpecProvider.Instance, Always.Valid, LimboLogs.Instance);
-        BlockHeader header = Build.A.BlockHeader.WithDifficulty(0).TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithDifficulty(0).WithNonce(0).TestObject;
 
         using (Assert.EnterMultipleScope())
         {
@@ -219,7 +215,13 @@ public class MergeHeaderValidatorTests
         header.TotalDifficulty = childHasTotalDifficulty ? parent.TotalDifficulty + header.Difficulty : null;
         IHeaderValidator preMergeValidator = Substitute.For<IHeaderValidator>();
         preMergeValidator.Validate(header, parent, false, out Arg.Any<string?>(), true).Returns(true);
-        using IContainer ctx = new ContainerBuilder()
+        using IContainer ctx = BuildContainer(specProvider, preMergeValidator);
+
+        Assert.That(ctx.Resolve<IHeaderValidator>().Validate(header, parent), Is.EqualTo(powChildAllowed));
+    }
+
+    private static IContainer BuildContainer(TestSpecProvider specProvider, IHeaderValidator preMergeValidator) =>
+        new ContainerBuilder()
             .AddModule(new TestNethermindModule())
             .AddSingleton<ISpecProvider>(specProvider)
             .AddSingleton(new ChainSpec { Parameters = new ChainParameters { TerminalTotalDifficulty = specProvider.TerminalTotalDifficulty } })
@@ -230,6 +232,65 @@ public class MergeHeaderValidatorTests
             .AddDecorator<IHeaderValidator, MergeHeaderValidator>()
             .Build();
 
-        Assert.That(ctx.Resolve<IHeaderValidator>().Validate(header, parent), Is.EqualTo(powChildAllowed));
+    [Test]
+    public void Post_merge_header_validation_does_not_allocate()
+    {
+        const int Iterations = 1_000;
+        const int Windows = 5;
+        const ulong ttd = 10;
+        TestSpecProvider specProvider = new(Paris.Instance) { TerminalTotalDifficulty = ttd };
+        BlockHeader parent = Build.A.BlockHeader
+            .WithNumber(1)
+            .WithDifficulty(0)
+            .WithNonce(0)
+            .WithTotalDifficulty(ttd)
+            .TestObject;
+        BlockHeader header = Build.A.BlockHeader
+            .WithParent(parent)
+            .WithDifficulty(0)
+            .WithNonce(0)
+            .WithTimestamp(parent.Timestamp + 1)
+            .WithBaseFee(BaseFeeCalculator.Calculate(parent, Paris.Instance))
+            .WithTotalDifficulty(ttd)
+            .TestObject;
+        using IContainer ctx = BuildContainer(specProvider, Substitute.For<IHeaderValidator>());
+        IHeaderValidator validator = ctx.Resolve<IHeaderValidator>();
+        Assert.That(validator.Validate(header, parent, false, out string? error, false), Is.True, error);
+
+        long allocated = long.MaxValue;
+        for (int window = 0; window < Windows; window++)
+        {
+            long before = System.GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < Iterations; i++) validator.Validate(header, parent, false, out _, false);
+            allocated = Math.Min(allocated, System.GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+
+        Assert.That(allocated, Is.Zero);
+    }
+
+    [TestCase(true, TestName = "{m}(nonce)")]
+    [TestCase(false, TestName = "{m}(uncles hash)")]
+    public void Post_merge_header_with_a_wrong_pow_field_is_rejected(bool wrongNonce)
+    {
+        const ulong ttd = 10;
+        TestSpecProvider specProvider = new(Paris.Instance) { TerminalTotalDifficulty = ttd };
+        BlockHeader parent = Build.A.BlockHeader
+            .WithNumber(1)
+            .WithDifficulty(0)
+            .WithNonce(0)
+            .WithTotalDifficulty(ttd)
+            .TestObject;
+        BlockHeaderBuilder headerBuilder = Build.A.BlockHeader
+            .WithParent(parent)
+            .WithDifficulty(0)
+            .WithNonce(wrongNonce ? 1UL : 0UL)
+            .WithTimestamp(parent.Timestamp + 1)
+            .WithBaseFee(BaseFeeCalculator.Calculate(parent, Paris.Instance))
+            .WithTotalDifficulty(ttd);
+        if (!wrongNonce) headerBuilder = headerBuilder.WithUnclesHash(Keccak.Zero);
+        BlockHeader header = headerBuilder.TestObject;
+        using IContainer ctx = BuildContainer(specProvider, Substitute.For<IHeaderValidator>());
+
+        Assert.That(ctx.Resolve<IHeaderValidator>().Validate(header, parent, false, out _, false), Is.False);
     }
 }

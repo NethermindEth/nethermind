@@ -14,11 +14,11 @@ public class XdcSubnetChainSpecEngineParameters : XdcChainSpecEngineParameters
     /// The subnet fork's <c>common.GetMinGasPrice</c> has no 50x transition - it always returns the raised floor - and
     /// honours a gasless node, which its <c>--gasprice 0</c> enables. A subnet chainspec therefore states
     /// <see cref="XdcChainSpecEngineParameters.MinGasPrice"/> as zero to run gasless, and
-    /// <see cref="Gas50xBlock"/> is not consulted at all.
+    /// neither <see cref="Gas50xBlock"/> nor <see cref="Gas2500xBlock"/> is consulted for the floor.
     /// <para>
     /// A subnet chainspec must not activate EIP-1559: the subnet fork's header type carries no base fee field at all,
     /// which <see cref="RLP.XdcSubnetHeaderDecoder"/> mirrors, so the value could not round-trip. Were it activated
-    /// anyway, <see cref="XdcBaseFeeCalculator"/>'s constant would apply on top of a zero floor and strand zero-price
+    /// anyway, <see cref="XdcBaseFeeCalculator"/>'s tier base fee would apply on top of a zero floor and strand zero-price
     /// transactions that no peer can mine.
     /// </para>
     /// </remarks>
