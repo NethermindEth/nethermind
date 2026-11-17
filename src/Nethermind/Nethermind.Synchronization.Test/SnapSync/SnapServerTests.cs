@@ -228,6 +228,35 @@ public class SnapServerTests
         }
     }
 
+    [Test]
+    public void GetBlockAccessLists_serves_lists_up_to_the_hard_byte_limit([Values(1, 2, 20)] int count)
+    {
+        const int listSize = 200_000;
+        List<ValueHash256> request = [];
+        List<byte[]> expected = [];
+        for (int i = 0; i < count; i++)
+        {
+            Hash256 hash = Keccak.Compute(BitConverter.GetBytes(i));
+            byte[] bal = new byte[listSize];
+            new Random(i).NextBytes(bal);
+            GivenBlock(hash, (ulong)i, bal);
+            request.Add(hash.ValueHash256);
+            expected.Add(bal);
+        }
+
+        using IByteArrayList result = _server.GetBlockAccessLists(request, long.MaxValue, CancellationToken.None);
+
+        int served = Math.Min(count, (int)(ISnapStateServer.HardResponseByteLimit / listSize) + 1);
+        Assert.That(result.Count, Is.EqualTo(served));
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < served; i++)
+            {
+                Assert.That(result[i], Is.SequenceEqualTo(expected[i]), $"block {i}");
+            }
+        }
+    }
+
     [TestCase(1, 0, 1, 1)]
     [TestCase(150, 0, 16, 31)]
     [TestCase(15, 15, 16, 1, Description = "Unknown hashes read no list, so they do not grow the batch")]

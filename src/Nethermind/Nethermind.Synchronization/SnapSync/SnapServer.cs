@@ -26,6 +26,7 @@ public sealed class SnapServer(
 {
     private const long HardResponseByteLimit = ISnapStateServer.HardResponseByteLimit;
     private const int AccessListReadChunkSize = 16;
+    private const int AccessListSizeEstimate = 128 * 1024;
 
     public bool CanServe => stateServer.CanServe;
 
@@ -97,9 +98,10 @@ public sealed class SnapServer(
             byteLimit = HardResponseByteLimit;
 
         long currentByteCount = 0;
-        using DeferredRlpItemList.Builder builder = new(blockHashes.Count);
+        using DeferredRlpItemList.Builder builder = new(blockHashes.Count, GetAccessListsCapacity(blockHashes.Count, byteLimit));
         DeferredRlpItemList.Builder.Writer writer = builder.BeginRootContainer();
-        using ArrayPoolList<byte> lists = new(0);
+        // Holds one batch, which grows only to the lists read before it, so to at most half of the hashes.
+        using ArrayPoolList<byte> lists = new(GetAccessListsCapacity(Math.Clamp(blockHashes.Count / 2, 1, AccessListReadChunkSize), byteLimit));
         Span<ValueHash256> hashes = stackalloc ValueHash256[AccessListReadChunkSize];
         Span<ulong?> numbers = stackalloc ulong?[AccessListReadChunkSize];
         Span<ValueHash256> knownHashes = stackalloc ValueHash256[AccessListReadChunkSize];
@@ -159,4 +161,12 @@ public sealed class SnapServer(
         writer.Dispose();
         return new RlpByteArrayList(builder.ToRlpItemList());
     }
+
+    /// <summary>The initial capacity of a buffer for <paramref name="lists"/> access lists, at most <paramref name="byteLimit"/>.</summary>
+    /// <remarks>
+    /// Sized up front, so the buffer does not double as it fills and copy itself at each step. A response stops after
+    /// the list that passes the limit, and the pool rounds the limit up to a power of two, which usually holds that list.
+    /// </remarks>
+    private static int GetAccessListsCapacity(int lists, long byteLimit) =>
+        (int)Math.Min((long)lists * AccessListSizeEstimate, Math.Max(byteLimit, 0));
 }
