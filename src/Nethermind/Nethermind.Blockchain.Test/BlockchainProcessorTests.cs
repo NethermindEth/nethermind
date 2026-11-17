@@ -108,6 +108,43 @@ public class BlockchainProcessorTests
         }
     }
 
+    [Test]
+    public async Task Refused_branch_on_a_main_chain_block_without_state_keeps_the_main_chain()
+    {
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        genesis.Header.TotalDifficulty = genesis.Header.Difficulty;
+        Block[] mainChain = new Block[3];
+        Block parent = genesis;
+        for (int i = 0; i < mainChain.Length; i++)
+        {
+            parent = mainChain[i] = Build.A.Block.WithParent(parent).WithNonce((ulong)i + 1).WithDifficulty(2).WithStateRoot(TestItem.KeccakA).TestObject;
+        }
+
+        Block refused = Build.A.Block.WithParent(mainChain[1]).WithNonce(101).WithDifficulty(10).WithStateRoot(TestItem.KeccakA).TestObject;
+        await using IContainer container = CreateRefusedBranchContainer(hiddenHeader: mainChain[0].Hash);
+        IBlockTree blockTree = container.Resolve<IBlockTree>();
+        blockTree.SuggestBlock(genesis);
+        blockTree.TryUpdateMainChain(genesis.Header, wereProcessed: true, preloadedBlocks: [genesis]);
+        foreach (Block block in mainChain)
+        {
+            blockTree.SuggestBlock(block);
+            blockTree.TryUpdateMainChain(block.Header, wereProcessed: true, preloadedBlocks: [block]);
+        }
+
+        blockTree.SuggestBlock(refused, BlockTreeSuggestOptions.ForceDontSetAsMain);
+        Assert.That(blockTree.BestSuggestedHeader?.Hash, Is.EqualTo(refused.Hash));
+
+        ProcessRefused(container, refused);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTree.FindBlock(refused.Hash!, BlockTreeLookupOptions.None), Is.Null);
+            Assert.That(blockTree.FindBlock(mainChain[1].Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
+            Assert.That(blockTree.FindBlock(mainChain[2].Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
+            Assert.That(blockTree.Head?.Hash, Is.EqualTo(mainChain[2].Hash));
+        }
+    }
+
     private sealed record RefusedBranch(Block Genesis, Block[] MainChain, BlockHeader BodylessParent, Block Refused)
     {
         public Block Head => MainChain[^1];
