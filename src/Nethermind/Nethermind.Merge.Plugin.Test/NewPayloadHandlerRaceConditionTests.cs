@@ -110,7 +110,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         if (invalidHash) payload.BlockHash = TestItem.KeccakB;
         using NewPayloadHandler handler = CreateHandler(block, AddBlockResult.AlreadyKnown,
             wasProcessed: true, validateSuggestedBlock: true, senderRecovery: recovery,
-            specProvider: container.Resolve<ISpecProvider>(), timeoutMs: LongRequestBudgetMs);
+            specProvider: container.Resolve<ISpecProvider>());
         ISenderRecoveryProgress? progress = null;
         try
         {

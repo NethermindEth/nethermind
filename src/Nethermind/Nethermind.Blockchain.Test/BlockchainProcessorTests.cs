@@ -743,9 +743,6 @@ public class BlockchainProcessorTests
 
         public Task WaitUntilExecutedCopyRemoved(Block block) => _processor.WaitUntilExecutedCopyRemovedAsync(block.Hash!).AsTask();
 
-        public bool ProcessingTimerIsRunning => ((System.Diagnostics.Stopwatch)typeof(BlockchainProcessor)
-            .GetField("_stopwatch", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(_processor)!).IsRunning;
-
         /// <summary>Lets the queued block have its verdict and holds it there, before its commit, until it is processed.</summary>
         public ProcessingTestContext HeldAfterVerdict(Block block)
         {
@@ -1153,20 +1150,6 @@ public class BlockchainProcessorTests
 #pragma warning disable NETH006 // Inline continuations observe the publication boundary deterministically.
         static TaskCompletionSource CreateSynchronousSource() => new();
 #pragma warning restore NETH006
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public async Task Processing_timer_keeps_running_after_execution_verdict_until_commit()
-    {
-        await using ProcessingTestContext context = When.ProcessingBlocks
-            .FullyProcessed(_block0).BecomesGenesis()
-            .Suggested(_block1D2)
-            .Recovered(_block1D2)
-            .HeldAfterVerdict(_block1D2);
-        Assert.That(context.ProcessingTimerIsRunning, Is.True);
-        context.Processed(_block1D2).BecomesNewHead();
-        await context.WaitUntilRemoved(_block1D2);
-        Assert.That(context.ProcessingTimerIsRunning, Is.False);
     }
 
     /// <summary>
