@@ -518,7 +518,7 @@ internal static class SharedBloomScenarios
             List<ulong> keys = [];
             foreach (WholeReadScanner.PerAddressEntry entry in scanner.PerAddresses)
             {
-                ulong addressKey = PersistedSnapshotBloomBuilder.AddressKey(entry.Address);
+                ulong addressKey = PersistedSnapshotBloomBuilder.AddressKey(entry.Address.AsSpan);
                 keys.Add(addressKey);
                 foreach (WholeReadScanner.SlotEntry slot in entry.Slots) keys.Add(PersistedSnapshotBloomBuilder.SlotKey(addressKey, slot.Slot));
             }
