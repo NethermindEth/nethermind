@@ -23,7 +23,7 @@ namespace Nethermind.Core.Test.Encoding
                 ? [ReceiptArrayStorageDecoder.CompactEncoding, Rlp.EmptyListByte, Rlp.EmptyListByte]
                 : [0xc1, Rlp.EmptyListByte];
             ReceiptArrayStorageDecoder decoder = new(compactEncoding);
-            Span<byte> encodedSpan = encoded;
+            ReadOnlySpan<byte> encodedSpan = encoded;
             TxReceipt?[] receipts = decoder.DecodeAllowingMissing(in encodedSpan);
 
             Assert.That(receipts, Is.EqualTo(new TxReceipt?[] { null }));
@@ -34,7 +34,7 @@ namespace Nethermind.Core.Test.Encoding
         {
             byte[] encoded = [0xc1, Rlp.EmptyListByte];
             ReceiptArrayStorageDecoder decoder = new(compactEncoding: false);
-            Span<byte> encodedSpan = encoded;
+            ReadOnlySpan<byte> encodedSpan = encoded;
 
             Assert.That(decoder.Decode(in encodedSpan), Is.Empty);
         }
@@ -44,7 +44,7 @@ namespace Nethermind.Core.Test.Encoding
         {
             byte[] encoded = [ReceiptArrayStorageDecoder.CompactEncoding, Rlp.EmptyListByte, Rlp.EmptyListByte];
             ReceiptArrayStorageDecoder decoder = new(compactEncoding: true);
-            Span<byte> encodedSpan = encoded;
+            ReadOnlySpan<byte> encodedSpan = encoded;
 
             Assert.That(decoder.Decode(in encodedSpan), Is.Empty);
         }
@@ -56,7 +56,7 @@ namespace Nethermind.Core.Test.Encoding
             TxReceipt afterGap = Build.A.Receipt.WithLogs().TestObject;
             ReceiptArrayStorageDecoder decoder = new(compactEncoding);
             byte[] encoded = decoder.Encode([first, null!, afterGap], RlpBehaviors.Storage);
-            Span<byte> encodedSpan = encoded;
+            ReadOnlySpan<byte> encodedSpan = encoded;
 
             TxReceipt[] decoded = decoder.Decode(in encodedSpan);
 
@@ -74,7 +74,7 @@ namespace Nethermind.Core.Test.Encoding
                 0x01
             ];
             ReceiptArrayStorageDecoder decoder = new(compactEncoding: true);
-            Span<byte> encodedSpan = encoded;
+            ReadOnlySpan<byte> encodedSpan = encoded;
 
             Assert.That(decoder.DecodeAllowingMissing(in encodedSpan), Is.EqualTo(new TxReceipt?[] { null }));
         }
@@ -93,7 +93,7 @@ namespace Nethermind.Core.Test.Encoding
             byte[] encoded = decoder.Encode(receipts, RlpBehaviors.Storage);
             Array.Resize(ref encoded, encoded.Length + 1);
             encoded[^1] = Rlp.EmptyListByte;
-            Span<byte> encodedSpan = encoded;
+            ReadOnlySpan<byte> encodedSpan = encoded;
 
             TxReceipt?[] decoded = decoder.DecodeAllowingMissing(in encodedSpan);
 

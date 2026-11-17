@@ -287,13 +287,17 @@ namespace Nethermind.Facade
             BlockExecutionContext blockContext = PrepareCall(nonceSource, header, tx, blobBaseFeeOverride);
             TransactionResult result = TipAboveFeeCap(tx, blockContext.Spec) is { } tipAboveFeeCap
                 ? tipAboveFeeCap
-                : TryCallAndRestore(txProcessor, tx, in blockContext, tracer.WithCancellation(cancellationToken));
+                : TryCall(txProcessor, tx, in blockContext, tracer.WithCancellation(cancellationToken));
 
             string? error = result.GetErrorMessage(tracer.Error);
-            if (result.TransactionExecuted && error is not null && result.EvmExceptionType is not EvmExceptionType.Revert
-                && ExecutionFailureText.TryDescribe(txProcessor, tx, in blockContext, result.EvmExceptionType, error, cancellationToken, out string failureText))
+            if (result.TransactionExecuted && error is not null && result.EvmExceptionType is not EvmExceptionType.Revert)
             {
-                error = failureText;
+                // The call keeps its changes, so the rerun that names the failure must start from the state the call started from.
+                nonceSource.Reset(resetBlockChanges: false);
+                if (ExecutionFailureText.TryDescribe(txProcessor, tx, in blockContext, result.EvmExceptionType, error, cancellationToken, out string failureText))
+                {
+                    error = failureText;
+                }
             }
 
             return new CallOutput
@@ -530,7 +534,7 @@ namespace Nethermind.Facade
                 previousAccessList = opcodeTracer.BuildAccessList();
             }
 
-            CallOutputTracer outputTracer = new();
+            CallOutputTracer outputTracer = new OutputlessCallTracer();
             CancellationTxTracer tracer = new CompositeTxTracer(outputTracer, accessTracer ?? (ITxTracer)opcodeTracer!).WithCancellation(cancellationToken);
             TransactionResult result;
             bool stop;
@@ -575,11 +579,16 @@ namespace Nethermind.Facade
                 Error = error,
                 GasSpent = outputTracer.GasSpent,
                 OperationGas = outputTracer.OperationGas,
-                OutputData = outputTracer.ReturnValue,
                 InputError = !result.TransactionExecuted,
                 ExecutionReverted = executionReverted,
                 AccessList = accessList,
             };
+        }
+
+        /// <summary>Collects the outcome of a run without its output, which eth_createAccessList does not report.</summary>
+        private sealed class OutputlessCallTracer : CallOutputTracer, ITxOutputTracingFilter
+        {
+            public bool IsTracingOutput => false;
         }
 
         private int FillAddressesToOptimize(Span<Address> buffer, IWorldState nonceSource, BlockHeader header, Transaction tx, bool optimize, FrozenSet<AddressAsKey> precompiles)
@@ -720,11 +729,18 @@ namespace Nethermind.Facade
             return previousCount == discoveredCount;
         }
 
-        private static TransactionResult TryCallAndRestore(ITransactionProcessor txProcessor, Transaction transaction, in BlockExecutionContext blockContext, ITxTracer tracer)
+        /// <summary>Runs <paramref name="transaction"/> without validation and keeps its changes in the world state.</summary>
+        /// <remarks>
+        /// The call neither commits nor restores: the world state scope it runs in drops the changes when it closes.
+        /// <see cref="ExecutionOptions.BuildUp"/> is set because <see cref="ExecutionOptions.SkipValidation"/> alone
+        /// routes the call to the system transaction processor.
+        /// </remarks>
+        private static TransactionResult TryCall(ITransactionProcessor txProcessor, Transaction transaction, in BlockExecutionContext blockContext, ITxTracer tracer)
         {
             try
             {
-                return txProcessor.CallAndRestore(transaction, in blockContext, tracer);
+                txProcessor.SetBlockExecutionContext(in blockContext);
+                return txProcessor.Process(transaction, tracer, ExecutionOptions.SkipValidation | ExecutionOptions.BuildUp);
             }
             catch (InsufficientBalanceException)
             {

@@ -28,6 +28,19 @@ namespace Nethermind.Blockchain.Receipts
         /// </remarks>
         void InsertDeferred(Block block, TxReceipt[]? txReceipts, IReleaseSpec spec) =>
             Insert(block, txReceipts, spec, ensureCanonical: false);
+
+        /// <summary>Stores a block's receipts as a receipts message carries them, without decoding them.</summary>
+        /// <remarks>
+        /// Check the receipts against the block's receipts root first. An implementation that cannot store this form
+        /// returns <see langword="false"/> and stores nothing; the caller then decodes the receipts and inserts those.
+        /// </remarks>
+        /// <param name="block">The block, whose transactions need only their hashes.</param>
+        /// <param name="blockReceipts">The encoded sequence of the block's receipts, each one <c>NetworkReceipt.TryRead</c> reads.</param>
+        /// <param name="withBloom">Whether the receipts have blooms: the eth/63 to eth/68 form.</param>
+        /// <param name="ensureCanonical">Whether to index the block's transactions as canonical.</param>
+        /// <exception cref="System.IO.InvalidDataException">The receipts and the transactions differ in number.</exception>
+        bool TryInsertNetworkReceipts(Block block, ReadOnlyMemory<byte> blockReceipts, bool withBloom, bool ensureCanonical) => false;
+
         ulong MigratedBlockNumber { get; set; }
         bool HasBlock(ulong blockNumber, Hash256 hash);
         void EnsureCanonical(Block block);
