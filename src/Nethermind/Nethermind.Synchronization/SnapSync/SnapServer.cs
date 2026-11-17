@@ -62,8 +62,8 @@ public sealed class SnapServer(
         CodeResponseWriter codes = new(builder, byteLimit, cancellationToken);
         Span<byte> keys = stackalloc byte[CodeReadChunkSize * ValueHash256.MemorySize];
         int pending = 0;
-        // A peer sets the byte limit, so chunks start at one code and double: a batch never reads more
-        // codes past the limit than were read before it.
+        // A peer sets the byte limit, so chunks start at one code and double after each full chunk: a batch
+        // never reads more codes past the limit than were read before it.
         int chunkSize = 1;
 
         foreach (ValueHash256 codeHash in requestedHashes)
@@ -94,7 +94,7 @@ public sealed class SnapServer(
     }
 
     private static int NextChunkSize(int chunkSize, int read) =>
-        read == 0 ? chunkSize : Math.Min(chunkSize * 2, CodeReadChunkSize);
+        read < chunkSize ? chunkSize : Math.Min(chunkSize * 2, CodeReadChunkSize);
 
     /// <summary>Writes the stored codes for <paramref name="keys"/> in order, skipping missing ones.</summary>
     /// <remarks>

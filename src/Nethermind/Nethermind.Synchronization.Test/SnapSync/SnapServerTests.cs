@@ -196,14 +196,16 @@ public class SnapServerTests
         AssertCodes(result, [_codeDb[hashA.Bytes]!, _codeDb[hashB.Bytes]!]);
     }
 
-    [TestCase(1, 1, 1)]
-    [TestCase(500, 51, 63)]
-    public void GetByteCodes_reads_little_past_the_byte_limit(long byteLimit, int served, int maxReads)
+    [TestCase(1, 0, 1, 1)]
+    [TestCase(500, 0, 51, 63)]
+    [TestCase(66, 6, 13, 8, TestName = "Empty codes that flush part chunks do not grow the chunk")]
+    public void GetByteCodes_reads_little_past_the_byte_limit(long byteLimit, int emptyCodePairs, int served, int reads)
     {
         List<ValueHash256> request = [];
         for (int i = 0; i < 100; i++)
         {
             request.Add(StoreCode([.. BitConverter.GetBytes(i), 0, 0, 0, 0, 0, 0]));
+            if (i < emptyCodePairs) request.Add(Keccak.OfAnEmptyString.ValueHash256);
         }
         BatchReadingCodeDb codeDb = new(_codeDb);
 
@@ -213,7 +215,7 @@ public class SnapServerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Count, Is.EqualTo(served));
-            Assert.That(codeDb.Reads, Is.InRange(served, maxReads));
+            Assert.That(codeDb.Reads, Is.EqualTo(reads));
         }
     }
 
