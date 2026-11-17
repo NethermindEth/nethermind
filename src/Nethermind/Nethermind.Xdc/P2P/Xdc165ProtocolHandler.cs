@@ -37,7 +37,8 @@ internal class Xdc165ProtocolHandler(
     IGossipPolicy gossipPolicy,
     IForkInfo forkInfo,
     ILogManager logManager,
-    ITxGossipPolicy? transactionsGossipPolicy = null) : Eth65ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy), IStaticProtocolInfo, IXdcConsensusPeer
+    ITxGossipPolicy? transactionsGossipPolicy = null,
+    TimeProvider? timeProvider = null) : Eth65ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy, timeProvider), IStaticProtocolInfo, IXdcConsensusPeer
 {
     private readonly XdcConsensusMessageHandler _consensusMessages = consensusMessages.ForSession(session);
 

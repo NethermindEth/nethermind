@@ -36,7 +36,7 @@ public class PooledTransactionRequestsBenchmarks
     public ValueHash256 PoolAndClaim()
     {
         long id = ++_id;
-        _requests.Add(id, _hashes);
+        _requests.TryAdd(id, _hashes);
         _requests.TryClaim(id, out PooledTransactionRequests.Request request);
         using (request) return request.Hashes[^1];
     }

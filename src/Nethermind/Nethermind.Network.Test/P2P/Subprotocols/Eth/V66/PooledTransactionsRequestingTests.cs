@@ -64,6 +64,8 @@ public class PooledTransactionsRequestingTests
         _session = Substitute.For<ISession>();
         _session.Node.Returns(new Node(TestItem.PublicKeyA, new IPEndPoint(IPAddress.Broadcast, 30303)));
         _session.When(s => s.DeliverMessage(Arg.Any<P2PMessage>())).Do(c => c.Arg<P2PMessage>().AddTo(_disposables));
+        _session.DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>())
+            .Returns(call => PooledRequestSize(call.Arg<Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>()));
 
         _genesisBlock = Build.A.Block.Genesis.TestObject;
 
@@ -111,6 +113,8 @@ public class PooledTransactionsRequestingTests
         _session2 = Substitute.For<ISession>();
         _session2.Node.Returns(new Node(TestItem.PublicKeyB, new IPEndPoint(IPAddress.Loopback, 30304)));
         _session2.When(s => s.DeliverMessage(Arg.Any<P2PMessage>())).Do(c => c.Arg<P2PMessage>().AddTo(_disposables));
+        _session2.DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>())
+            .Returns(call => PooledRequestSize(call.Arg<Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>()));
 
 
         // Create second handler for second peer
@@ -178,6 +182,12 @@ public class PooledTransactionsRequestingTests
     private long LastPooledRequestId() => _session.ReceivedCalls()
         .SelectMany(static call => call.GetArguments().OfType<Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>())
         .Last().RequestId;
+
+    private int PooledRequestSize(Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage message)
+    {
+        using DisposableByteBuffer packet = _svc.ZeroSerialize(message).AsDisposable();
+        return packet.ReadableBytes;
+    }
 
     private void HandleIncomingStatusMessage(Eth66ProtocolHandler handler)
     {

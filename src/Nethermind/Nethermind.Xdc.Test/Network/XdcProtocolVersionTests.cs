@@ -97,6 +97,12 @@ public class XdcProtocolVersionTests
     public void Xdc165_requests_announced_transactions_on_the_relocated_code()
     {
         using Peer peer = Peer.Create(XdcProtocolVersions.Xdc165);
+        using CompositeDisposable delivered = [];
+        peer.Session.DeliverMessage(Arg.Any<P2PMessage>()).Returns(call =>
+        {
+            delivered.Add(call.Arg<P2PMessage>());
+            return 1;
+        });
         peer.ReceiveStatus();
         peer.TxPool.NotifyAboutTx(Arg.Any<ValueHash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
             .Returns(AnnounceResult.RequestRequired);
@@ -107,6 +113,7 @@ public class XdcProtocolVersionTests
 
         peer.Session.Received(1).DeliverMessage(Arg.Is<P2PMessage>(m =>
             m is XdcGetPooledTransactionsMessage && m.PacketType == XdcMessageCode.GetPooledTransactions));
+        peer.Session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
     }
 
     [Test]
@@ -163,6 +170,7 @@ public class XdcProtocolVersionTests
 
             INodeStatsManager nodeStatsManager = Substitute.For<INodeStatsManager>();
             nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns(Substitute.For<INodeStats>());
+            nodeStatsManager.GetStatsOrNull(Arg.Any<Node>()).Returns(c => nodeStatsManager.GetOrAdd(c.Arg<Node>()));
 
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             BlockHeader head = Build.A.BlockHeader.WithNumber(100).TestObject;

@@ -1,6 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using CancellationToken = System.Threading.CancellationToken;
+using System.Threading.Tasks;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Test;
+using Nethermind.Network.P2P.Subprotocols;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using DotNetty.Buffers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
@@ -27,25 +35,31 @@ using System;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 
+using System.Collections.Generic;
+using System.Linq;
+using Nethermind.Network.Test;
+
 namespace Nethermind.Xdc.Test;
 
 [TestFixture, Parallelizable(ParallelScope.All)]
 public class XdcProtocolHandlerTests
 {
-    private static (XdcProtocolHandler handler, IMessageSerializationService serializer, ISession session,
+    internal static (XdcProtocolHandler handler, IMessageSerializationService serializer, ISession session,
         IVotesManager votesManager, ITimeoutCertificateManager timeoutManager, ISyncInfoManager syncInfoManager)
-        CreateAll(int suggestedAheadOfHead = 0, ulong headNumber = 100, ISyncPeerPool? syncPeerPool = null)
+        CreateAll(int suggestedAheadOfHead = 0, ulong headNumber = 100, ISyncPeerPool? syncPeerPool = null, INodeStats? nodeStats = null,
+            IMessageSerializationService? serializationService = null, ISyncServer? syncServer = null)
     {
         IVotesManager votesManager = Substitute.For<IVotesManager>();
         ITimeoutCertificateManager timeoutManager = Substitute.For<ITimeoutCertificateManager>();
         ISyncInfoManager syncInfoManager = Substitute.For<ISyncInfoManager>();
-        IMessageSerializationService serializer = Substitute.For<IMessageSerializationService>();
+        IMessageSerializationService serializer = serializationService ?? Substitute.For<IMessageSerializationService>();
         ISession session = Substitute.For<ISession>();
         session.RemoteNodeId.Returns(TestItem.PublicKeyA);
         session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
 
         INodeStatsManager nodeStatsManager = Substitute.For<INodeStatsManager>();
-        nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns(Substitute.For<INodeStats>());
+        nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns(nodeStats ?? Substitute.For<INodeStats>());
+        nodeStatsManager.GetStatsOrNull(Arg.Any<Node>()).Returns(c => nodeStatsManager.GetOrAdd(c.Arg<Node>()));
 
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         BlockHeader headHeader = Build.A.BlockHeader.WithNumber(headNumber).TestObject;
@@ -65,7 +79,7 @@ public class XdcProtocolHandlerTests
             session,
             serializer,
             nodeStatsManager,
-            Substitute.For<ISyncServer>(),
+            syncServer ?? Substitute.For<ISyncServer>(),
             Substitute.For<IBackgroundTaskScheduler>(),
             Substitute.For<ITxPool>(),
             Substitute.For<IGossipPolicy>(),
@@ -75,12 +89,70 @@ public class XdcProtocolHandlerTests
         return (handler, serializer, session, votesManager, timeoutManager, syncInfoManager);
     }
 
-    private static ZeroPacket CreatePacket(int packetType)
+    private static NettyBufferPacket CreatePacket(int packetType)
     {
         IByteBuffer buffer = Unpooled.Buffer();
         NettyBufferPacket packet = new(buffer);
         packet.PacketType = (byte)packetType;
         return packet;
+    }
+
+    [Test]
+    public async Task Legacy_responses_require_pending_requests_before_decoding(
+        [Values(Eth62MessageCode.BlockHeaders, Eth62MessageCode.BlockBodies, Eth63MessageCode.NodeData)] int packetType,
+        [Values] bool solicited)
+    {
+        static async Task DisposeResult<T>(Task<T> request) where T : IDisposable?
+        {
+            using T result = await request;
+        }
+
+        (XdcProtocolHandler handler, IMessageSerializationService serializer, ISession session, _, _, _) =
+            CreateAll(nodeStats: new NodeStatsLight(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303)));
+        using (handler)
+        using (CompositeDisposable disposables = [])
+        {
+            session.When(s => s.DeliverMessage(Arg.Any<P2PMessage>()))
+                .Do(call => call.Arg<P2PMessage>().AddTo(disposables));
+            HandleIncomingStatus(handler, serializer);
+            NettyBufferPacket packet = CreatePacket(packetType);
+            try
+            {
+                serializer.Deserialize<BlockHeadersMessage>(packet)
+                    .Returns(new BlockHeadersMessage(IOwnedReadOnlyList<BlockHeader>.Empty));
+                serializer.Deserialize<BlockBodiesMessage>(packet)
+                    .Returns(new BlockBodiesMessage(Array.Empty<Block>()));
+                serializer.Deserialize<NodeDataMessage>(packet).Returns(new NodeDataMessage(null));
+                Task? request = solicited ? packetType switch
+                {
+                    Eth62MessageCode.BlockHeaders => DisposeResult(((ISyncPeer)handler).GetBlockHeaders(1, 1, 0, CancellationToken.None)),
+                    Eth62MessageCode.BlockBodies => DisposeResult(((ISyncPeer)handler).GetBlockBodies([TestItem.KeccakA], CancellationToken.None)),
+                    _ => DisposeResult(handler.GetNodeData([TestItem.KeccakA], CancellationToken.None))
+                } : null;
+                serializer.ClearReceivedCalls();
+
+                if (request is not null)
+                {
+                    handler.HandleMessage(packet);
+                    await request;
+                }
+                else
+                {
+                    Assert.Throws<SubprotocolException>(() => handler.HandleMessage(packet));
+                }
+
+                serializer.Received(solicited && packetType == Eth62MessageCode.BlockHeaders ? 1 : 0)
+                    .Deserialize<BlockHeadersMessage>(packet);
+                serializer.Received(solicited && packetType == Eth62MessageCode.BlockBodies ? 1 : 0)
+                    .Deserialize<BlockBodiesMessage>(packet);
+                serializer.Received(solicited && packetType == Eth63MessageCode.NodeData ? 1 : 0)
+                    .Deserialize<NodeDataMessage>(packet);
+            }
+            finally
+            {
+                packet.Release();
+            }
+        }
     }
 
     private static Vote CreateVote(ulong round = 1)
@@ -501,6 +573,46 @@ public class XdcProtocolHandlerTests
 
             session.Received(1).DeliverMessage(Arg.Is<P2PMessage>(m => m.PacketType == Eth62MessageCode.Transactions));
             session.DidNotReceive().DeliverMessage(Arg.Is<P2PMessage>(m => m.PacketType == Eth65MessageCode.NewPooledTransactionHashes));
+        }
+    }
+
+    [Test]
+    public void Serialized_announcements_reach_the_sync_server([Values(1, 65, 16384)] int count)
+    {
+        MessageSerializationService serializer = new(
+            SerializerInfo.Create(new StatusMessageSerializer()),
+            SerializerInfo.Create(new NewBlockHashesMessageSerializer()));
+        ISyncServer syncServer = Substitute.For<ISyncServer>();
+        List<(Hash256, ulong)> hints = [];
+        syncServer.When(server => server.HintBlock(Arg.Any<Hash256>(), Arg.Any<ulong>(), Arg.Any<ISyncPeer>()))
+            .Do(call => hints.Add((call.Arg<Hash256>(), call.Arg<ulong>())));
+        (XdcProtocolHandler handler, _, ISession session, _, _, _) =
+            CreateAll(serializationService: serializer, syncServer: syncServer);
+        using (handler)
+        {
+            using StatusMessage status = new()
+            {
+                ProtocolVersion = handler.ProtocolVersion,
+                BestHash = TestItem.KeccakA,
+                GenesisHash = TestItem.KeccakB
+            };
+            Receive(status);
+            (Hash256, ulong)[] announced = Enumerable.Range(0, count)
+                .Select(i => (Keccak.Compute(i.ToString()), (ulong)i + 1)).ToArray();
+            using NewBlockHashesMessage message = new(announced);
+            Receive(message);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(hints, Is.EqualTo(announced));
+                session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+            }
+        }
+
+        void Receive<T>(T message) where T : P2PMessage
+        {
+            using DisposableByteBuffer encoded = serializer.ZeroSerialize(message).AsDisposable();
+            encoded.ReadByte();
+            handler.HandleMessage(new NettyBufferPacket(encoded) { PacketType = (byte)message.PacketType });
         }
     }
 }

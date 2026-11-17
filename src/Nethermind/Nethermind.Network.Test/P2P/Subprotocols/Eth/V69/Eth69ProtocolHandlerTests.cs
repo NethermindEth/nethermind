@@ -39,6 +39,10 @@ using NSubstitute;
 using NUnit.Framework;
 using GetReceiptsMessage66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.GetReceiptsMessage;
 
+using Nethermind.Blockchain.Synchronization;
+using HeadersRequest = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockHeadersMessage;
+using HeadersResponse = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.BlockHeadersMessage;
+
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V69;
 
 public class Eth69ProtocolHandlerTests
@@ -186,6 +190,39 @@ public class Eth69ProtocolHandlerTests
             byte[] serialized = new byte[serializer.GetLength(message)];
             serializer.Serialize(serialized, message);
             return serialized;
+        }
+    }
+
+    [Test]
+    public void Serves_full_receipts_response_as_decoded_ones()
+    {
+        const int count = 64;
+        TxReceipt[][] blocks = [.. Enumerable.Range(0, count).Select(static i => SoftLimitTestHelper.CreateLogHeavyReceipts(200 + i))];
+        Hash256[] hashes = [.. Enumerable.Range(0, count).Select(static i => Keccak.Compute(i.ToString()))];
+        for (int i = 0; i < count; i++) _syncManager.GetReceipts(hashes[i]).Returns(blocks[i]);
+        IMessageSerializer<ReceiptsMessage69> serializer = new ReceiptsMessageSerializer69(_specProvider);
+        byte[]? response = null;
+        int servedCount = 0;
+        _session.When(session => session.DeliverMessage(Arg.Any<ReceiptsMessage69>()))
+            .Do(call =>
+            {
+                ReceiptsMessage69 message = (ReceiptsMessage69)call[0];
+                servedCount = message.EthMessage.TxReceipts.Count;
+                response = new byte[serializer.GetLength(message)];
+                serializer.Serialize(response, message);
+            });
+        HandleIncomingStatusMessage();
+
+        using GetReceiptsMessage66 request = new(1111, new(hashes.ToPooledList()));
+        HandleZeroMessage(request, Eth63MessageCode.GetReceipts);
+
+        using ReceiptsMessage69 decoded = new(1111, new(blocks[..servedCount].ToPooledList()));
+        byte[] expected = new byte[serializer.GetLength(decoded)];
+        serializer.Serialize(expected, decoded);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expected, Has.Length.GreaterThan(1024 * 1024));
+            Assert.That(response, Is.EqualTo(expected));
         }
     }
 
@@ -430,12 +467,12 @@ public class Eth69ProtocolHandlerTests
     }
 
     [Test]
-    public void Should_handle_BlockRangeUpdate()
+    public void Should_handle_BlockRangeUpdate([Values(2UL, 1_000_000_000UL)] ulong latest)
     {
         using BlockRangeUpdateMessage msg = new()
         {
             EarliestBlock = 1,
-            LatestBlock = 2,
+            LatestBlock = latest,
             LatestBlockHash = Keccak.Compute("2")
         };
 
@@ -446,6 +483,37 @@ public class Eth69ProtocolHandlerTests
         {
             Assert.That(_handler.HeadNumber, Is.EqualTo(msg.LatestBlock));
             Assert.That(_handler.HeadHash, Is.EqualTo(msg.LatestBlockHash));
+        }
+    }
+
+    [Test]
+    public void Conditional_head_update_preserves_a_new_announcement([Values] bool sameHeight)
+    {
+        HandleIncomingStatusMessage();
+        _handler.SetHead(TestItem.KeccakA, 100);
+        Hash256 expectedHash = _handler.HeadHash;
+        ulong expectedNumber = _handler.HeadNumber;
+        using BlockRangeUpdateMessage announcement = new()
+        {
+            EarliestBlock = 0,
+            LatestBlock = sameHeight ? 100UL : 200UL,
+            LatestBlockHash = TestItem.KeccakB
+        };
+
+        HandleZeroMessage(announcement, Eth69MessageCode.BlockRangeUpdate);
+        bool replaced = _handler.TrySetHead(expectedHash, expectedNumber, expectedHash, 50);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(replaced, Is.False);
+            Assert.That(_handler.HeadHash, Is.EqualTo(announcement.LatestBlockHash));
+            Assert.That(_handler.HeadNumber, Is.EqualTo(announcement.LatestBlock));
+        }
+        Assert.That(_handler.TrySetHead(announcement.LatestBlockHash, announcement.LatestBlock, TestItem.KeccakC, 300), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_handler.HeadHash, Is.EqualTo(TestItem.KeccakC));
+            Assert.That(_handler.HeadNumber, Is.EqualTo(300UL));
         }
     }
 
@@ -517,5 +585,141 @@ public class Eth69ProtocolHandlerTests
 
         Assert.That(response, Is.Not.Null);
         return response!.EthMessage.TxReceipts;
+    }
+
+    [Test]
+    public void Status_and_updates_preserve_the_history_boundary()
+    {
+        using RangeContext context = new();
+        context.Status(50, context.InitialHead);
+        Assert.That(((ISyncPeer)context.Handler).EarliestBlockNumber, Is.EqualTo(50));
+        context.Deliver(new BlockRangeUpdateMessage { EarliestBlock = 70, LatestBlock = 101, LatestBlockHash = TestItem.KeccakA });
+        Assert.That(((ISyncPeer)context.Handler).EarliestBlockNumber, Is.EqualTo(70));
+    }
+
+    [Test, CancelAfter(30_000)]
+    public async Task Distant_range_preserves_the_raw_claim_after_a_matching_head_response(
+        [Values(101UL, 10_000UL, ulong.MaxValue - 1)] ulong announcedNumber, [Values] bool initialStatus, CancellationToken cancellationToken)
+    {
+        using RangeContext context = new();
+        BlockHeader announced = Build.A.BlockHeader.WithNumber(announcedNumber).TestObject;
+        if (initialStatus) context.Status(0, announced);
+        else
+        {
+            context.Status(0, context.InitialHead);
+            await context.AnswerHead(context.InitialHead, cancellationToken);
+            context.Deliver(new BlockRangeUpdateMessage { EarliestBlock = 0, LatestBlock = announcedNumber, LatestBlockHash = announced.Hash! });
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Handler.HeadNumber, Is.EqualTo(announcedNumber));
+            Assert.That(context.Handler.HeadHash, Is.EqualTo(announced.Hash));
+        }
+
+        await context.AnswerHead(announced, cancellationToken);
+
+        Assert.That(context.Handler.HeadNumber, Is.EqualTo(announcedNumber));
+        context.Session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+    }
+
+    [Test, CancelAfter(30_000)]
+    public async Task Incorrect_head_response_cannot_change_the_raw_distant_claim(CancellationToken cancellationToken)
+    {
+        using RangeContext context = new();
+        context.Status(0, context.InitialHead);
+        await context.AnswerHead(context.InitialHead, cancellationToken);
+        BlockHeader announced = Build.A.BlockHeader.WithNumber(10_000).TestObject;
+        context.Deliver(new BlockRangeUpdateMessage { EarliestBlock = 0, LatestBlock = 10_000, LatestBlockHash = announced.Hash! });
+        BlockHeader reply = Build.A.BlockHeader.WithNumber(10_001).TestObject;
+
+        await context.AnswerHead(announced, cancellationToken, reply);
+
+        Assert.That(context.Handler.HeadNumber, Is.EqualTo(10_000));
+        context.Session.Received(1).InitiateDisconnect(DisconnectReason.UnexpectedHeaderHash, Arg.Any<string>());
+    }
+
+    [Test, CancelAfter(30_000)]
+    public async Task Header_batch_preserves_the_requested_direction([Values] bool reverse, CancellationToken cancellationToken)
+    {
+        using RangeContext context = new();
+        context.Status(0, context.InitialHead);
+        await context.AnswerHeaders(reverse, cancellationToken);
+    }
+
+    private sealed class RangeContext : IDisposable
+    {
+        private readonly IMessageSerializationService _serializer;
+        private readonly List<P2PMessage> _sent = [];
+        public ISession Session { get; } = Substitute.For<ISession>();
+        public Eth69ProtocolHandler Handler { get; }
+        public BlockHeader InitialHead { get; } = Build.A.BlockHeader.WithNumber(100).TestObject;
+
+        public RangeContext()
+        {
+            Session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+            Session.When(session => session.DeliverMessage(Arg.Any<P2PMessage>())).Do(call => _sent.Add(call.Arg<P2PMessage>()));
+            ISyncServer server = Substitute.For<ISyncServer>();
+            server.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);
+            server.Head.Returns(InitialHead);
+            IChainHeadSpecProvider specs = Substitute.For<IChainHeadSpecProvider>();
+            _serializer = Build.A.SerializationService().WithEth69(specs).TestObject;
+            Handler = new(Session, _serializer, Substitute.For<INodeStatsManager>(), server, RunImmediatelyScheduler.Instance,
+                Substitute.For<ITxPool>(), Substitute.For<IGossipPolicy>(), new ForkInfo(specs, server), LimboLogs.Instance,
+                Substitute.For<ITxPoolConfig>(), specs);
+            Handler.Init();
+        }
+
+        public void Status(ulong earliest, BlockHeader head) => Deliver(new StatusMessage69
+        {
+            ProtocolVersion = 69,
+            GenesisHash = Build.A.Block.Genesis.TestObject.Hash!,
+            EarliestBlock = earliest,
+            LatestBlock = head.Number,
+            LatestBlockHash = head.Hash!
+        });
+
+        public void Deliver<T>(T message) where T : P2PMessage
+        {
+            using (message)
+            using (DisposableByteBuffer packet = _serializer.ZeroSerialize(message).AsDisposable())
+            {
+                packet.ReadByte();
+                Handler.HandleMessage(new NettyBufferPacket(packet) { PacketType = (byte)message.PacketType });
+            }
+        }
+
+        public async Task AnswerHead(BlockHeader header, CancellationToken cancellationToken, BlockHeader? reply = null)
+        {
+            Task<BlockHeader?> response = ((ISyncPeer)Handler).GetHeadBlockHeader(header.Hash, cancellationToken);
+            HeadersRequest request = (HeadersRequest)_sent[^1];
+            Deliver(new HeadersResponse(request.RequestId, new(new ArrayPoolList<BlockHeader>([reply ?? header]))));
+            BlockHeader? returned = await response;
+            if (reply is null) Assert.That(returned!.Hash, Is.EqualTo(header.Hash));
+        }
+
+        public async Task AnswerHeaders(bool reverse, CancellationToken cancellationToken)
+        {
+            Task<IOwnedReadOnlyList<BlockHeader>?> response = ((ISyncPeer)Handler).GetBlockHeaders(InitialHead.Hash!, 65, 0, reverse, cancellationToken);
+            Assert.That(_sent[^1], Is.InstanceOf<HeadersRequest>());
+            HeadersRequest request = (HeadersRequest)_sent[^1];
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(request.EthMessage.StartBlockHash, Is.EqualTo(InitialHead.Hash));
+                Assert.That(request.EthMessage.MaxHeaders, Is.EqualTo(65));
+                Assert.That(request.EthMessage.Skip, Is.Zero);
+                Assert.That(request.EthMessage.Reverse, Is.EqualTo(reverse ? 1 : 0));
+            }
+            Deliver(new HeadersResponse(request.RequestId, new(new ArrayPoolList<BlockHeader>([InitialHead]))));
+            using IOwnedReadOnlyList<BlockHeader>? returned = await response;
+            Assert.That(returned, Is.Not.Null);
+            Assert.That(returned![0].Hash, Is.EqualTo(InitialHead.Hash));
+        }
+
+        public void Dispose()
+        {
+            Handler.Dispose();
+            foreach (P2PMessage message in _sent) message.Dispose();
+            Session.Dispose();
+        }
     }
 }

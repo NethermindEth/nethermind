@@ -231,6 +231,7 @@ public class ForkInfoTests
     // Local is mainnet Petersburg. remote announces Byzantium but is not aware of further forks.
     // Remote needs software update.
     [TestCase(7987396ul, 0ul, "0xa00bc324", 0ul, ValidationResult.RemoteStale)]
+    [TestCase(7987396ul, 0ul, "0xa00bc324", 9000000ul, ValidationResult.RemoteStale)]
 
     // Local is mainnet Petersburg, and isn't aware of more forks. Remote announces Petersburg +
     // 0xffffffff. Local needs software update, reject.
@@ -285,6 +286,8 @@ public class ForkInfoTests
     // Local is mainnet Shanghai. remote announces Gray Glacier but is not aware of further forks.
     // Remote needs software update.
     [TestCase(20000000ul, 1_668_000_000ul, "0xf0afd0e3", 0ul, ValidationResult.RemoteStale, true)]
+    [TestCase(20000000ul, 1_668_000_000ul, "0xf0afd0e3", 1_700_000_000ul, ValidationResult.RemoteStale, true)]
+    [TestCase(20000000ul, 1_668_000_000ul, "0xf0afd0e3", 21_000_000ul, ValidationResult.RemoteStale, true)]
 
     // Local is mainnet Gray Glacier, and isn't aware of more forks. Remote announces Gray Glacier +
     // 0xffffffff. Local needs software update, reject.
