@@ -67,12 +67,30 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void ReserveNodeSlot(IJsonRpcDuplexClient client)
         {
-            int count = Interlocked.Increment(ref _subscriptionCount);
             int maxSubscriptions = jsonRpcConfig.MaxSubscriptions;
-            if (maxSubscriptions > 0 && !client.IsAuthenticated && count > maxSubscriptions)
+            if (client.IsAuthenticated)
             {
-                Interlocked.Decrement(ref _subscriptionCount);
+                Interlocked.Increment(ref _subscriptionCount);
+            }
+            else if (!TryReserve(ref _subscriptionCount, maxSubscriptions))
+            {
                 throw new LimitExceededException($"Too many subscriptions. The node limit is {maxSubscriptions}.");
+            }
+        }
+
+        private static bool TryReserve(ref int count, int limit)
+        {
+            if (limit <= 0)
+            {
+                Interlocked.Increment(ref count);
+                return true;
+            }
+
+            while (true)
+            {
+                int current = Volatile.Read(ref count);
+                if (current >= limit) return false;
+                if (Interlocked.CompareExchange(ref count, current + 1, current) == current) return true;
             }
         }
 
@@ -83,6 +101,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             {
                 clientSubscriptions.TryRemove(subscription);
                 Interlocked.Decrement(ref _subscriptionCount);
+                subscription.Dispose();
                 if (_logger.IsDebug) _logger.Debug($"Failed trying to add subscription {subscription.Id} to dictionary _subscriptions.");
                 return;
             }
@@ -210,10 +229,8 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
             public void ReserveSlot(int maxPerConnection)
             {
-                int count = Interlocked.Increment(ref _count);
-                if (maxPerConnection > 0 && count > maxPerConnection)
+                if (!TryReserve(ref _count, maxPerConnection))
                 {
-                    Interlocked.Decrement(ref _count);
                     throw new LimitExceededException($"Too many subscriptions. The connection limit is {maxPerConnection}.");
                 }
             }

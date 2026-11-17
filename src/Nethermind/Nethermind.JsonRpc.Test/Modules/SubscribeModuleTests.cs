@@ -1912,6 +1912,64 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
+        [Repeat(20)]
+        public async Task Refused_adds_racing_a_removal_at_the_node_limit_leave_exactly_the_freed_slot()
+        {
+            const int refusers = 8;
+            SubscriptionManager manager = new(NoopSubscriptionFactory(),
+                new JsonRpcConfig { MaxSubscriptions = 1, MaxSubscriptionsPerConnection = 0 }, LimboLogs.Instance);
+            IJsonRpcDuplexClient holder = Substitute.For<IJsonRpcDuplexClient>();
+            holder.Id.Returns("holder");
+            IJsonRpcDuplexClient lateClient = Substitute.For<IJsonRpcDuplexClient>();
+            lateClient.Id.Returns("late-client");
+            string heldId = manager.AddSubscription(holder, "newHeads");
+
+            int refuserAdmissions = 0;
+            using CancellationTokenSource stop = new();
+            using Barrier barrier = new(refusers + 1);
+            Task[] tasks = new Task[refusers];
+            for (int i = 0; i < refusers; i++)
+            {
+                IJsonRpcDuplexClient client = Substitute.For<IJsonRpcDuplexClient>();
+                client.Id.Returns($"refused-{i}");
+                tasks[i] = Task.Factory.StartNew(() =>
+                {
+                    barrier.SignalAndWait();
+                    while (!stop.IsCancellationRequested)
+                    {
+                        try
+                        {
+                            manager.AddSubscription(client, "newHeads");
+                            Interlocked.Increment(ref refuserAdmissions);
+                            return;
+                        }
+                        catch (LimitExceededException)
+                        {
+                        }
+                    }
+                }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            }
+
+            barrier.SignalAndWait();
+            Assert.That(manager.RemoveSubscription(holder, heldId), Is.True);
+            bool lateAdmitted;
+            try
+            {
+                manager.AddSubscription(lateClient, "newHeads");
+                lateAdmitted = true;
+            }
+            catch (LimitExceededException)
+            {
+                lateAdmitted = false;
+            }
+
+            await stop.CancelAsync();
+            await Task.WhenAll(tasks);
+
+            Assert.That(Volatile.Read(ref refuserAdmissions) + (lateAdmitted ? 1 : 0), Is.EqualTo(1));
+        }
+
+        [Test]
         public void AddSubscription_releases_both_slots_when_the_factory_throws()
         {
             ISubscriptionFactory factory = Substitute.For<ISubscriptionFactory>();
