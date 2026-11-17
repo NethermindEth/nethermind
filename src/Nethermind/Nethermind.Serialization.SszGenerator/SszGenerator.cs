@@ -1524,6 +1524,7 @@ using static Nethermind.Serialization.SszCodecHelpers;
 {Whitespace}
 {PartialTypeDeclaration(decl)}
 {{
+{(decl.FixedSectionLengthDeclaration is { } lengthDeclaration ? $"    {lengthDeclaration} => {decl.StaticLength};" : "")}
     public static int GetLength({decl.TypeReferenceName}{(decl.IsStruct ? "" : "?")} container)
     {{
         {(decl.IsStruct ? "" : @"if(container is null)

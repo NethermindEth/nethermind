@@ -81,18 +81,27 @@ internal static class StateIdResolver
             && TryResolve(ctx, stateId, out resolved, out _, out _);
     }
 
-    internal static bool TryResolvePrefix(BeaconApiContext ctx, string stateId, bool forkOnly, out ResolvedState resolved, out int errorStatus, out string? errorMessage, bool includeRandao = false)
+    internal const int HistoricalRootsOffset = 176 + 64 * (int)Presets.SlotsPerHistoricalRoot;
+    internal const int RandaoOffset = HistoricalRootsOffset + 96;
+    internal const int ParticipationOffset = RandaoOffset + 32 * (int)Presets.EpochsPerHistoricalVector + 8 * (int)Presets.EpochsPerSlashingsVector;
+
+    private const int CheckpointOffset = ParticipationOffset + 9;
+    internal const int CheckpointsEnd = CheckpointOffset + 120;
+
+    internal static bool TryResolvePrefix(BeaconApiContext ctx, string stateId, bool forkOnly, out ResolvedState resolved, out int errorStatus, out string? errorMessage) =>
+        TryResolvePrefix(ctx, stateId, forkOnly, out resolved, out errorStatus, out errorMessage, out _);
+
+    internal static bool TryResolvePrefix(BeaconApiContext ctx, string stateId, bool forkOnly, out ResolvedState resolved, out int errorStatus, out string? errorMessage, out byte[]? prefix)
     {
+        prefix = null;
         resolved = default;
         if (!TryResolveRoot(ctx, stateId, out Hash256? root, out errorStatus, out errorMessage)) return false;
         if (ctx.GetHeldState(root!, stateId) is not null)
             return TryResolve(ctx, stateId, out resolved, out errorStatus, out errorMessage);
 
         const int forkOffset = 48;
-        int randaoOffset = checked(176 + 64 * (int)Presets.SlotsPerHistoricalRoot + 96);
-        int checkpointOffset = checked(randaoOffset + 32 * (int)Presets.EpochsPerHistoricalVector + 8 * (int)Presets.EpochsPerSlashingsVector + 9);
-        int length = forkOnly ? 176 : checkpointOffset + 120;
-        if (!ctx.Store.TryGetStatePrefix(root!, length, out byte[]? prefix))
+        int length = forkOnly ? 176 : CheckpointsEnd;
+        if (!ctx.Store.TryGetStatePrefix(root!, length, out prefix))
         {
             if (ctx.Store.TryGetStatePrefix(root!, 48, out byte[]? headerBytes)
                 && ctx.Spec.GetEpoch(BinaryPrimitives.ReadUInt64LittleEndian(headerBytes.AsSpan(40))) < ctx.Spec.ElectraForkEpoch)
@@ -111,15 +120,9 @@ internal static class StateIdResolver
         BeaconStateElectra state = new() { Slot = slot, Fork = fork, LatestBlockHeader = header };
         if (!forkOnly)
         {
-            if (includeRandao)
-            {
-                state.RandaoMixes = new Hash256[Presets.EpochsPerHistoricalVector];
-                for (int i = 0; i < state.RandaoMixes.Length; i++)
-                    state.RandaoMixes[i] = new Hash256(bytes.Slice(randaoOffset + i * 32, 32));
-            }
-            Checkpoint.Decode(bytes.Slice(checkpointOffset, 40), out Checkpoint previous);
-            Checkpoint.Decode(bytes.Slice(checkpointOffset + 40, 40), out Checkpoint current);
-            Checkpoint.Decode(bytes.Slice(checkpointOffset + 80, 40), out Checkpoint finalized);
+            Checkpoint.Decode(bytes.Slice(CheckpointOffset, 40), out Checkpoint previous);
+            Checkpoint.Decode(bytes.Slice(CheckpointOffset + 40, 40), out Checkpoint current);
+            Checkpoint.Decode(bytes.Slice(CheckpointOffset + 80, 40), out Checkpoint finalized);
             state.PreviousJustifiedCheckpoint = previous;
             state.CurrentJustifiedCheckpoint = current;
             state.FinalizedCheckpoint = finalized;

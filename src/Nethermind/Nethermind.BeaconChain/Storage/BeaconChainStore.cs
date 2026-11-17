@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
@@ -815,21 +816,8 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
     public bool TryGetState(Hash256 blockRoot, [NotNullWhen(true)] out byte[]? sszBytes)
     {
         sszBytes = null;
-        byte[]? manifest = _states.Get(blockRoot.Bytes);
-        if (manifest is null || manifest.Length != StateManifestLength)
-        {
-            return false;
-        }
-
-        uint declaredChunkCount = BinaryPrimitives.ReadUInt32BigEndian(manifest);
-        ulong declaredLength = BinaryPrimitives.ReadUInt64BigEndian(manifest.AsSpan(sizeof(uint)));
-        if (declaredLength > MaxStateBytes || declaredChunkCount == 0 || (declaredLength + StateChunkSize - 1) / StateChunkSize != declaredChunkCount)
-        {
-            return false;
-        }
-
-        int chunkCount = (int)declaredChunkCount;
-        int length = (int)declaredLength;
+        if (!TryGetStateLength(blockRoot, out int length)) return false;
+        int chunkCount = (length - 1) / StateChunkSize + 1;
         byte[] buffer = new byte[length];
 
         Span<byte> chunkKey = stackalloc byte[Hash256.Size + sizeof(uint)];
@@ -856,20 +844,60 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         return true;
     }
 
+    internal bool TryGetStateLength(Hash256 blockRoot, out int totalLength)
+    {
+        totalLength = 0;
+        if (_states.Get(blockRoot.Bytes) is not { Length: StateManifestLength } manifest) return false;
+        ulong length = BinaryPrimitives.ReadUInt64BigEndian(manifest.AsSpan(sizeof(uint)));
+        uint chunks = BinaryPrimitives.ReadUInt32BigEndian(manifest);
+        if (length > MaxStateBytes || chunks == 0 || (length + StateChunkSize - 1) / StateChunkSize != chunks) return false;
+        totalLength = (int)length;
+        return true;
+    }
+
+    /// <summary>Reads a range of stored SSZ, validating the manifest and the chunks intersecting that range.</summary>
+    internal bool TryGetStateRange(Hash256 blockRoot, int offset, Span<byte> destination)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(offset);
+        if (!TryGetStateLength(blockRoot, out int totalLength)) return false;
+        if (offset > totalLength || destination.Length > totalLength - offset) return false;
+
+        Span<byte> key = stackalloc byte[Hash256.Size + sizeof(uint)];
+        blockRoot.Bytes.CopyTo(key);
+        while (!destination.IsEmpty)
+        {
+            int chunk = offset / StateChunkSize;
+            int within = offset % StateChunkSize;
+            int expected = Math.Min(StateChunkSize, totalLength - chunk * StateChunkSize);
+            BinaryPrimitives.WriteUInt32BigEndian(key[Hash256.Size..], (uint)chunk);
+            if (_states.Get(key) is not { } compressed || Snappy.GetUncompressedLength(compressed) != expected) return false;
+            byte[] buffer = ArrayPool<byte>.Shared.Rent(expected);
+            int take = Math.Min(destination.Length, expected - within);
+            try
+            {
+                if (Snappy.Decompress(compressed, buffer.AsSpan(0, expected)) != expected) return false;
+                buffer.AsSpan(within, take).CopyTo(destination);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
+            destination = destination[take..];
+            offset += take;
+        }
+        return true;
+    }
+
     internal bool TryGetStatePrefix(Hash256 blockRoot, int length, [NotNullWhen(true)] out byte[]? prefix)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(length);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(length, StateChunkSize);
         prefix = null;
-        byte[]? manifest = _states.Get(blockRoot.Bytes);
-        if (manifest is not { Length: StateManifestLength }) return false;
-        ulong totalLength = BinaryPrimitives.ReadUInt64BigEndian(manifest.AsSpan(sizeof(uint)));
-        uint chunkCount = BinaryPrimitives.ReadUInt32BigEndian(manifest);
-        if (totalLength < (ulong)length || chunkCount == 0 || (totalLength + StateChunkSize - 1) / StateChunkSize != chunkCount) return false;
+        if (!TryGetStateLength(blockRoot, out int totalLength) || totalLength < length) return false;
         Span<byte> key = stackalloc byte[Hash256.Size + sizeof(uint)];
         blockRoot.Bytes.CopyTo(key);
         key[Hash256.Size..].Clear();
-        if (_states.Get(key) is not { } compressed || Snappy.GetUncompressedLength(compressed) != (int)Math.Min((ulong)StateChunkSize, totalLength)) return false;
+        if (_states.Get(key) is not { } compressed || Snappy.GetUncompressedLength(compressed) != Math.Min(StateChunkSize, totalLength)) return false;
         byte[] result = new byte[length];
         if (DecompressSnappyPrefix(compressed, result, StateChunkSize) != length) return false;
         prefix = result;

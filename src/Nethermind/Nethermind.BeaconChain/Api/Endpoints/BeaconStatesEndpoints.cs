@@ -65,10 +65,13 @@ internal static class BeaconStatesEndpoints
             return ApiErrors.Write(c, StatusCodes.Status400BadRequest, $"Invalid epoch '{c.Request.Query["epoch"]}'.", c.RequestAborted);
         }
 
-        if (!StateIdResolver.TryResolvePrefix(ctx, stateId, false, out ResolvedState resolved, out int errorStatus, out string? errorMessage, includeRandao: true))
+        if (!StateIdResolver.TryResolvePrefix(ctx, stateId, true, out ResolvedState resolved, out int errorStatus, out string? errorMessage, out byte[]? prefix))
         {
             return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
         }
+
+        if (prefix is not null && (!ctx.Store.TryGetStateLength(resolved.Root, out int length) || length < StateIdResolver.CheckpointsEnd))
+            return ApiErrors.Write(c, StatusCodes.Status404NotFound, $"No state is retained for '{stateId}'.", c.RequestAborted);
 
         ApiState state = resolved.State;
         ulong stateEpoch = ctx.Spec.GetEpoch(state.Slot);
@@ -83,7 +86,18 @@ internal static class BeaconStatesEndpoints
         Hash256 mix;
         try
         {
-            mix = state.GetRandaoMix(epoch);
+            if (prefix is null)
+            {
+                mix = state.GetRandaoMix(epoch);
+            }
+            else
+            {
+                int position = BeaconStateAccessors.GetRandaoMixIndex(state.Slot, epoch);
+                Span<byte> bytes = stackalloc byte[Hash256.Size];
+                if (!ctx.Store.TryGetStateRange(resolved.Root, StateIdResolver.RandaoOffset + position * Hash256.Size, bytes))
+                    return ApiErrors.Write(c, StatusCodes.Status404NotFound, $"No state is retained for '{stateId}'.", c.RequestAborted);
+                mix = new Hash256(bytes);
+            }
         }
         catch (BeaconStateException e)
         {
@@ -386,7 +400,25 @@ internal static class BeaconStatesEndpoints
             return ContentNegotiation.WriteNotAcceptable(c);
         }
 
-        if (!StateIdResolver.TryResolve(ctx, stateId, out ResolvedState resolved, out int errorStatus, out string? errorMessage))
+        ResolvedState resolved = default;
+        bool held = false;
+        if (ulong.TryParse(validatorId, out ulong numericIndex)
+            && StateIdResolver.TryResolvePrefix(ctx, stateId, false, out resolved, out _, out _, out byte[]? prefix))
+        {
+            held = prefix is null;
+            if (prefix is not null && TryReadValidator(ctx, resolved, prefix, numericIndex, out Validator? item, out ulong balance))
+            {
+                if (item is null)
+                    return ApiErrors.Write(c, StatusCodes.Status404NotFound,
+                        $"Validator '{validatorId}' does not exist in this state.", c.RequestAborted);
+
+                ulong stateEpoch = ctx.Spec.GetEpoch(resolved.State.Slot);
+                return WriteStateEnvelope(c, ctx, resolved,
+                    ToValidatorEntry((int)numericIndex, item, balance, ValidatorStatus.Classify(item, stateEpoch)));
+            }
+        }
+
+        if (!held && !StateIdResolver.TryResolve(ctx, stateId, out resolved, out int errorStatus, out string? errorMessage))
         {
             return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
         }
@@ -412,6 +444,40 @@ internal static class BeaconStatesEndpoints
         ValidatorEntryDto entry = ToValidatorEntry(index, validator, state.Balances![index], ValidatorStatus.Classify(validator, epoch));
 
         return WriteStateEnvelope(c, ctx, resolved, entry);
+    }
+
+    private static bool TryReadValidator(BeaconApiContext ctx, ResolvedState historical, ReadOnlySpan<byte> prefix, ulong index, out Validator? validator, out ulong balance)
+    {
+        validator = null;
+        balance = 0;
+        const int validatorSize = BlsPublicKey.Length + Hash256.Size + 5 * sizeof(ulong) + sizeof(byte);
+        int historicalRoots = BinaryPrimitives.ReadInt32LittleEndian(prefix[StateIdResolver.HistoricalRootsOffset..]);
+        int votes = BinaryPrimitives.ReadInt32LittleEndian(prefix[(StateIdResolver.RandaoOffset - 20)..]);
+        int validators = BinaryPrimitives.ReadInt32LittleEndian(prefix[(StateIdResolver.RandaoOffset - 8)..]);
+        int balances = BinaryPrimitives.ReadInt32LittleEndian(prefix[(StateIdResolver.RandaoOffset - 4)..]);
+        int participation = BinaryPrimitives.ReadInt32LittleEndian(prefix[StateIdResolver.ParticipationOffset..]);
+        int fixedLength = historical.State.Fork switch
+        {
+            BeaconFork.Electra => BeaconStateElectra.GetSszFixedSectionLength(),
+            BeaconFork.Fulu => BeaconStateFulu.GetSszFixedSectionLength(),
+            _ => BeaconStateGloas.GetSszFixedSectionLength(),
+        };
+        if (historicalRoots != fixedLength || votes < historicalRoots || validators < votes || balances < validators || participation < balances
+            || (votes - historicalRoots) % Hash256.Size != 0 || (validators - votes) % 72 != 0
+            || (balances - validators) % validatorSize != 0 || (participation - balances) % sizeof(ulong) != 0
+            || !ctx.Store.TryGetStateLength(historical.Root, out int length) || participation > length)
+            return false;
+
+        if (index >= (ulong)((balances - validators) / validatorSize)) return true;
+        if (index >= (ulong)((participation - balances) / sizeof(ulong))) return false;
+        Span<byte> entry = stackalloc byte[validatorSize];
+        Span<byte> balanceBytes = stackalloc byte[sizeof(ulong)];
+        if (!ctx.Store.TryGetStateRange(historical.Root, validators + (int)index * validatorSize, entry)
+            || !ctx.Store.TryGetStateRange(historical.Root, balances + (int)index * sizeof(ulong), balanceBytes))
+            return false;
+        Validator.Decode(entry, out validator);
+        balance = BinaryPrimitives.ReadUInt64LittleEndian(balanceBytes);
+        return true;
     }
 
     private static Task ValidatorBalances(HttpContext c, string stateId, BeaconApiContext ctx)

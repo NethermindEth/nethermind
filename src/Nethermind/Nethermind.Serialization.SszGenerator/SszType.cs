@@ -37,6 +37,7 @@ class SszType
     public required string Name { get; init; }
     public required string? Namespace { get; init; }
     public required Kind Kind { get; init; }
+    public string? FixedSectionLengthDeclaration { get; private set; }
 
     private string? _typeReferenceName;
     /// <summary>
@@ -176,6 +177,13 @@ class SszType
                 .ToArray(),
             _ => null,
         };
+
+        if (type.GetMembers("GetSszFixedSectionLength").OfType<IMethodSymbol>()
+            .Any(method => method.IsPartialDefinition && method.IsStatic && method.Parameters.IsEmpty))
+        {
+            string modifier = type.BaseType?.GetMembers("GetSszFixedSectionLength").Length > 0 ? "new " : "";
+            result.FixedSectionLengthDeclaration = $"internal {modifier}static partial int GetSszFixedSectionLength()";
+        }
 
         switch (result.Kind)
         {

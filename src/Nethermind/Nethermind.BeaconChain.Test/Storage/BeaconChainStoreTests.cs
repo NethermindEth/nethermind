@@ -21,6 +21,28 @@ namespace Nethermind.BeaconChain.Test.Storage;
 public class BeaconChainStoreTests
 {
     [Test]
+    public void State_range_reads_across_chunks_without_loading_unrelated_chunks()
+    {
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStore store = new(db);
+        const int chunkSize = 4 * 1024 * 1024;
+        byte[] state = new byte[2 * chunkSize + 1];
+        state[chunkSize - 1] = 42;
+        state[chunkSize] = 43;
+        store.PutState(Hash256.Zero, state);
+        byte[] key = new byte[Hash256.Size + sizeof(uint)];
+        key[^1] = 2;
+        db.GetColumnDb(BeaconChainDbColumns.States).Remove(key);
+
+        byte[] result = new byte[2];
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(store.TryGetStateRange(Hash256.Zero, chunkSize - 1, result), Is.True);
+        Assert.That(result, Is.EqualTo(new byte[] { 42, 43 }));
+        Assert.That(store.TryGetStateRange(Hash256.Zero, state.Length - 1, result.AsSpan(0, 1)), Is.False);
+        Assert.That(store.TryGetStateRange(Hash256.Zero, state.Length, result), Is.False);
+    }
+
+    [Test]
     public void Canonical_slot_iteration_filters_other_key_lengths_and_includes_max_slot([Values] bool sorted, [Values] bool reverse)
     {
         using CountingStatesColumnsDb db = new(sorted, BeaconChainDbColumns.BlockIndex);

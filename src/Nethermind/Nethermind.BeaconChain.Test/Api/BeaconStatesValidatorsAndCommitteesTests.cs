@@ -179,6 +179,16 @@ public class BeaconStatesValidatorsAndCommitteesTests : BeaconApiFixture
         Assert.That(body.RootElement.GetProperty("data").GetProperty("status").GetString(), Is.EqualTo("active_exiting"));
     }
 
+    [TestCase("0", HttpStatusCode.OK)]
+    [TestCase("1", HttpStatusCode.InternalServerError)]
+    [TestCase("18446744073709551615", HttpStatusCode.NotFound)]
+    public async Task Numeric_validator_checks_the_selected_index_against_both_list_lengths(string index, HttpStatusCode expected)
+    {
+        PutState(TestRoot(0xe3), [StatusFixture[0].Validator, StatusFixture[1].Validator], [42]);
+        using HttpResponseMessage response = await _host.Client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/validators/{index}");
+        Assert.That(response.StatusCode, Is.EqualTo(expected));
+    }
+
     [Test]
     public async Task Validator_balances_reports_the_states_own_balance_array_not_effective_balance()
     {

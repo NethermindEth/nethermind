@@ -12,6 +12,8 @@ namespace Nethermind.BeaconChain.Types;
 [SszContainer]
 public partial class BeaconStateElectra
 {
+    internal static partial int GetSszFixedSectionLength();
+
     public ulong GenesisTime { get; set; }
     public Hash256? GenesisValidatorsRoot { get; set; }
     public ulong Slot { get; set; }
@@ -76,6 +78,8 @@ public partial class BeaconStateElectra
 [SszContainer]
 public partial class BeaconStateFulu : BeaconStateElectra
 {
+    internal new static partial int GetSszFixedSectionLength();
+
     /// <remarks>Length is <c>(MIN_SEED_LOOKAHEAD + 1) * SLOTS_PER_EPOCH</c>.</remarks>
     [SszVector((int)Presets.DefaultProposerLookaheadSlots, AlternateLength = 32)]
     public ulong[]? ProposerLookahead { get; set; }
@@ -89,6 +93,8 @@ public partial class BeaconStateFulu : BeaconStateElectra
 [SszContainer]
 public partial class BeaconStateGloas
 {
+    internal static partial int GetSszFixedSectionLength();
+
     [SszField(0)]
     public ulong GenesisTime { get; set; }
     [SszField(1)]

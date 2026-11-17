@@ -1,14 +1,17 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using Nethermind.BeaconChain.Api;
+using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using static Nethermind.BeaconChain.Test.Api.BeaconApiTestHost;
@@ -36,6 +39,40 @@ public class BeaconStatesForkLayoutTests : BeaconApiFixture
             _host.Store.PutState(root, EncodedState(fork));
             _host.Store.SetCanonicalRoot(slot, root);
         }
+    }
+
+    [Test]
+    public async Task Numeric_validator_reads_a_registry_and_balance_separated_by_an_unavailable_chunk([Values("electra", "fulu", "gloas")] string fork)
+    {
+        const int count = 64_000;
+        Hash256 root = TestRoot((byte)(0xd0 + Marker(fork)));
+        ulong slot = SlotOf(fork) + 1;
+        _host.Store.PutState(root, EncodedState(fork, count));
+        _host.Store.SetCanonicalRoot(slot, root);
+        // Validator zero is in chunk zero; its balance follows the 7.7 MB registry in chunk two.
+        byte[] key = [.. root.Bytes, 0, 0, 0, 1];
+        _host.Db.GetColumnDb(BeaconChainDbColumns.States).Remove(key);
+
+        using HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/states/{slot}/validators/0", Json);
+        using JsonDocument body = JsonDocument.Parse(await ReadSuccessfulBodyAsync(response));
+        JsonElement entry = body.RootElement.GetProperty("data");
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(entry.GetProperty("balance").GetString(), Is.EqualTo(BalanceOf(fork, 0).ToString()));
+        Assert.That(entry.GetProperty("index").GetString(), Is.EqualTo("0"));
+    }
+
+    [Test]
+    public async Task Numeric_validator_rejects_a_registry_offset_outside_the_state()
+    {
+        byte[] state = EncodedState("fulu");
+        BinaryPrimitives.WriteInt32LittleEndian(state.AsSpan(StateIdResolver.RandaoOffset - 8), int.MaxValue);
+        Hash256 root = TestRoot(0xee);
+        ulong slot = SlotOf("fulu") + 2;
+        _host.Store.PutState(root, state);
+        _host.Store.SetCanonicalRoot(slot, root);
+
+        using HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/states/{slot}/validators/0", Json);
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.InternalServerError));
     }
 
     [TestCase("electra")]
@@ -83,7 +120,7 @@ public class BeaconStatesForkLayoutTests : BeaconApiFixture
     [Test]
     public async Task Unversioned_state_endpoints_read_each_fork_layout(
         [Values("electra", "fulu", "gloas")] string fork,
-        [Values("fork", "finality_checkpoints", "validators", "validator_balances", "committees", "randao", "sync_committees")] string endpoint)
+        [Values("fork", "finality_checkpoints", "validators/63", "validators", "validator_balances", "committees", "randao", "sync_committees")] string endpoint)
     {
         using HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/states/{SlotOf(fork)}/{endpoint}", Json);
         string raw = await BeaconApiTestHost.ReadSuccessfulBodyAsync(response);
@@ -96,6 +133,14 @@ public class BeaconStatesForkLayoutTests : BeaconApiFixture
                 break;
             case "finality_checkpoints":
                 Assert.That(data.GetProperty("finalized").GetProperty("epoch").GetString(), Is.EqualTo((100 + Marker(fork)).ToString()));
+                break;
+            case "validators/63":
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(data.GetProperty("index").GetString(), Is.EqualTo("63"));
+                    Assert.That(data.GetProperty("balance").GetString(), Is.EqualTo(BalanceOf(fork, 63).ToString()));
+                    Assert.That(data.GetProperty("validator").GetProperty("pubkey").GetString(), Is.EqualTo(new BlsPublicKey([0xe0, 63, .. new byte[46]]).ToString()));
+                }
                 break;
             case "validators":
             case "validator_balances":
@@ -193,7 +238,7 @@ public class BeaconStatesForkLayoutTests : BeaconApiFixture
     private static ulong BalanceOf(string fork, int i) => 32_000_000_000 + (ulong)(Marker(fork) * 10 + i);
     private static ulong LookaheadAt(string fork, int i) => (ulong)((i + Marker(fork)) % 3);
 
-    private static byte[] EncodedState(string fork)
+    private static byte[] EncodedState(string fork, int validatorCount = ValidatorCount)
     {
         ulong slot = StateSlot(fork);
         int marker = Marker(fork);
@@ -221,9 +266,18 @@ public class BeaconStatesForkLayoutTests : BeaconApiFixture
         state.CurrentSyncCommittee = new SyncCommittee { Pubkeys = members, AggregatePubkey = FilledPubkey(0x47) };
         state.NextSyncCommittee = new SyncCommittee { Pubkeys = members, AggregatePubkey = FilledPubkey(0x48) };
 
-        if (fork == "electra") return BeaconStateElectra.Encode(state);
-        if (fork == "fulu") return BeaconStateFulu.Encode(state);
-        BeaconStateGloas gloas = GloasForkTransition.UpgradeToGloas(state, Spec);
+        BeaconStateGloas? gloas = fork == "gloas" ? GloasForkTransition.UpgradeToGloas(state, Spec) : null;
+        if (validatorCount > ValidatorCount)
+        {
+            state.Validators = [.. state.Validators!, .. Enumerable.Repeat(first, validatorCount - ValidatorCount)];
+            state.Balances = [.. state.Balances!, .. new ulong[validatorCount - ValidatorCount]];
+            if (gloas is not null)
+            {
+                gloas.Validators = state.Validators;
+                gloas.Balances = state.Balances;
+            }
+        }
+        if (gloas is null) return fork == "electra" ? BeaconStateElectra.Encode(state) : BeaconStateFulu.Encode(state);
         gloas.Builders = [new Builder { Pubkey = FilledPubkey(0x49), Version = 255, ExecutionAddress = Nethermind.Core.Address.Zero, Balance = ulong.MaxValue }];
         gloas.BuilderPendingPayments![0].Withdrawal!.Amount = 123;
         gloas.BuilderPendingWithdrawals = [new BuilderPendingWithdrawal { FeeRecipient = Nethermind.Core.Address.Zero, BuilderIndex = 9 }];
