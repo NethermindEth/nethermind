@@ -41,6 +41,9 @@ namespace Nethermind.Blockchain
 
         private const int BestKnownSearchLimit = 256_000_000;
 
+        // Bounds the levels held at once by a batched read of a long level range.
+        private const int LevelReadChunk = 1024;
+
         private readonly IBlockStore _blockStore;
         private readonly IHeaderStore _headerStore;
         private readonly IDb _blockInfoDb;
@@ -925,7 +928,24 @@ namespace Nethermind.Blockchain
             if (Logger.IsDebug) Logger.Debug($"Deleting invalid block {invalidBlock.ToString(Block.Format.FullHashAndNumber)}");
 
             ReportBadBlock(invalidBlock);
+            DeleteBranchFrom(invalidBlock.Hash);
+        }
 
+        public void DeleteBranchWithoutBadBlockReport(BlockHeader branchRoot)
+        {
+            if (branchRoot.Hash is null)
+            {
+                if (Logger.IsWarn) Logger.Warn($"{nameof(DeleteBranchWithoutBadBlockReport)} call has been made for a block with a null hash.");
+                return;
+            }
+
+            if (Logger.IsDebug) Logger.Debug($"Deleting branch from {branchRoot.ToString(BlockHeader.Format.FullHashAndNumber)}");
+
+            DeleteBranchFrom(branchRoot.Hash);
+        }
+
+        private void DeleteBranchFrom(Hash256 branchRootHash)
+        {
             BestSuggestedHeader = Head?.Header;
             BestSuggestedBody = Head;
 
@@ -934,7 +954,7 @@ namespace Nethermind.Blockchain
 
             try
             {
-                DeleteBlocks(invalidBlock.Hash!);
+                DeleteBlocks(branchRootHash);
             }
             finally
             {
@@ -1217,13 +1237,12 @@ namespace Nethermind.Blockchain
 
             using (BatchWrite batch = _chainLevelInfoRepository.StartBatch())
             {
-                if (previousHeadNumber > lastNumber)
+                for (ulong levelNumber = previousHeadNumber; levelNumber > lastNumber;)
                 {
-                    for (ulong i = 0; i < previousHeadNumber - lastNumber; i++)
+                    using IOwnedReadOnlyList<ChainLevelInfo?> levels = LoadLevelsDownTo(levelNumber, lastNumber);
+                    for (int i = 0; i < levels.Count; i++, levelNumber--)
                     {
-                        ulong levelNumber = previousHeadNumber - i;
-
-                        ChainLevelInfo? level = LoadLevel(levelNumber);
+                        ChainLevelInfo? level = levels[i];
                         if (level is not null)
                         {
                             if (BlockRemovedFromMain is not null && level.MainChainBlock?.BlockHash is { } removedHash)
@@ -1417,41 +1436,72 @@ namespace Nethermind.Blockchain
 
             using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
 
-            for (ulong j = clearBeaconMainChainStartPoint; j > blockInfos[^1].BlockNumber; --j)
+            for (ulong j = clearBeaconMainChainStartPoint; j > blockInfos[^1].BlockNumber;)
             {
-                ChainLevelInfo? level = LoadLevel(j);
-                if (level is not null)
+                using IOwnedReadOnlyList<ChainLevelInfo?> levels = LoadLevelsDownTo(j, blockInfos[^1].BlockNumber);
+                for (int k = 0; k < levels.Count; k++, j--)
                 {
-                    for (int i = 0; i < level.BlockInfos.Length; ++i)
+                    ChainLevelInfo? level = levels[k];
+                    if (level is not null)
                     {
-                        level.BlockInfos[i].Metadata &= ~BlockMetadata.BeaconMainChain;
-                    }
-
-                    _chainLevelInfoRepository.PersistLevel(j, level, batch);
-                }
-            }
-
-            foreach (BlockInfo blockInfo in blockInfos)
-            {
-                ulong levelNumber = blockInfo.BlockNumber;
-                ChainLevelInfo? level = LoadLevel(levelNumber);
-                if (level is not null)
-                {
-                    for (int i = 0; i < level.BlockInfos.Length; ++i)
-                    {
-                        if (level.BlockInfos[i].BlockHash == blockInfo.BlockHash)
-                        {
-                            level.BlockInfos[i].Metadata |= BlockMetadata.BeaconMainChain;
-                        }
-                        else
+                        for (int i = 0; i < level.BlockInfos.Length; ++i)
                         {
                             level.BlockInfos[i].Metadata &= ~BlockMetadata.BeaconMainChain;
                         }
-                    }
 
-                    _chainLevelInfoRepository.PersistLevel(levelNumber, level, batch);
+                        _chainLevelInfoRepository.PersistLevel(j, level, batch);
+                    }
                 }
             }
+
+            for (int start = 0; start < blockInfos.Count; start += LevelReadChunk)
+            {
+                int count = Math.Min(LevelReadChunk, blockInfos.Count - start);
+                using ArrayPoolListRef<ulong> levelNumbers = new(count);
+                for (int k = 0; k < count; k++)
+                {
+                    levelNumbers.Add(blockInfos[start + k].BlockNumber);
+                }
+
+                using IOwnedReadOnlyList<ChainLevelInfo?> levels = _chainLevelInfoRepository.MultiLoadLevel(levelNumbers);
+                for (int k = 0; k < count; k++)
+                {
+                    BlockInfo blockInfo = blockInfos[start + k];
+                    ChainLevelInfo? level = levels[k];
+                    if (level is not null)
+                    {
+                        for (int i = 0; i < level.BlockInfos.Length; ++i)
+                        {
+                            if (level.BlockInfos[i].BlockHash == blockInfo.BlockHash)
+                            {
+                                level.BlockInfos[i].Metadata |= BlockMetadata.BeaconMainChain;
+                            }
+                            else
+                            {
+                                level.BlockInfos[i].Metadata &= ~BlockMetadata.BeaconMainChain;
+                            }
+                        }
+
+                        _chainLevelInfoRepository.PersistLevel(blockInfo.BlockNumber, level, batch);
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Loads the levels from <paramref name="highest"/> down to above <paramref name="lowestExclusive"/>, at most
+        /// <see cref="LevelReadChunk"/> of them, in that order.
+        /// </summary>
+        private IOwnedReadOnlyList<ChainLevelInfo?> LoadLevelsDownTo(ulong highest, ulong lowestExclusive)
+        {
+            int count = (int)Math.Min(LevelReadChunk, highest - lowestExclusive);
+            using ArrayPoolListRef<ulong> levelNumbers = new(count);
+            for (int i = 0; i < count; i++)
+            {
+                levelNumbers.Add(highest - (ulong)i);
+            }
+
+            return _chainLevelInfoRepository.MultiLoadLevel(levelNumbers);
         }
 
         private (ulong BlockNumber, Hash256 BlockHash) _syncPivot;
@@ -2093,24 +2143,28 @@ namespace Nethermind.Blockchain
                 if (newHeadBlock is not null)
                     ClearStaleMarkersAbove(newHeadBlock.Number, batch, (startNumber, endNumber.Value), scanThrough: Head!.Number);
 
-                for (ulong i = endNumber.Value; i >= startNumber; i--)
+                for (ulong i = endNumber.Value; i >= startNumber;)
                 {
-                    ChainLevelInfo? chainLevelInfo = _chainLevelInfoRepository.LoadLevel(i);
-                    if (chainLevelInfo is null)
+                    using IOwnedReadOnlyList<ChainLevelInfo?> levels = LoadLevelsDownTo(i, startNumber - 1);
+                    for (int k = 0; k < levels.Count; k++, i--)
                     {
-                        continue;
-                    }
+                        ChainLevelInfo? chainLevelInfo = levels[k];
+                        if (chainLevelInfo is null)
+                        {
+                            continue;
+                        }
 
-                    _chainLevelInfoRepository.Delete(i, batch);
-                    deleted++;
+                        _chainLevelInfoRepository.Delete(i, batch);
+                        deleted++;
 
-                    foreach (BlockInfo blockInfo in chainLevelInfo.BlockInfos)
-                    {
-                        Hash256 blockHash = blockInfo.BlockHash;
-                        _blockInfoDb.Delete(blockHash);
-                        _blockStore.Delete(i, blockHash);
-                        _headerStore.Delete(blockHash);
-                        _balStore.Delete(i, blockHash);
+                        foreach (BlockInfo blockInfo in chainLevelInfo.BlockInfos)
+                        {
+                            Hash256 blockHash = blockInfo.BlockHash;
+                            _blockInfoDb.Delete(blockHash);
+                            _blockStore.Delete(i, blockHash);
+                            _headerStore.Delete(blockHash);
+                            _balStore.Delete(i, blockHash);
+                        }
                     }
                 }
             }

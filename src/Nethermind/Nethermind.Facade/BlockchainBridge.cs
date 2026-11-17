@@ -54,6 +54,7 @@ namespace Nethermind.Facade
         SimulateReadOnlyBlocksProcessingEnvPool simulateEnvPool,
         Lazy<IWitnessGeneratingBlockProcessingEnvFactory> witnessGeneratingBlockProcessingEnvFactory,
         IBlockTree blockTree,
+        IPoSSwitcher poSSwitcher,
         IBlockStore blockStore,
         IStateReader stateReader,
         ITxPool txPool,
@@ -257,13 +258,24 @@ namespace Nethermind.Facade
             return RunCall(scope.Component.WorldState, scope.Component.TransactionProcessor, header, tx, blobBaseFeeOverride, cancellationToken);
         }
 
-        /// <summary>The copy of <paramref name="header"/> a call runs in, which the overrides and <see cref="PrepareCall"/> modify.</summary>
-        private static BlockHeader CloneForCall(BlockHeader header, bool noBaseFee)
+        /// <summary>
+        /// The copy of <paramref name="header"/> a call runs in, which carries the restored <see cref="BlockHeader.IsPostMerge"/>
+        /// and which the overrides and <see cref="PrepareCall"/> modify.
+        /// </summary>
+        private BlockHeader CloneForCall(BlockHeader header, bool noBaseFee)
         {
-            BlockHeader callHeader = header.Clone();
+            BlockHeader callHeader = CloneWithPostMergeFlag(header);
             callHeader.GasUsed = 0;
             if (noBaseFee) callHeader.BaseFeePerGas = 0;
             return callHeader;
+        }
+
+        /// <summary>Copies <paramref name="header"/> with <see cref="BlockHeader.IsPostMerge"/> restored, before any override changes the copy.</summary>
+        private BlockHeader CloneWithPostMergeFlag(BlockHeader header)
+        {
+            BlockHeader copy = header.Clone();
+            poSSwitcher.RestorePostMergeForCall(copy);
+            return copy;
         }
 
         private static CallOutput StateUnavailable(BlockHeader header) =>
@@ -366,7 +378,7 @@ namespace Nethermind.Facade
         {
             executionReverted = false;
             if (GetUnsupportedBlockOverrideError(blockOverride) is { } error) return Result<TxFrame[]>.Fail(error);
-            BlockHeader executionHeader = header.Clone();
+            BlockHeader executionHeader = CloneWithPostMergeFlag(header);
             // The requested block's context, as the gas estimate that follows uses.
             if (HasOverrides(stateOverride, null, blockOverride))
             {
@@ -797,7 +809,6 @@ namespace Nethermind.Facade
                     transaction.MaxFeePerBlobGas = blobBaseFee;
                 }
             }
-            blockHeader.IsPostMerge = blockHeader.Difficulty == 0;
             transaction.Hash = transaction.Type <= TxType.FrameTx ? null : transaction.CalculateHash();
             return new BlockExecutionContext(blockHeader, releaseSpec, blobBaseFee);
         }

@@ -3,6 +3,7 @@
 
 using System.Text.Json.Serialization;
 using Nethermind.Core;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Serialization.Json;
 
@@ -45,6 +46,13 @@ public class SetCodeTransactionForRpc : EIP1559TransactionForRpc, IFromTransacti
 
         return tx;
     }
+
+    internal override string? GetTraceCallUnsupportedField(IReleaseSpec spec) =>
+        base.GetTraceCallUnsupportedField(spec)
+        ?? (!spec.IsEip7702Enabled && AuthorizationList is not null ? "setcode" : null);
+
+    internal override string? GetTraceCallRecipientError() =>
+        To is null && AuthorizationList is not null ? TxErrorMessages.NotAllowedCreateTransaction : null;
 
     public new static SetCodeTransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData)
         => new(tx, extraData);

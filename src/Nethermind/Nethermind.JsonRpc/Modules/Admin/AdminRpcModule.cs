@@ -21,6 +21,7 @@ using System.Text.Json;
 using Nethermind.State;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Serialization.FluentRlp;
+using Nethermind.JsonRpc.Exceptions;
 
 
 namespace Nethermind.JsonRpc.Modules.Admin;
@@ -184,6 +185,10 @@ public class AdminRpcModule : IAdminRpcModule
         catch (KeyNotFoundException)
         {
             return ResultWrapper<string>.Fail($"Wrong subscription type: {subscriptionName}.");
+        }
+        catch (LimitExceededException e)
+        {
+            return ResultWrapper<string>.Fail(e.Message, ErrorCodes.LimitExceeded, isTemporary: true);
         }
         catch (ArgumentException e)
         {

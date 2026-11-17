@@ -34,7 +34,7 @@ public abstract class TracedSimulateTestsBase<TTrace>
     [Test]
     public async Task Test_simulate_serialization()
     {
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
 
         SimulatePayload<TransactionForRpc> payload = EthSimulateTestsBlocksAndTransactions.CreateSerializationPayload(chain);
 
@@ -57,7 +57,7 @@ public abstract class TracedSimulateTestsBase<TTrace>
         """)]
     public async Task Test_simulate_eth_moved()
     {
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
 
         ulong nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
         Transaction txMainnetAtoB = EthSimulateTestsBlocksAndTransactions.GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1, type: TxType.Legacy);
@@ -90,7 +90,7 @@ public abstract class TracedSimulateTestsBase<TTrace>
     [Test(Description = "Verifies that a temporary forked blockchain can make transactions, blocks and report on them")]
     public async Task Test_simulate_transactions_forced_fail()
     {
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
 
         ulong nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
 

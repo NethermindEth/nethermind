@@ -52,7 +52,7 @@ public class FlatSnapTrieFactoryTests
         public void SetAccount(Address addr, Account? account) { }
         public void SetStorage(Address addr, in UInt256 slot, in UInt256? value) { }
         public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) { }
-        public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) { }
+        public void SetStorageTrieNode(in ValueHash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) { }
         public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) { }
         public void SetAccountRaw(in ValueHash256 addrHash, Account account) { }
         public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) { }

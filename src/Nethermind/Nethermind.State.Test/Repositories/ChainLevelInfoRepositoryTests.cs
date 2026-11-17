@@ -20,7 +20,6 @@ using Nethermind.Db.Rocks.Config;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.FluentRlp;
-using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using NUnit.Framework;
 using Testably.Abstractions;
@@ -138,41 +137,46 @@ public class ChainLevelInfoRepositoryTests
     }
 
     [Test]
-    public void MultiLoadLevel_WithFixedOrMixedKeyLengths_UsesExpectedBatchPath([Values] bool mixedLengths)
+    public void MultiLoadLevel_WithFixedOrMixedKeyLengths_BatchesEachKeyLengthOnce([Values] bool mixedLengths)
     {
-        BatchTrackingDb db = new(mixedLengths);
+        BatchTrackingDb db = new();
         using IContainer container = CreateContainer(db);
         IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
-        ulong[] requested = mixedLengths ? [255, 256, 255] : [1, 2, 1];
+        ulong[] requested = mixedLengths ? [65_536, 255, 256, 255, 65_536] : [1, 2, 1];
         foreach (ulong number in requested) repository.PersistLevel(number, CreateBatchLevel(number));
+        ((IClearableCache)repository).ClearCache();
 
         using ArrayPoolListRef<ulong> numbers = new(requested);
         using IOwnedReadOnlyList<ChainLevelInfo> levels = repository.MultiLoadLevel(numbers);
         Assert.That(levels.Count, Is.EqualTo(requested.Length));
         for (int i = 0; i < requested.Length; i++) AssertChainLevelInfo(levels[i], CreateBatchLevel(requested[i]));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(db.DecodedBatchReads, Is.EqualTo(mixedLengths ? 0 : 1));
-            Assert.That(db.LegacyBatchReads, Is.EqualTo(mixedLengths ? 1 : 0));
-        }
+        Assert.That(db.BatchKeyLengths, Is.EqualTo(mixedLengths ? new[] { 1, 2, 3 } : new[] { 1 }));
     }
 
     [Test]
-    public void MultiLoadLevel_WhenStoredValueChanges_BypassesSingleLevelCache([Values] bool native)
+    public void MultiLoadLevel_serves_a_level_persisted_in_an_open_batch_and_reads_the_others([Values] bool native)
     {
         using TempPath directory = TempPath.GetTempDirectory();
         using IDb db = CreateBatchDb(native, directory);
         using IContainer container = CreateContainer(db);
         IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
-        ChainLevelInfo cached = CreateBatchLevel(1);
-        ChainLevelInfo replacement = CreateBatchLevel(2);
-        repository.PersistLevel(1, cached);
-        db.PutSpan(1UL.ToBigEndianSpanWithoutLeadingZeros(out _), Rlp.Encode(replacement));
-        Assert.That(repository.LoadLevel(1), Is.SameAs(cached), "precondition: the single-key cache still has the old level");
+        ChainLevelInfo stored = CreateBatchLevel(2);
+        repository.PersistLevel(1, CreateBatchLevel(1));
+        repository.PersistLevel(2, stored);
+        ((IClearableCache)repository).ClearCache();
 
-        using ArrayPoolListRef<ulong> numbers = new(1, 1UL);
+        using BatchWrite batch = repository.StartBatch();
+        ChainLevelInfo pending = CreateBatchLevel(3);
+        repository.PersistLevel(1, pending, batch);
+
+        using ArrayPoolListRef<ulong> numbers = new(3, 2UL, 1UL, 4UL);
         using IOwnedReadOnlyList<ChainLevelInfo> levels = repository.MultiLoadLevel(numbers);
-        AssertChainLevelInfo(levels[0], replacement);
+        using (Assert.EnterMultipleScope())
+        {
+            AssertChainLevelInfo(levels[0], stored);
+            Assert.That(levels[1], Is.SameAs(pending), "the level of the uncommitted batch must win over the stored one");
+            Assert.That(levels[2], Is.Null);
+        }
     }
 
     [Test]
@@ -609,25 +613,13 @@ public class ChainLevelInfoRepositoryTests
         }
     }
 
-    private sealed class BatchTrackingDb(bool mixedLengths) : MemDb, IDb, IBatchReadOnlyDb
+    private sealed class BatchTrackingDb : MemDb, IBatchReadOnlyDb
     {
-        public int DecodedBatchReads { get; private set; }
-        public int LegacyBatchReads { get; private set; }
-
-        KeyValuePair<byte[], byte[]>[] IDb.this[byte[][] keys]
-        {
-            get
-            {
-                if (!mixedLengths) throw new InvalidOperationException("Fixed-width keys must use decoded batch reads.");
-                LegacyBatchReads++;
-                return base[keys];
-            }
-        }
+        public List<int> BatchKeyLengths { get; } = [];
 
         void IBatchReadOnlyDb.GetMany<T, TDecoder>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values, TDecoder decoder)
         {
-            if (mixedLengths) throw new InvalidOperationException("Mixed-width keys must use one legacy batch.");
-            DecodedBatchReads++;
+            BatchKeyLengths.Add(keyLength);
             for (int i = 0; i < values.Length; i++)
             {
                 byte[] value = Get(keys.Slice(i * keyLength, keyLength));
