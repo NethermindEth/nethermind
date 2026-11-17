@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Encoding;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
 using NUnit.Framework;
@@ -40,8 +42,8 @@ public class VoteDecoderTests
     {
         VoteDecoder decoder = new();
 
-        Rlp encoded = decoder.Encode(vote);
-        RlpReader decoderContext = new(encoded.Bytes);
+        byte[] encoded = decoder.Encode(vote);
+        RlpReader decoderContext = new(encoded);
         Vote decoded = decoder.DecodeGuardNotNull(ref decoderContext);
 
         Assert.That(decoded, Is.EqualTo(vote).UsingXdcComparer(compareSigner: false));
@@ -58,7 +60,7 @@ public class VoteDecoderTests
 
         VoteDecoder decoder = new();
         byte[] bytes = new byte[decoder.GetLength(vote, RlpBehaviors.None)];
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
         decoder.Encode(ref writer, vote);
 
         RlpReader decoderContext = new(bytes);
@@ -77,10 +79,10 @@ public class VoteDecoderTests
         );
 
         VoteDecoder decoder = new();
-        Rlp encoded = decoder.Encode(vote);
+        byte[] encoded = decoder.Encode(vote);
 
         int expectedTotal = decoder.GetLength(vote, RlpBehaviors.None);
-        Assert.That(encoded.Bytes.Length, Is.EqualTo(expectedTotal),
+        Assert.That(encoded.Length, Is.EqualTo(expectedTotal),
             "Encoded total length should match GetLength().");
     }
 
@@ -95,14 +97,14 @@ public class VoteDecoderTests
 
         VoteDecoder decoder = new();
 
-        Rlp normalEncoded = decoder.Encode(vote, RlpBehaviors.None);
+        byte[] normalEncoded = decoder.Encode(vote, RlpBehaviors.None);
 
-        Rlp sealingEncoded = decoder.Encode(vote, RlpBehaviors.ForSealing);
+        byte[] sealingEncoded = decoder.Encode(vote, RlpBehaviors.ForSealing);
 
-        Assert.That(sealingEncoded.Bytes.Length, Is.LessThan(normalEncoded.Bytes.Length),
+        Assert.That(sealingEncoded.Length, Is.LessThan(normalEncoded.Length),
             "ForSealing encoding should be shorter as it omits the signature.");
 
-        RlpReader context = new(sealingEncoded.Bytes);
+        RlpReader context = new(sealingEncoded);
         Vote decoded = decoder.DecodeGuardNotNull(ref context, RlpBehaviors.ForSealing);
 
         using (Assert.EnterMultipleScope())
@@ -119,16 +121,16 @@ public class VoteDecoderTests
     {
         VoteDecoder decoder = new();
 
-        Rlp encoded = decoder.Encode((Vote)null!);
+        byte[] encoded = decoder.Encode((Vote)null!);
 
-        Assert.That(encoded, Is.EqualTo(Rlp.OfEmptyList));
+        Assert.That(encoded, Is.EqualTo(RlpTestHelper.OfEmptyList));
     }
 
     [Test]
     public void Decode_Null_ReturnsNull()
     {
         VoteDecoder decoder = new();
-        RlpReader context = new(Rlp.OfEmptyList.Bytes);
+        RlpReader context = new(RlpTestHelper.OfEmptyList);
         Vote? decoded = decoder.Decode(ref context);
 
         Assert.That(decoded, Is.Null);
@@ -138,7 +140,7 @@ public class VoteDecoderTests
     public void Decode_EmptyByteArray_RlpReader_ReturnsNull()
     {
         VoteDecoder decoder = new();
-        RlpReader decoderContext = new(Rlp.OfEmptyList.Bytes);
+        RlpReader decoderContext = new(RlpTestHelper.OfEmptyList);
 
         Vote? decoded = decoder.Decode(ref decoderContext);
 

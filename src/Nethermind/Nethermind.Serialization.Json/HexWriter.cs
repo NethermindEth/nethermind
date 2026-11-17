@@ -213,7 +213,7 @@ public static class HexWriter
         ReadOnlySpan<byte> remaining = data;
         while (remaining.Length > 0)
         {
-            Span<byte> hex = writer.GetSpan(Math.Min(remaining.Length * 2, MaxHexRequest));
+            Span<byte> hex = writer.GetSpan(Math.Min(remaining.Length, MaxHexRequest / 2) * 2);
             int inputLen = Math.Min(remaining.Length, hex.Length / 2);
             HexEncoder.EncodeToHex(ref MemoryMarshal.GetReference(hex), remaining[..inputLen]);
             writer.Advance(inputLen * 2);
@@ -262,6 +262,7 @@ public static class HexWriter
     public static void WriteHexStringValue(Utf8JsonWriter writer, ReadOnlySpan<byte> data)
     {
         const int StackThreshold = 512;
+        ByteArrayConverter.ThrowIfTooLongForHexString(data.Length);
         int tokenLength = 4 + data.Length * 2;
         // data is unbounded (e.g. a whole memory snapshot), so only stay on the stack while small.
         byte[]? rented = tokenLength > StackThreshold ? ArrayPool<byte>.Shared.Rent(tokenLength) : null;

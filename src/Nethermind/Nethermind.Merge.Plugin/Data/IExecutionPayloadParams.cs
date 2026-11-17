@@ -203,7 +203,7 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
                 return ValidationResult.Invalid;
             }
 
-            if (reconstructedBlock.Data.CalculateHash() == executionPayload.BlockHash)
+            if (reconstructedBlock.Data.Header.CalculateValueHash() == executionPayload.BlockHash)
             {
                 error = "Block access list must not be set before engine_newPayloadV5";
                 return ValidationResult.Fail;

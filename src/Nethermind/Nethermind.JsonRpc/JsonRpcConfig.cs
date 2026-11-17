@@ -82,6 +82,8 @@ public class JsonRpcConfig : IJsonRpcConfig
     public int JsonSerializationMaxDepth { get; set; } = EthereumJsonSerializer.DefaultMaxDepth;
     public long? MaxBatchResponseBodySize { get; set; } = 32.MiB;
     public long? MaxSimulateBlocksCap { get; set; } = 256;
+    public long? MaxSimulateCallsCap { get; set; } = 10000;
+    public long? MaxSimulateCallsPerBlockCap { get; set; } = 5000;
     public int EstimateErrorMargin { get; set; } = 150;
     public ulong RpcTxFeeCap { get; set; } = (ulong)1.Ether;
     public bool EnableEthSignTransaction { get; set; }
@@ -98,5 +100,7 @@ public class JsonRpcConfig : IJsonRpcConfig
     public int RpcTxSyncDefaultTimeoutMs { get; set; } = 20_000;
     public int RpcTxSyncMaxTimeoutMs { get; set; } = 60_000;
     public int RpcTxSyncMaxConcurrentRequests { get; set; } = 128;
+    public int FeeHistoryMaxBlockCount { get; set; } = 1024;
+    public int? FeeHistoryMaxConcurrentRequests { get; set; } = null;
     public string[] AdditionalTrustedNetworks { get; set; } = [];
 };

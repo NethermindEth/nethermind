@@ -80,7 +80,7 @@ namespace Nethermind.Network.Rlpx
                         }
                     case FrameDecoderState.WaitingForPayload:
                         {
-                            ProcessOneBlock(input);
+                            ProcessPayloadBlocks(input);
                             if (_remainingPayloadBlocks == 0)
                             {
                                 _state = FrameDecoderState.WaitingForPayloadMac;
@@ -119,18 +119,14 @@ namespace Nethermind.Network.Rlpx
             }
             try
             {
-                for (int offset = 0; offset < _frameSize; offset += Frame.BlockSize)
-                {
-                    input.GetBytes(payloadIndex + offset, _frameBlockBytes);
-                    _authenticator.UpdateIngressMac(_frameBlockBytes, false);
-                }
+                byte[] array = input.Array;
+                int arrayIndex = input.ArrayOffset + payloadIndex;
+                _authenticator.UpdateIngressMac(array.AsSpan(arrayIndex, _frameSize));
                 input.GetBytes(payloadIndex + _frameSize, _macBytes);
                 if (!_authenticator.CheckMac(_macBytes, false)) ThrowInvalidMac("payload");
 
                 // The authenticated header MAC is no longer needed; use its space for the plaintext header.
                 input.SetBytes(headerIndex, _decryptedBytes);
-                byte[] array = input.Array;
-                int arrayIndex = input.ArrayOffset + payloadIndex;
                 _cipher.Decrypt(array, arrayIndex, _frameSize, array, arrayIndex);
                 input.SkipBytes(_frameSize + Frame.MacSize);
                 output.Add(frame);
@@ -207,6 +203,26 @@ namespace Nethermind.Network.Rlpx
         /// is safe because the plaintext is confined to <see cref="_innerBuffer"/>, which <see cref="PassFrame"/>
         /// only forwards once <see cref="AuthenticatePayload"/> has succeeded.
         /// </remarks>
+        private void ProcessPayloadBlocks(IByteBuffer input)
+        {
+            if (!input.HasArray || !_innerBuffer.HasArray)
+            {
+                ProcessOneBlock(input);
+                return;
+            }
+
+            int blocks = Math.Min(_remainingPayloadBlocks, input.ReadableBytes / Frame.BlockSize);
+            int length = blocks * Frame.BlockSize;
+            byte[] array = input.Array;
+            int arrayIndex = input.ArrayOffset + input.ReaderIndex;
+            int writerIndex = _innerBuffer.WriterIndex;
+            _authenticator.UpdateIngressMac(array.AsSpan(arrayIndex, length));
+            _cipher.Decrypt(array, arrayIndex, length, _innerBuffer.Array, _innerBuffer.ArrayOffset + writerIndex);
+            _innerBuffer.SetWriterIndex(writerIndex + length);
+            input.SkipBytes(length);
+            _remainingPayloadBlocks -= blocks;
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void ProcessOneBlock(IByteBuffer input)
         {

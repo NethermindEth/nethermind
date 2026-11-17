@@ -100,6 +100,10 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
         return tx;
     }
 
+    internal override bool ShouldCheckFeesBeforeConversion() => Blobs is null;
+
+    internal override bool ShouldFillDefaultsOnSend() => false;
+
     public override Result FillDefaults(in TxFillContext context)
     {
         Result baseResult = base.FillDefaults(context);

@@ -24,6 +24,8 @@ public sealed class NullPersistedSnapshotCompactor : IPersistedSnapshotCompactor
         return ValueTask.CompletedTask;
     }
 
+    public int CompactReloaded(ulong persistedBlockNumber, CancellationToken cancellationToken) => 0;
+
     // Shared singleton: disposal must be a safe no-op so a container or forwarding caller
     // can dispose it without breaking the shared instance.
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;

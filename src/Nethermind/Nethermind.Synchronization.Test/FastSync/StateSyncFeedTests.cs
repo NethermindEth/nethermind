@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -234,6 +235,41 @@ namespace Nethermind.Synchronization.Test.FastSync
         }
 
         [Test]
+        public async Task Releases_saved_node_caches_after_sync_and_can_sync_again()
+        {
+            string[] fieldNames = ["_alreadySavedNode", "_alreadySavedCode"];
+            object?[] GetCollections(TreeSync treeSync) =>
+                fieldNames.Select(f => typeof(TreeSync).GetField(f, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(treeSync)).ToArray();
+
+            RemoteDbContext remote = new(_logManager);
+            remote.CodeDb.Set(Keccak.Compute(TrieScenarios.Code0), TrieScenarios.Code0);
+            remote.StateTree.Set(TestItem.AddressA, TrieScenarios.AccountJustState0.WithChangedCodeHash(Keccak.Compute(TrieScenarios.Code0)));
+            remote.StateTree.Commit();
+
+            await using IContainer container = PrepareDownloader(remote);
+            IStateSyncTestOperation local = container.Resolve<IStateSyncTestOperation>();
+            SafeContext ctx = container.Resolve<SafeContext>();
+            object?[] collectionsDuringSync = GetCollections(ctx.TreeFeed);
+
+            await ActivateAndWait(ctx);
+            local.CompareTrees(remote, _logger, "FIRST");
+
+            object?[] collectionsAfterSync = GetCollections(ctx.TreeFeed);
+            for (int i = 0; i < fieldNames.Length; i++)
+            {
+                Assert.That(collectionsAfterSync[i], Is.Not.SameAs(collectionsDuringSync[i]), fieldNames[i]);
+            }
+
+            remote.CodeDb.Set(Keccak.Compute(TrieScenarios.Code1), TrieScenarios.Code1);
+            remote.StateTree.Set(TestItem.AddressB, TrieScenarios.AccountJustState0.WithChangedCodeHash(Keccak.Compute(TrieScenarios.Code1)));
+            remote.StateTree.Commit();
+            await ctx.SuggestBlocksWithUpdatedRootHash(remote.StateTree.RootHash);
+
+            await ActivateAndWait(ctx);
+            local.CompareTrees(remote, _logger, "SECOND");
+        }
+
+        [Test]
         [TestCaseSource(nameof(Scenarios))]
         [Repeat(TestRepeatCount)]
         [Category("Flaky"), Retry(3)]
@@ -290,9 +326,9 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             StorageTree remoteStorageTree = new(remote.TrieStore.GetTrieStore(TestItem.AddressD), Keccak.EmptyTreeHash, LimboLogs.Instance);
             remoteStorageTree.Set(
-                Bytes.FromHexString("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb000"), new byte[] { 1 });
+                Bytes.FromHexString("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb0000000000000"), new byte[] { 1 });
             remoteStorageTree.Set(
-                Bytes.FromHexString("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb111"), new byte[] { 1 });
+                Bytes.FromHexString("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1111111111111"), new byte[] { 1 });
             remoteStorageTree.Set(
                 Bytes.FromHexString("eeeeeeeeeeeeeeeeeeeeeb000000000000000000000000000000000000000000"), new byte[] { 1 });
             remoteStorageTree.Set(

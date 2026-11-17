@@ -6,7 +6,9 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Snap;
@@ -140,20 +142,28 @@ public class SnapFlatStateServer(
         {
             byteLimit = Math.Max(Math.Min(byteLimit, ISnapStateServer.HardResponseByteLimit), 1);
 
-            AccountCollector accounts = new();
-            (long _, IByteArrayList proofs, _) = GetNodesFromTrieVisitor(
-                bundle,
-                stateId.StateRoot,
-                startingHash,
-                limitHash?.ToCommitment() ?? Keccak.MaxValue,
-                byteLimit,
-                null,
-                null,
-                accounts,
-                cancellationToken);
+            AccountCollector accounts = new(byteLimit);
+            try
+            {
+                (long _, IByteArrayList proofs, _) = GetNodesFromTrieVisitor(
+                    bundle,
+                    stateId.StateRoot,
+                    startingHash,
+                    limitHash?.ToCommitment() ?? Keccak.MaxValue,
+                    byteLimit,
+                    null,
+                    null,
+                    accounts,
+                    cancellationToken);
 
-            ArrayPoolList<PathWithAccount> nodes = accounts.Accounts;
-            return (nodes, proofs);
+                EncodedSnapEntries<PathWithAccount> nodes = accounts.Accounts;
+                return (nodes, proofs);
+            }
+            catch
+            {
+                accounts.Accounts.Dispose();
+                throw;
+            }
         }
     }
 
@@ -185,60 +195,66 @@ public class SnapFlatStateServer(
                 ? new StateTree(new CachedTrieStore(trieStore), logManager)
                 : new StateTree(trieStore, logManager);
 
-            ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>> responseNodes = new(accounts.Count);
-            for (int i = 0; i < accounts.Count; i++)
+            EncodedStorageRanges responseNodes = new(accounts.Count);
+            try
             {
-                if (responseSize > byteLimit || cancellationToken.IsCancellationRequested)
+                for (int i = 0; i < accounts.Count; i++)
                 {
-                    break;
+                    if (responseSize > byteLimit || cancellationToken.IsCancellationRequested)
+                    {
+                        break;
+                    }
+
+                    if (responseSize > 1 && (byteLimit - responseSize) < 10000)
+                    {
+                        break;
+                    }
+
+                    Hash256? storageRoot = GetStorageRootByPath(tree, stateId.StateRoot.ToCommitment(), accounts[i].Path.Bytes);
+                    if (storageRoot is null)
+                    {
+                        break;
+                    }
+
+                    ValueHash256 storagePath = accounts[i].Path;
+
+                    (long innerResponseSize, IByteArrayList proofs, bool stoppedEarly) = GetNodesFromTrieVisitor(
+                        bundle,
+                        stateId.StateRoot,
+                        startingHash1,
+                        limitHash1,
+                        byteLimit - responseSize,
+                        storagePath,
+                        storageRoot,
+                        responseNodes.Collector,
+                        cancellationToken);
+
+                    if (!responseNodes.TryCompleteAccount())
+                    {
+                        // return proof of absence
+                        return (responseNodes, proofs);
+                    }
+
+                    if (stoppedEarly || startingHash1 != Keccak.Zero)
+                    {
+                        return (responseNodes, proofs);
+                    }
+
+                    proofs.Dispose();
+                    responseSize += innerResponseSize;
                 }
-
-                if (responseSize > 1 && (byteLimit - responseSize) < 10000)
-                {
-                    break;
-                }
-
-                Hash256? storageRoot = GetStorageRootByPath(tree, stateId.StateRoot.ToCommitment(), accounts[i].Path.Bytes);
-                if (storageRoot is null)
-                {
-                    break;
-                }
-
-                ValueHash256 storagePath = accounts[i].Path;
-
-                PathWithStorageCollector pathWithStorageCollector = new();
-                (long innerResponseSize, IByteArrayList proofs, bool stoppedEarly) = GetNodesFromTrieVisitor(
-                    bundle,
-                    stateId.StateRoot,
-                    startingHash1,
-                    limitHash1,
-                    byteLimit - responseSize,
-                    storagePath,
-                    storageRoot,
-                    pathWithStorageCollector,
-                    cancellationToken);
-
-                if (pathWithStorageCollector.Slots.Count == 0)
-                {
-                    // return proof of absence
-                    return (responseNodes, proofs);
-                }
-
-                responseNodes.Add(pathWithStorageCollector.Slots);
-                if (stoppedEarly || startingHash1 != Keccak.Zero)
-                {
-                    return (responseNodes, proofs);
-                }
-
-                proofs.Dispose();
-                responseSize += innerResponseSize;
+            }
+            catch
+            {
+                responseNodes.Dispose();
+                throw;
             }
 
             return (responseNodes, EmptyByteArrayList.Instance);
         }
     }
 
-    private (long bytesSize, IByteArrayList proofs, bool stoppedEarly) GetNodesFromTrieVisitor(
+    private static (long bytesSize, IByteArrayList proofs, bool stoppedEarly) GetNodesFromTrieVisitor(
         ReadOnlySnapshotBundle bundle,
         in ValueHash256 rootHash,
         in ValueHash256 startingHash,
@@ -249,11 +265,9 @@ public class SnapFlatStateServer(
         RangeQueryVisitor.ILeafValueCollector valueCollector,
         CancellationToken cancellationToken)
     {
-        ReadOnlyStateTrieStoreAdapter trieStore = new(bundle);
-        PatriciaTree tree = new(trieStore, logManager);
         using RangeQueryVisitor visitor = new(startingHash, limitHash, valueCollector, byteLimit, ISnapStateServer.HardResponseNodeLimit, readFlags: RangeReadFlags, cancellationToken);
-        VisitingOptions opt = new();
-        tree.Accept(visitor, rootHash.ToCommitment(), opt, storageAddr: storage?.ToCommitment(), storageRoot: storageRoot?.ToCommitment());
+        new NodeRecordBufferVisitor<TreePathContext>(bundle, bundle.StateSnapshot, visitor, VisitingOptions.Default, null)
+            .Accept((storageRoot ?? rootHash).ToCommitment(), storage?.ToCommitment());
 
         IByteArrayList proofs = startingHash != Keccak.Zero || visitor.StoppedEarly ? new ByteArrayListAdapter(visitor.GetProofs()) : EmptyByteArrayList.Instance;
         return (visitor.GetBytesSize(), proofs, visitor.StoppedEarly);
@@ -278,7 +292,7 @@ public class SnapFlatStateServer(
 
                 return account.HasStorage ? account.StorageRoot.ToCommitment() : Keccak.EmptyTreeHash;
             }
-            catch (Exception exception) when (exception is RlpException or IndexOutOfRangeException or ArgumentOutOfRangeException)
+            catch (Exception exception) when (exception is RlpReaderException or IndexOutOfRangeException or ArgumentOutOfRangeException)
             {
                 return AccountDecoder.Instance.Decode(bytes)?.StorageRoot;
             }

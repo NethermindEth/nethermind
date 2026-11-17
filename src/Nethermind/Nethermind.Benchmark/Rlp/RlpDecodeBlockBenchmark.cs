@@ -26,8 +26,8 @@ namespace Nethermind.Benchmarks.Rlp
 
             _scenarios = new[]
             {
-                Serialization.Rlp.Rlp.Encode(Build.A.Block.WithNumber(1).TestObject).Bytes,
-                Serialization.Rlp.Rlp.Encode(Build.A.Block.WithNumber(1).WithTransactions(transactions).WithUncles(Build.A.BlockHeader.TestObject).WithMixHash(Keccak.EmptyTreeHash).TestObject).Bytes
+                Serialization.Rlp.Rlp.Encode(Build.A.Block.WithNumber(1).TestObject),
+                Serialization.Rlp.Rlp.Encode(Build.A.Block.WithNumber(1).WithTransactions(transactions).WithUncles(Build.A.BlockHeader.TestObject).WithMixHash(Keccak.EmptyTreeHash).TestObject)
             };
         }
 

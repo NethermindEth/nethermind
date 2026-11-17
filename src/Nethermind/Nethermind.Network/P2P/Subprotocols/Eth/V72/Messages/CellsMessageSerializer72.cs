@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
@@ -35,28 +36,31 @@ public class CellsMessageSerializer72 : IMessageSerializer<CellsMessage72>
 
     public int Serialize(Span<byte> destination, CellsMessage72 message)
     {
-        RlpWriter writer = new(destination);
-        writer.StartSequence(GetContentLength(message));
+        RlpWriter writer = RlpWriter.ContentWriter(destination);
+        RlpSequence sequence = writer.StartSequence(GetContentLength(message));
         writer.Encode(message.RequestId);
 
         int hashesLength = checked(message.Hashes.Length * Rlp.LengthOfKeccakRlp);
-        writer.StartSequence(hashesLength);
+        RlpSequence hashes = writer.StartSequence(hashesLength);
 
         foreach (ValueHash256 hash in message.Hashes)
         {
             writer.Encode(hash);
         }
 
+        writer.EndSequence(hashes);
         int cellsLength = GetCellsContentLength(message.Cells);
-        writer.StartSequence(cellsLength);
+        RlpSequence cellGroups = writer.StartSequence(cellsLength);
 
         foreach (byte[][] cells in message.Cells)
         {
             EncodeCellGroup(ref writer, cells);
         }
 
+        writer.EndSequence(cellGroups);
         writer.Encode(message.CellMask);
-        return writer.Position;
+        writer.EndSequence(sequence);
+        return writer.Length;
     }
 
     public CellsMessage72 Deserialize(ReadOnlySpan<byte> data)
@@ -67,40 +71,40 @@ public class CellsMessageSerializer72 : IMessageSerializer<CellsMessage72>
         return message;
     }
 
-    private CellsMessage72 Deserialize(ref RlpReader ctx)
+    private CellsMessage72 Deserialize(ref RlpReader reader)
     {
-        int sequenceLength = ctx.ReadSequenceLength();
-        int checkPosition = ctx.Position + sequenceLength;
+        RlpReader ctx = reader.EnterSequence(out int itemLength);
         long requestId = ctx.DecodeLong();
 
         using ArrayPoolList<ValueHash256> hashes = ctx.DecodeNonNullArrayPoolList(static (ref RlpReader c) => DecodeTransactionHash(ref c), limit: HashesRlpLimit);
 
-        int cellsSequenceLength = ctx.ReadSequenceLength();
+        RlpReader cellsReader = ctx.EnterSequence(out int cellsItemLength);
+        int cellsSequenceLength = cellsReader.Remaining;
         if (cellsSequenceLength > Eth72ProtocolHandler.MaxCellsMessageBytes)
         {
             throw new RlpLimitException($"Too much cell data in {nameof(CellsMessage72)}: {cellsSequenceLength}.");
         }
 
-        int cellsEnd = ctx.Position + cellsSequenceLength;
         byte[][][] cellsByTx = hashes.Count == 0 ? [] : new byte[hashes.Count][][];
         int cellGroupCount = 0;
-        while (ctx.Position < cellsEnd)
+        while (cellsReader.HasNext)
         {
             if (cellGroupCount >= hashes.Count)
             {
-                throw new RlpException($"Too many cell groups in {nameof(CellsMessage72)}. Expected {hashes.Count}.");
+                throw new RlpReaderException($"Too many cell groups in {nameof(CellsMessage72)}. Expected {hashes.Count}.");
             }
 
-            cellsByTx[cellGroupCount] = ctx.DecodeByteArrays(_cellsPerTransactionRlpLimit, innerSize: Ckzg.BytesPerCell);
+            cellsByTx[cellGroupCount] = cellsReader.DecodeByteArrays(_cellsPerTransactionRlpLimit, innerSize: Ckzg.BytesPerCell);
             cellGroupCount++;
         }
 
+        ctx.ExitSequence(cellsReader, cellsItemLength);
         byte[] cellMask = ctx.DecodeByteArray(size: BlobCellMask.FixedByteLength);
 
-        ctx.Check(checkPosition);
+        reader.ExitSequence(ctx, itemLength);
         if (cellGroupCount != hashes.Count)
         {
-            throw new RlpException($"Wrong number of cell groups in {nameof(CellsMessage72)}. Expected {hashes.Count}, got {cellGroupCount}.");
+            throw new RlpReaderException($"Wrong number of cell groups in {nameof(CellsMessage72)}. Expected {hashes.Count}, got {cellGroupCount}.");
         }
 
         int cellIndexCount = BlobCellMask.FromBytes(cellMask).Count;
@@ -142,18 +146,20 @@ public class CellsMessageSerializer72 : IMessageSerializer<CellsMessage72>
             contentLength += Rlp.LengthOf(cells[i]);
         }
 
-        writer.StartSequence(contentLength);
+        RlpSequence sequence = writer.StartSequence(contentLength);
         for (int i = 0; i < cells.Length; i++)
         {
             writer.Encode(cells[i]);
         }
+
+        writer.EndSequence(sequence);
     }
 
     private void ValidateCellGroup(byte[][] cells, int cellIndexCount)
     {
         if (cellIndexCount == 0 || cells.Length == 0 || cells.Length % cellIndexCount != 0)
         {
-            throw new RlpException($"Cell group in {nameof(CellsMessage72)} is inconsistent with its cell mask.");
+            throw new RlpReaderException($"Cell group in {nameof(CellsMessage72)} is inconsistent with its cell mask.");
         }
 
         int blobCount = cells.Length / cellIndexCount;

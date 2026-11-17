@@ -21,6 +21,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
     private const ushort HexPrefix = 0x7830;
     private const int InlineHexBufferLength = 256;
     private const int MediumInlineHexBufferLength = 2048;
+    private static readonly int MaxHexStringBytes = (Array.MaxLength - 4) / 2;
 
     public override byte[]? Read(
         ref Utf8JsonReader reader,
@@ -327,6 +328,8 @@ public class ByteArrayConverter : JsonConverter<byte[]>
     [SkipLocalsInit]
     public static void Convert(Utf8JsonWriter writer, ReadOnlySpan<byte> bytes, bool skipLeadingZeros = true, bool addHexPrefix = true)
     {
+        ThrowIfTooLongForHexString(bytes.Length);
+
         int leadingNibbleZeros = skipLeadingZeros ? bytes.CountLeadingNibbleZeros() : 0;
         int nibblesCount = bytes.Length * 2;
 
@@ -410,6 +413,18 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         writer.WriteRawValue(hex, skipInputValidation: true);
     }
 
+    internal static void ThrowIfTooLongForHexString(int length)
+    {
+        if (length > MaxHexStringBytes)
+        {
+            ThrowTooLongForHexString(length);
+        }
+    }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowTooLongForHexString(int length) =>
+        throw new JsonException($"Cannot write {length} bytes as one hex string, the maximum is {MaxHexStringBytes} bytes.");
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void WriteZeroValue(Utf8JsonWriter writer) => writer.WriteStringValue("0x0"u8);
 
@@ -439,6 +454,8 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         bool addQuotations = true,
         bool addHexPrefix = true)
     {
+        ThrowIfTooLongForHexString(bytes.Length);
+
         int leadingNibbleZeros = skipLeadingZeros ? bytes.CountLeadingNibbleZeros() : 0;
         int nibblesCount = bytes.Length * 2;
 

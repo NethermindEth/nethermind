@@ -121,7 +121,7 @@ public class BlockAccessListStore : IBlockAccessListStore
     public ReadOnlyBlockAccessList? Get(ulong blockNumber, Hash256 blockHash)
     {
         using MemoryManager<byte>? rlp = GetRlp(blockNumber, blockHash);
-        return rlp is null ? null : _balDecoder.Decode(rlp.Memory.Span);
+        return rlp is null ? null : _balDecoder.Decode(rlp.Memory.Span, RlpBehaviors.TrustedInput);
     }
 
     [SkipLocalsInit]

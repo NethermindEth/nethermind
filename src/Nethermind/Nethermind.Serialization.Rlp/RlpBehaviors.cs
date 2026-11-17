@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp;
 
@@ -30,6 +31,12 @@ public enum RlpBehaviors
     /// See https://eips.ethereum.org/EIPS/eip-4844#networking
     /// </summary>
     InMempoolForm = 64,
+
+    /// <summary>
+    /// Leaves <c>Transaction.Hash</c> and <c>BlockHeader.Hash</c> unset instead of hashing the decoded bytes. Set it when the
+    /// caller already knows the hashes, as a database read keyed by the hash does, or does not need them.
+    /// <see cref="BlockDecoder"/> applies this only to the block's own header, preserving transaction and uncle hashes.
+    /// </summary>
     ExcludeHashes = 128,
 
     /// <summary>
@@ -48,5 +55,30 @@ public enum RlpBehaviors
     /// the receipt message decoder accepts a zero-length bloom and the compact storage decoder sets
     /// <c>Bloom.ZeroLength</c> instead of computing the bloom.
     /// </summary>
-    Eip7668Receipts = 1024
+    Eip7668Receipts = 1024,
+
+    /// <summary>
+    /// EIP-1559: encodes the header base fee even when it is zero, as required from London. Without it a zero base fee
+    /// is encoded only when a later field follows, which gives a London header before Shanghai the pre-London shape.
+    /// </summary>
+    Eip1559Header = 2048,
+
+    /// <summary>
+    /// The input is canonical RLP that this node encoded and stored, or that was checked against a consensus hash
+    /// before it was stored. The decode skips the checks of the canonical form, but keeps every bounds check, so that
+    /// corrupted input still throws.
+    /// </summary>
+    /// <remarks>Never set it for input from the network, from RPC or from the Engine API.</remarks>
+    TrustedInput = 4096
+}
+
+internal static class RlpBehaviorsExtensions
+{
+    /// <summary>Whether the decode can skip the checks of the canonical form: <see cref="RlpBehaviors.TrustedInput"/> is set.</summary>
+    /// <remarks>
+    /// Always <see langword="false"/> in the zkEVM guest: the compiler then drops the trusted copy of every generic
+    /// decoder, which the 4 MiB ROM of the Airbender guest has no room for.
+    /// </remarks>
+    public static bool IsTrustedInput(this RlpBehaviors rlpBehaviors) =>
+        !ZkEvmFlag.IsActive && (rlpBehaviors & RlpBehaviors.TrustedInput) != 0;
 }

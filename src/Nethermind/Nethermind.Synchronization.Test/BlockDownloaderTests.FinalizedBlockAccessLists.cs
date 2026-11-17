@@ -252,7 +252,7 @@ public partial class BlockDownloaderTests
     {
         IForwardHeaderProvider headers = Substitute.For<IForwardHeaderProvider>();
         IBeaconSyncStrategy beacon = Substitute.For<IBeaconSyncStrategy>();
-        byte[] bal = Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes;
+        byte[] bal = Rlp.Encode(new ReadOnlyBlockAccessList());
         IContainer node = CreateMergeNode(builder =>
             {
                 builder
