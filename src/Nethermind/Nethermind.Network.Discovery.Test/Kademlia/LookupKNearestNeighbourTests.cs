@@ -286,6 +286,7 @@ public class LookupKNearestNeighbourTests
         (LookupKNearestNeighbour<int, int, int> lookup, _, _) =
             CreateLookup(2, TimeSpan.FromSeconds(10), [Seed1, Seed2, Seed3, N1]);
         TaskCompletionSource cancelledWorkerDrained = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource seed1Requested = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         _ = await lookup.Lookup(
             Self,
@@ -294,9 +295,13 @@ public class LookupKNearestNeighbourTests
             {
                 if (node != Seed1)
                 {
+                    // Without this, the worker that dequeued Seed1 can be preempted until the other
+                    // worker has run enough rounds to make it stop before it sends the request.
+                    await seed1Requested.Task.WaitAsync(findToken);
                     return [];
                 }
 
+                seed1Requested.SetResult();
                 try
                 {
                     await Task.Delay(Timeout.Infinite, findToken);
