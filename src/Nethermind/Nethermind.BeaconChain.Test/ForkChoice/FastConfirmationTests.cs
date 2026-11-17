@@ -15,6 +15,16 @@ namespace Nethermind.BeaconChain.Test.ForkChoice;
 public class FastConfirmationTests
 {
     [Test]
+    public void Reading_confirmed_balances_preserves_the_heads_shared_validator_registry()
+    {
+        EquivocationFixture fixture = new();
+        BeaconStateFulu state = fixture.StateA.Clone();
+        ForkableArray<Validator>? shared = state.ValidatorBuffer;
+        fixture.Source(state);
+        Assert.That(state.ValidatorBuffer, Is.SameAs(shared));
+    }
+
+    [Test]
     public void Cached_scores_track_votes_independently_of_head_updates_and_survive_reset()
     {
         BeaconChainSpec spec = BeaconChainSpec.Mainnet;

@@ -184,7 +184,7 @@ public sealed class ExecutionPayloadEnvelopeImporter(
             return true;
         }
 
-        Validator[] validators = state.Validators!;
+        Validator[] validators = state.ValidatorBuffer!.Items;
         if (proposerIndex >= (ulong)validators.Length)
         {
             return false;

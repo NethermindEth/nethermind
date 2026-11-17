@@ -293,10 +293,10 @@ internal sealed class FastConfirmation(
 
         internal BalanceSource(ForkedBeaconState state, BeaconChainSpec spec)
         {
-            Validator[] validators = state switch
+            ReadOnlySpan<Validator> validators = state switch
             {
-                ForkedBeaconState.OfFulu fulu => fulu.State.Validators!,
-                ForkedBeaconState.OfGloas gloas => gloas.State.Validators!,
+                ForkedBeaconState.OfFulu fulu => fulu.State.ReadOnlyValidators,
+                ForkedBeaconState.OfGloas gloas => gloas.State.ReadOnlyValidators,
                 _ => throw new NotSupportedException(),
             };
             ulong epoch = state.Slot / spec.SlotsPerEpoch;

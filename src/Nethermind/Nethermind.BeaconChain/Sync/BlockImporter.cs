@@ -415,7 +415,7 @@ public sealed class BlockImporter : IBlockImporter
     private bool? CheckGossipSignature(ForkedSignedBeaconBlock block)
     {
         Hash256 head = _runner.GetHead();
-        int? validatorCount = _states.GetGloasBlockState(head)?.Validators?.Length ?? _states.GetHeldBlockState(head)?.Validators?.Length;
+        int? validatorCount = _states.GetGloasBlockState(head)?.ValidatorBuffer?.Items.Length ?? _states.GetHeldBlockState(head)?.ValidatorBuffer?.Items.Length;
         Hash256? domain = block is ForkedSignedBeaconBlock.OfGloas ? _gloasProposerDomain : _fuluProposerDomain;
         if (validatorCount is null || domain is null)
             return null;
@@ -720,8 +720,8 @@ public sealed class BlockImporter : IBlockImporter
             regenerationBudgetUsed = verifySignatures;
         }
 
-        if (verifySignatures && (gloasParent?.Validators ?? fuluParent?.Validators) is { } validators
-            && (block.ProposerIndex >= (ulong)validators.Length
+        if (verifySignatures && (gloasParent?.ValidatorBuffer?.Items.Length ?? fuluParent?.ValidatorBuffer?.Items.Length) is int validatorCount
+            && (block.ProposerIndex >= (ulong)validatorCount
                 || proposerSignatureValid == false))
         {
             RejectGossip = true;
@@ -1353,10 +1353,10 @@ public sealed class BlockImporter : IBlockImporter
     private ForkedBeaconState RequireSlashableIntersection(ulong[] first, ulong[] second)
     {
         ForkedBeaconState state = _runner.GetHeldHeadState();
-        Validator[] validators = state switch
+        ReadOnlySpan<Validator> validators = state switch
         {
-            ForkedBeaconState.OfFulu fulu => fulu.State.Validators!,
-            ForkedBeaconState.OfGloas gloas => gloas.State.Validators!,
+            ForkedBeaconState.OfFulu fulu => fulu.State.ReadOnlyValidators,
+            ForkedBeaconState.OfGloas gloas => gloas.State.ReadOnlyValidators,
             _ => throw new NotSupportedException("Unsupported head state"),
         };
         ulong epoch = BeaconStateAccessors.ComputeEpochAtSlot(state.Slot);
