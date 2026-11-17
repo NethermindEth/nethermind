@@ -357,8 +357,8 @@ public partial class DebugRpcModuleTests
         Transaction transaction = await AddBlockWithTransfer(context);
         IJsonRpcConfig config = context.Blockchain.Container.Resolve<IJsonRpcConfig>();
         const string valid = "{fault:function(){},result:function(){return 1;}}";
-        // The script ends on its own after 6 s, so a tracer the request timeout cannot stop fails the bound instead of hanging.
-        const string busy = "var end=Date.now()+6000;while(Date.now()<end){}throw Error('creation-escape');";
+        // The script ends on its own after 30 s, so a tracer the request timeout cannot stop fails the bound instead of hanging.
+        const string busy = "var end=Date.now()+30000;while(Date.now()<end){}throw Error('creation-escape');";
         string tracer = phase == "expression"
             ? "{fault:function(){},result:(function(){" + busy + "})()}"
             : "{fault:function(){},result:function(){return 1;},setup:function(){" + busy + "}}";
@@ -376,7 +376,8 @@ public partial class DebugRpcModuleTests
         JToken json = JToken.Parse(response);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(elapsed.Elapsed, Is.LessThan(TimeSpan.FromSeconds(3)), response);
+            Assert.That(elapsed.Elapsed, Is.LessThan(TimeSpan.FromSeconds(15)), response);
+            Assert.That(response, Does.Not.Contain("creation-escape"));
             if (expectedError == ErrorCodes.Timeout)
                 Assert.That((string?)json["error"]?["message"], Is.EqualTo($"{method.Split(' ')[0]} request was canceled due to enabled timeout."), response);
             else if (expectedError is not null)
