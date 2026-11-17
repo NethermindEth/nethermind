@@ -166,7 +166,7 @@ jobs:
       - name: Connect to Tailscale
         continue-on-error: true
         timeout-minutes: 5
-        uses: tailscale/github-action@v4
+        uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c # v4.4.0
         with:
           oauth-client-id: ${{ vars.TS_SYNC_ONE_CHAIN_CLIENT_ID }}
           audience: api.tailscale.com/${{ vars.TS_SYNC_ONE_CHAIN_CLIENT_ID }}
