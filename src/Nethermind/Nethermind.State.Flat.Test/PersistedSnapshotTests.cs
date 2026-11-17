@@ -1237,7 +1237,7 @@ public class PersistedSnapshotTests
     private void Populate(SnapshotContent content, Random random, int source, int sourceCount)
     {
         const int addressPool = 6;
-        Address[] addresses = TestItem.Addresses[..addressPool];
+        Address[] addresses = [Address.Zero, .. TestItem.Addresses[..(addressPool - 1)]];
         Array.Sort(addresses, static (x, y) => x.Bytes.SequenceCompareTo(y.Bytes));
         for (int a = 0; a < addressPool; a++)
         {
