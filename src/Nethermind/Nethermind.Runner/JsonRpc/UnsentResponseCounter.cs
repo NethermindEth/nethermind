@@ -12,27 +12,35 @@ internal sealed class UnsentResponseCounter
     private readonly Dictionary<HttpJsonRpcResponseSink, long> _reserved = [];
     private long _bytes;
 
-    public bool TryReserve(HttpJsonRpcResponseSink response, long bytes, long limit)
+    public bool TryReserve(HttpJsonRpcResponseSink response, long bytes, long limit, long stalledSendTimestamp)
     {
         List<HttpJsonRpcResponseSink>? evicted = null;
+        bool reserved = false;
         lock (_lock)
         {
-            _reserved.TryGetValue(response, out long reserved);
-            if (reserved + bytes > limit)
+            _reserved.TryGetValue(response, out long reservedBytes);
+            if (reservedBytes + bytes <= limit)
             {
-                return false;
-            }
+                while (_bytes + bytes > limit)
+                {
+                    (HttpJsonRpcResponseSink? largest, long largestBytes) = FindLargestStalled(response, stalledSendTimestamp);
+                    if (largest is null)
+                    {
+                        break;
+                    }
 
-            while (_bytes + bytes > limit)
-            {
-                (HttpJsonRpcResponseSink largest, long largestBytes) = FindLargest(response);
-                _reserved.Remove(largest);
-                _bytes -= largestBytes;
-                (evicted ??= []).Add(largest);
-            }
+                    _reserved.Remove(largest);
+                    _bytes -= largestBytes;
+                    (evicted ??= []).Add(largest);
+                }
 
-            _reserved[response] = reserved + bytes;
-            _bytes += bytes;
+                if (_bytes + bytes <= limit)
+                {
+                    _reserved[response] = reservedBytes + bytes;
+                    _bytes += bytes;
+                    reserved = true;
+                }
+            }
         }
 
         if (evicted is not null)
@@ -43,7 +51,7 @@ internal sealed class UnsentResponseCounter
             }
         }
 
-        return true;
+        return reserved;
     }
 
     public void Release(HttpJsonRpcResponseSink response)
@@ -57,19 +65,20 @@ internal sealed class UnsentResponseCounter
         }
     }
 
-    private (HttpJsonRpcResponseSink Sink, long Bytes) FindLargest(HttpJsonRpcResponseSink except)
+    private (HttpJsonRpcResponseSink? Sink, long Bytes) FindLargestStalled(HttpJsonRpcResponseSink except, long stalledSendTimestamp)
     {
         HttpJsonRpcResponseSink? largest = null;
         long largestBytes = 0;
         foreach ((HttpJsonRpcResponseSink sink, long bytes) in _reserved)
         {
-            if (bytes > largestBytes && !ReferenceEquals(sink, except))
+            long sendStart = sink.SendStartTimestamp;
+            if (bytes > largestBytes && sendStart != 0 && sendStart < stalledSendTimestamp && !ReferenceEquals(sink, except))
             {
                 largest = sink;
                 largestBytes = bytes;
             }
         }
 
-        return (largest!, largestBytes);
+        return (largest, largestBytes);
     }
 }

@@ -1123,7 +1123,7 @@ public class StartupTests
     }
 
     [Test]
-    public async Task ProcessJsonRpcRequest_AbortsAnEqualOlderUnsentResponseToServeANewCaller()
+    public async Task ProcessJsonRpcRequest_DropsANewResponseWhenResponsesInProgressFillTheLimit()
     {
         (string single, _) = await ProcessJsonRpcRequestWithStatus(CreateJsonRpcRequest());
         int responseSize = Encoding.UTF8.GetByteCount(single);
@@ -1137,20 +1137,22 @@ public class StartupTests
         (DefaultHttpContext second, TaskCompletionSource secondSent) = CreateUnreadContext();
 
         Task firstProcessing = startup.ProcessJsonRpcRequestCoreAsync(first, UnauthenticatedEngineUrl);
-        Task secondProcessing = startup.ProcessJsonRpcRequestCoreAsync(second, UnauthenticatedEngineUrl);
-        await firstProcessing.WaitAsync(TimeSpan.FromSeconds(10));
+        await startup.ProcessJsonRpcRequestCoreAsync(second, UnauthenticatedEngineUrl).WaitAsync(TimeSpan.FromSeconds(10));
         (_, int authenticatedStatus) = await ProcessJsonRpcRequestWithStatus(CreateJsonRpcRequest(), startup: startup, isAuthenticated: true);
-        bool secondPending = !secondProcessing.IsCompleted;
-        secondSent.SetResult();
-        await secondProcessing.WaitAsync(TimeSpan.FromSeconds(10));
+        bool firstPending = !firstProcessing.IsCompleted;
+        firstSent.SetResult();
+        await firstProcessing.WaitAsync(TimeSpan.FromSeconds(10));
+        (string response, int status) = await ProcessJsonRpcRequestWithStatus(CreateJsonRpcRequest(), startup: startup);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(firstSent.Task.IsFaulted, Is.True);
-            Assert.That(secondPending, Is.True);
-            Assert.That(secondSent.Task.IsFaulted, Is.False);
+            Assert.That(firstPending, Is.True);
+            Assert.That(firstSent.Task.IsFaulted, Is.False);
+            Assert.That(secondSent.Task.IsFaulted, Is.True);
             Assert.That(authenticatedStatus, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(status, Is.EqualTo(StatusCodes.Status200OK));
         }
+        AssertArrayResultResponse(response);
     }
 
     [Test]
@@ -1176,9 +1178,9 @@ public class StartupTests
     }
 
     [Test]
-    public async Task ProcessJsonRpcRequest_SmallerUnsentResponsesDoNotBlockALargerOne()
+    public async Task ProcessJsonRpcRequest_ResponseInProgressIsNotEvictedByManyNewOnes()
     {
-        string batch = $"[{CreateJsonRpcRequest(idJson: "1")},{CreateJsonRpcRequest(idJson: "2")},{CreateJsonRpcRequest(idJson: "3")}]";
+        string batch = LargeBatchRequest();
         (string batchResponse, _) = await ProcessJsonRpcRequestWithStatus(batch);
         (string single, _) = await ProcessJsonRpcRequestWithStatus(CreateJsonRpcRequest());
         Startup startup = CreateStartup(NoAuthentication.Instance, rpcConfig: new JsonRpcConfig
@@ -1187,31 +1189,34 @@ public class StartupTests
             Timeout = 60_000,
             MaxUnsentResponsesSize = Encoding.UTF8.GetByteCount(batchResponse) + Encoding.UTF8.GetByteCount(single) / 2
         });
-        (DefaultHttpContext first, TaskCompletionSource firstSent) = CreateUnreadContext();
-        (DefaultHttpContext second, TaskCompletionSource secondSent) = CreateUnreadContext();
+        (DefaultHttpContext large, TaskCompletionSource largeSent) = CreateUnreadContext(batch);
 
-        Task firstProcessing = startup.ProcessJsonRpcRequestCoreAsync(first, UnauthenticatedEngineUrl);
-        Task secondProcessing = startup.ProcessJsonRpcRequestCoreAsync(second, UnauthenticatedEngineUrl);
-        (string response, int status) = await ProcessJsonRpcRequestWithStatus(batch, startup: startup);
-        await Task.WhenAll(firstProcessing, secondProcessing).WaitAsync(TimeSpan.FromSeconds(10));
+        Task largeProcessing = startup.ProcessJsonRpcRequestCoreAsync(large, UnauthenticatedEngineUrl);
+        List<TaskCompletionSource> newSent = [];
+        for (int i = 0; i < 8; i++)
+        {
+            (DefaultHttpContext context, TaskCompletionSource sent) = CreateUnreadContext();
+            newSent.Add(sent);
+            await startup.ProcessJsonRpcRequestCoreAsync(context, UnauthenticatedEngineUrl).WaitAsync(TimeSpan.FromSeconds(10));
+        }
 
-        using JsonDocument document = JsonDocument.Parse(response);
+        bool largePending = !largeProcessing.IsCompleted;
+        largeSent.SetResult();
+        await largeProcessing.WaitAsync(TimeSpan.FromSeconds(10));
+
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(firstSent.Task.IsFaulted, Is.True);
-            Assert.That(secondSent.Task.IsFaulted, Is.True);
-            Assert.That(status, Is.EqualTo(StatusCodes.Status200OK));
-            Assert.That(document.RootElement.GetArrayLength(), Is.EqualTo(3));
+            Assert.That(largePending, Is.True);
+            Assert.That(largeSent.Task.IsFaulted, Is.False);
+            Assert.That(newSent.Select(static sent => sent.Task.IsFaulted), Is.All.True);
         }
     }
 
     [Test]
     public async Task ProcessJsonRpcRequest_SendDeadlineGrowsWithResponseSize()
     {
-        string id = $"\"{new string('a', 256)}\"";
-        string batch = $"[{string.Join(',', Enumerable.Repeat(CreateJsonRpcRequest(idJson: id), 1000))}]";
         Startup startup = CreateStartup(NoAuthentication.Instance, rpcConfig: new JsonRpcConfig { EnabledModules = [ModuleType.Engine], Timeout = 200 });
-        (DefaultHttpContext slow, TaskCompletionSource sent) = CreateUnreadContext(batch);
+        (DefaultHttpContext slow, TaskCompletionSource sent) = CreateUnreadContext(LargeBatchRequest());
 
         Task processing = startup.ProcessJsonRpcRequestCoreAsync(slow, UnauthenticatedEngineUrl);
         await Task.Delay(1000);
@@ -1246,38 +1251,68 @@ public class StartupTests
     }
 
     [Test]
-    public async Task ProcessJsonRpcRequest_AbortsTheLargestUnsentResponseToServeANewCaller()
+    public async Task ProcessJsonRpcRequest_AbortsAStalledUnsentResponseToServeANewCaller([Values] bool synchronousAbort)
     {
-        string batch = $"[{CreateJsonRpcRequest(idJson: "1")},{CreateJsonRpcRequest(idJson: "2")},{CreateJsonRpcRequest(idJson: "3")}]";
+        string batch = LargeBatchRequest();
         (string batchResponse, _) = await ProcessJsonRpcRequestWithStatus(batch);
         (string single, _) = await ProcessJsonRpcRequestWithStatus(CreateJsonRpcRequest());
         Startup startup = CreateStartup(NoAuthentication.Instance, rpcConfig: new JsonRpcConfig
         {
             EnabledModules = [ModuleType.Engine],
-            Timeout = 60_000,
+            Timeout = 200,
             MaxUnsentResponsesSize = Encoding.UTF8.GetByteCount(batchResponse) + Encoding.UTF8.GetByteCount(single) / 2
         });
-        (DefaultHttpContext stalled, TaskCompletionSource stalledSent) = CreateUnreadContext(batch);
+        (DefaultHttpContext stalled, Task stalledSent) = synchronousAbort
+            ? CreateUnreadContextAbortedInline(batch)
+            : CreateUnreadContextAborted(batch);
 
         Task stalledProcessing = startup.ProcessJsonRpcRequestCoreAsync(stalled, UnauthenticatedEngineUrl);
+        await Task.Delay(500);
         bool stalledPending = !stalledProcessing.IsCompleted;
-        (string response, int status) = await ProcessJsonRpcRequestWithStatus(CreateJsonRpcRequest(), startup: startup);
+        (string response, int status) = await Task.Run(() => ProcessJsonRpcRequestWithStatus(CreateJsonRpcRequest(), startup: startup)).WaitAsync(TimeSpan.FromSeconds(10));
         await stalledProcessing.WaitAsync(TimeSpan.FromSeconds(10));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(stalledPending, Is.True);
-            Assert.That(stalledSent.Task.IsFaulted, Is.True);
+            Assert.That(stalledSent.IsCompleted && !stalledSent.IsCompletedSuccessfully, Is.True);
             Assert.That(status, Is.EqualTo(StatusCodes.Status200OK));
         }
         AssertArrayResultResponse(response);
     }
+
+    private static (DefaultHttpContext Context, Task Sent) CreateUnreadContextAborted(string requestJson)
+    {
+        (DefaultHttpContext context, TaskCompletionSource sent) = CreateUnreadContext(requestJson);
+        return (context, sent.Task);
+    }
+
+    private static string LargeBatchRequest() =>
+        $"[{string.Join(',', Enumerable.Repeat(CreateJsonRpcRequest(idJson: $"\"{new string('a', 256)}\""), 1000))}]";
 
     private static readonly JsonRpcUrl UnauthenticatedEngineUrl = new("http", "127.0.0.1", 0, RpcEndpoint.Http, false, [ModuleType.Engine]);
 
     private static (DefaultHttpContext Context, TaskCompletionSource Sent) CreateUnreadContext(string? requestJson = null)
     {
         TaskCompletionSource sent = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        (DefaultHttpContext context, IHttpResponseBodyFeature bodyFeature, IHttpRequestLifetimeFeature lifetime) = CreateContextWithoutReader(requestJson);
+        bodyFeature.CompleteAsync().Returns(sent.Task);
+        lifetime.When(static feature => feature.Abort()).Do(_ => sent.TrySetException(new IOException("aborted")));
+        return (context, sent);
+    }
+
+    private static (DefaultHttpContext Context, Task Sent) CreateUnreadContextAbortedInline(string requestJson)
+    {
+        CancellationTokenSource abort = new();
+        Task sent = Task.Delay(Timeout.Infinite, abort.Token);
+        (DefaultHttpContext context, IHttpResponseBodyFeature bodyFeature, IHttpRequestLifetimeFeature lifetime) = CreateContextWithoutReader(requestJson);
+        bodyFeature.CompleteAsync().Returns(sent);
+        lifetime.When(static feature => feature.Abort()).Do(_ => abort.Cancel());
+        return (context, sent);
+    }
+
+    private static (DefaultHttpContext Context, IHttpResponseBodyFeature BodyFeature, IHttpRequestLifetimeFeature Lifetime) CreateContextWithoutReader(string? requestJson)
+    {
         byte[] request = Encoding.UTF8.GetBytes(requestJson ?? CreateJsonRpcRequest());
         DefaultHttpContext context = new();
         context.Request.Method = "POST";
@@ -1289,12 +1324,10 @@ public class StartupTests
         IHttpResponseBodyFeature bodyFeature = Substitute.For<IHttpResponseBodyFeature>();
         bodyFeature.Stream.Returns(body);
         bodyFeature.Writer.Returns(PipeWriter.Create(body, new StreamPipeWriterOptions(leaveOpen: true)));
-        bodyFeature.CompleteAsync().Returns(sent.Task);
         context.Features.Set(bodyFeature);
         IHttpRequestLifetimeFeature lifetime = Substitute.For<IHttpRequestLifetimeFeature>();
-        lifetime.When(static feature => feature.Abort()).Do(_ => sent.TrySetException(new IOException("aborted")));
         context.Features.Set(lifetime);
-        return (context, sent);
+        return (context, bodyFeature, lifetime);
     }
 
     [Test]
