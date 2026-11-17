@@ -22,6 +22,10 @@ namespace Nethermind.State.Flat.Migration;
 /// The walk must start from the caller's state root rather than the HalfPath one because flat deletes are physical: an account a
 /// block deleted after the migration started has no flat entry, and must not be found again in the HalfPath trie.
 /// </para>
+/// <para>
+/// The flat iterators and the trie node reads without a hash are served by flat alone. Nothing reads through them while the
+/// migration runs: flat history and trie verification are refused until it completes, and a state sync starts with the wipe that ends it.
+/// </para>
 /// </remarks>
 public sealed class HalfPathFallbackPersistence(IPersistence inner, INodeStorage halfPath, HalfPathMigrationCursor cursor) : IPersistence
 {

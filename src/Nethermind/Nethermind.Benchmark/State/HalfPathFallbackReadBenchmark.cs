@@ -25,7 +25,11 @@ namespace Nethermind.Benchmarks.State;
 /// Account and slot reads on a node migrating from the pruning trie state, for what the migration has not copied yet: each
 /// read walks the trie from the state root, reading every node from flat and then the HalfPath DB.
 /// </summary>
-/// <remarks>The bundle holds no snapshot and flat only its state pointer, so every node takes the fallback; both stores are in memory.</remarks>
+/// <remarks>
+/// The bundle holds no snapshot and flat only its state pointer, so every node takes the fallback; both stores are in memory.
+/// The persistence is built by hand rather than through the flat modules, which add reader caches above it that would serve the
+/// repeated reads, so this measures the fallback walk alone.
+/// </remarks>
 [MemoryDiagnoser]
 public class HalfPathFallbackReadBenchmark
 {
