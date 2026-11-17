@@ -109,6 +109,7 @@ public static class EvmExceptionTypeExtensions
         nameof(EvmExceptionType.CallDepthExceeded) => EvmExceptionType.CallDepthExceeded,
         nameof(EvmExceptionType.ReturnStackOverflow) => EvmExceptionType.ReturnStackOverflow,
         nameof(EvmExceptionType.ReturnStackUnderflow) => EvmExceptionType.ReturnStackUnderflow,
+        nameof(EvmExceptionType.NonceOverflow) => EvmExceptionType.NonceOverflow,
         _ => EvmExceptionType.None,
     };
 }
