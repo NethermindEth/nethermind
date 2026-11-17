@@ -20,9 +20,14 @@ public static partial class SlotProcessing
 
     /// <summary>Caches the state root, completes the latest block header, and caches the block root for the current slot.</summary>
     public static void ProcessSlot(BeaconStateFulu state, IBeaconStateHasher hasher)
+        => ProcessSlot(state, hasher, onlySlotChanges: false);
+
+    private static void ProcessSlot(BeaconStateFulu state, IBeaconStateHasher hasher, bool onlySlotChanges)
     {
         // Cache the state root.
-        Hash256 previousStateRoot = hasher.HashTreeRoot(state);
+        Hash256 previousStateRoot = onlySlotChanges && hasher is CachedBeaconStateHasher cached
+            ? cached.HashTreeRootAfterSlot(state)
+            : hasher.HashTreeRoot(state);
         state.StateRoots![(int)(state.Slot % Presets.SlotsPerHistoricalRoot)] = previousStateRoot;
 
         // Cache the latest block header state root.

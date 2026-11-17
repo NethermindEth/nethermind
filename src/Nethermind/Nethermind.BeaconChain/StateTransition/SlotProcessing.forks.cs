@@ -15,11 +15,13 @@ public static partial class SlotProcessing
         if (state.Slot >= targetSlot)
             throw new BeaconStateException($"Cannot advance state at slot {state.Slot} to non-future slot {targetSlot}");
 
+        bool onlySlotChanges = false;
         while (state.Slot < targetSlot)
         {
-            ProcessSlot(state, cache.Hasher);
+            ProcessSlot(state, cache.Hasher, onlySlotChanges);
             // Process the epoch on the start slot of the next epoch.
-            if ((state.Slot + 1) % Presets.SlotsPerEpoch == 0)
+            onlySlotChanges = (state.Slot + 1) % Presets.SlotsPerEpoch != 0;
+            if (!onlySlotChanges)
                 ForkEpochProcessing.ProcessEpoch(state, cache);
             state.Slot++;
         }

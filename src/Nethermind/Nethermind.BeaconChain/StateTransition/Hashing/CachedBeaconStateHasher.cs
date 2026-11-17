@@ -24,13 +24,18 @@ namespace Nethermind.BeaconChain.StateTransition.Hashing;
 /// </summary>
 /// <remarks>
 /// <para>
-/// No mutation hooks: each call compares the state against the snapshot taken on the previous
+/// Each public call compares the state against the snapshot taken on the previous
 /// call. The result is correct for any state whose unchanged content is reference-identical
 /// (validators, sync committees, the payload header, and the root vectors — all
 /// immutable-by-convention objects) or value-identical (balances, participation, inactivity
 /// scores) to the snapshot. This holds both for in-place mutation of the same state instance and
 /// for states produced by <see cref="BeaconStateClone.Clone"/>, since clones share element
 /// references with their source.
+/// </para>
+/// <para>
+/// Within a single slot-processing loop, hashes after a non-epoch slot update only the slot,
+/// latest header, block/state-root leaves and Gloas payload availability. The first slot and
+/// every epoch boundary use the full snapshot diff, as do calls outside that loop.
 /// </para>
 /// <para>
 /// Cached per field: validators (per-validator leaf roots plus the tree above, diffed by
@@ -109,6 +114,34 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
     private readonly ContainerVectorCache<PayloadTimelinessCommittee> _ptcWindow = new((int)Presets.PtcWindowLength);
     private readonly UInt256[] _gloasFieldRoots = new UInt256[GloasFieldCount];
     private bool _fuluCachesLive;
+
+    /// <summary>Hashes the mutations of one completed non-epoch slot within an uninterrupted slot-processing loop.</summary>
+    /// <remarks>The loop must first hash this state normally and must use the full diff after epoch processing.</remarks>
+    internal Hash256 HashTreeRootAfterSlot(BeaconStateFulu state)
+    {
+        UpdateSlotRoots(_fieldRoots, state.Slot, state.LatestBlockHeader!, state.BlockRoots!, state.StateRoots!);
+        Merkle.Merkleize(out UInt256 root, _fieldRoots);
+        return new Hash256(root.ToLittleEndian());
+    }
+
+    /// <inheritdoc cref="HashTreeRootAfterSlot(BeaconStateFulu)"/>
+    internal Hash256 HashTreeRootAfterSlot(BeaconStateGloas state)
+    {
+        UpdateSlotRoots(_gloasFieldRoots, state.Slot, state.LatestBlockHeader!, state.BlockRoots!, state.StateRoots!);
+        Merkle.Merkleize(out _gloasFieldRoots[40], state.ExecutionPayloadAvailability!);
+        Merkle.MerkleizeProgressive(out UInt256 root, _gloasFieldRoots);
+        Merkle.MixInActiveFields(ref root, s_gloasActiveFields);
+        return new Hash256(root.ToLittleEndian());
+    }
+
+    private void UpdateSlotRoots(UInt256[] roots, ulong slot, BeaconBlockHeader header, Hash256[] blockRoots, Hash256[] stateRoots)
+    {
+        roots[2] = new UInt256(slot);
+        BeaconBlockHeader.Merkleize(header, out roots[4]);
+        int previousSlotIndex = (int)((slot - 1) % Presets.SlotsPerHistoricalRoot);
+        roots[5] = _blockRoots.RootAfterChange(blockRoots, previousSlotIndex);
+        roots[6] = _stateRoots.RootAfterChange(stateRoots, previousSlotIndex);
+    }
 
     /// <inheritdoc/>
     public Hash256 HashTreeRoot(BeaconStateFulu state)
@@ -451,6 +484,17 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
     {
         private readonly MerkleChunkTree _tree = new(depth);
         private Hash256?[] _snapshot = [];
+        private readonly int[] _singleDirtyIndex = new int[1];
+
+        public UInt256 RootAfterChange(Hash256[] vector, int index)
+        {
+            Hash256 element = vector[index];
+            _snapshot[index] = element;
+            _tree.SetLeafCount(vector.Length)[index] = new UInt256(element.Bytes);
+            _singleDirtyIndex[0] = index;
+            _tree.Update(_singleDirtyIndex, 1);
+            return _tree.Root;
+        }
 
         public UInt256 Root(Hash256[]? vector)
         {

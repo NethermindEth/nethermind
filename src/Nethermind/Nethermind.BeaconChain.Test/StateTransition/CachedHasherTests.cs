@@ -20,6 +20,118 @@ public class CachedHasherTests
     private const ulong Gwei = 1_000_000_000;
 
     [Test]
+    public void Skipped_slots_match_full_hashing_across_epochs_and_lineages([Values] bool gloas)
+    {
+        dynamic state = gloas ? (object)GloasTestFixtures.CreateGloasState(out _, out _) : CreateState(64);
+        CachedBeaconStateHasher hasher = new();
+        EpochCache cache = new() { Hasher = hasher };
+        AdvanceAndCompare(state, state.Slot + 3, cache);
+        AdvanceAndCompare(state, state.Slot + 2 * Presets.SlotsPerEpoch + 3, cache);
+
+        dynamic sibling = gloas ? (object)GloasStateClone.Clone(state) : BeaconStateClone.Clone(state);
+        sibling.Balances[0] += 42;
+        sibling.CurrentEpochParticipation[1] ^= 1;
+        sibling.RandaoMixes[1] = FromFirstByte(0x99);
+        Validator validator = ((Validator)sibling.Validators[0]).Clone();
+        validator.ExitEpoch = 100;
+        sibling.Validators[0] = validator;
+        AdvanceAndCompare(sibling, sibling.Slot + 3, cache);
+        AdvanceAndCompare(state, state.Slot + 3, cache);
+
+        // Public single-slot calls also permit arbitrary mutations between calls.
+        state.Balances[1] += 17;
+        AdvanceAndCompare(state, state.Slot + 1, cache);
+        AssertRootsMatch(hasher, sibling, "return to sibling after slot-only updates");
+    }
+
+    private static void AdvanceAndCompare(dynamic state, ulong targetSlot, EpochCache cache)
+    {
+        if (state is BeaconStateFulu fulu)
+        {
+            BeaconStateFulu full = BeaconStateClone.Clone(fulu);
+            SlotProcessing.ProcessSlots(fulu, targetSlot, cache);
+            SlotProcessing.ProcessSlots(full, targetSlot, new EpochCache { Hasher = new FullBeaconStateHasher() });
+            using IDisposable assertions = Assert.EnterMultipleScope();
+            Assert.That(fulu.StateRoots, Is.EqualTo(full.StateRoots));
+            Assert.That(SszRoots.HashTreeRoot(fulu), Is.EqualTo(SszRoots.HashTreeRoot(full)));
+        }
+        else
+        {
+            BeaconStateGloas full = GloasStateClone.Clone(state);
+            GloasSlotProcessing.ProcessSlots(state, targetSlot, cache);
+            GloasSlotProcessing.ProcessSlots(full, targetSlot, new EpochCache { Hasher = new FullBeaconStateHasher() });
+            using IDisposable assertions = Assert.EnterMultipleScope();
+            Assert.That(state.StateRoots, Is.EqualTo(full.StateRoots));
+            Assert.That(SszRoots.HashTreeRoot(state), Is.EqualTo(SszRoots.HashTreeRoot(full)));
+        }
+        Assert.That(cache.Hasher.HashTreeRoot(state), Is.EqualTo(SszRoots.HashTreeRoot(state)), "ordinary hashing after the tracked loop");
+    }
+
+    [Test]
+    public void Slot_hashing_refreshes_after_an_epoch_exception([Values] bool gloas)
+    {
+        dynamic state = gloas ? (object)GloasTestFixtures.CreateGloasState(out _, out _) : CreateState(64);
+        state.Slot = (state.Slot / Presets.SlotsPerEpoch + 1) * Presets.SlotsPerEpoch - 2;
+        state.PendingConsolidations = (PendingConsolidation[])[new PendingConsolidation { SourceIndex = (ulong)state.Validators.Length }];
+        EpochCache cache = new() { Hasher = new CachedBeaconStateHasher() };
+        ulong target = state.Slot + 3;
+        Assert.Throws<IndexOutOfRangeException>(() =>
+        {
+            if (gloas) GloasSlotProcessing.ProcessSlots(state, target, cache);
+            else SlotProcessing.ProcessSlots(state, target, cache);
+        });
+        state.PendingConsolidations = Array.Empty<PendingConsolidation>();
+        state.Balances[0] += 91;
+        AdvanceAndCompare(state, target, cache);
+    }
+
+    [Test]
+    public void Slot_hashing_refreshes_when_upgrading_and_returning_to_fulu()
+    {
+        BeaconStateFulu fulu = GloasTestFixtures.CreateFuluStateAtBoundary(GloasTestFixtures.ValidatorCount);
+        EpochCache cache = new() { Hasher = new CachedBeaconStateHasher() };
+        AdvanceAndCompare(fulu, fulu.Slot + 3, cache);
+        BeaconStateGloas gloas = GloasForkTransition.UpgradeToGloas(fulu, GloasTestFixtures.SyntheticSpec());
+        AdvanceAndCompare(gloas, gloas.Slot + 3, cache);
+        AdvanceAndCompare(fulu, fulu.Slot + 3, cache);
+    }
+
+    [Test]
+    [Explicit("Skipped-slot scaling measurement")]
+    public void Skipped_slot_hashing_scaling([Values(1_000, 100_000)] int validatorCount)
+    {
+        BeaconStateFulu tracked = CreateState(validatorCount);
+        tracked.Slot = 5 * Presets.SlotsPerEpoch;
+        BeaconStateFulu scanned = BeaconStateClone.Clone(tracked);
+        EpochCache cache = new() { Hasher = new CachedBeaconStateHasher() };
+        CachedBeaconStateHasher scannedHasher = new();
+        cache.Hasher.HashTreeRoot(tracked);
+        scannedHasher.HashTreeRoot(scanned);
+        int slots = (int)Presets.SlotsPerEpoch - 2;
+        const int rounds = 20;
+        foreach (bool useTracking in new[] { false, true })
+        {
+            BeaconStateFulu state = useTracking ? tracked : scanned;
+            Stopwatch stopwatch = new();
+            for (int round = -1; round < rounds; round++)
+            {
+                if (round == 0) stopwatch.Start();
+                state.Slot = 5 * Presets.SlotsPerEpoch;
+                if (useTracking)
+                    SlotProcessing.ProcessSlots(state, state.Slot + (ulong)slots, cache);
+                else
+                    for (int slot = 0; slot < slots; slot++)
+                    {
+                        SlotProcessing.ProcessSlot(state, scannedHasher);
+                        state.Slot++;
+                    }
+            }
+            TestContext.Progress.WriteLine($"validators={validatorCount}, slots={slots}, rounds={rounds}, tracked={useTracking}, elapsed_ms={stopwatch.Elapsed.TotalMilliseconds:F3}");
+        }
+        Assert.That(SszRoots.HashTreeRoot(tracked), Is.EqualTo(SszRoots.HashTreeRoot(scanned)));
+    }
+
+    [Test]
     public void Shrinking_a_pending_queue_releases_removed_snapshot_references([Values(0, 1)] int remaining)
     {
         BeaconStateFulu state = CreateState(64);
