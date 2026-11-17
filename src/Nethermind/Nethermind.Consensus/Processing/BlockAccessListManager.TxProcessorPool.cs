@@ -68,12 +68,10 @@ public partial class BlockAccessListManager
         // Plain-transfer slices wait for the in-order merge, so far more than BalPoolSize are rented at once.
         private const int SmallBalPoolSize = 1024;
 
-        private static readonly ObjectPool<BlockAccessListAtIndex> SmallBalPool =
-            new DefaultObjectPool<BlockAccessListAtIndex>(
-                new BalPooledObjectPolicy(static () => new(SmallBalChangeCapacity, SmallBalMaxPooledAccountChanges)), SmallBalPoolSize);
+        private static readonly BalSlicePool SmallBalPool =
+            new(static () => new(SmallBalChangeCapacity, SmallBalMaxPooledAccountChanges), SmallBalPoolSize);
 
-        private static readonly ObjectPool<BlockAccessListAtIndex> LargeBalPool =
-            new DefaultObjectPool<BlockAccessListAtIndex>(new BalPooledObjectPolicy(static () => new()), BalPoolSize);
+        private static readonly BalSlicePool LargeBalPool = new(static () => new(), BalPoolSize);
 
         static ParallelTxProcessorWithWorldStateManager()
         {
@@ -585,14 +583,38 @@ public partial class BlockAccessListManager
         public bool Return(IReadOnlyTxProcessorSource obj) => true;
     }
 
-    private sealed class BalPooledObjectPolicy(Func<BlockAccessListAtIndex> create) : IPooledObjectPolicy<BlockAccessListAtIndex>
+    /// <summary>Bounded pool of BAL slices that clears a slice when it is rented, not when it is returned.</summary>
+    /// <remarks>
+    /// Slices come back on the single in-order validator thread, long after a worker on another core filled them,
+    /// so clearing them there walks cold memory on the block's critical path. On a block far larger than the pool
+    /// almost every returned slice is dropped anyway; only a kept slice is cleared, by the worker that rents it.
+    /// </remarks>
+    private sealed class BalSlicePool(Func<BlockAccessListAtIndex> create, int capacity)
     {
-        public BlockAccessListAtIndex Create() => create();
+        private readonly ConcurrentQueue<BlockAccessListAtIndex> _slices = new();
+        private int _count;
 
-        public bool Return(BlockAccessListAtIndex obj)
+        public BlockAccessListAtIndex Get()
         {
-            obj.Reset();
-            return true;
+            if (_slices.TryDequeue(out BlockAccessListAtIndex? slice))
+            {
+                Interlocked.Decrement(ref _count);
+                slice.Reset();
+                return slice;
+            }
+
+            return create();
+        }
+
+        public void Return(BlockAccessListAtIndex slice)
+        {
+            if (Interlocked.Increment(ref _count) > capacity)
+            {
+                Interlocked.Decrement(ref _count);
+                return;
+            }
+
+            _slices.Enqueue(slice);
         }
     }
 }
