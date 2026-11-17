@@ -233,7 +233,7 @@ public class BlockStore : IBlockStore, IClearableCache
 
         Span<byte> dbKey = stackalloc byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, dbKey);
-        return ReadBlockMemory(dbKey) ?? ReadBlockMemory(blockHash.Bytes);
+        return ReadBlockMemory(_blockDb, dbKey) ?? ReadBlockMemory(_blockDb, blockHash.Bytes);
     }
 
     public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(ulong blockNumber, Hash256 blockHash)
@@ -252,8 +252,8 @@ public class BlockStore : IBlockStore, IClearableCache
         Span<byte> keyWithBlockNumber = stackalloc byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, keyWithBlockNumber);
 
-        MemoryManager<byte>? memoryOwner = ReadBlockMemory(keyWithBlockNumber);
-        memoryOwner ??= ReadBlockMemory(blockHash.Bytes);
+        MemoryManager<byte>? memoryOwner = ReadBlockMemory(_blockDb, keyWithBlockNumber);
+        memoryOwner ??= ReadBlockMemory(_blockDb, blockHash.Bytes);
         if (memoryOwner is null) return null;
 
         ReceiptRecoveryBlock? block = null;
@@ -269,9 +269,9 @@ public class BlockStore : IBlockStore, IClearableCache
         }
     }
 
-    private MemoryManager<byte>? ReadBlockMemory(ReadOnlySpan<byte> key)
+    internal static MemoryManager<byte>? ReadBlockMemory(IDb blockDb, ReadOnlySpan<byte> key)
     {
-        if (_blockDb is not IReadOnlyNativeKeyValueStore native) return _blockDb.GetOwnedMemory(key);
+        if (blockDb is not IReadOnlyNativeKeyValueStore native) return blockDb.GetOwnedMemory(key);
 
         ReadOnlySpan<byte> bytes = native.GetNativeSlice(key, out nint handle);
         try

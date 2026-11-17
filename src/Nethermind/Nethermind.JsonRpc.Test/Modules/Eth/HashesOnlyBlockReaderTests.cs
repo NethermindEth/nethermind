@@ -13,6 +13,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
@@ -78,10 +79,10 @@ public class HashesOnlyBlockReaderTests
     }
 
     [Test]
-    public void Read_StoredBlock_HashesEveryTransactionAsTheDecoder()
+    public void Read_StoredBlock_HashesEveryTransactionAsTheDecoder([Values] bool native)
     {
         Block block = BlockShapes().First(static shape => shape.Name == "prague").Block;
-        MemDb blockDb = new();
+        using TestMemDb blockDb = native ? new PinnedTestDb() : new TestMemDb();
         new BlockStore(blockDb).Insert(block);
         HashesOnlyBlockReader reader = StandaloneReader(blockDb, new HeaderDecoder());
 
@@ -89,6 +90,14 @@ public class HashesOnlyBlockReaderTests
 
         Assert.That(hashesOnly.TransactionHashes, Is.EqualTo(block.Transactions.Select(static tx => tx.CalculateHash().ValueHash256).ToArray()),
             "every transaction type hashes to its canonical hash");
+        if (blockDb is PinnedTestDb pinned)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pinned.NativeReads, Is.EqualTo(1), "the block is read as a native slice");
+                Assert.That(pinned.LiveHandles, Is.Zero, "the slice is released once the block is decoded");
+            }
+        }
     }
 
     [Test]
