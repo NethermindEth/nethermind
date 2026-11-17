@@ -1,8 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics;
 using System.IO;
+using System.Net;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
@@ -117,7 +120,7 @@ internal sealed class HttpJsonRpcResponseSink(
             return;
         }
 
-        _caller ??= context.Connection.RemoteIpAddress?.ToString() ?? context.Connection.Id ?? string.Empty;
+        _caller ??= GetCallerKey(context.Connection);
         if (unsentResponses.TryReserve(_caller, bytes, _reservedBytes == 0, jsonRpcConfig.MaxUnsentResponsesSize, jsonRpcConfig.MaxUnsentResponsesPerAddress))
         {
             _reservedBytes += bytes;
@@ -127,6 +130,30 @@ internal sealed class HttpJsonRpcResponseSink(
         if (logger.IsWarn) logger.Warn($"Aborted a JSON-RPC response of {written} bytes to {_caller}, its unsent responses or those of the node are above JsonRpc.{nameof(jsonRpcConfig.MaxUnsentResponsesSize)} = {jsonRpcConfig.MaxUnsentResponsesSize} or JsonRpc.{nameof(jsonRpcConfig.MaxUnsentResponsesPerAddress)} = {jsonRpcConfig.MaxUnsentResponsesPerAddress}");
         _overLimit = true;
         StopRequested = true;
+    }
+
+    private static string GetCallerKey(ConnectionInfo connection)
+    {
+        IPAddress? address = connection.RemoteIpAddress;
+        if (address is null)
+        {
+            return connection.Id ?? string.Empty;
+        }
+
+        if (address.IsIPv4MappedToIPv6)
+        {
+            return address.MapToIPv4().ToString();
+        }
+
+        if (address.AddressFamily != AddressFamily.InterNetworkV6)
+        {
+            return address.ToString();
+        }
+
+        Span<byte> bytes = stackalloc byte[16];
+        address.TryWriteBytes(bytes, out _);
+        bytes[8..].Clear();
+        return new IPAddress(bytes).ToString();
     }
 
     private void ReleaseReservedBytes()

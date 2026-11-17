@@ -1217,8 +1217,10 @@ public class StartupTests
         Assert.That(secondSent.Task.IsFaulted, Is.False);
     }
 
-    [Test]
-    public async Task ProcessJsonRpcRequest_SharesTheUnsentLimitAcrossConnectionsOfOneAddress()
+    [TestCase("10.0.0.1", "10.0.0.1", "10.0.0.2")]
+    [TestCase("2001:db8::1", "2001:db8::2:3", "2001:db8:0:1::1")]
+    [TestCase("::ffff:10.0.0.5", "10.0.0.5", "10.0.0.6")]
+    public async Task ProcessJsonRpcRequest_SharesTheUnsentLimitAcrossConnectionsOfOneCaller(string firstAddress, string sameCallerAddress, string otherAddress)
     {
         int responseSize = await SingleResponseSize();
         Startup startup = CreateStartup(NoAuthentication.Instance, rpcConfig: new JsonRpcConfig
@@ -1226,9 +1228,9 @@ public class StartupTests
             EnabledModules = [ModuleType.Engine],
             MaxUnsentResponsesSize = 16 * responseSize + responseSize / 2
         });
-        (DefaultHttpContext first, TaskCompletionSource firstSent) = CreateUnreadContext(remoteAddress: IPAddress.Parse("10.0.0.1"));
-        (DefaultHttpContext second, TaskCompletionSource secondSent) = CreateUnreadContext(remoteAddress: IPAddress.Parse("10.0.0.1"));
-        (DefaultHttpContext other, TaskCompletionSource otherSent) = CreateUnreadContext(remoteAddress: IPAddress.Parse("10.0.0.2"));
+        (DefaultHttpContext first, TaskCompletionSource firstSent) = CreateUnreadContext(remoteAddress: IPAddress.Parse(firstAddress));
+        (DefaultHttpContext second, TaskCompletionSource secondSent) = CreateUnreadContext(remoteAddress: IPAddress.Parse(sameCallerAddress));
+        (DefaultHttpContext other, TaskCompletionSource otherSent) = CreateUnreadContext(remoteAddress: IPAddress.Parse(otherAddress));
 
         Task firstProcessing = startup.ProcessJsonRpcRequestCoreAsync(first, UnauthenticatedEngineUrl);
         await startup.ProcessJsonRpcRequestCoreAsync(second, UnauthenticatedEngineUrl).WaitAsync(TimeSpan.FromSeconds(10));
