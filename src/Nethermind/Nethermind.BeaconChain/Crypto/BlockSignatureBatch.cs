@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.Threading;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -35,6 +36,22 @@ public sealed class BlockSignatureBatch
 {
     private readonly List<BlsSignatureSet> _sets = [];
     private readonly List<string> _failures = [];
+
+    private readonly record struct Prepared(BlsSignature Encoded, BlsSignatureSet.ValidatedSignature Point);
+
+    private Prepared[] _prepared = [];
+    private int _nextSignature;
+
+    internal void Predecode(int count, Func<int, BlsSignature> readSignature)
+    {
+        _nextSignature = 0;
+        _prepared = new Prepared[count];
+        BeaconParallel.For(0, count, i =>
+        {
+            BlsSignature encoded = readSignature(i);
+            _prepared[i] = new(encoded, BlsSignatureSet.ValidatedSignature.Decode(encoded));
+        });
+    }
 
     internal BlockSignatureBatch() { }
     internal int Count => _sets.Count;
@@ -87,6 +104,13 @@ public sealed class BlockSignatureBatch
 
     private bool Add(G1Affine publicKey, BlsSignature signature, Hash256 signingRoot, string failure)
     {
+        if (_nextSignature < _prepared.Length && _prepared[_nextSignature].Encoded == signature &&
+            _prepared[_nextSignature++].Point.TryCreate(publicKey, signingRoot.Bytes, out BlsSignatureSet? prepared))
+        {
+            _sets.Add(prepared);
+            _failures.Add(failure);
+            return true;
+        }
         // The serial decode, so the batch refuses exactly the encodings BlsSigner.Verify refuses.
         G2 point = new(stackalloc long[G2.Sz]);
         if (!point.TryDecode(signature.Bytes, out _))

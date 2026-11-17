@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using System.IO;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
@@ -61,6 +62,64 @@ public class BlockSignatureBatchThroughputTests
             TestContext.Out.WriteLine(
                 $"{setCount} sets, replicate {replicate}: serial {serialMedian:F3} ms, batched {batchedMedian:F3} ms, " +
                 $"batched/serial {batchedMedian / serialMedian:F3}");
+        }
+    }
+
+    [Test]
+    public void Recorded_signature_preparation()
+    {
+        string? corpus = Environment.GetEnvironmentVariable("BEACON_SIGNATURE_CORPUS");
+        if (string.IsNullOrEmpty(corpus))
+            Assert.Ignore("Set BEACON_SIGNATURE_CORPUS to the recorded length-prefixed batches of 96-byte signatures.");
+        using BinaryReader input = new(File.OpenRead(corpus));
+        List<BlsSignature[]> blocks = [];
+        while (input.BaseStream.Position < input.BaseStream.Length)
+        {
+            int count = input.ReadInt32();
+            BlsSignature[] block = new BlsSignature[count];
+            for (int i = 0; i < count; i++)
+                block[i] = new BlsSignature(input.ReadBytes(BlsSignature.Length));
+            blocks.Add(block);
+        }
+        long[] key = new Bls.P1(DeriveKey(5000)).ToAffine().Point.ToArray();
+        using Process process = Process.GetCurrentProcess();
+        SignatureCheck[] validChecks = CreateChecks(blocks.Max(block => block.Length));
+        foreach (string stage in new[] { "decode", "prepare", "verify" })
+        {
+            for (int pass = 0; pass < 9; pass++)
+            {
+                foreach (bool parallel in new[] { pass % 2 == 0, pass % 2 != 0 })
+                {
+                    TimeSpan initialCpu = process.TotalProcessorTime;
+                    long before = GC.GetTotalAllocatedBytes(true);
+                    long start = Stopwatch.GetTimestamp();
+                    foreach (BlsSignature[] block in blocks)
+                    {
+                        BlockSignatureBatch batch = new();
+                        bool predecode = parallel && Environment.ProcessorCount >= 4 && block.Length >= 4;
+                        if (predecode)
+                            batch.Predecode(block.Length, i => stage == "verify" ? validChecks[i].Signature : block[i]);
+                        for (int i = 0; i < block.Length; i++)
+                        {
+                            BlsSignature signature = stage == "verify" ? validChecks[i].Signature : block[i];
+                            if (stage != "decode")
+                            {
+                                G1Affine publicKey = new(stage == "verify" ? validChecks[i].PublicKey : key);
+                                Hash256 message = stage == "verify" ? validChecks[i].Message : Hash256.Zero;
+                                if (!BlockSignatureBatch.Verify(publicKey, signature, message, batch.Defer("corpus")))
+                                    throw new InvalidOperationException("Invalid signature encoding in the recorded input.");
+                            }
+                            else if (!predecode)
+                                _ = BlsSignatureSet.ValidatedSignature.Decode(signature);
+                        }
+                        if (stage == "verify") batch.Verify();
+                    }
+                    TimeSpan elapsed = Stopwatch.GetElapsedTime(start);
+                    long allocated = GC.GetTotalAllocatedBytes(true) - before;
+                    TimeSpan cpu = process.TotalProcessorTime - initialCpu;
+                    TestContext.Progress.WriteLine($"stage={stage},pass={pass},parallel={parallel},ms={elapsed.TotalMilliseconds:F4},cpu_ms={cpu.TotalMilliseconds:F2},bytes={allocated}");
+                }
+            }
         }
     }
 

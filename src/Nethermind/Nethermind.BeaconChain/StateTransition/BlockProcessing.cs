@@ -97,6 +97,7 @@ public static partial class BlockProcessing
         ProcessBlockHeader(state, block);
         ProcessWithdrawals(state, body.ExecutionPayload!);
         ProcessExecutionPayload(state, body, notifier, maxBlobsPerBlock);
+        PredecodeBlockSignatures(body, batch);
         ProcessRandao(state, body, pubkeys, verifySignatures, batch);
         ProcessEth1Data(state, body);
         ProcessOperations(state, body, cache, pubkeys, verifySignatures, batch);

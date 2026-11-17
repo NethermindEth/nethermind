@@ -35,6 +35,25 @@ public class BlockSignatureBatchTests
     private static BlsSignature SignedBy(int keyIndex, Hash256 message) => Sign(DeriveKey(keyIndex), message);
 
     [Test]
+    public void Predecoded_signatures_preserve_the_first_refusal_when_a_later_encoding_changes()
+    {
+        BlsSignature valid = SignedBy(3, Message);
+        BlsSignature wrongSigner = SignedBy(4, Message);
+        bool? acceptedLater = null;
+        Assert.That(() => BlockSignatureBatch.Run(batch =>
+        {
+            batch.Predecode(4, i => i == 0 ? wrongSigner : valid);
+            if (!BlockSignatureBatch.Verify(PublicKey(3), wrongSigner, Message, batch.Defer("first pairing")))
+                throw new AssertionException("The pairing should be deferred.");
+            acceptedLater = BlockSignatureBatch.Verify(PublicKey(3), default, Message, batch.Defer("later encoding"));
+            if (acceptedLater == false)
+                throw new BeaconStateException("later encoding");
+            throw new AssertionException("The substituted encoding should be refused immediately.");
+        }), Throws.TypeOf<BeaconStateException>().With.Message.EqualTo("first pairing"));
+        Assert.That(acceptedLater, Is.False);
+    }
+
+    [Test]
     public void All_signature_verification_overloads_enforce_G2_membership([Values] bool offSubgroup)
     {
         BlsSignature signature = SignedBy(3, Message);
@@ -132,6 +151,7 @@ public class BlockSignatureBatchTests
         BlsSignature blsSignature = new(signature);
         BlockSignatureBatch batch = new();
 
+        batch.Predecode(4, _ => blsSignature);
         bool serial = BlockSignatureBatch.Verify(publicKey, blsSignature, Message, deferral: null);
         bool deferred = BlockSignatureBatch.Verify(publicKey, blsSignature, Message, batch.Defer("outside"));
 

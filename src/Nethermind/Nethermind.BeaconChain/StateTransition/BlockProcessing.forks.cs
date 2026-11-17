@@ -23,6 +23,21 @@ namespace Nethermind.BeaconChain.StateTransition;
 public static partial class BlockProcessing
 {
 
+    private static void PredecodeBlockSignatures(ForkBody body, BlockSignatureBatch? batch)
+    {
+        if (batch is null || Environment.ProcessorCount < 4 ||
+            body.Attestations is not { Length: >= 2 and <= Presets.MaxAttestationsElectra } attestations)
+            return;
+
+        int count = attestations.Length + 2;
+        batch.Predecode(count, i =>
+        {
+            if (i == 0) return body.RandaoReveal;
+            if (i == count - 1) return body.SyncAggregate?.SyncCommitteeSignature ?? default;
+            return attestations[i - 1]?.Signature ?? default;
+        });
+    }
+
     private static partial ulong TotalWithdrawn(ReadOnlySpan<Withdrawal> withdrawals, ulong validatorIndex)
     {
         ulong total = 0;

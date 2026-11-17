@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics.CodeAnalysis;
+using Nethermind.BeaconChain.Types;
+using G2 = Nethermind.Crypto.Bls.P2;
 using G1Affine = Nethermind.Crypto.Bls.P1Affine;
 using G2Affine = Nethermind.Crypto.Bls.P2Affine;
 
@@ -87,6 +89,27 @@ public sealed class BlsSignatureSet
         return true;
     }
 
+    internal readonly struct ValidatedSignature
+    {
+        private readonly long[]? _point;
+
+        private ValidatedSignature(long[] point) => _point = point;
+
+        internal static ValidatedSignature Decode(BlsSignature signature)
+        {
+            G2 projective = new(stackalloc long[G2.Sz]);
+            if (!projective.TryDecode(signature.Bytes, out _))
+                return default;
+            G2Affine affine = projective.ToAffine();
+            return affine.InGroup() ? new(affine.Point.ToArray()) : default;
+        }
+
+        internal bool TryCreate(G1Affine key, ReadOnlySpan<byte> message, [NotNullWhen(true)] out BlsSignatureSet? set)
+        {
+            set = _point is not null && !key.IsInf() && key.InGroup() ? new BlsSignatureSet(key.Point.ToArray(), _point, message.ToArray()) : null;
+            return set is not null;
+        }
+    }
     /// <summary>
     /// The IETF BLS <c>KeyValidate</c> the consensus specs require of every public key: decodes
     /// <paramref name="compressedPublicKey"/> into <paramref name="publicKey"/> and accepts it only

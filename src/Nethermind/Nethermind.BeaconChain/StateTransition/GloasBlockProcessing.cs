@@ -51,6 +51,7 @@ public static partial class GloasBlockProcessing
         ProcessBlockHeader(state, block);
         ProcessWithdrawals(state);
         ProcessExecutionPayloadBid(state, body.SignedExecutionPayloadBid!, spec, pubkeys, verifySignatures, batch);
+        PredecodeBlockSignatures(body, batch);
         ProcessRandao(state, body, pubkeys, verifySignatures, batch);
         ProcessEth1Data(state, body);
         ProcessOperations(state, body, parentSlot, spec, cache, pubkeys, verifySignatures, batch);
