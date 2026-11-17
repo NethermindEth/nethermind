@@ -254,7 +254,11 @@ public sealed class HalfPathMigrator(
             RlpReader reader = new RlpReader(Rlp[node]).EnterSequence(out int length);
             // The reader only sees the node's payload, which starts after the sequence prefix.
             int start = node.Start.Value + length - reader.Remaining;
-            if (reader.CountItems() > 2)
+            // A leaf or an extension has two items, a branch seventeen.
+            RlpReader afterTwoItems = reader;
+            afterTwoItems.SkipItem();
+            afterTwoItems.SkipItem();
+            if (afterTwoItems.HasNext)
             {
                 Collect(address, path, node, null, default);
 
