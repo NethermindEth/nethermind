@@ -21,7 +21,7 @@ namespace SendBlobs;
 
 internal class BlobSender
 {
-    private static readonly TxDecoder txDecoder = TxDecoder.Instance;
+    private static readonly MempoolTxDecoder txDecoder = MempoolTxDecoder.Instance;
 
     private readonly ILogger _logger;
     private readonly ILogManager _logManager;
@@ -312,14 +312,13 @@ internal class BlobSender
             Value = 0,
             To = new Address(receiver),
             BlobVersionedHashes = blobhashes,
-            NetworkWrapper = blobsContainer,
         };
 
         if (!signer.TrySign(tx))
             throw new InvalidOperationException($"Signer {signer.Address} could not sign blob transaction.");
 
         string txRlp = Hex.ToHexString(txDecoder
-            .Encode(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping));
+            .Encode(new MempoolTransaction(tx, blobsContainer), RlpBehaviors.SkipTypedWrapping));
 
         string? result = await _rpcClient.SendRawTransactionAsync($"0x{txRlp}");
 
