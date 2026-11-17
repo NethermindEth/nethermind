@@ -415,13 +415,11 @@ public class RpcModuleProviderTests
         Assert.That(container.Resolve<TestRpcModuleDependencies>().WasRequested, Is.EqualTo(preload));
     }
 
-    [TestCase("parity_setEngineSigner")]
-    [TestCase("parity_setEngineSignerSecret")]
-    [TestCase("parity_clearEngineSigner")]
-    public void Engine_signer_methods_are_served_only_to_authenticated_callers(string method)
+    [Test]
+    public void Engine_signer_methods_are_served_only_to_authenticated_callers(
+        [Values("parity_setEngineSigner", "parity_setEngineSignerSecret", "parity_clearEngineSigner")] string method)
     {
-        _moduleProvider = CreateProvider(new JsonRpcConfig { EnabledModules = [ModuleType.Parity] });
-        _moduleProvider.Register(new SingletonModulePool<IParityRpcModule>(Substitute.For<IParityRpcModule>(), true));
+        RegisterParityModule();
         JsonRpcUrl authenticatedUrl = new("http", "127.0.0.1", 8551, RpcEndpoint.Http, true, [ModuleType.Parity]);
         JsonRpcUrl urlWithoutParity = new("http", "127.0.0.1", 8545, RpcEndpoint.Http, false, [ModuleType.Eth]);
 
@@ -432,8 +430,21 @@ public class RpcModuleProviderTests
             Assert.That(_moduleProvider.Check(method, new JsonRpcContext(RpcEndpoint.Http, url: authenticatedUrl)), Is.EqualTo(ModuleResolution.Enabled));
             Assert.That(_moduleProvider.Check(method, new JsonRpcContext(RpcEndpoint.Http, url: urlWithoutParity)), Is.EqualTo(ModuleResolution.Disabled));
             Assert.That(_moduleProvider.Check(method, new JsonRpcContext(RpcEndpoint.IPC)), Is.EqualTo(ModuleResolution.Enabled));
-            Assert.That(_moduleProvider.Check("parity_enode", new JsonRpcContext(RpcEndpoint.Http)), Is.EqualTo(ModuleResolution.Enabled));
         }
+    }
+
+    [Test]
+    public void Parity_methods_without_the_authentication_flag_are_served_to_unauthenticated_callers()
+    {
+        RegisterParityModule();
+
+        Assert.That(_moduleProvider.Check("parity_enode", new JsonRpcContext(RpcEndpoint.Http)), Is.EqualTo(ModuleResolution.Enabled));
+    }
+
+    private void RegisterParityModule()
+    {
+        _moduleProvider = CreateProvider(new JsonRpcConfig { EnabledModules = [ModuleType.Parity] });
+        _moduleProvider.Register(new SingletonModulePool<IParityRpcModule>(Substitute.For<IParityRpcModule>(), true));
     }
 
     private static IRpcModuleProvider CreateEraAdminModuleProvider() =>
