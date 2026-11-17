@@ -83,7 +83,7 @@ public class BuildBlocksOnlyWhenNotProcessingTests
         Assert.That(producedAtOnce, Is.True);
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime), NonParallelizable]
     public async Task should_delay_block_production_while_the_processing_queue_is_not_empty()
     {
         Context context = new();
@@ -91,38 +91,21 @@ public class BuildBlocksOnlyWhenNotProcessingTests
         context.BlockProcessingQueue.IsEmpty.Returns(false);
 
         Task<Block?> buildTask = context.MainBlockProductionTrigger.BuildBlock();
-        Assert.That(buildTask.IsCompleted, Is.False);
+        bool completedWhileWaiting = buildTask.IsCompleted;
+        long gaugeWhileWaiting = Metrics.CanProduceBlocks;
 
         context.BlockProcessingQueue.IsEmpty.Returns(true);
+        context.BlockProcessingQueue.ProcessingQueueEmpty += Raise.Event();
+        long gaugeAfterProcessing = Metrics.CanProduceBlocks;
         Block? block = await buildTask;
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(completedWhileWaiting, Is.False);
+            Assert.That(gaugeWhileWaiting, Is.Zero);
+            Assert.That(gaugeAfterProcessing, Is.EqualTo(1));
             Assert.That(block, Is.EqualTo(context.DefaultBlock));
             Assert.That(context.TriggeredCount, Is.EqualTo(1));
-        }
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime), NonParallelizable]
-    public async Task should_report_that_blocks_cannot_be_produced_while_production_waits_for_processing()
-    {
-        Context context = new();
-        context.BlockProcessingQueue.ProcessingQueueEmpty += Raise.Event();
-        context.BlockProcessingQueue.IsEmpty.Returns(false);
-
-        Task<Block?> buildTask = context.MainBlockProductionTrigger.BuildBlock();
-        long whileWaiting = Metrics.CanProduceBlocks;
-
-        context.BlockProcessingQueue.IsEmpty.Returns(true);
-        context.BlockProcessingQueue.ProcessingQueueEmpty += Raise.Event();
-        long afterProcessing = Metrics.CanProduceBlocks;
-        Block? block = await buildTask;
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(whileWaiting, Is.Zero);
-            Assert.That(afterProcessing, Is.EqualTo(1));
-            Assert.That(block, Is.EqualTo(context.DefaultBlock));
         }
     }
 
