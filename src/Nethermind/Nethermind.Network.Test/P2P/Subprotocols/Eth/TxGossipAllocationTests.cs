@@ -307,9 +307,9 @@ public class TxGossipAllocationTests
 
     private static NewPooledTransactionHashesMessage68 Announcement(Transaction[] txs)
     {
-        ArrayPoolList<byte> types = new(txs.Length);
-        ArrayPoolList<int> sizes = new(txs.Length);
-        ArrayPoolList<ValueHash256> hashes = new(txs.Length);
+        ArrayPoolList<byte> types = [with(txs.Length)];
+        ArrayPoolList<int> sizes = [with(txs.Length)];
+        ArrayPoolList<ValueHash256> hashes = [with(txs.Length)];
         foreach (Transaction tx in txs)
         {
             types.Add((byte)tx.Type);

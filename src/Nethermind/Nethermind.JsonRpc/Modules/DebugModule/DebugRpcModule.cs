@@ -157,15 +157,6 @@ public class DebugRpcModule(
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
     }
 
-    private Result<Transaction> ToTraceCallTransaction(TransactionForRpc call, IReleaseSpec spec)
-    {
-        // Geth permits a zero blob fee cap for simulated calls, and defaults an omitted one to zero; retain all other RPC validation.
-        Result<Transaction> result = BlobTransactionForRpc.WithZeroBlobFeeCapOmitted(call).ToCallTransaction(spec, jsonRpcConfig.GasCap);
-        if (result.Success(out Transaction? tx, out _) && tx.SupportsBlobs)
-            tx.MaxFeePerBlobGas ??= UInt256.Zero;
-        return result;
-    }
-
     private bool IsTransactionIndexingInProgress()
     {
         if (receiptConfig.TxLookupLimit == ulong.MaxValue || syncProgressResolver.IsFastBlocksReceiptsFinished()) return false;
@@ -190,6 +181,9 @@ public class DebugRpcModule(
 
     public ResultWrapper<GethLikeTxTrace> debug_traceCall(TransactionForRpc call, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
     {
+        // Geth's traceCall resolves hashes without enforcing requireCanonical.
+        if (blockParameter is { BlockHash: { } hash, RequireCanonical: true })
+            blockParameter = new BlockParameter(hash);
         blockParameter ??= BlockParameter.Latest;
         if (blockParameter.Type == BlockParameterType.Pending)
         {
@@ -219,7 +213,8 @@ public class DebugRpcModule(
             return ResultWrapper<GethLikeTxTrace>.Fail(overrideError, ErrorCodes.InvalidInput);
 
         // The call converts against the fork it runs in, which a block override can change.
-        IReleaseSpec spec = specProvider.GetSpec(options?.BlockOverrides?.ApplyTo(header) ?? header);
+        BlockHeader callHeader = options?.BlockOverrides?.ApplyTo(header) ?? header;
+        IReleaseSpec spec = specProvider.GetSpec(callHeader);
         if (options?.StateOverrides is { } stateOverrides)
         {
             Address[] addresses = new Address[stateOverrides.Count];
@@ -243,7 +238,7 @@ public class DebugRpcModule(
         if (call is LegacyTransactionForRpc { ChainId: { } requestedChainId } && requestedChainId != specProvider.ChainId)
             return ResultWrapper<GethLikeTxTrace>.Fail($"chainId does not match node's (have={requestedChainId}, want={specProvider.ChainId})", ErrorCodes.InvalidInput);
 
-        Result<Transaction> txResult = ToTraceCallTransaction(call, spec);
+        Result<Transaction> txResult = call.ToTraceCallTransaction(spec, jsonRpcConfig.GasCap, callHeader.BaseFeePerGas);
         if (!txResult.Success(out Transaction? tx, out string? error))
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(error, ErrorCodes.InvalidInput);
@@ -1077,7 +1072,7 @@ public class DebugRpcModule(
                 RlpBehaviors.Eip658Receipts : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping;
         IRlpDecoder<TxReceipt> receiptDecoder = Rlp.GetDecoderOrThrow<TxReceipt>();
 
-        ArrayPoolList<ArrayPoolList<byte>> encoded = new(receipts.Length);
+        ArrayPoolList<ArrayPoolList<byte>> encoded = [with(receipts.Length)];
         try
         {
             foreach (TxReceipt receipt in receipts)
@@ -1455,7 +1450,7 @@ public class DebugRpcModule(
         // SimulateTxExecutor inserts filler blocks between bundles when BlockOverride.Number has gaps.
         // Pre-compute the block each bundle targets so we can drop fillers from the result, keeping a 1:1
         // mapping to the input bundles, and cap its default gas by that block's spec.
-        HashSet<ulong> bundleBlockNumbers = new(bundles.Length);
+        HashSet<ulong> bundleBlockNumbers = [with(bundles.Length)];
         ulong lastBlockNumber = header.Number;
         ulong lastBlockTime = header.Timestamp;
         foreach (TransactionBundle bundle in bundles)

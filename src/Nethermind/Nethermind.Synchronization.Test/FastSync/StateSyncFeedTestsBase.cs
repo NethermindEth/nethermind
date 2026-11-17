@@ -185,7 +185,12 @@ public abstract class StateSyncFeedTestsBase(
             feedTask,
             Task.Delay(timeout));
 
-        if (completed == feedTask) return;
+        if (completed == feedTask)
+        {
+            // Observe the round: a fault, or a cancellation this helper did not ask for, must fail the test here.
+            await feedTask;
+            return;
+        }
 
         // TreeSync may only be reset outside dispatcher.Run, so a timed-out round has to drain before the caller
         // resets the feed or starts another round on it. Drain before failing too: disposing the linked source

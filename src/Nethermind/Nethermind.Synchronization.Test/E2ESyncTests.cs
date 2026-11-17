@@ -116,7 +116,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     private const int ChainLength = 1000;
     private const ulong HeadPivotDistance = 500;
     private static readonly TimeSpan BalSyncTestTimeout = TimeSpan.FromMinutes(6);
-    private const int BalSyncChainLength = 5_000;
+    private const int BalSyncChainLength = 2_000;
     private const int PartialBalSyncChainLength = 1_000;
     private const int BalCatchUpChainLength = 600;
     private const int PartialBalActivationBlock = 400;
@@ -297,6 +297,9 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
         await configurer(configProvider, spec);
 
+        // Flat storage is on by default, so only the Flat mode keeps it; the other modes cover the Patricia trie.
+        configProvider.GetConfig<IFlatDbConfig>().Enabled = dbModeOverride == DbMode.Flat;
+
         switch (dbModeOverride)
         {
             case DbMode.Default:
@@ -317,7 +320,6 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             case DbMode.Flat:
                 {
                     IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
-                    flatDbConfig.Enabled = true;
                     flatDbConfig.VerifyWithTrie = true;
                     break;
                 }

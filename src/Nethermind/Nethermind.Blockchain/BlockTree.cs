@@ -858,7 +858,24 @@ namespace Nethermind.Blockchain
             if (Logger.IsDebug) Logger.Debug($"Deleting invalid block {invalidBlock.ToString(Block.Format.FullHashAndNumber)}");
 
             ReportBadBlock(invalidBlock);
+            DeleteBranchFrom(invalidBlock.Hash);
+        }
 
+        public void DeleteBranchWithoutBadBlockReport(BlockHeader branchRoot)
+        {
+            if (branchRoot.Hash is null)
+            {
+                if (Logger.IsWarn) Logger.Warn($"{nameof(DeleteBranchWithoutBadBlockReport)} call has been made for a block with a null hash.");
+                return;
+            }
+
+            if (Logger.IsDebug) Logger.Debug($"Deleting branch from {branchRoot.ToString(BlockHeader.Format.FullHashAndNumber)}");
+
+            DeleteBranchFrom(branchRoot.Hash);
+        }
+
+        private void DeleteBranchFrom(Hash256 branchRootHash)
+        {
             BestSuggestedHeader = Head?.Header;
             BestSuggestedBody = Head;
 
@@ -867,7 +884,7 @@ namespace Nethermind.Blockchain
 
             try
             {
-                DeleteBlocks(invalidBlock.Hash!);
+                DeleteBlocks(branchRootHash);
             }
             finally
             {
@@ -1277,7 +1294,7 @@ namespace Nethermind.Blockchain
                 if (preloadedBlocks.Length == 0) return default;
                 if (preloadedBlocks.Length <= DictionaryThreshold) return new PreloadedBlockLookup(preloadedBlocks, null);
 
-                Dictionary<Hash256, Block> dict = new(preloadedBlocks.Length);
+                Dictionary<Hash256, Block> dict = [with(preloadedBlocks.Length)];
                 foreach (Block block in preloadedBlocks)
                 {
                     if (block.Hash is not null) dict[block.Hash] = block;

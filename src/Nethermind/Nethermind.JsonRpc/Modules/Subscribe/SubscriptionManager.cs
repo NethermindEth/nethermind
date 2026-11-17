@@ -4,11 +4,13 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Threading;
+using Nethermind.JsonRpc.Exceptions;
 using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe
 {
-    public class SubscriptionManager(ISubscriptionFactory? subscriptionFactory, ILogManager? logManager) : ISubscriptionManager
+    public class SubscriptionManager(ISubscriptionFactory? subscriptionFactory, IJsonRpcConfig jsonRpcConfig, ILogManager? logManager) : ISubscriptionManager
     {
         private readonly ISubscriptionFactory _subscriptionFactory = subscriptionFactory ?? throw new ArgumentNullException(nameof(subscriptionFactory));
         private readonly ILogger _logger = logManager?.GetClassLogger<SubscriptionManager>() ?? throw new ArgumentNullException(nameof(logManager));
@@ -18,13 +20,43 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly ConcurrentDictionary<string, HashSet<Subscription>> _subscriptionsByJsonRpcClient =
             new();
 
+        private readonly Lock _admissionLock = new();
+
         public string AddSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, string subscriptionType, string? args = null)
         {
-            Subscription subscription = _subscriptionFactory.CreateSubscription(jsonRpcDuplexClient, subscriptionType, args);
-            AddToDictionary(subscription);
-            AddOrUpdateClientsBag(subscription);
+            lock (_admissionLock)
+            {
+                ThrowIfLimitReached(jsonRpcDuplexClient);
+                Subscription subscription = _subscriptionFactory.CreateSubscription(jsonRpcDuplexClient, subscriptionType, args);
+                AddToDictionary(subscription);
+                AddOrUpdateClientsBag(subscription);
 
-            return subscription.Id;
+                return subscription.Id;
+            }
+        }
+
+        private void ThrowIfLimitReached(IJsonRpcDuplexClient client)
+        {
+            int maxSubscriptions = jsonRpcConfig.MaxSubscriptions;
+            if (maxSubscriptions > 0 && !client.IsAuthenticated && _subscriptions.Count >= maxSubscriptions)
+            {
+                throw new LimitExceededException($"Too many subscriptions. The node limit is {maxSubscriptions}.");
+            }
+
+            int maxPerConnection = jsonRpcConfig.MaxSubscriptionsPerConnection;
+            if (maxPerConnection > 0 && _subscriptionsByJsonRpcClient.TryGetValue(client.Id, out HashSet<Subscription>? bag))
+            {
+                int count;
+                lock (bag)
+                {
+                    count = bag.Count;
+                }
+
+                if (count >= maxPerConnection)
+                {
+                    throw new LimitExceededException($"Too many subscriptions. The connection limit is {maxPerConnection}.");
+                }
+            }
         }
 
         private void AddToDictionary(Subscription subscription)

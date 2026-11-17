@@ -108,7 +108,7 @@ public class PosForwardHeaderProvider : PowForwardHeaderProvider
         if (fresh.Length >= fetchSize) UpdateCache(fresh, skipLastN);
 
         int take = Math.Min(fresh.Length, maxHeader);
-        ArrayPoolList<BlockHeader?> result = new(((BlockHeader?[])fresh).AsSpan(0, take));
+        ArrayPoolList<BlockHeader?> result = [with(((BlockHeader?[])fresh).AsSpan(0, take))];
         return Task.FromResult<IOwnedReadOnlyList<BlockHeader?>?>(result);
     }
 
@@ -141,7 +141,7 @@ public class PosForwardHeaderProvider : PowForwardHeaderProvider
             take = Math.Min(available, maxHeader);
         }
 
-        return new ArrayPoolList<BlockHeader?>(cached.AsSpan(offset, take));
+        return [with(cached.AsSpan(offset, take))];
     }
 
     private void UpdateCache(BlockHeader[] headers, int skipLastN)
@@ -216,8 +216,7 @@ public class PosForwardHeaderProvider : PowForwardHeaderProvider
                 }
 
                 using IOwnedReadOnlyList<BlockHeader> oldResponse = response;
-                ArrayPoolList<BlockHeader> trimmedResponse = new(preMergeHeadersCount);
-                trimmedResponse.AddRange(responseSpan[..preMergeHeadersCount]);
+                ArrayPoolList<BlockHeader> trimmedResponse = [with(responseSpan[..preMergeHeadersCount])];
                 response = trimmedResponse;
                 if (_logger.IsInfo) _logger.Info($"Last block is post merge. {lastBlockHeader.Hash}. Trimming to {response.Count} sized batch.");
             }

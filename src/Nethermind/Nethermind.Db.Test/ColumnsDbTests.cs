@@ -481,7 +481,30 @@ public class ColumnsDbTests
             {
                 Assert.That(KeyValueStoreReads.Read(snapshotColumn, keys[i], ReadFlags.HintReadAhead, spanAction), Is.EqualTo(new byte[] { (byte)i, 1 }), $"reverse key {i}");
             }
-            Assert.That(KeyValueStoreReads.Read(snapshotColumn, keys[0], ReadFlags.HintReadAhead, spanAction), Is.EqualTo(new byte[] { 0, 1 }));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(KeyValueStoreReads.Read(snapshotColumn, keys[0], ReadFlags.HintReadAhead, spanAction), Is.EqualTo(new byte[] { 0, 1 }));
+
+                // Skip-ahead reads. The iterator is on keys[0]. A key further away than the five steps of its probe
+                // is found by a seek.
+                Assert.That(KeyValueStoreReads.Read(snapshotColumn, keys[8], ReadFlags.HintReadAhead, spanAction), Is.EqualTo(new byte[] { 8, 1 }), "key 8 from key 0");
+            }
+
+            // From here the iterator is on keys[i]. Next lands on keys[i + 1], before the requested key, so the
+            // bounded probe takes over. It steps past a key that is absent between keys[i + 1] and keys[i + 2] and
+            // settles the miss without a point read. The read of keys[i + 2], where it stopped, steps past it, so a
+            // seek serves that key, and keys[i + 4] is found by the probe. Several rounds, so one read that the
+            // cleanup timer of the iterator pool sends to a seek cannot hide the probe branches.
+            for (int i = 8; i + 4 < keys.Length; i += 4)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(KeyValueStoreReads.Read(snapshotColumn, [.. keys[i + 1], 0], ReadFlags.HintReadAhead, spanAction), Is.Null, $"absent key after key {i + 1}");
+                    Assert.That(KeyValueStoreReads.Read(snapshotColumn, keys[i + 2], ReadFlags.HintReadAhead, spanAction), Is.EqualTo(new byte[] { (byte)(i + 2), 1 }), $"key {i + 2} after the miss");
+                    Assert.That(KeyValueStoreReads.Read(snapshotColumn, keys[i + 4], ReadFlags.HintReadAhead, spanAction), Is.EqualTo(new byte[] { (byte)(i + 4), 1 }), $"key {i + 4} after a skip");
+                }
+            }
         }
 
         // Disposing the snapshot tears down its iterators; the head db must stay fully usable.
@@ -526,7 +549,7 @@ public class ColumnsDbTests
         }
 
         _db.Flush();
-        long usageBefore = BlockCacheUsage();
+        long usageBefore = BlockCacheUsage(column);
 
         using (IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)_db).CreateSnapshot(sequentialReadAhead))
         {
@@ -537,18 +560,76 @@ public class ColumnsDbTests
             }
         }
 
-        long added = BlockCacheUsage() - usageBefore;
+        long added = BlockCacheUsage(column) - usageBefore;
         Assert.That(added, sequentialReadAhead ? Is.LessThan(keyCount * valueSize / 10) : Is.GreaterThan(keyCount * valueSize / 2));
+    }
 
-        static byte[] Key(int i)
+    [Test]
+    public void Snapshot_ReadAhead_Misses_FillBlockCacheOnlyThroughFallbackWithoutHintCacheMiss(
+        [Values] bool probe, [Values] bool hintCacheMiss, [Values] bool spanAction)
+    {
+        const int keyCount = 4096;
+        const int valueSize = 256;
+        const int storedBytes = keyCount / 4 * 3 * valueSize;
+        // The bloom filter is skipped on the last level (optimize_filters_for_hits), here the one file the flush
+        // writes, so a point read of an absent key has to read the data block that would hold it. With the filter
+        // consulted almost no miss does, and the bounds below could not tell the cases apart. No automatic
+        // compaction either, so nothing in the background moves blocks in or out of the cache.
+        using ColumnsDb<ReceiptsColumns> db = CreateDb(DbPath + "-misses", new DbConfig
         {
-            byte[] key = new byte[8];
-            BinaryPrimitives.WriteInt64BigEndian(key, i);
-            return key;
+            BlocksDbAdditionalRocksDbOptions = "optimize_filters_for_hits=true;disable_auto_compactions=true;"
+        });
+        ColumnDb column = (ColumnDb)db.GetColumnDb(ReceiptsColumns.Blocks);
+        Random random = new(42);
+        byte[][] values = new byte[keyCount][];
+        for (int i = 0; i < keyCount; i++)
+        {
+            if (i % 4 == 3) continue; // absent, between stored neighbours
+            random.NextBytes(values[i] = new byte[valueSize]);
+            column.Set(Key(i), values[i]);
         }
 
-        long BlockCacheUsage() => long.Parse(column.GatherProperty("rocksdb.block-cache-usage")!);
+        db.Flush();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(long.Parse(column.GatherProperty("rocksdb.num-entries-active-mem-table")!), Is.Zero, "reads must reach SST files, not the memtable");
+            Assert.That(long.Parse(column.GatherProperty("rocksdb.num-files-at-level0")!), Is.EqualTo(1), "the flush must write one SST file");
+        }
+        long usageBefore = BlockCacheUsage(column);
+
+        ReadFlags flags = ReadFlags.HintReadAhead | (hintCacheMiss ? ReadFlags.HintCacheMiss : ReadFlags.None);
+        using (IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)db).CreateSnapshot(sequentialReadAhead: true))
+        {
+            IReadOnlyKeyValueStore snapshotColumn = snapshot.GetColumn(ReceiptsColumns.Blocks);
+            for (int i = 0; i + 4 < keyCount; i += 4)
+            {
+                // From i + 1 the iterator steps to i + 2 and its probe passes the absent i + 3: a settled miss.
+                // From i + 2 it steps straight past i + 3, cannot settle the read, and falls back to a point read.
+                int stored = probe ? i + 1 : i + 2;
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(KeyValueStoreReads.Read(snapshotColumn, Key(stored), flags, spanAction), Is.EqualTo(values[stored]), $"key {stored}");
+                    Assert.That(KeyValueStoreReads.Read(snapshotColumn, Key(i + 3), flags, spanAction), Is.Null, $"absent key {i + 3}");
+                }
+            }
+        }
+
+        long added = BlockCacheUsage(column) - usageBefore;
+        // Only the point reads of the fallback can fill the cache, and HintCacheMiss must keep them out of it.
+        // The fallback without the flag is the control: it shows that these misses do read data blocks. A miss that
+        // the cleanup timer of the iterator pool sends to the fallback adds one or two blocks, far below the bound.
+        bool fills = !probe && !hintCacheMiss;
+        Assert.That(added, fills ? Is.GreaterThan(storedBytes / 2) : Is.LessThan(storedBytes / 10));
     }
+
+    private static byte[] Key(int i)
+    {
+        byte[] key = new byte[8];
+        BinaryPrimitives.WriteInt64BigEndian(key, i);
+        return key;
+    }
+
+    private static long BlockCacheUsage(ColumnDb column) => long.Parse(column.GatherProperty("rocksdb.block-cache-usage")!);
 
     [TestCase(false)]
     [TestCase(true)]
