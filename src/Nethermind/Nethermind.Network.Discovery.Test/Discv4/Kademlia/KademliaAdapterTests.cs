@@ -1132,7 +1132,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
         [Test]
         [CancelAfter(10000)]
-        public async Task Filtered_ping_is_dropped_before_the_real_adapter_responds_or_publishes(CancellationToken token)
+        public async Task Filtered_ping_is_still_answered_but_not_admitted(CancellationToken token)
         {
             INetworkStorage storage = Substitute.For<INetworkStorage>();
             storage.GetPersistedNodes().Returns([]);
@@ -1145,6 +1145,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 storage,
                 admittedCapacity: 100,
                 _logManager);
+            await _adapter.DisposeAsync();
+            _adapter = CreateAdapter(ExpiringRequestTimeoutMs);
             AdmissionGatedKademliaAdapter gate = new(_adapter, admission, _logManager);
 
             // Record the /24 through admission alone, as if a node in it had already been handled.
@@ -1155,8 +1157,10 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
             using (Assert.EnterMultipleScope())
             {
-                await _msgSender.DidNotReceive().SendMsg(Arg.Any<PongMsg>());
-                await _msgSender.DidNotReceive().SendMsg(Arg.Any<PingMsg>());
+                // The ping is answered, so the peer can still complete its endpoint proof of us.
+                await _msgSender.Received(1).SendMsg(Arg.Any<PongMsg>());
+                await _msgSender.Received(1).SendMsg(Arg.Any<PingMsg>());
+                // But the filtered sender is not admitted or published.
                 _nodeHealthTracker.DidNotReceive().OnIncomingMessageFrom(Arg.Any<Node>());
             }
             await AssertNoPeerCandidate(token);

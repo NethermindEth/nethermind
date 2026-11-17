@@ -25,14 +25,16 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia;
 public class AdmissionGatedKademliaAdapterTests
 {
     [Test]
-    public async Task Filtered_ping_is_not_forwarded_to_inner()
+    public async Task Filtered_ping_is_forwarded_to_inner_so_the_handshake_completes()
     {
         (AdmissionGatedKademliaAdapter gate, IKademliaAdapter inner, DiscoveryNodeAdmission admission) = CreateGate();
         admission.TryAdmit(CreateNode(TestItem.PublicKeyA, "203.0.113.10"));
+        PingMsg ping = CreatePing(TestItem.PublicKeyB, "203.0.113.20");
 
-        await gate.OnIncomingMsg(CreatePing(TestItem.PublicKeyB, "203.0.113.20"));
+        await gate.OnIncomingMsg(ping);
 
-        await inner.DidNotReceive().OnIncomingMsg(Arg.Any<DiscoveryMsg>());
+        // The peer still needs our Pong to prove our endpoint, so admission must not suppress the message.
+        await inner.Received(1).OnIncomingMsg(ping);
     }
 
     [TestCase(MsgType.Pong)]
@@ -61,7 +63,7 @@ public class AdmissionGatedKademliaAdapterTests
     }
 
     [Test]
-    public async Task Malformed_ping_is_dropped_without_consuming_admission()
+    public async Task Malformed_ping_is_forwarded_for_the_adapter_to_reject_without_consuming_admission()
     {
         (AdmissionGatedKademliaAdapter gate, IKademliaAdapter inner, DiscoveryNodeAdmission admission) = CreateGate();
         PingMsg malformed = CreatePing(TestItem.PublicKeyA, "203.0.113.10");
@@ -69,18 +71,18 @@ public class AdmissionGatedKademliaAdapterTests
 
         await gate.OnIncomingMsg(malformed);
 
-        await inner.DidNotReceive().OnIncomingMsg(Arg.Any<DiscoveryMsg>());
+        await inner.Received(1).OnIncomingMsg(malformed);
         // The malformed ping did not record its subnet.
         Assert.That(admission.TryAdmit(CreateNode(TestItem.PublicKeyB, "203.0.113.20")), Is.True);
     }
 
     [Test]
-    public async Task ReadPeerCandidates_filters_unadmitted_nodes()
+    public async Task ReadPeerCandidates_admits_bonded_candidates_and_filters_reserved_subnets()
     {
         (AdmissionGatedKademliaAdapter gate, IKademliaAdapter inner, DiscoveryNodeAdmission admission) = CreateGate();
-        Node admittedNode = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
+        Node admittedNode = CreateNode(TestItem.PublicKeyA, "203.0.114.10");
         Node filteredNode = CreateNode(TestItem.PublicKeyB, "203.0.113.20");
-        admission.TryAdmit(admittedNode);
+        admission.TryAdmit(CreateNode(TestItem.PublicKeyC, "203.0.113.10"));
         inner.ReadPeerCandidates(Arg.Any<CancellationToken>())
             .Returns(ToAsyncEnumerable([admittedNode, filteredNode]));
 
@@ -90,28 +92,37 @@ public class AdmissionGatedKademliaAdapterTests
             received.Add(node);
         }
 
-        Assert.That(received, Has.Count.EqualTo(1));
-        Assert.That(received[0], Is.SameAs(admittedNode));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(received, Has.Count.EqualTo(1));
+            Assert.That(received[0], Is.SameAs(admittedNode));
+            // The candidate stream admits a bonded node from a fresh subnet on its own.
+            Assert.That(admission.TryAdmit(CreateNode(TestItem.PublicKeyE, "203.0.114.20")), Is.False);
+        }
     }
 
     [Test]
-    public async Task Outbound_requests_to_a_filtered_receiver_are_blocked()
+    public async Task Outbound_requests_are_forwarded_regardless_of_admission()
     {
         (AdmissionGatedKademliaAdapter gate, IKademliaAdapter inner, DiscoveryNodeAdmission admission) = CreateGate();
         admission.TryAdmit(CreateNode(TestItem.PublicKeyA, "203.0.113.10"));
-        Node filtered = CreateNode(TestItem.PublicKeyB, "203.0.113.20");
+        Node receiver = CreateNode(TestItem.PublicKeyB, "203.0.113.20");
         CancellationToken token = CancellationToken.None;
+        Node[] neighbours = [CreateNode(TestItem.PublicKeyC, "203.0.114.20")];
+        inner.Ping(receiver, token).Returns(true);
+        inner.FindNeighbours(receiver, TestItem.PublicKeyD, token).Returns(neighbours);
+        inner.SendEnrRequest(receiver, token).Returns((EnrResponseMsg?)null);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(await gate.Ping(filtered, token), Is.False);
-            Assert.That(await gate.FindNeighbours(filtered, TestItem.PublicKeyC, token), Is.Null);
-            Assert.That(await gate.SendEnrRequest(filtered, token), Is.Null);
+            Assert.That(await gate.Ping(receiver, token), Is.True);
+            Assert.That(await gate.FindNeighbours(receiver, TestItem.PublicKeyD, token), Is.SameAs(neighbours));
+            Assert.That(await gate.SendEnrRequest(receiver, token), Is.Null);
         }
 
-        await inner.DidNotReceive().Ping(Arg.Any<Node>(), Arg.Any<CancellationToken>());
-        await inner.DidNotReceive().FindNeighbours(Arg.Any<Node>(), Arg.Any<PublicKey>(), Arg.Any<CancellationToken>());
-        await inner.DidNotReceive().SendEnrRequest(Arg.Any<Node>(), Arg.Any<CancellationToken>());
+        await inner.Received(1).Ping(receiver, token);
+        await inner.Received(1).FindNeighbours(receiver, TestItem.PublicKeyD, token);
+        await inner.Received(1).SendEnrRequest(receiver, token);
     }
 
     [Test]

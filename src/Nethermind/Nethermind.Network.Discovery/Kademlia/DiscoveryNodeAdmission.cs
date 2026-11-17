@@ -18,10 +18,10 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// Single authoritative admission decision for discv4 discovery nodes.
 /// </summary>
 /// <remarks>
-/// The IP filter is stateful, so the operations are deliberately distinct: <see cref="WouldAccept"/> is
-/// read-only, <see cref="TryAdmit"/> is the one call that records a new address, <see cref="Touch"/>
-/// refreshes an admitted node, and <see cref="IsAdmitted"/> answers whether this exact node already passed
-/// admission.
+/// The IP filter is stateful and keyed by address, so <see cref="TryAdmit"/> is the one call that records a
+/// new address, <see cref="Touch"/> refreshes an admitted node, and the exempt set identifies nodes that
+/// bypass the filter. Admission decides who enters the routing table and the peer-candidate stream; it
+/// deliberately does not decide whether a discovery message is answered.
 /// <para>
 /// Exemption is tracked by node identity rather than by the flags on the instance being admitted: a node
 /// rebuilt from a packet carries no flags, so a flagged instance records its identity in the exempt set and
@@ -107,29 +107,6 @@ internal sealed class DiscoveryNodeAdmission(
 
         _admitted.TryReserve(node.Id);
         return true;
-    }
-
-    /// <summary>
-    /// Read-only: would this node's address be accepted if it were new? Does not consume capacity.
-    /// </summary>
-    /// <remarks>
-    /// Used to gate outbound probes. Because it never records an address, several nodes from a subnet that
-    /// has not been recorded yet may be probed before the first reply is admitted.
-    /// </remarks>
-    public bool WouldAccept(Node node)
-    {
-        if (!_enabled) return true;
-        if (IsSelf(node) || IsExempt(node) || IsKnown(node)) return true;
-        return _filter.WouldAccept(node.Address.Address);
-    }
-
-    /// <summary>
-    /// Read-only: has this exact node already passed <see cref="TryAdmit"/> (or is it exempt/known)?
-    /// </summary>
-    public bool IsAdmitted(Node node)
-    {
-        if (!_enabled) return true;
-        return IsSelf(node) || IsExempt(node) || IsKnown(node);
     }
 
     /// <summary>

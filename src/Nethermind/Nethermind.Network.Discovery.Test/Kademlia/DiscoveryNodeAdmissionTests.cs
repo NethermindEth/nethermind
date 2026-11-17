@@ -73,21 +73,6 @@ public class DiscoveryNodeAdmissionTests
     }
 
     [Test]
-    public void WouldAccept_does_not_consume_state()
-    {
-        Fixture fixture = CreateAdmission();
-        Node node = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(fixture.Admission.WouldAccept(node), Is.True);
-            Assert.That(fixture.Admission.WouldAccept(node), Is.True);
-            Assert.That(fixture.Admission.TryAdmit(node), Is.True);
-            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyB, "203.0.113.20")), Is.False);
-        }
-    }
-
-    [Test]
     public void TryAdmit_is_idempotent_for_the_same_node()
     {
         Fixture fixture = CreateAdmission();
@@ -273,40 +258,6 @@ public class DiscoveryNodeAdmissionTests
     }
 
     [Test]
-    public void IsAdmitted_reflects_admission_state()
-    {
-        Fixture fixture = CreateAdmission();
-        Node node = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
-
-        Assert.That(fixture.Admission.IsAdmitted(node), Is.False);
-        fixture.Admission.TryAdmit(node);
-        Assert.That(fixture.Admission.IsAdmitted(node), Is.True);
-    }
-
-    [Test]
-    public void IsAdmitted_is_true_for_self_exempt_and_known_nodes()
-    {
-        Node self = CreateNode(TestItem.PublicKeyF, "198.51.100.2");
-        Node trusted = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
-        trusted.IsTrusted = true;
-        Node known = CreateNode(TestItem.PublicKeyB, "203.0.113.20");
-        Fixture fixture = CreateAdmission(config: new KademliaConfig<Node> { CurrentNodeId = self });
-        fixture.RoutingTable.TryGet(Arg.Is<ValueHash256>(hash => hash == known.Id.Hash), out _)
-            .Returns(ci =>
-            {
-                ci[1] = known;
-                return true;
-            });
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(fixture.Admission.IsAdmitted(self), Is.True);
-            Assert.That(fixture.Admission.IsAdmitted(trusted), Is.True);
-            Assert.That(fixture.Admission.IsAdmitted(known), Is.True);
-        }
-    }
-
-    [Test]
     public void Disabled_admission_accepts_everything_without_reading_persisted_nodes()
     {
         Fixture fixture = CreateAdmission(enabled: false);
@@ -315,10 +266,8 @@ public class DiscoveryNodeAdmissionTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(fixture.Admission.WouldAccept(first), Is.True);
             Assert.That(fixture.Admission.TryAdmit(first), Is.True);
             Assert.That(fixture.Admission.TryAdmit(second), Is.True);
-            Assert.That(fixture.Admission.IsAdmitted(second), Is.True);
             fixture.Storage.DidNotReceive().GetPersistedNodes();
         }
     }

@@ -13,21 +13,16 @@ using Nethermind.Stats.Model;
 namespace Nethermind.Network.Discovery.Discv4.Kademlia;
 
 /// <summary>
-/// Applies the discovery-node admission decision before the discv4 adapter handles a sender or publishes a
-/// peer candidate.
+/// Applies the discovery-node admission decision before a node is published as a peer candidate.
 /// </summary>
 /// <remarks>
-/// Inbound handling and peer-candidate publication use the authoritative
-/// <see cref="DiscoveryNodeAdmission.TryAdmit"/> and <see cref="DiscoveryNodeAdmission.IsAdmitted"/>
-/// decisions. Outbound contact uses the read-only <see cref="DiscoveryNodeAdmission.WouldAccept"/>, so a
-/// probe does not reserve the address window: several candidates from a not-yet-recorded subnet can be
-/// probed before the first reply is admitted. This is intentional; an unanswered probe must not consume
-/// filter capacity.
-/// <para>
-/// Responses are not admitted here. A response only means something once the inner adapter correlates it
-/// with a pending request, and an unsolicited or spoofed response must not reserve capacity for its source
-/// subnet. The health tracker admits the responder after correlation succeeds.
-/// </para>
+/// The filter decides which nodes enter discovery's routing table and peer-candidate stream; it never
+/// decides whether a discovery message is answered. discv4 requires a Pong for every Ping, and that Pong
+/// is what lets the peer prove our endpoint, so suppressing traffic for a filtered sender would break the
+/// handshake in both directions. It would also be wrong for legitimate peers that share an address, such as
+/// several nodes on one host or behind one NAT. Routing-table admission is applied by
+/// <see cref="FilteringNodeHealthTracker"/> after a message is handled; peer candidates are bonded before
+/// they reach this adapter, so admitting them here commits the address only after the endpoint proof.
 /// </remarks>
 internal sealed class AdmissionGatedKademliaAdapter(
     IKademliaAdapter inner,
@@ -44,51 +39,14 @@ internal sealed class AdmissionGatedKademliaAdapter(
         set => _inner.MsgSender = value;
     }
 
-    public Task OnIncomingMsg(DiscoveryMsg msg)
-    {
-        if (!_admission.Enabled)
-        {
-            return _inner.OnIncomingMsg(msg);
-        }
-
-        // Old DiscoveryManager validated the Ping address before creating a session; keep that order so a
-        // malformed Ping neither creates a session nor consumes admission capacity.
-        if (msg is PingMsg ping && !KademliaAdapter.ValidatePingAddress(ping, _logger))
-        {
-            return Task.CompletedTask;
-        }
-
-        // Preserve the adapter's existing logging/validation behavior for malformed messages.
-        if (msg.FarPublicKey is null || msg.FarAddress is null)
-        {
-            return _inner.OnIncomingMsg(msg);
-        }
-
-        // A response proves nothing until it is correlated with a pending request; the inner adapter drops
-        // unsolicited ones before any state change. Admitting first would let a spoofed Pong or Neighbors
-        // reserve its source subnet while the message is then discarded, so admission is left to the health
-        // tracker that the adapter invokes after correlation succeeds.
-        if (KademliaAdapter.IsResponse(msg.MsgType))
-        {
-            return _inner.OnIncomingMsg(msg);
-        }
-
-        Node node = KademliaAdapter.CreateNode(msg);
-        if (!_admission.TryAdmit(node))
-        {
-            if (_logger.IsTrace) _logger.Trace($"Discarding discovery message from filtered node: {node:hide}.");
-            return Task.CompletedTask;
-        }
-
-        return _inner.OnIncomingMsg(msg);
-    }
+    public Task OnIncomingMsg(DiscoveryMsg msg) => _inner.OnIncomingMsg(msg);
 
     public async IAsyncEnumerable<Node> ReadPeerCandidates(
         [EnumeratorCancellation] CancellationToken token)
     {
         await foreach (Node node in _inner.ReadPeerCandidates(token).WithCancellation(token))
         {
-            if (_admission.IsAdmitted(node))
+            if (_admission.TryAdmit(node))
             {
                 yield return node;
             }
@@ -99,20 +57,13 @@ internal sealed class AdmissionGatedKademliaAdapter(
         }
     }
 
-    public Task<bool> Ping(Node receiver, CancellationToken token)
-        => _admission.WouldAccept(receiver)
-            ? _inner.Ping(receiver, token)
-            : Task.FromResult(false);
+    public Task<bool> Ping(Node receiver, CancellationToken token) => _inner.Ping(receiver, token);
 
     public Task<Node[]?> FindNeighbours(Node receiver, PublicKey target, CancellationToken token)
-        => _admission.WouldAccept(receiver)
-            ? _inner.FindNeighbours(receiver, target, token)
-            : Task.FromResult<Node[]?>(null);
+        => _inner.FindNeighbours(receiver, target, token);
 
     public Task<EnrResponseMsg?> SendEnrRequest(Node receiver, CancellationToken token)
-        => _admission.WouldAccept(receiver)
-            ? _inner.SendEnrRequest(receiver, token)
-            : Task.FromResult<EnrResponseMsg?>(null);
+        => _inner.SendEnrRequest(receiver, token);
 
     public NodeSession GetSession(Node node) => _inner.GetSession(node);
 
