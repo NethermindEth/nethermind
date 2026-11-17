@@ -232,14 +232,14 @@ public class FrameTxPeerFloodMeasurement
         StatusMessage status = new() { GenesisHash = genesis.Hash!, BestHash = genesis.Hash! };
         using DisposableByteBuffer buffer = serializer.ZeroSerialize(status).AsDisposable();
         buffer.ReadByte();
-        handler.HandleMessage(new ZeroPacket(buffer) { PacketType = Eth62MessageCode.Status });
+        handler.HandleMessage(new NettyBufferPacket(buffer) { PacketType = Eth62MessageCode.Status });
     }
 
     /// <summary>Wire bytes of one <c>Transactions</c> message, without the message-code prefix.</summary>
     /// <remarks>Its content does not matter: the controller sees only the verdict the substitute pool returns.</remarks>
     private static byte[] SerializeTransactions(int count)
     {
-        ArrayPoolList<Transaction> transactions = new(count);
+        ArrayPoolList<Transaction> transactions = [with(count)];
         for (int i = 0; i < count; i++)
         {
             transactions.Add(Build.A.Transaction.WithNonce((ulong)i).SignedAndResolved(TestItem.PrivateKeyA).TestObject);

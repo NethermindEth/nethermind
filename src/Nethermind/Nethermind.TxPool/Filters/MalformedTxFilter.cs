@@ -3,6 +3,7 @@
 
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.GasPolicy;
@@ -37,17 +38,19 @@ namespace Nethermind.TxPool.Filters
                 && spec.IsEip2780Enabled
                 && tx.IsMessageCall
                 && tx.SenderAddress is null
-                && result.IsIntrinsicGasError
+                && TxErrorMessages.IsIntrinsicGasError(result.Error)
                 && CanSenderRecoveryFixIntrinsicGas(tx, spec);
             if (!result && !retryAfterSenderRecovery)
             {
-                return RejectMalformed(tx, result);
+                return RejectMalformed(tx, result, ref state);
             }
 
             Metrics.PendingTransactionsWithExpensiveFiltering++;
             if (tx.SenderAddress is null)
             {
-                if (!ecdsa.TryRecoverAddress(tx, out Address? senderAddress))
+                // Where the spec does not validate chain ids, a legacy signature for another chain is accepted, and block
+                // processing recovers it over the chain id it carries.
+                if (!ecdsa.TryRecoverAddress(tx, out Address? senderAddress, !spec.ValidateChainId))
                 {
                     Metrics.PendingTransactionsUnresolvableSender++;
                     if (logger.IsTrace) TraceUnresolvableSender(tx);
@@ -60,7 +63,7 @@ namespace Nethermind.TxPool.Filters
             // intrinsic result can become valid after recovery.
             if (retryAfterSenderRecovery && !(result = Validate(tx, spec)))
             {
-                return RejectMalformed(tx, result);
+                return RejectMalformed(tx, result, ref state);
             }
 
             return AcceptTxResult.Accepted;
@@ -95,11 +98,12 @@ namespace Nethermind.TxPool.Filters
             return tx.GasLimit >= selfTransferGas.MinRequiredGasLimit;
         }
 
-        private AcceptTxResult RejectMalformed(Transaction tx, ValidationResult result)
+        private AcceptTxResult RejectMalformed(Transaction tx, ValidationResult result, ref TxFilteringState state)
         {
             Metrics.PendingTransactionsMalformed++;
             // It may happen that other nodes send us transactions that were signed for another chain or don't have enough gas.
             if (logger.IsTrace) TraceMalformed(tx, result);
+            state.SidecarRejected = TxErrorMessages.IsBlobSidecarError(result.Error);
             return AcceptTxResult.Invalid.WithMessage(result.ToString());
         }
 

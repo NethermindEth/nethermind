@@ -32,7 +32,7 @@ public class FlatSnapTrieFactoryTests
     private static (FlatSnapTrieFactory factory, IPersistence persistence, IPersistence.IPersistenceReader reader) Build(bool doubleWriteCheck = false, IPersistenceManager? persistenceManager = null)
     {
         IPersistence persistence = Substitute.For<IPersistence>();
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        IPersistence.IPersistenceReader reader = Substitute.For<SubstitutablePersistenceReader>();
         persistence.CreateReader(Arg.Any<ReaderFlags>()).Returns(reader);
         // NSubstitute proxies fail with InvalidProgramException on the ReadOnlySpan parameters,
         // so the write batch is a hand-rolled no-op fake.
@@ -218,7 +218,7 @@ public class FlatSnapTrieFactoryTests
 
     private static readonly ValueHash256 FirstPartitionLimit = new("0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
     private static readonly byte[] BranchRlp = BuildBranchRlp();
-    private static readonly byte[] SlotRlp = Rlp.Encode(new byte[] { 1 }).Bytes;
+    private static readonly byte[] SlotRlp = Rlp.Encode(new byte[] { 1 });
     private static readonly string[] StorageNodePaths = ["", "1", "8", "c", "1111111111111111", "cccccccccccccccc"];
 
     // The last account before the checkpoint, and the first path still to download, which shares its 20-byte key.
@@ -305,7 +305,7 @@ public class FlatSnapTrieFactoryTests
             {
                 foreach (string node in StorageNodePaths)
                 {
-                    Assert.That(reader.TryLoadStorageRlp(account.ToCommitment(), TreePath.FromHexString(node), ReadFlags.None) is not null,
+                    Assert.That(reader.LoadStorageRlp(account.ToCommitment(), TreePath.FromHexString(node), ReadFlags.None) is not null,
                         Is.EqualTo(keptNodes.Contains(node)), $"storage node {node} of {account}");
                 }
             }
@@ -318,7 +318,7 @@ public class FlatSnapTrieFactoryTests
                          ("90000000", false), ("a0000000", false), ("8000000000000000000000", true), ("9000000000000000000000", false),
                      ])
             {
-                Assert.That(reader.TryLoadStateRlp(TreePath.FromHexString(node), ReadFlags.None) is not null, Is.EqualTo(kept), $"state node {node}");
+                Assert.That(reader.LoadStateRlp(TreePath.FromHexString(node), ReadFlags.None) is not null, Is.EqualTo(kept), $"state node {node}");
             }
         }
     }

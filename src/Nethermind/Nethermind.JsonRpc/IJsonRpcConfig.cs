@@ -227,6 +227,12 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The max block count limit for the `eth_simulate` JSON-RPC method.", DefaultValue = "256")]
     long? MaxSimulateBlocksCap { get; set; }
 
+    [ConfigItem(Description = "The max total call count, across all blocks, for `eth_simulateV1`, `debug_simulateV1`, `trace_simulateV1` and, with bundle overrides, `debug_traceCallMany`.", DefaultValue = "10000")]
+    long? MaxSimulateCallsCap { get; set; }
+
+    [ConfigItem(Description = "The max call count per block (per bundle for `debug_traceCallMany`) for the methods that `MaxSimulateCallsCap` covers.", DefaultValue = "5000")]
+    long? MaxSimulateCallsPerBlockCap { get; set; }
+
     [ConfigItem(Description = "The error margin used in the `eth_estimateGas` JSON-RPC method, in basis points.", DefaultValue = "150")]
     int EstimateErrorMargin { get; set; }
 
@@ -279,6 +285,12 @@ public interface IJsonRpcConfig : IConfig
     /// </summary>
     [ConfigItem(Description = "Maximum number of concurrent eth_sendRawTransactionSync calls, independent of EthModuleConcurrentInstances. Excess calls are rejected before submitting the transaction. Each pending call also counts against MaxConcurrentSharedRequests for up to RpcTxSyncMaxTimeoutMs, so keep this well below MaxConcurrentSharedRequests. 0 disables this limit; MaxConcurrentSharedRequests then remains the only bound (none if it is 0 too).", DefaultValue = "128")]
     int RpcTxSyncMaxConcurrentRequests { get; set; }
+
+    [ConfigItem(Description = "The maximum number of blocks one `eth_feeHistory` call returns, from 1 to 1024; `0`, negative values and values above 1024 mean 1024. A larger `blockCount` is lowered to it, so the response then covers fewer blocks than requested.", DefaultValue = "1024")]
+    int FeeHistoryMaxBlockCount { get; set; }
+
+    [ConfigItem(Description = "The maximum number of `eth_feeHistory` calls at once that need blocks missing from the fee cache of recent blocks. Calls served from that cache take no slot; one successful read of a cached block's reward data is shared by the calls that ask for it. Calls beyond the cap return `LimitExceeded` at once instead of waiting; a newest block whose header is not found gets the usual not-found error instead. Right after a restart, recent blocks count until each has been read once. `0` or negative to lift the limit. Defaults to a quarter of the number of logical processors, at least 1.")]
+    int? FeeHistoryMaxConcurrentRequests { get; set; }
 
     [ConfigItem(
         Description = """

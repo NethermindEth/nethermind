@@ -32,6 +32,7 @@ using Nethermind.Logging;
 using Nethermind.Logging.NLog;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;

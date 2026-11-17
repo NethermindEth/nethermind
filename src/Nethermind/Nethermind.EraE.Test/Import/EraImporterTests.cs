@@ -12,8 +12,10 @@ using Nethermind.Specs.Forks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Caching;
@@ -166,6 +168,7 @@ public class EraImporterTests
 
             Assert.That(imported, Is.Not.Null, $"block {i} should exist after import");
             Assert.That(imported!.Hash, Is.EqualTo(original!.Hash!), $"block {i} hash must match");
+            AssertStoredAsArchived(original, imported, targetReceipts);
 
             TxReceipt[] originalReceipts = sourceReceipts.Get(original!);
             bool hasReceipts = targetReceipts.HasBlock(imported.Number, imported.Hash!);
@@ -203,6 +206,7 @@ public class EraImporterTests
 
             Assert.That(imported, Is.Not.Null, $"post-merge block {i} should exist after import");
             Assert.That(imported!.Hash, Is.EqualTo(original!.Hash!), $"post-merge block {i} hash must match");
+            AssertStoredAsArchived(original, imported, targetReceipts);
 
             TxReceipt[] originalReceipts = sourceReceipts.Get(original!);
             bool hasReceipts = targetReceipts.HasBlock(imported.Number, imported.Hash!);
@@ -325,7 +329,8 @@ public class EraImporterTests
             child.Header.Hash = child.Header.CalculateHash();
         }
         Block descendant = Build.A.Block.WithParent(child).WithPostMergeRules().TestObject;
-        BlockTree sourceTree = new BlockTreeBuilder(genesis, new TestSpecProvider(Paris.Instance)).WithBlocks(genesis, parent, child, descendant).TestObject;
+        BlockTreeBuilder sourceTreeBuilder = new(genesis, new TestSpecProvider(Paris.Instance));
+        BlockTree sourceTree = sourceTreeBuilder.WithBlocks(genesis, parent, child, descendant).TestObject;
         sourceTree.TryUpdateMainChain(descendant.Header, true, forceUpdateHeadBlock: true, preloadedBlocks: [descendant]);
 
         IPoSSwitcher archiveConsensus = Substitute.For<IPoSSwitcher>();
@@ -333,6 +338,7 @@ public class EraImporterTests
         await using IContainer sourceCtx = EraETestModule.BuildContainerBuilder()
             .AddSingleton<IPoSSwitcher>(archiveConsensus)
             .AddSingleton<IBlockTree>(sourceTree)
+            .AddSingleton(sourceTreeBuilder.BlockStore)
             .AddSingleton<ISpecProvider>(new TestSpecProvider(Paris.Instance))
             .Build();
         string exportPath = sourceCtx.ResolveTempDirPath();
@@ -763,6 +769,20 @@ public class EraImporterTests
             (Block? block, TxReceipt[]? receipts) = await inner.FindBlockAndReceipts(number, ensureValidated, cancellation);
             return (block is null ? null : rewrite(number, block), receipts);
         }
+
+        public async Task<(Block?, ArrayPoolList<byte>?, TxReceipt[]?)> FindEncodedBlockAndReceipts(ulong number, bool ensureValidated = true, CancellationToken cancellation = default)
+        {
+            (Block? block, ArrayPoolList<byte>? body, TxReceipt[]? receipts) = await inner.FindEncodedBlockAndReceipts(number, ensureValidated, cancellation);
+            return (block is null ? null : rewrite(number, block), body, receipts);
+        }
+    }
+
+    private static void AssertStoredAsArchived(Block original, Block imported, IReceiptStorage targetReceipts)
+    {
+        BlockDecoder decoder = new();
+        Assert.That(decoder.Encode(imported), Is.EqualTo(decoder.Encode(original)), $"block {original.Number} body must match");
+        foreach (Transaction transaction in original.Transactions)
+            Assert.That(targetReceipts.FindBlockHash(transaction.Hash!), Is.EqualTo(original.Hash), $"transaction in block {original.Number} must be indexed");
     }
 
     private static (bool, Hash256?)[] MainChainHashes(IBlockTree tree, ulong chainLength)

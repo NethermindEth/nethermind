@@ -7,7 +7,7 @@ using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
@@ -31,7 +31,7 @@ public class ReceiptsMessageSerializer70Tests
         ReceiptsMessageSerializer70 serializer = new(new TestSpecProvider(Prague.Instance));
         using DisposableByteBuffer payload = Unpooled.WrappedBuffer([0xc3, 0x80, 0x02, 0xc0]).AsDisposable();
 
-        Assert.That(() => serializer.Deserialize(payload), Throws.InstanceOf<RlpException>());
+        Assert.That(() => serializer.Deserialize(payload), Throws.InstanceOf<RlpReaderException>());
     }
 
     private static IEnumerable<TestCaseData> RoundtripCases()

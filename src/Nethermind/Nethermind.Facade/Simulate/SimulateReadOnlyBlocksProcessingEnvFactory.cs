@@ -13,11 +13,11 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -64,6 +64,9 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             .AddSingleton<IBlockTree>(overrideBlockTree)
             .AddSingleton<BlockTreeOverlay>(overrideBlockTree)
             .AddSingleton<IHeaderStore>(tmpHeaderStore)
+            .AddSingleton(tmpHeaderStore)
+            .AddSingleton(tmpBlockStore)
+            .AddSingleton(tmpChainLevelInfoRepository)
             .AddSingleton<IHeaderFinder>(c => c.Resolve<IHeaderStore>())
             .AddSingleton<IBlockhashCache, BlockhashCache>()
             .AddModule(validationModules)
@@ -79,8 +82,8 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
                 CodeOverrideStore overrides = ctx.Resolve<CodeOverrideStore>();
                 return worldState => new MovedPrecompileCodeInfoRepository(inner(worldState), worldState, overrides);
             })
-            .AddScoped<TransactionProcessorAdapterFactory, SimulateRequestState>(static state =>
-                txProcessor => new SimulateTransactionProcessorAdapter(txProcessor, state))
+            .AddScoped<TransactionProcessorAdapterFactory, SimulateRequestState, IWorldState>(static (state, worldState) =>
+                txProcessor => new SimulateTransactionProcessorAdapter(txProcessor, state, worldState))
             .AddSingleton<IReceiptStorage>(NullReceiptStorage.Instance)
             .AddScoped<SimulateRequestState>()
             .BindScoped<IBlobBaseFeeOverrideProvider, SimulateRequestState>()
@@ -91,24 +94,14 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
         envLifetimeScope.Disposer.AddInstanceForDisposal(editableDbProvider);
 
         SimulateReadOnlyBlocksProcessingEnv env = envLifetimeScope.Resolve<SimulateReadOnlyBlocksProcessingEnv>();
-        return new DisposableSimulateReadOnlyBlocksProcessingEnv(
-            env, envLifetimeScope, tmpHeaderStore, tmpBlockStore, tmpChainLevelInfoRepository);
+        return new DisposableSimulateReadOnlyBlocksProcessingEnv(env, envLifetimeScope);
     }
 
     private sealed class DisposableSimulateReadOnlyBlocksProcessingEnv(
         SimulateReadOnlyBlocksProcessingEnv inner,
-        ILifetimeScope scope,
-        IClearableCache tmpHeaderStore,
-        IClearableCache tmpBlockStore,
-        IClearableCache tmpChainLevelInfoRepository) : ISimulateReadOnlyBlocksProcessingEnv, IDisposable
+        ILifetimeScope scope) : ISimulateReadOnlyBlocksProcessingEnv, IDisposable
     {
-        public SimulateReadOnlyBlocksProcessingScope Begin(BlockHeader? baseBlock)
-        {
-            tmpHeaderStore.ClearCache();
-            tmpBlockStore.ClearCache();
-            tmpChainLevelInfoRepository.ClearCache();
-            return inner.Begin(baseBlock);
-        }
+        public SimulateReadOnlyBlocksProcessingScope Begin(BlockHeader? baseBlock) => inner.Begin(baseBlock);
 
         public void Dispose() => scope.Dispose();
     }

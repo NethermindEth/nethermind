@@ -7,7 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Messages;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Stats.Model;
 using NUnit.Framework;
 
@@ -106,7 +106,7 @@ public class HelloMessageSerializerTests
     {
         static ArrayPoolList<Capability> CreateCapabilities(int count)
         {
-            ArrayPoolList<Capability> caps = new(count);
+            ArrayPoolList<Capability> caps = [with(count)];
             for (int i = 0; i < count; i++)
             {
                 caps.Add(new Capability($"p{i:D3}", 1));

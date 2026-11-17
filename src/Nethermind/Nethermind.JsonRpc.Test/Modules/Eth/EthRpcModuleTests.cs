@@ -40,14 +40,17 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Newtonsoft.Json.Linq;
@@ -274,6 +277,51 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_pending_transactions_reports_a_frame_transaction_gas_at_the_next_block_spec()
+    {
+        Transaction frameTx = FrameTxTestFrames.FrameTx(TestItem.AddressA, [], FrameTxTestFrames.SelfVerify(100_000), FrameTxTestFrames.Pay(100_000));
+        frameTx.GasLimit = 200_000;
+        frameTx.Hash = TestItem.KeccakA;
+        ITxPool txPool = Substitute.For<ITxPool>();
+        txPool.GetPendingTransactions().Returns([frameTx]);
+        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Prague.Instance), ((ForkActivation)1, Eip8141Prototype.Instance));
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithEthRpcModule(@this => new EthRpcModule(
+                @this.RpcConfig,
+                @this.Bridge,
+                @this.BlockFinder,
+                @this.BlockTree,
+                @this.ReceiptFinder,
+                @this.StateReader,
+                txPool,
+                @this.TxSender,
+                @this.TestWallet,
+                LimboLogs.Instance,
+                @this.SpecProvider,
+                @this.GasPriceOracle,
+                Substitute.For<IEthSyncingInfo>(),
+                Substitute.For<IFeeHistoryOracle>(),
+                @this.ProtocolsManager,
+                @this.ForkInfo,
+                12,
+                @this.HeadBlockSignal,
+                Substitute.For<IEthCapabilitiesProvider>(),
+                new BlockForRpcFactory()))
+            .Build(specProvider);
+        ulong includedGas = TransactionForRpc.FromTransaction(frameTx, new TransactionForRpcContext(
+            specProvider.ChainId, TestItem.KeccakB, 1, 0, 12, 1, Eip8141Prototype.Instance)).Gas!.Value;
+
+        string serialized = await chain.TestEthRpc("eth_pendingTransactions");
+
+        using JsonDocument document = JsonDocument.Parse(serialized);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(includedGas, Is.Not.EqualTo(frameTx.GasLimit), "the included gas must differ from the summed limits for the check to tell them apart");
+            Assert.That(document.RootElement.GetProperty("result")[0].GetProperty("gas").GetString(), Is.EqualTo($"0x{includedGas:x}"));
+        }
+    }
+
+    [Test]
     public async Task Eth_pending_transactions_1559_tx()
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
@@ -298,6 +346,28 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockReceipts", "latest");
         string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":[{\"transactionHash\":\"0x681c2b6f99e37fd6fe6046db8b51ec3460d699cacd6a376143fd5842ac50621f\",\"transactionIndex\":\"0x0\",\"blockHash\":\"0x29f141925d2d8e357ae5b6040c97aa12d7ac6dfcbe2b20e7b616d8907ac8e1f3\",\"blockNumber\":\"0x3\",\"cumulativeGasUsed\":\"0x5208\",\"gasUsed\":\"0x5208\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"contractAddress\":null,\"logs\":[],\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x1\",\"type\":\"0x0\"},{\"transactionHash\":\"0x7126cf20a0ad8bd51634837d9049615c34c1bff5e1a54e5663f7e23109bff48b\",\"transactionIndex\":\"0x1\",\"blockHash\":\"0x29f141925d2d8e357ae5b6040c97aa12d7ac6dfcbe2b20e7b616d8907ac8e1f3\",\"blockNumber\":\"0x3\",\"cumulativeGasUsed\":\"0xa410\",\"gasUsed\":\"0x5208\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"contractAddress\":null,\"logs\":[],\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x1\",\"type\":\"0x0\"}],\"id\":67}";
         Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expectedResult)).Using(JToken.EqualityComparer));
+    }
+
+    [TestCase("latest", ErrorCodes.PrunedHistoryUnavailable)]
+    [TestCase("head hash", ErrorCodes.PrunedHistoryUnavailable)]
+    [TestCase("unprocessed side-chain hash", ErrorCodes.ResourceNotFound)]
+    public async Task Eth_getBlockReceipts_fails_when_the_receipts_of_a_block_with_transactions_are_missing(string selector, int expectedCode)
+    {
+        using Context ctx = await Context.Create();
+        TestRpcBlockchain test = ctx.Test;
+        Block head = test.BlockTree.Head!;
+        Block sideChain = Build.A.Block.WithParent(test.BlockTree.FindBlock(head.ParentHash!)!)
+            .WithTransactions(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject)
+            .WithExtraData([1])
+            .TestObject;
+        test.BlockTree.SuggestBlock(sideChain, BlockTreeSuggestOptions.ForceDontSetAsMain);
+        test.ReceiptStorage.RemoveReceipts(head);
+        Block block = selector == "unprocessed side-chain hash" ? sideChain : head;
+        Assert.That(block.Transactions, Is.Not.Empty, "precondition: the block has transactions");
+
+        string serialized = await test.TestEthRpc("eth_getBlockReceipts", selector == "latest" ? "latest" : block.Hash!.ToString());
+
+        Assert.That(JToken.Parse(serialized)["error"]?["code"]?.Value<int>(), Is.EqualTo(expectedCode), serialized);
     }
 
     [Test]
@@ -417,9 +487,9 @@ public partial class EthRpcModuleTests
 
         // Add two transactions, one with the next nonce (nonce=3) and the second one with a gap in nonce (nonce=5, skipping nonce=4)
         Transaction txWithNextNonce = Build.A.Transaction.To(TestItem.AddressB)
-            .SignedAndResolved(TestItem.PrivateKeyA).WithValue(0.Ether).WithNonce(3).TestObject;
+            .WithValue(0.Ether).WithNonce(3).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         Transaction txWithFutureNonce = Build.A.Transaction.To(TestItem.AddressB)
-            .SignedAndResolved(TestItem.PrivateKeyA).WithValue(0.Ether).WithNonce(5).TestObject;
+            .WithValue(0.Ether).WithNonce(5).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         ValueTask<(Hash256? Hash, AcceptTxResult? AddTxResult)> resultNextNonce =
             ctx.Test.TxSender.SendTransaction(txWithNextNonce, TxHandlingOptions.None)!;
         ValueTask<(Hash256? Hash, AcceptTxResult? AddTxResult)> resultFutureNonce =
@@ -446,7 +516,7 @@ public partial class EthRpcModuleTests
         string serializedPendingBefore = await ctx.Test.TestEthRpc("eth_getTransactionCount", TestItem.AddressB.Bytes.ToHexString(true), "pending");
         Assert.That(serializedPendingBefore, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x0\",\"id\":67}"));
         Transaction txWithNextNonce = Build.A.Transaction.To(TestItem.AddressA)
-            .SignedAndResolved(TestItem.PrivateKeyB).WithValue(0.Ether).WithNonce(0).TestObject;
+            .WithValue(0.Ether).WithNonce(0).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
         ValueTask<(Hash256? Hash, AcceptTxResult? AddTxResult)> resultNextNonce =
             ctx.Test.TxSender.SendTransaction(txWithNextNonce, TxHandlingOptions.None)!;
         Assert.That(AcceptTxResult.Accepted, Is.EqualTo(resultNextNonce.Result.AddTxResult));
@@ -632,6 +702,8 @@ public partial class EthRpcModuleTests
         public byte[]? GetCode(in ValueHash256 codeHash) => inner.GetCode(in codeHash);
         public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx> =>
             inner.RunTreeVisitor(treeVisitor, baseBlock, visitingOptions, diagnostics);
+        public void RunTreeVisitor<TCtx>(INodeRecordVisitor<TCtx> visitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions, VisitingStats? diagnostics) where TCtx : struct, INodeContext<TCtx> =>
+            inner.RunTreeVisitor(visitor, baseBlock, visitingOptions, diagnostics);
         public bool HasStateForBlock(BlockHeader? baseBlock) => inner.HasStateForBlock(baseBlock);
     }
 
@@ -1260,7 +1332,7 @@ public partial class EthRpcModuleTests
 
         string message = $"From block {expectedFromBlock} is later than to block 0.";
         Assert.That(serialized, Is.EqualTo(
-            $$"""{"jsonrpc":"2.0","error":{"code":-32602,"message":"{{message}}","data":"System.ArgumentException: {{message}}"},"id":67}"""));
+            $$"""{"jsonrpc":"2.0","error":{"code":-32602,"message":"{{message}}"},"id":67}"""));
     }
 
     [TestCase("""{"fromBlock":"0x1","toBlock":"0x64"}""", ErrorCodes.InvalidParams)]
@@ -2302,6 +2374,32 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_chain_id_failure_has_no_error_data()
+    {
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        using Context ctx = await Context.Create(blockchainBridge: bridge);
+        _ = ctx.Test;
+        bridge.GetChainId().Throws(new InvalidOperationException("chain id unavailable"));
+
+        string serialized = await ctx.Test.TestEthRpc("eth_chainId");
+
+        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":-32603,"message":"chain id unavailable"},"id":67}"""));
+    }
+
+    [Test]
+    public async Task Eth_call_revert_without_output_reports_empty_hex_data()
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+        string code = Prepare.EvmCode.Revert(0, 0).Done.ToHexString(true);
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            $$"""{"from": "{{SecondaryTestAddress}}", "type": "0x2", "data": "{{code}}", "gas": 1000000}""")!;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+
+        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":3,"message":"execution reverted","data":"0x"},"id":67}"""));
+    }
+
+    [Test]
     public async Task Send_transaction_with_signature_will_not_try_to_sign()
     {
         using Context ctx = await Context.Create();
@@ -2311,7 +2409,7 @@ public partial class EthRpcModuleTests
 
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
         Transaction tx = Build.A.Transaction.Signed(new EthereumEcdsa(TestBlockchainIds.ChainId), TestItem.PrivateKeyA).TestObject;
-        string serialized = await ctx.Test.TestEthRpc("eth_sendRawTransaction", Rlp.Encode(tx, RlpBehaviors.None).Bytes.ToHexString());
+        string serialized = await ctx.Test.TestEthRpc("eth_sendRawTransaction", Rlp.Encode(tx, RlpBehaviors.None).ToHexString());
 
         await txSender.Received().SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast);
         Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{TestItem.KeccakA.Bytes.ToHexString(true)}\",\"id\":67}}"));
@@ -2322,7 +2420,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         ITxSender txSender = Substitute.ForPartsOf<TxPoolSender>(ctx.Test.TxPool, ctx.Test.TxSealer,
-            ctx.Test.NonceManager, ctx.Test.EthereumEcdsa);
+            ctx.Test.NonceManager, ctx.Test.EthereumEcdsa, ctx.Test.ChainHeadInfoProvider.SpecProvider);
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
         string serialized = await ctx.Test.TestEthRpc("eth_sendRawTransaction", rawTransaction);
@@ -2348,9 +2446,10 @@ public partial class EthRpcModuleTests
         IEthereumEcdsa signingEcdsa = new EthereumEcdsa(TestBlockchainIds.ChainId);
         using TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .Build(builder => builder.AddSingleton<IEthereumEcdsa>(new NoRecoveryEthereumEcdsa(signingEcdsa)));
-        Transaction tx = Build.A.Transaction.Signed(signingEcdsa, TestItem.PrivateKeyA).TestObject;
+        // A fresh signer, so the process-wide sender cache cannot recover the sender in place of the failing ecdsa.
+        Transaction tx = Build.A.Transaction.Signed(signingEcdsa, Build.A.PrivateKey.TestObject).TestObject;
 
-        string serialized = await test.TestEthRpc("eth_sendRawTransaction", Rlp.Encode(tx, RlpBehaviors.None).Bytes.ToHexString());
+        string serialized = await test.TestEthRpc("eth_sendRawTransaction", Rlp.Encode(tx, RlpBehaviors.None).ToHexString());
 
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"failed to recover sender\"},\"id\":67}"));
     }
@@ -2405,7 +2504,7 @@ public partial class EthRpcModuleTests
         IJsonRpcService service = container.Resolve<IJsonRpcService>();
         JsonRpcContext context = new(RpcEndpoint.Http);
         Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-        string raw = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes.ToHexString(true);
+        string raw = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).ToHexString(true);
         int pendingCount = limit == 0 ? 3 : limit;
         List<Task<JsonRpcResponse>> pending = [];
         try
@@ -2469,7 +2568,7 @@ public partial class EthRpcModuleTests
             .WithGasPrice(20.GWei)
             .To(TestItem.AddressB)
             .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-        string raw = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes.ToHexString(true);
+        string raw = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).ToHexString(true);
         yield return new TestCaseData(raw, "100", ErrorCodes.TxSyncTimeout, "not included within 100ms")
             .SetName("Timeout");
         yield return new TestCaseData(raw, "100", ErrorCodes.TxSyncTimeout, $"\"data\":\"{tx.Hash}\"")
@@ -2559,7 +2658,7 @@ public partial class EthRpcModuleTests
         txSender.SendTransaction(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
             .Returns((txHash, AcceptTxResult.Accepted));
 
-        string raw = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes.ToHexString(true);
+        string raw = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).ToHexString(true);
         return (txHash, raw, receipt, txSender);
     }
 
@@ -3285,7 +3384,7 @@ public partial class EthRpcModuleTests
           .WithTo(TestItem.AddressA)
           .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
-        string result = await Test.TestEthRpc("eth_sendRawTransaction", Bytes.ToHexString(Rlp.Encode(testTx).Bytes));
+        string result = await Test.TestEthRpc("eth_sendRawTransaction", Bytes.ToHexString(Rlp.Encode(testTx)));
 
         JsonRpcErrorResponse actual = new EthereumJsonSerializer().Deserialize<JsonRpcErrorResponse>(result)
             ?? throw new InvalidOperationException("Expected a JSON-RPC error response.");
@@ -3326,7 +3425,7 @@ public partial class EthRpcModuleTests
           .WithTo(TestItem.AddressA)
           .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
 
-        string result = await test.TestEthRpc("eth_sendRawTransaction", Bytes.ToHexString(Rlp.Encode(normalTx).Bytes));
+        string result = await test.TestEthRpc("eth_sendRawTransaction", Bytes.ToHexString(Rlp.Encode(normalTx)));
 
         JsonRpcSuccessResponse actual = new EthereumJsonSerializer().Deserialize<JsonRpcSuccessResponse>(result)
             ?? throw new InvalidOperationException("Expected a JSON-RPC success response.");
@@ -3350,7 +3449,7 @@ public partial class EthRpcModuleTests
           .WithTo(TestItem.AddressA)
           .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
 
-        string result = await test.TestEthRpc("eth_sendRawTransaction", Bytes.ToHexString(Rlp.Encode(invalidSetCodeTx).Bytes));
+        string result = await test.TestEthRpc("eth_sendRawTransaction", Bytes.ToHexString(Rlp.Encode(invalidSetCodeTx)));
 
         JsonRpcErrorResponse actual = new EthereumJsonSerializer().Deserialize<JsonRpcErrorResponse>(result)
             ?? throw new InvalidOperationException("Expected a JSON-RPC error response.");
@@ -3403,8 +3502,9 @@ public partial class EthRpcModuleTests
 
 
     [Test]
-    public async Task Eth_get_block_by_number_pruned()
+    public async Task Eth_get_block_by_number_above_the_ancient_barriers_returns_null()
     {
+        // Block 1,000,000 is above both the head and the served floor: an unknown block, not pruned history.
         using Context ctx = await Context.CreateWithAncientBarriers(10000);
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockByNumber", "0xF4240", "false");
         Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","result":null,"id":67}"""));
@@ -3415,7 +3515,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.CreateWithAncientBarriers(10000);
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockTransactionCountByNumber", "0x64");
-        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","result":null,"id":67}"""));
+        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":4444,"message":"Pruned history unavailable for block 100"},"id":67}"""));
     }
 
     [Test]
@@ -3423,7 +3523,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.CreateWithAncientBarriers(10000);
         string serialized = await ctx.Test.TestEthRpc("eth_getUncleCountByBlockNumber", "0x64");
-        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","result":null,"id":67}"""));
+        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":4444,"message":"Pruned history unavailable for block 100"},"id":67}"""));
     }
 
     [Test]
@@ -3431,7 +3531,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.CreateWithAncientBarriers(10000);
         string serialized = await ctx.Test.TestEthRpc("eth_getTransactionByBlockNumberAndIndex", "0x100", "1");
-        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","result":null,"id":67}"""));
+        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":4444,"message":"Pruned history unavailable for block 256"},"id":67}"""));
     }
 
     [Test]
@@ -3440,7 +3540,7 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.CreateWithAncientBarriers(10000);
         ctx.Test.Container.Resolve<IBlockStore>().Delete(ctx.Test.BlockTree.Genesis!.Number, ctx.Test.BlockTree.Genesis!.Hash!);
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockByHash", ctx.Test.BlockTree.Genesis!.Hash!.ToString(), "true");
-        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","result":null,"id":67}"""));
+        Assert.That(serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":4444,"message":"Pruned history unavailable for block {{ctx.Test.BlockTree.Genesis!.Hash}}"},"id":67}"""));
     }
 
     [Test]
@@ -3449,7 +3549,7 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.CreateWithAncientBarriers(10000);
         ctx.Test.Container.Resolve<IBlockStore>().Delete(ctx.Test.BlockTree.Genesis!.Number, ctx.Test.BlockTree.Genesis!.Hash!);
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockTransactionCountByHash", ctx.Test.BlockTree.Genesis!.Hash!.ToString());
-        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","result":null,"id":67}"""));
+        Assert.That(serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":4444,"message":"Pruned history unavailable for block {{ctx.Test.BlockTree.Genesis!.Hash}}"},"id":67}"""));
     }
 
     [Test]
@@ -3458,7 +3558,7 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.CreateWithAncientBarriers(10000);
         ctx.Test.Container.Resolve<IBlockStore>().Delete(ctx.Test.BlockTree.Genesis!.Number, ctx.Test.BlockTree.Genesis!.Hash!);
         string serialized = await ctx.Test.TestEthRpc("eth_getUncleCountByBlockHash", ctx.Test.BlockTree.Genesis!.Hash!.ToString());
-        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","result":null,"id":67}"""));
+        Assert.That(serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":4444,"message":"Pruned history unavailable for block {{ctx.Test.BlockTree.Genesis!.Hash}}"},"id":67}"""));
     }
 
     [Test]
@@ -3467,7 +3567,7 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.CreateWithAncientBarriers(10000);
         ctx.Test.Container.Resolve<IBlockStore>().Delete(ctx.Test.BlockTree.Genesis!.Number, ctx.Test.BlockTree.Genesis!.Hash!);
         string serialized = await ctx.Test.TestEthRpc("eth_getTransactionByBlockHashAndIndex", ctx.Test.BlockTree.Genesis!.Hash!.ToString(), "1");
-        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","result":null,"id":67}"""));
+        Assert.That(serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":4444,"message":"Pruned history unavailable for block {{ctx.Test.BlockTree.Genesis!.Hash}}"},"id":67}"""));
     }
 
     [Test]
@@ -3475,7 +3575,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.CreateWithAncientBarriers(10000);
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockReceipts", "0x100");
-        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","result":null,"id":67}"""));
+        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":4444,"message":"Pruned history unavailable for block 256"},"id":67}"""));
     }
 
 

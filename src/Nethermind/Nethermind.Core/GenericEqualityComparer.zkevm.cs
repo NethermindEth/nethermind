@@ -16,5 +16,8 @@ public static partial class GenericEqualityComparer
             _ => comparer
         };
 
-    public static partial IEqualityComparer<T>? GetOptimized<T>() where T : IEquatable<T>? => GenericEqualityComparer<T>.Default;
+    // A value-type key calls its own GetHashCode/Equals directly, as above; a comparer instance would cost an
+    // interface dispatch on every hash and every equality test of a probe.
+    public static partial IEqualityComparer<T>? GetOptimized<T>() where T : IEquatable<T>? =>
+        typeof(T).IsValueType ? null : GenericEqualityComparer<T>.Default;
 }

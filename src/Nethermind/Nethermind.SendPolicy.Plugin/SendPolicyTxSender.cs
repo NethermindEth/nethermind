@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.TxPool;
@@ -22,6 +23,7 @@ public sealed class SendPolicyTxSender(
     SendPolicyJournal journal,
     ISendPolicyConfig config,
     IEthereumEcdsa ecdsa,
+    IChainHeadSpecProvider specProvider,
     ILogManager logManager) : ITxSender
 {
     private static readonly AcceptTxResult Refused = new("send policy");
@@ -29,7 +31,11 @@ public sealed class SendPolicyTxSender(
 
     public async ValueTask<(Hash256 Hash, AcceptTxResult? AddTxResult)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
     {
-        if (tx.SenderAddress is null && ecdsa.TryRecoverAddress(tx, out Address? sender)) tx.SenderAddress = sender;
+        // Where the spec does not validate chain ids, the pool accepts a legacy signature for another chain, and block
+        // processing recovers it over the chain id it carries; so does the inner sender, which refuses a sender set here
+        // that is not that account.
+        if (tx.SenderAddress is null && ecdsa.TryRecoverAddress(tx, out Address? sender, !specProvider.GetCurrentHeadSpec().ValidateChainId))
+            tx.SenderAddress = sender;
         if (tx.AuthorizationList is not null)
         {
             foreach (AuthorizationTuple tuple in tx.AuthorizationList) tuple.Authority ??= ecdsa.RecoverAddress(tuple);

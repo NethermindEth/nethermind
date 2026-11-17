@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
@@ -12,19 +13,20 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public int Serialize(Span<byte> destination, NewBlockMessage message)
         {
-            RlpWriter writer = new(destination);
+            RlpWriter writer = RlpWriter.ContentWriter(destination);
 
-            writer.StartSequence(GetContentLength(message));
+            RlpSequence sequence = writer.StartSequence(GetContentLength(message));
             _blockDecoder.Encode(ref writer, message.Block);
             writer.Encode(message.TotalDifficulty);
-            return writer.Position;
+            writer.EndSequence(sequence);
+            return writer.Length;
         }
 
         public NewBlockMessage Deserialize(ReadOnlySpan<byte> data)
         {
             RlpReader ctx = new(data);
             NewBlockMessage message = Deserialize(ref ctx);
-            ctx.Check(data.Length);
+            ctx.CheckEnd();
             return message;
         }
 
@@ -34,12 +36,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             _blockDecoder.GetLength(message.Block, RlpBehaviors.None) +
             Rlp.LengthOf(message.TotalDifficulty);
 
-        private NewBlockMessage Deserialize(ref RlpReader ctx)
+        private NewBlockMessage Deserialize(ref RlpReader reader)
         {
             NewBlockMessage message = new();
-            ctx.ReadSequenceLength();
+            RlpReader ctx = reader.EnterSequence(out int itemLength);
             message.Block = _blockDecoder.DecodeGuardNotNull(ref ctx);
             message.TotalDifficulty = ctx.DecodeUInt256();
+            reader.ExitSequenceIgnoringRest(ctx, itemLength);
             return message;
         }
     }

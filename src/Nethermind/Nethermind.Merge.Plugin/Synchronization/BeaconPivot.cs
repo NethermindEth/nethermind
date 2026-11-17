@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -11,6 +12,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization;
 
@@ -33,10 +35,9 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 _currentBeaconPivot = value;
                 if (value is not null)
                 {
-                    _metadataDb.Set(MetadataDbKeys.BeaconSyncPivotHash,
-                        Rlp.Encode(value.GetOrCalculateHash()).Bytes);
-                    _metadataDb.Set(MetadataDbKeys.BeaconSyncPivotNumber,
-                        Rlp.Encode(value.Number).Bytes);
+                    Span<byte> buffer = stackalloc byte[Rlp.LengthOfKeccakRlp];
+                    _metadataDb.PutSpan(MetadataDbKeys.BeaconSyncPivotHash, Rlp.Encode(value.GetOrCalculateHash(), buffer));
+                    _metadataDb.PutSpan(MetadataDbKeys.BeaconSyncPivotNumber, Rlp.Encode(value.Number, buffer));
                 }
                 else _metadataDb.Delete(MetadataDbKeys.BeaconSyncPivotHash);
             }
@@ -138,7 +139,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
             if (_metadataDb.KeyExists(MetadataDbKeys.BeaconSyncPivotHash))
             {
                 byte[]? pivotHashRlp = _metadataDb.Get(MetadataDbKeys.BeaconSyncPivotHash);
-                Hash256? pivotHash = pivotHashRlp is null ? null : new RlpReader(pivotHashRlp).DecodeKeccak();
+                RlpReader reader = new(pivotHashRlp);
+                Hash256? pivotHash = pivotHashRlp is null ? null : reader.DecodeKeccak();
                 if (pivotHash is not null)
                 {
                     _currentBeaconPivot =
