@@ -125,6 +125,28 @@ public class BlockStoreTests
     }
 
     [Test]
+    public void GetRlps_reads_an_empty_value_as_missing_as_GetOwnedRlp_does([Values] bool batching, [Values] bool hashKeyed)
+    {
+        MemDb db = batching ? new BatchReadMemDb() : new MemDb();
+        BlockStore store = new(db);
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        byte[] encoded = new BlockDecoder().Encode(block);
+        db[Bytes.Concat(block.Number.ToBigEndianByteArray(), block.Hash!.BytesToArray())] = [];
+        db[block.Hash!.Bytes] = hashKeyed ? encoded : [];
+
+        using PooledSegmentedBuffer destination = new(1024);
+        ReadOnlyMemory<byte>?[] found = new ReadOnlyMemory<byte>?[1];
+        store.GetRlps([(block.Number, block.Hash!.ValueHash256)], destination, found);
+        using MemoryManager<byte>? owned = store.GetOwnedRlp(block.Number, block.Hash!);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found[0]?.ToArray(), Is.EqualTo(hashKeyed ? encoded : null));
+            Assert.That(owned?.Memory.ToArray(), Is.EqualTo(found[0]?.ToArray()));
+        }
+    }
+
+    [Test]
     public void Test_cached_block_that_was_never_written_is_not_reported_as_stored()
     {
         TestMemDb db = new();

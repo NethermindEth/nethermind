@@ -253,13 +253,14 @@ public class BlockStore : IBlockStore, IClearableCache
         foreach ((int index, ReadOnlyMemory<byte> rlp) in pending.AsSpan()) rlps[index] = rlp;
         for (int i = 0; i < rlps.Length; i++)
         {
-            if (rlps[i] is null && _blockDb.Get(blocks[i].Hash.Bytes) is { } rlp) rlps[i] = destination.Add(rlp);
+            if (rlps[i] is null && _blockDb.Get(blocks[i].Hash.Bytes) is { Length: > 0 } rlp) rlps[i] = destination.Add(rlp);
         }
     }
 
+    /// <remarks>An empty value reads as missing, as <see cref="GetOwnedRlp"/> reads it.</remarks>
     private readonly struct AddingDecoder(PooledSegmentedBuffer destination) : IValueDecoder<ReadOnlyMemory<byte>?>
     {
-        public ReadOnlyMemory<byte>? Decode(ReadOnlySpan<byte> buffer) => destination.Add(buffer);
+        public ReadOnlyMemory<byte>? Decode(ReadOnlySpan<byte> buffer) => buffer.IsEmpty ? (ReadOnlyMemory<byte>?)null : destination.Add(buffer);
     }
 
     /// <inheritdoc/>
