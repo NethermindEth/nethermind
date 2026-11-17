@@ -12,6 +12,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Encoding;
@@ -40,7 +41,7 @@ public partial class ShardBlobTxDecoderTests
     }
 
     [Test]
-    public void V1_length_validation_rejects_null_commitments_and_proofs()
+    public void V1_length_validation_rejects_null_commitments_and_short_proofs()
     {
         ShardBlobNetworkWrapper wrapper = CreateV1SparseWrapperWithoutCells(blobCount: 1);
         wrapper.Commitments[0] = null!;
@@ -48,9 +49,56 @@ public partial class ShardBlobTxDecoderTests
         Assert.That(IBlobProofsManager.For(ProofVersion.V1).ValidateLengths(wrapper), Is.False);
 
         wrapper = CreateV1SparseWrapperWithoutCells(blobCount: 1);
-        wrapper.Proofs[0] = null!;
+        wrapper = wrapper with { Proofs = wrapper.Proofs[..^1] };
 
         Assert.That(IBlobProofsManager.For(ProofVersion.V1).ValidateLengths(wrapper), Is.False);
+    }
+
+    [Test]
+    public void Proofs_encode_as_a_list_of_proof_strings_and_round_trip([Values] ProofVersion version, [Values] bool storage)
+    {
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(2, spec: version is ProofVersion.V1 ? Osaka.Instance : Cancun.Instance)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .SignedAndResolved()
+            .TestObject;
+        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
+        RlpBehaviors behaviors = RlpBehaviors.InMempoolForm | (storage ? RlpBehaviors.Storage : RlpBehaviors.None);
+
+        byte[] encoded = _txDecoder.Encode(tx, behaviors);
+        RlpReader reader = new(encoded);
+        Transaction decoded = _txDecoder.Decode(ref reader, behaviors)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encoded.AsSpan().IndexOf(EncodeSequence([.. wrapper.SplitProofs().Select(static proof => Rlp.Encode(proof))])), Is.GreaterThan(0));
+            Assert.That(((ShardBlobNetworkWrapper)decoded.NetworkWrapper!).Proofs, Is.EqualTo(wrapper.Proofs));
+            Assert.That(_txDecoder.Encode(decoded, behaviors), Is.EqualTo(encoded));
+            Assert.That(_txDecoder.GetLength(tx, behaviors), Is.EqualTo(encoded.Length));
+        }
+    }
+
+    [Test]
+    public void Decode_rejects_a_proof_that_is_not_48_bytes([Values(0, 47, 49)] int proofLength)
+    {
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(1, spec: Cancun.Instance)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .SignedAndResolved()
+            .TestObject;
+        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
+        byte[] payload = _txDecoder.Encode(tx, RlpBehaviors.SkipTypedWrapping);
+        byte[] tampered = Bytes.Concat((byte)TxType.Blob, EncodeSequence(
+            payload[1..],
+            EncodeSequence([.. wrapper.Blobs.Select(static blob => Rlp.Encode(blob))]),
+            EncodeSequence([.. wrapper.Commitments.Select(static commitment => Rlp.Encode(commitment))]),
+            EncodeSequence(Rlp.Encode(new byte[proofLength]))));
+
+        Assert.That(() =>
+        {
+            RlpReader reader = new(tampered);
+            _txDecoder.Decode(ref reader, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping);
+        }, Throws.InstanceOf<RlpReaderException>());
     }
 
     [Test]
@@ -83,14 +131,10 @@ public partial class ShardBlobTxDecoderTests
     private static ShardBlobNetworkWrapper CreateV1SparseWrapperWithoutCells(int blobCount)
     {
         byte[][] commitments = new byte[blobCount][];
-        byte[][] proofs = new byte[blobCount * Ckzg.CellsPerExtBlob][];
+        byte[] proofs = new byte[blobCount * Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof];
         for (int i = 0; i < blobCount; i++)
         {
             commitments[i] = new byte[Ckzg.BytesPerCommitment];
-            for (int cellIndex = 0; cellIndex < Ckzg.CellsPerExtBlob; cellIndex++)
-            {
-                proofs[i * Ckzg.CellsPerExtBlob + cellIndex] = new byte[Ckzg.BytesPerProof];
-            }
         }
 
         return new ShardBlobNetworkWrapper([], commitments, proofs, ProofVersion.V1);
@@ -212,7 +256,7 @@ public partial class ShardBlobTxDecoderTests
         Transaction? decoded = _txDecoder.Decode(ref decoderContext, RlpBehaviors.InMempoolForm);
 
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)decoded!.NetworkWrapper!;
-        Assert.That(wrapper.Proofs, Has.Length.EqualTo(BlobCellProofsCountLimit));
+        Assert.That(wrapper.ProofCount, Is.EqualTo(BlobCellProofsCountLimit));
     }
 
     [TestCase(nameof(Transaction.MaxFeePerBlobGas), RlpBehaviors.None)]
@@ -391,13 +435,22 @@ public partial class ShardBlobTxDecoderTests
     {
         byte[][] blobs = CreateEmptyByteArrays(blobsCount);
         byte[][] commitments = CreateEmptyByteArrays(commitmentsCount);
-        byte[][] proofs = CreateEmptyByteArrays(proofsCount);
+        byte[] proofs = new byte[proofsCount * Ckzg.BytesPerProof];
         return Build.A.Transaction
             .WithShardBlobTxTypeAndFields(1, false)
             .WithChainId(TestBlockchainIds.ChainId)
             .With(tx => tx.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs, version))
             .SignedAndResolved()
             .TestObject;
+    }
+
+    private static byte[] EncodeSequence(params byte[][] encodedItems)
+    {
+        byte[] content = Bytes.Concat(encodedItems);
+        byte[] sequence = new byte[Rlp.LengthOfSequence(content.Length)];
+        int position = Rlp.StartSequence(sequence, 0, content.Length);
+        content.CopyTo(sequence, position);
+        return sequence;
     }
 
     private static byte[][] CreateEmptyByteArrays(int count)

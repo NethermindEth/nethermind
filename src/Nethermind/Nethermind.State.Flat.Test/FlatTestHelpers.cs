@@ -336,7 +336,7 @@ public sealed class FakeWriteBatch : IPersistence.IWriteBatch
     public List<(ValueHash256 AddrHash, Account Account)> SetAccountRawCalls { get; } = [];
     public List<(ValueHash256 FromPath, ValueHash256 ToPath)> DeleteAccountRangeCalls { get; } = [];
     public List<(ValueHash256 AddressHash, ValueHash256 FromPath, ValueHash256 ToPath)> DeleteStorageRangeCalls { get; } = [];
-    public List<(ValueHash256 FromPath, ValueHash256 ToPath)> SelfDestructRangeCalls { get; } = [];
+    public List<(ValueHash256 FromPath, ValueHash256 ToPath, ValueHash256? KeptAccount)> SelfDestructRangeCalls { get; } = [];
     public List<(ValueHash256 From, ValueHash256 To)> DeleteStateTrieNodeRangeCalls { get; } = [];
     public List<(ValueHash256 AddressHash, ValueHash256 From, ValueHash256 To)> DeleteStorageTrieNodeRangeCalls { get; } = [];
     public int DisposeCount { get; private set; }
@@ -362,8 +362,8 @@ public sealed class FakeWriteBatch : IPersistence.IWriteBatch
     public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) =>
         DeleteStorageRangeCalls.Add((addressHash, fromPath, toPath));
 
-    public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath) =>
-        SelfDestructRangeCalls.Add((fromPath, toPath));
+    public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount) =>
+        SelfDestructRangeCalls.Add((fromPath, toPath, keptAccount));
 
     public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) =>
         DeleteStateTrieNodeRangeCalls.Add((from, to));
@@ -518,7 +518,7 @@ internal static class SharedBloomScenarios
             List<ulong> keys = [];
             foreach (WholeReadScanner.PerAddressEntry entry in scanner.PerAddresses)
             {
-                ulong addressKey = PersistedSnapshotBloomBuilder.AddressKey(entry.Address);
+                ulong addressKey = PersistedSnapshotBloomBuilder.AddressKey(entry.Address.AsSpan);
                 keys.Add(addressKey);
                 foreach (WholeReadScanner.SlotEntry slot in entry.Slots) keys.Add(PersistedSnapshotBloomBuilder.SlotKey(addressKey, slot.Slot));
             }

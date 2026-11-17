@@ -86,57 +86,13 @@ public class FlatTreeSyncStore(
         ComputeDeletionRanges(path, newNode, existingNode, ref ranges);
         if (ranges.Count == 0) return;
 
-        ValueHash256 keptAccount = newNode.IsLeaf ? path.Append(newNode.Key).ToLowerBoundPath() : default;
+        ValueHash256? keptAccount = newNode.IsLeaf ? path.Append(newNode.Key).ToLowerBoundPath() : null;
         foreach (DeletionRange range in ranges.AsSpan())
         {
-            if (newNode.IsLeaf)
-            {
-                SelfDestructRangeExcept(writeBatch, range, keptAccount);
-            }
-            else
-            {
-                writeBatch.SelfDestructRange(range.From, range.To);
-            }
-
+            writeBatch.SelfDestructRange(range.From, range.To, keptAccount);
             writeBatch.DeleteAccountRange(range.From, range.To);
             writeBatch.DeleteStateTrieNodeRange(range.From, range.To);
         }
-    }
-
-    private static void SelfDestructRangeExcept(IPersistence.IWriteBatch writeBatch, in DeletionRange range, in ValueHash256 keptAccount)
-    {
-        ReadOnlySpan<byte> kept = keptAccount.Bytes[..BaseFlatPersistence.AccountKeyLength];
-        if (kept.SequenceCompareTo(range.From.Bytes[..BaseFlatPersistence.AccountKeyLength]) > 0
-            && TryStepAccountKey(keptAccount, up: false, out ValueHash256 below))
-        {
-            writeBatch.SelfDestructRange(range.From, below.CompareTo(range.To) < 0 ? below : range.To);
-        }
-
-        if (kept.SequenceCompareTo(range.To.Bytes[..BaseFlatPersistence.AccountKeyLength]) < 0
-            && TryStepAccountKey(keptAccount, up: true, out ValueHash256 above))
-        {
-            writeBatch.SelfDestructRange(above.CompareTo(range.From) > 0 ? above : range.From, range.To);
-        }
-    }
-
-    private static bool TryStepAccountKey(in ValueHash256 path, bool up, out ValueHash256 result)
-    {
-        Span<byte> bytes = stackalloc byte[ValueHash256.MemorySize];
-        path.Bytes[..BaseFlatPersistence.AccountKeyLength].CopyTo(bytes);
-        bytes[BaseFlatPersistence.AccountKeyLength..].Fill(up ? byte.MinValue : byte.MaxValue);
-        for (int i = BaseFlatPersistence.AccountKeyLength - 1; i >= 0; i--)
-        {
-            byte previous = bytes[i];
-            bytes[i] = up ? (byte)(previous + 1) : (byte)(previous - 1);
-            if (previous != (up ? byte.MaxValue : byte.MinValue))
-            {
-                result = new ValueHash256(bytes);
-                return true;
-            }
-        }
-
-        result = default;
-        return false;
     }
 
     private void RequestStorageDeletion(IPersistence.IWriteBatch writeBatch, Hash256 address, in TreePath path, TrieNode newNode, TrieNode? existingNode)

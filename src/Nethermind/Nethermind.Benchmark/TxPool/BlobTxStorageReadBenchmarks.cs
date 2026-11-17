@@ -15,6 +15,8 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
 
@@ -30,6 +32,7 @@ public class BlobTxStorageReadBenchmarks
     private IContainer _container = null!;
     private BlobTxStorage _storage = null!;
     private Transaction[] _transactions = null!;
+    private byte[][] _networkForms = null!;
 
     [Params(1, 6)]
     public int BlobsPerTransaction { get; set; }
@@ -64,6 +67,12 @@ public class BlobTxStorageReadBenchmarks
                 .SignedAndResolved(ecdsa, TestItem.PrivateKeys[i]).TestObject;
             _storage.Add(tx);
             _transactions[i] = tx;
+        }
+
+        _networkForms = new byte[TransactionCount][];
+        for (int i = 0; i < TransactionCount; i++)
+        {
+            _networkForms[i] = TxDecoder.Instance.Encode(_transactions[i], RlpBehaviors.InMempoolForm);
         }
 
         if (Full() != TransactionCount || WithoutBlobs() != TransactionCount)
@@ -116,5 +125,19 @@ public class BlobTxStorageReadBenchmarks
         }
 
         return found;
+    }
+
+    /// <summary>The decode of blob transactions received in the network form.</summary>
+    [Benchmark]
+    public int DecodeNetworkForm()
+    {
+        int decoded = 0;
+        foreach (byte[] networkForm in _networkForms)
+        {
+            RlpReader reader = new(networkForm);
+            if (TxDecoder.Instance.Decode(ref reader, RlpBehaviors.InMempoolForm) is not null) decoded++;
+        }
+
+        return decoded;
     }
 }
