@@ -1118,7 +1118,7 @@ public class LightClientMetricsTests
 
     [Test]
     public async Task Metrics_before_initialization_include_process_series_and_no_available_head(
-        [Values("mainnet", "sepolia", "hoodi")] string network)
+        [Values("mainnet", "sepolia", "hoodi", "gnosis")] string network)
     {
         LightClientStatus status = new(1, [], _ => false, _ => false);
         LightClientMetrics metrics = new(network, status.Read);

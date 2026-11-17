@@ -28,8 +28,33 @@ public class CheckpointSourceTests
     [TestCase("mainnet", null)]
     [TestCase("hoodi", "https://checkpoint-sync.hoodi.ethpandaops.io")]
     [TestCase("sepolia", "https://checkpoint-sync.sepolia.ethpandaops.io")]
-    public void Only_ef_testnet_providers_are_defaults(string network, string? expected) =>
+    [TestCase("gnosis", "https://checkpoint.gnosischain.com")]
+    public void Default_providers_match_the_selected_network(string network, string? expected) =>
         Assert.That(CheckpointSource.DefaultUrl(network), Is.EqualTo(expected));
+
+    [Test]
+    public async Task Gnosis_checkpoint_provenance_uses_its_genesis_and_epoch_length()
+    {
+        BeaconChainSpec spec = BeaconChainSpec.Gnosis;
+        using ResponseHandler handler = new(Finality()) { Network = spec };
+        using HttpClient client = new(handler);
+        CheckpointSelection selected = await CheckpointSource.ResolveAsync(client, CheckpointSource.DefaultUrl("gnosis")!,
+            "gnosis", _directory, spec, 160, null, CancellationToken.None);
+        handler.Requests.Clear();
+
+        CheckpointSelection resumed = await CheckpointSource.ResolveAsync(client, CheckpointSource.DefaultUrl("gnosis")!,
+            "gnosis", _directory, spec, 176, null, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(selected.Root, Is.EqualTo(new Hash256(Root)));
+            Assert.That(selected.Epoch, Is.EqualTo(10));
+            Assert.That(selected.SelectedAt.ToUnixTimeSeconds(), Is.EqualTo((long)(spec.GenesisTime + 800)));
+            Assert.That(resumed, Is.EqualTo(selected with { Reused = true }));
+            Assert.That(handler.Requests, Is.Empty);
+            Assert.That(Directory.GetFiles(_directory).Select(Path.GetFileName), Is.EquivalentTo(new[] { "gnosis-checkpoint.json" }));
+        }
+    }
 
     [Test]
     public async Task Fetches_and_retains_the_original_provider_checkpoint_instead_of_refetching_on_restart()
@@ -207,12 +232,15 @@ public class CheckpointSourceTests
     }
 
     [Test]
-    public void Rejects_the_wrong_provider_network()
+    public void Rejects_the_wrong_provider_network([Values("hoodi", "gnosis")] string network)
     {
         using ResponseHandler handler = new(Finality()) { Network = BeaconChainSpec.Sepolia };
         using HttpClient client = new(handler);
+        BeaconChainSpec spec = network == "gnosis" ? BeaconChainSpec.Gnosis : BeaconChainSpec.Hoodi;
 
-        Assert.That(async () => await Resolve(client), Throws.TypeOf<InvalidDataException>().With.Message.Contains("different beacon network"));
+        Assert.That(async () => await CheckpointSource.ResolveAsync(client, Endpoint, network, _directory, spec,
+            10 * spec.SlotsPerEpoch, null, CancellationToken.None),
+            Throws.TypeOf<InvalidDataException>().With.Message.Contains("different beacon network"));
         Assert.That(handler.Requests, Has.Count.EqualTo(1));
     }
 

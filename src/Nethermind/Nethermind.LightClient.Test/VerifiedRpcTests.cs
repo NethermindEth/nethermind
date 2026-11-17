@@ -9,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.LightClient.Rpc;
@@ -1748,7 +1749,7 @@ public class VerifiedRpcTests
         header.ReceiptsRoot = ReceiptTrie.CalculateRoot(spec, [receipt], new ReceiptMessageDecoder());
         ExecutionPeerTransport.VerifyReceipts(header, [receipt], specs);
         Bloom authenticatedBloom = receipt.Bloom;
-        using VerifiedExecutionData data = new(provider, specs, 1);
+        using VerifiedExecutionData data = new(provider, specs, 1, new BlockForRpcFactory());
 
         JsonElement projected = single
             ? (await data.FindTransactionAsync(header, transaction.Hash, receipt: true, CancellationToken.None))!.Value
@@ -1771,7 +1772,7 @@ public class VerifiedRpcTests
         [Values(0, 1, 2)] int index, [Values] bool warm)
     {
         using Provider provider = ReceiptProjectionProvider();
-        using VerifiedExecutionData data = new(provider, MainnetSpecProvider.Instance, 1);
+        using VerifiedExecutionData data = new(provider, MainnetSpecProvider.Instance, 1, new BlockForRpcFactory());
         Hash256 hash = provider.Transactions[index].Hash!;
         if (warm) await data.FindTransactionAsync(provider.Header, hash, receipt: true, CancellationToken.None);
 
@@ -1806,7 +1807,7 @@ public class VerifiedRpcTests
             provider.Header.ReceiptsRoot = ReceiptTrie.CalculateRoot(MainnetSpecProvider.Instance.GetSpec(provider.Header),
                 provider.Receipts, new ReceiptMessageDecoder());
         }
-        using VerifiedExecutionData data = new(provider, MainnetSpecProvider.Instance, 1);
+        using VerifiedExecutionData data = new(provider, MainnetSpecProvider.Instance, 1, new BlockForRpcFactory());
 
         Assert.That(async () => await data.FindTransactionAsync(provider.Header, provider.Transactions[1].Hash!,
             receipt: true, CancellationToken.None), Throws.TypeOf<InvalidDataException>());
@@ -1819,7 +1820,7 @@ public class VerifiedRpcTests
         provider.Receipts = provider.Receipts[..2];
         provider.Header.ReceiptsRoot = ReceiptTrie.CalculateRoot(MainnetSpecProvider.Instance.GetSpec(provider.Header),
             provider.Receipts, new ReceiptMessageDecoder());
-        using VerifiedExecutionData data = new(provider, MainnetSpecProvider.Instance, 1);
+        using VerifiedExecutionData data = new(provider, MainnetSpecProvider.Instance, 1, new BlockForRpcFactory());
 
         Assert.That(async () => await data.FindTransactionAsync(provider.Header, provider.Transactions[1].Hash!,
             receipt: true, CancellationToken.None), Throws.TypeOf<InvalidDataException>());
@@ -2072,7 +2073,7 @@ public class VerifiedRpcTests
         older.ReceiptsRoot = provider.Header.ReceiptsRoot;
         older.GasLimit = provider.Header.GasLimit;
         older.GasUsed = provider.Header.GasUsed;
-        using VerifiedExecutionData execution = new(provider, MainnetSpecProvider.Instance, 1);
+        using VerifiedExecutionData execution = new(provider, MainnetSpecProvider.Instance, 1, new BlockForRpcFactory());
 
         JsonElement one = await execution.GetLogsAsync([provider.Header], null, [], CancellationToken.None);
         Assert.That(one.GetArrayLength(), Is.EqualTo(3));

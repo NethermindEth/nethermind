@@ -678,7 +678,7 @@ public class BeaconDiscoveryTests
     }
 
     [Test]
-    public void Local_enr_carries_the_cgc_entry_at_the_configured_custody_group_count([Values(4ul, 128ul)] ulong custodyGroupCount)
+    public void Local_enr_carries_the_cgc_entry_at_the_configured_custody_group_count([Values(0ul, 4ul, 128ul)] ulong custodyGroupCount)
     {
         BeaconNodeRecordProvider provider = new(TestItem.PrivateKeyA, PublicIp, tcpPort: 9000, udpPort: 9001, TestForkId, custodyGroupCount);
 

@@ -57,6 +57,7 @@ internal sealed class VerifiedConsensusJournal
             "mainnet" => 1,
             "hoodi" => 2,
             "sepolia" => 3,
+            "gnosis" => 4,
             _ => throw new ArgumentException("Unsupported light-client network.", nameof(network)),
         };
         string prefix = $"{network}-{Convert.ToHexString(trustedCheckpoint.Bytes)}";

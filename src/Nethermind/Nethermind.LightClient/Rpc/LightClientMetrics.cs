@@ -42,7 +42,7 @@ internal sealed class LightClientMetrics
 
     internal LightClientMetrics(string network, Func<ClientProgress> readStatus)
     {
-        if (network is not ("mainnet" or "sepolia" or "hoodi")) throw new ArgumentException("Unknown light-client network.", nameof(network));
+        if (network is not ("mainnet" or "sepolia" or "hoodi" or "gnosis")) throw new ArgumentException("Unknown light-client network.", nameof(network));
         _readStatus = readStatus;
         Registry.SetStaticLabels(new Dictionary<string, string> { ["network"] = network });
         MetricFactory factory = PrometheusMetrics.WithCustomRegistry(Registry);

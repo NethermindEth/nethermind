@@ -20,6 +20,7 @@ internal static class CheckpointSource
     {
         "hoodi" => "https://checkpoint-sync.hoodi.ethpandaops.io",
         "sepolia" => "https://checkpoint-sync.sepolia.ethpandaops.io",
+        "gnosis" => BeaconChainSpec.Gnosis.CheckpointSyncUrl,
         _ => null,
     };
 
@@ -28,7 +29,7 @@ internal static class CheckpointSource
     internal static async Task<CheckpointSelection> ResolveAsync(HttpClient client, string endpoint, string network,
         string directory, BeaconChainSpec spec, ulong currentSlot, string? crossCheckEndpoint, CancellationToken cancellationToken)
     {
-        if (network is not ("mainnet" or "hoodi" or "sepolia")) throw new ArgumentException("Unsupported checkpoint network.", nameof(network));
+        if (network is not ("mainnet" or "hoodi" or "sepolia" or "gnosis")) throw new ArgumentException("Unsupported checkpoint network.", nameof(network));
         Uri provider = Endpoint(endpoint);
         ulong currentTime = checked(spec.GenesisTime + currentSlot * spec.SecondsPerSlot);
         string path = Path.Combine(directory, network + "-checkpoint.json");

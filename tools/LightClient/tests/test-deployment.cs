@@ -77,6 +77,22 @@ internal static class DeploymentTests
                 return Task.CompletedTask;
             }),
         ];
+        checks.Add(("Smoke defaults to Ethereum mainnet", () =>
+        {
+            Require(SmokeOptions.Parse([]).Network == "mainnet", "The smoke default network changed");
+            return Task.CompletedTask;
+        }
+        ));
+        foreach ((string network, string chainId) in new[] { ("mainnet", "0x1"), ("sepolia", "0xaa36a7"), ("hoodi", "0x88bb0"), ("gnosis", "0x64") })
+            checks.Add(($"Smoke verifies {network} chain ID and metric labels", async () =>
+            {
+                SmokeOptions options = SmokeOptions.Parse(["--network", network]);
+                Require(options.Network == network, "The smoke network option was not retained");
+                await RunSmokeAsync(network: options.Network, chainId: chainId);
+            }
+            ));
+        checks.Add(("Smoke rejects an Ethereum endpoint selected as Gnosis", async () =>
+            await ExpectFailureAsync(() => RunSmokeAsync(network: "gnosis"), "Unexpected chain: 0x1")));
         foreach (string? value in new string?[] { null, "NaN", "0" })
             checks.Add(($"Smoke accepts no-traffic rates: {value ?? "empty"}", async () => await RunSmokeAsync(rateValue: value)));
         foreach (int seconds in new[] { 20, 90 })
@@ -194,12 +210,13 @@ internal static class DeploymentTests
     }
 
     private static async Task<SmokeResponder> RunSmokeAsync(string? mutation = null, int startupErrors = 0, int readyScrapes = 0,
-        int waitSeconds = 0, string? rateValue = null, int coldBalanceSeconds = 0, SmokeResponder? response = null)
+        int waitSeconds = 0, string? rateValue = null, int coldBalanceSeconds = 0, SmokeResponder? response = null,
+        string network = "mainnet", string chainId = "0x1")
     {
-        using SmokeResponder responder = response ?? new(mutation, startupErrors, readyScrapes, rateValue, coldBalanceSeconds);
+        using SmokeResponder responder = response ?? new(mutation, startupErrors, readyScrapes, rateValue, coldBalanceSeconds, network: network, chainId: chainId);
         using HttpClient client = new(responder, disposeHandler: false);
         SmokeChecks checks = new(client, responder.Clock, responder.Delay, TextWriter.Null);
-        await checks.RunAsync(new(PrometheusUrl: "http://localhost:9090", WaitSeconds: waitSeconds), "test-password", DashboardPath);
+        await checks.RunAsync(new(PrometheusUrl: "http://localhost:9090", Network: network, WaitSeconds: waitSeconds), "test-password", DashboardPath);
         return responder;
     }
 
@@ -247,14 +264,15 @@ internal static class DeploymentTests
 }
 
 internal sealed class SmokeResponder(string? mutation = null, int startupErrors = 0, int readyScrapes = 0,
-    string? rateValue = null, int coldBalanceSeconds = 0, bool balanceError = false) : HttpMessageHandler
+    string? rateValue = null, int coldBalanceSeconds = 0, bool balanceError = false,
+    string network = "mainnet", string chainId = "0x1") : HttpMessageHandler
 {
     internal TestClock Clock { get; } = new();
     internal int StatusCalls { get; private set; }
     internal int BalanceCalls { get; private set; }
     internal int ReadyQueries { get; private set; }
     internal int Sleeps { get; private set; }
-    private readonly List<(string Name, Dictionary<string, string> Labels)> _samples = Samples();
+    private readonly List<(string Name, Dictionary<string, string> Labels)> _samples = Samples(network);
 
     internal Task Delay(TimeSpan duration, CancellationToken token)
     {
@@ -275,14 +293,15 @@ internal sealed class SmokeResponder(string? mutation = null, int startupErrors 
         if (request.Method == HttpMethod.Post)
         {
             JsonNode body = JsonNode.Parse(await request.Content!.ReadAsStringAsync(cancellationToken))!;
-            if (body["method"]!.GetValue<string>() == "eth_getBalance")
+            string method = body["method"]!.GetValue<string>();
+            if (method == "eth_getBalance")
             {
                 BalanceCalls++;
                 Clock.Advance(TimeSpan.FromSeconds(coldBalanceSeconds));
                 cancellationToken.ThrowIfCancellationRequested();
                 if (balanceError) return Json(new JsonObject { ["error"] = new JsonObject { ["code"] = -32001, ["message"] = "Authenticated data unavailable" } });
             }
-            return Json(new JsonObject { ["result"] = "0x1" });
+            return Json(new JsonObject { ["result"] = method == "eth_chainId" ? chainId : "0x1" });
         }
         if (uri.AbsolutePath == "/metrics")
         {
@@ -327,11 +346,11 @@ internal sealed class SmokeResponder(string? mutation = null, int startupErrors 
 
     private static HttpResponseMessage Json(JsonNode node) => new(HttpStatusCode.OK) { Content = new StringContent(node.ToJsonString(), Encoding.UTF8, "application/json") };
 
-    private static List<(string, Dictionary<string, string>)> Samples()
+    private static List<(string, Dictionary<string, string>)> Samples(string network)
     {
         List<(string, Dictionary<string, string>)> samples = [];
         void Add(string name, params (string Key, string Value)[] labels) => samples.Add(("nethermind_light_client_" + name,
-            labels.ToDictionary(label => label.Key, label => label.Value).Append(new("network", "mainnet")).ToDictionary()));
+            labels.ToDictionary(label => label.Key, label => label.Value).Append(new("network", network)).ToDictionary()));
         Add("ready"); Add("initialized"); Add("startup_stage", ("stage", "running")); Add("hosted_storage_slots");
         foreach (string layer in new[] { "beacon", "execution", "snap" }) Add("peers", ("layer", layer));
         foreach (string state in new[] { "total", "current", "failed" }) Add("hosted_accounts", ("state", state));
@@ -341,7 +360,7 @@ internal sealed class SmokeResponder(string? mutation = null, int startupErrors 
         Add("http_requests_total", ("outcome", "overloaded"));
         Add("rpc_duration_seconds_bucket", ("method", "eth_chainId"), ("outcome", "ok"), ("le", "+Inf"));
         foreach (string name in new[] { "process_cpu_seconds_total", "process_working_set_bytes", "process_private_memory_bytes" })
-            samples.Add((name, new() { ["network"] = "mainnet" }));
+            samples.Add((name, new() { ["network"] = network }));
         return samples;
     }
 }

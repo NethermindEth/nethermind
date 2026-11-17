@@ -434,16 +434,16 @@ public class VerifiedConsensusJournalTests
     }
 
     [Test]
-    public async Task Rejects_a_journal_copied_to_another_network()
+    public async Task Rejects_a_journal_copied_to_another_network([Values("hoodi", "gnosis")] string network)
     {
         LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
         Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
         LightClientStore store = new(ConsensusTests.Spec, checkpoint, bootstrap, 1);
         await Journal(ConsensusTests.Spec, checkpoint).InitializeAsync(bootstrap, store, CancellationToken.None);
         string chain = Directory.GetFiles(_directory, "*.chain").Single();
-        File.Copy(chain, Path.Combine(_directory, Path.GetFileName(chain).Replace("mainnet", "hoodi")));
+        File.Copy(chain, Path.Combine(_directory, Path.GetFileName(chain).Replace("mainnet", network)));
 
-        Assert.That(async () => await Journal(ConsensusTests.Spec, checkpoint, "hoodi").LoadAsync(1, CancellationToken.None),
+        Assert.That(async () => await Journal(ConsensusTests.Spec, checkpoint, network).LoadAsync(1, CancellationToken.None),
             Throws.TypeOf<InvalidDataException>().With.Message.Contains("different network"));
     }
 

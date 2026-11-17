@@ -23,7 +23,7 @@ internal sealed record SmokeOptions(string RpcUrl = "http://127.0.0.1:8545", str
                 "--rpc-url" => options with { RpcUrl = value },
                 "--grafana-url" => options with { GrafanaUrl = value },
                 "--prometheus-url" => options with { PrometheusUrl = value },
-                "--network" when value is "mainnet" or "sepolia" or "hoodi" => options with { Network = value },
+                "--network" when value is "mainnet" or "sepolia" or "hoodi" or "gnosis" => options with { Network = value },
                 "--wait-seconds" when int.TryParse(value, out int seconds) && seconds >= 0 => options with { WaitSeconds = seconds },
                 _ => throw new ArgumentException($"Invalid option: {name} {value}"),
             };
@@ -74,7 +74,7 @@ internal sealed class SmokeChecks(HttpClient client, TimeProvider clock, Func<Ti
             await delay(MinimumDelay(Remaining()), token);
         }
 
-        int chainId = options.Network switch { "mainnet" => 1, "sepolia" => 11155111, "hoodi" => 560048, _ => throw new ArgumentException("Unknown network") };
+        int chainId = options.Network switch { "mainnet" => 1, "sepolia" => 11155111, "hoodi" => 560048, "gnosis" => 100, _ => throw new ArgumentException("Unknown network") };
         foreach ((string method, JsonArray parameters, string? expected) in new (string, JsonArray, string?)[]
         {
             ("eth_chainId", [], $"0x{chainId:x}"),

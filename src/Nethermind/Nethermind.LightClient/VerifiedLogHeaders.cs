@@ -14,7 +14,6 @@ internal static class VerifiedLogHeaders
     internal const int MaxBlocks = 512;
     internal const int HistoryCapacity = 262_144;
     private const int MaxOptimisticDepth = 512;
-    private static readonly HeaderDecoder _headerDecoder = new();
 
     internal static async Task<BlockHeader[]> GetAsync(IExecutionStateSource source, VerifiedHead anchor,
         VerifiedHead finalized, ulong first, ulong last, CancellationToken cancellationToken,
@@ -96,7 +95,7 @@ internal static class VerifiedLogHeaders
     internal static void Verify(BlockHeader? header, ulong number, Hash256 hash)
     {
         if (header is null || header.Number != number || header.Hash != hash
-            || _headerDecoder.GetLength(header, RlpBehaviors.None) > VerifiedHeaderHistory.MaxHeaderBytes
+            || Rlp.GetDecoderOrThrow<BlockHeader>().GetLength(header, RlpBehaviors.None) > VerifiedHeaderHistory.MaxHeaderBytes
             || header.CalculateHash() != hash)
             throw new InvalidDataException("A log header differs from the authenticated chain.");
     }

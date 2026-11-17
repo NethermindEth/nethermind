@@ -9,6 +9,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
@@ -17,14 +18,15 @@ namespace Nethermind.LightClient.Rpc;
 internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<VerifiedHead> getHead, ulong chainId,
     VerifiedCall? calls = null, ISpecProvider? specProvider = null, Func<VerifiedHead?>? getLatestHead = null,
     Func<VerifiedHead, bool>? isLatestHeadFresh = null, Func<VerifiedHead, bool>? isFinalizedHeadFresh = null,
-    Func<CancellationToken, Task<VerifiedHead>>? waitForLatestHead = null)
+    Func<CancellationToken, Task<VerifiedHead>>? waitForLatestHead = null, IBlockForRpcFactory? blockForRpcFactory = null)
     : IDisposable
 {
     private const ulong HistoricalStateDepth = 32;
     private const long LogResultCacheCapacity = 32 * 1024 * 1024;
     private readonly ulong _startingBlock = getLatestHead?.Invoke()?.Number ?? 0;
     private static readonly SemaphoreSlim ActiveExecutionData = new(4, 4);
-    private readonly VerifiedExecutionData? _data = specProvider is null ? null : new(execution, specProvider, chainId);
+    private readonly VerifiedExecutionData? _data = specProvider is null ? null
+        : new(execution, specProvider, chainId, blockForRpcFactory ?? new BlockForRpcFactory());
     private readonly SemaphoreSlim _historicalStateRequests = new(2, 2);
     private readonly SemaphoreSlim _proofRequests = new(2, 2);
     private readonly MemoryCache _logResults = new(new MemoryCacheOptions { SizeLimit = LogResultCacheCapacity });

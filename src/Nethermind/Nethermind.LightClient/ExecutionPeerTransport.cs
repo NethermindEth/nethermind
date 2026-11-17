@@ -12,6 +12,8 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Validators;
@@ -66,7 +68,6 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
     private const int SnapRequestLimit = 8;
     private const int SlowResponseMilliseconds = 7500;
     private const int PeerFeedbackCapacity = 256;
-    private static readonly HeaderDecoder _logHeaderDecoder = new();
     private readonly IContainer _services;
     private readonly ILogManager _logManager;
     private readonly Nethermind.Logging.ILogger _logger;
@@ -104,6 +105,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
 
     internal int PeerCount => _services.Resolve<ISyncPeerPool>().PeerCount;
     internal Nethermind.Core.Specs.ISpecProvider SpecProvider => _services.Resolve<Nethermind.Core.Specs.ISpecProvider>();
+    internal Nethermind.Facade.Eth.IBlockForRpcFactory BlockForRpcFactory => _services.Resolve<Nethermind.Facade.Eth.IBlockForRpcFactory>();
     internal int SnapPeerCount
     {
         get
@@ -140,16 +142,20 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         if (hostedAccounts is { Length: > 0 })
             _hostedAccounts = new(hostedAccounts, this, DownloadStorageAsync, _logger);
         _ = typeof(EthashChainSpecEngineParameters).Assembly;
+        _ = typeof(AuRaChainSpecEngineParameters).Assembly;
         TypeDiscovery.Initialize();
         (string chainSpecFile, Hash256 genesisHash) = network switch
         {
             "mainnet" => ("foundation.json", KnownHashes.MainnetGenesis),
             "hoodi" => ("hoodi.json", KnownHashes.HoodiGenesis),
             "sepolia" => ("sepolia.json", KnownHashes.SepoliaGenesis),
-            _ => throw new ArgumentException("Supported networks: mainnet, hoodi, sepolia.", nameof(network)),
+            "gnosis" => ("gnosis.json", KnownHashes.GnosisGenesis),
+            _ => throw new ArgumentException("Supported networks: mainnet, hoodi, sepolia, gnosis.", nameof(network)),
         };
         ChainSpec chainSpec = new ChainSpecFileLoader(new EthereumJsonSerializer(), logManager)
             .LoadEmbeddedOrFromFile(chainSpecFile);
+        bool isGnosis = network == "gnosis";
+        if (isGnosis) AuRaChainSpecLoader.ProcessChainSpec(chainSpec);
         (chainSpec.Genesis ?? throw new InvalidOperationException("Chain spec has no genesis block")).Header.Hash = genesisHash;
         _syncServer = new LightSyncServer(chainSpec, head, timestamp);
         InitConfig init = new() { DiagnosticMode = DiagnosticMode.MemDb, DataDir = "src/Nethermind/artifacts/lightclient-execution" };
@@ -161,7 +167,8 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         }
         NetworkConfig net = new()
         {
-            DiscoveryDns = $"enrtree://AKA3AM6LPBYEUDMVNU3BSVQJ5AD45Y7YPOHJLEF6W26QOE4VTUDPE@snap.{network}.ethdisco.net",
+            // Gnosis has no ethdisco.net tree; its chainspec supplies discv5-capable EL bootnodes.
+            DiscoveryDns = isGnosis ? string.Empty : $"enrtree://AKA3AM6LPBYEUDMVNU3BSVQJ5AD45Y7YPOHJLEF6W26QOE4VTUDPE@snap.{network}.ethdisco.net",
             P2PPort = port,
             DiscoveryPort = port,
             MaxActivePeers = 32,
@@ -171,11 +178,16 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             ClientIdMatcher = "(?i)^(?!.*enrscout)",
         };
         SyncConfig sync = new() { SnapSync = true, FastSync = false, SnapServingEnabled = false };
-        DiscoveryConfig discovery = new() { DiscoveryVersion = DiscoveryVersion.V5 };
+        DiscoveryConfig discovery = new()
+        {
+            DiscoveryVersion = isGnosis ? DiscoveryVersion.All : DiscoveryVersion.V5,
+            UseDefaultDiscv5Bootnodes = !isGnosis,
+        };
         KeyStoreConfig keyStore = new() { KeyStoreDirectory = Path.GetFullPath(dataDirectory ?? init.DataDir) };
         ConfigProvider config = new(init, net, sync, discovery, keyStore, new FlatDbConfig { Enabled = false });
         ContainerBuilder builder = new();
         builder.RegisterModule(new NethermindModule(chainSpec, config, logManager));
+        if (isGnosis) builder.RegisterModule(new AuRaHeaderModule());
         builder.RegisterModule(new LightExecutionOverrides(_syncServer, _transactionRelay, _stop.Token));
         if (dataDirectory is not null)
         {
@@ -212,7 +224,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             IDb db = directory is null ? new MemDb("lightClientLogHeaders") : VerifiedHeaderHistory.OpenDb(directory, logManager);
             try
             {
-                return new(db, genesisHash, SpecProvider, GetHeaderAsync, FetchLogHeaderPageAsync, _logger,
+                return new(db, genesisHash, _services.Resolve<IHeaderDecoder>(), GetHeaderAsync, FetchLogHeaderPageAsync, _logger,
                     clock: _clock, directory: directory, prefetchPages: BeginLogHeaderPages);
             }
             catch { db.Dispose(); throw; }
@@ -984,11 +996,12 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
 
     private static void CopyLogHeaders(IOwnedReadOnlyList<BlockHeader> headers, Span<BlockHeader> result, ulong first)
     {
+        IRlpDecoder<BlockHeader> decoder = Rlp.GetDecoderOrThrow<BlockHeader>();
         for (int i = 0; i < headers.Count; i++)
         {
             BlockHeader header = headers[i];
             if (header is null || header.Number != first + (ulong)i
-                || _logHeaderDecoder.GetLength(header, RlpBehaviors.None) > VerifiedHeaderHistory.MaxHeaderBytes)
+                || decoder.GetLength(header, RlpBehaviors.None) > VerifiedHeaderHistory.MaxHeaderBytes)
                 throw new InvalidDataException("Execution peer supplied an invalid log header page.");
             result[i] = header;
         }

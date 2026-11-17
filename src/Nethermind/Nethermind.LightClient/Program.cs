@@ -27,12 +27,13 @@ if (Array.Exists(args, static arg => arg is "--help" or "-h"))
     Console.WriteLine("Nethermind light client\n" +
         "Optional: --checkpoint <trusted beacon block root> or --checkpoint-url <trusted HTTPS Beacon API>\n" +
         "          --checkpoint-check-url <independent trusted HTTPS Beacon API>\n" +
-        "Optional: --network mainnet|hoodi|sepolia (default mainnet) --urls http://127.0.0.1:8545\n" +
+        "Optional: --network mainnet|hoodi|sepolia|gnosis (default mainnet) --urls http://127.0.0.1:8545\n" +
         "          --data-dir src/Nethermind/artifacts/lightclient\n" +
         "          --beacon-port 9050 --beacon-quic-port 9051 (0 disables QUIC) --execution-port 30307\n" +
         "          --host-accounts <0xaddress,0xaddress,...> (complete account state retained in RAM)\n" +
         "          --log-level Trace|Debug|Info|Warn|Error|Fatal (default Info)\n" +
         "Mainnet needs --checkpoint or --checkpoint-url; Hoodi and Sepolia use EF-operated defaults.\n" +
+        "Gnosis uses a Gnosis-operated checkpoint default; use --checkpoint-url to choose another provider.\n" +
         "See README.md for verified RPC selectors and checkpoint trust requirements.");
     return;
 }
@@ -76,6 +77,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
         { Final = true });
         string[] categories =
         [
+            "BeaconChain.P2P.BeaconP2P",
             "BeaconChain.P2P.PeerManager",
             "Network.PeerManager",
             "Network.ProtocolsManager",
@@ -96,15 +98,18 @@ async Task RunClientAsync(CancellationToken stoppingToken)
     builder.Services.Replace(ServiceDescriptor.Singleton<ILoggerFactory>(new NethermindLoggerFactory(logManager)));
     builder.Services.AddCors();
     string network = builder.Configuration["network"] ?? "mainnet";
+    ulong chainId = network switch
+    {
+        "mainnet" => BlockchainIds.Mainnet,
+        "hoodi" => BlockchainIds.Hoodi,
+        "sepolia" => BlockchainIds.Sepolia,
+        "gnosis" => BlockchainIds.Gnosis,
+        _ => throw new ArgumentException("Supported networks: mainnet, hoodi, sepolia, gnosis."),
+    };
+    BeaconPresetSelection.Initialize(chainId);
+    BeaconChainSpec spec = BeaconChainSpec.ForChainId(chainId);
     Address[] hostedAccounts = HostedAccountState.ParseAccounts(builder.Configuration["host-accounts"]);
     (int beaconPort, int quicPort, int executionPort) = LightClientHost.ReadPorts(builder.Configuration);
-    BeaconChainSpec spec = network switch
-    {
-        "mainnet" => BeaconChainSpec.Mainnet,
-        "hoodi" => BeaconChainSpec.Hoodi,
-        "sepolia" => BeaconChainSpec.Sepolia,
-        _ => throw new ArgumentException("Supported networks: mainnet, hoodi, sepolia."),
-    };
     string? checkpointValue = builder.Configuration["checkpoint"];
     string? checkpointCheckUrl = builder.Configuration["checkpoint-check-url"];
     string dataDirectory = builder.Configuration["data-dir"] ?? Path.Combine("src", "Nethermind", "artifacts", "lightclient");
@@ -229,7 +234,8 @@ async Task RunClientAsync(CancellationToken stoppingToken)
             try
             {
                 await execution.StartAsync(startupStop.Token);
-                logger.LogInformation("Execution P2P started; searching for SNAP peers via {Domain}", execution.DiscoveryDomain);
+                logger.LogInformation("Execution P2P started; searching for SNAP peers via {Discovery}",
+                    string.IsNullOrEmpty(execution.DiscoveryDomain) ? "discv4 + discv5 bootnodes" : execution.DiscoveryDomain);
             }
             catch
             {
@@ -274,7 +280,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
         using VerifiedRpc rpc = new(execution, GetHead, spec.ChainId, calls, execution.SpecProvider, GetLatestHead,
             latest => IsHeadFresh(latest, OptimisticHeadMaxAgeSeconds), finalized => IsHeadFresh(finalized, FinalizedHeadMaxAgeSeconds),
             token => publisher.WaitForFreshLatestAsync(latest => IsHeadFresh(latest, OptimisticHeadMaxAgeSeconds),
-                () => optimisticRequests.Writer.TryWrite(true), token));
+                () => optimisticRequests.Writer.TryWrite(true), token), blockForRpcFactory: execution.BlockForRpcFactory);
         VerifiedSubscriptions subscriptions = new(execution, rpc, logger, metrics: metrics);
         ConsensusSync.Processor consensus = new(store, journal, spec, clock, consensusGate,
             PublishPersistedHeaders, app.Lifetime.StopApplication, logger, app.Lifetime.ApplicationStopping);

@@ -9,7 +9,7 @@
 
 if (args is ["--help"] or ["-h"])
 {
-    Console.WriteLine("Check a running deployment: smoke.cs [--rpc-url URL] [--grafana-url URL] [--prometheus-url URL] [--network mainnet|sepolia|hoodi] [--wait-seconds N]");
+    Console.WriteLine("Check a running deployment: smoke.cs [--rpc-url URL] [--grafana-url URL] [--prometheus-url URL] [--network mainnet|sepolia|hoodi|gnosis] [--wait-seconds N]");
     return 0;
 }
 try

@@ -36,12 +36,25 @@ trusted HTTPS provider explicitly, for example:
 dotnet run --project src/Nethermind/Nethermind.LightClient -c release -p:SaveDiskSpace=true -- --network mainnet --checkpoint-url https://mainnet.checkpoint.sigp.io
 ```
 
+For [Gnosis mainnet](https://docs.gnosischain.com/about/networks/mainnet), use:
+
+```powershell
+dotnet run --project src/Nethermind/Nethermind.LightClient -c release -p:SaveDiskSpace=true -- --network gnosis
+```
+
+Gnosis uses chain ID `100` (`eth_chainId` returns `0x64`) and native xDAI balances.
+Its default checkpoint provider is `https://checkpoint.gnosischain.com`, operated
+by Gnosis. Using that default trusts its initial finalized beacon root; choose
+`--checkpoint` or `--checkpoint-url` to supply your own trust anchor or provider.
+Ethereum mainnet remains the default when `--network` is omitted.
+
 The `Nethermind.LightClient` debug profile selects mainnet and supplies the
 checkpoint URL above automatically. Edit its command-line arguments to select
 another trusted provider or root.
 Select `Nethermind.LightClient (Sepolia)` or `Nethermind.LightClient (Hoodi)`
 from Visual Studio's launch-profile dropdown to debug those networks using
-their EF-operated checkpoint defaults. All profiles use RPC port 8545.
+their EF-operated checkpoint defaults. `Nethermind.LightClient (Gnosis)` uses
+the Gnosis checkpoint default. All profiles use RPC port 8545.
 
 Press **Ctrl+C** in the terminal to cancel checkpoint/bootstrap startup or stop
 the running client. Shutdown waits for RPC and sync workers, closes P2P
@@ -63,7 +76,7 @@ root, but do not independently establish whether it belongs to the canonical
 chain. Provider network genesis root and time are checked before initial
 selection and before a cross-check.
 
-`--network` accepts `mainnet` (default), `hoodi` and `sepolia`. The listener defaults to
+`--network` accepts `mainnet` (default), `hoodi`, `sepolia` and `gnosis`. The listener defaults to
 `http://127.0.0.1:8545`; `--urls` overrides it. `--help` prints the options.
 `--log-level Debug` adds received beacon-update slots, validation outcomes and
 durable consensus progress to the light-client logs; the default is `Info`.
@@ -71,7 +84,8 @@ Debug also records selected peer admission, advertised capabilities, connection
 outcomes and disconnect reasons from the consensus and execution transports.
 To use MetaMask or another browser wallet extension, select
 `http://127.0.0.1:8545` as the RPC URL for Ethereum
-Mainnet (chain ID `1`), or Sepolia (chain ID `11155111`). In MetaMask's network
+Mainnet (chain ID `1`), Sepolia (chain ID `11155111`), or Gnosis (chain ID `100`,
+currency symbol `xDAI`). In MetaMask's network
 settings, edit the existing network and add the local endpoint to its RPC URLs;
 see the [wallet setup guide](https://support.metamask.io/configure/networks/how-to-add-a-custom-network-rpc#adding-or-editing-rpc-urls).
 HTTP RPC and WebSocket subscriptions share the port; the WebSocket URL is
@@ -112,8 +126,9 @@ block hash or a beacon state root. The client never obtains or replaces its
 trust anchor from its peers.
 The bootstrap, the latest replayed authenticated header, and the retained live
 state before processing or forcing another update must be
-at most 256 epochs of slots old (27 hours 18 minutes 24 seconds on these
-networks). This uses the minimum validator withdrawal delay, a conservative
+at most 256 epochs of slots old (27 hours 18 minutes 24 seconds on Ethereum
+networks; 5 hours 41 minutes 20 seconds on Gnosis). This uses the minimum
+validator withdrawal delay, a conservative
 lower bound of the supported forks' [weak-subjectivity periods](https://ethereum.github.io/consensus-specs/specs/gloas/weak-subjectivity/).
 It does not compute the full state-dependent validator churn term. A saved
 original checkpoint may be older when replay proves recent authenticated
@@ -363,8 +378,8 @@ Wallets and dapps can use `"latest"` for the recent sync-committee-authenticated
 head. Gossip advances it between recovery polls; it is not restricted to the
 older finalized block. Use `"finalized"` explicitly when finality is required.
 `"latest"` state, block, log, fee and transaction-preparation requests require
-an authenticated head within ten beacon slots (120 seconds on supported networks)
-of the current slot. While it is unavailable or stale, these requests trigger
+an authenticated head no more than 120 seconds old (ten Ethereum beacon slots
+or 24 Gnosis slots). While it is unavailable or stale, these requests trigger
 coalesced recovery and wait up to two seconds before returning `-32001`; stale data is never
 served as `latest`. Explicit block
 numbers and hashes are outside these time-based freshness gates and retain their
@@ -641,13 +656,19 @@ offers both `snap/1` and `snap/2`, with BAL requests gated by the block's fork. 
 cached in memory; it does no full block synchronization. Peers can withhold
 recent selected state; this affects availability, never the returned
 value. The startup checkpoint remains a trusted input, whether supplied directly
-or fetched from the selected HTTPS provider. Chain-spec bootnodes and default
-ENRs seed discovery; direct public-network RLPx candidates come from discovered
-peer records from discv5 or the signed DNS ENR tree.
-The light client selects the signer-pinned `snap.<network>.ethdisco.net` tree
+or fetched from the selected HTTPS provider. Direct public-network RLPx candidates
+come from discovered peer records. On Ethereum mainnet, Hoodi and Sepolia,
+default ENRs seed discv5. The signer-pinned `snap.<network>.ethdisco.net` tree
 (`snap.mainnet.ethdisco.net`, `snap.hoodi.ethdisco.net` or
-`snap.sepolia.ethdisco.net`) to discover SNAP-capable execution peers.
+`snap.sepolia.ethdisco.net`) discovers SNAP-capable execution peers.
+Gnosis mainnet uses both discv4 and discv5 with the bootnodes embedded in its
+[chain specification](../Chains/gnosis.json), matching full-node discv4 discovery
+while retaining discv5. It has no configured ethdisco DNS tree.
 SNAP support is confirmed during the live P2P handshake.
+
+Beacon connections serve Altair metadata v2 without a data-column custody
+promise; full-node hosts retain Fulu metadata v3. The light client keeps its
+discovery custody count at zero and does not store or serve data columns.
 
 Signed discovery ENRs are retained under `<data-dir>/el/<network>/discovery`
 using the existing discovery storage and revalidated on restart. The cache keeps
@@ -678,7 +699,10 @@ the committee that recovery selected, so it carries that recovery's weaker
 trust; each forced advance is logged as a warning.
 
 The client implements Electra, Fulu and Gloas wire formats with built-in
-mainnet, Hoodi and Sepolia schedules. Gloas authenticates an execution block
+mainnet, Hoodi, Sepolia and Gnosis schedules. Gnosis uses five-second slots,
+16 slots per epoch and a 512-epoch sync committee period (8192 slots, or
+11 hours 22 minutes 40 seconds). Its schedule includes Fulu; Gloas is unscheduled.
+Gloas authenticates an execution block
 hash through the payload bid's parent-block hash; the client then retrieves the matching execution
 header by hash before serving its state. Consequently the newest authenticated
 Gloas execution head inherently trails its attested beacon head by one slot.

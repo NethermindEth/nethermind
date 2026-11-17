@@ -5,7 +5,6 @@ using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
@@ -30,7 +29,7 @@ internal sealed class VerifiedHeaderHistory : IAsyncDisposable
     private const long DiskWriteLimit = 1024L * 1024 * 1024;
     private static readonly byte[] IdentityKey = [0xff];
     private readonly IDb _db;
-    private readonly HeaderDecoder _decoder;
+    private readonly IHeaderDecoder _decoder;
     private readonly Func<VerifiedHead, CancellationToken, Task<BlockHeader>> _getAnchor;
     private readonly Func<BlockHeader, int, CancellationToken, Task<BlockHeader[]>> _fetchPage;
     private readonly Func<ulong, int, CancellationToken, PageRequest[]>? _prefetchPages;
@@ -58,7 +57,7 @@ internal sealed class VerifiedHeaderHistory : IAsyncDisposable
 
     internal HistoryProgress Progress => Volatile.Read(ref _progress);
 
-    internal VerifiedHeaderHistory(IDb db, Hash256 genesis, ISpecProvider specProvider,
+    internal VerifiedHeaderHistory(IDb db, Hash256 genesis, IHeaderDecoder decoder,
         Func<VerifiedHead, CancellationToken, Task<BlockHeader>> getAnchor,
         Func<BlockHeader, int, CancellationToken, Task<BlockHeader[]>> fetchPage, Nethermind.Logging.ILogger logger,
         TimeProvider? clock = null, int capacity = VerifiedLogHeaders.HistoryCapacity,
@@ -68,7 +67,7 @@ internal sealed class VerifiedHeaderHistory : IAsyncDisposable
         ArgumentOutOfRangeException.ThrowIfLessThan(capacity, 2);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(capacity, VerifiedLogHeaders.HistoryCapacity);
         _db = db;
-        _decoder = new(specProvider);
+        _decoder = decoder;
         _getAnchor = getAnchor;
         _fetchPage = fetchPage;
         _prefetchPages = prefetchPages;

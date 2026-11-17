@@ -5,7 +5,8 @@ Engine 28.0.0 or newer and the Docker Compose plugin. Use a maintained Docker
 release: older engines can expose localhost-published ports to other hosts on
 the same network ([Docker port-publishing guidance](https://docs.docker.com/engine/network/port-publishing/)).
 The image supports `linux/amd64` and
-`linux/arm64`. Mainnet is the default network.
+`linux/arm64`. Ethereum mainnet is the default network; Gnosis mainnet, Sepolia
+and Hoodi can be selected explicitly.
 
 The Compose stack runs three containers: the light client, Prometheus to retain
 metrics, and Grafana to display them. All three are configured together; no
@@ -152,7 +153,7 @@ hostname must set the container's `AllowedHosts` environment variable to an
 explicit semicolon-separated list including that hostname and the internal
 healthcheck/scrape hosts. Avoid a wildcard value.
 
-## Sepolia and Hoodi
+## Choose a network
 
 Set both values for the selected network in `.env`:
 
@@ -161,6 +162,13 @@ Set both values for the selected network in `.env`:
 | Mainnet | `mainnet` | `https://mainnet.checkpoint.sigp.io` |
 | Sepolia | `sepolia` | `https://checkpoint-sync.sepolia.ethpandaops.io` |
 | Hoodi | `hoodi` | `https://checkpoint-sync.hoodi.ethpandaops.io` |
+| Gnosis mainnet | `gnosis` | `https://checkpoint.gnosischain.com` |
+
+For Gnosis mainnet, set `LC_NETWORK=gnosis` and
+`LC_CHECKPOINT_URL=https://checkpoint.gnosischain.com`. This provider is operated
+by Gnosis and supplies the initial trusted finalized beacon root. Gnosis uses
+chain ID `100` (`0x64`) and native xDAI balances; see the
+[official network details](https://docs.gnosischain.com/about/networks/mainnet).
 
 Stop the old stack before changing networks. Use a separate Compose project to
 retain distinct data volumes, for example:
@@ -168,7 +176,7 @@ retain distinct data volumes, for example:
 ```sh
 docker compose down
 # Edit LC_NETWORK and LC_CHECKPOINT_URL in .env.
-docker compose -p nethermind-lc-sepolia up -d
+docker compose -p nethermind-lc-gnosis up -d
 ```
 
 Use that same `-p` value for subsequent commands. Running multiple networks
@@ -344,6 +352,9 @@ an unavailable-data response still fails the check instead of being hidden by re
 ```sh
 dotnet run tools/LightClient/tests/smoke.cs -- --network mainnet
 ```
+
+Use `--network gnosis` when checking a Gnosis stack; the probe requires chain ID
+`0x64` and metrics labeled `network="gnosis"`.
 
 The script accepts `--rpc-url` and `--grafana-url` for alternate local ports.
 `--prometheus-url` bypasses the Grafana proxy for isolated testing with a

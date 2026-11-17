@@ -242,7 +242,7 @@ public class VerifiedHeaderHistoryTests
             db.Set([0xff], identity);
         }
         Assert.That(() => new VerifiedHeaderHistory(db,
-            change == "network" ? Keccak.Zero : chain.Headers[0].Hash!, MainnetSpecProvider.Instance,
+            change == "network" ? Keccak.Zero : chain.Headers[0].Hash!, new HeaderDecoder(MainnetSpecProvider.Instance),
             chain.GetHeaderAsync, chain.FetchPageAsync, LimboLogs.Instance.GetClassLogger<VerifiedHeaderHistory>(),
             capacity: change == "capacity" ? 512 : 1024), Throws.TypeOf<InvalidDataException>());
     }
@@ -765,7 +765,7 @@ public class VerifiedHeaderHistoryTests
                     return Task.FromResult(page);
                 });
             });
-        await using VerifiedHeaderHistory history = new(db, chain.Headers[0].Hash!, MainnetSpecProvider.Instance,
+        await using VerifiedHeaderHistory history = new(db, chain.Headers[0].Hash!, new HeaderDecoder(MainnetSpecProvider.Instance),
             (head, _) => Task.FromResult((forked ? fork : chain.Headers)[head.Number]),
             (cursor, count, _) => Task.FromResult(Page(cursor.Number, count)),
             LimboLogs.Instance.GetClassLogger<VerifiedHeaderHistory>(), capacity: 1024, prefetchPages: Prefetch);
@@ -788,7 +788,7 @@ public class VerifiedHeaderHistoryTests
 
     private static VerifiedHeaderHistory Create(Chain chain, IDb db, int capacity = 1024, TimeProvider? clock = null,
         Func<ulong, int, CancellationToken, VerifiedHeaderHistory.PageRequest[]>? prefetch = null) =>
-        new(db, chain.Headers[0].Hash!, MainnetSpecProvider.Instance, chain.GetHeaderAsync, chain.FetchPageAsync,
+        new(db, chain.Headers[0].Hash!, new HeaderDecoder(MainnetSpecProvider.Instance), chain.GetHeaderAsync, chain.FetchPageAsync,
             LimboLogs.Instance.GetClassLogger<VerifiedHeaderHistory>(), clock, capacity, prefetchPages: prefetch);
 
     private static VerifiedHeaderHistory.PageRequest[] CreatePages(ulong number, int count,

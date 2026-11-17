@@ -8,7 +8,9 @@
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Nethermind.LightClient.Test" />
+    <InternalsVisibleTo Include="Nethermind.BeaconChain.Gnosis.Test" />
     <ProjectReference Include="../Nethermind.BeaconChain/Nethermind.BeaconChain.csproj" />
+    <ProjectReference Include="../Nethermind.Consensus.AuRa/Nethermind.Consensus.AuRa.csproj" />
     <ProjectReference Include="../Nethermind.Consensus.Ethash/Nethermind.Consensus.Ethash.csproj" />
     <ProjectReference Include="../Nethermind.Db.Rocks/Nethermind.Db.Rocks.csproj" />
     <ProjectReference Include="../Nethermind.Logging.Microsoft/Nethermind.Logging.Microsoft.csproj" />

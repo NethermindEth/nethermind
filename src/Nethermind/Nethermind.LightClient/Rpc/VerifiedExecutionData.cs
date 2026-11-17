@@ -19,48 +19,15 @@ using Nethermind.Logging;
 
 namespace Nethermind.LightClient.Rpc;
 
-internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecProvider specProvider, ulong chainId) : IDisposable
+internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecProvider specProvider, ulong chainId,
+    IBlockForRpcFactory blockForRpcFactory) : IDisposable
 {
     private const int LogPrefetchLimit = 4;
     private readonly EthereumEcdsa _ecdsa = new(chainId);
     private readonly VerifiedMemoryCache _transactionIndex = new();
 
-    internal JsonElement GetHeader(BlockHeader header)
-    {
-        IReleaseSpec spec = specProvider.GetSpec(header);
-        Dictionary<string, object?> result = new()
-        {
-            ["difficulty"] = header.Difficulty,
-            ["extraData"] = header.ExtraData,
-            ["gasLimit"] = header.GasLimit,
-            ["gasUsed"] = header.GasUsed,
-            ["hash"] = header.Hash,
-            ["logsBloom"] = header.Bloom,
-            ["miner"] = header.Beneficiary,
-            ["nonce"] = $"0x{header.Nonce:x16}",
-            ["number"] = header.Number,
-            ["parentHash"] = header.ParentHash,
-            ["receiptsRoot"] = header.ReceiptsRoot,
-            ["sha3Uncles"] = header.UnclesHash,
-            ["stateRoot"] = header.StateRoot,
-            ["timestamp"] = header.Timestamp,
-            ["transactionsRoot"] = header.TxRoot,
-        };
-        if (header.MixHash is not null) result["mixHash"] = header.MixHash;
-        if (spec.IsEip1559Enabled) result["baseFeePerGas"] = header.BaseFeePerGas;
-        if (header.WithdrawalsRoot is not null) result["withdrawalsRoot"] = header.WithdrawalsRoot;
-        if (header.RequestsHash is not null) result["requestsHash"] = header.RequestsHash;
-        if (header.BlockAccessListHash is not null) result["blockAccessListHash"] = header.BlockAccessListHash;
-        if (spec.IsEip4844Enabled)
-        {
-            if (header.BlobGasUsed is not null) result["blobGasUsed"] = header.BlobGasUsed;
-            if (header.ExcessBlobGas is not null) result["excessBlobGas"] = header.ExcessBlobGas;
-        }
-        if (spec.IsEip4788Enabled && header.ParentBeaconBlockRoot is not null)
-            result["parentBeaconBlockRoot"] = header.ParentBeaconBlockRoot;
-        if (spec.IsEip7843Enabled && header.SlotNumber is not null) result["slotNumber"] = header.SlotNumber;
-        return BoundedJson.ToElement(result);
-    }
+    internal JsonElement GetHeader(BlockHeader header) =>
+        BoundedJson.ToElement(blockForRpcFactory.CreateHeader(header, specProvider));
 
     internal async Task<JsonElement> GetBlockAsync(BlockHeader header, bool fullTransactions, CancellationToken cancellationToken)
     {
@@ -73,7 +40,7 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
             ValidatePayloadBytes(payloadBytes);
             RecoverSenders(block);
         }
-        return BoundedJson.ToElement(new BlockForRpc(block, fullTransactions, specProvider));
+        return BoundedJson.ToElement(blockForRpcFactory.Create(block, fullTransactions, specProvider));
     }
 
     internal async Task<JsonElement> GetBlockTransactionCountAsync(BlockHeader header, CancellationToken cancellationToken)
