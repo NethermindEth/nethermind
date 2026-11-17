@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
@@ -208,6 +209,70 @@ public class DiscoveryNodeAdmissionTests
     }
 
     [Test]
+    public void Exemption_follows_the_node_identity_after_reconstruction_drops_the_flags()
+    {
+        Fixture fixture = CreateAdmission();
+        Node trusted = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
+        trusted.IsTrusted = true;
+        Node staticNode = CreateNode(TestItem.PublicKeyB, "203.0.114.11");
+        staticNode.IsStatic = true;
+        Node bootnode = CreateNode(TestItem.PublicKeyC, "203.0.115.12");
+        bootnode.IsBootnode = true;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.Admission.TryAdmit(trusted), Is.True);
+            Assert.That(fixture.Admission.TryAdmit(staticNode), Is.True);
+            Assert.That(fixture.Admission.TryAdmit(bootnode), Is.True);
+            // A packet rebuilds the node without its flags; the identity must keep the exemption.
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyA, "203.0.113.10")), Is.True);
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyB, "203.0.114.11")), Is.True);
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyC, "203.0.115.12")), Is.True);
+            // None of those exemptions consumed capacity for the subnets they came from.
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyE, "203.0.113.99")), Is.True);
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyF, "203.0.114.99")), Is.True);
+        }
+    }
+
+    [Test]
+    public void Static_and_trusted_nodes_are_exempt_on_first_contact_by_identity()
+    {
+        IStaticNodesManager staticNodes = Substitute.For<IStaticNodesManager>();
+        staticNodes.Nodes.Returns([new NetworkNode(TestItem.PublicKeyA, "203.0.113.10", 30303)]);
+        ITrustedNodesManager trustedNodes = Substitute.For<ITrustedNodesManager>();
+        trustedNodes.Nodes.Returns([new NetworkNode(TestItem.PublicKeyB, "203.0.114.20", 30303)]);
+        Fixture fixture = CreateAdmission(staticNodes: staticNodes, trustedNodes: trustedNodes);
+
+        using (Assert.EnterMultipleScope())
+        {
+            // First contact arrives as a fresh, unflagged node built from the packet.
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyA, "203.0.113.10")), Is.True);
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyB, "203.0.114.20")), Is.True);
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyC, "203.0.115.30")), Is.True);
+            // The exempt nodes did not reserve their subnets.
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyE, "203.0.113.99")), Is.True);
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyF, "203.0.114.99")), Is.True);
+        }
+    }
+
+    [Test]
+    public void Static_node_added_after_construction_is_exempt_on_first_contact()
+    {
+        List<NetworkNode> staticNodesList = [];
+        IStaticNodesManager staticNodes = Substitute.For<IStaticNodesManager>();
+        staticNodes.Nodes.Returns(_ => staticNodesList);
+        Fixture fixture = CreateAdmission(staticNodes: staticNodes);
+        staticNodesList.Add(new NetworkNode(TestItem.PublicKeyA, "203.0.113.10", 30303));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyA, "203.0.113.10")), Is.True);
+            // The newly added static node did not reserve its subnet.
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyB, "203.0.113.99")), Is.True);
+        }
+    }
+
+    [Test]
     public void IsAdmitted_reflects_admission_state()
     {
         Fixture fixture = CreateAdmission();
@@ -280,7 +345,9 @@ public class DiscoveryNodeAdmissionTests
         KademliaConfig<Node>? config = null,
         NetworkNode[]? persisted = null,
         string currentIp = "198.51.100.1",
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        IStaticNodesManager? staticNodes = null,
+        ITrustedNodesManager? trustedNodes = null)
     {
         IRoutingTable<Node, ValueHash256> routingTable = Substitute.For<IRoutingTable<Node, ValueHash256>>();
         INetworkStorage storage = Substitute.For<INetworkStorage>();
@@ -305,7 +372,9 @@ public class DiscoveryNodeAdmissionTests
             kademliaConfig,
             storage,
             admittedCapacity: 100,
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            staticNodes,
+            trustedNodes);
         return new Fixture(admission, routingTable, storage);
     }
 

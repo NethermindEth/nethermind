@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Net;
 using System.Threading;
 using Nethermind.Config;
@@ -20,6 +22,12 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// read-only, <see cref="TryAdmit"/> is the one call that records a new address, <see cref="Touch"/>
 /// refreshes an admitted node, and <see cref="IsAdmitted"/> answers whether this exact node already passed
 /// admission.
+/// <para>
+/// Exemption is tracked by node identity rather than by the flags on the instance being admitted: a node
+/// rebuilt from a packet carries no flags, so a flagged instance records its identity in the exempt set and
+/// every later reconstruction of that node is recognized. Static and trusted nodes are also resolved from
+/// their managers, which covers first contact before the node has ever been seen locally.
+/// </para>
 /// </remarks>
 internal sealed class DiscoveryNodeAdmission(
     NodeFilter filter,
@@ -28,15 +36,19 @@ internal sealed class DiscoveryNodeAdmission(
     KademliaConfig<Node> kademliaConfig,
     INetworkStorage discoveryStorage,
     int admittedCapacity,
-    ILogManager logManager)
+    ILogManager logManager,
+    IStaticNodesManager? staticNodes = null,
+    ITrustedNodesManager? trustedNodes = null)
 {
     private readonly NodeFilter _filter = filter;
     private readonly bool _enabled = enabled;
     private readonly IRoutingTable<Node, ValueHash256> _routingTable = routingTable;
     private readonly RecentNodeFilter<PublicKey> _admitted = new(Math.Max(1, admittedCapacity));
-    private readonly HashSet<PublicKey> _exemptNodeIds = enabled
-        ? CreateExemptNodeIds(kademliaConfig, discoveryStorage)
-        : [];
+    private readonly IStaticNodesManager? _staticNodes = staticNodes;
+    private readonly ITrustedNodesManager? _trustedNodes = trustedNodes;
+    private readonly ConcurrentDictionary<PublicKey, byte> _exemptNodeIds = enabled
+        ? CreateExemptNodeIds(kademliaConfig, discoveryStorage, staticNodes, trustedNodes)
+        : new();
     private readonly PublicKey? _selfId = kademliaConfig.CurrentNodeId?.Id;
     private readonly Lock _admitLock = new();
     private readonly ILogger _logger = logManager.GetClassLogger<DiscoveryNodeAdmission>();
@@ -132,28 +144,57 @@ internal sealed class DiscoveryNodeAdmission(
     private bool IsSelf(Node node) => _selfId is { } selfId && node.Id == selfId;
 
     private bool IsExempt(Node node)
-        => node.IsBootnode
-           || node.IsStatic
-           || node.IsTrusted
-           || _exemptNodeIds.Contains(node.Id);
+    {
+        // Remember the identity so a node rebuilt from a packet, which carries no flags, stays exempt.
+        if (node.IsBootnode || node.IsStatic || node.IsTrusted)
+        {
+            _exemptNodeIds.TryAdd(node.Id, 0);
+            return true;
+        }
+
+        return _exemptNodeIds.ContainsKey(node.Id) || IsManagedExempt(node.Id);
+    }
+
+    private bool IsManagedExempt(PublicKey nodeId)
+    {
+        if (_staticNodes is not null)
+        {
+            foreach (NetworkNode node in _staticNodes.Nodes)
+            {
+                if (node.NodeId.Equals(nodeId)) return true;
+            }
+        }
+
+        if (_trustedNodes is not null)
+        {
+            foreach (NetworkNode node in _trustedNodes.Nodes)
+            {
+                if (node.NodeId.Equals(nodeId)) return true;
+            }
+        }
+
+        return false;
+    }
 
     private bool IsKnown(Node node)
         => _admitted.Contains(node.Id)
            || _routingTable.TryGet(node.Id.Hash.ValueHash256, out _);
 
-    private static HashSet<PublicKey> CreateExemptNodeIds(
+    private static ConcurrentDictionary<PublicKey, byte> CreateExemptNodeIds(
         KademliaConfig<Node> kademliaConfig,
-        INetworkStorage discoveryStorage)
+        INetworkStorage discoveryStorage,
+        IStaticNodesManager? staticNodes,
+        ITrustedNodesManager? trustedNodes)
     {
-        HashSet<PublicKey> exempt = new(kademliaConfig.BootNodes.Count + 1);
+        ConcurrentDictionary<PublicKey, byte> exempt = new();
         if (kademliaConfig.CurrentNodeId is { } self)
         {
-            exempt.Add(self.Id);
+            exempt.TryAdd(self.Id, 0);
         }
 
         foreach (Node bootNode in kademliaConfig.BootNodes)
         {
-            exempt.Add(bootNode.Id);
+            exempt.TryAdd(bootNode.Id, 0);
         }
 
         // Nodes persisted before the upgrade keep their exemption. Filtering them at load could empty a
@@ -161,9 +202,21 @@ internal sealed class DiscoveryNodeAdmission(
         // concentration this filter addresses.
         foreach (NetworkNode persistedNode in discoveryStorage.GetPersistedNodes())
         {
-            exempt.Add(persistedNode.NodeId);
+            exempt.TryAdd(persistedNode.NodeId, 0);
         }
 
+        AddManagedIds(exempt, staticNodes?.Nodes);
+        AddManagedIds(exempt, trustedNodes?.Nodes);
         return exempt;
+
+        static void AddManagedIds(ConcurrentDictionary<PublicKey, byte> exempt, IEnumerable<NetworkNode>? nodes)
+        {
+            if (nodes is null) return;
+
+            foreach (NetworkNode node in nodes)
+            {
+                exempt.TryAdd(node.NodeId, 0);
+            }
+        }
     }
 }

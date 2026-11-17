@@ -47,7 +47,9 @@ public sealed class KademliaModule(Node currentNode, IReadOnlyList<Node> bootNod
                 ctx.Resolve<KademliaConfig<Node>>(),
                 ctx.ResolveKeyed<INetworkStorage>(DbNames.DiscoveryNodes),
                 filterSize,
-                ctx.Resolve<ILogManager>());
+                ctx.Resolve<ILogManager>(),
+                ctx.ResolveOptional<IStaticNodesManager>(),
+                ctx.ResolveOptional<ITrustedNodesManager>());
         });
         builder.AddDecorator<INodeHealthTracker<Node>>((ctx, inner) =>
             new FilteringNodeHealthTracker(
