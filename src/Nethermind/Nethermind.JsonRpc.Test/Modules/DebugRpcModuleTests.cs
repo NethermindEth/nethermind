@@ -1553,7 +1553,7 @@ public partial class DebugRpcModuleTests
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streamMode })
             .Build(new TestSpecProvider(spec));
-        Dictionary<string, object> call = new(fields);
+        Dictionary<string, object> call = [with(fields)];
         call.TryAdd("from", Address.Zero.ToString());
         call.TryAdd("to", TestItem.AddressC.ToString());
         call.TryAdd("gas", "0x493e0");
