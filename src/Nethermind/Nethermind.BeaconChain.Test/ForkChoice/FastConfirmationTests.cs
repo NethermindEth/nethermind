@@ -4,6 +4,7 @@
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using System.Reflection;
@@ -186,6 +187,148 @@ public class FastConfirmationTests
         }
     }
 
+
+    [Test]
+    public void Ineligible_equivocators_do_not_require_a_committee_state([Values] bool zeroBalance)
+    {
+        EquivocationFixture fixture = new(failCommitteeState: true);
+        if (zeroBalance)
+        {
+            foreach (ulong index in fixture.Equivocators)
+                if (index < (ulong)fixture.StateA.Validators!.Length) fixture.StateA.Validators[index].EffectiveBalance = 0;
+        }
+        else
+        {
+            fixture.Equivocators.Clear();
+            fixture.Equivocators.Add(1000);
+        }
+        ulong end = fixture.Spec.SlotsPerEpoch - 1;
+        ulong expected = fixture.Reference(fixture.StateA, 0, end);
+        Assert.That(fixture.Weight(fixture.Context(fixture.HeadA), fixture.Source(fixture.StateA), 0, end), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Equivocation_prefixes_match_committee_enumeration_for_each_balance_source()
+    {
+        EquivocationFixture fixture = new();
+        BeaconStateFulu second = ((ForkedBeaconState.OfFulu)State(0, activation: false, laterEpoch: true)).State;
+        second.Validators![1].EffectiveBalance = 0;
+        second.Validators[2].Slashed = true;
+        second.Validators[3].ExitEpoch = 0;
+        object context = fixture.Context(fixture.HeadA);
+        object firstSource = fixture.Source(fixture.StateA);
+        object secondSource = fixture.Source(second);
+        using IDisposable scope = Assert.EnterMultipleScope();
+        for (ulong start = 0; start < fixture.Spec.SlotsPerEpoch; start++)
+        {
+            for (ulong end = start; end < fixture.Spec.SlotsPerEpoch; end++)
+            {
+                Assert.That(fixture.Weight(context, firstSource, start, end), Is.EqualTo(fixture.Reference(fixture.StateA, start, end)));
+                Assert.That(fixture.Weight(context, secondSource, start, end), Is.EqualTo(fixture.Reference(second, start, end)));
+            }
+        }
+    }
+
+    [Test]
+    public void Cross_epoch_equivocation_counts_each_validator_once_and_new_evaluations_refresh_the_set()
+    {
+        EquivocationFixture fixture = new();
+        object source = fixture.Source(fixture.StateA);
+        ulong end = 2 * fixture.Spec.SlotsPerEpoch - 1;
+        using IDisposable scope = Assert.EnterMultipleScope();
+        foreach (ulong start in new ulong[] { 0, fixture.Spec.SlotsPerEpoch / 2, fixture.Spec.SlotsPerEpoch - 1 })
+            Assert.That(fixture.Weight(fixture.Context(fixture.HeadA), source, start, end), Is.EqualTo(fixture.Reference(fixture.StateA, start, end)));
+        object first = fixture.Context(fixture.HeadA);
+        Assert.That(fixture.Weight(first, source, 0, fixture.Spec.SlotsPerEpoch - 1), Is.EqualTo(fixture.Reference(fixture.StateA, 0, fixture.Spec.SlotsPerEpoch - 1)));
+        fixture.Equivocators.Clear();
+        fixture.Equivocators.Add(7);
+        Assert.That(fixture.Weight(fixture.Context(fixture.HeadA), source, 0, fixture.Spec.SlotsPerEpoch - 1), Is.EqualTo(fixture.Reference(fixture.StateA, 0, fixture.Spec.SlotsPerEpoch - 1)));
+        Assert.That(fixture.Weight(first, source, 1, 0), Is.Zero);
+    }
+
+    [Test]
+    public void Duty_tables_follow_the_committee_decision_root_and_its_cache_lifetime()
+    {
+        EquivocationFixture fixture = new(stateEpoch: 9);
+        int[] original = fixture.Duties(fixture.Context(fixture.HeadA), 3);
+        int[] competing = fixture.Duties(fixture.Context(fixture.HeadB), 3);
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(fixture.Duties(fixture.Context(fixture.HeadA), 3), Is.SameAs(original));
+        Assert.That(competing, Is.Not.SameAs(original));
+        Assert.That(competing, Is.Not.EqualTo(original));
+        fixture.Rule.Reset();
+        int[] reset = fixture.Duties(fixture.Context(fixture.HeadA), 3);
+        Assert.That(reset, Is.EqualTo(original).And.Not.SameAs(original));
+        for (ulong epoch = 4; epoch <= 9; epoch++) fixture.Duties(fixture.Context(fixture.HeadA), epoch);
+        Assert.That(fixture.Duties(fixture.Context(fixture.HeadA), 3), Is.EqualTo(original).And.Not.SameAs(reset));
+    }
+
+    private sealed class EquivocationFixture
+    {
+        internal readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet with { SlotsPerEpoch = Presets.SlotsPerEpoch };
+        internal readonly HashSet<ulong> Equivocators = [1, 2, 3, 1000];
+        internal readonly Hash256 HeadA = GetRoot(3);
+        internal readonly Hash256 HeadB = GetRoot(5);
+        internal readonly BeaconStateFulu StateA;
+        internal readonly FastConfirmation Rule;
+        private readonly Dictionary<ulong, CommitteeCache> _referenceCommittees = [];
+        private static readonly Type SourceType = typeof(FastConfirmation).GetNestedType("BalanceSource", BindingFlags.NonPublic)!;
+        private static readonly Type ContextType = typeof(FastConfirmation).GetNestedType("Context", BindingFlags.NonPublic)!;
+        private static readonly MethodInfo WeightMethod = ContextType.GetMethod("AdversarialWeight", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        private static readonly MethodInfo DutiesMethod = ContextType.GetMethod("Duties", BindingFlags.NonPublic | BindingFlags.Instance)!;
+
+        internal EquivocationFixture(bool failCommitteeState = false, ulong stateEpoch = 0)
+        {
+            StateA = ((ForkedBeaconState.OfFulu)State(stateEpoch * Spec.SlotsPerEpoch, activation: false, laterEpoch: false)).State;
+            BeaconStateFulu stateB = ((ForkedBeaconState.OfFulu)State(stateEpoch * Spec.SlotsPerEpoch, activation: false, laterEpoch: false)).State;
+            Array.Fill(stateB.RandaoMixes!, GetRoot(99));
+            CheckpointRef anchor = new(0, GetRoot(1));
+            ForkChoiceStore store = new(Spec.SlotsPerEpoch, Spec.SlotsPerEpoch * 3 + 2, anchor, anchor);
+            ProtoArrayForkChoice tree = new(store.CurrentSlot, 0, Hash256.Zero, anchor, anchor, ExecutionStatus.Optimistic, anchor.Root);
+            Add(2, 1, Spec.SlotsPerEpoch * 2 - 1);
+            Add(3, 2, Spec.SlotsPerEpoch * 3 + 1);
+            Add(4, 1, Spec.SlotsPerEpoch * 2 - 1);
+            Add(5, 4, Spec.SlotsPerEpoch * 3 + 1);
+            Rule = new FastConfirmation(Spec, store, tree, Equivocators, _ => new ForkedBeaconState.OfFulu(StateA),
+                root => failCommitteeState ? throw new ForkChoiceException("Committee state unavailable")
+                    : new ForkedBeaconState.OfFulu(root == HeadB ? stateB : StateA), (_, _) => new ForkedBeaconState.OfFulu(StateA));
+
+            void Add(ulong root, ulong parent, ulong slot) => tree.ProcessBlock(new ProtoBlock(slot, GetRoot(root), GetRoot(parent),
+                Hash256.Zero, anchor, anchor, ExecutionStatus.Optimistic, GetRoot(root), anchor, anchor), store.CurrentSlot, anchor, anchor);
+        }
+
+        internal object Source(BeaconStateFulu state) => Activator.CreateInstance(SourceType, BindingFlags.NonPublic | BindingFlags.Instance,
+            binder: null, args: [new ForkedBeaconState.OfFulu(state), Spec], culture: null)!;
+        internal object Context(Hash256 head) => Activator.CreateInstance(ContextType, [Rule, head])!;
+        internal ulong Weight(object context, object source, ulong start, ulong end) => (ulong)WeightMethod.Invoke(context, [source, start, end])!;
+        internal int[] Duties(object context, ulong epoch) => (int[])DutiesMethod.Invoke(context, [epoch])!;
+
+        internal ulong Reference(BeaconStateFulu source, ulong start, ulong end)
+        {
+            ulong total = 0;
+            foreach (Validator validator in source.Validators!)
+                if (validator.IsActiveValidator(source.Slot / Spec.SlotsPerEpoch)) total += validator.EffectiveBalance;
+            ulong equivocation = 0;
+            foreach (ulong index in Equivocators)
+            {
+                if (index >= (ulong)source.Validators.Length || !source.Validators[index].IsActiveValidator(source.Slot / Spec.SlotsPerEpoch)) continue;
+                for (ulong slot = start; slot <= end; slot++)
+                {
+                    ulong epoch = slot / Spec.SlotsPerEpoch;
+                    if (!_referenceCommittees.TryGetValue(epoch, out CommitteeCache? committees))
+                        _referenceCommittees[epoch] = committees = CommitteeCache.Build(StateA, epoch);
+                    bool found = false;
+                    for (int committee = 0; committee < committees.CommitteesPerSlot; committee++)
+                        found |= committees.GetBeaconCommittee(slot, committee).Contains((int)index);
+                    if (!found) continue;
+                    equivocation += source.Validators[index].EffectiveBalance;
+                    break;
+                }
+            }
+            ulong maximum = FastConfirmation.EstimateCommitteeWeight(total, start, end, Spec.SlotsPerEpoch) / 100 * 25;
+            return maximum > equivocation ? maximum - equivocation : 0;
+        }
+    }
     private static ForkedBeaconState State(ulong slot, bool activation, bool laterEpoch)
     {
         Validator[] validators = new Validator[activation ? 64 : 32];
