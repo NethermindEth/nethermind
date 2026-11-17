@@ -202,7 +202,7 @@ public class PrewarmerReadAheadSafetyTests(IReleaseSpec spec) : PrewarmerReadAhe
             RandomPacing = rng.Next(2) == 0;
             Block block = RandomColdTailBlock(rng);
             SeedPacing(rng.Next());
-            bool held = i % 2 == 0;
+            bool held = blockSeed % 2 == 0;
             try
             {
                 Run executed = Process(block, adapter: null);
@@ -221,7 +221,7 @@ public class PrewarmerReadAheadSafetyTests(IReleaseSpec spec) : PrewarmerReadAhe
             }
             catch (Exception)
             {
-                TestContext.Out.WriteLine($"Failing block seed {blockSeed} (block {i} of {blocks}, {Spec.Name}, random pacing {RandomPacing})");
+                TestContext.Out.WriteLine($"Failing block seed {blockSeed} (block {i} of {blocks}, {Spec.Name}, random pacing {RandomPacing}, held {held})");
                 throw;
             }
         }
