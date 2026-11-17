@@ -66,6 +66,26 @@ public class EIP1559TransactionForRpc : AccessListTransactionForRpc, IFromTransa
         return tx;
     }
 
+    internal override string? GetTraceCallForkError(IReleaseSpec spec, UInt256 baseFee) =>
+        !spec.IsEip1559Enabled && (MaxFeePerGas is not null || MaxPriorityFeePerGas is not null)
+            ? GetTraceCallPrecheckError(GetTraceCallUnsupportedField(spec), spec, baseFee)
+            : base.GetTraceCallForkError(spec, baseFee);
+
+    internal override string GetTraceCallPrecheckError(string? unsupported, IReleaseSpec spec, UInt256 baseFee)
+    {
+        if (GasPrice is not null && (MaxFeePerGas is not null || MaxPriorityFeePerGas is not null))
+            return RpcTransactionErrors.GasPriceInEip1559;
+        if (GetTraceCallRecipientError() is { } recipientError)
+            return recipientError;
+        if (!spec.IsEip1559Enabled && (MaxFeePerGas is not null || MaxPriorityFeePerGas is not null))
+            return RpcTransactionErrors.FeeFieldsBeforeLondon;
+
+        return GetTraceCallExecutionError(unsupported, spec, baseFee,
+            GasPrice ?? MaxFeePerGas ?? UInt256.Zero, GasPrice ?? MaxPriorityFeePerGas ?? UInt256.Zero);
+    }
+
+    internal virtual string? GetTraceCallRecipientError() => null;
+
     public override bool ShouldSetBaseFee() =>
         base.ShouldSetBaseFee() || MaxFeePerGas.IsPositive() || MaxPriorityFeePerGas.IsPositive();
 

@@ -56,29 +56,34 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
         Assert.That(reader.TryLoadStateRlp(TreePath.Empty, ReadFlags.None, static (_, _) => { }, 0), Is.True, "root node should exist after flush");
     }
 
-    public void CompareTrees(RemoteDbContext remote, ILogger logger, string stage, bool skipLogs = false)
+    public void CompareTrees(RemoteDbContext remote, ILogger logger, string stage)
     {
-        if (!skipLogs) logger.Info($"==================== {stage} ====================");
+        (string remoteStr, string localStr) = Dump(remote, logger, stage);
+
+        Assert.That(localStr, Is.EqualTo(remoteStr), $"{stage}\n{remoteStr}\n{localStr}");
+    }
+
+    public void DumpTrees(RemoteDbContext remote, ILogger logger, string stage) => Dump(remote, logger, stage);
+
+    private (string Remote, string Local) Dump(RemoteDbContext remote, ILogger logger, string stage)
+    {
+        logger.Info($"==================== {stage} ====================");
 
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
         StateTree localTree = new(new ReadOnlyTrieStore(reader), logManager);
         localTree.RootHash = remote.StateTree.RootHash;
 
-        if (!skipLogs) logger.Info("-------------------- REMOTE --------------------");
+        logger.Info("-------------------- REMOTE --------------------");
         TreeDumper dumper = new();
         remote.StateTree.Accept(new NodeRecordVisitorAdapter<OldStyleTrieVisitContext>(dumper), remote.StateTree.RootHash);
         string remoteStr = dumper.ToString();
-        if (!skipLogs) logger.Info(remoteStr);
-        if (!skipLogs) logger.Info("-------------------- LOCAL --------------------");
+        logger.Info(remoteStr);
+        logger.Info("-------------------- LOCAL --------------------");
         dumper.Reset();
         localTree.Accept(new NodeRecordVisitorAdapter<OldStyleTrieVisitContext>(dumper), localTree.RootHash);
         string localStr = dumper.ToString();
-        if (!skipLogs) logger.Info(localStr);
-
-        if (stage == "END")
-        {
-            Assert.That(localStr, Is.EqualTo(remoteStr), $"{stage}\n{remoteStr}\n{localStr}");
-        }
+        logger.Info(localStr);
+        return (remoteStr, localStr);
     }
 
     public void DeleteStateRoot()

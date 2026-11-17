@@ -60,6 +60,10 @@ public static class Extensions
             {
                 if (logger.IsTrace) logger.Trace($"WebSockets connection aborted: {ex.GetType().Name}: {ex.Message}");
             }
+            catch (SocketSendLimitException ex)
+            {
+                if (logger.IsDebug) logger.Debug($"WebSockets connection closed: {ex.Message}");
+            }
             catch (WebSocketException ex)
             {
                 if (ex.WebSocketErrorCode == WebSocketError.InvalidState)
