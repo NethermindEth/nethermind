@@ -177,10 +177,8 @@ public class LogIndexReorgTests
         using ManualResetEventSlim chainCApplied = new(false);
         using ManualResetEventSlim chainCRead = new(false);
         int chainBBlock25Reads = 0;
-        IReceiptStorage observedReceipts = Substitute.For<IReceiptStorage>();
-        observedReceipts.Get(Arg.Any<Block>(), Arg.Any<bool>(), Arg.Any<bool>()).Returns(call =>
+        ObservedReceiptStorage observedReceipts = new(receipts, block =>
         {
-            Block block = call.Arg<Block>();
             // The first read is from reverting the blocks chain B replaced, the second from queueing chain B
             if (block.Hash == chainB[1].Hash && Interlocked.Increment(ref chainBBlock25Reads) == 2)
             {
@@ -319,5 +317,35 @@ public class LogIndexReorgTests
             writeGate.Wait(CatchUpTimeoutMs);
             base.MergeBlockNumbers(dbBatch, key, numbers, isBackwardSync, stats);
         }
+    }
+
+    /// <summary>Reads receipts from <paramref name="inner"/> through <paramref name="onRead"/>, so a test can act when a block is read.</summary>
+    /// <remarks>It offers no receipts iterator, so the builder reads every block with <see cref="Get(Block, bool, bool)"/>. NSubstitute cannot proxy the iterator's ref struct out parameter.</remarks>
+    private sealed class ObservedReceiptStorage(IReceiptStorage inner, Func<Block, TxReceipt[]> onRead) : IReceiptStorage
+    {
+        public ulong MigratedBlockNumber { get => inner.MigratedBlockNumber; set => inner.MigratedBlockNumber = value; }
+
+        public event EventHandler<BlockReplacementEventArgs>? NewCanonicalReceipts { add { } remove { } }
+        public event EventHandler<ReceiptsEventArgs>? ReceiptsInserted { add { } remove { } }
+
+        public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true) => onRead(block);
+        public TxReceipt[] Get(Hash256 blockHash, bool recover = true) => inner.Get(blockHash, recover);
+        public Hash256? FindBlockHash(Hash256 txHash) => inner.FindBlockHash(txHash);
+        public bool CanGetReceiptsByHash(ulong blockNumber) => inner.CanGetReceiptsByHash(blockNumber);
+
+        public bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator)
+        {
+            iterator = new ReceiptsIterator();
+            return false;
+        }
+
+        public void Insert(Block block, TxReceipt[]? txReceipts, bool ensureCanonical, WriteFlags writeFlags = WriteFlags.None, ulong? lastBlockNumber = null) =>
+            inner.Insert(block, txReceipts, ensureCanonical, writeFlags, lastBlockNumber);
+        public void Insert(Block block, TxReceipt[]? txReceipts, IReleaseSpec spec, bool ensureCanonical, WriteFlags writeFlags = WriteFlags.None, ulong? lastBlockNumber = null) =>
+            inner.Insert(block, txReceipts, spec, ensureCanonical, writeFlags, lastBlockNumber);
+        public bool HasBlock(ulong blockNumber, Hash256 hash) => inner.HasBlock(blockNumber, hash);
+        public void EnsureCanonical(Block block) => inner.EnsureCanonical(block);
+        public void RemoveReceipts(Block block) => inner.RemoveReceipts(block);
+        public void RemoveReceipts(ulong blockNumber, Hash256 blockHash) => inner.RemoveReceipts(blockNumber, blockHash);
     }
 }
