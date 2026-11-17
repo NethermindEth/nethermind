@@ -52,7 +52,7 @@ internal sealed class HttpJsonRpcResponseSink(
 
     private ValueTask WriteStartedAsync(JsonRpcResponse response, RpcReport report, bool isBatch, CancellationToken cancellationToken)
     {
-        bool keepsBytes = _bufferedStream is not null || response is not JsonRpcSuccessResponse { Result: IStreamableResult };
+        bool keepsBytes = _bufferedStream is not null || !response.TryGetStreamableResult(out _);
         ValueTask writeTask;
         try
         {
@@ -68,7 +68,7 @@ internal sealed class HttpJsonRpcResponseSink(
         if (writeTask.IsCompletedSuccessfully)
         {
             writeTask.GetAwaiter().GetResult();
-            ReserveWrittenBytes(keepsBytes);
+            ReserveWrittenBytes(keepsBytes, isBatch);
             CompleteWrite(response, report, isBatch);
             return ValueTask.CompletedTask;
         }
@@ -91,7 +91,7 @@ internal sealed class HttpJsonRpcResponseSink(
             ReportWrite(report with { Success = false }, isBatch);
             throw;
         }
-        ReserveWrittenBytes(keepsBytes);
+        ReserveWrittenBytes(keepsBytes, isBatch);
         ReportWrite(report, isBatch);
     }
 
@@ -106,11 +106,11 @@ internal sealed class HttpJsonRpcResponseSink(
             ReportWrite(report with { Success = false }, isBatch);
             throw;
         }
-        ReserveWrittenBytes(keepsBytes);
+        ReserveWrittenBytes(keepsBytes, isBatch);
         CompleteWrite(response, report, isBatch);
     }
 
-    private void ReserveWrittenBytes(bool keepsBytes)
+    private void ReserveWrittenBytes(bool keepsBytes, bool isBatch)
     {
         long written = BytesWritten;
         long bytes = written - _accountedBytes;
@@ -121,7 +121,8 @@ internal sealed class HttpJsonRpcResponseSink(
         }
 
         _caller ??= GetCallerKey(context.Connection);
-        if (unsentResponses.TryReserve(_caller, bytes, _reservedBytes == 0, jsonRpcConfig.MaxUnsentResponsesSize, jsonRpcConfig.MaxUnsentResponsesPerAddress))
+        long limit = jsonRpcConfig.MaxUnsentResponsesSize;
+        if (unsentResponses.TryReserve(_caller, bytes, _reservedBytes == 0, limit, jsonRpcConfig.MaxUnsentResponsesPerAddress, GetBatchLimitAllowance(isBatch, written, limit)))
         {
             _reservedBytes += bytes;
             return;
@@ -131,6 +132,15 @@ internal sealed class HttpJsonRpcResponseSink(
         _overLimit = true;
         StopRequested = true;
     }
+
+    private long GetBatchLimitAllowance(bool isBatch, long written, long limit) =>
+        isBatch
+        && jsonRpcConfig.MaxBatchResponseBodySize is long batchLimit
+        && batchLimit > 0
+        && written > batchLimit
+        && batchLimit <= UnsentResponseCounter.CallerLimit(limit)
+            ? batchLimit
+            : 0;
 
     private static string GetCallerKey(ConnectionInfo connection)
     {

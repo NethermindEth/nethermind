@@ -15,9 +15,11 @@ internal sealed class UnsentResponseCounter
     private readonly Dictionary<string, (long Bytes, int Responses)> _callers = [];
     private long _bytes;
 
-    public bool TryReserve(string caller, long bytes, bool isNewResponse, long limit, int maxResponsesPerCaller)
+    public static long CallerLimit(long limit) => Math.Max(1, limit / CallerShareDivisor);
+
+    public bool TryReserve(string caller, long bytes, bool isNewResponse, long limit, int maxResponsesPerCaller, long callerAllowance = 0)
     {
-        long callerLimit = Math.Max(1, limit / CallerShareDivisor);
+        long callerLimit = CallerLimit(limit) + callerAllowance;
         lock (_lock)
         {
             _callers.TryGetValue(caller, out (long Bytes, int Responses) state);

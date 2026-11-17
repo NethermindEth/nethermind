@@ -1140,6 +1140,7 @@ public class StartupTests
         Startup startup = CreateStartup(NoAuthentication.Instance, rpcConfig: new JsonRpcConfig
         {
             EnabledModules = [ModuleType.Engine],
+            BufferResponses = true,
             MaxUnsentResponsesSize = limitEnabled ? 16 * (responseSize - 1) : 0
         });
         (DefaultHttpContext unread, TaskCompletionSource sent) = CreateUnreadContext();
@@ -1164,6 +1165,7 @@ public class StartupTests
         Startup startup = CreateStartup(NoAuthentication.Instance, rpcConfig: new JsonRpcConfig
         {
             EnabledModules = [ModuleType.Engine],
+            BufferResponses = true,
             MaxUnsentResponsesSize = 16 * responseSize + responseSize / 2
         });
         List<(Task Processing, TaskCompletionSource Sent)> pending = [];
@@ -1201,6 +1203,7 @@ public class StartupTests
         Startup startup = CreateStartup(NoAuthentication.Instance, rpcConfig: new JsonRpcConfig
         {
             EnabledModules = [ModuleType.Engine],
+            BufferResponses = true,
             MaxUnsentResponsesSize = 16 * responseSize + responseSize / 2
         });
         string connectionId = Guid.NewGuid().ToString();
@@ -1226,6 +1229,7 @@ public class StartupTests
         Startup startup = CreateStartup(NoAuthentication.Instance, rpcConfig: new JsonRpcConfig
         {
             EnabledModules = [ModuleType.Engine],
+            BufferResponses = true,
             MaxUnsentResponsesSize = 16 * responseSize + responseSize / 2
         });
         (DefaultHttpContext first, TaskCompletionSource firstSent) = CreateUnreadContext(remoteAddress: IPAddress.Parse(firstAddress));
@@ -1253,6 +1257,7 @@ public class StartupTests
         Startup startup = CreateStartup(NoAuthentication.Instance, rpcConfig: new JsonRpcConfig
         {
             EnabledModules = [ModuleType.Engine],
+            BufferResponses = true,
             MaxUnsentResponsesPerAddress = 2
         });
         IPAddress address = IPAddress.Parse("10.0.0.3");
@@ -1283,6 +1288,78 @@ public class StartupTests
             Assert.That(nextSent.Task.IsFaulted, Is.False);
         }
     }
+
+    [Test]
+    public async Task ProcessJsonRpcRequest_DoesNotCountAWrappedStreamedResultAgainstTheShare()
+    {
+        const int items = 1024;
+        ProbeBlobStreamableResult streamableResult = new(static async (writer, cancellationToken) =>
+        {
+            writer.Write("["u8);
+            for (int i = 0; i < items; i++) writer.Write("null,"u8);
+            await writer.FlushAsync(cancellationToken);
+            writer.Write("null]"u8);
+        });
+        IEngineRpcModule engineModule = Substitute.For<IEngineRpcModule>();
+        engineModule
+            .engine_getBlobsV2(Arg.Any<byte[][]>())
+            .Returns(Task.FromResult(ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>.Success(streamableResult)));
+        Startup startup = CreateStartup(NoAuthentication.Instance, engineModule, new JsonRpcConfig
+        {
+            EnabledModules = [ModuleType.Engine],
+            MaxUnsentResponsesSize = 16 * 64
+        });
+        (DefaultHttpContext context, TaskCompletionSource sent) = CreateUnreadContext(CreateJsonRpcRequest(GetBlobsV2Method));
+
+        Task processing = startup.ProcessJsonRpcRequestCoreAsync(context, UnauthenticatedEngineUrl);
+        sent.TrySetResult();
+        await processing.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.That(sent.Task.IsFaulted, Is.False);
+        AssertJsonResponse(ReadUnreadBody(context), static root => Assert.That(root.GetProperty("result").GetArrayLength(), Is.EqualTo(items + 1)));
+    }
+
+    [Test]
+    public async Task ProcessJsonRpcRequest_BatchLimitEndsTheBatchBeforeTheShareClosesTheConnection([Values] bool batchLimitRaised)
+    {
+        const int batchSize = 22;
+        int responseSize = await SingleResponseSize();
+        long share = 20 * responseSize + responseSize / 2;
+        Startup startup = CreateStartup(NoAuthentication.Instance, rpcConfig: new JsonRpcConfig
+        {
+            EnabledModules = [ModuleType.Engine],
+            BufferResponses = true,
+            MaxUnsentResponsesSize = 16 * share,
+            MaxBatchResponseBodySize = batchLimitRaised ? 16 * share : share
+        });
+        (DefaultHttpContext batch, TaskCompletionSource batchSent) = CreateUnreadContext(CreateBlobsBatchRequest(batchSize), remoteAddress: IPAddress.Parse("10.0.0.7"));
+        (DefaultHttpContext other, TaskCompletionSource otherSent) = CreateUnreadContext(remoteAddress: IPAddress.Parse("10.0.0.8"));
+
+        Task batchProcessing = startup.ProcessJsonRpcRequestCoreAsync(batch, UnauthenticatedEngineUrl);
+        Task otherProcessing = startup.ProcessJsonRpcRequestCoreAsync(other, UnauthenticatedEngineUrl);
+        batchSent.TrySetResult();
+        otherSent.TrySetResult();
+        await Task.WhenAll(batchProcessing, otherProcessing).WaitAsync(TimeSpan.FromSeconds(10));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batchSent.Task.IsFaulted, Is.EqualTo(batchLimitRaised));
+            Assert.That(otherSent.Task.IsFaulted, Is.False);
+        }
+
+        if (!batchLimitRaised)
+        {
+            AssertJsonResponse(ReadUnreadBody(batch), static root =>
+            {
+                Assert.That(root.GetArrayLength(), Is.EqualTo(batchSize));
+                AssertArrayResult(root[0], 1);
+                Assert.That(root[batchSize - 1].GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.LimitExceeded));
+            });
+        }
+    }
+
+    private static string ReadUnreadBody(DefaultHttpContext context) =>
+        Encoding.UTF8.GetString(((MemoryStream)context.Features.Get<IHttpResponseBodyFeature>()!.Stream).ToArray());
 
     private static async Task<int> SingleResponseSize()
     {
