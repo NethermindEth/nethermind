@@ -314,9 +314,18 @@ public class ColumnsDb<T>(RocksDbInstance instance, IRocksDbConfig tableConfig, 
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
-            _reads.Close();
-            if (!_reads.WaitForAll(_columnsDb._anyColumn.PinnedSliceDrainTimeout)) return;
+            if (RocksDbReader.DrainReads(_reads, _columnsDb._anyColumn.PinnedSliceDrainTimeout))
+            {
+                Release();
+            }
+            else
+            {
+                _columnsDb._anyColumn.ReleaseSnapshotAfterReads(_reads, Release);
+            }
+        }
 
+        private void Release()
+        {
             // Iterators pin the snapshot's resources — tear the managers down before releasing anything they read through.
             foreach (RocksDbReader? reader in _readers)
             {

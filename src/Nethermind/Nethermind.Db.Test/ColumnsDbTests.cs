@@ -250,6 +250,31 @@ public class ColumnsDbTests
     }
 
     [Test]
+    public void Snapshot_disposed_inside_its_own_read_releases_the_snapshot_and_iterator_managers_when_the_read_ends()
+    {
+        byte[] key = [1, 2, 3];
+        _db.GetColumnDb(ReceiptsColumns.Blocks).PutSpan(key, new byte[64], WriteFlags.None);
+        DbOnTheRocks column = (DbOnTheRocks)_db.GetColumnDb(ReceiptsColumns.Blocks);
+        IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)_db).CreateSnapshot(sequentialReadAhead: true);
+        IReadOnlyKeyValueStore blocks = snapshot.GetColumn(ReceiptsColumns.Blocks);
+        RocksDbReader transactions = (RocksDbReader)snapshot.GetColumn(ReceiptsColumns.Transactions);
+        ulong snapshotsInRead = 0;
+
+        blocks.TryGet(key, ReadFlags.None, (_, _) =>
+        {
+            snapshot.Dispose();
+            snapshotsInRead = DbOnTheRocksTests.LiveSnapshots(column);
+        }, 0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshotsInRead, Is.EqualTo(1), "the snapshot was released under its own read");
+            Assert.That(DbOnTheRocksTests.LiveSnapshots(column), Is.Zero, "the read did not release the snapshot when it ended");
+            Assert.That(() => transactions.IteratorManager!.Value, Throws.InstanceOf<ObjectDisposedException>(), "the iterator managers were not released");
+        }
+    }
+
+    [Test]
     public void Prefetch_ignores_a_trailing_partial_key()
     {
         const int count = 10;

@@ -63,19 +63,33 @@ public class RocksDbReader(DbOnTheRocks mainDb,
         _hintCacheMissOptions.Dispose();
     }
 
-    internal bool DrainReads()
+    [ThreadStatic]
+    private static int _readsOnThread;
+
+    internal bool DrainReads() => Reads is not { } reads || DrainReads(reads, _mainDb.PinnedSliceDrainTimeout);
+
+    internal void ReleaseAfterReads(Action release) => _mainDb.ReleaseSnapshotAfterReads(Reads!, release);
+
+    internal static bool DrainReads(InFlightOperations reads, TimeSpan timeout)
     {
-        InFlightOperations? reads = Reads;
-        if (reads is null) return true;
         reads.Close();
-        return reads.WaitForAll(_mainDb.PinnedSliceDrainTimeout);
+        return _readsOnThread == 0 ? reads.WaitForAll(timeout) : reads.Count == 0;
     }
 
     private InFlightOperations? BeginRead()
     {
         InFlightOperations? reads = Reads;
-        ObjectDisposedException.ThrowIf(reads is not null && !reads.TryBegin(), this);
+        if (reads is null) return null;
+        ObjectDisposedException.ThrowIf(!reads.TryBegin(), this);
+        _readsOnThread++;
         return reads;
+    }
+
+    private static void EndRead(InFlightOperations? reads)
+    {
+        if (reads is null) return;
+        _readsOnThread--;
+        reads.End();
     }
 
     public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
@@ -97,7 +111,7 @@ public class RocksDbReader(DbOnTheRocks mainDb,
         }
         finally
         {
-            reads?.End();
+            EndRead(reads);
         }
     }
 
@@ -111,7 +125,7 @@ public class RocksDbReader(DbOnTheRocks mainDb,
         }
         finally
         {
-            reads?.End();
+            EndRead(reads);
         }
     }
 
@@ -125,7 +139,7 @@ public class RocksDbReader(DbOnTheRocks mainDb,
         }
         finally
         {
-            reads?.End();
+            EndRead(reads);
         }
     }
 
@@ -145,7 +159,7 @@ public class RocksDbReader(DbOnTheRocks mainDb,
         }
         finally
         {
-            reads?.End();
+            EndRead(reads);
         }
     }
 
@@ -171,7 +185,7 @@ public class RocksDbReader(DbOnTheRocks mainDb,
             }
             finally
             {
-                reads?.End();
+                EndRead(reads);
             }
         }
     }
@@ -189,7 +203,7 @@ public class RocksDbReader(DbOnTheRocks mainDb,
             }
             finally
             {
-                reads?.End();
+                EndRead(reads);
             }
         }
     }
@@ -224,7 +238,7 @@ public class RocksDbReader(DbOnTheRocks mainDb,
         }
         finally
         {
-            reads?.End();
+            EndRead(reads);
         }
     }
 

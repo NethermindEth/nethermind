@@ -792,6 +792,12 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     /// <summary>How long <see cref="Dispose"/> waits for pinned slices before it leaves the native close to the last release.</summary>
     internal TimeSpan PinnedSliceDrainTimeout { get; init; } = TimeSpan.FromSeconds(10);
 
+    internal void ReleaseSnapshotAfterReads(InFlightOperations reads, Action release)
+    {
+        if (_logger.IsWarn) _logger.Warn($"DB {_instance.Name} releases a snapshot when its {reads.Count} reads complete");
+        reads.RunWhenDrained(release);
+    }
+
     private void ReleasePinnedSlice()
     {
         if (Interlocked.Decrement(ref _pinnedSlices) == 0 && Volatile.Read(ref _nativeCloseDeferred)) CloseNative();
@@ -2130,11 +2136,23 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         public override void Dispose()
         {
-            if (Interlocked.Exchange(ref _disposed, 1) != 0 || !DrainReads())
+            if (Interlocked.Exchange(ref _disposed, 1) != 0)
             {
                 return;
             }
 
+            if (DrainReads())
+            {
+                Release();
+            }
+            else
+            {
+                ReleaseAfterReads(Release);
+            }
+        }
+
+        private void Release()
+        {
             base.Dispose();
             snapshot.Dispose();
         }
