@@ -233,8 +233,14 @@ public class Snapshot : RefCountingDisposable
     public bool TryGetStorageNode(HashedKey<(Hash256, TreePath)> key, [NotNullWhen(true)] out TrieNode? node)
     {
         node = null;
-        return BufferPin is not null && TryGetStorageRoot(key.Key.Item1, out ulong root)
-            && BufferPin.Buffer.TryGetNode(root, key.Key.Item2, out node);
+        return TryGetStorageRoot(key.Key.Item1, out ulong root) && TryGetStorageNode(root, key.Key.Item2, out node);
+    }
+
+    /// <summary>The storage trie node at <paramref name="path"/> below the storage root record at <paramref name="root"/>.</summary>
+    internal bool TryGetStorageNode(ulong root, in TreePath path, [NotNullWhen(true)] out TrieNode? node)
+    {
+        node = null;
+        return BufferPin is not null && BufferPin.Buffer.TryGetNode(root, path, out node);
     }
 
     /// <summary>The record a node pointer refers to, borrowed for as long as the snapshot holds its pin.</summary>

@@ -4,6 +4,7 @@
 using System;
 using System.Numerics;
 using Nethermind.Core;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Optimism.CL.Decoding;
@@ -93,12 +94,12 @@ public static class TxParser
         }
 
         RlpReader decoder = new(reader.Remainder.Span);
-        if (!decoder.IsSequenceNext())
+        if (!decoder.IsNextSequence)
         {
             throw new FormatException("Invalid tx data");
         }
 
-        int n = decoder.PeekNextRlpLength();
+        int n = decoder.PeekNextItem().Length;
         return (reader.Take(n), type);
     }
 }

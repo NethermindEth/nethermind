@@ -9,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.State.Flat.Persistence;
@@ -219,7 +220,7 @@ public static class BaseFlatPersistence
             if (rlpWrapSlots)
             {
                 RlpReader ctx = new(value);
-                value = ctx.DecodeByteArraySpan();
+                value = ctx.DecodeByteArraySpan<OffFlag>();
             }
 
             if (value.Length > StorageValueSize) ThrowSlotValueTooLong(value.Length, rlpWrapSlots);
@@ -324,7 +325,7 @@ public static class BaseFlatPersistence
 
         private readonly ReadOnlySpan<byte> DecodeCurrentValue() =>
             rlpWrapSlots
-                ? new RlpReader(view.CurrentValue).DecodeByteArraySpan()
+                ? new RlpReader(view.CurrentValue).ReadBytes<OffFlag>()
                 : view.CurrentValue;
 
         public void Dispose() => view.Dispose();
@@ -398,7 +399,7 @@ public static class BaseFlatPersistence
             // call validates canonical form and bounds the item exactly (trimming any trailing bytes).
             RlpReader ctx = new(rlpValue);
             ctx.DecodeByteArraySpan();
-            storage.PutSpan(theKey, rlpValue[..ctx.Position], flags);
+            storage.PutSpan(theKey, rlpValue[..ctx.BytesRead], flags);
         }
 
         public void SetAccount(in ValueHash256 addrHash, ReadOnlySpan<byte> account)

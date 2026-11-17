@@ -6,7 +6,6 @@ using System.Buffers.Binary;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Trie.NodeBuffer;
 
@@ -65,8 +64,6 @@ internal static class NodeRecordCodec
     public static bool IsRecord(ReadOnlySpan<byte> node) => node[0] < 0xc0;
 
     private const int BranchChildCount = 16;
-    private const int MaxKeyNibbles = 64;
-    private const int MaxHexPrefixFlag = 3;
 
     /// <summary>Length of the record that starts with <paramref name="header"/>.</summary>
     public static int Length(ReadOnlySpan<byte> header) => (NodeRecordKind)header[0] == NodeRecordKind.RootKey
@@ -100,47 +97,37 @@ internal static class NodeRecordCodec
     }
 
     /// <summary>Decodes the record kind and hash mask of a node's RLP for <see cref="WriteFromRlp"/>.</summary>
-    /// <returns>False when the RLP is malformed, embeds a child that is not a leaf, or gives a branch a value.</returns>
-    public static bool TryDecode(ReadOnlySpan<byte> rlp, out NodeRecordKind kind, out ushort hashMask)
+    /// <remarks>The RLP is trusted to be a node of a keccak-keyed trie, whose branches have no value, so it is not checked.</remarks>
+    public static void Decode(ReadOnlySpan<byte> rlp, out NodeRecordKind kind, out ushort hashMask)
     {
-        kind = default;
-        hashMask = 0;
-        try
+        NodeRlpReader reader = new(rlp);
+        int position = 0;
+        reader.ReadSequenceLength(ref position, out _);
+        int itemsStart = position;
+        reader.SkipItems(ref position, 2);
+        if (position == rlp.Length)
         {
-            RlpReader reader = new(rlp);
-            int length = reader.ReadSequenceLength();
-            if (reader.Position + length != rlp.Length) return false;
-
-            int itemCount = reader.PeekNumberOfItemsRemaining(maxSearch: 3);
-            if (itemCount > 2) return TryDecodeBranch(ref reader, out kind, out hashMask);
-            if (itemCount < 2) return false;
-
-            ReadOnlySpan<byte> hexPrefix = reader.DecodeByteArraySpan();
-            if (!IsHexPrefix(hexPrefix)) return false;
-
-            if (NodeRlp.IsLeafHexPrefix(hexPrefix))
-            {
-                kind = NodeRecordKind.Leaf;
-                reader.DecodeByteArraySpan();
-                return true;
-            }
-
-            kind = NodeRecordKind.Extension;
-            if (NodeRlp.HexPrefixNibbleCount(hexPrefix) == 0 || !TryDecodeChild(ref reader, out ChildRefKind child) || child == ChildRefKind.Empty) return false;
-
-            hashMask = (ushort)(child == ChildRefKind.Hash ? 1 : 0);
-            return true;
+            reader.DecodeByteArraySpan(ref itemsStart, out ReadOnlySpan<byte> hexPrefix);
+            bool isLeaf = NodeRlp.IsLeafHexPrefix(hexPrefix);
+            kind = isLeaf ? NodeRecordKind.Leaf : NodeRecordKind.Extension;
+            hashMask = (ushort)(!isLeaf && rlp[itemsStart] == NodeRlpReader.KeccakRlpPrefix ? 1 : 0);
+            return;
         }
-        // RlpReader throws on malformed RLP, and indexes or slices past the end of a truncated item.
-        catch (Exception e) when (e is RlpException or IndexOutOfRangeException or ArgumentOutOfRangeException)
+
+        kind = NodeRecordKind.HashedBranch;
+        hashMask = 0;
+        position = itemsStart;
+        for (int i = 0; i < BranchChildCount; i++)
         {
-            return false;
+            if (rlp[position] == NodeRlpReader.KeccakRlpPrefix) hashMask |= (ushort)(1 << i);
+            else if (reader.IsSequenceNext(position)) kind = NodeRecordKind.InlineBranch;
+            reader.SkipItem(ref position);
         }
     }
 
     /// <summary>Writes the record of <paramref name="rlp"/>, with every child pointer 0.</summary>
-    /// <param name="kind">From <see cref="TryDecode"/>.</param>
-    /// <param name="hashMask">From <see cref="TryDecode"/>.</param>
+    /// <param name="kind">From <see cref="Decode"/>.</param>
+    /// <param name="hashMask">From <see cref="Decode"/>.</param>
     /// <param name="destination">At least <see cref="Length(int, int)"/> bytes.</param>
     public static void WriteFromRlp(ReadOnlySpan<byte> rlp, NodeRecordKind kind, ushort hashMask, in ValueHash256 hash, ulong nodeKeyHash, Span<byte> destination)
     {
@@ -155,49 +142,20 @@ internal static class NodeRecordCodec
         rlp.CopyTo(destination[(HeaderLength + pointersLength)..]);
     }
 
-    private static bool TryDecodeBranch(ref RlpReader reader, out NodeRecordKind kind, out ushort hashMask)
-    {
-        kind = NodeRecordKind.HashedBranch;
-        hashMask = 0;
-        for (int i = 0; i < BranchChildCount; i++)
-        {
-            if (!TryDecodeChild(ref reader, out ChildRefKind child)) return false;
-
-            if (child == ChildRefKind.Hash) hashMask |= (ushort)(1 << i);
-            else if (child == ChildRefKind.Inline) kind = NodeRecordKind.InlineBranch;
-        }
-
-        return reader.DecodeByteArraySpan().IsEmpty && reader.Position == reader.Length;
-    }
-
-    /// <returns>False for a child that is malformed or embeds anything but a leaf.</returns>
-    private static bool TryDecodeChild(ref RlpReader reader, out ChildRefKind kind)
-    {
-        if (reader.IsSequenceNext())
-        {
-            kind = ChildRefKind.Inline;
-            ReadOnlySpan<byte> inlineRlp = reader.PeekNextItem();
-            reader.SkipBytes(inlineRlp.Length);
-            return inlineRlp.Length < ValueHash256.MemorySize && IsInlineLeaf(inlineRlp);
-        }
-
-        ReadOnlySpan<byte> hash = reader.DecodeByteArraySpan();
-        kind = hash.IsEmpty ? ChildRefKind.Empty : ChildRefKind.Hash;
-        return hash.IsEmpty || hash.Length == ValueHash256.MemorySize;
-    }
-
-    /// <remarks>An embedded branch or extension would need two keys sharing 224 bits, which keccak keys never do.</remarks>
+    /// <summary>Whether the embedded node <paramref name="rlp"/> is a leaf, which readers parse in place.</summary>
+    /// <remarks>
+    /// Readers decode any other embedded node into a record, a slow path for a case that is only theoretically possible: an embedded
+    /// branch is under 32 bytes, so it holds only embedded leaves with at most seven key nibbles left, which needs two keys sharing at
+    /// least 224 bits, and an embedded extension sits above such a branch. Keccak keys sharing that many bits are infeasible to find.
+    /// </remarks>
     internal static bool IsInlineLeaf(ReadOnlySpan<byte> rlp)
     {
-        RlpReader reader = new(rlp);
-        reader.ReadSequenceLength();
-        ReadOnlySpan<byte> key = reader.DecodeByteArraySpan();
-        reader.DecodeByteArraySpan();
-        return reader.Position == reader.Length && IsHexPrefix(key) && NodeRlp.IsLeafHexPrefix(key);
+        NodeRlpReader reader = new(rlp);
+        int position = 0;
+        reader.ReadSequenceLength(ref position, out _);
+        // A branch starts with a child, an empty string or an embedded node, while a leaf or an extension starts with its key, which is never empty.
+        if (reader.IsSequenceNext(position)) return false;
+        reader.DecodeByteArraySpan(ref position, out ReadOnlySpan<byte> key);
+        return !key.IsEmpty && NodeRlp.IsLeafHexPrefix(key);
     }
-
-    private static bool IsHexPrefix(ReadOnlySpan<byte> key) =>
-        !key.IsEmpty
-        && key[0] >> 4 <= MaxHexPrefixFlag
-        && NodeRlp.HexPrefixNibbleCount(key) <= MaxKeyNibbles;
 }

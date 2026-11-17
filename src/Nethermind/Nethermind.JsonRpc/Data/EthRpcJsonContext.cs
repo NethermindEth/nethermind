@@ -10,7 +10,9 @@ using System.Text.Json.Serialization;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Evm;
+using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.State.Proofs;
 
@@ -29,6 +31,7 @@ namespace Nethermind.JsonRpc.Data;
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 // eth_ types
 [JsonSerializable(typeof(AccountOverride))]
+[JsonSerializable(typeof(Dictionary<UInt256, Hash256>))]
 [JsonSerializable(typeof(AccountProof))]
 // debug_ types
 [JsonSerializable(typeof(GethLikeTxTrace))]

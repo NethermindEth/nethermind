@@ -4,9 +4,12 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -16,6 +19,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
+using Nethermind.Core.Test.Modules;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.Subscribe;
@@ -31,6 +36,7 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stats.Model;
 using Nethermind.TxPool;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
@@ -166,6 +172,26 @@ public class AdminModuleTests
         }
     }
 
+    [TestCase("127.0.0.1", "127.0.0.1:30303")]
+    [TestCase("[::1]", "[::1]:30303")]
+    public async Task AdminNodeInfo_SerializesGethKeyNames(string enodeHost, string expectedListenAddr)
+    {
+        IAdminRpcModule adminRpcModule = BuildAdminRpcModuleWith(enode: _enodeString.Replace("127.0.0.1", enodeHost));
+
+        string serialized = await RpcTest.TestSerializedRequest(adminRpcModule, "admin_nodeInfo");
+
+        using JsonDocument document = JsonDocument.Parse(serialized);
+        JsonElement result = document.RootElement.GetProperty("result");
+        JsonElement eth = result.GetProperty("protocols").GetProperty("eth");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TryGetProperty("listenAddr", out JsonElement listenAddr) ? listenAddr.GetString() : null, Is.EqualTo(expectedListenAddr));
+            Assert.That(eth.TryGetProperty("genesis", out JsonElement genesis) ? genesis.GetString() : null, Is.EqualTo(_blockTree.GenesisHash!.ToString()));
+            Assert.That(eth.TryGetProperty("head", out JsonElement head) ? head.GetString() : null, Is.EqualTo(_blockTree.HeadHash!.ToString()));
+            Assert.That(eth.TryGetProperty("network", out JsonElement network) ? network.GetString() : null, Is.EqualTo("0x" + _blockTree.NetworkId.ToString("x")));
+        }
+    }
+
     [Test]
     public async Task AdminDataDir_OnDefaultModule_ReturnsConfiguredPath()
     {
@@ -173,6 +199,50 @@ public class AdminModuleTests
 
         JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized)!;
         Assert.That(response.Result!.ToString(), Is.EqualTo(_exampleDataDir), "admin_dataDir reflects the path passed at module construction");
+    }
+
+    [TestCase("admin-datadir-test/node", TestName = "AdminDataDir_ResolvedThroughDiWiring_WhenDataDirRelative_ReturnsDataDirUnderExecutingDirectory")]
+    [TestCase("/admin-datadir-test/node", TestName = "AdminDataDir_ResolvedThroughDiWiring_WhenDataDirRooted_ReturnsDataDir")]
+    [TestCase(null, TestName = "AdminDataDir_ResolvedThroughDiWiring_WhenDataDirNull_ReturnsExecutingDirectory")]
+    [TestCase("", TestName = "AdminDataDir_ResolvedThroughDiWiring_WhenDataDirEmpty_ReturnsExecutingDirectory")]
+    [NonParallelizable]
+    public async Task AdminDataDir_ResolvedThroughDiWiring_ReturnsAbsoluteDataDir(string? dataDir)
+    {
+        const string baseDbPath = "nethermind_db/mainnet";
+        using TempPath workingDirectory = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(workingDirectory.Path);
+        string originalDirectory = Directory.GetCurrentDirectory();
+
+        string expected;
+        string? result;
+        Directory.SetCurrentDirectory(workingDirectory.Path);
+        try
+        {
+            expected = Path.GetFullPath(Path.Combine(PathUtils.ExecutingDirectory, dataDir ?? string.Empty));
+            result = await ResolveAdminDataDir(new InitConfig { BaseDbPath = baseDbPath, DataDir = dataDir });
+        }
+        finally
+        {
+            Directory.SetCurrentDirectory(originalDirectory);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.EqualTo(baseDbPath), "the DB subdirectory is not the data directory");
+            Assert.That(result, Is.EqualTo(expected), "the node stores its data relative to the executable directory, not the working directory");
+        }
+    }
+
+    private async Task<string?> ResolveAdminDataDir(InitConfig initConfig)
+    {
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new PseudoNethermindModule(new ChainSpec(), new ConfigProvider(initConfig), LimboLogs.Instance))
+            .AddModule(new TestEnvironmentModule(TestItem.PrivateKeyA, nameof(AdminModuleTests)))
+            .Build();
+
+        IAdminRpcModule adminModule = container.Resolve<IAdminRpcModule>();
+        string serialized = await RpcTest.TestSerializedRequest(adminModule, "admin_dataDir");
+        return _serializer.Deserialize<JsonRpcSuccessResponse>(serialized)!.Result?.ToString();
     }
 
     [TestCase(false, TestName = "AdminIsStateRootAvailable_WhenStateMissing_ReturnsFalse")]
@@ -335,12 +405,26 @@ public class AdminModuleTests
     }
 
     [Test]
+    public async Task AdminSubscribe_WithArgumentException_ReturnsInvalidParamsWithReason()
+    {
+        _subscriptionManager = Substitute.For<ISubscriptionManager>();
+        _subscriptionManager.AddSubscription(Arg.Any<IJsonRpcDuplexClient>(), Arg.Any<string>(), Arg.Any<string?>())
+            .Throws(new ArgumentException("bad subscription argument"));
+        IAdminRpcModule adminRpcModule = BuildAdminRpcModuleWith();
+        adminRpcModule.Context = new JsonRpcContext(RpcEndpoint.Ws, _jsonRpcDuplexClient);
+
+        string serialized = await RpcTest.TestSerializedRequest(adminRpcModule, "admin_subscribe", "peerEvents");
+
+        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":-32602,"message":"bad subscription argument"},"id":67}"""));
+    }
+
+    [Test]
     public async Task AdminSubscribe_WithTooLongStringArgs_ReturnsInvalidParams()
     {
         string args = new('a', 1_000_001);
         string serialized = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_subscribe", "peerEvents", args);
 
-        string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\",\"data\":\"subscription args string length 1000001 exceeds maximum allowed length of 1000000\"},\"id\":67}";
+        string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"subscription args string length 1000001 exceeds maximum allowed length of 1000000\"},\"id\":67}";
         Assert.That(expectedResult, Is.EqualTo(serialized), "oversized string args should be rejected before subscription creation");
     }
 
@@ -560,6 +644,35 @@ public class AdminModuleTests
         }
     }
 
+    [Test]
+    public void AdminPeers_ReportsThisNodeEndpointAsLocalAddress([Values] bool isInbound)
+    {
+        int remotePort = isInbound ? 45678 : 30303;
+        Peer peer = new(new Node(TestItem.PublicKeyA, "94.237.54.114", 30303));
+        ISession session = Substitute.For<ISession>();
+        session.RemoteHost.Returns("94.237.54.114");
+        session.RemotePort.Returns(remotePort);
+        session.LocalPort.Returns(30304);
+        session.IsNetworkIdMatched.Returns(true);
+        if (isInbound)
+        {
+            peer.InSession = session;
+        }
+        else
+        {
+            peer.OutSession = session;
+        }
+        AdminRpcModule module = CreateMinimalAdminModule(CreatePeerPool(peer));
+
+        NetworkInfo network = module.admin_peers().Data[0].Network;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(network.LocalAddress, Is.EqualTo("127.0.0.1:30304"), "local address is this node's enode IP with the session's local port");
+            Assert.That(network.RemoteAddress, Is.EqualTo($"94.237.54.114:{remotePort}"));
+        }
+    }
+
     [TestCase(68, "Nethermind/v1.25.4+2bf8a789/linux-x64/dotnet8.0.8", TestName = "AdminPeers_WithEthOnlyV68Peer_DoesNotIncludeSnap")]
     [TestCase(66, "Geth/v1.10.0-stable/linux-amd64/go1.16.15", TestName = "AdminPeers_WithLegacyEthV66Peer_DoesNotIncludeSnap")]
     public void AdminPeers_WithEthOnlyPeer_DoesNotIncludeSnapProtocol(int ethVersion, string clientId)
@@ -721,7 +834,8 @@ public class AdminModuleTests
         ITrustedNodesManager? trustedNodesManager = null,
         IPeerPool? peerPool = null,
         IBlockProcessingPauseControl? blockProcessingPauseControl = null,
-        INodeRecordProvider? nodeRecordProvider = null)
+        INodeRecordProvider? nodeRecordProvider = null,
+        string enode = _enodeString)
     {
         ChainSpec chainSpec = new() { Parameters = new ChainParameters() };
         return new AdminRpcModule(
@@ -730,7 +844,7 @@ public class AdminModuleTests
             peerPool ?? Substitute.For<IPeerPool>(),
             staticNodesManager ?? Substitute.For<IStaticNodesManager>(),
             Substitute.For<IStateReader>(),
-            new Enode(_enodeString),
+            new Enode(enode),
             _exampleDataDir,
             chainSpec.Parameters,
             trustedNodesManager ?? Substitute.For<ITrustedNodesManager>(),

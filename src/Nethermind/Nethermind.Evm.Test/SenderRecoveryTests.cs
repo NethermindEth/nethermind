@@ -12,6 +12,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -42,6 +43,47 @@ public class SenderRecoveryTests
         {
             Assert.That(tx.SenderAddress, Is.EqualTo(TestItem.AddressA));
             Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.None));
+        }
+    }
+
+    public enum Run { Execute, BuildUp, CallAndRestore, Trace }
+
+    /// <summary>
+    /// Block validation and production recover the signer of a transaction whose sender has no account, while runs
+    /// that skip validation run a transaction that already carries a sender as that sender. Under EIP-2780 a message
+    /// call resolves its sender before intrinsic gas, any other transaction where the sender's account is checked.
+    /// </summary>
+    [Test]
+    public void Signed_transaction_runs_as_its_given_sender_only_without_validation(
+        [Values] Run run, [Values] bool eip2780, [Values] bool messageCall)
+    {
+        IReleaseSpec spec = eip2780 ? new OverridableReleaseSpec(Prague.Instance) { IsEip2780Enabled = true } : Prague.Instance;
+        using EvmTestHarness harness = new(spec);
+        harness.WorldState.CreateAccount(TestItem.AddressA, 1_000_000);
+        // Zero fees and value, so a sender with no account can run it too.
+        Transaction tx = Build.A.Transaction
+            .WithTo(messageCall ? TestItem.AddressB : null)
+            .WithValue(0)
+            .WithGasPrice(0)
+            .WithGasLimit(200_000)
+            .Signed(harness.Ecdsa, TestItem.PrivateKeyA)
+            .WithSenderAddress(TestItem.AddressF)
+            .TestObject;
+        Block block = harness.CreateBlock(tx);
+        BlockExecutionContext context = new(block.Header, harness.SpecProvider.GetSpec(block.Header));
+
+        TransactionResult result = run switch
+        {
+            Run.Execute => harness.TxProcessor.Execute(tx, in context, NullTxTracer.Instance),
+            Run.BuildUp => harness.TxProcessor.BuildUp(tx, in context, NullTxTracer.Instance),
+            Run.CallAndRestore => harness.TxProcessor.CallAndRestore(tx, in context, NullTxTracer.Instance),
+            _ => harness.TxProcessor.Trace(tx, in context, NullTxTracer.Instance),
+        };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.None));
+            Assert.That(tx.SenderAddress, Is.EqualTo(run is Run.Execute or Run.BuildUp ? TestItem.AddressA : TestItem.AddressF));
         }
     }
 

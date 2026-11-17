@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Enr;
@@ -18,5 +19,5 @@ public class IdEntry : EnrContentEntry<string>
 
     protected override int GetRlpLengthOfValue() => Rlp.LengthOf(Value);
 
-    protected override void EncodeValue<TWriter>(ref TWriter writer) => writer.Encode("v4");
+    protected override void EncodeValue(ref RlpWriter writer) => writer.Encode("v4");
 }

@@ -115,6 +115,8 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
     [TestCase("return", "0x6", null)]
     [TestCase("badJump", "0x13498", "invalid jump destination")]
     [TestCase("underflow", "0x13498", "stack underflow (1 \\u003c=\\u003e 2)")]
+    [TestCase("overflow", "0x13498", "stack limit reached 1024 (1023)")]
+    [TestCase("undefined", "0x13498", "invalid opcode: opcode 0xc not defined")]
     public void File_summary_reports_execution_gas_and_error_after_top_level_action(string scenario, string gasUsed, string? error)
     {
         byte[] code = scenario switch
@@ -123,6 +125,8 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
             "return" => Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.RETURN).Done,
             "badJump" => Prepare.EvmCode.PushData(255).Op(Instruction.JUMP).Done,
             "underflow" => Prepare.EvmCode.PushData(7).Op(Instruction.ADD).Done,
+            "overflow" => Enumerable.Repeat(Prepare.EvmCode.PushData(0).Done, 1025).SelectMany(push => push).ToArray(),
+            "undefined" => Prepare.EvmCode.Op((Instruction)0x0c).Done,
             _ => throw new ArgumentOutOfRangeException(nameof(scenario), scenario, null)
         };
         string[] records = TraceFile(code).Split('\n', StringSplitOptions.RemoveEmptyEntries);
@@ -131,6 +135,55 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         {
             Assert.That(records[^1], Is.EqualTo($"{{\"output\":\"\",\"gasUsed\":\"{gasUsed}\"{errorField}}}"));
             Assert.That(records[^2], Does.Not.Contain("\\u003C").And.Not.Contain("\\u003E"), "Geth escapes HTML characters with lowercase hex");
+        }
+    }
+
+    [Test]
+    public void Child_error_detail_does_not_reach_parent_exit()
+    {
+        PrepareNestedCall("underflow");
+        byte[] code = Prepare.EvmCode.Call(TestItem.AddressC, 50_000).Op(Instruction.POP).PushData(255).Op(Instruction.JUMP).Done;
+        string[] records = TraceFile(code).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        Assert.That(records[^1], Is.EqualTo("{\"output\":\"\",\"gasUsed\":\"0x13498\",\"error\":\"invalid jump destination\"}"));
+    }
+
+    [TestCase(Instruction.REVERT, "execution reverted", "0x6")]
+    [TestCase(Instruction.RETURN, null, "0x6")]
+    [TestCase(Instruction.INVALID, "invalid opcode: INVALID", "0x13498")]
+    public void Top_level_fault_is_repeated_with_error_before_summary(Instruction exit, string? error, string gasUsed)
+    {
+        byte[] code = Prepare.EvmCode.PushData(0).PushData(0).Op(exit).Done;
+        string[] records = TraceFile(code).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        string step = records[2];
+        string errorField = error is null ? "" : $",\"error\":\"{error}\"";
+        string summary = $"{{\"output\":\"\",\"gasUsed\":\"{gasUsed}\"{errorField}}}";
+        string fault = exit == Instruction.REVERT ? step.Replace("\"stack\":[\"0x0\",\"0x0\"]", "\"stack\":[]") : step;
+        string[] expected = error is null ? [summary] : [fault[..^1] + errorField + "}", summary];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(step, Does.Contain($"\"gasCost\":\"0x0\",").And.Contain($"\"opName\":\"{exit}\"").And.Not.Contain("\"error\""));
+            Assert.That(records[3..], Is.EqualTo(expected));
+        }
+    }
+
+    [Test]
+    public void Revert_fault_record_shows_popped_operands_and_expanded_memory([Values] bool enableMemory)
+    {
+        byte[] code = Prepare.EvmCode.PushData(7).PushData(32).PushData(64).Op(Instruction.REVERT).Done;
+        string[] records = TraceFile(code, enableMemory: enableMemory).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        using JsonDocument step = JsonDocument.Parse(records[3]);
+        using JsonDocument fault = JsonDocument.Parse(records[4]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(step.RootElement.GetProperty("stack").EnumerateArray().Select(item => item.GetString()), Is.EqualTo(new[] { "0x7", "0x20", "0x40" }));
+            Assert.That(step.RootElement.GetProperty("memSize").GetInt32(), Is.Zero);
+            Assert.That(fault.RootElement.GetProperty("error").GetString(), Is.EqualTo("execution reverted"));
+            Assert.That(fault.RootElement.GetProperty("stack").EnumerateArray().Select(item => item.GetString()), Is.EqualTo(new[] { "0x7" }));
+            Assert.That(fault.RootElement.GetProperty("memSize").GetInt32(), Is.EqualTo(96));
+            if (enableMemory)
+                Assert.That(fault.RootElement.GetProperty("memory").GetString(), Is.EqualTo("0x" + new string('0', 192)));
+            else
+                Assert.That(fault.RootElement.TryGetProperty("memory", out _), Is.False);
         }
     }
 
@@ -304,6 +357,7 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
     [TestCase("return", "0x12", null)]
     [TestCase("revert", "0x12", "execution reverted")]
     [TestCase("badJump", "0xc350", "invalid jump destination")]
+    [TestCase("invalid", "0xc350", "invalid opcode: INVALID")]
     [TestCase("empty", "0x0", null)]
     [TestCase("identity", "0xf", null)]
     [TestCase("identity", "0xe", "out of gas", 14)]
@@ -324,9 +378,11 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         string[] childOpcodes = scenario switch
         {
             "return" when gasLimit == 17 => ["PUSH1", "PUSH1", "MSTORE", "PUSH1", "PUSH1"],
-            "return" or "revert" => ["PUSH1", "PUSH1", "MSTORE", "PUSH1", "PUSH1", scenario.ToUpperInvariant()],
+            "return" => ["PUSH1", "PUSH1", "MSTORE", "PUSH1", "PUSH1", "RETURN"],
+            "revert" => ["PUSH1", "PUSH1", "MSTORE", "PUSH1", "PUSH1", "REVERT", "REVERT"],
             "badJump" => ["PUSH1", "JUMP"],
             "underflow" => ["PUSH1", "ADD"],
+            "invalid" => ["INVALID", "INVALID"],
             _ => []
         };
         string[] expectedOpcodes = ["PUSH1", "PUSH1", "PUSH1", "PUSH1", "PUSH1", "PUSH20", gasLimit > 255 ? "PUSH2" : "PUSH1", "CALL", .. childOpcodes, "POP", "STOP"];
@@ -334,6 +390,8 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         {
             Assert.That(opcodes, Is.EqualTo(expectedOpcodes), "each deferred opcode must be emitted exactly once");
             Assert.That(records[childExit], Is.EqualTo($"{{\"output\":\"{output}\",\"gasUsed\":\"{gasUsed}\"{errorField}}}"));
+            if (scenario is "revert" or "invalid")
+                Assert.That(records[childExit - 1], Does.Contain("\"depth\":2").And.Contain($"\"error\":\"{error}\""));
             Assert.That(resumed.RootElement.GetProperty("opName").GetString(), Is.EqualTo("POP"));
             Assert.That(resumed.RootElement.GetProperty("depth").GetInt32(), Is.EqualTo(1));
             Assert.That(records.Count(record => record.StartsWith("{\"output\"")), Is.EqualTo(2));
@@ -456,10 +514,11 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         MockFileSystem fileSystem = new();
         fileSystem.Initialize();
         using GethLikeBlockFileTracer tracer = new(block, GethTraceOptions.Default with { DisableStack = true }, fileSystem, spec);
-        tracer.StartNewBlockTrace(block);
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, spec), tracer.StartNewTxTrace(transaction));
-        tracer.EndTxTrace();
-        tracer.EndBlockTrace();
+        IBlockTracer blockTracer = tracer;
+        blockTracer.StartNewBlockTrace(block);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, spec), blockTracer.StartNewTxTrace(transaction));
+        blockTracer.EndTxTrace();
+        blockTracer.EndBlockTrace();
 
         string[] records = fileSystem.File.ReadAllText(tracer.FileNames.Single()).Split('\n', StringSplitOptions.RemoveEmptyEntries);
         const string depthExit = "{\"output\":\"\",\"gasUsed\":\"0x0\",\"error\":\"max call depth exceeded\"}";
@@ -516,7 +575,7 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Should_have_file_names_matching_block_and_transactions()
+    public void Should_have_file_names_matching_block_and_transactions([Values] bool zeroTxHash)
     {
         MockFileSystem fileSystem = new();
         fileSystem.Initialize();
@@ -528,7 +587,8 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
             })
             .TestObject;
 
-        GethLikeBlockFileTracer tracer = new(block, GethTraceOptions.Default, fileSystem, Spec);
+        GethTraceOptions options = zeroTxHash ? GethTraceOptions.Default with { TxHash = Hash256.Zero } : GethTraceOptions.Default;
+        GethLikeBlockFileTracer tracer = new(block, options, fileSystem, Spec);
         IBlockTracer blockTracer = (IBlockTracer)tracer;
 
         for (int i = 0; i < block.Transactions.Length; i++)
@@ -543,6 +603,8 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
             Assert.That(fileName, Does.Contain($"block_{block.Hash.Bytes[..4].ToHexString(true)}-{i}-{tx.Hash.Bytes[..4].ToHexString(true)}-"));
             Assert.That(fileName, Does.EndWith(".jsonl"));
         }
+
+        Assert.That(tracer.FileNames, Has.Count.EqualTo(block.Transactions.Length));
     }
 
     [Test]
@@ -664,6 +726,7 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
                 .PushData(32).PushData(0).Op(scenario == "return" ? Instruction.RETURN : Instruction.REVERT).Done,
             "badJump" => Prepare.EvmCode.PushData(255).Op(Instruction.JUMP).Done,
             "underflow" => Prepare.EvmCode.PushData(7).Op(Instruction.ADD).Done,
+            "invalid" => Prepare.EvmCode.Op(Instruction.INVALID).Done,
             _ => []
         };
         TestState.CreateAccount(address, 1.Ether);
@@ -685,11 +748,11 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
             .Op(Instruction.POP).Call(TestItem.AddressE, 50_000).Op(Instruction.STOP).Done;
     }
 
-    private string TraceFile(byte[] code, long limit = 0, bool disableStack = false, bool enableReturnData = false)
+    private string TraceFile(byte[] code, long limit = 0, bool disableStack = false, bool enableReturnData = false, bool enableMemory = false)
     {
         MockFileSystem fileSystem = new();
         fileSystem.Initialize();
-        using GethLikeBlockFileTracer tracer = new(Build.A.Block.TestObject, GethTraceOptions.Default with { Limit = limit, DisableStack = disableStack, EnableReturnData = enableReturnData }, fileSystem, Spec);
+        using GethLikeBlockFileTracer tracer = new(Build.A.Block.TestObject, GethTraceOptions.Default with { Limit = limit, DisableStack = disableStack, EnableReturnData = enableReturnData, EnableMemory = enableMemory }, fileSystem, Spec);
         ExecuteBlock(tracer, code);
         return fileSystem.File.ReadAllText(tracer.FileNames.Single());
     }

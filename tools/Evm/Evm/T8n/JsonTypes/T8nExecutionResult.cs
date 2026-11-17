@@ -44,7 +44,7 @@ public class T8nExecutionResult
             TxRoot = txRoot,
             ReceiptsRoot = receiptsRoot,
             WithdrawalsRoot = block.WithdrawalsRoot,
-            LogsHash = Keccak.Compute(Rlp.Encode(logEntries).Bytes),
+            LogsHash = Keccak.Compute(Rlp.Encode(logEntries)),
             LogsBloom = new Bloom(logEntries),
             Receipts = BuildReceipts(block, test.Spec, txReport.SuccessfulTransactions, receipts),
             Rejected = txReport.RejectedTransactionReceipts.Count == 0
@@ -62,7 +62,7 @@ public class T8nExecutionResult
         T8nExecutionResult t8NExecutionResult = new()
         {
             PostState = postState,
-            TransactionsRlp = Rlp.Encode(txReport.SuccessfulTransactions.ToArray()).Bytes,
+            TransactionsRlp = Rlp.Encode(txReport.SuccessfulTransactions.ToArray()),
             Accounts = CollectAccounts(stateProvider, stateWrites),
         };
 

@@ -6,8 +6,10 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
+using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using NSubstitute;
 using NUnit.Framework;
@@ -129,6 +131,23 @@ public class SimulateReadOnlyBlocksProcessingEnvPoolTests
         }
     }
 
+    [Test]
+    public void Release_ClearsRequestStoresAndCalls()
+    {
+        FakeEnvFactory factory = new();
+        using SimulateReadOnlyBlocksProcessingEnvPool pool = new(factory.Create, maxConcurrent: 1);
+
+        SimulateReadOnlyBlocksProcessingEnvPool.PooledScope scope = pool.Begin(null);
+        scope.Scope.SimulateRequestState.Calls = [new TransactionWithSourceDetails()];
+        scope.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            factory.Envs[0].RequestStore.Received(1).ClearCache();
+            Assert.That(factory.Envs[0].RequestState.Calls, Is.Empty);
+        }
+    }
+
     private sealed class FakeEnvFactory(bool throwOnBegin = false)
     {
         private bool _throwOnBegin = throwOnBegin;
@@ -162,15 +181,18 @@ public class SimulateReadOnlyBlocksProcessingEnvPoolTests
     {
         public bool IsDisposed { get; private set; }
         public int BeginCount { get; private set; }
+        public IClearableCache RequestStore { get; } = Substitute.For<IClearableCache>();
+        public SimulateRequestState RequestState { get; } = new();
 
         public SimulateReadOnlyBlocksProcessingScope Begin(BlockHeader? baseBlock)
         {
             BeginCount++;
             if (throwOnBegin) throw new InvalidOperationException("simulated begin failure");
             return new SimulateReadOnlyBlocksProcessingScope(
-                null!, null!, null!, null!, null!, null!,
+                null!, null!, null!, null!, RequestState, null!,
                 Substitute.For<IReadOnlyDbProvider>(),
-                new NoopDisposable());
+                new NoopDisposable(),
+                [RequestStore]);
         }
 
         public void Dispose() => IsDisposed = true;

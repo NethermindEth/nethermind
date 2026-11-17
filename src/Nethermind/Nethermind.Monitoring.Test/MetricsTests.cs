@@ -140,6 +140,40 @@ public class MetricsTests
         }
     }
 
+    public static class CounterCellMetrics
+    {
+        [System.ComponentModel.Description("Counter cells exported by value.")]
+        [KeyIsLabel("some_label")]
+        public static ConcurrentDictionary<SomeEnum, MetricCounter> WithCounterCells { get; } = new();
+
+        [System.ComponentModel.Description("Counter cells exported as one gauge per key.")]
+        public static ConcurrentDictionary<string, MetricCounter> PerKeyCounterCells { get; } = new();
+    }
+
+    [Test]
+    public void Exports_metric_counter_values()
+    {
+        MetricsController metricsController = new(new MetricsConfig { Enabled = true });
+        metricsController.RegisterMetrics(typeof(CounterCellMetrics));
+        MetricCounter counter = CounterCellMetrics.WithCounterCells.GetOrAdd(SomeEnum.Option1, static _ => new MetricCounter());
+        counter.Increment();
+        counter.Add(41);
+        MetricCounter perKeyCounter = CounterCellMetrics.PerKeyCounterCells.GetOrAdd("counter_cell_per_key", static _ => new MetricCounter());
+        perKeyCounter.Add(7);
+
+        metricsController.UpdateAllMetrics();
+
+        string key = $"{nameof(CounterCellMetrics)}.{nameof(CounterCellMetrics.WithCounterCells)}";
+        MetricsController.KeyIsLabelGaugeMetricUpdater updater = (MetricsController.KeyIsLabelGaugeMetricUpdater)metricsController._individualUpdater[key];
+        string perKey = $"{nameof(CounterCellMetrics)}.{nameof(CounterCellMetrics.PerKeyCounterCells)}";
+        MetricsController.GaugePerKeyMetricUpdater perKeyUpdater = (MetricsController.GaugePerKeyMetricUpdater)metricsController._individualUpdater[perKey];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(updater.Gauge.WithLabels(SomeEnum.Option1.ToString()).Value, Is.EqualTo(42));
+            Assert.That(perKeyUpdater.Gauges[$"{nameof(CounterCellMetrics.PerKeyCounterCells)}.counter_cell_per_key"].Value, Is.EqualTo(7));
+        }
+    }
+
     private static readonly bool[] FailurePattern = [true, true, false, true];
     private static readonly (Type Type, string Member) HealthyMetric = (typeof(IsolationHealthyMetrics), nameof(IsolationHealthyMetrics.IsolationHealthy));
 

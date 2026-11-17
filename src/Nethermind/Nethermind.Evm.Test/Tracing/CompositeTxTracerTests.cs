@@ -6,7 +6,10 @@ using System.Linq;
 using System.Reflection;
 using System.Threading;
 using Nethermind.Blockchain.Tracing.ParityStyle;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using NSubstitute;
@@ -73,6 +76,20 @@ public class CompositeTxTracerTests
         Assert.That(tracer.InstructionMask, Is.EqualTo(stack || memory || returnData ? UInt256.MaxValue : UInt256.One));
     }
 
+    /// <param name="readsOutput">What the receipt tracer reports as an output filter; null when it is not one.</param>
+    [Test]
+    public void Reads_the_output_when_a_receipt_tracer_reads_it([Values] bool? readsOutput, [Values] bool siblingTracesReceipt)
+    {
+        ITxTracer receiptTracer = readsOutput is null ? Substitute.For<ITxTracer>() : Substitute.For<ITxTracer, ITxOutputTracingFilter>();
+        receiptTracer.IsTracingReceipt.Returns(true);
+        if (receiptTracer is ITxOutputTracingFilter filter) filter.IsTracingOutput.Returns(readsOutput!.Value);
+        ITxTracer sibling = Substitute.For<ITxTracer>();
+        sibling.IsTracingReceipt.Returns(siblingTracesReceipt);
+        using CompositeTxTracer tracer = new(receiptTracer, sibling);
+
+        Assert.That(tracer.IsTracingOutput, Is.EqualTo(readsOutput is not false || siblingTracesReceipt));
+    }
+
     [Test]
     public void InstructionMask_WhenCancellationForcesSnapshots_RequiresFullTracing(
         [Values] bool stack, [Values] bool memory, [Values] bool returnData, [Values] bool instructions)
@@ -128,6 +145,52 @@ public class CompositeTxTracerTests
         tracer.ReportActionRemainingGas(1234);
 
         inner.Received(tracingActions ? 1 : 0).ReportActionRemainingGas(1234);
+    }
+
+    [Test]
+    public void Forwards_frame_reports_through_child_chains(
+        [Values] bool receipts, [Values(0, 1, 2, 3)] int nesting)
+    {
+        ITxTracer leaf = Substitute.For<ITxTracer, IFrameTxReceiptTracer>();
+        leaf.IsTracingReceipt.Returns(receipts);
+        ITxTracer child = nesting switch
+        {
+            1 => new ReceiptWrapper(new ReceiptWrapper(leaf)),
+            2 => new CompositeTxTracer(new ReceiptWrapper(leaf)),
+            3 => new ReceiptWrapper(new CancellationTxTracer(new CompositeTxTracer(leaf))),
+            _ => leaf
+        };
+        ITxTracer sibling = Substitute.For<ITxTracer, IFrameTxReceiptTracer>();
+        sibling.IsTracingReceipt.Returns(true);
+        using CompositeTxTracer tracer = new(child, sibling, NullTxTracer.Instance);
+        IFrameTxReceiptTracer? frames = IFrameTxReceiptTracer.FindIn(tracer);
+        TxFrameReceipt[] frameReceipts = [new(TxFrameReceipt.StatusSuccess, 123, 0, [])];
+
+        Assert.That(frames, Is.Not.Null);
+        frames!.ReportFrameEnd(2, EvmExceptionType.Revert);
+        frames.ReportFramesRolledBack(1, 2);
+        frames.ReportFrameTxReceipt(TestItem.AddressA, frameReceipts);
+        tracer.MarkAsSuccess(TestItem.AddressB, new GasConsumed(123, 123), [], []);
+
+        using (Assert.EnterMultipleScope())
+        {
+            ((IFrameTxReceiptTracer)leaf).Received(1).ReportFrameEnd(2, EvmExceptionType.Revert);
+            ((IFrameTxReceiptTracer)leaf).Received(1).ReportFramesRolledBack(1, 2);
+            ((IFrameTxReceiptTracer)leaf).Received(receipts ? 1 : 0).ReportFrameTxReceipt(TestItem.AddressA, frameReceipts);
+            leaf.Received(receipts ? 1 : 0).MarkAsSuccess(TestItem.AddressB, new GasConsumed(123, 123), Arg.Any<byte[]>(), Arg.Any<LogEntry[]>());
+            ((IFrameTxReceiptTracer)sibling).Received(1).ReportFrameEnd(2, EvmExceptionType.Revert);
+            ((IFrameTxReceiptTracer)sibling).Received(1).ReportFramesRolledBack(1, 2);
+            ((IFrameTxReceiptTracer)sibling).Received(1).ReportFrameTxReceipt(TestItem.AddressA, frameReceipts);
+        }
+    }
+
+    private sealed class ReceiptWrapper(ITxTracer inner) : TxTracer, ITxTracerWrapper
+    {
+        public ITxTracer InnerTracer => inner;
+        public override bool IsTracingReceipt => inner.IsTracingReceipt;
+
+        public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs,
+            Hash256? stateRoot = null) => inner.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
     }
 
     [Test]

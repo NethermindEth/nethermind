@@ -453,7 +453,7 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
             }
             ReadOnlyBlockAccessList list = new([
                 new ReadOnlyAccountChanges(TestItem.AddressA, [], [], [new BalanceChange(1, finalBalance)], [], [])], 0);
-            byte[] encoded = Rlp.Encode(list).Bytes;
+            byte[] encoded = Rlp.Encode(list);
             BlockBuilder builder = Build.A.Block.WithParent(parent).WithDifficulty(0).WithGasUsed(gasUsed).WithStateRoot(matchingRoot ? root : TestItem.KeccakC)
                 .WithBlockAccessListHash(matchingList ? Keccak.Compute(encoded) : TestItem.KeccakD);
             if (withTransaction) builder.WithTransactions(Build.A.Transaction.WithSenderAddress(TestItem.AddressA).TestObject);

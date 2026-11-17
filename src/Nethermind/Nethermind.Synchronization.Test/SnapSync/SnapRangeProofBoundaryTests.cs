@@ -263,7 +263,7 @@ public class SnapRangeProofBoundaryTests
                 byte[] key = Keccak.Compute(new byte[] { (byte)nibble, (byte)i }).BytesToArray();
                 key[0] = nibble == 0xa ? (byte)0xab : (byte)((nibble << 4) | (key[0] & 0x0f));
                 if (nibble == 0xa) key[1] = (byte)(0x30 | (key[1] & 0x0f));
-                slots.Add(new PathWithStorageSlot(new ValueHash256(key), Rlp.Encode(new byte[] { 1 }).Bytes));
+                slots.Add(new PathWithStorageSlot(new ValueHash256(key), Rlp.Encode(new byte[] { 1 })));
             }
         }
         slots.Sort(static (x, y) => x.Path.CompareTo(y.Path));
@@ -637,6 +637,6 @@ public class SnapRangeProofBoundaryTests
             return collector.BuildResult().StorageProofs[0].Proof;
         }
 
-        private static byte[] SlotValue(in ValueHash256 path) => Rlp.Encode(path.Bytes[..4]).Bytes;
+        private static byte[] SlotValue(in ValueHash256 path) => Rlp.Encode(path.Bytes[..4]);
     }
 }

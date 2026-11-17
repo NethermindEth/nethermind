@@ -269,7 +269,7 @@ public class RecoverSignaturesTest
     {
         // Decoded as a payload is: hashed on the first read.
         Transaction[] txs = TxsDecoder.DecodeTxs(
-            [.. SignedTransactions(count).Select(static tx => Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes)], skipErrors: false).Transactions;
+            [.. SignedTransactions(count).Select(static tx => Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping))], skipErrors: false).Transactions;
         Assert.That(txs.Select(static tx => tx.IsHashCalculated), Is.All.False, "precondition: decoding leaves the hashes to the first read");
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         RecoverSignatures sut = new(_ecdsa, specProvider, Substitute.For<ILogManager>());
@@ -290,8 +290,8 @@ public class RecoverSignaturesTest
         using ManualResetEventSlim gate = new();
         Transaction[] txs =
         [
-            Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithSenderAddress(null).TestObject,
-            Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithSenderAddress(null).TestObject,
+            Signed(TestItem.PrivateKeyA, UnseenNonce()),
+            Signed(TestItem.PrivateKeyB, UnseenNonce()),
         ];
         // The block constructor copies the array, so only the shared transaction objects identify the recovery.
         Block block = new(Build.A.BlockHeader.TestObject, txs, []);
@@ -326,10 +326,11 @@ public class RecoverSignaturesTest
     public void RecoverData_WhileAnotherRecoveryIsInFlight_StillRecoversEverySender()
     {
         using ManualResetEventSlim gate = new();
-        Transaction shared = Signed(TestItem.PrivateKeyA, nonce: 0);
-        Transaction parked = Signed(TestItem.PrivateKeyC, nonce: 1);
+        ulong nonce = UnseenNonce();
+        Transaction shared = Signed(TestItem.PrivateKeyA, nonce);
+        Transaction parked = Signed(TestItem.PrivateKeyC, nonce + 1);
         Transaction[] inFlight = [shared, parked];
-        Transaction[] traced = [shared, Signed(TestItem.PrivateKeyB, nonce: 2)];
+        Transaction[] traced = [shared, Signed(TestItem.PrivateKeyB, nonce + 2)];
         Block block = new(Build.A.BlockHeader.TestObject, traced, []);
         RecoverSignatures sut = CreateSut(gate, parked);
 
@@ -369,8 +370,9 @@ public class RecoverSignaturesTest
     public void StartRecovery_ResentPayload_DoesNotStartASecondRecovery()
     {
         using ManualResetEventSlim gate = new();
-        Transaction[] first = SignedTransactions(2);
-        Transaction[] resent = SignedTransactions(2);
+        ulong nonce = UnseenNonce();
+        Transaction[] first = SignedTransactions(2, nonce);
+        Transaction[] resent = SignedTransactions(2, nonce);
         RecoverSignatures sut = CreateSut(gate, first[0], first[1]);
 
         try
@@ -414,10 +416,10 @@ public class RecoverSignaturesTest
     public void Recovery_HashesSignedPayloadsOutOfAlignedEncodings(
         [Values] bool background, [Values] Encodings kind, [Values(TxType.Legacy, TxType.EIP1559)] TxType type)
     {
-        // Legacy senders bypass the sender cache, and a random nonce gives typed transactions hashes it has not seen.
+        // A random nonce gives transactions signing hashes the process-wide sender cache has not seen.
         // An encoding carrying the transaction's own signature over another payload makes its use show in the
         // recovered addresses.
-        ulong nonce = TestContext.CurrentContext.Random.NextULong(ulong.MaxValue / 2);
+        ulong nonce = UnseenNonce();
         Transaction[] txs = [Signed(TestItem.PrivateKeyA, nonce, type), Signed(TestItem.PrivateKeyB, nonce + 1, type)];
         byte[][] encodings = kind switch
         {
@@ -448,7 +450,7 @@ public class RecoverSignaturesTest
         }
     }
 
-    private static byte[] Encode(Transaction tx) => TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
+    private static byte[] Encode(Transaction tx) => TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping);
 
     private static byte[] EncodeTampered(Transaction tx) =>
         Encode(Build.A.Transaction.WithType(tx.Type).WithChainId(tx.ChainId).WithNonce(tx.Nonce + 2).WithSignature(tx.Signature!).TestObject);
@@ -456,8 +458,16 @@ public class RecoverSignaturesTest
     private static Transaction Signed(PrivateKey signer, ulong nonce, TxType type = TxType.Legacy) =>
         Build.A.Transaction.WithType(type).WithNonce(nonce).SignedAndResolved(signer).WithSenderAddress(null).TestObject;
 
-    private static Transaction[] SignedTransactions(int count) =>
-        Enumerable.Range(0, count).Select(static nonce => Signed(TestItem.PrivateKeyA, (ulong)nonce)).ToArray();
+    private static Transaction[] SignedTransactions(int count) => SignedTransactions(count, UnseenNonce());
+
+    private static Transaction[] SignedTransactions(int count, ulong firstNonce) =>
+        Enumerable.Range(0, count).Select(i => Signed(TestItem.PrivateKeyA, firstNonce + (ulong)i)).ToArray();
+
+    /// <summary>
+    /// A nonce no other test signs with, so the process-wide sender cache holds no entry for the transaction and its
+    /// recovery reaches the ecdsa under test.
+    /// </summary>
+    private static ulong UnseenNonce() => TestContext.CurrentContext.Random.NextULong(ulong.MaxValue / 2);
 
     private static RecoverSignatures CreateSut(ManualResetEventSlim gate, params Transaction[] parked)
     {

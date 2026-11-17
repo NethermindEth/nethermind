@@ -48,7 +48,7 @@ internal sealed class TestEraFile : IDisposable
                 .WithTransactions(transaction is null ? [] : [transaction]).TestObject;
             block.Header.ReceiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(
                 [receipt], specProvider.GetSpec(block.Header), block.ReceiptsRoot);
-            block.Header.Hash = Keccak.Compute(headerDecoder.Encode(block.Header).Bytes);
+            block.Header.Hash = Keccak.Compute(headerDecoder.Encode(block.Header));
             file.Contents.Add((block, [receipt]));
             await writer.Add(block, [receipt]);
         }
@@ -60,7 +60,7 @@ internal sealed class TestEraFile : IDisposable
                 .WithTransactions(transaction is null ? [] : [transaction]).TestObject;
             block.Header.ReceiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(
                 [receipt], specProvider.GetSpec(block.Header), block.ReceiptsRoot);
-            block.Header.Hash = Keccak.Compute(headerDecoder.Encode(block.Header).Bytes);
+            block.Header.Hash = Keccak.Compute(headerDecoder.Encode(block.Header));
             file.Contents.Add((block, [receipt]));
             await writer.Add(block, [receipt]);
         }
@@ -77,7 +77,7 @@ internal sealed class TestEraFile : IDisposable
         using MemoryStream compressed = new();
         using (SnappyStream compressor = new(compressed, CompressionMode.Compress, leaveOpen: true))
         {
-            compressor.Write(new HeaderDecoder().Encode(header).Bytes);
+            compressor.Write(new HeaderDecoder().Encode(header));
         }
 
         long position;
