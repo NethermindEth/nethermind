@@ -190,6 +190,9 @@ public class DebugRpcModule(
 
     public ResultWrapper<GethLikeTxTrace> debug_traceCall(TransactionForRpc call, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
     {
+        // Geth's traceCall resolves hashes without enforcing requireCanonical.
+        if (blockParameter is { BlockHash: { } hash, RequireCanonical: true })
+            blockParameter = new BlockParameter(hash);
         blockParameter ??= BlockParameter.Latest;
         if (blockParameter.Type == BlockParameterType.Pending)
         {

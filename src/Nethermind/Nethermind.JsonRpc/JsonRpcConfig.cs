@@ -53,6 +53,8 @@ public class JsonRpcConfig : IJsonRpcConfig
     public string CallsFilterFilePath { get; set; } = "Data/jsonrpc.filter";
     public long? MaxRequestBodySize { get; set; } = 30000000;
     public int MaxLogsPerResponse { get; set; } = 20_000;
+    public int MaxSubscriptionsPerConnection { get; set; } = 1_000;
+    public int MaxSubscriptions { get; set; } = 10_000;
     public int OverlayMaxBlockRange { get; set; } = 1_000;
     public bool EnableTracingStreamMode { get; set; } = true;
     public bool EnableLogsStreamMode { get; set; } = false;
@@ -83,6 +85,8 @@ public class JsonRpcConfig : IJsonRpcConfig
     public int JsonSerializationMaxDepth { get; set; } = EthereumJsonSerializer.DefaultMaxDepth;
     public long? MaxBatchResponseBodySize { get; set; } = 32.MiB;
     public long? MaxSimulateBlocksCap { get; set; } = 256;
+    public long? MaxSimulateCallsCap { get; set; } = 10000;
+    public long? MaxSimulateCallsPerBlockCap { get; set; } = 5000;
     public int EstimateErrorMargin { get; set; } = 150;
     public ulong RpcTxFeeCap { get; set; } = (ulong)1.Ether;
     public bool EnableEthSignTransaction { get; set; }
@@ -90,6 +94,7 @@ public class JsonRpcConfig : IJsonRpcConfig
     public string[] AllowedHosts { get; set; } = ["*"];
     public string[] EngineAllowedHosts { get; set; } = ["*"];
     public int WebSocketsProcessingConcurrency { get; set; } = 16;
+    public long MaxUnsentWebSocketResponseSize { get; set; } = 64.MiB;
     public int IpcProcessingConcurrency { get; set; } = 16;
     public int BatchProcessingConcurrency { get; set; } = 4;
     public bool EnablePerMethodMetrics { get; set; } = true;
