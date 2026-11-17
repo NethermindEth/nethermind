@@ -38,6 +38,7 @@ internal sealed class HttpJsonRpcResponseSink(
     private bool _completed;
     private long _accountedBytes;
     private long _reservedBytes;
+    private bool _responseCounted;
     private string? _caller;
     private bool _overLimit;
 
@@ -115,29 +116,59 @@ internal sealed class HttpJsonRpcResponseSink(
         long written = BytesWritten;
         long bytes = written - _accountedBytes;
         _accountedBytes = written;
-        if (unsentResponses is null || _overLimit || !keepsBytes || bytes <= 0)
+        if (unsentResponses is null || _overLimit)
         {
             return;
         }
 
+        if (keepsBytes && bytes > 0 && !TryReserve(bytes, written, isBatch))
+        {
+            return;
+        }
+
+        ReleaseFlushedBytes();
+    }
+
+    private bool TryReserve(long bytes, long written, bool isBatch)
+    {
         _caller ??= GetCallerKey(context.Connection);
         long limit = jsonRpcConfig.MaxUnsentResponsesSize;
-        if (unsentResponses.TryReserve(_caller, bytes, _reservedBytes == 0, limit, jsonRpcConfig.MaxUnsentResponsesPerAddress, GetBatchLimitAllowance(isBatch, written, limit)))
+        if (unsentResponses!.TryReserve(_caller, _reservedBytes, bytes, _responseCounted, limit, jsonRpcConfig.MaxUnsentResponsesPerAddress, GetBatchLimitAllowance(isBatch, limit)))
         {
             _reservedBytes += bytes;
-            return;
+            _responseCounted |= UnsentResponseCounter.IsCounted(_reservedBytes);
+            return true;
         }
 
         if (logger.IsWarn) logger.Warn($"Aborted a JSON-RPC response of {written} bytes to {_caller}, its unsent responses or those of the node are above JsonRpc.{nameof(jsonRpcConfig.MaxUnsentResponsesSize)} = {jsonRpcConfig.MaxUnsentResponsesSize} or JsonRpc.{nameof(jsonRpcConfig.MaxUnsentResponsesPerAddress)} = {jsonRpcConfig.MaxUnsentResponsesPerAddress}");
         _overLimit = true;
         StopRequested = true;
+        return false;
     }
 
-    private long GetBatchLimitAllowance(bool isBatch, long written, long limit) =>
+    private void ReleaseFlushedBytes()
+    {
+        if (_reservedBytes == 0 || _writer is not CountingPipeWriter writer)
+        {
+            return;
+        }
+
+        long flushed = _reservedBytes - (writer.WrittenCount - writer.FlushedCount);
+        if (flushed <= 0)
+        {
+            return;
+        }
+
+        _reservedBytes -= flushed;
+        bool uncounted = _responseCounted && !UnsentResponseCounter.IsCounted(_reservedBytes);
+        unsentResponses!.Release(_caller!, flushed, uncounted);
+        _responseCounted &= !uncounted;
+    }
+
+    private long GetBatchLimitAllowance(bool isBatch, long limit) =>
         isBatch
         && jsonRpcConfig.MaxBatchResponseBodySize is long batchLimit
         && batchLimit > 0
-        && written > batchLimit
         && batchLimit <= UnsentResponseCounter.CallerLimit(limit)
             ? batchLimit
             : 0;
@@ -173,8 +204,9 @@ internal sealed class HttpJsonRpcResponseSink(
             return;
         }
 
-        unsentResponses!.Release(_caller!, _reservedBytes);
+        unsentResponses!.Release(_caller!, _reservedBytes, _responseCounted);
         _reservedBytes = 0;
+        _responseCounted = false;
     }
 
     private void CompleteWrite(JsonRpcResponse response, RpcReport report, bool isBatch)

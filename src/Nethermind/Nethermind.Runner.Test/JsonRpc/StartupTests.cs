@@ -1134,28 +1134,30 @@ public class StartupTests
     }
 
     [Test]
-    public async Task ProcessJsonRpcRequest_AbortsAResponseAboveTheConnectionShareOfTheLimit([Values] bool limitEnabled)
+    public async Task ProcessJsonRpcRequest_AppliesTheAddressShareOnlyWhenTheAddressHasOtherUnsentResponses([Values] bool otherUnsent)
     {
         int responseSize = await SingleResponseSize();
         Startup startup = CreateStartup(NoAuthentication.Instance, rpcConfig: new JsonRpcConfig
         {
             EnabledModules = [ModuleType.Engine],
             BufferResponses = true,
-            MaxUnsentResponsesSize = limitEnabled ? 16 * (responseSize - 1) : 0
+            MaxUnsentResponsesSize = 16 * (responseSize - 1)
         });
-        (DefaultHttpContext unread, TaskCompletionSource sent) = CreateUnreadContext();
+        IPAddress address = IPAddress.Parse("10.0.0.9");
+        (DefaultHttpContext held, TaskCompletionSource heldSent) = CreateUnreadContext(remoteAddress: address);
+        (DefaultHttpContext next, TaskCompletionSource nextSent) = CreateUnreadContext(remoteAddress: address);
 
-        Task processing = startup.ProcessJsonRpcRequestCoreAsync(unread, UnauthenticatedEngineUrl);
-        (string response, int status) = await ProcessJsonRpcRequestWithStatus(CreateJsonRpcRequest(), startup: startup, isAuthenticated: true);
-        sent.TrySetResult();
-        await processing.WaitAsync(TimeSpan.FromSeconds(10));
+        Task heldProcessing = otherUnsent ? startup.ProcessJsonRpcRequestCoreAsync(held, UnauthenticatedEngineUrl) : Task.CompletedTask;
+        Task nextProcessing = startup.ProcessJsonRpcRequestCoreAsync(next, UnauthenticatedEngineUrl);
+        nextSent.TrySetResult();
+        heldSent.TrySetResult();
+        await Task.WhenAll(heldProcessing, nextProcessing).WaitAsync(TimeSpan.FromSeconds(10));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(sent.Task.IsFaulted, Is.EqualTo(limitEnabled));
-            Assert.That(status, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(heldSent.Task.IsFaulted, Is.False);
+            Assert.That(nextSent.Task.IsFaulted, Is.EqualTo(otherUnsent));
         }
-        AssertArrayResultResponse(response);
     }
 
     [Test]
@@ -1252,23 +1254,24 @@ public class StartupTests
     }
 
     [Test]
-    public async Task ProcessJsonRpcRequest_LimitsUnsentResponsesPerAddress()
+    public async Task ProcessJsonRpcRequest_LimitsLargeUnsentResponsesPerAddress()
     {
-        Startup startup = CreateStartup(NoAuthentication.Instance, rpcConfig: new JsonRpcConfig
+        Startup startup = CreateStartup(NoAuthentication.Instance, CreateLargeResultEngineModule(), new JsonRpcConfig
         {
             EnabledModules = [ModuleType.Engine],
             BufferResponses = true,
             MaxUnsentResponsesPerAddress = 2
         });
+        string request = CreateJsonRpcRequest(GetBlobsV2Method);
         IPAddress address = IPAddress.Parse("10.0.0.3");
         List<(Task Processing, TaskCompletionSource Sent)> pending = [];
         for (int i = 0; i < 2; i++)
         {
-            (DefaultHttpContext context, TaskCompletionSource sent) = CreateUnreadContext(remoteAddress: address);
+            (DefaultHttpContext context, TaskCompletionSource sent) = CreateUnreadContext(request, remoteAddress: address);
             pending.Add((startup.ProcessJsonRpcRequestCoreAsync(context, UnauthenticatedEngineUrl), sent));
         }
 
-        (DefaultHttpContext rejected, TaskCompletionSource rejectedSent) = CreateUnreadContext(remoteAddress: address);
+        (DefaultHttpContext rejected, TaskCompletionSource rejectedSent) = CreateUnreadContext(request, remoteAddress: address);
         await startup.ProcessJsonRpcRequestCoreAsync(rejected, UnauthenticatedEngineUrl).WaitAsync(TimeSpan.FromSeconds(10));
         foreach ((Task processing, TaskCompletionSource sent) in pending)
         {
@@ -1276,7 +1279,7 @@ public class StartupTests
             await processing.WaitAsync(TimeSpan.FromSeconds(10));
         }
 
-        (DefaultHttpContext next, TaskCompletionSource nextSent) = CreateUnreadContext(remoteAddress: address);
+        (DefaultHttpContext next, TaskCompletionSource nextSent) = CreateUnreadContext(request, remoteAddress: address);
         Task nextProcessing = startup.ProcessJsonRpcRequestCoreAsync(next, UnauthenticatedEngineUrl);
         nextSent.SetResult();
         await nextProcessing.WaitAsync(TimeSpan.FromSeconds(10));
@@ -1287,6 +1290,160 @@ public class StartupTests
             Assert.That(pending.Select(static item => item.Sent.Task.IsFaulted), Is.All.False);
             Assert.That(nextSent.Task.IsFaulted, Is.False);
         }
+    }
+
+    [Test]
+    public async Task ProcessJsonRpcRequest_DoesNotCountSmallUnsentResponsesAgainstTheAddressLimit()
+    {
+        const int responses = 12;
+        JsonRpcConfig config = new() { EnabledModules = [ModuleType.Engine], BufferResponses = true };
+        Startup startup = CreateStartup(NoAuthentication.Instance, rpcConfig: config);
+        IPAddress address = IPAddress.Loopback;
+        List<(Task Processing, TaskCompletionSource Sent)> pending = [];
+        for (int i = 0; i < responses; i++)
+        {
+            (DefaultHttpContext context, TaskCompletionSource sent) = CreateUnreadContext(CreateBlobsBatchRequest(4), remoteAddress: address);
+            pending.Add((startup.ProcessJsonRpcRequestCoreAsync(context, UnauthenticatedEngineUrl), sent));
+        }
+
+        bool allPending = pending.TrueForAll(static item => !item.Processing.IsCompleted);
+        foreach ((Task processing, TaskCompletionSource sent) in pending)
+        {
+            sent.TrySetResult();
+            await processing.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(config.MaxUnsentResponsesPerAddress, Is.LessThan(responses));
+            Assert.That(allPending, Is.True);
+            Assert.That(pending.Select(static item => item.Sent.Task.IsFaulted), Is.All.False);
+        }
+    }
+
+    [Test]
+    public async Task ProcessJsonRpcRequest_ReleasesAnUnbufferedResponseWhenItsSendEnds([Values] SendOutcome outcome)
+    {
+        int responseSize = await CapabilitiesResponseSize();
+        Startup startup = CreateStartup(NoAuthentication.Instance, CreateCapabilitiesEngineModule(), new JsonRpcConfig
+        {
+            EnabledModules = [ModuleType.Engine],
+            BufferResponses = false,
+            MaxUnsentResponsesSize = 16 * (responseSize + responseSize / 2)
+        });
+        IPAddress address = IPAddress.Parse("10.0.0.5");
+        TaskCompletionSource firstCompleting = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        (DefaultHttpContext first, TaskCompletionSource firstSent) = CreateUnreadContext(CapabilitiesRequest, remoteAddress: address, completing: firstCompleting);
+        (DefaultHttpContext refused, TaskCompletionSource refusedSent) = CreateUnreadContext(CapabilitiesRequest, remoteAddress: address);
+        (DefaultHttpContext after, TaskCompletionSource afterSent) = CreateUnreadContext(CapabilitiesRequest, remoteAddress: address);
+
+        Task firstProcessing = startup.ProcessJsonRpcRequestCoreAsync(first, UnauthenticatedEngineUrl);
+        await firstCompleting.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await startup.ProcessJsonRpcRequestCoreAsync(refused, UnauthenticatedEngineUrl).WaitAsync(TimeSpan.FromSeconds(10));
+        bool firstPending = !firstProcessing.IsCompleted;
+        switch (outcome)
+        {
+            case SendOutcome.Sent:
+                firstSent.SetResult();
+                break;
+            case SendOutcome.Failed:
+                firstSent.SetException(new IOException("reset"));
+                break;
+            case SendOutcome.Cancelled:
+                firstSent.SetCanceled();
+                break;
+        }
+
+        await firstProcessing.WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        Task afterProcessing = startup.ProcessJsonRpcRequestCoreAsync(after, UnauthenticatedEngineUrl);
+        afterSent.SetResult();
+        await afterProcessing.WaitAsync(TimeSpan.FromSeconds(10));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstPending, Is.True);
+            Assert.That(firstProcessing.IsCompleted, Is.True);
+            Assert.That(refusedSent.Task.IsFaulted, Is.True);
+            Assert.That(afterSent.Task.IsFaulted, Is.False);
+        }
+    }
+
+    [Test]
+    public async Task ProcessJsonRpcRequest_ReleasesBatchBytesThatAStreamedItemFlushed([Values] bool streamedItemFlushes)
+    {
+        int responseSize = await CapabilitiesResponseSize();
+        Startup startup = CreateStartup(NoAuthentication.Instance, CreateCapabilitiesEngineModule(streamedItemFlushes), new JsonRpcConfig
+        {
+            EnabledModules = [ModuleType.Engine],
+            BufferResponses = false,
+            MaxUnsentResponsesSize = 16 * (responseSize + responseSize / 2)
+        });
+        IPAddress address = IPAddress.Parse("10.0.0.6");
+        TaskCompletionSource batchCompleting = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        (DefaultHttpContext batch, TaskCompletionSource batchSent) = CreateUnreadContext($"[{CapabilitiesRequest},{CreateJsonRpcRequest(GetBlobsV2Method, idJson: "2")}]", remoteAddress: address, completing: batchCompleting);
+        (DefaultHttpContext single, TaskCompletionSource singleSent) = CreateUnreadContext(CapabilitiesRequest, remoteAddress: address);
+
+        Task batchProcessing = startup.ProcessJsonRpcRequestCoreAsync(batch, UnauthenticatedEngineUrl);
+        await batchCompleting.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Task singleProcessing = startup.ProcessJsonRpcRequestCoreAsync(single, UnauthenticatedEngineUrl);
+        singleSent.TrySetResult();
+        batchSent.TrySetResult();
+        await Task.WhenAll(batchProcessing, singleProcessing).WaitAsync(TimeSpan.FromSeconds(10));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batchSent.Task.IsFaulted, Is.False);
+            Assert.That(singleSent.Task.IsFaulted, Is.EqualTo(!streamedItemFlushes));
+        }
+    }
+
+    public enum SendOutcome
+    {
+        Sent,
+        Failed,
+        Cancelled
+    }
+
+    private static readonly string CapabilitiesRequest = CreateJsonRpcRequest("engine_exchangeCapabilities", paramsJson: "[[\"engine_newPayloadV4\"]]");
+
+    private static readonly string[] Capabilities = Enumerable.Range(0, 64).Select(static i => $"engine_capability{i:D4}").ToArray();
+
+    private static IEngineRpcModule CreateCapabilitiesEngineModule(bool streamedItemFlushes = true)
+    {
+        IEngineRpcModule engineModule = CreateEngineModule();
+        engineModule
+            .engine_exchangeCapabilities(Arg.Any<IEnumerable<string>>())
+            .Returns(_ => ResultWrapper<IReadOnlyList<string>>.Success(Capabilities));
+        engineModule
+            .engine_getBlobsV2(Arg.Any<byte[][]>())
+            .Returns(_ => Task.FromResult(ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>.Success(new ProbeBlobStreamableResult(async (writer, cancellationToken) =>
+            {
+                writer.Write("[null"u8);
+                if (streamedItemFlushes) await writer.FlushAsync(cancellationToken);
+                writer.Write("]"u8);
+            }))));
+        return engineModule;
+    }
+
+    private static async Task<int> CapabilitiesResponseSize()
+    {
+        (string single, _) = await ProcessJsonRpcRequestWithStatus(CapabilitiesRequest, startup: CreateStartup(engineModule: CreateCapabilitiesEngineModule()));
+        return Encoding.UTF8.GetByteCount(single);
+    }
+
+    private static readonly byte[] LargeResult = Encoding.UTF8.GetBytes("[" + string.Concat(Enumerable.Repeat("null,", (int)(UnsentResponseCounter.CountedResponseBytes / 5) + 1)) + "null]");
+
+    private static IEngineRpcModule CreateLargeResultEngineModule()
+    {
+        IEngineRpcModule engineModule = CreateEngineModule();
+        engineModule
+            .engine_getBlobsV2(Arg.Any<byte[][]>())
+            .Returns(_ => Task.FromResult(ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>.Success(new ProbeBlobStreamableResult(static (writer, _) =>
+            {
+                writer.Write(LargeResult);
+                return ValueTask.CompletedTask;
+            }))));
+        return engineModule;
     }
 
     [Test]
@@ -1332,17 +1489,22 @@ public class StartupTests
             MaxUnsentResponsesSize = 16 * share,
             MaxBatchResponseBodySize = batchLimitRaised ? 16 * share : share
         });
-        (DefaultHttpContext batch, TaskCompletionSource batchSent) = CreateUnreadContext(CreateBlobsBatchRequest(batchSize), remoteAddress: IPAddress.Parse("10.0.0.7"));
+        IPAddress batchAddress = IPAddress.Parse("10.0.0.7");
+        (DefaultHttpContext held, TaskCompletionSource heldSent) = CreateUnreadContext(remoteAddress: batchAddress);
+        (DefaultHttpContext batch, TaskCompletionSource batchSent) = CreateUnreadContext(CreateBlobsBatchRequest(batchSize), remoteAddress: batchAddress);
         (DefaultHttpContext other, TaskCompletionSource otherSent) = CreateUnreadContext(remoteAddress: IPAddress.Parse("10.0.0.8"));
 
+        Task heldProcessing = startup.ProcessJsonRpcRequestCoreAsync(held, UnauthenticatedEngineUrl);
         Task batchProcessing = startup.ProcessJsonRpcRequestCoreAsync(batch, UnauthenticatedEngineUrl);
         Task otherProcessing = startup.ProcessJsonRpcRequestCoreAsync(other, UnauthenticatedEngineUrl);
         batchSent.TrySetResult();
         otherSent.TrySetResult();
-        await Task.WhenAll(batchProcessing, otherProcessing).WaitAsync(TimeSpan.FromSeconds(10));
+        heldSent.TrySetResult();
+        await Task.WhenAll(heldProcessing, batchProcessing, otherProcessing).WaitAsync(TimeSpan.FromSeconds(10));
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(heldSent.Task.IsFaulted, Is.False);
             Assert.That(batchSent.Task.IsFaulted, Is.EqualTo(batchLimitRaised));
             Assert.That(otherSent.Task.IsFaulted, Is.False);
         }
@@ -1374,7 +1536,7 @@ public class StartupTests
 
     private static readonly JsonRpcUrl UnauthenticatedEngineUrl = new("http", "127.0.0.1", 0, RpcEndpoint.Http, false, [ModuleType.Engine]);
 
-    private static (DefaultHttpContext Context, TaskCompletionSource Sent) CreateUnreadContext(string? requestJson = null, string? connectionId = null, IPAddress? remoteAddress = null)
+    private static (DefaultHttpContext Context, TaskCompletionSource Sent) CreateUnreadContext(string? requestJson = null, string? connectionId = null, IPAddress? remoteAddress = null, TaskCompletionSource? completing = null)
     {
         TaskCompletionSource sent = new(TaskCreationOptions.RunContinuationsAsynchronously);
         byte[] request = Encoding.UTF8.GetBytes(requestJson ?? CreateJsonRpcRequest());
@@ -1390,7 +1552,11 @@ public class StartupTests
         IHttpResponseBodyFeature bodyFeature = Substitute.For<IHttpResponseBodyFeature>();
         bodyFeature.Stream.Returns(body);
         bodyFeature.Writer.Returns(PipeWriter.Create(body, new StreamPipeWriterOptions(leaveOpen: true)));
-        bodyFeature.CompleteAsync().Returns(sent.Task);
+        bodyFeature.CompleteAsync().Returns(_ =>
+        {
+            completing?.TrySetResult();
+            return sent.Task;
+        });
         context.Features.Set(bodyFeature);
         IHttpRequestLifetimeFeature lifetime = Substitute.For<IHttpRequestLifetimeFeature>();
         lifetime.When(static feature => feature.Abort()).Do(_ => sent.TrySetException(new IOException("aborted")));

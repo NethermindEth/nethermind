@@ -64,6 +64,7 @@ public class Startup : IStartup
     private IJsonRpcLocalStats _jsonRpcLocalStats = null!;
     private EthereumJsonSerializer _jsonSerializer = null!;
     private IJsonRpcConfig _jsonRpcConfig = null!;
+    private MinDataRate? _minResponseDataRate;
     private IRpcAuthentication? _rpcAuthentication;
     private ILogger _logger = default;
     private static readonly TimeSpan MinResponseDataRateGracePeriod = TimeSpan.FromSeconds(10);
@@ -86,6 +87,7 @@ public class Startup : IStartup
         _jsonRpcLocalStats = jsonRpcLocalStats;
         _jsonSerializer = jsonSerializer;
         _jsonRpcConfig = jsonRpcConfig;
+        _minResponseDataRate = CreateMinResponseDataRate(jsonRpcConfig);
         _logger = logger;
         _rpcAuthentication = rpcAuthentication;
     }
@@ -200,6 +202,7 @@ public class Startup : IStartup
         _jsonRpcLocalStats = jsonRpcLocalStats;
         _jsonSerializer = jsonSerializer;
         _jsonRpcConfig = jsonRpcConfig;
+        _minResponseDataRate = CreateMinResponseDataRate(jsonRpcConfig);
         _rpcAuthentication = rpcAuthentication;
         _logger = logger;
 
@@ -478,9 +481,12 @@ public class Startup : IStartup
     {
         if (ctx.Features.Get<IHttpMinResponseDataRateFeature>() is { } dataRate)
         {
-            dataRate.MinDataRate = _jsonRpcConfig.MinResponseDataRate > 0 ? new MinDataRate(_jsonRpcConfig.MinResponseDataRate, MinResponseDataRateGracePeriod) : null;
+            dataRate.MinDataRate = _minResponseDataRate;
         }
     }
+
+    private static MinDataRate? CreateMinResponseDataRate(IJsonRpcConfig jsonRpcConfig) =>
+        jsonRpcConfig.MinResponseDataRate > 0 ? new MinDataRate(jsonRpcConfig.MinResponseDataRate, MinResponseDataRateGracePeriod) : null;
 
     internal async Task ProcessJsonRpcRequestCoreAsync(HttpContext ctx, JsonRpcUrl jsonRpcUrl)
     {

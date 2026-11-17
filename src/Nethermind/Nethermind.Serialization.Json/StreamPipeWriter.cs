@@ -51,8 +51,11 @@ public sealed class CountingPipeWriter : CountingWriter
     public override void Complete(Exception? exception = null)
         => _writer.Complete(exception);
 
+    public long FlushedCount { get; private set; }
+
     public override ValueTask<FlushResult> FlushAsync(CancellationToken cancellationToken = default)
     {
+        FlushedCount = WrittenCount;
         ValueTask<FlushResult> flushTask = _writer.FlushAsync(cancellationToken);
         return flushTask.IsCompletedSuccessfully
             ? new ValueTask<FlushResult>(flushTask.GetAwaiter().GetResult())
