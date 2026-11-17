@@ -38,6 +38,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         internal static ulong SoftOutgoingMessageSizeLimit = 2UL.MiB;
         internal static ulong HardOutgoingReceiptsMessageSizeLimit = 10UL.MiB;
         internal static ulong HardOutgoingBodiesMessageSizeLimit = 15UL.MiB;
+        // The size limits can end a bodies response early, so blocks are read ahead a window at a time, not all at once.
+        private const int BodiesPrefetchWindow = 16;
         public Node Node => Session.Node;
         public string? ClientId => Node.ClientId;
         public virtual UInt256? TotalDifficulty { get; set; } = UInt256.Zero; // for compatibility with old code, which relies on 0 being the default value
@@ -374,6 +376,9 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     {
                         break;
                     }
+
+                    int remaining = hashes.Count - i;
+                    if (i % BodiesPrefetchWindow == 0 && remaining > 1) SyncServer.PrefetchBlocks(hashes, i, Math.Min(BodiesPrefetchWindow, remaining));
 
                     MemoryManager<byte>? block = SyncServer.FindBlockRlp(hashes[i]);
                     if (block is null)

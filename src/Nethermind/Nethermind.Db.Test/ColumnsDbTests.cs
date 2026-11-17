@@ -197,6 +197,20 @@ public class ColumnsDbTests
     }
 
     [Test]
+    public void Column_prefetch_reads_ahead_on_Linux_only()
+    {
+        const int count = 10;
+        const int keyLength = 8;
+        byte[] keys = new byte[count * keyLength];
+        for (int i = 0; i < count; i++) BinaryPrimitives.WriteInt64BigEndian(keys.AsSpan(i * keyLength, keyLength), i);
+        long before = Metrics.PrefetchedKeys;
+
+        ((IReadPrefetcher)_db.GetColumnDb(ReceiptsColumns.Blocks)).Prefetch(keys, keyLength);
+
+        Assert.That(Metrics.PrefetchedKeys - before, Is.EqualTo(OperatingSystem.IsLinux() ? count : 0));
+    }
+
+    [Test]
     public void Snapshot_cache_probe_reports_disk_reads_as_not_cached()
     {
         string path = DbPath + "-cache-probe";

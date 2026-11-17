@@ -573,6 +573,18 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             }
         }
 
+        [Test]
+        public void Prefetches_requested_bodies_a_window_at_a_time([Values(1, 16, 17, 40)] int count)
+        {
+            Hash256[] hashes = Enumerable.Range(0, count).Select(static i => Keccak.Compute(i.ToString())).ToArray();
+
+            RequestBlockBodies(hashes);
+
+            int[] starts = Enumerable.Range(0, (count + 15) / 16).Select(static w => w * 16).Where(start => count - start > 1).ToArray();
+            _syncManager.ReceivedWithAnyArgs(starts.Length).PrefetchBlocks(null!, 0, 0);
+            foreach (int start in starts) _syncManager.Received(1).PrefetchBlocks(Arg.Any<IReadOnlyList<Hash256>>(), start, Math.Min(16, count - start));
+        }
+
         private void ServeBlock(Hash256 hash, Block block) =>
             _syncManager.FindBlockRlp(hash).Returns(ArrayMemoryManager.From(new BlockDecoder().Encode(block)));
 

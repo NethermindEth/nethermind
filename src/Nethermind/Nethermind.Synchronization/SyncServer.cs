@@ -599,6 +599,26 @@ namespace Nethermind.Synchronization
             return number is null ? null : _blockStore.GetOwnedRlp(number.Value, hash);
         }
 
+        /// <inheritdoc/>
+        /// <remarks>Reads the block numbers in one batch, as <see cref="FindBlockRlp"/> needs them to find the blocks.</remarks>
+        public void PrefetchBlocks(IReadOnlyList<Hash256> hashes, int start, int count)
+        {
+            using ArrayPoolSpan<ValueHash256> blockHashes = new(count);
+            for (int i = 0; i < count; i++) blockHashes[i] = hashes[start + i].ValueHash256;
+
+            using ArrayPoolSpan<ulong?> numbers = new(count);
+            _headerStore.GetBlockNumbers(blockHashes, numbers);
+
+            using ArrayPoolSpan<(ulong Number, ValueHash256 Hash)> blocks = new(count);
+            int known = 0;
+            for (int i = 0; i < count; i++)
+            {
+                if (numbers[i] is { } number) blocks[known++] = (number, blockHashes[i]);
+            }
+
+            _blockStore.Prefetch(blocks.Slice(0, known));
+        }
+
         public BlockHeader? FindHeader(Hash256 hash) => _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
 
         public Hash256? FindHash(ulong number)

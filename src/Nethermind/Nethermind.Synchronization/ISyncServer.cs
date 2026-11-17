@@ -34,6 +34,9 @@ namespace Nethermind.Synchronization
         /// <summary>The stored block with <paramref name="hash"/>, encoded as the block store holds it.</summary>
         /// <returns>The encoded block, which the caller disposes, or <see langword="null"/> when its body is not stored.</returns>
         MemoryManager<byte>? FindBlockRlp(Hash256 hash);
+        /// <summary>Starts reading the stored blocks of <paramref name="count"/> hashes from <paramref name="start"/>, before the <see cref="FindBlockRlp"/> calls that need them.</summary>
+        /// <remarks>Returns before the block reads complete.</remarks>
+        void PrefetchBlocks(IReadOnlyList<Hash256> hashes, int start, int count) { }
         BlockHeader? FindHeader(Hash256 hash);
         Hash256? FindHash(ulong number);
         /// <summary>Finds the headers that a block headers request asks for, encoded for the network.</summary>

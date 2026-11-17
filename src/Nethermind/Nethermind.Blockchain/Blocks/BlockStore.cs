@@ -22,6 +22,7 @@ namespace Nethermind.Blockchain.Blocks;
 public class BlockStore : IBlockStore, IClearableCache
 {
     public const int CacheSize = 128 + 32;
+    private const int BlockKeyLength = 40;
 
     private readonly IDb _blockDb;
     private readonly IHeaderDecoder _headerDecoder;
@@ -234,6 +235,22 @@ public class BlockStore : IBlockStore, IClearableCache
         Span<byte> dbKey = stackalloc byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, dbKey);
         return ReadBlockMemory(dbKey) ?? ReadBlockMemory(blockHash.Bytes);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>Skips the prefetch when the last block is already cached.</remarks>
+    public void Prefetch(ReadOnlySpan<(ulong Number, ValueHash256 Hash)> blocks)
+    {
+        if (blocks.IsEmpty || _blockDb is not IReadPrefetcher prefetcher) return;
+
+        using ArrayPoolSpan<byte> keys = new(blocks.Length * BlockKeyLength);
+        Span<byte> keySpan = keys;
+        for (int i = 0; i < blocks.Length; i++)
+        {
+            KeyValueStoreExtensions.GetBlockNumPrefixedKey(blocks[i].Number, blocks[i].Hash, keySpan.Slice(i * BlockKeyLength, BlockKeyLength));
+        }
+
+        if (!prefetcher.IsCached(keySpan[^BlockKeyLength..])) prefetcher.Prefetch(keySpan, BlockKeyLength);
     }
 
     public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(ulong blockNumber, Hash256 blockHash)

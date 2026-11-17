@@ -220,6 +220,24 @@ public class SyncServerTests
         Assert.That(found?.Memory.ToArray(), Is.EqualTo(headerKnown ? blockRlp : null));
     }
 
+    [Test]
+    public void Prefetches_the_stored_blocks_of_the_known_hashes_in_the_window()
+    {
+        Context ctx = new();
+        using PrefetchingTestDb blockDb = new();
+        HeaderStore headerStore = new(new MemDb(), new MemDb());
+        Block known = Build.A.Block.WithNumber(5).TestObject;
+        Block outside = Build.A.Block.WithNumber(9).TestObject;
+        headerStore.InsertBlockNumber(known.Hash!, known.Number);
+        headerStore.InsertBlockNumber(outside.Hash!, outside.Number);
+        SyncServer server = ctx.CreateSyncServer(ctx.BlockTree, headerStore: headerStore, blockStore: new BlockStore(blockDb));
+
+        server.PrefetchBlocks([outside.Hash!, known.Hash!, TestItem.KeccakA, outside.Hash!], 1, 2);
+
+        byte[] knownKey = Bytes.Concat(known.Number.ToBigEndianByteArray(), known.Hash!.BytesToArray());
+        Assert.That(blockDb.Prefetches, Is.EqualTo(new[] { new[] { knownKey } }));
+    }
+
     [TestCase(true, true, true)]
     [TestCase(false, true, false)]
     [TestCase(true, false, false)]
@@ -1335,12 +1353,13 @@ public class SyncServerTests
             ISyncModeSelector? syncModeSelector = null,
             ISpecProvider? specProvider = null,
             IReceiptFinder? receiptFinder = null,
-            IHeaderStore? headerStore = null) =>
+            IHeaderStore? headerStore = null,
+            IBlockStore? blockStore = null) =>
             new(
                 WorldStateManager,
                 new MemDb(),
                 localBlockTree,
-                Substitute.For<IBlockStore>(),
+                blockStore ?? Substitute.For<IBlockStore>(),
                 headerStore ?? Substitute.For<IHeaderStore>(),
                 new HeaderDecoder(),
                 receiptFinder ?? NullReceiptStorage.Instance,

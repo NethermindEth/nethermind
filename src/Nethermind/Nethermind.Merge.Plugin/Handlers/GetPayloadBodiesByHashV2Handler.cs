@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -29,14 +30,11 @@ public sealed class GetPayloadBodiesByHashV2Handler(IBlockTree blockTree, ILogMa
         PayloadBodiesV2DirectResponse.PayloadBody?[] results = new PayloadBodiesV2DirectResponse.PayloadBody?[blockHashes.Count];
         try
         {
+            BlockHeader?[] headers = PayloadBodiesHandlerHelper.FindHeaders(blockTree, blockHashes);
             for (int i = 0; i < blockHashes.Count; i++)
             {
-                Hash256 blockHash = blockHashes[i];
-                results[i] = PayloadBodiesHandlerHelper.CreatePayloadBodyV2(
-                    blockStore,
-                    balStore,
-                    blockTree.FindHeader(blockHash, PayloadBodiesHandlerHelper.HashLookupOptions),
-                    blockHash);
+                PayloadBodiesHandlerHelper.PrefetchBodies(blockStore, headers, i);
+                results[i] = PayloadBodiesHandlerHelper.CreatePayloadBodyV2(blockStore, balStore, headers[i], blockHashes[i]);
             }
         }
         catch

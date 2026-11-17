@@ -24,7 +24,7 @@ using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
-public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStore, ISnapshotSortedKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot, IRangeRemovableKeyValueStore, IBatchReadOnlyDb
+public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStore, ISnapshotSortedKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot, IRangeRemovableKeyValueStore, IBatchReadOnlyDb, IReadPrefetcher
 {
     protected ILogger _logger;
 
@@ -692,6 +692,16 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             return true;
         }
     }
+
+    /// <inheritdoc/>
+    /// <remarks>Does nothing outside Linux: there the bindings read the keys before they return, so the caller would wait for them.</remarks>
+    void IReadPrefetcher.Prefetch(ReadOnlySpan<byte> keys, int keyLength)
+    {
+        if (OperatingSystem.IsLinux()) Prefetch(keys, keyLength, _columnFamily, _defaultReadOptions);
+    }
+
+    /// <inheritdoc/>
+    bool IReadPrefetcher.IsCached(ReadOnlySpan<byte> key) => IsCached(key, _columnFamily);
 
     internal int GetCStyleWithColumnFamily(scoped ReadOnlySpan<byte> key, Span<byte> output, IColumnFamilyHandle? cf, ReadOptions readOptions)
     {

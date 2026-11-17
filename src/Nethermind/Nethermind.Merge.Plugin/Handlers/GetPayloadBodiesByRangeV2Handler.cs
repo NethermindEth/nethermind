@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
@@ -43,15 +44,14 @@ public sealed class GetPayloadBodiesByRangeV2Handler(IBlockTree blockTree, ILogM
         ulong end = Math.Min(start + count - 1, headNumber);
         if (end < start) return new PayloadBodiesV2DirectResponse([]);
 
-        PayloadBodiesV2DirectResponse.PayloadBody?[] results = new PayloadBodiesV2DirectResponse.PayloadBody?[end - start + 1];
+        BlockHeader?[] headers = PayloadBodiesHandlerHelper.FindHeaders(blockTree, start, end);
+        PayloadBodiesV2DirectResponse.PayloadBody?[] results = new PayloadBodiesV2DirectResponse.PayloadBody?[headers.Length];
         try
         {
-            for (ulong i = start; i <= end; i++)
+            for (int i = 0; i < headers.Length; i++)
             {
-                results[i - start] = PayloadBodiesHandlerHelper.CreatePayloadBodyV2(
-                    blockStore,
-                    balStore,
-                    blockTree.FindHeader(i, PayloadBodiesHandlerHelper.RangeLookupOptions));
+                PayloadBodiesHandlerHelper.PrefetchBodies(blockStore, headers, i);
+                results[i] = PayloadBodiesHandlerHelper.CreatePayloadBodyV2(blockStore, balStore, headers[i]);
             }
         }
         catch
