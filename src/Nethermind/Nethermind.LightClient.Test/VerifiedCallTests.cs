@@ -150,6 +150,52 @@ public class VerifiedCallTests
         }
     }
 
+    [Test]
+    public async Task Frame_submission_from_a_guarded_sender_is_refused_before_relay([Values] bool guarded)
+    {
+        byte[] approve = [0x60, 0x03, 0x60, 0x00, 0x60, 0x00, 0xaa, 0x00];
+        FakeSource source = new(approve, contractBalance: 1_000_000_000) { BaseFee = 1 };
+        SingleReleaseSpecProvider spec = new(new KeyedFrameSpec(), 1, 1);
+        string rulesPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.rules");
+        await File.WriteAllTextAsync(rulesPath, $"from {(guarded ? Contract : new Address("0x00000000000000000000000000000000000000aa"))}\n");
+        try
+        {
+            using VerifiedCall calls = new(source, spec, NullLogManager.Instance);
+            using VerifiedRpc rpc = new(source, () => source.Head, 1, calls, spec, () => source.Head,
+                sendPolicy: new SendPolicyRelay(rulesPath, 1, NullLogManager.Instance));
+            Transaction transaction = new()
+            {
+                Type = TxType.FrameTx,
+                ChainId = 1,
+                SenderAddress = Contract,
+                NonceKeys = [(UInt256)7],
+                Nonce = 42,
+                GasPrice = 1,
+                DecodedMaxFeePerGas = 1,
+                MaxFeePerBlobGas = UInt256.Zero,
+                BlobVersionedHashes = [],
+                FrameSignatures = [],
+                Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, null, 200_000, 200_000, UInt256.Zero, default)],
+            };
+            transaction.GasLimit = FrameTxValidation.TotalGasLimit(transaction.Frames);
+            source.BlockGasLimit = 30_000_000;
+            byte[] encoded = TxDecoder.Instance.EncodeAsBytes(transaction, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
+            JsonElement parameters = JsonSerializer.SerializeToElement(new object[] { "0x" + Convert.ToHexString(encoded).ToLowerInvariant() });
+            if (guarded)
+            {
+                RpcException? error = await Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync("eth_sendRawTransaction", parameters, CancellationToken.None));
+                Assert.That(error!.Message, Does.Contain("frame transaction is not allowed"));
+                Assert.That(source.Broadcasts, Is.Zero);
+            }
+            else
+            {
+                Assert.That(await rpc.InvokeAsync("eth_sendRawTransaction", parameters, CancellationToken.None), Is.EqualTo(transaction.CalculateHash().ToString()));
+                Assert.That(source.Broadcasts, Is.EqualTo(1));
+            }
+        }
+        finally { File.Delete(rulesPath); }
+    }
+
     private sealed class KeyedFrameSpec() : ReleaseSpecDecorator(Eip8141Prototype.Instance)
     {
         public override bool IsEip8250Enabled => true;

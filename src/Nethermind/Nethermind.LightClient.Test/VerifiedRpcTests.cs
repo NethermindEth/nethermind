@@ -2640,6 +2640,52 @@ public class VerifiedRpcTests
     }
 
     [Test]
+    public async Task Failed_relay_releases_the_send_policy_cap_reservation([Values] bool relayFails)
+    {
+        using PrivateKey key = new("0x0000000000000000000000000000000000000000000000000000000000000001");
+        using Provider provider = new(new Account(7, (UInt256)1_000_000_000), headNumber: 20_000_000, accountAddress: key.Address);
+        string rulesPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.rules");
+        await File.WriteAllTextAsync(rulesPath, $"from {key.Address}\nto {AccountAddress} 3\ncap 42003 3600\n");
+        try
+        {
+            using VerifiedRpc rpc = provider.CreateRpc(sendPolicy: new SendPolicyRelay(rulesPath, 1, LimboLogs.Instance));
+            JsonElement Submit(ulong nonce)
+            {
+                Transaction transaction = new() { Nonce = nonce, GasLimit = 21_000, GasPrice = 2, To = AccountAddress, Value = 3 };
+                new EthereumEcdsa(1).Sign(key, transaction, true);
+                return Parameters("0x" + Convert.ToHexString(TxDecoder.Instance.EncodeAsBytes(transaction,
+                    RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm)).ToLowerInvariant());
+            }
+
+            if (relayFails)
+            {
+                provider.BroadcastFailure = new RpcException(-32000, "No peers.");
+                RpcException? failure = await Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync("eth_sendRawTransaction", Submit(7), CancellationToken.None));
+                Assert.That(failure!.Code, Is.EqualTo(-32000));
+                provider.BroadcastFailure = null;
+            }
+            else await rpc.InvokeAsync("eth_sendRawTransaction", Submit(7), CancellationToken.None);
+
+            if (relayFails)
+            {
+                await rpc.InvokeAsync("eth_sendRawTransaction", Submit(8), CancellationToken.None);
+                Assert.That(provider.Broadcasts.Single().Nonce, Is.EqualTo(8));
+            }
+            else
+            {
+                RpcException? refused = await Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync("eth_sendRawTransaction", Submit(8), CancellationToken.None));
+                Assert.That(refused!.Message, Does.Contain("over 'cap 42003 3600'"));
+                Assert.That(provider.Broadcasts.Single().Nonce, Is.EqualTo(7));
+            }
+        }
+        finally
+        {
+            File.Delete(rulesPath);
+            File.Delete(rulesPath + ".journal");
+        }
+    }
+
+    [Test]
     public async Task Blob_submission_validates_kzg_sidecar_before_relay([Values] bool tamper)
     {
         await KzgPolynomialCommitments.InitializeAsync(Nethermind.Logging.LimboLogs.Instance.GetClassLogger<VerifiedRpcTests>());
@@ -2888,6 +2934,7 @@ public class VerifiedRpcTests
         public VerifiedHead? LastQueriedHead { get; private set; }
         public List<(string Kind, Hash256? BlockHash)> Requests { get; } = [];
         public List<Transaction> Broadcasts { get; } = [];
+        public Exception? BroadcastFailure { get; set; }
         public bool OmitProof { get; init; }
         public bool TamperProof { get; init; }
         public bool TamperStorageProof { get; init; }
@@ -2936,6 +2983,7 @@ public class VerifiedRpcTests
         public Task BroadcastTransactionAsync(Transaction transaction, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (BroadcastFailure is not null) throw BroadcastFailure;
             Broadcasts.Add(transaction);
             return Task.CompletedTask;
         }

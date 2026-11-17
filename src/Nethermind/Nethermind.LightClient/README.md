@@ -362,13 +362,13 @@ complete SNAP download. If
 that also fails, the previous verified snapshot stays available at its original
 root. Merely relabeling old state with a new root is never safe.
 
-
 ## Send policy
 
 Add `--send-policy-rules <path>` to refuse `eth_sendRawTransaction` submissions
 that break a SendPolicy rule file, before the transaction is relayed to peers.
 The rule format and the `cap` journal (`<path>.journal`) are those of the
 Nethermind SendPolicy plugin. Without the option, submissions are relayed as before.
+
 ## Verified RPC contract
 
 | Method | Result source |
