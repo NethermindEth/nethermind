@@ -123,6 +123,7 @@ public class BlockchainProcessorTests
             Assert.That(blockTree.FindBlock(branch.MainChain[1].Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
             Assert.That(blockTree.FindBlock(branch.Head.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
             Assert.That(blockTree.Head?.Hash, Is.EqualTo(branch.Head.Hash));
+            Assert.That(blockTree.IsMainChain(branch.Head.Header), Is.True);
             Assert.That(container.Resolve<IBadBlockStore>().GetAll(), Is.Empty);
         }
     }
