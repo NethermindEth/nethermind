@@ -69,7 +69,7 @@ public class FreeDiskSpaceCheckerTests
         Task t = Task.Run(() => freeDiskSpaceChecker.EnsureEnoughFreeSpaceOnStart(startupTimerFactory));
         if (awaitsForFreeSpace)
         {
-            Assert.That(timerStarted.Wait(deadlockGuard) && !t.IsCompleted, Is.True, "the startup check waits on its timer");
+            Assert.That(timerStarted.Wait(deadlockGuard) && !t.Wait(TimeSpan.FromMilliseconds(100)), Is.True, "the startup check waits on its timer");
             startupTimer.Elapsed += Raise.Event();
         }
 
