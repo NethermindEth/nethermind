@@ -56,6 +56,7 @@ public class GetPayloadBodiesPrefetchTests
         {
             Assert.That(blockDb.Prefetches, Is.EqualTo(windows));
             blockTree.Received(!byHash && count > 1 ? 1 : 0).PrefetchCanonicalHeaders(1, count);
+            blockTree.Received(byHash && count > 1 ? 1 : 0).PrefetchHeaders(hashes);
         }
     }
 }

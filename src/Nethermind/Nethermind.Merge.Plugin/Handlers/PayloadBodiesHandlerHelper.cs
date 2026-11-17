@@ -36,6 +36,7 @@ internal static class PayloadBodiesHandlerHelper
     public static BlockHeader?[] FindHeaders(IBlockTree blockTree, IReadOnlyList<Hash256> blockHashes)
     {
         BlockHeader?[] headers = new BlockHeader?[blockHashes.Count];
+        if (headers.Length > 1) blockTree.PrefetchHeaders(blockHashes);
         for (int i = 0; i < headers.Length; i++) headers[i] = blockTree.FindHeader(blockHashes[i], HashLookupOptions);
         return headers;
     }

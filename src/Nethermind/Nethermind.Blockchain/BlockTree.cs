@@ -641,6 +641,14 @@ namespace Nethermind.Blockchain
         }
 
         /// <inheritdoc/>
+        /// <remarks>Reads the block numbers in one batch, as the headers are keyed by them.</remarks>
+        public void PrefetchHeaders(IReadOnlyList<Hash256> blockHashes)
+        {
+            using ArrayPoolSpan<(ulong Number, ValueHash256 Hash)> blocks = new(blockHashes.Count);
+            _headerStore.Prefetch(blocks.Slice(0, _headerStore.GetKnownBlocks(blockHashes, 0, blockHashes.Count, blocks)));
+        }
+
+        /// <inheritdoc/>
         /// <remarks>A level outside the cached window is read without caching it, as long scans read many.</remarks>
         public BlockHeader? FindCanonicalHeaderIfBloomMatches(ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
         {

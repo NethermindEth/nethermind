@@ -192,6 +192,10 @@ namespace Nethermind.Blockchain
         /// <remarks>Returns before the header reads complete. A tree that cannot read ahead does nothing.</remarks>
         void PrefetchCanonicalHeaders(ulong start, int count) { }
 
+        /// <summary>Starts reading the headers of <paramref name="blockHashes"/>, before the reads that need them.</summary>
+        /// <remarks>Returns before the header reads complete. A tree that cannot read ahead does nothing.</remarks>
+        void PrefetchHeaders(IReadOnlyList<Hash256> blockHashes) { }
+
         void DeleteInvalidBlock(Block invalidBlock);
 
         void DeleteBranchWithoutBadBlockReport(BlockHeader branchRoot);
