@@ -218,14 +218,7 @@ public class SnapServerTests
 
         using IByteArrayList result = _server.GetBlockAccessLists(request, long.MaxValue, CancellationToken.None);
 
-        Assert.That(result.Count, Is.EqualTo(expected.Count));
-        using (Assert.EnterMultipleScope())
-        {
-            for (int i = 0; i < expected.Count; i++)
-            {
-                Assert.That(result[i], Is.SequenceEqualTo(expected[i]), $"block {i}");
-            }
-        }
+        AssertServed(result, expected, expected.Count);
     }
 
     [Test]
@@ -246,7 +239,11 @@ public class SnapServerTests
 
         using IByteArrayList result = _server.GetBlockAccessLists(request, long.MaxValue, CancellationToken.None);
 
-        int served = Math.Min(count, (int)(ISnapStateServer.HardResponseByteLimit / listSize) + 1);
+        AssertServed(result, expected, Math.Min(count, (int)(ISnapStateServer.HardResponseByteLimit / listSize) + 1));
+    }
+
+    private static void AssertServed(IByteArrayList result, List<byte[]> expected, int served)
+    {
         Assert.That(result.Count, Is.EqualTo(served));
         using (Assert.EnterMultipleScope())
         {
