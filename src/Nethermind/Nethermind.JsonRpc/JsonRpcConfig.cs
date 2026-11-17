@@ -64,6 +64,7 @@ public class JsonRpcConfig : IJsonRpcConfig
     public int? TraceModuleConcurrentInstances { get; set; } = null;
     public int TraceBlockParallelism { get; set; } = 4;
     public int? EthModuleConcurrentInstances { get; set; } = null;
+    public int? EthCallMaxConcurrentRequests { get; set; } = null;
     public string JwtSecretFile { get; set; } = null;
     public bool UnsecureDevNoRpcAuthentication { get; set; }
     public int? MaxLoggedRequestParametersCharacters { get; set; } = null;
@@ -83,6 +84,9 @@ public class JsonRpcConfig : IJsonRpcConfig
     public int MaxBatchSize { get; set; } = 1024;
     public int JsonSerializationMaxDepth { get; set; } = EthereumJsonSerializer.DefaultMaxDepth;
     public long? MaxBatchResponseBodySize { get; set; } = 32.MiB;
+    public long MaxUnsentResponsesSize { get; set; } = 512.MiB;
+    public int MinResponseDataRate { get; set; } = 64 * 1024;
+    public int MaxUnsentResponsesPerAddress { get; set; } = 8;
     public long? MaxSimulateBlocksCap { get; set; } = 256;
     public long? MaxSimulateCallsCap { get; set; } = 10000;
     public long? MaxSimulateCallsPerBlockCap { get; set; } = 5000;

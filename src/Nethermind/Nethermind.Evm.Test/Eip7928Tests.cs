@@ -717,6 +717,47 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         }
     }
 
+    /// <summary>
+    /// EXTCODESIZE and EXTCODECOPY read the account at a precompile's address only after their last gas charge, so a
+    /// run one gas short of the opcode's cost leaves the precompile out of the BAL, and a run with the exact cost has
+    /// it as a pure read.
+    /// </summary>
+    [TestCase(Instruction.EXTCODESIZE)]
+    [TestCase(Instruction.EXTCODECOPY)]
+    public void Code_read_at_a_precompile_address_enters_BAL_only_after_the_opcodes_last_charge(Instruction opcode)
+    {
+        Address precompile = PrecompiledAddresses.Identity;
+        // Ending at the opcode makes its last charge, the access surcharge or the memory expansion, the run's last gas.
+        byte[] code = (opcode == Instruction.EXTCODESIZE
+                ? Prepare.EvmCode.PushData(precompile).Op(Instruction.EXTCODESIZE)
+                : Prepare.EvmCode.PushData(32).PushData(0).PushData(0x40).PushData(precompile).Op(Instruction.EXTCODECOPY))
+            .Op(Instruction.STOP).Done;
+        InitWorldState(TestState, code);
+
+        ulong cost = Run(_gasLimit).GasSpent;
+        (TransactionResult shortRun, _, BlockAccessListAtIndex shortBal) = Run(cost - 1);
+        (TransactionResult exactRun, _, BlockAccessListAtIndex exactBal) = Run(cost);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(shortRun.EvmExceptionType, Is.EqualTo(EvmExceptionType.OutOfGas), "one gas short");
+            Assert.That(shortBal.GetAccountChanges(precompile), Is.Null, "precompile in the BAL of the short run");
+            Assert.That(exactRun.EvmExceptionType, Is.EqualTo(EvmExceptionType.None), "exact cost");
+        }
+        AssertPureAccountRead(exactBal.GetAccountChanges(precompile));
+
+        (TransactionResult Result, ulong GasSpent, BlockAccessListAtIndex Bal) Run(ulong gasLimit)
+        {
+            (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) = CreateTracedProcessor(wrapPrecompileCache: true);
+            processor.SetBlockExecutionContext(new BlockExecutionContext(Build.A.Block.TestObject.Header, Amsterdam.Instance));
+            Transaction tx = Build.A.Transaction.To(_callTargetAddress).WithGasLimit(gasLimit).WithNonce(TestState.GetNonce(TestItem.AddressA))
+                .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
+            CallOutputTracer tracer = new();
+            TransactionResult result = processor.Execute(tx, tracer);
+            return (result, tracer.GasSpent, tracedState.GetGeneratingBlockAccessList()!);
+        }
+    }
+
     private static IEnumerable<TestCaseData> PreValidationRejectionCases()
     {
         yield return new TestCaseData(

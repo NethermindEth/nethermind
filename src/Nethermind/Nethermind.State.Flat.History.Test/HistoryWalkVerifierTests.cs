@@ -1276,7 +1276,6 @@ public class HistoryWalkVerifierTests
         public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => inner.Get(key, flags);
         public void Set(scoped ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) => inner.Set(key, value, flags);
         public string Name => inner.Name;
-        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => inner[keys];
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => inner.GetAll(ordered);
         public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => inner.GetAllKeys(ordered);
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => inner.GetAllValues(ordered);
