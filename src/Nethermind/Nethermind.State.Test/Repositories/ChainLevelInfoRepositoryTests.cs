@@ -617,7 +617,7 @@ public class ChainLevelInfoRepositoryTests
     {
         public List<int> BatchKeyLengths { get; } = [];
 
-        void IBatchReadOnlyDb.GetMany<T, TDecoder>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values, TDecoder decoder)
+        void IBatchReadOnlyDb.GetMany<T, TDecoder>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values, TDecoder decoder, ReadFlags flags)
         {
             BatchKeyLengths.Add(keyLength);
             for (int i = 0; i < values.Length; i++)

@@ -82,6 +82,46 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void GetMany_WithScalarFallback_PassesReadFlags()
+        {
+            using TestMemDb store = new();
+            store.Set(new byte[] { 0 }, new byte[] { 1 });
+
+            store.GetMany<long?, CountingValueDecoder>([0, 1], 1, new long?[2], default, ReadFlags.HintCacheMiss);
+
+            store.KeyWasReadWithFlags([0], ReadFlags.HintCacheMiss);
+            store.KeyWasReadWithFlags([1], ReadFlags.HintCacheMiss);
+        }
+
+        [Test]
+        public void GetMany_WithCacheMissHint_DoesNotFillBlockCache([Values(ReadFlags.None, ReadFlags.HintCacheMiss)] ReadFlags flags)
+        {
+            const int keyCount = 4096;
+            const int valueSize = 256;
+            using DbOnTheRocks db = CreateFreshDb("Blocks");
+            Random random = new(42);
+            byte[] keys = new byte[keyCount * sizeof(int)];
+            byte[] value = new byte[valueSize];
+            for (int i = 0; i < keyCount; i++)
+            {
+                Span<byte> key = keys.AsSpan(i * sizeof(int), sizeof(int));
+                BinaryPrimitives.WriteInt32BigEndian(key, i);
+                random.NextBytes(value);
+                db.PutSpan(key, value, WriteFlags.None);
+            }
+
+            db.Flush();
+            long usageBefore = BlockCacheUsage();
+
+            ((IDb)db).GetMany<long?, CountingValueDecoder>(keys, sizeof(int), new long?[keyCount], default, flags);
+
+            long added = BlockCacheUsage() - usageBefore;
+            Assert.That(added, flags == ReadFlags.HintCacheMiss ? Is.LessThan(keyCount * valueSize / 10) : Is.GreaterThan(keyCount * valueSize / 2));
+
+            long BlockCacheUsage() => long.Parse(db.GatherProperty("rocksdb.block-cache-usage")!);
+        }
+
+        [Test]
         public void GetMany_WithScalarFallback_ReplacesPreviousValueAfterDecoding([Values(1, 2, 3, 257)] int count)
         {
             using IDb store = new MemDb();
@@ -120,7 +160,8 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void GetMany_OnLinux_PrefetchesUncachedBatchKeys([Values("default", "column")] string backend, [Values(15, 16)] int count)
+        public void GetMany_OnLinux_PrefetchesUncachedBatchKeys([Values("default", "column")] string backend, [Values(15, 16)] int count,
+            [Values(ReadFlags.None, ReadFlags.HintCacheMiss)] ReadFlags flags)
         {
             using IDisposable owner = CreateBatchDatabase(backend);
             IDb store = owner is ColumnsDb<ReceiptsColumns> columns ? columns.GetColumnDb(ReceiptsColumns.Blocks) : (IDb)owner;
@@ -134,13 +175,13 @@ namespace Nethermind.Db.Test
             long?[] output = new long?[count];
 
             long before = Metrics.PrefetchedKeys;
-            store.GetMany<long?, CountingValueDecoder>(keys, sizeof(int), output, default);
+            store.GetMany<long?, CountingValueDecoder>(keys, sizeof(int), output, default, flags);
             long afterUncached = Metrics.PrefetchedKeys;
-            store.GetMany<long?, CountingValueDecoder>(keys, sizeof(int), output, default);
+            store.GetMany<long?, CountingValueDecoder>(keys, sizeof(int), output, default, flags);
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(afterUncached - before, Is.EqualTo(OperatingSystem.IsLinux() && count >= 16 ? count : 0));
+                Assert.That(afterUncached - before, Is.EqualTo(OperatingSystem.IsLinux() && count >= 16 && flags == ReadFlags.None ? count : 0));
                 Assert.That(Metrics.PrefetchedKeys - afterUncached, Is.Zero);
                 Assert.That(output, Is.All.Not.Null);
             }
