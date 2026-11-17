@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.Threading;
 using Autofac.Features.AttributeFilters;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -22,10 +21,11 @@ namespace Nethermind.Synchronization.SnapSync;
 public sealed class SnapServer(
     ISnapStateServer stateServer,
     [KeyFilter(DbNames.Code)] IReadOnlyKeyValueStore codeDb,
-    IBlockTree blockTree,
+    IHeaderStore headerStore,
     IBlockAccessListStore blockAccessListStore) : ISnapServer
 {
     private const long HardResponseByteLimit = ISnapStateServer.HardResponseByteLimit;
+    private const int AccessListReadChunkSize = 16;
 
     public bool CanServe => stateServer.CanServe;
 
@@ -99,27 +99,61 @@ public sealed class SnapServer(
         long currentByteCount = 0;
         using DeferredRlpItemList.Builder builder = new(blockHashes.Count);
         DeferredRlpItemList.Builder.Writer writer = builder.BeginRootContainer();
+        using ArrayPoolList<byte> lists = new(0);
+        Span<ValueHash256> hashes = stackalloc ValueHash256[AccessListReadChunkSize];
+        Span<ulong?> numbers = stackalloc ulong?[AccessListReadChunkSize];
+        Span<ValueHash256> knownHashes = stackalloc ValueHash256[AccessListReadChunkSize];
+        Span<ulong> knownNumbers = stackalloc ulong[AccessListReadChunkSize];
+        Span<Range?> ranges = stackalloc Range?[AccessListReadChunkSize];
 
-        foreach (ValueHash256 blockHash in blockHashes)
+        // A batch of lists is read whole even past the byte limit, which a peer sets. Batches start at one list
+        // and grow with the lists read, so a batch never reads more lists past the limit than were read before it.
+        int listReads = 0;
+        for (int start = 0; start < blockHashes.Count; start += AccessListReadChunkSize)
         {
             if (currentByteCount > byteLimit || cancellationToken.IsCancellationRequested) break;
 
-            Hash256 hash = blockHash.ToCommitment();
-            BlockHeader? header = blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            using MemoryManager<byte>? balRlp = header?.BlockAccessListHash is null
-                ? null
-                : blockAccessListStore.GetRlp(header.Number, hash);
-
-            if (balRlp is null)
+            int count = Math.Min(AccessListReadChunkSize, blockHashes.Count - start);
+            for (int i = 0; i < count; i++)
             {
-                writer.WriteValue([]);
-                currentByteCount += 1;
-                continue;
+                hashes[i] = blockHashes[start + i];
             }
 
-            ReadOnlySpan<byte> span = balRlp.Memory.Span;
-            writer.WriteValue(span);
-            currentByteCount += span.Length;
+            headerStore.GetBlockNumbers(hashes[..count], numbers[..count]);
+            int known = 0;
+            for (int i = 0; i < count; i++)
+            {
+                if (numbers[i] is not { } number) continue;
+                knownHashes[known] = hashes[i];
+                knownNumbers[known++] = number;
+            }
+
+            int read = 0;
+            int next = 0;
+            for (int i = 0; i < count; i++)
+            {
+                if (currentByteCount > byteLimit || cancellationToken.IsCancellationRequested) break;
+
+                if (numbers[i] is not null && next == read)
+                {
+                    int batch = Math.Min(Math.Clamp(listReads, 1, AccessListReadChunkSize), known - read);
+                    lists.Clear();
+                    blockAccessListStore.AppendRlps(knownNumbers.Slice(read, batch), knownHashes.Slice(read, batch), lists, ranges.Slice(read, batch));
+                    read += batch;
+                    listReads += batch;
+                }
+
+                if (numbers[i] is null || ranges[next++] is not { } range)
+                {
+                    writer.WriteValue([]);
+                    currentByteCount += 1;
+                    continue;
+                }
+
+                ReadOnlySpan<byte> span = lists.AsSpan()[range];
+                writer.WriteValue(span);
+                currentByteCount += span.Length;
+            }
         }
 
         writer.Dispose();

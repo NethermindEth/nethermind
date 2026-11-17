@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
@@ -300,7 +301,7 @@ public abstract class StateSyncFeedTestsBase(
             _snapServer = new SnapServer(
                 new SnapStateServer(trieStore.AsReadOnly(), LimboLogs.Instance),
                 codeDb,
-                Substitute.For<IBlockTree>(),
+                Substitute.For<IHeaderStore>(),
                 Substitute.For<IBlockAccessListStore>());
         }
 
