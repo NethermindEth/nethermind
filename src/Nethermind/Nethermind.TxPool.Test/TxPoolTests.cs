@@ -3257,10 +3257,30 @@ namespace Nethermind.TxPool.Test
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
             _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            Assert.That(_txPool.IsKnown(tx.Hash), Is.True, "the per-block cache must know a just-submitted tx whatever the long-term size");
 
             await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.TestObject);
 
             Assert.That(_txPool.IsKnown(tx.Hash), Is.EqualTo(hashCacheSize > 0));
+        }
+
+        [Test]
+        public async Task HashCacheSize_bounds_the_known_tx_hashes_kept_after_a_new_head()
+        {
+            const int hashCacheSize = 8;
+            const int txCount = 64;
+            _txPool = CreatePool(new TxPoolConfig { HashCacheSize = hashCacheSize });
+            Transaction[] txs = new Transaction[txCount];
+            for (int i = 0; i < txCount; i++)
+            {
+                txs[i] = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i]).TestObject;
+                EnsureSenderBalance(txs[i]);
+                _txPool.SubmitTx(txs[i], TxHandlingOptions.PersistentBroadcast);
+            }
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.TestObject);
+
+            Assert.That(txs.Count(tx => _txPool.IsKnown(tx.Hash)), Is.InRange(1, hashCacheSize));
         }
 
         [Test]

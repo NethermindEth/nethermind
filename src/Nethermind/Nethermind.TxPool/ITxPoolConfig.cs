@@ -86,7 +86,7 @@ public interface ITxPoolConfig : IConfig
     ulong FrameTxWidthCap { get; set; }
 
     [ConfigItem(DefaultValue = "131072",
-        Description = "The max number of cached hashes of already known transactions.")]
+        Description = "The max number of cached hashes of already known transactions. Keep it well above `Size` + `PersistentBlobStorageSize`: a pooled transaction whose hash is evicted is fetched from peers again, and resubmitting it is rejected as an underpriced replacement. `0` turns the cache off.")]
     int HashCacheSize { get; set; }
 
     [ConfigItem(DefaultValue = "null",
