@@ -342,7 +342,10 @@ public static class Utils
             }
             catch (Exception retryException)
             {
-                ReportResponseEnded($"{failure} retry=failed: {retryException.Message} ({retryException.GetBaseException().Message})");
+                string detail = retryException is HttpRequestException { HttpRequestError: var error } ? $" [{error}]" : string.Empty;
+                Exception root = retryException.GetBaseException();
+                string inner = ReferenceEquals(root, retryException) ? string.Empty : $" ({root.Message})";
+                ReportResponseEnded($"{failure} retry=failed{detail}: {retryException.Message}{inner}");
                 throw;
             }
         }
