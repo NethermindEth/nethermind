@@ -65,7 +65,7 @@ public class InclusionListTxSource(
         if (txs.Length < 2) return txs;
 
         // Unrecoverable senders can never be included; group them together under Zero.
-        Dictionary<AddressAsKey, int> firstSeen = new(txs.Length);
+        Dictionary<AddressAsKey, int> firstSeen = [with(txs.Length)];
         int next = 0;
         foreach (Transaction tx in txs)
             if (firstSeen.TryAdd(tx.SenderAddress ?? Address.Zero, next)) next++;

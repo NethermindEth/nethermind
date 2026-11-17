@@ -976,16 +976,17 @@ public class BlobTxStorageTests
             Assert.That(wrapper.Cells, Is.Null);
         }
 
-        static byte[] PersistMetadataRecord(Transaction tx, Func<BlobTxStorage, Transaction> read)
+        static byte[] PersistMetadataRecord(Transaction tx, Func<IBlobTxStorage, Transaction> read)
         {
             MemColumnsDb<BlobTxsColumns> columnsDb = new();
             IDb fullBlobTxsDb = columnsDb.GetColumnDb(BlobTxsColumns.FullBlobTxs);
-            BlobTxStorage storage = new(columnsDb);
+            using IContainer container = CreateStorageContainer(columnsDb);
+            IBlobTxStorage storage = container.Resolve<IBlobTxStorage>();
             storage.Add(tx);
             byte[] elidedKey = [0x01, .. tx.Hash!.Bytes];
             fullBlobTxsDb.Remove(elidedKey);
 
-            storage.AddWithoutBlobs(read(storage)!);
+            ((IBlobTxMetadataStorage)storage).AddWithoutBlobs(read(storage)!);
             return fullBlobTxsDb.Get(elidedKey)!;
         }
     }
@@ -994,15 +995,17 @@ public class BlobTxStorageTests
     public void TryGet_should_release_the_read_record([Values] bool withoutBlobs)
     {
         using TrackingColumnsDb db = new();
-        BlobTxStorage blobTxStorage = new(db);
+        using IContainer container = CreateStorageContainer(db);
+        IBlobTxStorage blobTxStorage = container.Resolve<IBlobTxStorage>();
+        IBlobTxMetadataStorage metadataStorage = (IBlobTxMetadataStorage)blobTxStorage;
         Transaction tx = CreateBlobTransaction();
         blobTxStorage.Add(tx);
 
         bool found = withoutBlobs
-            ? blobTxStorage.TryGetWithoutBlobs(tx.Hash!, tx.SenderAddress!, out Transaction read)
+            ? metadataStorage.TryGetWithoutBlobs(tx.Hash!, tx.SenderAddress!, out Transaction read)
             : blobTxStorage.TryGet(tx.Hash!, tx.SenderAddress!, tx.Timestamp, out read);
         bool missingFound = withoutBlobs
-            ? blobTxStorage.TryGetWithoutBlobs(TestItem.KeccakC, tx.SenderAddress!, out Transaction missing)
+            ? metadataStorage.TryGetWithoutBlobs(TestItem.KeccakC, tx.SenderAddress!, out Transaction missing)
             : blobTxStorage.TryGet(TestItem.KeccakC, tx.SenderAddress!, tx.Timestamp, out missing);
 
         using (Assert.EnterMultipleScope())
@@ -1382,6 +1385,12 @@ public class BlobTxStorageTests
         .WithMaxPriorityFeePerGas(1.GWei)
         .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Mainnet), signer).TestObject;
 
+    private static IContainer CreateStorageContainer(IColumnsDb<BlobTxsColumns> db) =>
+        new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton(db)
+            .Build();
+
     private sealed class TrackingColumnsDb : IColumnsDb<BlobTxsColumns>
     {
         private readonly MemColumnsDb<BlobTxsColumns> _inner = new();
@@ -1490,8 +1499,6 @@ public class BlobTxStorageTests
     {
         public string Name => inner.Name;
         public int ActiveSpans { get; private set; }
-
-        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => inner[keys];
 
         public byte[] Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => inner.Get(key, flags);
 

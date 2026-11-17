@@ -38,6 +38,8 @@ namespace Nethermind.State.Repositories
             return false;
         }
 
+        /// <summary>Loads the levels of <paramref name="blockNumbers"/> in order, as <see cref="LoadLevelWithoutCaching"/> does; <see langword="null"/> for a missing level.</summary>
+        /// <remarks>The levels not in the cache are read in one batch.</remarks>
         IOwnedReadOnlyList<ChainLevelInfo?> MultiLoadLevel(in ArrayPoolListRef<ulong> blockNumbers);
     }
 }

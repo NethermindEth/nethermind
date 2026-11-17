@@ -16,7 +16,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Evm;
 
-public readonly ref struct TransactionSubstate
+public readonly ref partial struct TransactionSubstate
 {
     private readonly ILogger _logger;
 
@@ -95,7 +95,7 @@ public readonly ref struct TransactionSubstate
 
         Error = Revert;
 
-        if (!isTracerConnected)
+        if (!DecodesRevertReason || !isTracerConnected)
             return;
 
         if (Output.IsEmpty)

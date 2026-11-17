@@ -227,7 +227,7 @@ namespace Nethermind.Facade.Find
                     while (!sourceDrained && pending.Count < _rpcConfigGetLogsThreads)
                     {
                         int chunkSize = MinBlocksPerParallelWorker << Math.Min(MaxChunkDoublings, chunksStarted++ / _rpcConfigGetLogsThreads);
-                        List<T> chunk = new(chunkSize);
+                        List<T> chunk = [with(chunkSize)];
                         while (chunk.Count < chunkSize && items.MoveNext()) chunk.Add(items.Current);
                         sourceDrained = chunk.Count < chunkSize;
                         if (chunk.Count != 0) pending.Enqueue(Task.Run(() => ScanChunk(chunk, worker, abandoned.Token)));
@@ -361,9 +361,11 @@ namespace Nethermind.Facade.Find
                             if (filter.Accepts(ref log))
                             {
                                 // On CL workload, recovery happens about 70% of the time.
-                                iterator.RecoverLogFieldsIfNeeded(ref receipt, out Hash256? recoveredTransactionHash);
+                                ReadOnlySpan<byte> transactionHashBytes = iterator.RecoverLogFieldsIfNeeded(ref receipt, out ValueHash256 recoveredTransactionHash)
+                                    ? recoveredTransactionHash.Bytes
+                                    : receipt.TxHash.Bytes;
 
-                                logs.Add(logIndexInBlock, blockNumber, blockTimestamp, blockHash, receipt, recoveredTransactionHash, ref txHash, log, in iterator);
+                                logs.Add(logIndexInBlock, blockNumber, blockTimestamp, blockHash, receipt, transactionHashBytes, ref txHash, log, in iterator);
                             }
 
                             logIndexInBlock++;
@@ -495,7 +497,7 @@ namespace Nethermind.Facade.Find
         private protected interface IBlockLogs<TSelf, TLog> : IDisposable where TSelf : struct, IBlockLogs<TSelf, TLog>
         {
             void Add(long logIndex, ulong blockNumber, ulong blockTimestamp, Hash256 blockHash, in TxReceiptStructRef receipt,
-                Hash256? recoveredTransactionHash, ref Hash256? transactionHash, in LogEntryStructRef log, in ReceiptsIterator iterator);
+                ReadOnlySpan<byte> transactionHashBytes, ref Hash256? transactionHash, in LogEntryStructRef log, in ReceiptsIterator iterator);
 
             IEnumerable<TLog> Complete();
 
@@ -511,7 +513,7 @@ namespace Nethermind.Facade.Find
             private List<FilterLog>? _logs;
 
             public void Add(long logIndex, ulong blockNumber, ulong blockTimestamp, Hash256 blockHash, in TxReceiptStructRef receipt,
-                Hash256? recoveredTransactionHash, ref Hash256? transactionHash, in LogEntryStructRef log, in ReceiptsIterator iterator)
+                ReadOnlySpan<byte> transactionHashBytes, ref Hash256? transactionHash, in LogEntryStructRef log, in ReceiptsIterator iterator)
             {
                 byte[] data = log.DataLength == 0 ? [] : new byte[log.DataLength];
                 log.CopyDataTo(data);
@@ -523,7 +525,7 @@ namespace Nethermind.Facade.Find
                     blockTimestamp,
                     blockHash,
                     receipt.Index,
-                    transactionHash ??= recoveredTransactionHash ?? receipt.TxHash.ToCommitment(),
+                    transactionHash ??= new Hash256(transactionHashBytes),
                     log.Address.ToAddress(),
                     data,
                     topics));
@@ -543,14 +545,14 @@ namespace Nethermind.Facade.Find
             private SerializedLogs? _logs;
 
             public void Add(long logIndex, ulong blockNumber, ulong blockTimestamp, Hash256 blockHash, in TxReceiptStructRef receipt,
-                Hash256? recoveredTransactionHash, ref Hash256? transactionHash, in LogEntryStructRef log, in ReceiptsIterator iterator) =>
+                ReadOnlySpan<byte> transactionHashBytes, ref Hash256? transactionHash, in LogEntryStructRef log, in ReceiptsIterator iterator) =>
                 (_logs ??= new SerializedLogs()).Add(
                     logIndex,
                     blockNumber,
                     blockTimestamp,
                     blockHash,
                     receipt.Index,
-                    recoveredTransactionHash is null ? receipt.TxHash.Bytes : recoveredTransactionHash.Bytes,
+                    transactionHashBytes,
                     log,
                     iterator);
 

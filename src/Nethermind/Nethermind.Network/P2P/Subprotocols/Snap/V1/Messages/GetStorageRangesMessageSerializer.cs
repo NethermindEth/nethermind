@@ -39,7 +39,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 
             message.StorageRange = new();
             message.StorageRange.RootHash = ctx.DecodeKeccak();
-            message.StorageRange.Accounts = ctx.DecodeNonNullArrayPoolList(static (ref RlpReader c) => new PathWithAccount() { Path = c.DecodeKeccak() }, limit: SnapMessageLimits.GetStorageRangeAccountsRlpLimit);
+            message.StorageRange.Accounts = ctx.DecodeNonNullArrayPoolList(static (ref RlpReader c) => new PathWithAccount() { Path = c.DecodeValueKeccakNonNull() }, limit: SnapMessageLimits.GetStorageRangeAccountsRlpLimit);
             message.StorageRange.StartingHash = ctx.DecodeValueKeccak();
             message.StorageRange.LimitHash = ctx.DecodeValueKeccak();
             message.ResponseBytes = ctx.DecodeLong();

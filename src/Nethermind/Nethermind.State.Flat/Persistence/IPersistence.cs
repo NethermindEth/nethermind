@@ -5,6 +5,7 @@ using System.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Persistence;
@@ -103,9 +104,14 @@ public interface IPersistence
     {
         void SelfDestruct(Address addr);
         void SetAccount(Address addr, Account? account);
+
+        /// <summary>Writes an account that is already in the slim account encoding, as persisted snapshots hold it.</summary>
+        /// <remarks>Lets a store that keeps accounts in this encoding write the bytes as they are, without decoding them.</remarks>
+        void SetSlimAccount(Address addr, scoped ReadOnlySpan<byte> slimRlp) => SetAccount(addr, AccountDecoder.Slim.Decode(slimRlp));
+
         void SetStorage(Address addr, in UInt256 slot, in UInt256? value);
         void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp);
-        void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp);
+        void SetStorageTrieNode(in ValueHash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp);
 
         /// <summary>
         /// Writes a slot whose value is already the trie-leaf RLP byte string (<c>RLP(stripped)</c>), as produced

@@ -393,6 +393,7 @@ namespace Nethermind.Core.Test.Crypto
         [Test]
         public void Legacy_sender_cache_respects_the_chain_id([Values] bool fromEncoding)
         {
+            EthereumEcdsaExtensions.ClearSenderCache();
             const ulong otherChainId = BlockchainIds.Holesky;
             EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia);
             EthereumEcdsa otherEcdsa = new(otherChainId);
@@ -542,6 +543,30 @@ namespace Nethermind.Core.Test.Crypto
                 Assert.That(variantSender, Is.Not.Null.And.Not.EqualTo(TestItem.PrivateKeyA.Address), "the variant recovers another signer");
                 Assert.That(originalSender, Is.EqualTo(TestItem.PrivateKeyA.Address), "the original recovers its signer");
                 Assert.That(variantSenderAgain, Is.EqualTo(variantSender), "the variant recovers the same signer again");
+            }
+
+            Address? Recover(Transaction tx) => fromEncoding ? ecdsa.RecoverAddress(tx, Encode(tx)) : ecdsa.RecoverAddress(tx);
+        }
+
+        [Test]
+        public void Legacy_sender_cache_separates_the_two_parities_of_v([Values] bool fromEncoding)
+        {
+            EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia);
+            Transaction signed = Build.A.Transaction.WithType(TxType.Legacy).WithNonce(fromEncoding ? 0x7202UL : 0x7200UL).TestObject;
+            ecdsa.Sign(TestItem.PrivateKeyA, signed, isEip155Enabled: true);
+            byte[] encoded = Encode(signed);
+            Transaction original = Rlp.Decode<Transaction>(encoded, RlpBehaviors.SkipTypedWrapping)!;
+            Transaction variant = Rlp.Decode<Transaction>(encoded, RlpBehaviors.SkipTypedWrapping)!;
+            Signature signature = variant.Signature!;
+            variant.Signature = new Signature(signature.RAsSpan, signature.SAsSpan, signature.V % 2 == 1 ? signature.V + 1 : signature.V - 1);
+
+            Address? variantSender = Recover(variant);
+            Address? originalSender = Recover(original);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(variantSender, Is.Not.Null.And.Not.EqualTo(TestItem.PrivateKeyA.Address), "the other parity recovers another signer");
+                Assert.That(originalSender, Is.EqualTo(TestItem.PrivateKeyA.Address), "the original recovers its signer");
             }
 
             Address? Recover(Transaction tx) => fromEncoding ? ecdsa.RecoverAddress(tx, Encode(tx)) : ecdsa.RecoverAddress(tx);

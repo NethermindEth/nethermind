@@ -588,29 +588,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     };
 
 
-    public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys]
-    {
-        get
-        {
-            ThrowIfDisposing();
-            UpdateReadMetrics(keys.Length);
-
-            try
-            {
-                if (_columnFamily is null) return _db.MultiGet(keys);
-
-                IColumnFamilyHandle[] columnFamilies = new IColumnFamilyHandle[keys.Length];
-                Array.Fill(columnFamilies, _columnFamily);
-                return _db.MultiGet(keys, columnFamilies);
-            }
-            catch (RocksDbException e)
-            {
-                HandleFatalDbError(e);
-                throw;
-            }
-        }
-    }
-
     internal Span<byte> GetSpanWithColumnFamily(scoped ReadOnlySpan<byte> key, IColumnFamilyHandle? cf, ReadOptions readOptions)
     {
         ObjectDisposedException.ThrowIf(_isDisposing, this);
@@ -1380,7 +1357,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         lock (_tuneLock)
         {
             Dictionary<string, string> steadyState = SnapshotBlobGarbageCollectionOptions();
-            Dictionary<string, string> reclaimOptions = new(BlobGarbageCollectionOptions);
+            Dictionary<string, string> reclaimOptions = [with(BlobGarbageCollectionOptions)];
             string compression = steadyState["blob_compression_type"];
             if (compression != "kNoCompression") reclaimOptions["blob_compression_type"] = compression;
             try
@@ -1440,7 +1417,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     /// configuration leaves unset, so the map starts out matching the options the database opens with.</summary>
     private static Dictionary<string, string> BuildEffectiveBlobGcOptions(IDictionary<string, string> configured)
     {
-        Dictionary<string, string> effective = new(BlobGarbageCollectionDefaults.Count);
+        Dictionary<string, string> effective = [with(BlobGarbageCollectionDefaults.Count)];
         foreach ((string key, string defaultValue) in BlobGarbageCollectionDefaults)
         {
             effective[key] = configured.TryGetValue(key, out string? configuredValue) ? configuredValue : defaultValue;
@@ -1453,7 +1430,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     /// runs with - so the restore reproduces them rather than inferring from <see cref="_currentTune"/>, which the
     /// runtime sync tuner can desync from the live options.</summary>
     /// <remarks>Must be called with <see cref="_tuneLock"/> held.</remarks>
-    private Dictionary<string, string> SnapshotBlobGarbageCollectionOptions() => new(_effectiveBlobGcOptions);
+    private Dictionary<string, string> SnapshotBlobGarbageCollectionOptions() => [with(_effectiveBlobGcOptions)];
 
     /// <summary>Re-applies the blob-GC options the database should carry after the compaction, re-derived from the
     /// tracked effective values so a <see cref="Tune"/> that ran during the unlocked compaction is honored. A

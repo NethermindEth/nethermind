@@ -2912,6 +2912,35 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Level_range_updates_reach_past_one_level_read_chunk()
+    {
+        const ulong head = 1100;
+        const ulong kept = 40;
+        BlockTree tree = Build.A.BlockTree().OfHeadersOnly.OfChainLength((int)head + 1).TestObject;
+
+        tree.UpdateBeaconMainChain(BlockInfos(1, head), head);
+        tree.UpdateBeaconMainChain(BlockInfos(1, kept), head);
+        for (ulong number = 1; number <= head; number++)
+            Assert.That(tree.FindLevel(number)!.BlockInfos[0].IsBeaconMainChain, Is.EqualTo(number <= kept), $"beacon level {number}");
+
+        Assert.That(tree.DeleteChainSlice(kept + 1, head), Is.EqualTo((int)(head - kept)));
+        for (ulong number = 0; number <= head; number++)
+            Assert.That(tree.FindLevel(number), number <= kept ? Is.Not.Null : Is.Null, $"deleted level {number}");
+
+        List<BlockInfo> BlockInfos(ulong from, ulong to)
+        {
+            List<BlockInfo> infos = [];
+            for (ulong number = from; number <= to; number++)
+            {
+                BlockInfo info = tree.FindLevel(number)!.BlockInfos[0];
+                infos.Add(new BlockInfo(info.BlockHash, info.TotalDifficulty) { BlockNumber = number });
+            }
+
+            return infos;
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_delete_a_future_slice([Values] bool insertBeaconHeader)
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;

@@ -43,7 +43,7 @@ namespace Nethermind.Trie
                 OldStyleTrieVisitContext = OldStyleTrieVisitContext.Add(nibble)
             };
 
-            public readonly Context AddStorage(in ValueHash256 storage) => new()
+            public readonly Context AddStorage(Hash256? storage) => new()
             {
                 PathContext = PathContext.AddStorage(storage),
                 OldStyleTrieVisitContext = OldStyleTrieVisitContext.AddStorage(storage)

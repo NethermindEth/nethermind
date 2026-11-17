@@ -24,8 +24,8 @@ public class StatelessBlockTree : IBlockTree, IBlockhashCache, IHeaderFinder
 
     public StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
     {
-        _hashToHeader = new(headers.Count);
-        _numberToHeader = new(headers.Count);
+        _hashToHeader = [with(headers.Count)];
+        _numberToHeader = [with(headers.Count)];
 
         foreach (BlockHeader header in headers)
         {
@@ -170,6 +170,9 @@ public class StatelessBlockTree : IBlockTree, IBlockhashCache, IHeaderFinder
         => throw new NotSupportedException();
 
     public void DeleteInvalidBlock(Block invalidBlock)
+        => throw new NotSupportedException();
+
+    public void DeleteBranchWithoutBadBlockReport(BlockHeader branchRoot)
         => throw new NotSupportedException();
 
     public void ReportBadBlock(Block badBlock)
