@@ -151,7 +151,8 @@ public partial class DebugRpcModuleTests
     /// <summary>
     /// As in geth's <c>debug_traceCall</c>, a <c>prevRandao</c> override decides PREVRANDAO from London on, judged on the
     /// overridden block number; before London a block from before the merge reads its difficulty, also with
-    /// <c>txIndex</c> and with a blob fee override.
+    /// <c>txIndex</c> and with a blob fee override, while a block that is already post-merge keeps reading its mix hash,
+    /// which the override sets. The head itself is not changed.
     /// </summary>
     [TestCase(true, null, null)]
     [TestCase(false, null, null)]
@@ -160,7 +161,11 @@ public partial class DebugRpcModuleTests
     // London from block 1: a number override of 0 moves the London head below London.
     [TestCase(false, null, null, "0x0")]
     [TestCase(false, "0x0", null, "0x0")]
-    public async Task Debug_traceCall_takes_a_prevRandao_override_from_London_on(bool london, string? txIndex, string? blobBaseFee, string? number = null)
+    // The same move with a head that is already post-merge (difficulty 0): plain, and with txIndex and a blob fee override.
+    [TestCase(false, null, null, "0x0", true)]
+    [TestCase(false, "0x0", "0x9", "0x0", true)]
+    public async Task Debug_traceCall_takes_a_prevRandao_override_from_London_on(bool london, string? txIndex, string? blobBaseFee,
+        string? number = null, bool postMerge = false)
     {
         ISpecProvider specProvider = number is null
             ? new TestSpecProvider(london ? London.Instance : Berlin.Instance)
@@ -168,9 +173,9 @@ public partial class DebugRpcModuleTests
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(builder =>
             builder.AddSingleton<ISpecProvider>(specProvider));
         BlockHeader head = chain.BlockTree.Head!.Header;
-        head.Difficulty = (UInt256)5;
+        head.Difficulty = postMerge ? UInt256.Zero : (UInt256)5;
         head.MixHash = TestItem.KeccakH;
-        head.IsPostMerge = false;
+        head.IsPostMerge = postMerge;
         const string address = "0xc200000000000000000000000000000000000000";
         Dictionary<string, object> blockOverrides = new() { ["prevRandao"] = TestItem.KeccakA.ToString() };
         if (blobBaseFee is not null) blockOverrides["blobBaseFee"] = blobBaseFee;
@@ -189,7 +194,9 @@ public partial class DebugRpcModuleTests
         {
             if (number is not null) Assert.That(head.Number, Is.GreaterThan(0UL), "the head is a London block");
             Assert.That(JToken.Parse(response)["result"]!["failed"]!.Value<bool>(), Is.False, response);
-            Assert.That(ParseReturnValue(response), Is.EqualTo(london ? TestItem.KeccakA.Bytes.ToArray() : head.Difficulty.ToBigEndian()));
+            Assert.That(ParseReturnValue(response), Is.EqualTo(london || postMerge ? TestItem.KeccakA.Bytes.ToArray() : head.Difficulty.ToBigEndian()));
+            Assert.That(head.IsPostMerge, Is.EqualTo(postMerge), "the head keeps its flag");
+            Assert.That(head.MixHash, Is.EqualTo(TestItem.KeccakH), "the head keeps its mix hash");
         }
     }
 

@@ -347,9 +347,10 @@ public partial class EthRpcModuleTests
 
         string response = await ctx.Test.TestEthRpc(method, new { from = TestItem.AddressA.ToString(), to = TestItem.AddressC.ToString() }, "latest", stateOverride, blockOverride);
 
-        JToken json = JToken.Parse(response);
-        bool reverted = json["error"] is not null || (json["result"] is JObject result && result["error"]?.Type == JTokenType.String);
-        Assert.That(reverted, Is.EqualTo(!london), response);
+        // Under London the call succeeds. On a Berlin block it reads the difficulty and reverts with no data; any other
+        // error fails the test.
+        JToken? expectedError = london ? null : JObject.FromObject(new { code = ErrorCodes.ExecutionReverted, message = "execution reverted", data = "0x" });
+        Assert.That(JToken.DeepEquals(JToken.Parse(response)["error"], expectedError), Is.True, response);
     }
 
     [Test]
