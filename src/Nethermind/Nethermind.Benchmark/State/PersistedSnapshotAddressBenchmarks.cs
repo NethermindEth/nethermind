@@ -99,8 +99,8 @@ public class PersistedSnapshotAddressBenchmarks
     [Benchmark]
     public bool Merge()
     {
-        using WholeReadSession older = _persisted[0].BeginWholeReadSession();
-        using WholeReadSession newer = _persisted[1].BeginWholeReadSession();
+        using WholeReadSession older = _persisted[1].BeginWholeReadSession();
+        using WholeReadSession newer = _persisted[0].BeginWholeReadSession();
         BufferWriter writer = new(_output);
         return PersistedSnapshotMerger.NWayMergeSnapshots<BufferWriter, WholeReadSession, WholeReadSessionReader, NoOpPin>(
             [older, newer], ref writer, _bloom);
