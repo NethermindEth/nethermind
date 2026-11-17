@@ -7,6 +7,7 @@ using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Test.Sync;
 using Nethermind.BeaconChain.Types;
@@ -495,13 +496,39 @@ public class BlockSignatureBatchProcessingTests
         return Refusal(() => ForkedStateTransition.Apply(new ForkedBeaconState.OfGloas(fixture.BeforeSlots.Clone()), new ForkedSignedBeaconBlock.OfGloas(signedBlock), new EpochCache(), fixture.Pubkeys, new AcceptingNotifier(), UpgradeEpochSpec(), validateResult: false, verifySignatures: true, proposerSignatureVerified));
     }
 
-    private sealed class CountingNotifier : INewPayloadNotifier
+    [Test]
+    public void Public_apply_observes_state_array_edits_from_the_payload_notifier([Values] bool editRegistry)
+    {
+        ImportableBlobBlock chain = ImportableBlobBlock.CreateWithoutBlobs();
+        BeaconStateFulu state = chain.AnchorState.Clone();
+        CountingNotifier notifier = new(() =>
+        {
+            if (editRegistry)
+            {
+                Validator changed = state.ReadOnlyValidators[0].Clone();
+                changed.WithdrawableEpoch--;
+                state.Validators![0] = changed;
+            }
+            else
+                state.Balances![0]++;
+        });
+        EpochCache cache = new() { Hasher = new CachedBeaconStateHasher() };
+
+        string? refusal = Refusal(() => FuluStateTransition.Apply(state, chain.Block, cache, chain.Pubkeys, notifier, chain.Spec, verifySignatures: false));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(notifier.Calls, Is.EqualTo(1));
+            Assert.That(refusal, Does.Contain("does not match the post-state root"));
+        }
+    }
+    private sealed class CountingNotifier(Action? duringPayload = null) : INewPayloadNotifier
     {
         public int Calls { get; private set; }
 
         public ExecutionStatus NotifyNewPayload(BeaconBlockBody body)
         {
             Calls++;
+            duringPayload?.Invoke();
             return ExecutionStatus.Valid;
         }
     }

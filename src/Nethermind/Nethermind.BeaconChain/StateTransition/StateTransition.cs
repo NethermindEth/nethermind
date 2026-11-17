@@ -5,6 +5,7 @@ using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.BeaconChain.StateTransition;
 
@@ -71,8 +72,14 @@ public static class StateTransition
         try
         {
             BlockProcessing.ProcessBlock(state, block, cache, pubkeys, notifier, maxBlobsPerBlock, verifySignatures);
-            if (validateResult && block.StateRoot != (tracked?.HashTreeRootAfterBlock(state) ?? cache.Hasher.HashTreeRoot(state)))
-                throw new BeaconStateException($"Block state root {block.StateRoot} does not match the post-state root");
+            if (validateResult)
+            {
+                Hash256 actual = tracked?.HashTreeRootAfterBlock(state) ?? cache.Hasher.HashTreeRoot(state);
+                if (block.StateRoot != actual)
+                    throw new BeaconStateException($"Block state root {block.StateRoot} does not match the post-state root");
+                if (trackBlockChanges && cache.Hasher is CachedBeaconStateHasher verified)
+                    verified.RecordVerifiedPostState(state, actual);
+            }
         }
         finally
         {

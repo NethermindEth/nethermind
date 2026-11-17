@@ -25,8 +25,8 @@ public static partial class SlotProcessing
     private static void ProcessSlot(BeaconStateFulu state, IBeaconStateHasher hasher, bool onlySlotChanges)
     {
         // Cache the state root.
-        Hash256 previousStateRoot = onlySlotChanges && hasher is CachedBeaconStateHasher cached
-            ? cached.HashTreeRootAfterSlot(state)
+        Hash256 previousStateRoot = hasher is CachedBeaconStateHasher cached
+            ? onlySlotChanges ? cached.HashTreeRootAfterSlot(state) : cached.HashTreeRootBeforeSlot(state)
             : hasher.HashTreeRoot(state);
         if (hasher is CachedBeaconStateHasher snapshot)
             snapshot.RecordSlotBaseline(state);

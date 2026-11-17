@@ -20,6 +20,36 @@ public class CachedHasherTests
 {
     private const ulong Gwei = 1_000_000_000;
 
+    public enum ParentProof { Admitted, Unadmitted, WrongRoot, WrongState, Exposed, InterveningHash, ChangedSharedField }
+
+    [Test]
+    public void First_slot_list_roots_require_an_unexposed_verified_parent([Values] ParentProof proof)
+    {
+        BeaconStateFulu parent = CreateState(129);
+        Hash256 parentRoot = FromFirstByte(0xa1);
+        CachedBeaconStateHasher hasher = new();
+        hasher.RecordVerifiedPostState(parent, hasher.HashTreeRoot(parent));
+        if (proof != ParentProof.Unadmitted)
+            hasher.AdmitBlock(parent, parentRoot);
+        if (proof == ParentProof.WrongState)
+            parent = parent.Clone();
+        if (proof == ParentProof.Exposed)
+            parent.ExposedForApi = true;
+        if (proof == ParentProof.InterveningHash)
+            _ = hasher.HashTreeRoot(parent);
+        if (proof == ParentProof.ChangedSharedField)
+            parent.Fork!.Epoch++;
+        if (proof != ParentProof.Admitted)
+            parent.Balances![8]++;
+
+        BeaconStateFulu working = parent.CloneForImport(hasher, proof == ParentProof.WrongRoot ? FromFirstByte(0xb1) : parentRoot);
+        ForkableArray<Validator>? buffer = working.ValidatorBuffer;
+        Hash256 actual = hasher.HashTreeRootBeforeSlot(working);
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(working.ValidatorBuffer, Is.SameAs(buffer), "hashing must borrow the validator array");
+        Assert.That(actual, Is.EqualTo(SszRoots.HashTreeRoot(working)));
+    }
+
     [Test]
     public void Block_leaf_updates_match_full_hashing_after_slashing_and_rewards([Values] bool siblingIntervenes)
     {

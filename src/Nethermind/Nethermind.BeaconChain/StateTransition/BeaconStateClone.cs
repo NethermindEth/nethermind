@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.BeaconChain.StateTransition;
 
@@ -23,4 +25,13 @@ public static partial class BeaconStateClone
     /// <paramref name="state"/> (and vice versa).
     /// </summary>
     public static partial BeaconStateFulu Clone(this BeaconStateFulu state);
+
+    /// <summary>Creates a private working copy for immediate slot processing by the import worker.</summary>
+    internal static BeaconStateFulu CloneForImport(this BeaconStateFulu parent, IBeaconStateHasher hasher, Hash256 parentRoot)
+    {
+        BeaconStateFulu clone = parent.Clone();
+        if (hasher is CachedBeaconStateHasher cached)
+            cached.RecordImportClone(parent, clone, parentRoot);
+        return clone;
+    }
 }

@@ -91,6 +91,7 @@ public partial class BeaconStateElectra
 public partial class BeaconStateFulu : BeaconStateElectra
 {
     internal BlockHashChanges? BlockChanges;
+    internal bool ExposedForApi;
 
     internal new static partial int GetSszFixedSectionLength();
 

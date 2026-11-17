@@ -126,6 +126,50 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
     private readonly UInt256[] _gloasFieldRoots = new UInt256[GloasFieldCount];
     private bool _fuluCachesLive;
 
+    private static readonly BlockHashChanges s_unchangedLists = new();
+    private readonly WeakReference<BeaconStateFulu> _verifiedPostState = new(null!);
+    private readonly WeakReference<BeaconStateFulu> _importClone = new(null!);
+    private Hash256? _verifiedStateRoot;
+    private Hash256? _admittedBlockRoot;
+
+    internal void RecordVerifiedPostState(BeaconStateFulu state, Hash256 stateRoot)
+    {
+        _verifiedPostState.SetTarget(state);
+        _verifiedStateRoot = stateRoot;
+    }
+
+    internal void AdmitBlock(BeaconStateFulu state, Hash256 blockRoot)
+    {
+        if (_verifiedStateRoot is not null && _verifiedPostState.TryGetTarget(out BeaconStateFulu? verified) && ReferenceEquals(verified, state))
+            _admittedBlockRoot = blockRoot;
+    }
+
+    internal void RecordImportClone(BeaconStateFulu parent, BeaconStateFulu clone, Hash256 parentRoot)
+    {
+        if (!parent.ExposedForApi && _admittedBlockRoot == parentRoot &&
+            _verifiedPostState.TryGetTarget(out BeaconStateFulu? verified) && ReferenceEquals(verified, parent))
+            _importClone.SetTarget(clone);
+    }
+
+    internal Hash256 HashTreeRootBeforeSlot(BeaconStateFulu state)
+    {
+        if (_verifiedStateRoot is { } expected && _importClone.TryGetTarget(out BeaconStateFulu? clone) && ReferenceEquals(clone, state) &&
+            _verifiedPostState.TryGetTarget(out BeaconStateFulu? parent) && !parent.ExposedForApi)
+        {
+            // Both arrays came from the verified parent. Recheck fields shared with other state readers.
+            Hash256 actual = HashTreeRoot(state, s_unchangedLists);
+            if (actual == expected)
+                return actual;
+        }
+        return HashTreeRoot(state);
+    }
+
+    private void InvalidateVerifiedPostState()
+    {
+        _verifiedStateRoot = _admittedBlockRoot = null;
+        _importClone.SetTarget(null!);
+    }
+
     private readonly WeakReference<BeaconStateFulu> _slotBaseline = new(null!);
     private readonly BlockHashChanges _blockChanges = new();
     private ulong _baselineSlot;
@@ -190,6 +234,7 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
 
     private Hash256 HashTreeRoot(BeaconStateFulu state, BlockHashChanges? changes)
     {
+        InvalidateVerifiedPostState();
         _slotBaseline.SetTarget(null!);
         // The generated Merkleize rejects this before computing anything; keep the same contract.
         if (state.LatestExecutionPayloadHeader is null)
@@ -251,6 +296,7 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
     public Hash256 HashTreeRoot(BeaconStateGloas state)
     {
         _slotBaseline.SetTarget(null!);
+        InvalidateVerifiedPostState();
         ValidateFixedVectors(nameof(BeaconStateGloas), state.Slashings, state.JustificationBits, state.ProposerLookahead);
         if (state.BuilderPendingPayments?.Length != (int)Presets.BuilderPendingPaymentsLength)
             throw new InvalidDataException($"Invalid SSZ value for {nameof(BeaconStateGloas)}.{nameof(state.BuilderPendingPayments)}: expected {Presets.BuilderPendingPaymentsLength} elements but found {state.BuilderPendingPayments?.Length ?? 0}.");

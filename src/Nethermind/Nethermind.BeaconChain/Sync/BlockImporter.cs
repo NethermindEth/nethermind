@@ -75,7 +75,7 @@ public sealed class BlockImporter : IBlockImporter
         if (_runner.GetBlockSlot(headRoot) is not { } headSlot || headSlot >= nextSlot || nextSlot - headSlot > 2) return;
         if (_preparedSlot is { } held && held.Parent == headRoot && held.State.Slot == nextSlot) return;
         if (_states.GetHeldBlockState(headRoot) is not { } parent) return;
-        BeaconStateFulu copy = parent.Clone();
+        BeaconStateFulu copy = parent.CloneForImport(_lineageCache.Hasher, headRoot);
         EpochCache cache = new() { Hasher = _lineageCache.Hasher, SigningSpec = _spec };
         SlotProcessing.ProcessSlots(copy, nextSlot, cache);
         _preparedSlot = new(headRoot, parent, copy, cache);
@@ -210,9 +210,16 @@ public sealed class BlockImporter : IBlockImporter
     /// <remarks>Shared as is, not copied: every import applies its block to a copy of the parent state, so a held state is never mutated afterwards.</remarks>
     internal ForkedBeaconState? GetStateForApi(Hash256 root) => IsGloasBlock(root)
         ? _states.GetHeldGloasBlockState(root) is { } gloas ? new ForkedBeaconState.OfGloas(gloas) : null
-        : _states.GetHeldBlockState(root, readStore: false) is { } fulu ? new ForkedBeaconState.OfFulu(fulu) : null;
+        : _states.GetHeldBlockState(root, readStore: false) is { } fulu ? ExposeForApi(new ForkedBeaconState.OfFulu(fulu)) : null;
 
-    internal ForkedBeaconState GetCheckpointStateForApi(CheckpointRef checkpoint) => _runner.GetCheckpointState(checkpoint);
+    internal ForkedBeaconState GetCheckpointStateForApi(CheckpointRef checkpoint) => ExposeForApi(_runner.GetCheckpointState(checkpoint));
+
+    private static ForkedBeaconState ExposeForApi(ForkedBeaconState state)
+    {
+        if (state is ForkedBeaconState.OfFulu fulu)
+            fulu.State.ExposedForApi = true;
+        return state;
+    }
 
     /// <inheritdoc/>
     public bool IsKnown(Hash256 blockRoot) => _runner.ContainsBlock(blockRoot);
@@ -549,13 +556,13 @@ public sealed class BlockImporter : IBlockImporter
             else if (onLineage)
             {
                 // Replay can now receive an INVALID execution verdict; preserve the parent until admission succeeds.
-                state = parentState.Clone();
+                state = parentState.CloneForImport(_lineageCache.Hasher, parentRoot);
                 cache = _lineageCache;
             }
             else
             {
                 if (_logger.IsDebug) _logger.Debug($"Importing block {blockRoot} at slot {block.Slot} on a copy of its parent's state: the lineage is at {_states.LineageRoot}");
-                state = parentState.Clone();
+                state = parentState.CloneForImport(_lineageCache.Hasher, parentRoot);
                 cache = new EpochCache { Hasher = _lineageCache.Hasher };
             }
 
@@ -661,6 +668,8 @@ public sealed class BlockImporter : IBlockImporter
             }
         }
 
+        if (cache.Hasher is CachedBeaconStateHasher hasher)
+            hasher.AdmitBlock(state, blockRoot);
         return BlockImportResult.Imported;
     }
 
