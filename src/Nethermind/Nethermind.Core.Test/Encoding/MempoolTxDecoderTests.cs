@@ -178,6 +178,8 @@ public partial class MempoolTxDecoderTests
     {
         MempoolTransaction blobTx = BuildBlobTransaction(Cancun.Instance);
         yield return new TestCaseData(blobTx with { NetworkWrapper = null }).SetName("Blob transaction without sidecar");
+        yield return new TestCaseData(BuildBlobCarryingFrameTransaction(Cancun.Instance) with { NetworkWrapper = null })
+            .SetName("Blob-carrying frame transaction without sidecar");
         yield return new TestCaseData(new MempoolTransaction(Build.A.Transaction.SignedAndResolved().TestObject, blobTx.NetworkWrapper))
             .SetName("Legacy transaction with sidecar");
     }

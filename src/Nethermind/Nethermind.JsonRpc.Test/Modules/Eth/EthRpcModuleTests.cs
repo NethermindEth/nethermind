@@ -217,6 +217,24 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x02f86c0180850165a0bc0085028fa6ae008252089400000000000000000000000000000000000000000180c080a063b08cc0a06c88fb1dd79f273736b3463af12c6754f9df764aa222d2693a5d43a0606b869eab1c9d01ff462f887826cb8f349ea8f1b59d0635ae77155b3b84ad86\",\"id\":67}"), serialized.Replace("\"", "\\\""));
     }
 
+    [TestCaseSource(typeof(DebugModuleTests), nameof(DebugModuleTests.MinedTransactionCases))]
+    public async Task Eth_get_raw_transaction_by_hash_for_mined_transaction(Transaction transaction)
+    {
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        bridge.TryGetTransaction(transaction.Hash!, out Arg.Any<TransactionLookupResult?>(), Arg.Any<bool>()).Returns(call =>
+        {
+            call[1] = new TransactionLookupResult(transaction, default, null);
+            return true;
+        });
+        using Context ctx = await Context.Create();
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
+
+        string serialized = await ctx.Test.TestEthRpc("eth_getRawTransactionByHash", transaction.Hash!.ToString());
+
+        string expected = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).ToHexString(true);
+        Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expected}\",\"id\":67}}"));
+    }
+
     [Test]
     public async Task Eth_get_raw_transaction_by_hash_from_pool()
     {

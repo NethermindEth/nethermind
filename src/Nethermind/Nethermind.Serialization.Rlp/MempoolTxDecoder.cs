@@ -152,11 +152,10 @@ public sealed class MempoolTxDecoder(TxDecoder txDecoder) : RlpDecoder<MempoolTr
         return BaseTxDecoder.GetTypedTransactionLength(Rlp.LengthOfSequence(contentLength), rlpBehaviors);
     }
 
+    /// <remarks>Refuses what <see cref="DecodeInternal(ref RlpReader, RlpBehaviors)"/> would refuse, so a lost sidecar fails here rather than at the peer.</remarks>
     private static Transaction? GetTransactionWithoutSidecar(MempoolTransaction item)
     {
-        // Only type 3 is refused: a blob-carrying frame tx without a sidecar is written in its canonical form,
-        // which Decode then rejects as a mempool-form frame tx missing its sidecar.
-        if (item.Transaction is { Type: TxType.Blob }) ThrowMissingSidecar(TxType.Blob);
+        if (item.Transaction is { Type: TxType.Blob } or { CarriesBlobs: true }) ThrowMissingSidecar(item.Transaction.Type);
         return item.Transaction;
     }
 

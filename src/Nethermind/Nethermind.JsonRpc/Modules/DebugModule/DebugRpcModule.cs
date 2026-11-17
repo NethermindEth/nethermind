@@ -70,7 +70,7 @@ public class DebugRpcModule(
     : IDebugRpcModule
 {
     private readonly ILogger _logger = logManager.GetClassLogger<DebugRpcModule>();
-    private static readonly MempoolTxDecoder TxRlpDecoder = MempoolTxDecoder.Instance;
+    private static readonly TxDecoder TxRlpDecoder = TxDecoder.Instance;
     private static readonly JsonSerializerOptions UnchangedDictionaryKeyOptions = new(EthereumJsonSerializer.JsonOptionsIndented) { DictionaryKeyPolicy = null };
     // Registry-resolved so AuRa chains encode/decode the block seal (step + signature) correctly.
     private readonly IRlpDecoder<Block> _blockDecoder = Rlp.GetDecoderOrThrow<Block>();
@@ -1033,7 +1033,10 @@ public class DebugRpcModule(
             return ResultWrapper<ArrayPoolList<byte>>.Success(ArrayPoolList<byte>.Empty());
         }
 
-        return ResultWrapper<ArrayPoolList<byte>>.Success(TxRlpDecoder.EncodeToArrayPoolList(transaction, RlpBehaviors.SkipTypedWrapping));
+        // A mined transaction is served in its canonical form, a pending one that carries a sidecar in its mempool form.
+        return ResultWrapper<ArrayPoolList<byte>>.Success(transaction.NetworkWrapper is null
+            ? TxRlpDecoder.EncodeToArrayPoolList(transaction.Transaction, RlpBehaviors.SkipTypedWrapping)
+            : MempoolTxDecoder.Instance.EncodeToArrayPoolList(transaction, RlpBehaviors.SkipTypedWrapping));
     }
 
     public ResultWrapper<RawReceiptsResult> debug_getRawReceipts(BlockParameter blockParameter)

@@ -81,7 +81,7 @@ namespace Nethermind.Consensus.Processing
                 IEnumerable<MempoolTransaction> transactions = blockToProduce?.Transactions ?? block.Transactions.Select(static tx => (MempoolTransaction)tx);
 
                 using ArrayPoolListRef<Transaction> includedTx = new(txCount);
-                using ArrayPoolListRef<MempoolTransaction> includedMempoolTx = new(txCount);
+                using ArrayPoolListRef<MempoolTransaction> includedMempoolTx = new(blockToProduce is not null ? txCount : 0);
 
                 HashSet<Transaction> consideredTx = [with(ByHashTxComparer.Instance)];
                 BlockAccessListItemBudget itemBudget = CreateItemBudget(block);
@@ -98,9 +98,9 @@ namespace Nethermind.Consensus.Processing
                     if (action == TxAction.Add)
                     {
                         includedTx.Add(currentTx);
-                        includedMempoolTx.Add(mempoolTx);
                         if (blockToProduce is not null)
                         {
+                            includedMempoolTx.Add(mempoolTx);
                             blockToProduce.TxByteLength += currentTx.GetLength();
                         }
                     }

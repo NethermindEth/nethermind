@@ -920,8 +920,12 @@ public partial class EthRpcModule(
             return ResultWrapper<ArrayPoolList<byte>?>.Success(null);
         }
 
-        MempoolTransaction transaction = new(transactionResult.Value.Transaction, transactionResult.Value.NetworkWrapper);
-        return ResultWrapper<ArrayPoolList<byte>?>.Success(MempoolTxRlpDecoder.EncodeToArrayPoolList(transaction, RlpBehaviors.SkipTypedWrapping));
+        Transaction transaction = transactionResult.Value.Transaction;
+        ShardBlobNetworkWrapper? networkWrapper = transactionResult.Value.NetworkWrapper;
+        // A mined transaction is served in its canonical form, a pending one that carries a sidecar in its mempool form.
+        return ResultWrapper<ArrayPoolList<byte>?>.Success(networkWrapper is null
+            ? TxRlpDecoder.EncodeToArrayPoolList(transaction, RlpBehaviors.SkipTypedWrapping)
+            : MempoolTxRlpDecoder.EncodeToArrayPoolList(new MempoolTransaction(transaction, networkWrapper), RlpBehaviors.SkipTypedWrapping));
     }
 
     public virtual ResultWrapper<TransactionForRpc[]> eth_pendingTransactions()

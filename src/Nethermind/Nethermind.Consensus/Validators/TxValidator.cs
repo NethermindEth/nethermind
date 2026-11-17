@@ -24,7 +24,7 @@ public sealed class TxValidator : ITxValidator
     public TxValidator(ulong chainId)
     {
         // Sender-independent failures must precede intrinsic gas so malformed transactions cannot
-        // trigger EIP-2780 sender recovery; expensive blob proof validation remains after the gas gate.
+        // trigger EIP-2780 sender recovery.
         RegisterValidator(TxType.Legacy, new CompositeTxValidator([
             NonceCapTxValidator.Instance,
             new LegacySignatureTxValidator(chainId),
