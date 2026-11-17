@@ -63,6 +63,8 @@ public sealed class ForkChoiceRunner
     private readonly List<QueuedAttestation> _queuedAttestations = [];
     private readonly Dictionary<CheckpointRef, ForkedBeaconState> _checkpointStates = [];
     private readonly Dictionary<CheckpointRef, JustifiedBalances> _justifiedBalances = [];
+    private readonly Dictionary<Hash256, Hash256?> _finalizedAncestors = [];
+    private CheckpointRef? _ancestryCheckpoint;
 
     private readonly List<(ShufflingKey Key, ForkedBeaconState State)> _voteStates = [];
 
@@ -419,6 +421,7 @@ public sealed class ForkChoiceRunner
     {
         CheckpointRef finalized = _store.FinalizedCheckpoint;
         _protoArray.MaybePrune(finalized.Root);
+        _finalizedAncestors.Clear();
         PruneCheckpointCache(_checkpointStates, finalized.Epoch);
         PruneCheckpointCache(_justifiedBalances, finalized.Epoch);
         PruneProposersAtOrBelowFinalizedSlot(BeaconStateAccessors.ComputeStartSlotAtEpoch(finalized.Epoch));
@@ -1850,7 +1853,52 @@ public sealed class ForkChoiceRunner
         parentSlot + 1 == headSlot && headSlot + 1 == proposalSlot;
 
     private Hash256 GetCheckpointBlock(Hash256 root, ulong epoch) =>
-        _protoArray.GetAncestor(root, BeaconStateAccessors.ComputeStartSlotAtEpoch(epoch)) ?? ResolveMissingCheckpointBlock(root, epoch);
+        (epoch == _store.FinalizedCheckpoint.Epoch ? GetFinalizedCheckpointBlock(root)
+            : _protoArray.GetAncestor(root, BeaconStateAccessors.ComputeStartSlotAtEpoch(epoch))) ?? ResolveMissingCheckpointBlock(root, epoch);
+
+    /// <summary>The block's ancestor at the finalized checkpoint, including the trusted startup anchor.</summary>
+    /// <remarks>Paths are cached until finality or pruning changes. Extending a checked path takes constant time; a cold path takes time linear in its uncached ancestors.</remarks>
+    internal Hash256? GetFinalizedCheckpointBlock(Hash256 root)
+    {
+        CheckpointRef finalized = _store.FinalizedCheckpoint;
+        if (_ancestryCheckpoint != finalized)
+        {
+            _finalizedAncestors.Clear();
+            _ancestryCheckpoint = finalized;
+        }
+
+        if (!_protoArray.ContainsBlock(root)) return null;
+
+        ulong finalizedSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(finalized.Epoch);
+        Hash256 current = root;
+        Hash256? ancestor;
+        while (!_finalizedAncestors.TryGetValue(current, out ancestor))
+        {
+            if (_protoArray.GetBlockSlot(current) <= finalizedSlot)
+            {
+                ancestor = current;
+                break;
+            }
+
+            if (_protoArray.GetParentRoot(current) is not { } parent)
+            {
+                // A mid-epoch startup anchor has no retained ancestor at its checkpoint's start slot.
+                ancestor = finalized == _bootstrapCheckpoint && current == finalized.Root ? current : null;
+                break;
+            }
+
+            current = parent;
+        }
+
+        Hash256 stop = current;
+        current = root;
+        while (_finalizedAncestors.TryAdd(current, ancestor) && current != stop)
+        {
+            current = _protoArray.GetParentRoot(current)!;
+        }
+
+        return ancestor;
+    }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private Hash256 ResolveMissingCheckpointBlock(Hash256 root, ulong epoch)

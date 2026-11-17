@@ -1197,7 +1197,7 @@ public class BlockImporterTests
     }
 
     [Test]
-    public void Child_of_an_invalid_parent_is_refused_before_any_engine_call()
+    public void Child_of_an_invalid_parent_is_refused_before_any_engine_call([Values] bool cacheAncestry)
     {
         UnsignedChain chain = UnsignedChain.Create();
         TestLogRecorder warnings = new(TestLogLevels.Warn | TestLogLevels.Error);
@@ -1206,6 +1206,11 @@ public class BlockImporterTests
         UnsignedChain.ChainBlock parent = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0xa1);
         UnsignedChain.ChainBlock child = chain.Extend(parent.Root, slot: 2, payloadHashByte: 0xa2);
         Assert.That(importer.Import(parent.Block, parent.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported), "fixture bug");
+        if (cacheAncestry)
+        {
+            ForkChoiceRunner runner = (ForkChoiceRunner)typeof(BlockImporter).GetField("_runner", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!;
+            Assert.That(runner.GetFinalizedCheckpointBlock(parent.Root), Is.EqualTo(chain.AnchorRoot));
+        }
         importer.OnForkchoiceUpdated(parent.Root, parent.Block.Message!.Body!.ExecutionPayload!.BlockHash!, new PayloadStatusV1 { Status = PayloadStatus.Invalid });
 
         BlockImportResult result = importer.Import(child.Block, child.Root, verifySignatures: false);

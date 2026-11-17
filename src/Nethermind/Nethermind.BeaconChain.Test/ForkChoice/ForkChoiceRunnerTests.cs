@@ -36,6 +36,100 @@ public class ForkChoiceRunnerTests
     public enum ConfirmedCandidate { ValidAncestor, OptimisticAncestor, OtherBranch, Unknown }
 
     [Test]
+    public void Cached_finalized_ancestors_match_walks_across_finality_and_pruning()
+    {
+        (UnsignedChain chain, ForkChoiceRunner runner) = CreateRunner();
+        ProtoArrayForkChoice tree = RunnerField<ProtoArrayForkChoice>(runner, "_protoArray");
+        ForkChoiceStore store = RunnerField<ForkChoiceStore>(runner, "_store");
+        CheckpointRef anchor = runner.FinalizedCheckpoint;
+        List<Hash256> roots = [chain.AnchorRoot];
+        for (ulong slot = 1; slot <= 128; slot++)
+        {
+            Hash256 root = TestHashes.GetRoot(slot);
+            tree.ProcessBlock(ProtoArrayTestBlocks.CreateProtoBlock(slot, root, roots[^1], anchor, anchor, ExecutionStatus.Optimistic, root), 128, anchor, anchor);
+            roots.Add(root);
+        }
+
+        for (ulong slot = 33; slot <= 128; slot++)
+        {
+            Hash256 root = TestHashes.GetRoot(256 + slot);
+            Hash256 parent = slot == 33 ? roots[16] : roots[^1];
+            tree.ProcessBlock(ProtoArrayTestBlocks.CreateProtoBlock(slot, root, parent, anchor, anchor, ExecutionStatus.Optimistic, root), 128, anchor, anchor);
+            roots.Add(root);
+        }
+
+        foreach (ulong epoch in (ReadOnlySpan<ulong>)[0, 1, 2])
+        {
+            CheckpointRef finalized = new(epoch, roots[(int)(epoch * chain.Spec.SlotsPerEpoch)]);
+            store.UpdateCheckpoints(finalized, finalized);
+            AssertAncestors();
+        }
+
+        tree.PruneThreshold = 0;
+        runner.Prune();
+        AssertAncestors();
+
+        void AssertAncestors()
+        {
+            for (int i = roots.Count - 1; i >= 0; i--)
+            {
+                Hash256? expected = tree.GetAncestor(roots[i], runner.FinalizedCheckpoint.Epoch * chain.Spec.SlotsPerEpoch);
+                Assert.That(runner.GetFinalizedCheckpointBlock(roots[i]), Is.EqualTo(expected), $"root {i}, finality {runner.FinalizedCheckpoint}");
+                Assert.That(runner.GetFinalizedCheckpointBlock(roots[i]), Is.EqualTo(expected), "cached result");
+            }
+        }
+    }
+
+    [Test]
+    public void Unknown_finalized_ancestor_can_become_known()
+    {
+        (UnsignedChain chain, ForkChoiceRunner runner) = CreateRunner();
+        ProtoArrayForkChoice tree = RunnerField<ProtoArrayForkChoice>(runner, "_protoArray");
+        Hash256 root = TestHashes.GetRoot(1);
+        Assert.That(runner.GetFinalizedCheckpointBlock(root), Is.Null);
+        CheckpointRef anchor = runner.FinalizedCheckpoint;
+        tree.ProcessBlock(ProtoArrayTestBlocks.CreateProtoBlock(1, root, chain.AnchorRoot, anchor, anchor, ExecutionStatus.Optimistic, root), 1, anchor, anchor);
+        Assert.That(runner.GetFinalizedCheckpointBlock(root), Is.EqualTo(chain.AnchorRoot));
+    }
+
+    [Test]
+    public void Finalized_ancestor_cache_work_is_linear_across_chain_extensions()
+    {
+        (UnsignedChain chain, ForkChoiceRunner runner) = CreateRunner();
+        ProtoArrayForkChoice tree = RunnerField<ProtoArrayForkChoice>(runner, "_protoArray");
+        AncestryLookupCounter counter = new();
+        Dictionary<Hash256, Hash256?> cache = [with(counter)];
+        typeof(ForkChoiceRunner).GetField("_finalizedAncestors", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.SetValue(runner, cache);
+        CheckpointRef anchor = runner.FinalizedCheckpoint;
+        Hash256 parent = chain.AnchorRoot;
+        const int blocks = 4096;
+        for (ulong slot = 1; slot <= blocks; slot++)
+        {
+            Hash256 root = TestHashes.GetRoot(slot);
+            tree.ProcessBlock(ProtoArrayTestBlocks.CreateProtoBlock(slot, root, parent, anchor, anchor, ExecutionStatus.Optimistic, root), blocks, anchor, anchor);
+            Assert.That(runner.GetFinalizedCheckpointBlock(root), Is.EqualTo(chain.AnchorRoot));
+            parent = root;
+        }
+
+        Assert.That(counter.HashCalls, Is.LessThanOrEqualTo(5 * blocks), "one cached parent lookup per extension instead of walking to the anchor");
+        TestContext.Out.WriteLine($"{blocks} extensions: {counter.HashCalls} ancestry cache key hashes");
+    }
+
+    private static T RunnerField<T>(ForkChoiceRunner runner, string name) =>
+        (T)typeof(ForkChoiceRunner).GetField(name, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(runner)!;
+
+    private sealed class AncestryLookupCounter : IEqualityComparer<Hash256>
+    {
+        public int HashCalls { get; private set; }
+        public bool Equals(Hash256? x, Hash256? y) => x == y;
+        public int GetHashCode(Hash256 value)
+        {
+            HashCalls++;
+            return value.GetHashCode();
+        }
+    }
+
+    [Test]
     public void Safe_confirmation_requires_a_valid_ancestor_of_the_head([Values] ConfirmedCandidate candidate)
     {
         (UnsignedChain chain, ForkChoiceRunner runner) = CreateRunner();

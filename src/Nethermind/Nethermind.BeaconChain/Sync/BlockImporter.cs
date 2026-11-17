@@ -366,33 +366,19 @@ public sealed class BlockImporter : IBlockImporter
             return $"the block is not after the finalized slot {finalizedSlot}";
         }
 
-        // The spec's get_checkpoint_block(parent_root, finalized.epoch) == finalized.root.
-        Hash256? checkpointBlock = null;
-        foreach (ProtoNode node in _runner.EnumerateAncestors(parentRoot))
+        // specs/bellatrix/optimistic-sync.md: the parent of the block MUST NOT have an INVALIDATED execution payload.
+        if (_runner.GetBlockExecutionStatus(parentRoot) == ExecutionStatus.Invalid)
         {
-            // specs/bellatrix/optimistic-sync.md: the parent of the block MUST NOT have an INVALIDATED execution payload.
-            if (node.Root == parentRoot && node.ExecutionStatus == ExecutionStatus.Invalid)
-            {
-                failedValidation = true;
-                return $"its parent {parentRoot} has an invalid execution payload";
-            }
-
-            if (node.Slot <= finalizedSlot)
-            {
-                checkpointBlock = node.Root;
-                break;
-            }
+            failedValidation = true;
+            return $"its parent {parentRoot} has an invalid execution payload";
         }
 
-        if (checkpointBlock != finalized.Root)
+        if (_runner.GetFinalizedCheckpointBlock(parentRoot) != finalized.Root)
         {
-            if (checkpointBlock is not null || !_runner.IsBootstrapCheckpointDescendant(parentRoot, finalized))
-            {
-                // ethereum/consensus-specs gloas/p2p-interface.md: "[REJECT] The current finalized checkpoint is an ancestor of the block".
-                rejectGossip = true;
-                failedValidation = true;
-                return $"the block does not descend from the finalized checkpoint {finalized}";
-            }
+            // ethereum/consensus-specs gloas/p2p-interface.md: "[REJECT] The current finalized checkpoint is an ancestor of the block".
+            rejectGossip = true;
+            failedValidation = true;
+            return $"the block does not descend from the finalized checkpoint {finalized}";
         }
 
         ulong parentSlot = _runner.GetBlockSlot(parentRoot)!.Value;
