@@ -904,6 +904,10 @@ public class DebugRpcModule(
         {
             return TracingFailed<IReadOnlyCollection<GethLikeTxTrace>>(exception);
         }
+        catch (JavaScriptTraceFailure exception)
+        {
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
+        }
 
         if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBadBlock)} request {blockHash}, result: {blockTrace}");
 

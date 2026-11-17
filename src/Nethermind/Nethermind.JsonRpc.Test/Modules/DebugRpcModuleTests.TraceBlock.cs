@@ -2250,16 +2250,17 @@ public partial class DebugRpcModuleTests
 
     [Test]
     public async Task Debug_traceBlock_javascript_selector_errors(
-        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock")] string method,
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock", "debug_traceBadBlock")] string method,
         [Values("unknownTracer", "{ ) }")] string tracer, [Values] bool mux, [Values] bool streamMode)
     {
         using Context context = await Context.Create();
         Transaction transaction = await AddBlockWithTransfer(context);
         Block block = context.Blockchain.BlockTree.Head!;
+        if (method == "debug_traceBadBlock") context.Blockchain.Container.Resolve<IBadBlockStore>().Insert(block);
         object selector = method switch
         {
             "debug_traceBlockByNumber" => block.Number,
-            "debug_traceBlockByHash" => block.Hash!,
+            "debug_traceBlockByHash" or "debug_traceBadBlock" => block.Hash!,
             _ => Rlp.Encode(block).ToHexString(true)
         };
         object options = mux
