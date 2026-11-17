@@ -61,17 +61,23 @@ public class CustodyRankedCandidatesTests
     }
 
     [Test]
-    public void Dial_history_is_bounded_and_evicts_the_oldest_outcome()
+    public void Dial_history_is_bounded_and_evicts_the_oldest_outcome([Values] bool refreshFirst)
     {
         PeerDialHistory history = new(new ManualTimestamper(), capacity: 2);
         history.Record("first", false);
         history.Record("second", false);
+        if (refreshFirst) history.Record("first", false);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(history.Quality("first"), Is.Negative);
+            Assert.That(history.CanDial("second"), Is.False);
+        }
         history.Record("third", false);
         Assert.That(history.Count, Is.EqualTo(2));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(history.CanDial("first"), Is.True);
-            Assert.That(history.CanDial("second"), Is.False);
+            Assert.That(history.CanDial("first"), Is.EqualTo(!refreshFirst));
+            Assert.That(history.CanDial("second"), Is.EqualTo(refreshFirst));
         }
     }
 
