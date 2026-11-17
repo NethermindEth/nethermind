@@ -27,6 +27,7 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
     private TopLevelGasTracker _gasTracker;
     private bool _captureStopped;
     private string? _invalidOpcodeError;
+    private string? _codeDepositError;
 
     /// <summary>
     /// Creates a streaming Geth-style transaction tracer.
@@ -181,10 +182,14 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
     public override void ReportActionError(EvmExceptionType evmExceptionType)
     {
         base.ReportActionError(evmExceptionType);
-        string? error = _invalidOpcodeError ?? evmExceptionType.GetEvmExceptionDescription();
+        string? error = _invalidOpcodeError ?? _codeDepositError ?? evmExceptionType.GetEvmExceptionDescription();
         _invalidOpcodeError = null;
+        _codeDepositError = null;
         CompleteAction(0, default, error);
     }
+
+    /// <inheritdoc/>
+    public override void ReportCodeDepositError(string error) => _codeDepositError = error;
 
     /// <inheritdoc/>
     /// <remarks>
