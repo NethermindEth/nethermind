@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Headers;
-using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Merge.Plugin.Data;
@@ -72,7 +71,7 @@ internal static class PayloadBodiesHandlerHelper
         IBlockStore blockStore, in ArrayPoolListRef<(ulong Number, ValueHash256 Hash)> blocks, in ArrayPoolListRef<int> positions, int count)
     {
         using ArrayPoolSpan<Range?> ranges = new(blocks.Count);
-        ArrayPoolList<byte> rlps = new(blocks.Count * RlpLengthEstimate);
+        ArrayPoolList<byte> rlps = [with(blocks.Count * RlpLengthEstimate)];
         blockStore.GetRlps(blocks.AsSpan(), rlps, ranges);
 
         ArrayPoolList<StoredBlock?> stored = new(count, count);
