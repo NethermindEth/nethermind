@@ -42,4 +42,10 @@ public class ValueHash256Converter(bool strictHexFormat = false) : JsonConverter
         Utf8JsonWriter writer,
         ValueHash256 keccak,
         JsonSerializerOptions options) => HexWriter.WriteFixed32HexRawValue(writer, keccak.Bytes);
+
+    public override ValueHash256 ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        Read(ref reader, typeToConvert, options);
+
+    public override void WriteAsPropertyName(Utf8JsonWriter writer, ValueHash256 value, JsonSerializerOptions options) =>
+        HexWriter.WriteFixed32HexPropertyName(writer, value.Bytes);
 }

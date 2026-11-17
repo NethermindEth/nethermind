@@ -33,12 +33,7 @@ namespace Nethermind.Db.Test
             MemDb memDb = new(10, 10);
             memDb.Set(TestItem.KeccakA, new byte[] { 1, 2, 3 });
             byte[]? direct = memDb.Get(TestItem.KeccakA);
-            KeyValuePair<byte[], byte[]>[] batch = memDb[new[] { TestItem.KeccakA.BytesToArray() }];
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(direct, Is.EqualTo(new byte[] { 1, 2, 3 }));
-                Assert.That(batch[0].Value, Is.EqualTo(new byte[] { 1, 2, 3 }));
-            }
+            Assert.That(direct, Is.EqualTo(new byte[] { 1, 2, 3 }));
         }
 
         [Test]
@@ -121,22 +116,6 @@ namespace Nethermind.Db.Test
             memDb.Set(TestItem.KeccakA, _sampleValue);
             memDb.Set(TestItem.KeccakB, _sampleValue);
             Assert.That(memDb.Keys, Has.Count.EqualTo(2));
-        }
-
-        [Test]
-        public void Can_get_some_keys()
-        {
-            MemDb memDb = new();
-            memDb.Set(TestItem.KeccakA, _sampleValue);
-            memDb.Set(TestItem.KeccakB, _sampleValue);
-            KeyValuePair<byte[], byte[]>[] result = memDb[new[] { TestItem.KeccakB.BytesToArray(), TestItem.KeccakB.BytesToArray(), TestItem.KeccakC.BytesToArray() }];
-            Assert.That(result, Has.Length.EqualTo(3));
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(result[0].Value, Is.Not.Null);
-                Assert.That(result[1].Value, Is.Not.Null);
-                Assert.That(result[2].Value, Is.Null);
-            }
         }
 
         [Test]

@@ -226,6 +226,13 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
             _flatWriteBatch.SetAccount(fakeAddrHash, rlp);
         }
 
+        public void SetSlimAccount(Address addr, scoped ReadOnlySpan<byte> slimRlp)
+        {
+            ValueHash256 fakeAddrHash = ValueKeccak.Zero;
+            addr.Bytes.CopyTo(fakeAddrHash.BytesAsSpan);
+            _flatWriteBatch.SetAccount(fakeAddrHash, slimRlp);
+        }
+
         public void SetStorage(Address addr, in UInt256 slot, in UInt256? value)
         {
             ValueHash256 fakeAddrHash = ValueKeccak.Zero;
@@ -249,7 +256,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
         public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) =>
             throw new NotSupportedException("Snap sync not supported in preimage mode");
 
-        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath) =>
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount) =>
             throw new NotSupportedException("Snap sync not supported in preimage mode");
     }
 
