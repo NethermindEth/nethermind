@@ -884,7 +884,7 @@ public class BlockchainBridgeTests
         yield return new TestCaseData("EstimateGas", 30UL, false, X(), true).SetArgDisplayNames("EstimateGas", "London");
         yield return new TestCaseData("EstimateFrameGas", 30UL, false, X(), true).SetArgDisplayNames("EstimateFrameGas", "frame spec");
         yield return new TestCaseData("Call", 10UL, false, X(30), true).SetArgDisplayNames("Call", "Berlin source, number override to London");
-        yield return new TestCaseData("Genesis", 0UL, false, X(), true).SetArgDisplayNames("Call", "block 0, London at 0");
+        yield return new TestCaseData("Call", 0UL, false, X(), true).SetArgDisplayNames("Call", "block 0, London at 0");
         yield return new TestCaseData("Call", 30UL, false, new BlockOverride { PrevRandao = Hash256.Zero }, true).SetArgDisplayNames("Call", "London, zero override");
         yield return new TestCaseData("Call", 10UL, false, X(), false).SetArgDisplayNames("Call", "Berlin");
         yield return new TestCaseData("Call", 30UL, false, X(10), false).SetArgDisplayNames("Call", "London source, number override to Berlin");
@@ -899,10 +899,11 @@ public class BlockchainBridgeTests
     [TestCaseSource(nameof(PrevRandaoOverrideCases))]
     public void Calls_take_a_prevRandao_override_from_London_on(string call, ulong number, bool flagged, BlockOverride blockOverride, bool expectOverride)
     {
-        ISpecProvider specProvider = call switch
+        // Block 0 is the genesis of a chain that starts at London; the other blocks cross London at block 20.
+        ISpecProvider specProvider = (call, number) switch
         {
-            "EstimateFrameGas" => new TestSpecProvider(Eip8141Prototype.Instance),
-            "Genesis" => new TestSpecProvider(London.Instance),
+            ("EstimateFrameGas", _) => new TestSpecProvider(Eip8141Prototype.Instance),
+            (_, 0) => new TestSpecProvider(London.Instance),
             _ => new CustomSpecProvider(((ForkActivation)0, Berlin.Instance), ((ForkActivation)20, London.Instance)),
         };
         using IContainer container = CreateContainerBuilder().AddSingleton<IPoSSwitcher>(NoPoS.Instance).AddSingleton(specProvider).Build();

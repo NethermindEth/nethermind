@@ -155,6 +155,7 @@ public partial class DebugRpcModuleTests
     /// hash, which the override sets, even below London. The head itself is not changed.
     /// </summary>
     [TestCase(true, null, null)]
+    [TestCase(true, null, "0x9")]
     [TestCase(false, null, null)]
     [TestCase(false, "0x0", null)]
     [TestCase(false, null, "0x9")]

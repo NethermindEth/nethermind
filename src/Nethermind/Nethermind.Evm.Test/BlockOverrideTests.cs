@@ -40,10 +40,8 @@ public class BlockOverrideTests
     }
 
     // As in geth, a prevRandao override decides PREVRANDAO from London on; before it the call keeps its block's value.
-    [TestCase(true, true)]
-    [TestCase(false, true)]
-    [TestCase(true, false)]
-    public void A_prevRandao_override_counts_from_London_on(bool london, bool hasPrevRandao)
+    [Test]
+    public void A_prevRandao_override_counts_from_London_on([Values] bool london, [Values] bool hasPrevRandao)
     {
         BlockOverride blockOverride = new() { PrevRandao = hasPrevRandao ? TestItem.KeccakA : null };
 
