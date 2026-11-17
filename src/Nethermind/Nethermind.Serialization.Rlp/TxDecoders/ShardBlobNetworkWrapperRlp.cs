@@ -38,13 +38,16 @@ internal static class ShardBlobNetworkWrapperRlp
         ProofVersion version = ProofVersion.V0;
         if (!reader.IsNextSequence && !reader.IsNextItemEmptyByteArray())
         {
-            // The version was read as a raw byte, so the non-canonical 0x00 for V0 stays accepted.
-            version = reader.PeekByte() == 0
-                ? (ProofVersion)reader.ReadRaw(1)[0]
-                : (ProofVersion)reader.DecodeByte<TCanonicalChecks>();
-            if (version > LatestVersion)
+            if ((rlpBehaviors & RlpBehaviors.Storage) != 0 && reader.PeekByte() == 0)
             {
-                throw new RlpReaderException($"Unknown version of {nameof(ShardBlobNetworkWrapper)}. Expected no more than {(int)LatestVersion} and is {version}");
+                // Older stored records may carry an explicit V0 byte.
+                reader.ReadRaw(1);
+            }
+            else
+            {
+                version = (ProofVersion)reader.DecodeByte<TCanonicalChecks>();
+                if (version != ProofVersion.V1)
+                    throw new RlpReaderException($"Invalid explicit version of {nameof(ShardBlobNetworkWrapper)}: {version}");
             }
         }
 
@@ -72,7 +75,7 @@ internal static class ShardBlobNetworkWrapperRlp
         {
             byte[][] commitments = reader.DecodeByteArrays<TCanonicalChecks>(CommitmentsCountLimit);
             RlpLimit proofsCountLimit = version is ProofVersion.V1 ? CellProofsCountLimit : ProofsCountLimit;
-            byte[][] proofs = reader.DecodeByteArrays<TCanonicalChecks>(proofsCountLimit);
+            byte[] proofs = DecodeProofs<TCanonicalChecks>(ref reader, proofsCountLimit);
             BlobCellMask cellMask = default;
             byte[][]? cells = null;
 
@@ -173,6 +176,40 @@ internal static class ShardBlobNetworkWrapperRlp
         }
     }
 
+    private static byte[] DecodeProofs<TCanonicalChecks>(ref RlpReader reader, RlpLimit countLimit) where TCanonicalChecks : struct, IFlag
+    {
+        RlpReader items = reader.EnterSequence<TCanonicalChecks>(out int itemLength);
+        int count = items.CountItems<TCanonicalChecks>(countLimit);
+        byte[] proofs = count == 0 ? [] : new byte[count * ShardBlobNetworkWrapper.BytesPerProof];
+        for (int i = 0; i < count; i++)
+        {
+            ReadOnlySpan<byte> proof = items.DecodeByteArraySpan<TCanonicalChecks>();
+            if (proof.Length != ShardBlobNetworkWrapper.BytesPerProof)
+            {
+                throw new RlpReaderException($"Proof {i} of {nameof(ShardBlobNetworkWrapper)} has {proof.Length} bytes. Expected {ShardBlobNetworkWrapper.BytesPerProof}");
+            }
+
+            proof.CopyTo(proofs.AsSpan(i * ShardBlobNetworkWrapper.BytesPerProof));
+        }
+
+        reader.ExitSequence(in items, itemLength);
+        return proofs;
+    }
+
+    private static void EncodeProofs(ref RlpWriter writer, byte[] proofs)
+    {
+        RlpSequence sequence = writer.StartSequence(GetProofsContentLength(proofs));
+        for (int offset = 0; offset < proofs.Length; offset += ShardBlobNetworkWrapper.BytesPerProof)
+        {
+            writer.Encode(proofs.AsSpan(offset, ShardBlobNetworkWrapper.BytesPerProof));
+        }
+
+        writer.EndSequence(sequence);
+    }
+
+    private static int GetProofsContentLength(byte[] proofs) =>
+        proofs.Length / ShardBlobNetworkWrapper.BytesPerProof * Rlp.LengthOfByteString(ShardBlobNetworkWrapper.BytesPerProof, firstByte: 0);
+
     [SkipLocalsInit]
     public static void Encode(ref RlpWriter writer, ShardBlobNetworkWrapper wrapper, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -183,7 +220,7 @@ internal static class ShardBlobNetworkWrapperRlp
 
         writer.Encode(wrapper.Blobs);
         writer.Encode(wrapper.Commitments);
-        writer.Encode(wrapper.Proofs);
+        EncodeProofs(ref writer, wrapper.Proofs);
 
         if (rlpBehaviors.HasFlag(RlpBehaviors.Storage))
         {
@@ -198,7 +235,7 @@ internal static class ShardBlobNetworkWrapperRlp
         wrapper.Version switch { ProofVersion.V0 => 0, ProofVersion.V1 => 1, _ => throw new RlpReaderException($"Unknown version of {nameof(ShardBlobNetworkWrapper)}: {wrapper.Version}") }
         + Rlp.LengthOf(wrapper.Blobs)
         + Rlp.LengthOf(wrapper.Commitments)
-        + Rlp.LengthOf(wrapper.Proofs)
+        + Rlp.LengthOfSequence(GetProofsContentLength(wrapper.Proofs))
         + (rlpBehaviors.HasFlag(RlpBehaviors.Storage)
             ? Rlp.LengthOfByteString(BlobCellMask.FixedByteLength, firstByte: 0) + Rlp.LengthOf(wrapper.Cells ?? [])
             : 0);

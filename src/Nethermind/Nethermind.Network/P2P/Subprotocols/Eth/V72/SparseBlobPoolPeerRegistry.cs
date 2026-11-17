@@ -5,6 +5,8 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Runtime.ExceptionServices;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
@@ -14,6 +16,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.Rlpx;
 using Nethermind.Stats.Model;
 using Nethermind.TxPool;
 
@@ -24,14 +27,23 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V72;
 /// </summary>
 public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, IDisposable
 {
+    private static readonly (IDisposable Lease, Action<BlobCellMask> Complete) MissingCellReservation =
+        (new MissingCellLease(), static _ => { }
+    );
+
     internal const int SupernodeCustodyColumnThreshold = 64;
     internal const int MinSamplerFullProviderAnnouncements = 2;
     private const int MaxTrackedTransactions = 16384;
+    private const int MaxTransactionRetryAttempts = 3;
+    private const int TrackedStateQueueSlack = 2;
+    private const int MaxTrimCandidates = 256;
     private const int MinProviderProbabilityPercent = 15;
     private const int MaxProviderProbabilityPercent = 100;
-    private const int MaxAnnouncementsPerPeer = 2048;
+    internal const int MaxAnnouncementsPerPeer = 2048;
     private const int MaxRetainedAnnouncementsPerPeer = 2048;
-    private const int MaxAmbiguousValidationFailures = 3;
+    private const int MaxAmbiguousFailureSources = 64;
+    private const int MaxBodyUnavailableSources = 64;
+    private const int MaxRestorationTicketsPerPeer = 1024;
     private const int MaxEarlyCellsPerTransactionBytes = 2 * 1024 * 1024;
     private const long MaxEarlyCellsBytes = 64L * 1024 * 1024;
     private const long MaxEarlyCellsBytesPerPeer = 16L * 1024 * 1024;
@@ -39,8 +51,10 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     private const long MaxTrackedTransactionBytesPerPeer = 16L * 1024 * 1024;
     private const int MaxInFlightCellWork = 8192;
     private const int MaxInFlightCellWorkPerPeer = 2048;
-    private const int GlobalCellServeTokenCapacity = 4096;
-    private const int GlobalCellServeTokensPerSecond = 768;
+    private const int MaxSingleProviderCellWork = MaxInFlightCellWork / 2;
+    private const int MinimumCellWorkShares = 8;
+    internal const int GlobalCellServeTokenCapacity = 4096;
+    internal const int GlobalCellServeTokensPerSecond = 768;
     private const int MaxConcurrentCellServeOperations = 2;
     private const int SamplingSecretLength = 32;
     /// <summary>
@@ -51,10 +65,11 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     private static readonly TimeSpan ScheduledActionTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan DefaultMaxAdmissionDelay = TimeSpan.FromMilliseconds(64);
     private static readonly TimeSpan MaintenanceInterval = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan AmbiguousBodyRetryDelay = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan EarlyCellsTtl = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan RestorationTicketTtl = TimeSpan.FromSeconds(16);
     private static readonly TimeSpan TrackedStateTtl = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan MaxTrackedStateLifetime = TimeSpan.FromMinutes(5);
-    private static readonly TimeSpan AmbiguousCellValidationQuarantine = TimeSpan.FromMinutes(5);
     private static readonly PublicKey NoLastResortPeer = new(new byte[PublicKey.LengthInBytes]);
 
     private readonly ITxPool _txPool;
@@ -62,13 +77,15 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<PublicKey, ISparseBlobPoolPeer> _peers = new();
+    private readonly ConcurrentDictionary<PublicKey, long> _peerSessionSequences = new();
+    private readonly ConditionalWeakTable<ISparseBlobPoolPeer, PacketReceiptTracker> _peerReceipts = [];
     private readonly ConcurrentDictionary<ValueHash256, TrackedSparseBlobTx> _transactions = new();
-    private readonly ConcurrentQueue<TrackedStateKey> _transactionOrder = new();
     private readonly byte[] _samplingSecret = RandomNumberGenerator.GetBytes(SamplingSecretLength);
     private readonly Lock _custodyLock = new();
     private readonly Lock _peerLifecycleLock = new();
     private readonly Lock _accountingLock = new();
     private readonly Lock _transactionOrderLock = new();
+    private readonly ConcurrentQueue<TrackedStateKey> _transactionOrder = new();
     private readonly Lock _cellServeLock = new();
     private readonly SemaphoreSlim _cellServeConcurrency = new(MaxConcurrentCellServeOperations, MaxConcurrentCellServeOperations);
     private readonly Dictionary<PublicKey, PeerUsage> _peerUsage = [];
@@ -78,11 +95,14 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     private readonly Nethermind.Core.Timers.ITimer _maintenanceTimer;
     private BlobCellMask _custodyMask;
     private long _trackedStateRevision;
+    private long _peerSessionSequence;
     private long _earlyCellsBytes;
     private long _trackedTransactionBytes;
     private int _inFlightCellWork;
+    private int _singleProviderCellWork;
     private int _trackedTransactionCount;
     private int _transactionOrderCount;
+    internal int LastTrimStateCount { get; private set; }
     private int _peerCount;
     private double _cellServeTokens = GlobalCellServeTokenCapacity;
     private DateTimeOffset _cellServeTokensUpdatedAt;
@@ -167,6 +187,17 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         _txPool.EvictedPending -= OnPendingTransactionRemoved;
         _maintenanceTimer.Elapsed -= OnMaintenanceElapsed;
         _maintenanceTimer.Dispose();
+        foreach (KeyValuePair<ValueHash256, TrackedSparseBlobTx> entry in _transactions)
+        {
+            TrackedSparseBlobTx state = entry.Value;
+            lock (state.Lock)
+            {
+                foreach (AnnouncementRestoration restoration in state.RestorationTickets.Values)
+                    ReleaseAnnouncementRestoration(state, restoration);
+                state.RestorationTickets.Clear();
+                ReleaseBodyRequestAttempt(state);
+            }
+        }
         lock (_cellServeLock)
         {
             if (_activeCellServeOperations == 0)
@@ -290,8 +321,13 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     public void AddPeer(ISparseBlobPoolPeer peer)
     {
         ArgumentNullException.ThrowIfNull(peer);
+        if (peer.CellSourceToken is PacketReceiptTracker receipts)
+        {
+            _peerReceipts.GetValue(peer, _ => receipts);
+        }
 
         List<PeerCleanupAction>? cleanupActions = null;
+        ExceptionDispatchInfo? cleanupFailure = null;
         lock (_peerLifecycleLock)
         {
             if (_peers.TryGetValue(peer.Id, out ISparseBlobPoolPeer? current))
@@ -303,14 +339,15 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
                 ((ICollection<KeyValuePair<PublicKey, ISparseBlobPoolPeer>>)_peers)
                     .Remove(new KeyValuePair<PublicKey, ISparseBlobPoolPeer>(peer.Id, current));
-                cleanupActions = CollectPeerCleanupActions(peer.Id);
+                cleanupActions = CollectPeerCleanupActions(peer.Id, out cleanupFailure);
             }
 
             _peers[peer.Id] = peer;
+            _peerSessionSequences[peer.Id] = ++_peerSessionSequence;
             Volatile.Write(ref _peerCount, _peers.Count);
         }
 
-        ProcessPeerCleanupActions(cleanupActions, peer.Id);
+        ProcessPeerCleanupActions(cleanupActions, peer.Id, cleanupFailure);
     }
 
     /// <inheritdoc/>
@@ -319,21 +356,24 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         ArgumentNullException.ThrowIfNull(peer);
 
         List<PeerCleanupAction>? cleanupActions = null;
+        ExceptionDispatchInfo? cleanupFailure = null;
         lock (_peerLifecycleLock)
         {
             if (((ICollection<KeyValuePair<PublicKey, ISparseBlobPoolPeer>>)_peers)
                 .Remove(new KeyValuePair<PublicKey, ISparseBlobPoolPeer>(peer.Id, peer)))
             {
+                _peerSessionSequences.TryRemove(peer.Id, out _);
                 Volatile.Write(ref _peerCount, _peers.Count);
-                cleanupActions = CollectPeerCleanupActions(peer.Id);
+                cleanupActions = CollectPeerCleanupActions(peer.Id, out cleanupFailure);
             }
         }
 
-        ProcessPeerCleanupActions(cleanupActions, peer.Id);
+        ProcessPeerCleanupActions(cleanupActions, peer.Id, cleanupFailure);
     }
 
-    private List<PeerCleanupAction>? CollectPeerCleanupActions(PublicKey peerId)
+    private List<PeerCleanupAction>? CollectPeerCleanupActions(PublicKey peerId, out ExceptionDispatchInfo? failure)
     {
+        failure = null;
         ValueHash256[] trackedHashes;
         lock (_accountingLock)
         {
@@ -360,16 +400,22 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             bool remove = false;
             lock (state.Lock)
             {
+                CancelAnnouncementRestoration(state, peerId);
+                bool bodyAttemptRemoved = state.CurrentBodyAttemptPeer == peerId;
+                if (state.CurrentBodyAttemptPeer == peerId)
+                {
+                    ReleaseBodyRequestAttempt(state);
+                }
                 if (state.Announcements.Remove(peerId))
                 {
-                    ReleaseAnnouncement(peerId, trackedHash, state.Submitted);
+                    ReleaseAnnouncement(peerId, state);
                 }
 
                 if (state.InFlightByPeer.Remove(peerId, out BlobCellMask inFlightMask))
                 {
                     state.InFlightRevisionByPeer.Remove(peerId);
                     state.InFlightMask = state.InFlightMask.Except(inFlightMask);
-                    ReleaseInFlight(peerId, trackedHash, inFlightMask.Count, releaseHashReference: true);
+                    ReleaseInFlight(state, peerId, inFlightMask.Count, releaseHashReference: true);
                     retryMask = inFlightMask;
                 }
 
@@ -382,32 +428,30 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                     transactionRemoved = true;
                 }
 
-                if (!state.Submitting
-                    && !state.ApplyingRecordedCells
-                    && state.Cells is { } currentCells
-                    && currentCells.TryRemoveSource(peerId, out PendingCellsBuffer? remainingCells))
+                if (!state.Submitting && !state.ApplyingRecordedCells)
                 {
-                    BlobCellMask remainingMask = remainingCells?.CellMask ?? BlobCellMask.Empty;
-                    retryMask |= currentCells.CellMask.Except(remainingMask);
-                    if (remainingCells is { } retained
-                        && TryReplaceCellsAccounting(trackedHash, currentCells, retained))
+                    state.Cells = RemoveCellSource(state.Cells);
+                    state.AlternativeCells = RemoveCellSource(state.AlternativeCells);
+                    if (state.Cells is null)
                     {
-                        state.Cells = retained;
-                    }
-                    else
-                    {
-                        retryMask |= currentCells.CellMask;
-                        ReleaseCells(state);
-                        state.Cells = null;
+                        state.Cells = state.AlternativeCells;
+                        state.AlternativeCells = null;
                     }
                 }
 
-                if (transactionRemoved)
+                PendingCellsBuffer? RemoveCellSource(PendingCellsBuffer? buffer)
                 {
-                    transactionRetryPeer = state.Cells is { } cells
-                        ? SelectTransactionRetryPeer(cells, transactionPeer: null)
-                        : null;
-                    transactionRetryPeer ??= SelectTransactionRetryPeer(state);
+                    if (buffer is not { } current || !current.TryRemoveSource(peerId, out PendingCellsBuffer? remaining)) return buffer;
+                    retryMask |= current.CellMask.Except(remaining?.CellMask ?? BlobCellMask.Empty);
+                    if (remaining is { } retained && TryReplaceCellsAccounting(trackedHash, current, retained)) return retained;
+                    ReleaseCells(trackedHash, current);
+                    return null;
+                }
+
+                if (transactionRemoved || (bodyAttemptRemoved && state.Transaction is null))
+                {
+                    transactionRetryPeer = PlanBodyRetry(state, out ExceptionDispatchInfo? retryFailure, state.Cells);
+                    failure ??= retryFailure;
                 }
 
                 submit = state.Transaction is not null
@@ -415,6 +459,8 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                     && !state.Submitted
                     && !state.Submitting;
                 remove = state.Announcements.Count == 0
+                    && state.RestorationTickets.Count == 0
+                    && state.CurrentBodyAttempt is null
                     && state.Transaction is null
                     && state.Cells is null
                     && state.InFlightByPeer.Count == 0
@@ -442,27 +488,29 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         return cleanupActions;
     }
 
-    private void ProcessPeerCleanupActions(List<PeerCleanupAction>? cleanupActions, PublicKey removedPeerId)
+    private void ProcessPeerCleanupActions(List<PeerCleanupAction>? cleanupActions, PublicKey removedPeerId,
+        ExceptionDispatchInfo? failure)
     {
-        if (cleanupActions is null)
+        if (cleanupActions is not null)
         {
-            return;
-        }
-
-        for (int i = 0; i < cleanupActions.Count; i++)
-        {
-            PeerCleanupAction action = cleanupActions[i];
-            action.TransactionRetryPeer?.TrySendPooledTransactionRequest(action.Hash);
-            if (!action.RetryMask.IsEmpty)
+            for (int i = 0; i < cleanupActions.Count; i++)
             {
-                TryRequestCells(action.Hash, action.RetryMask, removedPeerId);
-            }
-
-            if (action.Submit)
-            {
-                TrySubmit(action.Hash, action.State);
+                PeerCleanupAction action = cleanupActions[i];
+                try { SendBodyRetry(action.Hash, action.State, action.TransactionRetryPeer); }
+                catch (Exception exception) { failure ??= ExceptionDispatchInfo.Capture(exception); }
+                if (!action.RetryMask.IsEmpty)
+                {
+                    try { TryRequestCells(action.Hash, action.RetryMask, removedPeerId); }
+                    catch (Exception exception) { failure ??= ExceptionDispatchInfo.Capture(exception); }
+                }
+                if (action.Submit)
+                {
+                    try { TrySubmit(action.Hash, action.State); }
+                    catch (Exception exception) { failure ??= ExceptionDispatchInfo.Capture(exception); }
+                }
             }
         }
+        failure?.Throw();
     }
 
     /// <inheritdoc/>
@@ -499,7 +547,6 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         {
             if (IsCurrentState(hash, state)
                 && IsActivePeer(peer)
-                && !IsCellValidationQuarantined(state)
                 && !state.AmbiguousFailureSources.Contains(peer.Id))
             {
                 if (state.Announcements.TryGetValue(peer.Id, out BlobCellMask previousMask))
@@ -512,7 +559,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
                     accepted = true;
                 }
-                else if (TryReserveAnnouncement(peer, hash, state.Submitted))
+                else if (TryReserveAnnouncement(peer, state))
                 {
                     state.Announcements.Add(peer.Id, announcementMask);
                     Touch(state, _timestamper.UtcNowOffset);
@@ -632,19 +679,9 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                 return false;
             }
 
-            if (IsCellValidationQuarantined(state))
-            {
-                return false;
-            }
-
-            if (now < state.InFlightUntil)
-            {
-                requestMask = requestMask.Except(state.InFlightMask);
-            }
-            else
-            {
-                ExpireInFlight(hash, state);
-            }
+            state.PendingCellMask |= ExpireInFlight(state, now);
+            requestMask = requestMask.Except(state.InFlightMask);
+            if (state.Cells is { } pendingCells) requestMask = requestMask.Except(pendingCells.CellMask);
 
             if (requestMask.IsEmpty)
             {
@@ -659,21 +696,16 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             while (!requestMask.IsEmpty
                 && SelectPeer(state, requestMask, lastResortPeerId, capacityLimitedPeers, out BlobCellMask sendMask) is { } peer)
             {
-                // The deadline is armed only on the empty->non-empty transition; extending it on
-                // every reservation would let a dead request's bits stay in flight indefinitely.
-                if (state.InFlightMask.IsEmpty)
-                {
-                    state.InFlightUntil = now + _cellRequestTimeout;
-                }
-
                 BlobCellMask existingPeerMask = state.InFlightByPeer.GetValueOrDefault(peer.Id);
                 BlobCellMask newlyReservedMask = sendMask.Except(existingPeerMask);
+                bool singleProvider = state.Announcements.Count == 1;
                 InFlightReservationResult reservationResult = newlyReservedMask.IsEmpty
                     ? InFlightReservationResult.Reserved
                     : TryReserveInFlight(
                         peer,
                         hash,
                         newlyReservedMask.Count,
+                        singleProvider,
                         addHashReference: existingPeerMask.IsEmpty);
                 if (reservationResult is InFlightReservationResult.InactivePeer)
                 {
@@ -695,6 +727,20 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                     ? ++state.NextInFlightRevision
                     : state.InFlightRevisionByPeer[peer.Id];
                 state.InFlightRevisionByPeer[peer.Id] = reservationRevision;
+                if (existingPeerMask.IsEmpty && state.ClaimedCellReservations is { } claims)
+                {
+                    foreach (KeyValuePair<(PublicKey PeerId, long Revision), ClaimedCellReservation> entry in claims)
+                    {
+                        if (entry.Key.PeerId == peer.Id && entry.Key.Revision < reservationRevision)
+                            entry.Value.MutationValid = false;
+                    }
+                }
+                state.InFlightUntilByPeer.TryAdd(peer.Id, now + _cellRequestTimeout);
+                if (existingPeerMask.IsEmpty && _peerReceipts.TryGetValue(peer, out PacketReceiptTracker? receipts))
+                {
+                    state.InFlightReceiptGuards[peer.Id] = receipts.CreateExpiryGuard();
+                }
+                if (singleProvider) state.SingleProviderInFlightPeers.Add(peer.Id);
                 state.InFlightByPeer[peer.Id] = existingPeerMask | sendMask;
                 state.InFlightMask |= newlyReservedMask;
                 requestMask = requestMask.Except(sendMask);
@@ -712,10 +758,12 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
             if (firstPeer is null)
             {
+                state.PendingCellMask |= requestMask;
                 return false;
             }
 
             placedAll = requestMask.IsEmpty;
+            state.PendingCellMask |= requestMask;
             Touch(state, now);
         }
 
@@ -740,7 +788,8 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         BlobCellMask sendMask,
         long reservationRevision)
     {
-        if (peer.TrySendGetCells(hash, sendMask))
+        PublicKey peerId = peer.Id;
+        if (peer.TrySendGetCells(hash.ToHash256(), sendMask, () => HoldCellsRequest(state, peer, reservationRevision, sendMask)))
         {
             return true;
         }
@@ -755,6 +804,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             }
 
             BlobCellMask rollbackMask = peerMask & sendMask;
+            state.PendingCellMask |= rollbackMask;
             BlobCellMask remaining = peerMask.Except(rollbackMask);
             state.InFlightMask = state.InFlightMask.Except(rollbackMask);
             if (remaining.IsEmpty)
@@ -768,13 +818,64 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             }
 
             ReleaseInFlight(
+                state,
                 peer.Id,
-                hash,
                 rollbackMask.Count,
                 releaseHashReference: remaining.IsEmpty);
         }
 
         return false;
+    }
+
+    private (IDisposable Lease, Action<BlobCellMask> Complete) HoldCellsRequest(
+        TrackedSparseBlobTx state, ISparseBlobPoolPeer peer, long revision, BlobCellMask mask)
+    {
+        PublicKey peerId = peer.Id;
+        lock (state.Lock)
+        {
+            if (!IsCurrentState(state.Hash, state)
+                || !state.InFlightRevisionByPeer.TryGetValue(peerId, out long currentRevision) || currentRevision != revision
+                || !state.InFlightByPeer.TryGetValue(peerId, out BlobCellMask reservedMask)) return MissingCellReservation;
+            mask &= reservedMask;
+            if (mask.IsEmpty) return MissingCellReservation;
+            state.ClaimedCellReservations ??= [];
+            if (!state.ClaimedCellReservations.TryGetValue((peerId, revision), out ClaimedCellReservation? claimed))
+                state.ClaimedCellReservations[(peerId, revision)] = claimed = new();
+            claimed.HoldCount++;
+            claimed.Mask |= mask;
+            ClaimedCellLease lease = new(this, state, peerId, revision, peer);
+            return (lease, lease.Complete);
+        }
+    }
+
+    private void CompleteClaimedCells(TrackedSparseBlobTx state, PublicKey peerId, long revision, BlobCellMask mask)
+    {
+        lock (state.Lock)
+        {
+            if (!IsCurrentState(state.Hash, state)
+                || state.ClaimedCellReservations?.TryGetValue((peerId, revision), out ClaimedCellReservation? claimed) != true) return;
+            claimed.CompletedMask |= mask & claimed.Mask;
+            if (state.InFlightRevisionByPeer.TryGetValue(peerId, out long currentRevision) && currentRevision == revision)
+                CompleteCellsRequest(state, peerId, claimed.CompletedMask);
+        }
+    }
+
+    private void ReleaseClaimedCells(TrackedSparseBlobTx state, PublicKey peerId, long revision)
+    {
+        lock (state.Lock)
+        {
+            if (!IsCurrentState(state.Hash, state)
+                || state.ClaimedCellReservations is not { } claims
+                || !claims.TryGetValue((peerId, revision), out ClaimedCellReservation? claimed)) return;
+            if (--claimed.HoldCount != 0) return;
+            claims.Remove((peerId, revision));
+            if (state.InFlightRevisionByPeer.TryGetValue(peerId, out long currentRevision) && currentRevision == revision)
+            {
+                BlobCellMask abandoned = claimed.Mask.Except(claimed.CompletedMask);
+                state.PendingCellMask |= abandoned;
+                CompleteCellsRequest(state, peerId, abandoned);
+            }
+        }
     }
 
     /// <inheritdoc/>
@@ -795,50 +896,228 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             }
 
             PublicKey peerId = peer.Id;
-            if (state.InFlightByPeer.TryGetValue(peerId, out BlobCellMask peerMask))
-            {
-                BlobCellMask completedPeerMask = completedMask & peerMask;
-                state.InFlightMask = state.InFlightMask.Except(completedPeerMask);
-                BlobCellMask remaining = peerMask.Except(completedPeerMask);
-                int releasedWork = peerMask.Count - remaining.Count;
-                if (remaining.IsEmpty)
-                {
-                    state.InFlightByPeer.Remove(peerId);
-                    state.InFlightRevisionByPeer.Remove(peerId);
-                }
-                else
-                {
-                    state.InFlightByPeer[peerId] = remaining;
-                }
+            CompleteCellsRequest(state, peerId, completedMask);
+        }
+    }
 
-                ReleaseInFlight(peerId, hash, releasedWork, releaseHashReference: remaining.IsEmpty);
+    private void CompleteCellsRequest(TrackedSparseBlobTx state, PublicKey peerId, BlobCellMask completedMask)
+    {
+        if (!state.InFlightByPeer.TryGetValue(peerId, out BlobCellMask peerMask)) return;
+        BlobCellMask completedPeerMask = completedMask & peerMask;
+        state.InFlightMask = state.InFlightMask.Except(completedPeerMask);
+        BlobCellMask remaining = peerMask.Except(completedPeerMask);
+        int releasedWork = peerMask.Count - remaining.Count;
+        if (remaining.IsEmpty)
+        {
+            state.InFlightByPeer.Remove(peerId);
+            state.InFlightRevisionByPeer.Remove(peerId);
+        }
+        else state.InFlightByPeer[peerId] = remaining;
+        ReleaseInFlight(state, peerId, releasedWork, releaseHashReference: remaining.IsEmpty);
+    }
+
+    /// <inheritdoc/>
+    public bool TryBeginAnnouncementRestore(ISparseBlobPoolPeer peer, Hash256 hash, out AnnouncementRestoration? restoration, IDisposable? requestOwnership = null)
+    {
+        restoration = null;
+        if (!_transactions.TryGetValue(hash.ValueHash256, out TrackedSparseBlobTx? state)) return true;
+        lock (state.Lock)
+        {
+            if (Volatile.Read(ref _disposed) != 0 || !IsCurrentState(hash, state) || !IsActivePeer(peer)
+                || !MatchesCellRequestOwnership(requestOwnership, peer, state)
+                || !state.Announcements.TryGetValue(peer.Id, out BlobCellMask mask)) return true;
+
+            DateTimeOffset createdAt = _timestamper.UtcNowOffset;
+            CancelAnnouncementRestoration(state, peer.Id);
+            lock (_accountingLock)
+            {
+                if (Volatile.Read(ref _disposed) != 0 || !IsActivePeer(peer)) return true;
+                PeerUsage usage = GetPeerUsage(peer.Id);
+                if (usage.RestorationTickets >= MaxRestorationTicketsPerPeer) return false;
+                usage.RestorationTickets++;
+                AddTrackedHashReference(usage, state.Hash);
+            }
+            restoration = new AnnouncementRestoration(peer, state, mask, createdAt);
+            state.RestorationTickets.Add(peer.Id, restoration);
+            state.Announcements.Remove(peer.Id);
+            ReleaseAnnouncement(peer.Id, state);
+            return true;
+        }
+    }
+
+    /// <inheritdoc/>
+    public bool TryRestoreAnnouncement(ISparseBlobPoolPeer peer, Hash256 hash, AnnouncementRestoration restoration)
+    {
+        if (!_transactions.TryGetValue(hash.ValueHash256, out TrackedSparseBlobTx? state)) return false;
+        lock (state.Lock)
+        {
+            if (!ReferenceEquals(restoration.Peer, peer) || !ReferenceEquals(restoration.State, state)
+                || !state.RestorationTickets.TryGetValue(peer.Id, out AnnouncementRestoration? current)
+                || !ReferenceEquals(current, restoration)) return false;
+
+            if (!restoration.IsValid || Volatile.Read(ref _disposed) != 0 || !IsCurrentState(hash, state) || !IsActivePeer(peer)
+                || _timestamper.UtcNowOffset - restoration.CreatedAt >= RestorationTicketTtl)
+            {
+                CancelAnnouncementRestoration(state, peer.Id);
+                return false;
+            }
+
+            if (!state.Announcements.ContainsKey(peer.Id))
+            {
+                if (state.AmbiguousFailureSources.Contains(peer.Id) || !TryReserveAnnouncement(peer, state)) return false;
+                state.Announcements.Add(peer.Id, restoration.Mask);
+            }
+            CancelAnnouncementRestoration(state, peer.Id);
+            return true;
+        }
+    }
+
+    /// <inheritdoc/>
+    public AnnouncementRestoration? RemoveAnnouncementPermanently(ISparseBlobPoolPeer peer, Hash256 hash, IDisposable? requestOwnership = null)
+    {
+        if (!_transactions.TryGetValue(hash.ValueHash256, out TrackedSparseBlobTx? state)) return null;
+        lock (state.Lock)
+        {
+            if (!IsCurrentState(hash, state) || !IsActivePeer(peer)
+                || !MatchesCellRequestOwnership(requestOwnership, peer, state)) return null;
+            AnnouncementRestoration? canceled = CancelAnnouncementRestoration(state, peer.Id);
+            if (state.Announcements.Remove(peer.Id)) ReleaseAnnouncement(peer.Id, state);
+            return canceled;
+        }
+    }
+
+    /// <inheritdoc/>
+    public BodyRequestAttempt? CreateBodyRequestAttempt(ISparseBlobPoolPeer peer, Hash256 hash) =>
+        CreateBodyRequestAttempt(peer, hash.ValueHash256);
+
+    /// <inheritdoc/>
+    public BodyRequestAttempt? CreateBodyRequestAttempt(ISparseBlobPoolPeer peer, in ValueHash256 valueHash)
+    {
+        if (!_transactions.TryGetValue(valueHash, out TrackedSparseBlobTx? state)) return null;
+        Hash256 hash = valueHash.ToHash256();
+        long sequence;
+        lock (state.Lock)
+        {
+            if (Volatile.Read(ref _disposed) != 0 || !IsCurrentState(hash, state) || !IsActivePeer(peer)) return null;
+            sequence = ++state.NextBodyAttempt;
+        }
+        return new(this, state, peer, sequence, attempt =>
+        {
+            lock (state.Lock)
+            {
+                if (Volatile.Read(ref _disposed) == 0 && IsCurrentState(hash, state) && IsActivePeer(peer) && !attempt.IsCompleted && sequence > state.LastConfirmedBodyAttempt)
+                {
+                    lock (_accountingLock)
+                    {
+                        if (!IsActivePeer(peer)) return;
+                        ReleaseBodyRequestAttempt(state);
+                        AddTrackedHashReference(GetPeerUsage(peer.Id), state.Hash);
+                        state.LastConfirmedBodyAttempt = sequence;
+                        state.CurrentBodyAttempt = attempt;
+                        state.CurrentBodyAttemptPeer = peer.Id;
+                        state.LastBodyRequestPeer = peer.Id;
+                    }
+                }
+            }
+        }, (attempt, unanswered) =>
+        {
+            ISparseBlobPoolPeer? retryPeer = null;
+            ExceptionDispatchInfo? failure = null;
+            lock (state.Lock)
+            {
+                if (!IsCurrentState(hash, state) || !ReferenceEquals(state.CurrentBodyAttempt, attempt)) return;
+                ReleaseBodyRequestAttempt(state);
+                if ((unanswered || !IsActivePeer(peer)) && state.Transaction is null)
+                {
+                    retryPeer = PlanBodyRetry(state, out failure);
+                }
+            }
+            SendBodyRetry(hash, state, retryPeer);
+            failure?.Throw();
+        });
+    }
+
+    private void ReleaseBodyRequestAttempt(TrackedSparseBlobTx state)
+    {
+        if (state.CurrentBodyAttemptPeer is not { } peerId) return;
+        state.CurrentBodyAttempt = null;
+        state.CurrentBodyAttemptPeer = null;
+        lock (_accountingLock)
+        {
+            if (_peerUsage.TryGetValue(peerId, out PeerUsage? usage))
+            {
+                ReleaseTrackedHashReference(usage, state.Hash);
+                RemovePeerUsageIfEmpty(peerId, usage);
             }
         }
     }
 
     /// <inheritdoc/>
-    public BlobCellMask RemoveAnnouncement(ISparseBlobPoolPeer peer, in ValueHash256 hash)
+    public AnnouncementRestoration? RecordBodyUnavailable(ISparseBlobPoolPeer peer, Hash256 hash, BodyRequestAttempt? requestAttempt = null, bool retainCellAnnouncement = false)
     {
-        if (IsActivePeer(peer)
-            && _transactions.TryGetValue(hash, out TrackedSparseBlobTx? state))
+        if (!_transactions.TryGetValue(hash.ValueHash256, out TrackedSparseBlobTx? state)) return null;
+        AnnouncementRestoration? canceled;
+        ISparseBlobPoolPeer? retryPeer = null;
+        ExceptionDispatchInfo? failure = null;
+        lock (state.Lock)
         {
-            lock (state.Lock)
+            if (!IsCurrentState(hash, state) || !IsActivePeer(peer)) return null;
+            if (requestAttempt is not null)
             {
-                if (!IsActivePeer(peer))
-                {
-                    return BlobCellMask.Empty;
-                }
+                if (!ReferenceEquals(requestAttempt.Owner, this) || !ReferenceEquals(requestAttempt.State, state)
+                    || !ReferenceEquals(requestAttempt.Peer, peer) || requestAttempt.Sequence < state.LastConfirmedBodyAttempt
+                    || !requestAttempt.TryConsumeOmission()) return null;
+                state.LastConfirmedBodyAttempt = Math.Max(state.LastConfirmedBodyAttempt, requestAttempt.Sequence);
+            }
+            if (state.BodyUnavailableSources.Add(peer.Id))
+            {
+                (state.BodyUnavailableSourceOrder ??= []).Enqueue(peer.Id);
+                if (state.BodyUnavailableSources.Count > MaxBodyUnavailableSources)
+                    state.BodyUnavailableSources.Remove(state.BodyUnavailableSourceOrder.Dequeue());
+            }
+            canceled = null;
+            if (!retainCellAnnouncement)
+            {
+                canceled = CancelAnnouncementRestoration(state, peer.Id);
+                if (state.Announcements.Remove(peer.Id)) ReleaseAnnouncement(peer.Id, state);
+            }
+            if (state.Transaction is null && state.CurrentBodyAttempt is null)
+                retryPeer = PlanBodyRetry(state, out failure);
+        }
+        SendBodyRetry(hash, state, retryPeer);
+        failure?.Throw();
+        return canceled;
+    }
 
-                PublicKey peerId = peer.Id;
-                if (state.Announcements.Remove(peerId, out BlobCellMask announcedMask))
-                {
-                    ReleaseAnnouncement(peerId, hash, state.Submitted);
-                    return announcedMask;
-                }
+    private AnnouncementRestoration? CancelAnnouncementRestoration(TrackedSparseBlobTx state, PublicKey peerId)
+    {
+        if (!state.RestorationTickets.Remove(peerId, out AnnouncementRestoration? restoration)) return null;
+        ReleaseAnnouncementRestoration(state, restoration);
+        return restoration;
+    }
+
+    private void ReleaseAnnouncementRestoration(TrackedSparseBlobTx state, AnnouncementRestoration restoration)
+    {
+        if (!restoration.Invalidate()) return;
+        lock (_accountingLock)
+        {
+            PublicKey peerId = restoration.Peer.Id;
+            if (_peerUsage.TryGetValue(peerId, out PeerUsage? usage))
+            {
+                usage.RestorationTickets--;
+                ReleaseTrackedHashReference(usage, state.Hash);
+                RemovePeerUsageIfEmpty(peerId, usage);
             }
         }
+    }
 
-        return BlobCellMask.Empty;
+    private void ExpireAnnouncementRestorations(TrackedSparseBlobTx state, DateTimeOffset now)
+    {
+        List<PublicKey>? expired = null;
+        foreach ((PublicKey peerId, AnnouncementRestoration restoration) in state.RestorationTickets)
+            if (now - restoration.CreatedAt >= RestorationTicketTtl) (expired ??= []).Add(peerId);
+        if (expired is not null)
+            foreach (PublicKey peerId in expired) CancelAnnouncementRestoration(state, peerId);
     }
 
     private bool RequestCellsForCustodyChange(
@@ -987,6 +1266,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             return validationResult;
         }
 
+        peer.RecordUsefulBody(hash.ValueHash256);
         BlobCellMask attachedCellMask = BlobCellMask.Empty;
         byte[][]? attachedCells = null;
         if (transaction.NetworkWrapper is ShardBlobNetworkWrapper sparseWrapper
@@ -995,58 +1275,78 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             attachedCellMask = sparseWrapper.GetAvailableCellMask();
             if (!attachedCellMask.IsEmpty)
             {
+                if (wrapperCells.Length != transaction.BlobVersionedHashes!.Length * attachedCellMask.Count)
+                {
+                    DisconnectInvalidCellSource(peer);
+                    return null;
+                }
                 attachedCells = wrapperCells;
             }
         }
 
         TrackedSparseBlobTx state = GetOrAdd(hash, out bool added);
         bool accepted = false;
-        lock (state.Lock)
+        List<ISparseBlobPoolPeer>? invalidCellSources = null;
+        while (true)
         {
-            if (IsCurrentState(hash, state)
-                && IsActivePeer(peer)
-                && !IsCellValidationQuarantined(state)
-                && !state.Submitted
-                && !state.AmbiguousFailureSources.Contains(peer.Id))
+            long transactionRoomNeeded = 0;
+            long cellsRoomNeeded = 0;
+            lock (state.Lock)
             {
-                accepted = state.Transaction is not null;
-                if (!accepted)
+                if (IsCurrentState(hash, state)
+                    && IsActivePeer(peer)
+                    && !state.Submitted
+                    && !state.AmbiguousFailureSources.Contains(peer.Id))
                 {
-                    int transactionBytes = transaction.GetLength();
-                    if (TryReserveTransaction(peer, hash.ValueHash256, transactionBytes))
+                    accepted = state.Transaction is not null;
+                    if (!accepted)
                     {
-                        state.Transaction = transaction;
-                        state.TransactionPeer = peer;
-                        state.TransactionBytes = transactionBytes;
-                        accepted = true;
+                        int transactionBytes = transaction.GetLength();
+                        if (TryReserveTransaction(peer, hash.ValueHash256, transactionBytes))
+                        {
+                            state.Transaction = transaction;
+                            state.TransactionPeer = peer;
+                            state.TransactionBytes = transactionBytes;
+                            state.TransactionRetryPeers = null;
+                            accepted = true;
+                        }
+                        else
+                        {
+                            transactionRoomNeeded = transactionBytes;
+                        }
+                    }
+
+                    if (accepted && !state.Submitting && !state.ApplyingRecordedCells)
+                        BindCellCount(state, state.Transaction!.BlobVersionedHashes!.Length, ref invalidCellSources);
+
+                    if (accepted
+                        && attachedCells is not null
+                        && !state.Submitting
+                        && !state.ApplyingRecordedCells)
+                    {
+                        PendingCellsBuffer addedCells = new(attachedCellMask, attachedCells, peer.Id, peer.CellSourceToken);
+                        if (TryStoreRecordedCells(state, peer, addedCells, true, ref invalidCellSources, out cellsRoomNeeded))
+                        {
+                            state.CellsExpiresAt = _timestamper.UtcNowOffset + EarlyCellsTtl;
+                        }
+                    }
+
+                    if (accepted)
+                    {
+                        Touch(state, _timestamper.UtcNowOffset);
                     }
                 }
+            }
 
-                if (accepted
-                    && attachedCells is not null
-                    && !state.Submitting
-                    && !state.ApplyingRecordedCells)
-                {
-                    PendingCellsBuffer addedCells = new(attachedCellMask, attachedCells, peer.Id);
-                    PendingCellsBuffer replacement = state.Cells is { } existingCells
-                        && existingCells.TryMerge(addedCells, out PendingCellsBuffer merged)
-                            ? merged
-                            : addedCells;
-                    if (TryReplaceCellsAccounting(hash.ValueHash256, state.Cells, replacement, peer))
-                    {
-                        state.Cells = replacement;
-                        state.CellsExpiresAt = _timestamper.UtcNowOffset + EarlyCellsTtl;
-                    }
-                }
-
-                if (accepted)
-                {
-                    Touch(state, _timestamper.UtcNowOffset);
-                }
+            if (!(MakeRoom(peer.Id, transactionRoomNeeded, earlyCells: false, state)
+                  | MakeRoom(peer.Id, cellsRoomNeeded, earlyCells: true, state)))
+            {
+                break;
             }
         }
 
         accepted = CompleteRecord(hash, state, added, accepted);
+        DisconnectInvalidCellSources(invalidCellSources);
         if (!accepted)
         {
             return null;
@@ -1056,7 +1356,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     }
 
     /// <inheritdoc/>
-    public bool RecordCells(ISparseBlobPoolPeer peer, Hash256 hash, BlobCellMask cellMask, byte[][] cells)
+    public bool RecordCells(ISparseBlobPoolPeer peer, Hash256 hash, BlobCellMask cellMask, byte[][] cells, IDisposable? requestOwnership = null)
     {
         if (cellMask.IsEmpty
             || cells.Length == 0
@@ -1074,47 +1374,70 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             }
         }
 
-        PendingCellsBuffer addedCells = new(cellMask, cells, peer.Id);
+        bool matchesKnownCellCount = MatchesKnownCellCount(hash, cellMask, cells.Length, out bool knownCellCount);
+
+        PendingCellsBuffer addedCells = new(cellMask, cells, peer.Id, peer.CellSourceToken);
         if (addedCells.ByteLength > MaxEarlyCellsPerTransactionBytes)
         {
             return false;
         }
 
-        TrackedSparseBlobTx state = GetOrAdd(hash, out bool added);
-        bool accepted = false;
-        lock (state.Lock)
+        TrackedSparseBlobTx state;
+        bool added;
+        if (requestOwnership is not null)
         {
-            if (IsCurrentState(hash, state)
-                && IsActivePeer(peer)
-                && !IsCellValidationQuarantined(state)
-                && !state.Submitting
-                && !state.ApplyingRecordedCells
-                && !state.AmbiguousFailureSources.Contains(peer.Id))
+            if (!_transactions.TryGetValue(hash.ValueHash256, out state!)) return false;
+            added = false;
+        }
+        else state = GetOrAdd(hash, out added);
+        bool accepted = false;
+        List<ISparseBlobPoolPeer>? invalidCellSources = null;
+        while (true)
+        {
+            long cellsRoomNeeded = 0;
+            lock (state.Lock)
             {
-                if (state.Cells is { } existingCells
-                    && (existingCells.CellMask & cellMask) == cellMask)
+                if (IsCurrentState(hash, state)
+                    && IsActivePeer(peer)
+                    && MatchesCellRequestOwnership(requestOwnership, peer, state)
+                    && !state.Submitting
+                    && !state.ApplyingRecordedCells
+                    && !state.AmbiguousFailureSources.Contains(peer.Id))
                 {
-                    accepted = true;
-                }
-                else
-                {
-                    PendingCellsBuffer replacement = state.Cells is { } current
-                        && current.TryMerge(addedCells, out PendingCellsBuffer merged)
-                            ? merged
-                            : addedCells;
-                    if (TryReplaceCellsAccounting(hash.ValueHash256, state.Cells, replacement, peer))
+                    int? recordedCount = state.Transaction?.BlobVersionedHashes is { Length: > 0 } recordedHashes ? recordedHashes.Length : null;
+                    if (!matchesKnownCellCount)
                     {
-                        state.Cells = replacement;
-                        DateTimeOffset now = _timestamper.UtcNowOffset;
-                        state.CellsExpiresAt = now + EarlyCellsTtl;
-                        Touch(state, now);
-                        accepted = true;
+                        invalidCellSources = [peer];
+                    }
+                    else if (recordedCount is not null && recordedCount != addedCells.BlobCount)
+                    {
+                        RecordAmbiguousFailure(state, peer.Id);
+                        invalidCellSources = [peer];
+                    }
+                    else
+                    {
+                        knownCellCount |= recordedCount is not null;
+                        if (knownCellCount) BindCellCount(state, addedCells.BlobCount, ref invalidCellSources);
+                        if (ContainsCells(state.Cells) || ContainsCells(state.AlternativeCells))
+                        {
+                            accepted = true;
+                        }
+                        else if (TryStoreRecordedCells(state, peer, addedCells, knownCellCount, ref invalidCellSources, out cellsRoomNeeded))
+                        {
+                            DateTimeOffset now = _timestamper.UtcNowOffset;
+                            state.CellsExpiresAt = now + EarlyCellsTtl;
+                            Touch(state, now);
+                            accepted = true;
+                        }
                     }
                 }
             }
+
+            if (!MakeRoom(peer.Id, cellsRoomNeeded, earlyCells: true, state)) break;
         }
 
         accepted = CompleteRecord(hash, state, added, accepted);
+        DisconnectInvalidCellSources(invalidCellSources);
         if (!accepted)
         {
             return false;
@@ -1122,6 +1445,96 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
         TrySubmit(hash, state);
         return true;
+
+        bool ContainsCells(PendingCellsBuffer? buffer) => buffer is { } existing
+            && existing.BlobCount == addedCells.BlobCount && (existing.CellMask & cellMask) == cellMask;
+    }
+
+    private void DisconnectInvalidCellSource(ISparseBlobPoolPeer peer)
+    {
+        peer.DisconnectSparseBlobPeer(DisconnectReason.BreachOfProtocol, "Sparse blob cell count does not match the transaction.");
+        RemovePeer(peer);
+    }
+
+    private void DisconnectInvalidCellSources(List<ISparseBlobPoolPeer>? peers)
+    {
+        if (peers is null) return;
+        foreach (ISparseBlobPoolPeer peer in peers) DisconnectInvalidCellSource(peer);
+    }
+
+    private bool MatchesKnownCellCount(Hash256 hash, BlobCellMask cellMask, int cellCount, out bool knownCellCount)
+    {
+        knownCellCount = true;
+        if (_txPool.TryGetPendingBlobTransaction(hash, out Transaction? transaction))
+        {
+            return cellCount == transaction.BlobVersionedHashes!.Length * cellMask.Count;
+        }
+        if (_transactions.TryGetValue(hash.ValueHash256, out TrackedSparseBlobTx? state))
+        {
+            lock (state.Lock)
+            {
+                if (state.Transaction?.BlobVersionedHashes is { Length: > 0 } recordedHashes)
+                {
+                    return cellCount == recordedHashes.Length * cellMask.Count;
+                }
+            }
+        }
+        knownCellCount = false;
+        return true;
+    }
+
+    private bool TryStoreRecordedCells(TrackedSparseBlobTx state, ISparseBlobPoolPeer peer, in PendingCellsBuffer addedCells, bool knownCellCount, ref List<ISparseBlobPoolPeer>? invalidCellSources, out long roomNeeded)
+    {
+        roomNeeded = 0;
+        if (knownCellCount) BindCellCount(state, addedCells.BlobCount, ref invalidCellSources);
+        bool alternative = state.Cells is { } current && current.BlobCount != addedCells.BlobCount;
+        if (alternative && knownCellCount) return false;
+        PendingCellsBuffer? existing = alternative ? state.AlternativeCells : state.Cells;
+        PendingCellsBuffer replacement = addedCells;
+        if (existing is { } retained && !retained.TryMerge(addedCells, out replacement)) return false;
+        int otherBytes = (alternative ? state.Cells : state.AlternativeCells)?.ByteLength ?? 0;
+        if ((long)replacement.ByteLength + otherBytes > MaxEarlyCellsPerTransactionBytes) return false;
+        if (!TryReplaceCellsAccounting(state.Hash, existing, replacement, peer))
+        {
+            roomNeeded = replacement.ByteLength - (existing?.ByteLength ?? 0);
+            return false;
+        }
+        if (alternative) state.AlternativeCells = replacement;
+        else state.Cells = replacement;
+        return true;
+    }
+
+    private void BindCellCount(TrackedSparseBlobTx state, int blobCount, ref List<ISparseBlobPoolPeer>? invalidCellSources)
+    {
+        if (blobCount <= 0) return;
+        List<ISparseBlobPoolPeer>? rejectedSources = invalidCellSources;
+        if (state.Cells is { } current && current.BlobCount != blobCount)
+        {
+            Exclude(current);
+            state.Cells = null;
+        }
+        if (state.AlternativeCells is { } alternative)
+        {
+            if (alternative.BlobCount == blobCount) state.Cells = alternative;
+            else Exclude(alternative);
+        }
+        state.AlternativeCells = null;
+        invalidCellSources = rejectedSources;
+
+        void Exclude(in PendingCellsBuffer cells)
+        {
+            foreach (PendingCellsSource source in cells.Sources)
+            {
+                RecordAmbiguousFailure(state, source.PeerId);
+                if (_peers.TryGetValue(source.PeerId, out ISparseBlobPoolPeer? peer)
+                    && ReferenceEquals(source.SourceToken, peer.CellSourceToken))
+                {
+                    rejectedSources ??= [];
+                    if (!rejectedSources.Contains(peer)) rejectedSources.Add(peer);
+                }
+            }
+            ReleaseCells(state.Hash, cells);
+        }
     }
 
     /// <inheritdoc/>
@@ -1134,25 +1547,35 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
         while (true)
         {
-            PendingCellsBuffer pending;
+            _txPool.TryGetPendingBlobTransaction(hash, out Transaction? pooledTransaction);
+            PendingCellsBuffer pending = default;
+            List<ISparseBlobPoolPeer>? invalidCellSources = null;
+            bool canApply;
             lock (state.Lock)
             {
-                if (!IsCurrentState(hash, state)
-                    || state.Submitting
-                    || state.ApplyingRecordedCells
-                    || state.Cells is not { } current)
+                if (IsCurrentState(hash, state) && pooledTransaction is not null && !state.Submitting && !state.ApplyingRecordedCells)
+                    BindCellCount(state, pooledTransaction.BlobVersionedHashes!.Length, ref invalidCellSources);
+                canApply = IsCurrentState(hash, state)
+                    && !state.Submitting
+                    && !state.ApplyingRecordedCells
+                    && state.Cells is not null;
+                if (canApply)
                 {
-                    return false;
+                    state.ApplyingRecordedCells = true;
+                    pending = state.Cells!.Value;
                 }
-
-                state.ApplyingRecordedCells = true;
-                pending = current;
+            }
+            if (!canApply)
+            {
+                DisconnectInvalidCellSources(invalidCellSources);
+                return false;
             }
 
             BlobCellMergeResult mergeResult;
             PublicKey? invalidCellSource;
             try
             {
+                DisconnectInvalidCellSources(invalidCellSources);
                 mergeResult = MergeRecordedCells(hash, pending, out invalidCellSource);
             }
             catch
@@ -1168,7 +1591,6 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             bool invalidProofTuple = mergeResult == BlobCellMergeResult.InvalidCells;
             bool retrySubmission = mergeResult == BlobCellMergeResult.TransactionUnavailable;
             bool retry;
-            bool quarantineCellValidation = false;
             lock (state.Lock)
             {
                 state.ApplyingRecordedCells = false;
@@ -1179,7 +1601,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
                 if (invalidProofTuple)
                 {
-                    quarantineCellValidation = RecordAmbiguousFailure(state, invalidCellSource);
+                    RecordAmbiguousFailure(state, invalidCellSource);
                     ReleaseCells(state);
                     state.Cells = null;
                     retry = false;
@@ -1190,7 +1612,6 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                 }
                 else
                 {
-                    state.AmbiguousCellValidationFailures = 0;
                     retry = state.Cells is { } latest && !ReferenceEquals(latest.Cells, pending.Cells);
                     if (!retry)
                     {
@@ -1208,11 +1629,6 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
             if (invalidProofTuple)
             {
-                if (quarantineCellValidation)
-                {
-                    return false;
-                }
-
                 TryRequestCells(hash, pending.CellMask, invalidCellSource ?? pending.LastSourcePeerId);
                 return false;
             }
@@ -1227,6 +1643,23 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                 return true;
             }
         }
+    }
+
+    bool ISparseBlobPoolPeerRegistry.CoversRequest(ISparseBlobPoolPeer peer, ValueHash256 hash, BlobCellMask mask) =>
+        CoversRequest(peer, hash, mask);
+
+    internal bool CoversRequest(ISparseBlobPoolPeer peer, ValueHash256 hash, BlobCellMask mask)
+    {
+        if (!_transactions.TryGetValue(hash, out TrackedSparseBlobTx? state)) return false;
+        lock (state.Lock)
+            return state.Announcements.TryGetValue(peer.Id, out BlobCellMask announced) && (announced & mask) == mask;
+    }
+
+    private void CreditCellSource(PendingCellsSource source, Hash256 hash)
+    {
+        if (_peers.TryGetValue(source.PeerId, out ISparseBlobPoolPeer? peer)
+            && ReferenceEquals(source.SourceToken, peer.CellSourceToken))
+            peer.RecordUsefulCells(hash.ValueHash256);
     }
 
     private BlobCellMergeResult MergeRecordedCells(
@@ -1254,7 +1687,8 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                     pending.CellMask,
                     source.CellMask,
                     blobCount);
-            BlobCellMergeResult result = _txPool.MergeBlobCells(hash, source.CellMask, sourceCells);
+            BlobCellMergeResult result = _txPool.MergeBlobCells(hash, source.CellMask, sourceCells, out BlobCellMask addedMask);
+            if (result == BlobCellMergeResult.Accepted && !addedMask.IsEmpty) CreditCellSource(source, hash);
             if (result != BlobCellMergeResult.InvalidCells)
             {
                 if (result != BlobCellMergeResult.Accepted)
@@ -1404,10 +1838,10 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                     _transactionOrderCount++;
                 }
 
-                TrimTrackedTransactions();
+                TrimTrackedTransactions(state);
             }
 
-            return true;
+            return IsCurrentState(hash, state);
         }
 
         if (!added)
@@ -1418,13 +1852,15 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         lock (state.Lock)
         {
             if (state.Announcements.Count == 0
+                && state.RestorationTickets.Count == 0
+                && state.CurrentBodyAttempt is null
                 && state.Transaction is null
                 && state.Cells is null
                 && state.InFlightByPeer.Count == 0
                 && !state.Submitted
                 && !state.Submitting)
             {
-                TryRemoveTrackedState(hash, state);
+                TryRemoveState(hash, state);
             }
         }
 
@@ -1469,7 +1905,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                 || state.AmbiguousFailureSources.Contains(announcement.Key)
                 || state.InFlightByPeer.ContainsKey(announcement.Key)
                 || !_peers.TryGetValue(announcement.Key, out ISparseBlobPoolPeer? peer)
-                || peer.IsClosing)
+                || !peer.CanRequestCells)
             {
                 continue;
             }
@@ -1669,6 +2105,8 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         }
         else if (result == AcceptTxResult.Accepted || result == AcceptTxResult.AlreadyKnown)
         {
+            if (result == AcceptTxResult.Accepted)
+                foreach (PendingCellsSource source in cells.Value.Sources) CreditCellSource(source, hash);
             bool remove;
             lock (state.Lock)
             {
@@ -1681,13 +2119,14 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                 {
                     state.Submitted = true;
                     state.Submitting = false;
+                    state.BodyRetryDueAt = null;
+                    state.AmbiguousBodySource = null;
                     RetainSubmittedAnnouncements(state);
                     ReleaseTransaction(state);
                     ReleaseCells(state);
                     state.Transaction = null;
                     state.TransactionPeer = null;
                     state.Cells = null;
-                    state.AmbiguousValidationFailures = 0;
                     state.ExpiresAt = DateTimeOffset.MaxValue;
                 }
             }
@@ -1781,8 +2220,8 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         ISparseBlobPoolPeer? peerToDisconnect = null;
         PublicKey? peerToRemove = null;
         string? disconnectDetails = null;
-        bool removeState = false;
         bool removalRequested;
+        ExceptionDispatchInfo? retryFailure = null;
         lock (state.Lock)
         {
             removalRequested = state.RemovalRequested;
@@ -1792,14 +2231,18 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             }
             else if (failureSource == SparseBlobAttachFailureSource.Ambiguous)
             {
-                state.AmbiguousValidationFailures++;
-                removeState = state.AmbiguousValidationFailures >= MaxAmbiguousValidationFailures;
-                transactionRetryPeer = SelectTransactionRetryPeer(cells, transactionPeer);
+                RecordAmbiguousFailure(state, transactionPeer?.Id);
+                state.AmbiguousBodySource = transactionPeer?.Id;
+                foreach (PendingCellsSource source in cells.Sources)
+                {
+                    RecordAmbiguousFailure(state, source.PeerId);
+                }
                 ReleaseTransaction(state);
                 ReleaseCells(state);
                 state.Transaction = null;
                 state.TransactionPeer = null;
                 state.Cells = null;
+                transactionRetryPeer = PlanBodyRetry(state, out retryFailure);
             }
             else if (failureSource == SparseBlobAttachFailureSource.Transaction)
             {
@@ -1810,10 +2253,10 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                     disconnectDetails = error ?? "invalid sparse blob transaction";
                 }
 
-                transactionRetryPeer = SelectTransactionRetryPeer(cells, transactionPeer);
                 ReleaseTransaction(state);
                 state.Transaction = null;
                 state.TransactionPeer = null;
+                transactionRetryPeer = PlanBodyRetry(state, out retryFailure, cells, transactionPeer);
             }
             else
             {
@@ -1842,19 +2285,14 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             }
         }
 
-        if (failureSource == SparseBlobAttachFailureSource.Ambiguous && !removeState)
+        if (failureSource == SparseBlobAttachFailureSource.Ambiguous)
         {
             _txPool.ForgetRejectedBlobTransaction(hash);
         }
 
-        if (removeState)
-        {
-            TryRemoveState(hash, state);
-            return null;
-        }
-
-        transactionRetryPeer?.TrySendPooledTransactionRequest(hash);
+        SendBodyRetry(hash, state, transactionRetryPeer);
         TryRequestCells(hash, cells.CellMask, retryFallbackPeerId);
+        retryFailure?.Throw();
         return null;
     }
 
@@ -1870,54 +2308,23 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         return result;
     }
 
-    private bool RecordAmbiguousFailure(
-        TrackedSparseBlobTx state,
-        PublicKey? sourcePeerId)
+    private void RecordAmbiguousFailure(TrackedSparseBlobTx state, PublicKey? sourcePeerId)
     {
-        bool hasNewSource = sourcePeerId is null;
-        if (sourcePeerId is not null)
+        if (sourcePeerId is null) return;
+        if (state.AmbiguousFailureSources.Add(sourcePeerId))
         {
-            if (state.AmbiguousFailureSources.Add(sourcePeerId))
+            Queue<PublicKey> sourceOrder = state.AmbiguousFailureSourceOrder ??= new();
+            sourceOrder.Enqueue(sourcePeerId);
+            if (sourceOrder.Count > MaxAmbiguousFailureSources)
             {
-                hasNewSource = true;
-            }
-
-            if (state.Announcements.Remove(sourcePeerId))
-            {
-                ReleaseAnnouncement(sourcePeerId, state.Hash, state.Submitted);
+                state.AmbiguousFailureSources.Remove(sourceOrder.Dequeue());
             }
         }
 
-        if (hasNewSource)
+        if (state.Announcements.Remove(sourcePeerId))
         {
-            state.AmbiguousCellValidationFailures++;
+            ReleaseAnnouncement(sourcePeerId, state);
         }
-
-        bool quarantined = state.AmbiguousCellValidationFailures >= MaxAmbiguousValidationFailures;
-        if (quarantined)
-        {
-            state.CellValidationQuarantinedUntil = _timestamper.UtcNowOffset + AmbiguousCellValidationQuarantine;
-        }
-
-        return quarantined;
-    }
-
-    private bool IsCellValidationQuarantined(TrackedSparseBlobTx state)
-    {
-        if (state.AmbiguousCellValidationFailures < MaxAmbiguousValidationFailures)
-        {
-            return false;
-        }
-
-        if (_timestamper.UtcNowOffset < state.CellValidationQuarantinedUntil)
-        {
-            return true;
-        }
-
-        state.AmbiguousCellValidationFailures = 0;
-        state.CellValidationQuarantinedUntil = default;
-        state.AmbiguousFailureSources.Clear();
-        return false;
     }
 
     private void OnMaintenanceElapsed(object? sender, EventArgs eventArgs)
@@ -1975,7 +2382,8 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     private void MaintainTrackedState(in ValueHash256 hash, TrackedSparseBlobTx state, DateTimeOffset now)
     {
         BlobCellMask retryMask = BlobCellMask.Empty;
-        PublicKey retryFallbackPeer = NoLastResortPeer;
+        ISparseBlobPoolPeer? bodyRetryPeer = null;
+        ExceptionDispatchInfo? bodyRetryFailure = null;
         bool submit = false;
         bool remove = false;
         lock (state.Lock)
@@ -1984,6 +2392,8 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             {
                 return;
             }
+
+            ExpireAnnouncementRestorations(state, now);
 
             if (state.Submitted && !_txPool.TryGetPendingBlobCellMask(hash, out _))
             {
@@ -1995,6 +2405,18 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             }
             else
             {
+                if (state.Transaction is null && state.CurrentBodyAttempt is null && state.BodyRetryDueAt is { } bodyRetryDueAt && now >= bodyRetryDueAt)
+                {
+                    bodyRetryPeer = PlanBodyRetry(state, out bodyRetryFailure);
+                    if (bodyRetryPeer is null && bodyRetryFailure is null && !state.BodyRetrySending
+                        && state.TransactionRetryPeers is null && state.AmbiguousBodySource is { } bodySource
+                        && _peers.TryGetValue(bodySource, out ISparseBlobPoolPeer? fallback) && CanRequestBody(state, fallback))
+                    {
+                        state.AmbiguousFailureSources.Remove(bodySource);
+                        bodyRetryPeer = fallback;
+                        state.BodyRetryDueAt = now + Timeouts.Eth;
+                    }
+                }
                 if (state.Transaction is null
                     && state.Cells is not null
                     && now >= state.CellsExpiresAt)
@@ -2003,11 +2425,8 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                     state.Cells = null;
                 }
 
-                if (!state.InFlightMask.IsEmpty && now >= state.InFlightUntil)
-                {
-                    retryMask = state.InFlightMask;
-                    retryFallbackPeer = ExpireInFlight(hash, state);
-                }
+                retryMask = state.PendingCellMask | ExpireInFlight(state, now);
+                state.PendingCellMask = BlobCellMask.Empty;
 
                 if (state.AdmissionDueAt is { } admissionDueAt && now >= admissionDueAt)
                 {
@@ -2025,8 +2444,11 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
         if (!retryMask.IsEmpty)
         {
-            TryRequestCells(hash, retryMask, retryFallbackPeer);
+            TryRequestCells(hash, retryMask, NoLastResortPeer);
         }
+
+        SendBodyRetry(hash.ToHash256(), state, bodyRetryPeer);
+        bodyRetryFailure?.Throw();
 
         if (submit)
         {
@@ -2086,17 +2508,22 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
             foreach (PublicKey peerId in state.Announcements.Keys)
             {
-                ReleaseAnnouncement(peerId, hash, state.Submitted);
+                ReleaseAnnouncement(peerId, state);
             }
 
             foreach (KeyValuePair<PublicKey, BlobCellMask> inFlight in state.InFlightByPeer)
             {
-                ReleaseInFlight(inFlight.Key, state.Hash, inFlight.Value.Count, releaseHashReference: true);
+                ReleaseInFlight(state, inFlight.Key, inFlight.Value.Count, releaseHashReference: true);
             }
 
+            foreach (AnnouncementRestoration restoration in state.RestorationTickets.Values)
+                ReleaseAnnouncementRestoration(state, restoration);
+            state.RestorationTickets.Clear();
+            ReleaseBodyRequestAttempt(state);
             state.Announcements.Clear();
             state.InFlightByPeer.Clear();
             state.InFlightRevisionByPeer.Clear();
+            state.ClaimedCellReservations?.Clear();
             state.InFlightMask = BlobCellMask.Empty;
             ReleaseTransaction(state);
             ReleaseCells(state);
@@ -2147,33 +2574,107 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         return true;
     }
 
-    private void TrimTrackedTransactions()
+    private void TrimTrackedTransactions(TrackedSparseBlobTx incoming)
     {
         lock (_transactionOrderLock)
         {
-            while (Volatile.Read(ref _trackedTransactionCount) > MaxTrackedTransactions
+            LastTrimStateCount = 0;
+            int remainingAttempts = Math.Min(_transactionOrderCount, MaxTrimCandidates);
+            while ((Volatile.Read(ref _trackedTransactionCount) > MaxTrackedTransactions || _transactionOrderCount > MaxTrackedTransactions * TrackedStateQueueSlack)
+                && remainingAttempts-- > 0
                 && _transactionOrder.TryDequeue(out TrackedStateKey key))
             {
                 _transactionOrderCount--;
                 if (_transactions.TryGetValue(key.Hash, out TrackedSparseBlobTx? state)
                     && state.Revision == key.Revision)
                 {
-                    TryRemoveState(key.Hash, state);
+                    LastTrimStateCount++;
+                    lock (state.Lock)
+                    {
+                        if (Volatile.Read(ref _trackedTransactionCount) <= MaxTrackedTransactions
+                            || HasProgress(state) || !TryRemoveState(key.Hash.ToHash256(), state))
+                        {
+                            _transactionOrder.Enqueue(key);
+                            _transactionOrderCount++;
+                        }
+                    }
                 }
             }
 
-            if (_transactionOrderCount <= MaxTrackedTransactions * 2)
+            if (Volatile.Read(ref _trackedTransactionCount) <= MaxTrackedTransactions)
             {
                 return;
             }
 
-            _transactionOrder.Clear();
-            _transactionOrderCount = 0;
-            foreach (KeyValuePair<ValueHash256, TrackedSparseBlobTx> entry in _transactions)
+            Span<TrackedStateKey> candidates = stackalloc TrackedStateKey[MaxTrimCandidates];
+            int count = CopyOverrepresentedAnnouncements(candidates, out PublicKey? overrepresentedPeerId);
+            TrackedSparseBlobTx? oldest = null;
+            bool oldestIsSoleAnnouncement = false;
+            for (int i = 0; i < count; i++)
             {
-                _transactionOrder.Enqueue(new TrackedStateKey(entry.Key, entry.Value.Revision));
-                _transactionOrderCount++;
+                if (_transactions.TryGetValue(candidates[i].Hash, out TrackedSparseBlobTx? state)
+                    && state.Revision == candidates[i].Revision)
+                {
+                    LastTrimStateCount++;
+                    lock (state.Lock)
+                    {
+                        if (HasProgress(state) || !state.Announcements.ContainsKey(overrepresentedPeerId!)) continue;
+                        bool soleAnnouncement = state.Announcements.Count == 1;
+                        if (oldest is null
+                            || soleAnnouncement && !oldestIsSoleAnnouncement
+                            || soleAnnouncement == oldestIsSoleAnnouncement && state.Revision < oldest.Revision)
+                        {
+                            oldest = state;
+                            oldestIsSoleAnnouncement = soleAnnouncement;
+                        }
+                    }
+                }
             }
+
+            if (oldest is not null)
+            {
+                LastTrimStateCount++;
+                lock (oldest.Lock)
+                {
+                    if (!HasProgress(oldest)
+                        && oldest.Announcements.ContainsKey(overrepresentedPeerId!)
+                        && (!oldestIsSoleAnnouncement || oldest.Announcements.Count == 1)
+                        && TryRemoveState(oldest.Hash.ToHash256(), oldest)) return;
+                }
+            }
+
+            TryRemoveState(incoming.Hash.ToHash256(), incoming);
+        }
+    }
+
+    private static bool HasProgress(TrackedSparseBlobTx state) =>
+        state.Submitting || state.Submitted || state.ApplyingRecordedCells || state.Transaction is not null
+        || state.Cells is not null || state.AlternativeCells is not null || state.CurrentBodyAttempt is not null || !state.InFlightMask.IsEmpty
+        || state.ClaimedCellReservations is { Count: > 0 };
+
+    private int CopyOverrepresentedAnnouncements(Span<TrackedStateKey> candidates, out PublicKey? peerId)
+    {
+        lock (_accountingLock)
+        {
+            PeerUsage? largest = null;
+            peerId = null;
+            foreach ((PublicKey candidatePeerId, PeerUsage usage) in _peerUsage)
+            {
+                if (largest is null || usage.AnnouncedHashes.Count > largest.AnnouncedHashes.Count)
+                {
+                    largest = usage;
+                    peerId = candidatePeerId;
+                }
+            }
+
+            if (largest is null || largest.AnnouncedHashes.Count == 0) return 0;
+            int count = 0;
+            foreach ((long revision, ValueHash256 hash) in largest.AnnouncedStates)
+            {
+                candidates[count++] = new(hash, revision);
+                if (count == candidates.Length) break;
+            }
+            return count;
         }
     }
 
@@ -2188,6 +2689,8 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
         return removed;
     }
+
+    private bool IsCurrentState(Hash256 hash, TrackedSparseBlobTx state) => IsCurrentState(hash.ValueHash256, state);
 
     private bool IsCurrentState(in ValueHash256 hash, TrackedSparseBlobTx state)
         => _transactions.TryGetValue(hash, out TrackedSparseBlobTx? current)
@@ -2204,7 +2707,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         state.ExpiresAt = slidingExpiration < state.MaxExpiresAt ? slidingExpiration : state.MaxExpiresAt;
     }
 
-    private bool TryReserveAnnouncement(ISparseBlobPoolPeer peer, ValueHash256 hash, bool retained)
+    private bool TryReserveAnnouncement(ISparseBlobPoolPeer peer, TrackedSparseBlobTx state)
     {
         lock (_accountingLock)
         {
@@ -2215,15 +2718,15 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
             PublicKey peerId = peer.Id;
             PeerUsage usage = GetPeerUsage(peerId);
-            int count = retained ? usage.RetainedAnnouncements : usage.Announcements;
-            int limit = retained ? MaxRetainedAnnouncementsPerPeer : MaxAnnouncementsPerPeer;
+            int count = state.Submitted ? usage.RetainedAnnouncements : usage.Announcements;
+            int limit = state.Submitted ? MaxRetainedAnnouncementsPerPeer : MaxAnnouncementsPerPeer;
             if (count >= limit)
             {
                 RemovePeerUsageIfEmpty(peerId, usage);
                 return false;
             }
 
-            if (retained)
+            if (state.Submitted)
             {
                 usage.RetainedAnnouncements++;
             }
@@ -2232,8 +2735,9 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                 usage.Announcements++;
             }
 
-            usage.AnnouncedHashes[hash] = usage.AnnouncedHashes.GetValueOrDefault(hash) + 1;
-            AddTrackedHashReference(usage, hash);
+            usage.AnnouncedHashes[state.Hash] = usage.AnnouncedHashes.GetValueOrDefault(state.Hash) + 1;
+            usage.AnnouncedStates.Add(state.Revision, state.Hash);
+            AddTrackedHashReference(usage, state.Hash);
             return true;
         }
     }
@@ -2259,7 +2763,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                 }
                 else
                 {
-                    ReleaseAnnouncementReference(usage, state.Hash);
+                    ReleaseAnnouncementReference(usage, state);
                     (droppedAnnouncements ??= []).Add(peerId);
                 }
 
@@ -2276,7 +2780,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         }
     }
 
-    private void ReleaseAnnouncement(PublicKey peerId, ValueHash256 hash, bool retained)
+    private void ReleaseAnnouncement(PublicKey peerId, TrackedSparseBlobTx state)
     {
         lock (_accountingLock)
         {
@@ -2285,7 +2789,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                 return;
             }
 
-            if (retained)
+            if (state.Submitted)
             {
                 if (usage.RetainedAnnouncements == 0)
                 {
@@ -2304,13 +2808,15 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                 usage.Announcements--;
             }
 
-            ReleaseAnnouncementReference(usage, hash);
+            ReleaseAnnouncementReference(usage, state);
             RemovePeerUsageIfEmpty(peerId, usage);
         }
     }
 
-    private static void ReleaseAnnouncementReference(PeerUsage usage, ValueHash256 hash)
+    private static void ReleaseAnnouncementReference(PeerUsage usage, TrackedSparseBlobTx state)
     {
+        ValueHash256 hash = state.Hash;
+        usage.AnnouncedStates.Remove(state.Revision);
         int references = usage.AnnouncedHashes.GetValueOrDefault(hash);
         if (references <= 1)
         {
@@ -2348,6 +2854,217 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             return true;
         }
     }
+
+    private bool MakeRoom(PublicKey peerId, long byteLength, bool earlyCells, TrackedSparseBlobTx incoming)
+    {
+        bool evicted = false;
+        while (byteLength > 0
+            && IsBudgetFull(byteLength, earlyCells) && TryEvictOldest(peerId, byteLength, earlyCells, incoming))
+        {
+            evicted = true;
+        }
+
+        return evicted;
+    }
+
+    private bool IsBudgetFull(long byteLength, bool earlyCells) => earlyCells
+        ? Volatile.Read(ref _earlyCellsBytes) + byteLength > MaxEarlyCellsBytes
+        : Volatile.Read(ref _trackedTransactionBytes) + byteLength > MaxTrackedTransactionBytes;
+
+    private static long GetBudgetBytes(PeerUsage usage, bool earlyCells)
+        => earlyCells ? usage.EarlyCellBytes : usage.TransactionBytes;
+
+    private bool TryEvictOldest(PublicKey peerId, long byteLength, bool earlyCells, TrackedSparseBlobTx incoming)
+    {
+        List<(PublicKey PeerId, long Bytes, long Sequence)> owners = [];
+        lock (_accountingLock)
+        {
+            long requiredOwnerBytes = byteLength
+                + (_peerUsage.TryGetValue(peerId, out PeerUsage? requesterUsage) ? GetBudgetBytes(requesterUsage, earlyCells) : 0);
+            foreach (KeyValuePair<PublicKey, PeerUsage> entry in _peerUsage)
+            {
+                long entryBytes = GetBudgetBytes(entry.Value, earlyCells);
+                if (entryBytes >= requiredOwnerBytes && entry.Key != peerId)
+                {
+                    owners.Add((entry.Key, entryBytes, _peerSessionSequences.GetValueOrDefault(entry.Key)));
+                }
+            }
+        }
+
+        owners.Sort(static (x, y) => x.Bytes != y.Bytes ? y.Bytes.CompareTo(x.Bytes) : y.Sequence.CompareTo(x.Sequence));
+        List<TrackedSparseBlobTx> candidates = [];
+        for (int ownerIndex = 0; ownerIndex < owners.Count; ownerIndex++)
+        {
+            PublicKey ownerId = owners[ownerIndex].PeerId;
+            ValueHash256[] ownerHashes;
+            lock (_accountingLock)
+            {
+                if (!_peerUsage.TryGetValue(ownerId, out PeerUsage? ownerUsage))
+                {
+                    continue;
+                }
+
+                ownerHashes = [.. ownerUsage.TrackedHashes.Keys];
+            }
+
+            candidates.Clear();
+            for (int i = 0; i < ownerHashes.Length; i++)
+            {
+                if (_transactions.TryGetValue(ownerHashes[i], out TrackedSparseBlobTx? state) && !ReferenceEquals(state, incoming))
+                {
+                    lock (state.Lock)
+                    {
+                        if (IsEvictable(state, ownerId, earlyCells))
+                        {
+                            candidates.Add(state);
+                        }
+                    }
+                }
+            }
+
+            candidates.Sort(static (x, y) => x.Revision.CompareTo(y.Revision));
+            bool evicted = false;
+            for (int i = 0; i < candidates.Count && IsBudgetFull(byteLength, earlyCells); i++)
+            {
+                evicted |= earlyCells
+                    ? TryEvictEarlyCells(candidates[i], ownerId)
+                    : TryEvictTransaction(candidates[i], ownerId);
+            }
+
+            if (evicted)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsEvictable(TrackedSparseBlobTx state, PublicKey ownerId, bool earlyCells)
+    {
+        if (state.Submitting || state.Submitted)
+        {
+            return false;
+        }
+
+        return earlyCells
+            ? state.Transaction is null
+                && !state.ApplyingRecordedCells
+                && ((state.Cells?.GetByteLength(ownerId) ?? 0) > 0
+                    || (state.AlternativeCells?.GetByteLength(ownerId) ?? 0) > 0)
+            : state.TransactionBytes > 0
+                && state.Cells is null
+                && state.AlternativeCells is null
+                && state.CurrentBodyAttempt is null
+                && state.TransactionPeer?.Id == ownerId;
+    }
+
+    private bool TryEvictTransaction(TrackedSparseBlobTx state, PublicKey ownerId)
+    {
+        ISparseBlobPoolPeer? retryPeer;
+        ExceptionDispatchInfo? retryFailure;
+        lock (state.Lock)
+        {
+            if (!IsCurrentState(state.Hash, state) || !IsEvictable(state, ownerId, earlyCells: false))
+            {
+                return false;
+            }
+
+            ReleaseTransaction(state);
+            state.Transaction = null;
+            state.TransactionPeer = null;
+            state.TransactionRetryPeers = [ownerId];
+            state.TransactionRetryAttempts = 0;
+            state.TransactionRetryResumeAfter = null;
+            if (IsUnused(state))
+            {
+                TryRemoveState(state.Hash, state);
+                return true;
+            }
+            retryPeer = PlanBodyRetry(state, out retryFailure);
+        }
+
+        if (retryPeer is not null) SendBodyRetry(state.Hash.ToHash256(), state, retryPeer);
+        retryFailure?.Throw();
+        return true;
+    }
+
+    private ISparseBlobPoolPeer? SelectUntriedTransactionRetryPeer(TrackedSparseBlobTx state, HashSet<PublicKey> triedPeers, HashSet<PublicKey>? failedPeers = null)
+    {
+        PublicKey? resumeAfter = state.TransactionRetryResumeAfter;
+        if (resumeAfter is null && state.Cells is { } cells)
+        {
+            for (int i = 0; i < cells.Sources.Length; i++)
+            {
+                PublicKey sourcePeerId = cells.Sources[i].PeerId;
+                if (!triedPeers.Contains(sourcePeerId)
+                    && failedPeers?.Contains(sourcePeerId) != true
+                    && state.Announcements.ContainsKey(sourcePeerId)
+                    && _peers.TryGetValue(sourcePeerId, out ISparseBlobPoolPeer? sourcePeer)
+                    && CanRequestBody(state, sourcePeer))
+                {
+                    return sourcePeer;
+                }
+            }
+        }
+
+        ISparseBlobPoolPeer? first = null;
+        bool afterCursor = resumeAfter is null;
+        foreach (PublicKey peerId in state.Announcements.Keys)
+        {
+            if (!triedPeers.Contains(peerId)
+                && failedPeers?.Contains(peerId) != true
+                && _peers.TryGetValue(peerId, out ISparseBlobPoolPeer? peer)
+                && CanRequestBody(state, peer))
+            {
+                if (afterCursor) return peer;
+                first ??= peer;
+            }
+            afterCursor |= peerId == resumeAfter;
+        }
+
+        return first;
+    }
+
+    private bool TryEvictEarlyCells(TrackedSparseBlobTx state, PublicKey ownerId)
+    {
+        lock (state.Lock)
+        {
+            if (!IsCurrentState(state.Hash, state) || !IsEvictable(state, ownerId, earlyCells: true))
+            {
+                return false;
+            }
+
+            state.Cells = RemoveSource(state.Cells, state.Hash, ownerId);
+            state.AlternativeCells = RemoveSource(state.AlternativeCells, state.Hash, ownerId);
+            if (state.Cells is null)
+            {
+                state.Cells = state.AlternativeCells;
+                state.AlternativeCells = null;
+            }
+
+            if (IsUnused(state))
+            {
+                TryRemoveState(state.Hash, state);
+            }
+        }
+
+        return true;
+    }
+
+    private PendingCellsBuffer? RemoveSource(PendingCellsBuffer? buffer, in ValueHash256 hash, PublicKey ownerId)
+    {
+        if (buffer is not { } current || !current.TryRemoveSource(ownerId, out PendingCellsBuffer? remaining)) return buffer;
+        if (remaining is { } retained && TryReplaceCellsAccounting(hash, current, retained)) return retained;
+        ReleaseCells(hash, current);
+        return null;
+    }
+
+    private static bool IsUnused(TrackedSparseBlobTx state)
+        => state.Announcements.Count == 0
+            && state.RestorationTickets.Count == 0
+            && state.InFlightByPeer.Count == 0
+            && !HasProgress(state);
 
     private void ReleaseTransaction(TrackedSparseBlobTx state)
     {
@@ -2447,11 +3164,13 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
     private void ReleaseCells(TrackedSparseBlobTx state)
     {
-        if (state.Cells is not { } cells)
-        {
-            return;
-        }
+        if (state.Cells is { } cells) ReleaseCells(state.Hash, cells);
+        if (state.AlternativeCells is { } alternative) ReleaseCells(state.Hash, alternative);
+        state.AlternativeCells = null;
+    }
 
+    private void ReleaseCells(ValueHash256 hash, in PendingCellsBuffer cells)
+    {
         lock (_accountingLock)
         {
             _earlyCellsBytes -= cells.ByteLength;
@@ -2461,14 +3180,14 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                 if (_peerUsage.TryGetValue(peerId, out PeerUsage? usage))
                 {
                     usage.EarlyCellBytes -= cells.GetByteLength(peerId);
-                    ReleaseTrackedHashReference(usage, state.Hash);
+                    ReleaseTrackedHashReference(usage, hash);
                     RemovePeerUsageIfEmpty(peerId, usage);
                 }
             }
         }
     }
 
-    private InFlightReservationResult TryReserveInFlight(ISparseBlobPoolPeer peer, ValueHash256 hash, int work, bool addHashReference)
+    private InFlightReservationResult TryReserveInFlight(ISparseBlobPoolPeer peer, ValueHash256 hash, int work, bool singleProvider, bool addHashReference)
     {
         lock (_accountingLock)
         {
@@ -2479,19 +3198,24 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
             PublicKey peerId = peer.Id;
             PeerUsage usage = GetPeerUsage(peerId);
-            if (_inFlightCellWork + work > MaxInFlightCellWork)
+            if (_inFlightCellWork + work > MaxInFlightCellWork
+                || (singleProvider && _singleProviderCellWork + work > MaxSingleProviderCellWork))
             {
                 RemovePeerUsageIfEmpty(peerId, usage);
                 return InFlightReservationResult.GlobalCapacityExceeded;
             }
 
-            if (usage.InFlightCellWork + work > MaxInFlightCellWorkPerPeer)
+            int sharedBudget = singleProvider ? MaxSingleProviderCellWork : MaxInFlightCellWork;
+            int peerLimit = Math.Max(BlobCellMask.CellCount,
+                Math.Min(MaxInFlightCellWorkPerPeer, sharedBudget / Math.Max(MinimumCellWorkShares, _peers.Count)));
+            if (usage.InFlightCellWork + work > peerLimit)
             {
                 RemovePeerUsageIfEmpty(peerId, usage);
                 return InFlightReservationResult.PeerCapacityExceeded;
             }
 
             _inFlightCellWork += work;
+            if (singleProvider) _singleProviderCellWork += work;
             usage.InFlightCellWork += work;
             if (addHashReference)
             {
@@ -2502,7 +3226,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         }
     }
 
-    private void ReleaseInFlight(PublicKey peerId, ValueHash256 hash, int work, bool releaseHashReference)
+    private void ReleaseInFlight(TrackedSparseBlobTx state, PublicKey peerId, int work, bool releaseHashReference)
     {
         if (work == 0 && !releaseHashReference)
         {
@@ -2512,12 +3236,19 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         lock (_accountingLock)
         {
             _inFlightCellWork -= work;
+            if (state.SingleProviderInFlightPeers.Contains(peerId)) _singleProviderCellWork -= work;
+            if (releaseHashReference)
+            {
+                state.SingleProviderInFlightPeers.Remove(peerId);
+                state.InFlightUntilByPeer.Remove(peerId);
+                state.InFlightReceiptGuards.Remove(peerId);
+            }
             if (_peerUsage.TryGetValue(peerId, out PeerUsage? usage))
             {
                 usage.InFlightCellWork -= work;
                 if (releaseHashReference)
                 {
-                    ReleaseTrackedHashReference(usage, hash);
+                    ReleaseTrackedHashReference(usage, state.Hash);
                 }
 
                 RemovePeerUsageIfEmpty(peerId, usage);
@@ -2525,34 +3256,47 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         }
     }
 
-    private PublicKey ExpireInFlight(ValueHash256 hash, TrackedSparseBlobTx state)
+    private BlobCellMask ExpireInFlight(TrackedSparseBlobTx state, DateTimeOffset now)
     {
-        PublicKey fallbackPeer = NoLastResortPeer;
-        foreach (KeyValuePair<PublicKey, BlobCellMask> inFlight in state.InFlightByPeer)
+        List<PublicKey>? expiredPeers = null;
+        foreach ((PublicKey peerId, DateTimeOffset deadline) in state.InFlightUntilByPeer)
         {
-            fallbackPeer = inFlight.Key;
-            ReleaseInFlight(inFlight.Key, hash, inFlight.Value.Count, releaseHashReference: true);
-            if (state.Announcements.Remove(inFlight.Key))
+            if (now >= deadline
+                && state.ClaimedCellReservations?.ContainsKey((peerId, state.InFlightRevisionByPeer[peerId])) != true
+                && (!state.InFlightReceiptGuards.TryGetValue(peerId, out PacketReceiptTracker.ExpiryGuard? guard)
+                    || guard.CanExpire()))
+                (expiredPeers ??= []).Add(peerId);
+        }
+
+        BlobCellMask expiredMask = BlobCellMask.Empty;
+        if (expiredPeers is null) return expiredMask;
+        foreach (PublicKey peerId in expiredPeers)
+        {
+            CancelAnnouncementRestoration(state, peerId);
+            BlobCellMask mask = state.InFlightByPeer[peerId];
+            expiredMask |= mask;
+            state.InFlightByPeer.Remove(peerId);
+            state.InFlightRevisionByPeer.Remove(peerId);
+            state.InFlightMask = state.InFlightMask.Except(mask);
+            ReleaseInFlight(state, peerId, mask.Count, releaseHashReference: true);
+            if (state.Announcements.Remove(peerId))
             {
-                ReleaseAnnouncement(inFlight.Key, hash, state.Submitted);
+                ReleaseAnnouncement(peerId, state);
             }
         }
 
-        state.InFlightByPeer.Clear();
-        state.InFlightRevisionByPeer.Clear();
-        state.InFlightMask = BlobCellMask.Empty;
-        state.InFlightUntil = default;
-        return fallbackPeer;
+        return expiredMask;
     }
 
-    private ISparseBlobPoolPeer? SelectTransactionRetryPeer(PendingCellsBuffer cells, ISparseBlobPoolPeer? transactionPeer)
+    private ISparseBlobPoolPeer? SelectTransactionRetryPeer(TrackedSparseBlobTx state, PendingCellsBuffer cells, ISparseBlobPoolPeer? transactionPeer)
     {
         for (int i = 0; i < cells.Sources.Length; i++)
         {
             PublicKey sourcePeerId = cells.Sources[i].PeerId;
-            if ((transactionPeer is null || sourcePeerId != transactionPeer.Id)
+            if (!state.AmbiguousFailureSources.Contains(sourcePeerId)
+                && (transactionPeer is null || sourcePeerId != transactionPeer.Id)
                 && _peers.TryGetValue(sourcePeerId, out ISparseBlobPoolPeer? peer)
-                && !peer.IsClosing)
+                && CanRequestBody(state, peer))
             {
                 return peer;
             }
@@ -2563,15 +3307,146 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
     private ISparseBlobPoolPeer? SelectTransactionRetryPeer(TrackedSparseBlobTx state)
     {
+        ISparseBlobPoolPeer? first = null;
+        bool afterLastAsked = state.LastBodyRequestPeer is null;
         foreach (PublicKey peerId in state.Announcements.Keys)
         {
-            if (_peers.TryGetValue(peerId, out ISparseBlobPoolPeer? peer) && !peer.IsClosing)
+            if (peerId == state.LastBodyRequestPeer)
             {
-                return peer;
+                afterLastAsked = true;
+                continue;
+            }
+            if (!state.AmbiguousFailureSources.Contains(peerId)
+                && _peers.TryGetValue(peerId, out ISparseBlobPoolPeer? peer) && CanRequestBody(state, peer))
+            {
+                if (afterLastAsked) return peer;
+                first ??= peer;
             }
         }
 
-        return null;
+        if (first is not null) return first;
+        return state.LastBodyRequestPeer is { } lastPeerId
+            && !state.AmbiguousFailureSources.Contains(lastPeerId)
+            && _peers.TryGetValue(lastPeerId, out ISparseBlobPoolPeer? lastPeer) && CanRequestBody(state, lastPeer)
+                ? lastPeer
+                : null;
+    }
+
+    private ISparseBlobPoolPeer? PlanBodyRetry(TrackedSparseBlobTx state, out ExceptionDispatchInfo? failure,
+        PendingCellsBuffer? cells = null, ISparseBlobPoolPeer? transactionPeer = null)
+    {
+        failure = null;
+        if (state.TransactionRetryPeers is not null)
+        {
+            if (state.TransactionRetryAttempts >= MaxTransactionRetryAttempts)
+            {
+                state.BodyRetryDueAt = null;
+                return null;
+            }
+            if (state.CurrentBodyAttempt is not null || state.BodyRetrySending)
+            {
+                state.BodyRetryDueAt ??= DateTimeOffset.MinValue;
+                return null;
+            }
+        }
+
+        state.BodyRetryDueAt = DateTimeOffset.MinValue;
+        try
+        {
+            ISparseBlobPoolPeer? peer;
+            if (state.TransactionRetryPeers is { } triedPeers)
+            {
+                peer = SelectUntriedTransactionRetryPeer(state, triedPeers);
+            }
+            else
+            {
+                peer = cells is { } buffered ? SelectTransactionRetryPeer(state, buffered, transactionPeer) : null;
+                if (transactionPeer is null) peer ??= SelectTransactionRetryPeer(state);
+            }
+
+            state.BodyRetryDueAt = _timestamper.UtcNowOffset + (peer is null ? AmbiguousBodyRetryDelay : Timeouts.Eth);
+            return peer;
+        }
+        catch (Exception exception)
+        {
+            failure = ExceptionDispatchInfo.Capture(exception);
+            return null;
+        }
+    }
+
+    private static bool CanRequestBody(TrackedSparseBlobTx state, ISparseBlobPoolPeer peer)
+        => !state.BodyUnavailableSources.Contains(peer.Id) && peer.CanRequestTransactions && !peer.IsClosing;
+
+    private void SendBodyRetry(Hash256 hash, TrackedSparseBlobTx state, ISparseBlobPoolPeer? peer)
+    {
+        HashSet<PublicKey>? failedPeers = null;
+        while (peer is not null)
+        {
+            HashSet<PublicKey>? triedPeers;
+            long attempt;
+            lock (state.Lock)
+            {
+                if (!IsCurrentState(hash, state) || state.Transaction is not null || state.Submitted) return;
+
+                triedPeers = state.TransactionRetryPeers;
+                if (triedPeers is not null)
+                {
+                    if (state.CurrentBodyAttempt is not null || state.BodyRetrySending
+                        || state.TransactionRetryAttempts >= MaxTransactionRetryAttempts || triedPeers.Contains(peer.Id)
+                        || !IsActivePeer(peer) || !CanRequestBody(state, peer)) return;
+                    state.BodyRetrySending = true;
+                }
+
+                attempt = ++state.BodyRequestAttempt;
+            }
+
+            bool sent = false;
+            try
+            {
+                sent = peer.TrySendPooledTransactionRequest(hash);
+            }
+            finally
+            {
+                lock (state.Lock)
+                {
+                    if (triedPeers is not null) state.BodyRetrySending = false;
+                    if (IsCurrentState(hash, state))
+                    {
+                        if (sent && attempt > state.LastSentBodyRequestAttempt
+                            && (state.CurrentBodyAttemptPeer is null || state.CurrentBodyAttemptPeer == peer.Id))
+                        {
+                            state.LastSentBodyRequestAttempt = attempt;
+                            state.LastBodyRequestPeer = peer.Id;
+                        }
+                        if (triedPeers is not null && ReferenceEquals(state.TransactionRetryPeers, triedPeers))
+                        {
+                            if (sent)
+                            {
+                                triedPeers.Add(peer.Id);
+                                state.TransactionRetryAttempts++;
+                                state.TransactionRetryResumeAfter = null;
+                                state.BodyRetryDueAt = state.TransactionRetryAttempts >= MaxTransactionRetryAttempts
+                                    ? null
+                                    : _timestamper.UtcNowOffset + _cellRequestTimeout;
+                            }
+                            else
+                            {
+                                state.TransactionRetryResumeAfter = peer.Id;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (sent || triedPeers is null) return;
+            (failedPeers ??= []).Add(peer.Id);
+            if (failedPeers.Count >= MaxTransactionRetryAttempts) return;
+            lock (state.Lock)
+            {
+                if (!ReferenceEquals(state.TransactionRetryPeers, triedPeers)) return;
+                peer = SelectUntriedTransactionRetryPeer(state, triedPeers, failedPeers);
+            }
+        }
     }
 
     private PeerUsage GetPeerUsage(PublicKey peerId)
@@ -2589,6 +3464,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     {
         if (usage.Announcements == 0
             && usage.RetainedAnnouncements == 0
+            && usage.RestorationTickets == 0
             && usage.AnnouncedHashes.Count == 0
             && usage.TrackedHashes.Count == 0
             && usage.EarlyCellBytes == 0
@@ -2660,12 +3536,59 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     private sealed class PeerUsage
     {
         public Dictionary<ValueHash256, int> AnnouncedHashes { get; } = [];
+        public SortedDictionary<long, ValueHash256> AnnouncedStates { get; } = [];
         public Dictionary<ValueHash256, int> TrackedHashes { get; } = [];
         public int Announcements { get; set; }
         public int RetainedAnnouncements { get; set; }
+        public int RestorationTickets { get; set; }
         public long EarlyCellBytes { get; set; }
         public long TransactionBytes { get; set; }
         public int InFlightCellWork { get; set; }
+    }
+
+    private sealed class ClaimedCellReservation
+    {
+        public int HoldCount;
+        public BlobCellMask Mask;
+        public BlobCellMask CompletedMask;
+        public bool MutationValid = true;
+    }
+
+    private bool MatchesCellRequestOwnership(IDisposable? ownership, ISparseBlobPoolPeer peer, TrackedSparseBlobTx state)
+        => ownership is null || ownership is ClaimedCellLease lease && lease.Matches(this, state, peer);
+
+    private sealed class MissingCellLease : ICellRequestOwnership
+    {
+        public bool IsCurrent => false;
+        public void Dispose() { }
+    }
+
+    private sealed class ClaimedCellLease(SparseBlobPoolPeerRegistry owner, TrackedSparseBlobTx state, PublicKey peerId, long revision, ISparseBlobPoolPeer originalPeer) : ICellRequestOwnership
+    {
+        private SparseBlobPoolPeerRegistry? _owner = owner;
+
+        public bool IsCurrent
+        {
+            get
+            {
+                SparseBlobPoolPeerRegistry? currentOwner = Volatile.Read(ref _owner);
+                if (currentOwner is null) return false;
+                lock (state.Lock) return Matches(currentOwner, state, originalPeer);
+            }
+        }
+
+        public bool Matches(SparseBlobPoolPeerRegistry expectedOwner, TrackedSparseBlobTx expectedState, ISparseBlobPoolPeer expectedPeer)
+            => ReferenceEquals(Volatile.Read(ref _owner), expectedOwner)
+                && ReferenceEquals(state, expectedState) && ReferenceEquals(originalPeer, expectedPeer)
+                && expectedOwner._peers.TryGetValue(peerId, out ISparseBlobPoolPeer? registeredPeer) && ReferenceEquals(registeredPeer, originalPeer)
+                && expectedOwner.IsCurrentState(state.Hash, state)
+                && state.ClaimedCellReservations?.TryGetValue((peerId, revision), out ClaimedCellReservation? claimed) == true
+                && claimed.MutationValid
+                && (!state.InFlightRevisionByPeer.TryGetValue(peerId, out long currentRevision) || currentRevision == revision);
+
+        public void Complete(BlobCellMask mask) => Volatile.Read(ref _owner)?.CompleteClaimedCells(state, peerId, revision, mask);
+
+        public void Dispose() => Interlocked.Exchange(ref _owner, null)?.ReleaseClaimedCells(state, peerId, revision);
     }
 
     private sealed class TrackedSparseBlobTx(ValueHash256 hash, DateTimeOffset createdAt, DateTimeOffset notBefore, long revision)
@@ -2677,25 +3600,44 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         public DateTimeOffset MaxExpiresAt { get; } = createdAt + MaxTrackedStateLifetime;
         public DateTimeOffset ExpiresAt { get; set; } = createdAt + TrackedStateTtl;
         public DateTimeOffset CellsExpiresAt { get; set; }
-        public DateTimeOffset CellValidationQuarantinedUntil { get; set; }
         public Dictionary<PublicKey, BlobCellMask> Announcements { get; } = [];
+        public Dictionary<PublicKey, AnnouncementRestoration> RestorationTickets { get; } = [];
         public HashSet<PublicKey> AmbiguousFailureSources { get; } = [];
+        public HashSet<PublicKey> BodyUnavailableSources { get; } = [];
+        public Queue<PublicKey>? BodyUnavailableSourceOrder { get; set; }
+        public Queue<PublicKey>? AmbiguousFailureSourceOrder { get; set; }
+        public PublicKey? AmbiguousBodySource { get; set; }
+        public DateTimeOffset? BodyRetryDueAt { get; set; }
+        public PublicKey? LastBodyRequestPeer { get; set; }
+        public long NextBodyAttempt { get; set; }
+        public long LastConfirmedBodyAttempt { get; set; }
+        public BodyRequestAttempt? CurrentBodyAttempt { get; set; }
+        public PublicKey? CurrentBodyAttemptPeer { get; set; }
+        public long BodyRequestAttempt { get; set; }
+        public long LastSentBodyRequestAttempt { get; set; }
+        public bool BodyRetrySending { get; set; }
         public Dictionary<PublicKey, BlobCellMask> InFlightByPeer { get; } = [];
         public Dictionary<PublicKey, long> InFlightRevisionByPeer { get; } = [];
         public Transaction? Transaction { get; set; }
         public ISparseBlobPoolPeer? TransactionPeer { get; set; }
         public int TransactionBytes { get; set; }
         public PendingCellsBuffer? Cells { get; set; }
+        public PendingCellsBuffer? AlternativeCells { get; set; }
         public DateTimeOffset? AdmissionDueAt { get; set; }
-        public int AmbiguousValidationFailures { get; set; }
-        public int AmbiguousCellValidationFailures { get; set; }
         public bool IsQueued { get; set; }
+        public HashSet<PublicKey>? TransactionRetryPeers { get; set; }
+        public int TransactionRetryAttempts { get; set; }
+        public PublicKey? TransactionRetryResumeAfter { get; set; }
         public bool Submitted { get; set; }
         public bool Submitting { get; set; }
         public bool RemovalRequested { get; set; }
         public bool ApplyingRecordedCells { get; set; }
         public BlobCellMask InFlightMask { get; set; }
-        public DateTimeOffset InFlightUntil { get; set; }
+        public BlobCellMask PendingCellMask { get; set; }
+        public Dictionary<PublicKey, DateTimeOffset> InFlightUntilByPeer { get; } = [];
+        public Dictionary<PublicKey, PacketReceiptTracker.ExpiryGuard> InFlightReceiptGuards { get; } = [];
+        public Dictionary<(PublicKey PeerId, long Revision), ClaimedCellReservation>? ClaimedCellReservations { get; set; }
+        public HashSet<PublicKey> SingleProviderInFlightPeers { get; } = [];
         public long NextInFlightRevision { get; set; }
     }
 }

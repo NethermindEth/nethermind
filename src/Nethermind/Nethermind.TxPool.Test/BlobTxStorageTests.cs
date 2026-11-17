@@ -169,7 +169,7 @@ public class BlobTxStorageTests
         Transaction tx = CreateBlobTransaction();
         storage.Add(tx);
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper;
-        wrapper.Proofs[0][0] ^= 1;
+        wrapper.Proofs[0] ^= 1;
         using ArrayPoolListRef<Transaction> transactions = new(1, tx);
 
         storage.AddBlobTransactionsFromBlock(358, transactions);
@@ -666,6 +666,22 @@ public class BlobTxStorageTests
         static Func<byte[][], byte[][]> WithBlobsItem(byte[] blobs) => items => [items[0], items[1], blobs, .. items[3..]];
     }
 
+    [Test]
+    public void Can_read_a_stored_record_with_an_explicit_v0_version()
+    {
+        Transaction tx = CreateBlobTransaction(TestItem.PrivateKeyA, blobCount: 2, spec: Cancun.Instance);
+        MemColumnsDb<BlobTxsColumns> columnsDb = new();
+        BlobTxStorage storage = new(columnsDb);
+        byte[][] items = ReadNetworkItems(tx);
+        StoreFullRecord(columnsDb, tx, BuildFullRecord([items[0], [0], .. items[1..]]));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(storage.TryGet(tx.Hash!, tx.SenderAddress!, tx.Timestamp, out Transaction decoded), Is.True);
+            Assert.That(decoded?.NetworkWrapper, Is.TypeOf<ShardBlobNetworkWrapper>());
+        }
+    }
+
     private static byte[][] ReadNetworkItems(Transaction tx)
     {
         byte[] typedTx = TxDecoder.Instance.Encode(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping);
@@ -729,7 +745,7 @@ public class BlobTxStorageTests
         byte[][] versionedHashes = new byte[blobCount][];
         byte[][] blobs = new byte[blobCount][];
         byte[][] commitments = new byte[blobCount][];
-        byte[][] proofs = new byte[proofsCount][];
+        byte[] proofs = new byte[proofsCount * Ckzg.BytesPerProof];
         for (int i = 0; i < blobCount; i++)
         {
             byte[] hash = new byte[Eip4844Constants.BytesPerBlobVersionedHash];
@@ -741,7 +757,7 @@ public class BlobTxStorageTests
         }
         for (int i = 0; i < proofsCount; i++)
         {
-            proofs[i] = [(byte)(i + 2)];
+            proofs[i * Ckzg.BytesPerProof] = (byte)(i + 2);
         }
 
         Transaction tx = new()

@@ -527,12 +527,10 @@ public static class RlpReaderExtensions
     /// <summary>Reads the bytes of a bloom, also in the old sequence form; an empty result is <c>0x80</c>.</summary>
     private static ReadOnlySpan<byte> DecodeBloomSpan(this scoped ref RlpReader reader)
     {
-        // The old form is 249 1 2 129 127, then the 256 bytes of the bloom.
-        const byte OldFormPrefix = 249;
-        const int OldFormHeaderLength = 5;
-        if (reader.PeekByte() == OldFormPrefix)
+        ReadOnlySpan<byte> oldFormHeader = [249, 1, 2, 129, 127];
+        if (reader.PeekByte() == oldFormHeader[0])
         {
-            reader.ReadRaw(OldFormHeaderLength);
+            if (!reader.ReadRaw(oldFormHeader.Length).SequenceEqual(oldFormHeader)) ThrowInvalid("Incorrect bloom RLP");
             return reader.ReadRaw(Bloom.ByteLength);
         }
 

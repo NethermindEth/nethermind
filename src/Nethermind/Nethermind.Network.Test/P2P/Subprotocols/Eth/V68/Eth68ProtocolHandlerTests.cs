@@ -3,7 +3,9 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Buffers.Binary;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -11,18 +13,24 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Threading;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.Messages;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols;
+using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V69;
+using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V70;
+using Nethermind.Network.P2P.Subprotocols.Eth.V71;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Serialization.Rlp;
@@ -38,14 +46,48 @@ using NSubstitute;
 using NUnit.Framework;
 using System;
 using System.Net;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using static Nethermind.Network.Test.P2P.Subprotocols.Eth.PooledTransactionRetryCache;
+using RecordingBackgroundTaskScheduler = Nethermind.Network.Test.P2P.Subprotocols.Eth.V66.Eth66ProtocolHandlerTests.RecordingBackgroundTaskScheduler;
 using GetPooledTransactionsMessage65 = Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages.GetPooledTransactionsMessage;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V68;
 
 public class Eth68ProtocolHandlerTests
 {
+    [Test]
+    public void Early_pooled_shape_rejection_releases_the_owned_response_context()
+    {
+        HandleIncomingStatusMessage();
+        Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
+        using NewPooledTransactionHashesMessage68 announcement = new(
+            new ArrayPoolList<byte>(1) { (byte)tx.Type },
+            new ArrayPoolList<int>(1) { tx.GetLength() + 1 },
+            new ArrayPoolList<ValueHash256>(1) { tx.Hash! });
+        HandleZeroMessage(announcement, Eth68MessageCode.NewPooledTransactionHashes);
+        int releases = 0;
+        using PooledTransactionRequests.ResponseContext context = new(1, () => releases++);
+        context.Tokens.Add(default);
+        ArrayPoolList<Transaction> transactions = new(1) { tx };
+        Type requestType = typeof(Eth62ProtocolHandler).GetNestedType("TransactionsRequest", BindingFlags.NonPublic)!;
+        object request = Activator.CreateInstance(requestType, transactions, 0)!;
+        requestType.GetProperty("ResponseContext", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(request, context);
+        MethodInfo process = typeof(Eth68ProtocolHandler).GetMethod("HandleSlow", BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+        TargetInvocationException failure = Assert.Throws<TargetInvocationException>(() =>
+            process.Invoke(_handler, [request, CancellationToken.None]))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failure.InnerException, Is.TypeOf<InvalidPeerRequestException>());
+            Assert.That(releases, Is.EqualTo(1));
+        }
+        context.Dispose();
+        Assert.That(releases, Is.EqualTo(1));
+    }
+
     private ISession _session = null!;
     private IMessageSerializationService _svc = null!;
     private ISyncServer _syncManager = null!;
@@ -71,6 +113,11 @@ public class Eth68ProtocolHandlerTests
         _session.Node.Returns(node);
         _session.When(s => s.DeliverMessage(Arg.Any<P2PMessage>())).Do(c => c.Arg<P2PMessage>().AddTo(_disposables));
         _syncManager = Substitute.For<ISyncServer>();
+        _session.DeliverMessage(Arg.Any<Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>()).Returns(call =>
+        {
+            using DisposableByteBuffer encoded = _svc.ZeroSerialize(call.Arg<Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>()).AsDisposable();
+            return encoded.ReadableBytes;
+        });
         _transactionPool = Substitute.For<ITxPool>();
         _specProvider = Substitute.For<ISpecProvider>();
         _gossipPolicy = Substitute.For<IGossipPolicy>();
@@ -128,6 +175,76 @@ public class Eth68ProtocolHandlerTests
             Is.EqualTo(canGossipTransactions ? txCount : 0));
     }
 
+    private void RecreateVariant(Type handlerType, IBackgroundTaskScheduler scheduler)
+    {
+        HandleIncomingStatusMessage();
+        _handler.Dispose();
+        _svc = Build.A.SerializationService().WithEth71(_specProvider).TestObject;
+        _handler = (Eth68ProtocolHandler)Activator.CreateInstance(handlerType,
+            _session, _svc, new NodeStatsManager(_timerFactory, LimboLogs.Instance),
+            _syncManager, scheduler, _transactionPool, _gossipPolicy,
+            new ForkInfo(_specProvider, _syncManager), LimboLogs.Instance,
+            Substitute.For<ITxPoolConfig>(), Substitute.For<IChainHeadSpecProvider>(), _txGossipPolicy, TimeProvider.System)!;
+        _handler.Init();
+        if (_handler.ProtocolVersion == 68)
+        {
+            HandleIncomingStatusMessage();
+        }
+        else
+        {
+            using StatusMessage69 status = new()
+            {
+                ProtocolVersion = _handler.ProtocolVersion,
+                GenesisHash = _genesisBlock.Hash!,
+                LatestBlockHash = _genesisBlock.Hash!
+            };
+            using DisposableByteBuffer packet = _svc.ZeroSerialize(status).AsDisposable();
+            packet.ReadByte();
+            _handler.HandleMessage(new NettyBufferPacket(packet) { PacketType = 0 });
+        }
+
+    }
+
+    [Test]
+    public async Task Pooled_reply_membership_is_enforced_through_eth68_to_eth71(
+        [Values(typeof(Eth68ProtocolHandler), typeof(Eth69ProtocolHandler), typeof(Eth70ProtocolHandler), typeof(Eth71ProtocolHandler))] Type handlerType,
+        [Values(0, 1, 2, 3, 4)] int replyShape)
+    {
+        RecordingBackgroundTaskScheduler scheduler = new() { Defer = true, QueueCapacity = 8192 };
+        RecreateVariant(handlerType, scheduler);
+        _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(true);
+        _transactionPool.NotifyAboutTx(Arg.Any<ValueHash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>()).Returns(AnnounceResult.RequestRequired);
+        Transaction first = Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject;
+        Transaction second = Build.A.Transaction.WithNonce(2).SignedAndResolved().TestObject;
+        Transaction unrequested = Build.A.Transaction.WithNonce(3).SignedAndResolved().TestObject;
+        using NewPooledTransactionHashesMessage68 announcement = new(
+            new byte[] { 0, 0 }.ToPooledList(), new int[] { first.GetLength(), second.GetLength() }.ToPooledList(),
+            new[] { first.Hash!.ValueHash256, second.Hash!.ValueHash256 }.ToPooledList());
+        HandleZeroMessage(announcement, Eth68MessageCode.NewPooledTransactionHashes);
+        long requestId = _session.ReceivedCalls().SelectMany(call => call.GetArguments().OfType<GetPooledTransactionsMessage>()).Last().RequestId;
+        Transaction[] returned = replyShape switch
+        {
+            0 => [unrequested],
+            1 => [first, first],
+            2 => [],
+            3 => [second],
+            _ => [first, second]
+        };
+        using PooledTransactionsMessage response = new(requestId, new Eth65PooledTransactionsMessage(returned.ToPooledList()));
+        bool rejected = replyShape < 2;
+        try
+        {
+            if (rejected) Assert.Throws<SubprotocolException>(() => HandleZeroMessage(response, Eth66MessageCode.PooledTransactions));
+            else HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
+            Assert.That(scheduler.ScheduledFulfillFuncs.Count, Is.EqualTo(!rejected ? 1 : 0));
+            await scheduler.Drain(CancellationToken.None);
+            _transactionPool.Received(rejected ? 0 : returned.Length).SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+            for (int index = 0; index < 32; index++) _handler.HandleMessage(PooledTransactionRequestMessage.New(first.Hash!));
+            Assert.That(_session.ReceivedCalls().Count(call => call.GetArguments().OfType<GetPooledTransactionsMessage>().Any()), Is.EqualTo(33));
+        }
+        finally { await scheduler.Drain(new CancellationToken(true)); }
+    }
+
     [Test]
     public void Should_throw_when_sizes_do_not_match([Values] bool removeSize)
     {
@@ -171,7 +288,7 @@ public class Eth68ProtocolHandlerTests
             Assert.That(reusable.GasLimit, Is.Zero);
         }
         _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
-        _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, "invalid pooled tx type or size");
+        _session.Received(1).InitiateDisconnect(DisconnectReason.BreachOfProtocol, "invalid pooled tx type or size");
     }
 
     [Test]
@@ -225,7 +342,7 @@ public class Eth68ProtocolHandlerTests
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
         int sidecarContentLength = Rlp.LengthOf(wrapper.Blobs)
             + Rlp.LengthOf(wrapper.Commitments)
-            + Rlp.LengthOf(wrapper.Proofs);
+            + Rlp.LengthOf(wrapper.SplitProofs());
         int gethSizeEstimate = tx.GetLength(shouldCountBlobs: false) + Rlp.LengthOfSequence(sidecarContentLength);
         Assert.That(gethSizeEstimate, Is.Not.EqualTo(tx.GetLength()));
         using NewPooledTransactionHashesMessage68 hashesMsg = new(
@@ -260,7 +377,7 @@ public class Eth68ProtocolHandlerTests
         HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
 
         _session.Received(1).InitiateDisconnect(
-            DisconnectReason.BackgroundTaskFailure,
+            DisconnectReason.BreachOfProtocol,
             "invalid pooled tx type or size");
     }
 
@@ -278,7 +395,7 @@ public class Eth68ProtocolHandlerTests
         txsMsg.RequestId = LastPooledRequestId();
         HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
 
-        _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, "invalid pooled tx type or size");
+        _session.Received(1).InitiateDisconnect(DisconnectReason.BreachOfProtocol, "invalid pooled tx type or size");
     }
 
     [Test]
@@ -297,7 +414,7 @@ public class Eth68ProtocolHandlerTests
         txsMsg.RequestId = LastPooledRequestId();
         HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
 
-        _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, "invalid pooled tx type or size");
+        _session.Received(1).InitiateDisconnect(DisconnectReason.BreachOfProtocol, "invalid pooled tx type or size");
         _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
     }
 
@@ -338,7 +455,7 @@ public class Eth68ProtocolHandlerTests
         bool shapeMatches = announced is AnnouncedShape.None or AnnouncedShape.Matching;
         recyclablePool.Received(shapeMatches ? 1 : 0).TrySubmitKnown(Arg.Any<ValueHash256>());
         recyclablePool.DidNotReceive().SubmitOwnedTx(Arg.Any<Transaction>(), Arg.Any<object?>(), out _);
-        _session.Received(shapeMatches ? 0 : 1).InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, "invalid pooled tx type or size");
+        _session.Received(shapeMatches ? 0 : 1).InitiateDisconnect(DisconnectReason.BreachOfProtocol, "invalid pooled tx type or size");
     }
 
     [Test]
@@ -739,10 +856,24 @@ public class Eth68ProtocolHandlerTests
         return CreateHandler(txPoolConfig, specProvider);
     }
 
+    // One-transaction requests drain 32 per retry tick; the retry cache drops a hash after 48 local refusals, so the
+    // largest count stays well inside that bound.
     [Test]
-    public void should_divide_GetPooledTransactionsMessage_if_max_message_size_is_exceeded([Values(0, 1, 100, 10_000)] int numberOfTransactions, [Values(97, TransactionsMessage.MaxPacketSize)] int sizeOfOneTx)
+    public async Task should_divide_GetPooledTransactionsMessage_if_max_message_size_is_exceeded([Values(0, 1, 100, 1024)] int numberOfTransactions, [Values(97, TransactionsMessage.MaxPacketSize)] int sizeOfOneTx)
     {
-        ReplaceHandler(Substitute.For<ITxPoolConfig>());
+        ManualTimeProvider requestClock = new();
+        ReplaceHandler(Substitute.For<ITxPoolConfig>(), new RecordingBackgroundTaskScheduler { QueueCapacity = 8192 }, timeProvider: requestClock);
+        ManualTimeProvider clock = new();
+        await using RetryCache<PooledTransactionRequestMessage, ValueHash256> retry = CreateRetryCache(clock);
+        _transactionPool.NotifyAboutTx(Arg.Any<ValueHash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
+            .Returns(call =>
+            {
+                ValueHash256 hash = call.ArgAt<ValueHash256>(0);
+                return retry.Announced(in hash, call.ArgAt<IMessageHandler<PooledTransactionRequestMessage>>(1));
+            });
+        _transactionPool.TryDeferTransactionRequest(Arg.Any<ValueHash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
+            .Returns(call => TryDeferRequest(retry, call.ArgAt<ValueHash256>(0),
+                call.ArgAt<IMessageHandler<PooledTransactionRequestMessage>>(1)));
 
         int maxNumberOfTxsInOneMsg = int.Min(sizeOfOneTx <= TransactionsMessage.MaxPacketSize ? TransactionsMessage.MaxPacketSize / sizeOfOneTx : 256, 256);
         int messagesCount = numberOfTransactions / maxNumberOfTxsInOneMsg + (numberOfTransactions % maxNumberOfTxsInOneMsg == 0 ? 0 : 1);
@@ -762,8 +893,196 @@ public class Eth68ProtocolHandlerTests
         HandleIncomingStatusMessage();
         HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
 
-        _session.Received(messagesCount).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Count == maxNumberOfTxsInOneMsg || m.EthMessage.Hashes.Count == numberOfTransactions % maxNumberOfTxsInOneMsg));
-        AssertRequestedHashes(hashes);
+        int announcedRequests = SentRequests().Length;
+        Assert.That(announcedRequests, Is.EqualTo(Math.Min(messagesCount, 32)),
+            "unanswered requests remain bounded before any reply releases capacity");
+        long[] answered = [];
+        int hashesPerRetryTick = Math.Min(RetryWorkBatchSize, 32 * maxNumberOfTxsInOneMsg);
+        for (int round = 0; round <= (numberOfTransactions + hashesPerRetryTick - 1) / hashesPerRetryTick; round++)
+        {
+            GetPooledTransactionsMessage[] pending = SentRequests()
+                .Where(request => !answered.Contains(request.RequestId)).ToArray();
+            foreach (GetPooledTransactionsMessage request in pending)
+            {
+                using PooledTransactionsMessage response = new(request.RequestId,
+                    new Eth65PooledTransactionsMessage(IOwnedReadOnlyList<Transaction>.Empty));
+                HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
+            }
+            answered = SentRequests().Select(request => request.RequestId).ToArray();
+            if (SentRequests().Sum(static request => request.EthMessage.Hashes.Count) == numberOfTransactions) break;
+            // This checks packet splitting after lease release; the real pool fixtures cover retry cadence and deadlines.
+            ProcessRetryTick(retry);
+            Assert.That(SentRequests().Length, Is.GreaterThan(answered.Length),
+                "original unsent hashes must become requestable after real replies release the leases");
+        }
+
+        // The announced-shape cache is lossy, and which shapes it drops depends on the per-process hash seed. A retry
+        // splits by size only the hashes whose shape it still holds and requests the rest as plain eth/66 hashes.
+        HashSet<ValueHash256> shapeless = hashes.Where(hash => !HasTxShape(_handler, hash)).ToHashSet();
+        GetPooledTransactionsMessage[] requests = SentRequests();
+        using (Assert.EnterMultipleScope())
+        {
+            for (int index = 0; index < requests.Length; index++)
+            {
+                ValueHash256[] requested = requests[index].EthMessage.Hashes.AsSpan().ToArray();
+                if (index >= announcedRequests && shapeless.Contains(requested[0]))
+                    Assert.That(requested, Is.SubsetOf(shapeless), "a shapeless retry is not mixed with sized hashes");
+                else
+                    Assert.That(requested, Has.Length.AtMost(maxNumberOfTxsInOneMsg), "a sized request is split by the announced sizes");
+            }
+            Assert.That(requests.SelectMany(static request => request.EthMessage.Hashes), Is.EquivalentTo(hashes));
+            _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        }
+
+        GetPooledTransactionsMessage[] SentRequests() => _session.ReceivedCalls()
+            .SelectMany(static call => call.GetArguments().OfType<GetPooledTransactionsMessage>()).ToArray();
+    }
+
+    private static bool HasTxShape(Eth68ProtocolHandler handler, ValueHash256 hash) =>
+        (bool)typeof(Eth68ProtocolHandler)
+            .GetMethod("TryGetTxShape", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(handler, [hash, null])!;
+
+    [Test]
+    public async Task A_large_announcement_flood_cannot_queue_more_than_thirty_two_replies()
+    {
+        const int announcements = 2048;
+        const int hashesPerAnnouncement = 256;
+        RecordingBackgroundTaskScheduler scheduler = new() { Defer = true, QueueCapacity = 8192 };
+        ManualTimeProvider clock = new();
+        ReplaceHandler(Substitute.For<ITxPoolConfig>(), scheduler, clock);
+        HandleIncomingStatusMessage();
+        _transactionPool.NotifyAboutTx(Arg.Any<ValueHash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
+            .Returns(AnnounceResult.RequestRequired);
+        byte[] hashBytes = new byte[ValueHash256.MemorySize];
+        try
+        {
+            for (int batch = 0; batch < announcements; batch++)
+            {
+                using ArrayPoolList<byte> types = new(hashesPerAnnouncement);
+                using ArrayPoolList<int> sizes = new(hashesPerAnnouncement);
+                using ArrayPoolList<ValueHash256> hashes = new(hashesPerAnnouncement);
+                for (int index = 0; index < hashesPerAnnouncement; index++)
+                {
+                    BinaryPrimitives.WriteInt32BigEndian(hashBytes, batch * hashesPerAnnouncement + index + 1);
+                    types.Add((byte)TxType.Legacy);
+                    sizes.Add(97);
+                    hashes.Add(new ValueHash256(hashBytes));
+                }
+                using NewPooledTransactionHashesMessage68 message = new(types, sizes, hashes);
+                HandleZeroMessage(message, Eth68MessageCode.NewPooledTransactionHashes);
+                Assert.That(SentRequests().Length, Is.EqualTo(Math.Min(batch + 1, 32)));
+                _transactionPool.ClearReceivedCalls();
+            }
+            GetPooledTransactionsMessage[] outstanding = SentRequests();
+            Assert.That(outstanding, Has.Length.EqualTo(32));
+            foreach (GetPooledTransactionsMessage request in outstanding)
+            {
+                Assert.That(request.EthMessage.Hashes, Has.Count.EqualTo(hashesPerAnnouncement));
+                using PooledTransactionsMessage response = new(request.RequestId,
+                    new Eth65PooledTransactionsMessage(IOwnedReadOnlyList<Transaction>.Empty));
+                HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
+            }
+            Assert.That(scheduler.ScheduledFulfillFuncs, Has.Count.EqualTo(32));
+            HashSet<long> sentIds = outstanding.Select(static request => request.RequestId).ToHashSet();
+            for (long uncorrelatedId = 0; uncorrelatedId < announcements; uncorrelatedId++)
+            {
+                if (sentIds.Contains(uncorrelatedId)) continue;
+                using PooledTransactionsMessage uncorrelated = new(uncorrelatedId,
+                    new Eth65PooledTransactionsMessage(IOwnedReadOnlyList<Transaction>.Empty));
+                HandleZeroMessage(uncorrelated, Eth66MessageCode.PooledTransactions);
+            }
+            foreach (GetPooledTransactionsMessage request in outstanding)
+            {
+                using PooledTransactionsMessage duplicate = new(request.RequestId,
+                    new Eth65PooledTransactionsMessage(IOwnedReadOnlyList<Transaction>.Empty));
+                HandleZeroMessage(duplicate, Eth66MessageCode.PooledTransactions);
+            }
+            _handler.HandleMessage(PooledTransactionRequestMessage.New(TestItem.KeccakA));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(scheduler.ScheduledFulfillFuncs, Has.Count.EqualTo(32));
+                Assert.That(SentRequests(), Has.Length.EqualTo(32), "claimed queued responses still own the protected quota");
+                _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+                _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+            }
+            await scheduler.Drain(CancellationToken.None);
+            _handler.HandleMessage(PooledTransactionRequestMessage.New(TestItem.KeccakA));
+            Assert.That(SentRequests(), Has.Length.EqualTo(33), "completed replies release room for the next legitimate request");
+        }
+        finally { await scheduler.Drain(new CancellationToken(true)); }
+
+        GetPooledTransactionsMessage[] SentRequests() => _session.ReceivedCalls()
+            .SelectMany(static call => call.GetArguments().OfType<GetPooledTransactionsMessage>()).ToArray();
+    }
+
+    [Test]
+    public async Task A_closing_refused_announcer_does_not_block_an_alternate_source()
+    {
+        ManualTimeProvider requestClock = new();
+        ReplaceHandler(Substitute.For<ITxPoolConfig>(), new RecordingBackgroundTaskScheduler { QueueCapacity = 8192 }, timeProvider: requestClock);
+        Eth68ProtocolHandlerTests alternate = new();
+        alternate.Setup();
+        ManualTimeProvider clock = new();
+        await using RetryCache<PooledTransactionRequestMessage, ValueHash256> retry = CreateRetryCache(clock);
+        try
+        {
+            alternate._session.Node.Returns(new Node(TestItem.PublicKeyB, "9.9.9.9", 30303));
+            alternate.ReplaceHandler(Substitute.For<ITxPoolConfig>(), timeProvider: requestClock);
+            BindRetry(_transactionPool);
+            BindRetry(alternate._transactionPool);
+            HandleIncomingStatusMessage();
+            alternate.HandleIncomingStatusMessage();
+            for (int i = 0; i < 32; i++) _handler.HandleMessage(PooledTransactionRequestMessage.New(TestItem.KeccakB));
+            Assert.That(Requests(_session), Has.Length.EqualTo(32));
+            using NewPooledTransactionHashesMessage68 original = new(
+                new ArrayPoolList<byte>(1) { (byte)TxType.Legacy },
+                new ArrayPoolList<int>(1) { 100 },
+                new ArrayPoolList<ValueHash256>(1) { TestItem.KeccakA.ValueHash256 });
+            HandleZeroMessage(original, Eth68MessageCode.NewPooledTransactionHashes);
+            using NewPooledTransactionHashesMessage68 other = new(
+                new ArrayPoolList<byte>(1) { (byte)TxType.Legacy },
+                new ArrayPoolList<int>(1) { 100 },
+                new ArrayPoolList<ValueHash256>(1) { TestItem.KeccakA.ValueHash256 });
+            alternate.HandleZeroMessage(other, Eth68MessageCode.NewPooledTransactionHashes);
+            Assert.That(Requests(alternate._session), Is.Empty);
+            _transactionPool.ClearReceivedCalls();
+            _session.IsClosing.Returns(true);
+            _handler.HandleMessage(PooledTransactionRequestMessage.New(TestItem.KeccakA));
+            _transactionPool.DidNotReceive().TryDeferTransactionRequest(Arg.Any<ValueHash256>(),
+                Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>());
+            clock.Advance(TimeSpan.FromMilliseconds(500));
+            requestClock.Advance(TimeSpan.FromMilliseconds(500));
+            ProcessRetryTick(retry);
+            GetPooledTransactionsMessage[] sent = Requests(alternate._session);
+            Assert.That(sent, Has.Length.EqualTo(1));
+            using PooledTransactionsMessage response = new(sent[0].RequestId,
+                new Eth65PooledTransactionsMessage(IOwnedReadOnlyList<Transaction>.Empty));
+            alternate.HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(sent[0].EthMessage.Hashes, Is.EquivalentTo(new[] { TestItem.KeccakA.ValueHash256 }));
+                Assert.That(Requests(_session), Has.Length.EqualTo(32));
+                alternate._session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+            }
+        }
+        finally { alternate.TearDown(); }
+
+        void BindRetry(ITxPool pool)
+        {
+            pool.NotifyAboutTx(Arg.Any<ValueHash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
+                .Returns(call =>
+                {
+                    ValueHash256 hash = call.ArgAt<ValueHash256>(0);
+                    return retry.Announced(in hash, call.ArgAt<IMessageHandler<PooledTransactionRequestMessage>>(1));
+                });
+            pool.TryDeferTransactionRequest(Arg.Any<ValueHash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
+                .Returns(call => TryDeferRequest(retry, call.ArgAt<ValueHash256>(0),
+                    call.ArgAt<IMessageHandler<PooledTransactionRequestMessage>>(1)));
+        }
+
+        static GetPooledTransactionsMessage[] Requests(ISession session) => session.ReceivedCalls()
+            .SelectMany(static call => call.GetArguments().OfType<GetPooledTransactionsMessage>()).ToArray();
     }
 
     [Test]
@@ -1264,20 +1583,21 @@ public class Eth68ProtocolHandlerTests
         _handler.HandleMessage(new NettyBufferPacket(statusPacket) { PacketType = 0 });
     }
 
-    private Eth68ProtocolHandler CreateHandler(ITxPoolConfig txPoolConfig, IChainHeadSpecProvider? specProvider = null) =>
+    private Eth68ProtocolHandler CreateHandler(ITxPoolConfig txPoolConfig, IChainHeadSpecProvider? specProvider = null,
+        IBackgroundTaskScheduler? backgroundTaskScheduler = null, TimeProvider? timeProvider = null) =>
         new(
             _session,
             _svc,
             new NodeStatsManager(_timerFactory, LimboLogs.Instance),
             _syncManager,
-            RunImmediatelyScheduler.Instance,
+            backgroundTaskScheduler ?? RunImmediatelyScheduler.Instance,
             _transactionPool,
             _gossipPolicy,
             new ForkInfo(_specProvider, _syncManager),
             LimboLogs.Instance,
             txPoolConfig,
             specProvider ?? Substitute.For<IChainHeadSpecProvider>(),
-            _txGossipPolicy);
+            _txGossipPolicy, timeProvider);
 
     private static Transaction BuildFullBlobTransaction() => Build.A.Transaction
         .WithNonce(0UL)
@@ -1308,21 +1628,46 @@ public class Eth68ProtocolHandlerTests
         }
     }
 
-    private void ReplaceHandler(ITxPoolConfig txPoolConfig)
+    private void ReplaceHandler(ITxPoolConfig txPoolConfig, IBackgroundTaskScheduler? backgroundTaskScheduler = null, TimeProvider? timeProvider = null)
     {
         // Complete the outgoing handler's handshake so its pending protocol-init timeout cannot disconnect the shared session substitute.
         HandleIncomingStatusMessage();
         _handler.Dispose();
-        _handler = CreateHandler(txPoolConfig);
+        _handler = CreateHandler(txPoolConfig, backgroundTaskScheduler: backgroundTaskScheduler, timeProvider: timeProvider);
         _handler.Init();
     }
 
     private IRecyclableTxPool ReplaceWithRecyclableTxPool()
     {
-        _transactionPool = Substitute.For<ITxPool, IRecyclableTxPool>();
+        RecyclableTxPool recyclablePool = Substitute.For<RecyclableTxPool, ITxPool>();
+        _transactionPool = (ITxPool)recyclablePool;
         ReplaceHandler(Substitute.For<ITxPoolConfig>());
         HandleIncomingStatusMessage();
-        return (IRecyclableTxPool)_transactionPool;
+        return recyclablePool;
+    }
+
+    /// <summary>A pool that settles and submits owned transactions without tracking request retries.</summary>
+    /// <remarks>
+    /// Castle.Core cannot proxy members with span parameters, so the retry members are implemented here
+    /// non-virtually and only the submission members are substituted.
+    /// </remarks>
+    public abstract class RecyclableTxPool : IRecyclableTxPool
+    {
+        public abstract AcceptTxResult SubmitOwnedTx(Transaction tx, object? peer, out bool canRecycle);
+
+        public abstract bool TrySubmitKnown(in ValueHash256 hash);
+
+        void IRecyclableTxPool.CaptureRequestTokens(ReadOnlySpan<ValueHash256> hashes,
+            IMessageHandler<PooledTransactionRequestMessage> sender, Span<RetryRequestToken<ValueHash256>> tokens)
+        {
+        }
+
+        void IRecyclableTxPool.CompleteRequest(RetryRequestConfirmation? confirmation, bool sent)
+        {
+        }
+
+        AcceptTxResult IRecyclableTxPool.SubmitOwnedRequestedTx(Transaction tx, IMessageHandler<PooledTransactionRequestMessage> sender,
+            in RetryRequestToken<ValueHash256> token, out bool canRecycle) => SubmitOwnedTx(tx, sender, out canRecycle);
     }
 
     private void AssertResponseForUnrequestableAnnouncement(Transaction tx, NewPooledTransactionHashesMessage68 announcement, bool correlated)
@@ -1331,24 +1676,18 @@ public class Eth68ProtocolHandlerTests
         HandleZeroMessage(announcement, Eth68MessageCode.NewPooledTransactionHashes);
         _session.DidNotReceive().DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
 
-        ArrayPoolList<Transaction> transactions = [with(2)];
+        ArrayPoolList<Transaction> transactions = [with(1)];
         using PooledTransactionsMessage response = new(1111, new(transactions));
         if (correlated)
         {
-            Transaction requested = Build.A.Transaction.WithType(TxType.EIP1559).WithNonce(1).SignedAndResolved().TestObject;
-            using NewPooledTransactionHashesMessage68 requestable = new(
-                new ArrayPoolList<byte>(1) { (byte)requested.Type },
-                new ArrayPoolList<int>(1) { requested.GetLength() },
-                new ArrayPoolList<ValueHash256>(1) { requested.Hash! });
-            HandleZeroMessage(requestable, Eth68MessageCode.NewPooledTransactionHashes);
+            _handler.HandleMessage(PooledTransactionRequestMessage.New(tx.Hash!));
             response.RequestId = LastPooledRequestId();
-            transactions.Add(requested);
         }
         transactions.Add(tx);
         HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
 
         if (correlated)
-            _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, "invalid pooled tx type or size");
+            _session.Received(1).InitiateDisconnect(DisconnectReason.BreachOfProtocol, "invalid pooled tx type or size");
         else
             _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
         _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());

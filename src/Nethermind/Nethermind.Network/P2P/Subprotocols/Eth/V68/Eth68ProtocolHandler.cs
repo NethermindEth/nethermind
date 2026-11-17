@@ -38,9 +38,9 @@ public class Eth68ProtocolHandler(ISession session,
     ILogManager logManager,
     ITxPoolConfig txPoolConfig,
     IChainHeadSpecProvider specProvider,
-    ITxGossipPolicy? transactionsGossipPolicy = null
-    )
-    : Eth67ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy), IStaticProtocolInfo
+    ITxGossipPolicy? transactionsGossipPolicy = null,
+    TimeProvider? timeProvider = null)
+    : Eth67ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy, timeProvider), IStaticProtocolInfo
 {
     private const int MaxPooledTransactionHashesPerRequest = 256;
     private static readonly int PooledTransactionsResponseSoftLimit = (int)2.MiB;
@@ -52,9 +52,9 @@ public class Eth68ProtocolHandler(ISession session,
         ? long.MaxValue
         : txPoolConfig.MaxBlobTxSize.Value + (long)specProvider.GetFinalMaxBlobGasPerBlock();
 
-    // A fixed 8192 entries, allocated on the first announcement. Lossy: a lost shape
-    // only skips the delivery check, and writes and lookups allocate nothing. A delivered shape is not removed but
-    // overwritten with a zero-size sentinel.
+    // A fixed 8192 entries, allocated on the first announcement. Lossy: a lost shape skips the delivery check, and a
+    // retry requests that hash as a plain eth/66 hash without size-based splitting. Writes and lookups allocate nothing.
+    // A delivered shape is not removed but overwritten with a zero-size sentinel.
     private const int TxShapeAnnouncementsSetsBits = 12;
     private SeqlockCache<ValueHash256, (int Size, TxType Type)>? _txShapeAnnouncements;
 
@@ -459,7 +459,8 @@ public class Eth68ProtocolHandler(ISession session,
                 // [0, startIdx) were already handled in a prior scheduler slot.
                 ReturnUnsubmittedTransactions(transactionsSpan[startIdx..]);
                 transactions.Dispose();
-                throw new SubprotocolException("invalid pooled tx type or size");
+                request.ResponseContext?.Dispose();
+                throw new InvalidPeerRequestException("invalid pooled tx type or size");
             }
         }
 
@@ -498,7 +499,7 @@ public class Eth68ProtocolHandler(ISession session,
         int sidecarContentLength = checked(
             Rlp.LengthOf(wrapper.Blobs)
             + Rlp.LengthOf(wrapper.Commitments)
-            + Rlp.LengthOf(wrapper.Proofs));
+            + Rlp.LengthOfSequence(wrapper.ProofCount * Rlp.LengthOfByteString(ShardBlobNetworkWrapper.BytesPerProof, firstByte: 0)));
         return checked(tx.GetLength(shouldCountBlobs: false) + Rlp.LengthOfSequence(sidecarContentLength));
     }
 

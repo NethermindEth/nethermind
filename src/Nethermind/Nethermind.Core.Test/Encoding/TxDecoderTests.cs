@@ -680,6 +680,43 @@ namespace Nethermind.Core.Test.Encoding
                 Convert.FromHexString("C98080808080801B01B8"),
                 error: "RLP data is truncated"
             );
+
+            yield return TestCase(
+                "AccessList transaction with yParity above 1",
+                Convert.FromHexString("01CB01808080808080C0020101"),
+                error: "yParity"
+            );
+
+            yield return TestCase(
+                "EIP1559 transaction with yParity above 1",
+                Convert.FromHexString("02CC0180808080808080C0030101"),
+                error: "yParity"
+            );
+
+            yield return TestCase(
+                "EIP1559 transaction with yParity 127",
+                Convert.FromHexString("02CC0180808080808080C07F0101"),
+                error: "yParity"
+            );
+
+            yield return TestCase(
+                "Blob transaction with yParity above 1",
+                Convert.FromHexString("03CE0180808080808080C080C0020101"),
+                error: "yParity"
+            );
+
+            yield return TestCase(
+                "SetCode transaction with yParity above 1",
+                Convert.FromHexString("04CD0180808080808080C0C0020101"),
+                error: "yParity"
+            );
+
+            yield return TestCase(
+                "EIP1559 transaction with yParity above 1 when unsigned is allowed",
+                Convert.FromHexString("02CC0180808080808080C0028080"),
+                error: "yParity",
+                rlpBehaviors: RlpBehaviors.SkipTypedWrapping | RlpBehaviors.AllowUnsigned
+            );
         }
 
         private static IEnumerable<TestCaseData> NonCanonicalNonceTestCases()

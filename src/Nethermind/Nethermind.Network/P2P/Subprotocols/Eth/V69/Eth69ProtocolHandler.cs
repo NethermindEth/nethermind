@@ -8,6 +8,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -41,10 +42,13 @@ public class Eth69ProtocolHandler(
     ILogManager logManager,
     ITxPoolConfig txPoolConfig,
     IChainHeadSpecProvider specProvider,
-    ITxGossipPolicy? transactionsGossipPolicy = null)
+    ITxGossipPolicy? transactionsGossipPolicy = null,
+    TimeProvider? timeProvider = null)
     : Eth68ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
-        gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy), ISyncPeer, IStaticProtocolInfo
+        gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy, timeProvider), ISyncPeer, IStaticProtocolInfo
 {
+    /// <inheritdoc />
+    public ulong EarliestBlockNumber { get; private set; }
     private static readonly Func<ReceiptsMessage69, int, (IOwnedReadOnlyList<TxReceipt[]>, long)> SelectReceipts =
         static (message, size) => (message.EthMessage.TxReceipts, size);
     private static readonly Action<ReadOnlySpan<byte>, GetReceiptsMessage> ValidateReceipts =
@@ -100,6 +104,11 @@ public class Eth69ProtocolHandler(
         }
 
         _statusReceived = true;
+        if (status.EarliestBlock > status.LatestBlock)
+        {
+            Disconnect(DisconnectReason.InvalidBlockRangeUpdate, $"Status earliest block {status.EarliestBlock} exceeds latest block {status.LatestBlock}.");
+            return;
+        }
         _remoteHeadBlockHash = status.LatestBlockHash;
 
         ReceivedProtocolInitMsg(status);
@@ -115,8 +124,7 @@ public class Eth69ProtocolHandler(
         };
 
         Session.IsNetworkIdMatched = SyncServer.NetworkId == status.NetworkId;
-        HeadNumber = status.LatestBlock;
-        HeadHash = status.LatestBlockHash;
+        UpdateAdvertisedHead(status.EarliestBlock, status.LatestBlock, status.LatestBlockHash);
         NotifyProtocolInitialized(eventArgs);
     }
 
@@ -138,10 +146,15 @@ public class Eth69ProtocolHandler(
         }
         else
         {
-            _remoteHeadBlockHash = blockRangeUpdate.LatestBlockHash;
-            HeadNumber = blockRangeUpdate.LatestBlock;
-            HeadHash = blockRangeUpdate.LatestBlockHash;
+            UpdateAdvertisedHead(blockRangeUpdate.EarliestBlock, blockRangeUpdate.LatestBlock, blockRangeUpdate.LatestBlockHash);
         }
+    }
+
+    private void UpdateAdvertisedHead(ulong earliest, ulong latest, Hash256 hash)
+    {
+        _remoteHeadBlockHash = hash;
+        EarliestBlockNumber = earliest;
+        SetHead(hash, latest);
     }
 
     private new async Task<ReceiptsMessage69> Handle(GetReceiptsMessage getReceiptsMessage, CancellationToken cancellationToken)

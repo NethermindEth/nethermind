@@ -63,6 +63,7 @@ public sealed class RlpItemList : IRlpItemList
     {
         get
         {
+            ArgumentOutOfRangeException.ThrowIfNegative(index);
             ReadOnlySpan<byte> span = _rlpRegion.Span;
             int position = GetPosition(span, index);
             ReadOnlySpan<byte> item = ReadItem(span, position);
@@ -80,11 +81,7 @@ public sealed class RlpItemList : IRlpItemList
 
     public void Write(ref RlpWriter writer) => writer.WriteEncoded(_rlpRegion.Span);
 
-    public ReadOnlySpan<byte> ReadContent(int index)
-    {
-        ReadOnlySpan<byte> rawRlp = this[index];
-        return rawRlp[GetPrefixLength(rawRlp)..];
-    }
+    public ReadOnlySpan<byte> ReadContent(int index) => new RlpReader(this[index]).ReadBytes();
 
     public IRlpItemList GetNestedItemList(int index)
     {

@@ -70,6 +70,12 @@ namespace Nethermind.TxPool
         void AddPeer(ITxPoolPeer peer);
         void RemovePeer(PublicKey nodeId);
         AnnounceResult NotifyAboutTx(in ValueHash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler);
+        /// <summary>Defers a tracked request after local admission refuses to send it.</summary>
+        /// <remarks>The default returns false; implementations without retry tracking do not retain unsent requests.</remarks>
+        /// <param name="hash">The transaction hash whose request was not sent.</param>
+        /// <param name="handler">The actual requesting handler retained for retry.</param>
+        /// <returns>Whether the tracked request retains this handler for retry.</returns>
+        bool TryDeferTransactionRequest(in ValueHash256 hash, IMessageHandler<PooledTransactionRequestMessage> handler) => false;
         AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions);
         /// <summary>
         /// Validates a sparse blob transaction before sampler cell retrieval without inserting it
@@ -183,9 +189,9 @@ namespace Nethermind.TxPool
             [NotNullWhen(true)] out byte[]? proof);
         bool TryGetBlobAndProofV1(byte[] blobVersionedHash,
             [NotNullWhen(true)] out byte[]? blob,
-            [NotNullWhen(true)] out byte[][]? cellProofs);
+            out ReadOnlyMemory<byte> cellProofs);
         int TryGetBlobsAndProofsV1(byte[][] requestedBlobVersionedHashes,
-            Span<byte[]?> blobs, Span<ReadOnlyMemory<byte[]>> proofs);
+            Span<byte[]?> blobs, Span<ReadOnlyMemory<byte>> proofs);
         /// <summary>
         /// Gets the cell availability mask of a pending blob transaction without materializing blobs or cells.
         /// </summary>
@@ -261,6 +267,13 @@ namespace Nethermind.TxPool
         /// </summary>
         /// <returns>The outcome of the merge attempt.</returns>
         BlobCellMergeResult MergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells);
+        /// <summary>Verifies and merges cells, reporting the cells newly retained by this call.</summary>
+        /// <remarks>Decorators must forward this overload and its added mask to preserve useful-cell credit. The default reports no newly retained cells.</remarks>
+        BlobCellMergeResult MergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells, out BlobCellMask addedMask)
+        {
+            addedMask = BlobCellMask.Empty;
+            return MergeBlobCells(hash, cellMask, cells);
+        }
         ulong GetLatestPendingNonce(Address address);
         event EventHandler<TxEventArgs> NewDiscovered;
         event EventHandler<TxEventArgs> NewPending;

@@ -14,8 +14,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V72;
 /// </summary>
 internal readonly struct PendingCellsBuffer
 {
-    public PendingCellsBuffer(BlobCellMask cellMask, byte[][] cells, PublicKey sourcePeerId)
-        : this(cellMask, cells, [new PendingCellsSource(sourcePeerId, cellMask)])
+    public PendingCellsBuffer(BlobCellMask cellMask, byte[][] cells, PublicKey sourcePeerId, object? sourceToken = null)
+        : this(cellMask, cells, [new PendingCellsSource(sourcePeerId, cellMask, sourceToken)])
     {
     }
 
@@ -31,6 +31,7 @@ internal readonly struct PendingCellsBuffer
     public byte[][] Cells { get; }
     public PendingCellsSource[] Sources { get; }
     public int ByteLength { get; }
+    public int BlobCount => Cells.Length / CellMask.Count;
     public PublicKey LastSourcePeerId => Sources[^1].PeerId;
 
     public bool IsFromSinglePeer(PublicKey peerId)
@@ -97,7 +98,7 @@ internal readonly struct PendingCellsBuffer
             BlobCellMask retainedMask = added.Sources[i].CellMask & missingMask;
             if (!retainedMask.IsEmpty)
             {
-                AddSource(mergedSources, new PendingCellsSource(added.Sources[i].PeerId, retainedMask));
+                AddSource(mergedSources, added.Sources[i] with { CellMask = retainedMask });
             }
         }
 
@@ -156,7 +157,11 @@ internal readonly struct PendingCellsBuffer
         {
             if (sources[i].PeerId == source.PeerId)
             {
-                sources[i] = sources[i] with { CellMask = sources[i].CellMask | source.CellMask };
+                sources[i] = sources[i] with
+                {
+                    CellMask = sources[i].CellMask | source.CellMask,
+                    SourceToken = ReferenceEquals(sources[i].SourceToken, source.SourceToken) ? source.SourceToken : null
+                };
                 return;
             }
         }
@@ -180,4 +185,4 @@ internal readonly struct PendingCellsBuffer
     }
 }
 
-internal readonly record struct PendingCellsSource(PublicKey PeerId, BlobCellMask CellMask);
+internal readonly record struct PendingCellsSource(PublicKey PeerId, BlobCellMask CellMask, object? SourceToken);

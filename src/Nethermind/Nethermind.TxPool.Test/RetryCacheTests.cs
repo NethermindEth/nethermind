@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Threading;
 using Nethermind.Logging;
@@ -183,6 +185,217 @@ public class RetryCacheTests
             timeoutMs: CacheTimeoutMs,
             token: _cancellationTokenSource.Token);
         Assert.That(_timeProvider.TimerCreated.IsCompleted, Is.True);
+    }
+
+    [Test]
+    public void Local_refusal_retries_the_only_announcer_without_spending_alternate_attempts()
+    {
+        const int count = 100;
+        BatchTestHandler source = new();
+        bool refused = true;
+        source.OnBatch = resources =>
+        {
+            foreach (ref readonly ResourceId resource in resources)
+            {
+                if (refused) Assert.That(_cache.TryDeferRequest(in resource, source), Is.True);
+                else _cache.Received(resource);
+            }
+        };
+        for (int index = 0; index < count; index++)
+        {
+            ResourceId resource = index;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_cache.Announced(in resource, source), Is.EqualTo(AnnounceResult.RequestRequired));
+                Assert.That(_cache.TryDeferRequest(in resource, source), Is.True);
+                Assert.That(_cache.TryDeferRequest(in resource, source), Is.True);
+            }
+        }
+
+        for (int attempt = 1; attempt <= 6; attempt++)
+        {
+            _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+            _cache.ProcessRetryTick();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(source.BatchResourceValues.Length, Is.EqualTo(count * attempt));
+                Assert.That(_cache.TrackedRequestsInUse, Is.EqualTo(count));
+                Assert.That(_cache.ResourcesInRetryQueue, Is.EqualTo(count));
+            }
+        }
+
+        refused = false;
+        _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+        _cache.ProcessRetryTick();
+        _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+        _cache.ProcessRetryTick();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(source.BatchResourceValues.GroupBy(static resource => resource)
+                .Select(static group => group.Count()), Is.All.EqualTo(7));
+            Assert.That(_cache.TrackedRequestsInUse, Is.Zero);
+            Assert.That(_cache.ResourcesInRetryQueue, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task Unsent_overflow_requests_keep_the_original_source_within_their_own_bound()
+    {
+        await using RetryCache<ResourceRequestMessage, ResourceId> cache = new(TestLogManager.Instance,
+            _timeProvider, timeoutMs: CacheTimeoutMs, maxPendingResourcesPerHandler: 1, overflowRequestLimit: 8192);
+        BatchTestHandler source = new();
+        Assert.That(cache.Announced(-1, source), Is.EqualTo(AnnounceResult.RequestRequired));
+        for (int index = 0; index < 4096; index++)
+        {
+            ResourceId resource = index;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(cache.Announced(in resource, source), Is.EqualTo(AnnounceResult.RequestRequired));
+                Assert.That(cache.TryDeferRequest(in resource, source), Is.True);
+            }
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.Announced(4096, source), Is.EqualTo(AnnounceResult.RequestRequired));
+            Assert.That(cache.TryDeferRequest(4096, source), Is.False);
+        }
+        cache.Received(0);
+        Assert.That(cache.TryDeferRequest(4096, source), Is.True);
+        for (int tick = 0; tick < 4096 / 256; tick++)
+        {
+            _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs / 5));
+            cache.ProcessRetryTick();
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(source.BatchResourceValues, Is.EquivalentTo(Enumerable.Range(1, 4096)));
+            Assert.That(cache.TrackedRequestsInUse, Is.Zero);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.Announced(-2, source), Is.EqualTo(AnnounceResult.RequestRequired));
+            Assert.That(cache.Announced(4097, source), Is.EqualTo(AnnounceResult.RequestRequired));
+            Assert.That(cache.TryDeferRequest(4097, source), Is.True, "sent overflow slots become reusable after their actual request timeout");
+        }
+        await cache.DisposeAsync();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.OverflowRequestsInUse, Is.Zero);
+            Assert.That(cache.ResourcesInRetryQueue, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task Deferred_overflow_budget_survives_generation_rotation_and_releases_on_receipt()
+    {
+        await using RetryCache<ResourceRequestMessage, ResourceId> cache = new(TestLogManager.Instance,
+            _timeProvider, timeoutMs: CacheTimeoutMs, maxPendingResourcesPerHandler: 1, overflowRequestLimit: 1);
+        BatchTestHandler source = new();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.Announced(0, source), Is.EqualTo(AnnounceResult.RequestRequired));
+            Assert.That(cache.Announced(1, source), Is.EqualTo(AnnounceResult.RequestRequired));
+            Assert.That(cache.TryDeferRequest(1, source), Is.True);
+        }
+        _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs * 2));
+        Assert.That(cache.Announced(2, source), Is.EqualTo(AnnounceResult.Delayed),
+            "rotating hash-only generations must not free the transferred unsent request budget");
+        cache.Received(1);
+        Assert.That(cache.Announced(2, source), Is.EqualTo(AnnounceResult.RequestRequired));
+        cache.Received(2);
+        cache.Received(0);
+        _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+        cache.ProcessRetryTick();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.OverflowRequestsInUse, Is.Zero);
+            Assert.That(cache.TrackedRequestsInUse, Is.Zero);
+            Assert.That(cache.ResourcesInRetryQueue, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task Local_refusal_reuses_the_original_sources_pending_slot()
+    {
+        await using RetryCache<ResourceRequestMessage, ResourceId> cache = new(TestLogManager.Instance,
+            _timeProvider, timeoutMs: CacheTimeoutMs, maxPendingResourcesPerHandler: 2);
+        BatchTestHandler source = new();
+        for (int index = 0; index < 2; index++)
+        {
+            ResourceId resource = index;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(cache.Announced(in resource, source), Is.EqualTo(AnnounceResult.RequestRequired));
+                Assert.That(cache.TryDeferRequest(in resource, source), Is.True);
+            }
+        }
+        Assert.That(cache.Announced(2, source), Is.EqualTo(AnnounceResult.Delayed));
+        _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+        cache.ProcessRetryTick();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(source.BatchResourceValues, Is.EquivalentTo(new[] { 0, 1 }));
+            Assert.That(cache.TrackedRequestsInUse, Is.EqualTo(2));
+            Assert.That(cache.Announced(2, source), Is.EqualTo(AnnounceResult.Delayed));
+        }
+        cache.Received(0);
+        Assert.That(cache.Announced(2, source), Is.EqualTo(AnnounceResult.RequestRequired));
+        cache.Received(1);
+        cache.Received(2);
+        Assert.That(cache.TrackedRequestsInUse, Is.Zero);
+    }
+
+    [Test]
+    public void Local_refusal_uses_an_alternate_announcer_before_retrying_the_refused_source()
+    {
+        ResourceId resource = 1;
+        BatchTestHandler refused = new();
+        BatchTestHandler available = new();
+        available.OnBatch = resources =>
+        {
+            foreach (ref readonly ResourceId received in resources) _cache.Received(received);
+        };
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_cache.Announced(in resource, refused), Is.EqualTo(AnnounceResult.RequestRequired));
+            Assert.That(_cache.TryDeferRequest(in resource, refused), Is.True);
+            Assert.That(_cache.Announced(in resource, available), Is.EqualTo(AnnounceResult.Delayed));
+        }
+
+        _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+        _cache.ProcessRetryTick();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refused.BatchResourceValues, Is.Empty);
+            Assert.That(available.BatchResourceValues, Is.EqualTo(new[] { 1 }));
+            Assert.That(_cache.TrackedRequestsInUse, Is.Zero);
+        }
+        _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+        _cache.ProcessRetryTick();
+        Assert.That(_cache.ResourcesInRetryQueue, Is.Zero);
+    }
+
+    [Test]
+    public async Task Local_refusal_racing_delivery_releases_both_handler_slots()
+    {
+        await using RetryCache<ResourceRequestMessage, ResourceId> cache = new(TestLogManager.Instance,
+            _timeProvider, timeoutMs: CacheTimeoutMs, maxPendingResourcesPerHandler: 2);
+        TestHandler source = new();
+        for (int attempt = 0; attempt < 100; attempt++)
+        {
+            ResourceId resource = attempt;
+            Assert.That(cache.Announced(in resource, source), Is.EqualTo(AnnounceResult.RequestRequired));
+            Parallel.Invoke(() => cache.TryDeferRequest(in resource, source), () => cache.Received(resource));
+            Assert.That(cache.TrackedRequestsInUse, Is.Zero);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.Announced(100, source), Is.EqualTo(AnnounceResult.RequestRequired));
+            Assert.That(cache.Announced(101, source), Is.EqualTo(AnnounceResult.RequestRequired));
+            Assert.That(cache.TrackedRequestsInUse, Is.EqualTo(2));
+        }
+        cache.Received(100);
+        cache.Received(101);
     }
 
     [TearDown]
@@ -403,7 +616,7 @@ public class RetryCacheTests
     }
 
     [Test]
-    public async Task Announced_OverlappingBatchHandlers_PrefersCurrentTickBatch()
+    public async Task Announced_OverlappingBatchHandlers_DistributesActualIdentities()
     {
         ManualTimeProvider timeProvider = new();
         using CancellationTokenSource cancellationTokenSource = new();
@@ -425,13 +638,14 @@ public class RetryCacheTests
             cache.Announced(2, sharedHandler);
             cache.Announced(2, otherHandler);
 
-            timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+            timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+            cache.ProcessRetryTick();
 
-            Assert.That(() => sharedHandler.HandleMessagesCallCount, Is.EqualTo(1).After(AssertTimeoutMs, 10));
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(sharedHandler.BatchResourceValues, Is.EquivalentTo(new[] { 1, 2 }));
-                Assert.That(otherHandler.HandleMessagesCallCount, Is.Zero);
+                Assert.That(sharedHandler.HandleMessagesCallCount, Is.EqualTo(1));
+                Assert.That(sharedHandler.BatchResourceValues, Is.EquivalentTo(new[] { 1 }));
+                Assert.That(otherHandler.BatchResourceValues, Is.EquivalentTo(new[] { 2 }));
             }
         }
         finally
@@ -439,27 +653,6 @@ public class RetryCacheTests
             await cancellationTokenSource.CancelAsync();
             await cache.DisposeAsync();
         }
-    }
-
-    [TestCase(63, true)]
-    [TestCase(64, false)]
-    public void BatchedHandlerPreference_AtFairShare_StopsPreferring(
-        int existingResources,
-        bool shouldPrefer)
-    {
-        BatchTestHandler sharedHandler = new();
-        List<ResourceId> resources = [with(existingResources)];
-        for (int resourceId = 0; resourceId < existingResources; resourceId++)
-        {
-            resources.Add(resourceId);
-        }
-
-        Dictionary<IBatchMessageHandler<ResourceRequestMessage, ResourceId>, List<ResourceId>> batches =
-            new(ReferenceEqualityComparer.Instance) { [sharedHandler] = resources };
-        RetryCache<ResourceRequestMessage, ResourceId>.BatchedHandlerPreference preference = new(batches, 64);
-
-        HandlerPreference expectedPreference = shouldPrefer ? HandlerPreference.Preferred : HandlerPreference.Neutral;
-        Assert.That(preference.GetPreference(sharedHandler), Is.EqualTo(expectedPreference));
     }
 
     [Test]
@@ -1167,7 +1360,7 @@ public class RetryCacheTests
     }
 
     [Test]
-    public async Task ExpiryQueue_ContinuesPastBoundedStaleBacklogOnNextTick()
+    public async Task ExpiryQueue_RetryVisibilitySurvivesBoundedStaleBacklog()
     {
         const int staleResources = 32_769;
         ManualTimeProvider timeProvider = new();
@@ -1196,13 +1389,18 @@ public class RetryCacheTests
 
             Assert.That(cache.ResourcesInRetryQueue, Is.EqualTo(staleResources + 1));
 
-            timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
-            Assert.That(() => cache.ResourcesInRetryQueue, Is.EqualTo(2).After(AssertTimeoutMs, 10));
-            Assert.That(retryHandler.WasCalled, Is.False);
+            timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+            cache.ProcessRetryTick();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(cache.ResourcesInRetryQueue, Is.EqualTo(staleResources + 1 - 8192));
+                Assert.That(retryHandler.WasCalled, Is.True);
+            }
 
-            timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs / 5));
+            timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs / 5));
+            cache.ProcessRetryTick();
 
-            Assert.That(() => retryHandler.WasCalled, Is.True.After(AssertTimeoutMs, 10));
+            Assert.That(retryHandler.WasCalled, Is.True);
         }
         finally
         {
@@ -2065,26 +2263,33 @@ public class RetryCacheTests
 
         HandlerBagAddResult staleAdd = bag.Add(staleHandler, 8, staleGeneration);
         HandlerBagAddResult currentAdd = bag.Add(handler1, 8, currentGeneration);
+        List<IMessageHandler<ResourceRequestMessage>> currentHandlers = TakeAll(bag, currentGeneration);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(staleAdd, Is.EqualTo(HandlerBagAddResult.Inactive));
             Assert.That(currentAdd, Is.EqualTo(HandlerBagAddResult.Added));
-            Assert.That(TakeAll(bag, currentGeneration), Is.EqualTo(new[] { handler1 }));
+            Assert.That(currentHandlers, Is.EqualTo(new[] { handler1 }));
         }
     }
 
     [Test]
-    public void HandlerBag_AddAfterDrainWithoutReactivation_IsRejected()
+    public void HandlerBag_AcceptsLateCandidateAfterSpecificSelection()
     {
         HandlerBag<ResourceRequestMessage> bag = new();
         long generation = bag.Activate();
 
-        bag.Add(new TestHandler(), 8, generation);
-        TakeAll(bag, generation);
+        TestHandler first = new(), later = new();
+        bag.Add(first, 8, generation);
+        Assert.That(bag.TryTakeSpecific(generation, first), Is.True);
 
-        HandlerBagAddResult added = bag.Add(new TestHandler(), 8, generation);
-        Assert.That(added, Is.EqualTo(HandlerBagAddResult.Inactive));
+        HandlerBagAddResult added = bag.Add(later, 8, generation);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(added, Is.EqualTo(HandlerBagAddResult.Added));
+            Assert.That(bag.TryTakeSpecific(generation, later), Is.True);
+            Assert.That(bag.TryTakeSpecific(generation, first), Is.False);
+        }
     }
 
     [Test]
@@ -2108,11 +2313,13 @@ public class RetryCacheTests
         long generation = bag.Activate();
 
         TestHandler handler = new();
-        Assert.That(bag.Add(handler, 8, generation), Is.EqualTo(HandlerBagAddResult.Added));
-        Assert.That(bag.Add(handler, 8, generation), Is.EqualTo(HandlerBagAddResult.Duplicate));
-
-        List<IMessageHandler<ResourceRequestMessage>> handlers = TakeAll(bag, generation);
-        Assert.That(handlers, Has.Count.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bag.Add(handler, 8, generation), Is.EqualTo(HandlerBagAddResult.Added));
+            Assert.That(bag.Add(handler, 8, generation), Is.EqualTo(HandlerBagAddResult.Duplicate));
+            Assert.That(bag.TryTakeSpecific(generation, handler), Is.True);
+            Assert.That(bag.TryTakeSpecific(generation, handler), Is.False);
+        }
     }
 
     [Test]
@@ -2121,14 +2328,15 @@ public class RetryCacheTests
         HandlerBag<ResourceRequestMessage> bag = new();
         long generation = bag.Activate();
 
-        Assert.That(bag.Add(new TestHandler(), 3, generation), Is.EqualTo(HandlerBagAddResult.Added));
-#pragma warning disable NUnit2045 // The handler must be added before it is taken.
-        Assert.That(bag.Add(new TestHandler(), 3, generation), Is.EqualTo(HandlerBagAddResult.Added));
-#pragma warning restore NUnit2045
-        Assert.That(bag.TryTake(generation, out _, out bool hasMoreHandlers), Is.True);
-        Assert.That(hasMoreHandlers, Is.True);
-        Assert.That(bag.Add(new TestHandler(), 3, generation), Is.EqualTo(HandlerBagAddResult.Added));
-        Assert.That(bag.Add(new TestHandler(), 3, generation), Is.EqualTo(HandlerBagAddResult.Full));
+        TestHandler first = new();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bag.Add(first, 3, generation), Is.EqualTo(HandlerBagAddResult.Added));
+            Assert.That(bag.Add(new TestHandler(), 3, generation), Is.EqualTo(HandlerBagAddResult.Added));
+            Assert.That(bag.TryTakeSpecific(generation, first), Is.True);
+            Assert.That(bag.Add(new TestHandler(), 3, generation), Is.EqualTo(HandlerBagAddResult.Added));
+            Assert.That(bag.Add(new TestHandler(), 3, generation), Is.EqualTo(HandlerBagAddResult.Full));
+        }
     }
 
     [Test]
@@ -2146,11 +2354,13 @@ public class RetryCacheTests
                 Assert.That(bag.Add(handlers[i], handlers.Length, generation), Is.EqualTo(HandlerBagAddResult.Added));
             }
 
-#pragma warning disable NUnit2045 // A handler must be taken before the same instance is added again.
-            Assert.That(bag.TryTake(generation, out IMessageHandler<ResourceRequestMessage> taken, out _), Is.True);
-#pragma warning restore NUnit2045
-            Assert.That(bag.Add(taken, handlers.Length, generation), Is.EqualTo(HandlerBagAddResult.Duplicate));
-            Assert.That(bag.Add(handlers[count], handlers.Length, generation), Is.EqualTo(HandlerBagAddResult.Added));
+            IMessageHandler<ResourceRequestMessage> taken = handlers[0];
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bag.TryTakeSpecific(generation, taken), Is.True);
+                Assert.That(bag.Add(taken, handlers.Length, generation), Is.EqualTo(HandlerBagAddResult.Duplicate));
+                Assert.That(bag.Add(handlers[count], handlers.Length, generation), Is.EqualTo(HandlerBagAddResult.Added));
+            }
             List<IMessageHandler<ResourceRequestMessage>> remaining = TakeAll(bag, generation);
             remaining.Add(taken);
             Assert.That(remaining, Is.EquivalentTo(handlers));
@@ -2174,11 +2384,8 @@ public class RetryCacheTests
     private static List<IMessageHandler<ResourceRequestMessage>> TakeAll(HandlerBag<ResourceRequestMessage> bag, long generation)
     {
         List<IMessageHandler<ResourceRequestMessage>> handlers = [];
-        while (bag.TryTake(generation, out IMessageHandler<ResourceRequestMessage> handler, out _))
-        {
-            handlers.Add(handler);
-        }
-
+        CollectHandlerBagProcessor processor = new(handlers);
+        bag.Deactivate(generation, ref processor);
         return handlers;
     }
 
@@ -2196,5 +2403,777 @@ public class RetryCacheTests
     private readonly struct NoopHandlerBagProcessor : IHandlerBagProcessor<ResourceRequestMessage>
     {
         public void Process(IMessageHandler<ResourceRequestMessage> handler) { }
+    }
+
+    private readonly struct CollectHandlerBagProcessor(List<IMessageHandler<ResourceRequestMessage>> handlers)
+        : IHandlerBagProcessor<ResourceRequestMessage>
+    {
+        public void Process(IMessageHandler<ResourceRequestMessage> handler) => handlers.Add(handler);
+    }
+
+    private sealed class PeerBatchHandler(PublicKey id) : BatchTestHandler, ITxPoolPeer
+    {
+        public PublicKey Id { get; } = id;
+        public ulong HeadNumber { get; set; }
+        public void SendNewTransactions(ReadOnlySpan<Transaction> transactions, bool sendFullTx) => throw new NotSupportedException();
+    }
+
+    private sealed class RearmingHandler(RetryCache<ResourceRequestMessage, ResourceId> cache)
+        : IBatchMessageHandler<ResourceRequestMessage, ResourceId>
+    {
+        internal int Resources;
+        public void HandleMessage(ResourceRequestMessage message) => cache.TryDeferRequest(message.Resource, this);
+        public void HandleMessages(ReadOnlySpan<ResourceId> resources)
+        {
+            Resources += resources.Length;
+            foreach (ResourceId resource in resources) cache.TryDeferRequest(resource, this);
+        }
+    }
+
+    [Test]
+    public async Task Local_refusal_count_bounds_actual_attempts([Values] bool overflow)
+    {
+        ManualTimeProvider clock = new();
+        await using RetryCache<ResourceRequestMessage, ResourceId> cache = new(TestLogManager.Instance, clock,
+            maxPendingResourcesPerHandler: overflow ? 1 : 4096, overflowRequestLimit: overflow ? 4096 : 0);
+        BatchTestHandler source = new();
+        if (overflow) cache.Announced(-1, source);
+        cache.Announced(0, source);
+        Assert.That(cache.TryDeferRequest(0, source), Is.True);
+        int attempts = 0;
+        bool deferred = false;
+        source.OnBatch = resources =>
+        {
+            attempts++;
+            deferred = cache.TryDeferRequest(resources[0], source);
+        };
+        for (int attempt = 0; attempt < 48; attempt++)
+        {
+            clock.Advance(TimeSpan.FromMilliseconds(1));
+            cache.ProcessRetryTick();
+            Assert.That(deferred, Is.EqualTo(attempts < 48));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(attempts, Is.EqualTo(48));
+            Assert.That(cache.TrackedRequestsInUse, Is.EqualTo(overflow ? 1 : 0));
+            Assert.That(cache.OverflowRequestsInUse, Is.Zero);
+            Assert.That(cache.ReadyAssociationsInUse, Is.Zero);
+        }
+        cache.Received(-1);
+        clock.Advance(TimeSpan.FromSeconds(3.5));
+        cache.ProcessRetryTick();
+        Assert.That(cache.RawResourcesInRetryQueue, Is.Zero);
+    }
+
+    [Test]
+    public async Task Duplicate_local_notifications_do_not_spend_the_attempt_bound()
+    {
+        ManualTimeProvider clock = new();
+        await using RetryCache<ResourceRequestMessage, ResourceId> cache = new(TestLogManager.Instance, clock);
+        BatchTestHandler source = new();
+        cache.Announced(0, source);
+        for (int duplicate = 0; duplicate < 100; duplicate++) Assert.That(cache.TryDeferRequest(0, source), Is.True);
+        bool allDeferralsRetained = true;
+        source.OnBatch = resources => allDeferralsRetained &= cache.TryDeferRequest(resources[0], source);
+        for (int attempt = 0; attempt < 47; attempt++) cache.ProcessRetryTick();
+        Assert.That(cache.TryDeferRequest(0, source), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(allDeferralsRetained, Is.True);
+            Assert.That(cache.TrackedRequestsInUse, Is.EqualTo(1));
+            Assert.That(source.BatchResourceValues, Has.Length.EqualTo(47));
+        }
+    }
+
+    [Test]
+    public async Task Local_deadline_retires_an_undispatched_backlog_after_49_callbacks([Values] bool overflow)
+    {
+        const int count = 4096;
+        ManualTimeProvider clock = new();
+        await using RetryCache<ResourceRequestMessage, ResourceId> cache = new(TestLogManager.Instance, clock,
+            maxPendingResourcesPerHandler: overflow ? 1 : count, overflowRequestLimit: overflow ? count : 0);
+        BatchTestHandler source = new();
+        if (overflow) cache.Announced(-1, source);
+        source.OnBatch = resources =>
+        {
+            foreach (ResourceId resource in resources) cache.TryDeferRequest(resource, source);
+        };
+        clock.Advance(TimeSpan.FromMilliseconds(1));
+        for (int resource = 0; resource < count; resource++)
+        {
+            cache.Announced(resource, source);
+            Assert.That(cache.TryDeferRequest(resource, source), Is.True);
+        }
+        for (int callback = 1; callback <= 49; callback++)
+        {
+            clock.Advance(TimeSpan.FromMilliseconds(callback == 1 ? 699 : 700));
+            cache.ProcessRetryTick();
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.TrackedRequestsInUse, Is.Zero);
+            Assert.That(cache.OverflowRequestsInUse, Is.Zero);
+            Assert.That(cache.ReadyAssociationsInUse, Is.Zero);
+            Assert.That(cache.RawResourcesInRetryQueue, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task Stable_peer_identity_shares_pending_admission()
+    {
+        ManualTimeProvider clock = new();
+        await using RetryCache<ResourceRequestMessage, ResourceId> cache = new(TestLogManager.Instance, clock,
+            maxPendingResourcesPerHandler: 1);
+        PeerBatchHandler first = new(TestItem.PublicKeyA);
+        PeerBatchHandler replacement = new(new PublicKey(TestItem.PublicKeyA.Bytes));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.Announced(0, first), Is.EqualTo(AnnounceResult.RequestRequired));
+            Assert.That(cache.Announced(1, replacement), Is.EqualTo(AnnounceResult.Delayed));
+        }
+        cache.Received(0);
+        Assert.That(cache.Announced(1, replacement), Is.EqualTo(AnnounceResult.RequestRequired));
+        cache.Received(1);
+        Assert.That(cache.PendingHandlersInUse, Is.Zero);
+    }
+
+    [Test]
+    public async Task Dispatch_caps_each_identity_even_when_another_has_one_hash()
+    {
+        ManualTimeProvider clock = new();
+        await using RetryCache<ResourceRequestMessage, ResourceId> cache = new(TestLogManager.Instance, clock);
+        BatchTestHandler a = new(), b = new();
+        AddLocallyDeferred(cache, a, 0, 512);
+        AddLocallyDeferred(cache, b, 512, 1);
+        cache.ProcessRetryTick();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(a.BatchResourceValues, Has.Length.EqualTo(256));
+            Assert.That(b.BatchResourceValues, Has.Length.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task A_refusing_identity_cannot_delay_256_honest_hashes_beyond_one_callback()
+    {
+        ManualTimeProvider clock = new();
+        await using RetryCache<ResourceRequestMessage, ResourceId> cache = new(TestLogManager.Instance, clock);
+        BatchTestHandler refusing = new(), honest = new();
+        AddLocallyDeferred(cache, refusing, 0, 4096);
+        AddLocallyDeferred(cache, honest, 4096, 256);
+        bool refusalsRetained = true;
+        refusing.OnBatch = resources =>
+        {
+            foreach (ResourceId resource in resources) refusalsRetained &= cache.TryDeferRequest(resource, refusing);
+        };
+        honest.OnBatch = resources =>
+        {
+            foreach (ResourceId resource in resources) cache.Received(resource);
+        };
+        for (int callback = 1; callback <= 49; callback++)
+        {
+            int before = refusing.BatchResourceValues.Length;
+            clock.Advance(TimeSpan.FromMilliseconds(700));
+            cache.ProcessRetryTick();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(refusing.BatchResourceValues.Length - before, Is.LessThanOrEqualTo(256));
+                Assert.That(honest.BatchResourceValues, Is.EquivalentTo(Enumerable.Range(4096, 256)));
+                Assert.That(honest.HandleMessagesCallCount, Is.EqualTo(1));
+                Assert.That(refusalsRetained, Is.True);
+            }
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.TrackedRequestsInUse, Is.Zero);
+            Assert.That(cache.RawResourcesInRetryQueue, Is.Zero);
+            Assert.That(cache.HandlerReferences(refusing), Is.EqualTo((0, 0)));
+            Assert.That(cache.HandlerReferences(honest), Is.EqualTo((0, 0)));
+        }
+    }
+
+    [TestCase(512, 256, 256)]
+    [TestCase(400, 400, 250)]
+    public async Task Two_peer_assignment_preserves_feasible_shared_hash_dispatch(int aCount, int bCount, int shared)
+    {
+        ManualTimeProvider clock = new();
+        await using RetryCache<ResourceRequestMessage, ResourceId> cache = new(TestLogManager.Instance, clock);
+        BatchTestHandler source = new(), a = new(), b = new();
+        for (int resource = 0; resource < aCount; resource++)
+        {
+            cache.Announced(resource, source);
+            cache.Announced(resource, a);
+            if (resource < shared) cache.Announced(resource, b);
+        }
+        for (int resource = aCount; resource < aCount + bCount - shared; resource++)
+        {
+            cache.Announced(resource, source);
+            cache.Announced(resource, b);
+        }
+        clock.Advance(TimeSpan.FromSeconds(3.5));
+        cache.ProcessRetryTick();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(a.BatchResourceValues, Has.Length.EqualTo(256));
+            Assert.That(b.BatchResourceValues, Has.Length.EqualTo(256));
+            Assert.That(a.BatchResourceValues.Concat(b.BatchResourceValues).Distinct().Count(), Is.EqualTo(512));
+        }
+    }
+
+    [Test]
+    public async Task Sixteen_ready_identities_get_32_hashes_each()
+    {
+        ManualTimeProvider clock = new();
+        await using RetryCache<ResourceRequestMessage, ResourceId> cache = new(TestLogManager.Instance, clock);
+        BatchTestHandler[] handlers = Enumerable.Range(0, 16).Select(static _ => new BatchTestHandler()).ToArray();
+        for (int peer = 0; peer < handlers.Length; peer++) AddLocallyDeferred(cache, handlers[peer], peer * 512, 512);
+        cache.ProcessRetryTick();
+        Assert.That(handlers.Select(static handler => handler.BatchResourceValues.Length), Is.All.EqualTo(32));
+    }
+
+    [Test]
+    public async Task Two_full_backlogs_drain_once_after_a_10_second_pause()
+    {
+        const int perPeer = 8192;
+        ManualTimeProvider clock = new();
+        await using RetryCache<ResourceRequestMessage, ResourceId> cache = new(TestLogManager.Instance, clock,
+            overflowRequestLimit: perPeer);
+        BatchTestHandler a = new(), b = new();
+        bool paused = true;
+        bool everySendUnique = true;
+        HashSet<int> sent = [];
+        void Handle(BatchTestHandler source, ReadOnlySpan<ResourceId> resources)
+        {
+            foreach (ResourceId resource in resources)
+            {
+                if (paused) cache.TryDeferRequest(resource, source);
+                else
+                {
+                    everySendUnique &= sent.Add(resource.Value);
+                    cache.Received(resource);
+                }
+            }
+        }
+        a.OnBatch = resources => Handle(a, resources);
+        b.OnBatch = resources => Handle(b, resources);
+        AddLocallyDeferred(cache, a, 0, perPeer);
+        AddLocallyDeferred(cache, b, perPeer, perPeer);
+        for (int callback = 0; callback < 14; callback++)
+        {
+            clock.Advance(TimeSpan.FromMilliseconds(700));
+            cache.ProcessRetryTick();
+        }
+        clock.Advance(TimeSpan.FromMilliseconds(200));
+        paused = false;
+        for (int callback = 0; callback < 32; callback++)
+        {
+            clock.Advance(TimeSpan.FromMilliseconds(700));
+            cache.ProcessRetryTick();
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(everySendUnique, Is.True);
+            Assert.That(sent, Has.Count.EqualTo(perPeer * 2));
+            Assert.That(cache.TrackedRequestsInUse, Is.Zero);
+            Assert.That(cache.OverflowRequestsInUse, Is.Zero);
+            Assert.That(cache.ReadyAssociationsInUse, Is.Zero);
+        }
+    }
+
+    private static void AddLocallyDeferred(RetryCache<ResourceRequestMessage, ResourceId> cache,
+        IMessageHandler<ResourceRequestMessage> handler, int start, int count)
+    {
+        for (int resource = start; resource < start + count; resource++)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(cache.Announced(resource, handler), Is.EqualTo(AnnounceResult.RequestRequired));
+                Assert.That(cache.TryDeferRequest(resource, handler), Is.True);
+            }
+        }
+    }
+
+    [Test]
+    public async Task Waiting_batch_keeps_its_selected_alternate_admission_slot()
+    {
+        ManualTimeProvider clock = new();
+        await using RetryCache<ResourceRequestMessage, ResourceId> cache = new(TestLogManager.Instance, clock,
+            maxPendingResourcesPerHandler: 1, overflowRequestLimit: 0);
+        BatchTestHandler a = new(), b = new();
+        cache.Announced(0, new TestHandler());
+        cache.Announced(0, a);
+        cache.Announced(1, new TestHandler());
+        cache.Announced(1, b);
+        AnnounceResult competingAdmission = AnnounceResult.RequestRequired;
+        a.OnBatch = resources =>
+        {
+            competingAdmission = cache.Announced(99, b);
+            cache.Received(resources[0]);
+        };
+        b.OnBatch = resources => cache.Received(resources[0]);
+        clock.Advance(TimeSpan.FromSeconds(3.5));
+        cache.ProcessRetryTick();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(competingAdmission, Is.EqualTo(AnnounceResult.Delayed));
+            Assert.That(a.BatchResourceValues, Is.EqualTo(new[] { 0 }));
+            Assert.That(b.BatchResourceValues, Is.EqualTo(new[] { 1 }));
+            Assert.That(cache.RawResourcesInRetryQueue, Is.Zero);
+            Assert.That(cache.TrackedRequestsInUse, Is.Zero);
+            Assert.That(cache.HandlerReferences(b), Is.EqualTo((0, 0)));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.Announced(100, b), Is.EqualTo(AnnounceResult.RequestRequired));
+            Assert.That(cache.Announced(101, b), Is.EqualTo(AnnounceResult.Delayed));
+        }
+    }
+
+    [Test]
+    public async Task Batch_dispatch_revalidates_a_generation_replaced_by_an_earlier_callback()
+    {
+        ManualTimeProvider clock = new();
+        await using RetryCache<ResourceRequestMessage, ResourceId> cache = new(TestLogManager.Instance, clock);
+        BatchTestHandler a = new(), b = new();
+        cache.Announced(0, new TestHandler());
+        cache.Announced(0, a);
+        cache.Announced(1, new TestHandler());
+        cache.Announced(1, b);
+        AnnounceResult replacementAdmission = AnnounceResult.Delayed;
+        a.OnBatch = _ =>
+        {
+            cache.Received(1);
+            replacementAdmission = cache.Announced(1, b);
+        };
+        clock.Advance(TimeSpan.FromSeconds(3.5));
+        cache.ProcessRetryTick();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(replacementAdmission, Is.EqualTo(AnnounceResult.RequestRequired));
+            Assert.That(a.BatchResourceValues, Is.EqualTo(new[] { 0 }));
+            Assert.That(b.BatchResourceValues, Is.Empty);
+            Assert.That(cache.TrackedRequestsInUse, Is.EqualTo(2));
+            Assert.That(cache.RetainedAssociationsInUse, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task A_running_retry_callback_cannot_attribute_or_defer_its_replacement_generation()
+    {
+        ManualTimeProvider clock = new();
+        await using RetryCache<ResourceRequestMessage, ResourceId> cache = new(TestLogManager.Instance, clock);
+        BatchTestHandler source = new();
+        cache.Announced(1, source);
+        AddLocallyDeferred(cache, source, 0, 1);
+        AnnounceResult replacementAdmission = AnnounceResult.Delayed;
+        long capturedGeneration = -1;
+        bool replacementDeferred = true;
+        source.OnBatch = resources =>
+        {
+            cache.Received(resources[0]);
+            replacementAdmission = cache.Announced(resources[0], source);
+            RetryRequestToken<ResourceId>[] tokens = new RetryRequestToken<ResourceId>[1];
+            cache.CaptureRequestTokens(resources, source, tokens);
+            capturedGeneration = tokens[0].Generation;
+            replacementDeferred = cache.TryDeferRequest(resources[0], source);
+        };
+        cache.ProcessRetryTick();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(replacementAdmission, Is.EqualTo(AnnounceResult.RequestRequired));
+            Assert.That(capturedGeneration, Is.Zero);
+            Assert.That(replacementDeferred, Is.False);
+            Assert.That(source.BatchResourceValues, Is.EqualTo(new[] { 0 }));
+            Assert.That(cache.TrackedRequestsInUse, Is.EqualTo(2));
+            Assert.That(cache.RetainedAssociationsInUse, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task Unanswered_alternate_preserves_the_original_local_source()
+    {
+        ManualTimeProvider clock = new();
+        await using RetryCache<ResourceRequestMessage, ResourceId> cache = new(TestLogManager.Instance, clock);
+        BatchTestHandler source = new(), alternate = new();
+        AddLocallyDeferred(cache, source, 0, 1);
+        cache.Announced(0, alternate);
+        cache.ProcessRetryTick();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(alternate.BatchResourceValues, Is.EqualTo(new[] { 0 }));
+            Assert.That(source.BatchResourceValues, Is.Empty);
+        }
+        clock.Advance(TimeSpan.FromSeconds(3.5));
+        cache.ProcessRetryTick();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(source.BatchResourceValues, Is.EqualTo(new[] { 0 }));
+            Assert.That(alternate.BatchResourceValues, Is.EqualTo(new[] { 0 }));
+        }
+    }
+
+    [Test]
+    public async Task Successful_overflow_send_retains_its_source_slot_until_receipt_or_timeout([Values] bool receipt)
+    {
+        ManualTimeProvider clock = new();
+        await using RetryCache<ResourceRequestMessage, ResourceId> cache = new(TestLogManager.Instance, clock,
+            maxPendingResourcesPerHandler: 1, overflowRequestLimit: 4096);
+        BatchTestHandler source = new();
+        cache.Announced(-1, source);
+        AddLocallyDeferred(cache, source, 0, 1);
+        cache.ProcessRetryTick();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.HandlerReferences(source), Is.EqualTo((1, 1)));
+            Assert.That(cache.OverflowRequestsInUse, Is.EqualTo(1));
+        }
+        if (receipt) cache.Received(0);
+        else
+        {
+            clock.Advance(TimeSpan.FromSeconds(3.5));
+            cache.ProcessRetryTick();
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.HandlerReferences(source).Overflow, Is.Zero);
+            Assert.That(cache.OverflowRequestsInUse, Is.Zero);
+            Assert.That(source.BatchResourceValues, Is.EqualTo(new[] { 0 }));
+        }
+    }
+
+    [Test]
+    public async Task Simultaneous_expiry_keeps_charged_entries_until_each_bounded_cleanup()
+    {
+        const int peers = 16, perPeer = 8192, cleanup = 8192;
+        ManualTimeProvider clock = new();
+        await using RetryCache<ResourceRequestMessage, ResourceId> cache = new(TestLogManager.Instance, clock,
+            overflowRequestLimit: 500_000);
+        BatchTestHandler[] sources = Enumerable.Range(0, peers).Select(static _ => new BatchTestHandler()).ToArray();
+        for (int peer = 0; peer < peers; peer++) AddLocallyDeferred(cache, sources[peer], peer * perPeer, perPeer);
+        clock.Advance(TimeSpan.FromSeconds(33.6));
+        for (int callback = 1; callback <= peers; callback++)
+        {
+            cache.ProcessRetryTick();
+            int retained = peers * perPeer - callback * cleanup;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(cache.TrackedRequestsInUse + cache.OverflowRequestsInUse, Is.EqualTo(retained));
+                Assert.That(cache.RetainedAssociationsInUse, Is.EqualTo(retained));
+                Assert.That(cache.RawResourcesInRetryQueue, Is.EqualTo(retained));
+                Assert.That(cache.HandlerReferences(sources[callback - 1]), Is.EqualTo((0, 0)));
+                Assert.That(sources.Select(static source => source.BatchResourceValues.Length), Is.All.Zero);
+            }
+            clock.Advance(TimeSpan.FromMilliseconds(700));
+        }
+    }
+
+    [Test]
+    public async Task Positive_send_confirmation_obeys_the_attribution_deadline([Values(3499, 3500, 3501)] int elapsedMs)
+    {
+        ManualTimeProvider clock = new();
+        await using RetryCache<ResourceRequestMessage, ResourceId> cache = new(TestLogManager.Instance, clock);
+        BatchTestHandler source = new();
+        AddLocallyDeferred(cache, source, 1, 1);
+        cache.Announced(0, source);
+        RetryRequestToken<ResourceId>[] tokens = new RetryRequestToken<ResourceId>[1];
+        cache.CaptureRequestTokens(new ResourceId[] { 0 }, source, tokens);
+        object progress = cache.CaptureUsefulProgress(source, tokens[0]);
+        Assert.That(progress, Is.Not.Null);
+        cache.Received(0);
+        cache.RecordUsefulProgress(progress, tokens[0]);
+        clock.Advance(TimeSpan.FromMilliseconds(elapsedMs));
+        cache.CompleteRequest(tokens[0].Confirmation, sent: true);
+        clock.Advance(TimeSpan.FromMilliseconds(33_700 - elapsedMs));
+        cache.ProcessRetryTick();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.TrackedRequestsInUse, Is.EqualTo(elapsedMs < 3500 ? 1 : 0));
+            Assert.That(source.BatchResourceValues, Is.EqualTo(elapsedMs < 3500 ? new[] { 1 } : Array.Empty<int>()));
+        }
+    }
+
+    [Test]
+    public async Task Reversed_send_confirmations_cannot_refresh_with_an_older_payment()
+    {
+        ManualTimeProvider clock = new();
+        await using RetryCache<ResourceRequestMessage, ResourceId> cache = new(TestLogManager.Instance, clock);
+        BatchTestHandler source = new();
+        AddLocallyDeferred(cache, source, 1, 1);
+        RetryRequestToken<ResourceId>[] older = PendingPayment(0);
+        clock.Advance(TimeSpan.FromSeconds(1));
+        RetryRequestToken<ResourceId>[] newer = PendingPayment(2);
+        clock.Advance(TimeSpan.FromMilliseconds(100));
+        cache.CompleteRequest(newer[0].Confirmation, sent: true);
+        clock.Advance(TimeSpan.FromMilliseconds(2399));
+        cache.CompleteRequest(older[0].Confirmation, sent: true);
+        clock.Advance(TimeSpan.FromMilliseconds(31_301));
+        cache.ProcessRetryTick();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.TrackedRequestsInUse, Is.Zero);
+            Assert.That(source.BatchResourceValues, Is.Empty);
+        }
+
+        RetryRequestToken<ResourceId>[] PendingPayment(int resource)
+        {
+            cache.Announced(resource, source);
+            RetryRequestToken<ResourceId>[] tokens = new RetryRequestToken<ResourceId>[1];
+            cache.CaptureRequestTokens(new ResourceId[] { resource }, source, tokens);
+            object progress = cache.CaptureUsefulProgress(source, tokens[0]);
+            Assert.That(progress, Is.Not.Null);
+            cache.Received(resource);
+            cache.RecordUsefulProgress(progress, tokens[0]);
+            return tokens;
+        }
+    }
+
+    [Test]
+    public async Task Pending_send_payment_does_not_renew_a_later_local_admission([Values] bool sent)
+    {
+        ManualTimeProvider clock = new();
+        await using RetryCache<ResourceRequestMessage, ResourceId> cache = new(TestLogManager.Instance, clock);
+        BatchTestHandler source = new();
+        cache.Announced(0, source);
+        AddLocallyDeferred(cache, source, 1, 1);
+        RetryRequestToken<ResourceId>[] tokens = new RetryRequestToken<ResourceId>[1];
+        cache.CaptureRequestTokens(new ResourceId[] { 0 }, source, tokens);
+        object progress = cache.CaptureUsefulProgress(source, tokens[0]);
+        Assert.That(progress, Is.Not.Null);
+        cache.Received(0);
+        cache.RecordUsefulProgress(progress, tokens[0]);
+        clock.Advance(TimeSpan.FromMilliseconds(1));
+        AddLocallyDeferred(cache, source, 2, 1);
+        clock.Advance(TimeSpan.FromMilliseconds(999));
+        cache.CompleteRequest(tokens[0].Confirmation, sent);
+        clock.Advance(TimeSpan.FromSeconds(32.7));
+        cache.ProcessRetryTick();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.TrackedRequestsInUse, Is.EqualTo(sent ? 1 : 0));
+            Assert.That(source.BatchResourceValues, Is.EqualTo(sent ? new[] { 1 } : Array.Empty<int>()));
+        }
+        clock.Advance(TimeSpan.FromSeconds(1));
+        cache.ProcessRetryTick();
+        Assert.That(cache.TrackedRequestsInUse, Is.Zero);
+    }
+
+    [Test]
+    public async Task Late_useful_progress_cannot_revive_a_generation_awaiting_physical_cleanup()
+    {
+        ManualTimeProvider clock = new();
+        await using RetryCache<ResourceRequestMessage, ResourceId> cache = new(TestLogManager.Instance, clock);
+        BatchTestHandler source = new();
+        AddLocallyDeferred(cache, source, 0, 1);
+        clock.Advance(TimeSpan.FromSeconds(34));
+        PayUsefulReply(cache, source, 1);
+        cache.ProcessRetryTick();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.TrackedRequestsInUse, Is.Zero);
+            Assert.That(cache.HandlerReferences(source), Is.EqualTo((0, 0)));
+            Assert.That(source.BatchResourceValues, Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task Request_expires_after_its_last_retry_association_is_selected()
+    {
+        ManualTimeProvider clock = new();
+        await using RetryCache<ResourceRequestMessage, ResourceId> cache = new(TestLogManager.Instance, clock, timeoutMs: CacheTimeoutMs);
+        TestHandler source = new();
+        BatchTestHandler alternate = new();
+        const int batchSize = RetryCache<ResourceRequestMessage, ResourceId>.MaxRetryResourcesPerHandlerPerTick;
+        for (int i = 0; i <= batchSize; i++)
+        {
+            cache.Announced(i, source);
+            cache.Announced(i, alternate);
+        }
+
+        clock.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs + 1));
+        cache.ProcessRetryTick();
+        Assert.That(cache.RetainedAssociationsInUse, Is.EqualTo(1));
+
+        cache.ProcessRetryTick();
+        Assert.That(cache.RetainedAssociationsInUse, Is.Zero);
+        clock.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs + 1));
+        cache.ProcessRetryTick();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(alternate.BatchResourceValues, Has.Length.EqualTo(batchSize + 1));
+            Assert.That(cache.TrackedRequestsInUse, Is.Zero);
+            Assert.That(cache.RawResourcesInRetryQueue, Is.Zero);
+            Assert.That(cache.HandlerReferences(source), Is.EqualTo((0, 0)));
+        }
+    }
+
+    [Test]
+    public async Task Local_expiry_racing_receipt_keeps_the_reannounced_generation()
+    {
+        HookedClock clock = new();
+        await using RetryCache<ResourceRequestMessage, ResourceId> cache = new(TestLogManager.Instance, clock);
+        BatchTestHandler source = new();
+        AddLocallyDeferred(cache, source, 0, 1);
+        clock.Advance(TimeSpan.FromSeconds(34));
+        Task receipt = Task.CompletedTask;
+        bool receiptRemovedEntry = false;
+        AnnounceResult reannounced = AnnounceResult.Delayed;
+        // Runs on the tick thread inside the expiry lock: the receipt removes the entry but cannot retire its state yet.
+        clock.OnNextTimestamp(() =>
+        {
+            receipt = Task.Run(() => cache.Received(0));
+            receiptRemovedEntry = SpinWait.SpinUntil(() => cache.TrackedRequestsInUse == 0, TimeSpan.FromSeconds(10));
+            reannounced = cache.Announced(0, source);
+        });
+        cache.ProcessRetryTick();
+        await receipt;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receiptRemovedEntry, Is.True);
+            Assert.That(reannounced, Is.EqualTo(AnnounceResult.RequestRequired));
+            Assert.That(cache.TrackedRequestsInUse, Is.EqualTo(1));
+            Assert.That(cache.HandlerReferences(source), Is.EqualTo((1, 0)));
+        }
+    }
+
+    private sealed class HookedClock : TimeProvider
+    {
+        private readonly ManualTimeProvider _clock = new();
+        private Action _onNextTimestamp;
+
+        public void Advance(TimeSpan elapsed) => _clock.Advance(elapsed);
+        public void OnNextTimestamp(Action action) => Volatile.Write(ref _onNextTimestamp, action);
+        public override long TimestampFrequency => _clock.TimestampFrequency;
+        public override DateTimeOffset GetUtcNow() => _clock.GetUtcNow();
+        public override ITimer CreateTimer(TimerCallback callback, object state, TimeSpan dueTime, TimeSpan period) =>
+            _clock.CreateTimer(callback, state, dueTime, period);
+
+        public override long GetTimestamp()
+        {
+            Interlocked.Exchange(ref _onNextTimestamp, null)?.Invoke();
+            return _clock.GetTimestamp();
+        }
+    }
+
+    [Test]
+    public async Task Continuous_progress_bridges_lazy_inspection_but_an_exact_window_gap_does_not([Values] bool missedWindow)
+    {
+        ManualTimeProvider clock = new();
+        await using RetryCache<ResourceRequestMessage, ResourceId> cache = new(TestLogManager.Instance, clock);
+        BatchTestHandler source = new();
+        source.OnBatch = resources =>
+        {
+            foreach (ResourceId resource in resources) cache.TryDeferRequest(resource, source);
+        };
+        AddLocallyDeferred(cache, source, 0, 1);
+        for (int payment = 1; payment <= 3; payment++)
+        {
+            clock.Advance(TimeSpan.FromSeconds(10));
+            PayUsefulReply(cache, source, payment);
+        }
+        clock.Advance(TimeSpan.FromSeconds(missedWindow ? 33.6 : 30));
+        PayUsefulReply(cache, source, 4);
+        clock.Advance(TimeSpan.FromSeconds(1));
+        cache.ProcessRetryTick();
+        Assert.That(cache.TrackedRequestsInUse, Is.EqualTo(missedWindow ? 0 : 1));
+        if (!missedWindow)
+        {
+            clock.Advance(TimeSpan.FromSeconds(31.9));
+            cache.ProcessRetryTick();
+            Assert.That(cache.TrackedRequestsInUse, Is.EqualTo(1));
+            clock.Advance(TimeSpan.FromSeconds(0.7));
+            cache.ProcessRetryTick();
+            Assert.That(cache.TrackedRequestsInUse, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task Whole_generation_expiry_releases_normal_and_overflow_sources_with_remaining_alternates()
+    {
+        ManualTimeProvider clock = new();
+        await using RetryCache<ResourceRequestMessage, ResourceId> cache = new(TestLogManager.Instance, clock,
+            maxPendingResourcesPerHandler: 1, overflowRequestLimit: 1);
+        BatchTestHandler source = new();
+        AddLocallyDeferred(cache, source, 0, 2);
+        BatchTestHandler[] alternates = Enumerable.Range(0, 8).Select(static _ => new BatchTestHandler()).ToArray();
+        for (int alternate = 0; alternate < alternates.Length; alternate++)
+        {
+            cache.Announced(alternate / 4, alternates[alternate]);
+        }
+        Assert.That(cache.HandlerReferences(source), Is.EqualTo((1, 1)));
+        clock.Advance(TimeSpan.FromSeconds(33.6));
+        cache.ProcessRetryTick();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.HandlerReferences(source), Is.EqualTo((0, 0)));
+            Assert.That(cache.TrackedRequestsInUse, Is.Zero);
+            Assert.That(cache.OverflowRequestsInUse, Is.Zero);
+            Assert.That(cache.RetainedAssociationsInUse, Is.Zero);
+            Assert.That(cache.RawResourcesInRetryQueue, Is.Zero);
+            foreach (BatchTestHandler alternate in alternates) Assert.That(cache.HandlerReferences(alternate), Is.EqualTo((0, 0)));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.Announced(2, source), Is.EqualTo(AnnounceResult.RequestRequired));
+            Assert.That(cache.Announced(3, source), Is.EqualTo(AnnounceResult.RequestRequired));
+            Assert.That(cache.TryDeferRequest(3, source), Is.True);
+        }
+    }
+
+    [Test]
+    public async Task Wide_ready_identity_sets_make_progress_and_rotate_the_cursor()
+    {
+        const int count = 20_000;
+        ManualTimeProvider clock = new();
+        await using RetryCache<ResourceRequestMessage, ResourceId> cache = new(TestLogManager.Instance, clock);
+        BatchTestHandler[] sources = Enumerable.Range(0, count).Select(static _ => new BatchTestHandler()).ToArray();
+        for (int source = 0; source < count; source++)
+        {
+            BatchTestHandler handler = sources[source];
+            handler.OnBatch = resources => cache.TryDeferRequest(resources[0], handler);
+            AddLocallyDeferred(cache, handler, source, 1);
+        }
+        cache.ProcessRetryTick();
+        Assert.That(sources.Count(static source => source.HandleMessagesCallCount == 1), Is.EqualTo(512));
+        cache.ProcessRetryTick();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sources.Count(static source => source.HandleMessagesCallCount == 1), Is.EqualTo(1024));
+            Assert.That(sources.Select(static source => source.HandleMessagesCallCount), Is.All.LessThanOrEqualTo(1));
+            Assert.That(cache.RetainedSelectionCapacity, Is.LessThanOrEqualTo(16_384));
+        }
+    }
+
+    [Test]
+    public async Task Repeated_local_rearming_reuses_bounded_selection_and_association_storage()
+    {
+        ManualTimeProvider clock = new();
+        await using RetryCache<ResourceRequestMessage, ResourceId> cache = new(TestLogManager.Instance, clock);
+        RearmingHandler[] sources = Enumerable.Range(0, 16).Select(_ => new RearmingHandler(cache)).ToArray();
+        for (int source = 0; source < sources.Length; source++) AddLocallyDeferred(cache, sources[source], source * 64, 64);
+        for (int warmup = 0; warmup < 4; warmup++) cache.ProcessRetryTick();
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int callback = 0; callback < 20; callback++) cache.ProcessRetryTick();
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(allocated, Is.LessThan(20 * 2048));
+            Assert.That(sources.Select(static source => source.Resources), Is.All.EqualTo(24 * 32));
+            Assert.That(cache.RetainedSelectionCapacity, Is.LessThanOrEqualTo(16_384));
+        }
+    }
+
+    private static void PayUsefulReply(RetryCache<ResourceRequestMessage, ResourceId> cache,
+        IMessageHandler<ResourceRequestMessage> source, int resource)
+    {
+        Assert.That(cache.Announced(resource, source), Is.EqualTo(AnnounceResult.RequestRequired));
+        RetryRequestToken<ResourceId>[] tokens = [default];
+        cache.CaptureRequestTokens([resource], source, tokens);
+        cache.CompleteRequest(tokens[0].Confirmation, sent: true);
+        object progress = cache.CaptureUsefulProgress(source, tokens[0]);
+        Assert.That(progress, Is.Not.Null);
+        cache.Received(resource);
+        cache.RecordUsefulProgress(progress, tokens[0]);
     }
 }

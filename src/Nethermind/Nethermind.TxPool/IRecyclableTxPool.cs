@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Network.Contract.Messages;
 
 namespace Nethermind.TxPool;
 
@@ -29,4 +31,11 @@ internal interface IRecyclableTxPool
     /// not be decoded at all.
     /// </remarks>
     bool TrySubmitKnown(in ValueHash256 hash);
+    void CaptureRequestTokens(ReadOnlySpan<ValueHash256> hashes,
+        IMessageHandler<PooledTransactionRequestMessage> sender, Span<RetryRequestToken<ValueHash256>> tokens);
+
+    void CompleteRequest(RetryRequestConfirmation? confirmation, bool sent);
+
+    AcceptTxResult SubmitOwnedRequestedTx(Transaction tx, IMessageHandler<PooledTransactionRequestMessage> sender,
+        in RetryRequestToken<ValueHash256> token, out bool canRecycle);
 }

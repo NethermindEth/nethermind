@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.TxPool;
@@ -10,6 +11,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V72;
 /// <summary>
 /// Coordinates node-wide sparse blob announcements, requests, admission, and serving budgets across eth/72 peers.
 /// </summary>
+/// <remarks>
+/// Sparse request ownership requires delegation to <see cref="SparseBlobPoolPeerRegistry"/>.
+/// Forwarding decorators are supported; independent implementations are not supported because
+/// restoration, body-attempt and cell-claim tokens belong to the production registry.
+/// Decorators must forward the original tokens and borrowed leases without replacing or disposing them.
+/// </remarks>
 public interface ISparseBlobPoolPeerRegistry
 {
     /// <summary>Registers an active eth/72 peer.</summary>
@@ -25,15 +32,35 @@ public interface ISparseBlobPoolPeerRegistry
     /// <summary>Returns the node-wide provider or sampler request mask for an announcement.</summary>
     BlobCellMask GetRequestMask(in ValueHash256 hash, BlobCellMask announcementMask, int providerProbabilityPercent);
 
-    /// <summary>
-    /// Forgets a single peer's announcement for a transaction, e.g. after the peer answered
-    /// a cell request with an empty response, so retries converge on other providers.
-    /// </summary>
-    /// <returns>
-    /// The mask the peer had announced, so a caller that backs the peer off temporarily can restore
-    /// it later; <see cref="BlobCellMask.Empty"/> when the peer had no announcement.
-    /// </returns>
-    BlobCellMask RemoveAnnouncement(ISparseBlobPoolPeer peer, in ValueHash256 hash);
+    /// <summary>Temporarily removes an announcement and retains a conditional restoration.</summary>
+    /// <returns><c>false</c> on local ticket capacity refusal; otherwise <c>true</c>.</returns>
+    /// <remarks>A supplied request ownership is borrowed and must match the original registry, state, peer and reservation revision. Stale or foreign ownership cannot change current state. Decorators must forward it without disposing it.</remarks>
+    bool TryBeginAnnouncementRestore(ISparseBlobPoolPeer peer, Hash256 hash, out AnnouncementRestoration? restoration, IDisposable? requestOwnership = null);
+
+    /// <summary>Restores an owned announcement, preserving any fresh announcement already present.</summary>
+    bool TryRestoreAnnouncement(ISparseBlobPoolPeer peer, Hash256 hash, AnnouncementRestoration restoration);
+
+    /// <summary>Removes an announcement and invalidates its outstanding restoration.</summary>
+    /// <returns>The canceled restoration, or <c>null</c> when none existed.</returns>
+    /// <remarks>A supplied request ownership is borrowed and must match the original registry, state, peer and reservation revision. Stale or foreign ownership cannot change current state. Decorators must forward it without disposing it.</remarks>
+    AnnouncementRestoration? RemoveAnnouncementPermanently(ISparseBlobPoolPeer peer, Hash256 hash, IDisposable? requestOwnership = null);
+
+    /// <summary>Captures body request ownership against the current tracked transaction.</summary>
+    /// <returns>An unarmed attempt, or <c>null</c> when the peer or state is no longer active.</returns>
+    BodyRequestAttempt? CreateBodyRequestAttempt(ISparseBlobPoolPeer peer, Hash256 hash);
+
+    /// <inheritdoc cref="CreateBodyRequestAttempt(ISparseBlobPoolPeer, Hash256)"/>
+    BodyRequestAttempt? CreateBodyRequestAttempt(ISparseBlobPoolPeer peer, in ValueHash256 hash) =>
+        CreateBodyRequestAttempt(peer, hash.ToHash256());
+
+    /// <summary>Excludes a peer from body retries for an omitted requested transaction.</summary>
+    /// <returns>The canceled announcement restoration, when one existed.</returns>
+    /// <remarks>A supplied original attempt is borrowed and must match its owner, tracked state, peer and current confirmed generation. Completion does not consume omission ownership; each omission is applied once.</remarks>
+    AnnouncementRestoration? RecordBodyUnavailable(ISparseBlobPoolPeer peer, Hash256 hash, BodyRequestAttempt? requestAttempt = null, bool retainCellAnnouncement = false);
+
+    /// <summary>Gets whether the peer announced every column in the requested mask.</summary>
+    /// <remarks>Registry decorators must forward coverage so covered underdelivery remains attributable.</remarks>
+    bool CoversRequest(ISparseBlobPoolPeer peer, ValueHash256 hash, BlobCellMask mask);
 
     /// <summary>
     /// Requests cells from a randomly selected announcing peer. Cells already held in the local
@@ -67,7 +94,8 @@ public interface ISparseBlobPoolPeerRegistry
 
     /// <summary>Records cells attributed to a peer for later validation and admission.</summary>
     /// <returns><c>true</c> when the cells were retained; otherwise <c>false</c>.</returns>
-    bool RecordCells(ISparseBlobPoolPeer peer, Hash256 hash, BlobCellMask cellMask, byte[][] cells);
+    /// <remarks>A supplied request ownership is borrowed and must match the original registry, state, peer and reservation revision. Stale or foreign ownership cannot change current state. Decorators must forward it without disposing it.</remarks>
+    bool RecordCells(ISparseBlobPoolPeer peer, Hash256 hash, BlobCellMask cellMask, byte[][] cells, IDisposable? requestOwnership = null);
 
     /// <summary>Attempts to validate and merge recorded cells into the transaction pool.</summary>
     /// <returns><c>true</c> when recorded cells were applied or are already present; otherwise <c>false</c>.</returns>

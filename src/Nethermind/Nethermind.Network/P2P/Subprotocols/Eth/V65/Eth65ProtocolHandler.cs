@@ -11,6 +11,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Contract.Messages;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.P2P.Utils;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V64;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
@@ -41,8 +42,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         IGossipPolicy gossipPolicy,
         IForkInfo forkInfo,
         ILogManager logManager,
-        ITxGossipPolicy? transactionsGossipPolicy = null)
-        : Eth64ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy),
+        ITxGossipPolicy? transactionsGossipPolicy = null,
+        TimeProvider? timeProvider = null)
+        : Eth64ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy, timeProvider),
           IBatchMessageHandler<PooledTransactionRequestMessage, ValueHash256>
     {
         public override string Name => "eth65";
@@ -50,6 +52,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         public override byte ProtocolVersion => EthVersions.Eth65;
 
         private const int MaxNumberOfTxsInOneMsg = 256;
+        private LegacyResponseCredits? _legacyResponseCredits;
         private static readonly ObjectPool<HashSet<ValueHash256>> ResponseHashesPool =
             new DefaultObjectPool<HashSet<ValueHash256>>(new ResponseHashesPolicy(), maximumRetained: 16);
 
@@ -93,15 +96,22 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
                     return true;
                 case Eth65MessageCode.GetPooledTransactions:
-                    HandleInBackground<GetPooledTransactionsMessage>(message, Handle);
+                    HandleServingInBackground<GetPooledTransactionsMessage>(message, Handle);
                     return true;
                 case Eth65MessageCode.PooledTransactions:
                     if (CanReceiveTransactions)
                     {
                         if (!TryDeserializeTransactions(message, out PooledTransactionsMessage pooledTxMsg, static txMessage => txMessage, pooledResponse: true))
+                        {
+                            _legacyResponseCredits?.Consume();
                             return true;
+                        }
+                        PeerWorkQuota.Reservation? replyReservation = null;
+                        PooledTransactionRequests.ResponseContext? context = null;
+                        bool solicited = _legacyResponseCredits?.TryClaim(pooledTxMsg.Transactions.AsSpan(), out replyReservation, out context) == true;
+                        using PeerWorkQuota.Reservation? reservation = replyReservation;
                         ReportIn(pooledTxMsg, size);
-                        HandlePooledTransactions(pooledTxMsg);
+                        HandlePooledTransactions(pooledTxMsg, solicited, reservation, context);
                     }
                     else
                     {
@@ -299,16 +309,136 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             }
         }
 
-        private protected void SendPooledTransactionRequest<TMessage>(IOwnedReadOnlyList<ValueHash256> hashes)
+        private protected bool SendPooledTransactionRequest<TMessage>(IOwnedReadOnlyList<ValueHash256> hashes)
             where TMessage : P2PMessage, INew<IOwnedReadOnlyList<ValueHash256>, TMessage>
         {
-            ReportPooledTransactionRequest(hashes.AsSpan());
             TMessage message = TMessage.New(hashes);
-            TrackPooledTransactionRequest(message);
-            Send(message);
+            if (!BackgroundTaskScheduler.TryReservePooledReply(out PeerWorkQuota.Reservation? replyReservation))
+            {
+                ExpirePooledTransactionRequests();
+                if (!BackgroundTaskScheduler.TryReservePooledReply(out replyReservation))
+                {
+                    DeferUnsentPooledRequests(hashes.AsSpan());
+                    message.Dispose();
+                    return false;
+                }
+            }
+            using PeerWorkQuota.Reservation replyLease = replyReservation;
+            using ArrayPoolListRef<ValueHash256> retryHashes = new(hashes.AsSpan());
+            if (message is not GetPooledTransactionsMessage)
+            {
+                if (!TryTrackPooledTransactionRequest(message, replyLease, out RetryRequestConfirmation? confirmation))
+                {
+                    CompleteRequest(confirmation, false);
+                    DeferUnsentPooledRequests(hashes.AsSpan());
+                    message.Dispose();
+                    return false;
+                }
+                bool modernSent = false;
+                try
+                {
+                    ReportPooledTransactionRequest(hashes.AsSpan());
+                    modernSent = SendAndGetSize(message) > 0 && !Session.IsClosing;
+                    if (modernSent) ConfirmPooledTransactionRequestSent(message);
+                }
+                finally
+                {
+                    CompleteRequest(confirmation, modernSent);
+                    if (!modernSent)
+                    {
+                        CancelPooledTransactionRequest(message);
+                        DeferUnsentPooledRequests(retryHashes.AsSpan());
+                        IgnorePooledTransactionResponse();
+                    }
+                }
+                return modernSent;
+            }
+
+            LegacyResponseCredits credits = LegacyCredits;
+            using ArrayPoolList<RetryRequestToken<ValueHash256>> tokens = CaptureRequestTokens(hashes.AsSpan());
+            RetryRequestConfirmation? legacyConfirmation = GetRequestConfirmation(tokens);
+            LinkedListNode<long>? reservation = Session.IsClosing ? null : credits.Reserve(replyLease, hashes.AsSpan(), tokens.AsSpan());
+            if (reservation is null)
+            {
+                CompleteRequest(legacyConfirmation, false);
+                DeferUnsentPooledRequests(hashes.AsSpan());
+                message.Dispose();
+                return false;
+            }
+            bool sent = false;
+            try
+            {
+                ReportPooledTransactionRequest(hashes.AsSpan());
+                sent = SendAndGetSize(message) > 0 && !Session.IsClosing;
+            }
+            finally
+            {
+                CompleteRequest(legacyConfirmation, sent);
+                if (!sent)
+                {
+                    credits.Cancel(reservation);
+                    DeferUnsentPooledRequests(retryHashes.AsSpan());
+                    IgnorePooledTransactionResponse();
+                }
+            }
+            return sent;
         }
 
-        private protected virtual void TrackPooledTransactionRequest(P2PMessage message) { }
+        private void DeferUnsentPooledRequests(ReadOnlySpan<ValueHash256> hashes)
+        {
+            if (Session.IsClosing) return;
+            foreach (ref readonly ValueHash256 hash in hashes) _txPool.TryDeferTransactionRequest(in hash, this);
+        }
+
+        private protected static bool MatchesPooledTransactionRequest(ReadOnlySpan<Transaction> transactions, ReadOnlySpan<ValueHash256> requestedHashes)
+        {
+            int requestedIndex = 0;
+            for (int i = 0; i < transactions.Length; i++)
+            {
+                Hash256? hash = transactions[i].Hash;
+                if (hash is null)
+                {
+                    return false;
+                }
+
+                while (requestedIndex < requestedHashes.Length
+                    && requestedHashes[requestedIndex] != hash.ValueHash256)
+                {
+                    requestedIndex++;
+                }
+
+                if (requestedIndex == requestedHashes.Length)
+                {
+                    return false;
+                }
+
+                requestedIndex++;
+            }
+
+            return true;
+        }
+
+        private protected virtual void ExpirePooledTransactionRequests() => Volatile.Read(ref _legacyResponseCredits)?.ExpirePending();
+
+        private protected virtual bool TryTrackPooledTransactionRequest(P2PMessage message, PeerWorkQuota.Reservation reservation,
+            out RetryRequestConfirmation? confirmation)
+        {
+            confirmation = null;
+            return false;
+        }
+
+        private protected virtual void ConfirmPooledTransactionRequestSent(P2PMessage message) { }
+
+        private protected virtual void CancelPooledTransactionRequest(P2PMessage message) { }
+
+        private LegacyResponseCredits LegacyCredits => LazyInitializer.EnsureInitialized(ref _legacyResponseCredits,
+            () => new(BackgroundTaskScheduler.TimeProvider));
+
+        protected override void OnDisposed()
+        {
+            LegacyCredits.Dispose();
+            base.OnDisposed();
+        }
 
         protected void RequestPooledTransactions<TMessage>(IOwnedReadOnlyList<Hash256> hashes, bool registerForRetry = true)
             where TMessage : P2PMessage, INew<IOwnedReadOnlyList<ValueHash256>, TMessage>

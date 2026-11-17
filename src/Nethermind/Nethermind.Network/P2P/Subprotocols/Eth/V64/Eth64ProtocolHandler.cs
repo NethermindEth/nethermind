@@ -27,9 +27,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V64
         IGossipPolicy gossipPolicy,
         IForkInfo forkInfo,
         ILogManager logManager,
-        ITxGossipPolicy? transactionsGossipPolicy = null)
+        ITxGossipPolicy? transactionsGossipPolicy = null,
+        TimeProvider? timeProvider = null)
         : Eth63ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
-            gossipPolicy, logManager, transactionsGossipPolicy)
+            gossipPolicy, logManager, transactionsGossipPolicy, timeProvider)
     {
         protected readonly IForkInfo _forkInfo = forkInfo ?? throw new ArgumentNullException(nameof(forkInfo));
 

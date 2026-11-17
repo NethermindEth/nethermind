@@ -212,6 +212,26 @@ namespace Nethermind.TxPool
             bool thereIsPriorityContract = false,
             IFrameTxPrefixSimulator? frameTxPrefixSimulator = null,
             IStateHeaderProvider? stateHeaderProvider = null)
+            : this(TimeProvider.System, ecdsa, blobTxStorage, chainHeadInfoProvider, txPoolConfig, validator,
+                specChangeTxValidator, logManager, comparer, frameTxWidthLedger, transactionsGossipPolicy,
+                incomingTxFilters, thereIsPriorityContract, frameTxPrefixSimulator, stateHeaderProvider)
+        {
+        }
+
+        internal TxPool(TimeProvider retryTimeProvider, IEthereumEcdsa ecdsa,
+            IBlobTxStorage blobTxStorage,
+            IChainHeadInfoProvider chainHeadInfoProvider,
+            ITxPoolConfig txPoolConfig,
+            ITxValidator validator,
+            [KeyFilter(ITxValidator.SpecChangeTxValidatorKey)] ITxValidator specChangeTxValidator,
+            ILogManager? logManager,
+            IComparer<Transaction> comparer,
+            FrameTxWidthLedger frameTxWidthLedger,
+            ITxGossipPolicy? transactionsGossipPolicy = null,
+            IIncomingTxFilter[]? incomingTxFilters = null,
+            bool thereIsPriorityContract = false,
+            IFrameTxPrefixSimulator? frameTxPrefixSimulator = null,
+            IStateHeaderProvider? stateHeaderProvider = null)
         {
             _logger = logManager?.GetClassLogger<TxPool>() ?? throw new ArgumentNullException(nameof(logManager));
             _senderWidth = frameTxWidthLedger.SenderWidth;
@@ -246,7 +266,7 @@ namespace Nethermind.TxPool
             _cts = new();
             _retryCache = new RetryCache<PooledTransactionRequestMessage, ValueHash256>(
                 logManager,
-                TimeProvider.System,
+                retryTimeProvider,
                 requestingCacheSize: MemoryAllowance.TxHashCacheSize / 10,
                 token: _cts.Token,
                 overflowRequestLimit: RetryCache<PooledTransactionRequestMessage, ValueHash256>.DefaultOverflowRequestLimit);
@@ -1720,6 +1740,8 @@ namespace Nethermind.TxPool
             }
         }
 
+        internal RetryCache<PooledTransactionRequestMessage, ValueHash256> RetryCache => _retryCache;
+
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
             => SubmitTx(tx, handlingOptions, ownsTransaction: false, peer: null, out _);
 
@@ -1732,6 +1754,24 @@ namespace Nethermind.TxPool
                 return ((ITxPool)this).SubmitTx(tx, TxHandlingOptions.None);
             }
             return SubmitTx(tx, TxHandlingOptions.None, ownsTransaction: true, peer, out canRecycle);
+        }
+
+        void IRecyclableTxPool.CaptureRequestTokens(ReadOnlySpan<ValueHash256> hashes,
+            IMessageHandler<PooledTransactionRequestMessage> sender, Span<RetryRequestToken<ValueHash256>> tokens)
+            => _retryCache.CaptureRequestTokens(hashes, sender, tokens);
+
+        void IRecyclableTxPool.CompleteRequest(RetryRequestConfirmation? confirmation, bool sent)
+            => _retryCache.CompleteRequest(confirmation, sent);
+
+        AcceptTxResult IRecyclableTxPool.SubmitOwnedRequestedTx(Transaction tx,
+            IMessageHandler<PooledTransactionRequestMessage> sender, in RetryRequestToken<ValueHash256> token,
+            out bool canRecycle)
+        {
+            object? progress = tx.Hash is { } hash && hash.ValueHash256.Equals(token.ResourceId)
+                ? _retryCache.CaptureUsefulProgress(sender, token) : null;
+            AcceptTxResult result = ((IRecyclableTxPool)this).SubmitOwnedTx(tx, sender, out canRecycle);
+            if (result == AcceptTxResult.Accepted) _retryCache.RecordUsefulProgress(progress, token);
+            return result;
         }
 
         bool IRecyclableTxPool.TrySubmitKnown(in ValueHash256 hash)
@@ -1901,6 +1941,10 @@ namespace Nethermind.TxPool
                 _logger.Trace($"Adding transaction {tx.ToString("  ")} - managed nonce: {managedNonce} | persistent broadcast {startBroadcast}");
             }
         }
+
+        /// <inheritdoc/>
+        public bool TryDeferTransactionRequest(in ValueHash256 hash, IMessageHandler<PooledTransactionRequestMessage> handler) =>
+            _retryCache.TryDeferRequest(in hash, handler);
 
         public AnnounceResult NotifyAboutTx(in ValueHash256 hash, IMessageHandler<PooledTransactionRequestMessage> retryHandler)
         {

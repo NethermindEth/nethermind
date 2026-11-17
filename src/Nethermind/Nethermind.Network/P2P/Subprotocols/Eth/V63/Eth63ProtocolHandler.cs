@@ -37,8 +37,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             ITxPool txPool,
             IGossipPolicy gossipPolicy,
             ILogManager logManager,
-            ITxGossipPolicy? transactionsGossipPolicy = null)
-            : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, logManager, transactionsGossipPolicy)
+            ITxGossipPolicy? transactionsGossipPolicy = null,
+            TimeProvider? timeProvider = null)
+            : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, logManager, transactionsGossipPolicy, timeProvider)
         {
             _nodeDataRequests = new MessageQueue<GetNodeDataMessage, IByteArrayList>(this);
             _receiptsRequests = new MessageQueue<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]>, long)>(this);
@@ -67,6 +68,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                     HandleInBackground<GetNodeDataMessage, NodeDataMessage>(message, Handle);
                     return true;
                 case Eth63MessageCode.NodeData:
+                    _nodeDataRequests.GetPendingRequest();
                     NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message);
                     ReportIn(nodeDataMessage, size);
                     Handle(nodeDataMessage, size);

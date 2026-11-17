@@ -30,10 +30,15 @@ public sealed class RlpByteArrayList : IByteArrayList, IRlpWrapper
     /// <param name="memoryOwner">The owner of <paramref name="memory"/>, which the list takes.</param>
     public static RlpByteArrayList DecodeList(ref RlpReader ctx, IMemoryOwner<byte> memoryOwner, Memory<byte> memory, RlpLimit? limit = null)
     {
-        // An omitted limit must not mean no limit, so CountItems falls back to the default cap. It stops at the
-        // limit, so that a malicious input with millions of items is not scanned to its end.
         RlpReader items = ctx.EnterSequence(out _);
-        int count = items.CountItems(limit);
+        int maxCount = (limit ?? RlpLimit.DefaultLimit).Limit;
+        int count = 0;
+        while (items.HasNext)
+        {
+            if (count == maxCount) throw new RlpLimitException($"Byte string list exceeds its limit of {maxCount} items.");
+            items.ReadBytes();
+            count++;
+        }
 
         Memory<byte> rlpRegion = memory.SliceOf(ctx.ReadEncodedItem());
         return new(new RlpItemList(memoryOwner, rlpRegion, knownCount: count));

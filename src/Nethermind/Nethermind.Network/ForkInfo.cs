@@ -130,7 +130,8 @@ namespace Nethermind.Network
 
             if (found.Id.Next != peerId.Next) // if the next fork is different
             {
-                bool headPastLocalFork = headActivation >= found.Id.Next;
+                ulong localHeadActivation = _hasTimestampFork && IsTimestamp(found.Id.Next) ? head.Timestamp : head.Number;
+                bool headPastLocalFork = localHeadActivation >= found.Id.Next;
                 if (!forkIsLast && headPastLocalFork)
                 {
                     // EIP-2124 rule 2: the remote fork hash is a past local fork, so the remote must announce

@@ -8,6 +8,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
 using Nethermind.Serialization.FluentRlp;
 
 namespace Nethermind.Serialization.Rlp.TxDecoders;
@@ -200,8 +201,12 @@ public abstract partial class BaseTxDecoder(TxType txType, Func<Transaction>? tr
         where TCanonicalChecks : struct, IFlag
     {
         ulong v = DecodeSignatureItems<TCanonicalChecks>(ref reader, out ReadOnlySpan<byte> rBytes, out ReadOnlySpan<byte> sBytes);
+        if (v > 1) ThrowInvalidYParity();
         transaction.Signature = SignatureBuilder.FromBytes(v + Signature.VOffset, rBytes, sBytes, rlpBehaviors) ?? transaction.Signature;
     }
+
+    [DoesNotReturn, StackTraceHidden, MethodImpl(MethodImplOptions.NoInlining)]
+    private static void ThrowInvalidYParity() => throw new RlpReaderException($"{TxErrorMessages.InvalidTxSignature} yParity must be 0 or 1.");
 
     /// <summary>Writes the EIP-2718 prefix of a typed transaction whose encoding after the type byte is <paramref name="bodyLength"/> long.</summary>
     protected static void StartTypedTransaction(ref RlpWriter writer, TxType txType, int bodyLength, RlpBehaviors rlpBehaviors)

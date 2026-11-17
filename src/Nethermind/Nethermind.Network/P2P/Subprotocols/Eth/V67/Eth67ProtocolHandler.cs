@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Logging;
@@ -27,9 +28,10 @@ public class Eth67ProtocolHandler(
     IGossipPolicy gossipPolicy,
     IForkInfo forkInfo,
     ILogManager logManager,
-    ITxGossipPolicy? transactionsGossipPolicy = null)
+    ITxGossipPolicy? transactionsGossipPolicy = null,
+    TimeProvider? timeProvider = null)
     : Eth66ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
-        gossipPolicy, forkInfo, logManager, transactionsGossipPolicy), IStaticProtocolInfo
+        gossipPolicy, forkInfo, logManager, transactionsGossipPolicy, timeProvider), IStaticProtocolInfo
 {
     public override string Name => "eth67";
 
