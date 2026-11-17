@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Reflection;
 using System;
 using BenchmarkDotNet.Configs;
@@ -93,7 +94,7 @@ namespace Nethermind.Benchmark.Runner
 
         private static void Run(Assembly[] assemblies, string[] args, Job runnerJob)
         {
-            IConfig ownJobConfig = new PrecompileBenchmarkConfig();
+            ManualConfig ownJobConfig = new PrecompileBenchmarkConfig();
             ILogger logger = ConsoleLogger.Default;
             (bool isSuccess, IConfig parsedConfig, CommandLineOptions options) = ConfigParser.Parse(args, logger, ownJobConfig);
             if (!isSuccess)
@@ -114,23 +115,65 @@ namespace Nethermind.Benchmark.Runner
             }
 
             ILookup<bool, Type> typesByOwnJob = types.ToLookup(DeclaresJob);
-            bool ranRunnerJobTypes = RunMatching([.. typesByOwnJob[false]], args, new PrecompileBenchmarkConfig(runnerJob), parsedConfig);
-            bool ranOwnJobTypes = RunMatching([.. typesByOwnJob[true]], args, ownJobConfig, parsedConfig);
-            if (!ranRunnerJobTypes && !ranOwnJobTypes)
+            ManualConfig runnerJobConfig = new PrecompileBenchmarkConfig(runnerJob);
+            string[] groupArgs = args;
+            if (options.Resume)
+            {
+                string artifactsPath = parsedConfig.ArtifactsPath ?? DefaultConfig.Instance.ArtifactsPath;
+                runnerJobConfig.WithArtifactsPath(Path.Combine(artifactsPath, "runner-job"));
+                ownJobConfig.WithArtifactsPath(Path.Combine(artifactsPath, "own-job"));
+                groupArgs = WithoutArtifactsPath(args);
+            }
+
+            GroupRun runnerJobRun = RunMatching([.. typesByOwnJob[false]], groupArgs, runnerJobConfig, parsedConfig);
+            if (runnerJobRun == GroupRun.Failed && options.StopOnFirstError)
+            {
+                return;
+            }
+
+            GroupRun ownJobRun = RunMatching([.. typesByOwnJob[true]], groupArgs, ownJobConfig, parsedConfig);
+            if (runnerJobRun == GroupRun.NoMatch && ownJobRun == GroupRun.NoMatch)
             {
                 BenchmarkSwitcher.FromTypes([.. types]).Run(args, ownJobConfig);
             }
         }
 
-        private static bool RunMatching(Type[] types, string[] args, IConfig config, IConfig parsedConfig)
+        private enum GroupRun
+        {
+            NoMatch,
+            Succeeded,
+            Failed,
+        }
+
+        private static GroupRun RunMatching(Type[] types, string[] args, IConfig config, IConfig parsedConfig)
         {
             if (TypeFilter.Filter(ManualConfig.Union(config, parsedConfig), types).Length == 0)
             {
-                return false;
+                return GroupRun.NoMatch;
             }
 
-            BenchmarkSwitcher.FromTypes(types).Run(args, config);
-            return true;
+            IEnumerable<Summary> summaries = BenchmarkSwitcher.FromTypes(types).Run(args, config);
+            return summaries.Any(static summary => summary.HasCriticalValidationErrors || summary.Reports.Any(static report => !report.Success))
+                ? GroupRun.Failed
+                : GroupRun.Succeeded;
+        }
+
+        private static string[] WithoutArtifactsPath(string[] args)
+        {
+            List<string> result = [with(args.Length)];
+            for (int i = 0; i < args.Length; i++)
+            {
+                if (args[i] is "-a" or "--artifacts")
+                {
+                    i++;
+                }
+                else if (!args[i].StartsWith("--artifacts=", StringComparison.Ordinal))
+                {
+                    result.Add(args[i]);
+                }
+            }
+
+            return [.. result];
         }
 
         private static bool DeclaresJob(Type type) =>
