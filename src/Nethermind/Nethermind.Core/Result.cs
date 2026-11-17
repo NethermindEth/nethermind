@@ -35,9 +35,9 @@ namespace Nethermind.Core
             Error = error;
         }
 
+        public ResultType ResultType => Error is null ? ResultType.Success : ResultType.Failure;
         public TData? Data { get; }
         public string? Error { get; }
-        public ResultType ResultType => Error is null ? ResultType.Success : ResultType.Failure;
 
         public static Result<TData> Fail(string error, TData? data = default) => new(data, error ?? throw new ArgumentNullException(nameof(error)));
         public static Result<TData> Success(TData data) => new(data, null);

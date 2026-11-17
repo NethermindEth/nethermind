@@ -44,6 +44,16 @@ public class ResultTests
     }
 
     [Test]
+    public void Implicit_error_conversion_to_bytes_result_fails_with_empty_data()
+    {
+        Result<byte[]> result = "error";
+
+        using IDisposable _ = Assert.EnterMultipleScope();
+        Assert.That(result.IsError, Is.True);
+        Assert.That(result.Data, Is.Empty);
+    }
+
+    [Test]
     public void Size_is_payload_only()
     {
         using IDisposable _ = Assert.EnterMultipleScope();
