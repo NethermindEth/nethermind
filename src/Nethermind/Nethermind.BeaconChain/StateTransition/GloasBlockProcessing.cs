@@ -523,10 +523,19 @@ public static partial class GloasBlockProcessing
             ProcessConsolidationRequestCore(state, request, cache, withdrawals);
         state.PendingPartialWithdrawals = withdrawals.ToArray();
         state.PendingDeposits = state.PendingDeposits.Length == 0 ? pendingDeposits : [.. pendingDeposits, .. state.PendingDeposits];
+        BuilderRegistryBatch? builders = null;
+        if ((requests.BuilderDeposits?.Length ?? 0) + (requests.BuilderExits?.Length ?? 0) > 1)
+        {
+            HashSet<BlsPublicKey> requestedPubkeys = [];
+            foreach (BuilderDepositRequest request in requests.BuilderDeposits ?? []) requestedPubkeys.Add(request.Pubkey);
+            foreach (BuilderExitRequest request in requests.BuilderExits ?? []) requestedPubkeys.Add(request.Pubkey);
+            builders = new(state.Builders!, state.GetCurrentEpoch(), requestedPubkeys);
+        }
         foreach (BuilderDepositRequest request in requests.BuilderDeposits ?? [])
-            ProcessBuilderDepositRequest(state, request, cache.SigningSpec);
+            ProcessBuilderDepositRequestCore(state, request, cache.SigningSpec, builders);
         foreach (BuilderExitRequest request in requests.BuilderExits ?? [])
-            ProcessBuilderExitRequest(state, request);
+            ProcessBuilderExitRequestCore(state, request, builders);
+        if (builders is not null) state.Builders = builders.ToArray();
 
         state.ExecutionPayloadAvailability![(int)(parentSlot % Presets.SlotsPerHistoricalRoot)] = true;
         state.LatestBlockHash = parentBid.BlockHash;
@@ -567,34 +576,41 @@ public static partial class GloasBlockProcessing
 
     /// <summary>Spec <c>process_builder_deposit_request</c> (EIP-8282, new in Gloas).</summary>
     internal static void ProcessBuilderDepositRequest(BeaconStateGloas state, BuilderDepositRequest request, BeaconChainSpec? spec = null)
+        => ProcessBuilderDepositRequestCore(state, request, spec, null);
+
+    private static void ProcessBuilderDepositRequestCore(BeaconStateGloas state, BuilderDepositRequest request, BeaconChainSpec? spec, BuilderRegistryBatch? builders)
     {
         if (!GloasForkTransition.IsBuilderWithdrawalCredential(request.WithdrawalCredentials!))
             return;
 
-        int builderIndex = Array.FindIndex(state.Builders!, b => b.Pubkey.Equals(request.Pubkey));
+        int builderIndex = builders?.Find(request.Pubkey) ?? Array.FindIndex(state.Builders!, b => b.Pubkey.Equals(request.Pubkey));
         if (builderIndex < 0)
         {
             if (IsValidBuilderDepositSignature(spec ?? BeaconChainSpec.ForGenesisValidatorsRoot(state.GenesisValidatorsRoot!), request))
             {
-                GloasForkTransition.AddBuilderToRegistry(
-                    state,
-                    request.Pubkey,
-                    Presets.PayloadBuilderVersion,
-                    new Address(request.WithdrawalCredentials!.Bytes[12..]),
-                    request.Amount,
-                    state.Slot);
+                if (builders is null)
+                    GloasForkTransition.AddBuilderToRegistry(
+                        state,
+                        request.Pubkey,
+                        Presets.PayloadBuilderVersion,
+                        new Address(request.WithdrawalCredentials!.Bytes[12..]),
+                        request.Amount,
+                        state.Slot);
+                else
+                    builders.Add(GloasForkTransition.CreateBuilder(request.Pubkey, Presets.PayloadBuilderVersion,
+                        new Address(request.WithdrawalCredentials!.Bytes[12..]), request.Amount, state.Slot));
             }
             return;
         }
 
-        Builder builder = state.Builders![builderIndex];
+        Builder builder = builders?[builderIndex] ?? state.Builders![builderIndex];
         if (request.Amount > ulong.MaxValue - builder.Balance)
             throw new BeaconStateException("Builder deposit would overflow the balance");
         ulong withdrawableEpoch = builder.WithdrawableEpoch;
         if (withdrawableEpoch != Presets.FarFutureEpoch && builder.Balance == 0)
             withdrawableEpoch = state.GetCurrentEpoch() + Presets.MinBuilderWithdrawabilityDelay;
 
-        state.Builders[builderIndex] = new Builder
+        Builder updated = new()
         {
             Pubkey = builder.Pubkey,
             Version = builder.Version,
@@ -603,6 +619,8 @@ public static partial class GloasBlockProcessing
             DepositEpoch = builder.DepositEpoch,
             WithdrawableEpoch = withdrawableEpoch,
         };
+        if (builders is null) state.Builders![builderIndex] = updated;
+        else builders[builderIndex] = updated;
     }
 
     /// <summary>
@@ -628,20 +646,23 @@ public static partial class GloasBlockProcessing
 
     /// <summary>Spec <c>process_builder_exit_request</c> (EIP-8282, new in Gloas).</summary>
     internal static void ProcessBuilderExitRequest(BeaconStateGloas state, BuilderExitRequest request)
+        => ProcessBuilderExitRequestCore(state, request, null);
+
+    private static void ProcessBuilderExitRequestCore(BeaconStateGloas state, BuilderExitRequest request, BuilderRegistryBatch? builders)
     {
-        int builderIndex = Array.FindIndex(state.Builders!, b => b.Pubkey.Equals(request.Pubkey));
+        int builderIndex = builders?.Find(request.Pubkey) ?? Array.FindIndex(state.Builders!, b => b.Pubkey.Equals(request.Pubkey));
         if (builderIndex < 0)
             return;
 
-        if (!state.IsActiveBuilder((ulong)builderIndex))
+        Builder builder = builders?[builderIndex] ?? state.Builders![builderIndex];
+        if (builder.DepositEpoch >= state.FinalizedCheckpoint!.Epoch || builder.WithdrawableEpoch != Presets.FarFutureEpoch)
             return;
-        Builder builder = state.Builders![builderIndex];
         if (builder.ExecutionAddress != request.SourceAddress)
             return;
         if (state.GetPendingBalanceToWithdrawForBuilder((ulong)builderIndex) != 0)
             return;
 
-        state.Builders[builderIndex] = new Builder
+        Builder updated = new()
         {
             Pubkey = builder.Pubkey,
             Version = builder.Version,
@@ -650,6 +671,8 @@ public static partial class GloasBlockProcessing
             DepositEpoch = builder.DepositEpoch,
             WithdrawableEpoch = state.GetCurrentEpoch() + Presets.MinBuilderWithdrawabilityDelay,
         };
+        if (builders is null) state.Builders![builderIndex] = updated;
+        else builders[builderIndex] = updated;
     }
 
     private static partial int? FindValidatorIndex(BeaconStateGloas state, BlsPublicKey pubkey);

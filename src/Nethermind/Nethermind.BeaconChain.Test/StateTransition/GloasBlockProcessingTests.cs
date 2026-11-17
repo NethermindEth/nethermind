@@ -7,6 +7,7 @@ using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
+using Nethermind.BeaconChain.Test.Crypto;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -21,6 +22,66 @@ namespace Nethermind.BeaconChain.Test.StateTransition;
 [HardTimeout(60_000)]
 public class GloasBlockProcessingTests
 {
+    [Test]
+    public void Builder_request_batch_matches_sequential_helpers_with_reused_slots_and_exits([Values] bool customNetwork, [Values(0, 1)] int unrelatedBuilders)
+    {
+        BeaconChainSpec spec = customNetwork ? NetworkSigningDomainTests.CustomSigningSpec : SyntheticSpec();
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        BuilderDepositRequest[] signed = [.. Enumerable.Range(2000, 7 + unrelatedBuilders).Select(i => SignedBuilderDeposit(i, 10 * Gwei, spec))];
+        state.Builders = [.. signed.Take(5).Concat(signed.Skip(7)).Select(r => new Builder
+        {
+            Pubkey = r.Pubkey, ExecutionAddress = new Address(r.WithdrawalCredentials!.Bytes[12..]),
+            Balance = 100 * Gwei, DepositEpoch = 0, WithdrawableEpoch = Presets.FarFutureEpoch,
+        })];
+        state.Builders[1].Balance = state.Builders[2].Balance = 0;
+        state.Builders[1].WithdrawableEpoch = state.Builders[2].WithdrawableEpoch = 0;
+        state.BuilderPendingWithdrawals = [new() { BuilderIndex = 3, Amount = 1 }];
+        BuilderDepositRequest[] deposits =
+        [
+            new() { Pubkey = signed[1].Pubkey, WithdrawalCredentials = signed[1].WithdrawalCredentials, Amount = 5 * Gwei },
+            signed[5], signed[2],
+            new() { Pubkey = signed[5].Pubkey, WithdrawalCredentials = signed[5].WithdrawalCredentials, Amount = 7 * Gwei },
+            new() { Pubkey = signed[6].Pubkey, WithdrawalCredentials = signed[6].WithdrawalCredentials, Amount = 99 },
+            new() { Pubkey = signed[0].Pubkey, WithdrawalCredentials = Hash256.Zero, Amount = 99 },
+            signed[6],
+        ];
+        BuilderExitRequest Exit(int index) => new() { Pubkey = signed[index].Pubkey, SourceAddress = new Address(signed[index].WithdrawalCredentials!.Bytes[12..]) };
+        BuilderExitRequest[] exits = [Exit(0), Exit(0), Exit(1), Exit(2), Exit(3), Exit(5), new() { Pubkey = signed[4].Pubkey, SourceAddress = Address.Zero }];
+        BeaconStateGloas expected = state.Clone();
+        foreach (BuilderDepositRequest request in deposits) GloasBlockProcessing.ProcessBuilderDepositRequest(expected, request, spec);
+        foreach (BuilderExitRequest request in exits) GloasBlockProcessing.ProcessBuilderExitRequest(expected, request);
+
+        ApplyBuilderRequests(state, new() { BuilderDeposits = deposits, BuilderExits = exits }, spec);
+
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(state.Builders!.Select(b => (b.Pubkey, b.Version, b.ExecutionAddress, b.Balance, b.DepositEpoch, b.WithdrawableEpoch)),
+            Is.EqualTo(expected.Builders!.Select(b => (b.Pubkey, b.Version, b.ExecutionAddress, b.Balance, b.DepositEpoch, b.WithdrawableEpoch))));
+        Assert.That(state.Builders, Has.Length.EqualTo(7 + unrelatedBuilders));
+        Assert.That(state.Builders[2].Pubkey, Is.EqualTo(signed[5].Pubkey));
+        Assert.That(state.Builders[5 + unrelatedBuilders].Pubkey, Is.EqualTo(signed[2].Pubkey));
+        Assert.That(state.Builders[2].Balance, Is.EqualTo(17 * Gwei));
+        Assert.That(state.Builders[0].WithdrawableEpoch, Is.Not.EqualTo(Presets.FarFutureEpoch));
+        Assert.That(state.Builders[3].WithdrawableEpoch, Is.EqualTo(Presets.FarFutureEpoch));
+    }
+
+    private static BuilderDepositRequest SignedBuilderDeposit(int keyIndex, ulong amount, BeaconChainSpec spec)
+    {
+        Bls.SecretKey key = DeriveKey(keyIndex);
+        BlsPublicKey pubkey = new(new Bls.P1(key).Compress());
+        Hash256 credentials = BuilderWithdrawalCredentials(0xC1);
+        Hash256 domain = Domains.ComputeDomain(DomainType.BuilderDeposit, spec.GenesisForkVersion, Hash256.Zero);
+        Hash256 root = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(new DepositMessage { Pubkey = pubkey, WithdrawalCredentials = credentials, Amount = amount }), domain);
+        return new BuilderDepositRequest { Pubkey = pubkey, WithdrawalCredentials = credentials, Amount = amount, Signature = Sign(key, root) };
+    }
+
+    private static void ApplyBuilderRequests(BeaconStateGloas state, ExecutionRequestsGloas requests, BeaconChainSpec? spec = null)
+    {
+        state.LatestBlockHeader!.Slot = state.Slot - 1;
+        state.LatestExecutionPayloadBid!.ExecutionRequestsRoot = SszRoots.HashTreeRoot(requests);
+        BeaconBlockGloas block = MinimalBlock(state, SelfBuildBid(state, state.LatestExecutionPayloadBid.BlockHash!, Hash(0xA1))).Message!;
+        block.Body!.ParentExecutionRequests = requests;
+        GloasBlockProcessing.ProcessParentExecutionPayload(state, block, new EpochCache { SigningSpec = spec ?? SyntheticSpec() });
+    }
 
     [Test]
     public void ProcessExecutionPayloadBid_rejects_a_bid_whose_signature_does_not_match_the_registered_builder()
@@ -61,7 +122,7 @@ public class GloasBlockProcessingTests
     }
 
     [Test]
-    public void ProcessBuilderDepositRequest_enforces_the_uint64_balance_limit([Values(1ul, 2ul, ulong.MaxValue)] ulong amount)
+    public void ProcessBuilderDepositRequest_enforces_the_uint64_balance_limit([Values(1ul, 2ul, ulong.MaxValue)] ulong amount, [Values] bool batched)
     {
         BeaconStateGloas state = CreateGloasState(out _, out _);
         Builder builder = state.Builders![0];
@@ -73,7 +134,9 @@ public class GloasBlockProcessingTests
             Amount = amount,
         };
 
-        Action process = () => GloasBlockProcessing.ProcessBuilderDepositRequest(state, request);
+        Action process = batched
+            ? () => ApplyBuilderRequests(state, new() { BuilderDeposits = [new() { Pubkey = builder.Pubkey, WithdrawalCredentials = request.WithdrawalCredentials, Amount = 0 }, request] })
+            : () => GloasBlockProcessing.ProcessBuilderDepositRequest(state, request);
 
         if (amount == 1)
         {
