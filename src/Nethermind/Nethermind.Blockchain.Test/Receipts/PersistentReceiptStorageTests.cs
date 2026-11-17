@@ -373,7 +373,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Block block = Build.A.Block.WithNumber(3).TestObject;
         byte[] key = Bytes.Concat(block.Number.ToBigEndianByteArray(), block.Hash!.BytesToArray());
 
-        storage.Prefetch([(block.Number, block.Hash!.ValueHash256)]);
+        storage.Prefetch(new[] { (block.Number, block.Hash!.ValueHash256) });
 
         using (Assert.EnterMultipleScope())
         {

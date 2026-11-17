@@ -637,7 +637,7 @@ namespace Nethermind.Blockchain
                 if (levels[i]?.MainChainBlock is { } blockInfo) blocks[known++] = (start + (ulong)i, blockInfo.BlockHash.ValueHash256);
             }
 
-            _headerStore.Prefetch(blocks.Slice(0, known));
+            _headerStore.Prefetch(blocks.AsReadOnlyMemory()[..known]);
         }
 
         /// <inheritdoc/>
@@ -645,7 +645,7 @@ namespace Nethermind.Blockchain
         public void PrefetchHeaders(IReadOnlyList<Hash256> blockHashes)
         {
             using ArrayPoolSpan<(ulong Number, ValueHash256 Hash)> blocks = new(blockHashes.Count);
-            _headerStore.Prefetch(blocks.Slice(0, _headerStore.GetKnownBlocks(blockHashes, 0, blockHashes.Count, blocks)));
+            _headerStore.Prefetch(blocks.AsReadOnlyMemory()[.._headerStore.GetKnownBlocks(blockHashes, 0, blockHashes.Count, blocks)]);
         }
 
         /// <inheritdoc/>

@@ -350,8 +350,8 @@ public class HeaderStore : IHeaderStore, IClearableCache
 
     /// <inheritdoc/>
     /// <remarks>Skips the prefetch when the last header is already cached.</remarks>
-    public void Prefetch(ReadOnlySpan<(ulong Number, ValueHash256 Hash)> blocks) =>
-        KeyValueStoreExtensions.PrefetchBlockNumPrefixed(_headerDb, blocks);
+    public void Prefetch(ReadOnlyMemory<(ulong Number, ValueHash256 Hash)> blocks) =>
+        KeyValueStoreExtensions.PrefetchBlockNumPrefixed(_headerDb, blocks.Span);
 
     private readonly struct BlockNumberDecoder : IValueDecoder<ulong?>
     {

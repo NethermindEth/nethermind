@@ -600,11 +600,15 @@ namespace Nethermind.Synchronization
         }
 
         /// <inheritdoc/>
-        /// <remarks>Reads the block numbers in one batch, as <see cref="FindBlockRlp"/> needs them to find the blocks.</remarks>
+        /// <remarks>
+        /// Reads the block numbers in one batch, as <see cref="FindBlockRlp"/> needs them to find the blocks.
+        /// <see cref="FindBlockRlp"/> then reads each number again, which the block cache usually serves.
+        /// Blocks that only have a legacy hash-keyed number are not prefetched.
+        /// </remarks>
         public void PrefetchBlocks(IReadOnlyList<Hash256> hashes, int start, int count)
         {
             using ArrayPoolSpan<(ulong Number, ValueHash256 Hash)> blocks = new(count);
-            _blockStore.Prefetch(blocks.Slice(0, _headerStore.GetKnownBlocks(hashes, start, count, blocks)));
+            _blockStore.Prefetch(blocks.AsReadOnlyMemory()[.._headerStore.GetKnownBlocks(hashes, start, count, blocks)]);
         }
 
         /// <inheritdoc/>
@@ -612,7 +616,7 @@ namespace Nethermind.Synchronization
         public void PrefetchReceipts(IReadOnlyList<Hash256> hashes, int start, int count)
         {
             using ArrayPoolSpan<(ulong Number, ValueHash256 Hash)> blocks = new(count);
-            ReadOnlySpan<(ulong Number, ValueHash256 Hash)> known = blocks.Slice(0, _headerStore.GetKnownBlocks(hashes, start, count, blocks));
+            ReadOnlyMemory<(ulong Number, ValueHash256 Hash)> known = blocks.AsReadOnlyMemory()[.._headerStore.GetKnownBlocks(hashes, start, count, blocks)];
             _headerStore.Prefetch(known);
             _receiptFinder.Prefetch(known);
         }

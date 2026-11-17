@@ -238,8 +238,8 @@ public class BlockStore : IBlockStore, IClearableCache
 
     /// <inheritdoc/>
     /// <remarks>Skips the prefetch when the last block is already cached.</remarks>
-    public void Prefetch(ReadOnlySpan<(ulong Number, ValueHash256 Hash)> blocks) =>
-        KeyValueStoreExtensions.PrefetchBlockNumPrefixed(_blockDb, blocks);
+    public void Prefetch(ReadOnlyMemory<(ulong Number, ValueHash256 Hash)> blocks) =>
+        KeyValueStoreExtensions.PrefetchBlockNumPrefixed(_blockDb, blocks.Span);
 
     public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(ulong blockNumber, Hash256 blockHash)
     {
