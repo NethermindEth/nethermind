@@ -86,14 +86,19 @@ public class CustodySamplingAvailabilityTests
     }
 
     [Test]
-    public void A_held_column_with_a_tampered_cell_does_not_count()
+    public void A_held_column_with_a_tampered_cell_does_not_count([Values] bool first)
     {
         ImportableBlobBlock chain = ImportableBlobBlock.Create();
-        NodeColumnCustody custody = BaseCustody();
-        TamperCell(chain.Columns[(int)custody.SampledColumns[0]]);
+        NodeColumnCustody custody = new(NodeId, Eip7594DasConstants.NumberOfCustodyGroups);
+        int index = (int)(first ? custody.SampledColumns[0] : custody.SampledColumns[^1]);
+        DataColumnSidecar sidecar = chain.Columns[index];
+        SszBlobCell original = sidecar.Column![0];
+        TamperCell(sidecar);
         CustodySamplingAvailability rule = new(new TestEngineDriver.FixedCustodySource(custody), new RecordingColumnSource(chain, custody.SampledColumns), chain.ClockAtEpoch(0));
 
         Assert.That(rule.IsDataAvailable(chain.Block.Message!, chain.BlockRoot, chain.Spec), Is.False, "the source only says it holds a column; the rule must still prove it");
+        sidecar.Column[0] = original;
+        Assert.That(rule.IsDataAvailable(chain.Block.Message!, chain.BlockRoot, chain.Spec), Is.True);
     }
 
     [Test]

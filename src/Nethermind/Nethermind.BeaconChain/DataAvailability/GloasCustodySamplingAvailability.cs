@@ -49,13 +49,31 @@ public sealed class GloasCustodySamplingAvailability(INodeColumnCustodySource cu
 
         if (custodySource.Current is not { } custody) return false;
 
+        List<DataColumnSidecarGloas>? uncheckedColumns = null;
+        Dictionary<ulong, bool> verified = [];
         foreach (ulong column in custody.SampledColumns)
         {
-            if (!pool.TryGetGloas(blockRoot, column, out _) && pool.GetPendingGloas(blockRoot, column).Length == 0) return false;
+            if (pool.TryGetGloas(blockRoot, column, out DataColumnSidecarGloas? held))
+            {
+                if (held.Slot != bid.Slot || held.Index != column) continue;
+                if (IsCached(held, blobCommitments)) verified[column] = true;
+                else if (DataColumnSidecarVerifier.VerifyStructure(held, blobCommitments))
+                    (uncheckedColumns ??= []).Add(held);
+            }
+            else if (pool.GetPendingGloas(blockRoot, column).Length == 0) return false;
+        }
+        if (uncheckedColumns is { Count: > 1 }
+            && DataColumnSidecarVerifier.VerifyColumnBatches(uncheckedColumns, blobCommitments, static c => new(c.Index, c.Column!, c.KzgProofs!)))
+        {
+            SszKzgCommitment[] snapshot = (SszKzgCommitment[])blobCommitments.Clone();
+            foreach (DataColumnSidecarGloas sidecar in uncheckedColumns)
+            {
+                _verified.AddOrUpdate(sidecar, snapshot);
+                verified[sidecar.Index] = true;
+            }
         }
 
         // The custody and sample sets overlap; verify each column once per check, not once per set.
-        Dictionary<ulong, bool> verified = [];
         bool IsHeldAndVerified(ulong column)
         {
             if (!verified.TryGetValue(column, out bool ok))
@@ -76,10 +94,13 @@ public sealed class GloasCustodySamplingAvailability(INodeColumnCustodySource cu
         return DataAvailabilitySampling.IsSampleAvailable(custody.SampledColumns, IsHeldAndVerified);
     }
 
+    private bool IsCached(DataColumnSidecarGloas sidecar, SszKzgCommitment[] commitments) =>
+        _verified.TryGetValue(sidecar, out SszKzgCommitment[]? verified)
+        && MemoryMarshal.AsBytes(verified.AsSpan()).SequenceEqual(MemoryMarshal.AsBytes(commitments.AsSpan()));
+
     private bool Verify(DataColumnSidecarGloas sidecar, SszKzgCommitment[] commitments)
     {
-        if (_verified.TryGetValue(sidecar, out SszKzgCommitment[]? verified)
-            && MemoryMarshal.AsBytes(verified.AsSpan()).SequenceEqual(MemoryMarshal.AsBytes(commitments.AsSpan()))) return true;
+        if (IsCached(sidecar, commitments)) return true;
         if (!DataColumnSidecarVerifier.VerifyKzgProofs(sidecar, commitments)) return false;
         _verified.AddOrUpdate(sidecar, (SszKzgCommitment[])commitments.Clone());
         return true;

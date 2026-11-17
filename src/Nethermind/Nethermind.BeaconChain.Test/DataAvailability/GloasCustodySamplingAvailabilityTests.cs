@@ -70,16 +70,23 @@ public class GloasCustodySamplingAvailabilityTests
     }
 
     [Test]
-    public void A_held_column_with_a_tampered_cell_does_not_count()
+    public void A_held_column_with_a_tampered_cell_does_not_count([Values] bool first)
     {
-        DataColumnSidecarPool pool = PoolHolding(Custody.SampledColumns);
-        pool.TryGetGloas(DataColumnSidecarGloasTestFixture.BlockRoot, Custody.SampledColumns[0], out DataColumnSidecarGloas? held);
+        NodeColumnCustody custody = new(NodeId, Eip7594DasConstants.NumberOfCustodyGroups);
+        DataColumnSidecarPool pool = PoolHolding(custody.SampledColumns);
+        ulong index = first ? custody.SampledColumns[0] : custody.SampledColumns[^1];
+        pool.TryGetGloas(DataColumnSidecarGloasTestFixture.BlockRoot, index, out DataColumnSidecarGloas? held);
         byte[] cell = held!.Column![0].AsSpan().ToArray();
         cell[^1] ^= 0x01;
         held.Column[0] = SszBlobCell.FromSpan(cell);
-        Func<Hash256, ExecutionPayloadBid, bool> isDataAvailable = CreateRule(Custody, pool, ClockAtEpoch(0));
+        Func<Hash256, ExecutionPayloadBid, bool> isDataAvailable = CreateRule(custody, pool, ClockAtEpoch(0));
 
         Assert.That(isDataAvailable(DataColumnSidecarGloasTestFixture.BlockRoot, Bid()), Is.False, "a served entry is re-proved at every check");
+        DataColumnSidecarGloas alternate = DataColumnSidecarGloasTestFixture.BuildSidecar(index, BlockSlot);
+        pool.AddPendingGloas(alternate, BlockSlot);
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(isDataAvailable(DataColumnSidecarGloasTestFixture.BlockRoot, Bid()), Is.True);
+        Assert.That(pool.TryGetGloas(DataColumnSidecarGloasTestFixture.BlockRoot, index, out held) && ReferenceEquals(alternate, held), Is.True);
     }
 
     // A sidecar verified against one bid must not pass for another commitment list of the same length.
