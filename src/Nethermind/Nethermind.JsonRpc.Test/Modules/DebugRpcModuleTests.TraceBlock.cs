@@ -1032,10 +1032,6 @@ public partial class DebugRpcModuleTests
         string method, string configuration, bool empty, bool invalidRlp) =>
         await AssertNativeConfigError(method, "prestateTracer", configuration, empty, invalidRlp: invalidRlp);
 
-    [Test]
-    public async Task Debug_traceTransactionInBlockByHash_native_config_errors_remain_invalid_params() =>
-        await AssertNativeConfigError("debug_traceTransactionInBlockByHash", "prestateTracer", "{\"diffMode\":[]}", empty: false, expectedError: ErrorCodes.InvalidParams);
-
     [TestCase("callTracer", "{\"onlyTopCall\":17}", false, false)]
     [TestCase("prestateTracer", "{\"diffMode\":[]}", false, false)]
     [TestCase("prestateTracer", "17", false, false)]
@@ -1065,10 +1061,7 @@ public partial class DebugRpcModuleTests
             "debug_traceTransaction" => block.Transactions[0].Hash!,
             _ => invalidRlp ? "0xc0" : Rlp.Encode(block).ToHexString(true)
         };
-        object[] parameters = method == "debug_traceTransactionInBlockByHash"
-            ? [target, block.Transactions[0].Hash!, options]
-            : [target, options];
-        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, parameters);
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, target, options);
         JToken json = JToken.Parse(response);
 
         if (unknown)
@@ -1125,36 +1118,50 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Debug_native_config_errors_preserve_route_classification(
-        [Values("debug_traceBlockByHash", "debug_traceBlock", "debug_traceTransaction", "debug_traceCall")] string method,
+    public async Task Debug_native_config_errors_are_execution_input_errors_with_deferred_timeout_validation(
+        [Values("debug_traceBlockByHash", "debug_traceBlock", "debug_traceTransaction")] string method,
         [Values("callTracer", "prestateTracer")] string tracer,
         [Values(null, "bad", "5s")] string? timeout,
         [Values("17", "[]")] string invalidValue) =>
-        await AssertNativeConfigRouteClassification(method, tracer, timeout, invalidValue,
-            method == "debug_traceCall" ? ErrorCodes.InvalidParams : ErrorCodes.InvalidInput);
+        await AssertNativeConfigRouteError(method, tracer, timeout, invalidValue);
 
-    private static async Task AssertNativeConfigRouteClassification(string method, string tracer, string? timeout, string invalidValue, int expectedCode)
+    // These routes bind options without GethTraceOptionsConverter, so a malformed timeout fails parameter binding first.
+    [Test]
+    public async Task Debug_native_config_errors_are_execution_input_errors_with_eager_timeout_binding(
+        [Values("debug_traceCall", "debug_traceTransactionInBlockByHash", "debug_traceBadBlock")] string method,
+        [Values("callTracer", "prestateTracer")] string tracer,
+        [Values(null, "5s")] string? timeout,
+        [Values("17", "[]")] string invalidValue) =>
+        await AssertNativeConfigRouteError(method, tracer, timeout, invalidValue);
+
+    private static async Task AssertNativeConfigRouteError(string method, string tracer, string? timeout, string invalidValue)
     {
         using Context context = await Context.Create();
         Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        if (method == "debug_traceBadBlock")
+            context.Blockchain.Container.Resolve<IBadBlockStore>().Insert(block);
         object selector = method switch
         {
-            "debug_traceBlockByHash" => block.Hash!,
-            "debug_traceBlock" => new BlockDecoder().Encode(block),
+            "debug_traceBlockByHash" or "debug_traceBadBlock" => block.Hash!,
+            "debug_traceBlock" or "debug_traceTransactionInBlockByHash" => new BlockDecoder().Encode(block),
             "debug_traceTransaction" => block.Transactions[0].Hash!,
             _ => new { to = TestItem.AddressC.ToString(), gas = "0x186a0" }
         };
         JsonElement tracerConfig = JsonSerializer.Deserialize<JsonElement>($$"""{"onlyTopCall":{{invalidValue}},"diffMode":{{invalidValue}}}""");
         object options = timeout is null ? new { tracer, tracerConfig } : (object)new { tracer, timeout, tracerConfig };
-        object[] parameters = method == "debug_traceCall" ? [selector, "latest", options] : [selector, options];
+        object[] parameters = method switch
+        {
+            "debug_traceCall" => [selector, "latest", options],
+            "debug_traceTransactionInBlockByHash" => [selector, block.Transactions[0].Hash!, options],
+            _ => [selector, options]
+        };
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, parameters);
         JToken json = JToken.Parse(response);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That((int?)json["error"]?["code"], Is.EqualTo(expectedCode), response);
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+            Assert.That((string?)json["error"]?["message"], Does.Contain("Cannot convert"), response);
             Assert.That(json["result"], Is.Null, response);
-            if (method == "debug_traceBlockByHash")
-                Assert.That(json["error"]!.ToString(), Does.Contain("Cannot convert"), response);
         }
     }
 
