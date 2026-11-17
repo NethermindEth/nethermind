@@ -23,6 +23,11 @@ namespace Nethermind.Network.Discovery.Discv4.Kademlia;
 /// probe does not reserve the address window: several candidates from a not-yet-recorded subnet can be
 /// probed before the first reply is admitted. This is intentional; an unanswered probe must not consume
 /// filter capacity.
+/// <para>
+/// Responses are not admitted here. A response only means something once the inner adapter correlates it
+/// with a pending request, and an unsolicited or spoofed response must not reserve capacity for its source
+/// subnet. The health tracker admits the responder after correlation succeeds.
+/// </para>
 /// </remarks>
 internal sealed class AdmissionGatedKademliaAdapter(
     IKademliaAdapter inner,
@@ -55,6 +60,15 @@ internal sealed class AdmissionGatedKademliaAdapter(
 
         // Preserve the adapter's existing logging/validation behavior for malformed messages.
         if (msg.FarPublicKey is null || msg.FarAddress is null)
+        {
+            return _inner.OnIncomingMsg(msg);
+        }
+
+        // A response proves nothing until it is correlated with a pending request; the inner adapter drops
+        // unsolicited ones before any state change. Admitting first would let a spoofed Pong or Neighbors
+        // reserve its source subnet while the message is then discarded, so admission is left to the health
+        // tracker that the adapter invokes after correlation succeeds.
+        if (KademliaAdapter.IsResponse(msg.MsgType))
         {
             return _inner.OnIncomingMsg(msg);
         }

@@ -674,7 +674,7 @@ public class KademliaAdapter(
         }
     }
 
-    private static bool IsResponse(MsgType msgType) => msgType is MsgType.Neighbors or MsgType.Pong or MsgType.EnrResponse;
+    internal static bool IsResponse(MsgType msgType) => msgType is MsgType.Neighbors or MsgType.Pong or MsgType.EnrResponse;
 
     internal static Node CreateNode(DiscoveryMsg msg)
     {

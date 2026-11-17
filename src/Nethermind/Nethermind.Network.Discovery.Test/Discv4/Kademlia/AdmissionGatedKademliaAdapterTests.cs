@@ -37,14 +37,16 @@ public class AdmissionGatedKademliaAdapterTests
 
     [TestCase(MsgType.Pong)]
     [TestCase(MsgType.Neighbors)]
-    public async Task Filtered_response_is_not_forwarded_to_inner(MsgType msgType)
+    public async Task Unsolicited_response_is_left_to_inner_and_does_not_consume_admission(MsgType msgType)
     {
         (AdmissionGatedKademliaAdapter gate, IKademliaAdapter inner, DiscoveryNodeAdmission admission) = CreateGate();
-        admission.TryAdmit(CreateNode(TestItem.PublicKeyA, "203.0.113.10"));
 
         await gate.OnIncomingMsg(CreateResponse(msgType, TestItem.PublicKeyB, "203.0.113.20"));
 
-        await inner.DidNotReceive().OnIncomingMsg(Arg.Any<DiscoveryMsg>());
+        // The inner adapter correlates and discards it. The gate must not reserve the source subnet for a
+        // message that was never correlated.
+        await inner.Received(1).OnIncomingMsg(Arg.Any<DiscoveryMsg>());
+        Assert.That(admission.TryAdmit(CreateNode(TestItem.PublicKeyC, "203.0.113.20")), Is.True);
     }
 
     [Test]

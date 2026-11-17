@@ -1162,6 +1162,66 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             await AssertNoPeerCandidate(token);
         }
 
+        [Test]
+        [CancelAfter(10000)]
+        public async Task Unsolicited_response_through_the_gate_does_not_consume_admission()
+        {
+            INodeHealthTracker<Node> admitted = Substitute.For<INodeHealthTracker<Node>>();
+            (DiscoveryNodeAdmission admission, FilteringNodeHealthTracker tracker) = CreateAdmission(admitted);
+            _adapter = CreateAdapter(FailsafeRequestTimeoutMs, nodeHealthTracker: tracker);
+            AdmissionGatedKademliaAdapter gate = new(_adapter, admission, _logManager);
+
+            PongMsg pong = new(TestItem.PublicKeyB, _timestamper.UnixTime.SecondsLong + 1, TestItem.KeccakA.ValueHash256);
+            pong.FarAddress = new IPEndPoint(IPAddress.Parse("203.0.113.20"), 30303);
+
+            await gate.OnIncomingMsg(pong);
+
+            admitted.DidNotReceive().OnIncomingMessageFrom(Arg.Any<Node>());
+            Assert.That(admission.TryAdmit(new Node(TestItem.PublicKeyC, "203.0.113.99", 30303, 30303)), Is.True);
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task Correlated_response_through_the_gate_commits_admission()
+        {
+            INodeHealthTracker<Node> admitted = Substitute.For<INodeHealthTracker<Node>>();
+            (DiscoveryNodeAdmission admission, FilteringNodeHealthTracker tracker) = CreateAdmission(admitted);
+            _adapter = CreateAdapter(FailsafeRequestTimeoutMs, nodeHealthTracker: tracker);
+            AdmissionGatedKademliaAdapter gate = new(_adapter, admission, _logManager);
+            _receiver = new(TestItem.PublicKeyB, "203.0.113.20", 30303);
+            _msgSender.SendMsg(Arg.Any<PingMsg>()).Returns(ci =>
+            {
+                PingMsg sent = (PingMsg)ci[0]!;
+                _receiverSerializationManager.SerializeToArray(sent);
+                PongMsg pong = new(_receiver.Id, _timestamper.UnixTime.SecondsLong + 1, sent.Mdc!.Value);
+                pong.FarAddress = sent.FarAddress;
+                return gate.OnIncomingMsg(pong);
+            });
+
+            Assert.That(await gate.Ping(_receiver, CancellationToken.None), Is.True);
+
+            admitted.Received(1).OnIncomingMessageFrom(Arg.Is<Node>(n => n.Id.Equals(_receiver.Id)));
+            // The correlated reply recorded the responder's subnet.
+            Assert.That(admission.TryAdmit(new Node(TestItem.PublicKeyC, "203.0.113.99", 30303, 30303)), Is.False);
+        }
+
+        private (DiscoveryNodeAdmission Admission, FilteringNodeHealthTracker Tracker) CreateAdmission(
+            INodeHealthTracker<Node> inner)
+        {
+            INetworkStorage storage = Substitute.For<INetworkStorage>();
+            storage.GetPersistedNodes().Returns([]);
+            NodeFilter filter = NodeFilter.Create(100, filterEnabled: true, subnetBucketing: true, IPAddress.Parse("198.51.100.1"));
+            DiscoveryNodeAdmission admission = new(
+                filter,
+                enabled: true,
+                _routingTable,
+                _kademliaConfig,
+                storage,
+                admittedCapacity: 100,
+                _logManager);
+            return (admission, new FilteringNodeHealthTracker(inner, admission, _logManager));
+        }
+
         private PingMsg CreatePing(PublicKey publicKey, IPEndPoint address)
         {
             PingMsg ping = new(
