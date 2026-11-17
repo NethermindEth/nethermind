@@ -94,6 +94,7 @@ public class OptimismCLP2PMessageIdTests
         new("hello+literal-world", "051068656c6c6f10776f726c64", 5, null, "1266455afdf887db9a2ce857c63fa42bfae90a79"),
         new("hello+copy1", "051068656c6c6f0105", 5, null, "c2ec16dc18cb7856a470a3a6dc164739760063db"),
         new("hello+truncated-copy2", "051068656c6c6f02", 5, null, "b745046ff34339f336cbf04316911e11973dc607"),
+        new("hello+literal60-no-len", "051068656c6c6ff0", 5, null, "23822ede97a50a04882ef986ecec8d0406e0c59d"),
         new("len0-5byte-header", "8080808000", 0, "", "cbccb9a3249b688e2c6f7d83122a0cad1a9cc8fd"),
         new("len0-6byte-header", "808080808000", 0, "", "cbccb9a3249b688e2c6f7d83122a0cad1a9cc8fd"),
         new("len0-10byte-header", "80808080808080808000", 0, "", "cbccb9a3249b688e2c6f7d83122a0cad1a9cc8fd"),
@@ -101,6 +102,7 @@ public class OptimismCLP2PMessageIdTests
         new("len0-10byte-header-last02", "80808080808080808002", -1, null, "4190e46673b08dff8bb10ca8c8473358840c7bbe"),
         new("len0-11byte-header", "8080808080808080808000", -1, null, "433700e2e35556b1b7c157826d86f073d0496d35"),
         new("hello-6byte-header", "8580808080001068656c6c6f", 5, "68656c6c6f", "0089d50f80a1e1668e93fef3bd0d075261438c71"),
+        new("hello-6byte-header-bit35", "8580808080011068656c6c6f", -1, null, "3be609ea9e335a700529fbd121a9f03387c25c04"),
         new("len-ffffffff", "ffffffff0f", 4294967295, null, "c2685c9ec354fab04f35d1efa49fbe5a4b32aad2"),
         new("len-1ffffffff", "ffffffff1f", -1, null, "335d44227bdd93fe127a37280759aedf99882eb2"),
         new("len-2^32+1", "8180808010", -1, null, "4de8b73128a00d7ce213cad194957190f2aa63e0"),
@@ -301,6 +303,7 @@ public class OptimismCLP2PMessageIdTests
     [TestCase("05ff")]
     [TestCase("ffffffffffff")]
     [TestCase("42ff")] // declares 66 bytes, so it reaches decoding
+    [TestCase("051068656c6c6f")] // a valid block of 5 bytes, below the minimum
     public void Validator_rejects_corrupt_snappy_without_throwing(string data)
     {
         using OptimismCLP2P p2p = CreateP2P(0);
