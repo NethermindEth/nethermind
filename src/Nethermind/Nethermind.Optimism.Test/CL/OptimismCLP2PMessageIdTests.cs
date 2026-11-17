@@ -153,6 +153,7 @@ public class OptimismCLP2PMessageIdTests
         new("padded6-header-18B", "8b80808080002868656c6c6f20776f726c64", 11, "68656c6c6f20776f726c64", "9d88d8c7e6b43dc69d53662662307c090c77a9f5"),
         new("ab-copy1-off2-len5", "070461620502", 7, "61626162616261", "feb66324ea4b7877f5aab06d3f1b048f564c1b52"),
         new("abcd-copy1-off4-len4", "080c616263640104", 8, "6162636461626364", "4cb0aaeaf966f2921130b5d1ffe7bca10b27fffb"),
+        new("literal63-len-byte4-set", "05fc0400000168656c6c6f", 5, null, "d4a2cc0df780f2ef17dee3a9fd659711e347770b"),
     ];
 
     [TestCaseSource(nameof(GoVectors))]
