@@ -23,6 +23,8 @@ internal sealed class FaultyColumnsDb : TestColumnsDb
     // Callback blocks canonical-slot readers before their underlying read.
     public Action? BeforeCanonicalSlotRead { set => _canonicalIndex.BeforeSlotRead = value; }
 
+    public Action? BeforeCanonicalEnumeration { set => _canonicalIndex.BeforeEnumeration = value; }
+
     protected override IDb CreateColumn(BeaconChainDbColumns key) => key switch
     {
         BeaconChainDbColumns.DataColumnSidecars => _sidecars,
@@ -30,9 +32,16 @@ internal sealed class FaultyColumnsDb : TestColumnsDb
         _ => base.CreateColumn(key),
     };
 
-    private sealed class SlotReadHookMemDb : MemDb
+    private sealed class SlotReadHookMemDb : MemDb, IDb
     {
         public Action? BeforeSlotRead { get; set; }
+        public Action? BeforeEnumeration { get; set; }
+
+        public new IEnumerable<byte[]> GetAllKeys(bool ordered = false)
+        {
+            BeforeEnumeration?.Invoke();
+            return base.GetAllKeys(ordered);
+        }
 
         public override byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {

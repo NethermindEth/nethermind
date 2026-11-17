@@ -18,6 +18,7 @@ internal sealed class CountingStatesColumnsDb(bool sorted, BeaconChainDbColumns 
     internal class CountingStatesDb : MemDb, IDb
     {
         public int KeysRead { get; protected set; }
+        public Action? BeforeReverseKeyRead { get; set; }
         public void ResetCount() => KeysRead = 0;
 
         public new IEnumerable<byte[]> GetAllKeys(bool ordered = false)
@@ -59,6 +60,7 @@ internal sealed class CountingStatesColumnsDb(bool sorted, BeaconChainDbColumns 
             public bool MovePrevious()
             {
                 if (--_index < 0) return false;
+                owner.BeforeReverseKeyRead?.Invoke();
                 owner.KeysRead++;
                 return true;
             }

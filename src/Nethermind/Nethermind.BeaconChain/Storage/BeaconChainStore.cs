@@ -1598,20 +1598,26 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         }
 
         Span<byte> key = stackalloc byte[ColumnKeyLength];
-        for (ulong slot = through; ; slot--)
+        ulong uncheckedThrough = through;
+        try
+        {
+            foreach (ulong slot in EnumerateCanonicalSlots(from, through, cancellationToken, reverse: true))
+            {
+                shortfall = CheckStoredDataColumns(slot, required, key);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (shortfall != DataColumnShortfall.None) return slot;
+                if (slot == from) return null;
+                uncheckedThrough = slot - 1;
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            return null;
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            shortfall = CheckStoredDataColumns(slot, required, key);
-            cancellationToken.ThrowIfCancellationRequested();
-            if (shortfall != DataColumnShortfall.None)
-            {
-                return slot;
-            }
-
-            if (slot == from)
-            {
-                return null;
-            }
+            // An iterator failure leaves all slots below the last verified entry unverified.
+            shortfall = DataColumnShortfall.ReadFailed;
+            return uncheckedThrough;
         }
     }
 

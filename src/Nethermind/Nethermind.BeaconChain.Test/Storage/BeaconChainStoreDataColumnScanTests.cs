@@ -23,6 +23,45 @@ public class BeaconChainStoreDataColumnScanTests
     private static Hash256 RootAt(ulong slot) => Keccak.Compute($"canonical {slot}");
 
     [Test]
+    public void Scan_reads_only_indexed_slots_in_a_sparse_window()
+    {
+        using FaultyColumnsDb db = new();
+        BeaconChainStore store = new(db, Spec);
+        ulong slot = FuluStart + 10;
+        store.SetCanonicalRoot(slot, RootAt(slot));
+        int reads = 0;
+        db.BeforeCanonicalSlotRead = () => reads++;
+
+        ulong? result = store.FindIncompleteDataColumnSlot(FuluStart, slot + 10_000, null, Required, out BeaconChainStore.DataColumnShortfall shortfall);
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(slot));
+        Assert.That(shortfall, Is.EqualTo(BeaconChainStore.DataColumnShortfall.BlockMissing));
+        Assert.That(reads, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void An_unreadable_canonical_index_fails_the_highest_unverified_slot([Values(0, 1)] int verified)
+    {
+        using CountingStatesColumnsDb db = new(sorted: true, BeaconChainDbColumns.BlockIndex);
+        BeaconChainStore store = new(db, Spec with { GloasForkEpoch = Spec.FuluForkEpoch });
+        ulong top = FuluStart + 50;
+        ulong highest = top - 10;
+        store.SetCanonicalRoot(highest, RootAt(highest));
+        store.SetCanonicalRoot(highest - 20, RootAt(highest - 20));
+        db.Index.BeforeReverseKeyRead = () =>
+        {
+            if (db.Index.KeysRead == verified) throw new InvalidOperationException();
+        };
+
+        ulong? result = store.FindIncompleteDataColumnSlot(FuluStart, top, null, Required, out BeaconChainStore.DataColumnShortfall shortfall);
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(verified == 0 ? top : highest - 1));
+        Assert.That(shortfall, Is.EqualTo(BeaconChainStore.DataColumnShortfall.ReadFailed));
+        Assert.Throws<OperationCanceledException>(() =>
+            store.FindIncompleteDataColumnSlot(FuluStart, top, null, Required, out _, new CancellationToken(true)));
+    }
+
+    [Test]
     public void A_read_fault_fails_the_slot_it_hits_and_none_above()
     {
         FaultyColumnsDb db = new();
