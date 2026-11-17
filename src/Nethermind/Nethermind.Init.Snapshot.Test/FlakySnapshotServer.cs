@@ -47,8 +47,6 @@ internal sealed class FlakySnapshotServer : IDisposable
 
     public int? HangOnceAfterBytes { get; set; }
 
-    public int? ServerErrorFirstRequests { get; set; }
-
     public bool IgnoreRangeOnce { get; set; }
 
     public bool IgnoreFirstByteRange { get; set; }
@@ -135,13 +133,6 @@ internal sealed class FlakySnapshotServer : IDisposable
             if (FailRequestWithStatus is (int failedRequest, int failureStatus) && requestNumber == failedRequest)
             {
                 response.StatusCode = failureStatus;
-                response.Close();
-                return;
-            }
-
-            if (ServerErrorFirstRequests is int errorCount && requestNumber <= errorCount)
-            {
-                response.StatusCode = 500;
                 response.Close();
                 return;
             }
