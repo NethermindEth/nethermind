@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using Autofac;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain.BlockAccessLists;
@@ -29,7 +30,6 @@ namespace Nethermind.Benchmarks.Store;
 public class SnapBlockAccessListsServingBenchmark
 {
     private const int StoredBlocks = 2048;
-    private const int RequestedBlocks = 64;
 
     private TempPath _directory = null!;
     private IContainer _container = null!;
@@ -37,11 +37,14 @@ public class SnapBlockAccessListsServingBenchmark
     private ValueHash256[][] _requests = null!;
     private int _nextRequest;
 
-    [Params(2_000, 30_000)]
+    [Params(2_000, 30_000, 131_072)]
     public int AccessListSize { get; set; }
 
     [Params(4_096, ISnapStateServer.HardResponseByteLimit)]
     public long ByteLimit { get; set; }
+
+    [Params(2, 64)]
+    public int RequestedBlocks { get; set; }
 
     [GlobalSetup]
     public void Setup()
@@ -86,10 +89,16 @@ public class SnapBlockAccessListsServingBenchmark
     [Benchmark]
     public int ServeBlockAccessLists()
     {
-        ValueHash256[] request = _requests[_nextRequest++ % _requests.Length];
+        ValueHash256[] request = _requests[(uint)Interlocked.Increment(ref _nextRequest) % (uint)_requests.Length];
         using IByteArrayList lists = _server.GetBlockAccessLists(request, ByteLimit, CancellationToken.None);
         return lists.Count;
     }
+
+    [Benchmark]
+    [Arguments(8)]
+    [Arguments(32)]
+    public void ServeBlockAccessListsConcurrently(int requests) =>
+        Parallel.For(0, requests, _ => ServeBlockAccessLists());
 
     [GlobalCleanup]
     public void Cleanup()
