@@ -437,7 +437,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             // Before eth/69 the message encodes receipts with the registered decoder, which a plugin can replace.
             // Stored receipts are copied without this decoder, so such a plugin must also decorate IReceiptFinder.
             IRlpDecoder<TxReceipt> decoder = withBloom ? Rlp.GetDecoderOrThrow<TxReceipt>() : ReceiptDecoder69;
-            ArrayPoolList<byte> buffer = new(SafeArrayPool<byte>.Shared, GetReceiptsBufferCapacity(hashes.Length), clearFirst: false);
+            ArrayPoolList<byte> buffer = [with(GetReceiptsBufferCapacity(hashes.Length))];
             using ArrayPoolList<Range> blocks = new(hashes.Length);
             try
             {

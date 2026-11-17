@@ -98,7 +98,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
     {
         ReadOnlySpan<Hash256> hashes = getReceiptsMessage.Hashes.AsSpan();
         int maxBlocks = Math.Min(hashes.Length, MaxReceiptsLookups);
-        ArrayPoolList<byte> buffer = new(SafeArrayPool<byte>.Shared, GetReceiptsBufferCapacity(maxBlocks), clearFirst: false);
+        ArrayPoolList<byte> buffer = [with(GetReceiptsBufferCapacity(maxBlocks))];
         using ArrayPoolList<Range> blocks = new(maxBlocks);
         using ArrayPoolList<int> receiptStarts = new(0);
         bool lastBlockIncomplete = false;
