@@ -20,10 +20,10 @@ public interface ISparseBlobPoolPeerRegistry
 
     /// <summary>Records an announcement when the peer and process admission budgets allow it.</summary>
     /// <returns><c>true</c> when the announcement is tracked; otherwise <c>false</c>.</returns>
-    bool RecordAnnouncement(ISparseBlobPoolPeer peer, Hash256 hash, BlobCellMask announcementMask);
+    bool RecordAnnouncement(ISparseBlobPoolPeer peer, in ValueHash256 hash, BlobCellMask announcementMask);
 
     /// <summary>Returns the node-wide provider or sampler request mask for an announcement.</summary>
-    BlobCellMask GetRequestMask(Hash256 hash, BlobCellMask announcementMask, int providerProbabilityPercent);
+    BlobCellMask GetRequestMask(in ValueHash256 hash, BlobCellMask announcementMask, int providerProbabilityPercent);
 
     /// <summary>
     /// Forgets a single peer's announcement for a transaction, e.g. after the peer answered
@@ -33,7 +33,7 @@ public interface ISparseBlobPoolPeerRegistry
     /// The mask the peer had announced, so a caller that backs the peer off temporarily can restore
     /// it later; <see cref="BlobCellMask.Empty"/> when the peer had no announcement.
     /// </returns>
-    BlobCellMask RemoveAnnouncement(ISparseBlobPoolPeer peer, Hash256 hash);
+    BlobCellMask RemoveAnnouncement(ISparseBlobPoolPeer peer, in ValueHash256 hash);
 
     /// <summary>
     /// Requests cells from a randomly selected announcing peer. Cells already held in the local
@@ -47,19 +47,19 @@ public interface ISparseBlobPoolPeerRegistry
     /// <c>true</c> when a request was sent or nothing is left to fetch;
     /// <c>false</c> when cells are needed but no provider is available.
     /// </returns>
-    bool TryRequestCells(Hash256 hash, BlobCellMask requestMask, PublicKey lastResortPeerId);
+    bool TryRequestCells(in ValueHash256 hash, BlobCellMask requestMask, PublicKey lastResortPeerId);
 
     /// <summary>
     /// Marks previously requested cells as no longer in flight once a response
     /// (successful, partial, or empty) has been processed.
     /// </summary>
-    void OnCellsRequestCompleted(Hash256 hash, BlobCellMask completedMask, ISparseBlobPoolPeer peer);
+    void OnCellsRequestCompleted(in ValueHash256 hash, BlobCellMask completedMask, ISparseBlobPoolPeer peer);
 
     /// <summary>Gets whether the transaction body has been recorded for sparse admission.</summary>
-    bool HasRecordedTransaction(Hash256 hash);
+    bool HasRecordedTransaction(in ValueHash256 hash);
 
     /// <summary>Gets the number of active peers that announced full cell availability for a transaction.</summary>
-    int GetFullProviderAnnouncementCount(Hash256 hash);
+    int GetFullProviderAnnouncementCount(in ValueHash256 hash);
 
     /// <summary>Records and validates an elided blob transaction announced by a peer.</summary>
     /// <returns>The admission result when submission completed; otherwise <c>null</c>.</returns>
@@ -84,5 +84,5 @@ public interface ISparseBlobPoolPeerRegistry
     void ReleaseCellServeWork();
 
     /// <summary>Clears all tracked sparse state for a transaction.</summary>
-    void Clear(Hash256 hash);
+    void Clear(in ValueHash256 hash);
 }

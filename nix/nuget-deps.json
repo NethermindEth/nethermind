@@ -666,13 +666,13 @@
   },
   {
     "pname": "Nethermind.Numerics.Int256",
-    "version": "1.14.0",
-    "hash": "sha256-XZOy9nxGG/RZDGAAaIFZsqdE493z8rGMkdKagBju/F4="
+    "version": "1.15.0",
+    "hash": "sha256-ZGt7Gxs/ctjZcNAOM8t+lJykl4YkekujjmHObMXVfCY="
   },
   {
     "pname": "Nethermind.RocksDbBindings",
-    "version": "11.13.2.210",
-    "hash": "sha256-RzG5o29aAcwv5aV8Go26JUIHFQcts4SLFdt2hTGFJVk="
+    "version": "11.13.2.218",
+    "hash": "sha256-gBP/LA+wqSwuSCGxg1oLEyRsyXRYLVJ8j6jZj+8xuFQ="
   },
   {
     "pname": "Nethermind.TurboPForBindings",

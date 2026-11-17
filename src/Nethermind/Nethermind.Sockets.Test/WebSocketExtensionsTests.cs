@@ -166,7 +166,9 @@ public class WebSocketExtensionsTests
             1,
             null,
             null,
-            null);
+            null,
+            0L,
+            0);
 
         using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
         await webSocketsClient.ReceiveLoopAsync(cts.Token);
@@ -259,6 +261,40 @@ public class WebSocketExtensionsTests
         await app.Build()(context);
 
         logger.Received(aborted ? 0 : 1).Error(Arg.Any<string>(), Arg.Any<Exception>());
+        module.Received(1).RemoveClient("TestClient");
+    }
+
+    [Test]
+    public async Task Logs_send_limit_close_at_debug_level()
+    {
+        ISocketsClient client = Substitute.For<ISocketsClient>();
+        client.Id.Returns("TestClient");
+        client.ReceiveLoopAsync(Arg.Any<CancellationToken>()).Returns(Task.FromException(new SocketSendLimitException("limit")));
+        IWebSocketsModule module = Substitute.For<IWebSocketsModule>();
+        module.CreateClient(Arg.Any<WebSocket>(), Arg.Any<string>(), Arg.Any<HttpContext>()).Returns(client);
+        IWebSocketsManager manager = Substitute.For<IWebSocketsManager>();
+        manager.GetModule("ws").Returns(module);
+
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsDebug.Returns(true);
+        logger.IsError.Returns(true);
+        ServiceCollection services = new();
+        services.AddSingleton(manager);
+        services.AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger)));
+        ApplicationBuilder app = new(services.BuildServiceProvider());
+        app.UseWebSocketsModules();
+
+        IHttpWebSocketFeature webSocketFeature = Substitute.For<IHttpWebSocketFeature>();
+        webSocketFeature.IsWebSocketRequest.Returns(true);
+        webSocketFeature.AcceptAsync(Arg.Any<WebSocketAcceptContext>()).Returns(Substitute.For<WebSocket>());
+        DefaultHttpContext context = new();
+        context.Features.Set(webSocketFeature);
+        context.Request.Path = "/ws";
+
+        await app.Build()(context);
+
+        logger.DidNotReceive().Error(Arg.Any<string>(), Arg.Any<Exception>());
+        logger.Received(1).Debug(Arg.Is<string>(static message => message.Contains("limit")));
         module.Received(1).RemoveClient("TestClient");
     }
 

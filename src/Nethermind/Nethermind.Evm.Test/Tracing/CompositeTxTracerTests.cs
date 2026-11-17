@@ -241,7 +241,7 @@ public class CompositeTxTracerTests
     [Test]
     public void Wrapping_tracer_implements_every_meaningful_default_interface_member([Values(typeof(CompositeTxTracer), typeof(CancellationTxTracer))] Type wrapperType)
     {
-        string[] convenienceForwarders = ["get_IsTracing", "ReportStackPush", "ReportMemoryChange"];
+        string[] convenienceForwarders = ["get_IsTracing", "get_IsObservingFeePayment", "ReportStackPush", "ReportMemoryChange"];
 
         MethodInfo[] defaultMembers = typeof(ITxTracer)
             .GetMethods()
