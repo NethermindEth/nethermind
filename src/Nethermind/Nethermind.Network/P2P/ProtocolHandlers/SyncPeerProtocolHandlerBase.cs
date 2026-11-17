@@ -258,7 +258,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected virtual void SendNewTransactionsCore(ReadOnlySpan<Transaction> txs, bool sendFullTx)
         {
             int packetSizeLeft = TransactionsMessage.MaxPacketSize;
-            ArrayPoolList<Transaction> txsToSend = new(1024);
+            ArrayPoolList<Transaction> txsToSend = [with(1024)];
 
             foreach (Transaction tx in txs)
             {
@@ -267,7 +267,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 if (txSize > packetSizeLeft && txsToSend.Count > 0)
                 {
                     SendMessage(txsToSend);
-                    txsToSend = new(1024);
+                    txsToSend = [with(1024)];
                     packetSizeLeft = TransactionsMessage.MaxPacketSize;
                 }
 
