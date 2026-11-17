@@ -8020,6 +8020,19 @@ namespace Nethermind.TxPool.Test
                 _txPool.RemoveTransaction(firstTx.Hash);
             }
 
+            if (!sentByAuthority)
+            {
+                Transaction sponsorTx = Build.A.Transaction
+                    .WithNonce(0)
+                    .WithType(TxType.EIP1559)
+                    .WithMaxFeePerGas(9.GWei)
+                    .WithMaxPriorityFeePerGas(9.GWei)
+                    .WithGasLimit(GasCostOf.Transaction)
+                    .WithTo(TestItem.AddressB)
+                    .SignedAndResolved(_ethereumEcdsa, sponsor).TestObject;
+                Assert.That(_txPool.SubmitTx(sponsorTx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            }
+
             Transaction secondTx = Build.A.Transaction
                 .WithNonce(0)
                 .WithType(TxType.SetCode)
@@ -8034,9 +8047,10 @@ namespace Nethermind.TxPool.Test
             Assert.That(result, Is.EqualTo(withRemoval || sentByAuthority ? AcceptTxResult.Accepted : AcceptTxResult.DelegatorHasPendingTx));
         }
 
-        [TestCase(TxType.SetCode, 1, true)]
-        [TestCase(TxType.EIP1559, 2, false)]
-        public void Self_sponsored_SetCode_tx_replaces_pending_tx_only_when_it_is_the_authority_only_one(TxType pendingTxType, int pendingTxCount, bool accepted)
+        [TestCase(TxType.SetCode, 1, 0ul, true)]
+        [TestCase(TxType.EIP1559, 2, 0ul, false)]
+        [TestCase(TxType.EIP1559, 1, 1ul, false)]
+        public void Self_sponsored_SetCode_tx_replaces_pending_tx_only_when_it_is_the_authority_only_one(TxType pendingTxType, int pendingTxCount, ulong newTxNonce, bool accepted)
         {
             ISpecProvider specProvider = GetPragueSpecProvider();
             TxPoolConfig txPoolConfig = new() { Size = 30, PersistentBlobStorageSize = 0 };
@@ -8068,7 +8082,7 @@ namespace Nethermind.TxPool.Test
                 Assert.That(_txPool.SubmitTx(Tx((ulong)nonce, pendingTxType, 10.GWei), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
             }
 
-            AcceptTxResult result = _txPool.SubmitTx(Tx(0, TxType.SetCode, 20.GWei), TxHandlingOptions.PersistentBroadcast);
+            AcceptTxResult result = _txPool.SubmitTx(Tx(newTxNonce, TxType.SetCode, 20.GWei), TxHandlingOptions.PersistentBroadcast);
             Assert.That(result, Is.EqualTo(accepted ? AcceptTxResult.Accepted : AcceptTxResult.DelegatorHasPendingTx));
         }
 
