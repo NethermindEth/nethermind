@@ -18,14 +18,18 @@ public static partial class GloasStateAccessors
 public static partial class BeaconStateMutators
 #endif
 {
-    public static partial void IncreaseBalance(this AccessorState state, int index, ulong delta) =>
+    public static partial void IncreaseBalance(this AccessorState state, int index, ulong delta)
+    {
         state.Balances![index] += delta;
+        state.BlockChanges?.Balances.Add(index >> 2);
+    }
 
     /// <summary>Decreases a validator's balance by <paramref name="delta"/>, saturating at zero.</summary>
     public static partial void DecreaseBalance(this AccessorState state, int index, ulong delta)
     {
         ref ulong balance = ref state.Balances![index];
         balance -= Math.Min(balance, delta);
+        state.BlockChanges?.Balances.Add(index >> 2);
     }
 
     /// <summary>
@@ -100,6 +104,7 @@ public static partial class BeaconStateMutators
         updated.ExitEpoch = exitQueueEpoch;
         updated.WithdrawableEpoch = CheckedEpochSum(exitQueueEpoch, Presets.MinValidatorWithdrawabilityDelay);
         state.Validators![index] = updated;
+        state.BlockChanges?.Validators.Add(index);
     }
 
     /// <summary>

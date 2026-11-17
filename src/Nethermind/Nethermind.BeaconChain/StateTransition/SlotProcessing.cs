@@ -28,6 +28,8 @@ public static partial class SlotProcessing
         Hash256 previousStateRoot = onlySlotChanges && hasher is CachedBeaconStateHasher cached
             ? cached.HashTreeRootAfterSlot(state)
             : hasher.HashTreeRoot(state);
+        if (hasher is CachedBeaconStateHasher snapshot)
+            snapshot.RecordSlotBaseline(state);
         state.StateRoots![(int)(state.Slot % Presets.SlotsPerHistoricalRoot)] = previousStateRoot;
 
         // Cache the latest block header state root.

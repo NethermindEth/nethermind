@@ -3,6 +3,7 @@
 
 using System.Collections;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Ssz;
 
@@ -89,6 +90,8 @@ public partial class BeaconStateElectra
 [SszContainer]
 public partial class BeaconStateFulu : BeaconStateElectra
 {
+    internal BlockHashChanges? BlockChanges;
+
     internal new static partial int GetSszFixedSectionLength();
 
     /// <remarks>Length is <c>(MIN_SEED_LOOKAHEAD + 1) * SLOTS_PER_EPOCH</c>.</remarks>
@@ -104,6 +107,8 @@ public partial class BeaconStateFulu : BeaconStateElectra
 [SszContainer]
 public partial class BeaconStateGloas
 {
+    internal BlockHashChanges? BlockChanges => null;
+
     internal static partial int GetSszFixedSectionLength();
 
     [SszField(0)]

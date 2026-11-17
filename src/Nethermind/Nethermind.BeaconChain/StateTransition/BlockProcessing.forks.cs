@@ -161,6 +161,7 @@ public static partial class BlockProcessing
         Validator updated = validator.Clone();
         updated.WithdrawalCredentials = new Hash256(newCredentials);
         state.Validators![(int)change.ValidatorIndex] = updated;
+        state.BlockChanges?.Validators.Add((int)change.ValidatorIndex);
     }
 
     /// <summary>Spec <c>process_deposit_request</c> (EIP-6110).</summary>
@@ -317,6 +318,7 @@ public static partial class BlockProcessing
         updatedSource.ExitEpoch = state.ComputeConsolidationEpochAndUpdateChurn(sourceValidator.EffectiveBalance, cache);
         updatedSource.WithdrawableEpoch = EpochArithmetic.CheckedEpochSum(updatedSource.ExitEpoch, Presets.MinValidatorWithdrawabilityDelay);
         state.Validators![sourceIndex] = updatedSource;
+        state.BlockChanges?.Validators.Add(sourceIndex);
 
         state.PendingConsolidations = [.. state.PendingConsolidations, new PendingConsolidation
         {
@@ -641,12 +643,14 @@ public static partial class BlockProcessing
         credentials[0] = Presets.CompoundingWithdrawalPrefix;
         validator.WithdrawalCredentials = new Hash256(credentials);
         state.Validators![index] = validator;
+        state.BlockChanges?.Validators.Add(index);
 #if GLOAS
 
         ulong balance = state.Balances![index];
         if (balance <= Presets.MinActivationBalance)
             return;
         state.Balances[index] = Presets.MinActivationBalance;
+        state.BlockChanges?.Balances.Add(index >> 2);
         state.PendingDeposits = [.. state.PendingDeposits!, new PendingDeposit
         {
             Pubkey = validator.Pubkey,

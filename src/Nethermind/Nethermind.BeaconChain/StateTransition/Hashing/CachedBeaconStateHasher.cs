@@ -126,6 +126,37 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
     private readonly UInt256[] _gloasFieldRoots = new UInt256[GloasFieldCount];
     private bool _fuluCachesLive;
 
+    private readonly WeakReference<BeaconStateFulu> _slotBaseline = new(null!);
+    private readonly BlockHashChanges _blockChanges = new();
+    private ulong _baselineSlot;
+
+    internal void RecordSlotBaseline(BeaconStateFulu state)
+    {
+        _slotBaseline.SetTarget(state);
+        _baselineSlot = state.Slot;
+    }
+
+    /// <summary>Starts recording validator and balance writes on a private import clone with a matching slot snapshot.</summary>
+    /// <remarks>Epoch processing runs after the last slot snapshot at a boundary. The next root must diff both lists.</remarks>
+    internal bool TryBeginBlock(BeaconStateFulu state)
+    {
+        if (state.Slot % Presets.SlotsPerEpoch == 0 || _baselineSlot + 1 != state.Slot ||
+            !_slotBaseline.TryGetTarget(out BeaconStateFulu? baseline) || !ReferenceEquals(baseline, state))
+            return false;
+        _blockChanges.Validators.Count = _blockChanges.Balances.Count = 0;
+        state.BlockChanges = _blockChanges;
+        return true;
+    }
+
+    internal void EndBlock(BeaconStateFulu state)
+    {
+        state.BlockChanges = null;
+        _slotBaseline.SetTarget(null!);
+    }
+
+    internal Hash256 HashTreeRootAfterBlock(BeaconStateFulu state) =>
+        HashTreeRoot(state, _slotBaseline.TryGetTarget(out BeaconStateFulu? target) && ReferenceEquals(target, state) ? state.BlockChanges : null);
+
     /// <summary>Hashes the mutations of one completed non-epoch slot within an uninterrupted slot-processing loop.</summary>
     /// <remarks>The loop must first hash this state normally and must use the full diff after epoch processing.</remarks>
     internal Hash256 HashTreeRootAfterSlot(BeaconStateFulu state)
@@ -155,8 +186,11 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
     }
 
     /// <inheritdoc/>
-    public Hash256 HashTreeRoot(BeaconStateFulu state)
+    public Hash256 HashTreeRoot(BeaconStateFulu state) => HashTreeRoot(state, null);
+
+    private Hash256 HashTreeRoot(BeaconStateFulu state, BlockHashChanges? changes)
     {
+        _slotBaseline.SetTarget(null!);
         // The generated Merkleize rejects this before computing anything; keep the same contract.
         if (state.LatestExecutionPayloadHeader is null)
             throw new InvalidDataException($"Invalid SSZ value for {nameof(BeaconStateFulu)}.{nameof(state.LatestExecutionPayloadHeader)}: null variable fields are not decodable.");
@@ -177,8 +211,12 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
         Eth1Data.Merkleize(state.Eth1Data ?? s_defaultEth1Data, out roots[8]);
         roots[9] = state.VoteList.HashTreeRoot();
         roots[10] = new UInt256(state.Eth1DepositIndex);
-        roots[11] = _validators.Root(state.ValidatorBuffer?.Items);
-        roots[12] = _balances.Root(MemoryMarshal.AsBytes<ulong>(state.Balances), state.Balances?.Length ?? 0);
+        Validator[]? validators = state.ValidatorBuffer?.Items;
+        roots[11] = changes is null || validators is null ? _validators.Root(validators)
+            : _validators.RootAfterChanges(validators, changes.Validators, roots[11]);
+        ReadOnlySpan<byte> balances = MemoryMarshal.AsBytes<ulong>(state.Balances);
+        roots[12] = changes is null ? _balances.Root(balances, state.Balances?.Length ?? 0)
+            : _balances.RootAfterChanges(balances, changes.Balances, roots[12]);
         roots[13] = _randaoMixes.Root(state.RandaoMixes);
         Merkle.Merkleize(out roots[14], MemoryMarshal.AsBytes<ulong>(state.Slashings), SlashingsChunkCount);
         roots[15] = _previousEpochParticipation.Root(state.PreviousEpochParticipation, state.PreviousEpochParticipation?.Length ?? 0);
@@ -212,6 +250,7 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
     /// <inheritdoc/>
     public Hash256 HashTreeRoot(BeaconStateGloas state)
     {
+        _slotBaseline.SetTarget(null!);
         ValidateFixedVectors(nameof(BeaconStateGloas), state.Slashings, state.JustificationBits, state.ProposerLookahead);
         if (state.BuilderPendingPayments?.Length != (int)Presets.BuilderPendingPaymentsLength)
             throw new InvalidDataException($"Invalid SSZ value for {nameof(BeaconStateGloas)}.{nameof(state.BuilderPendingPayments)}: expected {Presets.BuilderPendingPaymentsLength} elements but found {state.BuilderPendingPayments?.Length ?? 0}.");
@@ -435,6 +474,36 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
             return root;
         }
 
+        public UInt256 RootAfterChanges(T[] items, BlockHashChanges.Indices dirty, UInt256 previous)
+        {
+            if (items.Length != _count || dirty.Count * 2 > _count)
+                return Root(items);
+            if (dirty.Count == 0)
+                return previous;
+            dirty.Sort();
+            int count = 0;
+            try
+            {
+                for (int i = 0; i < dirty.Count; i++)
+                {
+                    int index = dirty.Items[i];
+                    if (ReferenceEquals(_snapshot[index], items[index])) continue;
+                    T.Merkleize(items[index], out _tree.Leaf(index));
+                    _snapshot[index] = items[index];
+                    dirty.Items[count++] = index;
+                }
+                _tree.Update(dirty.Items, count);
+            }
+            catch
+            {
+                Reset();
+                throw;
+            }
+            UInt256 root = _tree.Root;
+            Merkle.MixIn(ref root, _count);
+            return root;
+        }
+
         public void Reset()
         {
             _immutableItems = null;
@@ -504,6 +573,32 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
                 _tree.Update(dirty, dirtyCount);
             ArrayPool<int>.Shared.Return(dirty);
 
+            UInt256 root = _tree.Root;
+            Merkle.MixIn(ref root, elementCount);
+            return root;
+        }
+
+        public UInt256 RootAfterChanges(ReadOnlySpan<byte> data, BlockHashChanges.Indices dirty, UInt256 previous)
+        {
+            int elementCount = data.Length / sizeof(ulong);
+            if (data.Length != _snapshotLength || dirty.Count * 2 > (data.Length + 31) / 32)
+                return Root(data, elementCount);
+            if (dirty.Count == 0)
+                return previous;
+            dirty.Sort();
+            int count = 0;
+            for (int i = 0; i < dirty.Count; i++)
+            {
+                int chunk = dirty.Items[i];
+                int offset = chunk * 32;
+                Span<byte> snapshot = _snapshot.AsSpan(offset, 32);
+                ReadOnlySpan<byte> source = data.Slice(offset, Math.Min(32, data.Length - offset));
+                if (source.SequenceEqual(snapshot[..source.Length])) continue;
+                source.CopyTo(snapshot);
+                _tree.Leaf(chunk) = new UInt256(snapshot);
+                dirty.Items[count++] = chunk;
+            }
+            _tree.Update(dirty.Items, count);
             UInt256 root = _tree.Root;
             Merkle.MixIn(ref root, elementCount);
             return root;

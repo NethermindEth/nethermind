@@ -21,6 +21,55 @@ public class CachedHasherTests
     private const ulong Gwei = 1_000_000_000;
 
     [Test]
+    public void Block_leaf_updates_match_full_hashing_after_slashing_and_rewards([Values] bool siblingIntervenes)
+    {
+        BeaconStateFulu state = CreateState(129);
+        state.Slot--;
+        CachedBeaconStateHasher hasher = new();
+        EpochCache cache = new() { Hasher = hasher };
+        SlotProcessing.ProcessSlots(state, state.Slot + 1, cache);
+        BeaconStateFulu sibling = state.Clone();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hasher.TryBeginBlock(sibling), Is.False);
+            Assert.That(hasher.TryBeginBlock(state), Is.True);
+        }
+        try
+        {
+            state.SlashValidator(121, cache, whistleblowerIndex: 127);
+            state.IncreaseBalance(128, 17);
+            state.DecreaseBalance(128, 3);
+            if (siblingIntervenes)
+                _ = hasher.HashTreeRoot(sibling);
+            Assert.That(hasher.HashTreeRootAfterBlock(state), Is.EqualTo(SszRoots.HashTreeRoot(state)));
+        }
+        finally
+        {
+            hasher.EndBlock(state);
+        }
+
+        state.Balances![17]++;
+        AssertRootsMatch(hasher, state, "untracked array edit after importing the block");
+        AssertRootsMatch(hasher, sibling, "sibling after a speculative transition");
+    }
+
+    [Test]
+    public void Block_leaf_tracking_requires_a_non_boundary_slot_snapshot()
+    {
+        BeaconStateFulu state = CreateState(64);
+        CachedBeaconStateHasher hasher = new();
+        EpochCache cache = new() { Hasher = hasher };
+        SlotProcessing.ProcessSlots(state, state.Slot + 1, cache);
+        Assert.That(hasher.TryBeginBlock(state), Is.False);
+        SlotProcessing.ProcessSlots(state, state.Slot + 1, cache);
+        Assert.That(hasher.TryBeginBlock(state), Is.True);
+        state.IncreaseBalance(3, 17);
+        hasher.EndBlock(state);
+        Assert.That(hasher.TryBeginBlock(state), Is.False);
+        AssertRootsMatch(hasher, state, "partially mutated block after discard");
+    }
+
+    [Test]
     public void Cloning_while_reading_votes_keeps_arrays_independent()
     {
         Eth1VoteList original = new([]);

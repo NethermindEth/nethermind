@@ -38,6 +38,7 @@ public static partial class BeaconStateMutators
 #endif
         );
         state.Validators![slashedIndex] = validator;
+        state.BlockChanges?.Validators.Add(slashedIndex);
 
         state.Slashings![(int)(epoch % Presets.EpochsPerSlashingsVector)] += validator.EffectiveBalance;
         state.DecreaseBalance(slashedIndex, validator.EffectiveBalance / Presets.MinSlashingPenaltyQuotientElectra);

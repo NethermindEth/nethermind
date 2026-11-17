@@ -426,6 +426,7 @@ public static partial class BlockProcessing
             return;
 
         state.Balances[index] = Presets.MinActivationBalance;
+        state.BlockChanges?.Balances.Add(index >> 2);
         Validator validator = state.ReadOnlyValidators[index];
         state.PendingDeposits = [.. state.PendingDeposits!, new PendingDeposit
         {

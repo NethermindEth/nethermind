@@ -564,8 +564,8 @@ public sealed class BlockImporter : IBlockImporter
             _engine.CurrentBlock = signedBlock;
             try
             {
-                if (prepared is not null) StateTransition.StateTransition.ApplyPrepared(state, signedBlock, cache, _pubkeys, verdict, _spec, validateResult: true, verifySignatures, proposerSignatureVerified: proposerSignatureValid == true);
-                else StateTransition.StateTransition.Apply(state, signedBlock, cache, _pubkeys, verdict, _spec, validateResult: true, verifySignatures, proposerSignatureVerified: proposerSignatureValid == true);
+                if (prepared is not null) StateTransition.StateTransition.ApplyPrepared(state, signedBlock, cache, _pubkeys, verdict, _spec, validateResult: true, verifySignatures, proposerSignatureVerified: proposerSignatureValid == true, trackBlockChanges: true);
+                else StateTransition.StateTransition.Apply(state, signedBlock, cache, _pubkeys, verdict, _spec, validateResult: true, verifySignatures, proposerSignatureVerified: proposerSignatureValid == true, trackBlockChanges: true);
             }
             catch (EngineUnavailableException e)
             {
