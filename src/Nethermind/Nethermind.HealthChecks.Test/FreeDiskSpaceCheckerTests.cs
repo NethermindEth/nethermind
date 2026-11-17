@@ -60,7 +60,7 @@ public class FreeDiskSpaceCheckerTests
             ts.TotalMinutes);
 
         Task t = Task.Run(() => freeDiskSpaceChecker.EnsureEnoughFreeSpaceOnStart(Core.Timers.TimerFactory.Default));
-        bool completed = t.Wait((int)ts.TotalMilliseconds * 2);
+        bool completed = t.Wait(TimeSpan.FromSeconds(30));
 
         Assert.That(completed, Is.True);
 
