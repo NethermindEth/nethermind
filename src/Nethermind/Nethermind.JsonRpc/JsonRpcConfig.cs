@@ -81,7 +81,8 @@ public class JsonRpcConfig : IJsonRpcConfig
     public int MaxBatchSize { get; set; } = 1024;
     public int JsonSerializationMaxDepth { get; set; } = EthereumJsonSerializer.DefaultMaxDepth;
     public long? MaxBatchResponseBodySize { get; set; } = 32.MiB;
-    public long MaxUnsentResponsesSize { get; set; } = 256.MiB;
+    public long MaxUnsentResponsesSize { get; set; } = 512.MiB;
+    public int MinResponseDataRate { get; set; } = 4096;
     public long? MaxSimulateBlocksCap { get; set; } = 256;
     public int EstimateErrorMargin { get; set; } = 150;
     public ulong RpcTxFeeCap { get; set; } = (ulong)1.Ether;

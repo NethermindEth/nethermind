@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
@@ -27,10 +26,6 @@ internal sealed class HttpJsonRpcResponseSink(
 {
     private const string JsonContentType = "application/json";
     private const int BufferedResponseInitialCapacity = 16 * 1024;
-    private const long MinSendBytesPerSecond = 64 * 1024;
-    private const long MaxSendExtensionMilliseconds = 5 * 60 * 1000;
-    private const int Active = 0;
-    private const int Finished = 1;
     private static readonly StringValues JsonContentTypeHeader = new(JsonContentType);
 
     private readonly bool _reportCalls = jsonRpcLocalStats.IsEnabled;
@@ -39,15 +34,12 @@ internal sealed class HttpJsonRpcResponseSink(
     private bool _isFirstBatchItem = true;
     private bool _completed;
     private long _accountedBytes;
-    private bool _hasReservation;
+    private long _reservedBytes;
+    private string? _connectionId;
     private bool _overLimit;
-    private volatile bool _evicted;
-    private int _evictionState;
-    private long _sendStartTimestamp;
 
     public long BytesWritten => _writer?.WrittenCount ?? 0;
     public bool StopRequested { get; private set; }
-    internal long SendStartTimestamp => Volatile.Read(ref _sendStartTimestamp);
 
     public ValueTask WriteSingleAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
     {
@@ -120,58 +112,32 @@ internal sealed class HttpJsonRpcResponseSink(
         long written = BytesWritten;
         long bytes = written - _accountedBytes;
         _accountedBytes = written;
-        if (unsentResponses is null || _overLimit || _evicted || !keepsBytes || bytes <= 0)
+        if (unsentResponses is null || _overLimit || !keepsBytes || bytes <= 0)
         {
             return;
         }
 
-        if (unsentResponses.TryReserve(this, bytes, jsonRpcConfig.MaxUnsentResponsesSize, GetStalledSendTimestamp()))
+        _connectionId ??= context.Connection.Id ?? string.Empty;
+        if (unsentResponses.TryReserve(_connectionId, bytes, jsonRpcConfig.MaxUnsentResponsesSize))
         {
-            _hasReservation = true;
+            _reservedBytes += bytes;
             return;
         }
 
-        if (written > jsonRpcConfig.MaxUnsentResponsesSize)
-        {
-            if (logger.IsWarn) logger.Warn($"Aborted a JSON-RPC response of {written} bytes, it alone is above JsonRpc.{nameof(jsonRpcConfig.MaxUnsentResponsesSize)} = {jsonRpcConfig.MaxUnsentResponsesSize}");
-        }
-        else if (logger.IsDebug)
-        {
-            logger.Debug($"Aborted a JSON-RPC response of {written} bytes, unsent responses in progress fill JsonRpc.{nameof(jsonRpcConfig.MaxUnsentResponsesSize)} = {jsonRpcConfig.MaxUnsentResponsesSize}");
-        }
-
+        if (logger.IsWarn) logger.Warn($"Aborted a JSON-RPC response of {written} bytes, the unsent responses of its connection or of the node are above the share of JsonRpc.{nameof(jsonRpcConfig.MaxUnsentResponsesSize)} = {jsonRpcConfig.MaxUnsentResponsesSize}");
         _overLimit = true;
         StopRequested = true;
     }
 
     private void ReleaseReservedBytes()
     {
-        if (!_hasReservation)
+        if (_reservedBytes == 0)
         {
             return;
         }
 
-        unsentResponses!.Release(this);
-        _hasReservation = false;
-        Interlocked.CompareExchange(ref _evictionState, Finished, Active);
-    }
-
-    private long GetStalledSendTimestamp() =>
-        jsonRpcConfig.Timeout > 0
-            ? Stopwatch.GetTimestamp() - jsonRpcConfig.Timeout * Stopwatch.Frequency / 1000
-            : long.MinValue;
-
-    internal void Evict()
-    {
-        if (Interlocked.CompareExchange(ref _evictionState, Finished, Active) != Active)
-        {
-            return;
-        }
-
-        _evicted = true;
-        StopRequested = true;
-        if (logger.IsDebug) logger.Debug($"Aborted a stalled JSON-RPC response, unsent responses are above JsonRpc.{nameof(jsonRpcConfig.MaxUnsentResponsesSize)} = {jsonRpcConfig.MaxUnsentResponsesSize}");
-        context.Abort();
+        unsentResponses!.Release(_connectionId!, _reservedBytes);
+        _reservedBytes = 0;
     }
 
     private void CompleteWrite(JsonRpcResponse response, RpcReport report, bool isBatch)
@@ -259,19 +225,13 @@ internal sealed class HttpJsonRpcResponseSink(
             return ValueTask.CompletedTask;
         }
 
-        if (_overLimit || _evicted)
+        if (_overLimit)
         {
-            if (logger.IsDebug) logger.Debug($"Aborted a JSON-RPC response of {BytesWritten} bytes, unsent responses are above JsonRpc.{nameof(jsonRpcConfig.MaxUnsentResponsesSize)} = {jsonRpcConfig.MaxUnsentResponsesSize}");
             Abort(abortTransport: true);
             return ValueTask.CompletedTask;
         }
 
         _completed = true;
-        if (unsentResponses is not null)
-        {
-            Volatile.Write(ref _sendStartTimestamp, Stopwatch.GetTimestamp());
-        }
-
         if (_bufferedStream is null &&
             HttpProtocol.IsHttp11(context.Request.Protocol) &&
             !context.Response.HasStarted)
@@ -283,38 +243,26 @@ internal sealed class HttpJsonRpcResponseSink(
         ValueTask completion = writerCompleteTask.IsCompletedSuccessfully
             ? CompleteResponseAsync(cancellationToken)
             : CompleteAfterWriterAsync(writerCompleteTask, cancellationToken);
-        if (completion.IsCompleted || unsentResponses is null)
+        if (completion.IsCompleted || _reservedBytes == 0)
         {
             ReleaseReservedBytes();
             return completion;
         }
 
-        return CompleteWithinTimeoutAsync(completion);
+        return ReleaseAfterAsync(completion);
     }
 
-    private async ValueTask CompleteWithinTimeoutAsync(ValueTask completion)
+    private async ValueTask ReleaseAfterAsync(ValueTask completion)
     {
-        using CancellationTokenSource timeout = new(GetSendTimeout());
-        CancellationTokenRegistration abortOnTimeout = timeout.Token.UnsafeRegister(static state => ((HttpContext)state!).Abort(), context);
         try
         {
             await completion;
         }
-        catch (Exception e) when (timeout.IsCancellationRequested || _evicted)
-        {
-            if (logger.IsDebug) logger.Debug($"Aborted a JSON-RPC response of {BytesWritten} bytes not sent within JsonRpc.{nameof(jsonRpcConfig.Timeout)} = {jsonRpcConfig.Timeout} ms: {e.Message}");
-        }
         finally
         {
-            await abortOnTimeout.DisposeAsync();
             ReleaseReservedBytes();
         }
     }
-
-    private int GetSendTimeout() =>
-        jsonRpcConfig.Timeout > 0
-            ? (int)Math.Min(int.MaxValue - 1, jsonRpcConfig.Timeout + Math.Min(BytesWritten * 1000 / MinSendBytesPerSecond, MaxSendExtensionMilliseconds))
-            : Timeout.Infinite;
 
     /// <summary>Discards an incomplete response and optionally aborts the transport.</summary>
     public void Abort(bool abortTransport)

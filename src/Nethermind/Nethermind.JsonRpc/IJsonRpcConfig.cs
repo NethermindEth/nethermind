@@ -224,8 +224,11 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The max batch size limit for batched JSON-RPC calls.", DefaultValue = "33554432")]
     long? MaxBatchResponseBodySize { get; set; }
 
-    [ConfigItem(Description = "The max total size, in bytes, of HTTP JSON-RPC responses to unauthenticated URLs that are written but not yet sent. When a new response does not fit, the connections of stalled responses, whose send has taken longer than `JsonRpc.Timeout`, are closed, largest first. If that does not free enough space, the new response is dropped. A response to these URLs that is not sent within `JsonRpc.Timeout` plus one second for each 64 KiB of its size, at most five minutes more, is also dropped. `0` or negative to disable this limit and the send deadline.", DefaultValue = "268435456")]
+    [ConfigItem(Description = "The max total size, in bytes, of HTTP JSON-RPC responses to unauthenticated URLs that are written but not yet sent. One connection can hold at most 1/16 of it. A response that would go above either limit is not sent and its connection is closed; responses already in progress are not affected. `0` or negative to disable this limit.", DefaultValue = "536870912")]
     long MaxUnsentResponsesSize { get; set; }
+
+    [ConfigItem(Description = "The min rate, in bytes per second, at which a caller of an unauthenticated HTTP JSON-RPC URL must read a response, after a grace period of 5 seconds. The server closes a connection that reads more slowly. `0` to disable.", DefaultValue = "4096")]
+    int MinResponseDataRate { get; set; }
 
     [ConfigItem(Description = "The max block count limit for the `eth_simulate` JSON-RPC method.", DefaultValue = "256")]
     long? MaxSimulateBlocksCap { get; set; }

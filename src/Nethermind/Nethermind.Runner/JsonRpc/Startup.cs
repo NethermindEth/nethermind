@@ -27,6 +27,7 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.AspNetCore.Server.Kestrel.Core.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
@@ -65,6 +66,7 @@ public class Startup : IStartup
     private IJsonRpcConfig _jsonRpcConfig = null!;
     private IRpcAuthentication? _rpcAuthentication;
     private ILogger _logger = default;
+    private static readonly TimeSpan MinResponseDataRateGracePeriod = TimeSpan.FromSeconds(5);
     private readonly UnsentResponseCounter _unsentResponses = new();
 
     public Startup() { }
@@ -472,6 +474,14 @@ public class Startup : IStartup
         await ctx.Response.CompleteAsync();
     }
 
+    private void LimitUnauthenticatedResponse(HttpContext ctx)
+    {
+        if (_jsonRpcConfig.MinResponseDataRate > 0 && ctx.Features.Get<IHttpMinResponseDataRateFeature>() is { } dataRate)
+        {
+            dataRate.MinDataRate = new MinDataRate(_jsonRpcConfig.MinResponseDataRate, MinResponseDataRateGracePeriod);
+        }
+    }
+
     internal async Task ProcessJsonRpcRequestCoreAsync(HttpContext ctx, JsonRpcUrl jsonRpcUrl)
     {
         long startTime = _jsonRpcLocalStats.IsEnabled ? Stopwatch.GetTimestamp() : 0;
@@ -509,6 +519,7 @@ public class Startup : IStartup
                 RemoteAddress = ctx.Connection.RemoteIpAddress,
                 ForwardedFor = ctx.Request.Headers["X-Forwarded-For"]
             };
+            if (!jsonRpcUrl.IsAuthenticated) LimitUnauthenticatedResponse(ctx);
             responseSink = new HttpJsonRpcResponseSink(ctx, jsonRpcUrl, _jsonRpcConfig, _jsonRpcLocalStats, _logger, startTime, jsonRpcUrl.IsAuthenticated || _jsonRpcConfig.MaxUnsentResponsesSize <= 0 ? null : _unsentResponses);
 
             await _jsonRpcProcessor.ProcessAsync(

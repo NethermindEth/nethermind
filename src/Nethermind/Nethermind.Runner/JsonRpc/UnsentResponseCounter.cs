@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 
@@ -8,77 +9,49 @@ namespace Nethermind.Runner.JsonRpc;
 
 internal sealed class UnsentResponseCounter
 {
+    internal const int ConnectionShareDivisor = 16;
+
     private readonly Lock _lock = new();
-    private readonly Dictionary<HttpJsonRpcResponseSink, long> _reserved = [];
+    private readonly Dictionary<string, long> _connections = [];
     private long _bytes;
 
-    public bool TryReserve(HttpJsonRpcResponseSink response, long bytes, long limit, long stalledSendTimestamp)
+    public bool TryReserve(string connectionId, long bytes, long limit)
     {
-        List<HttpJsonRpcResponseSink>? evicted = null;
-        bool reserved = false;
+        long connectionLimit = Math.Max(1, limit / ConnectionShareDivisor);
         lock (_lock)
         {
-            _reserved.TryGetValue(response, out long reservedBytes);
-            if (reservedBytes + bytes <= limit)
+            _connections.TryGetValue(connectionId, out long connectionBytes);
+            if (connectionBytes + bytes > connectionLimit || _bytes + bytes > limit)
             {
-                while (_bytes + bytes > limit)
-                {
-                    (HttpJsonRpcResponseSink? largest, long largestBytes) = FindLargestStalled(response, stalledSendTimestamp);
-                    if (largest is null)
-                    {
-                        break;
-                    }
-
-                    _reserved.Remove(largest);
-                    _bytes -= largestBytes;
-                    (evicted ??= []).Add(largest);
-                }
-
-                if (_bytes + bytes <= limit)
-                {
-                    _reserved[response] = reservedBytes + bytes;
-                    _bytes += bytes;
-                    reserved = true;
-                }
+                return false;
             }
-        }
 
-        if (evicted is not null)
-        {
-            foreach (HttpJsonRpcResponseSink sink in evicted)
-            {
-                sink.Evict();
-            }
-        }
-
-        return reserved;
-    }
-
-    public void Release(HttpJsonRpcResponseSink response)
-    {
-        lock (_lock)
-        {
-            if (_reserved.Remove(response, out long reserved))
-            {
-                _bytes -= reserved;
-            }
+            _connections[connectionId] = connectionBytes + bytes;
+            _bytes += bytes;
+            return true;
         }
     }
 
-    private (HttpJsonRpcResponseSink? Sink, long Bytes) FindLargestStalled(HttpJsonRpcResponseSink except, long stalledSendTimestamp)
+    public void Release(string connectionId, long bytes)
     {
-        HttpJsonRpcResponseSink? largest = null;
-        long largestBytes = 0;
-        foreach ((HttpJsonRpcResponseSink sink, long bytes) in _reserved)
+        lock (_lock)
         {
-            long sendStart = sink.SendStartTimestamp;
-            if (bytes > largestBytes && sendStart != 0 && sendStart < stalledSendTimestamp && !ReferenceEquals(sink, except))
+            if (!_connections.TryGetValue(connectionId, out long connectionBytes))
             {
-                largest = sink;
-                largestBytes = bytes;
+                return;
             }
-        }
 
-        return (largest, largestBytes);
+            long released = Math.Min(bytes, connectionBytes);
+            if (connectionBytes == released)
+            {
+                _connections.Remove(connectionId);
+            }
+            else
+            {
+                _connections[connectionId] = connectionBytes - released;
+            }
+
+            _bytes -= released;
+        }
     }
 }
