@@ -42,16 +42,23 @@ public class TestFixtureDownloaderTests
             File.Delete(_cacheRoot);
     }
 
-    [Test]
-    public void Transient_failures_are_retried_until_the_download_succeeds()
+    private static readonly TestCaseData[] TransientFailureCases =
+    [
+        new TestCaseData(new Func<HttpResponseMessage>[] { BadGateway, BadGateway, Archive }, 3).SetName("Bad_gateway_responses_are_retried_until_the_download_succeeds"),
+        new TestCaseData(new Func<HttpResponseMessage>[] { BrokenStream, Archive }, 2).SetName("Broken_response_stream_is_retried_and_no_partial_extraction_is_used"),
+        new TestCaseData(new Func<HttpResponseMessage>[] { RequestTimeout, Archive }, 2).SetName("Request_timeout_is_retried_until_the_download_succeeds")
+    ];
+
+    [TestCaseSource(nameof(TransientFailureCases))]
+    public void Transient_failures_are_retried_until_the_download_succeeds(Func<HttpResponseMessage>[] responses, int expectedRequests)
     {
-        FakeHandler handler = new(BadGateway, BadGateway, Archive);
+        using FakeHandler handler = new(responses);
 
         string targetDir = Download(handler);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(handler.Requests, Is.EqualTo(3));
+            Assert.That(handler.Requests, Is.EqualTo(expectedRequests));
             Assert.That(File.ReadAllText(Path.Combine(targetDir, EntryName)), Is.EqualTo(EntryContent));
             Assert.That(File.Exists(Path.Combine(targetDir, TestFixtureDownloader.MarkerFileName)), Is.True);
             AssertNoTempDirectories();
@@ -59,16 +66,15 @@ public class TestFixtureDownloaderTests
     }
 
     [Test]
-    public void Broken_response_stream_is_retried_and_no_partial_extraction_is_used()
+    public void Cancellation_without_a_timeout_is_not_retried()
     {
-        FakeHandler handler = new(BrokenStream, Archive);
+        using FakeHandler handler = new(Cancelled, Archive);
 
-        string targetDir = Download(handler);
+        Assert.Throws<TaskCanceledException>(() => Download(handler));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(handler.Requests, Is.EqualTo(2));
-            Assert.That(File.ReadAllText(Path.Combine(targetDir, EntryName)), Is.EqualTo(EntryContent));
+            Assert.That(handler.Requests, Is.EqualTo(1));
             AssertNoTempDirectories();
         }
     }
@@ -76,7 +82,7 @@ public class TestFixtureDownloaderTests
     [Test]
     public void Persistent_transient_failure_throws_after_max_attempts_and_leaves_no_files()
     {
-        FakeHandler handler = new(BadGateway);
+        using FakeHandler handler = new(BadGateway);
 
         HttpRequestException exception = Assert.Throws<HttpRequestException>(() => Download(handler));
 
@@ -93,7 +99,7 @@ public class TestFixtureDownloaderTests
     [Test]
     public void Non_transient_failure_is_not_retried()
     {
-        FakeHandler handler = new(NotFound);
+        using FakeHandler handler = new(NotFound);
 
         HttpRequestException exception = Assert.Throws<HttpRequestException>(() => Download(handler));
 
@@ -110,7 +116,7 @@ public class TestFixtureDownloaderTests
     public void Local_filesystem_failure_is_not_retried_and_keeps_its_type()
     {
         File.WriteAllText(_cacheRoot, "not a directory");
-        FakeHandler handler = new(Archive);
+        using FakeHandler handler = new(Archive);
 
         IOException exception = Assert.Catch<IOException>(() => Download(handler));
 
@@ -124,8 +130,9 @@ public class TestFixtureDownloaderTests
     [Test]
     public void Completed_download_is_reused_without_a_request()
     {
-        Download(new FakeHandler(Archive));
-        FakeHandler handler = new(BadGateway);
+        using FakeHandler first = new(Archive);
+        Download(first);
+        using FakeHandler handler = new(BadGateway);
 
         string targetDir = Download(handler);
 
@@ -143,7 +150,9 @@ public class TestFixtureDownloaderTests
         File.WriteAllText(Path.Combine(TargetDir(), "partial.txt"), "partial");
         Directory.CreateDirectory(TargetDir() + TestFixtureDownloader.TempDirectoryInfix + "stale");
 
-        string targetDir = Download(new FakeHandler(Archive));
+        using FakeHandler handler = new(Archive);
+
+        string targetDir = Download(handler);
 
         using (Assert.EnterMultipleScope())
         {
@@ -173,6 +182,10 @@ public class TestFixtureDownloaderTests
     private static HttpResponseMessage BadGateway() => new(HttpStatusCode.BadGateway);
 
     private static HttpResponseMessage NotFound() => new(HttpStatusCode.NotFound);
+
+    private static HttpResponseMessage RequestTimeout() => throw new TaskCanceledException("The request timed out.", new TimeoutException());
+
+    private static HttpResponseMessage Cancelled() => throw new TaskCanceledException("The request was canceled.");
 
     private static HttpResponseMessage Archive() => new(HttpStatusCode.OK) { Content = new ByteArrayContent(CreateArchive()) };
 

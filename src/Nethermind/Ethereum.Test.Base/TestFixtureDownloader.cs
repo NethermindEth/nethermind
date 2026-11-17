@@ -159,7 +159,7 @@ public static class TestFixtureDownloader
     {
         HttpRequestException { StatusCode: null } => true,
         HttpRequestException { StatusCode: HttpStatusCode status } => IsTransient(status),
-        TaskCanceledException or TimeoutException => true,
+        TaskCanceledException { InnerException: TimeoutException } => true,
         HttpIOException or EndOfStreamException or InvalidDataException => true,
         _ => false
     };
