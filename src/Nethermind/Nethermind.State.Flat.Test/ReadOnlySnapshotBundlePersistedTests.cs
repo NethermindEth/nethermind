@@ -69,7 +69,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, tableData);
         PersistedSnapshotList list = new(1) { persisted };
 
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        SubstitutablePersistenceReader reader = Substitute.For<SubstitutablePersistenceReader>();
 
         using ReadOnlySnapshotBundle bundle = new(
             new SnapshotPooledList(0),
@@ -80,7 +80,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         byte[]? result = bundle.TryLoadStateRlp(path, Keccak.Compute("hash"), ReadFlags.None);
 
         Assert.That(result, Is.EqualTo(nodeRlp));
-        reader.DidNotReceive().TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ValueHash256>(), Arg.Any<ReadFlags>());
+        reader.DidNotReceive().TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>());
     }
 
     [Test]
@@ -102,7 +102,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, tableData);
         PersistedSnapshotList list = new(1) { persisted };
 
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        SubstitutablePersistenceReader reader = Substitute.For<SubstitutablePersistenceReader>();
 
         using ReadOnlySnapshotBundle bundle = new(
             new SnapshotPooledList(0),
@@ -113,7 +113,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         byte[]? result = bundle.TryLoadStorageRlp(address, path, Keccak.Compute("hash"), ReadFlags.None);
 
         Assert.That(result, Is.EqualTo(nodeRlp));
-        reader.DidNotReceive().TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ValueHash256>(), Arg.Any<ReadFlags>());
+        reader.DidNotReceive().TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>());
     }
 
     [Test]
@@ -136,8 +136,8 @@ public class ReadOnlySnapshotBundlePersistedTests
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, tableData);
         PersistedSnapshotList list = new(1) { persisted };
 
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
-        reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ValueHash256>(), Arg.Any<ReadFlags>()).Returns(dbRlp);
+        SubstitutablePersistenceReader reader = Substitute.For<SubstitutablePersistenceReader>();
+        reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(dbRlp);
 
         using ReadOnlySnapshotBundle bundle = new(
             new SnapshotPooledList(0),
@@ -148,7 +148,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         byte[]? result = bundle.TryLoadStateRlp(missingPath, Keccak.Compute("hash"), ReadFlags.None);
 
         Assert.That(result, Is.EqualTo(dbRlp));
-        reader.Received(1).TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ValueHash256>(), Arg.Any<ReadFlags>());
+        reader.Received(1).TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>());
     }
 
     [Test]
@@ -157,8 +157,8 @@ public class ReadOnlySnapshotBundlePersistedTests
         byte[] dbRlp = [0xC0];
         TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute("path"), 4);
 
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
-        reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ValueHash256>(), Arg.Any<ReadFlags>()).Returns(dbRlp);
+        SubstitutablePersistenceReader reader = Substitute.For<SubstitutablePersistenceReader>();
+        reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(dbRlp);
 
         using ReadOnlySnapshotBundle bundle = new(
             new SnapshotPooledList(0),
@@ -169,7 +169,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         byte[]? result = bundle.TryLoadStateRlp(path, Keccak.Compute("hash"), ReadFlags.None);
 
         Assert.That(result, Is.EqualTo(dbRlp));
-        reader.Received(1).TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ValueHash256>(), Arg.Any<ReadFlags>());
+        reader.Received(1).TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>());
     }
 
     [Test]

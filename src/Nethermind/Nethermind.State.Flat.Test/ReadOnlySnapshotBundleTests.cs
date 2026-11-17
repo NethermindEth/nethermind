@@ -257,8 +257,8 @@ public class ReadOnlySnapshotBundleTests
     public void TryLoadStateRlp_DelegatesToReader([Values] bool detailedMetrics)
     {
         TreePath path = TreePath.FromHexString("12");
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
-        reader.TryLoadStateRlp(path, TestItem.KeccakB.ValueHash256, ReadFlags.None).Returns([0xc1, 0xff]);
+        SubstitutablePersistenceReader reader = Substitute.For<SubstitutablePersistenceReader>();
+        reader.TryLoadStateRlp(path, ReadFlags.None).Returns([0xc1, 0xff]);
 
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(MakeSnapshot()), reader, detailedMetrics);
 
@@ -270,8 +270,8 @@ public class ReadOnlySnapshotBundleTests
     {
         TreePath path = TreePath.FromHexString("ab");
         Hash256 address = TestItem.KeccakA;
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
-        reader.TryLoadStorageRlp(address, path, TestItem.KeccakB.ValueHash256, ReadFlags.None).Returns([0xc1, 0xee]);
+        SubstitutablePersistenceReader reader = Substitute.For<SubstitutablePersistenceReader>();
+        reader.TryLoadStorageRlp(address, path, ReadFlags.None).Returns([0xc1, 0xee]);
 
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(MakeSnapshot()), reader, detailedMetrics);
 
@@ -1300,10 +1300,8 @@ public class ReadOnlySnapshotBundleFilterTests
 
         public StateId CurrentState => currentState;
         public MigrationCursor? GetMigrationCursor() => null;
-        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => null;
-        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => null;
-        public byte[]? TryLoadStateRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags) => null;
-        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags) => null;
+        public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => false;
+        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => false;
         public bool TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => false;
         public bool TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => false;
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;

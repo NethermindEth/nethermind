@@ -63,24 +63,17 @@ public sealed class HalfPathFallbackPersistence(IPersistence inner, INodeStorage
 
         public MigrationCursor? GetMigrationCursor() => copied;
 
-        public byte[]? TryLoadStateRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags) =>
-            inner.TryLoadStateRlp(path, hash, flags) ?? LoadUncopied(null, path, hash, flags);
-
-        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags) =>
-            inner.TryLoadStorageRlp(address, path, hash, flags) ?? LoadUncopied(address, path, hash, flags);
-
         public bool TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
             inner.TryLoadStateRlp(path, hash, flags, action, arg) || (!copied.IsCopied(null, path) && halfPath.TryGet(null, path, hash, flags, action, arg));
 
         public bool TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
             inner.TryLoadStorageRlp(address, path, hash, flags, action, arg) || (!copied.IsCopied(address, path) && halfPath.TryGet(address, path, hash, flags, action, arg));
 
-        private byte[]? LoadUncopied(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags) =>
-            copied.IsCopied(address, path) ? null : halfPath.Get(address, path, hash, flags);
+        public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+            inner.TryLoadStateRlp(path, flags, action, arg);
 
-        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => inner.TryLoadStateRlp(path, flags);
-
-        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => inner.TryLoadStorageRlp(address, path, flags);
+        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+            inner.TryLoadStorageRlp(address, path, flags, action, arg);
 
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) => inner.GetAccountRaw(addrHash);
 

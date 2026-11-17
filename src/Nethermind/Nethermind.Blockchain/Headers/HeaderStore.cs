@@ -24,6 +24,7 @@ public class HeaderStore : IHeaderStore, IClearableCache
     public const int CacheSize = 256 + 16;
 
     private const int NumberPrefixedKeyLength = sizeof(ulong) + Hash256.Size;
+    private const int BlockNumberLength = sizeof(ulong);
 
     private readonly IDb _headerDb;
     private readonly IDb _blockNumberDb;
@@ -116,11 +117,88 @@ public class HeaderStore : IHeaderStore, IClearableCache
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// A header read from the database is copied as it is stored when <paramref name="decoder"/> is the decoder of
+    /// this store, or both are a plain <see cref="HeaderDecoder"/>. A cached or pending header is encoded.
+    /// </remarks>
     [SkipLocalsInit]
-    public BlockHeader? GetIfBloomMatches(Hash256 blockHash, ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
+    public bool TryAppendRlp(in ValueHash256 blockHash, ulong blockNumber, IHeaderDecoder decoder, ArrayPoolList<byte> destination)
     {
-        BlockHeader? header = _headerCache.Get(in blockHash.ValueHash256);
-        if (header is null && _pending is not null) _pending.TryGet(blockHash, out header);
+        BlockHeader? header = _headerCache.Get(in blockHash);
+        if (header is null && _pending is not null) _pending.TryGet(in blockHash, out header);
+        if (header is null && EncodesAsStored(decoder))
+        {
+            Span<byte> key = stackalloc byte[NumberPrefixedKeyLength];
+            KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, key);
+            return TryAppendStored(key, destination) || TryAppendStored(blockHash.Bytes, destination);
+        }
+
+        header ??= Get(new Hash256(in blockHash), shouldCache: false, blockNumber);
+        if (header is null) return false;
+
+        int length = decoder.GetLength(header);
+        RlpWriter writer = RlpWriter.ContentWriter(destination.AddUninitialized(length));
+        decoder.Encode(ref writer, header);
+        Rlp.CheckLength(in writer, length);
+        return true;
+    }
+
+    private bool EncodesAsStored(IHeaderDecoder decoder) =>
+        ReferenceEquals(decoder, _headerDecoder)
+        || (decoder.GetType() == typeof(HeaderDecoder) && _headerDecoder.GetType() == typeof(HeaderDecoder));
+
+    private bool TryAppendStored(ReadOnlySpan<byte> key, ArrayPoolList<byte> destination)
+    {
+        if (_headerDb is IReadOnlyNativeKeyValueStore native)
+        {
+            ReadOnlySpan<byte> slice = native.GetNativeSlice(key, out IntPtr handle);
+            if (slice.IsNull()) return false;
+
+            try
+            {
+                return TryAppendFirstItem(slice, destination);
+            }
+            finally
+            {
+                native.DangerousReleaseHandle(handle);
+            }
+        }
+
+        Span<byte> data = _headerDb.GetSpan(key);
+        if (data.IsNull()) return false;
+
+        try
+        {
+            return TryAppendFirstItem(data, destination);
+        }
+        finally
+        {
+            _headerDb.DangerousReleaseMemory(data);
+        }
+    }
+
+    private static bool TryAppendFirstItem(ReadOnlySpan<byte> stored, ArrayPoolList<byte> destination)
+    {
+        if (stored.Length == 0) return false;
+
+        RlpReader reader = new(stored);
+        destination.AddRange(reader.ReadEncodedItem<OffFlag>());
+        return true;
+    }
+
+    /// <inheritdoc/>
+    public BlockHeader? GetIfBloomMatches(Hash256 blockHash, ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found) =>
+        GetIfBloomMatches(in blockHash.ValueHash256, blockHash, blockNumber, bloomMatches, out found);
+
+    /// <inheritdoc/>
+    public BlockHeader? GetIfBloomMatches(in ValueHash256 blockHash, ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found) =>
+        GetIfBloomMatches(in blockHash, null, blockNumber, bloomMatches, out found);
+
+    [SkipLocalsInit]
+    private BlockHeader? GetIfBloomMatches(in ValueHash256 blockHash, Hash256? hash, ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
+    {
+        BlockHeader? header = _headerCache.Get(in blockHash);
+        if (header is null && _pending is not null) _pending.TryGet(in blockHash, out header);
         if (header is not null)
         {
             found = true;
@@ -129,11 +207,11 @@ public class HeaderStore : IHeaderStore, IClearableCache
 
         Span<byte> key = stackalloc byte[NumberPrefixedKeyLength];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, key);
-        header = ReadIfBloomMatches(key, blockHash, bloomMatches, out found);
-        return found ? header : ReadIfBloomMatches(blockHash.Bytes, blockHash, bloomMatches, out found);
+        header = ReadIfBloomMatches(key, in blockHash, hash, bloomMatches, out found);
+        return found ? header : ReadIfBloomMatches(blockHash.Bytes, in blockHash, hash, bloomMatches, out found);
     }
 
-    private BlockHeader? ReadIfBloomMatches(ReadOnlySpan<byte> key, Hash256 blockHash, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
+    private BlockHeader? ReadIfBloomMatches(ReadOnlySpan<byte> key, in ValueHash256 blockHash, Hash256? hash, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
     {
         if (_headerDb is IReadOnlyNativeKeyValueStore native)
         {
@@ -146,7 +224,7 @@ public class HeaderStore : IHeaderStore, IClearableCache
 
             try
             {
-                return DecodeIfBloomMatches(slice, blockHash, bloomMatches, out found);
+                return DecodeIfBloomMatches(slice, in blockHash, hash, bloomMatches, out found);
             }
             finally
             {
@@ -163,7 +241,7 @@ public class HeaderStore : IHeaderStore, IClearableCache
 
         try
         {
-            return DecodeIfBloomMatches(data, blockHash, bloomMatches, out found);
+            return DecodeIfBloomMatches(data, in blockHash, hash, bloomMatches, out found);
         }
         finally
         {
@@ -171,7 +249,7 @@ public class HeaderStore : IHeaderStore, IClearableCache
         }
     }
 
-    private BlockHeader? DecodeIfBloomMatches(ReadOnlySpan<byte> rlp, Hash256 blockHash, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
+    private BlockHeader? DecodeIfBloomMatches(ReadOnlySpan<byte> rlp, in ValueHash256 blockHash, Hash256? hash, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
     {
         found = rlp.Length != 0;
         if (!found) return null;
@@ -183,7 +261,7 @@ public class HeaderStore : IHeaderStore, IClearableCache
         RlpReader reader = new(rlp);
         BlockHeader? header = _headerDecoder.Decode(ref reader, RlpBehaviors.AllowExtraBytes | RlpBehaviors.TrustedInput | RlpBehaviors.ExcludeHashes);
         found = header is not null;
-        if (found) header!.Hash = blockHash;
+        if (found) header!.Hash = hash ?? new Hash256(in blockHash);
         return found && (bloomTested || bloomMatches(header!.Bloom!.Bytes)) ? header : null;
     }
 
@@ -241,23 +319,27 @@ public class HeaderStore : IHeaderStore, IClearableCache
         return Get(blockHash)?.Number;
     }
 
+    [SkipLocalsInit]
     private ulong? GetBlockNumberFromBlockNumberDb(Hash256 blockHash)
     {
-        Span<byte> numberSpan = _blockNumberDb.GetSpan(blockHash);
-        if (numberSpan.IsNullOrEmpty()) return null;
+        Span<byte> numberSpan = stackalloc byte[BlockNumberLength];
+        int length;
         try
         {
-            if (numberSpan.Length != 8)
-            {
-                throw new InvalidDataException($"Unexpected number span length: {numberSpan.Length}");
-            }
-
-            return BinaryPrimitives.ReadUInt64BigEndian(numberSpan);
+            length = _blockNumberDb.Get(blockHash.Bytes, numberSpan);
         }
-        finally
+        catch (ArgumentException e)
         {
-            _blockNumberDb.DangerousReleaseMemory(numberSpan);
+            throw new InvalidDataException($"Block number entry is longer than {BlockNumberLength} bytes", e);
         }
+
+        if (length == 0) return null;
+        if (length != BlockNumberLength)
+        {
+            throw new InvalidDataException($"Unexpected number span length: {length}");
+        }
+
+        return BinaryPrimitives.ReadUInt64BigEndian(numberSpan);
     }
 
     public Dictionary<ValueHash256, BlockHeader> PrefetchByNumberRange(ulong fromInclusive, ulong toExclusive) =>
@@ -265,7 +347,7 @@ public class HeaderStore : IHeaderStore, IClearableCache
 
     private Dictionary<ValueHash256, BlockHeader> PrefetchByNumberRange(ulong fromInclusive, ulong toExclusive, int capacity)
     {
-        Dictionary<ValueHash256, BlockHeader> prefetched = new(capacity);
+        Dictionary<ValueHash256, BlockHeader> prefetched = [with(capacity)];
         if (toExclusive <= fromInclusive || _headerDb is not ISortedKeyValueStore sorted) return prefetched;
 
         Span<byte> startKey = stackalloc byte[NumberPrefixedKeyLength];
@@ -297,7 +379,7 @@ public class HeaderStore : IHeaderStore, IClearableCache
 
         if (cursor is null) return ArrayPoolList<BlockHeader>.Empty();
 
-        ArrayPoolList<BlockHeader> result = new(count) { cursor };
+        ArrayPoolList<BlockHeader> result = [with(count), cursor];
         while (result.Count < count && cursor.ParentHash is not null)
         {
             ulong parentNumber = cursor.Number - 1;

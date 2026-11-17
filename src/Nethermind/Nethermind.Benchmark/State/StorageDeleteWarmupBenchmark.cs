@@ -274,28 +274,16 @@ public class StorageDeleteWarmupBenchmark
             while (Stopwatch.GetTimestamp() < until) Thread.SpinWait(8);
         }
 
-        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags)
+        public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
         {
             Read();
-            return inner.TryLoadStateRlp(path, flags);
+            return inner.TryLoadStateRlp(path, flags, action, arg);
         }
 
-        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags)
+        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
         {
             Read();
-            return inner.TryLoadStorageRlp(address, path, flags);
-        }
-
-        public byte[]? TryLoadStateRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags)
-        {
-            Read();
-            return inner.TryLoadStateRlp(path, hash, flags);
-        }
-
-        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags)
-        {
-            Read();
-            return inner.TryLoadStorageRlp(address, path, hash, flags);
+            return inner.TryLoadStorageRlp(address, path, flags, action, arg);
         }
 
         public bool TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct

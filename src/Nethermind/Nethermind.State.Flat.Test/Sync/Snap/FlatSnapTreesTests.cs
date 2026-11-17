@@ -19,7 +19,7 @@ namespace Nethermind.State.Flat.Test.Sync.Snap;
 [TestFixture]
 public class FlatSnapTreesTests
 {
-    private static IPersistence.IPersistenceReader Reader() => Substitute.For<IPersistence.IPersistenceReader>();
+    private static SubstitutablePersistenceReader Reader() => Substitute.For<SubstitutablePersistenceReader>();
     private static IPersistence.IWriteBatch WriteBatch() => Substitute.For<IPersistence.IWriteBatch>();
 
     private static FlatSnapStateTree NewStateTree(IPersistence.IPersistenceReader reader, IPersistence.IWriteBatch? writer = null, bool enableDoubleWriteCheck = false) =>
@@ -41,7 +41,7 @@ public class FlatSnapTreesTests
     [TestCaseSource(nameof(StateIsPersistedCases))]
     public void StateTree_IsPersisted(byte[]? storedRlp, ValueHash256? expectedHash, bool expected)
     {
-        IPersistence.IPersistenceReader reader = Reader();
+        SubstitutablePersistenceReader reader = Reader();
         reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(storedRlp);
 
         using FlatSnapStateTree tree = NewStateTree(reader);
@@ -52,7 +52,7 @@ public class FlatSnapTreesTests
     [Test]
     public void StorageTree_IsPersisted_DelegatesToStorageRlpLookup()
     {
-        IPersistence.IPersistenceReader reader = Reader();
+        SubstitutablePersistenceReader reader = Reader();
         byte[] rlp = [0xc1, 0x99];
         Hash256 addressHash = Keccak.Compute(Bytes.FromHexString("aa"));
         reader.TryLoadStorageRlp(addressHash, Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(rlp);

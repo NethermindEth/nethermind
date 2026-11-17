@@ -11,8 +11,10 @@ using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
@@ -114,6 +116,57 @@ namespace Nethermind.State.Repositories
             level = _blockInfoDb.Get(number, _decoder);
             // A level persisted while this load ran is newer than the one read.
             return _blockInfoCache.TryGetNoRefresh(in key, out ChainLevelInfo? cached) ? cached : level;
+        }
+
+        public bool TryGetMainChainBlockWithoutCaching(ulong number, out ValueHash256 blockHash, out UInt256 totalDifficulty)
+        {
+            LevelNumber key = new(number);
+            if (_blockInfoCache.TryGetNoRefresh(in key, out ChainLevelInfo? level)) return IChainLevelInfoRepository.TryGetMainChainBlock(level, out blockHash, out totalDifficulty);
+
+            bool found = ReadMainChainBlock(number, out blockHash, out totalDifficulty);
+            return _blockInfoCache.TryGetNoRefresh(in key, out ChainLevelInfo? cached)
+                ? IChainLevelInfoRepository.TryGetMainChainBlock(cached, out blockHash, out totalDifficulty)
+                : found;
+        }
+
+        private bool ReadMainChainBlock(ulong number, out ValueHash256 blockHash, out UInt256 totalDifficulty)
+        {
+            ReadOnlySpan<byte> key = number.ToBigEndianSpanWithoutLeadingZeros(out ulong _);
+            if (_blockInfoDb is IReadOnlyNativeKeyValueStore native)
+            {
+                ReadOnlySpan<byte> slice = native.GetNativeSlice(key, out IntPtr handle);
+                if (slice.IsNull()) return NotFound(out blockHash, out totalDifficulty);
+
+                try
+                {
+                    return ReadMainChainBlock(slice, out blockHash, out totalDifficulty);
+                }
+                finally
+                {
+                    native.DangerousReleaseHandle(handle);
+                }
+            }
+
+            Span<byte> data = _blockInfoDb.GetSpan(key);
+            if (data.IsNull()) return NotFound(out blockHash, out totalDifficulty);
+
+            try
+            {
+                return ReadMainChainBlock(data, out blockHash, out totalDifficulty);
+            }
+            finally
+            {
+                _blockInfoDb.DangerousReleaseMemory(data);
+            }
+        }
+
+        private bool ReadMainChainBlock(ReadOnlySpan<byte> rlp, out ValueHash256 blockHash, out UInt256 totalDifficulty)
+        {
+            if (rlp.Length == 0) return NotFound(out blockHash, out totalDifficulty);
+            if (ChainLevelDecoder.TryReadMainChainBlock(rlp, out bool hasMainChainBlock, out blockHash, out totalDifficulty)) return hasMainChainBlock;
+
+            RlpReader reader = new(rlp);
+            return IChainLevelInfoRepository.TryGetMainChainBlock(_decoder.Decode(ref reader, RlpBehaviors.AllowExtraBytes | RlpBehaviors.TrustedInput), out blockHash, out totalDifficulty);
         }
 
         public IOwnedReadOnlyList<ChainLevelInfo?> MultiLoadLevel(in ArrayPoolListRef<ulong> blockNumbers)
@@ -219,6 +272,13 @@ namespace Nethermind.State.Repositories
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public bool Equals(in LevelNumber other) => _number == other._number;
+        }
+
+        private static bool NotFound(out ValueHash256 blockHash, out UInt256 totalDifficulty)
+        {
+            blockHash = default;
+            totalDifficulty = default;
+            return false;
         }
     }
 }

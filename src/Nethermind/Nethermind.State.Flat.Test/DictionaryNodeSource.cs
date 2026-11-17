@@ -63,11 +63,12 @@ public sealed class DictionaryNodeSource(IReadOnlyDictionary<TreePath, byte[]> n
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => throw new NotSupportedException();
         public StateId CurrentState => throw new NotSupportedException();
         public MigrationCursor? GetMigrationCursor() => null;
-        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => source.LoadRlp(path);
-        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => source.LoadRlp(path);
 
-        public byte[]? TryLoadStateRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags) => source.LoadRlp(path);
-        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags) => source.LoadRlp(path);
+        public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg)
+            where TArg : allows ref struct => Pass(source.LoadRlp(path), action, arg);
+
+        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg)
+            where TArg : allows ref struct => Pass(source.LoadRlp(path), action, arg);
 
         public bool TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg)
             where TArg : allows ref struct => Pass(source.LoadRlp(path), action, arg);

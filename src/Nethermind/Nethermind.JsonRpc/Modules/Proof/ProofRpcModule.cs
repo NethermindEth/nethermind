@@ -90,7 +90,11 @@ namespace Nethermind.JsonRpc.Modules.Proof
             TxReceipt? receipt = storedReceipts.ForTransaction(txHash);
             if (receipt is null)
             {
-                return ResultWrapper<ReceiptWithProof>.Success(null);
+                // Only a stored receipt set gets here: with receipt regeneration on, the read above has already served the
+                // receipt, or failed with 4444, for a block whose receipts are not stored.
+                return blockFinder.IsTransactionPruned(block, storedReceipts)
+                    ? ResultWrapper<ReceiptWithProof>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable)
+                    : ResultWrapper<ReceiptWithProof>.Success(null);
             }
 
             Transaction[] txs = block.Transactions;
@@ -235,7 +239,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
         {
             if (txIndex == 0) return 0;
 
-            HashSet<Hash256> preceding = new(txIndex);
+            HashSet<Hash256> preceding = [with(txIndex)];
             for (int i = 0; i < txIndex; i++)
             {
                 preceding.Add(txs[i].Hash!);

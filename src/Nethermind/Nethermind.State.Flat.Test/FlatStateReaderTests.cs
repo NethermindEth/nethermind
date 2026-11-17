@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Db;
@@ -189,6 +190,19 @@ public class FlatStateReaderTests
             // C's leaf is loaded twice: for the account and for the storage root its slot read needs.
             Assert.That((trieReader.StateRlpLoads, trieReader.StorageRlpLoads), Is.EqualTo((2, 1)));
         }
+    }
+
+    [Test]
+    public void RunTreeVisitor_ReportsTheAccountOfEachStorageTrie([Values(1, 4)] int parallelism)
+    {
+        CountingTrieReader trieReader = CountingTrieReader.WithAccountsAndSlot(out Hash256 stateRoot, TestItem.AddressA, TestItem.AddressC);
+        BlockHeader header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(stateRoot).TestObject;
+        FlatStateReader reader = CreateReader(new CurrentBundleFlatDbManager(trieReader, snapshot: null, persisted: null));
+        StorageAddressCollector collector = new();
+
+        reader.RunTreeVisitor(collector, header, new VisitingOptions { MaxDegreeOfParallelism = parallelism });
+
+        Assert.That(collector.Addresses, Is.EquivalentTo(new[] { Keccak.Compute(TestItem.AddressA.Bytes), Keccak.Compute(TestItem.AddressC.Bytes) }));
     }
 
     [Test]
@@ -400,7 +414,7 @@ public class FlatStateReaderTests
             return StorageAvailable && storageTrees.TryGetValue(address, out StorageTree? storageTree) ? storageTree.GetNodeByPath(path.ToNibble()) : null;
         }
 
-        public bool TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
         {
             byte[]? rlp = TryLoadStateRlp(path, flags);
             if (rlp is null) return false;
@@ -408,16 +422,19 @@ public class FlatStateReaderTests
             return true;
         }
 
-        public bool TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
         {
-            byte[]? rlp = TryLoadStorageRlp(new Hash256(address), path, flags);
+            byte[]? rlp = TryLoadStorageRlp(address, path, flags);
             if (rlp is null) return false;
             action(rlp, arg);
             return true;
         }
 
-        public byte[]? TryLoadStateRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags) => TryLoadStateRlp(path, flags);
-        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags) => TryLoadStorageRlp(address, path, flags);
+        public bool TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+            TryLoadStateRlp(path, flags, action, arg);
+
+        public bool TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+            TryLoadStorageRlp(new Hash256(address), path, flags, action, arg);
 
         public Account? GetAccount(Address address) => null;
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => false;

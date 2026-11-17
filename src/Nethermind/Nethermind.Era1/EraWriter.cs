@@ -44,10 +44,18 @@ public class EraWriter : IDisposable
         _e2StoreWriter = e2StoreWriter;
         _accumulatorCalculator = new();
         _specProvider = specProvider;
-        _entryIndexes = new(MaxEra1Size);
+        _entryIndexes = [with(MaxEra1Size)];
     }
 
     public async Task Add(Block block, TxReceipt[] receipts, CancellationToken cancellation = default)
+    {
+        using ArrayPoolSpan<byte> bodyBytes = _blockBodyDecoder.EncodeToArrayPoolSpan(block.Body);
+        await Add(block, bodyBytes.AsMemory(), receipts, cancellation);
+    }
+
+    /// <summary>Adds <paramref name="block"/> with its body already encoded, so its transactions are not encoded again.</summary>
+    /// <param name="encodedBody">The encoded body of <paramref name="block"/> with its sequence prefix.</param>
+    public async Task Add(Block block, Memory<byte> encodedBody, TxReceipt[] receipts, CancellationToken cancellation = default)
     {
         if (_finalized)
             throw new EraException($"Finalized() has been called on this {nameof(EraWriter)}, and no more blocks can be added. ");
@@ -80,8 +88,7 @@ public class EraWriter : IDisposable
         using ArrayPoolSpan<byte> headerBytes = _headerDecoder.EncodeToArrayPoolSpan(block.Header, behaviors);
         _totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedHeader, headerBytes.AsMemory(), cancellation);
 
-        using ArrayPoolSpan<byte> bodyBytes = _blockBodyDecoder.EncodeToArrayPoolSpan(block.Body, behaviors);
-        _totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedBody, bodyBytes.AsMemory(), cancellation);
+        _totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedBody, encodedBody, cancellation);
 
         using ArrayPoolSpan<byte> receiptBytes = _receiptDecoder.EncodeToArrayPoolSpan(receipts.AsSpan(), behaviors);
         _totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedReceipts, receiptBytes.AsMemory(), cancellation);

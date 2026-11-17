@@ -19,7 +19,8 @@ make build
 ```
 
 bflat fails the build on an F, D, C or A instruction in the image, as
-Airbender decodes RV32IM only, and on an image that does not fit the ROM.
+Airbender decodes RV32IM only, and on an image that does not fit the ROM,
+its unwind tables included.
 
 The build writes `bin/nethermind` (ELF), `bin/nethermind.bin` (the ROM image) and
 `bin/nethermind.text` (the instructions).
@@ -47,10 +48,10 @@ make verify INPUT=11962427.ssz
 
 ## Notes
 
-- The image has no unwind tables. An exception goes to the shared `ZkvmThrow`
-  handler, which publishes the failure result.
-- The image has no reflection data, so the exception handler prints the message
-  without the type name.
+- The image keeps its unwind tables, so an exception is caught by the
+  executor's own handlers, which publish the failure result. The runtime has no
+  GC info in its EH tables (`IlcZkNoGcInfo`), which keeps the image in the
+  4 MiB ROM.
 - The guest carries a frame's gas in 32 bits. A transaction with a gas limit of
   2^31 or more, possible only before EIP-7825 on a chain whose block gas limit
   is that high, stops the guest, which then publishes the failure result for a

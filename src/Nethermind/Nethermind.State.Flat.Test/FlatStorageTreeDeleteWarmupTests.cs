@@ -224,16 +224,16 @@ public class FlatStorageTreeDeleteWarmupTests
 
         public long Loads => Interlocked.Read(ref _loads);
 
-        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags)
+        public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
         {
             Interlocked.Increment(ref _loads);
-            return inner.TryLoadStateRlp(path, flags);
+            return inner.TryLoadStateRlp(path, flags, action, arg);
         }
 
-        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags)
+        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
         {
             Interlocked.Increment(ref _loads);
-            return inner.TryLoadStorageRlp(address, path, flags);
+            return inner.TryLoadStorageRlp(address, path, flags, action, arg);
         }
 
         public bool TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
@@ -247,9 +247,6 @@ public class FlatStorageTreeDeleteWarmupTests
             Interlocked.Increment(ref _loads);
             return inner.TryLoadStorageRlp(address, path, hash, flags, action, arg);
         }
-
-        public byte[]? TryLoadStateRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags) => TryLoadStateRlp(path, flags);
-        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags) => TryLoadStorageRlp(address, path, flags);
 
         public Account? GetAccount(Address address) => inner.GetAccount(address);
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => inner.TryGetSlot(address, slot, ref outValue);

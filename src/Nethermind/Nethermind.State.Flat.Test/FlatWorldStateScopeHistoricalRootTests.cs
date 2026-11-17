@@ -211,8 +211,8 @@ public class FlatWorldStateScopeHistoricalRootTests
     {
         // A history-backed reader throws on every trie-node access, mirroring HistoryBackedPersistenceReader; the
         // historical scope must never call into it during post-block root recompute.
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
-        reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ValueHash256>(), Arg.Any<ReadFlags>())
+        SubstitutablePersistenceReader reader = Substitute.For<SubstitutablePersistenceReader>();
+        reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
             .Returns(_ => throw new NotSupportedException());
 
         ReadOnlySnapshotBundle readOnlyBundle = new(

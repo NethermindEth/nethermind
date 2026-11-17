@@ -51,24 +51,22 @@ public interface IPersistence
         MigrationCursor? GetMigrationCursor();
 
         StateId CurrentState { get; }
-        byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags);
-        byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags);
 
-        /// <summary>Loads the RLP of the state trie node at <paramref name="path"/> whose hash is <paramref name="hash"/>.</summary>
-        /// <remarks>A store keyed by path alone may ignore <paramref name="hash"/>; a hash-keyed fallback needs it to find the node.</remarks>
-        byte[]? TryLoadStateRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags);
+        /// <summary>Passes the RLP of the state trie node at <paramref name="path"/> to <paramref name="action"/>, which must not keep it.</summary>
+        /// <returns>Whether the node was found.</returns>
+        bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct;
 
-        /// <summary>Loads the RLP of the storage trie node at <paramref name="path"/> whose hash is <paramref name="hash"/>.</summary>
-        /// <inheritdoc cref="TryLoadStateRlp(in TreePath, in ValueHash256, ReadFlags)" path="/remarks"/>
-        byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags);
+        /// <summary>Passes the RLP of the storage trie node at <paramref name="path"/> to <paramref name="action"/>, which must not keep it.</summary>
+        /// <returns>Whether the node was found.</returns>
+        bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct;
 
         /// <summary>Passes the RLP of the state trie node at <paramref name="path"/> whose hash is <paramref name="hash"/> to <paramref name="action"/>, which must not keep it.</summary>
-        /// <inheritdoc cref="TryLoadStateRlp(in TreePath, in ValueHash256, ReadFlags)" path="/remarks"/>
+        /// <remarks>A store keyed by path alone may ignore <paramref name="hash"/>; a hash-keyed fallback needs it to find the node.</remarks>
         /// <returns>Whether the node was found.</returns>
         bool TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct;
 
         /// <summary>Passes the RLP of the storage trie node at <paramref name="path"/> whose hash is <paramref name="hash"/> to <paramref name="action"/>, which must not keep it.</summary>
-        /// <inheritdoc cref="TryLoadStateRlp(in TreePath, in ValueHash256, ReadFlags)" path="/remarks"/>
+        /// <inheritdoc cref="TryLoadStateRlp{TArg}(in TreePath, in ValueHash256, ReadFlags, ReadOnlySpanAction{byte, TArg}, TArg)" path="/remarks"/>
         /// <returns>Whether the node was found.</returns>
         bool TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct;
 

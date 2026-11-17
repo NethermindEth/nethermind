@@ -330,7 +330,8 @@ public sealed class ReadOnlySnapshotBundle(
 
         Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromDbNodesCount();
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        byte[]? value = persistenceReader.TryLoadStateRlp(path, hash.ValueHash256, flags);
+        byte[]? value = null;
+        persistenceReader.TryLoadStateRlp(path, hash.ValueHash256, flags, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref value));
         if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateRlpLabel);
 
         return value;
@@ -345,7 +346,8 @@ public sealed class ReadOnlySnapshotBundle(
 
         Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromDbNodesCount();
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        byte[]? value = persistenceReader.TryLoadStorageRlp(address, path, hash.ValueHash256, flags);
+        byte[]? value = null;
+        persistenceReader.TryLoadStorageRlp(address.ValueHash256, path, hash.ValueHash256, flags, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref value));
         if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageRlpLabel);
 
         return value;

@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
@@ -194,6 +195,27 @@ public class ReceiptLogCountLimitTests
         RlpLimit.InitMaxBlockGas(maxBlockGas);
 
         Assert.That(RlpLimit.ReceiptLogs.Limit, Is.EqualTo(expectedLimit));
+    }
+
+    [Test]
+    public void Network_reader_enforces_log_count_limit_during_traversal([Values(0, TwoLogBlockGasLimit, TwoLogBlockGasLimit + 1)] int logCount)
+    {
+        byte[] encoded = ReceiptRlpBuilder.EncodeReceipt(
+            ReceiptRlpBuilder.Repeat(logCount, ReceiptRlpBuilder.MinimalLog()));
+        RlpLimit.InitMaxBlockGas(TwoLogBlockGas);
+        RlpReader reader = new(encoded);
+
+        Assert.That(NetworkReceipt.TryRead(ref reader, withBloom: true, out _), Is.EqualTo(logCount <= TwoLogBlockGasLimit));
+    }
+
+    [Test]
+    public void Network_reader_leaves_log_data_above_the_limit_to_the_decoder([Values(0, 1)] int overLimit)
+    {
+        byte[] encoded = ReceiptRlpBuilder.EncodeReceipt(
+            [new LogEntry(Address.Zero, new byte[(int)16.MB + overLimit], [])]);
+        RlpReader reader = new(encoded);
+
+        Assert.That(NetworkReceipt.TryRead(ref reader, withBloom: true, out _), Is.EqualTo(overLimit == 0));
     }
 
     [Test]

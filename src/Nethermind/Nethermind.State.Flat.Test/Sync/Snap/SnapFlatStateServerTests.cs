@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using System.Threading;
 using Nethermind.Core;
@@ -190,11 +191,11 @@ public class SnapFlatStateServerTests
         WriteState(stateRootRlp, addressHash, storageRootRlp);
 
         using IPersistence.IPersistenceReader inner = _persistence.CreateReader();
-        IPersistence.IPersistenceReader reader = Substitute.For<SubstitutablePersistenceReader>();
+        SubstitutablePersistenceReader reader = Substitute.For<SubstitutablePersistenceReader>();
         reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
-            .Returns(ci => inner.TryLoadStateRlp((TreePath)ci[0], (ReadFlags)ci[1]));
+            .Returns(ci => inner.LoadStateRlp((TreePath)ci[0], (ReadFlags)ci[1]));
         reader.TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
-            .Returns(ci => inner.TryLoadStorageRlp((Hash256)ci[0], (TreePath)ci[1], (ReadFlags)ci[2]));
+            .Returns(ci => inner.LoadStorageRlp((Hash256)ci[0], (TreePath)ci[1], (ReadFlags)ci[2]));
         _flatDbManager.GatherReadOnlySnapshotBundle(_stateId, Arg.Any<ReaderFlags>())
             .Returns(_ => new ReadOnlySnapshotBundle(new SnapshotPooledList(0), reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), bufferPin: null));
 
@@ -245,16 +246,7 @@ public class SnapFlatStateServerTests
         stateTree.Set(addressHash, account);
         stateTree.Commit();
 
-        _rootHash = stateTree.RootHash;
-        _stateId = new StateId(0, _rootHash.ValueHash256);
-        IPersistence.IPersistenceReader reader = Substitute.For<SubstitutablePersistenceReader>();
-        reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
-            .Returns(ci => stateTree.GetNodeByPath(((TreePath)ci[0]).ToNibble()));
-        reader.TryLoadStorageRlp(addressHash, Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
-            .Returns(ci => storageTree.GetNodeByPath(((TreePath)ci[1]).ToNibble()));
-        _flatDbManager.GatherReadOnlySnapshotBundle(_stateId, Arg.Any<ReaderFlags>())
-            .Returns(_ => new ReadOnlySnapshotBundle(new SnapshotPooledList(0), reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), bufferPin: null));
-        SnapStateServer trieServer = new(trieStore.AsReadOnly(), LimboLogs.Instance);
+        SnapStateServer trieServer = ServeTrieState(trieStore, stateTree, addressHash, storageTree);
 
         // Starting mid-range and stopping at the byte limit, so both boundaries need proofs.
         ValueHash256 startingHash = new("0x4000000000000000000000000000000000000000000000000000000000000000");
@@ -294,6 +286,76 @@ public class SnapFlatStateServerTests
         }
 
         static byte[][] ToArrays(IByteArrayList list) => Enumerable.Range(0, list.Count).Select(i => list[i].ToArray()).ToArray();
+    }
+
+    public enum RangeFailure
+    {
+        MalformedAccountLeaf,
+        MissingStorageTrie,
+        MalformedStorageAccount
+    }
+
+    [Test]
+    public void RangeRequests_ReturnPooledEntries_WhenTraversalThrows([Values] bool flat, [Values] RangeFailure failure)
+    {
+        TestRawTrieStore trieStore = new(new MemDb());
+        StateTree stateTree = new(trieStore, LimboLogs.Instance);
+        Hash256 addressHash = TestItem.KeccakA;
+        StorageTree storageTree = new(trieStore.GetTrieStore(addressHash), LimboLogs.Instance);
+        for (int i = 0; i < 10_000; i++)
+        {
+            Hash256 key = Keccak.Compute(i.ToBigEndianByteArray());
+            stateTree.Set(key, Build.An.Account.WithBalance((UInt256)i).TestObject);
+            storageTree.Set(key.Bytes, Rlp.Encode(key.BytesToArray()));
+        }
+        storageTree.Commit();
+        stateTree.Set(addressHash, Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject);
+
+        // The first account fills a large slot buffer, and the request then fails at the second account.
+        Hash256 failingPath = Keccak.MaxValue;
+        byte[] failingLeaf = failure switch
+        {
+            RangeFailure.MalformedAccountLeaf => [0xc0],
+            RangeFailure.MissingStorageTrie => AccountDecoder.Instance.Encode(Build.An.Account.WithBalance(1).WithStorageRoot(TestItem.KeccakB).TestObject),
+            _ => [0xc4, 0x80, 0x80, 0xa0]
+        };
+        stateTree.Set(failingPath.Bytes, failingLeaf);
+        stateTree.Commit();
+        SnapStateServer trieServer = ServeTrieState(trieStore, stateTree, addressHash, storageTree);
+        ISnapStateServer server = flat ? _server : trieServer;
+        PathWithAccount[] accounts = [new(addressHash, null), new(failingPath, null)];
+
+        using SharedByteBufferRentals rentals = new(minimumLength: 1 << 19);
+        Action request = failure == RangeFailure.MalformedAccountLeaf
+            ? () => server.GetAccountRanges(_rootHash, Keccak.Zero, null, ISnapStateServer.HardResponseByteLimit, CancellationToken.None)
+            : () => server.GetStorageRanges(_rootHash, accounts, null, null, ISnapStateServer.HardResponseByteLimit, CancellationToken.None);
+        Type expected = failure == RangeFailure.MissingStorageTrie ? typeof(TrieException) : typeof(RlpReaderException);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => request(), Throws.TypeOf(expected));
+            Assert.That(rentals.RentCount, Is.Positive, "the collector rents a large buffer");
+            Assert.That(rentals.Outstanding, Is.Empty, "the collected entries go back to the pool");
+        }
+    }
+
+    /// <summary>
+    /// Serves the trie state from the flat server as well: its persistence reader reads the nodes from the trie, and the
+    /// storage nodes of <paramref name="addressHash"/> only.
+    /// </summary>
+    /// <returns>The trie server of the same state.</returns>
+    private SnapStateServer ServeTrieState(TestRawTrieStore trieStore, StateTree stateTree, Hash256 addressHash, StorageTree storageTree)
+    {
+        _rootHash = stateTree.RootHash;
+        _stateId = new StateId(0, _rootHash.ValueHash256);
+        SubstitutablePersistenceReader reader = Substitute.For<SubstitutablePersistenceReader>();
+        reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
+            .Returns(ci => stateTree.GetNodeByPath(((TreePath)ci[0]).ToNibble()));
+        reader.TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
+            .Returns(ci => addressHash.Equals(ci[0]) ? storageTree.GetNodeByPath(((TreePath)ci[1]).ToNibble()) : null);
+        _flatDbManager.GatherReadOnlySnapshotBundle(_stateId, Arg.Any<ReaderFlags>())
+            .Returns(_ => new ReadOnlySnapshotBundle(new SnapshotPooledList(0), reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), bufferPin: null));
+        return new SnapStateServer(trieStore.AsReadOnly(), LimboLogs.Instance);
     }
 
     /// <summary>
