@@ -193,11 +193,9 @@ public class ChainLevelInfoRepositoryTests
 
         using BatchWrite batch = repository.StartBatch();
         repository.PersistLevel(2, new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakC, 2)), batch);
-        ulong[] numbers = [3, 2, 1, 256, 4, 2];
-        using ArrayPoolListRef<ulong> fromDbNumbers = new(numbers);
-        using IOwnedReadOnlyList<ChainLevelInfo> fromDb = repository.MultiLoadLevel(fromDbNumbers);
-        Assert.That(fromDb[1], Is.Null, "precondition: the level written in the batch is only in the cache");
+        Assert.That(db.Get(2UL.ToBigEndianSpanWithoutLeadingZeros(out _)), Is.Null, "precondition: the level written in the batch is only in the cache");
 
+        ulong[] numbers = [3, 2, 1, 256, 4, 2];
         ValueHash256?[] hashes = new ValueHash256?[numbers.Length];
         repository.GetMainChainBlockHashesWithoutCaching(numbers, hashes);
 
