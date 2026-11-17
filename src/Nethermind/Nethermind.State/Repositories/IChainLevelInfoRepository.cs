@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -23,6 +24,19 @@ namespace Nethermind.State.Repositories
         bool TryGetMainChainBlockWithoutCaching(ulong number, out ValueHash256 blockHash, out UInt256 totalDifficulty) =>
             TryGetMainChainBlock(LoadLevelWithoutCaching(number), out blockHash, out totalDifficulty);
 
+        /// <summary>Reads the main chain blocks at <paramref name="blockNumbers"/>, as <see cref="TryGetMainChainBlockWithoutCaching"/> does each one.</summary>
+        /// <param name="blockNumbers">The numbers of the levels.</param>
+        /// <param name="blocks">Receives the hash and total difficulty of each main chain block, or the default when the level has none.</param>
+        void GetMainChainBlocksWithoutCaching(ReadOnlyMemory<ulong> blockNumbers, Memory<(ValueHash256 BlockHash, UInt256 TotalDifficulty)> blocks)
+        {
+            for (int i = 0; i < blockNumbers.Length; i++)
+            {
+                blocks.Span[i] = TryGetMainChainBlockWithoutCaching(blockNumbers.Span[i], out ValueHash256 blockHash, out UInt256 totalDifficulty)
+                    ? (blockHash, totalDifficulty)
+                    : default;
+            }
+        }
+
         /// <summary>Reads the main chain block's hash and total difficulty of a decoded level; <see langword="false"/> when it has none.</summary>
         internal static bool TryGetMainChainBlock(ChainLevelInfo? level, out ValueHash256 blockHash, out UInt256 totalDifficulty)
         {
@@ -38,6 +52,8 @@ namespace Nethermind.State.Repositories
             return false;
         }
 
+        /// <summary>Loads the levels of <paramref name="blockNumbers"/> in order, as <see cref="LoadLevelWithoutCaching"/> does; <see langword="null"/> for a missing level.</summary>
+        /// <remarks>The levels not in the cache are read in one batch.</remarks>
         IOwnedReadOnlyList<ChainLevelInfo?> MultiLoadLevel(in ArrayPoolListRef<ulong> blockNumbers);
     }
 }

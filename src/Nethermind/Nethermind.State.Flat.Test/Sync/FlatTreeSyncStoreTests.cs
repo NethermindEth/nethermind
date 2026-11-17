@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -10,9 +11,12 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.Sync;
+using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -36,6 +40,15 @@ public class FlatTreeSyncStoreTests
 
     [TearDown]
     public void TearDown() => _columnsDb.Dispose();
+
+    private static FlatTestContainer CreateContainer(IPersistence persistence, IHistoryPivotSeeder? seeder = null) =>
+        new(loadPersistedTier: false, configure: builder =>
+        {
+            builder
+                .AddSingleton<IPersistence>(persistence)
+                .AddSingleton<IPersistenceManager>(Substitute.For<IPersistenceManager>());
+            if (seeder is not null) builder.AddSingleton<IHistoryPivotSeeder>(seeder);
+        });
 
     private void WriteStorageDirectToDb(Address address, UInt256 slot, byte[] value)
     {
@@ -77,10 +90,118 @@ public class FlatTreeSyncStoreTests
 
         Assert.That(HasStorageEntries(address), Is.True, "Storage entries should exist before cleanup");
 
-        FlatTreeSyncStore store = new(_persistence, Substitute.For<IPersistenceManager>(), LimboLogs.Instance);
+        using FlatTestContainer container = CreateContainer(_persistence);
+        FlatTreeSyncStore store = container.Resolve<FlatTreeSyncStore>();
         store.EnsureStorageEmpty(Keccak.Compute(address.Bytes));
 
         Assert.That(HasStorageEntries(address), Is.False, "Storage entries should be deleted after EnsureStorageEmpty");
+    }
+
+    [Test]
+    public void SaveNode_deletes_the_storage_of_accounts_the_new_state_node_no_longer_covers()
+    {
+        Address removed = TestItem.AddressA;
+        Address kept = TestItem.AddressB;
+        using FlatTestContainer container = CreateContainer(_persistence);
+        FlatTreeSyncStore store = container.Resolve<FlatTreeSyncStore>();
+        SaveRootAccountLeaf(store, removed);
+        WriteStorageDirectToDb(removed, 1, [0x01]);
+        WriteStorageDirectToDb(kept, 1, [0x02]);
+
+        SaveRootAccountLeaf(store, kept);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(HasStorageEntries(removed), Is.False);
+            Assert.That(HasStorageEntries(kept), Is.True);
+        }
+    }
+
+    [Test]
+    public void SaveNode_keeps_the_storage_of_the_account_the_new_state_leaf_holds()
+    {
+        Address held = TestItem.AddressA;
+        Address removed = TestItem.AddressB;
+        using FlatTestContainer container = CreateContainer(_persistence);
+        FlatTreeSyncStore store = container.Resolve<FlatTreeSyncStore>();
+        SaveRootAccountLeaf(store, removed);
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
+        {
+            batch.SetAccountRaw(Keccak.Compute(held.Bytes), new Account(1, 1));
+            foreach (Address address in (Address[])[held, removed])
+            {
+                foreach (TreePath nodePath in StorageNodePaths) batch.SetStorageTrieNode(Keccak.Compute(address.Bytes), nodePath, StorageNodeRlp);
+            }
+        }
+        WriteStorageDirectToDb(held, 1, [0x01]);
+        WriteStorageDirectToDb(removed, 1, [0x02]);
+
+        SaveRootAccountLeaf(store, held);
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(HasStorageEntries(held), Is.True);
+            Assert.That(HasStorageEntries(removed), Is.False);
+            foreach (TreePath nodePath in StorageNodePaths)
+            {
+                Assert.That(reader.LoadStorageRlp(Keccak.Compute(held.Bytes), nodePath, ReadFlags.None), Is.EqualTo(StorageNodeRlp), $"storage node {nodePath} of the held account");
+                Assert.That(reader.LoadStorageRlp(Keccak.Compute(removed.Bytes), nodePath, ReadFlags.None), Is.Null, $"storage node {nodePath} of the removed account");
+            }
+        }
+    }
+
+    [Test]
+    public void SaveNode_deletes_storage_that_has_no_flat_account_entry()
+    {
+        Address orphaned = TestItem.AddressC;
+        Address kept = TestItem.AddressB;
+        using FlatTestContainer container = CreateContainer(_persistence);
+        FlatTreeSyncStore store = container.Resolve<FlatTreeSyncStore>();
+        SaveRootAccountLeaf(store, TestItem.AddressA);
+        WriteStorageDirectToDb(orphaned, 1, [0x01]);
+        WriteStorageDirectToDb(kept, 1, [0x02]);
+
+        SaveRootAccountLeaf(store, kept);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(HasStorageEntries(orphaned), Is.False);
+            Assert.That(HasStorageEntries(kept), Is.True);
+        }
+    }
+
+    [Test]
+    public void SaveNode_self_destructs_each_replaced_range_once_keeping_the_leaf_account()
+    {
+        Address kept = TestItem.AddressB;
+        using (FlatTestContainer container = CreateContainer(_persistence))
+        {
+            SaveRootAccountLeaf(container.Resolve<FlatTreeSyncStore>(), TestItem.AddressA);
+        }
+
+        FakeWriteBatch batch = new();
+        using FlatTestContainer recording = CreateContainer(new BatchRecordingPersistence(_persistence, batch));
+        SaveRootAccountLeaf(recording.Resolve<FlatTreeSyncStore>(), kept);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batch.SelfDestructRangeCalls, Is.Not.Empty);
+            Assert.That(batch.SelfDestructRangeCalls, Has.Count.EqualTo(batch.DeleteAccountRangeCalls.Count));
+            Assert.That(batch.SelfDestructRangeCalls.Select(static call => call.KeptAccount), Is.All.EqualTo(Keccak.Compute(kept.Bytes).ValueHash256));
+        }
+    }
+
+    private static readonly byte[] StorageNodeRlp = [0xc2, 0x80, 0x80];
+    private static readonly TreePath[] StorageNodePaths = [TreePath.FromHexString("1"), TreePath.FromHexString("1111111111111111")];
+
+    private static void SaveRootAccountLeaf(FlatTreeSyncStore store, Address address)
+    {
+        TrieNode leaf = TrieNodeFactory.CreateLeaf(Nibbles.BytesToNibbleBytes(Keccak.Compute(address.Bytes).Bytes), Rlp.Encode(new Account(1, 1)));
+        TreePath path = TreePath.Empty;
+        leaf.ResolveKey(NullTrieNodeResolver.Instance, ref path);
+        byte[] rlp = leaf.FullRlp.ToArray()!;
+        store.SaveNode(null, TreePath.Empty, ValueKeccak.Compute(rlp), rlp);
     }
 
     [Test]
@@ -89,7 +210,8 @@ public class FlatTreeSyncStoreTests
         // #11457: the state pointer must advance only after the (DisableWAL) data is flushed.
         List<string> log = [];
         OrderRecordingPersistence spy = new(_persistence, log);
-        FlatTreeSyncStore store = new(spy, Substitute.For<IPersistenceManager>(), LimboLogs.Instance);
+        using FlatTestContainer container = CreateContainer(spy);
+        FlatTreeSyncStore store = container.Resolve<FlatTreeSyncStore>();
         BlockHeader pivot = Build.A.BlockHeader.WithNumber(123).WithStateRoot(TestItem.KeccakA).TestObject;
 
         store.FinalizeSync(pivot);
@@ -114,7 +236,8 @@ public class FlatTreeSyncStoreTests
         seeder.When(s => s.SeedPivot(Arg.Any<ulong>(), Arg.Any<ValueHash256>()))
             .Do(_ => log.Add("seed-pivot"));
         OrderRecordingPersistence spy = new(_persistence, log);
-        FlatTreeSyncStore store = new(spy, Substitute.For<IPersistenceManager>(), LimboLogs.Instance, seeder);
+        using FlatTestContainer container = CreateContainer(spy, seeder);
+        FlatTreeSyncStore store = container.Resolve<FlatTreeSyncStore>();
         BlockHeader pivot = Build.A.BlockHeader.WithNumber(123).WithStateRoot(TestItem.KeccakA).TestObject;
 
         store.FinalizeSync(pivot);
@@ -136,10 +259,22 @@ public class FlatTreeSyncStoreTests
     {
         // No IHistoryPivotSeeder passed - the existing tests above already exercise this implicitly (omitting the
         // parameter), but this makes the "no-op when history capture/windowing is not configured" contract explicit.
-        FlatTreeSyncStore store = new(_persistence, Substitute.For<IPersistenceManager>(), LimboLogs.Instance);
+        using FlatTestContainer container = CreateContainer(_persistence);
+        FlatTreeSyncStore store = container.Resolve<FlatTreeSyncStore>();
         BlockHeader pivot = Build.A.BlockHeader.WithNumber(123).WithStateRoot(TestItem.KeccakA).TestObject;
 
         Assert.DoesNotThrow(() => store.FinalizeSync(pivot));
+    }
+
+    private sealed class BatchRecordingPersistence(IPersistence inner, FakeWriteBatch batch) : IPersistence
+    {
+        public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None) => inner.CreateReader(flags);
+
+        public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None) => batch;
+
+        public void Flush() => inner.Flush();
+
+        public void Clear() => inner.Clear();
     }
 
     private sealed class OrderRecordingPersistence(IPersistence inner, List<string> log) : IPersistence

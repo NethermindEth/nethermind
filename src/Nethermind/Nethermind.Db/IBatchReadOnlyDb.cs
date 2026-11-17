@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core;
 
 namespace Nethermind.Db;
 
@@ -19,6 +20,6 @@ public interface IBatchReadOnlyDb
     /// without calling the decoder. Keys must contain exactly one fixed-length key per output element.</summary>
     /// <remarks>The key and output buffers must not overlap. A decoder failure preserves the decoded prefix
     /// and leaves the remaining output cleared.</remarks>
-    void GetMany<T, TDecoder>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values, TDecoder decoder)
+    void GetMany<T, TDecoder>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values, TDecoder decoder, ReadFlags flags = ReadFlags.None)
         where TDecoder : IValueDecoder<T>;
 }

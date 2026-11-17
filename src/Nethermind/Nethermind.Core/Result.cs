@@ -6,10 +6,21 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Core
 {
-    public readonly record struct Result(ResultType ResultType, string? Error = null)
+    /// <remarks>A null <see cref="Error"/> means success, so <c>default</c> is <see cref="Success"/>.</remarks>
+    public readonly record struct Result
     {
-        public static Result Fail(string error) => new() { ResultType = ResultType.Failure, Error = error };
-        public static Result Success { get; } = new() { ResultType = ResultType.Success };
+        private Result(string? error) => Error = error;
+
+        public string? Error { get; }
+        public ResultType ResultType => Error is null ? ResultType.Success : ResultType.Failure;
+
+        public static Result Fail(string error)
+        {
+            ArgumentNullException.ThrowIfNull(error);
+            return new(error);
+        }
+
+        public static Result Success { get; } = default;
         public static implicit operator bool(Result result) => result.ResultType == ResultType.Success;
         public static implicit operator Result(string? error) => error is null ? Success : Fail(error);
         // Required for short-circuit && operator
@@ -20,10 +31,26 @@ namespace Nethermind.Core
         public override string ToString() => ResultType == ResultType.Success ? "Success" : $"Failure: {Error}";
     }
 
-    public readonly record struct Result<TData>(ResultType ResultType, TData? Data = default, string? Error = null)
+    /// <remarks>A null <see cref="Error"/> means success, so <c>default</c> is a success with default <see cref="Data"/>.</remarks>
+    public readonly record struct Result<TData>
     {
-        public static Result<TData> Fail(string error, TData? data = default) => new() { ResultType = ResultType.Failure, Error = error, Data = data };
-        public static Result<TData> Success(TData data) => new() { ResultType = ResultType.Success, Data = data };
+        private Result(TData? data, string? error)
+        {
+            Data = data;
+            Error = error;
+        }
+
+        public ResultType ResultType => Error is null ? ResultType.Success : ResultType.Failure;
+        public TData? Data { get; }
+        public string? Error { get; }
+
+        public static Result<TData> Fail(string error, TData? data = default)
+        {
+            ArgumentNullException.ThrowIfNull(error);
+            return new(data, error);
+        }
+
+        public static Result<TData> Success(TData data) => new(data, null);
         public static implicit operator bool(Result<TData> result) => result.IsSuccess;
         public static implicit operator Result<TData>(TData data) => Success(data);
         public static implicit operator Result<TData>(string error) => Fail(error, typeof(TData) == typeof(byte[]) ? (TData)(object)Array.Empty<byte>() : default);

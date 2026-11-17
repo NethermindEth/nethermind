@@ -518,14 +518,20 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter, IFrameTxR
     }
 
     /// <inheritdoc/>
-    public void ReportActionErrorDetails(string error)
+    public void ReportActionErrorDetails(string error) => ReportActionErrorDetails(error, actionOnly: false);
+
+    /// <inheritdoc/>
+    public void ReportActionErrorDetails(string error, bool actionOnly)
     {
         for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingActions)
             {
-                innerTracer.ReportActionErrorDetails(error);
+                if (actionOnly)
+                    innerTracer.ReportActionErrorDetails(error, actionOnly: true);
+                else
+                    innerTracer.ReportActionErrorDetails(error);
             }
         }
     }

@@ -29,7 +29,7 @@ internal sealed class BulkFillStateReader(IColumnsDb<Columns> db, StateId state,
         RlpReader reader = new(bytes);
         if (!AccountDecoder.Slim.TryDecodeStruct(ref reader, out AccountStruct account) || reader.HasNext)
             throw new InvalidDataException("Invalid bulk-fill scratch account.");
-        return new Account(account.Nonce, account.Balance, account.StorageRoot.ToCommitment(), account.CodeHash.ToCommitment());
+        return account.ToAccount();
     }
 
     public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue)

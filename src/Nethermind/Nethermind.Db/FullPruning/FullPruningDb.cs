@@ -161,8 +161,6 @@ namespace Nethermind.Db.FullPruning
 
         public string Name => _settings.DbName;
 
-        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => _currentDb[keys];
-
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _currentDb.GetAll(ordered);
 
         public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => _currentDb.GetAllKeys(ordered);
