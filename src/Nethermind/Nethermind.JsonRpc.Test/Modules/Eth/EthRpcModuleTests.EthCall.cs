@@ -27,6 +27,7 @@ using Nethermind.Specs.Test;
 using Nethermind.Int256;
 using Nethermind.Core.Specs;
 using Nethermind.Blockchain;
+using Nethermind.Consensus;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Newtonsoft.Json.Linq;
 using Nethermind.JsonRpc.Test.Data;
@@ -322,6 +323,33 @@ public partial class EthRpcModuleTests
             Assert.That(error?["message"]?.Value<string>(), Does.Contain(TxErrorMessages.InvalidTxType(Berlin.Instance.Name)), response);
         else
             Assert.That(error, Is.Null, response);
+    }
+
+    /// <summary>
+    /// On a block from before the merge a <c>prevRandao</c> override decides PREVRANDAO when the overridden block is from
+    /// London on, as in geth's <c>eth_call</c>. The estimate follows the call, although geth's estimator reads the difficulty.
+    /// </summary>
+    [Test]
+    public async Task Rpc_call_on_a_pre_merge_block_takes_a_prevRandao_override_from_London_on(
+        [Values("eth_call", "eth_estimateGas")] string method,
+        [Values] bool london)
+    {
+        using Context ctx = await Context.Create(new CustomSpecProvider(((ForkActivation)0, Berlin.Instance), ((ForkActivation)1, London.Instance)),
+            configurer: builder => builder.AddSingleton<IPoSSwitcher>(NoPoS.Instance));
+        BlockHeader head = ctx.Test.BlockTree.Head!.Header;
+        head.Difficulty = (UInt256)5;
+        head.MixHash = TestItem.KeccakH;
+        head.IsPostMerge = false;
+        // PUSH32 X PREVRANDAO EQ PUSH1 42 JUMPI PUSH1 0 DUP1 REVERT JUMPDEST STOP: stops only when PREVRANDAO is X.
+        string code = $"0x7f{TestItem.KeccakA.ToString(false)}4414602a57600080fd5b00";
+        object stateOverride = new Dictionary<string, object> { [TestItem.AddressC.ToString()] = new { code } };
+        object blockOverride = london ? new { prevRandao = TestItem.KeccakA.ToString() } : new { prevRandao = TestItem.KeccakA.ToString(), number = "0x0" };
+
+        string response = await ctx.Test.TestEthRpc(method, new { from = TestItem.AddressA.ToString(), to = TestItem.AddressC.ToString() }, "latest", stateOverride, blockOverride);
+
+        JToken json = JToken.Parse(response);
+        bool reverted = json["error"] is not null || (json["result"] is JObject result && result["error"]?.Type == JTokenType.String);
+        Assert.That(reverted, Is.EqualTo(!london), response);
     }
 
     [Test]

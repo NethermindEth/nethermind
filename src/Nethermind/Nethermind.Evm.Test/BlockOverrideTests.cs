@@ -38,4 +38,16 @@ public class BlockOverrideTests
 
         Assert.That(new BlockExecutionContext(result, Osaka.Instance).PrevRandao, Is.EqualTo(mixHash.ValueHash256));
     }
+
+    // As in geth, a prevRandao override decides PREVRANDAO from London on; before it the call keeps its block's value.
+    [TestCase(true, true)]
+    [TestCase(false, true)]
+    [TestCase(true, false)]
+    public void A_prevRandao_override_counts_from_London_on(bool london, bool hasPrevRandao)
+    {
+        BlockOverride blockOverride = new() { PrevRandao = hasPrevRandao ? TestItem.KeccakA : null };
+
+        Assert.That(blockOverride.PrevRandaoFor(london ? London.Instance : Berlin.Instance),
+            Is.EqualTo(london && hasPrevRandao ? TestItem.KeccakA : null));
+    }
 }

@@ -147,6 +147,42 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    /// <summary>
+    /// As in geth's <c>debug_traceCall</c>, a <c>prevRandao</c> override decides PREVRANDAO from London on; before London
+    /// a block from before the merge reads its difficulty, also with <c>txIndex</c> and with a blob fee override.
+    /// </summary>
+    [TestCase(true, null, null)]
+    [TestCase(false, null, null)]
+    [TestCase(false, "0x0", null)]
+    [TestCase(false, null, "0x9")]
+    public async Task Debug_traceCall_takes_a_prevRandao_override_from_London_on(bool london, string? txIndex, string? blobBaseFee)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(builder =>
+            builder.AddSingleton<ISpecProvider>(new TestSpecProvider(london ? London.Instance : Berlin.Instance)));
+        BlockHeader head = chain.BlockTree.Head!.Header;
+        head.Difficulty = (UInt256)5;
+        head.MixHash = TestItem.KeccakH;
+        head.IsPostMerge = false;
+        const string address = "0xc200000000000000000000000000000000000000";
+        Dictionary<string, object> options = new()
+        {
+            ["stateOverrides"] = new Dictionary<string, object> { [address] = new { code = "0x4460005260206000f3" } },
+            ["blockOverrides"] = blobBaseFee is null
+                ? new { prevRandao = TestItem.KeccakA.ToString() }
+                : new { prevRandao = TestItem.KeccakA.ToString(), blobBaseFee },
+        };
+        if (txIndex is not null) options["txIndex"] = txIndex;
+
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
+            new Dictionary<string, object> { ["to"] = address, ["gas"] = "0x186a0" }, "latest", options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(response)["result"]!["failed"]!.Value<bool>(), Is.False, response);
+            Assert.That(ParseReturnValue(response), Is.EqualTo(london ? TestItem.KeccakA.Bytes.ToArray() : head.Difficulty.ToBigEndian()));
+        }
+    }
+
     private sealed class BlobFeeObservingAdapter(ITransactionProcessorAdapter inner,
         GethStyleTracer.TraceCallRequestState? request, List<UInt256?> observedFees) : ITransactionProcessorAdapter
     {

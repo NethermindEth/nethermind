@@ -198,12 +198,14 @@ public class GethStyleTracer(
 
         public void SetBlockExecutionContext(in BlockExecutionContext context)
         {
+            // The spec of the call's overridden block: before London the call keeps the context's own PREVRANDAO.
+            Hash256? prevRandao = overrides?.PrevRandaoFor(context.Spec);
             if (blobBaseFee is { } fee)
             {
                 processor.SetBlockExecutionContext(BlockExecutionContext.WithPrevRandaoAndBlobBaseFee(
-                    context.Header, context.Spec, overrides?.PrevRandao?.ValueHash256 ?? context.PrevRandao, fee));
+                    context.Header, context.Spec, prevRandao?.ValueHash256 ?? context.PrevRandao, fee));
             }
-            else if (overrides?.PrevRandao is { } prevRandao)
+            else if (prevRandao is not null)
             {
                 processor.SetBlockExecutionContext(BlockExecutionContext.WithPrevRandao(context.Header, context.Spec, prevRandao.ValueHash256));
             }
