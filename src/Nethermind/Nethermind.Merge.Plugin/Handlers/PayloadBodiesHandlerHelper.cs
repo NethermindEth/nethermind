@@ -28,6 +28,7 @@ internal static class PayloadBodiesHandlerHelper
     public static BlockHeader?[] FindHeaders(IBlockTree blockTree, ulong start, ulong end)
     {
         BlockHeader?[] headers = new BlockHeader?[end - start + 1];
+        if (headers.Length > 1) blockTree.PrefetchCanonicalHeaders(start, headers.Length);
         for (ulong i = start; i <= end; i++) headers[i - start] = blockTree.FindHeader(i, RangeLookupOptions);
         return headers;
     }
@@ -35,6 +36,7 @@ internal static class PayloadBodiesHandlerHelper
     public static BlockHeader?[] FindHeaders(IBlockTree blockTree, IReadOnlyList<Hash256> blockHashes)
     {
         BlockHeader?[] headers = new BlockHeader?[blockHashes.Count];
+        if (headers.Length > 1) blockTree.PrefetchHeaders(blockHashes);
         for (int i = 0; i < headers.Length; i++) headers[i] = blockTree.FindHeader(blockHashes[i], HashLookupOptions);
         return headers;
     }

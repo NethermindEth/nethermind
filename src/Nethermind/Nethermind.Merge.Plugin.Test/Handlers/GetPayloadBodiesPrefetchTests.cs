@@ -52,6 +52,11 @@ public class GetPayloadBodiesPrefetchTests
             .Chunk(32)
             .Where(static window => window.Length > 1)
             .ToArray();
-        Assert.That(blockDb.Prefetches, Is.EqualTo(windows));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockDb.Prefetches, Is.EqualTo(windows));
+            blockTree.Received(!byHash && count > 1 ? 1 : 0).PrefetchCanonicalHeaders(1, count);
+            blockTree.Received(byHash && count > 1 ? 1 : 0).PrefetchHeaders(hashes);
+        }
     }
 }

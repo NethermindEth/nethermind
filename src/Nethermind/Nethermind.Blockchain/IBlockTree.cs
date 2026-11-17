@@ -188,6 +188,14 @@ namespace Nethermind.Blockchain
 
         IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse);
 
+        /// <summary>Starts reading the canonical headers of <paramref name="count"/> blocks from <paramref name="start"/>, before the reads that need them.</summary>
+        /// <remarks>Returns before the header reads complete. A tree that cannot read ahead does nothing.</remarks>
+        void PrefetchCanonicalHeaders(ulong start, int count) { }
+
+        /// <summary>Starts reading the headers of <paramref name="blockHashes"/>, before the reads that need them.</summary>
+        /// <remarks>Returns before the header reads complete. A tree that cannot read ahead does nothing.</remarks>
+        void PrefetchHeaders(IReadOnlyList<Hash256> blockHashes) { }
+
         void DeleteInvalidBlock(Block invalidBlock);
 
         void DeleteBranchWithoutBadBlockReport(BlockHeader branchRoot);

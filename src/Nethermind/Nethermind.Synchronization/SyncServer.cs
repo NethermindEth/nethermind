@@ -607,20 +607,18 @@ namespace Nethermind.Synchronization
         /// </remarks>
         public void PrefetchBlocks(IReadOnlyList<Hash256> hashes, int start, int count)
         {
-            using ArrayPoolSpan<ValueHash256> blockHashes = new(count);
-            for (int i = 0; i < count; i++) blockHashes[i] = hashes[start + i].ValueHash256;
-
-            using ArrayPoolSpan<ulong?> numbers = new(count);
-            _headerStore.GetBlockNumbers(blockHashes, numbers);
-
             using ArrayPoolSpan<(ulong Number, ValueHash256 Hash)> blocks = new(count);
-            int known = 0;
-            for (int i = 0; i < count; i++)
-            {
-                if (numbers[i] is { } number) blocks[known++] = (number, blockHashes[i]);
-            }
+            _blockStore.Prefetch(blocks.Slice(0, _headerStore.GetKnownBlocks(hashes, start, count, blocks)));
+        }
 
-            _blockStore.Prefetch(blocks.Slice(0, known));
+        /// <inheritdoc/>
+        /// <remarks>Reads the block numbers in one batch, as <see cref="TryAppendReceipts"/> needs them to find the headers.</remarks>
+        public void PrefetchReceipts(IReadOnlyList<Hash256> hashes, int start, int count)
+        {
+            using ArrayPoolSpan<(ulong Number, ValueHash256 Hash)> blocks = new(count);
+            ReadOnlySpan<(ulong Number, ValueHash256 Hash)> known = blocks.Slice(0, _headerStore.GetKnownBlocks(hashes, start, count, blocks));
+            _headerStore.Prefetch(known);
+            _receiptFinder.Prefetch(known);
         }
 
         public BlockHeader? FindHeader(Hash256 hash) => _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
