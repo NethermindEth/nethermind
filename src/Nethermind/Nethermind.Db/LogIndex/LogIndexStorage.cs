@@ -642,7 +642,7 @@ namespace Nethermind.Db.LogIndex
 
             static void AddBlock(ref List<int>? blocks, int blockNumber)
             {
-                blocks ??= new(1);
+                blocks ??= [with(1)];
                 if (blocks.Count == 0 || blocks[^1] != blockNumber)
                     blocks.Add(blockNumber);
             }

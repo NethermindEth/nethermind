@@ -105,7 +105,7 @@ public partial class GasEstimator(ITransactionProcessor transactionProcessor, IR
                 return GasEstimation.Success(transfer.GasUsed);
         }
 
-        Run probe = execution.Run(hi);
+        Run probe = execution.Run(hi, readsOutput: true);
         switch (probe.Status)
         {
             case RunStatus.Rejected:
@@ -292,14 +292,15 @@ public partial class GasEstimator(ITransactionProcessor transactionProcessor, IR
             return _runTx;
         }
 
-        public Run Run(ulong gasLimit, UInt256? maxFeePerBlobGas = null)
+        /// <param name="readsOutput">Whether the result keeps the output; only the probe run reports a revert with its data.</param>
+        public Run Run(ulong gasLimit, UInt256? maxFeePerBlobGas = null, bool readsOutput = false)
         {
             if (_tipAboveFeeCap is not null)
                 return new Run(RunStatus.Rejected, Error: _tipAboveFeeCap);
 
             Transaction runTx = PrepareRun(gasLimit, maxFeePerBlobGas);
 
-            _tracer.ResetRun();
+            _tracer.ResetRun(readsOutput);
             TransactionResult result;
             try
             {
@@ -351,7 +352,7 @@ public partial class GasEstimator(ITransactionProcessor transactionProcessor, IR
     }
 
     /// <summary>Output tracer that can also tell whether the outermost frame itself ran out of gas.</summary>
-    private sealed class EstimationTracer(bool tracksFrames) : CallOutputTracer
+    private sealed class EstimationTracer(bool tracksFrames) : CallOutputTracer, ITxOutputTracingFilter
     {
         private int _depth;
         private bool _inPrecompile;
@@ -360,12 +361,15 @@ public partial class GasEstimator(ITransactionProcessor transactionProcessor, IR
         public bool TopFrameOutOfGas { get; private set; }
         public override bool IsTracingActions => tracksFrames;
 
-        public void ResetRun()
+        public bool IsTracingOutput { get; private set; }
+
+        public void ResetRun(bool readsOutput)
         {
             Reset();
             _depth = 0;
             _inPrecompile = false;
             TopFrameOutOfGas = false;
+            IsTracingOutput = readsOutput;
         }
 
         public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)

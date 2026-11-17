@@ -25,7 +25,7 @@ public struct LogIndexAggregate(int firstBlockNum, int lastBlockNum, bool isBack
     /// wrong writer.</summary>
     public bool IsBackwardSync { get; } = isBackwardSync;
 
-    public Dictionary<AddressAsKey, List<int>> Address => _address ??= new(AddressAsKeyComparer.Instance);
+    public Dictionary<AddressAsKey, List<int>> Address => _address ??= [with(AddressAsKeyComparer.Instance)];
 
     public Dictionary<ValueHash256, List<int>>[] Topic => _topic ??= Enumerable.Range(0, LogIndexStorage.MaxTopics)
         .Select(static _ => new Dictionary<ValueHash256, List<int>>())

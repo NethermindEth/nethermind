@@ -575,7 +575,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         }
         else
         {
-            Dictionary<TxLookupKey, int> indices = new(count);
+            Dictionary<TxLookupKey, int> indices = [with(count)];
             for (int i = 0; i < count; i++)
             {
                 if (!indices.TryGetValue(keys[i], out int index))
@@ -671,7 +671,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
                 return false;
             }
 
-            candidates = new(Math.Min(txHashes.Count, MaxBlobCellCandidates));
+            candidates = [with(Math.Min(txHashes.Count, MaxBlobCellCandidates))];
             BlobCellMask capturedMask = BlobCellMask.Empty;
             foreach (Hash256 hash in CollectionsMarshal.AsSpan(txHashes))
             {
@@ -705,7 +705,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         }
 
         candidates.Sort(static (x, y) => y.AvailableMask.Count.CompareTo(x.AvailableMask.Count));
-        List<BlobCellsCandidate> loadedCandidates = new(Math.Min(candidates.Count, requestedMask.Count));
+        List<BlobCellsCandidate> loadedCandidates = [with(Math.Min(candidates.Count, requestedMask.Count))];
         BlobCellMask loadedMask = BlobCellMask.Empty;
         int candidateLoads = 0;
         for (int i = 0;
