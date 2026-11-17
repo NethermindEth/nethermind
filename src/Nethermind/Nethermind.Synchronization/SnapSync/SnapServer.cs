@@ -106,14 +106,14 @@ public sealed class SnapServer(
         Span<ulong> knownNumbers = stackalloc ulong[AccessListReadChunkSize];
         Span<Range?> ranges = stackalloc Range?[AccessListReadChunkSize];
 
-        // A chunk is read whole even past the byte limit, which a peer sets. Chunks start at one list and
-        // double, so a chunk never reads more lists past the limit than were read before it.
-        int chunkSize = 1;
-        for (int start = 0; start < blockHashes.Count; start += chunkSize, chunkSize = Math.Min(chunkSize * 2, AccessListReadChunkSize))
+        // A batch of lists is read whole even past the byte limit, which a peer sets. Batches start at one list
+        // and grow with the lists read, so a batch never reads more lists past the limit than were read before it.
+        int listReads = 0;
+        for (int start = 0; start < blockHashes.Count; start += AccessListReadChunkSize)
         {
             if (currentByteCount > byteLimit || cancellationToken.IsCancellationRequested) break;
 
-            int count = Math.Min(chunkSize, blockHashes.Count - start);
+            int count = Math.Min(AccessListReadChunkSize, blockHashes.Count - start);
             for (int i = 0; i < count; i++)
             {
                 hashes[i] = blockHashes[start + i];
@@ -128,15 +128,22 @@ public sealed class SnapServer(
                 knownNumbers[known++] = number;
             }
 
-            lists.Clear();
-            blockAccessListStore.AppendRlps(knownNumbers[..known], knownHashes[..known], lists, ranges[..known]);
-
-            known = 0;
+            int read = 0;
+            int next = 0;
             for (int i = 0; i < count; i++)
             {
                 if (currentByteCount > byteLimit || cancellationToken.IsCancellationRequested) break;
 
-                if (numbers[i] is null || ranges[known++] is not { } range)
+                if (numbers[i] is not null && next == read)
+                {
+                    int batch = Math.Min(Math.Clamp(listReads, 1, AccessListReadChunkSize), known - read);
+                    lists.Clear();
+                    blockAccessListStore.AppendRlps(knownNumbers.Slice(read, batch), knownHashes.Slice(read, batch), lists, ranges.Slice(read, batch));
+                    read += batch;
+                    listReads += batch;
+                }
+
+                if (numbers[i] is null || ranges[next++] is not { } range)
                 {
                     writer.WriteValue([]);
                     currentByteCount += 1;

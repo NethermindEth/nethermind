@@ -228,11 +228,17 @@ public class SnapServerTests
         }
     }
 
-    [TestCase(1, 1, 1)]
-    [TestCase(150, 16, 31)]
-    public void GetBlockAccessLists_reads_little_past_the_byte_limit(long byteLimit, int served, int maxReads)
+    [TestCase(1, 0, 1, 1)]
+    [TestCase(150, 0, 16, 31)]
+    [TestCase(15, 15, 16, 1, Description = "Unknown hashes read no list, so they do not grow the batch")]
+    public void GetBlockAccessLists_reads_little_past_the_byte_limit(long byteLimit, int unknownHashes, int served, int maxReads)
     {
         List<ValueHash256> request = [];
+        for (int i = 0; i < unknownHashes; i++)
+        {
+            request.Add(Keccak.Compute(BitConverter.GetBytes(-1 - i)).ValueHash256);
+        }
+
         for (int i = 0; i < 40; i++)
         {
             Hash256 hash = Keccak.Compute(BitConverter.GetBytes(i));
@@ -245,7 +251,7 @@ public class SnapServerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Count, Is.EqualTo(served));
-            Assert.That(_balDb.Reads, Is.InRange(served, maxReads));
+            Assert.That(_balDb.Reads, Is.InRange(served - unknownHashes, maxReads));
         }
     }
 
