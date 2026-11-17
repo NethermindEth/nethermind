@@ -23,10 +23,18 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// bypass the filter. Admission decides who enters the routing table and the peer-candidate stream; it
 /// deliberately does not decide whether a discovery message is answered.
 /// <para>
-/// Exemption is tracked by node identity rather than by the flags on the instance being admitted: a node
-/// rebuilt from a packet carries no flags, so a flagged instance records its identity in the exempt set and
-/// every later reconstruction of that node is recognized. Static and trusted nodes are also resolved from
-/// their managers, which covers first contact before the node has ever been seen locally.
+/// Exemption is tracked by node identity rather than by the flags on the instance being admitted, because
+/// a node rebuilt from a packet carries no flags. The identity set is built once from configuration and
+/// storage: self, bootnodes, configured static peers, and nodes persisted in the discovery database.
+/// Static and trusted nodes are resolved live from their managers, so a removal is observed on the next
+/// admission unless the identity is also exempt for an independent reason. Flags on an admitted instance
+/// are evidence for that call only and never create a lasting entitlement.
+/// </para>
+/// <para>
+/// Every routing-table node is persisted, so a node that was exempt in an earlier run is exempt from load
+/// in the next one, even if a static or trusted node was removed from its manager in between. Filtering
+/// persisted nodes at load could empty the routing table and hurt bootstrapping more than the subnet
+/// concentration this filter addresses.
 /// </para>
 /// </remarks>
 internal sealed class DiscoveryNodeAdmission(
@@ -38,7 +46,8 @@ internal sealed class DiscoveryNodeAdmission(
     int admittedCapacity,
     ILogManager logManager,
     IStaticNodesManager? staticNodes = null,
-    ITrustedNodesManager? trustedNodes = null)
+    ITrustedNodesManager? trustedNodes = null,
+    IEnumerable<NetworkNode>? configuredStaticNodes = null)
 {
     private readonly NodeFilter _filter = filter;
     private readonly bool _enabled = enabled;
@@ -48,9 +57,9 @@ internal sealed class DiscoveryNodeAdmission(
     private readonly ConcurrentDictionary<PublicKey, IPAddress> _admittedAddresses = new();
     private readonly IStaticNodesManager? _staticNodes = staticNodes;
     private readonly ITrustedNodesManager? _trustedNodes = trustedNodes;
-    private readonly ConcurrentDictionary<PublicKey, byte> _exemptNodeIds = enabled
-        ? CreateExemptNodeIds(kademliaConfig, discoveryStorage, staticNodes, trustedNodes)
-        : new();
+    private readonly HashSet<PublicKey> _exemptNodeIds = enabled
+        ? CreateExemptNodeIds(kademliaConfig, discoveryStorage, configuredStaticNodes)
+        : [];
     private readonly PublicKey? _selfId = kademliaConfig.CurrentNodeId?.Id;
     private readonly Lock _admitLock = new();
     private readonly ILogger _logger = logManager.GetClassLogger<DiscoveryNodeAdmission>();
@@ -187,17 +196,15 @@ internal sealed class DiscoveryNodeAdmission(
 
     private bool IsSelf(Node node) => _selfId is { } selfId && node.Id == selfId;
 
+    // Instance flags are evidence for this call only. Caching them by identity would keep the exemption
+    // alive after the operator removes the node from its manager; lasting exemptions come from the
+    // configuration-backed set, and manager membership is re-read here.
     private bool IsExempt(Node node)
-    {
-        // Remember the identity so a node rebuilt from a packet, which carries no flags, stays exempt.
-        if (node.IsBootnode || node.IsStatic || node.IsTrusted)
-        {
-            _exemptNodeIds.TryAdd(node.Id, 0);
-            return true;
-        }
-
-        return _exemptNodeIds.ContainsKey(node.Id) || IsManagedExempt(node.Id);
-    }
+        => _exemptNodeIds.Contains(node.Id)
+           || node.IsBootnode
+           || node.IsStatic
+           || node.IsTrusted
+           || IsManagedExempt(node.Id);
 
     private bool IsManagedExempt(PublicKey nodeId)
     {
@@ -224,43 +231,40 @@ internal sealed class DiscoveryNodeAdmission(
         => _admitted.Contains(node.Id)
            || _routingTable.TryGet(node.Id.Hash.ValueHash256, out _);
 
-    private static ConcurrentDictionary<PublicKey, byte> CreateExemptNodeIds(
+    private static HashSet<PublicKey> CreateExemptNodeIds(
         KademliaConfig<Node> kademliaConfig,
         INetworkStorage discoveryStorage,
-        IStaticNodesManager? staticNodes,
-        ITrustedNodesManager? trustedNodes)
+        IEnumerable<NetworkNode>? configuredStaticNodes)
     {
-        ConcurrentDictionary<PublicKey, byte> exempt = new();
+        HashSet<PublicKey> exempt = [];
         if (kademliaConfig.CurrentNodeId is { } self)
         {
-            exempt.TryAdd(self.Id, 0);
+            exempt.Add(self.Id);
         }
 
         foreach (Node bootNode in kademliaConfig.BootNodes)
         {
-            exempt.TryAdd(bootNode.Id, 0);
+            exempt.Add(bootNode.Id);
         }
 
-        // Nodes persisted before the upgrade keep their exemption. Filtering them at load could empty a
-        // node's routing table on the first restart, which hurts bootstrapping more than the subnet
-        // concentration this filter addresses.
-        foreach (NetworkNode persistedNode in discoveryStorage.GetPersistedNodes())
+        if (configuredStaticNodes is not null)
         {
-            exempt.TryAdd(persistedNode.NodeId, 0);
-        }
-
-        AddManagedIds(exempt, staticNodes?.Nodes);
-        AddManagedIds(exempt, trustedNodes?.Nodes);
-        return exempt;
-
-        static void AddManagedIds(ConcurrentDictionary<PublicKey, byte> exempt, IEnumerable<NetworkNode>? nodes)
-        {
-            if (nodes is null) return;
-
-            foreach (NetworkNode node in nodes)
+            foreach (NetworkNode node in configuredStaticNodes)
             {
-                exempt.TryAdd(node.NodeId, 0);
+                // Mirror NodesLoader: only enode entries from Network.StaticPeers become static peers.
+                if (node.IsEnode) exempt.Add(node.NodeId);
             }
         }
+
+        // Every routing-table node is persisted, so this also re-exempts static or trusted nodes that were
+        // removed from their managers before this start. Filtering persisted nodes at load could empty a
+        // node's routing table and hurt bootstrapping more than the subnet concentration this filter
+        // addresses.
+        foreach (NetworkNode persistedNode in discoveryStorage.GetPersistedNodes())
+        {
+            exempt.Add(persistedNode.NodeId);
+        }
+
+        return exempt;
     }
 }

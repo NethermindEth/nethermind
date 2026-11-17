@@ -3,6 +3,7 @@
 
 using System.Net;
 using Autofac;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -40,6 +41,11 @@ public sealed class KademliaModule(Node currentNode, IReadOnlyList<Node> bootNod
                 networkConfig.FilterDiscoveryNodesBySameSubnet,
                 currentIp);
 
+            ILogManager logManager = ctx.Resolve<ILogManager>();
+            NetworkNode[] configuredStaticNodes = NetworkNode.ParseNodes(
+                networkConfig.StaticPeers,
+                logManager.GetClassLogger<KademliaModule>());
+
             return new DiscoveryNodeAdmission(
                 filter,
                 networkConfig.FilterDiscoveryNodesByRecentIp,
@@ -47,9 +53,10 @@ public sealed class KademliaModule(Node currentNode, IReadOnlyList<Node> bootNod
                 ctx.Resolve<KademliaConfig<Node>>(),
                 ctx.ResolveKeyed<INetworkStorage>(DbNames.DiscoveryNodes),
                 filterSize,
-                ctx.Resolve<ILogManager>(),
+                logManager,
                 ctx.ResolveOptional<IStaticNodesManager>(),
-                ctx.ResolveOptional<ITrustedNodesManager>());
+                ctx.ResolveOptional<ITrustedNodesManager>(),
+                configuredStaticNodes);
         });
         builder.AddDecorator<INodeHealthTracker<Node>>((ctx, inner) =>
             new FilteringNodeHealthTracker(

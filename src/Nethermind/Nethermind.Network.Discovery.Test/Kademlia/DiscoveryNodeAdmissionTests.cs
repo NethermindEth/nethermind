@@ -249,28 +249,36 @@ public class DiscoveryNodeAdmissionTests
     }
 
     [Test]
-    public void Exemption_follows_the_node_identity_after_reconstruction_drops_the_flags()
+    public void Flag_exemption_applies_only_to_the_current_call()
     {
         Fixture fixture = CreateAdmission();
-        Node trusted = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
-        trusted.IsTrusted = true;
-        Node staticNode = CreateNode(TestItem.PublicKeyB, "203.0.114.11");
-        staticNode.IsStatic = true;
-        Node bootnode = CreateNode(TestItem.PublicKeyC, "203.0.115.12");
-        bootnode.IsBootnode = true;
+        // An ordinary node already holds the subnet.
+        Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyE, "203.0.113.20")), Is.True);
+
+        Node flagged = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
+        flagged.IsTrusted = true;
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(fixture.Admission.TryAdmit(trusted), Is.True);
-            Assert.That(fixture.Admission.TryAdmit(staticNode), Is.True);
-            Assert.That(fixture.Admission.TryAdmit(bootnode), Is.True);
-            // A packet rebuilds the node without its flags; the identity must keep the exemption.
+            // The flag admits the flagged instance without reserving the subnet...
+            Assert.That(fixture.Admission.TryAdmit(flagged), Is.True);
+            // ...but a packet rebuild without the flag inherits no lasting identity entitlement.
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyA, "203.0.113.10")), Is.False);
+        }
+    }
+
+    [Test]
+    public void Configured_static_peers_are_exempt_by_identity()
+    {
+        Fixture fixture = CreateAdmission(configuredStaticNodes:
+            [new NetworkNode(TestItem.PublicKeyA, "203.0.113.10", 30303)]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            // A packet rebuilds the node without its flags.
             Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyA, "203.0.113.10")), Is.True);
-            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyB, "203.0.114.11")), Is.True);
-            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyC, "203.0.115.12")), Is.True);
-            // None of those exemptions consumed capacity for the subnets they came from.
-            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyE, "203.0.113.99")), Is.True);
-            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyF, "203.0.114.99")), Is.True);
+            // The configured static peer did not reserve its subnet.
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyB, "203.0.113.99")), Is.True);
         }
     }
 
@@ -313,6 +321,45 @@ public class DiscoveryNodeAdmissionTests
     }
 
     [Test]
+    public void Removing_a_managed_node_revokes_its_exemption()
+    {
+        List<NetworkNode> staticNodesList = [new(TestItem.PublicKeyA, "203.0.113.10", 30303)];
+        List<NetworkNode> trustedNodesList = [new(TestItem.PublicKeyB, "203.0.114.20", 30303)];
+        IStaticNodesManager staticNodes = Substitute.For<IStaticNodesManager>();
+        staticNodes.Nodes.Returns(_ => staticNodesList);
+        ITrustedNodesManager trustedNodes = Substitute.For<ITrustedNodesManager>();
+        trustedNodes.Nodes.Returns(_ => trustedNodesList);
+        Fixture fixture = CreateAdmission(staticNodes: staticNodes, trustedNodes: trustedNodes);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyA, "203.0.113.10")), Is.True);
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyB, "203.0.114.20")), Is.True);
+            // The exempt nodes left their subnets free for an ordinary node.
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyE, "203.0.113.99")), Is.True);
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyF, "203.0.114.99")), Is.True);
+        }
+
+        staticNodesList.Clear();
+        trustedNodesList.Clear();
+
+        Node flaggedStatic = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
+        flaggedStatic.IsStatic = true;
+        Node flaggedTrusted = CreateNode(TestItem.PublicKeyB, "203.0.114.20");
+        flaggedTrusted.IsTrusted = true;
+
+        using (Assert.EnterMultipleScope())
+        {
+            // A still-flagged instance is admitted for its own call...
+            Assert.That(fixture.Admission.TryAdmit(flaggedStatic), Is.True);
+            Assert.That(fixture.Admission.TryAdmit(flaggedTrusted), Is.True);
+            // ...but it does not restore the identity's exemption.
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyA, "203.0.113.10")), Is.False);
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyB, "203.0.114.20")), Is.False);
+        }
+    }
+
+    [Test]
     public void Disabled_admission_accepts_everything_without_reading_persisted_nodes()
     {
         Fixture fixture = CreateAdmission(enabled: false);
@@ -351,7 +398,8 @@ public class DiscoveryNodeAdmissionTests
         string currentIp = "198.51.100.1",
         TimeProvider? timeProvider = null,
         IStaticNodesManager? staticNodes = null,
-        ITrustedNodesManager? trustedNodes = null)
+        ITrustedNodesManager? trustedNodes = null,
+        IEnumerable<NetworkNode>? configuredStaticNodes = null)
     {
         IRoutingTable<Node, ValueHash256> routingTable = Substitute.For<IRoutingTable<Node, ValueHash256>>();
         INetworkStorage storage = Substitute.For<INetworkStorage>();
@@ -378,7 +426,8 @@ public class DiscoveryNodeAdmissionTests
             admittedCapacity: 100,
             LimboLogs.Instance,
             staticNodes,
-            trustedNodes);
+            trustedNodes,
+            configuredStaticNodes);
         return new Fixture(admission, routingTable, storage);
     }
 
