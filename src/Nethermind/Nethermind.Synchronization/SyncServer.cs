@@ -481,7 +481,7 @@ namespace Nethermind.Synchronization
         /// <remarks>
         /// Walks the chain with <see cref="HeaderWalk"/>, as <see cref="IBlockTree.FindHeaders"/> does, but copies each
         /// header as the header store holds it and reads the parent hash from that encoding, so no header is decoded.
-        /// A request with a skip on the main chain is first answered with one batched level read and one batched header
+        /// A request with a skip on the main chain is first answered with two batched level reads and one batched header
         /// read.
         /// </remarks>
         public IOwnedReadOnlyList<byte> FindHeadersRlp(Hash256 hash, int numberOfBlocks, int skip, bool reverse)
@@ -513,7 +513,7 @@ namespace Nethermind.Synchronization
 
         /// <summary>
         /// Finds the headers of a request with a skip whose numbers all resolve to main chain blocks, as the walk would
-        /// find them, with one batched level read and one batched header read.
+        /// find them, with two batched level reads and one batched header read.
         /// </summary>
         /// <returns>
         /// The headers in response order, or <see langword="null"/>, with <paramref name="headers"/> still owned by the
@@ -556,9 +556,25 @@ namespace Nethermind.Synchronization
 
                     hashes.Add(blockHash);
                 }
-            }
 
-            if (hashes.Count == 0 || hashes[0] != hash) return null;
+                if (hashes.Count == 0 || hashes[0] != hash) return null;
+
+                // A reorg during the read can mix branches. As the forward walk does, keep a header only while the one
+                // before it is still on the main chain.
+                int previousCount = hashes.Count - 1;
+                if (previousCount > 0)
+                {
+                    _chainLevelInfoRepository.GetMainChainBlocksWithoutCaching(numbers.AsReadOnlyMemory()[..previousCount], mainChainBlocks.AsMemory()[..previousCount]);
+                    for (int i = 0; i < previousCount; i++)
+                    {
+                        if (mainChainBlocks[i].BlockHash != hashes[i])
+                        {
+                            hashes.Truncate(i + 1);
+                            break;
+                        }
+                    }
+                }
+            }
 
             using ArrayPoolList<Range> items = new(hashes.Count, hashes.Count);
             _headerStore.AppendRlps(hashes.AsSpan(), ((ReadOnlySpan<ulong>)numbers)[..hashes.Count], _headerDecoder, headers, items.AsSpan());

@@ -1217,7 +1217,7 @@ public class SyncServerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(rlp.AsSpan().ToArray(), Is.EqualTo(EncodeHeadersTheTreeFinds(tree, startHash, count, skip, reverse)));
-            Assert.That(levels.BatchedReads, Is.EqualTo(batched && skip > 0 && count > 0 ? 1 : 0));
+            Assert.That(levels.BatchedReads, batched && skip > 0 && count > 0 ? Is.Positive : Is.Zero);
         }
     }
 
@@ -1251,8 +1251,39 @@ public class SyncServerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(rlp.AsSpan().ToArray(), Is.EqualTo(EncodeHeadersTheTreeFinds(tree, startHash, 5, 2, reverse)));
-            Assert.That(levels.BatchedReads, Is.EqualTo(1));
+            Assert.That(levels.BatchedReads, Is.Positive);
             Assert.That(walkLevelReads, reverse ? Is.Positive : Is.Zero, "levels read by the walk");
+        }
+    }
+
+    /// <remarks>
+    /// The reorg replaces the chain above block 8 after the batched read copies the start level and before it reads
+    /// the others, so the read finds the start on the old branch and the next headers on the new one.
+    /// </remarks>
+    [Test]
+    public void FindHeadersRlp_with_a_skip_stops_at_a_header_that_a_reorg_during_the_read_moved_off_the_main_chain()
+    {
+        BlockTreeBuilder builder = BuildBlockTree(out CountingChainLevelInfoRepository levels);
+        BlockTree tree = builder.TestObject;
+        BlockHeader start = tree.FindHeader(10, BlockTreeLookupOptions.None)!;
+        levels.DuringNextBatchedRead = () =>
+        {
+            Block parent = tree.FindBlock(8, BlockTreeLookupOptions.None)!;
+            for (int i = 0; i < 11; i++)
+            {
+                parent = Build.A.Block.WithParent(parent).WithDifficulty(parent.Difficulty * 2).TestObject;
+                tree.SuggestBlock(parent);
+            }
+
+            tree.TryUpdateMainChain(parent.Header, wereProcessed: true, forceUpdateHeadBlock: true);
+        };
+
+        using IOwnedReadOnlyList<byte> rlp = FindHeadersRlp(builder, levels, batched: true, start.Hash!, 5, 1, false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.FindHash(10), Is.Not.EqualTo(start.Hash), "reorg ran");
+            Assert.That(rlp.AsSpan().ToArray(), Is.EqualTo(EncodeHeadersTheTreeFinds(tree, start.Hash!, 1, 0, false)));
         }
     }
 
@@ -1319,9 +1350,21 @@ public class SyncServerTests
             return inner.MultiLoadLevel(in blockNumbers);
         }
 
+        /// <summary>Runs between the reads of the first level and the other levels of the next batched read of more than one level.</summary>
+        public Action? DuringNextBatchedRead { get; set; }
+
         public void GetMainChainBlocksWithoutCaching(ReadOnlyMemory<ulong> blockNumbers, Memory<(ValueHash256 BlockHash, UInt256 TotalDifficulty)> blocks)
         {
             BatchedReads++;
+            if (blockNumbers.Length > 1 && DuringNextBatchedRead is { } action)
+            {
+                DuringNextBatchedRead = null;
+                inner.GetMainChainBlocksWithoutCaching(blockNumbers[..1], blocks[..1]);
+                action();
+                inner.GetMainChainBlocksWithoutCaching(blockNumbers[1..], blocks[1..]);
+                return;
+            }
+
             inner.GetMainChainBlocksWithoutCaching(blockNumbers, blocks);
         }
     }
