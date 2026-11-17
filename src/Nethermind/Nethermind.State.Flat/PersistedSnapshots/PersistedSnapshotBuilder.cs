@@ -105,7 +105,7 @@ public static class PersistedSnapshotBuilder
                     seen.Add(kv.Key);
 
                 NativeMemoryList<((ValueAddress Addr, UInt256 Slot) Key, UInt256? Value)> storages =
-                    new(Math.Max(1, snapshot.StoragesCount));
+                    [with(Math.Max(1, snapshot.StoragesCount))];
                 foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> kv in snapshot.Storages)
                 {
                     (Address addr, UInt256 slot) = kv.Key.Key;
@@ -113,7 +113,7 @@ public static class PersistedSnapshotBuilder
                     seen.Add(addr);
                 }
 
-                ArrayPoolList<Address> addresses = new(seen.Count);
+                ArrayPoolList<Address> addresses = [with(seen.Count)];
                 foreach (HashedKey<Address> addr in seen)
                     addresses.Add(addr.Key);
                 addresses.Sort(new AddressComparer());

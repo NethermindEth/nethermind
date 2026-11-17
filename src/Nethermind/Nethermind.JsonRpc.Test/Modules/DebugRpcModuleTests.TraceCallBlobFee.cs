@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -96,11 +97,24 @@ public partial class DebugRpcModuleTests
     [TestCase(null, "0x0", 0, false, true)]
     [TestCase("0x9", null, 5, false, false)]
     [TestCase("0x9", null, 5, true, true)]
+    // A stored header carries no flag; the chain's switcher decides, as for Taiko's zk gas in the difficulty.
+    [TestCase("0x9", null, 5, false, true, true)]
+    [TestCase(null, "0x0", 5, false, true, true)]
+    // The source block is classified before the overrides, so a number override of 0 does not make the copy a genesis.
+    [TestCase("0x9", null, 5, false, true, true, "0x0")]
+    // An indexed call classifies its own copy too, so the block tree's head keeps its flag. Its PREVRANDAO comes from
+    // block processing, which this fixture runs without merge recovery, so the value is not checked (null).
+    [TestCase("0x9", null, 5, false, null, true, null, "0x0")]
     public async Task Debug_traceCall_blob_fee_override_reads_prevrandao_or_difficulty(
-        string? blobBaseFee, string? maxFeePerBlobGas, int difficulty, bool isPostMerge, bool expectMixHash)
+        string? blobBaseFee, string? maxFeePerBlobGas, int difficulty, bool isPostMerge, bool? expectMixHash, bool chainIsPostMerge = false,
+        string? number = null, string? txIndex = null)
     {
-        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
-        BlockHeader head = ctx.Blockchain.BlockTree.Head!.Header;
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(builder =>
+        {
+            builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Cancun.Instance));
+            if (chainIsPostMerge) builder.AddSingleton<IPoSSwitcher>(AlwaysPoS.Instance);
+        });
+        BlockHeader head = chain.BlockTree.Head!.Header;
         head.ExcessBlobGas = 0;
         head.Difficulty = (UInt256)difficulty;
         head.MixHash = TestItem.KeccakH;
@@ -111,20 +125,25 @@ public partial class DebugRpcModuleTests
         {
             ["stateOverrides"] = new Dictionary<string, object> { [address] = new { code = "0x4460005260206000f3" } }
         };
-        if (blobBaseFee is not null) options["blockOverrides"] = new { blobBaseFee };
+        if (txIndex is not null) options["txIndex"] = txIndex;
+        if (blobBaseFee is not null) options["blockOverrides"] = number is null ? new { blobBaseFee } : new { blobBaseFee, number };
         if (maxFeePerBlobGas is not null)
         {
             transaction["maxFeePerBlobGas"] = maxFeePerBlobGas;
             transaction["blobVersionedHashes"] = new[] { "0x01" + new string('0', 62) };
         }
 
-        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", transaction, "latest", options);
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", transaction, "latest", options);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(JToken.Parse(response)["result"]!["failed"]!.Value<bool>(), Is.False, response);
-            Assert.That(ParseReturnValue(response),
-                Is.EqualTo(expectMixHash ? TestItem.KeccakH.Bytes.ToArray() : head.Difficulty.ToBigEndian()));
+            if (expectMixHash is { } mixHash)
+            {
+                Assert.That(ParseReturnValue(response),
+                    Is.EqualTo(mixHash ? TestItem.KeccakH.Bytes.ToArray() : head.Difficulty.ToBigEndian()));
+            }
+            Assert.That(head.IsPostMerge, Is.EqualTo(isPostMerge), "the head keeps its flag");
         }
     }
 
@@ -140,10 +159,10 @@ public partial class DebugRpcModuleTests
         public void SetBlockExecutionContext(in BlockExecutionContext context) => inner.SetBlockExecutionContext(context);
     }
 
-    [TestCase("0x01", false, "blob versioned hash must be 32 bytes")]
-    [TestCase("0x02", false, "blob versioned hash version must be 0x01")]
-    [TestCase("0x01", true, "maxFeePerGas (1) < maxPriorityFeePerGas (2)")]
-    public async Task Debug_traceCall_zero_blob_cap_preserves_other_validation(string hashPrefix, bool conflictingFees, string expectedError)
+    [TestCase("0x01", false, RpcTransactionErrors.InvalidBlobVersionedHashSize, ErrorCodes.InvalidInput)]
+    [TestCase("0x02", false, "blob versioned hash version must be 0x01", ErrorCodes.InvalidInput)]
+    [TestCase("0x01", true, "maxFeePerGas (1) < maxPriorityFeePerGas (2)", ErrorCodes.InvalidInput)]
+    public async Task Debug_traceCall_zero_blob_cap_preserves_other_validation(string hashPrefix, bool conflictingFees, string expectedError, int expectedCode)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
         string hash = hashPrefix == "0x02" || conflictingFees ? hashPrefix + new string('0', 62) : hashPrefix;
@@ -159,7 +178,13 @@ public partial class DebugRpcModuleTests
             transaction["maxFeePerGas"] = "0x1";
         }
         string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", transaction, "latest");
-        Assert.That(JToken.Parse(response)["error"]!["message"]!.Value<string>(), Is.EqualTo(expectedError));
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(expectedCode), response);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo(expectedError), response);
+            Assert.That(json["result"], Is.Null, response);
+        }
     }
 
     [Test]

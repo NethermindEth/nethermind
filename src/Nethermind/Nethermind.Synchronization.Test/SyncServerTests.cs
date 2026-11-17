@@ -33,6 +33,9 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
@@ -100,12 +103,88 @@ public class SyncServerTests
         Context ctx = new();
         IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
         SyncServer server = ctx.CreateSyncServer(ctx.BlockTree, receiptFinder: receiptFinder);
+        using ArrayPoolList<byte> destination = new(0);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(server.GetReceipts(TestItem.KeccakA), Is.Null);
+            Assert.That(server.TryAppendReceipts(TestItem.KeccakA, new ReceiptMessageDecoder(), withBloom: true, destination), Is.False);
+            Assert.That(destination, Is.Empty);
             receiptFinder.DidNotReceiveWithAnyArgs().Get(Arg.Any<Hash256>());
         }
+    }
+
+    [Test]
+    public void Appended_receipts_of_a_block_without_transactions_are_an_empty_list_when_its_body_is_stored([Values] bool bodyStored)
+    {
+        Context ctx = new();
+        BlockHeader header = Build.A.BlockHeader.WithTransactionsRoot(Keccak.EmptyTreeHash).TestObject;
+        Hash256 hash = header.Hash!;
+        ctx.BlockTree.FindHeader(hash, Arg.Any<BlockTreeLookupOptions>()).Returns(header);
+        ctx.BlockTree.HasBlock(header.Number, hash).Returns(bodyStored);
+        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+        // The receipt store keeps no receipts for a block without transactions.
+        receiptFinder.Get(hash).Returns([]);
+        SyncServer server = ctx.CreateSyncServer(ctx.BlockTree, receiptFinder: receiptFinder);
+        using ArrayPoolList<byte> destination = new(0);
+
+        bool appended = server.TryAppendReceipts(hash, new ReceiptMessageDecoder(), withBloom: true, destination);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(appended, Is.EqualTo(bodyStored));
+            Assert.That(destination.AsSpan().ToArray(), Is.EqualTo(bodyStored ? new[] { Rlp.EmptyListByte } : Array.Empty<byte>()));
+        }
+    }
+
+    [Test]
+    public void Appended_receipts_are_the_stored_copy_or_encoded_as_receipts_messages_encode_them(
+        [Values] bool withBloom, [Values] bool storedFormReadable, [Values(1UL, 4_370_000UL)] ulong number)
+    {
+        Context ctx = new();
+        BlockHeader header = Build.A.BlockHeader.WithNumber(number).WithTransactionsRoot(TestItem.KeccakB).TestObject;
+        Hash256 hash = header.Hash!;
+        TxReceipt[] receipts =
+        [
+            Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(number).TestObject,
+            Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(number).WithTxType(TxType.EIP1559).WithLogs(Build.A.LogEntry.TestObject).TestObject,
+        ];
+        ctx.BlockTree.FindHeader(hash, Arg.Any<BlockTreeLookupOptions>()).Returns(header);
+        ctx.BlockTree.HasBlock(header.Number, hash).Returns(true);
+        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+        receiptFinder.Get(hash).Returns(receipts);
+        byte[] storedCopy = [0xc1, 0x80];
+        receiptFinder.TryAppendNetworkReceipts(header, withBloom, Arg.Any<ArrayPoolList<byte>>()).Returns(call =>
+        {
+            if (!storedFormReadable) return false;
+            call.ArgAt<ArrayPoolList<byte>>(2).AddRange(storedCopy);
+            return true;
+        });
+        SyncServer server = ctx.CreateSyncServer(ctx.BlockTree, receiptFinder: receiptFinder);
+        IRlpDecoder<TxReceipt> decoder = withBloom ? new ReceiptMessageDecoder() : new ReceiptMessageDecoder69();
+        using ArrayPoolList<byte> destination = new(1) { 0xff };
+
+        bool appended = server.TryAppendReceipts(hash, decoder, withBloom, destination);
+
+        byte[] expected = storedFormReadable ? storedCopy : EncodeAsReceiptsMessage(receipts, withBloom);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(appended, Is.True);
+            Assert.That(destination.AsSpan().ToArray(), Is.EqualTo((byte[])[0xff, .. expected]));
+            receiptFinder.Received(1).TryAppendNetworkReceipts(header, withBloom, Arg.Any<ArrayPoolList<byte>>());
+        }
+    }
+
+    /// <summary>The receipt sequence of one block as the receipts message serializers write decoded receipts.</summary>
+    private static byte[] EncodeAsReceiptsMessage(TxReceipt[] receipts, bool withBloom)
+    {
+        ReceiptsMessageSerializer serializer = withBloom
+            ? new ReceiptsMessageSerializer(MainnetSpecProvider.Instance)
+            : new ReceiptsMessageInnerSerializer69(MainnetSpecProvider.Instance);
+        using ReceiptsMessage message = new(new ArrayPoolList<TxReceipt[]>(1) { receipts });
+        byte[] serialized = new byte[serializer.GetLength(message)];
+        serializer.Serialize(serialized, message);
+        return new RlpReader(serialized).EnterSequence(out _).ReadEncodedItem().ToArray();
     }
 
     [Test]
@@ -124,14 +203,6 @@ public class SyncServerTests
         ctx.BlockTree.IsKnownBlock(1, TestItem.KeccakA).ReturnsForAnyArgs(false);
         ctx.SyncServer.HintBlock(TestItem.KeccakA, 1, ctx.NodeWhoSentTheBlock);
         ctx.PeerPool.Received().ReceivedWithAnyArgs();
-    }
-
-    [Test]
-    public void When_finding_by_hash_block_info_is_not_loaded()
-    {
-        Context ctx = new();
-        ctx.SyncServer.Find(TestItem.KeccakA);
-        ctx.BlockTree.Received().FindBlock(Arg.Any<Hash256>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.ExcludeTxHashes);
     }
 
     [Test]

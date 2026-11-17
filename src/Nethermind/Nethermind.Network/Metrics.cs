@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Runtime.Serialization;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Metric;
 using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Network.P2P;
 using Nethermind.Stats.Model;
@@ -93,25 +94,25 @@ namespace Nethermind.Network
         [DataMember(Name = "nethermind_outgoing_p2p_messages")]
         [Description("Number of outgoing p2p packets.")]
         [KeyIsLabel("protocol", "message")]
-        public static NonBlocking.ConcurrentDictionary<P2PMessageKey, long> OutgoingP2PMessages { get; } = new();
+        public static NonBlocking.ConcurrentDictionary<P2PMessageKey, MetricCounter> OutgoingP2PMessages { get; } = new();
 
         [CounterMetric]
         [DataMember(Name = "nethermind_outgoing_p2p_message_bytes")]
         [Description("Bytes of outgoing p2p packets.")]
         [KeyIsLabel("protocol", "message")]
-        public static NonBlocking.ConcurrentDictionary<P2PMessageKey, long> OutgoingP2PMessageBytes { get; } = new();
+        public static NonBlocking.ConcurrentDictionary<P2PMessageKey, MetricCounter> OutgoingP2PMessageBytes { get; } = new();
 
         [CounterMetric]
         [DataMember(Name = "nethermind_incoming_p2p_messages")]
         [Description("Number of incoming p2p packets.")]
         [KeyIsLabel("protocol", "message")]
-        public static NonBlocking.ConcurrentDictionary<P2PMessageKey, long> IncomingP2PMessages { get; } = new();
+        public static NonBlocking.ConcurrentDictionary<P2PMessageKey, MetricCounter> IncomingP2PMessages { get; } = new();
 
         [CounterMetric]
         [DataMember(Name = "nethermind_incoming_p2p_message_bytes")]
         [Description("Bytes of incoming p2p packets.")]
         [KeyIsLabel("protocol", "message")]
-        public static NonBlocking.ConcurrentDictionary<P2PMessageKey, long> IncomingP2PMessageBytes { get; } = new();
+        public static NonBlocking.ConcurrentDictionary<P2PMessageKey, MetricCounter> IncomingP2PMessageBytes { get; } = new();
 
         [GaugeMetric]
         [Description("Number of candidate peers in peer manager")]

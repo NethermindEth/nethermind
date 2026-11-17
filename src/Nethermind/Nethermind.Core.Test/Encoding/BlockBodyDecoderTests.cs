@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Serialization.FluentRlp;
@@ -106,6 +107,41 @@ public class BlockBodyDecoderTests
         {
             foreach (Transaction transaction in decoded.Transactions) TxDecoder.TxObjectPool.Return(transaction);
         }
+    }
+
+    [TestCaseSource(nameof(ValidBodies))]
+    public void Encoded_transactions_of_a_block_keep_their_hashes(BlockBody body)
+    {
+        Block block = new(Build.A.BlockHeader.TestObject, body);
+
+        Transaction[] transactions = BlockBodyDecoder.DecodeEncodedTransactionsOfBlock(new BlockDecoder().Encode(block));
+
+        try
+        {
+            Assert.That(transactions.Select(static tx => (tx.Type, tx.Hash)),
+                Is.EqualTo(body.Transactions.Select(static tx => (tx.Type, tx.CalculateHash()))));
+        }
+        finally
+        {
+            foreach (Transaction transaction in transactions) TxDecoder.TxObjectPool.Return(transaction);
+        }
+    }
+
+    [Test]
+    public void Reads_the_gas_limit_of_each_transaction_type()
+    {
+        Transaction[] transactions =
+        [
+            Build.A.Transaction.WithType(TxType.Legacy).WithGasLimit(21_001).Signed().TestObject,
+            Build.A.Transaction.WithType(TxType.AccessList).WithGasLimit(21_002).Signed().TestObject,
+            Build.A.Transaction.WithType(TxType.EIP1559).WithGasLimit(21_003).Signed().TestObject,
+            Build.A.Transaction.WithType(TxType.Blob).WithShardBlobTxTypeAndFields(isMempoolTx: false).WithGasLimit(21_004).Signed().TestObject,
+            Build.A.Transaction.WithType(TxType.SetCode).WithAuthorizationCodeIfAuthorizationListTx().WithGasLimit(21_005).Signed().TestObject,
+        ];
+        Block block = Build.A.Block.WithTransactions(transactions).TestObject;
+
+        Assert.That(BlockBodyDecoder.ReadTransactionGasLimits(new BlockDecoder().Encode(block)),
+            Is.EqualTo(transactions.Select(static tx => tx.GasLimit)));
     }
 
     [Test]

@@ -11,11 +11,14 @@ using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Tracing;
 
-public class AccessTxTracer(params Address[] addressesToOptimize) : TxTracer
+public class AccessTxTracer(params Address[] addressesToOptimize) : TxTracer, ITxOutputTracingFilter
 {
     public override bool IsTracingReceipt => true;
     public override bool IsCollectingLogs => false;
     public override bool IsTracingAccess => true;
+
+    /// <inheritdoc/>
+    public bool IsTracingOutput => false;
 
     public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs,
         Hash256? stateRoot = null) => GasSpent += gasSpent.SpentGas;
@@ -26,7 +29,7 @@ public class AccessTxTracer(params Address[] addressesToOptimize) : TxTracer
     public override void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells)
     {
         // Geth orders the list by address and each address's keys ascending; execution-apis leaves the order open.
-        SortedDictionary<Address, SortedSet<UInt256>?> dictionary = new(new AddressComparer());
+        SortedDictionary<Address, SortedSet<UInt256>?> dictionary = [with(new AddressComparer())];
         foreach (Address address in accessedAddresses)
         {
             dictionary.Add(address, null);

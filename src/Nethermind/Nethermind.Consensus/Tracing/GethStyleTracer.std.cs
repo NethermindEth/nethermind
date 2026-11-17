@@ -51,6 +51,7 @@ public class GethStyleTracer(
     IPrefixStateSeedSource prefixSeeds,
     IOverridableCodeInfoRepository codeInfoRepository,
     ILogManager logManager,
+    IPoSSwitcher poSSwitcher,
     IParallelBlockTracer? parallelTracer = null,
     GethStyleTracer.TraceCallRequestState? callRequestState = null
 ) : IGethStyleTracer
@@ -135,9 +136,8 @@ public class GethStyleTracer(
     private (BlockHeader Header, IReleaseSpec Spec) PrepareCallHeader(Block block, GethTraceOptions options)
     {
         BlockHeader header = block.Header.Clone();
-        // Taken before preprocessing restores IsPostMerge, which stored headers do not carry. Only ever set it:
-        // a chain such as Taiko keeps post-merge headers with a nonzero difficulty.
-        if (header.Difficulty == 0) header.IsPostMerge = true;
+        // Taken before preprocessing restores IsPostMerge, which stored headers do not carry.
+        poSSwitcher.RestorePostMergeForCall(header);
         options.BlockOverrides?.ApplyOverrides(header);
         if (options.NoBaseFee) header.BaseFeePerGas = UInt256.Zero;
         return (header, specProvider.GetSpec(header));
@@ -421,6 +421,7 @@ public class GethStyleTracer(
         }
 
         bool unaltered = allowIndexed && options.StateOverrides is null && options.BlockOverrides is null && !options.NoBaseFee;
+        if (txIndex < 0 && !useBlockAsBase && unaltered) txIndex = TransactionTraceBoundary.FindIndex(receiptFinder, prefixSeeds, block, txHash);
         BlockLogIndex? logIndex = null;
         bool tracePreceding = false;
         if (!useBlockAsBase && WantsLogIndex(options))
@@ -627,7 +628,7 @@ public class GethStyleTracer(
         using ArrayPoolList<int>? firstLogIndexes = FirstLogIndexes(block);
         if (firstLogIndexes is null) return false;
 
-        Dictionary<Hash256, int> firstLogIndexByTx = new(block.Transactions.Length);
+        Dictionary<Hash256, int> firstLogIndexByTx = [with(block.Transactions.Length)];
         for (int i = 0; i < block.Transactions.Length; i++)
         {
             firstLogIndexByTx[block.Transactions[i].Hash!] = firstLogIndexes[i];

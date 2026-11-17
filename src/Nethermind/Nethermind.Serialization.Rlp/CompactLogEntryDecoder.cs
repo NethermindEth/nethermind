@@ -13,7 +13,6 @@ namespace Nethermind.Serialization.Rlp
     public class CompactLogEntryDecoder : RlpDecoder<LogEntry?>
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<LogEntry>((int)16.MB, nameof(LogEntry));
-        private static readonly RlpLimit LogEntryDataRlpLimit = RlpLimit.For<LogEntry>(RlpLimit.DefaultLimit.Limit, nameof(LogEntry.Data));
         public static CompactLogEntryDecoder Instance { get; } = new();
 
         protected override LogEntry? DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -163,9 +162,9 @@ namespace Nethermind.Serialization.Rlp
         private static ReadOnlySpan<byte> DecodeCompactData<TCanonicalChecks>(scoped ref RlpReader reader, out int zeroPrefix) where TCanonicalChecks : struct, IFlag
         {
             zeroPrefix = reader.DecodePositiveInt<TCanonicalChecks>();
-            ReadOnlySpan<byte> data = reader.DecodeByteArraySpan<TCanonicalChecks>();
+            ReadOnlySpan<byte> data = reader.DecodeByteArraySpan<TCanonicalChecks>(LogEntryDecoder.DataRlpLimit);
 
-            Rlp.GuardLimit(zeroPrefix, LogEntryDataRlpLimit.Limit - data.Length, LogEntryDataRlpLimit);
+            Rlp.GuardLimit(zeroPrefix, LogEntryDecoder.DataRlpLimit.Limit - data.Length, LogEntryDecoder.DataRlpLimit);
 
             return data;
         }

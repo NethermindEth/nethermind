@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.CodeAnalysis;
@@ -18,6 +19,9 @@ public sealed class StaticCodeCache : ICodeCache
     /// <summary>The largest code the medium tier holds: the EIP-170 limit that bounded all code before EIP-7907.</summary>
     public const int MediumCodeSize = 24 * 1024;
 
+    /// <summary>The largest code the large tier holds: the EIP-7954 limit, the highest code size limit of any fork.</summary>
+    public const int LargeCodeSize = CodeSizeConstants.MaxCodeSizeEip7954;
+
     public static readonly StaticCodeCache Instance = new(
         MemoryAllowance.SmallCodeCacheSize, MemoryAllowance.MediumCodeCacheSize, MemoryAllowance.LargeCodeCacheSize);
 
@@ -32,11 +36,12 @@ public sealed class StaticCodeCache : ICodeCache
     /// <remarks>
     /// Code above <see cref="MediumCodeSize"/> is what a block of distinct maximum-size contracts loads; confined to
     /// its own tier, it cannot evict the small and medium code ordinary blocks run, and each tier bounds its memory
-    /// by the largest code it holds.
+    /// by the largest code it holds. Code above <see cref="LargeCodeSize"/> is not kept: no fork with EIP-170 allows it, so it
+    /// comes from RPC state overrides, simulations without a code size limit or chains with a custom limit.
     /// </remarks>
     /// <param name="smallCapacity">Entries for code of at most <see cref="SmallCodeSize"/>.</param>
     /// <param name="mediumCapacity">Entries for code of at most <see cref="MediumCodeSize"/>.</param>
-    /// <param name="largeCapacity">Entries for larger code.</param>
+    /// <param name="largeCapacity">Entries for code of at most <see cref="LargeCodeSize"/>.</param>
     public StaticCodeCache(int smallCapacity, int mediumCapacity, int largeCapacity)
     {
         _small = new AssociativeCache<ValueHash256, CodeInfo>(smallCapacity);
@@ -58,7 +63,7 @@ public sealed class StaticCodeCache : ICodeCache
     public void Set(in ValueHash256 codeHash, CodeInfo codeInfo)
     {
         codeInfo.StampCodeHash(in codeHash);
-        TierFor(codeInfo.CodeLength).Set(in codeHash, codeInfo);
+        TierFor(codeInfo.CodeLength)?.Set(in codeHash, codeInfo);
     }
 
     public void Clear()
@@ -68,8 +73,9 @@ public sealed class StaticCodeCache : ICodeCache
         _large?.Clear();
     }
 
-    private AssociativeCache<ValueHash256, CodeInfo> TierFor(int codeLength) =>
+    private AssociativeCache<ValueHash256, CodeInfo>? TierFor(int codeLength) =>
         _medium is null || codeLength <= SmallCodeSize ? _small
         : codeLength <= MediumCodeSize ? _medium
-        : _large!;
+        : codeLength <= LargeCodeSize ? _large
+        : null;
 }

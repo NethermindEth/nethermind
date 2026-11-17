@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -33,13 +34,14 @@ namespace Nethermind.JsonRpc.Modules.Proof
         IBlockFinder blockFinder,
         [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder receiptFinder,
         ISpecProvider specProvider,
+        IPoSSwitcher poSSwitcher,
         IJsonRpcConfig jsonRpcConfig)
         : IProofRpcModule
     {
         // Registry-resolved so AuRa chains encode headers with step + signature (see AuRaHeaderModule).
         private readonly IRlpDecoder<BlockHeader> _headerDecoder = Rlp.GetDecoderOrThrow<BlockHeader>();
         private static readonly IRlpDecoder<TxReceipt> _receiptEncoder = Rlp.GetDecoder<TxReceipt>();
-        private readonly WitnessCall _witnessCall = new(blockFinder, blockchainBridge, specProvider, jsonRpcConfig);
+        private readonly WitnessCall _witnessCall = new(blockFinder, blockchainBridge, specProvider, poSSwitcher, jsonRpcConfig);
 
         public ResultWrapper<CallResultWithProof> proof_call(TransactionForRpc tx, BlockParameter blockParameter) =>
             _witnessCall.Execute(tx, blockParameter);
@@ -90,7 +92,11 @@ namespace Nethermind.JsonRpc.Modules.Proof
             TxReceipt? receipt = storedReceipts.ForTransaction(txHash);
             if (receipt is null)
             {
-                return ResultWrapper<ReceiptWithProof>.Success(null);
+                // Only a stored receipt set gets here: with receipt regeneration on, the read above has already served the
+                // receipt, or failed with 4444, for a block whose receipts are not stored.
+                return blockFinder.IsTransactionPruned(block, storedReceipts)
+                    ? ResultWrapper<ReceiptWithProof>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable)
+                    : ResultWrapper<ReceiptWithProof>.Success(null);
             }
 
             Transaction[] txs = block.Transactions;
@@ -235,7 +241,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
         {
             if (txIndex == 0) return 0;
 
-            HashSet<Hash256> preceding = new(txIndex);
+            HashSet<Hash256> preceding = [with(txIndex)];
             for (int i = 0; i < txIndex; i++)
             {
                 preceding.Add(txs[i].Hash!);

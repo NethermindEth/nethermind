@@ -76,6 +76,20 @@ public class CompositeTxTracerTests
         Assert.That(tracer.InstructionMask, Is.EqualTo(stack || memory || returnData ? UInt256.MaxValue : UInt256.One));
     }
 
+    /// <param name="readsOutput">What the receipt tracer reports as an output filter; null when it is not one.</param>
+    [Test]
+    public void Reads_the_output_when_a_receipt_tracer_reads_it([Values] bool? readsOutput, [Values] bool siblingTracesReceipt)
+    {
+        ITxTracer receiptTracer = readsOutput is null ? Substitute.For<ITxTracer>() : Substitute.For<ITxTracer, ITxOutputTracingFilter>();
+        receiptTracer.IsTracingReceipt.Returns(true);
+        if (receiptTracer is ITxOutputTracingFilter filter) filter.IsTracingOutput.Returns(readsOutput!.Value);
+        ITxTracer sibling = Substitute.For<ITxTracer>();
+        sibling.IsTracingReceipt.Returns(siblingTracesReceipt);
+        using CompositeTxTracer tracer = new(receiptTracer, sibling);
+
+        Assert.That(tracer.IsTracingOutput, Is.EqualTo(readsOutput is not false || siblingTracesReceipt));
+    }
+
     [Test]
     public void InstructionMask_WhenCancellationForcesSnapshots_RequiresFullTracing(
         [Values] bool stack, [Values] bool memory, [Values] bool returnData, [Values] bool instructions)
@@ -227,7 +241,7 @@ public class CompositeTxTracerTests
     [Test]
     public void Wrapping_tracer_implements_every_meaningful_default_interface_member([Values(typeof(CompositeTxTracer), typeof(CancellationTxTracer))] Type wrapperType)
     {
-        string[] convenienceForwarders = ["get_IsTracing", "ReportStackPush", "ReportMemoryChange"];
+        string[] convenienceForwarders = ["get_IsTracing", "get_IsObservingFeePayment", "ReportStackPush", "ReportMemoryChange"];
 
         MethodInfo[] defaultMembers = typeof(ITxTracer)
             .GetMethods()
