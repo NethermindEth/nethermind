@@ -82,6 +82,46 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void GetMany_WithScalarFallback_PassesReadFlags()
+        {
+            using TestMemDb store = new();
+            store.Set(new byte[] { 0 }, new byte[] { 1 });
+
+            store.GetMany<long?, CountingValueDecoder>([0, 1], 1, new long?[2], default, ReadFlags.HintCacheMiss);
+
+            store.KeyWasReadWithFlags([0], ReadFlags.HintCacheMiss);
+            store.KeyWasReadWithFlags([1], ReadFlags.HintCacheMiss);
+        }
+
+        [Test]
+        public void GetMany_WithCacheMissHint_DoesNotFillBlockCache([Values(ReadFlags.None, ReadFlags.HintCacheMiss)] ReadFlags flags)
+        {
+            const int keyCount = 4096;
+            const int valueSize = 256;
+            using DbOnTheRocks db = CreateFreshDb("Blocks");
+            Random random = new(42);
+            byte[] keys = new byte[keyCount * sizeof(int)];
+            byte[] value = new byte[valueSize];
+            for (int i = 0; i < keyCount; i++)
+            {
+                Span<byte> key = keys.AsSpan(i * sizeof(int), sizeof(int));
+                BinaryPrimitives.WriteInt32BigEndian(key, i);
+                random.NextBytes(value);
+                db.PutSpan(key, value, WriteFlags.None);
+            }
+
+            db.Flush();
+            long usageBefore = BlockCacheUsage();
+
+            ((IDb)db).GetMany<long?, CountingValueDecoder>(keys, sizeof(int), new long?[keyCount], default, flags);
+
+            long added = BlockCacheUsage() - usageBefore;
+            Assert.That(added, flags == ReadFlags.HintCacheMiss ? Is.LessThan(keyCount * valueSize / 10) : Is.GreaterThan(keyCount * valueSize / 2));
+
+            long BlockCacheUsage() => long.Parse(db.GatherProperty("rocksdb.block-cache-usage")!);
+        }
+
+        [Test]
         public void GetMany_WithScalarFallback_ReplacesPreviousValueAfterDecoding([Values(1, 2, 3, 257)] int count)
         {
             using IDb store = new MemDb();
@@ -120,7 +160,8 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void GetMany_OnLinux_PrefetchesUncachedBatchKeys([Values("default", "column")] string backend, [Values(15, 16)] int count)
+        public void GetMany_OnLinux_PrefetchesUncachedBatchKeys([Values("default", "column")] string backend, [Values(15, 16)] int count,
+            [Values(ReadFlags.None, ReadFlags.HintCacheMiss)] ReadFlags flags)
         {
             using IDisposable owner = CreateBatchDatabase(backend);
             IDb store = owner is ColumnsDb<ReceiptsColumns> columns ? columns.GetColumnDb(ReceiptsColumns.Blocks) : (IDb)owner;
@@ -134,13 +175,13 @@ namespace Nethermind.Db.Test
             long?[] output = new long?[count];
 
             long before = Metrics.PrefetchedKeys;
-            store.GetMany<long?, CountingValueDecoder>(keys, sizeof(int), output, default);
+            store.GetMany<long?, CountingValueDecoder>(keys, sizeof(int), output, default, flags);
             long afterUncached = Metrics.PrefetchedKeys;
-            store.GetMany<long?, CountingValueDecoder>(keys, sizeof(int), output, default);
+            store.GetMany<long?, CountingValueDecoder>(keys, sizeof(int), output, default, flags);
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(afterUncached - before, Is.EqualTo(OperatingSystem.IsLinux() && count >= 16 ? count : 0));
+                Assert.That(afterUncached - before, Is.EqualTo(OperatingSystem.IsLinux() && count >= 16 && flags == ReadFlags.None ? count : 0));
                 Assert.That(Metrics.PrefetchedKeys - afterUncached, Is.Zero);
                 Assert.That(output, Is.All.Not.Null);
             }
@@ -193,6 +234,32 @@ namespace Nethermind.Db.Test
             {
                 Assert.That(db.VerifyChecksum, Is.EqualTo(expectedChecksum));
                 Assert.That(db.ReadAheadSize, Is.EqualTo(expectedReadAhead));
+            }
+        }
+
+        [Test]
+        public void Atomic_native_write_failure_is_terminal_and_never_publishes_pending_records()
+        {
+            DbSettings settings = GetRocksDbSettings(DbPath, "Blocks");
+            using (DbOnTheRocks writable = TestRocksDbFactory.OpenDb(DbPath, settings, _dbConfig, _rocksdbConfigFactory, LimboLogs.Instance))
+            {
+                writable.Set([255], [42]);
+                writable.Flush();
+            }
+            using DbOnTheRocks db = (DbOnTheRocks)new ReadOnlyRocksDbFactory(_rocksdbConfigFactory, _dbConfig, DbPath).CreateDb(settings);
+            using IAtomicWriteBatch batch = db.StartAtomicWriteBatch();
+            batch.Set([255], [43], WriteFlags.DisableWAL);
+            for (int i = 0; i < 300; i++) batch.Set(BitConverter.GetBytes(i), [1], WriteFlags.DisableWAL);
+            Assert.Throws<RocksDbNativeException>(() => batch.Commit());
+            batch.Dispose();
+            batch.Dispose();
+            Assert.Throws<ObjectDisposedException>(() => batch.Commit());
+            Assert.Throws<ObjectDisposedException>(batch.Clear);
+            Assert.Throws<ObjectDisposedException>(() => batch.Set([1], [2]));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(((IDb)db).Get([255]), Is.EqualTo(new byte[] { 42 }));
+                for (int i = 0; i < 300; i++) Assert.That(((IDb)db).Get(BitConverter.GetBytes(i)), Is.Null);
             }
         }
 
@@ -2963,6 +3030,13 @@ namespace Nethermind.Db.Test
         [TestCase("# entries=6250000000; # deletions=3050000000;", null, 0.5, false, TestName = "DeadWeight_NoTotalSize_Declines")]
         public void ExceedsDeadWeight_DecidesFromTheAggregatedTombstoneCounts(string? aggregated, string? total, double ratio, bool expected) =>
             Assert.That(DbOnTheRocks.ExceedsDeadWeight(aggregated, total, ratio), Is.EqualTo(expected));
+    }
+
+    file sealed class ReadOnlyRocksDbFactory(IRocksDbConfigFactory rocksDbConfigFactory, IDbConfig config, string basePath)
+        : TestRocksDbFactory(rocksDbConfigFactory, config, LimboLogs.Instance, basePath, new RealFileSystem())
+    {
+        protected override RocksDb DoOpen(string path, DbOptions options, ColumnFamilies? families) =>
+            RocksDb.OpenReadOnly(options, path, errorIfLogFileExists: false);
     }
 
     class NativeCloseTrackingDbOnTheRocks(
