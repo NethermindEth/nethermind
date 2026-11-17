@@ -7,8 +7,11 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
 using Nethermind.Serialization.FluentRlp;
+using Nethermind.Stateless.Execution;
 using Nethermind.Stateless.Execution.IO;
 using Spectre.Console;
 
@@ -18,6 +21,7 @@ internal static class InputExtractor
 {
     private const string BlocksProperty = "blocks";
     private const string InputBytesProperty = "statelessInputBytes";
+    private const string OutputBytesProperty = "statelessOutputBytes";
     /// <summary>The cap on output file name length, keeping names manageable regardless of the output path.</summary>
     private const int MaxFileNameLength = 128;
 
@@ -64,6 +68,7 @@ internal static class InputExtractor
         int extracted = 0;
         int failed = 0;
         HashSet<string> writtenFiles = [with(StringComparer.OrdinalIgnoreCase)];
+        List<string> results = [];
 
         await AnsiConsole
             .Status()
@@ -80,7 +85,7 @@ internal static class InputExtractor
                     try
                     {
                         (int fileExtracted, int fileFailed) = await ExtractFromFile(
-                            fixtureFile, fullOutputPath, forZisk, trusted, maxFileNameLength, writtenFiles, cancellationToken);
+                            fixtureFile, fullOutputPath, forZisk, trusted, maxFileNameLength, writtenFiles, results, cancellationToken);
 
                         extracted += fileExtracted;
                         failed += fileFailed;
@@ -92,6 +97,9 @@ internal static class InputExtractor
                     }
                 }
             });
+
+        foreach (string result in results)
+            Console.WriteLine(result);
 
         AnsiConsole.MarkupLine(extracted == 0
             ? "[yellow]No stateless input found[/]"
@@ -110,6 +118,7 @@ internal static class InputExtractor
         bool trusted,
         int maxFileNameLength,
         HashSet<string> writtenFiles,
+        List<string> results,
         CancellationToken cancellationToken)
     {
         int extracted = 0;
@@ -156,6 +165,10 @@ internal static class InputExtractor
                         continue;
                     }
 
+                    byte[]? expected = block.TryGetProperty(OutputBytesProperty, out JsonElement outputBytes) &&
+                        outputBytes.ValueKind == JsonValueKind.String
+                            ? Convert.FromHexString(outputBytes.GetString().AsSpan(2))
+                            : null;
                     (byte[] buffer, int dataLength) = DecodeInput(inputBytes);
 
                     try
@@ -163,13 +176,17 @@ internal static class InputExtractor
                         ReadOnlyMemory<byte> output;
                         if (trusted)
                         {
-                            if (!TryConvertToTrusted(buffer.AsSpan(ZiskFrame.HeaderLength, dataLength), out byte[]? converted, out string? error))
+                            ReadOnlySpan<byte> statelessInput = buffer.AsSpan(ZiskFrame.HeaderLength, dataLength);
+                            if (!TryConvertToTrusted(statelessInput, out byte[]? converted, out string? error))
                             {
                                 AnsiConsole.MarkupLine($"[yellow]-[/] `{test.Name.EscapeMarkup()}`, block {blockIndex}: skipped, {error.EscapeMarkup()}");
                                 continue;
                             }
 
                             output = forZisk ? ZiskFrame.Wrap(converted) : converted;
+                            expected = expected is null ? null : GetTrustedResult(statelessInput, converted, expected);
+                            if (expected is null)
+                                AnsiConsole.MarkupLine($"[yellow]-[/] `{test.Name.EscapeMarkup()}`, block {blockIndex}: no expected result, as the envelope alone invalidates the block");
                         }
                         else
                         {
@@ -187,6 +204,9 @@ internal static class InputExtractor
 
                     writtenFiles.Add(fileName);
                     extracted++;
+
+                    if (expected is not null)
+                        results.Add(InputConverter.FormatResult(fileName, expected));
                 }
                 catch (Exception ex) when (ex is IOException or FormatException or UnauthorizedAccessException)
                 {
@@ -215,6 +235,27 @@ internal static class InputExtractor
             error = ex.Message;
             return false;
         }
+    }
+
+    /// <summary>Gets the result a trusted guest reports for <paramref name="trustedInput"/>, from the fixture's result for
+    /// <paramref name="statelessInput"/>.</summary>
+    /// <returns>The encoded result, or <see langword="null"/> where the verdict does not carry over: the trusted input has
+    /// no engine API envelope, so a block that the envelope alone invalidates is valid as one.</returns>
+    private static byte[]? GetTrustedResult(ReadOnlySpan<byte> statelessInput, byte[] trustedInput, byte[] expected)
+    {
+        StatelessValidationResult.Decode(expected, out StatelessValidationResult verdict);
+        if (!verdict.IsSuccess)
+        {
+            StatelessPayload payload = InputDecoder.Decode(statelessInput);
+            Block block = payload.GetBlock();
+            if (block.Header.CalculateHash() != block.Hash ||
+                !StatelessExecutor.BlobVersionedHashesMatch(block.Transactions, payload.VersionedHashes.Span))
+            {
+                return null;
+            }
+        }
+
+        return InputConverter.GetTrustedResult(trustedInput, verdict.IsSuccess);
     }
 
     /// <summary>

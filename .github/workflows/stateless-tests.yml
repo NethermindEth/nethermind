@@ -258,9 +258,152 @@ jobs:
             make -C "$guest" verify INPUT="$input" GUEST_INPUT=Trusted EXPECTED_DIGEST="${{ steps.expected.outputs.digest }}"
           done < "$RUNNER_TEMP/hint-cases.txt"
 
+  # The pinned blocks are all valid, so these invalid tests-zkevm blocks cover the guests' failure path.
+  fixtures:
+    name: Extract the fixture cases
+    runs-on: ubuntu-latest
+    env:
+      # <name> <fixture file> <test>
+      CASES: |
+        deposit-log-length blockchain_tests/for_amsterdam/prague/eip6110_deposits/modified_contract/invalid_log_length.json tests/prague/eip6110_deposits/test_modified_contract.py::test_invalid_log_length[fork_Amsterdam-blockchain_test-slice_bytes_False]
+        withdrawal-contract-reverts blockchain_tests/for_amsterdam/prague/eip7002_el_triggerable_withdrawals/modified_withdrawal_contract/system_contract_errors.json tests/prague/eip7002_el_triggerable_withdrawals/test_modified_withdrawal_contract.py::test_system_contract_errors[fork_Amsterdam-blockchain_test-system_contract_reverts-system_contract_0x00000961ef480eb55e80d19ad83579a64c007002]
+        withdrawals-call-out-of-gas blockchain_tests/for_amsterdam/amsterdam/eip8037_state_creation_gas_cost_increase/state_gas_system_calls/system_call_execution_boundary.json tests/amsterdam/eip8037_state_creation_gas_cost_increase/test_state_gas_system_calls.py::test_system_call_execution_boundary[fork_Amsterdam-blockchain_test-withdrawals-one_over]
+        fee-recipient-missing-leaf blockchain_tests/for_amsterdam/amsterdam/eip8025_optional_proofs/witness_validation_state/validation_state_unchanged_account_read.json tests/amsterdam/eip8025_optional_proofs/test_witness_validation_state.py::test_validation_state_unchanged_account_read[fork_Amsterdam-blockchain_test-missing_proof_leaf-access_fee_recipient_without_tip-target_kind_eoa]
+        balance-missing-leaf blockchain_tests/for_amsterdam/amsterdam/eip8025_optional_proofs/witness_validation_state/validation_state_unchanged_account_read.json tests/amsterdam/eip8025_optional_proofs/test_witness_validation_state.py::test_validation_state_unchanged_account_read[fork_Amsterdam-blockchain_test-missing_proof_leaf-access_balance-target_kind_eoa]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: ./.github/actions/setup-dotnet
+
+      # The fixtures are the release the host tests run. Each test is keyed by its case name, which
+      # names its input: a test name is no valid make target.
+      - name: Extract the inputs and their expected results
+        run: |
+          set -euo pipefail
+          constants=src/Nethermind/Ethereum.Blockchain.Pyspec.Test/ZkEvmFixtures/Constants.cs
+          version=$(sed -n 's/.*ArchiveVersion = "\(.*\)";.*/\1/p' "$constants")
+          archive=$(sed -n 's/.*ArchiveName = "\(.*\)";.*/\1/p' "$constants")
+          fixtures="$RUNNER_TEMP/fixtures" cases="$RUNNER_TEMP/cases"
+          mkdir -p "$fixtures" "$cases"
+          mapfile -t files < <(awk 'NF { print "fixtures/" $2 }' <<< "$CASES" | sort -u)
+          curl -fsSL "https://github.com/ethereum/execution-specs/releases/download/${version:?}/${archive:?}" | \
+            tar -xzf - -C "$fixtures" --strip-components=1 "${files[@]}"
+          while read -r name file test; do
+            jq -e --arg test "$test" --arg name "$name" 'if has($test) then {($name): .[$test]} else error("\($test) not found") end' \
+              "$fixtures/$file" > "$cases/$name.json"
+          done < <(awk NF <<< "$CASES")
+
+          # A trusted input has no expected result where the envelope alone invalidates the block, and the tool says so
+          extract() {
+            dotnet run --project tools/StatelessInputGen/StatelessInputGen.csproj -c release -- \
+              fixture --source "$cases" --output fixture-cases "${@:2}" | tee "$RUNNER_TEMP/$1.log"
+            grep -E '^[^ ]+ [0-9a-f]{86} [0-9a-f]{64}$' "$RUNNER_TEMP/$1.log" > "fixture-cases/$1.txt" || true
+          }
+          extract Ssz
+          extract Trusted --trusted
+          [ "$(wc -l < fixture-cases/Ssz.txt)" -eq "$(awk NF <<< "$CASES" | wc -l)" ] || \
+            { echo "::error::Every case must have an expected result"; exit 1; }
+
+      - name: Upload the fixture cases
+        uses: actions/upload-artifact@v7
+        with:
+          name: fixture-cases
+          path: fixture-cases
+          if-no-files-found: error
+          retention-days: 1
+
+  fixture-test:
+    name: ${{ matrix.vm }} ${{ matrix.input }} fixture cases
+    needs: [build, fixtures]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    timeout-minutes: ${{ matrix.minutes }}
+    strategy:
+      fail-fast: false
+      matrix:
+        vm: [zisk, sp1, openvm, airbender]
+        input: [Ssz, Trusted]
+        include:
+          - vm: zisk
+            project: Nethermind.Stateless.ZiskGuest
+            minutes: 8
+          - vm: sp1
+            project: Nethermind.Stateless.Sp1Guest
+            minutes: 30
+          - vm: openvm
+            project: Nethermind.Stateless.OpenVMGuest
+            minutes: 15
+          - vm: airbender
+            project: Nethermind.Stateless.AirbenderGuest
+            minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Download guest binary
+        uses: actions/download-artifact@v8
+        with:
+          name: nethermind-${{ matrix.vm }}${{ matrix.input == 'Trusted' && '-trusted' || '' }}
+          path: src/Nethermind/${{ matrix.project }}/bin
+
+      - name: Download the fixture cases
+        uses: actions/download-artifact@v8
+        with:
+          name: fixture-cases
+          path: src/Nethermind/${{ matrix.project }}/bin
+
+      - name: Restore the executable bit
+        run: chmod +x "src/Nethermind/${{ matrix.project }}/bin/${{ matrix.input == 'Trusted' && 'nethermind-trusted' || 'nethermind' }}"
+
+      - name: Check Docker Hub OIDC availability
+        id: dockerhub
+        env:
+          CONNECTION_ID: ${{ vars.DOCKERHUB_READ_OIDC_CONNECTIONID }}
+        run: |
+          if [[ -n "$ACTIONS_ID_TOKEN_REQUEST_URL" && -n "$CONNECTION_ID" ]]; then echo "available=true" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Log in to Docker Hub
+        if: steps.dockerhub.outputs.available == 'true'
+        continue-on-error: true
+        uses: docker/login-action@v4
+        env:
+          DOCKERHUB_OIDC_CONNECTIONID: ${{ vars.DOCKERHUB_READ_OIDC_CONNECTIONID }}
+          DOCKERHUB_OIDC_EXPIREIN: 3600
+        with:
+          username: ${{ vars.DOCKERHUB_READ_ORGANIZATION }}
+
+      # Every case runs, so one failure doesn't hide another; the checks are those of the pinned blocks.
+      - name: Run Nethermind guest
+        working-directory: src/Nethermind/${{ matrix.project }}
+        run: |
+          set -uo pipefail
+          failed=0
+          while read -r input output digest; do
+            echo "::group::$input"
+            make ${{ matrix.vm == 'airbender' && 'verify' || 'run' }} INPUT="$input" GUEST_INPUT=${{ matrix.input }} EXPECTED_DIGEST="$digest" \
+              < /dev/null 2>&1 | tee "$RUNNER_TEMP/run.log"
+            status=${PIPESTATUS[0]}
+            echo "::endgroup::"
+            if [ "$status" -ne 0 ]; then
+              echo "::error::$input: the guest run failed"
+            elif ! grep -q "$output" "$RUNNER_TEMP/run.log"; then
+              echo "::error::$input: output mismatch"
+            elif [ "${{ matrix.vm }}" = openvm ] && ! grep -q "public_values=$digest" "$RUNNER_TEMP/run.log"; then
+              echo "::error::$input: public values mismatch"
+            else
+              continue
+            fi
+            failed=1
+          done < "bin/${{ matrix.input }}.txt"
+          exit $failed
+
   status:
     name: Status
-    needs: [blocks, unit, build, test]
+    needs: [blocks, unit, build, test, fixtures, fixture-test]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -270,3 +413,5 @@ jobs:
           [[ "${{ needs.unit.result }}"  == "success" ]]
           [[ "${{ needs.build.result }}" == "success" ]]
           [[ "${{ needs.test.result }}"  == "success" ]]
+          [[ "${{ needs.fixtures.result }}" == "success" ]]
+          [[ "${{ needs.fixture-test.result }}" == "success" ]]
