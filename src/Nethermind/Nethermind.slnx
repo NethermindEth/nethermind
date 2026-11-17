@@ -2,6 +2,7 @@
   <Folder Name="/LightClient/">
     <Project Path="Nethermind.LightClient.Test/Nethermind.LightClient.Test.csproj" />
     <Project Path="Nethermind.LightClient/Nethermind.LightClient.csproj" />
+    <Project Path="Nethermind.Eez.Execution/Nethermind.Eez.Execution.csproj" />
   </Folder>
   <Folder Name="/Logging/">
     <Project Path="Nethermind.Logging.Microsoft/Nethermind.Logging.Microsoft.csproj" />

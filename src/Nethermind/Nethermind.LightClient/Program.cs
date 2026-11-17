@@ -179,7 +179,8 @@ async Task RunClientAsync(CancellationToken stoppingToken)
         Console.Write(LightClientBanner.Render(network, rpcUrl, checkpoint.ToString(), redirected, beaconPort, executionPort));
         await using ExecutionPeerTransport execution = new(network, logManager,
             dataDirectory: dataDirectory, hostedAccounts: eez is null ? hostedAccounts : null, port: executionPort);
-        await using ExecutionPeerTransport? rollup = eez is null ? null : new(eez.Network, logManager,
+        EezExecutionRules? rollupRules = eez is null ? null : EezExecutionRules.FromGenesis(eez.Network.ChainSpecFile);
+        await using ExecutionPeerTransport? rollup = eez is null ? null : new(eez.Network with { ExecutionRules = rollupRules }, logManager,
             dataDirectory: dataDirectory, hostedAccounts: hostedAccounts, port: eez.Port);
         if (eez is not null && rollup!.SpecProvider.ChainId != eez.Settlement.ChainId)
             throw new ArgumentException("--eez-chain-id does not match the rollup genesis.");
@@ -287,7 +288,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
             VerifiedHead? snapshot = GetLatestHead();
             return IsHeadFresh(snapshot, latestHeadMaxAgeSeconds) ? snapshot : null;
         }
-        using VerifiedCall calls = new(served, served.SpecProvider, logManager);
+        using VerifiedCall calls = new(served, served.SpecProvider, logManager, executionRules: rollupRules?.ForCalls());
         using VerifiedRpc rpc = new(served, GetHead, eez?.Settlement.ChainId ?? spec.ChainId, calls, served.SpecProvider, GetLatestHead,
             latest => IsHeadFresh(latest, latestHeadMaxAgeSeconds), finalized => IsHeadFresh(finalized, FinalizedHeadMaxAgeSeconds),
             rollupPublisher is null

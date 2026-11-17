@@ -179,6 +179,8 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         ContainerBuilder builder = new();
         builder.RegisterModule(new NethermindModule(chainSpec, config, logManager));
         builder.RegisterModule(new LightExecutionOverrides(_syncServer, _transactionRelay, _stop.Token));
+        if (network.ExecutionRules is not null)
+            builder.RegisterModule(network.ExecutionRules);
         if (dataDirectory is not null)
         {
             string directory = Path.Combine(dataDirectory, "el", network.Name, "discovery");

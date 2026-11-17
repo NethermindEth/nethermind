@@ -26,7 +26,8 @@ using Nethermind.TxPool;
 namespace Nethermind.LightClient.Rpc;
 
 /// <summary>Executes calls against authenticated state, fetching missing state between clean EVM attempts.</summary>
-internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvider specs, ILogManager logs, TimeProvider? clock = null) : IDisposable
+internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvider specs, ILogManager logs, TimeProvider? clock = null,
+    Module? executionRules = null) : IDisposable
 {
     private const ulong GasCap = 10_000_000;
     private const int CodeCacheCapacity = 256;
@@ -51,6 +52,7 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
         .AddScoped<SingleCallRequestState>()
         .BindScoped<IBlobBaseFeeOverrideProvider, SingleCallRequestState>()
         .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
+        .AddModule(executionRules ?? NoExecutionRules.Instance)
         .Build();
     private readonly SemaphoreSlim _slots = new(4);
     private readonly EthereumJsonSerializer _json = new();
@@ -501,5 +503,10 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
             throw new MissingCallState(MissingKind.Blockhash);
         }
         public Task Prefetch(BlockHeader currentBlock, CancellationToken token) => Task.CompletedTask;
+    }
+
+    private sealed class NoExecutionRules : Module
+    {
+        internal static readonly NoExecutionRules Instance = new();
     }
 }

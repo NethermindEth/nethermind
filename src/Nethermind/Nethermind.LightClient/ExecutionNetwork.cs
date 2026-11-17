@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Specs;
@@ -10,6 +11,8 @@ namespace Nethermind.LightClient;
 internal sealed record ExecutionNetwork(string Name, string ChainSpecFile, Hash256 GenesisHash, string? DiscoveryDns,
     NetworkNode[] Bootnodes)
 {
+    internal Module? ExecutionRules { get; init; }
+
     private const string EthereumDnsTree = "enrtree://AKA3AM6LPBYEUDMVNU3BSVQJ5AD45Y7YPOHJLEF6W26QOE4VTUDPE@snap.{0}.ethdisco.net";
 
     internal static ExecutionNetwork Ethereum(string name) => name switch
