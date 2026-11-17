@@ -28,6 +28,37 @@ public class BeaconApiHeadSnapshotTests
     private static readonly Hash256 Head = BeaconApiTestHost.TestRoot(0x71);
 
     [Test]
+    public async Task Pubkey_filters_follow_registry_replacement_and_reorg(
+        [Values("validators", "validator_balances", "validators/single")] string endpoint)
+    {
+        HeadSnapshotHolder snapshots = new();
+        await using BeaconApiTestHost host = await BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet, headSnapshots: snapshots);
+        BeaconStateFulu original = BeaconApiTestHost.RichState(host.Spec, Slot);
+        BeaconStateFulu replacement = BeaconApiTestHost.RichState(host.Spec, Slot);
+        BlsPublicKey pubkey = original.Validators![0].Pubkey;
+        (replacement.Validators![0], replacement.Validators[1]) = (replacement.Validators[1], replacement.Validators[0]);
+        host.Store.PutBlock(Head, BeaconApiTestHost.RichBlock(Slot, Hash256.Zero));
+        string route = endpoint == "validators/single" ? $"validators/{pubkey}" : $"{endpoint}?id={pubkey}";
+
+        foreach ((BeaconStateFulu state, string expectedIndex) in new[] { (original, "0"), (replacement, "1"), (original, "0") })
+        {
+            snapshots.Current = new HeadSnapshot(new StatusMessageV2 { HeadRoot = Head, HeadSlot = Slot, FinalizedRoot = Hash256.Zero }, null, Hash256.Zero, true)
+            {
+                State = new ForkedBeaconState.OfFulu(state),
+            };
+            for (int request = 0; request < 2; request++)
+            {
+                using HttpResponseMessage response = await host.Client.GetAsync($"/eth/v1/beacon/states/head/{route}");
+                Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+                using JsonDocument body = await BeaconApiTestHost.ReadJsonAsync(response);
+                JsonElement data = body.RootElement.GetProperty("data");
+                JsonElement entry = data.ValueKind == JsonValueKind.Array ? data[0] : data;
+                Assert.That(entry.GetProperty("index").GetString(), Is.EqualTo(expectedIndex));
+            }
+        }
+    }
+
+    [Test]
     public async Task Checkpoint_routes_serve_the_epoch_start_state_across_a_missed_fork_slot([Values("justified", "finalized", "32")] string alias)
     {
         ForkCrossingChain chain = ForkCrossingChain.Instance;

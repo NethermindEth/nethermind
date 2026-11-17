@@ -49,6 +49,7 @@ internal sealed record BeaconApiContext(
         GetCheckpointState(stateId)?.State ?? (StatusSource as FrozenHead)?.GetState(blockRoot);
     internal CheckpointStateSnapshot? GetCheckpointState(string stateId) => (StatusSource as FrozenHead)?.GetCheckpointState(stateId);
     public ForkChoiceSnapshot? ForkChoiceSnapshot { get; private init; }
+    internal ValidatorIndexCache ValidatorIndices { get; } = new();
     /// <summary>Bounds the blob rebuilds of this host's getBlobs requests that run at once; a request past it is refused, never queued.</summary>
     public EventsEndpoint.EventCache Events { get; } = new();
     public ConcurrencyLimiter BlobRebuilds { get; } = new(new ConcurrencyLimiterOptions { PermitLimit = BlobsEndpoint.MaxConcurrentRebuilds, QueueLimit = 0 });

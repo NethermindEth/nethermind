@@ -362,7 +362,7 @@ internal static class BeaconStatesEndpoints
         Dictionary<BlsPublicKey, int>? pubkeyIndex = null;
         foreach (string id in idFilters)
         {
-            ValidatorIdStatus lookup = TryResolveValidatorIndex(state, id, ref pubkeyIndex, out int index);
+            ValidatorIdStatus lookup = TryResolveValidatorIndex(ctx, state, id, ref pubkeyIndex, out int index);
             if (lookup == ValidatorIdStatus.Invalid)
             {
                 return WriteInvalidValidatorId(c, id);
@@ -407,7 +407,10 @@ internal static class BeaconStatesEndpoints
         }
 
         ApiState state = resolved.State;
-        ValidatorIdStatus lookup = TryResolveValidatorIndex(state, validatorId, out int index);
+        Dictionary<BlsPublicKey, int>? pubkeyIndex = null;
+        ValidatorIdStatus lookup = ctx.GetHeldState(resolved.Root, stateId) is not null
+            ? TryResolveValidatorIndex(ctx, state, validatorId, ref pubkeyIndex, out int index)
+            : TryResolveValidatorIndex(state, validatorId, out index);
         if (lookup == ValidatorIdStatus.Invalid)
         {
             return WriteInvalidValidatorId(c, validatorId);
@@ -456,7 +459,7 @@ internal static class BeaconStatesEndpoints
         if (balances.Length < state.Validators!.Length)
             return WriteInconsistentRegistry(c, state.Validators.Length, balances.Length);
 
-        if (!TryResolveIndices(state, idFilters, out List<int>? indices, out string? invalidId))
+        if (!TryResolveIndices(ctx, state, idFilters, out List<int>? indices, out string? invalidId))
         {
             return WriteInvalidValidatorId(c, invalidId);
         }
@@ -502,7 +505,7 @@ internal static class BeaconStatesEndpoints
 
         ApiState state = resolved.State;
         Validator[] validators = state.Validators!;
-        if (!TryResolveIndices(state, [.. ids ?? []], out List<int>? indices, out string? invalidId))
+        if (!TryResolveIndices(ctx, state, [.. ids ?? []], out List<int>? indices, out string? invalidId))
         {
             await WriteInvalidValidatorId(c, invalidId);
             return;
@@ -546,7 +549,7 @@ internal static class BeaconStatesEndpoints
     /// <summary>Resolves request ids to distinct registry indices in first-seen order, dropping well-formed ids that name no validator.</summary>
     /// <remarks>An index and a pubkey naming one validator count once, so repeated ids cannot multiply the response.</remarks>
     /// <param name="indices"><c>null</c> when <paramref name="ids"/> is empty, which selects every validator.</param>
-    private static bool TryResolveIndices(ApiState state, List<string> ids, out List<int>? indices, out string? invalidId)
+    private static bool TryResolveIndices(BeaconApiContext ctx, ApiState state, List<string> ids, out List<int>? indices, out string? invalidId)
     {
         indices = null;
         invalidId = null;
@@ -557,7 +560,7 @@ internal static class BeaconStatesEndpoints
         Dictionary<BlsPublicKey, int>? pubkeyIndex = null;
         foreach (string id in ids)
         {
-            ValidatorIdStatus lookup = TryResolveValidatorIndex(state, id, ref pubkeyIndex, out int index);
+            ValidatorIdStatus lookup = TryResolveValidatorIndex(ctx, state, id, ref pubkeyIndex, out int index);
             if (lookup == ValidatorIdStatus.Invalid)
             {
                 invalidId = id;
@@ -705,7 +708,7 @@ internal static class BeaconStatesEndpoints
     private enum ValidatorIdStatus { Ok, NotFound, Invalid }
 
     /// <summary>Resolves a beacon-api <c>validator_id</c> path/query segment: a decimal index or a 0x-prefixed pubkey.</summary>
-    /// <remarks>Single-id call site only (<see cref="ValidatorById"/>): a pubkey id is resolved by an early-exit
+    /// <remarks>For historical single-id requests, a pubkey id is resolved by an early-exit
     /// linear scan, which is cheaper than building a map for one lookup.</remarks>
     private static ValidatorIdStatus TryResolveValidatorIndex(ApiState state, string id, out int index)
     {
@@ -729,20 +732,14 @@ internal static class BeaconStatesEndpoints
         return ValidatorIdStatus.Invalid;
     }
 
-    /// <summary>
-    /// Same contract as <see cref="TryResolveValidatorIndex(ApiState, string, out int)"/>, but a pubkey id
-    /// is resolved through <paramref name="pubkeyIndex"/> instead of a linear scan. The caller owns the map's
-    /// lifetime - build it lazily on the first pubkey-form id in a request's id-filter loop and reuse it for every
-    /// subsequent id, so an all-numeric-id (or id-less) request never pays for it. Building it turns what would
-    /// otherwise be an O(validators) scan per pubkey id into one O(validators) build per request.
-    /// </summary>
-    private static ValidatorIdStatus TryResolveValidatorIndex(ApiState state, string id, ref Dictionary<BlsPublicKey, int>? pubkeyIndex, out int index)
+    /// <summary>Resolves pubkeys through a registry index shared across requests; numeric IDs need no index.</summary>
+    private static ValidatorIdStatus TryResolveValidatorIndex(BeaconApiContext ctx, ApiState state, string id, ref Dictionary<BlsPublicKey, int>? pubkeyIndex, out int index)
     {
         if (TryResolveNumericIndex(state.Validators!, id, out ValidatorIdStatus numericStatus, out index)) return numericStatus;
 
         if (HexConvert.TryParsePubKey(id, out BlsPublicKey pubkey))
         {
-            pubkeyIndex ??= BuildPubkeyIndex(state.Validators!);
+            pubkeyIndex ??= ctx.ValidatorIndices.Get(state.Validators!);
             return pubkeyIndex.TryGetValue(pubkey, out index) ? ValidatorIdStatus.Ok : ValidatorIdStatus.NotFound;
         }
 
@@ -767,18 +764,6 @@ internal static class BeaconStatesEndpoints
         index = (int)parsedIndex;
         status = ValidatorIdStatus.Ok;
         return true;
-    }
-
-    /// <summary>Builds a one-off pubkey-to-index map for a single request's id-filter loop; not cached across requests.</summary>
-    private static Dictionary<BlsPublicKey, int> BuildPubkeyIndex(Validator[] validators)
-    {
-        Dictionary<BlsPublicKey, int> map = [with(validators.Length)];
-        for (int i = 0; i < validators.Length; i++)
-        {
-            map[validators[i].Pubkey] = i;
-        }
-
-        return map;
     }
 
     private static bool MatchesAny(string status, List<string> filters)
