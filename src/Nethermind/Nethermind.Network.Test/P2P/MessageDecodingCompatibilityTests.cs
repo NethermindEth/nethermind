@@ -177,7 +177,7 @@ public class MessageDecodingCompatibilityTests
 
     private static Block[] Bodies() => [Build.A.Block.WithTransactions(SignedTransaction()).TestObject];
 
-    private static ArrayPoolList<Transaction> Transactions() => new(1) { SignedTransaction() };
+    private static ArrayPoolList<MempoolTransaction> Transactions() => new(1) { SignedTransaction() };
 
     private static Transaction SignedTransaction() => Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 

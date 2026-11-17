@@ -10,9 +10,9 @@ namespace Nethermind.TxPool.Filters;
 /// <remarks>A VERIFY revert invalidates the whole transaction, so one past the prefix invalidates on state the pool never validated.</remarks>
 internal sealed class FrameTxVerifyAfterPrefixFilter(ILogger logger) : IIncomingTxFilter
 {
-    public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
+    public AcceptTxResult Accept(MempoolTransaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        if (!tx.SupportsFrames || !FrameTxValidation.HasVerifyFrameAfterPrefix(tx))
+        if (!tx.Transaction.SupportsFrames || !FrameTxValidation.HasVerifyFrameAfterPrefix(tx.Transaction))
         {
             return AcceptTxResult.Accepted;
         }

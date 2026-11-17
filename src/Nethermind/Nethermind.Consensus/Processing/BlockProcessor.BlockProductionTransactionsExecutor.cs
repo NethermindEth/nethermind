@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
@@ -77,17 +78,19 @@ namespace Nethermind.Consensus.Processing
 
                 // Don't use blockToProduce.Transactions.Count() as that would fully enumerate which is expensive
                 int txCount = blockToProduce is not null ? defaultTxCount : block.Transactions.Length;
-                IEnumerable<Transaction> transactions = blockToProduce?.Transactions ?? block.Transactions;
+                IEnumerable<MempoolTransaction> transactions = blockToProduce?.Transactions ?? block.Transactions.Select(static tx => (MempoolTransaction)tx);
 
                 using ArrayPoolListRef<Transaction> includedTx = new(txCount);
+                using ArrayPoolListRef<MempoolTransaction> includedMempoolTx = new(txCount);
 
                 HashSet<Transaction> consideredTx = [with(ByHashTxComparer.Instance)];
                 BlockAccessListItemBudget itemBudget = CreateItemBudget(block);
-                foreach (Transaction currentTx in transactions)
+                foreach (MempoolTransaction mempoolTx in transactions)
                 {
                     // Check if we have gone over time or the payload has been requested
                     if (token.IsCancellationRequested) break;
 
+                    Transaction currentTx = mempoolTx.Transaction;
                     TxAction action = ProcessTransaction(block, currentTx, includedTx.Count, receiptsTracer, processingOptions, consideredTx, ref itemBudget);
                     if (action == TxAction.Stop) break;
 
@@ -95,9 +98,10 @@ namespace Nethermind.Consensus.Processing
                     if (action == TxAction.Add)
                     {
                         includedTx.Add(currentTx);
+                        includedMempoolTx.Add(mempoolTx);
                         if (blockToProduce is not null)
                         {
-                            blockToProduce.TxByteLength += currentTx.GetLength(false);
+                            blockToProduce.TxByteLength += currentTx.GetLength();
                         }
                     }
                 }
@@ -105,7 +109,7 @@ namespace Nethermind.Consensus.Processing
                 block.Header.TxRoot = TxTrie.CalculateRoot(includedTx.AsSpan());
                 if (blockToProduce is not null)
                 {
-                    blockToProduce.Transactions = includedTx.ToArray();
+                    blockToProduce.Transactions = includedMempoolTx.ToArray();
                 }
                 return receiptsTracer.TxReceipts.ToArray();
             }

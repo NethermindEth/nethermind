@@ -28,8 +28,8 @@ internal class DelegatedAccountFilterTest
 
     private static (TxDistinctSortedPool standardPool, TxDistinctSortedPool blobPool) CreatePools()
     {
-        TxDistinctSortedPool standardPool = new(new TxPoolConfig().Size, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
-        TxDistinctSortedPool blobPool = new BlobTxDistinctSortedPool(10, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
+        TxDistinctSortedPool standardPool = new(new TxPoolConfig().Size, Substitute.For<IComparer<MempoolTransaction>>(), NullLogManager.Instance);
+        TxDistinctSortedPool blobPool = new BlobTxDistinctSortedPool(10, Substitute.For<IComparer<MempoolTransaction>>(), NullLogManager.Instance);
         return (standardPool, blobPool);
     }
 

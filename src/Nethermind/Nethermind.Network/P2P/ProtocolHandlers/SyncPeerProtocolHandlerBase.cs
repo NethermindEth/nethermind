@@ -234,7 +234,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         {
             if (!tx.CarriesBlobs) //additional protection from sending full tx with blob
             {
-                SendMessage(new ArrayPoolList<Transaction>(1) { tx });
+                SendMessage(new ArrayPoolList<MempoolTransaction>(1) { tx });
             }
         }
 
@@ -258,11 +258,11 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected virtual void SendNewTransactionsCore(ReadOnlySpan<Transaction> txs, bool sendFullTx)
         {
             int packetSizeLeft = TransactionsMessage.MaxPacketSize;
-            ArrayPoolList<Transaction> txsToSend = [with(1024)];
+            ArrayPoolList<MempoolTransaction> txsToSend = [with(1024)];
 
             foreach (Transaction tx in txs)
             {
-                int txSize = tx.GetLength();
+                int txSize = tx.GetNetworkLength();
 
                 if (txSize > packetSizeLeft && txsToSend.Count > 0)
                 {
@@ -289,7 +289,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             }
         }
 
-        private void SendMessage(IOwnedReadOnlyList<Transaction> txsToSend)
+        private void SendMessage(IOwnedReadOnlyList<MempoolTransaction> txsToSend)
         {
             TransactionsMessage msg = new(txsToSend);
             Send(msg);

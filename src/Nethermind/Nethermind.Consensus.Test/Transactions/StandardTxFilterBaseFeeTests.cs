@@ -311,17 +311,17 @@ public class StandardTxFilterBaseFeeTests
         // The parent of block 11 used its whole gas limit, so the base fee rises from 1 to 1.125 gwei.
         BlockHeader fullParent = Build.A.BlockHeader.WithNumber(10).WithGasLimit(GasLimit).WithGasUsed(GasLimit).WithBaseFee(1.GWei).TestObject;
         UInt256 minGasPrice = 50_000_000;
-        Transaction[] a = Chain(TestItem.PrivateKeyA, 1, maxFee: 1_100_000_000, priorityFee: 1.GWei);   // max fee below 1.125 gwei
-        Transaction[] b = Chain(TestItem.PrivateKeyB, 4, maxFee: 1_200_000_000, priorityFee: 100_000_000); // premium 0.075 gwei
-        Transaction[] c = Chain(TestItem.PrivateKeyC, 1, maxFee: 1_160_000_000, priorityFee: 1.GWei);   // premium 0.035 gwei
-        Transaction[] d = Chain(TestItem.PrivateKeyD, 4, maxFee: 10.GWei, priorityFee: 1.GWei);
+        MempoolTransaction[] a = Chain(TestItem.PrivateKeyA, 1, maxFee: 1_100_000_000, priorityFee: 1.GWei);   // max fee below 1.125 gwei
+        MempoolTransaction[] b = Chain(TestItem.PrivateKeyB, 4, maxFee: 1_200_000_000, priorityFee: 100_000_000); // premium 0.075 gwei
+        MempoolTransaction[] c = Chain(TestItem.PrivateKeyC, 1, maxFee: 1_160_000_000, priorityFee: 1.GWei);   // premium 0.035 gwei
+        MempoolTransaction[] d = Chain(TestItem.PrivateKeyD, 4, maxFee: 10.GWei, priorityFee: 1.GWei);
         // At the boundary: the premium over 1.125 gwei is exactly the 0.05 gwei minimum, and one wei less.
-        Transaction[] atBoundary = Chain(TestItem.PrivateKeyE, 1, maxFee: 1_175_000_000, priorityFee: 1.GWei);
-        Transaction[] belowBoundary = Chain(TestItem.PrivateKeyF, 1, maxFee: 1_174_999_999, priorityFee: 1.GWei);
+        MempoolTransaction[] atBoundary = Chain(TestItem.PrivateKeyE, 1, maxFee: 1_175_000_000, priorityFee: 1.GWei);
+        MempoolTransaction[] belowBoundary = Chain(TestItem.PrivateKeyF, 1, maxFee: 1_174_999_999, priorityFee: 1.GWei);
         ITxPool txPool = Substitute.For<ITxPool>();
         txPool.GetPendingForProduction(Arg.Any<BlockHeader>(), Arg.Any<bool>(), Arg.Any<UInt256>())
             .Returns(new PendingTransactionsView(
-                new Dictionary<AddressAsKey, Transaction[]>
+                new Dictionary<AddressAsKey, MempoolTransaction[]>
                 {
                     [a[0].SenderAddress!] = a,
                     [b[0].SenderAddress!] = b,
@@ -330,18 +330,18 @@ public class StandardTxFilterBaseFeeTests
                     [atBoundary[0].SenderAddress!] = atBoundary,
                     [belowBoundary[0].SenderAddress!] = belowBoundary,
                 },
-                new Dictionary<AddressAsKey, Transaction[]>(),
+                new Dictionary<AddressAsKey, MempoolTransaction[]>(),
                 isRevalidated: true));
         BlocksConfig blocksConfig = new() { MinGasPrice = minGasPrice };
         TxPoolTxSource txSource = new(txPool, specProvider, new TransactionComparerProvider(specProvider, Substitute.For<IBlockFinder>()),
             LimboLogs.Instance, TxFilterPipelineBuilder.CreateStandardFilteringPipeline(LimboLogs.Instance, blocksConfig), blocksConfig,
             new SpecChangeTxValidator(specProvider.ChainId));
 
-        Transaction[] firstBuild = txSource.GetTransactions(fullParent, Target(fullParent), GasLimit).ToArray();
+        MempoolTransaction[] firstBuild = txSource.GetTransactions(fullParent, Target(fullParent), GasLimit).ToArray();
         int afterFirstBuild = calculator.Calls;
         // The parent of block 12 used its gas target at 1 gwei, but block 12's spec raises the base fee to 3 gwei.
         BlockHeader targetParent = Parent(11, 1.GWei);
-        Transaction[] secondBuild = txSource.GetTransactions(targetParent, Target(targetParent), GasLimit).ToArray();
+        MempoolTransaction[] secondBuild = txSource.GetTransactions(targetParent, Target(targetParent), GasLimit).ToArray();
 
         using (Assert.EnterMultipleScope())
         {
@@ -361,24 +361,24 @@ public class StandardTxFilterBaseFeeTests
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(call => call.Arg<ForkActivation>().BlockNumber >= 11 ? activation : beforeLondon);
         BlockHeader parent = Build.A.BlockHeader.WithNumber(10).WithGasLimit(GasLimit).WithGasUsed(GasLimit / 2).TestObject;
-        Transaction[] belowBaseFee = LegacyChain(TestItem.PrivateKeyA, 2, gasPrice: 500_000_000);
-        Transaction[] aboveBaseFee = LegacyChain(TestItem.PrivateKeyB, 2, gasPrice: 2.GWei);
+        MempoolTransaction[] belowBaseFee = LegacyChain(TestItem.PrivateKeyA, 2, gasPrice: 500_000_000);
+        MempoolTransaction[] aboveBaseFee = LegacyChain(TestItem.PrivateKeyB, 2, gasPrice: 2.GWei);
         ITxPool txPool = Substitute.For<ITxPool>();
         txPool.GetPendingForProduction(Arg.Any<BlockHeader>(), Arg.Any<bool>(), Arg.Any<UInt256>())
             .Returns(new PendingTransactionsView(
-                new Dictionary<AddressAsKey, Transaction[]>
+                new Dictionary<AddressAsKey, MempoolTransaction[]>
                 {
                     [belowBaseFee[0].SenderAddress!] = belowBaseFee,
                     [aboveBaseFee[0].SenderAddress!] = aboveBaseFee,
                 },
-                new Dictionary<AddressAsKey, Transaction[]>(),
+                new Dictionary<AddressAsKey, MempoolTransaction[]>(),
                 isRevalidated: true));
         BlocksConfig blocksConfig = new();
         TxPoolTxSource txSource = new(txPool, specProvider, new TransactionComparerProvider(specProvider, Substitute.For<IBlockFinder>()),
             LimboLogs.Instance, TxFilterPipelineBuilder.CreateStandardFilteringPipeline(LimboLogs.Instance, blocksConfig), blocksConfig,
             new SpecChangeTxValidator(specProvider.ChainId));
 
-        Transaction[] selected = txSource.GetTransactions(parent, Target(parent), GasLimit).ToArray();
+        MempoolTransaction[] selected = txSource.GetTransactions(parent, Target(parent), GasLimit).ToArray();
 
         using (Assert.EnterMultipleScope())
         {
@@ -400,10 +400,10 @@ public class StandardTxFilterBaseFeeTests
         Transaction aboveBaseFee = Build.A.Transaction.WithGasPrice(2.GWei).TestObject;
         ITxSource inner = Substitute.For<ITxSource>();
         inner.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
-            .Returns(new[] { belowBaseFee, aboveBaseFee });
+            .Returns(new MempoolTransaction[] { belowBaseFee, aboveBaseFee });
         FilteredTxSource<Transaction> source = new(inner, new BaseFeeTxFilter(), LimboLogs.Instance, specProvider);
 
-        Transaction[] selected = source.GetTransactions(parent, Target(parent), GasLimit, null, false).ToArray();
+        Transaction[] selected = source.GetTransactions(parent, Target(parent), GasLimit, null, false).Select(static tx => tx.Transaction).ToArray();
 
         Assert.That(selected, Is.EqualTo(new[] { aboveBaseFee }));
     }
@@ -482,7 +482,7 @@ public class StandardTxFilterBaseFeeTests
         .WithMaxPriorityFeePerGas(priorityFee)
         .TestObject;
 
-    private static Transaction[] Chain(PrivateKey sender, int count, UInt256 maxFee, UInt256 priorityFee) =>
+    private static MempoolTransaction[] Chain(PrivateKey sender, int count, UInt256 maxFee, UInt256 priorityFee) =>
         Enumerable.Range(0, count).Select(nonce => Build.A.Transaction
             .WithType(TxType.EIP1559)
             .WithNonce((ulong)nonce)
@@ -490,15 +490,15 @@ public class StandardTxFilterBaseFeeTests
             .WithMaxPriorityFeePerGas(priorityFee)
             .WithGasLimit(21_000)
             .SignedAndResolved(sender)
-            .TestObject).ToArray();
+            .MempoolTestObject).ToArray();
 
-    private static Transaction[] LegacyChain(PrivateKey sender, int count, UInt256 gasPrice) =>
+    private static MempoolTransaction[] LegacyChain(PrivateKey sender, int count, UInt256 gasPrice) =>
         Enumerable.Range(0, count).Select(nonce => Build.A.Transaction
             .WithNonce((ulong)nonce)
             .WithGasPrice(gasPrice)
             .WithGasLimit(21_000)
             .SignedAndResolved(sender)
-            .TestObject).ToArray();
+            .MempoolTestObject).ToArray();
 
     private sealed class CustomFloorFilter(MinGasPriceTxFilter inner, UInt256 floor) : ITxFilter
     {

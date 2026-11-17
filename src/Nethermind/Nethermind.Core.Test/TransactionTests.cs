@@ -47,17 +47,17 @@ public class TransactionTests
         {
             PooledBuffers = new(blobs)
         };
-        Transaction first = new() { NetworkWrapper = wrapper };
-        Transaction second = new() { NetworkWrapper = wrapper with { Version = ProofVersion.V1 } };
+        ShardBlobNetworkWrapper first = wrapper;
+        ShardBlobNetworkWrapper second = wrapper with { Version = ProofVersion.V1 };
         if (concurrent)
         {
-            Parallel.Invoke(() => PooledBlobBuffers.Return(first), () => PooledBlobBuffers.Return(second));
+            Parallel.Invoke(() => first?.ReturnPooledBuffers(), () => second?.ReturnPooledBuffers());
         }
         else
         {
-            PooledBlobBuffers.Return(first);
-            PooledBlobBuffers.Return(first);
-            PooledBlobBuffers.Return(second);
+            first?.ReturnPooledBuffers();
+            first?.ReturnPooledBuffers();
+            second?.ReturnPooledBuffers();
         }
 
         byte[] firstRental = PooledBlobBuffers.Copy(data);
@@ -69,43 +69,6 @@ public class TransactionTests
         }
         new PooledBlobBuffers([firstRental, secondRental]).Return();
         new PooledBlobBuffers(held).Return();
-    }
-
-    public enum CopyKind { CopyTo, CopyToWithHash, ShallowCopy }
-
-    [Test]
-    public void Returning_a_copied_transaction_keeps_shared_blob_data([Values] CopyKind kind)
-    {
-        byte[] data = new byte[PooledBlobBuffers.BlobSize];
-        Array.Fill(data, (byte)0x11);
-        byte[][] blobs = [PooledBlobBuffers.Copy(data)];
-        Transaction source = new()
-        {
-            NetworkWrapper = new ShardBlobNetworkWrapper(blobs, [], [], ProofVersion.V0)
-            {
-                PooledBuffers = new(blobs)
-            }
-        };
-        Transaction copy;
-        if (kind == CopyKind.ShallowCopy)
-        {
-            copy = source.ShallowCopy();
-        }
-        else
-        {
-            copy = new();
-            source.CopyTo(copy, copyHash: kind == CopyKind.CopyToWithHash);
-        }
-        new Transaction.PoolPolicy().Return(source);
-
-        Array.Fill(data, (byte)0x22);
-        byte[] next = PooledBlobBuffers.Copy(data);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(next, Is.Not.SameAs(blobs[0]));
-            Assert.That(((ShardBlobNetworkWrapper)copy.NetworkWrapper!).Blobs[0], Is.All.EqualTo(0x11));
-        }
-        new PooledBlobBuffers([next]).Return();
     }
 
     [Test]

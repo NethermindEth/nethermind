@@ -106,12 +106,6 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> WithGasBottleneck(UInt256 gasBottleneck)
-        {
-            TestObjectInternal.GasBottleneck = gasBottleneck;
-            return this;
-        }
-
         public TransactionBuilder<T> WithTimestamp(UInt256 timestamp)
         {
             TestObject.Timestamp = timestamp;
@@ -171,6 +165,12 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        /// <summary>The blob sidecar <see cref="WithShardBlobTxTypeAndFields"/> generated for the mempool form.</summary>
+        public ShardBlobNetworkWrapper? NetworkWrapper { get; private set; }
+
+        /// <summary>The built transaction in its mempool form, carrying <see cref="NetworkWrapper"/>.</summary>
+        public MempoolTransaction MempoolTestObject => new(TestObject, NetworkWrapper);
+
         public TransactionBuilder<T> WithShardBlobTxTypeAndFieldsIfBlobTx(int blobCount = 1, bool isMempoolTx = true, IReleaseSpec? spec = null)
             => TestObjectInternal.Type == TxType.Blob ? WithShardBlobTxTypeAndFields(blobCount, isMempoolTx, spec) : this;
 
@@ -204,7 +204,7 @@ namespace Nethermind.Core.Test.Builders
                 proofsManager.ComputeProofsAndCommitments(wrapper);
 
                 TestObjectInternal.BlobVersionedHashes = proofsManager.ComputeHashes(wrapper);
-                TestObjectInternal.NetworkWrapper = wrapper;
+                NetworkWrapper = wrapper;
             }
             else
             {

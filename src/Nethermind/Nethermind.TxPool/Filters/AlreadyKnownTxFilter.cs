@@ -19,11 +19,11 @@ namespace Nethermind.TxPool.Filters
         private readonly HashCache _hashCache = hashCache;
         private readonly ILogger _logger = logger;
 
-        public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
+        public AcceptTxResult Accept(MempoolTransaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {
             if (_hashCache.Get(tx.Hash!))
             {
-                if (_logger.IsTrace) _logger.Trace($"Found tx in _hashCache. TxHash: {tx?.Hash}, Tx: {tx}");
+                if (_logger.IsTrace) _logger.Trace($"Found tx in _hashCache. TxHash: {tx.Transaction.Hash}, Tx: {tx.Transaction}");
                 Metrics.PendingTransactionsKnown++;
                 return AcceptTxResult.AlreadyKnown;
             }

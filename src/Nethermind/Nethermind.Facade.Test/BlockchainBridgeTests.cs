@@ -257,9 +257,9 @@ public class BlockchainBridgeTests
         OverridableReleaseSpec headSpec = new(Eip8141Prototype.Instance) { IsEip2780Enabled = false };
         ISpecProvider specProvider = new TestSpecProvider(headSpec) { NextForkSpec = Eip8141Prototype.Instance, ForkOnBlockNumber = 1 };
         ITxPool txPool = Substitute.For<ITxPool>();
-        txPool.TryGetPendingTransaction(tx.Hash, out Arg.Any<Transaction?>()).Returns(call =>
+        txPool.TryGetPendingTransaction(tx.Hash, out Arg.Any<MempoolTransaction?>()).Returns(call =>
         {
-            call[1] = tx;
+            call[1] = new MempoolTransaction(tx, null);
             return true;
         });
         IBlockTree blockTree = Substitute.For<IBlockTree>();

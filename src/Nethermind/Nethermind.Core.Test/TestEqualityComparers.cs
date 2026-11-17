@@ -19,6 +19,12 @@ public static class TestEqualityConstraintExtensions
     public static CollectionItemsEqualConstraint UsingTransactionComparer(this CollectionItemsEqualConstraint constraint, params string[] excludedProperties) =>
         constraint.Using(TestEqualityComparers.ForTransaction(excludedProperties));
 
+    public static EqualConstraint UsingMempoolTransactionComparer(this EqualConstraint constraint, params string[] excludedProperties) =>
+        constraint.Using(TestEqualityComparers.ForMempoolTransaction(excludedProperties));
+
+    public static CollectionItemsEqualConstraint UsingMempoolTransactionComparer(this CollectionItemsEqualConstraint constraint, params string[] excludedProperties) =>
+        constraint.Using(TestEqualityComparers.ForMempoolTransaction(excludedProperties));
+
     public static EqualConstraint UsingAuthorizationTupleComparer(this EqualConstraint constraint) =>
         constraint.Using(TestEqualityComparers.AuthorizationTuple);
 
@@ -57,6 +63,10 @@ public static class TestEqualityComparers
 
     public static IEqualityComparer<Transaction> ForTransaction(params string[] excludedProperties) =>
         new TransactionEqualityComparer(excludedProperties);
+
+    /// <param name="excludedProperties">Transaction properties to skip, or <c>nameof(MempoolTransaction.NetworkWrapper)</c> to skip the sidecar.</param>
+    public static IEqualityComparer<MempoolTransaction> ForMempoolTransaction(params string[] excludedProperties) =>
+        new MempoolTransactionEqualityComparer(excludedProperties);
 
     public static bool ArraysEqual<T>(T[]? actual, T[]? expected, IEqualityComparer<T>? comparer = null)
     {
@@ -139,7 +149,6 @@ public static class TestEqualityComparers
                 EqualsIfIncluded(nameof(Transaction.IsOPSystemTransaction), actual.IsOPSystemTransaction, expected.IsOPSystemTransaction) &&
                 EqualsIfIncluded(nameof(Transaction.Nonce), actual.Nonce, expected.Nonce) &&
                 EqualsIfIncluded(nameof(Transaction.GasPrice), actual.GasPrice, expected.GasPrice) &&
-                EqualsIfIncluded(nameof(Transaction.GasBottleneck), actual.GasBottleneck, expected.GasBottleneck) &&
                 EqualsIfIncluded(nameof(Transaction.DecodedMaxFeePerGas), actual.DecodedMaxFeePerGas, expected.DecodedMaxFeePerGas) &&
                 EqualsIfIncluded(nameof(Transaction.GasLimit), actual.GasLimit, expected.GasLimit) &&
                 EqualsIfIncluded(nameof(Transaction.SpentGas), actual.SpentGas, expected.SpentGas) &&
@@ -154,10 +163,8 @@ public static class TestEqualityComparers
                 EqualsIfIncluded(nameof(Transaction.AccessList), actual.AccessList, expected.AccessList, AccessListEqualityComparer.Instance) &&
                 EqualsIfIncluded(nameof(Transaction.MaxFeePerBlobGas), actual.MaxFeePerBlobGas, expected.MaxFeePerBlobGas) &&
                 ByteArraysEqualIfIncluded(nameof(Transaction.BlobVersionedHashes), actual.BlobVersionedHashes, expected.BlobVersionedHashes) &&
-                NetworkWrappersEqualIfIncluded(actual.NetworkWrapper, expected.NetworkWrapper) &&
                 ArraysEqualIfIncluded(nameof(Transaction.AuthorizationList), actual.AuthorizationList, expected.AuthorizationList, AuthorizationTuple) &&
-                EqualsIfIncluded(nameof(Transaction.IsServiceTransaction), actual.IsServiceTransaction, expected.IsServiceTransaction) &&
-                EqualsIfIncluded(nameof(Transaction.PoolIndex), actual.PoolIndex, expected.PoolIndex);
+                EqualsIfIncluded(nameof(Transaction.IsServiceTransaction), actual.IsServiceTransaction, expected.IsServiceTransaction);
         }
 
         public int GetHashCode(Transaction obj) => 0;
@@ -178,25 +185,20 @@ public static class TestEqualityComparers
         private bool ByteArraysEqualIfIncluded(string propertyName, byte[]?[]? actual, byte[]?[]? expected) =>
             _excludedProperties.Contains(propertyName) || ByteArraysEqual(actual, expected);
 
-        private bool NetworkWrappersEqualIfIncluded(object? actual, object? expected)
-        {
-            if (_excludedProperties.Contains(nameof(Transaction.NetworkWrapper)))
-            {
-                return true;
-            }
+    }
 
-            if (actual is null || expected is null)
-            {
-                return actual is null && expected is null;
-            }
+    private sealed class MempoolTransactionEqualityComparer(string[] excludedProperties) : IEqualityComparer<MempoolTransaction>
+    {
+        private readonly TransactionEqualityComparer _transactionComparer = new(excludedProperties);
+        private readonly bool _compareNetworkWrapper = Array.IndexOf(excludedProperties, nameof(MempoolTransaction.NetworkWrapper)) < 0;
 
-            if (actual is ShardBlobNetworkWrapper actualWrapper && expected is ShardBlobNetworkWrapper expectedWrapper)
-            {
-                return ShardBlobNetworkWrapperEqualityComparer.Instance.Equals(actualWrapper, expectedWrapper);
-            }
+        public bool Equals(MempoolTransaction? actual, MempoolTransaction? expected) =>
+            actual is null || expected is null
+                ? actual is null && expected is null
+                : _transactionComparer.Equals(actual.Transaction, expected.Transaction)
+                && (!_compareNetworkWrapper || ShardBlobNetworkWrapperEqualityComparer.Instance.Equals(actual.NetworkWrapper, expected.NetworkWrapper));
 
-            return actual.Equals(expected);
-        }
+        public int GetHashCode(MempoolTransaction obj) => 0;
     }
 
     private sealed class AccessListEqualityComparer : IEqualityComparer<AccessList>

@@ -24,7 +24,7 @@ public class TransactionComparisonTests
     public void GasPriceComparer_for_legacy_transactions(int gasPriceX, int gasPriceY, int expectedResult)
     {
         TestingContext context = new();
-        IComparer<Transaction> comparer = context.DefaultComparer;
+        IComparer<MempoolTransaction> comparer = context.DefaultComparer;
         AssertLegacyTransactions(comparer, gasPriceX, gasPriceY, expectedResult);
     }
 
@@ -35,7 +35,7 @@ public class TransactionComparisonTests
     public void ProducerGasPriceComparer_for_legacy_transactions(int gasPriceX, int gasPriceY, int expectedResult)
     {
         TestingContext context = new();
-        IComparer<Transaction> comparer = context.GetProducerComparer(new BlockPreparationContext(0, 0));
+        IComparer<MempoolTransaction> comparer = context.GetProducerComparer(new BlockPreparationContext(0, 0));
         AssertLegacyTransactions(comparer, gasPriceX, gasPriceY, expectedResult);
     }
 
@@ -54,7 +54,7 @@ public class TransactionComparisonTests
         TestingContext context = new TestingContext(true, eip1559Transition)
             .WithHeadBaseFeeNumber((UInt256)headBaseFee)
             .WithHeadBlockNumber(headBlockNumber);
-        IComparer<Transaction> comparer = context.DefaultComparer;
+        IComparer<MempoolTransaction> comparer = context.DefaultComparer;
         AssertLegacyTransactions(comparer, gasPriceX, gasPriceY, expectedResult);
     }
 
@@ -71,11 +71,11 @@ public class TransactionComparisonTests
     {
         ulong eip1559Transition = 5;
         TestingContext context = new(true, eip1559Transition);
-        IComparer<Transaction> comparer = context.GetProducerComparer(new BlockPreparationContext(0, 0));
+        IComparer<MempoolTransaction> comparer = context.GetProducerComparer(new BlockPreparationContext(0, 0));
         AssertLegacyTransactions(comparer, gasPriceX, gasPriceY, expectedResult);
     }
 
-    private void AssertLegacyTransactions(IComparer<Transaction> comparer, int gasPriceX, int gasPriceY, int expectedResult)
+    private void AssertLegacyTransactions(IComparer<MempoolTransaction> comparer, int gasPriceX, int gasPriceY, int expectedResult)
     {
         Transaction x = Build.A.Transaction.WithSenderAddress(TestItem.AddressA)
             .WithGasPrice((UInt256)gasPriceX).TestObject;
@@ -98,7 +98,7 @@ public class TransactionComparisonTests
         TestingContext context = new TestingContext(true, eip1559Transition)
             .WithHeadBaseFeeNumber((UInt256)headBaseFee)
             .WithHeadBlockNumber(headBlockNumber);
-        IComparer<Transaction> comparer = context.DefaultComparer;
+        IComparer<MempoolTransaction> comparer = context.DefaultComparer;
         Assert1559Transactions(comparer, feeCapX, gasPremiumX, feeCapY, gasPremiumY, expectedResult);
     }
 
@@ -112,11 +112,13 @@ public class TransactionComparisonTests
         TestingContext context = new TestingContext(false, eip1559Transition)
             .WithHeadBaseFeeNumber((UInt256)0)
             .WithHeadBlockNumber(1ul);
-        IComparer<Transaction> comparer = context.DefaultComparer;
-        Transaction x = Build.A.Transaction.WithSenderAddress(TestItem.AddressA)
-            .WithGasPrice((UInt256)gasPriceX).WithGasBottleneck((UInt256)gasBottleneckX).TestObject;
-        Transaction y = Build.A.Transaction.WithSenderAddress(TestItem.AddressA)
-            .WithGasPrice((UInt256)gasPriceY).WithGasBottleneck((UInt256)gasBottleneckY).TestObject;
+        IComparer<MempoolTransaction> comparer = context.DefaultComparer;
+        MempoolTransaction x = new(Build.A.Transaction.WithSenderAddress(TestItem.AddressA)
+            .WithGasPrice((UInt256)gasPriceX).TestObject, null)
+        { GasBottleneck = (UInt256)gasBottleneckX };
+        MempoolTransaction y = new(Build.A.Transaction.WithSenderAddress(TestItem.AddressA)
+            .WithGasPrice((UInt256)gasPriceY).TestObject, null)
+        { GasBottleneck = (UInt256)gasBottleneckY };
         int result = comparer.Compare(x, y);
         Assert.That(result, Is.EqualTo(expectedResult));
     }
@@ -132,11 +134,11 @@ public class TransactionComparisonTests
     {
         ulong eip1559Transition = 5;
         TestingContext context = new(true, eip1559Transition);
-        IComparer<Transaction> comparer = context.GetProducerComparer(new BlockPreparationContext((UInt256)headBaseFee, headBlockNumber));
+        IComparer<MempoolTransaction> comparer = context.GetProducerComparer(new BlockPreparationContext((UInt256)headBaseFee, headBlockNumber));
         Assert1559Transactions(comparer, feeCapX, gasPremiumX, feeCapY, gasPremiumY, expectedResult);
     }
 
-    private void Assert1559Transactions(IComparer<Transaction> comparer, int feeCapX, int gasPremiumX, int feeCapY, int gasPremiumY, int expectedResult)
+    private void Assert1559Transactions(IComparer<MempoolTransaction> comparer, int feeCapX, int gasPremiumX, int feeCapY, int gasPremiumY, int expectedResult)
     {
         Transaction x = Build.A.Transaction.WithSenderAddress(TestItem.AddressA)
             .WithMaxFeePerGas((UInt256)feeCapX).WithMaxPriorityFeePerGas((UInt256)gasPremiumX)
@@ -168,9 +170,9 @@ public class TransactionComparisonTests
                 new TransactionComparerProvider(specProvider, _blockTree);
         }
 
-        public IComparer<Transaction> DefaultComparer => _transactionComparerProvider.GetDefaultComparer();
+        public IComparer<MempoolTransaction> DefaultComparer => _transactionComparerProvider.GetDefaultComparer();
 
-        public IComparer<Transaction> GetProducerComparer(BlockPreparationContext blockPreparationContext) =>
+        public IComparer<MempoolTransaction> GetProducerComparer(BlockPreparationContext blockPreparationContext) =>
             _transactionComparerProvider.GetDefaultProducerComparer(blockPreparationContext);
 
         public TestingContext WithHeadBlockNumber(ulong headBlockNumber)

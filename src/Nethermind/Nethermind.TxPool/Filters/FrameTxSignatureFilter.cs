@@ -39,9 +39,9 @@ internal sealed class FrameTxSignatureFilter(
 {
     private readonly Func<bool>? _blockWorkInProgress = headInfo is null ? null : () => headInfo.IsProcessingBlock || headInfo.IsBuildingBlock;
 
-    public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
+    public AcceptTxResult Accept(MempoolTransaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        if (!tx.SupportsFrames || tx.FrameSignatures is not { Length: > 0 })
+        if (!tx.Transaction.SupportsFrames || tx.Transaction.FrameSignatures is not { Length: > 0 })
         {
             state.FrameSignaturesVerified = true; // vacuously: validate_signature passes an empty list
             return AcceptTxResult.Accepted;
@@ -54,7 +54,7 @@ internal sealed class FrameTxSignatureFilter(
             ? SecP256r1Precompile.Instance
             : null;
         bool local = (txHandlingOptions & TxHandlingOptions.PersistentBroadcast) != 0;
-        bool valid = FrameTxSignatureValidator.Validate(tx, ecdsa, p256Precompile, spec, local || state.ReAddedFromReorg ? null : _blockWorkInProgress, out bool preempted, out string? error);
+        bool valid = FrameTxSignatureValidator.Validate(tx.Transaction, ecdsa, p256Precompile, spec, local || state.ReAddedFromReorg ? null : _blockWorkInProgress, out bool preempted, out string? error);
         // A verification that yielded to this node's own block work is deferred, not charged to the sending peer.
         state.FrameValidationRan = !preempted;
         if (!valid)

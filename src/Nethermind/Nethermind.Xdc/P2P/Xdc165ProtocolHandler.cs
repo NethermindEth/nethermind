@@ -80,7 +80,7 @@ internal class Xdc165ProtocolHandler(
     protected override void Handle(NewPooledTransactionHashesMessage msg) =>
         RequestPooledTransactions<XdcGetPooledTransactionsMessage>(msg.Hashes);
 
-    protected override PooledTransactionsMessage CreatePooledTransactionsMessage(IOwnedReadOnlyList<Transaction> transactions) =>
+    protected override PooledTransactionsMessage CreatePooledTransactionsMessage(IOwnedReadOnlyList<MempoolTransaction> transactions) =>
         new XdcPooledTransactionsMessage(transactions);
 
     protected override NewPooledTransactionHashesMessage CreateAnnouncementMessage(IOwnedReadOnlyList<Hash256> hashes) =>

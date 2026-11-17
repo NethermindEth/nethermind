@@ -267,7 +267,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         public void Can_handle_pooled_transactions_once()
         {
             Transaction tx = Build.A.Transaction.Signed(new EthereumEcdsa(1), TestItem.PrivateKeyA).TestObject;
-            using PooledTransactionsMessage msg65 = new(new ArrayPoolList<Transaction>(1) { tx });
+            using PooledTransactionsMessage msg65 = new(new ArrayPoolList<MempoolTransaction>(1) { tx });
             HandleIncomingStatusMessage();
             long requestId = RequestTransaction(tx);
             using Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage msg66 = new(requestId, msg65);
@@ -275,7 +275,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             HandleZeroMessage(msg66, Eth66MessageCode.PooledTransactions);
             HandleZeroMessage(msg66, Eth66MessageCode.PooledTransactions);
 
-            _transactionPool.Received(1).SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+            _transactionPool.Received(1).SubmitTx(Arg.Any<MempoolTransaction>(), Arg.Any<TxHandlingOptions>());
         }
 
         private long RequestTransaction(Transaction tx)
@@ -288,7 +288,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         public void Unsolicited_pooled_response_is_not_decoded()
         {
             using Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage response = new(
-                1111, new PooledTransactionsMessage(IOwnedReadOnlyList<Transaction>.Empty));
+                1111, new PooledTransactionsMessage(IOwnedReadOnlyList<MempoolTransaction>.Empty));
             using DisposableByteBuffer packet = _svc.ZeroSerialize(response).AsDisposable();
             packet.EnsureWritable(1);
             packet.WriteByte(0);
@@ -296,7 +296,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             HandleIncomingStatusMessage();
 
             Assert.That(() => _handler.HandleMessage(new NettyBufferPacket(packet) { PacketType = Eth66MessageCode.PooledTransactions }), Throws.Nothing);
-            _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+            _transactionPool.DidNotReceive().SubmitTx(Arg.Any<MempoolTransaction>(), Arg.Any<TxHandlingOptions>());
         }
 
         public enum BudgetMessageKind { Broadcast, CorrelatedPooled, UncorrelatedPooled }
@@ -328,7 +328,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(scheduler.ScheduledFulfillFuncs, Is.Empty);
-                _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+                _transactionPool.DidNotReceive().SubmitTx(Arg.Any<MempoolTransaction>(), Arg.Any<TxHandlingOptions>());
             }
             using InboundTransactionBudget.Reservation? available = new InboundTransactionBudget(scheduler).TryReserve(1);
             Assert.That(available, Is.Not.Null);
@@ -372,7 +372,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             {
                 if (peerLimit)
                 {
-                    using TransactionsMessage emptyBroadcast = new(IOwnedReadOnlyList<Transaction>.Empty);
+                    using TransactionsMessage emptyBroadcast = new(IOwnedReadOnlyList<MempoolTransaction>.Empty);
                     for (int i = 0; i < InboundTransactionBudget.PeerLimit / InboundTransactionBudget.MinimumCharge; i++)
                         HandleZeroMessage(emptyBroadcast, emptyBroadcast.PacketType);
                 }
@@ -386,8 +386,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 using P2PMessage response = pooledResponse
                     ? new Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage(
                         messageKind == BudgetMessageKind.UncorrelatedPooled ? requestId ^ 1 : requestId,
-                        new PooledTransactionsMessage(new ArrayPoolList<Transaction>(1) { tx }))
-                    : new TransactionsMessage(IOwnedReadOnlyList<Transaction>.Empty);
+                        new PooledTransactionsMessage(new ArrayPoolList<MempoolTransaction>(1) { tx }))
+                    : new TransactionsMessage(IOwnedReadOnlyList<MempoolTransaction>.Empty);
                 using DisposableByteBuffer packet = (pooledResponse
                     ? _svc.ZeroSerialize((Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage)response)
                     : _svc.ZeroSerialize((TransactionsMessage)response)).AsDisposable();
@@ -423,14 +423,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             ReserveAllButOneMessage(scheduler, reservations);
             Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
             using Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage response = new(
-                RequestTransaction(tx), new PooledTransactionsMessage(new[] { tx }.ToPooledList()));
+                RequestTransaction(tx), new PooledTransactionsMessage(new MempoolTransaction[] { tx }.ToPooledList()));
 
             HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
             Assert.That(new InboundTransactionBudget(scheduler).TryReserve(1), Is.Null);
             await scheduler.Drain(new CancellationToken(cancelled));
             using InboundTransactionBudget.Reservation available = new InboundTransactionBudget(scheduler).TryReserve(1)!;
             Assert.That(available, Is.Not.Null);
-            _transactionPool.Received(cancelled ? 0 : 1).SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+            _transactionPool.Received(cancelled ? 0 : 1).SubmitTx(Arg.Any<MempoolTransaction>(), Arg.Any<TxHandlingOptions>());
         }
 
         [Test]
@@ -445,22 +445,22 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             Transaction first = Build.A.Transaction.WithNonce(0).SignedAndResolved().TestObject;
             Transaction second = Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject;
             using CancellationTokenSource cancellation = new();
-            _transactionPool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(_ =>
+            _transactionPool.SubmitTx(Arg.Any<MempoolTransaction>(), Arg.Any<TxHandlingOptions>()).Returns(_ =>
             {
                 cancellation.Cancel();
                 return AcceptTxResult.Accepted;
             });
             using Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage response = new(
-                RequestTransaction(first), new PooledTransactionsMessage(new[] { first, second }.ToPooledList()));
+                RequestTransaction(first), new PooledTransactionsMessage(new MempoolTransaction[] { first, second }.ToPooledList()));
             HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
 
             await scheduler.RunNext(cancellation.Token);
             Assert.That(new InboundTransactionBudget(scheduler).TryReserve(1), Is.Null);
-            _transactionPool.Received(1).SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+            _transactionPool.Received(1).SubmitTx(Arg.Any<MempoolTransaction>(), Arg.Any<TxHandlingOptions>());
             await scheduler.Drain(CancellationToken.None);
             using InboundTransactionBudget.Reservation available = new InboundTransactionBudget(scheduler).TryReserve(1)!;
             Assert.That(available, Is.Not.Null);
-            _transactionPool.Received(2).SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+            _transactionPool.Received(2).SubmitTx(Arg.Any<MempoolTransaction>(), Arg.Any<TxHandlingOptions>());
         }
 
         private static void ReserveAllButOneMessage(IBackgroundTaskScheduler scheduler, CompositeDisposable reservations)
@@ -479,7 +479,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             HandleIncomingStatusMessage();
             Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
             using Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage response = new(
-                RequestTransaction(tx), new PooledTransactionsMessage(IOwnedReadOnlyList<Transaction>.Empty));
+                RequestTransaction(tx), new PooledTransactionsMessage(IOwnedReadOnlyList<MempoolTransaction>.Empty));
             using DisposableByteBuffer packet = _svc.ZeroSerialize(response).AsDisposable();
             if (malformed)
             {
@@ -508,7 +508,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             RecordingBackgroundTaskScheduler scheduler = new();
             InboundTransactionBudget budget = new(scheduler);
             using InboundTransactionBudget.Reservation reservation = budget.TryReserve(InboundTransactionBudget.PeerLimit)!;
-            IOwnedReadOnlyList<Transaction> transactions = Substitute.For<IOwnedReadOnlyList<Transaction>>();
+            IOwnedReadOnlyList<MempoolTransaction> transactions = Substitute.For<IOwnedReadOnlyList<MempoolTransaction>>();
             reservation.Attach(transactions);
             using CompositeDisposable otherPeers = [];
             if (sharedBudgetFull)

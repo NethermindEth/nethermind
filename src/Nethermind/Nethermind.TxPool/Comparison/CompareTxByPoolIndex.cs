@@ -7,15 +7,15 @@ using Nethermind.Core;
 namespace Nethermind.TxPool.Comparison
 {
     /// <summary>
-    /// Default ordering by <see cref="Transaction.PoolIndex"/> asc
+    /// Default ordering by <see cref="MempoolTransaction.PoolIndex"/> asc
     /// </summary>
-    public class CompareTxByPoolIndex : IComparer<Transaction?>
+    public class CompareTxByPoolIndex : IComparer<MempoolTransaction?>
     {
         public static readonly CompareTxByPoolIndex Instance = new();
 
         private CompareTxByPoolIndex() { }
 
-        public int Compare(Transaction? newTx, Transaction? oldTx)
+        public int Compare(MempoolTransaction? newTx, MempoolTransaction? oldTx)
         {
             if (ReferenceEquals(newTx, oldTx)) return TxComparisonResult.NotDecided;
             if (oldTx is null) return TxComparisonResult.KeepOld;

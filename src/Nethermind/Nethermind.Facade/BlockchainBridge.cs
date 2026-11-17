@@ -209,13 +209,13 @@ namespace Nethermind.Facade
                     excessBlobGas: header.ExcessBlobGas);
 
 
-                result = new TransactionLookupResult(tx, extraData);
+                result = new TransactionLookupResult(tx, extraData, null);
                 return true;
             }
 
-            if (checkTxnPool && txPool.TryGetPendingTransaction(txHash, out Transaction? transaction))
+            if (checkTxnPool && txPool.TryGetPendingTransaction(txHash, out MempoolTransaction transaction))
             {
-                result = new TransactionLookupResult(transaction, TransactionForRpcContext.ForPending(specProvider, blockTree.Head?.Header, blocksConfig.SecondsPerSlot));
+                result = new TransactionLookupResult(transaction.Transaction, TransactionForRpcContext.ForPending(specProvider, blockTree.Head?.Header, blocksConfig.SecondsPerSlot), transaction.NetworkWrapper);
                 return true;
             }
 

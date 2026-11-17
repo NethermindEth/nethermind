@@ -45,9 +45,10 @@ namespace Nethermind.JsonRpc.Modules.Parity
 
         public ResultWrapper<ParityTransaction[]> parity_pendingTransactions(Address? address = null)
         {
-            Transaction[] transactions = address is null
+            MempoolTransaction[] pending = address is null
                  ? _txPool.GetPendingTransactions()
                  : _txPool.GetPendingTransactionsBySender(address);
+            Transaction[] transactions = Array.ConvertAll(pending, static mempoolTx => mempoolTx.Transaction);
             IReleaseSpec? pendingSpec = TransactionForRpcContext.ForPending(_specProvider, _blockFinder.Head?.Header, blocksConfig.SecondsPerSlot).Spec;
             return ResultWrapper<ParityTransaction[]>.Success(Array.ConvertAll(transactions, t => new ParityTransaction(t, Rlp.Encode(t),
                 t.IsSigned ? _ecdsa.RecoverPublicKey(t.Signature, t.Hash) : null, pendingSpec: pendingSpec)));

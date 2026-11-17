@@ -13,6 +13,10 @@ public ref struct TxFilteringState(Transaction tx, IAccountStateProvider account
     private AccountStruct _senderAccount;
     private bool? _senderHasDelegatedCode;
 
+    /// <summary>The blob sidecar the transaction travels with, or <c>null</c> when it has none.</summary>
+    /// <remarks>Replaced inside the pool when its proofs are translated or its blobs are recovered from cells.</remarks>
+    public ShardBlobNetworkWrapper? NetworkWrapper { get; internal set; }
+
     /// <summary>Set once every <c>frame_signatures</c> entry has verified against the head spec.</summary>
     /// <remarks>Lets a downstream filter assert pre-validation from what actually ran rather than from
     /// its position in the chain, so a reorder degrades to re-verifying instead of trusting a stranger.

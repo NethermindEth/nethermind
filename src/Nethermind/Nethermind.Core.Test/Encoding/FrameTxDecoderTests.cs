@@ -3,11 +3,9 @@
 
 using System;
 using System.Collections.Generic;
-using CkzgLib;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
@@ -61,96 +59,6 @@ public class FrameTxDecoderTests
 
         AssertFramesEqual(decoded.Frames!, tx.Frames!);
         AssertSignaturesEqual(decoded.FrameSignatures!, tx.FrameSignatures!);
-    }
-
-    [Test]
-    public void Roundtrip_NetworkWrapperForm_PreservesWrapperAndConsensusHash([Values] ProofVersion version)
-    {
-        Transaction tx = CreateBlobCarryingFrameTx(version, blobCount: 2);
-
-        Transaction decoded = EncodeDecode(tx, RlpBehaviors.InMempoolForm);
-
-        ShardBlobNetworkWrapper expected = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
-        ShardBlobNetworkWrapper actual = (ShardBlobNetworkWrapper)decoded.NetworkWrapper!;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(actual.Version, Is.EqualTo(expected.Version));
-            Assert.That(actual.Blobs, Is.EqualTo(expected.Blobs));
-            Assert.That(actual.Commitments, Is.EqualTo(expected.Commitments));
-            Assert.That(actual.Proofs, Is.EqualTo(expected.Proofs));
-            Assert.That(decoded.BlobVersionedHashes ?? [], Is.EqualTo(tx.BlobVersionedHashes ?? []));
-            Assert.That(decoded.Hash, Is.EqualTo(ConsensusHash(tx)));
-        }
-    }
-
-    [Test]
-    public void NetworkWrapper_DoesNotChangeConsensusEncodingOrSigHash([Values] ProofVersion version)
-    {
-        Transaction withWrapper = CreateBlobCarryingFrameTx(version, blobCount: 2);
-
-        Transaction withoutWrapper = EncodeDecode(withWrapper, RlpBehaviors.None);
-        withoutWrapper.NetworkWrapper = null;
-
-        byte[] consensusWithWrapper = _txDecoder.EncodeTx(withWrapper);
-        byte[] consensusWithoutWrapper = _txDecoder.EncodeTx(withoutWrapper);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(consensusWithWrapper, Is.EqualTo(consensusWithoutWrapper));
-            Assert.That(FrameTxSigHash.ComputeValue(withWrapper), Is.EqualTo(FrameTxSigHash.ComputeValue(withoutWrapper)));
-        }
-    }
-
-    [Test]
-    public void Roundtrip_BloblessFrameTx_InMempoolForm_HasNoWrapper()
-    {
-        Transaction tx = CreateFrameTx();
-
-        Transaction decoded = EncodeDecode(tx, RlpBehaviors.InMempoolForm);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(decoded.NetworkWrapper, Is.Null);
-            Assert.That(decoded.Hash, Is.EqualTo(ConsensusHash(tx)));
-        }
-    }
-
-    // Such a transaction would reach the blob pool with no sidecar to serve.
-    [Test]
-    public void Decode_BlobCarryingFrameTxWithoutWrapper_InMempoolForm_ThrowsRlpException()
-    {
-        Transaction tx = CreateBlobCarryingFrameTx(ProofVersion.V1, blobCount: 1);
-        tx.NetworkWrapper = null;
-
-        // The plain form is byte-identical to the consensus form.
-        byte[] bytes = new byte[_txDecoder.GetLength(tx, RlpBehaviors.SkipTypedWrapping)];
-        RlpWriter writer = RlpWriter.ContentWriter(bytes);
-        _txDecoder.Encode(ref writer, tx, RlpBehaviors.SkipTypedWrapping);
-
-        Assert.That(() =>
-        {
-            RlpReader reader = new(bytes);
-            _txDecoder.Decode(ref reader, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping);
-        }, Throws.InstanceOf<RlpReaderException>());
-
-        // The same bytes stay a valid consensus form: only the mempool form requires the sidecar.
-        RlpReader consensusReader = new(bytes);
-        Transaction decoded = _txDecoder.Decode(ref consensusReader, RlpBehaviors.SkipTypedWrapping)!;
-        Assert.That(decoded.BlobVersionedHashes, Is.EqualTo(tx.BlobVersionedHashes));
-    }
-
-    [Test]
-    public void Decode_NetworkWrapperWithoutSidecar_ThrowsRlpException()
-    {
-        // A wrapper holding only the body leaves the reader at the end of the buffer, where the peek reads out of bounds.
-        byte[] payload = TypedPayload(RlpTestHelper.EncodeSequence(new[] { FrameTxBody() }));
-
-        void Decode()
-        {
-            RlpReader reader = new(payload);
-            _txDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
-        }
-
-        Assert.That(Decode, Throws.InstanceOf<RlpReaderException>());
     }
 
     [Test]
@@ -825,17 +733,14 @@ public class FrameTxDecoderTests
         return _txDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping | rlpBehaviors);
     }
 
-    private static Transaction EncodeDecode(Transaction tx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    private static Transaction EncodeDecode(Transaction tx)
     {
-        byte[] bytes = new byte[_txDecoder.GetLength(tx, rlpBehaviors)];
+        byte[] bytes = new byte[_txDecoder.GetLength(tx, RlpBehaviors.None)];
         RlpWriter writer = RlpWriter.ContentWriter(bytes);
-        _txDecoder.Encode(ref writer, tx, rlpBehaviors);
+        _txDecoder.Encode(ref writer, tx);
         RlpReader reader = new(bytes);
-        return _txDecoder.Decode(ref reader, rlpBehaviors)!;
+        return _txDecoder.Decode(ref reader)!;
     }
-
-    // The consensus form ignores any network wrapper: keccak(type || rlp(tx_payload_body)).
-    private static Hash256 ConsensusHash(Transaction tx) => Keccak.Compute(EncodeConsensusPayload(tx));
 
     private static byte[] EncodeConsensusPayload(Transaction tx)
     {
@@ -843,30 +748,6 @@ public class FrameTxDecoderTests
         RlpWriter writer = RlpWriter.ContentWriter(bytes);
         _txDecoder.Encode(ref writer, tx, RlpBehaviors.SkipTypedWrapping);
         return bytes;
-    }
-
-    private static Transaction CreateBlobCarryingFrameTx(ProofVersion version, int blobCount)
-    {
-        if (!KzgPolynomialCommitments.IsInitialized)
-        {
-            KzgPolynomialCommitments.InitializeAsync().Wait();
-        }
-
-        IBlobProofsManager proofsManager = IBlobProofsManager.For(version);
-        byte[][] blobs = new byte[blobCount][];
-        for (int i = 0; i < blobs.Length; i++)
-        {
-            blobs[i] = new byte[Ckzg.BytesPerBlob];
-            blobs[i][0] = (byte)((i + 1) % 256);
-        }
-
-        ShardBlobNetworkWrapper wrapper = proofsManager.AllocateWrapper(blobs);
-        proofsManager.ComputeProofsAndCommitments(wrapper);
-
-        Transaction tx = CreateFrameTx();
-        tx.BlobVersionedHashes = proofsManager.ComputeHashes(wrapper);
-        tx.NetworkWrapper = wrapper;
-        return tx;
     }
 
     private static void AssertFramesEqual(TxFrame[] actual, TxFrame[] expected)
@@ -902,7 +783,7 @@ public class FrameTxDecoderTests
         }
     }
 
-    private static Transaction CreateFrameTx(TxFrame[]? frames = null, TxFrameSignature[]? signatures = null) =>
+    internal static Transaction CreateFrameTx(TxFrame[]? frames = null, TxFrameSignature[]? signatures = null) =>
         WithMaxFee(new Transaction
         {
             Type = TxType.FrameTx,

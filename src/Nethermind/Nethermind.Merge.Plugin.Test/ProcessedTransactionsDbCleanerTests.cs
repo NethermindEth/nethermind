@@ -30,24 +30,24 @@ public class ProcessedTransactionsDbCleanerTests
     private readonly ILogManager _logManager = LimboLogs.Instance;
     private readonly ISpecProvider _specProvider = MainnetSpecProvider.Instance;
 
-    private static Transaction GetTx(PrivateKey sender) =>
+    private static MempoolTransaction GetTx(PrivateKey sender) =>
         Build.A.Transaction
             .WithShardBlobTxTypeAndFields()
             .WithMaxFeePerGas(UInt256.One)
             .WithMaxPriorityFeePerGas(UInt256.One)
             .WithNonce(0UL)
-            .SignedAndResolved(new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId), sender).TestObject;
+            .SignedAndResolved(new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId), sender).MempoolTestObject;
 
     [Test]
     public async Task should_remove_processed_txs_from_db_after_finalization([Values(0UL, 1UL, 42UL, 358UL)] ulong blockOfTxs, [Values(1UL, 42UL, 358UL)] ulong finalizedBlock, [Values] bool legacy)
     {
         IColumnsDb<BlobTxsColumns> columnsDb = new MemColumnsDb<BlobTxsColumns>(BlobTxsColumns.ProcessedTxs);
         BlobTxStorage blobTxStorage = new(columnsDb);
-        using (ArrayPoolListRef<Transaction> txs = new(2, GetTx(TestItem.PrivateKeyA), GetTx(TestItem.PrivateKeyB)))
+        using (ArrayPoolListRef<MempoolTransaction> txs = new(2, GetTx(TestItem.PrivateKeyA), GetTx(TestItem.PrivateKeyB)))
         {
             if (legacy)
             {
-                using ArrayPoolSpan<byte> encoded = TxDecoder.Instance.EncodeToArrayPoolSpan(txs.AsSpan(), RlpBehaviors.InMempoolForm | RlpBehaviors.Storage);
+                using ArrayPoolSpan<byte> encoded = MempoolTxDecoder.Instance.EncodeToArrayPoolSpan(txs.AsSpan(), RlpBehaviors.Storage);
                 columnsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs).PutSpan(blockOfTxs.ToBigEndianSpanWithoutLeadingZeros(out _), encoded);
             }
             else
@@ -57,7 +57,7 @@ public class ProcessedTransactionsDbCleanerTests
         }
 
 #pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
-        Assert.That(blobTxStorage.TryGetBlobTransactionsFromBlock(blockOfTxs, out Transaction[]? returnedTxs), Is.True);
+        Assert.That(blobTxStorage.TryGetBlobTransactionsFromBlock(blockOfTxs, out MempoolTransaction[]? returnedTxs), Is.True);
 #pragma warning restore NUnit2045
         Assert.That(returnedTxs!.Length, Is.EqualTo(2));
 
@@ -159,7 +159,7 @@ public class ProcessedTransactionsDbCleanerTests
             BlobTxStorage = new(columnsDb);
             foreach (ulong block in blocks)
             {
-                using ArrayPoolListRef<Transaction> txs = new(2, GetTx(TestItem.PrivateKeyA), GetTx(TestItem.PrivateKeyB));
+                using ArrayPoolListRef<MempoolTransaction> txs = new(2, GetTx(TestItem.PrivateKeyA), GetTx(TestItem.PrivateKeyB));
                 BlobTxStorage.AddBlobTransactionsFromBlock(block, txs);
             }
 

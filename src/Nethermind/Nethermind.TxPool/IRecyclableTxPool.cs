@@ -17,7 +17,7 @@ internal interface IRecyclableTxPool
     /// </remarks>
     /// <param name="peer">The sending peer, compared by reference, whose share of the per-head frame validation
     /// time pays for a frame transaction rejected after validation; <see langword="null"/> exempts it.</param>
-    AcceptTxResult SubmitOwnedTx(Transaction tx, object? peer, out bool canRecycle);
+    AcceptTxResult SubmitOwnedTx(MempoolTransaction tx, object? peer, out bool canRecycle);
 
     /// <summary>Settles an incoming transaction the pool already knows, given only its hash.</summary>
     /// <returns>

@@ -11,10 +11,12 @@ namespace Nethermind.TxPool;
 
 internal static class BlobProofsTranslator
 {
-    public static bool TryTranslateToCurrentProofVersion(Transaction tx, ProofVersion currentProofVersion)
+    /// <param name="tx">The transaction the sidecar belongs to.</param>
+    /// <param name="wrapper">The sidecar, replaced by its translation when its proof version differs from <paramref name="currentProofVersion"/>.</param>
+    /// <param name="currentProofVersion">The proof version the sidecar must carry.</param>
+    public static bool TryTranslateToCurrentProofVersion(Transaction tx, ref ShardBlobNetworkWrapper? wrapper, ProofVersion currentProofVersion)
     {
-        if (tx is not { CarriesBlobs: true, NetworkWrapper: ShardBlobNetworkWrapper wrapper }
-            || wrapper.Version == currentProofVersion)
+        if (!tx.CarriesBlobs || wrapper is null || wrapper.Version == currentProofVersion)
         {
             return true;
         }
@@ -24,20 +26,18 @@ internal static class BlobProofsTranslator
             return false;
         }
 
-        if (wrapper.Version is ProofVersion.V0 && currentProofVersion is ProofVersion.V1)
+        ShardBlobNetworkWrapper? translated = (wrapper.Version, currentProofVersion) switch
         {
-            return TryConvertBlobProofsToCellProofs(tx, wrapper);
-        }
+            (ProofVersion.V0, ProofVersion.V1) => ConvertBlobProofsToCellProofs(wrapper),
+            (ProofVersion.V1, ProofVersion.V0) => ConvertCellProofsToBlobProofs(wrapper),
+            _ => wrapper
+        };
 
-        if (wrapper.Version is ProofVersion.V1 && currentProofVersion is ProofVersion.V0)
-        {
-            return TryConvertCellProofsToBlobProofs(tx, wrapper);
-        }
-
-        return true;
+        wrapper = translated ?? wrapper;
+        return translated is not null;
     }
 
-    private static bool TryConvertBlobProofsToCellProofs(Transaction tx, ShardBlobNetworkWrapper wrapper)
+    private static ShardBlobNetworkWrapper? ConvertBlobProofsToCellProofs(ShardBlobNetworkWrapper wrapper)
     {
         byte[][] cellProofs = new byte[Ckzg.CellsPerExtBlob * wrapper.Blobs.Length][];
 
@@ -58,15 +58,13 @@ internal static class BlobProofsTranslator
         }
         catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
         {
-            return false;
+            return null;
         }
 
-        tx.NetworkWrapper = wrapper with { Proofs = cellProofs, Version = ProofVersion.V1 };
-        tx.ClearLengthCache();
-        return true;
+        return wrapper with { Proofs = cellProofs, Version = ProofVersion.V1 };
     }
 
-    private static bool TryConvertCellProofsToBlobProofs(Transaction tx, ShardBlobNetworkWrapper wrapper)
+    private static ShardBlobNetworkWrapper? ConvertCellProofsToBlobProofs(ShardBlobNetworkWrapper wrapper)
     {
         byte[][] proofs = new byte[wrapper.Blobs.Length][];
 
@@ -81,12 +79,10 @@ internal static class BlobProofsTranslator
         }
         catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
         {
-            return false;
+            return null;
         }
 
-        tx.NetworkWrapper = wrapper with { Proofs = proofs, Version = ProofVersion.V0 };
-        tx.ClearLengthCache();
-        return true;
+        return wrapper with { Proofs = proofs, Version = ProofVersion.V0 };
     }
 
     private static bool ValidateSourceBlobWrapper(Transaction tx, ShardBlobNetworkWrapper wrapper)

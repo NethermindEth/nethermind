@@ -37,9 +37,9 @@ internal sealed class FrameTxPaymasterFilter(
     ConcurrentDictionary<AddressAsKey, ValueHash256> paymasterBaselines,
     ILogger logger) : IIncomingTxFilter
 {
-    public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
+    public AcceptTxResult Accept(MempoolTransaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        if (PendingPaymasterCache.KeyFor(tx) is not Address paymaster)
+        if (PendingPaymasterCache.KeyFor(tx.Transaction) is not Address paymaster)
         {
             return AcceptTxResult.Accepted;
         }
@@ -51,14 +51,14 @@ internal sealed class FrameTxPaymasterFilter(
 
         if (txPoolConfig.FrameTxWidthEnabled)
         {
-            return AcceptByWidth(tx, ref state, paymaster, held);
+            return AcceptByWidth(tx.Transaction, ref state, paymaster, held);
         }
 
         // Both remaining tests are deferred until the count could bite: below the cap neither the target's
         // code nor a replacement it displaces can change the verdict, so neither is paid for.
         if (held > Eip8141Constants.MaxPendingTxsUsingNonCanonicalPaymaster
             && IsNonCanonicalPaymaster(paymaster, stateProvider)
-            && !ReplacesPendingTxOfSamePaymaster(tx, paymaster))
+            && !ReplacesPendingTxOfSamePaymaster(tx.Transaction, paymaster))
         {
             paymasters.Decrement(paymaster);
             state.PaymasterReserved = false;
@@ -74,7 +74,7 @@ internal sealed class FrameTxPaymasterFilter(
     private AcceptTxResult AcceptByWidth(Transaction tx, ref TxFilteringState state, Address paymaster, int held)
     {
         if (held <= Eip8141Constants.MaxPendingTxsUsingNonCanonicalPaymaster
-            || (PendingReplacement.Find(tx, standardPool, blobPool) is Transaction replaced
+            || (PendingReplacement.Find(tx, standardPool, blobPool) is MempoolTransaction replaced
                 && paymasterBaselines.TryGetValue(paymaster, out ValueHash256 baseline)
                 && baseline == replaced.Hash!.ValueHash256))
         {
@@ -111,6 +111,6 @@ internal sealed class FrameTxPaymasterFilter(
     /// <remarks>Matched on the paymaster too: displacing a tx sponsored elsewhere frees that sponsor's
     /// slot while still taking one here.</remarks>
     private bool ReplacesPendingTxOfSamePaymaster(Transaction tx, Address paymaster) =>
-        PendingReplacement.Find(tx, standardPool, blobPool) is Transaction replaced
-        && paymaster == PendingPaymasterCache.KeyFor(replaced);
+        PendingReplacement.Find(tx, standardPool, blobPool) is MempoolTransaction replaced
+        && paymaster == PendingPaymasterCache.KeyFor(replaced.Transaction);
 }

@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json.Serialization;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Serialization.Json;
 
@@ -28,8 +31,11 @@ public class BlobsBundleV1
         Proofs = new byte[blobsCount][];
         int blockIndex = 0;
 
-        foreach (Transaction? tx in block.Transactions)
+        IEnumerable<MempoolTransaction> transactions = (block as BlockToProduce)?.Transactions ?? block.Transactions.Select(static tx => (MempoolTransaction)tx);
+
+        foreach (MempoolTransaction tx in transactions)
         {
+
             // Match the type-agnostic GetBlobCount sizing above, or a type-6 leaves null bundle entries.
             if (!tx.CarriesBlobs)
             {

@@ -15,15 +15,15 @@ public class TxFilterAdapter(IBlockTree blockTree, ITxFilter txFilter, ILogManag
 {
     private readonly ILogger _logger = logManager.GetClassLogger<TxFilterAdapter>();
 
-    public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
+    public AcceptTxResult Accept(MempoolTransaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        if (tx is not GeneratedTransaction)
+        if (tx.Transaction is not GeneratedTransaction)
         {
             BlockHeader parentHeader = blockTree.Head?.Header;
             if (parentHeader is null) return AcceptTxResult.Accepted;
 
             TxFilterContext context = new(parentHeader, specProvider.GetSpec(parentHeader));
-            AcceptTxResult isAllowed = txFilter.IsAllowed(tx, in context);
+            AcceptTxResult isAllowed = txFilter.IsAllowed(tx.Transaction, in context);
             if (!isAllowed)
             {
                 if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, filtered ({isAllowed}).");

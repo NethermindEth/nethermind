@@ -17,41 +17,41 @@ using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.TxPool.Collections
 {
-    public class TxDistinctSortedPool : DistinctValueSortedPool<ValueHash256, Transaction, AddressAsKey>
+    public class TxDistinctSortedPool : DistinctValueSortedPool<ValueHash256, MempoolTransaction, AddressAsKey>
     {
-        public delegate void UpdateGroupDelegate(in AccountStruct account, EnhancedSortedSet<Transaction> transactions, ref Transaction? lastElement, UpdateTransactionDelegate updateTx);
-        public delegate void UpdateTransactionDelegate(EnhancedSortedSet<Transaction> bucket, Transaction tx, in UInt256? changedGasBottleneck, Transaction? lastElement);
+        public delegate void UpdateGroupDelegate(in AccountStruct account, EnhancedSortedSet<MempoolTransaction> transactions, ref MempoolTransaction? lastElement, UpdateTransactionDelegate updateTx);
+        public delegate void UpdateTransactionDelegate(EnhancedSortedSet<MempoolTransaction> bucket, MempoolTransaction tx, in UInt256? changedGasBottleneck, MempoolTransaction? lastElement);
 
         private const int RemovalGenerationStripes = 256;
 
         private readonly UpdateTransactionDelegate _updateTx;
-        private readonly List<Transaction> _transactionsToRemove = [];
+        private readonly List<MempoolTransaction> _transactionsToRemove = [];
         private readonly Dictionary<AddressAsKey, int> _keyedNonceCounts = [];
         private readonly long[] _removalGenerations = new long[RemovalGenerationStripes];
         protected int _poolCapacity;
 
-        public TxDistinctSortedPool(int capacity, IComparer<Transaction> comparer, ILogManager logManager)
+        public TxDistinctSortedPool(int capacity, IComparer<MempoolTransaction> comparer, ILogManager logManager)
             : base(capacity, comparer, CompetingTransactionEqualityComparer.Instance, logManager)
         {
             _poolCapacity = capacity;
             _updateTx = UpdateTransaction;
         }
 
-        protected override IComparer<Transaction> GetUniqueComparer(IComparer<Transaction> comparer) => comparer.GetPoolUniqueTxComparer();
-        protected override IComparer<Transaction> GetGroupComparer(IComparer<Transaction> comparer) => comparer.GetPoolUniqueTxComparerByNonce();
-        protected override IComparer<Transaction> GetReplacementComparer(IComparer<Transaction> comparer) => comparer.GetReplacementComparer();
+        protected override IComparer<MempoolTransaction> GetUniqueComparer(IComparer<MempoolTransaction> comparer) => comparer.GetPoolUniqueTxComparer();
+        protected override IComparer<MempoolTransaction> GetGroupComparer(IComparer<MempoolTransaction> comparer) => comparer.GetPoolUniqueTxComparerByNonce();
+        protected override IComparer<MempoolTransaction> GetReplacementComparer(IComparer<MempoolTransaction> comparer) => comparer.GetReplacementComparer();
 
-        protected override AddressAsKey MapToGroup(Transaction value) => value.MapTxToGroup() ?? throw new ArgumentException("MapTxToGroup() returned null!");
-        protected override ValueHash256 GetKey(Transaction value) => value.Hash!;
+        protected override AddressAsKey MapToGroup(MempoolTransaction value) => value.Transaction.MapTxToGroup() ?? throw new ArgumentException("MapTxToGroup() returned null!");
+        protected override ValueHash256 GetKey(MempoolTransaction value) => value.Transaction.Hash!;
 
-        protected override bool InsertCore(ValueHash256 key, Transaction value, AddressAsKey groupKey)
+        protected override bool InsertCore(ValueHash256 key, MempoolTransaction value, AddressAsKey groupKey)
         {
             if (!base.InsertCore(key, value, groupKey))
             {
                 return false;
             }
 
-            if (KeyedNonceManager.UsesKeyedNonce(value))
+            if (KeyedNonceManager.UsesKeyedNonce(value.Transaction))
             {
                 _keyedNonceCounts[groupKey] = _keyedNonceCounts.GetValueOrDefault(groupKey) + 1;
             }
@@ -59,7 +59,7 @@ namespace Nethermind.TxPool.Collections
             return true;
         }
 
-        protected override bool Remove(ValueHash256 key, out Transaction? value)
+        protected override bool Remove(ValueHash256 key, out MempoolTransaction? value)
         {
             if (!base.Remove(key, out value))
             {
@@ -68,7 +68,7 @@ namespace Nethermind.TxPool.Collections
 
             if (value is not null)
             {
-                CountRemoval(value);
+                CountRemoval(value.Transaction);
             }
 
             return true;
@@ -78,15 +78,15 @@ namespace Nethermind.TxPool.Collections
         /// <remarks>The keyed count tracks bucket membership rather than the pool's removal attempt: a removal the
         /// group comparer cannot locate leaves the entry in the bucket, and capacity eviction drops one from the
         /// bucket without raising <see cref="SortedPool{TKey, TValue, TGroupKey}.Removed"/>.</remarks>
-        protected override bool RemoveFromBucket(Transaction value, out EnhancedSortedSet<Transaction>? bucketSet)
+        protected override bool RemoveFromBucket(MempoolTransaction value, out EnhancedSortedSet<MempoolTransaction>? bucketSet)
         {
             if (!base.RemoveFromBucket(value, out bucketSet))
             {
                 return false;
             }
 
-            CountRemoval(value);
-            if (KeyedNonceManager.UsesKeyedNonce(value))
+            CountRemoval(value.Transaction);
+            if (KeyedNonceManager.UsesKeyedNonce(value.Transaction))
             {
                 AddressAsKey groupKey = MapToGroup(value);
                 if (_keyedNonceCounts.TryGetValue(groupKey, out int keyedCount))
@@ -128,7 +128,7 @@ namespace Nethermind.TxPool.Collections
         {
             using McsLock.Disposable lockRelease = Lock.Acquire();
 
-            return _buckets.TryGetValue(group, out EnhancedSortedSet<Transaction>? bucket)
+            return _buckets.TryGetValue(group, out EnhancedSortedSet<MempoolTransaction>? bucket)
                 ? bucket.Count - _keyedNonceCounts.GetValueOrDefault(group)
                 : 0;
         }
@@ -142,7 +142,7 @@ namespace Nethermind.TxPool.Collections
             using McsLock.Disposable lockRelease = Lock.Acquire();
 
             if (!_keyedNonceCounts.ContainsKey(group)
-                && _buckets.TryGetValue(group, out EnhancedSortedSet<Transaction>? bucket)
+                && _buckets.TryGetValue(group, out EnhancedSortedSet<MempoolTransaction>? bucket)
                 && accountNonce + (ulong)bucket.Count - 1 == bucket.Max!.Nonce)
             {
                 pendingNonce = bucket.Max.Nonce + 1;
@@ -153,12 +153,12 @@ namespace Nethermind.TxPool.Collections
             return false;
         }
 
-        protected override void UpdateGroup(AddressAsKey groupKey, EnhancedSortedSet<Transaction> bucket, Func<AddressAsKey, IReadOnlySortedSet<Transaction>, IEnumerable<(Transaction Tx, Action<Transaction>? Change)>> changingElements)
+        protected override void UpdateGroup(AddressAsKey groupKey, EnhancedSortedSet<MempoolTransaction> bucket, Func<AddressAsKey, IReadOnlySortedSet<MempoolTransaction>, IEnumerable<(MempoolTransaction Tx, Action<MempoolTransaction>? Change)>> changingElements)
         {
             _transactionsToRemove.Clear();
-            Transaction? lastElement = bucket.Max;
+            MempoolTransaction? lastElement = bucket.Max;
 
-            foreach ((Transaction tx, Action<Transaction>? change) in changingElements(groupKey, bucket))
+            foreach ((MempoolTransaction tx, Action<MempoolTransaction>? change) in changingElements(groupKey, bucket))
             {
                 if (change is null)
                 {
@@ -203,7 +203,7 @@ namespace Nethermind.TxPool.Collections
         private protected void UpdatePoolNonLocked(IAccountStateProvider accounts, UpdateGroupDelegate updateElements)
         {
             EnsureCapacity();
-            foreach ((AddressAsKey address, EnhancedSortedSet<Transaction> bucket) in _buckets)
+            foreach ((AddressAsKey address, EnhancedSortedSet<MempoolTransaction> bucket) in _buckets)
             {
                 Debug.Assert(bucket.Count > 0);
 
@@ -212,21 +212,21 @@ namespace Nethermind.TxPool.Collections
             }
         }
 
-        private void UpdateGroupNonLocked(AccountStruct groupValue, EnhancedSortedSet<Transaction> bucket, UpdateGroupDelegate updateElements)
+        private void UpdateGroupNonLocked(AccountStruct groupValue, EnhancedSortedSet<MempoolTransaction> bucket, UpdateGroupDelegate updateElements)
         {
             _transactionsToRemove.Clear();
-            Transaction? lastElement = bucket.Max;
+            MempoolTransaction? lastElement = bucket.Max;
 
             updateElements(groupValue, bucket, ref lastElement, _updateTx);
 
-            ReadOnlySpan<Transaction> txs = CollectionsMarshal.AsSpan(_transactionsToRemove);
+            ReadOnlySpan<MempoolTransaction> txs = CollectionsMarshal.AsSpan(_transactionsToRemove);
             for (int i = 0; i < txs.Length; i++)
             {
                 TryRemoveNonLocked(txs[i].Hash!, evicted: false, out _, out _);
             }
         }
 
-        private void UpdateTransaction(EnhancedSortedSet<Transaction> bucket, Transaction tx, in UInt256? changedGasBottleneck, Transaction? lastElement)
+        private void UpdateTransaction(EnhancedSortedSet<MempoolTransaction> bucket, MempoolTransaction tx, in UInt256? changedGasBottleneck, MempoolTransaction? lastElement)
         {
             if (changedGasBottleneck is null)
             {
@@ -250,7 +250,7 @@ namespace Nethermind.TxPool.Collections
             using McsLock.Disposable lockRelease = Lock.Acquire();
 
             ArgumentNullException.ThrowIfNull(groupKey);
-            if (_buckets.TryGetValue(groupKey, out EnhancedSortedSet<Transaction>? bucket))
+            if (_buckets.TryGetValue(groupKey, out EnhancedSortedSet<MempoolTransaction>? bucket))
             {
                 Debug.Assert(bucket.Count > 0);
 

@@ -7,7 +7,7 @@ namespace Nethermind.TxPool;
 
 internal static class BlobTransactionPayload
 {
-    public static Transaction Elide(Transaction transaction)
+    public static MempoolTransaction Elide(MempoolTransaction transaction)
     {
         if (transaction.NetworkWrapper is not ShardBlobNetworkWrapper wrapper)
         {
@@ -19,10 +19,6 @@ internal static class BlobTransactionPayload
             return transaction;
         }
 
-        Transaction elided = new();
-        transaction.CopyTo(elided, copyHash: true);
-        elided.NetworkWrapper = wrapper with { Blobs = [], CellMask = default, Cells = null };
-        elided.ClearLengthCache();
-        return elided;
+        return transaction with { NetworkWrapper = wrapper with { Blobs = [], CellMask = default, Cells = null } };
     }
 }

@@ -48,7 +48,7 @@ internal class SignTransactionManagerTests
         signer.TrySign(Arg.Any<Transaction>()).Returns(true);
 
         ITxPool txPool = Substitute.For<ITxPool>();
-        txPool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
+        txPool.SubmitTx(Arg.Any<MempoolTransaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
 
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.WasProcessed(block.Number, block.Hash!).Returns(true);
@@ -67,6 +67,6 @@ internal class SignTransactionManagerTests
 
         blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
 
-        txPool.Received(shouldSign ? 1 : 0).SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+        txPool.Received(shouldSign ? 1 : 0).SubmitTx(Arg.Any<MempoolTransaction>(), Arg.Any<TxHandlingOptions>());
     }
 }

@@ -114,7 +114,7 @@ public class EthRpcSimulateTestsBase
         Assert.That(code, Is.EqualTo(AcceptTxResult.Accepted));
         Hash256 acceptedHash = hash ?? throw new AssertionException("Accepted transaction has no hash.");
 
-        Transaction[] txs = chain.TxPool.GetPendingTransactions();
+        MempoolTransaction[] txs = chain.TxPool.GetPendingTransactions();
         HashSet<Hash256> expectedHashes = txs
             .Select(static pendingTx => pendingTx.Hash ?? throw new AssertionException("Pending transaction has no hash."))
             .ToHashSet();

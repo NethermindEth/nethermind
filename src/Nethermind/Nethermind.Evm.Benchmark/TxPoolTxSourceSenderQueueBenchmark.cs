@@ -153,8 +153,8 @@ public class TxPoolTxSourceSenderQueueBenchmark
     [GlobalSetup]
     public void GlobalSetup()
     {
-        Dictionary<AddressAsKey, Transaction[]> pending = BuildPool();
-        _pooledTransactions = pending.Values.SelectMany(static bucket => bucket).ToArray();
+        Dictionary<AddressAsKey, MempoolTransaction[]> pending = BuildPool();
+        _pooledTransactions = pending.Values.SelectMany(static bucket => bucket).Select(static tx => tx.Transaction).ToArray();
 
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(Spec))
@@ -196,7 +196,7 @@ public class TxPoolTxSourceSenderQueueBenchmark
 
         ITxPool txPool = Substitute.For<ITxPool>();
         txPool.GetPendingForProduction(Arg.Any<BlockHeader>(), Arg.Any<bool>(), Arg.Any<UInt256>())
-            .Returns(new PendingTransactionsView(pending, new Dictionary<AddressAsKey, Transaction[]>(), isRevalidated: true));
+            .Returns(new PendingTransactionsView(pending, new Dictionary<AddressAsKey, MempoolTransaction[]>(), isRevalidated: true));
         IBlocksConfig blocksConfig = _container.Resolve<IBlocksConfig>();
         // The container's log manager logs errors only. LimboLogs would build every trace message, one per candidate
         // in the source, which a node at its default level never does.
@@ -228,7 +228,7 @@ public class TxPoolTxSourceSenderQueueBenchmark
     public int EnumerateSource()
     {
         int handedOut = 0;
-        foreach (Transaction _ in GetTransactions())
+        foreach (MempoolTransaction _ in GetTransactions())
         {
             if (++handedOut == _candidatesVisited) break;
         }
@@ -259,8 +259,9 @@ public class TxPoolTxSourceSenderQueueBenchmark
         int visited = 0;
         int included = 0;
         ulong gasUsed = 0;
-        foreach (Transaction tx in GetTransactions())
+        foreach (MempoolTransaction mempoolTx in GetTransactions())
         {
+            Transaction tx = mempoolTx.Transaction;
             visited++;
             BlockProcessor.AddingTxEventArgs args = _picker.CanAddTransaction(block, tx, consideredTx, _worldState, gasUsed, 0);
             if (args.Action != BlockProcessor.TxAction.Add && skipReasons is not null)
@@ -283,10 +284,10 @@ public class TxPoolTxSourceSenderQueueBenchmark
         return (visited, included, gasUsed);
     }
 
-    private IEnumerable<Transaction> GetTransactions() =>
+    private IEnumerable<MempoolTransaction> GetTransactions() =>
         _txSource.GetTransactions(_parentHeader, _headerTemplate, BlockGasLimit, filterSource: true);
 
-    private BlockToProduce CreateBlock(IEnumerable<Transaction> transactions) =>
+    private BlockToProduce CreateBlock(IEnumerable<MempoolTransaction> transactions) =>
         new(_headerTemplate.Clone(), transactions, [], []);
 
     /// <summary>Forgets the gas used that execution recorded on the pooled transactions, as before a first build.</summary>
@@ -332,9 +333,9 @@ public class TxPoolTxSourceSenderQueueBenchmark
 
         _candidatesVisited = visited;
 
-        IEnumerable<Transaction> CountHandedOut(IEnumerable<Transaction> transactions)
+        IEnumerable<MempoolTransaction> CountHandedOut(IEnumerable<MempoolTransaction> transactions)
         {
-            foreach (Transaction tx in transactions)
+            foreach (MempoolTransaction tx in transactions)
             {
                 handedOut++;
                 yield return tx;
@@ -342,10 +343,10 @@ public class TxPoolTxSourceSenderQueueBenchmark
         }
     }
 
-    private Dictionary<AddressAsKey, Transaction[]> BuildPool()
+    private Dictionary<AddressAsKey, MempoolTransaction[]> BuildPool()
     {
         PrivateKey longSender = TestItem.PrivateKeyA;
-        Dictionary<AddressAsKey, Transaction[]> pending = [];
+        Dictionary<AddressAsKey, MempoolTransaction[]> pending = [];
         switch (Shape)
         {
             case PoolShape.CheapTransfers:
@@ -375,9 +376,9 @@ public class TxPoolTxSourceSenderQueueBenchmark
         return pending;
     }
 
-    private static Transaction[] BuildQueue(PrivateKey sender, int count, Address to, ulong gasLimit, UInt256 priorityFee)
+    private static MempoolTransaction[] BuildQueue(PrivateKey sender, int count, Address to, ulong gasLimit, UInt256 priorityFee)
     {
-        Transaction[] queue = new Transaction[count];
+        MempoolTransaction[] queue = new MempoolTransaction[count];
         for (int nonce = 0; nonce < count; nonce++)
         {
             queue[nonce] = Build.A.Transaction

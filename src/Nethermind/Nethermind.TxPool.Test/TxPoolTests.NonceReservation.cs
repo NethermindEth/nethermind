@@ -118,13 +118,14 @@ public partial class TxPoolTests
         Transaction reserved;
         using (NonceLocker locker = nonces.ReserveNonce(TestItem.AddressA, _txPool, out ulong nonce))
         {
-            reserved = Build.A.Transaction
+            MempoolTransaction reservedWithSidecar = Build.A.Transaction
                 .WithNonce(nonce)
                 .WithShardBlobTxTypeAndFields()
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            Assert.That(_txPool.SubmitTx(reserved, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).MempoolTestObject;
+            reserved = reservedWithSidecar.Transaction;
+            Assert.That(_txPool.SubmitTx(reservedWithSidecar, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             locker.Accept(reserved);
         }
 

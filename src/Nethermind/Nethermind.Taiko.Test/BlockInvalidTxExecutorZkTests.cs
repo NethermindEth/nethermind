@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using Autofac;
 using Nethermind.Api;
@@ -48,7 +49,7 @@ public class BlockInvalidTxExecutorZkTests
 
     /// <summary>Builds a minimal block containing the given transactions.</summary>
     private static Block MakeBlock(params Transaction[] txs) =>
-        new BlockToProduce(Build.A.BlockHeader.WithNumber(1).TestObject, txs, []);
+        new BlockToProduce(Build.A.BlockHeader.WithNumber(1).TestObject, Array.ConvertAll(txs, static tx => (MempoolTransaction)tx), []);
 
     /// <summary>Builds a valid (non-blob) transaction stub with a given nonce (for uniqueness).</summary>
     private static Transaction MakeTx(ulong nonce = 0) =>

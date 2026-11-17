@@ -10,12 +10,12 @@ using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.Consensus.Comparers
 {
-    public class GasPriceTxComparer(IBlockFinder blockFinder, ISpecProvider specProvider) : IComparer<Transaction>
+    public class GasPriceTxComparer(IBlockFinder blockFinder, ISpecProvider specProvider) : IComparer<MempoolTransaction>
     {
         private readonly IBlockFinder _blockFinder = blockFinder;
         private readonly ISpecProvider _specProvider = specProvider;
 
-        public int Compare(Transaction? x, Transaction? y)
+        public int Compare(MempoolTransaction? x, MempoolTransaction? y)
         {
             if (ReferenceEquals(x, y)) return TxComparisonResult.Equal;
             if (y is null) return TxComparisonResult.YFirst;
@@ -33,7 +33,7 @@ namespace Nethermind.Consensus.Comparers
             Block block = _blockFinder.Head;
             bool isEip1559Enabled = _specProvider.GetSpecFor1559(block?.Number ?? 0UL).IsEip1559Enabled;
 
-            return GasPriceTxComparerHelper.Compare(x, y, (block?.Header.BaseFeePerGas).GetValueOrDefault(), isEip1559Enabled);
+            return GasPriceTxComparerHelper.Compare(x.Transaction, y.Transaction, (block?.Header.BaseFeePerGas).GetValueOrDefault(), isEip1559Enabled);
         }
     }
 }

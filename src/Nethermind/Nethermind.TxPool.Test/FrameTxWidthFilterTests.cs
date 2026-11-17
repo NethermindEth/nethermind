@@ -529,7 +529,7 @@ public class FrameTxWidthFilterTests
 
     private static TxDistinctSortedPool PendingKeyedTxs(int count)
     {
-        Transaction[] pending = new Transaction[count];
+        MempoolTransaction[] pending = new MempoolTransaction[count];
         for (int i = 0; i < count; i++)
         {
             pending[i] = KeyedTx(nonceSeq: (ulong)i);
@@ -608,7 +608,7 @@ public class FrameTxWidthFilterTests
                 return result;
             }
 
-            if (PendingReplacement.Find(tx, pool, blobPool) is Transaction replaced) Remove(replaced);
+            if (PendingReplacement.Find(tx, pool, blobPool) is MempoolTransaction replaced) Remove(replaced.Transaction);
             _pending.Add(tx);
             if (state.TakesSenderBaseline) _senderBaselines[Sender] = tx.Hash!.ValueHash256;
             if (state.TakesPaymasterBaseline) _paymasterBaselines[Paymaster] = tx.Hash!.ValueHash256;

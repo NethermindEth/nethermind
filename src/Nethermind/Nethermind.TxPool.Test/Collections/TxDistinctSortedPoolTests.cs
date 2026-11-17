@@ -24,35 +24,35 @@ public class TxDistinctSortedPoolTests
     private static readonly Address Sender = TestItem.AddressA;
     private const ulong SharedNonce = 5;
 
-    private static Transaction AccountTx(ulong nonce, uint gasBottleneck, Hash256 hash) => Build.A.Transaction
+    private static MempoolTransaction AccountTx(ulong nonce, uint gasBottleneck, Hash256 hash) => new(Build.A.Transaction
         .WithNonce(nonce)
         .WithSenderAddress(Sender)
-        .WithGasBottleneck(gasBottleneck)
         .WithHash(hash)
-        .TestObject;
+        .TestObject, null)
+    { GasBottleneck = gasBottleneck };
 
-    private static Transaction KeyedTx() => Build.A.Transaction
+    private static MempoolTransaction KeyedTx() => new(Build.A.Transaction
         .WithType(TxType.FrameTx)
         .WithNonce(SharedNonce)
         .WithNonceKeys(0xbeef)
         .WithSenderAddress(Sender)
-        .WithGasBottleneck(50)
         .WithHash(TestItem.KeccakB)
-        .TestObject;
+        .TestObject, null)
+    { GasBottleneck = 50 };
 
     /// <summary>Marks <paramref name="keyedTx"/> for removal and reprices <paramref name="sibling"/> in the same
     /// pass, which is what <c>UpdateGasBottleneckAndMarkForEviction</c> does when both share a nonce.</summary>
-    private static void MarkKeyedAndReprice(TxDistinctSortedPool pool, Transaction keyedTx, Transaction sibling, uint siblingGasBottleneck) =>
+    private static void MarkKeyedAndReprice(TxDistinctSortedPool pool, MempoolTransaction keyedTx, MempoolTransaction sibling, uint siblingGasBottleneck) =>
         pool.UpdatePool(Substitute.For<IAccountStateProvider>(),
-            (in AccountStruct _, EnhancedSortedSet<Transaction> bucket, ref Transaction? lastElement, TxDistinctSortedPool.UpdateTransactionDelegate updateTx) =>
+            (in AccountStruct _, EnhancedSortedSet<MempoolTransaction> bucket, ref MempoolTransaction? lastElement, TxDistinctSortedPool.UpdateTransactionDelegate updateTx) =>
             {
                 updateTx(bucket, keyedTx, changedGasBottleneck: null, lastElement);
                 updateTx(bucket, sibling, (UInt256)siblingGasBottleneck, lastElement);
             });
 
-    private static void Reprice(TxDistinctSortedPool pool, Transaction tx, uint gasBottleneck) =>
+    private static void Reprice(TxDistinctSortedPool pool, MempoolTransaction tx, uint gasBottleneck) =>
         pool.UpdatePool(Substitute.For<IAccountStateProvider>(),
-            (in AccountStruct _, EnhancedSortedSet<Transaction> bucket, ref Transaction? lastElement, TxDistinctSortedPool.UpdateTransactionDelegate updateTx) =>
+            (in AccountStruct _, EnhancedSortedSet<MempoolTransaction> bucket, ref MempoolTransaction? lastElement, TxDistinctSortedPool.UpdateTransactionDelegate updateTx) =>
                 updateTx(bucket, tx, (UInt256)gasBottleneck, lastElement));
 
     /// <summary>
@@ -64,11 +64,11 @@ public class TxDistinctSortedPoolTests
     [Test]
     public void Keeps_the_account_domain_count_when_a_reprice_blocks_the_bucket_removal()
     {
-        Transaction n4 = AccountTx(4, 110, TestItem.KeccakA);
-        Transaction accountTx = AccountTx(SharedNonce, 100, TestItem.KeccakC);
-        Transaction keyedTx = KeyedTx();
-        Transaction n6 = AccountTx(6, 90, TestItem.KeccakD);
-        Transaction n7 = AccountTx(7, 80, TestItem.KeccakE);
+        MempoolTransaction n4 = AccountTx(4, 110, TestItem.KeccakA);
+        MempoolTransaction accountTx = AccountTx(SharedNonce, 100, TestItem.KeccakC);
+        MempoolTransaction keyedTx = KeyedTx();
+        MempoolTransaction n6 = AccountTx(6, 90, TestItem.KeccakD);
+        MempoolTransaction n7 = AccountTx(7, 80, TestItem.KeccakE);
 
         TxDistinctSortedPool pool = Pool(blobs: false, n4, accountTx, keyedTx, n6, n7);
         Assert.That(pool.GetAccountDomainBucketCount(Sender), Is.EqualTo(4), "only the account-nonce entries fill the sender's nonce window");
@@ -91,11 +91,11 @@ public class TxDistinctSortedPoolTests
     [Test]
     public void Drops_the_account_domain_count_when_capacity_eviction_sweeps_the_stranded_entry()
     {
-        Transaction n4 = AccountTx(4, 110, TestItem.KeccakA);
-        Transaction accountTx = AccountTx(SharedNonce, 100, TestItem.KeccakC);
-        Transaction keyedTx = KeyedTx();
-        Transaction n6 = AccountTx(6, 90, TestItem.KeccakD);
-        Transaction n7 = AccountTx(7, 80, TestItem.KeccakE);
+        MempoolTransaction n4 = AccountTx(4, 110, TestItem.KeccakA);
+        MempoolTransaction accountTx = AccountTx(SharedNonce, 100, TestItem.KeccakC);
+        MempoolTransaction keyedTx = KeyedTx();
+        MempoolTransaction n6 = AccountTx(6, 90, TestItem.KeccakD);
+        MempoolTransaction n7 = AccountTx(7, 80, TestItem.KeccakE);
 
         TxDistinctSortedPool pool = Pool(blobs: false, n4, accountTx, keyedTx, n6, n7);
         MarkKeyedAndReprice(pool, keyedTx, accountTx, siblingGasBottleneck: 10);
@@ -109,12 +109,12 @@ public class TxDistinctSortedPoolTests
         for (int i = 0; i < 5; i++)
         {
             Hash256 hash = Keccak.Compute($"filler{i}");
-            Transaction filler = Build.A.Transaction
+            MempoolTransaction filler = new(Build.A.Transaction
                 .WithNonce(0)
                 .WithSenderAddress(new Address(hash.Bytes[..20]))
-                .WithGasBottleneck(1000)
                 .WithHash(hash)
-                .TestObject;
+                .TestObject, null)
+            { GasBottleneck = 1000 };
             pool.TryInsert(filler.Hash!, filler);
         }
 
@@ -131,8 +131,8 @@ public class TxDistinctSortedPoolTests
     [Test]
     public void Counts_a_removal_from_the_key_map_that_leaves_the_bucket_untouched()
     {
-        Transaction accountTx = AccountTx(SharedNonce, 100, TestItem.KeccakC);
-        Transaction keyedTx = KeyedTx();
+        MempoolTransaction accountTx = AccountTx(SharedNonce, 100, TestItem.KeccakC);
+        MempoolTransaction keyedTx = KeyedTx();
         TxDistinctSortedPool pool = Pool(blobs: false, AccountTx(4, 110, TestItem.KeccakA), accountTx, keyedTx,
             AccountTx(6, 90, TestItem.KeccakD), AccountTx(7, 80, TestItem.KeccakE));
         long before = pool.GetRemovalGeneration(Sender);
@@ -152,11 +152,11 @@ public class TxDistinctSortedPoolTests
     [Test]
     public void Counts_a_removal_from_the_bucket_alone()
     {
-        Transaction n4 = AccountTx(4, 110, TestItem.KeccakA);
-        Transaction accountTx = AccountTx(SharedNonce, 100, TestItem.KeccakC);
-        Transaction keyedTx = KeyedTx();
-        Transaction n6 = AccountTx(6, 90, TestItem.KeccakD);
-        Transaction n7 = AccountTx(7, 80, TestItem.KeccakE);
+        MempoolTransaction n4 = AccountTx(4, 110, TestItem.KeccakA);
+        MempoolTransaction accountTx = AccountTx(SharedNonce, 100, TestItem.KeccakC);
+        MempoolTransaction keyedTx = KeyedTx();
+        MempoolTransaction n6 = AccountTx(6, 90, TestItem.KeccakD);
+        MempoolTransaction n7 = AccountTx(7, 80, TestItem.KeccakE);
 
         TxDistinctSortedPool pool = Pool(blobs: false, n4, accountTx, keyedTx, n6, n7);
         MarkKeyedAndReprice(pool, keyedTx, accountTx, siblingGasBottleneck: 10);
@@ -165,11 +165,11 @@ public class TxDistinctSortedPoolTests
         pool.TryRemove(n6.Hash!);
         long before = pool.GetRemovalGeneration(Sender);
 
-        Transaction victim = OtherSenderTx("victim", gasBottleneck: 60);
+        MempoolTransaction victim = OtherSenderTx("victim", gasBottleneck: 60);
         pool.TryInsert(victim.Hash!, victim);
         for (int i = 0; i < 4; i++)
         {
-            Transaction filler = OtherSenderTx($"filler{i}", gasBottleneck: 1000);
+            MempoolTransaction filler = OtherSenderTx($"filler{i}", gasBottleneck: 1000);
             pool.TryInsert(filler.Hash!, filler);
         }
 
@@ -189,22 +189,23 @@ public class TxDistinctSortedPoolTests
     public void Bucket_walk_matches_the_sorted_set_through_inserts_removals_and_reprices([Range(1, 20)] int seed)
     {
         Random random = new(seed);
-        Transaction[] candidates = new Transaction[24];
+        MempoolTransaction[] candidates = new MempoolTransaction[24];
         for (int i = 0; i < candidates.Length; i++)
         {
             ulong nonce = (ulong)(i % 8);
             uint gasBottleneck = (uint)random.Next(1, 200);
             Hash256 hash = Keccak.Compute($"candidate{i}");
             candidates[i] = i % 3 == 0
-                ? Build.A.Transaction.WithType(TxType.FrameTx).WithNonce(nonce).WithNonceKeys((ulong)(0xbeef + i))
-                    .WithSenderAddress(Sender).WithGasBottleneck(gasBottleneck).WithHash(hash).TestObject
+                ? new MempoolTransaction(Build.A.Transaction.WithType(TxType.FrameTx).WithNonce(nonce).WithNonceKeys((ulong)(0xbeef + i))
+                    .WithSenderAddress(Sender).WithHash(hash).TestObject, null)
+                { GasBottleneck = gasBottleneck }
                 : AccountTx(nonce, gasBottleneck, hash);
         }
 
         TxDistinctSortedPool pool = Pool(blobs: false, candidates);
         for (int step = 0; step < 300; step++)
         {
-            Transaction tx = candidates[random.Next(candidates.Length)];
+            MempoolTransaction tx = candidates[random.Next(candidates.Length)];
             switch (random.Next(3))
             {
                 case 0:
@@ -218,31 +219,31 @@ public class TxDistinctSortedPoolTests
                     break;
             }
 
-            Assert.That(pool.GetBucketSnapshot(Sender), Is.EqualTo(TreeOrder(pool)).Using<Transaction>(ReferenceEquals), $"step {step}");
+            Assert.That(pool.GetBucketSnapshot(Sender), Is.EqualTo(TreeOrder(pool)).Using<MempoolTransaction>(ReferenceEquals), $"step {step}");
         }
     }
 
-    private static Transaction[] TreeOrder(TxDistinctSortedPool pool)
+    private static MempoolTransaction[] TreeOrder(TxDistinctSortedPool pool)
     {
-        Transaction[] order = [];
+        MempoolTransaction[] order = [];
         pool.UpdatePool(Substitute.For<IAccountStateProvider>(),
-            (in AccountStruct _, EnhancedSortedSet<Transaction> bucket, ref Transaction? _, TxDistinctSortedPool.UpdateTransactionDelegate _) =>
+            (in AccountStruct _, EnhancedSortedSet<MempoolTransaction> bucket, ref MempoolTransaction? _, TxDistinctSortedPool.UpdateTransactionDelegate _) =>
             {
-                List<Transaction> walked = [];
-                foreach (Transaction tx in bucket) walked.Add(tx);
+                List<MempoolTransaction> walked = [];
+                foreach (MempoolTransaction tx in bucket) walked.Add(tx);
                 order = [.. walked];
             });
         return order;
     }
 
-    private static Transaction OtherSenderTx(string seed, uint gasBottleneck)
+    private static MempoolTransaction OtherSenderTx(string seed, uint gasBottleneck)
     {
         Hash256 hash = Keccak.Compute(seed);
-        return Build.A.Transaction
+        return new MempoolTransaction(Build.A.Transaction
             .WithNonce(0)
             .WithSenderAddress(new Address(hash.Bytes[..20]))
-            .WithGasBottleneck(gasBottleneck)
             .WithHash(hash)
-            .TestObject;
+            .TestObject, null)
+        { GasBottleneck = gasBottleneck };
     }
 }

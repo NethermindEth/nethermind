@@ -18,10 +18,10 @@ internal readonly record struct BlobTxDeleteKey(ValueHash256 Hash, UInt256 Times
 
 public interface ITxStorage
 {
-    bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, [NotNullWhen(true)] out Transaction? transaction);
-    int TryGetMany(TxLookupKey[] keys, int count, Transaction?[] results);
-    IEnumerable<LightTransaction> GetAll();
-    void Add(Transaction transaction);
+    bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, [NotNullWhen(true)] out MempoolTransaction? transaction);
+    int TryGetMany(TxLookupKey[] keys, int count, MempoolTransaction?[] results);
+    IEnumerable<MempoolTransaction> GetAll();
+    void Add(MempoolTransaction transaction);
     void Delete(in ValueHash256 hash, in UInt256 timestamp);
 }
 
@@ -35,7 +35,7 @@ internal interface IAtomicBlobTxStorage
     /// <summary>
     /// Atomically writes <paramref name="transaction"/> and removes obsolete full bodies for the same hash.
     /// </summary>
-    void Replace(Transaction transaction, scoped ReadOnlySpan<UInt256> obsoleteTimestamps);
+    void Replace(MempoolTransaction transaction, scoped ReadOnlySpan<UInt256> obsoleteTimestamps);
 }
 
 /// <summary>Identifies one processed blob transaction row by block number and stored position.</summary>
@@ -58,13 +58,13 @@ internal interface IProcessedBlobTxStorage
     /// <param name="position">The stored position among the pool-held blob transactions saved for that block, not the transaction's index in the block.</param>
     /// <param name="transaction">The decoded transaction, or <see langword="null"/> on a miss.</param>
     /// <returns><see langword="true"/> if the row exists and decodes; <see langword="false"/> on a miss.</returns>
-    bool TryGetProcessedTransaction(ulong blockNumber, int position, [NotNullWhen(true)] out Transaction? transaction);
+    bool TryGetProcessedTransaction(ulong blockNumber, int position, [NotNullWhen(true)] out MempoolTransaction? transaction);
 
     /// <summary>Reads several processed blob transaction rows.</summary>
     /// <param name="keys">The rows to read.</param>
     /// <param name="results">Receives the decoded transaction for each key, or <see langword="null"/> on a miss. Must be at least as long as <paramref name="keys"/>.</param>
     /// <returns>The number of rows found.</returns>
-    int TryGetProcessedTransactions(scoped ReadOnlySpan<ProcessedBlobTxKey> keys, scoped Span<Transaction?> results);
+    int TryGetProcessedTransactions(scoped ReadOnlySpan<ProcessedBlobTxKey> keys, scoped Span<MempoolTransaction?> results);
 }
 
 internal interface ISpecChangeValidationStorage
@@ -80,7 +80,7 @@ internal interface IBlobTxNetworkFormStorage
     /// <param name="hash">The transaction hash.</param>
     /// <param name="timestamp">The timestamp the record is stored under.</param>
     /// <param name="networkForm">
-    /// The mempool encoding without the typed envelope, as <see cref="RlpBehaviors.InMempoolForm"/> with
+    /// The mempool encoding without the typed envelope, as <see cref="MempoolTxDecoder"/> with
     /// <see cref="RlpBehaviors.SkipTypedWrapping"/> encodes it. The caller disposes it.
     /// </param>
     /// <returns>

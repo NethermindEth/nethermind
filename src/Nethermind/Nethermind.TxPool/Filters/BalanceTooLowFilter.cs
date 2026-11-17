@@ -17,10 +17,10 @@ namespace Nethermind.TxPool.Filters
         private readonly TxDistinctSortedPool _blobTxs = blobTxs;
         private readonly ILogger _logger = logger;
 
-        public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
+        public AcceptTxResult Accept(MempoolTransaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {
             // Frame transactions are deferred to FrameTxPayerExposureFilter, which runs after payer resolution.
-            if (tx.IsFree() || tx.SupportsFrames)
+            if (tx.Transaction.IsFree() || tx.Transaction.SupportsFrames)
             {
                 return AcceptTxResult.Accepted;
             }
@@ -29,8 +29,8 @@ namespace Nethermind.TxPool.Filters
             UInt256 balance = account.Balance;
 
             TxDistinctSortedPool pool = tx.CarriesBlobs ? _blobTxs : _txs;
-            bool overflow = tx.IsOverflowWhenSummingSenderBucket(pool, account.Nonce, unreservedOnly: false, state.HeadSpec.IsEip8250Enabled, out UInt256 cumulativeCost);
-            overflow |= tx.IsOverflowWhenAddingTxCostToCumulative(cumulativeCost, out cumulativeCost);
+            bool overflow = tx.Transaction.IsOverflowWhenSummingSenderBucket(pool, account.Nonce, unreservedOnly: false, state.HeadSpec.IsEip8250Enabled, out UInt256 cumulativeCost);
+            overflow |= tx.Transaction.IsOverflowWhenAddingTxCostToCumulative(cumulativeCost, out cumulativeCost);
 
             if (overflow)
             {

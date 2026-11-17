@@ -83,7 +83,7 @@ public partial class EthRpcModuleTests
         Transaction signed = SignedTransfer(test, type);
 
         string response = await test.TestEthRpc("eth_sendTransaction", SignedRequest(signed, fromGiven ? TestItem.AddressB : null, typedV));
-        bool pooled = test.TxPool.TryGetPendingTransaction(signed.Hash!, out Transaction? inPool);
+        bool pooled = test.TxPool.TryGetPendingTransaction(signed.Hash!, out MempoolTransaction? inPool);
 
         using (Assert.EnterMultipleScope())
         {
@@ -104,14 +104,14 @@ public partial class EthRpcModuleTests
         request.ChainId = null;
 
         string response = await test.TestEthRpc("eth_sendTransaction", request);
-        bool pooled = test.TxPool.TryGetPendingTransaction(signed.Hash!, out Transaction? inPool);
+        bool pooled = test.TxPool.TryGetPendingTransaction(signed.Hash!, out MempoolTransaction? inPool);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(response, Is.EqualTo($$"""{"jsonrpc":"2.0","result":"{{signed.Hash}}","id":67}"""));
             Assert.That(pooled, Is.True);
             Assert.That(inPool?.SenderAddress, Is.EqualTo(TestItem.AddressB));
-            Assert.That(inPool?.ChainId, Is.EqualTo(test.SpecProvider.ChainId));
+            Assert.That(inPool?.Transaction.ChainId, Is.EqualTo(test.SpecProvider.ChainId));
         }
     }
 
@@ -186,14 +186,14 @@ public partial class EthRpcModuleTests
         using TestRpcBlockchain test = await SignedSendChain(Wallet(holdsC: true));
 
         string response = await test.TestEthRpc("eth_sendTransaction", UnsignedRequest(nonce: 0));
-        Transaction[] pooled = test.TxPool.GetPendingTransactions();
+        MempoolTransaction[] pooled = test.TxPool.GetPendingTransactions();
 
         Assert.That(pooled, Has.Length.EqualTo(1), response);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(response, Is.EqualTo($$"""{"jsonrpc":"2.0","result":"{{pooled[0].Hash}}","id":67}"""));
             Assert.That(pooled[0].SenderAddress, Is.EqualTo(TestItem.AddressB));
-            Assert.That(new EthereumEcdsa(test.SpecProvider.ChainId).RecoverAddress(pooled[0]), Is.EqualTo(TestItem.AddressB));
+            Assert.That(new EthereumEcdsa(test.SpecProvider.ChainId).RecoverAddress(pooled[0].Transaction), Is.EqualTo(TestItem.AddressB));
         }
     }
 
@@ -214,7 +214,7 @@ public partial class EthRpcModuleTests
         request.Nonce = null;
 
         string response = await test.TestEthRpc("eth_sendTransaction", request);
-        Transaction? sent = test.TxPool.GetPendingTransactions().SingleOrDefault(static tx => tx.Nonce == 1);
+        Transaction? sent = test.TxPool.GetPendingTransactions().SingleOrDefault(static tx => tx.Nonce == 1)?.Transaction;
 
         using (Assert.EnterMultipleScope())
         {
@@ -236,7 +236,7 @@ public partial class EthRpcModuleTests
         request.Nonce = null;
 
         string response = await test.TestEthRpc("eth_sendTransaction", request);
-        Transaction? sent = test.TxPool.GetPendingTransactions().SingleOrDefault();
+        Transaction? sent = test.TxPool.GetPendingTransactions().SingleOrDefault()?.Transaction;
 
         using (Assert.EnterMultipleScope())
         {
@@ -279,7 +279,7 @@ public partial class EthRpcModuleTests
     {
         ITxSender txSender = Substitute.For<ITxSender>();
         Transaction? sent = null;
-        txSender.SendTransaction(Arg.Do<Transaction>(tx => sent = tx), Arg.Any<TxHandlingOptions>()).Returns((TestItem.KeccakA, AcceptTxResult.Accepted));
+        txSender.SendTransaction(Arg.Do<MempoolTransaction>(tx => sent = tx.Transaction), Arg.Any<TxHandlingOptions>()).Returns((TestItem.KeccakA, AcceptTxResult.Accepted));
         using TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithWallet(Wallet(holdsC: true))
             .WithTxSender(txSender).Build(new TestSpecProvider(Prague.Instance));
         LegacyTransactionForRpc request = SignedRequest(SignedTransfer(test, TxType.Legacy, TestItem.PrivateKeyC), TestItem.AddressB);
@@ -294,7 +294,7 @@ public partial class EthRpcModuleTests
             Assert.That(sent.SenderAddress, Is.EqualTo(TestItem.AddressB));
         }
 
-        await txSender.Received(1).SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);
+        await txSender.Received(1).SendTransaction(Arg.Any<MempoolTransaction>(), TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);
     }
 
     // A request that keeps its signature does not go through the wallet, so the pool's own answer is reported.
@@ -338,7 +338,7 @@ public partial class EthRpcModuleTests
     {
         ITxSender txSender = Substitute.For<ITxSender>();
         Transaction? sent = null;
-        txSender.SendTransaction(Arg.Do<Transaction>(tx => sent = tx), Arg.Any<TxHandlingOptions>()).Returns((TestItem.KeccakA, AcceptTxResult.Accepted));
+        txSender.SendTransaction(Arg.Do<MempoolTransaction>(tx => sent = tx.Transaction), Arg.Any<TxHandlingOptions>()).Returns((TestItem.KeccakA, AcceptTxResult.Accepted));
         using TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithWallet(NullWallet.Instance)
             .WithTxSender(txSender).Build(new TestSpecProvider(Eip8141Prototype.Instance));
         FrameTransactionForRpc request = new()

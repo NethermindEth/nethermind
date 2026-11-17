@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -235,7 +236,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
         Dictionary<AddressAsKey, SenderSelection> selectedBySender, CancellationToken token)
     {
         NextBlockContext next = PrepareNextBlockContext(parent);
-        Transaction[]? delta = SelectDelta(_txSource.Value.GetTransactions(parent, next.Header, next.Header.GasLimit), warmedPerSender, selectedBySender, token);
+        Transaction[]? delta = SelectDelta(_txSource.Value.GetTransactions(parent, next.Header, next.Header.GasLimit).Select(static tx => tx.Transaction), warmedPerSender, selectedBySender, token);
         return delta is null ? null : (new Block(next.Header, new BlockBody(delta, uncles: [], withdrawals: null)), next.Spec);
     }
 

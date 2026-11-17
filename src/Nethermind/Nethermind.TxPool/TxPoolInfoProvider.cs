@@ -17,12 +17,12 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
     // GetCounts() still includes blobs for txpool_status parity.
     public TxPoolInfo GetInfo()
     {
-        IDictionary<AddressAsKey, Transaction[]> standardBySender = txPool.GetPendingTransactionsBySender();
+        IDictionary<AddressAsKey, MempoolTransaction[]> standardBySender = txPool.GetPendingTransactionsBySender();
 
         Dictionary<AddressAsKey, IDictionary<TxPoolTxKey, Transaction>> pendingTransactions = [with(standardBySender.Count)];
         Dictionary<AddressAsKey, IDictionary<TxPoolTxKey, Transaction>> queuedTransactions = [with(standardBySender.Count)];
 
-        foreach (KeyValuePair<AddressAsKey, Transaction[]> group in standardBySender)
+        foreach (KeyValuePair<AddressAsKey, MempoolTransaction[]> group in standardBySender)
         {
             AddSenderToInfo(group.Key, group.Value, blobTransactions: null, pendingTransactions, queuedTransactions);
         }
@@ -32,7 +32,7 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
 
     public TxPoolSenderInfo GetSenderInfo(Address address)
     {
-        Transaction[] standard = txPool.GetPendingTransactionsBySender(address);
+        MempoolTransaction[] standard = txPool.GetPendingTransactionsBySender(address);
         if (standard.Length == 0) return TxPoolSenderInfo.Empty;
 
         (IDictionary<TxPoolTxKey, Transaction> pending, IDictionary<TxPoolTxKey, Transaction> queued) =
@@ -42,19 +42,19 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
 
     public TxPoolCounts GetCounts()
     {
-        IDictionary<AddressAsKey, Transaction[]> standardBySender = txPool.GetPendingTransactionsBySender();
-        IDictionary<AddressAsKey, Transaction[]> blobBySender = txPool.GetPendingLightBlobTransactionsBySender();
+        IDictionary<AddressAsKey, MempoolTransaction[]> standardBySender = txPool.GetPendingTransactionsBySender();
+        IDictionary<AddressAsKey, MempoolTransaction[]> blobBySender = txPool.GetPendingLightBlobTransactionsBySender();
 
         int pendingTotal = 0;
         int queuedTotal = 0;
 
-        foreach (KeyValuePair<AddressAsKey, Transaction[]> group in standardBySender)
+        foreach (KeyValuePair<AddressAsKey, MempoolTransaction[]> group in standardBySender)
         {
-            blobBySender.TryGetValue(group.Key, out Transaction[]? blobTransactions);
+            blobBySender.TryGetValue(group.Key, out MempoolTransaction[]? blobTransactions);
             AddSenderToCounts(group.Key, group.Value, blobTransactions, ref pendingTotal, ref queuedTotal);
         }
 
-        foreach (KeyValuePair<AddressAsKey, Transaction[]> group in blobBySender)
+        foreach (KeyValuePair<AddressAsKey, MempoolTransaction[]> group in blobBySender)
         {
             if (standardBySender.ContainsKey(group.Key)) continue;
             AddSenderToCounts(group.Key, standardTransactions: null, group.Value, ref pendingTotal, ref queuedTotal);
@@ -65,8 +65,8 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
 
     private void AddSenderToInfo(
         Address sender,
-        Transaction[]? standardTransactions,
-        Transaction[]? blobTransactions,
+        MempoolTransaction[]? standardTransactions,
+        MempoolTransaction[]? blobTransactions,
         Dictionary<AddressAsKey, IDictionary<TxPoolTxKey, Transaction>> pendingTransactions,
         Dictionary<AddressAsKey, IDictionary<TxPoolTxKey, Transaction>> queuedTransactions)
     {
@@ -81,8 +81,8 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
 
     private void AddSenderToCounts(
         Address sender,
-        Transaction[]? standardTransactions,
-        Transaction[]? blobTransactions,
+        MempoolTransaction[]? standardTransactions,
+        MempoolTransaction[]? blobTransactions,
         ref int pendingTotal,
         ref int queuedTotal)
     {
@@ -98,7 +98,7 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
     /// <remarks>A transaction stays pending while its nonce is contiguous from the account nonce; an EIP-8250 keyed one is
     /// always pending, its sequence living in the nonce manager rather than the account nonce.</remarks>
     private static (IDictionary<TxPoolTxKey, Transaction> pending, IDictionary<TxPoolTxKey, Transaction> queued)
-        SplitByNonce(Transaction[]? standard, Transaction[]? blobs, ulong accountNonce)
+        SplitByNonce(MempoolTransaction[]? standard, MempoolTransaction[]? blobs, ulong accountNonce)
     {
         Dictionary<TxPoolTxKey, Transaction> pending = [];
         Dictionary<TxPoolTxKey, Transaction> queued = [];
@@ -111,8 +111,8 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
         while (i < n || j < m)
         {
             Transaction next = j == m || (i < n && standard![i].Nonce <= blobs![j].Nonce)
-                ? standard![i++]
-                : blobs![j++];
+                ? standard![i++].Transaction
+                : blobs![j++].Transaction;
 
             if (KeyedNonceManager.UsesKeyedNonce(next))
             {
@@ -141,7 +141,7 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
             ? new TxPoolTxKey(tx.Hash!)
             : new TxPoolTxKey(tx.Nonce);
 
-    private static int CountPending(Transaction[]? standard, Transaction[]? blobs, ulong accountNonce)
+    private static int CountPending(MempoolTransaction[]? standard, MempoolTransaction[]? blobs, ulong accountNonce)
     {
         int pending = 0;
         ulong expectedNonce = accountNonce;
@@ -153,8 +153,8 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
         while (i < n || j < m)
         {
             Transaction next = j == m || (i < n && standard![i].Nonce <= blobs![j].Nonce)
-                ? standard![i++]
-                : blobs![j++];
+                ? standard![i++].Transaction
+                : blobs![j++].Transaction;
 
             if (KeyedNonceManager.UsesKeyedNonce(next))
             {

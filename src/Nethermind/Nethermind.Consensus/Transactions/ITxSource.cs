@@ -9,7 +9,7 @@ namespace Nethermind.Consensus.Transactions
 {
     public interface ITxSource
     {
-        IEnumerable<Transaction> GetTransactions(
+        IEnumerable<MempoolTransaction> GetTransactions(
             BlockHeader parent,
             BlockHeader targetBlock,
             ulong gasLimit,

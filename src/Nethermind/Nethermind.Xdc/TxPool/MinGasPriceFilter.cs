@@ -53,19 +53,19 @@ internal sealed class MinGasPriceFilter(
 
     private readonly ILogger _logger = logManager.GetClassLogger<MinGasPriceFilter>();
 
-    public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
+    public AcceptTxResult Accept(MempoolTransaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
         IXdcReleaseSpec spec = specProvider.GetXdcSpec(chainHeadInfoProvider.HeadNumber + 1);
         UInt256 minimum = spec.MinimumGasPrice;
 
-        if (minimum.IsZero || tx.IsSpecialTransaction(spec))
+        if (minimum.IsZero || tx.Transaction.IsSpecialTransaction(spec))
             return AcceptTxResult.Accepted;
 
         UInt256 gasPrice = tx.MaxFeePerGas;
         if (gasPrice.IsZero)
-            return Reject(tx, ZeroGasPrice, minimum);
+            return Reject(tx.Transaction, ZeroGasPrice, minimum);
 
-        return gasPrice < minimum ? Reject(tx, UnderMinGasPrice, minimum) : AcceptTxResult.Accepted;
+        return gasPrice < minimum ? Reject(tx.Transaction, UnderMinGasPrice, minimum) : AcceptTxResult.Accepted;
     }
 
     private AcceptTxResult Reject(Transaction tx, AcceptTxResult result, in UInt256 minimum)

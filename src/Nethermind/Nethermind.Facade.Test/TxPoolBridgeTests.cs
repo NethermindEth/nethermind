@@ -37,14 +37,14 @@ namespace Nethermind.Facade.Test
         {
             Transaction tx = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).Signed(new EthereumEcdsa(TestBlockchainIds.ChainId), TestItem.PrivateKeyA).TestObject;
             _txSender.SendTransaction(tx, TxHandlingOptions.PersistentBroadcast);
-            _txPool.Received().SubmitTx(Arg.Is<Transaction>(static tx => tx.Timestamp != UInt256.Zero), TxHandlingOptions.PersistentBroadcast);
+            _txPool.Received().SubmitTx(Arg.Is<MempoolTransaction>(static tx => tx.Transaction.Timestamp != UInt256.Zero), TxHandlingOptions.PersistentBroadcast);
         }
 
         [Test]
         public void get_transaction_returns_null_when_transaction_not_found()
         {
-            _txPool.TryGetPendingTransaction(TestItem.KeccakA, out Transaction tx);
-            Assert.That(tx, Is.EqualTo(null));
+            _txPool.TryGetPendingTransaction(TestItem.KeccakA, out MempoolTransaction tx);
+            Assert.That(tx, Is.Null);
         }
     }
 }

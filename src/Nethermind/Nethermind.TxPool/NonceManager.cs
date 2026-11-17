@@ -199,8 +199,8 @@ public class NonceManager(
         /// </remarks>
         private ulong FindFreeNonce(Address address, ulong searchFrom, IPendingTxsBySender pendingTxs)
         {
-            Transaction[]? pending = null;
-            Transaction[]? pendingBlobs = null;
+            MempoolTransaction[]? pending = null;
+            MempoolTransaction[]? pendingBlobs = null;
             ulong nextUnusedNonce = _highestAcceptedNonce is { } highest ? highest + 1 : 0;
             ulong nonce = searchFrom;
             for (; nonce < nextUnusedNonce; nonce++)
@@ -221,11 +221,11 @@ public class NonceManager(
             return nonce;
         }
 
-        private static bool HoldsAccountNonce(Transaction[] transactions, ulong nonce)
+        private static bool HoldsAccountNonce(MempoolTransaction[] transactions, ulong nonce)
         {
-            foreach (Transaction transaction in transactions)
+            foreach (MempoolTransaction transaction in transactions)
             {
-                if (transaction.Nonce == nonce && !KeyedNonceManager.UsesKeyedNonce(transaction))
+                if (transaction.Transaction.Nonce == nonce && !KeyedNonceManager.UsesKeyedNonce(transaction.Transaction))
                 {
                     return true;
                 }

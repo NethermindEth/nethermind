@@ -51,8 +51,8 @@ internal class KeyedNonceFilterTests
     private static AcceptTxResult Accept(Transaction tx, TestReadOnlyStateProvider state, ITxPoolConfig? config = null, params Transaction[] pending)
     {
         (TxDistinctSortedPool standard, TxDistinctSortedPool blob) = tx.CarriesBlobs
-            ? (Pool(blobs: false), Pool(blobs: true, pending))
-            : (Pool(blobs: false, pending), Pool(blobs: true));
+            ? (Pool(blobs: false), Pool(blobs: true, [.. pending]))
+            : (Pool(blobs: false, [.. pending]), Pool(blobs: true));
         KeyedNonceFilter filter = new(state, config ?? new TxPoolConfig(), standard, blob);
         TxFilteringState filteringState = new(tx, state, Eip8141Prototype.Instance);
         return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);

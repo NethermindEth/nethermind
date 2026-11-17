@@ -250,7 +250,7 @@ public class MempoolStatePrewarmerTests
 
         Assert.That(await preWarmer.CapturedHeader.Task.WaitAsync(TimeSpan.FromSeconds(5)), Is.Null, "a pass cancelled during selection has no delta");
 
-        IEnumerable<Transaction> CancellingSource()
+        IEnumerable<MempoolTransaction> CancellingSource()
         {
             yield return transactions[0];
             cancellation.Cancel();
@@ -396,7 +396,7 @@ public class MempoolStatePrewarmerTests
     {
         txSource = Substitute.For<ITxSource>();
         txSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
-            .Returns(BuildSenderTxs(TestItem.PrivateKeyA, 1));
+            .Returns([.. BuildSenderTxs(TestItem.PrivateKeyA, 1)]);
         IBlockProducerTxSourceFactory txSourceFactory = Substitute.For<IBlockProducerTxSourceFactory>();
         txSourceFactory.Create().Returns(txSource);
 

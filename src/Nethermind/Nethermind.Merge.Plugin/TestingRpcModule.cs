@@ -131,10 +131,10 @@ public class TestingRpcModule(
         IReleaseSpec spec = specProvider.GetSpec(new ForkActivation(parent.Number + 1, payloadAttributes.Timestamp));
         BlockHeader header = PrepareBlockHeader(parent, payloadAttributes, spec, extraData);
 
-        Transaction[] transactions;
+        MempoolTransaction[] transactions;
         try
         {
-            IEnumerable<Transaction> txs = txRlps is null
+            IEnumerable<MempoolTransaction> txs = txRlps is null
                 ? env.TxSource.GetTransactions(parent, header, header.GasLimit, payloadAttributes, filterSource: true)
                 : DecodeTransactions(txRlps);
 
@@ -145,7 +145,7 @@ public class TestingRpcModule(
             return ResultWrapper<ProducedBlock>.Fail($"invalid transaction RLP: {e.Message}", ErrorCodes.InvalidInput);
         }
 
-        header.TxRoot = TxTrie.CalculateRoot(transactions);
+        header.TxRoot = TxTrie.CalculateRoot(Array.ConvertAll(transactions, static tx => tx.Transaction));
         BlockToProduce block = new(header, transactions, [], spec.WithdrawalsEnabled ? (payloadAttributes.Withdrawals ?? []) : null);
 
         Block? processedBlock = env.ChainProcessor.Process(block, options, tracer, cancellationToken);
@@ -233,7 +233,7 @@ public class TestingRpcModule(
         return header;
     }
 
-    private static IEnumerable<Transaction> DecodeTransactions(IEnumerable<byte[]> txRlps)
+    private static IEnumerable<MempoolTransaction> DecodeTransactions(IEnumerable<byte[]> txRlps)
     {
         foreach (byte[] txRlp in txRlps)
             yield return Rlp.Decode<Transaction>(txRlp, RlpBehaviors.SkipTypedWrapping)

@@ -21,7 +21,7 @@ public class FrameTxPayerFilterTests
     {
         TestReadOnlyStateProvider state = new();
         state.CreateAccount(TestItem.AddressA, 1 * Unit.Ether);
-        Transaction tx = FrameTx(TestItem.AddressA, [Secp256k1Signature(TestItem.AddressA)], SelfVerify(PrefixFrameGas));
+        MempoolTransaction tx = FrameTx(TestItem.AddressA, [Secp256k1Signature(TestItem.AddressA)], SelfVerify(PrefixFrameGas));
 
         AcceptTxResult result = Accept(state, tx);
 
@@ -35,7 +35,7 @@ public class FrameTxPayerFilterTests
     [Test]
     public void Accept_NonFrameTx_LeavesPayerUnsetAndAccepts()
     {
-        Transaction tx = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).TestObject;
+        MempoolTransaction tx = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).TestObject;
 
         AcceptTxResult result = Accept(new TestReadOnlyStateProvider(), tx);
 
@@ -60,10 +60,10 @@ public class FrameTxPayerFilterTests
         Assert.That(result, Is.EqualTo(AcceptTxResult.FrameTxNoPayer));
     }
 
-    private static AcceptTxResult Accept(TestReadOnlyStateProvider state, Transaction tx)
+    private static AcceptTxResult Accept(TestReadOnlyStateProvider state, MempoolTransaction tx)
     {
         FrameTxPayerFilter filter = new(LimboLogs.Instance.GetClassLogger<FrameTxPayerFilterTests>());
-        TxFilteringState filteringState = new(tx, state, Eip8141Prototype.Instance);
+        TxFilteringState filteringState = new(tx.Transaction, state, Eip8141Prototype.Instance);
         return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
     }
 }

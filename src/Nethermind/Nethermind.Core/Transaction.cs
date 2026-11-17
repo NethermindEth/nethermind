@@ -45,7 +45,6 @@ namespace Nethermind.Core
 
         public ulong Nonce { get; set; }
         public UInt256 GasPrice { get => _gasPrice; set => _gasPrice = value; }
-        public UInt256? GasBottleneck { get; set; }
         public ref readonly UInt256 MaxPriorityFeePerGas => ref _gasPrice;
         public UInt256 DecodedMaxFeePerGas { get; set; }
         public UInt256 MaxFeePerGas => Supports1559 ? DecodedMaxFeePerGas : GasPrice;
@@ -221,19 +220,6 @@ namespace Nethermind.Core
 
         public byte[]?[]? BlobVersionedHashes { get; set; } // eip4844
 
-        private object? _networkWrapper;
-
-        /// <remarks>Replacing the sidecar changes the mempool-form length, so the memoized size is dropped.</remarks>
-        public object? NetworkWrapper
-        {
-            get => _networkWrapper;
-            set
-            {
-                _networkWrapper = value;
-                _size = null;
-            }
-        }
-
         /// <summary>
         /// List of EOA code authorizations.
         /// https://eips.ethereum.org/EIPS/eip-7702
@@ -251,23 +237,6 @@ namespace Nethermind.Core
         /// https://eips.ethereum.org/EIPS/eip-8141
         /// </summary>
         public TxFrameSignature[]? FrameSignatures { get; set; }
-
-        /// <summary>
-        /// Fee-payer resolved at mempool admission for an EIP-8141 frame transaction; <c>null</c> until
-        /// resolved or when it cannot be resolved natively. In-memory only (not encoded).
-        /// </summary>
-        public Address? PayerAddress { get; set; }
-
-        /// <summary>
-        /// The maximum cost mempool admission priced this transaction at, released unchanged from
-        /// <see cref="PayerAddress"/>'s exposure when the transaction leaves the pool. Recorded with no payer too,
-        /// where it reserves nothing and only prices the sender's pending total. In-memory only (not encoded).
-        /// </summary>
-        /// <remarks>
-        /// Held rather than re-derived on release: the pool keeps a blob-carrying frame transaction as a light
-        /// record with no frames, which cannot be priced, and the pricing spec moves with the head besides.
-        /// </remarks>
-        public UInt256? PayerExposure { get; set; }
 
         /// <summary>The EIP-8141 expiry deadline recovered from storage, for a transaction reloaded without
         /// its frames. Null for every in-memory transaction, which carries the deadline in its frames.</summary>
@@ -295,20 +264,12 @@ namespace Nethermind.Core
         /// <remarks>Used for AuRa consensus.</remarks>
         public bool IsServiceTransaction { get; set; }
 
-        /// <summary>
-        /// In-memory only property, representing order of transactions going to TxPool.
-        /// </summary>
-        /// <remarks>Used for sorting in edge cases.</remarks>
-        public ulong PoolIndex { get; set; }
-
         protected int? _size = null;
 
         /// <summary>
         /// Encoded transaction length
         /// </summary>
-        public int GetLength(ITransactionSizeCalculator sizeCalculator, bool shouldCountBlobs) => shouldCountBlobs || !MayHaveNetworkForm
-              ? _size ??= sizeCalculator.GetLength(this, true)
-              : sizeCalculator.GetLength(this, false);
+        public int GetLength(ITransactionSizeCalculator sizeCalculator) => _size ??= sizeCalculator.GetLength(this);
 
         /// <summary>
         /// Clears the cached encoded length after mutating fields that affect network serialization.
@@ -367,8 +328,6 @@ namespace Nethermind.Core
 
         public override string ToString() => ToString(string.Empty);
 
-        public bool MayHaveNetworkForm => Type is TxType.Blob or TxType.FrameTx;
-
         public class PoolPolicy : IPooledObjectPolicy<Transaction>
         {
             public Transaction Create() => new();
@@ -392,7 +351,6 @@ namespace Nethermind.Core
                 obj.IsOPSystemTransaction = default;
                 obj.Nonce = default;
                 obj.GasPrice = default;
-                obj.GasBottleneck = default;
                 obj.DecodedMaxFeePerGas = default;
                 obj.GasLimit = default;
                 obj._spentGas = default;
@@ -407,16 +365,11 @@ namespace Nethermind.Core
                 obj.MaxFeePerBlobGas = default;
                 obj.MaxFee = default;
                 obj.BlobVersionedHashes = default;
-                PooledBlobBuffers.Return(obj);
-                obj.NetworkWrapper = default;
                 obj.IsServiceTransaction = default;
-                obj.PoolIndex = default;
                 obj._size = default;
                 obj.AuthorizationList = default;
                 obj.Frames = default;
                 obj.FrameSignatures = default;
-                obj.PayerAddress = default;
-                obj.PayerExposure = default;
                 obj.NonceKeys = default;
                 obj.FrameCalldataStats = default;
 
@@ -437,8 +390,6 @@ namespace Nethermind.Core
         /// <param name="copyHash">Whether to copy the cached transaction hash.</param>
         public void CopyTo(Transaction tx, bool copyHash)
         {
-            // Copies share the network payload and can outlive the original transaction.
-            PooledBlobBuffers.Disown(this);
             if (copyHash)
             {
                 tx.Hash = Hash;
@@ -452,7 +403,6 @@ namespace Nethermind.Core
             tx.IsOPSystemTransaction = IsOPSystemTransaction;
             tx.Nonce = Nonce;
             tx.GasPrice = GasPrice;
-            tx.GasBottleneck = GasBottleneck;
             tx.DecodedMaxFeePerGas = DecodedMaxFeePerGas;
             tx.GasLimit = GasLimit;
             tx.To = To;
@@ -465,15 +415,11 @@ namespace Nethermind.Core
             tx.MaxFeePerBlobGas = MaxFeePerBlobGas;
             tx.MaxFee = MaxFee;
             tx.BlobVersionedHashes = BlobVersionedHashes;
-            tx.NetworkWrapper = NetworkWrapper;
             tx.IsServiceTransaction = IsServiceTransaction;
-            tx.PoolIndex = PoolIndex;
             tx._size = _size;
             tx.AuthorizationList = AuthorizationList;
             tx.Frames = Frames;
             tx.FrameSignatures = FrameSignatures;
-            tx.PayerAddress = PayerAddress;
-            tx.PayerExposure = PayerExposure;
             tx.NonceKeys = NonceKeys;
             tx.FrameCalldataStats = FrameCalldataStats;
         }
@@ -490,15 +436,9 @@ namespace Nethermind.Core
             {
                 // The pre-hash memory has a single owner, so it is hashed and released here rather than shared.
                 CalculateHashInternal();
-                PooledBlobBuffers.Disown(this);
                 return (Transaction)MemberwiseClone();
             }
         }
-
-        public virtual ProofVersion? GetProofVersion() =>
-            NetworkWrapper is ShardBlobNetworkWrapper { Version: var version }
-                ? version
-                : null;
     }
 
     /// <summary>
@@ -525,7 +465,7 @@ namespace Nethermind.Core
     /// <remarks>Created because of cyclic dependencies between Core and Rlp modules</remarks>
     public interface ITransactionSizeCalculator
     {
-        int GetLength(Transaction tx, bool shouldCountBlobs = true);
+        int GetLength(Transaction tx);
     }
 
     /// <summary>
@@ -550,6 +490,10 @@ namespace Nethermind.Core
         /// reference to its wrapper or blob arrays; idempotent returns alone do not prevent use after return.
         /// </remarks>
         internal PooledBlobBuffers? PooledBuffers { get; init; }
+
+        /// <summary>Returns the pooled blob buffers this wrapper was decoded into, if any.</summary>
+        /// <remarks>The caller must drop the wrapper: its blob arrays may be reused by the pool.</remarks>
+        public void ReturnPooledBuffers() => PooledBuffers?.Return();
 
         /// <inheritdoc/>
         /// <remarks>Pool ownership is excluded so equality depends only on the payload and record type.</remarks>

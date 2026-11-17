@@ -15,10 +15,10 @@ public interface IBlobTxMetadataStorage
     /// <summary>
     /// Gets a transaction with blob and cell payloads elided while preserving commitments and proofs.
     /// </summary>
-    bool TryGetWithoutBlobs(in ValueHash256 hash, Address sender, [NotNullWhen(true)] out Transaction? transaction);
+    bool TryGetWithoutBlobs(in ValueHash256 hash, Address sender, [NotNullWhen(true)] out MempoolTransaction? transaction);
 
     /// <summary>
     /// Persists a sidecar-free transaction only while its corresponding full record still exists.
     /// </summary>
-    void AddWithoutBlobs(Transaction transaction);
+    void AddWithoutBlobs(MempoolTransaction transaction);
 }

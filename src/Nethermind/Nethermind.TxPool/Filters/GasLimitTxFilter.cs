@@ -16,7 +16,7 @@ namespace Nethermind.TxPool.Filters
         private readonly ILogger _logger = logManager.GetClassLogger<GasLimitTxFilter>();
         private readonly ulong _configuredGasLimit = txPoolConfig.GasLimit ?? ulong.MaxValue;
 
-        public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
+        public AcceptTxResult Accept(MempoolTransaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {
             ulong gasLimit = Math.Min(chainHeadInfoProvider.BlockGasLimit ?? ulong.MaxValue, _configuredGasLimit);
 
@@ -26,7 +26,7 @@ namespace Nethermind.TxPool.Filters
             {
                 // The spec pinned for the submission, not the head's: a head that moves mid-pipeline would
                 // otherwise price this transaction under rules no other filter, nor AddCore, judged it by.
-                bool calculated = FrameTxValidation.TryCalculateBlockGasReservations(tx, state.HeadSpec, out ulong executionReservation, out ulong stateReservation);
+                bool calculated = FrameTxValidation.TryCalculateBlockGasReservations(tx.Transaction, state.HeadSpec, out ulong executionReservation, out ulong stateReservation);
                 rejectedBudget = calculated ? Math.Max(executionReservation, stateReservation) : ulong.MaxValue;
                 exceedsLimit = !calculated || executionReservation > gasLimit || stateReservation > gasLimit;
             }

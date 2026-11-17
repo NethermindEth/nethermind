@@ -16,12 +16,12 @@ public interface IPendingTxsBySender
     /// from a specific sender, sorted by nonce and later tx pool sorting
     /// </summary>
     /// <returns></returns>
-    Transaction[] GetPendingTransactionsBySender(Address address);
+    MempoolTransaction[] GetPendingTransactionsBySender(Address address);
 
     /// <summary>
     /// Blob txs light equivalences from a specific sender, sorted by nonce.
     /// </summary>
-    Transaction[] GetPendingLightBlobTransactionsBySender(Address address);
+    MempoolTransaction[] GetPendingLightBlobTransactionsBySender(Address address);
 
     bool ContainsTx(Hash256 hash, TxType txType);
 

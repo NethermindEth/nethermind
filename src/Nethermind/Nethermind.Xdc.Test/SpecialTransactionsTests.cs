@@ -109,7 +109,7 @@ internal class SpecialTransactionsTests
         Transaction[] pendingTxs = blockChain.BlockTree.Head.Transactions;
         // Sign tx might have been included in the block already, or could still be pending
         if (pendingTxs.Length == 0)
-            pendingTxs = blockChain.TxPool.GetPendingTransactions();
+            pendingTxs = [.. blockChain.TxPool.GetPendingTransactions().Select(static tx => tx.Transaction)];
 
         XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetFinalSpec();
         IEnumerable<Transaction> signTxs = pendingTxs.Where(r => r.To == spec.BlockSignerContract);
@@ -146,7 +146,7 @@ internal class SpecialTransactionsTests
         }
         while (!IsTimeForOnchainSignature(blockChain.SpecProvider.GetXdcSpec(head), head.Number + 1));
 
-        Transaction[] receipts = blockChain.TxPool.GetPendingTransactions();
+        Transaction[] receipts = [.. blockChain.TxPool.GetPendingTransactions().Select(static tx => tx.Transaction)];
 
         XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetFinalSpec();
         Assert.That(receipts.Any(r => r.To == spec.BlockSignerContract

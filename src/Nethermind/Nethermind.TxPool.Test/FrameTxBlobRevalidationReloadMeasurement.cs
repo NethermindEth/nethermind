@@ -29,7 +29,7 @@ public class FrameTxBlobRevalidationReloadMeasurement
     private const int DefaultPersistentBlobStorageSize = 16384;
 
     private BlobTxStorage _storage = null!;
-    private readonly List<Transaction> _samples = [];
+    private readonly List<MempoolTransaction> _samples = [];
     private readonly StringBuilder _report = new();
 
     [OneTimeSetUp]
@@ -59,8 +59,8 @@ public class FrameTxBlobRevalidationReloadMeasurement
     {
         StoreSamples(blobsPerTx);
 
-        int fullBytes = Encoded(_samples[0], RlpBehaviors.InMempoolForm | RlpBehaviors.Storage).Length;
-        int elidedBytes = Encoded(BlobTransactionPayload.Elide(_samples[0]), RlpBehaviors.InMempoolForm).Length;
+        int fullBytes = Encoded(_samples[0], RlpBehaviors.Storage).Length;
+        int elidedBytes = Encoded(BlobTransactionPayload.Elide(_samples[0]), RlpBehaviors.None).Length;
 
         AssertEveryFormIsReadable();
 
@@ -84,7 +84,7 @@ public class FrameTxBlobRevalidationReloadMeasurement
     private void StoreSamples(int blobsPerTx)
     {
         FrameTxBlobMeasurementHarness.BuildSamples(blobsPerTx, _samples);
-        foreach (Transaction tx in _samples)
+        foreach (MempoolTransaction tx in _samples)
         {
             _storage.Add(tx);
         }
@@ -97,14 +97,14 @@ public class FrameTxBlobRevalidationReloadMeasurement
     /// sidecar-free form has lost the prefix the sweep reads.</summary>
     private void AssertEveryFormIsReadable()
     {
-        Transaction sample = _samples[0];
+        Transaction sample = _samples[0].Transaction;
 #pragma warning disable NUnit2045 // Storage reads must succeed before their returned transactions are dereferenced.
-        Assert.That(_storage.TryGet(sample.Hash!.ValueHash256, sample.SenderAddress!, sample.Timestamp, out Transaction? full), Is.True);
+        Assert.That(_storage.TryGet(sample.Hash!.ValueHash256, sample.SenderAddress!, sample.Timestamp, out MempoolTransaction? full), Is.True);
 #pragma warning restore NUnit2045
         Assert.That(full!.NetworkWrapper, Is.InstanceOf<ShardBlobNetworkWrapper>(), "the full read must carry the sidecar it is timed for");
 
-        Assert.That(_storage.TryGetWithoutBlobs(sample.Hash!.ValueHash256, sample.SenderAddress!, out Transaction? elided), Is.True);
-        Assert.That(((ShardBlobNetworkWrapper)elided!.NetworkWrapper!).Blobs, Is.Empty, "the sidecar-free read must not carry blobs");
+        Assert.That(_storage.TryGetWithoutBlobs(sample.Hash!.ValueHash256, sample.SenderAddress!, out MempoolTransaction? elided), Is.True);
+        Assert.That(elided!.NetworkWrapper!.Blobs, Is.Empty, "the sidecar-free read must not carry blobs");
         Assert.That(elided.Frames, Is.Not.Null.And.Length.EqualTo(sample.Frames!.Length),
             "the sidecar-free form is only useful to revalidation if it keeps the prefix");
     }
@@ -113,7 +113,7 @@ public class FrameTxBlobRevalidationReloadMeasurement
     {
         long before = GC.GetAllocatedBytesForCurrentThread();
         long start = Stopwatch.GetTimestamp();
-        foreach (Transaction tx in _samples)
+        foreach ((Transaction tx, _) in _samples)
         {
             _storage.TryGet(tx.Hash!.ValueHash256, tx.SenderAddress!, tx.Timestamp, out _);
         }
@@ -125,7 +125,7 @@ public class FrameTxBlobRevalidationReloadMeasurement
     {
         long before = GC.GetAllocatedBytesForCurrentThread();
         long start = Stopwatch.GetTimestamp();
-        foreach (Transaction tx in _samples)
+        foreach ((Transaction tx, _) in _samples)
         {
             _storage.TryGetWithoutBlobs(tx.Hash!.ValueHash256, tx.SenderAddress!, out _);
         }
@@ -133,5 +133,5 @@ public class FrameTxBlobRevalidationReloadMeasurement
         return (Stopwatch.GetElapsedTime(start), GC.GetAllocatedBytesForCurrentThread() - before);
     }
 
-    private static byte[] Encoded(Transaction tx, RlpBehaviors behaviors) => TxDecoder.Instance.Encode(tx, behaviors);
+    private static byte[] Encoded(MempoolTransaction tx, RlpBehaviors behaviors) => MempoolTxDecoder.Instance.Encode(tx, behaviors);
 }

@@ -1048,12 +1048,12 @@ public class McpTransactionToolsTests
     private static async Task<McpTestNode> DiagnosisPoolNode(Transaction[] transactions, ulong latest = 5, Transaction? lookup = null, Action<IEthRpcModule>? configureEth = null)
     {
         ITxPool pool = Substitute.For<ITxPool>();
-        Transaction[] standard = transactions.Where(static tx => tx.Type != TxType.Blob).ToArray();
-        Transaction[] blobs = transactions.Where(static tx => tx.Type == TxType.Blob).ToArray();
+        MempoolTransaction[] standard = [.. transactions.Where(static tx => tx.Type != TxType.Blob)];
+        MempoolTransaction[] blobs = [.. transactions.Where(static tx => tx.Type == TxType.Blob)];
         pool.GetPendingTransactionsBySender(Arg.Any<Address>()).Returns(standard);
         pool.GetPendingLightBlobTransactionsBySender(Arg.Any<Address>()).Returns(blobs);
-        pool.GetPendingTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]> { [TestItem.AddressB] = standard });
-        pool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]> { [TestItem.AddressB] = blobs });
+        pool.GetPendingTransactionsBySender().Returns(new Dictionary<AddressAsKey, MempoolTransaction[]> { [TestItem.AddressB] = standard });
+        pool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, MempoolTransaction[]> { [TestItem.AddressB] = blobs });
         pool.GetPendingTransactions().Returns(standard);
         McpTestNode node = await McpTestNode.Create(configureContainer: builder => builder.AddSingleton(pool)
             .AddDecorator<IRpcModuleProvider>(static (_, inner) => new FaultInjectingRpcModuleProvider(inner)));

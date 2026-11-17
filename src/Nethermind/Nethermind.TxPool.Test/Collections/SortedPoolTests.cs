@@ -29,9 +29,9 @@ namespace Nethermind.TxPool.Test.Collections
     {
         private const int Capacity = 16;
 
-        private SortedPool<ValueHash256, Transaction, AddressAsKey> _sortedPool;
+        private SortedPool<ValueHash256, MempoolTransaction, AddressAsKey> _sortedPool;
 
-        private readonly Transaction[] _transactions = new Transaction[Capacity * 8];
+        private readonly MempoolTransaction[] _transactions = new MempoolTransaction[Capacity * 8];
 
         [SetUp]
         public void Setup()
@@ -55,15 +55,15 @@ namespace Nethermind.TxPool.Test.Collections
         public void Empty_production_snapshot_is_invalidated_when_pool_changes([Values] bool initiallyFiltered)
         {
             int filterCalls = 0;
-            Predicate<(AddressAsKey key, Transaction first)> filter = _ => { filterCalls++; return true; };
-            IDictionary<AddressAsKey, Transaction[]> empty = _sortedPool.GetProductionSnapshot(initiallyFiltered ? filter : null);
+            Predicate<(AddressAsKey key, MempoolTransaction first)> filter = _ => { filterCalls++; return true; };
+            IDictionary<AddressAsKey, MempoolTransaction[]> empty = _sortedPool.GetProductionSnapshot(initiallyFiltered ? filter : null);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(_sortedPool.GetProductionSnapshot(filter), Is.SameAs(empty));
                 Assert.That(filterCalls, Is.Zero);
             }
 
-            Transaction transaction = _transactions[1];
+            MempoolTransaction transaction = _transactions[1];
             InsertSnapshotTransaction(transaction);
             Assert.That(_sortedPool.GetProductionSnapshot(filter)[transaction.SenderAddress!], Is.EqualTo(new[] { transaction }));
             using (Assert.EnterMultipleScope())
@@ -74,7 +74,7 @@ namespace Nethermind.TxPool.Test.Collections
             }
 
             Assert.That(_sortedPool.TryRemove(transaction.Hash!), Is.True);
-            IDictionary<AddressAsKey, Transaction[]> drained = _sortedPool.GetProductionSnapshot(filter);
+            IDictionary<AddressAsKey, MempoolTransaction[]> drained = _sortedPool.GetProductionSnapshot(filter);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(drained, Is.Empty);
@@ -93,17 +93,17 @@ namespace Nethermind.TxPool.Test.Collections
         [Test]
         public void Production_snapshot_reuses_only_unchanged_buckets()
         {
-            Transaction first = _transactions[1];
-            Transaction other = _transactions[2];
+            MempoolTransaction first = _transactions[1];
+            MempoolTransaction other = _transactions[2];
             InsertSnapshotTransaction(first);
             InsertSnapshotTransaction(other);
-            IDictionary<AddressAsKey, Transaction[]> before = _sortedPool.GetProductionSnapshot();
-            IDictionary<AddressAsKey, Transaction[]> unchanged = _sortedPool.GetProductionSnapshot();
+            IDictionary<AddressAsKey, MempoolTransaction[]> before = _sortedPool.GetProductionSnapshot();
+            IDictionary<AddressAsKey, MempoolTransaction[]> unchanged = _sortedPool.GetProductionSnapshot();
             Assert.That(unchanged, Is.SameAs(before));
 
-            Transaction next = Build.A.Transaction.WithSenderAddress(first.SenderAddress!).WithNonce(1).WithGasPrice(10).TestObject;
+            MempoolTransaction next = Build.A.Transaction.WithSenderAddress(first.Transaction.SenderAddress!).WithNonce(1).WithGasPrice(10).TestObject;
             InsertSnapshotTransaction(next);
-            IDictionary<AddressAsKey, Transaction[]> added = _sortedPool.GetProductionSnapshot();
+            IDictionary<AddressAsKey, MempoolTransaction[]> added = _sortedPool.GetProductionSnapshot();
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(added[first.SenderAddress!], Is.EqualTo(new[] { first, next }));
@@ -122,10 +122,10 @@ namespace Nethermind.TxPool.Test.Collections
         [Test]
         public void Production_snapshot_observes_replacements_and_rechecks_filter()
         {
-            Transaction first = _transactions[1];
+            MempoolTransaction first = _transactions[1];
             InsertSnapshotTransaction(first);
-            IDictionary<AddressAsKey, Transaction[]> before = _sortedPool.GetProductionSnapshot();
-            Transaction replacement = Build.A.Transaction.WithSenderAddress(first.SenderAddress!).WithGasPrice(100).TestObject;
+            IDictionary<AddressAsKey, MempoolTransaction[]> before = _sortedPool.GetProductionSnapshot();
+            MempoolTransaction replacement = Build.A.Transaction.WithSenderAddress(first.Transaction.SenderAddress!).WithGasPrice(100).TestObject;
             InsertSnapshotTransaction(replacement);
             using (Assert.EnterMultipleScope())
             {
@@ -139,9 +139,9 @@ namespace Nethermind.TxPool.Test.Collections
         [Test]
         public void Public_bucket_snapshots_do_not_expose_cached_arrays()
         {
-            Transaction first = _transactions[1];
+            MempoolTransaction first = _transactions[1];
             InsertSnapshotTransaction(first);
-            Transaction[] cached = _sortedPool.GetProductionSnapshot()[first.SenderAddress!];
+            MempoolTransaction[] cached = _sortedPool.GetProductionSnapshot()[first.Transaction.SenderAddress!];
             _sortedPool.GetBucketSnapshot()[first.SenderAddress!][0] = _transactions[2];
             _sortedPool.GetBucketSnapshot(first.SenderAddress!)[0] = _transactions[2];
             Assert.That(_sortedPool.GetProductionSnapshot()[first.SenderAddress!], Is.SameAs(cached).And.EqualTo(new[] { first }));
@@ -150,15 +150,15 @@ namespace Nethermind.TxPool.Test.Collections
         [Test]
         public void Flat_snapshot_preserves_bucket_order_and_cached_snapshot_ownership([Values] bool cacheBuckets)
         {
-            Transaction first = _transactions[1];
-            Transaction next = Build.A.Transaction.WithSenderAddress(first.SenderAddress!).WithNonce(1).WithGasPrice(10).TestObject;
-            Transaction other = _transactions[2];
+            MempoolTransaction first = _transactions[1];
+            MempoolTransaction next = Build.A.Transaction.WithSenderAddress(first.Transaction.SenderAddress!).WithNonce(1).WithGasPrice(10).TestObject;
+            MempoolTransaction other = _transactions[2];
             InsertSnapshotTransaction(next);
             InsertSnapshotTransaction(first);
             InsertSnapshotTransaction(other);
             if (cacheBuckets) _sortedPool.GetProductionSnapshot();
 
-            Transaction[] snapshot = _sortedPool.GetSnapshot();
+            MempoolTransaction[] snapshot = _sortedPool.GetSnapshot();
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(snapshot, Is.EqualTo(new[] { first, next, other }));
@@ -166,7 +166,7 @@ namespace Nethermind.TxPool.Test.Collections
             }
 
             _sortedPool.TryRemove(first.Hash!);
-            Transaction[] changed = _sortedPool.GetSnapshot();
+            MempoolTransaction[] changed = _sortedPool.GetSnapshot();
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(changed, Is.EqualTo(new[] { next, other }));
@@ -181,9 +181,9 @@ namespace Nethermind.TxPool.Test.Collections
         public void Production_snapshot_discards_evicted_buckets()
         {
             for (int i = 1; i <= Capacity; i++) InsertSnapshotTransaction(_transactions[i]);
-            IDictionary<AddressAsKey, Transaction[]> before = _sortedPool.GetProductionSnapshot();
+            IDictionary<AddressAsKey, MempoolTransaction[]> before = _sortedPool.GetProductionSnapshot();
             InsertSnapshotTransaction(_transactions[Capacity + 1]);
-            IDictionary<AddressAsKey, Transaction[]> after = _sortedPool.GetProductionSnapshot();
+            IDictionary<AddressAsKey, MempoolTransaction[]> after = _sortedPool.GetProductionSnapshot();
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(after.Count, Is.EqualTo(Capacity));
@@ -286,9 +286,9 @@ namespace Nethermind.TxPool.Test.Collections
             public override int GetHashCode() => Collisions ? 7 : HashCode.Combine(Value);
         }
 
-        private void InsertSnapshotTransaction(Transaction transaction)
+        private void InsertSnapshotTransaction(MempoolTransaction transaction)
         {
-            transaction.Hash = transaction.CalculateHash();
+            transaction.Transaction.Hash = transaction.Transaction.CalculateHash();
             Assert.That(_sortedPool.TryInsert(transaction.Hash!, transaction), Is.True);
         }
 
@@ -297,12 +297,12 @@ namespace Nethermind.TxPool.Test.Collections
         {
             for (int i = 0; i < _transactions.Length; i++)
             {
-                Transaction tx = _transactions[^(i + 1)];
-                tx.Hash = tx.CalculateHash();
+                MempoolTransaction tx = _transactions[^(i + 1)];
+                tx.Transaction.Hash = tx.Transaction.CalculateHash();
                 _sortedPool.TryInsert(tx.Hash, tx);
                 using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(_sortedPool.TryGetValue(tx.Hash, out Transaction txOther) ? txOther : null, Is.EqualTo(i > 15 ? null : tx));
+                    Assert.That(_sortedPool.TryGetValue(tx.Transaction.Hash, out MempoolTransaction txOther) ? txOther : null, Is.EqualTo(i > 15 ? null : tx));
                     Assert.That(_sortedPool.Count, Is.EqualTo(Math.Min(16, i + 1)));
                 }
             }
@@ -311,7 +311,7 @@ namespace Nethermind.TxPool.Test.Collections
 
             for (int i = 0; i < Capacity; i++)
             {
-                _sortedPool.TryTakeFirst(out Transaction tx);
+                _sortedPool.TryTakeFirst(out MempoolTransaction tx);
                 UInt256 gasPrice = (UInt256)(_transactions.Length - i - 1);
                 using (Assert.EnterMultipleScope())
                 {
@@ -326,15 +326,15 @@ namespace Nethermind.TxPool.Test.Collections
         {
             for (int i = 0; i < _transactions.Length; i++)
             {
-                Transaction tx = _transactions[i];
-                tx.Hash = tx.CalculateHash();
+                MempoolTransaction tx = _transactions[i];
+                tx.Transaction.Hash = tx.Transaction.CalculateHash();
                 _sortedPool.TryInsert(tx.Hash, tx);
                 Assert.That(_sortedPool.Count, Is.EqualTo(Math.Min(16, i + 1)));
             }
 
             for (int i = 0; i < Capacity; i++)
             {
-                _sortedPool.TryTakeFirst(out Transaction tx);
+                _sortedPool.TryTakeFirst(out MempoolTransaction tx);
                 UInt256 gasPrice = (UInt256)(_transactions.Length - i - 1);
                 using (Assert.EnterMultipleScope())
                 {
@@ -347,7 +347,7 @@ namespace Nethermind.TxPool.Test.Collections
         [Test]
         public void should_remove_empty_buckets()
         {
-            Transaction tx = Build.A.Transaction
+            MempoolTransaction tx = Build.A.Transaction
                 .WithSenderAddress(TestItem.AddressA)
                 .WithHash(TestItem.KeccakA).TestObject;
 
@@ -361,16 +361,16 @@ namespace Nethermind.TxPool.Test.Collections
         [Test]
         public void GetBest_returns_first_transaction_without_removing_it()
         {
-            Transaction lowPriority = Build.A.Transaction
+            MempoolTransaction lowPriority = Build.A.Transaction
                 .WithGasPrice(1)
                 .WithSenderAddress(TestItem.AddressA)
                 .TestObject;
-            lowPriority.Hash = lowPriority.CalculateHash();
-            Transaction highPriority = Build.A.Transaction
+            lowPriority.Transaction.Hash = lowPriority.Transaction.CalculateHash();
+            MempoolTransaction highPriority = Build.A.Transaction
                 .WithGasPrice(2)
                 .WithSenderAddress(TestItem.AddressB)
                 .TestObject;
-            highPriority.Hash = highPriority.CalculateHash();
+            highPriority.Transaction.Hash = highPriority.Transaction.CalculateHash();
 
             _sortedPool.TryInsert(lowPriority.Hash, lowPriority);
             _sortedPool.TryInsert(highPriority.Hash, highPriority);
@@ -402,7 +402,7 @@ namespace Nethermind.TxPool.Test.Collections
             if (cached) _sortedPool.GetProductionSnapshot();
 
             (List<int> Visited, int StopAfter) state = (new List<int>(), stopAfterNonce);
-            _sortedPool.VisitBucket(TestItem.AddressA, ref state, static (Transaction tx, ref (List<int> Visited, int StopAfter) s) =>
+            _sortedPool.VisitBucket(TestItem.AddressA, ref state, static (MempoolTransaction tx, ref (List<int> Visited, int StopAfter) s) =>
             {
                 s.Visited.Add((int)tx.Nonce);
                 return (int)tx.Nonce < s.StopAfter;
@@ -414,9 +414,9 @@ namespace Nethermind.TxPool.Test.Collections
         [Test]
         public void VisitBucket_observes_membership_changes_after_snapshot()
         {
-            Transaction first = _transactions[1];
-            Transaction next = Build.A.Transaction.WithSenderAddress(first.SenderAddress!).WithNonce(1).WithGasPrice(10).TestObject;
-            Transaction replacement = Build.A.Transaction.WithSenderAddress(first.SenderAddress!).WithGasPrice(100).TestObject;
+            MempoolTransaction first = _transactions[1];
+            MempoolTransaction next = Build.A.Transaction.WithSenderAddress(first.Transaction.SenderAddress!).WithNonce(1).WithGasPrice(10).TestObject;
+            MempoolTransaction replacement = Build.A.Transaction.WithSenderAddress(first.Transaction.SenderAddress!).WithGasPrice(100).TestObject;
             InsertSnapshotTransaction(first);
             _sortedPool.GetProductionSnapshot();
             AssertVisited(first);
@@ -433,10 +433,10 @@ namespace Nethermind.TxPool.Test.Collections
             _sortedPool.TryRemove(next.Hash!);
             AssertVisited();
 
-            void AssertVisited(params Transaction[] expected)
+            void AssertVisited(params MempoolTransaction[] expected)
             {
-                List<Transaction> visited = [];
-                _sortedPool.VisitBucket(first.SenderAddress!, ref visited, static (Transaction tx, ref List<Transaction> values) =>
+                List<MempoolTransaction> visited = [];
+                _sortedPool.VisitBucket(first.Transaction.SenderAddress!, ref visited, static (MempoolTransaction tx, ref List<MempoolTransaction> values) =>
                 {
                     values.Add(tx);
                     return true;
@@ -458,11 +458,11 @@ namespace Nethermind.TxPool.Test.Collections
         {
             foreach (ulong nonce in nonces)
             {
-                Transaction tx = Build.A.Transaction
+                MempoolTransaction tx = Build.A.Transaction
                     .WithNonce(nonce)
                     .WithSenderAddress(sender)
                     .TestObject;
-                tx.Hash = tx.CalculateHash();
+                tx.Transaction.Hash = tx.Transaction.CalculateHash();
                 _sortedPool.TryInsert(tx.Hash, tx);
             }
         }

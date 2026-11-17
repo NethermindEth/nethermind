@@ -244,7 +244,7 @@ public class NonceManagerTests
         _pending.Clear();
         Interlocked.Increment(ref _removals);
 
-        Transaction[] pending = pendingNonces.Select(static n => Build.A.Transaction.WithNonce(n).TestObject).ToArray();
+        MempoolTransaction[] pending = [.. pendingNonces.Select(static n => Build.A.Transaction.WithNonce(n).TestObject)];
         if (blobPool)
         {
             _pendingTxs.GetPendingLightBlobTransactionsBySender(TestItem.AddressA).Returns(pending);
@@ -880,11 +880,12 @@ public class NonceManagerTests
             .WithHash(Keccak.Compute(Interlocked.Increment(ref _hashSeed).ToString()))
             .TestObject;
 
-    private Transaction[] Pending(Address sender, bool blobs) =>
+    private MempoolTransaction[] Pending(Address sender, bool blobs) =>
         _pending
             .Select(static entry => entry.Value)
             .Where(t => t.SenderAddress == sender && (t.Type == TxType.Blob) == blobs)
             .OrderBy(static t => t.Nonce)
+            .Select(static t => (MempoolTransaction)t)
             .ToArray();
     private void MakeReorgSafeStateUnavailable(ReorgSafeStateGap gap)
     {

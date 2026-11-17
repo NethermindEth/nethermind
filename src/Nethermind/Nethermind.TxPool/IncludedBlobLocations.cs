@@ -73,7 +73,7 @@ internal sealed class IncludedBlobLocations(ulong maxBlockDistance)
     /// its transactions have left the pool, yet its saved rows are intact. A non-empty save replaces the batch, as it
     /// rewrote the rows and their positions.
     /// </remarks>
-    public void Record(ulong blockNumber, Hash256? blockHash, ReadOnlySpan<Transaction> savedBlobTxs)
+    public void Record(ulong blockNumber, Hash256? blockHash, ReadOnlySpan<MempoolTransaction> savedBlobTxs)
     {
         lock (_writeLock)
         {
@@ -136,7 +136,7 @@ internal sealed class IncludedBlobLocations(ulong maxBlockDistance)
         return _locations.TryGetValue(new ValueHash256(blobVersionedHash), out location);
     }
 
-    private static Batch? CreateBatch(ulong blockNumber, Hash256? blockHash, ReadOnlySpan<Transaction> savedBlobTxs)
+    private static Batch? CreateBatch(ulong blockNumber, Hash256? blockHash, ReadOnlySpan<MempoolTransaction> savedBlobTxs)
     {
         if (savedBlobTxs.IsEmpty)
         {

@@ -3,7 +3,6 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -12,40 +11,26 @@ namespace Nethermind.TxPool.Test;
 public class TransactionLengthCacheTests
 {
     [Test]
-    public void Length_without_blobs_is_cached_when_the_type_has_no_mempool_form([Values(TxType.Legacy, TxType.EIP1559, TxType.SetCode)] TxType type)
+    public void Length_is_cached([Values(TxType.Legacy, TxType.EIP1559, TxType.SetCode, TxType.Blob, TxType.FrameTx)] TxType type)
     {
         ITransactionSizeCalculator calculator = Substitute.For<ITransactionSizeCalculator>();
-        calculator.GetLength(Arg.Any<Transaction>(), Arg.Any<bool>()).Returns(100);
+        calculator.GetLength(Arg.Any<Transaction>()).Returns(100);
         Transaction tx = Build.A.Transaction.WithType(type).TestObject;
 
-        tx.GetLength(calculator, shouldCountBlobs: false);
-        tx.GetLength(calculator, shouldCountBlobs: false);
-        tx.GetLength(calculator, shouldCountBlobs: true);
+        tx.GetLength(calculator);
+        tx.GetLength(calculator);
 
-        calculator.Received(1).GetLength(tx, Arg.Any<bool>());
+        calculator.Received(1).GetLength(tx);
     }
 
     [Test]
-    public void Both_lengths_are_equal_when_the_type_has_no_mempool_form([Values(TxType.Legacy, TxType.AccessList, TxType.EIP1559, TxType.SetCode)] TxType type)
+    public void Network_length_counts_the_sidecar_only_when_the_type_has_a_mempool_form([Values(TxType.Legacy, TxType.AccessList, TxType.EIP1559, TxType.SetCode, TxType.Blob)] TxType type)
     {
-        NetworkTransactionSizeCalculator calculator = new(TxDecoder.Instance);
-        Transaction tx = Build.A.Transaction.WithType(type).WithAuthorizationCodeIfAuthorizationListTx().SignedAndResolved().TestObject;
+        MempoolTransaction mempoolTx = Build.A.Transaction.WithType(type).WithAuthorizationCodeIfAuthorizationListTx()
+            .WithShardBlobTxTypeAndFieldsIfBlobTx().SignedAndResolved().MempoolTestObject;
 
-        Assert.That(calculator.GetLength(tx, shouldCountBlobs: false), Is.EqualTo(calculator.GetLength(tx, shouldCountBlobs: true)));
-    }
-
-    [Test]
-    public void Length_without_blobs_is_computed_when_the_type_has_a_mempool_form([Values(TxType.Blob, TxType.FrameTx)] TxType type)
-    {
-        ITransactionSizeCalculator calculator = Substitute.For<ITransactionSizeCalculator>();
-        calculator.GetLength(Arg.Any<Transaction>(), true).Returns(200);
-        calculator.GetLength(Arg.Any<Transaction>(), false).Returns(100);
-        Transaction tx = Build.A.Transaction.WithType(type).TestObject;
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(tx.GetLength(calculator, shouldCountBlobs: true), Is.EqualTo(200));
-            Assert.That(tx.GetLength(calculator, shouldCountBlobs: false), Is.EqualTo(100));
-        }
+        Assert.That(mempoolTx.GetLength(), type == TxType.Blob
+            ? Is.GreaterThan(mempoolTx.Transaction.GetLength())
+            : Is.EqualTo(mempoolTx.Transaction.GetLength()));
     }
 }

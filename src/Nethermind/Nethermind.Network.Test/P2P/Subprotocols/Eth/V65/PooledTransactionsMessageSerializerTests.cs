@@ -36,7 +36,7 @@ public class PooledTransactionsMessageSerializerTests
         transaction.Hash = transaction.CalculateHash();
         transaction.SenderAddress = null;
 
-        using PooledTransactionsMessage message = new(new ArrayPoolList<Transaction>(2) { transaction, transaction });
+        using PooledTransactionsMessage message = new(new ArrayPoolList<MempoolTransaction>(2) { transaction, transaction });
         SerializerTester.Test(serializer, message, "e2d08203e8640a80822710830405061b0102d08203e8640a80822710830405061b0102");
     }
 
@@ -57,7 +57,7 @@ public class PooledTransactionsMessageSerializerTests
         transaction.Hash = transaction.CalculateHash();
         transaction.SenderAddress = null;
 
-        using PooledTransactionsMessage message = new(new ArrayPoolList<Transaction>(2) { transaction, transaction });
+        using PooledTransactionsMessage message = new(new ArrayPoolList<MempoolTransaction>(2) { transaction, transaction });
         SerializerTester.Test(serializer, message, "f84ae48203e8640a94b7705ae4c6f81b66cdb323c65f4e8133690fc099822710830102031b0102e48203e8640a94b7705ae4c6f81b66cdb323c65f4e8133690fc099822710830102031b0102");
     }
 
@@ -65,7 +65,7 @@ public class PooledTransactionsMessageSerializerTests
     public void Can_handle_empty()
     {
         PooledTransactionsMessageSerializer serializer = new();
-        using PooledTransactionsMessage message = new(ArrayPoolList<Transaction>.Empty());
+        using PooledTransactionsMessage message = new(ArrayPoolList<MempoolTransaction>.Empty());
 
         SerializerTester.Test(serializer, message, EthSerializerGoldens.EmptyListRlp);
     }
@@ -73,7 +73,7 @@ public class PooledTransactionsMessageSerializerTests
     [Test]
     public void Empty_to_string()
     {
-        using PooledTransactionsMessage message = new(ArrayPoolList<Transaction>.Empty());
+        using PooledTransactionsMessage message = new(ArrayPoolList<MempoolTransaction>.Empty());
         using PooledTransactionsMessage message2 = new(null);
 
         using (Assert.EnterMultipleScope())
@@ -99,14 +99,9 @@ public class PooledTransactionsMessageSerializerTests
         PooledTransactionsMessageSerializer serializer = new();
         serializer.Serialize(buffer, transactionsMessage);
         using PooledTransactionsMessage deserializedMessage = serializer.Deserialize(buffer);
-        foreach (Transaction? tx in deserializedMessage.Transactions.Where(static tx => tx.Type == TxType.Blob))
+        foreach (MempoolTransaction tx in deserializedMessage.Transactions)
         {
-            Assert.That(tx.NetworkWrapper, Is.Not.Null);
-        }
-
-        foreach (Transaction? tx in deserializedMessage.Transactions.Where(static tx => tx.Type != TxType.Blob))
-        {
-            Assert.That(tx.NetworkWrapper, Is.Null);
+            Assert.That(tx.NetworkWrapper, tx.Transaction.Type == TxType.Blob ? Is.Not.Null : Is.Null);
         }
     }
 

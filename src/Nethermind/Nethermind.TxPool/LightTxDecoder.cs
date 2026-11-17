@@ -18,7 +18,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
     // is unknown; otherwise records keep the foundational consensus size, from which future encodings can be derived.
     private const byte ElidedNetworkEncodingSizeFormatVersion = 2;
 
-    private static int GetLength(Transaction tx, Address? paymaster, int networkSize, int persistedEncodingSize, byte sizeFormatVersion) => Rlp.LengthOf(tx.Timestamp)
+    private static int GetLength(MempoolTransaction tx, Address? paymaster, int networkSize, int persistedEncodingSize, byte sizeFormatVersion) => Rlp.LengthOf(tx.Timestamp)
                + Rlp.LengthOf(tx.SenderAddress)
                + Rlp.LengthOf(tx.Nonce)
                + Rlp.LengthOf(tx.Hash)
@@ -35,7 +35,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
                + Rlp.LengthOf(persistedEncodingSize)
                + Rlp.LengthOf(sizeFormatVersion)
                + Rlp.LengthOf((byte)tx.Type)
-               + (FrameTxValidation.TryGetExpiryDeadline(tx, out ulong expiryDeadline) ? Rlp.LengthOf(expiryDeadline) : 0)
+               + (FrameTxValidation.TryGetExpiryDeadline(tx.Transaction, out ulong expiryDeadline) ? Rlp.LengthOf(expiryDeadline) : 0)
                + TrailingLength(tx, paymaster);
 
     /// <summary>Length of the trailing group a frame transaction's record ends in, or zero for any other type.</summary>
@@ -43,7 +43,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
     /// One group rather than adjacent optional fields: RLP cannot tell a 20-byte integer from an address, so a
     /// two-key <c>nonce_keys</c> list is byte-identical to a payer pair.
     /// </remarks>
-    private static int TrailingLength(Transaction tx, Address? paymaster)
+    private static int TrailingLength(MempoolTransaction tx, Address? paymaster)
     {
         int content = TrailingContentLength(tx, paymaster);
         return content == 0 ? 0 : Rlp.LengthOfSequence(content);
@@ -53,7 +53,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
     /// <remarks>The paymaster is passed in rather than re-derived, so the length pass and the write pass cannot
     /// disagree and over- or under-fill the buffer. Every slot is written, so the group always ends in the key-set flag.
     /// </remarks>
-    private static int TrailingContentLength(Transaction tx, Address? paymaster) =>
+    private static int TrailingContentLength(MempoolTransaction tx, Address? paymaster) =>
         !tx.SupportsFrames
             ? 0
             : (tx.NonceKeys is { } nonceKeys ? FrameTxNonceCalldata.KeysLength(nonceKeys) : Rlp.LengthOfSequence(0))
@@ -63,12 +63,12 @@ public class LightTxDecoder : TxDecoder<Transaction>
               + Rlp.LengthOf(tx.MaxFee)
               + Rlp.LengthOf(tx.NonceKeys is not null);
 
-    public static byte[] Encode(Transaction tx)
+    public static byte[] Encode(MempoolTransaction tx)
     {
         // Read once through the pool's own key, so the record and the cap's ledger cannot disagree on the sponsor.
-        Address? paymaster = PendingPaymasterCache.KeyFor(tx);
+        Address? paymaster = PendingPaymasterCache.KeyFor(tx.Transaction);
         int networkSize = tx.GetLength();
-        (int persistedEncodingSize, byte sizeFormatVersion) = GetPersistedEncodingSize(tx);
+        (int persistedEncodingSize, byte sizeFormatVersion) = GetPersistedEncodingSize(tx.Transaction);
         byte[] bytes = new byte[GetLength(tx, paymaster, networkSize, persistedEncodingSize, sizeFormatVersion)];
         RlpWriter writer = RlpWriter.ContentWriter(bytes);
 
@@ -85,14 +85,14 @@ public class LightTxDecoder : TxDecoder<Transaction>
         writer.Encode(tx.BlobVersionedHashes!);
         writer.Encode(tx.PoolIndex);
         writer.Encode(networkSize);
-        writer.Encode((byte)(tx.GetProofVersion() ?? default));
+        writer.Encode((byte)(tx.NetworkWrapper?.Version ?? (tx.Transaction as LightTransaction)?.ProofVersion ?? default));
         EncodeAvailableCellMask(tx, ref writer);
         writer.Encode(persistedEncodingSize);
         writer.Encode(sizeFormatVersion);
         // Appended after the blob fields so records written before it still decode, defaulting to TxType.Blob.
         writer.Encode((byte)tx.Type);
         // Expiry needs the deadline after a reload, where the frames that carried it are gone.
-        if (FrameTxValidation.TryGetExpiryDeadline(tx, out ulong expiryDeadline)) writer.Encode(expiryDeadline);
+        if (FrameTxValidation.TryGetExpiryDeadline(tx.Transaction, out ulong expiryDeadline)) writer.Encode(expiryDeadline);
         // The trailing group of a frame transaction, a sequence so the decoder tells it from the expiry deadline that
         // only sometimes precedes it.
         int trailingContent = TrailingContentLength(tx, paymaster);
@@ -126,7 +126,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
         return keys.Length == 0 ? null : keys;
     }
 
-    public static LightTransaction Decode(byte[] data)
+    public static MempoolTransaction Decode(byte[] data)
     {
         RlpReader ctx = new(data);
         UInt256 timestamp = ctx.DecodeUInt256<OffFlag>();
@@ -202,7 +202,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
             throw new RlpReaderException($"{nameof(TxType.FrameTx)} record carries no max_fee");
         }
 
-        return new LightTransaction(
+        LightTransaction transaction = new(
             timestamp,
             sender,
             nonce,
@@ -213,7 +213,6 @@ public class LightTxDecoder : TxDecoder<Transaction>
             maxFeePerGas,
             maxFeePerBlobGas,
             blobVersionHashes,
-            poolIndex,
             size,
             proofVersion,
             blobCellMask,
@@ -222,10 +221,15 @@ public class LightTxDecoder : TxDecoder<Transaction>
             type,
             expiryDeadline,
             nonceKeys,
-            payerAddress,
-            payerExposure,
             paymaster,
             maxFee.GetValueOrDefault());
+
+        return new MempoolTransaction(transaction, null)
+        {
+            PoolIndex = poolIndex,
+            PayerAddress = payerAddress,
+            PayerExposure = payerExposure
+        };
     }
 
     private static int CountUpToEightItems(RlpReader reader)
@@ -239,17 +243,17 @@ public class LightTxDecoder : TxDecoder<Transaction>
         return count;
     }
 
-    private static void EncodeAvailableCellMask(Transaction tx, ref RlpWriter writer)
+    private static void EncodeAvailableCellMask(MempoolTransaction tx, ref RlpWriter writer)
     {
         Span<byte> bytes = stackalloc byte[BlobCellMask.FixedByteLength];
         GetAvailableCellMask(tx).WriteTo(bytes);
         writer.Encode(bytes);
     }
 
-    private static BlobCellMask GetAvailableCellMask(Transaction tx) =>
+    private static BlobCellMask GetAvailableCellMask(MempoolTransaction tx) =>
         tx.NetworkWrapper is ShardBlobNetworkWrapper wrapper
             ? wrapper.GetAvailableCellMask()
-            : tx is LightTransaction lightTx
+            : tx.Transaction is LightTransaction lightTx
                 ? lightTx.BlobCellMask
                 : BlobCellMask.Empty;
 
@@ -257,7 +261,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
     {
         if (tx is not LightTransaction lightTx)
         {
-            return (tx.GetLength(shouldCountBlobs: false), ConsensusEncodingSizeFormatVersion);
+            return (tx.GetLength(), ConsensusEncodingSizeFormatVersion);
         }
 
         int consensusEncodingSize = lightTx.GetConsensusEncodingSize();

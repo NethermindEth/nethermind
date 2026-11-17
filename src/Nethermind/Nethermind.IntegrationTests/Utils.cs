@@ -909,14 +909,13 @@ public static class Utils
             DecodedMaxFeePerGas = 100_000_000_000UL, // maxFeePerGas: 100 gwei, comfortably above base fee
             MaxFeePerBlobGas = 1_000_000_000UL, // 1 gwei, above the devnet's minimum blob base fee
             BlobVersionedHashes = blobVersionedHashes,
-            NetworkWrapper = wrapper,
         };
 
         new EthereumEcdsa(chainId).Sign(signer, tx, isEip155Enabled: true);
 
         // eth_sendRawTransaction expects the EIP-4844 network ("mempool") form: the typed payload
         // followed by the blobs/commitments/proofs wrapper, un-wrapped from a byte string.
-        byte[] rlp = TxDecoder.Instance.Encode(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping);
+        byte[] rlp = MempoolTxDecoder.Instance.Encode(new MempoolTransaction(tx, wrapper), RlpBehaviors.SkipTypedWrapping);
         string raw = "0x" + rlp.ToHexString();
 
         JsonNode result = await SendJsonRpcRequestAsync(httpClient, "eth_sendRawTransaction", raw);

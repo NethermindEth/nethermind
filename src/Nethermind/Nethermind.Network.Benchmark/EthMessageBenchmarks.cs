@@ -198,7 +198,7 @@ public class EthMessageBenchmarks
     // As the handlers do with the transactions they do not submit: disposing the message returns only their list.
     private static void ReturnTransactions(P2PMessage message)
     {
-        IOwnedReadOnlyList<Transaction> transactions = message switch
+        IOwnedReadOnlyList<MempoolTransaction> transactions = message switch
         {
             Eth62.TransactionsMessage transactionsMessage => transactionsMessage.Transactions,
             Eth66.PooledTransactionsMessage pooledTransactionsMessage => pooledTransactionsMessage.EthMessage.Transactions,
@@ -206,10 +206,11 @@ public class EthMessageBenchmarks
         };
         if (transactions is null) return;
 
-        foreach (Transaction transaction in transactions.AsSpan())
+        foreach (MempoolTransaction transaction in transactions.AsSpan())
         {
+            transaction.NetworkWrapper?.ReturnPooledBuffers();
             transaction.ClearPreHash();
-            TxDecoder.TxObjectPool.Return(transaction);
+            TxDecoder.TxObjectPool.Return(transaction.Transaction);
         }
     }
 
@@ -280,14 +281,14 @@ public class EthMessageBenchmarks
         return receipts;
     }
 
-    private static ArrayPoolList<Transaction> Transactions(int count, int blobTransactions)
+    private static ArrayPoolList<MempoolTransaction> Transactions(int count, int blobTransactions)
     {
-        ArrayPoolList<Transaction> transactions = [with(count)];
+        ArrayPoolList<MempoolTransaction> transactions = [with(count)];
         for (int i = 0; i < count; i++)
         {
             TransactionBuilder<Transaction> builder = Build.A.Transaction.WithNonce((ulong)i).WithData(new byte[512]);
             if (i < blobTransactions) builder = builder.WithShardBlobTxTypeAndFields();
-            transactions.Add(builder.SignedAndResolved(TestItem.PrivateKeyA).TestObject);
+            transactions.Add(builder.SignedAndResolved(TestItem.PrivateKeyA).MempoolTestObject);
         }
 
         return transactions;

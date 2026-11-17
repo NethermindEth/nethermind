@@ -58,25 +58,24 @@ public class BlobTxServingBenchmarks
 
         // TxPool builds the blob pool itself, so DI does not register it.
         _pool = new PersistentBlobTxDistinctSortedPool(_container.Resolve<IBlobTxStorage>(), _container.Resolve<ITxPoolConfig>(),
-            Comparer<Transaction>.Create(static (x, y) => x.Hash!.CompareTo(y.Hash!)), LimboLogs.Instance);
+            Comparer<MempoolTransaction>.Create(static (x, y) => x.Hash!.CompareTo(y.Hash!)), LimboLogs.Instance);
 
-        Transaction template = Build.A.Transaction.WithShardBlobTxTypeAndFields(BlobsPerTransaction, spec: Osaka.Instance).TestObject;
+        MempoolTransaction template = Build.A.Transaction.WithShardBlobTxTypeAndFields(BlobsPerTransaction, spec: Osaka.Instance).MempoolTestObject;
         EthereumEcdsa ecdsa = new(BlockchainIds.Mainnet);
         _hashes = new ValueHash256[TransactionCount];
         ValueHash256 cachedHash = default;
         for (int i = 0; i <= TransactionCount; i++)
         {
-            Transaction tx = Build.A.Transaction
+            MempoolTransaction tx = new(Build.A.Transaction
                 .With(t =>
                 {
                     t.Type = TxType.Blob;
                     t.MaxFeePerBlobGas = 1;
                     t.BlobVersionedHashes = template.BlobVersionedHashes;
-                    t.NetworkWrapper = template.NetworkWrapper;
                 })
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .SignedAndResolved(ecdsa, TestItem.PrivateKeys[i]).TestObject;
+                .SignedAndResolved(ecdsa, TestItem.PrivateKeys[i]).TestObject, template.NetworkWrapper);
             if (!_pool.TryInsert(tx.Hash!, tx)) throw new InvalidOperationException("Transaction not inserted.");
             if (i < TransactionCount) _hashes[i] = tx.Hash!;
             else cachedHash = tx.Hash!;
@@ -98,20 +97,20 @@ public class BlobTxServingBenchmarks
     [Benchmark(Baseline = true)]
     public int Decoded()
     {
-        Transaction[] transactions = new Transaction[TransactionCount];
+        MempoolTransaction[] transactions = new MempoolTransaction[TransactionCount];
         int contentLength = 0;
         for (int i = 0; i < transactions.Length; i++)
         {
             if (!_pool.TryGetValue(_hashes[i], out transactions[i])) throw new InvalidOperationException("Transaction not found.");
             _ = transactions[i].GetLength();
-            contentLength += TxDecoder.Instance.GetLength(transactions[i], RlpBehaviors.InMempoolForm);
+            contentLength += MempoolTxDecoder.Instance.GetLength(transactions[i]);
         }
 
         int length = global::Nethermind.Serialization.Rlp.Rlp.LengthOfSequence(contentLength);
         byte[] buffer = ArrayPool<byte>.Shared.Rent(length);
         RlpWriter writer = RlpWriter.ContentWriter(buffer.AsSpan(0, length));
         RlpSequence sequence = writer.StartSequence(contentLength);
-        foreach (Transaction transaction in transactions) TxDecoder.Instance.Encode(ref writer, transaction, RlpBehaviors.InMempoolForm);
+        foreach (MempoolTransaction transaction in transactions) MempoolTxDecoder.Instance.Encode(ref writer, transaction);
         writer.EndSequence(sequence);
         ArrayPool<byte>.Shared.Return(buffer);
         return length;

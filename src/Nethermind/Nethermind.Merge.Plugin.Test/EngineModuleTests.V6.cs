@@ -700,12 +700,12 @@ public partial class EngineModuleTests
             configurer: ConfigureBlobPoolAvailable);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
-        Transaction blobTx = Build.A.Transaction
+        MempoolTransaction blobTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(numberOfBlobs, spec: Amsterdam.Instance)
             .WithMaxFeePerGas(1.GWei)
             .WithMaxPriorityFeePerGas(1.GWei)
             .WithMaxFeePerBlobGas(1000.Wei)
-            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).MempoolTestObject;
 
         AcceptTxResult txResult = chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None);
         Assert.That(txResult, Is.EqualTo(AcceptTxResult.Accepted));
@@ -747,12 +747,12 @@ public partial class EngineModuleTests
             configurer: ConfigureBlobPoolAvailable);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
-        Transaction blobTx = Build.A.Transaction
+        MempoolTransaction blobTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(1, spec: Amsterdam.Instance)
             .WithMaxFeePerGas(1.GWei)
             .WithMaxPriorityFeePerGas(1.GWei)
             .WithMaxFeePerBlobGas(1000.Wei)
-            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).MempoolTestObject;
 
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
         BlobCellMask availableMask = BlobCellMask.FromIndices([0]);
@@ -770,7 +770,7 @@ public partial class EngineModuleTests
             CellMask = availableMask,
             Cells = availableCells,
         };
-        blobTx.NetworkWrapper = sparseWrapper;
+        blobTx = blobTx with { NetworkWrapper = sparseWrapper };
 
         AcceptTxResult txResult = chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None);
         Assert.That(txResult, Is.EqualTo(AcceptTxResult.Accepted));
@@ -808,12 +808,12 @@ public partial class EngineModuleTests
             configurer: ConfigureBlobPoolAvailable);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
-        Transaction blobTx = Build.A.Transaction
+        MempoolTransaction blobTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(2, spec: Amsterdam.Instance)
             .WithMaxFeePerGas(1.GWei)
             .WithMaxPriorityFeePerGas(1.GWei)
             .WithMaxFeePerBlobGas(1000.Wei)
-            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).MempoolTestObject;
         Assert.That(chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
         byte[][] blobVersionedHashes = blobTx.BlobVersionedHashes!.Select(static h => h!).ToArray();
 
@@ -958,12 +958,12 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Amsterdam.Instance, configurer: ConfigureBlobPoolAvailable);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
-        Transaction blobTx = Build.A.Transaction
+        MempoolTransaction blobTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(1, spec: Amsterdam.Instance)
             .WithMaxFeePerGas(1.GWei)
             .WithMaxPriorityFeePerGas(1.GWei)
             .WithMaxFeePerBlobGas(1000.Wei)
-            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).MempoolTestObject;
 
         AcceptTxResult txResult = chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None);
         Assert.That(txResult, Is.EqualTo(AcceptTxResult.Accepted));

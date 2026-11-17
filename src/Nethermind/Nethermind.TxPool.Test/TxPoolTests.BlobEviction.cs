@@ -24,8 +24,8 @@ public partial class TxPoolTests
         _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
 
         EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
-        Transaction firstTx = CreateBlobTx(TestItem.PrivateKeyA, 0UL);
-        Transaction secondTx = CreateBlobTx(TestItem.PrivateKeyA, 1UL);
+        MempoolTransaction firstTx = CreateBlobTx(TestItem.PrivateKeyA, 0UL);
+        MempoolTransaction secondTx = CreateBlobTx(TestItem.PrivateKeyA, 1UL);
 
 #pragma warning disable NUnit2045 // Keep transaction admission and its dependent pool state or subsequent admissions fail-fast.
         Assert.That(_txPool.SubmitTx(firstTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
@@ -34,13 +34,13 @@ public partial class TxPoolTests
         Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(2));
 
         _stateProvider.CreateAccount(TestItem.AddressA, UInt256.MaxValue, 1UL);
-        Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(firstTx).TestObject;
+        Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(firstTx.Transaction).TestObject;
         await RaiseBlockAddedToMainAndWaitForNewHead(block);
 
 #pragma warning disable NUnit2045 // The pending transaction must exist before its fields are read.
         Assert.That(_txPool.TryGetPendingBlobTransaction(firstTx.Hash!, out _), Is.False);
 #pragma warning restore NUnit2045
-        Assert.That(_txPool.TryGetPendingBlobTransaction(secondTx.Hash!, out Transaction remainingTx), Is.True);
+        Assert.That(_txPool.TryGetPendingBlobTransaction(secondTx.Hash!, out MempoolTransaction remainingTx), Is.True);
         Assert.That(remainingTx!.GasBottleneck, Is.Not.EqualTo(UInt256.Zero));
     }
 }

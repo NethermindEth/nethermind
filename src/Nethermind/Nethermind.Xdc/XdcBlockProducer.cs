@@ -102,8 +102,8 @@ internal class XdcBlockProducer(
     {
         BlockHeader header = PrepareBlockHeader(parent, payloadAttributes);
 
-        IEnumerable<Transaction> transactions = (flags & IBlockProducer.Flags.EmptyBlock) != 0 ?
-            Array.Empty<Transaction>() :
+        IEnumerable<MempoolTransaction> transactions = (flags & IBlockProducer.Flags.EmptyBlock) != 0 ?
+            Array.Empty<MempoolTransaction>() :
             TxSource.GetTransactions(parent, header, header.GasLimit, payloadAttributes, filterSource: false);
 
         return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);

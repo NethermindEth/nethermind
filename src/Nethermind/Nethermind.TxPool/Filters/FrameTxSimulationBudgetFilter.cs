@@ -14,7 +14,7 @@ namespace Nethermind.TxPool.Filters;
 /// that simulation then defers, or defer one the next head would admit. Local submissions are exempt.</remarks>
 internal sealed class FrameTxSimulationBudgetFilter(IFrameTxPrefixSimulator? simulator, ILogger logger) : IIncomingTxFilter
 {
-    public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
+    public AcceptTxResult Accept(MempoolTransaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
         if (simulator is null || !tx.SupportsFrames || (txHandlingOptions & TxHandlingOptions.PersistentBroadcast) != 0)
         {
@@ -23,7 +23,7 @@ internal sealed class FrameTxSimulationBudgetFilter(IFrameTxPrefixSimulator? sim
 
         // Cheapest test first: under spam nearly every arrival finds the budget spent, and the rest skip the resolver.
         if (!simulator.IsHeadBudgetSpent
-            || FrameTxPayerResolver.Resolve(tx, state.SenderAccount).Outcome != FrameTxPayerOutcome.RequiresSimulation)
+            || FrameTxPayerResolver.Resolve(tx.Transaction, state.SenderAccount).Outcome != FrameTxPayerOutcome.RequiresSimulation)
         {
             return AcceptTxResult.Accepted;
         }

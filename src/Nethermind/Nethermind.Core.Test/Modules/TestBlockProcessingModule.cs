@@ -18,7 +18,7 @@ public class TestBlockProcessingModule : Module
     protected override void Load(ContainerBuilder builder) => builder
             // Seems to be only used by block producer.
             .AddScoped<IGasLimitCalculator, TargetAdjustedGasLimitCalculator>()
-            .AddScoped<IComparer<Transaction>, ITransactionComparerProvider>(txComparer => txComparer.GetDefaultComparer())
+            .AddScoped<IComparer<MempoolTransaction>, ITransactionComparerProvider>(txComparer => txComparer.GetDefaultComparer())
 
             .AddSingleton<IBlockProductionPolicy, BlockProductionPolicy>()
             .AddSingleton<IBlockProducerFactory, AutoBlockProducerFactory<TestBlockProducer>>()

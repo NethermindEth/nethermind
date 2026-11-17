@@ -98,6 +98,7 @@ public partial class EthRpcModule(
     private readonly IReceiptFinder? _storedReceiptFinder = storedReceiptFinder;
     protected readonly ILogger _logger = logManager.GetClassLogger<EthRpcModule>();
     private static readonly TxDecoder TxRlpDecoder = TxDecoder.Instance;
+    private static readonly MempoolTxDecoder MempoolTxRlpDecoder = MempoolTxDecoder.Instance;
     protected readonly IGasPriceOracle _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
     private readonly IEthCapabilitiesProvider _capabilitiesProvider = capabilitiesProvider ?? throw new ArgumentNullException(nameof(capabilitiesProvider));
     protected readonly IEthSyncingInfo _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
@@ -473,8 +474,8 @@ public partial class EthRpcModule(
     {
         try
         {
-            Transaction tx = TxRlpDecoder.DecodeCompleteNotNull(transaction,
-                RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
+            MempoolTransaction tx = MempoolTxRlpDecoder.DecodeCompleteNotNull(transaction,
+                RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping);
             return await SendTx(tx);
         }
         catch (RlpReaderException)
@@ -513,13 +514,13 @@ public partial class EthRpcModule(
         if (feeCapError is not null)
             return feeCapError;
 
-        // Sidecar must be attached before encode; signing only sets tx.Signature so the wrapper survives.
+        ShardBlobNetworkWrapper? sidecar = null;
         if (rpcTx is BlobTransactionForRpc blobTx)
         {
             ProofVersion version = _blockFinder.Head?.Header is { } head
                 ? _specProvider.GetSpec(head).BlobProofVersion
                 : ProofVersion.V0;
-            if (blobTx.TryAttachSidecar(tx, version) is { } attachError)
+            if (blobTx.TryAttachSidecar(tx, version, out sidecar) is { } attachError)
                 return ResultWrapper<SignTransactionResult>.Fail(attachError, ErrorCodes.InvalidInput);
         }
 
@@ -536,21 +537,31 @@ public partial class EthRpcModule(
 
         if (_logger.IsInfo) _logger.Info($"eth_signTransaction signed tx {tx.Hash} from {tx.SenderAddress}");
 
-        return BuildSignedResult(tx);
+        return BuildSignedResult(new MempoolTransaction(tx, sidecar));
     }
 
     private bool HoldsAccount(Address? address) => address is not null && _wallet.HasKey(address);
 
-    private static ResultWrapper<SignTransactionResult> BuildSignedResult(Transaction tx)
+    private static TransactionForRpc ToRpcModel(Transaction tx, ShardBlobNetworkWrapper? sidecar, in TransactionForRpcContext? extraData)
     {
-        const RlpBehaviors encodeBehaviors = RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm;
-        ArrayPoolList<byte> buffer = TxDecoder.Instance.EncodeToArrayPoolList(tx, encodeBehaviors);
+        TransactionForRpc model = TransactionForRpc.FromTransaction(tx, extraData);
+        if (model is BlobTransactionForRpc blobModel)
+        {
+            blobModel.PopulateSidecar(sidecar);
+        }
+
+        return model;
+    }
+
+    private static ResultWrapper<SignTransactionResult> BuildSignedResult(MempoolTransaction tx)
+    {
+        ArrayPoolList<byte> buffer = MempoolTxDecoder.Instance.EncodeToArrayPoolList(tx, RlpBehaviors.SkipTypedWrapping);
         try
         {
             return ResultWrapper<SignTransactionResult>.Success(new SignTransactionResult
             {
                 Raw = buffer,
-                Tx = TransactionForRpc.FromTransaction(tx)
+                Tx = ToRpcModel(tx.Transaction, tx.NetworkWrapper, null)
             });
         }
         catch
@@ -619,15 +630,16 @@ public partial class EthRpcModule(
 
         tx.ChainId = chainId;
 
+        ShardBlobNetworkWrapper? sidecar = null;
         if (rpcTx is BlobTransactionForRpc { Blobs: not null } withSidecar
-            && withSidecar.TryAttachSidecar(tx, spec.BlobProofVersion) is { } attachError)
+            && withSidecar.TryAttachSidecar(tx, spec.BlobProofVersion, out sidecar) is { } attachError)
         {
             return ResultWrapper<FillTransactionResult>.Fail(attachError, ErrorCodes.InvalidInput);
         }
 
         return ResultWrapper<FillTransactionResult>.Success(new FillTransactionResult
         {
-            Tx = TransactionForRpc.FromTransaction(tx)
+            Tx = ToRpcModel(tx, sidecar, null)
         });
     }
 
@@ -766,7 +778,7 @@ public partial class EthRpcModule(
         return @default > 0 ? Math.Min(@default, max) : max;
     }
 
-    private async Task<ResultWrapper<Hash256>> SendTx(Transaction tx,
+    private async Task<ResultWrapper<Hash256>> SendTx(MempoolTransaction tx,
         TxHandlingOptions txHandlingOptions = TxHandlingOptions.None)
     {
         try
@@ -895,10 +907,8 @@ public partial class EthRpcModule(
         }
 
         RecoverTxSenderIfNeeded(transactionResult.Value.Transaction);
-        TransactionForRpcContext extraData = transactionResult.Value.ExtraData;
-        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(
-            transaction: transactionResult.Value.Transaction,
-            extraData: extraData);
+        // The execution-apis spec does not define sidecar fields for this method; they are filled only for a pending blob transaction.
+        TransactionForRpc transactionModel = ToRpcModel(transactionResult.Value.Transaction, transactionResult.Value.NetworkWrapper, transactionResult.Value.ExtraData);
         if (_logger.IsTrace) _logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
         return ResultWrapper<TransactionForRpc?>.Success(transactionModel);
     }
@@ -910,20 +920,18 @@ public partial class EthRpcModule(
             return ResultWrapper<ArrayPoolList<byte>?>.Success(null);
         }
 
-        Transaction transaction = transactionResult.Value.Transaction;
-
-        RlpBehaviors encodingSettings = RlpBehaviors.SkipTypedWrapping | (transaction.IsInMempoolForm() ? RlpBehaviors.InMempoolForm : RlpBehaviors.None);
-        return ResultWrapper<ArrayPoolList<byte>?>.Success(TxRlpDecoder.EncodeToArrayPoolList(transaction, encodingSettings));
+        MempoolTransaction transaction = new(transactionResult.Value.Transaction, transactionResult.Value.NetworkWrapper);
+        return ResultWrapper<ArrayPoolList<byte>?>.Success(MempoolTxRlpDecoder.EncodeToArrayPoolList(transaction, RlpBehaviors.SkipTypedWrapping));
     }
 
     public virtual ResultWrapper<TransactionForRpc[]> eth_pendingTransactions()
     {
-        Transaction[] transactions = _txPool.GetPendingTransactions();
+        MempoolTransaction[] transactions = _txPool.GetPendingTransactions();
         TransactionForRpc[] transactionsModels = new TransactionForRpc[transactions.Length];
         TransactionForRpcContext extraData = TransactionForRpcContext.ForPending(_specProvider, _blockFinder.Head?.Header, _secondsPerSlot);
         for (int i = 0; i < transactions.Length; i++)
         {
-            Transaction transaction = transactions[i];
+            Transaction transaction = transactions[i].Transaction;
             RecoverTxSenderIfNeeded(transaction);
             transactionsModels[i] = TransactionForRpc.FromTransaction(transaction, extraData);
             transactionsModels[i].BlockHash = Keccak.Zero;

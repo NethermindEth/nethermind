@@ -63,7 +63,7 @@ public interface ISparseBlobPoolPeerRegistry
 
     /// <summary>Records and validates an elided blob transaction announced by a peer.</summary>
     /// <returns>The admission result when submission completed; otherwise <c>null</c>.</returns>
-    AcceptTxResult? RecordTransaction(ISparseBlobPoolPeer peer, Transaction transaction);
+    AcceptTxResult? RecordTransaction(ISparseBlobPoolPeer peer, MempoolTransaction transaction);
 
     /// <summary>Records cells attributed to a peer for later validation and admission.</summary>
     /// <returns><c>true</c> when the cells were retained; otherwise <c>false</c>.</returns>

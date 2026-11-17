@@ -3055,12 +3055,12 @@ public partial class BlockProcessorTests
         IReleaseSpec spec = Osaka.Instance;
         ISpecProvider specProvider = new TestSingleReleaseSpecProvider(spec);
 
-        Transaction transactionWithNetworkForm = Build.A.Transaction
+        MempoolTransaction transactionWithNetworkForm = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(1, true, spec)
             .SignedAndResolved()
-            .TestObject;
+            .MempoolTestObject;
 
-        BlockProcessor.BlockProductionTransactionPicker txPicker = new(specProvider, transactionWithNetworkForm.GetLength(true) / 1.KiB - 1);
+        BlockProcessor.BlockProductionTransactionPicker txPicker = new(specProvider, transactionWithNetworkForm.GetLength() / 1.KiB - 1);
         BlockToProduce newBlock = new(Build.A.BlockHeader.WithExcessBlobGas(0).TestObject);
         WorldStateStab stateProvider = new();
 
@@ -3069,9 +3069,9 @@ public partial class BlockProcessorTests
         Transaction? addedTransaction = null;
         txPicker.AddingTransaction += (s, e) => addedTransaction = e.Transaction;
 
-        txPicker.CanAddTransaction(newBlock, transactionWithNetworkForm, new HashSet<Transaction>(), WorldStateStab.GetUntrackedReader(), newBlock.GasUsed, 0);
+        txPicker.CanAddTransaction(newBlock, transactionWithNetworkForm.Transaction, new HashSet<Transaction>(), WorldStateStab.GetUntrackedReader(), newBlock.GasUsed, 0);
 
-        Assert.That(addedTransaction, Is.EqualTo(transactionWithNetworkForm));
+        Assert.That(addedTransaction, Is.EqualTo(transactionWithNetworkForm.Transaction));
     }
 
     /// <summary>

@@ -25,14 +25,6 @@ public enum RlpBehaviors
     SkipTypedWrapping = 32,
 
     /// <summary>
-    /// Transactions like Shard Blob ones can be passed in mempool or execution payload version form
-    /// Execution payload form: TX_TYPE || [chain_id, nonce, ...];
-    /// Mempool form: TX_TYPE || [[chain_id, nonce, ...], &lt;mempool wrapper fields&gt; ].
-    /// See https://eips.ethereum.org/EIPS/eip-4844#networking
-    /// </summary>
-    InMempoolForm = 64,
-
-    /// <summary>
     /// Leaves <c>Transaction.Hash</c> and <c>BlockHeader.Hash</c> unset instead of hashing the decoded bytes. Set it when the
     /// caller already knows the hashes, as a database read keyed by the hash does, or does not need them.
     /// <see cref="BlockDecoder"/> applies this only to the block's own header, preserving transaction and uncle hashes.

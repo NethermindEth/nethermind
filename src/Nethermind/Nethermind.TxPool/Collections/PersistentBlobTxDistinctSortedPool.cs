@@ -27,11 +27,11 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
     private const int MaxFullBlobCandidatesPerHash = 4;
     private readonly ITxStorage _blobTxStorage;
     private readonly IBlobTxMetadataStorage? _blobTxMetadataStorage;
-    private readonly LruCache<ValueHash256, Transaction> _blobTxCache;
-    private readonly LruCache<ValueHash256, Transaction> _blobTxMetadataCache;
+    private readonly LruCache<ValueHash256, MempoolTransaction> _blobTxCache;
+    private readonly LruCache<ValueHash256, MempoolTransaction> _blobTxMetadataCache;
     private readonly ILogger _logger;
     private readonly Dictionary<ValueHash256, PendingBlobUpdate> _pendingBlobUpdates = [];
-    private readonly Dictionary<ValueHash256, Transaction> _unpersistableBlobUpdates = [];
+    private readonly Dictionary<ValueHash256, MempoolTransaction> _unpersistableBlobUpdates = [];
     private readonly HashSet<ValueHash256> _metadataFallbackReads = [];
     private readonly Dictionary<ValueHash256, BatchedDeletes> _batchedDeletes = [];
     private bool _batchStorageDeletes;
@@ -47,7 +47,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
     private long _nextBlobUpdateToken;
     private int _disposed;
 
-    public PersistentBlobTxDistinctSortedPool(ITxStorage blobTxStorage, ITxPoolConfig txPoolConfig, IComparer<Transaction> comparer, ILogManager logManager)
+    public PersistentBlobTxDistinctSortedPool(ITxStorage blobTxStorage, ITxPoolConfig txPoolConfig, IComparer<MempoolTransaction> comparer, ILogManager logManager)
         : this(blobTxStorage, txPoolConfig, comparer, logManager, TimeProvider.System, null)
     {
     }
@@ -55,7 +55,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
     internal PersistentBlobTxDistinctSortedPool(
         ITxStorage blobTxStorage,
         ITxPoolConfig txPoolConfig,
-        IComparer<Transaction> comparer,
+        IComparer<MempoolTransaction> comparer,
         ILogManager logManager,
         TimeProvider timeProvider)
         : this(blobTxStorage, txPoolConfig, comparer, logManager, timeProvider, null)
@@ -65,7 +65,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
     internal PersistentBlobTxDistinctSortedPool(
         ITxStorage blobTxStorage,
         ITxPoolConfig txPoolConfig,
-        IComparer<Transaction> comparer,
+        IComparer<MempoolTransaction> comparer,
         ILogManager logManager,
         TimeProvider timeProvider,
         Action? onRetainedDeletesFlushed)
@@ -89,13 +89,13 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         int numberOfTxsInDb = 0;
         int numberOfBlobsInDb = 0;
         long startTime = Stopwatch.GetTimestamp();
-        foreach (LightTransaction lightBlobTx in blobTxStorage.GetAll())
+        foreach (MempoolTransaction lightBlobTx in blobTxStorage.GetAll())
         {
             if (lightBlobTx.SenderAddress is not null
                 && base.InsertCore(lightBlobTx.Hash, lightBlobTx, lightBlobTx.SenderAddress))
             {
                 numberOfTxsInDb++;
-                numberOfBlobsInDb += lightBlobTx.GetBlobCount();
+                numberOfBlobsInDb += lightBlobTx.Transaction.GetBlobCount();
             }
         }
 
@@ -107,11 +107,18 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         }
     }
 
-    protected override bool InsertCore(ValueHash256 hash, Transaction fullBlobTx, AddressAsKey groupKey)
+    protected override bool InsertCore(ValueHash256 hash, MempoolTransaction value, AddressAsKey groupKey)
     {
-        if (base.InsertCore(hash, new LightTransaction(fullBlobTx), groupKey))
+        // The full transaction goes to the cache and storage, not to the in-memory map of the base pool.
+        if (value.Transaction is not LightTransaction { PendingInsert: { } fullBlobTx } lightTx)
         {
-            _blobTxCache.Set(fullBlobTx.Hash, fullBlobTx);
+            return base.InsertCore(hash, value, groupKey);
+        }
+
+        lightTx.PendingInsert = null;
+        if (base.InsertCore(hash, value, groupKey))
+        {
+            _blobTxCache.Set(hash, fullBlobTx);
             _blobTxMetadataCache.Set(hash, BlobTransactionPayload.Elide(fullBlobTx));
             if (_pendingBlobUpdates.TryGetValue(hash, out PendingBlobUpdate? pendingUpdate))
             {
@@ -144,11 +151,11 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         return false;
     }
 
-    protected override bool TryGetValueNonLocked(ValueHash256 hash, [NotNullWhen(true)] out Transaction? fullBlobTx)
+    protected override bool TryGetMempoolTransactionNonLocked(ValueHash256 hash, [NotNullWhen(true)] out MempoolTransaction? fullBlobTx)
     {
         // Firstly check if tx is present in in-memory collection of light blob txs (without actual blobs).
         // If not, just return false
-        if (base.TryGetValueNonLocked(hash, out Transaction? lightTx))
+        if (base.TryGetValueNonLocked(hash, out MempoolTransaction? lightTx))
         {
             if (_pendingBlobUpdates.TryGetValue(hash, out PendingBlobUpdate? pendingUpdate)
                 && pendingUpdate.Transaction is not null)
@@ -177,7 +184,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         return false;
     }
 
-    protected override bool TryGetValueForCellMerge(ValueHash256 hash, [NotNullWhen(true)] out Transaction? blobTx)
+    protected override bool TryGetValueForCellMerge(ValueHash256 hash, [NotNullWhen(true)] out MempoolTransaction? blobTx)
         => TryGetFullBlobTransactionOutsideLock(hash, out blobTx);
 
     /// <inheritdoc/>
@@ -189,14 +196,14 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
     {
         networkForm = null;
         using McsLock.Disposable lockRelease = Lock.Acquire();
-        if (!base.TryGetValueNonLocked(hash, out Transaction? lightTx))
+        if (!base.TryGetValueNonLocked(hash, out MempoolTransaction? lightTx))
         {
             availableMask = default;
             return false;
         }
 
         availableMask = GetAvailableCellMask(lightTx);
-        if (lightTx is LightTransaction { Type: TxType.Blob, BlobCellMask.IsFull: true }
+        if (lightTx.Transaction is LightTransaction { Type: TxType.Blob, BlobCellMask.IsFull: true }
             && !(_pendingBlobUpdates.TryGetValue(hash, out PendingBlobUpdate? pendingUpdate) && pendingUpdate.Transaction is not null)
             && !_blobTxCache.Contains(hash)
             && _blobTxStorage is IBlobTxNetworkFormStorage storage)
@@ -213,9 +220,9 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
     /// in-progress storage read, which keeps the read de-duplicated without blocking a pool thread.
     /// The miss is safe: callers treat it as "not in the pool yet" and retry on a later announcement.
     /// </remarks>
-    internal override bool TryGetValueWithoutBlobs(ValueHash256 hash, [NotNullWhen(true)] out Transaction? blobTx)
+    internal override bool TryGetValueWithoutBlobs(ValueHash256 hash, [NotNullWhen(true)] out MempoolTransaction? blobTx)
     {
-        Transaction? lightTx;
+        MempoolTransaction? lightTx;
         BlobCellMask lightCellMask;
         using (McsLock.Disposable lockRelease = Lock.Acquire())
         {
@@ -230,7 +237,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
                 return true;
             }
 
-            lightCellMask = lightTx is LightTransaction lightBlobTx
+            lightCellMask = lightTx.Transaction is LightTransaction lightBlobTx
                 ? lightBlobTx.BlobCellMask
                 : BlobCellMask.Empty;
         }
@@ -241,7 +248,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
             return false;
         }
 
-        if (_blobTxMetadataStorage?.TryGetWithoutBlobs(hash, lightTx.SenderAddress, out Transaction? loadedTx) == true
+        if (_blobTxMetadataStorage?.TryGetWithoutBlobs(hash, lightTx.SenderAddress, out MempoolTransaction? loadedTx) == true
             && loadedTx is not null)
         {
             return TryCompleteValueWithoutBlobsRead(hash, lightTx, lightCellMask, loadedTx, out blobTx);
@@ -249,7 +256,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
 
         using (McsLock.Disposable lockRelease = Lock.Acquire())
         {
-            if (!base.TryGetValueNonLocked(hash, out Transaction? currentLightTx))
+            if (!base.TryGetValueNonLocked(hash, out MempoolTransaction? currentLightTx))
             {
                 blobTx = default;
                 return false;
@@ -300,13 +307,13 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
 
     private bool TryCompleteValueWithoutBlobsRead(
         ValueHash256 hash,
-        Transaction lightTx,
+        MempoolTransaction lightTx,
         BlobCellMask lightCellMask,
-        Transaction loadedTx,
-        [NotNullWhen(true)] out Transaction? blobTx)
+        MempoolTransaction loadedTx,
+        [NotNullWhen(true)] out MempoolTransaction? blobTx)
     {
         using McsLock.Disposable lockRelease = Lock.Acquire();
-        if (!base.TryGetValueNonLocked(hash, out Transaction? currentLightTx))
+        if (!base.TryGetValueNonLocked(hash, out MempoolTransaction? currentLightTx))
         {
             blobTx = default;
             return false;
@@ -331,7 +338,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         return true;
     }
 
-    private void TryPersistMetadataRecord(Transaction transaction)
+    private void TryPersistMetadataRecord(MempoolTransaction transaction)
     {
         try
         {
@@ -343,7 +350,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         }
     }
 
-    private bool TryGetCurrentValueWithoutBlobsNonLocked(ValueHash256 hash, [NotNullWhen(true)] out Transaction? blobTx)
+    private bool TryGetCurrentValueWithoutBlobsNonLocked(ValueHash256 hash, [NotNullWhen(true)] out MempoolTransaction? blobTx)
     {
         if (_blobTxMetadataCache.TryGet(hash, out blobTx) && blobTx is not null)
         {
@@ -369,13 +376,13 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         return false;
     }
 
-    private static bool MatchesLightTransactionSnapshot(Transaction currentLightTx, Transaction lightTx, BlobCellMask lightCellMask) =>
+    private static bool MatchesLightTransactionSnapshot(MempoolTransaction currentLightTx, MempoolTransaction lightTx, BlobCellMask lightCellMask) =>
         ReferenceEquals(currentLightTx, lightTx)
         && currentLightTx.Timestamp == lightTx.Timestamp
-        && (currentLightTx is not LightTransaction currentLightBlobTx
+        && (currentLightTx.Transaction is not LightTransaction currentLightBlobTx
             || currentLightBlobTx.BlobCellMask == lightCellMask);
 
-    protected override bool TryGetValueForCellMergeNonLocked(ValueHash256 hash, [NotNullWhen(true)] out Transaction? blobTx)
+    protected override bool TryGetValueForCellMergeNonLocked(ValueHash256 hash, [NotNullWhen(true)] out MempoolTransaction? blobTx)
     {
         if (!base.TryGetValueNonLocked(hash, out _))
         {
@@ -400,7 +407,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
     {
         int found = 0;
         using ArrayPoolListRef<TxLookupKey> dbKeys = new(requestedBlobVersionedHashes.Length);
-        using ArrayPoolListRef<Transaction> dbLightTransactions = new(requestedBlobVersionedHashes.Length);
+        using ArrayPoolListRef<MempoolTransaction> dbLightTransactions = new(requestedBlobVersionedHashes.Length);
         using ArrayPoolListRef<int> missOutputIndex = new(requestedBlobVersionedHashes.Length);
         using ArrayPoolListRef<int> missBlobIndex = new(requestedBlobVersionedHashes.Length);
 
@@ -419,11 +426,11 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
                         continue;
 
                     // Try cache first — on hit, populate and stop searching for this blob hash
-                    Transaction? cachedTx = _pendingBlobUpdates.TryGetValue(hash, out PendingBlobUpdate? pendingUpdate)
+                    MempoolTransaction? cachedTx = _pendingBlobUpdates.TryGetValue(hash, out PendingBlobUpdate? pendingUpdate)
                         ? pendingUpdate.Transaction
-                        : null;
+                        : default;
                     if ((cachedTx is not null || _blobTxCache.TryGet(hash, out cachedTx))
-                        && cachedTx.NetworkWrapper is ShardBlobNetworkWrapper { Version: ProofVersion.V1 } cachedWrapper
+                        && cachedTx?.NetworkWrapper is ShardBlobNetworkWrapper { Version: ProofVersion.V1 } cachedWrapper
                         && cachedWrapper.HasFullBlobs())
                     {
                         blobs[i] = cachedWrapper.Blobs[indexOfBlob];
@@ -447,7 +454,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
                     if (TryGetFullBlobCandidateNonLocked(
                         hash,
                         requestedBlobVersionedHash,
-                        out Transaction? lightTx,
+                        out MempoolTransaction? lightTx,
                         out int indexOfBlob))
                     {
                         dbKeys.Add(new TxLookupKey(hash, lightTx.SenderAddress!, lightTx.Timestamp));
@@ -467,7 +474,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         int missCount = dbKeys.Count;
         if (missCount > 0)
         {
-            Transaction?[] dbResults = ArrayPool<Transaction?>.Shared.Rent(missCount);
+            MempoolTransaction[] dbResults = ArrayPool<MempoolTransaction>.Shared.Rent(missCount);
             try
             {
                 Array.Clear(dbResults, 0, missCount);
@@ -483,18 +490,18 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
                     }
 
                     TxLookupKey dbKey = dbKeys[m];
-                    if (!base.TryGetValueNonLocked(dbKey.Hash, out Transaction? currentLightTx)
+                    if (!base.TryGetValueNonLocked(dbKey.Hash, out MempoolTransaction? currentLightTx)
                         || !ReferenceEquals(currentLightTx, dbLightTransactions[m])
                         || currentLightTx.SenderAddress != dbKey.Sender
                         || currentLightTx.Timestamp != dbKey.Timestamp
-                        || currentLightTx is not LightTransaction currentLightBlobTx
+                        || currentLightTx.Transaction is not LightTransaction currentLightBlobTx
                         || currentLightBlobTx.ProofVersion != ProofVersion.V1
                         || !currentLightBlobTx.BlobCellMask.IsFull)
                     {
                         continue;
                     }
 
-                    Transaction? fullTx;
+                    MempoolTransaction? fullTx;
                     bool cacheStorageResult = false;
                     if (_pendingBlobUpdates.TryGetValue(dbKey.Hash, out PendingBlobUpdate? pendingUpdate)
                         && pendingUpdate.Transaction is not null)
@@ -532,14 +539,14 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
             }
             finally
             {
-                ArrayPool<Transaction?>.Shared.Return(dbResults, clearArray: true);
+                ArrayPool<MempoolTransaction>.Shared.Return(dbResults, clearArray: true);
             }
         }
 
         return found;
     }
 
-    private void ReadDistinctBlobTransactions(TxLookupKey[] keys, int count, Transaction?[] results)
+    private void ReadDistinctBlobTransactions(TxLookupKey[] keys, int count, MempoolTransaction[] results)
     {
         if (count == 1)
         {
@@ -611,11 +618,11 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
     private bool TryGetFullBlobCandidateNonLocked(
         Hash256 hash,
         byte[] requestedBlobVersionedHash,
-        [NotNullWhen(true)] out Transaction? lightTx,
+        [NotNullWhen(true)] out MempoolTransaction? lightTx,
         out int blobIndex)
     {
         if (!base.TryGetValueNonLocked(hash, out lightTx)
-            || lightTx is not LightTransaction { ProofVersion: ProofVersion.V1, BlobCellMask.IsFull: true }
+            || lightTx.Transaction is not LightTransaction { ProofVersion: ProofVersion.V1, BlobCellMask.IsFull: true }
             || lightTx.BlobVersionedHashes is not { Length: > 0 } blobVersionedHashes)
         {
             blobIndex = -1;
@@ -638,7 +645,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
 
     public override bool TryGetCells(ValueHash256 hash, BlobCellMask requestedMask, out BlobCellMask availableMask, out byte[][]? cells)
     {
-        if (TryGetFullBlobTransactionOutsideLock(hash, out Transaction? blobTx)
+        if (TryGetFullBlobTransactionOutsideLock(hash, out MempoolTransaction? blobTx)
             && blobTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper
             && BlobCellsHelper.TryGetFlattenedCells(wrapper, requestedMask, out byte[][] flattenedCells))
         {
@@ -675,9 +682,9 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
             BlobCellMask capturedMask = BlobCellMask.Empty;
             foreach (Hash256 hash in CollectionsMarshal.AsSpan(txHashes))
             {
-                if (!base.TryGetValueNonLocked(hash, out Transaction? lightTx)
-                    || lightTx is not LightTransaction { ProofVersion: ProofVersion.V1 } lightBlobTx
-                    || !TryFindBlobIndex(lightTx, requestedBlobVersionedHash, out int blobIndex))
+                if (!base.TryGetValueNonLocked(hash, out MempoolTransaction? lightTx)
+                    || lightTx.Transaction is not LightTransaction { ProofVersion: ProofVersion.V1 } lightBlobTx
+                    || !TryFindBlobIndex(lightTx.Transaction, requestedBlobVersionedHash, out int blobIndex))
                 {
                     continue;
                 }
@@ -719,7 +726,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
             }
 
             candidateLoads++;
-            if (!TryGetFullBlobTransactionOutsideLock(candidate.Hash, out Transaction? blobTx)
+            if (!TryGetFullBlobTransactionOutsideLock(candidate.Hash, out MempoolTransaction? blobTx)
                 || blobTx.NetworkWrapper is not ShardBlobNetworkWrapper { Version: ProofVersion.V1 } wrapper)
             {
                 continue;
@@ -738,9 +745,9 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         return TryBuildBlobCellsAndProofsResponse(loadedCandidates, requestedMask, out availableMask, out cells, out proofs);
     }
 
-    private bool TryGetFullBlobTransactionOutsideLock(ValueHash256 hash, [NotNullWhen(true)] out Transaction? fullBlobTx)
+    private bool TryGetFullBlobTransactionOutsideLock(ValueHash256 hash, [NotNullWhen(true)] out MempoolTransaction? fullBlobTx)
     {
-        Transaction? lightTx;
+        MempoolTransaction? lightTx;
         BlobCellMask lightCellMask;
         using (McsLock.Disposable lockRelease = Lock.Acquire())
         {
@@ -762,7 +769,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
                 return true;
             }
 
-            lightCellMask = lightTx is LightTransaction lightBlobTx
+            lightCellMask = lightTx.Transaction is LightTransaction lightBlobTx
                 ? lightBlobTx.BlobCellMask
                 : BlobCellMask.Empty;
         }
@@ -776,7 +783,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
 
         using (McsLock.Disposable lockRelease = Lock.Acquire())
         {
-            if (!base.TryGetValueNonLocked(hash, out Transaction? currentLightTx))
+            if (!base.TryGetValueNonLocked(hash, out MempoolTransaction? currentLightTx))
             {
                 fullBlobTx = default;
                 return false;
@@ -790,7 +797,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
                 return true;
             }
 
-            if (_blobTxCache.TryGet(hash, out Transaction? currentCachedTx))
+            if (_blobTxCache.TryGet(hash, out MempoolTransaction? currentCachedTx))
             {
                 fullBlobTx = currentCachedTx;
                 return true;
@@ -798,7 +805,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
 
             if (!ReferenceEquals(currentLightTx, lightTx)
                 || currentLightTx.Timestamp != lightTx.Timestamp
-                || currentLightTx is LightTransaction currentLightBlobTx
+                || currentLightTx.Transaction is LightTransaction currentLightBlobTx
                     && currentLightBlobTx.BlobCellMask != lightCellMask)
             {
                 fullBlobTx = default;
@@ -816,13 +823,13 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
     /// EIP-8141 resolves the payer at admission and records it on the light record, but the wire form kept in
     /// storage has no room for it, so a reloaded copy would otherwise read as having resolved none.
     /// </remarks>
-    private static void RestoreAdmissionMetadata(Transaction fullBlobTx, Transaction lightTx)
+    private static void RestoreAdmissionMetadata(MempoolTransaction fullBlobTx, MempoolTransaction lightTx)
     {
         fullBlobTx.PayerAddress = lightTx.PayerAddress;
         fullBlobTx.PayerExposure = lightTx.PayerExposure;
     }
 
-    protected override bool Remove(ValueHash256 hash, out Transaction? tx)
+    protected override bool Remove(ValueHash256 hash, out MempoolTransaction? tx)
     {
         if (base.Remove(hash, out tx))
         {
@@ -833,7 +840,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
             {
                 hasPendingUpdate = true;
                 pendingUpdate.Token = ++_nextBlobUpdateToken;
-                pendingUpdate.Transaction = null;
+                pendingUpdate.Transaction = default;
                 pendingUpdate.Timestamp = tx?.Timestamp ?? pendingUpdate.Timestamp;
                 pendingUpdate.DeleteTimestamps.Add(pendingUpdate.Timestamp);
                 pendingUpdate.RetryCount = 0;
@@ -958,18 +965,13 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         return !hasUnflushedDelete;
     }
 
-    protected override void OnBlobTransactionUpdatedNonLocked(Transaction blobTx)
+    protected override void OnBlobTransactionUpdatedNonLocked(MempoolTransaction blobTx)
     {
-        // Keep the in-memory light entry's metadata in sync so announcements reflect
-        // merged cells without loading the full transaction.
-        TryGetBlobTxSortingEquivalent(blobTx.Hash!, out Transaction? lightTx);
-        if (lightTx is LightTransaction light)
-        {
-            light.UpdateBlobPoolMetadata(blobTx);
-        }
-
-        _blobTxCache.Set(blobTx.Hash, blobTx);
         ValueHash256 hash = blobTx.Hash!.ValueHash256;
+        UpdateLightMetadataNonLocked(hash, blobTx);
+        TryGetBlobTxSortingEquivalent(blobTx.Hash!, out MempoolTransaction? lightTx);
+
+        _blobTxCache.Set(hash, blobTx);
         if (!_pendingBlobUpdates.ContainsKey(hash) && _pendingBlobUpdates.Count >= _maxPendingBlobUpdates)
         {
             if (lightTx is not null)
@@ -989,8 +991,8 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         bool removeUnpersistableTransaction;
         using (McsLock.Disposable lockRelease = Lock.Acquire())
         {
-            removeUnpersistableTransaction = _unpersistableBlobUpdates.Remove(hash, out Transaction? failedGeneration)
-                && base.TryGetValueNonLocked(hash, out Transaction? currentLightTx)
+            removeUnpersistableTransaction = _unpersistableBlobUpdates.Remove(hash, out MempoolTransaction? failedGeneration)
+                && base.TryGetValueNonLocked(hash, out MempoolTransaction? currentLightTx)
                 && ReferenceEquals(currentLightTx, failedGeneration);
             if (removeUnpersistableTransaction)
             {
@@ -1030,7 +1032,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
             while (true)
             {
                 long token;
-                Transaction? transaction;
+                MempoolTransaction? transaction;
                 UInt256[] deleteTimestamps;
                 using (McsLock.Disposable lockRelease = Lock.Acquire())
                 {
@@ -1128,7 +1130,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         return retryAt;
     }
 
-    private void PersistBlobTransaction(Transaction transaction, HashSet<UInt256> obsoleteTimestamps)
+    private void PersistBlobTransaction(MempoolTransaction transaction, HashSet<UInt256> obsoleteTimestamps)
     {
         using ArrayPoolSpan<UInt256> timestamps = new(obsoleteTimestamps.Count);
         int index = 0;
@@ -1140,7 +1142,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         PersistBlobTransaction(transaction, timestamps);
     }
 
-    private void PersistBlobTransaction(Transaction transaction, scoped ReadOnlySpan<UInt256> obsoleteTimestamps)
+    private void PersistBlobTransaction(MempoolTransaction transaction, scoped ReadOnlySpan<UInt256> obsoleteTimestamps)
     {
         if (_blobTxStorage is IAtomicBlobTxStorage batchStorage)
         {
@@ -1178,7 +1180,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         }
     }
 
-    private void PersistInsertedBlobTransaction(Transaction transaction)
+    private void PersistInsertedBlobTransaction(MempoolTransaction transaction)
     {
         ValueHash256 hash = transaction.Hash!.ValueHash256;
         if (!_batchedDeletes.TryGetValue(hash, out BatchedDeletes obsoleteTransactions))
@@ -1322,24 +1324,22 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         }
     }
 
-    private PendingBlobUpdate TrackBlobUpdateNonLocked(Transaction blobTx)
+    private PendingBlobUpdate TrackBlobUpdateNonLocked(MempoolTransaction tx)
     {
-        Transaction snapshot = new();
-        blobTx.CopyTo(snapshot, copyHash: true);
         long token = ++_nextBlobUpdateToken;
-        if (_pendingBlobUpdates.TryGetValue(blobTx.Hash!, out PendingBlobUpdate? pendingUpdate))
+        if (_pendingBlobUpdates.TryGetValue(tx.Hash!, out PendingBlobUpdate? pendingUpdate))
         {
             pendingUpdate.Token = token;
-            pendingUpdate.Transaction = snapshot;
-            pendingUpdate.Timestamp = blobTx.Timestamp;
+            pendingUpdate.Transaction = tx;
+            pendingUpdate.Timestamp = tx.Timestamp;
             pendingUpdate.RetryCount = 0;
             pendingUpdate.NextRetryAt = null;
             return pendingUpdate;
         }
 
-        PendingBlobUpdate newPendingUpdate = new(token, snapshot, blobTx.Timestamp);
+        PendingBlobUpdate newPendingUpdate = new(token, tx, tx.Timestamp);
         // The writer consumes these deletes atomically with its own write before clearing the retained set.
-        if (_batchedDeletes.TryGetValue(blobTx.Hash!.ValueHash256, out BatchedDeletes deletes))
+        if (_batchedDeletes.TryGetValue(tx.Hash!.ValueHash256, out BatchedDeletes deletes))
         {
             newPendingUpdate.DeleteTimestamps.Add(deletes.First.Timestamp);
             if (deletes.Additional is { } additional)
@@ -1351,7 +1351,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
             }
         }
 
-        _pendingBlobUpdates[blobTx.Hash!] = newPendingUpdate;
+        _pendingBlobUpdates[tx.Hash!] = newPendingUpdate;
         return newPendingUpdate;
     }
 
@@ -1398,10 +1398,10 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         }
     }
 
-    private sealed class PendingBlobUpdate(long token, Transaction? transaction, UInt256 timestamp)
+    private sealed class PendingBlobUpdate(long token, MempoolTransaction transaction, UInt256 timestamp)
     {
         public long Token { get; set; } = token;
-        public Transaction? Transaction { get; set; } = transaction;
+        public MempoolTransaction? Transaction { get; set; } = transaction;
         public UInt256 Timestamp { get; set; } = timestamp;
         public HashSet<UInt256> DeleteTimestamps { get; } = [];
         public bool WriterActive { get; set; }

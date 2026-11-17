@@ -41,7 +41,7 @@ internal sealed class FrameTxWidthFilter(
     ConcurrentDictionary<AddressAsKey, ValueHash256> senderBaselines,
     ILogger logger) : IIncomingTxFilter
 {
-    public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
+    public AcceptTxResult Accept(MempoolTransaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
         if (!txPoolConfig.FrameTxWidthEnabled || !tx.SupportsFrames)
         {
@@ -49,7 +49,7 @@ internal sealed class FrameTxWidthFilter(
         }
 
         bool beyondPaymasterBaseline = state.BeyondPaymasterBaseline;
-        bool keyed = KeyedNonceManager.UsesKeyedNonce(tx);
+        bool keyed = KeyedNonceManager.UsesKeyedNonce(tx.Transaction);
         if (!keyed && !beyondPaymasterBaseline)
         {
             return AcceptTxResult.Accepted;
@@ -57,7 +57,7 @@ internal sealed class FrameTxWidthFilter(
 
         Address sender = tx.SenderAddress!;
         int pending = keyed ? PendingKeyedFrameTxs(sender) : 0;
-        Transaction? replaced = PendingReplacement.Find(tx, standardPool, blobPool);
+        MempoolTransaction? replaced = PendingReplacement.Find(tx.Transaction, standardPool, blobPool);
         bool beyondSenderBaseline = keyed;
         if (keyed && (replaced is null
                 ? pending < FrameTxWidthCharge.Eip8141PublicMempoolBaseline
@@ -86,7 +86,7 @@ internal sealed class FrameTxWidthFilter(
             return AcceptTxResult.FeeTooLow.WithMessage($"MaxFeePerGas needs to be at least the next block's base fee ({nextBaseFee}) beyond the baseline, is {tx.MaxFeePerGas}.");
         }
 
-        UInt256 cost = FrameTxWidthCharge.For(tx, state.HeadSpec, txPoolConfig.FrameTxWidthSafetyFactorPermille);
+        UInt256 cost = FrameTxWidthCharge.For(tx.Transaction, state.HeadSpec, txPoolConfig.FrameTxWidthSafetyFactorPermille);
         if (beyondSenderBaseline && !senderWidth.TrySpend(sender, cost))
         {
             Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxWidthUnmet);
@@ -107,9 +107,9 @@ internal sealed class FrameTxWidthFilter(
         return count;
     }
 
-    private static bool CountKeyedFrameTx(Transaction pending, ref int count)
+    private static bool CountKeyedFrameTx(MempoolTransaction pending, ref int count)
     {
-        if (pending.SupportsFrames && KeyedNonceManager.UsesKeyedNonce(pending))
+        if (pending.Transaction.SupportsFrames && KeyedNonceManager.UsesKeyedNonce(pending.Transaction))
         {
             count++;
         }

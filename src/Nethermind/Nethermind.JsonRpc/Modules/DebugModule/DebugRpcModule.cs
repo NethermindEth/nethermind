@@ -43,7 +43,6 @@ using Nethermind.Core.Messages;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Config;
-using Nethermind.TxPool;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
@@ -71,7 +70,7 @@ public class DebugRpcModule(
     : IDebugRpcModule
 {
     private readonly ILogger _logger = logManager.GetClassLogger<DebugRpcModule>();
-    private static readonly TxDecoder TxRlpDecoder = TxDecoder.Instance;
+    private static readonly MempoolTxDecoder TxRlpDecoder = MempoolTxDecoder.Instance;
     private static readonly JsonSerializerOptions UnchangedDictionaryKeyOptions = new(EthereumJsonSerializer.JsonOptionsIndented) { DictionaryKeyPolicy = null };
     // Registry-resolved so AuRa chains encode/decode the block seal (step + signature) correctly.
     private readonly IRlpDecoder<Block> _blockDecoder = Rlp.GetDecoderOrThrow<Block>();
@@ -1027,15 +1026,14 @@ public class DebugRpcModule(
 
     public ResultWrapper<ArrayPoolList<byte>> debug_getRawTransaction(Hash256 transactionHash)
     {
-        Transaction? transaction = debugBridge.GetTransactionFromHash(transactionHash);
+        MempoolTransaction? transaction = debugBridge.GetTransactionFromHash(transactionHash);
         if (transaction is null)
         {
             // execution-apis types the result as bytes with no not-found null, so an unknown transaction is empty bytes.
             return ResultWrapper<ArrayPoolList<byte>>.Success(ArrayPoolList<byte>.Empty());
         }
 
-        RlpBehaviors encodingSettings = RlpBehaviors.SkipTypedWrapping | (transaction.IsInMempoolForm() ? RlpBehaviors.InMempoolForm : RlpBehaviors.None);
-        return ResultWrapper<ArrayPoolList<byte>>.Success(TxRlpDecoder.EncodeToArrayPoolList(transaction, encodingSettings));
+        return ResultWrapper<ArrayPoolList<byte>>.Success(TxRlpDecoder.EncodeToArrayPoolList(transaction, RlpBehaviors.SkipTypedWrapping));
     }
 
     public ResultWrapper<RawReceiptsResult> debug_getRawReceipts(BlockParameter blockParameter)

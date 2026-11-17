@@ -76,7 +76,8 @@ public interface IDebugBridge
     public IEnumerable<Block> GetBadBlocks();
     TxReceipt[] GetReceiptsForBlock(Block block);
     /// <summary>Returns the mined transaction with the given hash or, failing that, the pending one from the transaction pool.</summary>
-    Transaction? GetTransactionFromHash(Hash256 hash);
+    /// <returns>The transaction, or <see langword="default"/> when neither has it.</returns>
+    MempoolTransaction? GetTransactionFromHash(Hash256 hash);
     Hash256? GetTransactionBlockHash(Hash256 transactionHash);
     IEnumerable<IEnumerable<GethLikeTxTrace>> GetBundleTraces(TransactionBundle[] bundles, BlockParameter blockParameter, ulong? gasCap, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
 }

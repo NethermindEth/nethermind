@@ -198,9 +198,9 @@ public partial class FlashbotsModuleTests
             Build.A.Withdrawal.WithIndex(1).WithValidatorIndex(1).WithAmount(100).WithRecipient(TestKeysAndAddress.TestAddr).TestObject
         ];
 
-        Transaction[] transactions = [
-            Build.A.Transaction.WithShardBlobTxTypeAndFields(1, spec: Prague.Instance).WithMaxFeePerGas(1.GWei).WithMaxPriorityFeePerGas(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
-            Build.A.Transaction.WithShardBlobTxTypeAndFields(2, spec: Osaka.Instance).WithMaxFeePerGas(1.GWei).WithMaxPriorityFeePerGas(0).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
+        MempoolTransaction[] transactions = [
+            Build.A.Transaction.WithShardBlobTxTypeAndFields(1, spec: Prague.Instance).WithMaxFeePerGas(1.GWei).WithMaxPriorityFeePerGas(1).SignedAndResolved(TestItem.PrivateKeyA).MempoolTestObject,
+            Build.A.Transaction.WithShardBlobTxTypeAndFields(2, spec: Osaka.Instance).WithMaxFeePerGas(1.GWei).WithMaxPriorityFeePerGas(0).SignedAndResolved(TestItem.PrivateKeyB).MempoolTestObject,
             Build.A.Transaction
                 .WithMaxFeePerGas(0)
                 .WithMaxPriorityFeePerGas(0)
@@ -215,7 +215,7 @@ public partial class FlashbotsModuleTests
         Hash256 expectedBlockHash = new("0x5444e83525cda76e1de787ad6a2b81918efdaf0f7ab18b446cf59f57a9479d42");
         string stateRoot = "0xa272b2f949e4a0e411c9b45542bd5d0ef3c311b5f26c4ed6b7a8d4f605a91154";
 
-        return new(
+        return new BlockToProduce(
             new(
                 currentHeader.Hash,
                 Keccak.OfAnEmptySequenceRlp,

@@ -8,11 +8,11 @@ namespace Nethermind.TxPool.Filters;
 
 internal sealed class BlobProofsTxFilter : IIncomingTxFilter
 {
-    public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
+    public AcceptTxResult Accept(MempoolTransaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
         // EIP-8141: a blob-carrying frame tx (type 6) shares the EIP-7594 wrapper with type-3, and
         // MalformedTxFilter skips proofs, so gating on the type alone would leave type-6 unverified.
-        if (tx is not { NetworkWrapper: ShardBlobNetworkWrapper wrapper } || !(tx.SupportsBlobs || tx.CarriesBlobs))
+        if (state.NetworkWrapper is not ShardBlobNetworkWrapper wrapper || !(tx.Transaction.SupportsBlobs || tx.Transaction.CarriesBlobs))
         {
             return AcceptTxResult.Accepted;
         }
@@ -42,8 +42,7 @@ internal sealed class BlobProofsTxFilter : IIncomingTxFilter
                 return AcceptTxResult.InvalidBlobProofs;
             }
 
-            tx.NetworkWrapper = recoveredWrapper;
-            tx.ClearLengthCache();
+            state.NetworkWrapper = recoveredWrapper;
         }
 
         return AcceptTxResult.Accepted;

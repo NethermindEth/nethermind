@@ -221,7 +221,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_get_raw_transaction_by_hash_from_pool()
     {
         using Context ctx = await Context.CreateWithCancunEnabled();
-        Transaction sent = Build.A.Transaction.WithShardBlobTxTypeAndFields().WithMaxPriorityFeePerGas(6.GWei).WithMaxFeePerGas(11.GWei).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+        MempoolTransaction sent = Build.A.Transaction.WithShardBlobTxTypeAndFields().WithMaxPriorityFeePerGas(6.GWei).WithMaxFeePerGas(11.GWei).SignedAndResolved(TestItem.PrivateKeyC).MempoolTestObject;
         ctx.Test.TxPool.SubmitTx(sent, TxHandlingOptions.None);
 
         string serialized = await ctx.Test.TestEthRpc("eth_getRawTransactionByHash", sent.Hash);
@@ -230,10 +230,8 @@ public partial class EthRpcModuleTests
         byte[] txBytes = response.Result
             ?? throw new InvalidOperationException("Expected raw transaction bytes.");
         RlpReader context = new(txBytes);
-        Transaction tx = TxDecoder.Instance.DecodeGuardNotNull(
-            ref context,
-            RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
-        Assert.That(tx.IsInMempoolForm(), Is.True);
+        MempoolTransaction tx = MempoolTxDecoder.Instance.DecodeGuardNotNull(ref context, RlpBehaviors.SkipTypedWrapping);
+        Assert.That(tx.NetworkWrapper, Is.Not.Null);
     }
 
     [TestCaseSource(nameof(EthGetRawTransactionByBlockAndIndexCases))]
@@ -2405,13 +2403,13 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create();
         ITxSender txSender = Substitute.For<ITxSender>();
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        txSender.SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast).Returns((TestItem.KeccakA, AcceptTxResult.Accepted));
+        txSender.SendTransaction(Arg.Any<MempoolTransaction>(), TxHandlingOptions.PersistentBroadcast).Returns((TestItem.KeccakA, AcceptTxResult.Accepted));
 
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
         Transaction tx = Build.A.Transaction.Signed(new EthereumEcdsa(TestBlockchainIds.ChainId), TestItem.PrivateKeyA).TestObject;
         string serialized = await ctx.Test.TestEthRpc("eth_sendRawTransaction", Rlp.Encode(tx, RlpBehaviors.None).ToHexString());
 
-        await txSender.Received().SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast);
+        await txSender.Received().SendTransaction(Arg.Any<MempoolTransaction>(), TxHandlingOptions.PersistentBroadcast);
         Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{TestItem.KeccakA.Bytes.ToHexString(true)}\",\"id\":67}}"));
     }
 
@@ -2490,7 +2488,7 @@ public partial class EthRpcModuleTests
         };
         TaskCompletionSource<(Hash256 Hash, AcceptTxResult? AddTxResult)> submission = new(TaskCreationOptions.RunContinuationsAsynchronously);
         ITxSender sender = Substitute.For<ITxSender>();
-        sender.SendTransaction(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
+        sender.SendTransaction(Arg.Any<MempoolTransaction>(), Arg.Any<TxHandlingOptions>())
             .Returns(_ => new ValueTask<(Hash256 Hash, AcceptTxResult? AddTxResult)>(submission.Task));
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
         bridge.GetTxReceiptInfo(Arg.Any<Hash256>()).Throws(new InvalidOperationException("Receipt lookup failed."));
@@ -2655,7 +2653,7 @@ public partial class EthRpcModuleTests
             .TestObject;
 
         ITxSender txSender = Substitute.For<ITxSender>();
-        txSender.SendTransaction(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
+        txSender.SendTransaction(Arg.Any<MempoolTransaction>(), Arg.Any<TxHandlingOptions>())
             .Returns((txHash, AcceptTxResult.Accepted));
 
         string raw = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).ToHexString(true);
@@ -2668,7 +2666,7 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create();
         ITxSender txSender = Substitute.For<ITxSender>();
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        txSender.SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast)
+        txSender.SendTransaction(Arg.Any<MempoolTransaction>(), TxHandlingOptions.PersistentBroadcast)
             .Returns((TestItem.KeccakA, AcceptTxResult.Accepted));
 
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
@@ -2677,7 +2675,7 @@ public partial class EthRpcModuleTests
         TransactionForRpc rpcTx = TransactionForRpc.FromTransaction(tx);
         string serialized = await ctx.Test.TestEthRpc("eth_sendTransaction", rpcTx);
         // TODO: actual test missing now
-        await txSender.Received().SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast);
+        await txSender.Received().SendTransaction(Arg.Any<MempoolTransaction>(), TxHandlingOptions.PersistentBroadcast);
         Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{TestItem.KeccakA.Bytes.ToHexString(true)}\",\"id\":67}}"));
     }
 
@@ -2687,7 +2685,7 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create();
         ITxSender txSender = Substitute.For<ITxSender>();
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        txSender.SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast | TxHandlingOptions.ManagedNonce)
+        txSender.SendTransaction(Arg.Any<MempoolTransaction>(), TxHandlingOptions.PersistentBroadcast | TxHandlingOptions.ManagedNonce)
             .Returns((TestItem.KeccakA, AcceptTxResult.Accepted));
 
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
@@ -2697,7 +2695,7 @@ public partial class EthRpcModuleTests
         rpcTx.Nonce = null;
         string serialized = await ctx.Test.TestEthRpc("eth_sendTransaction", rpcTx);
 
-        await txSender.Received().SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast | TxHandlingOptions.ManagedNonce);
+        await txSender.Received().SendTransaction(Arg.Any<MempoolTransaction>(), TxHandlingOptions.PersistentBroadcast | TxHandlingOptions.ManagedNonce);
         Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{TestItem.KeccakA.Bytes.ToHexString(true)}\",\"id\":67}}"));
     }
 
@@ -2708,7 +2706,7 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create();
         ITxSender txSender = Substitute.For<ITxSender>();
         Transaction? sent = null;
-        txSender.SendTransaction(Arg.Do<Transaction>(tx => sent = tx), Arg.Any<TxHandlingOptions>())
+        txSender.SendTransaction(Arg.Do<MempoolTransaction>(tx => sent = tx.Transaction), Arg.Any<TxHandlingOptions>())
             .Returns((TestItem.KeccakA, AcceptTxResult.Accepted));
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithTxSender(txSender).Build(new TestSpecProvider(Eip8141Prototype.Instance));
         FrameTransactionForRpc request = new()

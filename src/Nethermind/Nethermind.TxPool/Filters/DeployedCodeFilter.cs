@@ -12,7 +12,7 @@ namespace Nethermind.TxPool.Filters
     /// </summary>
     internal sealed class DeployedCodeFilter(IReadOnlyStateProvider worldState) : IIncomingTxFilter
     {
-        public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
+        public AcceptTxResult Accept(MempoolTransaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
         {
             // EIP-8141 §Mempool exempts frame transactions from EIP-3607: one is authorised by the
             // sender's own code running in the validation prefix, the very case EIP-3607 forbids elsewhere.

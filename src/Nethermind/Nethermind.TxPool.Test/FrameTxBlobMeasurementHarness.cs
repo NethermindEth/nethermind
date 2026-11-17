@@ -34,7 +34,7 @@ internal static class FrameTxBlobMeasurementHarness
     /// <summary>Builds <see cref="SampleTxs"/> blob-carrying frame transactions into <paramref name="samples"/>.</summary>
     /// <remarks>One sidecar is shared by every sample: the blobs differ only in bytes the decode does not branch
     /// on, and computing cell proofs per transaction would dominate the setup.</remarks>
-    internal static void BuildSamples(int blobsPerTx, List<Transaction> samples)
+    internal static void BuildSamples(int blobsPerTx, List<MempoolTransaction> samples)
     {
         samples.Clear();
         ShardBlobNetworkWrapper wrapper = BuildWrapper(blobsPerTx, out byte[][] versionedHashes);
@@ -97,7 +97,7 @@ internal static class FrameTxBlobMeasurementHarness
         return wrapper;
     }
 
-    private static Transaction BuildBlobFrameTx(Address sender, ulong nonce, ShardBlobNetworkWrapper wrapper, byte[][] versionedHashes)
+    private static MempoolTransaction BuildBlobFrameTx(Address sender, ulong nonce, ShardBlobNetworkWrapper wrapper, byte[][] versionedHashes)
     {
         Transaction tx = new()
         {
@@ -112,9 +112,8 @@ internal static class FrameTxBlobMeasurementHarness
             Frames = [FrameTxTestFrames.OnlyVerify(gasLimit: 40_000), FrameTxTestFrames.Pay(TestItem.AddressF, gasLimit: 40_000)],
             FrameSignatures = [],
             BlobVersionedHashes = versionedHashes,
-            NetworkWrapper = wrapper,
         };
         tx.Hash = tx.CalculateHash();
-        return tx;
+        return new MempoolTransaction(tx, wrapper);
     }
 }

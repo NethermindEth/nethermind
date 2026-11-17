@@ -60,7 +60,7 @@ namespace Nethermind.AuRa.Test
                 Timestamper = Substitute.For<ITimestamper>();
                 AuRaStepCalculator = Substitute.For<IAuRaStepCalculator>();
                 NodeAddress = TestItem.AddressA;
-                TransactionSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<ulong>()).Returns(Array.Empty<Transaction>());
+                TransactionSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<ulong>()).Returns(Array.Empty<MempoolTransaction>());
                 Sealer.CanSeal(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(true);
                 Sealer.SealBlock(Arg.Any<Block>(), Arg.Any<CancellationToken>()).Returns(c => Task.FromResult(c.Arg<Block>()));
                 Sealer.Address.Returns(TestItem.AddressA);
@@ -71,7 +71,7 @@ namespace Nethermind.AuRa.Test
                 BlockchainProcessor.Process(Arg.Any<Block>(), ProcessingOptions.ProducingBlock, Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>()).Returns(returnThis: c =>
                 {
                     Block block = c.Arg<Block>();
-                    block.TrySetTransactions(TransactionSource.GetTransactions(BlockTree.Head!.Header, block.Header, block.GasLimit).ToArray());
+                    block.TrySetTransactions(TransactionSource.GetTransactions(BlockTree.Head!.Header, block.Header, block.GasLimit).Select(static tx => tx.Transaction).ToArray());
                     return block;
                 });
                 StateProvider.HasStateForTargetBlock(Arg.Any<BlockHeader>()).Returns(x => true);
@@ -159,7 +159,7 @@ namespace Nethermind.AuRa.Test
         public async Task Produces_block_when_ForceSealing_is_false_and_there_are_transactions([Values(0, 1000)] int sealDelayMs)
         {
             Context context = new(new AuRaConfig { ForceSealing = false });
-            context.TransactionSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<ulong>()).Returns(new[] { Build.A.Transaction.TestObject });
+            context.TransactionSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<ulong>()).Returns(new MempoolTransaction[] { Build.A.Transaction.TestObject });
             context.Sealer.SealBlock(Arg.Any<Block>(), Arg.Any<CancellationToken>()).Returns(async c =>
             {
                 Block block = c.Arg<Block>();

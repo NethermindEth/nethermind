@@ -30,7 +30,7 @@ public class TxPoolInfoProviderTests
         _txPool = Substitute.For<ITxPool>();
         _txPool.GetPendingTransactionsBySender(Arg.Any<Address>()).Returns([]);
         _txPool.GetPendingLightBlobTransactionsBySender(Arg.Any<Address>()).Returns([]);
-        _txPool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>());
+        _txPool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, MempoolTransaction[]>());
         _infoProvider = new TxPoolInfoProvider(_stateReader, _txPool);
     }
 
@@ -39,10 +39,10 @@ public class TxPoolInfoProviderTests
     {
         uint nonce = 3;
         _stateReader.GetNonce(_address).Returns(nonce);
-        Transaction[] transactions = GetTransactions();
+        MempoolTransaction[] transactions = GetTransactions();
 
         _txPool.GetPendingTransactionsBySender()
-            .Returns(new Dictionary<AddressAsKey, Transaction[]> { { _address, transactions } });
+            .Returns(new Dictionary<AddressAsKey, MempoolTransaction[]> { { _address, transactions } });
         TxPoolInfo info = _infoProvider.GetInfo();
 
         using (Assert.EnterMultipleScope())
@@ -77,14 +77,14 @@ public class TxPoolInfoProviderTests
     public void GetInfo_WhenSenderHasStandardAndBlobTransactions_OmitsBlobs()
     {
         _stateReader.GetNonce(_address).Returns(0UL);
-        Transaction[] standard = BuildTransactions([0, 2]);
-        Transaction[] blobs = BuildTransactions([1, 3]);
+        MempoolTransaction[] standard = BuildTransactions([0, 2]);
+        MempoolTransaction[] blobs = BuildTransactions([1, 3]);
         _txPool.GetPendingTransactionsBySender()
-            .Returns(new Dictionary<AddressAsKey, Transaction[]> { { _address, standard } });
+            .Returns(new Dictionary<AddressAsKey, MempoolTransaction[]> { { _address, standard } });
         // Blob bucket is populated to make the exclusion semantics explicit; GetInfo does not
         // consult the blob pool, so these nonces must not appear in the output.
         _txPool.GetPendingLightBlobTransactionsBySender()
-            .Returns(new Dictionary<AddressAsKey, Transaction[]> { { _address, blobs } });
+            .Returns(new Dictionary<AddressAsKey, MempoolTransaction[]> { { _address, blobs } });
 
         TxPoolInfo info = _infoProvider.GetInfo();
 
@@ -104,9 +104,9 @@ public class TxPoolInfoProviderTests
         // BlobPool.Content() empty-stub behaviour), so the address is absent because the
         // standard-pool dictionary has no entry for it.
         _stateReader.GetNonce(_address).Returns(0UL);
-        Transaction[] blobs = BuildTransactions([0, 1]);
+        MempoolTransaction[] blobs = BuildTransactions([0, 1]);
         _txPool.GetPendingLightBlobTransactionsBySender()
-            .Returns(new Dictionary<AddressAsKey, Transaction[]> { { _address, blobs } });
+            .Returns(new Dictionary<AddressAsKey, MempoolTransaction[]> { { _address, blobs } });
 
         TxPoolInfo info = _infoProvider.GetInfo();
 
@@ -226,7 +226,7 @@ public class TxPoolInfoProviderTests
     {
         _stateReader.GetNonce(_address).Returns(scenario.AccountNonce);
         _txPool.GetPendingTransactionsBySender()
-            .Returns(new Dictionary<AddressAsKey, Transaction[]> { { _address, BuildTransactions(scenario.TxNonces) } });
+            .Returns(new Dictionary<AddressAsKey, MempoolTransaction[]> { { _address, BuildTransactions(scenario.TxNonces) } });
 
         TxPoolCounts counts = _infoProvider.GetCounts();
 
@@ -242,9 +242,9 @@ public class TxPoolInfoProviderTests
     {
         _stateReader.GetNonce(_address).Returns(0UL);
         _txPool.GetPendingTransactionsBySender()
-            .Returns(new Dictionary<AddressAsKey, Transaction[]> { { _address, BuildTransactions([0, 2]) } });
+            .Returns(new Dictionary<AddressAsKey, MempoolTransaction[]> { { _address, BuildTransactions([0, 2]) } });
         _txPool.GetPendingLightBlobTransactionsBySender()
-            .Returns(new Dictionary<AddressAsKey, Transaction[]> { { _address, BuildTransactions([1, 5]) } });
+            .Returns(new Dictionary<AddressAsKey, MempoolTransaction[]> { { _address, BuildTransactions([1, 5]) } });
 
         TxPoolCounts counts = _infoProvider.GetCounts();
 
@@ -260,10 +260,10 @@ public class TxPoolInfoProviderTests
     [Test]
     public void Keyed_transactions_of_one_sender_are_all_pending_and_listed_separately()
     {
-        Transaction[] keyed = [KeyedTransaction([1]), KeyedTransaction([2]), KeyedTransaction([3])];
+        MempoolTransaction[] keyed = [KeyedTransaction([1]), KeyedTransaction([2]), KeyedTransaction([3])];
         _stateReader.GetNonce(_address).Returns(7UL);
         _txPool.GetPendingTransactionsBySender()
-            .Returns(new Dictionary<AddressAsKey, Transaction[]> { { _address, keyed } });
+            .Returns(new Dictionary<AddressAsKey, MempoolTransaction[]> { { _address, keyed } });
 
         TxPoolInfo info = _infoProvider.GetInfo();
         TxPoolCounts counts = _infoProvider.GetCounts();
@@ -289,12 +289,12 @@ public class TxPoolInfoProviderTests
     private void VerifyNonceAndTransactions(IDictionary<TxPoolTxKey, Transaction> transactionNonce, ulong nonce) =>
         Assert.That(transactionNonce[Key(nonce)].Nonce, Is.EqualTo(nonce));
 
-    private Transaction[] GetTransactions() =>
+    private MempoolTransaction[] GetTransactions() =>
         BuildTransactions([1, 2, 3, 4, 5, 8, 9]);
 
-    private Transaction[] BuildTransactions(ulong[] nonces)
+    private MempoolTransaction[] BuildTransactions(ulong[] nonces)
     {
-        Transaction[] result = new Transaction[nonces.Length];
+        MempoolTransaction[] result = new MempoolTransaction[nonces.Length];
         for (int i = 0; i < nonces.Length; i++)
             result[i] = Build.A.Transaction.WithNonce(nonces[i]).WithSenderAddress(_address).TestObject;
         return result;

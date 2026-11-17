@@ -22,7 +22,7 @@ namespace Nethermind.Consensus.Processing
 
             if (block is BlockToProduce blockToProduce)
             {
-                blockToProduce.Transactions = transactions;
+                blockToProduce.Transactions = Array.ConvertAll(transactions, static tx => (MempoolTransaction)tx);
                 return true;
             }
 

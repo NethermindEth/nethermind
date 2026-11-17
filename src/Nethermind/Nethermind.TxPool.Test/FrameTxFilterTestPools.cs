@@ -19,18 +19,18 @@ namespace Nethermind.TxPool.Test;
 public static class FrameTxFilterTestPools
 {
     /// <summary>The real pool type for the shape, so the visitor's ascending-nonce exit is exercised as wired.</summary>
-    public static TxDistinctSortedPool Pool(bool blobs, params Transaction[] pending)
+    public static TxDistinctSortedPool Pool(bool blobs, params MempoolTransaction[] pending)
     {
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(new ReleaseSpec { IsEip1559Enabled = false });
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.Head.Returns(Build.A.Block.WithNumber(0).TestObject);
 
-        IComparer<Transaction> comparer = new TransactionComparerProvider(specProvider, blockTree).GetDefaultComparer();
+        IComparer<MempoolTransaction> comparer = new TransactionComparerProvider(specProvider, blockTree).GetDefaultComparer();
         TxDistinctSortedPool pool = blobs
             ? new BlobTxDistinctSortedPool(pending.Length + 1, comparer, LimboLogs.Instance)
             : new TxDistinctSortedPool(pending.Length + 1, comparer, LimboLogs.Instance);
-        foreach (Transaction tx in pending)
+        foreach (MempoolTransaction tx in pending)
         {
             pool.TryInsert(tx.Hash!, tx);
         }

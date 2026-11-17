@@ -21,7 +21,7 @@ namespace Nethermind.TxPool
         private readonly IEthereumEcdsa _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
         private readonly IChainHeadSpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
 
-        public ValueTask<(Hash256, AcceptTxResult?)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
+        public ValueTask<(Hash256, AcceptTxResult?)> SendTransaction(MempoolTransaction tx, TxHandlingOptions txHandlingOptions)
         {
             bool manageNonce = (txHandlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
 
@@ -29,7 +29,7 @@ namespace Nethermind.TxPool
             bool senderGiven = tx.SenderAddress is not null;
             if (!senderGiven)
             {
-                if (!_ecdsa.TryRecoverAddress(tx, out Address? senderAddress, UsesSignatureChainId()))
+                if (!_ecdsa.TryRecoverAddress(tx.Transaction, out Address? senderAddress, UsesSignatureChainId()))
                 {
                     return new((tx.Hash!, AcceptTxResult.FailedToResolveSender));
                 }
@@ -38,7 +38,7 @@ namespace Nethermind.TxPool
 
             // An EIP-8250 keyed sequence lives in NONCE_MANAGER, not the sender's account nonce: there is nothing to
             // reserve, and recording one would push the managed reservation past a nonce the sender never consumes.
-            AcceptTxResult result = KeyedNonceManager.UsesKeyedNonce(tx)
+            AcceptTxResult result = KeyedNonceManager.UsesKeyedNonce(tx.Transaction)
                 ? SubmitTx(tx, txHandlingOptions, senderGiven)
                 : manageNonce
                     ? SubmitTxWithManagedNonce(tx, txHandlingOptions, senderGiven)
@@ -47,13 +47,13 @@ namespace Nethermind.TxPool
             return new ValueTask<(Hash256, AcceptTxResult?)>((tx.Hash!, result)); // The sealer calculates the hash
         }
 
-        private AcceptTxResult SubmitTxWithNonce(Transaction tx, TxHandlingOptions txHandlingOptions, bool senderGiven)
+        private AcceptTxResult SubmitTxWithNonce(MempoolTransaction tx, TxHandlingOptions txHandlingOptions, bool senderGiven)
         {
             using NonceLocker locker = _nonceManager.TxWithNonceReceived(tx.SenderAddress!, tx.Nonce);
             return SubmitTx(locker, tx, txHandlingOptions, senderGiven);
         }
 
-        private AcceptTxResult SubmitTxWithManagedNonce(Transaction tx, TxHandlingOptions txHandlingOptions, bool senderGiven)
+        private AcceptTxResult SubmitTxWithManagedNonce(MempoolTransaction tx, TxHandlingOptions txHandlingOptions, bool senderGiven)
         {
             using NonceLocker locker = _nonceManager.ReserveNonce(tx.SenderAddress!, _txPool, out ulong reservedNonce);
             txHandlingOptions |= TxHandlingOptions.AllowReplacingSignature;
@@ -61,13 +61,13 @@ namespace Nethermind.TxPool
             return SubmitTx(locker, tx, txHandlingOptions, senderGiven);
         }
 
-        private AcceptTxResult SubmitTx(NonceLocker locker, Transaction tx, TxHandlingOptions txHandlingOptions, bool senderGiven)
+        private AcceptTxResult SubmitTx(NonceLocker locker, MempoolTransaction tx, TxHandlingOptions txHandlingOptions, bool senderGiven)
         {
             AcceptTxResult result = SubmitTx(tx, txHandlingOptions, senderGiven);
 
             if (result == AcceptTxResult.Accepted)
             {
-                locker.Accept(tx);
+                locker.Accept(tx.Transaction);
             }
 
             return result;
@@ -76,9 +76,9 @@ namespace Nethermind.TxPool
         // Every node runs a transaction as the account its signature recovers, and the pool keeps a sender it is given,
         // so a given sender that is not that account is refused. A frame transaction has no r/s signature: its sender is
         // part of its payload, and r/s it carries are not used.
-        private AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions txHandlingOptions, bool senderGiven) =>
-            !_sealer.TrySeal(tx, txHandlingOptions) ? AcceptTxResult.SignFailed
-            : senderGiven && tx.Signature is not null && !tx.SupportsFrames && !IsSignedBySender(tx) ? SenderIsNotSigner
+        private AcceptTxResult SubmitTx(MempoolTransaction tx, TxHandlingOptions txHandlingOptions, bool senderGiven) =>
+            !_sealer.TrySeal(tx.Transaction, txHandlingOptions) ? AcceptTxResult.SignFailed
+            : senderGiven && tx.Signature is not null && !tx.SupportsFrames && !IsSignedBySender(tx.Transaction) ? SenderIsNotSigner
             : _txPool.SubmitTx(tx, txHandlingOptions);
 
         private bool IsSignedBySender(Transaction tx) =>

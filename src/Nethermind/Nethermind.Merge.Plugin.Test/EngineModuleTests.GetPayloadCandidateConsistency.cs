@@ -81,17 +81,18 @@ public partial class EngineModuleTests
 
     private static Block BuildCandidate(int blobCount, IReleaseSpec spec)
     {
-        Transaction[] txs = new Transaction[blobCount];
+        MempoolTransaction[] txs = new MempoolTransaction[blobCount];
         for (int i = 0; i < blobCount; i++)
         {
             txs[i] = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields(1, spec: spec)
                 .WithNonce((ulong)i)
                 .SignedAndResolved(TestItem.PrivateKeyA)
-                .TestObject;
+                .MempoolTestObject;
         }
 
-        Block block = Build.A.Block.WithTransactions(txs).WithGasUsed((ulong)blobCount).TestObject;
+        Block template = Build.A.Block.WithTransactions(Array.ConvertAll(txs, static tx => tx.Transaction)).WithGasUsed((ulong)blobCount).TestObject;
+        BlockToProduce block = new(template.Header, txs, [], template.Withdrawals);
         block.ExecutionRequests = [[(byte)blobCount]];
         return block;
     }

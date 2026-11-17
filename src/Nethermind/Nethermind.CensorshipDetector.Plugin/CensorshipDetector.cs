@@ -20,10 +20,10 @@ public class CensorshipDetector : IDisposable, IBuilderOverridePolicy
 {
     private readonly IBlockTree _blockTree;
     private readonly ITxPool _txPool;
-    private readonly IComparer<Transaction> _betterTxComparer;
+    private readonly IComparer<MempoolTransaction> _betterTxComparer;
     private readonly IBranchProcessor _blockProcessor;
     private readonly ILogger _logger;
-    private readonly Dictionary<AddressAsKey, Transaction?>? _bestTxPerObservedAddresses;
+    private readonly Dictionary<AddressAsKey, MempoolTransaction?>? _bestTxPerObservedAddresses;
     private readonly LruCache<BlockNumberHash, BlockCensorshipInfo> _potentiallyCensoredBlocks;
     private readonly LruCache<BlockNumberHash, Task> _processingTasks;
     private readonly WrapAroundArray<BlockNumberHash> _censoredBlocks;
@@ -82,13 +82,13 @@ public class CensorshipDetector : IDisposable, IBuilderOverridePolicy
         if (_bestTxPerObservedAddresses is { } observedAddresses)
         {
             UInt256 baseFee = e.Block.BaseFeePerGas;
-            IEnumerable<Transaction> poolBestTransactions = _txPool.GetBestTxOfEachSender();
-            foreach (Transaction tx in poolBestTransactions)
+            IEnumerable<MempoolTransaction> poolBestTransactions = _txPool.GetBestTxOfEachSender();
+            foreach (MempoolTransaction tx in poolBestTransactions)
             {
                 // checking tx.GasBottleneck > baseFee ensures only ready transactions are considered.
                 if (tx.To is not null
                     && tx.GasBottleneck > baseFee
-                    && observedAddresses.TryGetValue(tx.To, out Transaction? bestTx)
+                    && observedAddresses.TryGetValue(tx.To, out MempoolTransaction? bestTx)
                     && (bestTx is null || _betterTxComparer.Compare(bestTx, tx) > 0))
                 {
                     observedAddresses[tx.To] = tx;
@@ -114,7 +114,7 @@ public class CensorshipDetector : IDisposable, IBuilderOverridePolicy
 
     private void Cache(Block block)
     {
-        Dictionary<AddressAsKey, Transaction?>? observedAddresses = _bestTxPerObservedAddresses;
+        Dictionary<AddressAsKey, MempoolTransaction?>? observedAddresses = _bestTxPerObservedAddresses;
 
         try
         {
@@ -166,7 +166,7 @@ public class CensorshipDetector : IDisposable, IBuilderOverridePolicy
 
                 if (observedAddresses is not null)
                 {
-                    foreach (Transaction? bestTx in observedAddresses.Values)
+                    foreach (MempoolTransaction? bestTx in observedAddresses.Values)
                     {
                         // if there is no transaction in block or the best tx in the pool is better than the worst tx in the block
                         if (bestTx is null || _betterTxComparer.Compare(bestTx, worstTxInBlock) < 0)

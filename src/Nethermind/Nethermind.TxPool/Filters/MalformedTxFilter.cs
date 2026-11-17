@@ -25,7 +25,7 @@ namespace Nethermind.TxPool.Filters
         private readonly ISpecChangeTxValidator? _incrementalSpecChangeTxValidator =
             specChangeTxValidator as ISpecChangeTxValidator;
 
-        public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
+        public AcceptTxResult Accept(MempoolTransaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
         {
             IReleaseSpec spec = state.HeadSpec;
             TxValidationOptions validationOptions = TxValidationOptions.SkipBlobProofs | TxValidationOptions.SkipIntrinsicGasMemo;
@@ -33,16 +33,16 @@ namespace Nethermind.TxPool.Filters
             {
                 validationOptions |= TxValidationOptions.SkipErrorDetails;
             }
-            ValidationResult result = Validate(tx, spec);
+            ValidationResult result = Validate(tx.Transaction, spec);
             bool retryAfterSenderRecovery = !result
                 && spec.IsEip2780Enabled
-                && tx.IsMessageCall
+                && tx.Transaction.IsMessageCall
                 && tx.SenderAddress is null
                 && TxErrorMessages.IsIntrinsicGasError(result.Error)
-                && CanSenderRecoveryFixIntrinsicGas(tx, spec);
+                && CanSenderRecoveryFixIntrinsicGas(tx.Transaction, spec);
             if (!result && !retryAfterSenderRecovery)
             {
-                return RejectMalformed(tx, result, ref state);
+                return RejectMalformed(tx.Transaction, result, ref state);
             }
 
             Metrics.PendingTransactionsWithExpensiveFiltering++;
@@ -50,10 +50,10 @@ namespace Nethermind.TxPool.Filters
             {
                 // Where the spec does not validate chain ids, a legacy signature for another chain is accepted, and block
                 // processing recovers it over the chain id it carries.
-                if (!ecdsa.TryRecoverAddress(tx, out Address? senderAddress, !spec.ValidateChainId))
+                if (!ecdsa.TryRecoverAddress(tx.Transaction, out Address? senderAddress, !spec.ValidateChainId))
                 {
                     Metrics.PendingTransactionsUnresolvableSender++;
-                    if (logger.IsTrace) TraceUnresolvableSender(tx);
+                    if (logger.IsTrace) TraceUnresolvableSender(tx.Transaction);
                     return AcceptTxResult.FailedToResolveSender;
                 }
                 tx.SenderAddress = senderAddress;
@@ -61,9 +61,16 @@ namespace Nethermind.TxPool.Filters
 
             // An unresolved sender is conservatively priced as non-self, so only a rejected
             // intrinsic result can become valid after recovery.
-            if (retryAfterSenderRecovery && !(result = Validate(tx, spec)))
+            if (retryAfterSenderRecovery && !(result = Validate(tx.Transaction, spec)))
             {
-                return RejectMalformed(tx, result, ref state);
+                return RejectMalformed(tx.Transaction, result, ref state);
+            }
+
+            // Sidecar checks run last: the pool forgets a sidecar-only rejection, so hash-covered defects must be reported first.
+            ValidationResult sidecarResult = MempoolBlobTxValidator.IsWellFormed(tx.Transaction, state.NetworkWrapper, spec);
+            if (!sidecarResult)
+            {
+                return RejectMalformed(tx.Transaction, sidecarResult, ref state);
             }
 
             return AcceptTxResult.Accepted;

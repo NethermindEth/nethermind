@@ -20,7 +20,16 @@ namespace Nethermind.TxPool
         private static readonly long MaxSizeOfTxForBroadcast = 4.KiB; //4KB, as in Geth https://github.com/ethereum/go-ethereum/pull/27618
         private static readonly ITransactionSizeCalculator _transactionSizeCalculator = new NetworkTransactionSizeCalculator(TxDecoder.Instance);
 
-        public static int GetLength(this Transaction tx, bool shouldCountBlobs = true) => tx.GetLength(_transactionSizeCalculator, shouldCountBlobs);
+        public static int GetLength(this Transaction tx) => tx.GetLength(_transactionSizeCalculator);
+
+        /// <summary>Size in bytes of the mempool (network) encoding of <paramref name="tx"/>, sidecar included.</summary>
+        public static int GetLength(this MempoolTransaction tx) => tx.NetworkWrapper is null
+            ? tx.Transaction.GetNetworkLength()
+            : MempoolTxDecoder.Instance.GetLength(tx, RlpBehaviors.SkipTypedWrapping);
+
+        /// <summary>Size in bytes of the mempool (network) encoding of a pooled <paramref name="tx"/>.</summary>
+        /// <remarks>A pooled blob transaction is a <see cref="LightTransaction"/> that remembers the size of the sidecar it no longer holds.</remarks>
+        public static int GetNetworkLength(this Transaction tx) => tx is LightTransaction lightTx ? lightTx.NetworkLength : tx.GetLength();
 
         /// <summary>
         /// Size in bytes of the blob-elided typed transaction encoding of <paramref name="tx"/>, as announced in
@@ -31,9 +40,9 @@ namespace Nethermind.TxPool
         /// The current devp2p text calls for the consensus encoding size, but established clients size-check the
         /// delivered encoding instead. See <see href="https://github.com/ethereum/devp2p/pull/281"/>.
         /// </remarks>
-        public static int GetElidedNetworkEncodingSize(this Transaction tx)
+        public static int GetElidedNetworkEncodingSize(this MempoolTransaction tx)
         {
-            if (tx is LightTransaction lightTx)
+            if (tx.Transaction is LightTransaction lightTx)
             {
                 return lightTx.GetElidedNetworkEncodingSize();
             }
@@ -61,7 +70,7 @@ namespace Nethermind.TxPool
                 return 0;
             }
 
-            long contentLength = (long)tx.GetLength(shouldCountBlobs: false) - 1
+            long contentLength = (long)tx.Transaction.GetLength() - 1
                 + versionLength
                 + Rlp.LengthOfNull
                 + commitmentsLength
@@ -195,14 +204,14 @@ namespace Nethermind.TxPool
         /// still covers it, and let it spend the sender's budget for its other transactions. One admitted with no
         /// payer resolved names no other account, so it stays on the sender. Only meaningful once admission has
         /// recorded a payer.</remarks>
-        internal static bool FeeChargedToSender(this Transaction tx) =>
+        internal static bool FeeChargedToSender(this MempoolTransaction tx) =>
             !tx.SupportsFrames || tx.PayerAddress is null || tx.PayerAddress == tx.SenderAddress;
 
         /// <summary>Whether <paramref name="balance"/> no longer covers <paramref name="tx"/> on top of the
         /// bucket ahead of it.</summary>
         /// <remarks>Priced the way admission priced it, so the retention sweep cannot retain a frame transaction
         /// on a cheaper reading of the cost the admission bound already refused to grant.</remarks>
-        internal static bool CheckForNotEnoughBalance(this Transaction tx, UInt256 currentCost, UInt256 balance, out UInt256 cumulativeCost)
+        internal static bool CheckForNotEnoughBalance(this MempoolTransaction tx, UInt256 currentCost, UInt256 balance, out UInt256 cumulativeCost)
             => tx.IsOverflowWhenAddingPricedCostToCumulative(currentCost, out cumulativeCost) || balance < cumulativeCost;
 
         private struct SenderBucketState(Transaction tx, ulong accountNonce, bool unreservedOnly, bool keyedNoncesEnabled)
@@ -232,11 +241,11 @@ namespace Nethermind.TxPool
         {
             SenderBucketState bucket = new(tx, accountNonce, unreservedOnly, keyedNoncesEnabled);
             // tx.SenderAddress! as unknownSenderFilter will run before either caller
-            pool.VisitBucket(tx.SenderAddress!, ref bucket, static (Transaction otherTx, ref SenderBucketState bucketState) =>
+            pool.VisitBucket(tx.SenderAddress!, ref bucket, static (MempoolTransaction otherTx, ref SenderBucketState bucketState) =>
             {
                 // An account nonce below the account's own is already mined; a keyed sequence is not
                 // comparable to it, and its domain's floor is not readable here.
-                if (!KeyedNonceManager.UsesKeyedNonce(otherTx) && otherTx.Nonce < bucketState.AccountNonce)
+                if (!KeyedNonceManager.UsesKeyedNonce(otherTx.Transaction) && otherTx.Transaction.Nonce < bucketState.AccountNonce)
                 {
                     return true;
                 }
@@ -244,7 +253,7 @@ namespace Nethermind.TxPool
                 // Within one domain, at or past the incoming sequence is the transaction it displaces, or one
                 // that only executes after it. Another domain runs independently, so its cost is owed either way —
                 // and where none can exist, ascending nonce order means nothing past this entry is owed.
-                if (otherTx.Nonce >= bucketState.TxNonce && CompetingTransactionEqualityComparer.SameNonceDomain(bucketState.Tx, otherTx))
+                if (otherTx.Transaction.Nonce >= bucketState.TxNonce && CompetingTransactionEqualityComparer.SameNonceDomain(bucketState.Tx, otherTx.Transaction))
                 {
                     return bucketState.KeyedNoncesEnabled;
                 }
@@ -269,10 +278,10 @@ namespace Nethermind.TxPool
         /// figure admission priced over the gas-limit product.</summary>
         /// <remarks>An EIP-8141 frame transaction is priced on its whole gas budget, of which
         /// <see cref="Transaction.GasLimit"/> carries only the frame-gas sum, so the product understates it.</remarks>
-        private static bool IsOverflowWhenAddingPricedCostToCumulative(this Transaction tx, in UInt256 currentCost, out UInt256 cumulativeCost)
+        private static bool IsOverflowWhenAddingPricedCostToCumulative(this MempoolTransaction tx, in UInt256 currentCost, out UInt256 cumulativeCost)
             => tx.PayerExposure is { } priced
                 ? UInt256.AddOverflow(currentCost, priced, out cumulativeCost)
-                : tx.IsOverflowWhenAddingTxCostToCumulative(currentCost, out cumulativeCost);
+                : tx.Transaction.IsOverflowWhenAddingTxCostToCumulative(currentCost, out cumulativeCost);
 
         internal static bool IsOverflowWhenAddingTxCostToCumulative(this Transaction tx, UInt256 currentCost, out UInt256 cumulativeCost)
         {
@@ -303,7 +312,5 @@ namespace Nethermind.TxPool
 
         internal static bool IsOverflowInTxCostAndValue(this Transaction tx, out UInt256 txCost)
             => IsOverflowWhenAddingTxCostToCumulative(tx, UInt256.Zero, out txCost);
-
-        public static bool IsInMempoolForm(this Transaction tx) => tx.NetworkWrapper is not null;
     }
 }

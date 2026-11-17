@@ -33,7 +33,7 @@ public class CensorshipDetectorPluginTests
         IMainProcessingContext mainProcessingContext = Substitute.For<IMainProcessingContext>();
         mainProcessingContext.BranchProcessor.Returns(branchProcessor);
         ITransactionComparerProvider comparerProvider = Substitute.For<ITransactionComparerProvider>();
-        comparerProvider.GetDefaultComparer().Returns(Substitute.For<IComparer<Transaction>>());
+        comparerProvider.GetDefaultComparer().Returns(Substitute.For<IComparer<MempoolTransaction>>());
 
         IContainer container = new ContainerBuilder()
             .AddModule(new CensorshipDetectorModule())
