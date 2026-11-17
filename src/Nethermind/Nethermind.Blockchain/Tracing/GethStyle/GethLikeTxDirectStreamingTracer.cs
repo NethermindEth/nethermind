@@ -47,7 +47,6 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
     private bool _hasPendingOpcode;
     private int _pendingPc;
     private Instruction _pendingOpcode;
-    private bool _pendingUndefined;
     private ulong _pendingGas;
     private ulong _pendingGasCost;
     private int _pendingDepth;
@@ -112,7 +111,6 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
         _hasPendingOpcode = false;
         _pendingPc = 0;
         _pendingOpcode = default;
-        _pendingUndefined = false;
         _pendingGas = 0;
         _pendingGasCost = 0;
         _pendingDepth = 0;
@@ -155,7 +153,6 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
         _hasPendingOpcode = true;
         _pendingPc = pc;
         _pendingOpcode = opcode;
-        _pendingUndefined = false;
         _pendingGas = gas;
         _pendingGasCost = 0;
         _pendingDepth = env.GetGethTraceDepth();
@@ -216,11 +213,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
             _pendingGasCost = 0;
             return;
         }
-        if (error == EvmExceptionType.BadInstruction)
-        {
-            _pendingGasCost = 0;
-            _pendingUndefined = true;
-        }
+        if (error == EvmExceptionType.BadInstruction) _pendingGasCost = 0;
         // As in Geth, an opcode that runs out of gas reports the cost it could not pay rather than the gas it had.
         if (error == EvmExceptionType.OutOfGas && !_gasCostReported && _calculatedGasCost is ulong gasCost)
             _pendingGasCost = gasCost;
@@ -357,10 +350,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
         // Exclude the array separator: Geth counts individually serialized log objects.
         long entryStart = _writer.BytesCommitted + _writer.BytesPending - 1;
         _writer.WriteNumber("pc"u8, _pendingPc);
-        if (_pendingUndefined)
-            _writer.WriteString("op"u8, OpcodeJsonNames.GetUndefinedName(_pendingOpcode));
-        else
-            _writer.WriteString("op"u8, OpcodeJsonNames.Get(_pendingOpcode));
+        _writer.WriteString("op"u8, OpcodeJsonNames.Get(_pendingOpcode));
         _writer.WriteNumber("gas"u8, _pendingGas);
         _writer.WriteNumber("gasCost"u8, _pendingGasCost);
         _writer.WriteNumber("depth"u8, _pendingDepth);
