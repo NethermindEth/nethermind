@@ -103,6 +103,19 @@ jobs:
           sparse-checkout: scripts/network-bench
           path: workflow
 
+      # The runner's DashboardConfig drops the job Program.cs passes it, so benchmarks run on BenchmarkDotNet's
+      # default job, which BenchmarkDotNet 0.15.8 fails to validate on .NET 11. The configured job sets the runtime
+      # it validates instead. Both sides get the same change, which leaves their comparison unaffected.
+      - name: Add the configured job to the benchmark config
+        run: |
+          for side in base head; do
+            program="${side}/src/Nethermind/Nethermind.Benchmark.Runner/Program.cs"
+            grep -qE '^\s*AddJob\(jobs\);' "${program}" && continue
+            sed -i -E 's/^(\s*)AddColumnProvider\(DefaultColumnProviders\.Descriptor\);$/\1AddJob(jobs);\n&/' "${program}"
+            grep -qE '^\s*AddJob\(jobs\);' "${program}" ||
+              { echo "::error::Cannot add the job to the config in ${program}"; exit 1; }
+          done
+
       - name: Run benchmarks
         id: run
         env:
