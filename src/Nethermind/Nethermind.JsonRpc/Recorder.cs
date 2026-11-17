@@ -11,6 +11,9 @@ namespace Nethermind.JsonRpc
 {
     internal class Recorder
     {
+        // Counted in characters of the recorded strings, not in bytes written.
+        private const int MaxFileLength = 4 * 1024 * 1024;
+
         private readonly string _recorderBaseFilePath;
         private readonly IFileSystem _fileSystem;
         private readonly ILogger _logger;
@@ -53,14 +56,14 @@ namespace Nethermind.JsonRpc
             {
                 lock (_recorderSync)
                 {
-                    _currentRecorderFileLength += data.Length;
-                    if (_currentRecorderFileLength > 4 * 1024 * 2014)
+                    if (_currentRecorderFileLength + data.Length > MaxFileLength)
                     {
                         CreateNewRecorderFile();
                     }
 
                     string singleLineRequest = data.Replace(Environment.NewLine, string.Empty);
                     _fileSystem.File.AppendAllText(_currentRecorderFilePath, singleLineRequest + Environment.NewLine);
+                    _currentRecorderFileLength += data.Length;
                 }
             }
         }
