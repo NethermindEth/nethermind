@@ -60,7 +60,7 @@ public class DataColumnSidecarPoolStoredRangeRocksDbTests
                     templates[i] = DataColumnSidecarGloasTestFixture.BuildSidecar(sampled[i]);
                 }
 
-                List<(ulong Slot, Hash256? Root)> canonical = new(4096);
+                List<(ulong Slot, Hash256? Root)> canonical = [with(4096)];
                 for (ulong slot = First; slot <= Last; slot++)
                 {
                     if (slot % 10 != 7)

@@ -375,7 +375,7 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
 
     private List<ulong> ColumnsNotStored(Hash256 blockRoot, IReadOnlyList<ulong> columns)
     {
-        List<ulong> notStored = new(columns.Count);
+        List<ulong> notStored = [with(columns.Count)];
         foreach (ulong column in columns)
         {
             if (!StoreHolds(blockRoot, column))

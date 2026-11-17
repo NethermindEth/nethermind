@@ -147,7 +147,7 @@ public sealed class BeaconSyncOrchestrator(
 
     /// <summary>The pending verdicts of gossip blocks whose import has not settled, by the signed copy that carried them.</summary>
     /// <remarks>Only a block whose proposer signature verified keeps one; every slot tick drops the ended ones and ignores those no longer held.</remarks>
-    private readonly Dictionary<ForkedSignedBeaconBlock, GossipVerdict> _gossipVerdicts = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<ForkedSignedBeaconBlock, GossipVerdict> _gossipVerdicts = [with(ReferenceEqualityComparer.Instance)];
 
     /// <summary>Retains other signed copies oldest-first, counting them against the retry cap. Gossip IDs include signatures (p2p-interface.md message-id), so a forgery may arrive before the genuine copy.</summary>
     private readonly Dictionary<Hash256, List<PendingRetry>> _pendingRetryCopies = [];
@@ -3293,7 +3293,7 @@ public sealed class BeaconSyncOrchestrator(
     private async Task<(SignedExecutionPayloadEnvelope Envelope, IBeaconSyncPeer Source)?[]> FetchRunEnvelopesAsync(List<ForkedSignedBeaconBlock.OfGloas> run, CancellationToken token)
     {
         (SignedExecutionPayloadEnvelope Envelope, IBeaconSyncPeer Source)?[] found = new (SignedExecutionPayloadEnvelope, IBeaconSyncPeer)?[run.Count];
-        Dictionary<Hash256, int> indexByRoot = new(run.Count);
+        Dictionary<Hash256, int> indexByRoot = [with(run.Count)];
         for (int i = 0; i < run.Count; i++)
         {
             indexByRoot[run[i].ComputeMessageRoot()] = i;
@@ -3303,7 +3303,7 @@ public sealed class BeaconSyncOrchestrator(
         ulong count = run[^1].Slot - startSlot + 1;
         // Status v2 earliest_available_slot (fulu/p2p-interface.md): prefer peers serving from the run start; with none, a peer serving part of the run still beats none.
         IReadOnlyList<IBeaconSyncPeer> reaching = peerPool.GetBestPeers(startSlot);
-        List<IBeaconSyncPeer> eligible = new(reaching.Count);
+        List<IBeaconSyncPeer> eligible = [with(reaching.Count)];
         foreach (IBeaconSyncPeer peer in reaching)
         {
             if (peer.EarliestAvailableSlot <= startSlot) eligible.Add(peer);
@@ -3517,7 +3517,7 @@ public sealed class BeaconSyncOrchestrator(
 
         public List<ParkedEnvelope> Snapshot()
         {
-            List<ParkedEnvelope> all = new(_count);
+            List<ParkedEnvelope> all = [with(_count)];
             foreach (List<ParkedEnvelope> held in _byBlock.Values)
             {
                 all.AddRange(held);

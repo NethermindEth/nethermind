@@ -486,7 +486,7 @@ public sealed class ColumnBackfill(
                 continue;
             }
 
-            Dictionary<Hash256, ForkedSignedBeaconBlock> byRoot = new(kept);
+            Dictionary<Hash256, ForkedSignedBeaconBlock> byRoot = [with(kept)];
             HashSet<Hash256> replyRoots = [];
             ulong replyLast = askFrom;
             foreach (ForkedSignedBeaconBlock block in reply)

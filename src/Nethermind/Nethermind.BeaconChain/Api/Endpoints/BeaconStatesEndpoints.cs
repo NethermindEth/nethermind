@@ -131,7 +131,7 @@ internal static class BeaconStatesEndpoints
 
         // Indexes the 512 committee keys rather than the whole registry, then finds them in one registry scan.
         BlsPublicKey[] pubkeys = committee.Pubkeys!;
-        Dictionary<BlsPublicKey, List<int>> positions = new(pubkeys.Length);
+        Dictionary<BlsPublicKey, List<int>> positions = [with(pubkeys.Length)];
         for (int i = 0; i < pubkeys.Length; i++)
         {
             ref List<int>? at = ref CollectionsMarshal.GetValueRefOrAddDefault(positions, pubkeys[i], out _);
@@ -548,8 +548,8 @@ internal static class BeaconStatesEndpoints
         invalidId = null;
         if (ids.Count == 0) return true;
 
-        indices = new List<int>(ids.Count);
-        HashSet<int> seen = new(ids.Count);
+        indices = [with(ids.Count)];
+        HashSet<int> seen = [with(ids.Count)];
         Dictionary<BlsPublicKey, int>? pubkeyIndex = null;
         foreach (string id in ids)
         {
@@ -768,7 +768,7 @@ internal static class BeaconStatesEndpoints
     /// <summary>Builds a one-off pubkey-to-index map for a single request's id-filter loop; not cached across requests.</summary>
     private static Dictionary<BlsPublicKey, int> BuildPubkeyIndex(Validator[] validators)
     {
-        Dictionary<BlsPublicKey, int> map = new(validators.Length);
+        Dictionary<BlsPublicKey, int> map = [with(validators.Length)];
         for (int i = 0; i < validators.Length; i++)
         {
             map[validators[i].Pubkey] = i;

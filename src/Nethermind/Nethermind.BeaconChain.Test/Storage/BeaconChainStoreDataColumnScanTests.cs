@@ -91,7 +91,7 @@ public class BeaconChainStoreDataColumnScanTests
             required |= UInt128.One << (i * 16 + 5);
         }
 
-        List<(ulong Slot, Hash256? Root)> canonical = new((int)slots);
+        List<(ulong Slot, Hash256? Root)> canonical = [with((int)slots)];
         byte[] slotKey = new byte[sizeof(ulong)];
         byte[] recordKey = new byte[Hash256.Size + sizeof(ulong)];
         byte[] record = new byte[9];
@@ -130,7 +130,7 @@ public class BeaconChainStoreDataColumnScanTests
         ulong first = FuluStart + 1_000_000;
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), Spec);
         Random random = new(42);
-        List<(ulong Slot, Hash256? Root)> canonical = new(blocks);
+        List<(ulong Slot, Hash256? Root)> canonical = [with(blocks)];
         for (ulong slot = first; slot < first + blocks; slot++)
         {
             SignedBeaconBlock block = TestChain.CreateBlock(slot, Hash256.Zero);

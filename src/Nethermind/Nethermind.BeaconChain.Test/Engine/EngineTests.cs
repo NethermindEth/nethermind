@@ -428,7 +428,7 @@ public class EngineTests
             Assert.That(detectedBeforeExternalCall, Is.False);
             Assert.That(detector.IsExternalClDetected, Is.True);
             Assert.That(detections, Is.EqualTo(1), "detection must latch and fire once");
-            inner.ReceivedWithAnyArgs(3).engine_forkchoiceUpdatedV3(default!, default);
+            await inner.ReceivedWithAnyArgs(3).engine_forkchoiceUpdatedV3(default!, default);
         }
     }
 

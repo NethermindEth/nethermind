@@ -189,7 +189,7 @@ public sealed class ColumnGossipRouter(
     private readonly LruKeyCache<(ulong Slot, ulong ProposerIndex, ulong Index)> _seenSidecars = new(SeenCacheSize, "beacon column gossip seen sidecars");
     private readonly LruKeyCache<(Hash256 BlockRoot, ulong Index)> _seenGloasSidecars = new(SeenCacheSize, "beacon column gossip seen gloas sidecars");
     private readonly Lock _pendingGloasLock = new();
-    private readonly Dictionary<DataColumnSidecarGloas, PendingGloasVerdict> _pendingGloasVerdicts = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<DataColumnSidecarGloas, PendingGloasVerdict> _pendingGloasVerdicts = [with(ReferenceEqualityComparer.Instance)];
     private sealed record PendingGloasVerdict(ulong Subnet, PeerId Source, GossipVerdict Verdict)
     {
         public int Validating;
@@ -326,7 +326,7 @@ public sealed class ColumnGossipRouter(
             }
 
             _subscriptions[key] = subscriptions;
-            _publishTopics = new(_subscriptions);
+            _publishTopics = [with(_subscriptions)];
             if (_logger.IsInfo) _logger.Info($"Subscribed {_subnets.Count} data column sidecar subnets for fork digest 0x{key}");
         }
     }
@@ -342,7 +342,7 @@ public sealed class ColumnGossipRouter(
                 return;
             }
 
-            _publishTopics = new(_subscriptions);
+            _publishTopics = [with(_subscriptions)];
 
             foreach ((ulong _, ITopic topic) in subscriptions)
             {
@@ -1698,8 +1698,8 @@ public sealed class ColumnGossipRouter(
         {
             CheckpointRef finalized = snapshot.FinalizedCheckpoint;
             ulong finalizedSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(finalized.Epoch);
-            Dictionary<Hash256, ForkChoiceSnapshotNode> nodes = new(snapshot.Nodes.Count);
-            Dictionary<Hash256, bool> descends = new(snapshot.Nodes.Count);
+            Dictionary<Hash256, ForkChoiceSnapshotNode> nodes = [with(snapshot.Nodes.Count)];
+            Dictionary<Hash256, bool> descends = [with(snapshot.Nodes.Count)];
             foreach (ForkChoiceSnapshotNode node in snapshot.Nodes)
             {
                 nodes[node.Root] = node;

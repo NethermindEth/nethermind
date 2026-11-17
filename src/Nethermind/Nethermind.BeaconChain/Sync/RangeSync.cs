@@ -576,7 +576,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             }
             else if (available is null)
             {
-                available = new(peers.Count - 1);
+                available = [with(peers.Count - 1)];
                 for (int j = 0; j < i; j++) available.Add(peers[j]);
             }
         }
@@ -727,7 +727,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             assigned[best]!.Add(column);
         }
 
-        List<(IBeaconSyncPeer Peer, ulong[] Columns)> requests = new(chosenOrder.Count);
+        List<(IBeaconSyncPeer Peer, ulong[] Columns)> requests = [with(chosenOrder.Count)];
         foreach (int i in chosenOrder)
         {
             requests.Add((peers[i], [.. assigned[i]!]));
@@ -1115,8 +1115,8 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
     /// Not thread-safe.</remarks>
     internal sealed class ColumnFetchRotation(SlotClock clock)
     {
-        private readonly HashSet<string> _asked = new(StringComparer.Ordinal);
-        private HashSet<string> _previous = new(StringComparer.Ordinal);
+        private readonly HashSet<string> _asked = [with(StringComparer.Ordinal)];
+        private HashSet<string> _previous = [with(StringComparer.Ordinal)];
         private ulong _cycleSlot = clock.CurrentSlot;
 
         /// <summary>The custodians recorded as asked since the rotation last started over, counting only those still custodians at the last take.</summary>
@@ -1125,7 +1125,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         /// <summary>Takes up to <paramref name="max"/> of <paramref name="custodians"/>, in their order within each group, and records them as asked.</summary>
         public List<IBeaconSyncPeer> Take(IReadOnlyList<IBeaconSyncPeer> custodians, int max)
         {
-            HashSet<string> current = new(StringComparer.Ordinal);
+            HashSet<string> current = [with(StringComparer.Ordinal)];
             foreach (IBeaconSyncPeer peer in custodians) current.Add(peer.Id);
             _asked.IntersectWith(current);
             ulong slot = clock.CurrentSlot;

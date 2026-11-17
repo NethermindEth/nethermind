@@ -167,7 +167,7 @@ public class ExecutionPayloadEnvelopeImporterTests
         SignedExecutionPayloadEnvelope envelope = ValidEnvelope(state, bid.Message!, builderSk, builderIndex: 0);
         envelope.Message!.Payload!.GasLimit++;
         IEngineRpcModule engine = ScriptedEngine(ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1 { Status = PayloadStatus.Valid }));
-        Dictionary<StringLabel, long> before = new(Metrics.BeaconChainForkChoiceRejections);
+        Dictionary<StringLabel, long> before = [with(Metrics.BeaconChainForkChoiceRejections)];
 
         ExecutionPayloadEnvelopeImportResult result = CreateImporter(new BlockStates().Add(state), engine).Import(envelope);
 

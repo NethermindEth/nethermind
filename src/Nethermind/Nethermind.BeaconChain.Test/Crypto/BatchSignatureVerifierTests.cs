@@ -148,7 +148,7 @@ public class BatchSignatureVerifierTests
         for (int trial = 0; trial < trials; trial++)
         {
             int count = random.Next(1, maxSetsPerTrial + 1);
-            List<BlsSignatureSet> sets = new(count);
+            List<BlsSignatureSet> sets = [with(count)];
             for (int i = 0; i < count; i++)
             {
                 int keyIndex = trial * maxSetsPerTrial + i;

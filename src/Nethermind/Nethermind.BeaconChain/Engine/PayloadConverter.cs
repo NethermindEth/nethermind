@@ -136,7 +136,7 @@ public static class PayloadConverter
             return [];
         }
 
-        List<byte[]> list = new(3);
+        List<byte[]> list = [with(3)];
         AppendRequests(list, ExecutionRequestType.Deposit, requests.Deposits);
         AppendRequests(list, ExecutionRequestType.WithdrawalRequest, requests.Withdrawals);
         AppendRequests(list, ExecutionRequestType.ConsolidationRequest, requests.Consolidations);
@@ -155,7 +155,7 @@ public static class PayloadConverter
             return [];
         }
 
-        List<byte[]> list = new(5);
+        List<byte[]> list = [with(5)];
         AppendRequests(list, ExecutionRequestType.Deposit, requests.Deposits);
         AppendRequests(list, ExecutionRequestType.WithdrawalRequest, requests.Withdrawals);
         AppendRequests(list, ExecutionRequestType.ConsolidationRequest, requests.Consolidations);

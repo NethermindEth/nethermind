@@ -57,7 +57,7 @@ internal static class ConfigEndpoints
     private static Task Spec(HttpContext c, BeaconApiContext ctx)
     {
         BeaconChainSpec spec = ctx.Spec;
-        Dictionary<string, object> data = new(SpecValues.Mainnet.Count + SpecConstants.All.Count + 4);
+        Dictionary<string, object> data = [with(SpecValues.Mainnet.Count + SpecConstants.All.Count + 4)];
         foreach ((string key, string value) in SpecValues.Mainnet)
         {
             data[key] = value;

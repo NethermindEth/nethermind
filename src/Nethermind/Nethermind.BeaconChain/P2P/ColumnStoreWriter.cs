@@ -16,7 +16,7 @@ public sealed class ColumnStoreWriter : IDisposable
     internal const int MaxQueued = 4096;
 
     private readonly ILogger _logger;
-    private readonly BlockingCollection<Action> _writes = new(MaxQueued);
+    private readonly BlockingCollection<Action> _writes = [with(MaxQueued)];
     private readonly Thread _thread;
     private readonly TaskCompletionSource _drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
 

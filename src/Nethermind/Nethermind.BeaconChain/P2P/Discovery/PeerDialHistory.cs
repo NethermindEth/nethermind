@@ -11,7 +11,7 @@ internal sealed class PeerDialHistory(ITimestamper clock, int capacity = 8192)
     internal static readonly TimeSpan InitialBackoff = TimeSpan.FromSeconds(30);
     internal static readonly TimeSpan MaximumBackoff = TimeSpan.FromMinutes(15);
     private readonly Lock _lock = new();
-    private readonly Dictionary<string, Outcome> _outcomes = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Outcome> _outcomes = [with(StringComparer.Ordinal)];
     private long _sequence;
 
     private readonly record struct Outcome(int Failures, DateTime RetryAt, long Sequence);

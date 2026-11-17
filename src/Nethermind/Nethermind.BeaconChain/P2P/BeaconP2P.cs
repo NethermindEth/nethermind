@@ -60,7 +60,7 @@ public sealed class BeaconP2P : IAsyncDisposable
     // library drops the session. It is a slot and not a value because a dial returns as soon as the
     // identify dial completes, before the slot is filled.
     private readonly ConcurrentDictionary<ISession, TaskCompletionSource<SessionInfo>> _sessionInfo = new();
-    private readonly ConditionalWeakTable<ISession, TaskCompletionSource<SessionInfo>> _pendingSessionInfo = new();
+    private readonly ConditionalWeakTable<ISession, TaskCompletionSource<SessionInfo>> _pendingSessionInfo = [];
 
     private readonly ConcurrentDictionary<SessionWatch, byte> _sessionWatches = new();
     private int _identifyTimeouts;

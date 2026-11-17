@@ -117,7 +117,7 @@ public sealed class EpochCache
         }
 
         BlsPublicKey[] pubkeys = committee.Pubkeys!;
-        Dictionary<BlsPublicKey, int> wanted = new(pubkeys.Length);
+        Dictionary<BlsPublicKey, int> wanted = [with(pubkeys.Length)];
         foreach (BlsPublicKey pubkey in pubkeys)
         {
             wanted.TryAdd(pubkey, -1);

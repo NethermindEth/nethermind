@@ -156,7 +156,7 @@ internal static class BlobsEndpoint
     /// <summary>The blob indices to serve, in commitment order: all of them, or those whose <c>kzg_to_versioned_hash</c> is in <paramref name="wanted"/>.</summary>
     private static List<int> SelectRows(SszKzgCommitment[] commitments, HashSet<Hash256>? wanted)
     {
-        List<int> rows = new(commitments.Length);
+        List<int> rows = [with(commitments.Length)];
         Hash256?[] versionedHashes = wanted is null ? [] : PayloadConverter.ToBlobVersionedHashes(commitments);
         for (int i = 0; i < commitments.Length; i++)
         {

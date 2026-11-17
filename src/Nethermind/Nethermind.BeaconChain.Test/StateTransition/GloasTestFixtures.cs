@@ -531,7 +531,7 @@ internal static class GloasTestFixtures
         private static readonly ConcurrentDictionary<Type, FieldInfo[]> MutableFields = new();
 
         public static T Copy<T>(T value) where T : class =>
-            (T)Copy(value, new Dictionary<object, object>(ReferenceEqualityComparer.Instance))!;
+            (T)Copy(value, [with(ReferenceEqualityComparer.Instance)])!;
 
         private static object? Copy(object? value, Dictionary<object, object> copies)
         {

@@ -597,7 +597,7 @@ public sealed class BeaconDiscovery(
             ? spec.Bootnodes
             : config.Bootnodes.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-        List<Node> bootNodes = new(enrs.Length);
+        List<Node> bootNodes = [with(enrs.Length)];
         foreach (string enr in enrs)
         {
             try

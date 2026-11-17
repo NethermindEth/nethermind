@@ -1020,7 +1020,7 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
                 kept += Hash256.Size;
             }
             if (kept == 0) envelopes.Remove(slotKey);
-            else envelopes.Set(slotKey, roots.AsSpan(0, kept).ToArray());
+            else envelopes.PutSpan(slotKey, roots.AsSpan(0, kept));
         }
     }
 

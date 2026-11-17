@@ -459,7 +459,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     {
         // By peer id, not pool key: a static peer that connected to us first is keyed by the address it
         // came from, which never equals its configured dial address.
-        HashSet<string> exempt = new(StringComparer.Ordinal);
+        HashSet<string> exempt = [with(StringComparer.Ordinal)];
         foreach (string address in staticAddresses)
         {
             exempt.Add(ExtractPeerId(address));
@@ -632,7 +632,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         });
 
         int count = Math.Min(MaxPeersOfferedAtFailureLimit, keyed.Length);
-        List<ManagedPeer> least = new(count);
+        List<ManagedPeer> least = [with(count)];
         for (int i = 0; i < count; i++)
         {
             least.Add(keyed[i].Peer);
@@ -1033,13 +1033,13 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// <summary>Snapshots every peer id this plugin has ever connected to and still remembers.</summary>
     public IReadOnlyList<PeerDiagnostics> GetPeerDiagnostics()
     {
-        Dictionary<string, ManagedPeer> connectedByPeerId = new(StringComparer.Ordinal);
+        Dictionary<string, ManagedPeer> connectedByPeerId = [with(StringComparer.Ordinal)];
         foreach (KeyValuePair<string, ManagedPeer> peer in _peers)
         {
             connectedByPeerId[peer.Value.PeerId] = peer.Value;
         }
 
-        List<PeerDiagnostics> snapshot = new(_peerRecords.Count);
+        List<PeerDiagnostics> snapshot = [with(_peerRecords.Count)];
         foreach (KeyValuePair<string, BanRecord> record in _peerRecords)
         {
             bool connected = connectedByPeerId.TryGetValue(record.Key, out ManagedPeer? peer);
@@ -1068,7 +1068,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     {
         get
         {
-            List<PeerRecord> result = new(_peers.Count + _dialing.Count);
+            List<PeerRecord> result = [with(_peers.Count + _dialing.Count)];
             foreach (KeyValuePair<string, ManagedPeer> peer in _peers)
             {
                 result.Add(ToConnectedRecord(peer.Value));

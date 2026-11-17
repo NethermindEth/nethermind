@@ -100,7 +100,7 @@ internal static class ResponseEnvelope
     private static Dictionary<Hash256, ForkChoiceSnapshotNode> IndexNodes(ForkChoiceSnapshot snapshot) =>
         SnapshotNodes.GetValue(snapshot, static current => new Lazy<Dictionary<Hash256, ForkChoiceSnapshotNode>>(() =>
         {
-            Dictionary<Hash256, ForkChoiceSnapshotNode> nodes = new(current.Nodes.Count);
+            Dictionary<Hash256, ForkChoiceSnapshotNode> nodes = [with(current.Nodes.Count)];
             foreach (ForkChoiceSnapshotNode node in current.Nodes) nodes[node.Root] = node;
             return nodes;
         })).Value;

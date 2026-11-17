@@ -167,7 +167,7 @@ internal static class NodeEndpoints
         }
 
         IReadOnlyList<PeerRecord> peers = ctx.PeerManager?.Peers ?? [];
-        List<PeerDto> filtered = new(peers.Count);
+        List<PeerDto> filtered = [with(peers.Count)];
         foreach (PeerRecord peer in peers)
         {
             if (states.Count > 0 && !states.Contains(peer.State))
