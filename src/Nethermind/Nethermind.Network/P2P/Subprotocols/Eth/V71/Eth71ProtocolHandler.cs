@@ -116,7 +116,7 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
                 }
             }
 
-            return Task.FromResult(new BlockAccessListsMessage(req.RequestId, new PooledBlockAccessLists(buffer, entries[..count])));
+            return Task.FromResult(new BlockAccessListsMessage(req.RequestId, new PooledBlockAccessLists(buffer, entries, count)));
         }
         catch
         {

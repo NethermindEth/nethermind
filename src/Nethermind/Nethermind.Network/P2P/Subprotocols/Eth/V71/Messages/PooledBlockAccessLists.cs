@@ -15,13 +15,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
 /// Reading an entry copies it to an array.
 /// </remarks>
 /// <param name="buffer">The encoded entries, which this list then owns; an unavailable list is the empty string.</param>
-/// <param name="entries">Where each entry is in <paramref name="buffer"/>.</param>
-internal sealed class PooledBlockAccessLists(ArrayPoolList<byte> buffer, Range[] entries) : IOwnedReadOnlyList<byte[]?>
+/// <param name="entries">Where each entry is in <paramref name="buffer"/>, in its first <paramref name="count"/> items.</param>
+/// <param name="count">The number of entries.</param>
+internal sealed class PooledBlockAccessLists(ArrayPoolList<byte> buffer, Range[] entries, int count) : IOwnedReadOnlyList<byte[]?>
 {
     private ArrayPoolList<byte>? _buffer = buffer;
     private byte[]?[]? _copied;
 
-    public int Count => entries.Length;
+    public int Count => count;
 
     /// <summary>The encoded entries, one after another, valid until disposal.</summary>
     public ReadOnlySpan<byte> Encoded => (_buffer ?? throw new ObjectDisposedException(nameof(PooledBlockAccessLists))).AsSpan();
@@ -33,8 +34,8 @@ internal sealed class PooledBlockAccessLists(ArrayPoolList<byte> buffer, Range[]
         if (_copied is null)
         {
             ReadOnlySpan<byte> encoded = Encoded;
-            _copied = new byte[]?[entries.Length];
-            for (int i = 0; i < entries.Length; i++)
+            _copied = new byte[]?[count];
+            for (int i = 0; i < count; i++)
             {
                 ReadOnlySpan<byte> entry = encoded[entries[i]];
                 _copied[i] = entry is [Rlp.EmptyByteArrayByte] ? null : entry.ToArray();
