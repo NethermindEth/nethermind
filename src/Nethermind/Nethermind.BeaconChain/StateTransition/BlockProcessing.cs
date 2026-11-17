@@ -130,7 +130,8 @@ public static partial class BlockProcessing
             state.DecreaseBalance((int)withdrawal.ValidatorIndex, withdrawal.Amount);
         }
 
-        state.PendingPartialWithdrawals = state.PendingPartialWithdrawals![processedPartialWithdrawalsCount..];
+        if (processedPartialWithdrawalsCount != 0)
+            state.PendingPartialWithdrawals = state.PendingPartialWithdrawals![processedPartialWithdrawalsCount..];
 
         if (expected.Count != 0)
             state.NextWithdrawalIndex = expected[^1].Index + 1;

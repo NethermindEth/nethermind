@@ -23,6 +23,52 @@ public class StateTransitionFoundationTests
     private const ulong Gwei = 1_000_000_000;
 
     [Test]
+    public void Deferred_queues_keep_their_arrays_when_nothing_is_consumed([Values] bool gloas)
+    {
+        PendingDeposit[] deposits = [new() { Slot = ulong.MaxValue }];
+        PendingConsolidation[] consolidations = [new() { SourceIndex = 0, TargetIndex = 1 }];
+        PendingPartialWithdrawal[] withdrawals = [new() { ValidatorIndex = 0, WithdrawableEpoch = ulong.MaxValue }];
+        PendingDeposit[] actualDeposits;
+        PendingConsolidation[] actualConsolidations;
+        PendingPartialWithdrawal[] actualWithdrawals;
+        if (gloas)
+        {
+            BeaconStateGloas state = CreateGloasState(out _, out _);
+            state.PendingDeposits = deposits;
+            state.PendingConsolidations = consolidations;
+            state.PendingPartialWithdrawals = withdrawals;
+            state.Validators![0].WithdrawableEpoch = Presets.FarFutureEpoch;
+            state.LatestBlockHash = state.LatestExecutionPayloadBid!.BlockHash;
+            BuilderPendingWithdrawal[] builderWithdrawals = state.BuilderPendingWithdrawals!;
+            GloasEpochProcessing.ProcessPendingDeposits(state, new EpochCache());
+            GloasEpochProcessing.ProcessPendingConsolidations(state);
+            GloasBlockProcessing.ProcessWithdrawals(state);
+            Assert.That(state.BuilderPendingWithdrawals, Is.SameAs(builderWithdrawals));
+            actualDeposits = state.PendingDeposits;
+            actualConsolidations = state.PendingConsolidations;
+            actualWithdrawals = state.PendingPartialWithdrawals;
+        }
+        else
+        {
+            BeaconStateFulu state = CreateFuluState(64);
+            state.PendingDeposits = deposits;
+            state.PendingConsolidations = consolidations;
+            state.PendingPartialWithdrawals = withdrawals;
+            state.Validators![0].WithdrawableEpoch = Presets.FarFutureEpoch;
+            EpochProcessing.ProcessPendingDeposits(state, new EpochCache());
+            EpochProcessing.ProcessPendingConsolidations(state);
+            BlockProcessing.ProcessWithdrawals(state, new() { Withdrawals = [] });
+            actualDeposits = state.PendingDeposits;
+            actualConsolidations = state.PendingConsolidations;
+            actualWithdrawals = state.PendingPartialWithdrawals;
+        }
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(actualDeposits, Is.SameAs(deposits));
+        Assert.That(actualConsolidations, Is.SameAs(consolidations));
+        Assert.That(actualWithdrawals, Is.SameAs(withdrawals));
+    }
+
+    [Test]
     public void Proposer_selection_accepts_maximum_balance_on_the_largest_random_draw()
     {
         BeaconStateFulu state = CreateState(64, Presets.MaxEffectiveBalanceElectra);

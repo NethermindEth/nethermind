@@ -403,7 +403,8 @@ public static partial class EpochProcessing
             state.CurrentEpochParticipation = [.. state.CurrentEpochParticipation!, .. new byte[addedValidators.Count]];
             state.InactivityScores = [.. state.InactivityScores!, .. new ulong[addedValidators.Count]];
         }
-        state.PendingDeposits = [.. pendingDeposits[nextDepositIndex..], .. depositsToPostpone];
+        if (nextDepositIndex != 0 || state.PendingDeposits is null)
+            state.PendingDeposits = [.. pendingDeposits.AsSpan(nextDepositIndex), .. depositsToPostpone];
 #if !GLOAS
 
         // Accumulate churn only if the churn limit has been hit.
@@ -419,7 +420,8 @@ public static partial class EpochProcessing
 #else
         int nextPendingConsolidation = ProcessPendingConsolidations(state.Validators!, state.Balances!, pendingConsolidations, state.GetCurrentEpoch() + 1);
 #endif
-        state.PendingConsolidations = pendingConsolidations[nextPendingConsolidation..];
+        if (nextPendingConsolidation != 0 || state.PendingConsolidations is null)
+            state.PendingConsolidations = pendingConsolidations[nextPendingConsolidation..];
     }
 
     public static partial void ProcessEffectiveBalanceUpdates(ForkState state, EpochCache cache)

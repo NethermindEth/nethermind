@@ -23,6 +23,39 @@ namespace Nethermind.BeaconChain.Test.StateTransition;
 public class GloasBlockProcessingTests
 {
     [Test]
+    public void Builder_exit_batch_matches_sequential_wrapping_pending_totals([Values(1ul, 2ul)] ulong payment)
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        Builder original = state.Builders![0];
+        state.Builders = [.. Enumerable.Range(0, 3).Select(i => new Builder
+        {
+            Pubkey = state.Validators![i].Pubkey, ExecutionAddress = original.ExecutionAddress,
+            Balance = original.Balance, DepositEpoch = 0, WithdrawableEpoch = Presets.FarFutureEpoch,
+        })];
+        state.BuilderPendingWithdrawals =
+        [
+            new() { BuilderIndex = 0, Amount = ulong.MaxValue, FeeRecipient = original.ExecutionAddress },
+            new() { BuilderIndex = 1, Amount = ulong.MaxValue, FeeRecipient = original.ExecutionAddress },
+            new() { BuilderIndex = 99, Amount = 123, FeeRecipient = original.ExecutionAddress },
+        ];
+        for (int i = 0; i < 2; i++)
+            state.BuilderPendingPayments![i].Withdrawal = new() { BuilderIndex = (ulong)i, Amount = payment, FeeRecipient = original.ExecutionAddress };
+        BuilderExitRequest[] exits = [.. new[] { 0, 0, 1, 2 }.Select(i => new BuilderExitRequest
+        {
+            Pubkey = state.Builders[i].Pubkey, SourceAddress = original.ExecutionAddress,
+        })];
+        BeaconStateGloas expected = state.Clone();
+        foreach (BuilderExitRequest exit in exits) GloasBlockProcessing.ProcessBuilderExitRequest(expected, exit);
+
+        ApplyBuilderRequests(state, new() { BuilderExits = exits });
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(state.Builders.Select(b => b.WithdrawableEpoch), Is.EqualTo(expected.Builders!.Select(b => b.WithdrawableEpoch)));
+        Assert.That(state.Builders[0].WithdrawableEpoch, Is.EqualTo(payment == 1 ? state.GetCurrentEpoch() + Presets.MinBuilderWithdrawabilityDelay : Presets.FarFutureEpoch));
+        Assert.That(state.Builders[2].WithdrawableEpoch, Is.Not.EqualTo(Presets.FarFutureEpoch));
+    }
+
+    [Test]
     public void Builder_request_batch_matches_sequential_helpers_with_reused_slots_and_exits([Values] bool customNetwork, [Values(0, 1)] int unrelatedBuilders)
     {
         BeaconChainSpec spec = customNetwork ? NetworkSigningDomainTests.CustomSigningSpec : SyntheticSpec();
@@ -400,7 +433,7 @@ public class GloasBlockProcessingTests
     }
 
     [Test]
-    public void Parent_payment_prevents_a_builder_exit([Values(1ul, 2ul, 3ul)] ulong epoch, [Values(0ul, 1ul)] ulong payment)
+    public void Parent_payment_prevents_a_builder_exit([Values(1ul, 2ul, 3ul)] ulong epoch, [Values(0ul, 1ul)] ulong payment, [Values(1, 2)] int requestCount)
     {
         BeaconStateGloas state = CreateGloasState(out _, out _);
         Builder builder = state.Builders![0];
@@ -409,7 +442,7 @@ public class GloasBlockProcessingTests
         state.LatestBlockHeader!.Slot = parentSlot;
         ExecutionRequestsGloas requests = new()
         {
-            BuilderExits = [new BuilderExitRequest { Pubkey = builder.Pubkey, SourceAddress = builder.ExecutionAddress }],
+            BuilderExits = [.. Enumerable.Repeat(new BuilderExitRequest { Pubkey = builder.Pubkey, SourceAddress = builder.ExecutionAddress }, requestCount)],
         };
         ExecutionPayloadBid parent = state.LatestExecutionPayloadBid!;
         parent.BlockHash = Hash(0x88);

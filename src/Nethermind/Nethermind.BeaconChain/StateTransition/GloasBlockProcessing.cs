@@ -533,8 +533,10 @@ public static partial class GloasBlockProcessing
         }
         foreach (BuilderDepositRequest request in requests.BuilderDeposits ?? [])
             ProcessBuilderDepositRequestCore(state, request, cache.SigningSpec, builders);
+        BuilderExitBalances? builderBalances = requests.BuilderExits is { Length: > 1 } exits
+            ? new(state, builders!, exits) : null;
         foreach (BuilderExitRequest request in requests.BuilderExits ?? [])
-            ProcessBuilderExitRequestCore(state, request, builders);
+            ProcessBuilderExitRequestCore(state, request, builders, builderBalances);
         if (builders is not null) state.Builders = builders.ToArray();
 
         state.ExecutionPayloadAvailability![(int)(parentSlot % Presets.SlotsPerHistoricalRoot)] = true;
@@ -648,7 +650,7 @@ public static partial class GloasBlockProcessing
     internal static void ProcessBuilderExitRequest(BeaconStateGloas state, BuilderExitRequest request)
         => ProcessBuilderExitRequestCore(state, request, null);
 
-    private static void ProcessBuilderExitRequestCore(BeaconStateGloas state, BuilderExitRequest request, BuilderRegistryBatch? builders)
+    private static void ProcessBuilderExitRequestCore(BeaconStateGloas state, BuilderExitRequest request, BuilderRegistryBatch? builders, BuilderExitBalances? balances = null)
     {
         int builderIndex = builders?.Find(request.Pubkey) ?? Array.FindIndex(state.Builders!, b => b.Pubkey.Equals(request.Pubkey));
         if (builderIndex < 0)
@@ -659,7 +661,7 @@ public static partial class GloasBlockProcessing
             return;
         if (builder.ExecutionAddress != request.SourceAddress)
             return;
-        if (state.GetPendingBalanceToWithdrawForBuilder((ulong)builderIndex) != 0)
+        if ((balances?.GetTotal(builderIndex) ?? state.GetPendingBalanceToWithdrawForBuilder((ulong)builderIndex)) != 0)
             return;
 
         Builder updated = new()
@@ -695,8 +697,10 @@ public static partial class GloasBlockProcessing
         if (withdrawals.Length != 0)
             state.NextWithdrawalIndex = withdrawals[^1].Index + 1;
         state.PayloadExpectedWithdrawals = withdrawals;
-        state.BuilderPendingWithdrawals = state.BuilderPendingWithdrawals![processedBuilderWithdrawals..];
-        state.PendingPartialWithdrawals = state.PendingPartialWithdrawals![processedPartialWithdrawals..];
+        if (processedBuilderWithdrawals != 0)
+            state.BuilderPendingWithdrawals = state.BuilderPendingWithdrawals![processedBuilderWithdrawals..];
+        if (processedPartialWithdrawals != 0)
+            state.PendingPartialWithdrawals = state.PendingPartialWithdrawals![processedPartialWithdrawals..];
         if (state.Builders!.Length > 0)
             state.NextWithdrawalBuilderIndex = (state.NextWithdrawalBuilderIndex + (ulong)processedBuildersSweep) % (ulong)state.Builders.Length;
 
