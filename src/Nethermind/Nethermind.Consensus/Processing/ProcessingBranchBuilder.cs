@@ -143,9 +143,9 @@ internal sealed class ProcessingBranchBuilder(IBlockTree blockTree, IStateReader
             // reprocessed - moving them onto the main chain (down to the real reorg boundary) is handled by
             // BlockTree.TryUpdateMainChain, which walks headers there cheaply. Hence MaxBranchSize now bounds
             // only the blocks-without-state we collect here, not the whole reorg depth.
-            bool hasState = toBeProcessed.StateRoot is null
-                || (IsOwnState(toBeProcessed) && _stateReader.HasStateForBlock(toBeProcessed.Header));
             bool notInForceProcessing = !options.ContainsFlag(ProcessingOptions.ForceProcessing);
+            bool hasState = toBeProcessed.StateRoot is null
+                || ((!notInForceProcessing || IsOwnState(toBeProcessed)) && _stateReader.HasStateForBlock(toBeProcessed.Header));
             branchingCondition = !hasState && notInForceProcessing;
 
             // notFoundTheBranchingPointYet no longer gates the loop; compute the IsMainChain lookup only for the trace.
@@ -225,7 +225,7 @@ internal sealed class ProcessingBranchBuilder(IBlockTree blockTree, IStateReader
     private bool IsOwnState(Block block) =>
         _blockTree.IsMainChain(block.Header)
         || _blockTree.WasProcessed(block.Number, block.Hash!)
-        || block.Number <= _blockTree.SyncPivot.BlockNumber;
+        || (block.Number == _blockTree.SyncPivot.BlockNumber && block.Hash == _blockTree.SyncPivot.BlockHash);
 
     [Todo(Improve.Refactor, "This probably can be made conditional (in DEBUG only)")]
     public bool RunSimpleChecksAheadOfProcessing(Block suggestedBlock, ProcessingOptions options)

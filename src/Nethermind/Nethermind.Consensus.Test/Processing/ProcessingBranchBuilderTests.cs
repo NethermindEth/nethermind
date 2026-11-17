@@ -81,9 +81,8 @@ public class ProcessingBranchBuilderTests
         Assert.Throws<InvalidOperationException>(() => builder.PrepareProcessingBranch(side4, ProcessingOptions.None));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Side_ancestor_is_a_base_only_if_it_was_processed(bool sideWasProcessed)
+    [Test]
+    public void Side_ancestor_is_a_base_only_if_it_was_processed([Values] bool sideWasProcessed)
     {
         (IBlockTree blockTree, Block fork, Block head, Block side2, Block side3) = BuildSideBranch();
         if (sideWasProcessed)
@@ -102,20 +101,21 @@ public class ProcessingBranchBuilderTests
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Side_ancestor_with_state_is_a_base_if_it_is_not_above_the_sync_pivot(bool abovePivot)
+    [Test]
+    public void Side_ancestor_with_state_is_a_base_only_if_it_is_the_sync_pivot([Values("fork", "side", "head")] string pivot)
     {
         (IBlockTree blockTree, Block fork, Block head, Block side2, Block side3) = BuildSideBranch();
-        blockTree.SyncPivot = abovePivot ? (fork.Number, fork.Hash!) : (side2.Number, side2.Hash!);
+        Block pivotBlock = pivot switch { "fork" => fork, "side" => side2, _ => head };
+        blockTree.SyncPivot = (pivotBlock.Number, pivotBlock.Hash!);
+        bool notPivot = pivotBlock != side2;
 
         ProcessingBranchBuilder builder = new(blockTree, StateOnlyFor(fork, head, side2), [], LimboLogs.Instance.GetClassLogger<ProcessingBranchBuilder>());
 
         using ProcessingBranch branch = builder.PrepareProcessingBranch(side3, ProcessingOptions.None);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(branch.BaseBlock?.Hash, Is.EqualTo(abovePivot ? fork.Hash : side2.Hash));
-            Assert.That(branch.Blocks.Count, Is.EqualTo(abovePivot ? 2 : 1));
+            Assert.That(branch.BaseBlock?.Hash, Is.EqualTo(notPivot ? fork.Hash : side2.Hash));
+            Assert.That(branch.Blocks.Count, Is.EqualTo(notPivot ? 2 : 1));
         }
     }
 
