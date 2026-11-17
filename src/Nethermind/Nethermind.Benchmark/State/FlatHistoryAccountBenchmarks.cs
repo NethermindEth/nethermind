@@ -3,13 +3,17 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Threading;
+using Autofac;
 using BenchmarkDotNet.Attributes;
+using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.IO;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Evm.State;
+using Nethermind.Init.Modules;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -20,7 +24,6 @@ using Nethermind.State.Flat.History.Changesets;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
-using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie.NodeBuffer;
 using FlatSnapshot = Nethermind.State.Flat.Snapshot;
@@ -43,35 +46,36 @@ public class FlatHistoryAccountBenchmarks
     [Params(false, true)]
     public bool DiscardRows { get; set; }
 
-    private string _directory = null!;
-    private ArenaManager _arena = null!;
-    private BlobArenaManager _blobs = null!;
-    private SnapshotRepository _repository = null!;
+    private TempPath _dbPath = null!;
+    private IContainer _container = null!;
+    private ILifetimeScope _historyScope;
+    private ISnapshotRepository _repository = null!;
     private StateId _head;
-    private readonly SnapshotableMemColumnsDb<FlatDbColumns> _db = new();
     private HistoryWriter _writer = null!;
-    private FlatDbConfig _config = null!;
 
     [GlobalSetup]
     public void Setup()
     {
-        _config = new FlatDbConfig
+        FlatDbConfig config = new()
         {
+            Enabled = true,
             ApplyStorageWritesOnIdleThread = false,
             HistoryEnabled = true,
             Layout = FlatLayout.Flat,
             HistoryRetention = Windowed ? HistoryRetentionMode.Rolling : HistoryRetentionMode.None,
             HistoryRetentionBlocks = Windowed ? 100UL : 0UL
         };
-        FlatSnapshot snapshot = BuildSnapshot(_config, new ResourcePool(_config));
-        _head = snapshot.To;
+        _dbPath = TempPath.GetTempDirectory();
+        _container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(config, new InitConfig { BaseDbPath = _dbPath.Path }))
+            .AddSingleton<IPersistedSnapshotCompactor>(NullPersistedSnapshotCompactor.Instance)
+            .Build();
 
-        _directory = Path.Combine(Path.GetTempPath(), $"{nameof(FlatHistoryAccountBenchmarks)}-{Guid.NewGuid():N}");
-        _arena = new ArenaManager(Path.Combine(_directory, "arena"), _config, NullLogManager.Instance);
-        _blobs = new BlobArenaManager(Path.Combine(_directory, "blob"), _config.ArenaFileSizeBytes);
-        SnapshotCatalog catalog = new(new MemDb());
-        _repository = new SnapshotRepository(_arena, _blobs, catalog, _config, UnavailableStateHeaderProvider.Instance, NullLogManager.Instance);
-        PersistedSnapshotLoader loader = new(_repository, _arena, _blobs, catalog, _config, NullLogManager.Instance);
+        FlatSnapshot snapshot = BuildSnapshot(config, _container.Resolve<ResourcePool>());
+        _head = snapshot.To;
+        _repository = _container.Resolve<ISnapshotRepository>();
+        // The test module turns off long finality, so the interface resolves to the no-op loader.
+        PersistedSnapshotLoader loader = _container.Resolve<PersistedSnapshotLoader>();
         loader.Load();
         loader.ConvertAndRegister(snapshot);
         snapshot.Dispose();
@@ -80,18 +84,21 @@ public class FlatHistoryAccountBenchmarks
     [GlobalCleanup]
     public void Cleanup()
     {
-        _repository.Dispose();
-        _blobs.Dispose();
-        _arena.Dispose();
-        Directory.Delete(_directory, recursive: true);
+        _historyScope?.Dispose();
+        _container.Dispose();
+        _dbPath.Dispose();
     }
 
     [IterationSetup]
     public void CreateHistory()
     {
+        _historyScope?.Dispose();
         IColumnsDb<FlatHistoryColumns> history = DiscardRows ? new RowDiscardingHistoryDb() : new SnapshotableMemColumnsDb<FlatHistoryColumns>();
-        HistoryAvailability availability = new(history.GetColumnDb(FlatHistoryColumns.AvailableBlocks));
-        _writer = new HistoryWriter(_db, history, _config, availability, HistoryRowFormat.Resolve(availability, _config), NullLogManager.Instance, commitments: null);
+        // Each invocation captures into an empty history, so the history module is loaded again over a fresh database.
+        _historyScope = _container.BeginLifetimeScope(builder => builder
+            .AddModule(new FlatHistoryModule())
+            .AddSingleton(history));
+        _writer = _historyScope.Resolve<HistoryWriter>();
     }
 
     [Benchmark]
