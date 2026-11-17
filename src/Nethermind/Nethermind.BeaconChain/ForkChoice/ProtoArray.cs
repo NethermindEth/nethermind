@@ -17,6 +17,7 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
 
     private Hash256 _previousProposerBoostRoot = Hash256.Zero;
     private ulong _previousProposerBoostScore;
+    private bool?[] _leafViability = [];
 
     /// <summary>Do not prune unless the finalized block is at least this deep; small prunes waste time.</summary>
     public int PruneThreshold { get; set; } = ProtoArrayForkChoice.DefaultPruneThreshold;
@@ -98,13 +99,23 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
         _previousProposerBoostRoot = proposerBoostRoot;
         _previousProposerBoostScore = ApplyProposerBoost(proposerBoostRoot, newJustifiedBalances);
 
+        // Slot, checkpoints and child execution statuses remain fixed throughout this pass.
+        if (_leafViability.Length < Nodes.Count)
+        {
+            _leafViability = new bool?[Math.Max(Nodes.Count, _leafViability.Length * 2)];
+        }
+        else
+        {
+            Array.Clear(_leafViability, 0, Nodes.Count);
+        }
+
         // A second backward pass, separate from the weight-updating loop above, so the
         // best-child/best-descendant updates see a fully coherent set of weights.
         for (int nodeIndex = Nodes.Count - 1; nodeIndex >= 0; nodeIndex--)
         {
             if (Nodes[nodeIndex].Parent is int parentIndex)
             {
-                MaybeUpdateBestChildAndDescendant(parentIndex, nodeIndex, currentSlot, newJustifiedCheckpoint, newFinalizedCheckpoint);
+                MaybeUpdateBestChildAndDescendant(parentIndex, nodeIndex, currentSlot, newJustifiedCheckpoint, newFinalizedCheckpoint, _leafViability);
             }
         }
     }
@@ -429,7 +440,8 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
         int childIndex,
         ulong currentSlot,
         CheckpointRef justifiedCheckpoint,
-        CheckpointRef finalizedCheckpoint)
+        CheckpointRef finalizedCheckpoint,
+        bool?[]? leafViability = null)
     {
         ProtoNode child = Nodes[childIndex];
         ProtoNode parent = Nodes[parentIndex];
@@ -446,7 +458,7 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
             return;
         }
 
-        bool childLeadsToViableHead = NodeLeadsToViableHead(child, currentSlot, justifiedCheckpoint, finalizedCheckpoint);
+        bool childLeadsToViableHead = NodeLeadsToViableHead(childIndex, currentSlot, justifiedCheckpoint, finalizedCheckpoint, leafViability);
 
         (int? BestChild, int? BestDescendant) changeToNone = (null, null);
         (int? BestChild, int? BestDescendant) changeToChild = (childIndex, child.BestDescendant ?? childIndex);
@@ -468,7 +480,7 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
             ProtoNode bestChild = Nodes[bestChildIndex];
             if (bestChild.ExecutionStatus == ExecutionStatus.Invalid) return childLeadsToViableHead ? changeToChild : changeToNone;
 
-            bool bestChildLeadsToViableHead = NodeLeadsToViableHead(bestChild, currentSlot, justifiedCheckpoint, finalizedCheckpoint);
+            bool bestChildLeadsToViableHead = NodeLeadsToViableHead(bestChildIndex, currentSlot, justifiedCheckpoint, finalizedCheckpoint, leafViability);
 
             if (childLeadsToViableHead && !bestChildLeadsToViableHead) return changeToChild;
             if (!childLeadsToViableHead && bestChildLeadsToViableHead) return noChange;
@@ -483,8 +495,15 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
         }
     }
 
-    private bool NodeLeadsToViableHead(ProtoNode node, ulong currentSlot, CheckpointRef justifiedCheckpoint, CheckpointRef finalizedCheckpoint) =>
-        IsViableLeaf(node.BestDescendant is int bestDescendantIndex ? Nodes[bestDescendantIndex] : node, currentSlot, justifiedCheckpoint, finalizedCheckpoint);
+    private bool NodeLeadsToViableHead(int nodeIndex, ulong currentSlot, CheckpointRef justifiedCheckpoint, CheckpointRef finalizedCheckpoint, bool?[]? leafViability)
+    {
+        int leafIndex = Nodes[nodeIndex].BestDescendant ?? nodeIndex;
+        if (leafViability?[leafIndex] is bool cached) return cached;
+
+        bool viable = IsViableLeaf(Nodes[leafIndex], currentSlot, justifiedCheckpoint, finalizedCheckpoint);
+        if (leafViability is not null) leafViability[leafIndex] = viable;
+        return viable;
+    }
 
     /// <summary>Indicates if <paramref name="node"/> is kept by <c>filter_node_tree</c> as a leaf.</summary>
     /// <remarks>A node with a child that is not invalid is kept only through a kept child, never on its own checkpoints; specs/phase0/fork-choice.md <c>filter_node_tree</c>.</remarks>
