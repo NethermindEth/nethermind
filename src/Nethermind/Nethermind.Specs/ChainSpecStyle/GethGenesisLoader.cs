@@ -69,9 +69,10 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
     /// Rejects a fork schedule that geth rejects, so that a genesis skipping a fork fails instead of loading with that fork off.
     /// </summary>
     /// <remarks>
-    /// Ports <c>CheckConfigForkOrder</c> from geth's <c>params/config.go</c>: every non-optional fork must be set up to
-    /// the last set fork, and each set fork must not come before the previous set fork of the same kind (block or
-    /// timestamp). Optional forks may be left out without blocking later ones.
+    /// Ports the fork-order checks of <c>CheckConfigForkOrder</c> from geth's <c>params/config.go</c>: every non-optional
+    /// fork must be set up to the last set fork, and each set fork must not come before the previous set fork of the same
+    /// kind (block or timestamp). Optional forks may be left out without blocking later ones. Geth's <c>blobSchedule</c>
+    /// check (every set cancun, prague and bpoN fork needs an entry) is not ported.
     /// Nethermind-only timestamp labels unknown to geth have no defined order, so they only require every
     /// non-optional fork to be set.
     /// </remarks>
