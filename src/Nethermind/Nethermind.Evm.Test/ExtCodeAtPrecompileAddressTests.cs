@@ -4,7 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Blockchain;
+using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -12,11 +12,11 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.State.OverridableEnv;
@@ -31,6 +31,10 @@ namespace Nethermind.Evm.Test;
 /// whichever dispatch table runs and whether or not EXTCODESIZE fuses with the comparison after it, while a call to
 /// the address still runs the precompile.
 /// </summary>
+/// <remarks>
+/// Each run takes its transaction processor from a processing scope of the production modules over
+/// <see cref="VirtualMachineTestsBase.TestState"/>, decorated as the env a scenario stands for.
+/// </remarks>
 [Parallelizable(ParallelScope.Self)]
 public class ExtCodeAtPrecompileAddressTests : VirtualMachineTestsBase
 {
@@ -47,14 +51,24 @@ public class ExtCodeAtPrecompileAddressTests : VirtualMachineTestsBase
     private static readonly Address ContractAddress = TestItem.AddressC;
     private static readonly Address MoveDestination = new("0x2000000000000000000000000000000000000002");
 
-    private OverridableCodeInfoRepository _repository = null!;
-    private ITransactionProcessor _overridingProcessor = null!;
+    private IContainer _container = null!;
+    private ILifetimeScope? _processingScope;
 
-    public override void Setup()
+    [OneTimeSetUp]
+    public void BuildContainer() => _container = new ContainerBuilder()
+        .AddModule(new TestNethermindModule())
+        .AddSingleton(SpecProvider)
+        .Build();
+
+    [OneTimeTearDown]
+    public void DisposeContainer() => _container.Dispose();
+
+    [TearDown]
+    public override void TearDown()
     {
-        base.Setup();
-        _repository = new OverridableCodeInfoRepository(CodeInfoRepository, TestState);
-        _overridingProcessor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, _repository, LimboLogs.Instance);
+        _processingScope?.Dispose();
+        _processingScope = null;
+        base.TearDown();
     }
 
     private static IEnumerable<TestCaseData> GenesisCases()
@@ -90,7 +104,7 @@ public class ExtCodeAtPrecompileAddressTests : VirtualMachineTestsBase
         bool isPrecompile = spec.IsPrecompile(address);
         Assert.That(isPrecompile, Is.EqualTo(target != Target.Contract && (target != Target.P256VerifyWithCode || fork >= Fork.Osaka)), "precompile at this fork");
 
-        AssertForm(_processor, activation, address, code, form, dispatch, isPrecompile ? PrecompileOutputLength(address) : null);
+        AssertForm(Processor(), activation, address, code, form, dispatch, isPrecompile ? PrecompileOutputLength(address) : null);
     }
 
     /// <summary>A precompile moved onto a contract runs there, but the contract keeps its code.</summary>
@@ -101,10 +115,11 @@ public class ExtCodeAtPrecompileAddressTests : VirtualMachineTestsBase
         IReleaseSpec spec = SpecProvider.GetSpec(activation);
         TestState.CreateAccount(MoveDestination, 1);
         TestState.InsertCode(MoveDestination, TargetCode, spec);
-        TestState.ApplyStateOverridesNoCommit(_repository,
+        (ITransactionProcessor processor, IOverridableCodeInfoRepository repository) = OverridingProcessor();
+        TestState.ApplyStateOverridesNoCommit(repository,
             new Dictionary<Address, AccountOverride> { [PrecompiledAddresses.Identity] = new() { MovePrecompileToAddress = MoveDestination } }, spec);
 
-        AssertForm(_overridingProcessor, activation, MoveDestination, TargetCode, form, dispatch, CallInputLength);
+        AssertForm(processor, activation, MoveDestination, TargetCode, form, dispatch, CallInputLength);
     }
 
     /// <summary>
@@ -116,13 +131,14 @@ public class ExtCodeAtPrecompileAddressTests : VirtualMachineTestsBase
     {
         ForkActivation activation = MainnetSpecProvider.OsakaActivation;
         IReleaseSpec spec = SpecProvider.GetSpec(activation);
-        TestState.ApplyStateOverridesNoCommit(_repository,
+        (ITransactionProcessor processor, IOverridableCodeInfoRepository repository) = OverridingProcessor();
+        TestState.ApplyStateOverridesNoCommit(repository,
             new Dictionary<Address, AccountOverride> { [PrecompiledAddresses.Identity] = new() { Code = TargetCode } }, spec);
         TestState.Commit(spec);
         // The next block, without overrides of its own.
-        TestState.ApplyStateOverridesNoCommit(_repository, null, spec);
+        TestState.ApplyStateOverridesNoCommit(repository, null, spec);
 
-        AssertForm(_overridingProcessor, activation, PrecompiledAddresses.Identity, TargetCode, form, dispatch, CallInputLength);
+        AssertForm(processor, activation, PrecompiledAddresses.Identity, TargetCode, form, dispatch, CallInputLength);
     }
 
     /// <summary>
@@ -141,12 +157,11 @@ public class ExtCodeAtPrecompileAddressTests : VirtualMachineTestsBase
         ReadOnlyBlockAccessList blockAccessList = Build.A.BlockAccessList
             .WithAccountChanges([.. new[] { Sender, Recipient, Miner, address }.Select(static account => Build.An.AccountChanges.WithAddress(account).TestObject)])
             .TestObject;
-        BlockAccessListBasedWorldState state = new(TestState, LimboLogs.Instance);
+        ITransactionProcessor processor = Processor(static builder => builder.AddDecorator<IWorldState, BlockAccessListBasedWorldState>());
+        BlockAccessListBasedWorldState state = (BlockAccessListBasedWorldState)_processingScope!.Resolve<IWorldState>();
         state.SetBlockAccessIndex(1);
         state.Setup(Build.A.Block.WithBlockAccessList(blockAccessList).TestObject);
         state.SetParentReader(TestState);
-        ITransactionProcessor processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, state, Machine,
-            new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), NoopCodeCache.Instance), LimboLogs.Instance);
 
         AssertForm(processor, activation, address, TargetCode, form, dispatch, CallInputLength);
     }
@@ -164,12 +179,31 @@ public class ExtCodeAtPrecompileAddressTests : VirtualMachineTestsBase
         byte[] code = hasCode ? TargetCode : [];
         TestState.CreateAccount(address, 1);
         if (hasCode) TestState.InsertCode(address, code, SpecProvider.GetSpec(activation));
-        CodeReadCountingWorldState state = new(TestState, address);
-        ITransactionProcessor processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, state, Machine,
-            new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), NoopCodeCache.Instance), LimboLogs.Instance);
+        ITransactionProcessor processor = Processor(static builder => builder.AddDecorator<IWorldState, CodeReadCountingWorldState>());
+        CodeReadCountingWorldState state = (CodeReadCountingWorldState)_processingScope!.Resolve<IWorldState>();
 
         AssertForm(processor, activation, address, code, form, Dispatch.Untraced, CallInputLength);
         Assert.That(state.CodeReads, hasCode ? Is.Positive : Is.Zero, "reads of the code at the precompile's address");
+    }
+
+    /// <summary>The transaction processor of a processing scope over the test state, wired further by <paramref name="configure"/>.</summary>
+    private ITransactionProcessor Processor(Action<ContainerBuilder>? configure = null)
+    {
+        _processingScope = _container.BeginLifetimeScope(builder =>
+        {
+            builder.AddSingleton(TestState);
+            configure?.Invoke(builder);
+        });
+        return _processingScope.Resolve<ITransactionProcessor>();
+    }
+
+    /// <summary>A processor whose code repository takes state overrides, as the eth_call and eth_simulateV1 envs wire it.</summary>
+    private (ITransactionProcessor Processor, IOverridableCodeInfoRepository Repository) OverridingProcessor()
+    {
+        ITransactionProcessor processor = Processor(static builder => builder
+            .AddScoped<CodeOverrideStore>()
+            .AddDecorator<ICodeInfoRepository, OverridableCodeInfoRepository>());
+        return (processor, (OverridableCodeInfoRepository)_processingScope!.Resolve<ICodeInfoRepository>());
     }
 
     private void AssertForm(ITransactionProcessor processor, ForkActivation activation, Address address, byte[] code, Form form, Dispatch dispatch, int? precompileOutputLength)
@@ -260,20 +294,20 @@ public class ExtCodeAtPrecompileAddressTests : VirtualMachineTestsBase
         bool ITxTracer.IsCancelled => false;
     }
 
-    /// <summary>Counts the reads of one account's code, by its address or as a bytecode access recorded for it.</summary>
-    private sealed class CodeReadCountingWorldState(IWorldState state, Address account) : WorldStateDecorator(state)
+    /// <summary>Counts the reads of the identity precompile's account code, by its address or as a bytecode access recorded for it.</summary>
+    private sealed class CodeReadCountingWorldState(IWorldState state) : WorldStateDecorator(state)
     {
         public int CodeReads { get; private set; }
 
         public override ReadOnlyMemory<byte> GetCode(Address address)
         {
-            if (address == account) CodeReads++;
+            if (address == PrecompiledAddresses.Identity) CodeReads++;
             return base.GetCode(address);
         }
 
         public override void RecordBytecodeAccess(Address address)
         {
-            if (address == account) CodeReads++;
+            if (address == PrecompiledAddresses.Identity) CodeReads++;
             base.RecordBytecodeAccess(address);
         }
     }

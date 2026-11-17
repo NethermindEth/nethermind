@@ -1219,26 +1219,24 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         byte[] code = copy
             ? Prepare.EvmCode.PushData(32).PushData(0).PushData(0).PushData(identity).Op(Instruction.EXTCODECOPY).Op(Instruction.STOP).Done
             : Prepare.EvmCode.PushData(identity).Op(Instruction.EXTCODESIZE).Op(Instruction.POP).Op(Instruction.STOP).Done;
-        ISpecProvider specProvider = ProcessingScope.Resolve<ISpecProvider>();
-        IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
-        using (worldState.BeginScope(Parent))
-        {
-            worldState.CreateAccount(observer, 0);
-            worldState.InsertCode(observer, code, Spec);
-            FootprintRecorder recorder = new(worldState);
-            using EthereumVirtualMachine machine = new(new Nethermind.Core.Test.TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
-            EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, specProvider, recorder, machine, new EthereumCodeInfoRepository(recorder), LimboLogs.Instance);
-            Transaction tx = Call(TestItem.PrivateKeyA, 0, observer);
-            recorder.Start(new Progress { MainThreadTxIndex = -1 }, txIndex: 0, CancellationToken.None);
-            recorder.GetNonce(TestItem.AddressA);
-            TransactionResult result = processor.Warmup(tx, new BlockExecutionContext(BuildBlock(tx).Header, Spec), recorder.Outcome);
-            TransactionFootprint? footprint = recorder.Finish(tx, result);
-            recorder.Stop();
+        using IPrewarmerEnv env = ProcessingScope.Resolve<PrewarmerEnvFactory>().Create(ProcessingScope.Resolve<PreBlockCaches>());
+        Assert.That(env.TryBuild(Parent, out IReadOnlyTxProcessingScope? built), Is.True, "the env opens the parent's state");
+        using IReadOnlyTxProcessingScope scope = built!;
+        // The env's processor runs on its recorder, as a prewarmer run does.
+        FootprintRecorder recorder = env.Recorder!;
+        Assert.That(scope.WorldState, Is.SameAs(recorder), "the env's world state");
+        recorder.CreateAccount(observer, 0);
+        recorder.InsertCode(observer, code, Spec);
+        Transaction tx = Call(TestItem.PrivateKeyA, 0, observer);
+        recorder.Start(new Progress { MainThreadTxIndex = -1 }, txIndex: 0, CancellationToken.None);
+        recorder.GetNonce(TestItem.AddressA);
+        TransactionResult result = scope.TransactionProcessor.Warmup(tx, new BlockExecutionContext(BuildBlock(tx).Header, Spec), recorder.Outcome);
+        TransactionFootprint? footprint = recorder.Finish(tx, result);
+        recorder.Stop();
 
-            Assert.That(footprint, Is.Not.Null);
-            AccountPrecondition precompile = footprint!.Accounts.ToArray().Single(account => account.Address == identity);
-            Assert.That(precompile.Fields, Is.EqualTo(AccountFields.Existence | AccountFields.Code));
-        }
+        Assert.That(footprint, Is.Not.Null);
+        AccountPrecondition precompile = footprint!.Accounts.ToArray().Single(account => account.Address == identity);
+        Assert.That(precompile.Fields, Is.EqualTo(AccountFields.Existence | AccountFields.Code));
     }
 
     /// <summary>Records <paramref name="run"/> as the footprint of a transfer from A, returning the state before it.</summary>

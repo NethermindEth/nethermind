@@ -2,19 +2,21 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test.Db;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
@@ -26,7 +28,6 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test.Stateless;
@@ -113,9 +114,19 @@ public class StatelessExecutingWorldStateTests
                 : Prepare.EvmCode.PushData(target).Op(Instruction.EXTCODESIZE).PushData(0).Op(Instruction.MSTORE))
             .Return(32, 0).Done;
 
-        using IDbProvider dbProvider = TestMemDbProvider.Init();
-        WorldStateManager manager = TestWorldStateFactory.CreateWorldStateManagerForTest(dbProvider, LimboLogs.Instance);
-        IWorldState inner = new WorldState(manager.GlobalWorldState, LimboLogs.Instance);
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton<ISpecProvider>(specProvider)
+            .Build();
+        IWorldStateManager manager = container.Resolve<IWorldStateManager>();
+        // Block processing captures a witness under its main processing modules, the precompile cache among them; RPC's
+        // witness generation goes without.
+        using ILifetimeScope processing = container.BeginLifetimeScope(builder =>
+        {
+            builder.AddSingleton<IWorldStateScopeProvider>(manager.GlobalWorldState);
+            if (precompileCache) builder.AddModule(container.Resolve<IMainProcessingModule[]>());
+        });
+        IWorldState inner = processing.Resolve<IWorldState>();
         BlockHeader parent;
         using (inner.BeginScope(IWorldState.PreGenesis))
         {
@@ -133,13 +144,14 @@ public class StatelessExecutingWorldStateTests
         BlockHeader header = Build.A.BlockHeader.WithParent(parent).WithBaseFee(0).WithExcessBlobGas(0).TestObject;
         Transaction tx = Build.A.Transaction.WithTo(caller).WithGasLimit(100_000).WithGasPrice(1)
             .SignedAndResolved(new EthereumEcdsa(specProvider.ChainId), TestItem.PrivateKeyA).TestObject;
-        IHeaderFinder headerFinder = Substitute.For<IHeaderFinder>();
-        headerFinder.Get(parent.Hash!, Arg.Any<ulong?>()).Returns(parent);
-        WitnessGeneratingWorldState capturing = new(inner, manager.GlobalStateReader, manager.CreateReadOnlyTrieStore(), new WitnessHeaderRecorder(), headerFinder);
+        IHeaderStore headerStore = container.Resolve<IHeaderStore>();
+        headerStore.Insert(parent);
+        // Built as the witness envs build theirs, over the block processing world state.
+        WitnessGeneratingWorldState capturing = new(inner, manager.GlobalStateReader, manager.CreateReadOnlyTrieStore(), new WitnessHeaderRecorder(), headerStore);
         Witness witness;
         using (capturing.BeginScope(parent))
         {
-            Assert.That(Run(capturing, precompileCache), Is.EqualTo(new byte[32]), "result while capturing");
+            Assert.That(Run(processing, capturing), Is.EqualTo(new byte[32]), "result while capturing");
             capturing.Commit(spec);
             witness = capturing.GetWitness(parent);
         }
@@ -155,19 +167,19 @@ public class StatelessExecutingWorldStateTests
             {
                 // Read through the witness alone, so a node missing from the account's path throws.
                 Assert.That(stateless.GetCodeHash(target), Is.EqualTo(Keccak.OfAnEmptyString.ValueHash256), "account proved");
-                Assert.That(Run(stateless, withPrecompileCache: false), Is.EqualTo(new byte[32]), "result in stateless execution");
+                // Without the precompile cache, as the stateless env executes.
+                Assert.That(Run(container, stateless), Is.EqualTo(new byte[32]), "result in stateless execution");
             }
         }
 
-        byte[] Run(IWorldState state, bool withPrecompileCache)
+        byte[] Run(ILifetimeScope parentScope, IWorldState state)
         {
-            using EthereumVirtualMachine vm = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
-            ICodeInfoRepository codeInfoRepository = new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), NoopCodeCache.Instance);
-            if (withPrecompileCache)
-                codeInfoRepository = new PrecompileCachedCodeInfoRepository(state, new EthereumPrecompileProvider(), codeInfoRepository, precompileCaches: null);
-            EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, specProvider, state, vm, codeInfoRepository, LimboLogs.Instance);
+            // The world state registered by instance and every code lookup sent to it, as the witness envs do.
+            using ILifetimeScope execution = parentScope.BeginLifetimeScope(builder => builder
+                .AddScoped<IWorldState>(state)
+                .AddScoped<ICodeCache>(NoopCodeCache.Instance));
             CallOutputTracer tracer = new();
-            processor.Execute(tx, new BlockExecutionContext(header, spec), tracer);
+            execution.Resolve<ITransactionProcessor>().Execute(tx, new BlockExecutionContext(header, spec), tracer);
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success), tracer.Error);
             return tracer.ReturnValue;
         }
