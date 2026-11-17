@@ -1503,7 +1503,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 advertisedSequence,
                 advertisedSequence,
                 tcpPort: 30303,
-                ipAddress: IPAddress.Parse("2001:db8::2"));
+                ipAddress: IPAddress.Parse("2001:db8::2"),
+                responseEndpoint: discoveryEndpoint);
             PingMsg pingMsg = new(
                 discoveryEndpoint,
                 _timestamper.UnixTime.SecondsLong + 20,
@@ -1659,9 +1660,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             ConfigureBondCallback();
             await BondReceiver(token);
             _msgSender.ClearReceivedCalls();
-            NodeRecord remoteRecord = ConfigureRemoteEnrRefresh(null, 42, tcpPort: 30303);
-
             IPEndPoint differentEndpoint = new(IPAddress.Parse("192.168.1.3"), _receiver.Address.Port);
+            NodeRecord remoteRecord = ConfigureRemoteEnrRefresh(null, 42, tcpPort: 30303, responseEndpoint: differentEndpoint);
+
             PingMsg pingMsg = new(differentEndpoint, _timestamper.UnixTime.SecondsLong + 20, _kademliaConfig.CurrentNodeId.Address)
             {
                 EnrSequence = 42

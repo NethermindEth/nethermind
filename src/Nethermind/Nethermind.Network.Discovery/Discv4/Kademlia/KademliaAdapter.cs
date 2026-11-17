@@ -340,7 +340,7 @@ public class KademliaAdapter(
             KademliaAdapter adapter = state.Adapter;
             FindNodeMsg msg = new(state.Receiver.DiscoveryAddress, adapter.CalculateExpirationTime(), state.Target.Bytes);
 
-            return adapter.CallAndWaitForResponse(MsgType.Neighbors, new NeighbourMsgHandler(state.BucketSize, adapter.LocalIp), state.Receiver, state.Session, msg, adapter._findNeighbourTimeout, token);
+            return adapter.CallAndWaitForResponse(MsgType.Neighbors, new NeighbourMsgHandler(state.BucketSize, adapter.LocalIp, state.Receiver.DiscoveryAddress), state.Receiver, state.Session, msg, adapter._findNeighbourTimeout, token);
         }, token);
 
         token.ThrowIfCancellationRequested();
@@ -414,7 +414,7 @@ public class KademliaAdapter(
             KademliaAdapter adapter = state.Adapter;
             EnrRequestMsg msg = new(state.Receiver.DiscoveryAddress, adapter.CalculateExpirationTime());
 
-            return adapter.CallAndWaitForResponse(MsgType.EnrResponse, new EnrResponseHandler(msg), state.Receiver, state.Session, msg, adapter._requestEnrTimeout, token);
+            return adapter.CallAndWaitForResponse(MsgType.EnrResponse, new EnrResponseHandler(msg, state.Receiver.DiscoveryAddress), state.Receiver, state.Session, msg, adapter._requestEnrTimeout, token);
         }, token);
 
         return response.HasResponse ? response.Value : null;
