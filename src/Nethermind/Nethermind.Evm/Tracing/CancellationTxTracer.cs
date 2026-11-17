@@ -446,12 +446,18 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
     }
 
     /// <inheritdoc/>
-    public void ReportActionErrorDetails(string error)
+    public void ReportActionErrorDetails(string error) => ReportActionErrorDetails(error, actionOnly: false);
+
+    /// <inheritdoc/>
+    public void ReportActionErrorDetails(string error, bool actionOnly)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingActions)
         {
-            innerTracer.ReportActionErrorDetails(error);
+            if (actionOnly)
+                innerTracer.ReportActionErrorDetails(error, actionOnly: true);
+            else
+                innerTracer.ReportActionErrorDetails(error);
         }
     }
 

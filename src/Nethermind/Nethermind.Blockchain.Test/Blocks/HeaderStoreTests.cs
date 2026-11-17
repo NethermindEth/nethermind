@@ -365,39 +365,39 @@ public class HeaderStoreTests
 
     /// <param name="rocks">Whether the headers are in RocksDB, which reads them in one batch.</param>
     [Test]
+    public void GetIfBloomMatches_of_many_gets_each_header_as_the_single_lookup_does([Values] bool bloomMatches, [Values] bool rocks)
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using IDb headerDb = rocks ? CreateRocksDb(directory) : new TestMemDb();
+        HeaderDecoder decoder = new();
+        HeaderStore store = new(headerDb, new MemDb(), decoder);
+        HeaderSource?[] sources = [HeaderSource.NumberedKey, null, HeaderSource.HashKey, HeaderSource.Cache, HeaderSource.NumberedKey];
+        (_, ValueHash256[] hashes, ulong[] numbers) = StoreHeaders(store, headerDb, decoder, sources);
+
+        BlockHeader?[] headers = new BlockHeader?[sources.Length];
+        bool[] found = new bool[sources.Length];
+        store.GetIfBloomMatches(hashes, numbers, _ => bloomMatches, headers, found);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < sources.Length; i++)
+            {
+                Assert.That(found[i], Is.EqualTo(sources[i] is not null), $"found {i}");
+                Assert.That(headers[i]?.Hash?.ValueHash256, Is.EqualTo(bloomMatches && sources[i] is not null ? (ValueHash256?)hashes[i] : null), $"header {i}");
+            }
+        }
+    }
+
+    /// <param name="rocks">Whether the headers are in RocksDB, which reads them in one batch.</param>
+    [Test]
     public void AppendRlps_appends_each_header_as_TryAppendRlp_does([Values] bool storeDecoder, [Values] bool rocks)
     {
         using TempPath directory = TempPath.GetTempDirectory();
         using IDb headerDb = rocks ? CreateRocksDb(directory) : new TestMemDb();
         HeaderDecoder decoder = new();
         HeaderStore store = new(headerDb, new MemDb(), decoder);
-        BlockHeader[] headers = new BlockHeader[5];
-        for (int i = 0; i < headers.Length; i++) headers[i] = Build.A.BlockHeader.WithNumber(100 + (ulong)i).TestObject;
-
         HeaderSource?[] sources = [HeaderSource.NumberedKey, null, HeaderSource.HashKey, HeaderSource.Cache, HeaderSource.NumberedKey];
-        for (int i = 0; i < headers.Length; i++)
-        {
-            switch (sources[i])
-            {
-                case HeaderSource.NumberedKey:
-                    store.Insert(headers[i]);
-                    break;
-                case HeaderSource.HashKey:
-                    headerDb.Set(headers[i].Hash!, decoder.Encode(headers[i]));
-                    break;
-                case HeaderSource.Cache:
-                    store.Cache(headers[i]);
-                    break;
-            }
-        }
-
-        ValueHash256[] hashes = new ValueHash256[headers.Length];
-        ulong[] numbers = new ulong[headers.Length];
-        for (int i = 0; i < headers.Length; i++)
-        {
-            hashes[i] = headers[i].Hash!.ValueHash256;
-            numbers[i] = headers[i].Number;
-        }
+        (BlockHeader[] headers, ValueHash256[] hashes, ulong[] numbers) = StoreHeaders(store, headerDb, decoder, sources);
 
         using ArrayPoolList<byte> rlp = new(0);
         Range[] items = new Range[headers.Length];
@@ -413,6 +413,34 @@ public class HeaderStoreTests
                     Assert.That(rlp.AsSpan()[items[i]].ToArray(), Is.EqualTo(new HeaderDecoder().Encode(headers[i])), $"header {i}");
             }
         }
+    }
+
+    /// <summary>Builds one header per source, from block 100 up, and stores each where its source says; a null source stores nothing.</summary>
+    private static (BlockHeader[] Headers, ValueHash256[] Hashes, ulong[] Numbers) StoreHeaders(HeaderStore store, IDb headerDb, HeaderDecoder decoder, HeaderSource?[] sources)
+    {
+        BlockHeader[] headers = new BlockHeader[sources.Length];
+        ValueHash256[] hashes = new ValueHash256[sources.Length];
+        ulong[] numbers = new ulong[sources.Length];
+        for (int i = 0; i < sources.Length; i++)
+        {
+            BlockHeader header = headers[i] = Build.A.BlockHeader.WithNumber(100 + (ulong)i).TestObject;
+            hashes[i] = header.Hash!.ValueHash256;
+            numbers[i] = header.Number;
+            switch (sources[i])
+            {
+                case HeaderSource.NumberedKey:
+                    store.Insert(header);
+                    break;
+                case HeaderSource.HashKey:
+                    headerDb.Set(header.Hash!, decoder.Encode(header));
+                    break;
+                case HeaderSource.Cache:
+                    store.Cache(header);
+                    break;
+            }
+        }
+
+        return (headers, hashes, numbers);
     }
 
     private static IDb CreateRocksDb(TempPath directory)

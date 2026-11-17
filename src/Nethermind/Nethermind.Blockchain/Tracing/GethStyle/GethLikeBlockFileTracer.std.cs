@@ -127,7 +127,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
         _jsonWriter.WritePropertyName("gasUsed");
         HexWriter.WriteUlongHexStringValue(_jsonWriter, gasUsed);
         if (error is not null)
-            _jsonWriter.WriteString("error", error);
+            GethLikeTxTraceJsonLinesConverter.WriteError(_jsonWriter, error);
         _jsonWriter.WriteEndObject();
         GethLikeTxTraceJsonLinesConverter.WriteLineEnd(_jsonWriter);
         if (LimitReached) _txTracer?.StopCapture();

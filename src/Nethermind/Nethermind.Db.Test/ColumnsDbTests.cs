@@ -120,7 +120,7 @@ public class ColumnsDbTests
     {
         public CountingRocksDbConfig TableConfig { get; private set; } = null!;
 
-        public IRocksDbConfig GetForDatabase(string databaseName, string? columnName)
+        public IRocksDbConfig GetForDatabase(string? databaseName, string? columnName)
         {
             IRocksDbConfig config = inner.GetForDatabase(databaseName, columnName);
             return columnName is null ? TableConfig = new CountingRocksDbConfig(config) : config;

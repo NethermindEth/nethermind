@@ -69,6 +69,24 @@ public interface IHeaderStore : IHeaderFinder
     /// <inheritdoc cref="GetIfBloomMatches(Hash256, ulong, Func{ReadOnlySpan{byte}, bool}, out bool)"/>
     BlockHeader? GetIfBloomMatches(in ValueHash256 blockHash, ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found) =>
         GetIfBloomMatches(new Hash256(in blockHash), blockNumber, bloomMatches, out found);
+
+    /// <summary>
+    /// Gets the headers of <paramref name="blockHashes"/>, as
+    /// <see cref="GetIfBloomMatches(in ValueHash256, ulong, Func{ReadOnlySpan{byte}, bool}, out bool)"/> does each one.
+    /// </summary>
+    /// <param name="blockHashes">The hashes of the blocks.</param>
+    /// <param name="blockNumbers">The numbers of the blocks, one per hash.</param>
+    /// <param name="bloomMatches">Tells whether a bloom is a match.</param>
+    /// <param name="headers">Receives each header whose bloom is a match, else <see langword="null"/>.</param>
+    /// <param name="found">Receives whether each header is stored, whether or not its bloom is a match.</param>
+    /// <remarks>An implementation can read the headers in one batch.</remarks>
+    void GetIfBloomMatches(ReadOnlyMemory<ValueHash256> blockHashes, ReadOnlyMemory<ulong> blockNumbers, Func<ReadOnlySpan<byte>, bool> bloomMatches, Memory<BlockHeader?> headers, Memory<bool> found)
+    {
+        for (int i = 0; i < blockHashes.Length; i++)
+        {
+            headers.Span[i] = GetIfBloomMatches(in blockHashes.Span[i], blockNumbers.Span[i], bloomMatches, out found.Span[i]);
+        }
+    }
     void Cache(BlockHeader header);
     void Delete(Hash256 blockHash);
     void InsertBlockNumber(Hash256 blockHash, ulong blockNumber);
