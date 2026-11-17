@@ -6,12 +6,51 @@ using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
+using System.Reflection;
 using static Nethermind.BeaconChain.Test.ForkChoice.TestHashes;
 
 namespace Nethermind.BeaconChain.Test.ForkChoice;
 
 public class FastConfirmationTests
 {
+    [Test]
+    public void Cached_scores_track_votes_independently_of_head_updates_and_survive_reset()
+    {
+        BeaconChainSpec spec = BeaconChainSpec.Mainnet;
+        CheckpointRef anchor = new(0, GetRoot(1));
+        ForkChoiceStore store = new(spec.SlotsPerEpoch, 64, anchor, anchor);
+        ProtoArrayForkChoice tree = new(64, 0, Hash256.Zero, anchor, anchor, ExecutionStatus.Optimistic, anchor.Root);
+        for (ulong root = 2; root <= 3; root++)
+            tree.ProcessBlock(new ProtoBlock(1, GetRoot(root), anchor.Root, Hash256.Zero, anchor, anchor,
+                ExecutionStatus.Optimistic, GetRoot(root), anchor, anchor), 64, anchor, anchor);
+        ForkedBeaconState source = State(0, activation: false, laterEpoch: false);
+        HashSet<ulong> equivocators = [];
+        FastConfirmation rule = new(spec, store, tree, equivocators, _ => source, _ => source, (_, _) => source);
+        Type sourceType = typeof(FastConfirmation).GetNestedType("BalanceSource", BindingFlags.NonPublic)!;
+        object balanceSource = Activator.CreateInstance(sourceType, BindingFlags.NonPublic | BindingFlags.Instance,
+            binder: null, args: [source, spec], culture: null)!;
+        MethodInfo calculate = typeof(FastConfirmation).GetMethod("Scores", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        ulong balance = 32 * Presets.EffectiveBalanceIncrement;
+        tree.ProcessAttestation(0, GetRoot(2), 1);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(Calculate(), Is.EqualTo(new ulong[] { balance, balance, 0 }));
+        tree.ProcessAttestation(0, GetRoot(3), 2);
+        tree.GetHead(anchor, anchor, JustifiedBalances.FromEffectiveBalances([balance]), equivocators, 64);
+        Assert.That(Calculate(), Is.EqualTo(new ulong[] { balance, 0, balance }));
+        equivocators.Add(0);
+        Assert.That(Calculate(), Is.EqualTo(new ulong[] { 0, 0, 0 }));
+        equivocators.Clear();
+        Assert.That(Calculate(), Is.EqualTo(new ulong[] { balance, 0, balance }));
+        rule.Reset();
+        tree.ProcessAttestation(0, GetRoot(2), 3);
+        Assert.That(Calculate(), Is.EqualTo(new ulong[] { balance, balance, 0 }));
+        tree.ProcessAttestation(0, GetRoot(3), 4);
+        Assert.That(Calculate(), Is.EqualTo(new ulong[] { balance, 0, balance }));
+
+        ulong[] Calculate() => (ulong[])calculate.Invoke(rule, [balanceSource])!;
+    }
+
     [Test]
     public void Slashed_or_previous_epoch_votes_supply_no_support_but_remain_in_total_active_balance([Values] bool previousEpoch)
     {

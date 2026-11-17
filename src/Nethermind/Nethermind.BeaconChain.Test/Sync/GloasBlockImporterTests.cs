@@ -724,7 +724,7 @@ public class GloasBlockImporterTests
     private static DateTime SlotStart(SignedGloasChain chain, ulong slot) => DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + slot * chain.Spec.SecondsPerSlot);
 
     [Test]
-    public void Safe_execution_hash_uses_the_configured_confirmation_policy([Values] bool enableFastConfirmation)
+    public void Safe_execution_hash_uses_the_configured_confirmation_policy([Values(null, false, true)] bool? enableFastConfirmation)
     {
         ForkCrossingChain fork = ForkCrossingChain.Instance;
         BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), enableFastConfirmation: enableFastConfirmation);
@@ -738,7 +738,7 @@ public class GloasBlockImporterTests
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(head.Justified.Root, Is.EqualTo(fork.First.Root), "fixture: the epoch-3 pull-up justifies the first Gloas block");
-        Assert.That(head.SafeExecutionHash, Is.EqualTo(enableFastConfirmation
+        Assert.That(head.SafeExecutionHash, Is.EqualTo((enableFastConfirmation ?? true)
             ? head.FinalizedExecutionHash : fork.First.Block.Message!.Body!.SignedExecutionPayloadBid!.Message!.ParentBlockHash));
     }
 

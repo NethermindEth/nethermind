@@ -35,6 +35,8 @@ internal sealed class FastConfirmation(
     private BalanceSource? _previousBalances;
     private BalanceSource? _currentBalances;
     private readonly Dictionary<(ulong Epoch, Hash256 Decision), CommitteeCache> _committees = [];
+    private readonly Dictionary<BalanceSource, FastConfirmationScores> _scores = [];
+    private bool _trackingVotes;
 
     internal Hash256 ConfirmedRoot { get; private set; } = store.FinalizedCheckpoint.Root;
     internal CheckpointRef PreviousEpochObservedJustifiedCheckpoint => _previousObserved;
@@ -52,6 +54,7 @@ internal sealed class FastConfirmation(
         _pulledUpHeadBalances = null;
         _pulledUpHeadKey = null;
         _committees.Clear();
+        _scores.Clear();
     }
 
     internal void OnSlot(Hash256 head)
@@ -93,6 +96,28 @@ internal sealed class FastConfirmation(
         if (Epoch(confirmed) + 1 >= store.CurrentEpoch)
             confirmed = FindLatestConfirmedDescendant(context, confirmed);
         ConfirmedRoot = confirmed;
+    }
+
+    private ulong[] Scores(BalanceSource source)
+    {
+        if (!_trackingVotes)
+        {
+            tree.LatestVoteChanged += MarkVoteDirty;
+            _trackingVotes = true;
+        }
+        if (!_scores.TryGetValue(source, out FastConfirmationScores? scores))
+        {
+            foreach (BalanceSource retained in _scores.Keys)
+                if (retained != _currentBalances && retained != _previousBalances && retained != _pulledUpHeadBalances)
+                    _scores.Remove(retained);
+            _scores[source] = scores = new FastConfirmationScores(source.Balances, source.Slashed);
+        }
+        return scores.Calculate(tree, equivocators);
+    }
+
+    private void MarkVoteDirty(int validatorIndex)
+    {
+        foreach (FastConfirmationScores scores in _scores.Values) scores.MarkDirty(validatorIndex);
     }
 
     private Hash256 FindLatestConfirmedDescendant(Context context, Hash256 confirmed)
@@ -323,16 +348,7 @@ internal sealed class FastConfirmation(
         {
             if (!_scores.TryGetValue(source, out ulong[]? scores))
             {
-                scores = new ulong[rule.Tree.Nodes.Count];
-                for (int i = 0; i < source.Balances.Length; i++)
-                {
-                    if (!source.Slashed[i] && source.Balances[i] != 0 && !rule.Equivocators.Contains((ulong)i)
-                        && rule.Tree.LatestVote((ulong)i) is VoteTracker vote && rule.Tree.IndexOf(vote.NextRoot) is int index)
-                        scores[index] += source.Balances[i];
-                }
-                for (int i = scores.Length - 1; i >= 0; i--)
-                    if (rule.Tree.Nodes[i].Parent is int parent) scores[parent] += scores[i];
-                _scores[source] = scores;
+                _scores[source] = scores = rule.Scores(source);
             }
             return scores[rule.Tree.IndexOf(root)!.Value];
         }

@@ -29,6 +29,8 @@ public sealed class ProtoArrayForkChoice
     private readonly HashSet<ulong> _previousEquivocators = [];
     private ScoreDeltas _deltaBuffers = new([], [], []);
 
+    internal event Action<int>? LatestVoteChanged;
+
     /// <summary>Creates a fork choice rooted at the given finalized (anchor) block.</summary>
     /// <param name="currentSlot">The wall-clock slot at creation time.</param>
     /// <param name="finalizedBlockSlot">The slot of the anchor block.</param>
@@ -116,6 +118,7 @@ public sealed class ProtoArrayForkChoice
         vote.NextStatus = payloadPresent is bool present && GetBlockSlot(blockRoot) < slot
             ? present ? ForkChoicePayloadStatus.Full : ForkChoicePayloadStatus.Empty
             : ForkChoicePayloadStatus.Pending;
+        LatestVoteChanged?.Invoke(checked((int)validatorIndex));
     }
 
     /// <summary>Registers a block with the fork choice; see <see cref="ProtoArray.OnBlock"/>.</summary>
@@ -160,6 +163,11 @@ public sealed class ProtoArrayForkChoice
             equivocators,
             _deltaBuffers,
             ReferenceEquals(_balances.EffectiveBalances, justifiedBalances.EffectiveBalances) ? _changedVotes : null);
+
+        // Committing an epoch-zero vote for the zero-root alias can make its tracker unset.
+        if (LatestVoteChanged is not null)
+            foreach (int index in _changedVotes)
+                if (_votes.LatestVote((ulong)index) is null) LatestVoteChanged(index);
 
         _dirtyVotes.Clear();
         _previousEquivocators.Clear();
