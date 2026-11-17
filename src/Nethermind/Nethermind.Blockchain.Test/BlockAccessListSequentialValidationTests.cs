@@ -37,6 +37,7 @@ namespace Nethermind.Blockchain.Test;
 public class BlockAccessListSequentialValidationTests
 {
     private const ulong ReadSlot = 1;
+    private const long ReadWriteGasLimit = 500_000;
 
     [Test]
     public void Sequential_validation_accepts_matching_bal_and_populates_generated_index()
@@ -129,7 +130,7 @@ public class BlockAccessListSequentialValidationTests
     [Test]
     public void Generated_bal_includes_system_address_fee_recipient_credited_with_zero_fee()
     {
-        ReadOnlyBlockAccessList generated = GenerateBlockAccessList(static block => block.Header.Beneficiary = Address.SystemUser);
+        ReadOnlyBlockAccessList generated = GenerateBlockAccessList(configureBlock: static block => block.Header.Beneficiary = Address.SystemUser);
 
         // EIP-7928 BAL generation records touched accounts even when no state value changes.
         ReadOnlyAccountChanges? systemAccount = generated.GetAccountChanges(Address.SystemUser);
@@ -147,13 +148,13 @@ public class BlockAccessListSequentialValidationTests
 
     [TestCaseSource(nameof(SuggestedBlockAccessLists))]
     public void Sequential_verify_only_gives_the_verdict_of_the_generated_bal_without_building_it(
-        Func<ReadOnlyBlockAccessList, ReadOnlyBlockAccessList> suggest, bool expectedAccepted)
+        BlockContent content, Func<ReadOnlyBlockAccessList, ReadOnlyBlockAccessList> suggest, bool expectedAccepted)
     {
-        ReadOnlyBlockAccessList suggested = suggest(GenerateBlockAccessList());
+        ReadOnlyBlockAccessList suggested = suggest(GenerateBlockAccessList(content));
 
-        bool generatedAccepted = Accepts(suggested, verifySequentialBlocks: false, out _, out Block? generatedBlock)
+        bool generatedAccepted = Accepts(suggested, content, verifySequentialBlocks: false, out _, out Block? generatedBlock)
             && generatedBlock!.Header.BlockAccessListHash == suggested.WireHash;
-        bool verifiedAccepted = Accepts(suggested, verifySequentialBlocks: true, out BlockAccessListManager? balManager, out Block? verifiedBlock);
+        bool verifiedAccepted = Accepts(suggested, content, verifySequentialBlocks: true, out BlockAccessListManager? balManager, out Block? verifiedBlock);
 
         using (Assert.EnterMultipleScope())
         {
@@ -188,17 +189,33 @@ public class BlockAccessListSequentialValidationTests
         yield return Case(static bal => WithRecipient(bal, [ReadSlot + 1]), false, "Different read");
         yield return Case(static bal => WithRecipient(bal, [ReadSlot, ReadSlot + 1]), false, "Extra read");
         yield return Case(WithWrongRecipientBalance, false, "Wrong balance");
+        yield return Case(static bal => WithRecipient(bal, [ReadSlot], [.. bal.GetAccountChanges(TestItem.AddressB)!.BalanceChanges, new BalanceChange(2, 1)]),
+            false, "Wrong post-execution row");
+        yield return Case(static bal => bal, true, "No transactions", BlockContent.NoTransactions);
+        yield return Case(static bal => WithExtraAccount(bal, TestItem.AddressC), false, "No transactions, extra account", BlockContent.NoTransactions);
+        foreach (BlockContent content in (BlockContent[])[BlockContent.ReadThenWrite, BlockContent.WriteThenRead])
+        {
+            yield return Case(static bal => bal, true, $"{content}, valid", content);
+            yield return Case(static bal => WithWireHash(Build.A.BlockAccessList
+                .WithAccountChanges([.. bal.AccountChanges.AsSpan()])
+                .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressD).WithStorageReads(ReadSlot).TestObject)
+                .TestObject), false, $"{content}, write listed as a read", content);
+            yield return Case(static bal => WithStorageReads(bal, TestItem.AddressD, [ReadSlot + 1]), false, $"{content}, extra read", content);
+        }
 
-        static TestCaseData Case(Func<ReadOnlyBlockAccessList, ReadOnlyBlockAccessList> suggest, bool accepted, string name)
-            => new TestCaseData(suggest, accepted).SetName(name);
+        static TestCaseData Case(Func<ReadOnlyBlockAccessList, ReadOnlyBlockAccessList> suggest, bool accepted, string name,
+            BlockContent content = BlockContent.OneTransaction)
+            => new TestCaseData(content, suggest, accepted).SetName(name);
     }
 
     /// <summary>Runs <paramref name="suggested"/> through sequential validation of a block whose header declares its hash.</summary>
-    private static bool Accepts(ReadOnlyBlockAccessList suggested, bool verifySequentialBlocks, out BlockAccessListManager? balManager, out Block? block)
+    private static bool Accepts(ReadOnlyBlockAccessList suggested, BlockContent content, bool verifySequentialBlocks,
+        out BlockAccessListManager? balManager, out Block? block)
     {
         try
         {
-            (balManager, block) = RunSequentialValidation(suggested, verifySequentialBlocks: verifySequentialBlocks, headerHash: suggested.WireHash);
+            (balManager, block) = RunSequentialValidation(suggested, verifySequentialBlocks: verifySequentialBlocks,
+                headerHash: suggested.WireHash, content: content);
             return true;
         }
         catch (BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException)
@@ -209,12 +226,15 @@ public class BlockAccessListSequentialValidationTests
     }
 
     private static ReadOnlyBlockAccessList WithRecipient(ReadOnlyBlockAccessList bal, ulong[] reads, BalanceChange[]? balanceChanges = null)
+        => WithStorageReads(bal, TestItem.AddressB, reads, balanceChanges);
+
+    private static ReadOnlyBlockAccessList WithStorageReads(ReadOnlyBlockAccessList bal, Address address, ulong[] reads, BalanceChange[]? balanceChanges = null)
     {
-        ReadOnlyAccountChanges recipient = bal.GetAccountChanges(TestItem.AddressB)!;
+        ReadOnlyAccountChanges account = bal.GetAccountChanges(address)!;
         return WithWireHash(Build.A.BlockAccessList
             .WithAccountChanges([.. bal.AccountChanges.AsSpan()])
-            .WithAccountChanges(new ReadOnlyAccountChanges(recipient.Address, recipient.StorageChanges,
-                Array.ConvertAll(reads, static slot => (UInt256)slot), balanceChanges ?? recipient.BalanceChanges, recipient.NonceChanges, recipient.CodeChanges))
+            .WithAccountChanges(new ReadOnlyAccountChanges(account.Address, account.StorageChanges,
+                Array.ConvertAll(reads, static slot => (UInt256)slot), balanceChanges ?? account.BalanceChanges, account.NonceChanges, account.CodeChanges))
             .TestObject);
     }
 
@@ -226,13 +246,13 @@ public class BlockAccessListSequentialValidationTests
     /// Runs the block once on the sequential path with no suggested BAL so the executor
     /// constructs the generated BAL, then re-encodes it as a wire <see cref="ReadOnlyBlockAccessList"/>.
     /// </summary>
-    private static ReadOnlyBlockAccessList GenerateBlockAccessList(Action<Block>? configureBlock = null)
+    private static ReadOnlyBlockAccessList GenerateBlockAccessList(BlockContent content = BlockContent.OneTransaction, Action<Block>? configureBlock = null)
     {
         (IWorldState stateProvider, BlockAccessListManager balManager) = CreateFundedAmsterdamSetup();
         using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
         FundSender(stateProvider);
 
-        Block block = BuildBlock();
+        Block block = BuildBlock(content);
         configureBlock?.Invoke(block);
         RunSequential(stateProvider, balManager, block, blockAccessList: null);
 
@@ -256,13 +276,14 @@ public class BlockAccessListSequentialValidationTests
         ProcessingOptions processingOptions = ProcessingOptions.None,
         bool verifySequentialBlocks = false,
         Hash256? headerHash = null,
-        ProcessingOptions? executorOptions = null)
+        ProcessingOptions? executorOptions = null,
+        BlockContent content = BlockContent.OneTransaction)
     {
         (IWorldState stateProvider, BlockAccessListManager balManager) = CreateFundedAmsterdamSetup(verifySequentialBlocks);
         using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
         FundSender(stateProvider);
 
-        Block block = BuildBlock();
+        Block block = BuildBlock(content);
         block.Header.BlockAccessListHash = headerHash ?? Keccak.Zero;
         RunSequential(stateProvider, balManager, block, suggested, processingOptions, executorOptions ?? processingOptions);
         return (balManager, block);
@@ -320,26 +341,56 @@ public class BlockAccessListSequentialValidationTests
         // The recipient reads ReadSlot, so the BAL carries a storage read.
         stateProvider.CreateAccount(TestItem.AddressB, 0);
         stateProvider.InsertCode(TestItem.AddressB, Prepare.EvmCode.PushData(ReadSlot).Op(Instruction.SLOAD).Done, Amsterdam.Instance);
+        // Reads ReadSlot when called without data, and writes 1 to it when called with data.
+        stateProvider.CreateAccount(TestItem.AddressD, 0);
+        stateProvider.InsertCode(TestItem.AddressD, Prepare.EvmCode
+            .Op(Instruction.CALLDATASIZE).Op(Instruction.PUSH1).Data(8).Op(Instruction.JUMPI)
+            .Op(Instruction.PUSH1).Data((byte)ReadSlot).Op(Instruction.SLOAD).Op(Instruction.STOP)
+            .Op(Instruction.JUMPDEST).Op(Instruction.PUSH1).Data(1).Op(Instruction.PUSH1).Data((byte)ReadSlot).Op(Instruction.SSTORE)
+            .Done, Amsterdam.Instance);
         stateProvider.Commit(Amsterdam.Instance);
         stateProvider.CommitTree(0);
     }
 
-    private static Block BuildBlock()
+    private static Block BuildBlock(BlockContent content = BlockContent.OneTransaction)
     {
-        Transaction tx = Build.A.Transaction
-            .WithNonce(0)
-            .WithValue(1)
-            .WithGasPrice(0)
-            .WithGasLimit(GasCostOf.Transaction + GasCostOf.ColdSLoad + GasCostOf.VeryLow)
-            .WithTo(TestItem.AddressB)
-            .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject;
+        Transaction[] transactions = content switch
+        {
+            BlockContent.NoTransactions => [],
+            BlockContent.ReadThenWrite => [ReadWriteTransaction(0, write: false), ReadWriteTransaction(1, write: true)],
+            BlockContent.WriteThenRead => [ReadWriteTransaction(0, write: true), ReadWriteTransaction(1, write: false)],
+            _ => [Build.A.Transaction
+                .WithNonce(0)
+                .WithValue(1)
+                .WithGasPrice(0)
+                .WithGasLimit(GasCostOf.Transaction + GasCostOf.ColdSLoad + GasCostOf.VeryLow)
+                .WithTo(TestItem.AddressB)
+                .SignedAndResolved(TestItem.PrivateKeyA)
+                .TestObject]
+        };
 
         return Build.A.Block
             .WithNumber(1)
             .WithBaseFeePerGas(0)
-            .WithGasLimit(GasCostOf.Transaction * 4)
-            .WithTransactions(tx)
+            .WithGasLimit(transactions.Length > 1 ? 2 * ReadWriteGasLimit : GasCostOf.Transaction * 4)
+            .WithTransactions(transactions)
             .TestObject;
+
+        static Transaction ReadWriteTransaction(ulong nonce, bool write) => Build.A.Transaction
+            .WithNonce(nonce)
+            .WithGasPrice(0)
+            .WithGasLimit(ReadWriteGasLimit)
+            .WithTo(TestItem.AddressD)
+            .WithData(write ? [1] : [])
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+    }
+
+    public enum BlockContent
+    {
+        OneTransaction,
+        NoTransactions,
+        ReadThenWrite,
+        WriteThenRead
     }
 }
