@@ -107,6 +107,7 @@ public sealed class ForkChoiceRunner
 
     /// <summary>The slot and proposer of each registered block, for <c>is_proposer_equivocation</c>; pruned by slot, and <see cref="_blockTimeliness"/> keeps the roots it holds, so <c>should_apply_proposer_boost</c> sees both for the same blocks.</summary>
     private readonly Dictionary<Hash256, BlockProposer> _blockProposers = [];
+    private readonly Dictionary<BlockProposer, (int Total, int PtcTimely)> _proposalCounts = [];
 
     /// <summary>Committee shufflings only; safe to share across forks (keyed by decision root). The balance memo is never used through this instance.</summary>
     private readonly EpochCache _committees = new();
@@ -244,13 +245,13 @@ public sealed class ForkChoiceRunner
             (head, epoch) => GetBlockSlot(head) / spec.SlotsPerEpoch >= epoch
                 ? GetBlockState(head) : ComputeCheckpointState(new CheckpointRef(epoch, head)));
 
-        _blockProposers[anchor.Root] = new BlockProposer(anchor.BlockSlot, anchor.ProposerIndex);
         if (anchor.IsGloas)
         {
             // specs/gloas/fork-choice.md get_forkchoice_store: block_timeliness={anchor_root: [True, True]}, and [None] * PTC_SIZE votes (#5545).
-            _blockTimeliness[anchor.Root] = new BlockTimeliness(Attestation: true, Ptc: true);
             _ptcVotes[anchor.Root] = new PtcVotes();
         }
+        RecordProposer(anchor.Root, new BlockProposer(anchor.BlockSlot, anchor.ProposerIndex),
+            anchor.IsGloas ? new BlockTimeliness(Attestation: true, Ptc: true) : null);
     }
 
     /// <summary>The fork-independent parts of an anchor that <c>get_forkchoice_store</c> reads.</summary>
@@ -425,7 +426,6 @@ public sealed class ForkChoiceRunner
         PruneCheckpointCache(_checkpointStates, finalized.Epoch);
         PruneCheckpointCache(_justifiedBalances, finalized.Epoch);
         PruneProposersAtOrBelowFinalizedSlot(BeaconStateAccessors.ComputeStartSlotAtEpoch(finalized.Epoch));
-        PruneUnknownRoots(_blockTimeliness, _blockProposers.ContainsKey);
         PruneUnknownRoots(_parentBlockHashes);
         PruneUnknownRoots(_ptcVotes);
         _payloads.RemoveWhere(root => !_protoArray.ContainsBlock(root));
@@ -448,16 +448,35 @@ public sealed class ForkChoiceRunner
 
         if (stale is not null)
         {
-            foreach (Hash256 root in stale) _blockProposers.Remove(root);
+            foreach (Hash256 root in stale) RemoveProposer(root, _blockProposers[root]);
         }
     }
 
-    private void PruneUnknownRoots<TValue>(Dictionary<Hash256, TValue> byRoot, Func<Hash256, bool>? isRetained = null)
+    private void RecordProposer(Hash256 root, BlockProposer proposer, BlockTimeliness? timeliness)
+    {
+        if (_blockProposers.TryGetValue(root, out BlockProposer previous))
+            RemoveProposer(root, previous);
+        _blockProposers[root] = proposer;
+        if (timeliness is BlockTimeliness value) _blockTimeliness[root] = value;
+        (int total, int timely) = _proposalCounts.GetValueOrDefault(proposer);
+        _proposalCounts[proposer] = (total + 1, timely + (timeliness?.Ptc == true ? 1 : 0));
+    }
+
+    private void RemoveProposer(Hash256 root, BlockProposer proposer)
+    {
+        (int total, int timely) = _proposalCounts[proposer];
+        if (_blockTimeliness.Remove(root, out BlockTimeliness timeliness) && timeliness.Ptc) timely--;
+        _blockProposers.Remove(root);
+        if (total == 1) _proposalCounts.Remove(proposer);
+        else _proposalCounts[proposer] = (total - 1, timely);
+    }
+
+    private void PruneUnknownRoots<TValue>(Dictionary<Hash256, TValue> byRoot)
     {
         List<Hash256>? stale = null;
         foreach (Hash256 root in byRoot.Keys)
         {
-            if (!_protoArray.ContainsBlock(root) && isRetained?.Invoke(root) != true) (stale ??= []).Add(root);
+            if (!_protoArray.ContainsBlock(root)) (stale ??= []).Add(root);
         }
 
         if (stale is not null)
@@ -875,10 +894,9 @@ public sealed class ForkChoiceRunner
             _store.FinalizedCheckpoint);
 
         // Recorded only once ProcessBlock returns: a block it refuses must neither hold the slot's boost nor count as its proposal.
-        _blockTimeliness[blockRoot] = timeliness;
+        RecordProposer(blockRoot, new BlockProposer(slot, proposerIndex), timeliness);
         if (isBoosted)
             _store.ProposerBoostRoot = blockRoot;
-        _blockProposers[blockRoot] = new BlockProposer(slot, proposerIndex);
         _lastHeadRoot = null;
     }
 
@@ -1518,17 +1536,11 @@ public sealed class ForkChoiceRunner
         if (!IsHeadWeak(parentRoot, parentSlot, balances))
             return true;
 
-        ulong parentProposer = _blockProposers.TryGetValue(parentRoot, out BlockProposer parent)
-            ? parent.ProposerIndex
-            : throw new ForkChoiceException($"Parent {parentRoot} of the proposer boost root has no recorded proposer");
-        foreach ((Hash256 root, BlockProposer proposer) in _blockProposers)
-        {
-            bool ptcTimely = _blockTimeliness.TryGetValue(root, out BlockTimeliness timeliness) && timeliness.Ptc;
-            if (ptcTimely && proposer.ProposerIndex == parentProposer && proposer.Slot + 1 == slot && root != parentRoot)
-                return false;
-        }
-
-        return true;
+        if (!_blockProposers.TryGetValue(parentRoot, out BlockProposer parent))
+            throw new ForkChoiceException($"Parent {parentRoot} of the proposer boost root has no recorded proposer");
+        BlockProposer previousSlotProposal = new(slot - 1, parent.ProposerIndex);
+        int ownTimely = parent == previousSlotProposal && _blockTimeliness.TryGetValue(parentRoot, out BlockTimeliness timeliness) && timeliness.Ptc ? 1 : 0;
+        return _proposalCounts.GetValueOrDefault(previousSlotProposal).PtcTimely == ownTimely;
     }
 
     /// <summary>Adjusts proto-array weights for Gloas get_weight: remove boost along its PENDING/ancestor payload path when should_apply_proposer_boost is false, and zero previous-slot EMPTY/FULL weights.</summary>
@@ -1831,14 +1843,7 @@ public sealed class ForkChoiceRunner
         if (!_blockProposers.TryGetValue(root, out BlockProposer proposer))
             return false;
 
-        int matching = 0;
-        foreach (BlockProposer other in _blockProposers.Values)
-        {
-            if (other == proposer && ++matching > 1)
-                return true;
-        }
-
-        return false;
+        return _proposalCounts[proposer].Total > 1;
     }
 
     /// <summary>

@@ -15,6 +15,34 @@ namespace Nethermind.BeaconChain.Test.ForkChoice;
 [HardTimeout(60_000)]
 public class ForkChoiceRunnerGloasHeadTests
 {
+    [Test]
+    public void Proposer_equivocation_counts_distinct_roots_for_the_same_slot_and_proposer([Values] bool sameSlot, [Values] bool sameProposer)
+    {
+        GloasForkChoiceHarness harness = new();
+        harness.TickTo(harness.First.Slot);
+        harness.Import(harness.First);
+        ulong slot = harness.First.Slot + 1;
+        harness.TickTo(slot + 1);
+        GloasForkChoiceHarness.Block first = harness.Child(harness.First, slot, full: false, 0xA1);
+        GloasForkChoiceHarness.Block other = harness.Child(harness.First, sameSlot ? slot : slot + 1, full: false, 0xA2);
+        if (!sameProposer)
+        {
+            other.Signed.Message!.ProposerIndex = first.ProposerIndex + 1;
+            other = other with { Root = SszRoots.HashTreeRoot(other.Signed.Message) };
+        }
+        harness.Import(first);
+        harness.Import(first);
+        Assert.That(harness.Runner.IsProposerEquivocation(first.Root), Is.False, "reimporting a root does not create a second proposal");
+        harness.Import(other);
+        harness.Import(other);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Runner.IsProposerEquivocation(first.Root), Is.EqualTo(sameSlot && sameProposer));
+            Assert.That(harness.Runner.IsProposerEquivocation(other.Root), Is.EqualTo(sameSlot && sameProposer));
+            Assert.That(harness.Runner.IsProposerEquivocation(harness.First.Root), Is.False);
+        }
+    }
+
     public enum PayloadDecision
     {
         CurrentSlot,
@@ -112,6 +140,8 @@ public class ForkChoiceRunnerGloasHeadTests
     {
         NoEquivocation,
 
+        ReimportParent,
+
         EquivocationBeforePtcDeadline,
 
         EquivocationAtPtcDeadline,
@@ -133,16 +163,19 @@ public class ForkChoiceRunnerGloasHeadTests
         harness.TickTo(parentSlot);
         GloasForkChoiceHarness.Block parent = harness.Child(first, parentSlot, full: false, 0xA1);
         harness.Import(parent);
+        if (boostCase == BoostCase.ReimportParent)
+            harness.Import(parent);
         if (boostCase == BoostCase.EquivocationWithStrongParent)
             harness.CommitteeVotes(parent, parentSlot, index: 0);
 
         ulong boostedSlot = parentSlot + (boostCase == BoostCase.EquivocationWithParentTwoSlotsBack ? 2ul : 1ul);
-        if (boostCase != BoostCase.NoEquivocation)
+        if (boostCase is not (BoostCase.NoEquivocation or BoostCase.ReimportParent))
         {
             // Every proposal in this fixture is validator 0's, so a PTC-timely block of the slot before the boosted one is an equivocation of the parent's proposer.
             harness.TickTo(boostedSlot - 1, boostCase == BoostCase.EquivocationAtPtcDeadline ? 9ul : 8ul);
             GloasForkChoiceHarness.Block equivocation = harness.Child(first, boostedSlot - 1, full: false, 0xA2);
             Assert.That(equivocation.ProposerIndex, Is.EqualTo(parent.ProposerIndex), "fixture bug: both blocks are the same proposer's");
+            harness.Import(equivocation);
             harness.Import(equivocation);
         }
 

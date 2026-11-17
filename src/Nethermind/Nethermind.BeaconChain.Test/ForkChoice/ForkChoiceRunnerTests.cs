@@ -1648,13 +1648,35 @@ public class ForkChoiceRunnerTests
         runner.OnBlock(sameProposal.Block, sameProposal.PostState, ExecutionStatus.Valid, (IReadOnlyList<DataColumnSidecar>?)null);
         runner.Prune();
 
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(runner.ContainsBlock(fork.Root), Is.False, "fixture bug: the proto-array must have pruned the fork block");
-        Assert.That(fork.Block.Message!.ProposerIndex, Is.EqualTo(sameProposal.Block.Message!.ProposerIndex), "fixture bug");
-        Assert.That(atFinalizedSlot.Block.Message!.ProposerIndex, Is.EqualTo(finalized.Block.Message!.ProposerIndex), "fixture bug");
-        Assert.That(runner.IsProposerEquivocation(sameProposal.Root), Is.True, "slot 289 is after the finalized slot");
-        Assert.That(runner.IsProposerEquivocation(finalized.Root), Is.False, "the rival at the finalized slot 288 is dropped");
-        Assert.That(runner.IsProposerEquivocation(finalizing.Root), Is.False, "a unique proposal is no equivocation");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runner.ContainsBlock(fork.Root), Is.False, "fixture bug: the proto-array must have pruned the fork block");
+            Assert.That(fork.Block.Message!.ProposerIndex, Is.EqualTo(sameProposal.Block.Message!.ProposerIndex), "fixture bug");
+            Assert.That(atFinalizedSlot.Block.Message!.ProposerIndex, Is.EqualTo(finalized.Block.Message!.ProposerIndex), "fixture bug");
+            Assert.That(runner.IsProposerEquivocation(sameProposal.Root), Is.True, "slot 289 is after the finalized slot");
+            Assert.That(runner.IsProposerEquivocation(finalized.Root), Is.False, "the rival at the finalized slot 288 is dropped");
+            Assert.That(runner.IsProposerEquivocation(finalizing.Root), Is.False, "a unique proposal is no equivocation");
+            Assert.That(runner.IsProposerEquivocation(atFinalizedSlot.Root), Is.False, "the removed root has no retained proposal");
+        }
+
+        ulong nextFinalizedSlot = FinalizedSlot + Presets.SlotsPerEpoch;
+        TickToSlot(runner, nextFinalizedSlot + 1);
+        UnsignedChain.ChainBlock nextFinalized = chain.Extend(finalizing.Root, nextFinalizedSlot, payloadHashByte: 0xf6);
+        runner.OnBlock(nextFinalized.Block, nextFinalized.PostState, ExecutionStatus.Valid, (IReadOnlyList<DataColumnSidecar>?)null);
+        UnsignedChain.ChainBlock nextFinalizing = chain.Extend(nextFinalized.Root, nextFinalizedSlot + 1, payloadHashByte: 0xf7);
+        BeaconStateFulu nextPostState = nextFinalizing.PostState.Clone();
+        nextPostState.CurrentJustifiedCheckpoint = new Checkpoint { Epoch = FinalizedEpoch + 1, Root = nextFinalized.Root };
+        nextPostState.FinalizedCheckpoint = new Checkpoint { Epoch = FinalizedEpoch + 1, Root = nextFinalized.Root };
+        runner.OnBlock(nextFinalizing.Block, nextPostState, ExecutionStatus.Valid, (IReadOnlyList<DataColumnSidecar>?)null);
+        Assert.That(runner.FinalizedCheckpoint, Is.EqualTo(new CheckpointRef(FinalizedEpoch + 1, nextFinalized.Root)));
+        runner.Prune();
+        runner.Prune();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runner.ContainsBlock(sameProposal.Root), Is.True, "the tree has not reached its next pruning threshold");
+            Assert.That(runner.IsProposerEquivocation(sameProposal.Root), Is.False, "finality has now passed the retained rival's slot");
+            Assert.That(runner.IsProposerEquivocation(fork.Root), Is.False, "the off-chain proposal record has been removed");
+        }
     }
 
     private static ForkChoiceRunner FinalizedOnFirstGloasBlock(ForkCrossingChain chain)
