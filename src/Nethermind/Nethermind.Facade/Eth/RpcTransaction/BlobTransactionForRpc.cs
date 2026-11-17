@@ -110,15 +110,6 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
 
     internal override Result<Transaction> ConvertTraceCallTransaction(IReleaseSpec spec, ulong? gasCap)
     {
-        // Unlike eth_call, Geth traces a blob fee cap without blob hashes from Cancun, as eth_simulateV1 does;
-        // the cap is kept so that a zero cap still zeroes the blob base fee.
-        if (BlobVersionedHashes is null && Blobs is null && MaxFeePerBlobGas is { } loneBlobFeeCap)
-        {
-            Result<Transaction> converted = WithLoneBlobFeeCapOmitted(this).ToCallTransaction(spec, gasCap);
-            if (converted) converted.Data.MaxFeePerBlobGas = loneBlobFeeCap;
-            return converted;
-        }
-
         if (MaxFeePerBlobGas is { IsZero: false })
             return base.ConvertTraceCallTransaction(spec, gasCap);
 
