@@ -153,21 +153,23 @@ public static class GloasForkTransition
     {
         List<Builder> builders = [.. state.Builders!];
         ulong index = GetIndexForNewBuilder(builders, BeaconStateAccessors.ComputeEpochAtSlot(state.Slot));
-        Builder builder = new()
-        {
-            Pubkey = pubkey,
-            Version = version,
-            ExecutionAddress = executionAddress,
-            Balance = amount,
-            DepositEpoch = BeaconStateAccessors.ComputeEpochAtSlot(slot),
-            WithdrawableEpoch = Presets.FarFutureEpoch,
-        };
+        Builder builder = CreateBuilder(pubkey, version, executionAddress, amount, slot);
         if (index < (ulong)builders.Count)
             builders[(int)index] = builder;
         else
             builders.Add(builder);
         state.Builders = [.. builders];
     }
+
+    private static Builder CreateBuilder(BlsPublicKey pubkey, byte version, Address executionAddress, ulong amount, ulong slot) => new()
+    {
+        Pubkey = pubkey,
+        Version = version,
+        ExecutionAddress = executionAddress,
+        Balance = amount,
+        DepositEpoch = BeaconStateAccessors.ComputeEpochAtSlot(slot),
+        WithdrawableEpoch = Presets.FarFutureEpoch,
+    };
 
     /// <summary>
     /// Spec <c>onboard_builders_from_pending_deposits</c>: the only path, from the fork onward, that
@@ -177,8 +179,11 @@ public static class GloasForkTransition
     {
         HashSet<BlsPublicKey> validatorPubkeys = [];
         foreach (Validator validator in state.Validators!) validatorPubkeys.Add(validator.Pubkey);
-        HashSet<BlsPublicKey> builderPubkeys = [];
-        foreach (Builder builder in state.Builders!) builderPubkeys.Add(builder.Pubkey);
+        List<Builder> builders = [.. state.Builders!];
+        Dictionary<BlsPublicKey, int> builderIndices = [];
+        for (int i = 0; i < builders.Count; i++) builderIndices.TryAdd(builders[i].Pubkey, i);
+        int nextReusableIndex = 0;
+        ulong builderEpoch = BeaconStateAccessors.ComputeEpochAtSlot(state.Slot);
         Dictionary<BlsPublicKey, List<PendingDeposit>> uncheckedDeposits = [];
         HashSet<BlsPublicKey> pendingValidators = [];
         BeaconChainSpec signingSpec = spec ?? BeaconChainSpec.ForGenesisValidatorsRoot(state.GenesisValidatorsRoot!);
@@ -193,7 +198,7 @@ public static class GloasForkTransition
                 continue;
             }
 
-            if (!builderPubkeys.Contains(deposit.Pubkey))
+            if (!builderIndices.TryGetValue(deposit.Pubkey, out int builderIndex))
             {
                 if (!IsBuilderWithdrawalCredential(deposit.WithdrawalCredentials!))
                 {
@@ -220,19 +225,30 @@ public static class GloasForkTransition
                 if (!DepositSignatureVerifier.IsValid(spec ?? BeaconChainSpec.ForGenesisValidatorsRoot(state.GenesisValidatorsRoot!), deposit.Pubkey, deposit.WithdrawalCredentials!, deposit.Amount, deposit.Signature))
                     continue;
 
-                AddBuilderToRegistry(
-                    state,
+                Builder builder = CreateBuilder(
                     deposit.Pubkey,
                     Presets.PayloadBuilderVersion,
                     new Address(deposit.WithdrawalCredentials!.Bytes[12..]),
                     deposit.Amount,
                     deposit.Slot);
-                builderPubkeys.Add(deposit.Pubkey);
+                // Only a top-up wrapping to zero can make an earlier skipped slot reusable again.
+                while (nextReusableIndex < builders.Count
+                    && (builders[nextReusableIndex].WithdrawableEpoch > builderEpoch || builders[nextReusableIndex].Balance != 0))
+                    nextReusableIndex++;
+                builderIndex = nextReusableIndex++;
+                if (builderIndex < builders.Count)
+                {
+                    builderIndices.Remove(builders[builderIndex].Pubkey);
+                    builders[builderIndex] = builder;
+                }
+                else
+                {
+                    builders.Add(builder);
+                }
+                builderIndices.Add(deposit.Pubkey, builderIndex);
             }
             else
             {
-                Builder[] builders = state.Builders!;
-                int builderIndex = Array.FindIndex(builders, b => b.Pubkey.Equals(deposit.Pubkey));
                 builders[builderIndex] = new Builder
                 {
                     Pubkey = builders[builderIndex].Pubkey,
@@ -242,9 +258,12 @@ public static class GloasForkTransition
                     DepositEpoch = builders[builderIndex].DepositEpoch,
                     WithdrawableEpoch = builders[builderIndex].WithdrawableEpoch,
                 };
+                if (builders[builderIndex].Balance == 0 && builders[builderIndex].WithdrawableEpoch <= builderEpoch)
+                    nextReusableIndex = Math.Min(nextReusableIndex, builderIndex);
             }
         }
 
+        state.Builders = [.. builders];
         state.PendingDeposits = [.. kept];
     }
 

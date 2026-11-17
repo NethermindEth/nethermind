@@ -158,6 +158,77 @@ public class GloasForkTransitionTests
         Assert.That(GloasForkTransition.GetIndexForNewBuilder(builders, currentEpoch), Is.EqualTo(expectedIndex));
     }
 
+    [Test]
+    public void Onboarding_reuses_slots_in_order_and_observes_earlier_topups()
+    {
+        const ulong epoch = 5;
+        BeaconStateGloas state = new() { Slot = epoch * Presets.SlotsPerEpoch, Validators = [], GenesisValidatorsRoot = Hash256.Zero };
+        BlsPublicKey[] oldKeys = [PubkeyForIndex(0), PubkeyForIndex(1), PubkeyForIndex(2)];
+        state.Builders = [.. oldKeys.Select(key => new Builder { Pubkey = key, WithdrawableEpoch = epoch, Balance = 0 })];
+        PendingDeposit[] deposits = [.. Enumerable.Range(110, 3).Select(CreateBuilderDeposit)];
+        state.PendingDeposits =
+        [
+            new() { Pubkey = oldKeys[1], Amount = Gwei },
+            .. deposits,
+            new() { Pubkey = deposits[0].Pubkey, Amount = 2 * Gwei },
+        ];
+
+        GloasForkTransition.OnboardBuildersFromPendingDeposits(state, epoch, SyntheticSpec());
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(state.PendingDeposits, Is.Empty);
+        Assert.That(state.Builders!.Select(b => b.Pubkey), Is.EqualTo(new[] { deposits[0].Pubkey, oldKeys[1], deposits[1].Pubkey, deposits[2].Pubkey }));
+        Assert.That(state.Builders.Select(b => b.Balance), Is.EqualTo(new[] { 34 * Gwei, Gwei, 32 * Gwei, 32 * Gwei }));
+    }
+
+    [Test]
+    public void Onboarding_large_batches_preserves_order_and_topups([Values(1, 64, 256)] int count)
+    {
+        PendingDeposit[] deposits = [.. Enumerable.Range(1000, count).Select(CreateBuilderDeposit)];
+        BeaconStateGloas state = new()
+        {
+            Slot = 64,
+            Validators = [],
+            Builders = [],
+            GenesisValidatorsRoot = Hash256.Zero,
+            PendingDeposits = [.. deposits, .. deposits.Reverse().Select(d => new PendingDeposit { Pubkey = d.Pubkey, Amount = Gwei })],
+        };
+
+        GloasForkTransition.OnboardBuildersFromPendingDeposits(state, 2, SyntheticSpec());
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(state.PendingDeposits, Is.Empty);
+        Assert.That(state.Builders!.Select(b => b.Pubkey), Is.EqualTo(deposits.Select(d => d.Pubkey)));
+        Assert.That(state.Builders.Select(b => b.Balance), Is.All.EqualTo(33 * Gwei));
+    }
+
+    private static PendingDeposit CreateBuilderDeposit(int keyIndex)
+    {
+        Hash256 credentials = BuilderWithdrawalCredentials(0xAB);
+        (BlsPublicKey pubkey, BlsSignature signature) = SignDeposit(DeriveKey(keyIndex), credentials, 32 * Gwei);
+        return new PendingDeposit { Pubkey = pubkey, WithdrawalCredentials = credentials, Amount = 32 * Gwei, Signature = signature, Slot = 40 };
+    }
+
+    [Test]
+    public void Onboarding_rechecks_an_earlier_slot_when_a_topup_wraps_its_balance_to_zero()
+    {
+        PendingDeposit first = CreateBuilderDeposit(120);
+        PendingDeposit second = CreateBuilderDeposit(121);
+        BlsPublicKey oldKey = PubkeyForIndex(0);
+        BeaconStateGloas state = new()
+        {
+            Slot = 64,
+            Validators = [],
+            GenesisValidatorsRoot = Hash256.Zero,
+            Builders = [new() { Pubkey = oldKey, Balance = ulong.MaxValue, WithdrawableEpoch = 0 }],
+            PendingDeposits = [first, new() { Pubkey = oldKey, Amount = 1 }, second],
+        };
+
+        GloasForkTransition.OnboardBuildersFromPendingDeposits(state, 2, SyntheticSpec());
+
+        Assert.That(state.Builders!.Select(b => b.Pubkey), Is.EqualTo(new[] { second.Pubkey, first.Pubkey }));
+    }
+
     // onboard_builders_from_pending_deposits (specs/gloas/fork.md): a later deposit for a builder already
     // onboarded from this queue tops up its balance only, with no signature check, and leaves the queue.
     [Test]
