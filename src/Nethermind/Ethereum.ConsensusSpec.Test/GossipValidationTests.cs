@@ -510,7 +510,7 @@ public partial class GossipValidationTests
         if (!File.Exists(configPath))
             return FuluDriverSupport.TransitionSpec(gloas ? 0 : Presets.FarFutureEpoch);
 
-        BeaconChainSpec spec = FuluDriverSupport.CaseSpec(casePath);
+        BeaconChainSpec spec = FuluDriverSupport.CaseSpec(casePath, gloas ? "gloas" : "fulu");
         if (FuluDriverSupport.ParseFlowMap(configPath).TryGetValue("SLOT_DURATION_MS", out string? slotDuration)
             && ulong.Parse(slotDuration) != spec.SecondsPerSlot * 1000)
         {

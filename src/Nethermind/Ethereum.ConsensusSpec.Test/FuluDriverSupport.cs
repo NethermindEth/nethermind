@@ -41,6 +41,9 @@ public static class FuluDriverSupport
     internal static BeaconChainSpec DefaultSpec => BeaconChainSpec.Mainnet;
 #endif
 
+    internal static BeaconChainSpec FuluSpec { get; } = TransitionSpec(Presets.FarFutureEpoch);
+    private static BeaconChainSpec GloasSpec { get; } = TransitionSpec(0);
+
     internal static bool Enumerates(ConsensusPreset preset, bool crossPreset = false) =>
         preset == CompiledPreset || (crossPreset && CompiledPreset == ConsensusPreset.Mainnet);
 
@@ -217,14 +220,20 @@ public static class FuluDriverSupport
         return pubkeys;
     }
 
-    /// <summary>Reads config.yaml overrides (tests/formats/README.md), retaining compiled-preset defaults for omitted keys.</summary>
+    /// <summary>Applies config.yaml overrides to the vector's fork and compiled preset.</summary>
     /// <remarks>Reads fork epochs/versions, slot duration, MAX_BLOBS_PER_BLOCK_ELECTRA and BLOB_SCHEDULE.</remarks>
-    public static BeaconChainSpec CaseSpec(string casePath)
+    public static BeaconChainSpec CaseSpec(string casePath, string fork = "fulu")
     {
-        BeaconChainSpec mainnet = DefaultSpec;
+        BeaconChainSpec defaults = fork switch
+        {
+            "electra" => DefaultSpec,
+            "fulu" => FuluSpec,
+            "gloas" => GloasSpec,
+            _ => throw new ArgumentOutOfRangeException(nameof(fork)),
+        };
         string configPath = Path.Combine(casePath, "config.yaml");
         if (!File.Exists(configPath))
-            return mainnet;
+            return defaults;
 
         YamlMappingNode config = LoadMapping(configPath);
 
@@ -233,9 +242,9 @@ public static class FuluDriverSupport
 
         byte[] gloasForkVersion = config.Children.TryGetValue(new YamlScalarNode("GLOAS_FORK_VERSION"), out YamlNode? version)
             ? Bytes.FromHexString(((YamlScalarNode)version).Value!)
-            : mainnet.GloasForkVersion;
+            : defaults.GloasForkVersion;
 
-        BlobScheduleEntry[] blobSchedule = mainnet.BlobSchedule;
+        BlobScheduleEntry[] blobSchedule = defaults.BlobSchedule;
         if (config.Children.TryGetValue(new YamlScalarNode("BLOB_SCHEDULE"), out YamlNode? schedule))
         {
             blobSchedule = [.. ((YamlSequenceNode)schedule).Children.Cast<YamlMappingNode>().Select(static entry => new BlobScheduleEntry(
@@ -244,11 +253,11 @@ public static class FuluDriverSupport
         }
 
         BeaconChainSpec spec = PresetWith(
-            blobSchedule,
-            Scalar("ELECTRA_FORK_EPOCH", mainnet.ElectraForkEpoch),
-            Scalar("FULU_FORK_EPOCH", mainnet.FuluForkEpoch),
-            Scalar("MAX_BLOBS_PER_BLOCK_ELECTRA", mainnet.MaxBlobsPerBlockElectra),
-            Scalar("GLOAS_FORK_EPOCH", mainnet.GloasForkEpoch),
+            defaults, blobSchedule,
+            Scalar("ELECTRA_FORK_EPOCH", defaults.ElectraForkEpoch),
+            Scalar("FULU_FORK_EPOCH", defaults.FuluForkEpoch),
+            Scalar("MAX_BLOBS_PER_BLOCK_ELECTRA", defaults.MaxBlobsPerBlockElectra),
+            Scalar("GLOAS_FORK_EPOCH", defaults.GloasForkEpoch),
             gloasForkVersion);
         string[] forkNames = ["GENESIS", "ALTAIR", "BELLATRIX", "CAPELLA", "DENEB", "ELECTRA", "FULU"];
         ForkScheduleEntry[] forks = [.. spec.Forks.Take(7).Select((entry, index) => new ForkScheduleEntry(
@@ -266,17 +275,15 @@ public static class FuluDriverSupport
     public static BeaconChainSpec TransitionSpec(ulong gloasForkEpoch)
     {
         BeaconChainSpec mainnet = DefaultSpec;
-        BeaconChainSpec spec = PresetWith(mainnet.BlobSchedule, 0, 0, mainnet.MaxBlobsPerBlockElectra, gloasForkEpoch, mainnet.GloasForkVersion);
+        BeaconChainSpec spec = PresetWith(mainnet, mainnet.BlobSchedule, 0, 0, mainnet.MaxBlobsPerBlockElectra, gloasForkEpoch, mainnet.GloasForkVersion);
         return spec with { Forks = [.. spec.Forks.Select((entry, index) => index < 7 ? entry with { Epoch = 0 } : entry)] };
     }
 
-    private static BeaconChainSpec PresetWith(BlobScheduleEntry[] blobSchedule, ulong electraForkEpoch, ulong fuluForkEpoch, ulong maxBlobsPerBlockElectra, ulong gloasForkEpoch, byte[] gloasForkVersion)
-    {
-        BeaconChainSpec mainnet = DefaultSpec;
-        return mainnet with
+    private static BeaconChainSpec PresetWith(BeaconChainSpec defaults, BlobScheduleEntry[] blobSchedule, ulong electraForkEpoch, ulong fuluForkEpoch, ulong maxBlobsPerBlockElectra, ulong gloasForkEpoch, byte[] gloasForkVersion) =>
+        defaults with
         {
             CheckpointSyncUrl = null,
-            Forks = [.. mainnet.Forks.Take(7).Select((entry, index) => entry with { Epoch = index == 5 ? electraForkEpoch : index == 6 ? fuluForkEpoch : entry.Epoch }),
+            Forks = [.. defaults.Forks.Take(7).Select((entry, index) => entry with { Epoch = index == 5 ? electraForkEpoch : index == 6 ? fuluForkEpoch : entry.Epoch }),
                 .. (gloasForkEpoch == Presets.FarFutureEpoch ? Array.Empty<ForkScheduleEntry>() : [new(gloasForkVersion, gloasForkEpoch)])],
             BlobSchedule = blobSchedule,
             ElectraForkEpoch = electraForkEpoch,
@@ -285,7 +292,6 @@ public static class FuluDriverSupport
             GloasForkEpoch = gloasForkEpoch,
             GloasForkVersion = gloasForkVersion,
         };
-    }
 
     /// <summary>Verifies signatures unless bls_setting is 2 (ignored); absent, optional (0) and required (1) settings verify normally.</summary>
     public static bool ShouldVerifySignatures(string casePath)

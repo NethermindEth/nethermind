@@ -113,7 +113,8 @@ public class BlockSignatureBatchVectorTests
         EpochCache cache = driver.NewCache();
         PubkeyCache pubkeys = FuluDriverSupport.BuildPubkeyCache(driver.ValidatorsOf(state));
         bool verifySignatures = FuluDriverSupport.ShouldVerifySignatures(testCase.CasePath);
-        BeaconChainSpec spec = FuluDriverSupport.CaseSpec(testCase.CasePath);
+        BeaconChainSpec spec = FuluDriverSupport.CaseSpec(testCase.CasePath, testCase.Fork);
+        if (driver.Fork == "fulu") cache.SigningSpec = spec;
         int blocksCount = int.Parse(FuluDriverSupport.ParseFlowMap(Path.Combine(testCase.CasePath, "meta.yaml"))["blocks_count"]);
 
         try
@@ -150,7 +151,7 @@ public class BlockSignatureBatchVectorTests
             FuluDriverSupport.BuildPubkeyCache(driver.ValidatorsOf(state)),
             FuluDriverSupport.ShouldVerifySignatures(testCase.CasePath),
             ExecutionValid: true,
-            FuluDriverSupport.CaseSpec(testCase.CasePath),
+            FuluDriverSupport.CaseSpec(testCase.CasePath, testCase.Fork),
             testCase.CasePath);
         byte[] operand = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(testCase.CasePath, handler.File));
 

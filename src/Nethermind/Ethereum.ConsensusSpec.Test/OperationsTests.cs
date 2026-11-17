@@ -141,7 +141,7 @@ public class OperationsTests
         BeaconStateGloas.Decode(SszConsensusTestLoader.ReadSszSnappy(Path.Combine(path, "pre.ssz_snappy")), out BeaconStateGloas state);
         if (slot is { } targetSlot) state.Slot = targetSlot;
         OpContext<BeaconStateGloas> context = new(state, new EpochCache(), FuluDriverSupport.BuildPubkeyCache(state.Validators!),
-            true, true, FuluDriverSupport.CaseSpec(path), path);
+            true, true, FuluDriverSupport.CaseSpec(path, "gloas"), path);
         byte[] operand = file is null ? [] : SszConsensusTestLoader.ReadSszSnappy(Path.Combine(path, file));
         Nethermind.Core.Crypto.Hash256 rootBefore = SszRoots.HashTreeRoot(state);
 
@@ -210,7 +210,7 @@ public class OperationsTests
             FuluDriverSupport.BuildPubkeyCache(driver.ValidatorsOf(state)),
             FuluDriverSupport.ShouldVerifySignatures(testCase.CasePath),
             FuluDriverSupport.ReadExecutionValid(testCase.CasePath),
-            FuluDriverSupport.CaseSpec(testCase.CasePath),
+            FuluDriverSupport.CaseSpec(testCase.CasePath, testCase.Fork),
             testCase.CasePath);
 
         byte[] operand = operandPath is null ? [] : SszConsensusTestLoader.ReadSszSnappy(operandPath);

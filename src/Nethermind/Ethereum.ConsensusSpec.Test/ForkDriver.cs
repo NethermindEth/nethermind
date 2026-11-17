@@ -37,7 +37,7 @@ public abstract class ForkDriver
 
         public override Hash256 StateRoot(BeaconStateFulu state) => FuluDriverSupport.StateRoot(state);
         public override object ForDiff(BeaconStateFulu state) => state;
-        public override EpochCache NewCache() => new() { Hasher = new DifferentialBeaconStateHasher(), SigningSpec = FuluDriverSupport.DefaultSpec with { FuluForkEpoch = 0 } };
+        public override EpochCache NewCache() => new() { Hasher = new DifferentialBeaconStateHasher(), SigningSpec = FuluDriverSupport.FuluSpec };
         public override Hash256 CachedRoot(BeaconStateFulu state, EpochCache cache) => cache.Hasher.HashTreeRoot(state);
         public override ulong SlotOf(BeaconStateFulu state) => state.Slot;
         public override Validator[] ValidatorsOf(BeaconStateFulu state) => state.Validators!;
