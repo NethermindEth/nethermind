@@ -57,7 +57,7 @@ public class OptimismTransactionProcessorTests
     }
 
     [Test]
-    public void Sender_recipient_and_operator_fee_recipient_balances_are_exact([Values] bool jovian)
+    public void Sender_recipient_and_fee_recipient_balances_are_exact([Values] bool jovian, [Values] bool callAndRestore)
     {
         IReleaseSpec spec = Prague.Instance;
         Address l1Block = TestItem.AddressE;
@@ -76,11 +76,16 @@ public class OptimismTransactionProcessorTests
 
         const ulong operatorFeeScalar = 2_000_000;
         const ulong operatorFeeConstant = 1_000;
+        const ulong l1BaseFee = 1_000_000_000;
+        const ulong l1FeeScalar = 1_000_000;
         UInt256 initialBalance = 1.Ether;
         state.CreateAccount(l1Block, 0);
+        state.Set(new StorageCell(l1Block, 1), l1BaseFee);
+        state.Set(new StorageCell(l1Block, 6), l1FeeScalar);
         state.Set(new StorageCell(l1Block, 8), (new UInt256(operatorFeeScalar) << 64) + operatorFeeConstant);
         state.CreateAccount(TestItem.AddressA, initialBalance);
         state.CreateAccount(PreDeploys.OperatorFeeRecipient, 1);
+        state.CreateAccount(TestItem.AddressF, 1);
         state.Commit(spec);
 
         const ulong gasPrice = 10;
@@ -94,19 +99,35 @@ public class OptimismTransactionProcessorTests
             .TestObject;
         BlockHeader header = Build.A.BlockHeader.WithBaseFee(0).WithGasLimit(30_000_000).TestObject;
 
-        TransactionResult result = lifetime.Resolve<ITransactionProcessor>()
-            .Execute(tx, new BlockExecutionContext(header, spec), NullTxTracer.Instance);
+        ITransactionProcessor processor = lifetime.Resolve<ITransactionProcessor>();
+        BlockExecutionContext blockContext = new(header, spec);
+        TransactionResult result = callAndRestore
+            ? processor.CallAndRestore(tx, in blockContext, NullTxTracer.Instance)
+            : processor.Execute(tx, in blockContext, NullTxTracer.Instance);
 
         const ulong gasUsed = GasCostOf.Transaction;
+        UInt256 l1Fee = OptimismCostHelper.ComputeL1CostPreEcotone(OptimismCostHelper.ComputeDataGas(tx, isRegolith: true), l1BaseFee, l1FeeScalar);
         UInt256 operatorFee = jovian
             ? (UInt256)gasUsed * operatorFeeScalar * 100 + operatorFeeConstant
             : gasUsed * operatorFeeScalar / 1_000_000 + operatorFeeConstant;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(TransactionResult.Ok));
-            Assert.That(state.GetBalance(TestItem.AddressA), Is.EqualTo(initialBalance - value - gasUsed * gasPrice - operatorFee));
-            Assert.That(state.GetBalance(TestItem.AddressB), Is.EqualTo(value));
-            Assert.That(state.GetBalance(PreDeploys.OperatorFeeRecipient), Is.EqualTo(operatorFee + 1));
+            Assert.That(l1Fee, Is.Not.EqualTo(UInt256.Zero));
+            if (callAndRestore)
+            {
+                Assert.That(state.GetBalance(TestItem.AddressA), Is.EqualTo(initialBalance));
+                Assert.That(state.GetBalance(TestItem.AddressB), Is.EqualTo(UInt256.Zero));
+                Assert.That(state.GetBalance(TestItem.AddressF), Is.EqualTo((UInt256)1));
+                Assert.That(state.GetBalance(PreDeploys.OperatorFeeRecipient), Is.EqualTo((UInt256)1));
+            }
+            else
+            {
+                Assert.That(state.GetBalance(TestItem.AddressA), Is.EqualTo(initialBalance - value - gasUsed * gasPrice - l1Fee - operatorFee));
+                Assert.That(state.GetBalance(TestItem.AddressB), Is.EqualTo(value));
+                Assert.That(state.GetBalance(TestItem.AddressF), Is.EqualTo(l1Fee + 1));
+                Assert.That(state.GetBalance(PreDeploys.OperatorFeeRecipient), Is.EqualTo(operatorFee + 1));
+            }
         }
     }
 
