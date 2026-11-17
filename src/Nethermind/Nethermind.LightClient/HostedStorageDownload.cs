@@ -16,13 +16,13 @@ internal static class HostedStorageDownload
 {
     internal sealed record Page(KeyValuePair<ValueHash256, UInt256>[] Slots, bool More);
 
-    internal static async Task<IReadOnlyDictionary<ValueHash256, UInt256>> DownloadAsync(
+    internal static async Task<HostedStorageSnapshot> DownloadAsync(
         Hash256 storageRoot, Func<ValueHash256, CancellationToken, Task<Page>> fetch,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         Dictionary<ValueHash256, UInt256> storage = [];
-        if (storageRoot == Keccak.EmptyTreeHash) return storage;
+        if (storageRoot == Keccak.EmptyTreeHash) return HostedStorageSnapshot.Create(storageRoot, storage, cancellationToken);
 
         ValueHash256 start = ValueKeccak.Zero;
         while (true)
@@ -42,8 +42,7 @@ internal static class HostedStorageDownload
             start = last.IncrementPath();
         }
 
-        ExecutionProofVerifier.VerifyStorageSnapshot(storageRoot, storage, cancellationToken);
-        return storage;
+        return HostedStorageSnapshot.Create(storageRoot, storage, cancellationToken);
     }
 
     internal static Page VerifyPage(PathWithAccount account, ValueHash256 start, SlotsAndProofs response, ILogManager logs)

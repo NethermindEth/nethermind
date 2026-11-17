@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -23,7 +24,7 @@ public class HostedStorageDownloadTests
         (PatriciaTree tree, PathWithStorageSlot[] slots) = CreateStorage();
         Account account = new(1, 2, tree.RootHash, Keccak.OfAnEmptyString);
         int requests = 0;
-        IReadOnlyDictionary<ValueHash256, UInt256> result = await HostedStorageDownload.DownloadAsync(tree.RootHash,
+        HostedStorageSnapshot result = await HostedStorageDownload.DownloadAsync(tree.RootHash,
             (start, _) =>
             {
                 requests++;
@@ -36,16 +37,19 @@ public class HostedStorageDownloadTests
             Assert.That(requests, Is.EqualTo((slots.Length + pageSize - 1) / pageSize));
             Assert.That(result.Count, Is.EqualTo(slots.Length));
             foreach (PathWithStorageSlot slot in slots)
-                Assert.That(result[slot.Path], Is.EqualTo(ExecutionProofVerifier.DecodeStorageRlp(slot.SlotRlpValue)));
+            {
+                Assert.That(result.TryGetValue(slot.Path, out UInt256 value), Is.True);
+                Assert.That(value, Is.EqualTo(ExecutionProofVerifier.DecodeStorageRlp(slot.SlotRlpValue)));
+            }
         }
     }
 
     [Test]
     public async Task Empty_storage_needs_no_network()
     {
-        IReadOnlyDictionary<ValueHash256, UInt256> result = await HostedStorageDownload.DownloadAsync(Keccak.EmptyTreeHash,
+        HostedStorageSnapshot result = await HostedStorageDownload.DownloadAsync(Keccak.EmptyTreeHash,
             (_, _) => throw new AssertionException("An empty trie needs no range request."), CancellationToken.None);
-        Assert.That(result, Is.Empty);
+        Assert.That(result.Count, Is.Zero);
     }
 
     [Test]
@@ -150,6 +154,192 @@ public class HostedStorageDownloadTests
             { new ArrayPoolList<PathWithStorageSlot>(1) { new(path, value) } },
         };
         Assert.That(() => HostedStorageDownload.VerifyPage(new(ValueKeccak.Zero, account), ValueKeccak.Zero, response, NullLogManager.Instance), Throws.Exception);
+    }
+
+    [Test]
+    public void Snapshot_changes_preserve_previous_state_across_trie_topology_changes(
+        [Values("insert", "replace", "delete", "collapse", "empty", "absent-delete")] string operation)
+    {
+        Dictionary<ValueHash256, UInt256> original = Storage(("1000", 1), ("1001", 2), ("1f", 3), ("e0", 4));
+        Dictionary<ValueHash256, UInt256> changes = operation switch
+        {
+            "insert" => Storage(("1002", 5)),
+            "replace" => Storage(("1000", 99)),
+            "delete" => Storage(("1000", 0)),
+            "collapse" => Storage(("1000", 0), ("1001", 0)),
+            "empty" => original.ToDictionary(entry => entry.Key, _ => UInt256.Zero),
+            _ => Storage(("f", 0)),
+        };
+        Dictionary<ValueHash256, UInt256> expected = new(original);
+        foreach ((ValueHash256 key, UInt256 value) in changes)
+            if (value.IsZero) expected.Remove(key);
+            else expected[key] = value;
+        HostedStorageSnapshot previous = Snapshot(original);
+
+        HostedStorageSnapshot updated = previous.Apply(changes, Root(expected), CancellationToken.None);
+
+        AssertSnapshot(previous, original);
+        AssertSnapshot(updated, expected);
+        foreach ((ValueHash256 key, UInt256 value) in changes)
+            if (value.IsZero) Assert.That(updated.TryGetValue(key, out _), Is.False);
+    }
+
+    [Test]
+    public void Snapshot_updates_share_only_unchanged_sealed_subtrees()
+    {
+        Dictionary<ValueHash256, UInt256> original = Storage(("00", 1), ("01", 2), ("f0", 3), ("f1", 4));
+        HostedStorageSnapshot previous = Snapshot(original);
+        Dictionary<ValueHash256, UInt256> expected = new(original) { [TreePath.FromHexString("00").Path] = 99 };
+        Assert.That(previous.TryGetNode(TreePath.FromHexString("f"), out TrieNode? shared), Is.True);
+        Assert.That(previous.TryGetNode(TreePath.FromHexString("0"), out TrieNode? changed), Is.True);
+
+        HostedStorageSnapshot updated = previous.Apply(Storage(("00", 99)), Root(expected), CancellationToken.None);
+
+        Assert.That(updated.TryGetNode(TreePath.FromHexString("f"), out TrieNode? retained), Is.True);
+        Assert.That(updated.TryGetNode(TreePath.FromHexString("0"), out TrieNode? replacement), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retained, Is.SameAs(shared));
+            Assert.That(replacement, Is.Not.SameAs(changed));
+            Assert.That(shared!.IsSealed, Is.True);
+            Assert.That(changed!.IsSealed, Is.True);
+            Assert.That(replacement!.IsSealed, Is.True);
+        }
+        AssertSnapshot(previous, original);
+        AssertSnapshot(updated, expected);
+    }
+
+    [Test]
+    [CancelAfter(5_000)]
+    public async Task Concurrent_snapshot_proposals_and_reads_share_no_mutable_paths(CancellationToken token)
+    {
+        Dictionary<ValueHash256, UInt256> original = Storage(("00", 1), ("01", 2), ("f0", 3), ("f1", 4));
+        HostedStorageSnapshot previous = Snapshot(original);
+        TaskCompletionSource start = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<HostedStorageSnapshot>[] proposals = new Task<HostedStorageSnapshot>[2];
+        Dictionary<ValueHash256, UInt256>[] expected = new Dictionary<ValueHash256, UInt256>[2];
+        for (int i = 0; i < proposals.Length; i++)
+        {
+            string path = i == 0 ? "00" : "f0";
+            Dictionary<ValueHash256, UInt256> changes = Storage((path, 99));
+            Dictionary<ValueHash256, UInt256> target = new(original) { [TreePath.FromHexString(path).Path] = 99 };
+            expected[i] = target;
+            proposals[i] = Task.Run(async () =>
+            {
+                await start.Task.WaitAsync(token);
+                HostedStorageSnapshot candidate = previous.Apply(changes, Root(target), token);
+                AssertSnapshot(previous, original);
+                return candidate;
+            }, token);
+        }
+
+        start.SetResult();
+        HostedStorageSnapshot[] completed = await Task.WhenAll(proposals);
+
+        AssertSnapshot(previous, original);
+        for (int i = 0; i < completed.Length; i++) AssertSnapshot(completed[i], expected[i]);
+    }
+
+    [TestCase("", true)]
+    [TestCase("1", true)]
+    [TestCase("12", false)]
+    [TestCase("123", true)]
+    [TestCase("1230", true)]
+    [TestCase("12300", false)]
+    [TestCase("124", false)]
+    [TestCase("8", false)]
+    public void Snapshot_node_lookup_matches_exact_boundaries(string path, bool exists)
+    {
+        HostedStorageSnapshot snapshot = Snapshot(Storage(("1230", 1), ("1231", 2), ("f", 3)));
+
+        bool found = snapshot.TryGetNode(TreePath.FromHexString(path), out TrieNode? node);
+
+        Assert.That(found, Is.EqualTo(exists));
+        if (exists)
+        {
+            Assert.That(node, Is.Not.Null);
+            Assert.That(node!.IsSealed, Is.True);
+        }
+        else Assert.That(node, Is.Null);
+    }
+
+    [Test]
+    public void Rejected_or_canceled_snapshot_update_can_be_retried_without_changing_previous_state([Values] bool canceled)
+    {
+        Dictionary<ValueHash256, UInt256> original = Storage(("00", 1), ("01", 2), ("f0", 3));
+        Dictionary<ValueHash256, UInt256> expected = new(original)
+        {
+            [TreePath.FromHexString("00").Path] = 99,
+            [TreePath.FromHexString("f0").Path] = 100,
+        };
+        Dictionary<ValueHash256, UInt256> changes = Storage(("00", 99), ("f0", 100));
+        HostedStorageSnapshot previous = Snapshot(original);
+        using CancellationTokenSource cancellation = new();
+
+        if (canceled)
+            Assert.That(() => previous.Apply(new CancelingChanges(changes, cancellation), Root(expected), cancellation.Token),
+                Throws.InstanceOf<OperationCanceledException>());
+        else
+            Assert.That(() => previous.Apply(changes, previous.RootHash, CancellationToken.None), Throws.TypeOf<InvalidDataException>());
+
+        AssertSnapshot(previous, original);
+        AssertSnapshot(previous.Apply(changes, Root(expected), CancellationToken.None), expected);
+    }
+
+    [Test]
+    public void Snapshot_rejects_zero_leaves_even_when_the_supplied_root_contains_them()
+    {
+        Dictionary<ValueHash256, UInt256> storage = Storage(("1", 0));
+        Assert.That(() => HostedStorageSnapshot.Create(Root(storage), storage, CancellationToken.None),
+            Throws.TypeOf<InvalidDataException>());
+    }
+
+    private static Dictionary<ValueHash256, UInt256> Storage(params (string Path, UInt256 Value)[] entries) =>
+        entries.ToDictionary(entry => TreePath.FromHexString(entry.Path).Path, entry => entry.Value);
+
+    private static Hash256 Root(IReadOnlyDictionary<ValueHash256, UInt256> storage)
+    {
+        PatriciaTree tree = new();
+        foreach ((ValueHash256 key, UInt256 value) in storage) tree.Set(key.Bytes, Rlp.Encode(value).Bytes);
+        tree.UpdateRootHash();
+        return tree.RootHash;
+    }
+
+    private static HostedStorageSnapshot Snapshot(IReadOnlyDictionary<ValueHash256, UInt256> storage) =>
+        HostedStorageSnapshot.Create(Root(storage), storage, CancellationToken.None);
+
+    private static void AssertSnapshot(HostedStorageSnapshot actual, IReadOnlyDictionary<ValueHash256, UInt256> expected)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.Count, Is.EqualTo(expected.Count));
+            Assert.That(actual.RootHash, Is.EqualTo(Root(expected)));
+            foreach ((ValueHash256 key, UInt256 expectedValue) in expected)
+            {
+                Assert.That(actual.TryGetValue(key, out UInt256 value), Is.True);
+                Assert.That(value, Is.EqualTo(expectedValue));
+            }
+        }
+    }
+
+    private sealed class CancelingChanges(IReadOnlyDictionary<ValueHash256, UInt256> changes,
+        CancellationTokenSource cancellation) : IReadOnlyDictionary<ValueHash256, UInt256>
+    {
+        public int Count => changes.Count;
+        public IEnumerable<ValueHash256> Keys => changes.Keys;
+        public IEnumerable<UInt256> Values => changes.Values;
+        public UInt256 this[ValueHash256 key] => changes[key];
+        public bool ContainsKey(ValueHash256 key) => changes.ContainsKey(key);
+        public bool TryGetValue(ValueHash256 key, out UInt256 value) => changes.TryGetValue(key, out value);
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+        public IEnumerator<KeyValuePair<ValueHash256, UInt256>> GetEnumerator()
+        {
+            foreach (KeyValuePair<ValueHash256, UInt256> change in changes)
+            {
+                yield return change;
+                cancellation.Cancel();
+            }
+        }
     }
 
     private static (PatriciaTree Tree, PathWithStorageSlot[] Slots) CreateStorage()

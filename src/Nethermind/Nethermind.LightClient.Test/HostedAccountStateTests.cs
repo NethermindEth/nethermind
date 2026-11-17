@@ -6,12 +6,15 @@ using System.Threading.Channels;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.Eip7928;
+using Nethermind.State;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using NSubstitute;
 
 namespace Nethermind.LightClient.Test;
@@ -118,8 +121,8 @@ public class HostedAccountStateTests
         await hosted.RefreshAsync(FirstHead, CancellationToken.None);
         Account previous = source.Account;
         source.Code = [0x60, 0x02, 0x00];
-        source.Account = new(8, 456, Keccak.Compute("changed storage"), Keccak.Compute(source.Code));
         source.Storage = new() { [Path(2)] = 123 };
+        source.Account = new(8, 456, StorageRoot(source.Storage), Keccak.Compute(source.Code));
         await hosted.RefreshAsync(NextHead, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
@@ -143,7 +146,6 @@ public class HostedAccountStateTests
         [Values("before-fork", "after-fork", "fallback", "failed-fallback", "code-failure")] string mode)
     {
         Source source = new();
-        source.Account = source.Account.WithChangedStorageRoot(StorageRoot(source.Storage));
         Account original = source.Account;
         HostedAccountState hosted = Create(source);
         await hosted.RefreshAsync(FirstHead, CancellationToken.None);
@@ -199,6 +201,80 @@ public class HostedAccountStateTests
     }
 
     [Test]
+    [CancelAfter(5_000)]
+    public async Task Sparse_trie_updates_follow_bal_fallback_without_replacing_state_until_complete(
+        [Values("sparse", "malformed", "missing", "canceled")] string reply, CancellationToken token)
+    {
+        Source source = new()
+        {
+            Storage = Enumerable.Range(1, 128).ToDictionary(slot => Path((UInt256)(uint)slot), slot => (UInt256)(uint)(slot + 100)),
+        };
+        source.Account = source.Account.WithChangedStorageRoot(StorageRoot(source.Storage));
+        Account previous = source.Account;
+        HostedAccountState hosted = Create(source);
+        await hosted.RefreshAsync(FirstHead, token);
+        Assert.That(hosted.TryGetAccount(FirstHead, HostedAddress, out _), Is.True);
+        Assert.That(source.StorageFetches, Is.EqualTo(1));
+        Assert.That(source.TrieFetches, Is.Zero);
+        StorageTree target = new(NullTrieStore.Instance, LimboLogs.Instance);
+        for (uint slot = 1; slot <= 128; slot++) target.Set(slot, ((UInt256)(slot + 100)).ToBigEndian().WithoutLeadingZeros());
+        target.Set(1, ((UInt256)999).ToBigEndian().WithoutLeadingZeros());
+        target.Set(7, []);
+        target.Set(129, ((UInt256)555).ToBigEndian().WithoutLeadingZeros());
+        target.UpdateRootHash();
+        source.Storage = new(source.Storage) { [Path(1)] = 999, [Path(129)] = 555 };
+        source.Storage.Remove(Path(7));
+        Assert.That(target.RootHash, Is.EqualTo(StorageRoot(source.Storage)), "the independent fixture must use canonical integer storage RLP");
+        source.Account = source.Account.WithChangedStorageRoot(target.RootHash);
+        source.StorageTrie = target;
+        source.TrieReply = reply;
+        if (reply == "canceled") source.TrieGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (reply is "sparse" or "canceled") source.FailStage = "storage";
+        using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
+
+        Task refresh = hosted.RefreshAsync(NextHead, cancellation.Token);
+        if (reply == "canceled")
+        {
+            await source.TrieStarted.Task.WaitAsync(token);
+            Assert.That(hosted.TryGetAccount(FirstHead, HostedAddress, out _), Is.True);
+            Assert.That(hosted.TryGetAccount(NextHead, HostedAddress, out _), Is.False);
+            await cancellation.CancelAsync();
+            await Assert.ThatAsync(async () => await refresh, Throws.InstanceOf<OperationCanceledException>());
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(hosted.TryGetAccount(FirstHead, HostedAddress, out _), Is.True);
+                Assert.That(hosted.TryGetAccount(NextHead, HostedAddress, out _), Is.False);
+                Assert.That(hosted.TryGetStorage(HostedAddress, previous, 1, out UInt256 retained), Is.True);
+                Assert.That(retained, Is.EqualTo((UInt256)101));
+                Assert.That(source.StorageFetches, Is.EqualTo(1));
+                Assert.That(hosted.GetProgress(NextHead)[0].Stage, Is.EqualTo("canceled"));
+            }
+            return;
+        }
+        await refresh;
+
+        Assert.That(hosted.TryGetAccount(NextHead, HostedAddress, out Account current), Is.True, hosted.GetProgress(NextHead)[0].LastError);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(current.StorageRoot, Is.EqualTo(target.RootHash));
+            Assert.That(hosted.TryGetAccount(FirstHead, HostedAddress, out _), Is.False);
+            Assert.That(hosted.TryGetStorage(HostedAddress, current, 1, out UInt256 changed), Is.True);
+            Assert.That(changed, Is.EqualTo((UInt256)999));
+            Assert.That(hosted.TryGetStorage(HostedAddress, current, 7, out UInt256 deleted), Is.True);
+            Assert.That(deleted, Is.EqualTo(UInt256.Zero));
+            Assert.That(hosted.TryGetStorage(HostedAddress, current, 129, out UInt256 inserted), Is.True);
+            Assert.That(inserted, Is.EqualTo((UInt256)555));
+            Assert.That(source.StorageFetches, Is.EqualTo(reply == "sparse" ? 1 : 2));
+            Assert.That(source.TrieFetches, Is.Positive);
+            Assert.That(source.TrieNodesRequested, Is.LessThan(source.Storage.Count));
+            Assert.That(source.HeaderFetches, Is.EqualTo(1), "BAL unavailability must reach the trie updater");
+            Assert.That(source.BalFetches, Is.Zero);
+            Assert.That(source.CodeFetches, Is.EqualTo(1));
+            Assert.That(hosted.GetProgress(NextHead)[0].Stage, Is.EqualTo("complete"));
+        }
+    }
+
+    [Test]
     public async Task Reorg_reauthenticates_the_selected_branch_without_relabeling_state()
     {
         Source source = new();
@@ -228,7 +304,8 @@ public class HostedAccountStateTests
         HostedAccountState hosted = Create(source);
         await hosted.RefreshAsync(FirstHead, CancellationToken.None);
         Account previous = source.Account;
-        source.Account = new(8, 999, Keccak.Compute("new storage"), Keccak.Compute("new code"));
+        source.Storage = new() { [Path(2)] = 999 };
+        source.Account = new(8, 999, StorageRoot(source.Storage), Keccak.Compute("new code"));
         source.FailStage = stage;
         await hosted.RefreshAsync(NextHead, CancellationToken.None);
 
@@ -272,6 +349,29 @@ public class HostedAccountStateTests
             Assert.That(hosted.TryGetAccount(FirstHead, HostedAddress, out _), Is.False);
             Assert.That(hosted.TryGetCode(source.Account, out _), Is.False);
             Assert.That(hosted.TryGetStorage(HostedAddress, source.Account, 1, out _), Is.False);
+        }
+    }
+
+    [Test]
+    public async Task A_complete_snapshot_for_a_different_root_cannot_replace_the_current_account()
+    {
+        Source source = new();
+        Account original = source.Account;
+        HostedStorageSnapshot wrongRoot = HostedStorageSnapshot.Create(original.StorageRoot, source.Storage, CancellationToken.None);
+        HostedAccountState hosted = new([HostedAddress], source, (_, _, _, _) => Task.FromResult(wrongRoot), NullLogger.Instance);
+        await hosted.RefreshAsync(FirstHead, CancellationToken.None);
+        source.Storage = new() { [Path(1)] = 999 };
+        source.Account = source.Account.WithChangedStorageRoot(StorageRoot(source.Storage));
+
+        await hosted.RefreshAsync(NextHead, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hosted.TryGetAccount(NextHead, HostedAddress, out _), Is.False);
+            Assert.That(hosted.TryGetAccount(FirstHead, HostedAddress, out _), Is.True);
+            Assert.That(hosted.TryGetStorage(HostedAddress, original, 1, out UInt256 value), Is.True);
+            Assert.That(value, Is.EqualTo((UInt256)42));
+            Assert.That(hosted.GetProgress(NextHead)[0].Stage, Is.EqualTo("failed"));
         }
     }
 
@@ -370,8 +470,8 @@ public class HostedAccountStateTests
         HostedAccountState hosted = Create(source);
         await hosted.RefreshAsync(FirstHead, CancellationToken.None);
         Account previous = source.Account;
-        source.Account = source.Account.WithChangedStorageRoot(Keccak.Compute("changed storage"));
         source.Storage = new() { [Path(1)] = 999 };
+        source.Account = source.Account.WithChangedStorageRoot(StorageRoot(source.Storage));
         source.StorageGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Task refresh = hosted.RefreshAsync(NextHead, CancellationToken.None);
 
@@ -560,7 +660,8 @@ public class HostedAccountStateTests
     private sealed class Source : IExecutionStateSource
     {
         internal byte[] Code = [0x60, 0x01, 0x00];
-        internal Account Account = new(7, 123, Keccak.Compute("storage"), Keccak.Compute((ReadOnlySpan<byte>)[0x60, 0x01, 0x00]));
+        internal Account Account = new(7, 123, StorageRoot(new Dictionary<ValueHash256, UInt256> { [Path(1)] = 42 }),
+            Keccak.Compute((ReadOnlySpan<byte>)[0x60, 0x01, 0x00]));
         internal Dictionary<ValueHash256, UInt256> Storage = new() { [Path(1)] = 42 };
         internal ConcurrentQueue<Address> RequestedAddresses = new();
         internal ConcurrentQueue<(Address Address, Hash256 Hash)> RequestedHeads = new();
@@ -575,8 +676,14 @@ public class HostedAccountStateTests
         internal int CodeFetches;
         internal int HeaderFetches;
         internal int BalFetches;
+        internal int TrieFetches;
+        internal int TrieNodesRequested;
         internal BlockHeader? Header;
         internal ReadOnlyBlockAccessList? Bal;
+        internal PatriciaTree? StorageTrie;
+        internal string? TrieReply;
+        internal TaskCompletionSource? TrieGate;
+        internal readonly TaskCompletionSource TrieStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public Task<Account> GetAccountAsync(VerifiedHead head, Address address, CancellationToken cancellationToken)
         {
@@ -596,7 +703,7 @@ public class HostedAccountStateTests
             return Task.FromResult(Code);
         }
 
-        internal async Task<IReadOnlyDictionary<ValueHash256, UInt256>> DownloadStorage(VerifiedHead head, Address address,
+        internal async Task<HostedStorageSnapshot> DownloadStorage(VerifiedHead head, Address address,
             Account account, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -608,13 +715,36 @@ public class HostedAccountStateTests
                 if (StorageGate is not null && (StorageGateAddress is null || StorageGateAddress == address))
                     await StorageGate.Task.WaitAsync(cancellationToken);
                 if (FailStage == "storage") throw new InvalidDataException("Storage proof failed.");
-                return Storage;
+                return HostedStorageSnapshot.Create(account.StorageRoot, Storage, cancellationToken);
             }
             finally { Interlocked.Decrement(ref ActiveDownloads); }
         }
 
         public Task<UInt256> GetStorageAsync(VerifiedHead head, Address address, Account account, UInt256 key,
             CancellationToken cancellationToken) => throw new AssertionException("Individual storage slots must not be fetched.");
+        public async Task<IReadOnlyDictionary<Hash256, byte[]>> GetStorageTrieNodesAsync(VerifiedHead head, Address address,
+            StorageTrieNodeRequest[] requests, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (StorageTrie is null) throw new NotSupportedException();
+            if (head != NextHead || address != HostedAddress)
+                throw new AssertionException("The trie update must request the selected account at the new authenticated head.");
+            TrieFetches++;
+            TrieNodesRequested += requests.Length;
+            TrieStarted.TrySetResult();
+            if (TrieGate is not null) await TrieGate.Task.WaitAsync(cancellationToken);
+            Dictionary<Hash256, byte[]> result = [];
+            foreach (StorageTrieNodeRequest request in requests)
+            {
+                if (TrieReply == "missing") break;
+                byte[] bytes = StorageTrie.GetNodeByPath(request.Path.ToNibble())
+                    ?? throw new AssertionException("The requested target node does not exist.");
+                if (Keccak.Compute(bytes) != request.Hash)
+                    throw new AssertionException("The requested node hash differs from the independent target trie.");
+                result.Add(request.Hash, TrieReply == "malformed" ? [0xc0] : bytes);
+            }
+            return result;
+        }
         public Task<BlockHeader> GetHeaderAsync(VerifiedHead head, CancellationToken cancellationToken)
         {
             Interlocked.Increment(ref HeaderFetches);

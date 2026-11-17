@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Frozen;
 using System.Threading.Channels;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -20,12 +19,13 @@ internal sealed class HostedAccountState
     private static readonly TimeSpan RetryInterval = TimeSpan.FromSeconds(1);
     private readonly Dictionary<Address, Entry> _accounts = [];
     private readonly IExecutionStateSource _execution;
-    private readonly Func<VerifiedHead, Address, Account, CancellationToken, Task<IReadOnlyDictionary<ValueHash256, UInt256>>> _downloadStorage;
+    private readonly Func<VerifiedHead, Address, Account, CancellationToken, Task<HostedStorageSnapshot>> _downloadStorage;
     private readonly ILogger _logger;
     private readonly HostedAccountBalUpdater _balUpdater;
+    private readonly HostedStorageTrieUpdater _trieUpdater;
 
     internal HostedAccountState(Address[] accounts, IExecutionStateSource execution,
-        Func<VerifiedHead, Address, Account, CancellationToken, Task<IReadOnlyDictionary<ValueHash256, UInt256>>> downloadStorage,
+        Func<VerifiedHead, Address, Account, CancellationToken, Task<HostedStorageSnapshot>> downloadStorage,
         ILogger logger)
     {
         foreach (Address address in accounts) _accounts.TryAdd(address, new Entry());
@@ -33,6 +33,7 @@ internal sealed class HostedAccountState
         _downloadStorage = downloadStorage;
         _logger = logger;
         _balUpdater = new(execution, logger);
+        _trieUpdater = new(execution, logger);
     }
 
     internal static Address[] ParseAccounts(string? value)
@@ -121,15 +122,20 @@ internal sealed class HostedAccountState
         try
         {
             Account account = await _execution.GetAccountAsync(head, address, cancellationToken);
-            FrozenDictionary<ValueHash256, UInt256> storage;
-            if (!account.HasStorage) storage = FrozenDictionary<ValueHash256, UInt256>.Empty;
+            HostedStorageSnapshot storage;
+            if (!account.HasStorage) storage = HostedStorageSnapshot.Create(account.StorageRoot,
+                new Dictionary<ValueHash256, UInt256>(), cancellationToken);
             else if (previous?.Account.StorageRoot == account.StorageRoot) storage = previous.Storage;
             else
             {
-                IReadOnlyDictionary<ValueHash256, UInt256>? updated = previous is not null
+                HostedStorageSnapshot? updated = previous is not null
                     ? await _balUpdater.TryUpdateAsync(previous.Head, head, address, previous.Storage, account.StorageRoot, cancellationToken)
                     : null;
-                storage = (updated ?? await _downloadStorage(head, address, account, cancellationToken)).ToFrozenDictionary();
+                if (updated is null && previous is not null)
+                    updated = await _trieUpdater.TryUpdateAsync(head, address, previous.Storage, account.StorageRoot, cancellationToken);
+                storage = updated ?? await _downloadStorage(head, address, account, cancellationToken);
+                if (storage.RootHash != account.StorageRoot)
+                    throw new InvalidDataException("Hosted storage belongs to a different authenticated account root.");
             }
 
             byte[] code;
@@ -214,5 +220,5 @@ internal sealed class HostedAccountState
 
     private sealed record EntryState(Snapshot? Snapshot, string Stage, ulong? RefreshBlock, string? LastError);
 
-    private sealed record Snapshot(VerifiedHead Head, Account Account, FrozenDictionary<ValueHash256, UInt256> Storage, byte[] Code);
+    private sealed record Snapshot(VerifiedHead Head, Account Account, HostedStorageSnapshot Storage, byte[] Code);
 }

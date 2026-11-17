@@ -1373,6 +1373,439 @@ public class TransportTests
 
     [Test]
     [CancelAfter(30_000)]
+    public async Task Storage_trie_node_requests_use_authenticated_paths_and_copy_partial_responses(
+        [Values(1, 2)] int responseCount, CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(1, snap1: true);
+        byte[][] nodes = [peers.StorageLeaf.ToArray(), peers.AccountLeaf.ToArray()];
+        byte[][] expected = nodes.Select(node => node.ToArray()).ToArray();
+        StorageTrieNodeRequest[] requests =
+        [
+            new(TreePath.Empty, Keccak.Compute(nodes[0])),
+            new(TreePath.FromHexString("abc"), Keccak.Compute(nodes[1])),
+        ];
+        Hash256? root = null;
+        byte[][]? paths = null;
+        int groups = 0, disposed = 0;
+        peers.Ordered[0].SyncPeer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out ISnapSyncPeer? snap);
+        snap!.GetTrieNodes(Arg.Any<GetTrieNodesRequest>(), Arg.Any<CancellationToken>()).Returns(call =>
+        {
+            GetTrieNodesRequest request = call.ArgAt<GetTrieNodesRequest>(0);
+            root = request.RootHash;
+            groups = request.AccountAndStoragePaths.Count;
+            paths = groups == 1 ? request.AccountAndStoragePaths[0].Group.Select(path => path.ToArray()).ToArray() : [];
+            return Task.FromResult<IByteArrayList>(new ByteArrayListAdapter(new TrackedResponse<byte[]>(
+                nodes.Reverse().Take(responseCount).ToArray(), () =>
+                {
+                    Interlocked.Increment(ref disposed);
+                    foreach (byte[] node in nodes) Array.Fill(node, (byte)0xff);
+                })));
+        });
+
+        IReadOnlyDictionary<Hash256, byte[]> result = await peers.Transport.GetStorageTrieNodesAsync(
+            peers.SnapHead, ExecutionPeers.SnapAddress, requests, token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root, Is.EqualTo(peers.SnapHead.StateRoot));
+            Assert.That(groups, Is.EqualTo(1));
+            Assert.That(paths, Is.EqualTo(new byte[][] { Keccak.Compute(ExecutionPeers.SnapAddress.Bytes).Bytes.ToArray(), [0x00], [0x1a, 0xbc] }));
+            Assert.That(disposed, Is.EqualTo(1));
+            Assert.That(result.Count, Is.EqualTo(responseCount));
+        }
+        foreach (byte[] node in expected.Reverse().Take(responseCount))
+        {
+            Assert.That(result.TryGetValue(Keccak.Compute(node), out byte[]? owned), Is.True);
+            Assert.That(owned, Is.EqualTo(node), "Returned nodes must outlive disposal of the peer-owned response.");
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Storage_trie_node_requests_retry_empty_suppliers_without_cooling_them(
+        [Values] bool allEmpty, CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(2, snap1: true);
+        StorageTrieNodeRequest[] requests = [new(TreePath.Empty, Keccak.Compute(peers.StorageLeaf))];
+        int[] received = new int[2], disposed = new int[2];
+        for (int i = 0; i < peers.Ordered.Length; i++)
+        {
+            int supplier = i;
+            peers.Ordered[i].SyncPeer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out ISnapSyncPeer? snap);
+            snap!.GetTrieNodes(Arg.Any<GetTrieNodesRequest>(), Arg.Any<CancellationToken>()).Returns(_ =>
+            {
+                Interlocked.Increment(ref received[supplier]);
+                return Task.FromResult<IByteArrayList>(new ByteArrayListAdapter(new TrackedResponse<byte[]>(
+                    supplier == 0 || allEmpty ? [] : [peers.StorageLeaf],
+                    () => Interlocked.Increment(ref disposed[supplier]))));
+            });
+        }
+        if (allEmpty)
+        {
+            Assert.That(async () => await peers.Transport.GetStorageTrieNodesAsync(peers.SnapHead,
+                ExecutionPeers.SnapAddress, requests, token), Throws.TypeOf<ExecutionDataUnavailableException>());
+        }
+        else
+        {
+            IReadOnlyDictionary<Hash256, byte[]> result = await peers.Transport.GetStorageTrieNodesAsync(
+                peers.SnapHead, ExecutionPeers.SnapAddress, requests, token);
+            Assert.That(result.TryGetValue(requests[0].Hash, out byte[]? node), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.Count, Is.EqualTo(1));
+                Assert.That(node, Is.EqualTo(peers.StorageLeaf));
+                Assert.That(node, Is.Not.SameAs(peers.StorageLeaf));
+            }
+        }
+        SemaphoreSlim capacity = (SemaphoreSlim)typeof(ExecutionPeerTransport)
+            .GetField("_snapRequests", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(peers.Transport)!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(received, Is.EqualTo(new[] { 1, 1 }));
+            Assert.That(disposed, Is.EqualTo(new[] { 1, 1 }));
+            Assert.That(capacity.CurrentCount, Is.EqualTo(8));
+            Assert.That(HistoryCooldowns(peers).Count, Is.Zero);
+            Assert.That(peers.Pool.AllPeers.Select(peer => peer.SleepingContexts), Is.All.EqualTo(AllocationContexts.None));
+        }
+        foreach (ExecutionPeer peer in peers.Ordered)
+            peer.SyncPeer.DidNotReceive().Disconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Storage_trie_node_requests_reject_invalid_responses_and_retry_an_honest_supplier(
+        [Values("unknown", "duplicate", "empty", "oversized", "count")] string invalid, CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(2, snap1: true);
+        byte[][] nodes = [peers.StorageLeaf, peers.AccountLeaf];
+        StorageTrieNodeRequest[] requests =
+        [
+            new(TreePath.Empty, Keccak.Compute(nodes[0])),
+            new(TreePath.FromHexString("a"), Keccak.Compute(nodes[1])),
+        ];
+        byte[][] malformed = invalid switch
+        {
+            "unknown" => [[0xc0]],
+            "duplicate" => [nodes[0], nodes[0]],
+            "empty" => [[]],
+            "oversized" => [new byte[ExecutionProofVerifier.MaxNodeBytes + 1]],
+            "count" => Enumerable.Repeat(nodes[0], 257).ToArray(),
+            _ => throw new ArgumentOutOfRangeException(nameof(invalid)),
+        };
+        int[] received = new int[2], disposed = new int[2];
+        for (int i = 0; i < peers.Ordered.Length; i++)
+        {
+            int supplier = i;
+            peers.Ordered[i].SyncPeer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out ISnapSyncPeer? snap);
+            snap!.GetTrieNodes(Arg.Any<GetTrieNodesRequest>(), Arg.Any<CancellationToken>()).Returns(_ =>
+            {
+                Interlocked.Increment(ref received[supplier]);
+                return Task.FromResult<IByteArrayList>(new ByteArrayListAdapter(new TrackedResponse<byte[]>(
+                    supplier == 0 ? malformed : nodes, () => Interlocked.Increment(ref disposed[supplier]))));
+            });
+        }
+
+        IReadOnlyDictionary<Hash256, byte[]> result = await peers.Transport.GetStorageTrieNodesAsync(
+            peers.SnapHead, ExecutionPeers.SnapAddress, requests, token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(received, Is.EqualTo(new[] { 1, 1 }));
+            Assert.That(disposed, Is.EqualTo(new[] { 1, 1 }));
+            Assert.That(result.Keys, Is.EquivalentTo(requests.Select(request => request.Hash)));
+        }
+        foreach (byte[] node in nodes)
+        {
+            Assert.That(result.TryGetValue(Keccak.Compute(node), out byte[]? owned), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(owned, Is.EqualTo(node));
+                Assert.That(owned, Is.Not.SameAs(node));
+            }
+        }
+        peers.Ordered[0].SyncPeer.Received().Disconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
+        peers.Ordered[1].SyncPeer.DidNotReceive().Disconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Storage_trie_node_requests_enforce_the_request_count_boundary(
+        [Values(0, 256, 257)] int count, CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(1, snap1: true);
+        byte[][] nodes = Enumerable.Range(1, count).Select(index => ExecutionProofFixtures.Leaf(
+            Keccak.Compute(((UInt256)(uint)index).ToBigEndian()), Rlp.Encode((UInt256)(uint)index).Bytes)).ToArray();
+        StorageTrieNodeRequest[] requests = nodes.Select((node, index) =>
+            new StorageTrieNodeRequest(TreePath.FromHexString(index.ToString("x2")), Keccak.Compute(node))).ToArray();
+        int received = 0, paths = 0, disposed = 0;
+        peers.Ordered[0].SyncPeer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out ISnapSyncPeer? snap);
+        snap!.GetTrieNodes(Arg.Any<GetTrieNodesRequest>(), Arg.Any<CancellationToken>()).Returns(call =>
+        {
+            received++;
+            paths = call.ArgAt<GetTrieNodesRequest>(0).AccountAndStoragePaths[0].Group.Length;
+            return Task.FromResult<IByteArrayList>(new ByteArrayListAdapter(new TrackedResponse<byte[]>(nodes, () => disposed++)));
+        });
+        if (count != 256)
+        {
+            Assert.That(async () => await peers.Transport.GetStorageTrieNodesAsync(peers.SnapHead,
+                ExecutionPeers.SnapAddress, requests, token), Throws.TypeOf<ArgumentOutOfRangeException>());
+            Assert.That(received, Is.Zero);
+            return;
+        }
+
+        IReadOnlyDictionary<Hash256, byte[]> result = await peers.Transport.GetStorageTrieNodesAsync(
+            peers.SnapHead, ExecutionPeers.SnapAddress, requests, token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(received, Is.EqualTo(1));
+            Assert.That(paths, Is.EqualTo(257));
+            Assert.That(disposed, Is.EqualTo(1));
+            Assert.That(result.Keys, Is.EquivalentTo(requests.Select(request => request.Hash)));
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Storage_trie_node_requests_require_a_snap1_supplier(CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(1, snap2: true);
+        StorageTrieNodeRequest[] requests = [new(TreePath.Empty, Keccak.Compute(peers.StorageLeaf))];
+
+        Assert.That(async () => await peers.Transport.GetStorageTrieNodesAsync(peers.SnapHead,
+            ExecutionPeers.SnapAddress, requests, token), Throws.TypeOf<NotSupportedException>());
+
+        peers.Ordered[0].SyncPeer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out ISnapSyncPeer? snap);
+        await snap!.DidNotReceive().GetTrieNodes(Arg.Any<GetTrieNodesRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Storage_trie_node_requests_exclude_snap2_and_use_one_supplier(
+        [Values] bool cancel, CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(3, snap1: true);
+        using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
+        TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int[] received = new int[3], disposed = new int[3];
+        for (int i = 0; i < peers.Ordered.Length; i++)
+        {
+            int supplier = i;
+            peers.Ordered[i].SyncPeer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out ISnapSyncPeer? snap);
+            snap!.SnapProtocolVersion.Returns(supplier == 0 ? (byte)2 : (byte)1);
+            snap.GetTrieNodes(Arg.Any<GetTrieNodesRequest>(), Arg.Any<CancellationToken>()).Returns(async call =>
+            {
+                Interlocked.Increment(ref received[supplier]);
+                started.TrySetResult();
+                await release.Task.WaitAsync(call.ArgAt<CancellationToken>(1));
+                return (IByteArrayList)new ByteArrayListAdapter(new TrackedResponse<byte[]>([peers.StorageLeaf],
+                    () => Interlocked.Increment(ref disposed[supplier])));
+            });
+        }
+        StorageTrieNodeRequest[] requests = [new(TreePath.Empty, Keccak.Compute(peers.StorageLeaf))];
+        Task<IReadOnlyDictionary<Hash256, byte[]>> pending = peers.Transport.GetStorageTrieNodesAsync(
+            peers.SnapHead, ExecutionPeers.SnapAddress, requests, caller.Token);
+        try
+        {
+            await started.Task.WaitAsync(token);
+            Assert.That(received, Is.EqualTo(new[] { 0, 1, 0 }), "snap2 lacks GetTrieNodes and bulk requests must not hedge the remaining snap1 suppliers.");
+            if (cancel)
+            {
+                await caller.CancelAsync();
+                Assert.That(async () => await pending, Throws.InstanceOf<OperationCanceledException>());
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(disposed, Is.EqualTo(new[] { 0, 0, 0 }));
+                    Assert.That(peers.Pool.AllPeers.Select(peer => peer.SleepingContexts), Is.All.EqualTo(AllocationContexts.None));
+                }
+            }
+            else
+            {
+                release.TrySetResult();
+                IReadOnlyDictionary<Hash256, byte[]> result = await pending;
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(result.Keys, Is.EqualTo(new[] { requests[0].Hash }));
+                    Assert.That(disposed, Is.EqualTo(new[] { 0, 1, 0 }));
+                }
+            }
+        }
+        finally
+        {
+            await caller.CancelAsync();
+            release.TrySetResult();
+            await ((Task)pending).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Hosted_snapshot_pages_leave_wallet_supplier_hedging_unchanged(CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(2, snap1: true);
+        using CancellationTokenSource stopping = CancellationTokenSource.CreateLinkedTokenSource(token);
+        TaskCompletionSource backgroundStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource walletsStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource releaseBackground = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource releaseWallets = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int[] backgroundRequests = new int[2];
+        int walletRequests = 0;
+        for (int i = 0; i < peers.Ordered.Length; i++)
+        {
+            int supplier = i;
+            peers.Ordered[i].SyncPeer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out ISnapSyncPeer? snap);
+            snap!.GetStorageRange(Arg.Any<StorageRange>(), Arg.Any<CancellationToken>()).Returns(async call =>
+            {
+                Interlocked.Increment(ref backgroundRequests[supplier]);
+                backgroundStarted.TrySetResult();
+                await releaseBackground.Task.WaitAsync(call.ArgAt<CancellationToken>(1));
+                return peers.StorageSnapshotResponse(supplier);
+            });
+            peers.Ordered[i].BeforeResponse = async (_, cancellation) =>
+            {
+                if (Interlocked.Increment(ref walletRequests) == 2) walletsStarted.TrySetResult();
+                await releaseWallets.Task.WaitAsync(cancellation);
+            };
+        }
+        Task<HostedStorageSnapshot> download = peers.DownloadStorage(stopping.Token);
+        Task<Account>? wallet = null;
+        try
+        {
+            await backgroundStarted.Task.WaitAsync(token);
+            Assert.That(backgroundRequests.Sum(), Is.EqualTo(1), "A background page must not occupy both suppliers.");
+            wallet = peers.Transport.GetAccountAsync(peers.SnapHead, ExecutionPeers.SnapAddress, stopping.Token);
+            await walletsStarted.Task.WaitAsync(token);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(peers.Counts(AllocationContexts.Snap), Is.EqualTo(new[] { 1, 1 }), "Wallet reads still race both suppliers while the background page is pending.");
+                Assert.That(backgroundRequests.Sum(), Is.EqualTo(1));
+                Assert.That(download.IsCompleted, Is.False);
+            }
+            releaseWallets.TrySetResult();
+            Account account = await wallet;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(account, Is.EqualTo(peers.SnapAccount));
+                Assert.That(download.IsCompleted, Is.False, "The wallet must complete before the background supplier is released.");
+            }
+            releaseBackground.TrySetResult();
+            HostedStorageSnapshot storage = await download;
+            AssertStorageSnapshot(storage, peers.SnapAccount.StorageRoot,
+                new KeyValuePair<ValueHash256, UInt256>(ValueKeccak.Compute(((UInt256)1).ToBigEndian()), peers.SnapValue));
+        }
+        finally
+        {
+            await stopping.CancelAsync();
+            releaseBackground.TrySetResult();
+            releaseWallets.TrySetResult();
+            await Task.WhenAll(download, (Task?)wallet ?? Task.CompletedTask).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Hosted_snapshot_retries_a_failed_supplier_without_duplicate_pages(CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(2, snap1: true);
+        TaskCompletionSource firstStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource failFirst = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int[] requests = new int[2];
+        for (int i = 0; i < peers.Ordered.Length; i++)
+        {
+            int supplier = i;
+            peers.Ordered[i].SyncPeer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out ISnapSyncPeer? snap);
+            snap!.GetStorageRange(Arg.Any<StorageRange>(), Arg.Any<CancellationToken>()).Returns(async call =>
+            {
+                Interlocked.Increment(ref requests[supplier]);
+                if (supplier == 0)
+                {
+                    firstStarted.TrySetResult();
+                    await failFirst.Task.WaitAsync(call.ArgAt<CancellationToken>(1));
+                    throw new IOException("The first supplier disconnected.");
+                }
+                return peers.StorageSnapshotResponse(supplier);
+            });
+        }
+        Task<HostedStorageSnapshot> download = peers.DownloadStorage(token);
+        try
+        {
+            await firstStarted.Task.WaitAsync(token);
+            Assert.That(requests, Is.EqualTo(new[] { 1, 0 }), "The fallback supplier starts only after the first attempt fails.");
+            failFirst.TrySetResult();
+            HostedStorageSnapshot storage = await download;
+            AssertStorageSnapshot(storage, peers.SnapAccount.StorageRoot,
+                new KeyValuePair<ValueHash256, UInt256>(ValueKeccak.Compute(((UInt256)1).ToBigEndian()), peers.SnapValue));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(requests, Is.EqualTo(new[] { 1, 1 }));
+                Assert.That(peers.Ordered[1].ResponsesDisposed, Is.EqualTo(1));
+            }
+        }
+        finally
+        {
+            failFirst.TrySetResult();
+            await ((Task)download).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Hosted_snapshot_cancellation_drains_the_only_supplier_and_releases_capacity(CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(2, snap1: true);
+        using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
+        TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource canceled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int[] requests = new int[2];
+        for (int i = 0; i < peers.Ordered.Length; i++)
+        {
+            int supplier = i;
+            peers.Ordered[i].SyncPeer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out ISnapSyncPeer? snap);
+            snap!.GetStorageRange(Arg.Any<StorageRange>(), Arg.Any<CancellationToken>()).Returns(async call =>
+            {
+                Interlocked.Increment(ref requests[supplier]);
+                using CancellationTokenRegistration registration = call.ArgAt<CancellationToken>(1).Register(() => canceled.TrySetResult());
+                started.TrySetResult();
+                await release.Task;
+                return peers.StorageSnapshotResponse(supplier);
+            });
+        }
+        Task<HostedStorageSnapshot> download = peers.DownloadStorage(caller.Token);
+        try
+        {
+            await started.Task.WaitAsync(token);
+            await caller.CancelAsync();
+            await canceled.Task.WaitAsync(token);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(requests, Is.EqualTo(new[] { 1, 0 }));
+                Assert.That(download.IsCompleted, Is.False, "Cancellation must drain the late owned response before releasing its request slot.");
+            }
+            release.TrySetResult();
+            Assert.That(async () => await download, Throws.InstanceOf<OperationCanceledException>());
+            SemaphoreSlim capacity = (SemaphoreSlim)typeof(ExecutionPeerTransport)
+                .GetField("_snapRequests", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(peers.Transport)!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(capacity.CurrentCount, Is.EqualTo(8));
+                Assert.That(peers.Ordered.Select(peer => peer.ResponsesDisposed), Is.EqualTo(new[] { 1, 0 }));
+                Assert.That(peers.Pool.AllPeers.Select(peer => peer.SleepingContexts), Is.All.EqualTo(AllocationContexts.None));
+            }
+            HostedStorageSnapshot storage = await peers.DownloadStorage(token);
+            AssertStorageSnapshot(storage, peers.SnapAccount.StorageRoot,
+                new KeyValuePair<ValueHash256, UInt256>(ValueKeccak.Compute(((UInt256)1).ToBigEndian()), peers.SnapValue));
+        }
+        finally
+        {
+            release.TrySetResult();
+            await ((Task)download).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
     public async Task A_hosted_download_root_failure_disconnects_the_sole_supplier_and_retries_an_honest_peer(CancellationToken token)
     {
         await using ExecutionPeers peers = new(2, snap1: true);
@@ -1408,10 +1841,11 @@ public class TransportTests
         PeerInfo forged = peers.Pool.GetPeer(peers.Ordered[0].SyncPeer.Node)!;
         PeerInfo honest = peers.Pool.GetPeer(peers.Ordered[1].SyncPeer.Node)!;
         MethodInfo download = typeof(ExecutionPeerTransport).GetMethod("DownloadStorageAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        Task<IReadOnlyDictionary<ValueHash256, UInt256>> Download() =>
-            (Task<IReadOnlyDictionary<ValueHash256, UInt256>>)download.Invoke(peers.Transport,
+        Task<HostedStorageSnapshot> Download() =>
+            (Task<HostedStorageSnapshot>)download.Invoke(peers.Transport,
                 [peers.SnapHead, ExecutionPeers.SnapAddress, peers.SnapAccount, token])!;
-        IReadOnlyDictionary<ValueHash256, UInt256> storage = await Download();
+        HostedStorageSnapshot storage = await Download();
+        AssertStorageSnapshot(storage, peers.SnapAccount.StorageRoot, new KeyValuePair<ValueHash256, UInt256>(path, peers.SnapValue));
         MethodInfo isCooling = typeof(ExecutionPeerTransport).GetMethod("IsCooling", BindingFlags.Instance | BindingFlags.NonPublic)!;
         using (Assert.EnterMultipleScope())
         {
@@ -1420,8 +1854,6 @@ public class TransportTests
         }
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(storage, Has.Count.EqualTo(1));
-            Assert.That(storage[path], Is.EqualTo(peers.SnapValue));
             Assert.That(requests[0], Is.EqualTo(1));
             Assert.That(requests[1], Is.GreaterThanOrEqualTo(1));
         }
@@ -1468,8 +1900,8 @@ public class TransportTests
             return pages.Response(index);
         });
         MethodInfo method = typeof(ExecutionPeerTransport).GetMethod("DownloadStorageAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        Task<IReadOnlyDictionary<ValueHash256, UInt256>> download =
-            (Task<IReadOnlyDictionary<ValueHash256, UInt256>>)method.Invoke(peers.Transport,
+        Task<HostedStorageSnapshot> download =
+            (Task<HostedStorageSnapshot>)method.Invoke(peers.Transport,
                 [peers.SnapHead, ExecutionPeers.SnapAddress, account, token])!;
         try
         {
@@ -1480,8 +1912,9 @@ public class TransportTests
             Assert.That(retired.TryGetTarget(out _), Is.False,
                 "A download must release suppliers that can no longer receive final-root failure attribution.");
             finish.TrySetResult();
-            IReadOnlyDictionary<ValueHash256, UInt256> storage = await download;
-            Assert.That(paths.Select(key => storage[key]), Is.EqualTo(new UInt256[] { 1, 2, 3 }));
+            HostedStorageSnapshot storage = await download;
+            AssertStorageSnapshot(storage, account.StorageRoot,
+                paths.Select((path, index) => new KeyValuePair<ValueHash256, UInt256>(path, (UInt256)(uint)(index + 1))).ToArray());
         }
         finally
         {
@@ -1549,8 +1982,8 @@ public class TransportTests
             return Task.FromResult(pages.Response(2, omit: true, start: pages.Paths[0].IncrementPath()));
         });
         MethodInfo method = typeof(ExecutionPeerTransport).GetMethod("DownloadStorageAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        Task<IReadOnlyDictionary<ValueHash256, UInt256>> download =
-            (Task<IReadOnlyDictionary<ValueHash256, UInt256>>)method.Invoke(peers.Transport,
+        Task<HostedStorageSnapshot> download =
+            (Task<HostedStorageSnapshot>)method.Invoke(peers.Transport,
                 [peers.SnapHead, ExecutionPeers.SnapAddress, pages.Account, token])!;
         if (firstPinnedTimesOut)
         {
@@ -1558,11 +1991,12 @@ public class TransportTests
             peers.Clock.Advance(TimeSpan.FromSeconds(30));
         }
 
-        IReadOnlyDictionary<ValueHash256, UInt256> storage = await download;
+        HostedStorageSnapshot storage = await download;
+        AssertStorageSnapshot(storage, pages.Account.StorageRoot,
+            pages.Paths.Select((path, index) => new KeyValuePair<ValueHash256, UInt256>(path, (UInt256)(uint)(index + 1))).ToArray());
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(pages.Paths.Select(path => storage[path]), Is.EqualTo(new UInt256[] { 1, 2, 3 }));
             Assert.That(calls[0], Is.GreaterThanOrEqualTo(3), "A pinned complete retry must follow the mixed root failure.");
             Assert.That(calls[1], Is.GreaterThanOrEqualTo(firstPinnedTimesOut ? 2 : 1));
             Assert.That(HistoryCooldowns(peers).Count, Is.Zero);
@@ -5284,6 +5718,21 @@ public class TransportTests
         return logs;
     }
 
+    private static void AssertStorageSnapshot(HostedStorageSnapshot storage, Hash256 root,
+        params KeyValuePair<ValueHash256, UInt256>[] expected)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(storage.Count, Is.EqualTo(expected.Length));
+            Assert.That(storage.RootHash, Is.EqualTo(root));
+        }
+        foreach ((ValueHash256 key, UInt256 value) in expected)
+        {
+            Assert.That(storage.TryGetValue(key, out UInt256 actual), Is.True);
+            Assert.That(actual, Is.EqualTo(value));
+        }
+    }
+
     private sealed class HostedPages
     {
         private readonly PatriciaTree _tree = new();
@@ -5477,6 +5926,21 @@ public class TransportTests
                 Assert.That(await Transport.GetAncestorHashesAsync(Head, 0, token), Is.EqualTo(Chain.Select(header => header.Hash)));
             else await Request(context, token);
         }
+
+        internal Task<HostedStorageSnapshot> DownloadStorage(CancellationToken token) =>
+            (Task<HostedStorageSnapshot>)typeof(ExecutionPeerTransport)
+                .GetMethod("DownloadStorageAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .Invoke(Transport, [SnapHead, SnapAddress, SnapAccount, token])!;
+
+        internal SlotsAndProofs StorageSnapshotResponse(int supplier) => new()
+        {
+            PathsAndSlots = new ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(1)
+            {
+                new ArrayPoolList<PathWithStorageSlot>([new(ValueKeccak.Compute(((UInt256)1).ToBigEndian()), Rlp.Encode(SnapValue).Bytes)]),
+            },
+            Proofs = new ByteArrayListAdapter(new TrackedResponse<byte[]>([StorageLeaf],
+                () => Interlocked.Increment(ref Ordered[supplier].ResponsesDisposed))),
+        };
 
         public async ValueTask DisposeAsync()
         {

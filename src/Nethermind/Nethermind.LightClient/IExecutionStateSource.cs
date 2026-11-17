@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Trie;
 
 namespace Nethermind.LightClient;
 
@@ -13,6 +14,8 @@ internal interface IExecutionStateSource
     Task<Account> GetAccountAsync(VerifiedHead head, Address address, CancellationToken cancellationToken);
     Task<UInt256> GetStorageAsync(VerifiedHead head, Address address, Account account, UInt256 key, CancellationToken cancellationToken);
     Task<byte[]> GetCodeAsync(Account account, CancellationToken cancellationToken);
+    Task<IReadOnlyDictionary<Hash256, byte[]>> GetStorageTrieNodesAsync(VerifiedHead head, Address address,
+        StorageTrieNodeRequest[] requests, CancellationToken cancellationToken) => throw new NotSupportedException();
     Task<BlockHeader> GetHeaderByHashAsync(Hash256 hash, CancellationToken cancellationToken) => throw new NotSupportedException();
     Task<BlockHeader> GetHeaderAsync(VerifiedHead head, CancellationToken cancellationToken);
     Task<ReadOnlyBlockAccessList> GetBlockAccessListAsync(BlockHeader header, CancellationToken cancellationToken) => throw new NotSupportedException();
@@ -40,5 +43,6 @@ internal interface IExecutionStateSource
 
 internal sealed record ExecutionAccountProof(Account Account, byte[][] AccountProof, ExecutionStorageProof[] StorageProofs);
 internal sealed record ExecutionStorageProof(UInt256 Key, UInt256 Value, byte[][] Proof);
+internal readonly record struct StorageTrieNodeRequest(TreePath Path, Hash256 Hash);
 
 internal sealed class ExecutionDataUnavailableException(string message) : IOException(message);

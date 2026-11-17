@@ -15,9 +15,9 @@ internal sealed class HostedAccountBalUpdater(IExecutionStateSource execution, I
     private const int MaxBlocks = 256;
     private static readonly TimeSpan UpdateTimeout = TimeSpan.FromSeconds(30);
 
-    internal async Task<IReadOnlyDictionary<ValueHash256, UInt256>?> TryUpdateAsync(
+    internal async Task<HostedStorageSnapshot?> TryUpdateAsync(
         VerifiedHead previousHead, VerifiedHead targetHead, Address address,
-        IReadOnlyDictionary<ValueHash256, UInt256> previousStorage, Hash256 targetStorageRoot,
+        HostedStorageSnapshot previousStorage, Hash256 targetStorageRoot,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -50,12 +50,7 @@ internal sealed class HostedAccountBalUpdater(IExecutionStateSource execution, I
             if (expectedHash != previousHead.BlockHash)
                 throw new InvalidDataException("The BAL update does not descend from the hosted snapshot.");
 
-            Dictionary<ValueHash256, UInt256> storage = new(previousStorage.Count);
-            foreach ((ValueHash256 path, UInt256 value) in previousStorage)
-            {
-                token.ThrowIfCancellationRequested();
-                storage.Add(path, value);
-            }
+            Dictionary<ValueHash256, UInt256> changes = [];
             foreach (BlockHeader header in headers)
             {
                 ReadOnlyBlockAccessList accessList = await execution.GetBlockAccessListAsync(header, token);
@@ -64,23 +59,21 @@ internal sealed class HostedAccountBalUpdater(IExecutionStateSource execution, I
 
                 ReadOnlyAccountChanges? account = accessList.GetAccountChanges(address);
                 if (account is null) continue;
-                ApplyStorageChanges(storage, account, token);
+                ApplyStorageChanges(changes, account, token);
             }
 
-            ExecutionProofVerifier.VerifyStorageSnapshot(targetStorageRoot, storage, token);
-            token.ThrowIfCancellationRequested();
-            return storage;
+            return previousStorage.Apply(changes, targetStorageRoot, token);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception exception)
         {
             if (logger.IsDebug)
-                logger.Debug($"Could not advance hosted account {address} with BALs from block {previousHead.Number} to {targetHead.Number}; falling back to a complete storage download: {exception.Message}");
+                logger.Debug($"Could not advance hosted account {address} with BALs from block {previousHead.Number} to {targetHead.Number}; trying a trie-node update: {exception.Message}");
             return null;
         }
     }
 
-    private static void ApplyStorageChanges(Dictionary<ValueHash256, UInt256> storage,
+    private static void ApplyStorageChanges(Dictionary<ValueHash256, UInt256> changes,
         ReadOnlyAccountChanges account, CancellationToken cancellationToken)
     {
         Span<byte> keyBytes = stackalloc byte[32];
@@ -92,8 +85,7 @@ internal sealed class HostedAccountBalUpdater(IExecutionStateSource execution, I
             slot.Key.ToBigEndian(keyBytes);
             ValueHash256 path = ValueKeccak.Compute(keyBytes);
             UInt256 value = slot.Changes[^1].Value;
-            if (value.IsZero) storage.Remove(path);
-            else storage[path] = value;
+            changes[path] = value;
         }
     }
 }

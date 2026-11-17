@@ -23,7 +23,7 @@ public class HostedAccountBalUpdaterTests
     public async Task Applies_final_slot_changes_in_chain_order_without_mutating_previous_storage([Values(1, 2)] int blocks)
     {
         Source source = new(blocks);
-        Dictionary<ValueHash256, UInt256> previous = Storage((1, 1), (2, 2), (4, 44));
+        HostedStorageSnapshot previous = Snapshot(Storage((1, 1), (2, 2), (4, 44)));
         Dictionary<ValueHash256, UInt256> expected = blocks == 1
             ? Storage((1, 12), (4, 44), (5, 55), (UInt256.MaxValue, 77))
             : Storage((1, 13), (3, 33), (4, 44), (UInt256.MaxValue, 77));
@@ -34,14 +34,14 @@ public class HostedAccountBalUpdaterTests
             source.SetAccessList(1, AccessList(AccountAddress,
                 [new(1, [new(1, 13)]), new(3, [new(1, 33)]), new(5, [new(1, 0)])]));
 
-        IReadOnlyDictionary<ValueHash256, UInt256>? result = await Update(source, previous, Root(expected));
+        HostedStorageSnapshot? result = await Update(source, previous, Root(expected));
 
         Assert.That(result, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result, Is.EquivalentTo(expected));
+            AssertStorage(result!, expected);
             Assert.That(result, Is.Not.SameAs(previous));
-            Assert.That(previous, Is.EquivalentTo(Storage((1, 1), (2, 2), (4, 44))));
+            AssertStorage(previous, Storage((1, 1), (2, 2), (4, 44)));
             Assert.That(source.Requests, Is.EqualTo(blocks == 1
                 ? new[] { "header:101", "bal:101" }
                 : new[] { "header:102", "header:101", "bal:101", "bal:102" }));
@@ -52,16 +52,20 @@ public class HostedAccountBalUpdaterTests
     public async Task Reads_and_other_accounts_do_not_modify_retained_storage([Values] bool targetRootMatches)
     {
         Source source = new(2);
-        Dictionary<ValueHash256, UInt256> previous = Storage((1, 42));
+        HostedStorageSnapshot previous = Snapshot(Storage((1, 42)));
         source.SetAccessList(0, AccessList(OtherAddress, [new(1, [new(1, 999)])]));
         source.SetAccessList(1, AccessList(AccountAddress, [], [1, 2, 3]));
 
-        IReadOnlyDictionary<ValueHash256, UInt256>? result = await Update(source, previous,
-            targetRootMatches ? Root(previous) : Root(Storage((1, 999))));
+        HostedStorageSnapshot? result = await Update(source, previous,
+            targetRootMatches ? previous.RootHash : Root(Storage((1, 999))));
 
-        if (targetRootMatches) Assert.That(result, Is.EquivalentTo(previous));
+        if (targetRootMatches)
+        {
+            Assert.That(result, Is.Not.Null);
+            AssertStorage(result!, Storage((1, 42)));
+        }
         else Assert.That(result, Is.Null);
-        Assert.That(previous, Is.EquivalentTo(Storage((1, 42))));
+        AssertStorage(previous, Storage((1, 42)));
     }
 
     [Test]
@@ -70,9 +74,10 @@ public class HostedAccountBalUpdaterTests
         Source source = new(1);
         source.SetAccessList(0, AccessList(AccountAddress, [new(1, [new(1, 0)])]));
 
-        IReadOnlyDictionary<ValueHash256, UInt256>? result = await Update(source, Storage((1, 42)), Keccak.EmptyTreeHash);
+        HostedStorageSnapshot? result = await Update(source, Snapshot(Storage((1, 42))), Keccak.EmptyTreeHash);
 
-        Assert.That(result, Is.Not.Null.And.Empty);
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result!.Count, Is.Zero);
     }
 
     [Test]
@@ -80,7 +85,7 @@ public class HostedAccountBalUpdaterTests
         [Values("root", "unavailable", "missing-bal", "empty-change", "wire-hash", "cancelled-source")] string failure)
     {
         Source source = new(2);
-        Dictionary<ValueHash256, UInt256> previous = Storage((1, 42));
+        HostedStorageSnapshot previous = Snapshot(Storage((1, 42)));
         source.SetAccessList(0, AccessList(AccountAddress, [new(1, [new(1, 43)])]));
         source.SetAccessList(1, AccessList(AccountAddress, [new(1, [new(1, 44)])]));
         Hash256 expectedRoot = Root(Storage((1, failure == "root" ? (UInt256)45 : (UInt256)44)));
@@ -93,16 +98,18 @@ public class HostedAccountBalUpdaterTests
             case "cancelled-source": source.BalFailure = new OperationCanceledException(new CancellationToken(canceled: true)); break;
         }
 
-        IReadOnlyDictionary<ValueHash256, UInt256>? result = await Update(source, previous, expectedRoot);
+        HostedStorageSnapshot? result = await Update(source, previous, expectedRoot);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.Null);
-            Assert.That(previous, Is.EquivalentTo(Storage((1, 42))));
+            AssertStorage(previous, Storage((1, 42)));
         }
         source.BalFailure = null;
         source.SetAccessList(1, AccessList(AccountAddress, [new(1, [new(1, 44)])]));
-        Assert.That(await Update(source, previous, Root(Storage((1, 44)))), Is.EquivalentTo(Storage((1, 44))));
+        HostedStorageSnapshot? retried = await Update(source, previous, Root(Storage((1, 44))));
+        Assert.That(retried, Is.Not.Null);
+        AssertStorage(retried!, Storage((1, 44)));
     }
 
     [Test]
@@ -125,7 +132,7 @@ public class HostedAccountBalUpdaterTests
             case "missing-header": source.MissingIntermediate = true; break;
         }
 
-        IReadOnlyDictionary<ValueHash256, UInt256>? result = await Update(source, Storage((1, 42)), Root(Storage((1, 42))));
+        HostedStorageSnapshot? result = await Update(source, Snapshot(Storage((1, 42))), Root(Storage((1, 42))));
 
         using (Assert.EnterMultipleScope())
         {
@@ -141,7 +148,7 @@ public class HostedAccountBalUpdaterTests
         Source source = new(1);
         source.Target = source.Target with { Number = number };
 
-        IReadOnlyDictionary<ValueHash256, UInt256>? result = await Update(source, Storage((1, 42)), Root(Storage((1, 42))));
+        HostedStorageSnapshot? result = await Update(source, Snapshot(Storage((1, 42))), Root(Storage((1, 42))));
 
         using (Assert.EnterMultipleScope())
         {
@@ -154,30 +161,31 @@ public class HostedAccountBalUpdaterTests
     public async Task Accepts_the_maximum_supported_forward_gap()
     {
         Source source = new(256);
-        Dictionary<ValueHash256, UInt256> previous = Storage((1, 42));
+        HostedStorageSnapshot previous = Snapshot(Storage((1, 42)));
 
-        IReadOnlyDictionary<ValueHash256, UInt256>? result = await Update(source, previous, Root(previous));
+        HostedStorageSnapshot? result = await Update(source, previous, previous.RootHash);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result, Is.EquivalentTo(previous));
+            Assert.That(result, Is.Not.Null);
             Assert.That(source.Requests.Count(request => request.StartsWith("bal:", StringComparison.Ordinal)), Is.EqualTo(256));
         }
+        AssertStorage(result!, Storage((1, 42)));
     }
 
     [Test]
     public async Task Caller_cancellation_during_a_bal_fetch_propagates_and_keeps_the_previous_snapshot()
     {
         Source source = new(1) { BalGate = new(TaskCreationOptions.RunContinuationsAsynchronously) };
-        Dictionary<ValueHash256, UInt256> previous = Storage((1, 42));
+        HostedStorageSnapshot previous = Snapshot(Storage((1, 42)));
         using CancellationTokenSource cancellation = new();
-        Task<IReadOnlyDictionary<ValueHash256, UInt256>?> update = Update(source, previous, Root(previous), cancellation.Token);
+        Task<HostedStorageSnapshot?> update = Update(source, previous, previous.RootHash, cancellation.Token);
         await source.BalStarted.Task;
 
         cancellation.Cancel();
 
         await Assert.ThatAsync(async () => await update, Throws.InstanceOf<OperationCanceledException>());
-        Assert.That(previous, Is.EquivalentTo(Storage((1, 42))));
+        AssertStorage(previous, Storage((1, 42)));
     }
 
     [Test]
@@ -187,15 +195,32 @@ public class HostedAccountBalUpdaterTests
         source.Target = source.Previous;
 
         await Assert.ThatAsync(async () =>
-            await Update(source, Storage((1, 42)), Keccak.EmptyTreeHash, new CancellationToken(canceled: true)),
+            await Update(source, Snapshot(Storage((1, 42))), Keccak.EmptyTreeHash, new CancellationToken(canceled: true)),
             Throws.InstanceOf<OperationCanceledException>());
         Assert.That(source.Requests, Is.Empty);
     }
 
-    private static Task<IReadOnlyDictionary<ValueHash256, UInt256>?> Update(Source source,
-        IReadOnlyDictionary<ValueHash256, UInt256> previous, Hash256 targetRoot, CancellationToken cancellationToken = default) =>
+    private static Task<HostedStorageSnapshot?> Update(Source source,
+        HostedStorageSnapshot previous, Hash256 targetRoot, CancellationToken cancellationToken = default) =>
         new HostedAccountBalUpdater(source, LimboLogs.Instance.GetClassLogger<HostedAccountBalUpdaterTests>())
             .TryUpdateAsync(source.Previous, source.Target, AccountAddress, previous, targetRoot, cancellationToken);
+
+    private static HostedStorageSnapshot Snapshot(IReadOnlyDictionary<ValueHash256, UInt256> storage) =>
+        HostedStorageSnapshot.Create(Root(storage), storage, CancellationToken.None);
+
+    private static void AssertStorage(HostedStorageSnapshot actual, IReadOnlyDictionary<ValueHash256, UInt256> expected)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.Count, Is.EqualTo(expected.Count));
+            Assert.That(actual.RootHash, Is.EqualTo(Root(expected)));
+            foreach ((ValueHash256 key, UInt256 expectedValue) in expected)
+            {
+                Assert.That(actual.TryGetValue(key, out UInt256 value), Is.True);
+                Assert.That(value, Is.EqualTo(expectedValue));
+            }
+        }
+    }
 
     private static ReadOnlyBlockAccessList AccessList(Address address, ReadOnlySlotChanges[] changes, UInt256[]? reads = null) =>
         new([new(address, changes, reads ?? [], [], [], [])], changes.Length + (reads?.Length ?? 0));

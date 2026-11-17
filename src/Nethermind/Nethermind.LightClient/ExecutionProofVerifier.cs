@@ -55,20 +55,6 @@ internal static class ExecutionProofVerifier
             throw new InvalidDataException("Contract code does not match its authenticated account hash.");
     }
 
-    internal static void VerifyStorageSnapshot(Hash256 storageRoot, IReadOnlyDictionary<ValueHash256, UInt256> storage,
-        CancellationToken cancellationToken)
-    {
-        PatriciaTree tree = new();
-        foreach ((ValueHash256 path, UInt256 value) in storage)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            tree.Set(path.Bytes, Rlp.Encode(value).Bytes);
-        }
-        tree.UpdateRootHash();
-        if (tree.RootHash != storageRoot)
-            throw new InvalidDataException("Hosted storage is incomplete or does not match its authenticated root.");
-    }
-
     private static byte[] ReadValue(Hash256 root, Hash256 key, byte[][] proof)
     {
         if (proof.Length > MaxProofNodes)

@@ -225,8 +225,10 @@ other protocols or retry on every supplier-search round.
 The console prints live beacon, execution and SNAP peer counts every 12 seconds and logs each
 local JSON-RPC request with its result and elapsed time. If no SNAP peer can
 serve the selected state, state queries return an error after 30 seconds.
-Execution data requests race at most two suppliers, use only a verified response,
-and cancel and join the other attempt. Account, storage and bytecode reads have
+Wallet execution requests race at most two suppliers, use only a verified response,
+and cancel and join the other attempt. Bulk hosted storage pages and trie-node
+updates use one supplier at a time, with retries on other peers, avoiding duplicate
+large downloads. Account, storage and bytecode reads have
 separate 32 MiB verified caches shared by RPC, EVM and hosted-account refreshes.
 Authenticated headers have another 32 MiB cache; each read rechecks the requested
 number and state root and returns an independent mutable copy.
@@ -310,7 +312,8 @@ arrive during a download are coalesced; the next refresh selects the newest fres
 head. At a new root each worker fetches
 a fresh account proof. Unchanged storage roots and code hashes reuse their
 verified data; changed storage uses BAL updates automatically from the network's
-EIP-7928 activation, with complete SNAP downloads before activation or as fallback.
+EIP-7928 activation. Otherwise it attempts an incremental SNAP/1 trie update,
+with a complete verified range download as fallback.
 A snapshot becomes visible atomically only when all its data has verified.
 Reorganizations use the same root checks. While catching up, RPC uses the regular proof-backed P2P path
 for anything the retained snapshot cannot authenticate at the requested root.
@@ -335,14 +338,27 @@ the retained snapshot before fetching any BALs. It obtains BALs over SNAP/2 or
 ETH/71+, checks their raw RLP hashes against the authenticated headers, applies
 each slot's final value in block order and removes zeroed slots. The resulting
 complete local storage must reconstruct the freshly proven account storage root
-before publication. It still rebuilds that local trie; BALs reduce network
-transfers rather than eliminating work proportional to hosted storage size.
+before publication. The sealed in-memory trie shares unchanged branches between
+snapshots; applying a few slot changes no longer copies every slot or rebuilds
+the entire trie.
+
+Before BAL activation, or when BALs are unavailable, the client requests storage
+trie nodes through SNAP/1 `GetTrieNodes`. Every received node is checked against
+its authenticated parent hash. It reuses an old subtree only when both its hash
+and full trie path match, identifies inserted, changed and deleted slots, and
+verifies the resulting complete storage root before publication. This also works
+across reorganizations without assuming the new head descends from the old one.
+An attempt is bounded to ten seconds, 8,192 fetched nodes, 8,192 changed leaves
+and 32,768 visited nodes. SNAP/2 removed this request: peers offering only SNAP/2,
+unavailable trie nodes, budget exhaustion or invalid data trigger the complete
+verified range-download fallback. No upstream JSON-RPC is used.
 
 Catch-up is limited to 256 forward blocks, 30 seconds per account attempt and
 16 MiB per encoded BAL. Verified BALs share a separate 32 MiB retained-weight
 cache keyed by block hash, and concurrent requests share one download. Unsupported
 forks or peers, reorgs, larger gaps, timeouts, missing or
-invalid data and root mismatches fall back to the complete SNAP download. If
+invalid data and root mismatches fall back to the bounded trie update, then a
+complete SNAP download. If
 that also fails, the previous verified snapshot stays available at its original
 root. Merely relabeling old state with a new root is never safe.
 

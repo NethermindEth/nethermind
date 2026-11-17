@@ -54,6 +54,7 @@ using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.SnapSync;
+using Nethermind.Synchronization.StateSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
@@ -459,7 +460,47 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         return Keccak.Compute(key);
     }
 
-    private async Task<IReadOnlyDictionary<ValueHash256, UInt256>> DownloadStorageAsync(
+    public Task<IReadOnlyDictionary<Hash256, byte[]>> GetStorageTrieNodesAsync(VerifiedHead head, Address address,
+        StorageTrieNodeRequest[] requests, CancellationToken cancellationToken)
+    {
+        if (requests.Length is 0 or > 256)
+            throw new ArgumentOutOfRangeException(nameof(requests));
+        byte[][] paths = new byte[requests.Length + 1][];
+        paths[0] = Keccak.Compute(address.Bytes).Bytes.ToArray();
+        HashSet<Hash256> expected = new(requests.Length);
+        for (int i = 0; i < requests.Length; i++)
+        {
+            paths[i + 1] = Nibbles.EncodePath(requests[i].Path);
+            expected.Add(requests[i].Hash);
+        }
+        return RequestExecutionAsync<IReadOnlyDictionary<Hash256, byte[]>>(AllocationContexts.Snap, async (peer, token) =>
+        {
+            peer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out ISnapSyncPeer? snap);
+            using GetTrieNodesRequest request = new()
+            {
+                RootHash = head.StateRoot,
+                AccountAndStoragePaths = PathGroup.EncodeToRlpPathGroupList([new PathGroup { Group = paths }]),
+            };
+            using IByteArrayList response = await snap!.GetTrieNodes(request, token);
+            if (response.Count == 0)
+                throw new ExecutionDataUnavailableException("Execution peer does not have the requested storage trie nodes.");
+            if (response.Count > requests.Length)
+                throw new InvalidDataException("Execution peer returned too many storage trie nodes.");
+            Dictionary<Hash256, byte[]> result = new(response.Count);
+            for (int i = 0; i < response.Count; i++)
+            {
+                ReadOnlySpan<byte> bytes = response[i];
+                if (bytes.Length is 0 or > ExecutionProofVerifier.MaxNodeBytes)
+                    throw new InvalidDataException("Execution peer returned an oversized or empty storage trie node.");
+                Hash256 hash = Keccak.Compute(bytes);
+                if (!expected.Contains(hash) || !result.TryAdd(hash, bytes.ToArray()))
+                    throw new InvalidDataException("Execution peer returned an unexpected or duplicate storage trie node.");
+            }
+            return result;
+        }, cancellationToken, static peer => peer.CanGetTrieNodes(), maxParallelSuppliers: 1);
+    }
+
+    private async Task<HostedStorageSnapshot> DownloadStorageAsync(
         VerifiedHead head, Address address, Account account, CancellationToken cancellationToken)
     {
         PathWithAccount accountPath = new(ValueKeccak.Compute(address.Bytes), account);
@@ -499,7 +540,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         }
         throw new ExecutionDataUnavailableException("No execution peer supplied a complete authenticated storage snapshot.");
 
-        Task<IReadOnlyDictionary<ValueHash256, UInt256>> DownloadFromAsync(PeerInfo? pinned) =>
+        Task<HostedStorageSnapshot> DownloadFromAsync(PeerInfo? pinned) =>
             HostedStorageDownload.DownloadAsync(account.StorageRoot, async (start, token) =>
             {
                 (HostedStorageDownload.Page page, PeerInfo? supplier) = await RequestExecutionAsync(AllocationContexts.Snap,
@@ -518,7 +559,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
                         PeerInfo? current = pool.GetPeer(peer.Node);
                         return (verified, current is not null && ReferenceEquals(current.SyncPeer, peer) ? current : null);
                     }, token, peer => (pinned is null || ReferenceEquals(pinned.SyncPeer, peer))
-                        && peer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out _));
+                        && peer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out _), maxParallelSuppliers: 1);
                 if (pinned is null)
                 {
                     if (suppliers.RemoveWhere(previous => !ReferenceEquals(pool.GetPeer(previous.SyncPeer.Node), previous)) != 0
@@ -1252,9 +1293,10 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
 
     private Task<T> RequestExecutionAsync<T>(AllocationContexts context, Func<ISyncPeer, CancellationToken, Task<T>> request,
         CancellationToken cancellationToken, Func<ISyncPeer, bool>? canServe = null,
-        string failureMessage = "No execution peer supplied authenticated block data.", HeaderPrefetch? prefetch = null) =>
+        string failureMessage = "No execution peer supplied authenticated block data.", HeaderPrefetch? prefetch = null,
+        int maxParallelSuppliers = 2) =>
         RequestFromPeersAsync(context, static peer => peer, request, cancellationToken, canServe, failureMessage,
-            prefetch: prefetch);
+            prefetch: prefetch, maxParallelSuppliers: maxParallelSuppliers);
 
     private Task<T> RequestAsync<T>(Func<ISnapSyncPeer, CancellationToken, Task<T>> request, CancellationToken cancellationToken,
         string operation = "proof") =>
@@ -1265,7 +1307,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
     private async Task<T> RequestFromPeersAsync<TPeer, T>(AllocationContexts context, Func<ISyncPeer, TPeer?> selectPeer,
         Func<TPeer, CancellationToken, Task<T>> request, CancellationToken cancellationToken,
         Func<ISyncPeer, bool>? canServe, string failureMessage, string? operation = null,
-        HeaderPrefetch? prefetch = null) where TPeer : class
+        HeaderPrefetch? prefetch = null, int maxParallelSuppliers = 2) where TPeer : class
     {
         bool trace = _logger.IsDebug;
         using Activity? diagnostic = trace
@@ -1356,7 +1398,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
                 if (canServe is not null && !hasCapablePeer && !deadline.IsCancellationRequested)
                     throw new NotSupportedException("No execution peer supports the requested data protocol.");
                 using CancellationTokenSource round = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
-                List<(PeerInfo Peer, Task<(T Result, Exception? Error)> Request)> pending = new(2);
+                List<(PeerInfo Peer, Task<(T Result, Exception? Error)> Request)> pending = new(maxParallelSuppliers);
                 ExecutionDataUnavailableException? unavailable = null;
                 bool selected = false;
                 int next = 0;
@@ -1366,7 +1408,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
                     {
                         do
                         {
-                            if (next == eligible.Count || pending.Count == 2) break;
+                            if (next == eligible.Count || pending.Count == maxParallelSuppliers) break;
                             (PeerInfo peer, TPeer protocol) = eligible[next++];
                             if (!CanPrefer(peer)) continue;
                             _lastPeers[context] = peer;
