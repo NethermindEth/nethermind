@@ -312,7 +312,7 @@ public partial class DebugRpcModuleTests
     public async Task Debug_traceTransaction_javascript_selector_errors(
         [Values("debug_traceTransaction", "debug_traceTransactionByBlockAndIndex", "debug_traceTransactionByBlockhashAndIndex",
             "debug_traceTransactionInBlockByHash", "debug_traceTransactionInBlockByIndex")] string method,
-        [Values("unknownTracer", "{fault:function(){}} ")] string tracer,
+        [Values("unknownTracer", "{fault:function(){}} ", "{ ) }")] string tracer,
         [Values] bool mux)
     {
         using Context context = await Context.Create();
@@ -331,9 +331,12 @@ public partial class DebugRpcModuleTests
             _ => [blockRlp, "0x0", options]
         };
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, parameters);
-        string expectedMessage = tracer == "unknownTracer"
-            ? "ReferenceError: unknownTracer is not defined at <eval>:1:2(0)"
-            : "trace object must expose a function result()";
+        string expectedMessage = tracer switch
+        {
+            "unknownTracer" => "ReferenceError: unknownTracer is not defined at <eval>:1:2(0)",
+            "{ ) }" => "SyntaxError: Unexpected token ')'",
+            _ => "trace object must expose a function result()"
+        };
         JToken json = JToken.Parse(response);
         using (Assert.EnterMultipleScope())
         {

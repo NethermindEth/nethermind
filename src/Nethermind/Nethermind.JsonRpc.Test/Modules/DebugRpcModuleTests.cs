@@ -1838,6 +1838,8 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    [TestCase("{ ) }", "SyntaxError: Unexpected token ')'", false)]
+    [TestCase("{ ) }", "SyntaxError: Unexpected token ')'", true)]
     [TestCase("unknownTracer", "ReferenceError: unknownTracer is not defined at <eval>:1:2(0)", false)]
     [TestCase("unknownTracer", "ReferenceError: unknownTracer is not defined at <eval>:1:2(0)", true)]
     [TestCase("_unknownTracer", "ReferenceError: _unknownTracer is not defined at <eval>:1:2(0)", false)]

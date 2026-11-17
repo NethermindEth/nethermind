@@ -2248,6 +2248,55 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    [Test]
+    public async Task Debug_traceBlock_javascript_selector_errors(
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock")] string method,
+        [Values("unknownTracer", "{ ) }")] string tracer, [Values] bool mux, [Values] bool streamMode)
+    {
+        using Context context = await Context.Create();
+        Transaction transaction = await AddBlockWithTransfer(context);
+        Block block = context.Blockchain.BlockTree.Head!;
+        object selector = method switch
+        {
+            "debug_traceBlockByNumber" => block.Number,
+            "debug_traceBlockByHash" => block.Hash!,
+            _ => Rlp.Encode(block).ToHexString(true)
+        };
+        object options = mux
+            ? new { tracer = "muxTracer", tracerConfig = JsonSerializer.SerializeToElement(new Dictionary<string, object> { [tracer] = new { } }), streamMode }
+            : new { tracer, streamMode };
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector, options);
+        JToken json = JToken.Parse(response);
+        string expectedMessage = tracer == "unknownTracer"
+            ? "ReferenceError: unknownTracer is not defined at <eval>:1:2(0)"
+            : "SyntaxError: Unexpected token ')'";
+        if (mux)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(json["result"], Is.Null, response);
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+                Assert.That((string?)json["error"]?["message"], Is.EqualTo(expectedMessage), response);
+                Assert.That(json["error"]?["data"], Is.Null, response);
+            }
+        }
+        else
+        {
+            Assert.That(json["result"], Is.InstanceOf<JArray>(), response);
+            JArray entries = (JArray)json["result"]!;
+            Assert.That(entries, Has.Count.EqualTo(1), response);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(json["error"], Is.Null, response);
+                Assert.That((string?)entries[0]["txHash"], Is.EqualTo(transaction.Hash!.ToString()), response);
+                Assert.That((string?)entries[0]["error"], Is.EqualTo(expectedMessage), response);
+            }
+        }
+
+        string recovered = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector, new { tracer = "noopTracer", streamMode });
+        Assert.That(JToken.Parse(recovered)["error"], Is.Null, recovered);
+    }
+
     private const string JavaScriptResultDepthError = "JavaScript tracer result exceeds the maximum depth of 4096 (possibly cyclic)";
 
     [TestCase("throw Error('result failure');", TestName = "Debug_traceCall_fails_on_a_javascript_result_failure_thrown")]
