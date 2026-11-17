@@ -33,7 +33,7 @@ public interface ITreeSyncStore
     /// Ensure all storage entries for the given address are deleted.
     /// Called when an account's storage root is EmptyTreeHash (e.g. after self-destruct).
     /// </summary>
-    void EnsureStorageEmpty(Hash256 address);
+    void EnsureStorageEmpty(in ValueHash256 address);
 
     /// <summary>
     /// Called when sync is complete and state should be finalized and flushed.

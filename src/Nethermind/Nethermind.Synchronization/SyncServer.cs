@@ -491,7 +491,7 @@ namespace Nethermind.Synchronization
                 return ArrayPoolList<byte>.Empty();
             }
 
-            ArrayPoolList<byte> headers = new(numberOfBlocks * HeaderRlpLengthEstimate);
+            ArrayPoolList<byte> headers = [with(numberOfBlocks * HeaderRlpLengthEstimate)];
             try
             {
                 if (TryFindMainChainHeadersRlp(in hash.ValueHash256, number, numberOfBlocks, skip, reverse, headers) is { } mainChainHeaders)
@@ -584,7 +584,7 @@ namespace Nethermind.Synchronization
                 return headers;
             }
 
-            ArrayPoolList<byte> ordered = new(headers.Count);
+            ArrayPoolList<byte> ordered = [with(headers.Count)];
             ReadOnlySpan<byte> encoded = headers.AsSpan();
             foreach (Range item in items[..count])
             {

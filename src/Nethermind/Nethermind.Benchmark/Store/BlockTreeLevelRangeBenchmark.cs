@@ -60,7 +60,7 @@ public class BlockTreeLevelRangeBenchmark
         _reorgTarget = _blockTree.FindHeader(_head.Number - (ulong)Levels, BlockTreeLookupOptions.RequireCanonical)!;
 
         _beaconClearStart = _head.Number;
-        _beaconInfos = new List<BlockInfo>(Levels);
+        _beaconInfos = [with(Levels)];
         for (ulong number = _reorgTarget.Number - (ulong)Levels + 1; number <= _reorgTarget.Number; number++)
         {
             BlockHeader header = _blockTree.FindHeader(number, BlockTreeLookupOptions.RequireCanonical)!;
