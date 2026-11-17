@@ -93,6 +93,7 @@ public class JsonRpcConfig : IJsonRpcConfig
     public string[] AllowedHosts { get; set; } = ["*"];
     public string[] EngineAllowedHosts { get; set; } = ["*"];
     public int WebSocketsProcessingConcurrency { get; set; } = 16;
+    public long MaxUnsentWebSocketResponseSize { get; set; } = 64.MiB;
     public int IpcProcessingConcurrency { get; set; } = 16;
     public int BatchProcessingConcurrency { get; set; } = 4;
     public bool EnablePerMethodMetrics { get; set; } = true;

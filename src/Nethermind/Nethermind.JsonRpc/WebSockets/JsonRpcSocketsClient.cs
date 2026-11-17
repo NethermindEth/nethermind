@@ -27,7 +27,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
     private readonly long? _maxBatchResponseBodySize;
     private readonly JsonRpcContext _jsonRpcContext;
 
-    private readonly SocketSendLock _sendLock = new();
+    private readonly SocketSendLock _sendLock;
     private readonly CancellationTokenSource _sendFailure = new();
     private readonly Channel<ProcessRequest> _processChannel;
 
@@ -57,13 +57,16 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         int concurrency = 1,
         long? maxRequestBodySize = null,
         IPAddress? remoteAddress = null,
-        StringValues forwardedFor = default)
+        StringValues forwardedFor = default,
+        long maxUnsentResponseSize = 0,
+        int sendTimeout = 0)
         : base(clientName, stream, jsonSerializer, RequestSizeLimit(maxRequestBodySize))
     {
         _jsonRpcProcessor = jsonRpcProcessor;
         _jsonRpcLocalStats = jsonRpcLocalStats;
         _maxBatchResponseBodySize = maxBatchResponseBodySize;
         _jsonRpcContext = new JsonRpcContext(endpointType, this, url) { RemoteAddress = remoteAddress, ForwardedFor = forwardedFor };
+        _sendLock = _jsonRpcContext.IsAuthenticated ? new SocketSendLock() : new SocketSendLock(maxUnsentResponseSize, sendTimeout);
         _processChannel = Channel.CreateBounded<ProcessRequest>(new BoundedChannelOptions(concurrency)
         {
             SingleWriter = true
