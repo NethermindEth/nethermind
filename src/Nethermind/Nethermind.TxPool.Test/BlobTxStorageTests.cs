@@ -1421,8 +1421,6 @@ public class BlobTxStorageTests
         public string Name => inner.Name;
         public int ActiveSpans { get; private set; }
 
-        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => inner[keys];
-
         public byte[] Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => inner.Get(key, flags);
 
         public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)

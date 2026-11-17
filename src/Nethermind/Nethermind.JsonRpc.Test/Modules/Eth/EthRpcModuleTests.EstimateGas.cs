@@ -838,7 +838,7 @@ public partial class EthRpcModuleTests
     [TestCaseSource(nameof(CreateAccessListGasCases))]
     public async Task Eth_create_access_list_calculates_proper_gas(bool optimize, long loads, IReleaseSpec spec)
     {
-        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+        using TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .Build(new TestSpecProvider(spec));
 
         (byte[] code, _) = GetTestAccessList(loads);
@@ -867,7 +867,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_estimate_gas_with_accessList(bool senderAccessList, long gasPriceWithoutAccessList,
         long gasPriceWithAccessList)
     {
-        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithConfig(new JsonRpcConfig() { EstimateErrorMargin = 0, Timeout = -1 })
+        using TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithConfig(new JsonRpcConfig() { EstimateErrorMargin = 0, Timeout = -1 })
             .Build(new TestSpecProvider(Berlin.Instance));
 
         (byte[] code, AccessListForRpc accessList) = GetTestAccessList(2, senderAccessList);
@@ -888,7 +888,7 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_estimate_gas_is_lower_with_optimized_access_list()
     {
-        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+        using TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .Build(new TestSpecProvider(Berlin.Instance));
 
         (byte[] code, AccessListForRpc accessList) = GetTestAccessList(2, true);

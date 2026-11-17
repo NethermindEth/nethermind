@@ -13,6 +13,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
@@ -750,10 +751,12 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
             if (entry.HasAccount)
             {
+                using NoOpPin pin = entry.PinAccount();
+                ReadOnlySpan<byte> account = WholeReadScanner.PerAddressEntry.SlimAccount(pin.Buffer);
                 if (_isV3)
-                    RecordAccountV3(block, addrHash, entry.Account, pending!, columns.AccountHistory);
+                    pending!.TrackAccount(addrHash, block, account, columns.AccountHistory, _accountHistoryV3!);
                 else
-                    RecordAccount(block, addrHash, entry.Account, in columns);
+                    RecordAccount(block, addrHash, account, in columns);
             }
 
             foreach (WholeReadScanner.SlotEntry slot in entry.Slots)
@@ -777,17 +780,19 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
     private void RecordAccount(ulong block, in ValueHash256 addrHash, Account? account, scoped in HistoryColumnBatches columns)
     {
-        ReadOnlySpan<byte> flatKey = addrHash.Bytes;
-
         if (account is null)
         {
-            _accountHistory!.RecordChange(block, flatKey, ReadOnlySpan<byte>.Empty, columns.AccountHistory);
+            RecordAccount(block, addrHash, ReadOnlySpan<byte>.Empty, in columns);
             return;
         }
 
         using ArrayPoolSpan<byte> value = AccountDecoder.Slim.EncodeToArrayPoolSpan(account);
-        _accountHistory!.RecordChange(block, flatKey, value, columns.AccountHistory);
+        RecordAccount(block, addrHash, value, in columns);
     }
+
+    /// <param name="slimAccount">The account's slim RLP; empty when the account is deleted.</param>
+    private void RecordAccount(ulong block, in ValueHash256 addrHash, ReadOnlySpan<byte> slimAccount, scoped in HistoryColumnBatches columns) =>
+        _accountHistory!.RecordChange(block, addrHash.Bytes, slimAccount, columns.AccountHistory);
 
     private void RecordStorage(ulong block, in ValueHash256 addrHash, in UInt256 slot, in UInt256? value, Span<byte> keyBuffer, Span<byte> valueBuffer, scoped in HistoryColumnBatches columns)
     {
@@ -854,66 +859,104 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         IWriteBatch accountBatch = columns.AccountHistory;
         IWriteBatch storageBatch = columns.StorageHistory;
 
-        Span<byte> keyBuffer = stackalloc byte[BaseFlatPersistence.StorageKeyLength];
-
         int accountCount = pending.Accounts.Count;
+        int storageCount = pending.Storages.Count;
+        int chunkCapacity = Math.Min(PreValueMultiGetChunkSize, Math.Max(accountCount, storageCount));
+        using ArrayPoolSpan<byte> keyBuffer = new(chunkCapacity * BaseFlatPersistence.StorageKeyLength);
+        using ArrayPoolSpan<Range> preValueBuffer = new(chunkCapacity);
+        using PreValueBytes preValueBytes = new();
+
         KeyValuePair<ValueHash256, ulong>[] accounts = ArrayPool<KeyValuePair<ValueHash256, ulong>>.Shared.Rent(accountCount);
         ((ICollection<KeyValuePair<ValueHash256, ulong>>)pending.Accounts).CopyTo(accounts, 0);
         Array.Sort(accounts, 0, accountCount, AccountKeyOrder);
 
-        byte[][] accountChunkKeys = new byte[Math.Min(PreValueMultiGetChunkSize, accountCount)][];
         for (int offset = 0; offset < accountCount; offset += PreValueMultiGetChunkSize)
         {
             int count = Math.Min(PreValueMultiGetChunkSize, accountCount - offset);
-            byte[][] keys = count == accountChunkKeys.Length ? accountChunkKeys : new byte[count][];
+            Span<byte> keys = keyBuffer.Slice(0, count * BaseFlatPersistence.AccountKeyLength);
             for (int i = 0; i < count; i++)
             {
-                keys[i] = HistoryKeyLayout.ToFlatStateKey(accounts[offset + i].Key.Bytes).ToArray();
+                HistoryKeyLayout.ToFlatStateKey(accounts[offset + i].Key.Bytes).CopyTo(keys[(i * BaseFlatPersistence.AccountKeyLength)..]);
             }
 
-            KeyValuePair<byte[], byte[]?>[] preValues = _persistedAccounts[keys];
+            Span<Range> preValues = preValueBuffer.Slice(0, count);
+            preValueBytes.Reset();
+            _persistedAccounts.GetMany(keys, BaseFlatPersistence.AccountKeyLength, preValues, preValueBytes);
             for (int i = 0; i < count; i++)
             {
-                _accountHistoryV3!.RecordPreValue(accounts[offset + i].Value, accounts[offset + i].Key.Bytes, preValues[i].Value ?? ReadOnlySpan<byte>.Empty, accountBatch);
+                _accountHistoryV3!.RecordPreValue(accounts[offset + i].Value, accounts[offset + i].Key.Bytes, preValueBytes[preValues[i]], accountBatch);
             }
         }
 
         ArrayPool<KeyValuePair<ValueHash256, ulong>>.Shared.Return(accounts);
 
-        int storageCount = pending.Storages.Count;
         KeyValuePair<PendingV3Writes.SlotKey, ulong>[] storages = ArrayPool<KeyValuePair<PendingV3Writes.SlotKey, ulong>>.Shared.Rent(storageCount);
         ((ICollection<KeyValuePair<PendingV3Writes.SlotKey, ulong>>)pending.Storages).CopyTo(storages, 0);
         Array.Sort(storages, 0, storageCount, StorageKeyOrder);
 
-        byte[][] storageChunkKeys = new byte[Math.Min(PreValueMultiGetChunkSize, storageCount)][];
         for (int offset = 0; offset < storageCount; offset += PreValueMultiGetChunkSize)
         {
             int count = Math.Min(PreValueMultiGetChunkSize, storageCount - offset);
-            byte[][] keys = count == storageChunkKeys.Length ? storageChunkKeys : new byte[count][];
+            Span<byte> keys = keyBuffer.Slice(0, count * BaseFlatPersistence.StorageKeyLength);
             for (int i = 0; i < count; i++)
             {
-                keys[i] = BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(keyBuffer, storages[offset + i].Key.AddrPath, storages[offset + i].Key.SlotHash).ToArray();
+                BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(keys.Slice(i * BaseFlatPersistence.StorageKeyLength, BaseFlatPersistence.StorageKeyLength), storages[offset + i].Key.AddrPath, storages[offset + i].Key.SlotHash);
             }
 
-            KeyValuePair<byte[], byte[]?>[] preValues = _persistedStorage[keys];
+            Span<Range> preValues = preValueBuffer.Slice(0, count);
+            preValueBytes.Reset();
+            _persistedStorage.GetMany(keys, BaseFlatPersistence.StorageKeyLength, preValues, preValueBytes);
             for (int i = 0; i < count; i++)
             {
                 ulong touch = storages[offset + i].Value;
-                ReadOnlySpan<byte> preValue = preValues[i].Value ?? ReadOnlySpan<byte>.Empty;
+                ReadOnlySpan<byte> key = keys.Slice(i * BaseFlatPersistence.StorageKeyLength, BaseFlatPersistence.StorageKeyLength);
+                ReadOnlySpan<byte> preValue = preValueBytes[preValues[i]];
 
                 if (pending.Destructs.Count != 0
                     && pending.Destructs.TryGetValue(storages[offset + i].Key.AddrPath, out ulong destructBlock)
                     && destructBlock < touch)
                 {
-                    _storageHistoryV3!.RecordPreValue(destructBlock, keys[i], preValue, storageBatch);
+                    _storageHistoryV3!.RecordPreValue(destructBlock, key, preValue, storageBatch);
                     preValue = ReadOnlySpan<byte>.Empty;
                 }
 
-                _storageHistoryV3!.RecordPreValue(touch, keys[i], preValue, storageBatch);
+                _storageHistoryV3!.RecordPreValue(touch, key, preValue, storageBatch);
             }
         }
 
         ArrayPool<KeyValuePair<PendingV3Writes.SlotKey, ulong>>.Shared.Return(storages);
+    }
+
+    /// <summary>Copies each pre-value a multi-get finds into one pooled buffer, so a lookup allocates no value
+    /// arrays. A missing key keeps the default range, which reads back as an empty pre-value.</summary>
+    private sealed class PreValueBytes : IValueDecoder<Range>, IDisposable
+    {
+        private byte[] _bytes = ArrayPool<byte>.Shared.Rent(PreValueMultiGetChunkSize * 32);
+        private int _length;
+
+        public ReadOnlySpan<byte> this[Range range] => _bytes.AsSpan(range);
+
+        public void Reset() => _length = 0;
+
+        public Range Decode(ReadOnlySpan<byte> buffer)
+        {
+            int start = _length;
+            int end = start + buffer.Length;
+            if (end > _bytes.Length) Grow(end);
+            buffer.CopyTo(_bytes.AsSpan(start));
+            _length = end;
+            return start..end;
+        }
+
+        private void Grow(int required)
+        {
+            byte[] larger = ArrayPool<byte>.Shared.Rent(Math.Max(required, _bytes.Length * 2));
+            _bytes.AsSpan(0, _length).CopyTo(larger);
+            ArrayPool<byte>.Shared.Return(_bytes);
+            _bytes = larger;
+        }
+
+        public void Dispose() => ArrayPool<byte>.Shared.Return(_bytes);
     }
 
     // Sorted so each multi-get hands the persisted column keys in key order (grouped per account for storage),
@@ -963,16 +1006,27 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         [SkipLocalsInit]
         public void TrackAccount(in ValueHash256 addrPath, ulong block, Account? postValue, IWriteBatch batch, HistoryStoreV3 store)
         {
+            if (!TouchAccount(addrPath, block, out ulong newerTouch)) return;
+
+            Span<byte> rlp = stackalloc byte[AccountRlpBufferSize];
+            store.RecordPreValue(newerTouch, addrPath.Bytes, EncodeAccount(postValue, rlp), batch);
+        }
+
+        /// <param name="slimPostValue">The post-value's slim RLP; empty when the account is deleted.</param>
+        public void TrackAccount(in ValueHash256 addrPath, ulong block, ReadOnlySpan<byte> slimPostValue, IWriteBatch batch, HistoryStoreV3 store)
+        {
+            if (TouchAccount(addrPath, block, out ulong newerTouch)) store.RecordPreValue(newerTouch, addrPath.Bytes, slimPostValue, batch);
+        }
+
+        /// <summary>Makes <paramref name="block"/> the key's oldest touch.</summary>
+        /// <returns>Whether a newer touch in another block is pending, which this touch's post-value resolves.</returns>
+        private bool TouchAccount(in ValueHash256 addrPath, ulong block, out ulong newerTouch)
+        {
             ref ulong entry = ref CollectionsMarshal.GetValueRefOrAddDefault(Accounts, addrPath, out bool exists);
-            if (exists)
-            {
-                if (entry == block) return; // same-block re-touch: resolving here would fabricate a pre-value
-
-                Span<byte> rlp = stackalloc byte[AccountRlpBufferSize];
-                store.RecordPreValue(entry, addrPath.Bytes, EncodeAccount(postValue, rlp), batch);
-            }
-
+            newerTouch = entry;
             entry = block;
+            // A same-block re-touch stays pending: resolving it would fabricate a pre-value.
+            return exists && newerTouch != block;
         }
 
         public void TrackStorage(

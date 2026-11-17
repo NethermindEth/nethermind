@@ -79,20 +79,13 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
             HasAccount = hasAccount;
         }
 
-        /// <summary>Decoded account, or <c>null</c> when the on-disk marker is <c>[0x00]</c>
-        /// (deleted). Branch on <see cref="HasAccount"/> first to tell "no account update in this
-        /// snapshot" from "explicitly deleted".</summary>
-        public Account? Account
-        {
-            get
-            {
-                if (!HasAccount) return null;
-                using TPin pin = _reader.PinBuffer(_accountBound);
-                ReadOnlySpan<byte> rlp = pin.Buffer;
-                if (rlp.Length == 1 && rlp[0] == PersistedSnapshotTags.AccountDeletedMarkerByte) return null;
-                return AccountDecoder.Slim.Decode(rlp);
-            }
-        }
+        /// <summary>Pins the account update of this address; <see cref="SlimAccount"/> reads it without decoding.</summary>
+        /// <remarks>Call only when <see cref="HasAccount"/> is true.</remarks>
+        internal TPin PinAccount() => _reader.PinBuffer(_accountBound);
+
+        /// <summary>The slim account RLP of a pinned account update, empty when the update deletes the account.</summary>
+        internal static ReadOnlySpan<byte> SlimAccount(ReadOnlySpan<byte> update) =>
+            update is [PersistedSnapshotTags.AccountDeletedMarkerByte] ? ReadOnlySpan<byte>.Empty : update;
 
         /// <summary>Writes the account update of this address to <paramref name="batch"/> without decoding it.</summary>
         /// <param name="batch">The batch to write to.</param>
