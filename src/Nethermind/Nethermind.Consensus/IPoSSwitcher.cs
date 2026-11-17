@@ -57,12 +57,11 @@ namespace Nethermind.Consensus
         /// call or trace runs on, which skipped the preprocessing step that restores the flag for block processing.
         /// </summary>
         /// <remarks>
-        /// A set flag is kept, and a zero difficulty stays post-merge on every chain. Otherwise the chain's switcher
-        /// decides, as it does for block processing: Taiko, for one, keeps a nonzero difficulty in post-merge headers.
-        /// This method, like the switchers, writes the flag of the header it gets, so never pass a header shared with
-        /// the block tree. Call it before block overrides, so that the source block is classified. Block 0 keeps the
-        /// zero-difficulty rule whatever its flag, as geth's calls do: a genesis runs no transactions, so no block
-        /// execution decides it. This is not a consensus rule; block processing must not use it.
+        /// A set flag is kept and a zero difficulty is post-merge on every chain; otherwise the chain's switcher
+        /// decides, as it does for block processing (Taiko keeps a nonzero difficulty in post-merge headers). Block 0
+        /// follows its difficulty alone, as in geth. The flag is written on the header passed in, by this method and
+        /// by some switchers, so pass the call's own copy, before block overrides. Not a consensus rule: block
+        /// processing must not use it.
         /// </remarks>
         public static void RestorePostMergeForCall(this IPoSSwitcher poSSwitcher, BlockHeader callHeader)
         {

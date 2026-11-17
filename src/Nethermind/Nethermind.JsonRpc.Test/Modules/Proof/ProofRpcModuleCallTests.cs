@@ -909,9 +909,10 @@ public class ProofRpcModuleCallTests
     /// A header without the runtime flag, as stored headers are, takes the chain switcher's answer, as a Taiko header
     /// keeping its zk gas in the difficulty needs; a header carrying the flag keeps it.
     /// </summary>
-    [TestCase(false, true, TestName = "Proof_call_reads_prevrandao_from_the_mix_hash_when_the_chain_switcher_says_post_merge")]
-    [TestCase(true, false, TestName = "Proof_call_reads_prevrandao_from_the_mix_hash_of_a_flagged_header")]
-    public async Task Proof_call_reads_prevrandao_from_the_mix_hash_of_a_post_merge_header(bool isPostMerge, bool chainIsPostMerge)
+    [TestCase(false, true, true, TestName = "Proof_call_reads_prevrandao_from_the_mix_hash_when_the_chain_switcher_says_post_merge")]
+    [TestCase(true, false, true, TestName = "Proof_call_reads_prevrandao_from_the_mix_hash_of_a_flagged_header")]
+    [TestCase(false, false, false, TestName = "Proof_call_reads_the_difficulty_of_an_unflagged_header_on_a_chain_without_the_merge")]
+    public async Task Proof_call_reads_prevrandao_or_difficulty(bool isPostMerge, bool chainIsPostMerge, bool expectMixHash)
     {
         using TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(builder =>
         {
@@ -929,7 +930,7 @@ public class ProofRpcModuleCallTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Bytes.FromHexString(JToken.Parse(response)["result"]!["result"]!.Value<string>()!),
-                Is.EqualTo(TestItem.KeccakH.Bytes.ToArray()), response);
+                Is.EqualTo(expectMixHash ? TestItem.KeccakH.Bytes.ToArray() : head.Difficulty.ToBigEndian()), response);
             Assert.That(head.IsPostMerge, Is.EqualTo(isPostMerge), "the head keeps its flag");
         }
     }
