@@ -22,6 +22,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -58,23 +59,29 @@ public class BlockchainProcessorTests
     [Test]
     public async Task Failed_enqueue_reports_an_empty_queue()
     {
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.FindBlock(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(static _ => throw new IOException());
-        await using BlockchainProcessor processor = new(blockTree, Substitute.For<IBranchProcessor>(), [], Substitute.For<IStateReader>(), LimboLogs.Instance,
-            new BlockchainProcessor.Options(), Substitute.For<IProcessingStats>(), new BlockTreeMutationLock())
-        {
-            SoftMaxRecoveryQueueSizeInTx = 0
-        };
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddDecorator<IBlockTree>((_, blockTree) => new FailingLookupBlockTree(blockTree, block.Hash!))
+            .Build();
+        BlockchainProcessor processor = (BlockchainProcessor)container.Resolve<IMainProcessingContext>().BlockchainProcessor;
+        processor.SoftMaxRecoveryQueueSizeInTx = 0;
         int queueEmptyCount = 0;
         processor.ProcessingQueueEmpty += (_, _) => queueEmptyCount++;
 
-        await Assert.ThrowsAsync<IOException>(async () => await processor.Enqueue(Build.A.Block.WithNumber(1).TestObject, ProcessingOptions.None));
+        await Assert.ThrowsAsync<IOException>(async () => await processor.Enqueue(block, ProcessingOptions.None));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(processor.IsEmpty, Is.True);
             Assert.That(queueEmptyCount, Is.EqualTo(1));
         }
+    }
+
+    private sealed class FailingLookupBlockTree(IBlockTree inner, Hash256 failingHash) : BlockTreeTestDouble(inner)
+    {
+        public override Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) =>
+            blockHash == failingHash ? throw new IOException() : base.FindBlock(blockHash, options, blockNumber);
     }
 
     private class ProcessingTestContext : IAsyncDisposable
