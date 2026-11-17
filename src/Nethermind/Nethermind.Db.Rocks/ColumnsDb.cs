@@ -127,9 +127,21 @@ public class ColumnsDb<T>(RocksDbInstance instance, IRocksDbConfig tableConfig, 
 
     public IColumnsWriteBatch<T> StartWriteBatch() => new RocksColumnsWriteBatch(this);
 
-    private class RocksColumnsWriteBatch(ColumnsDb<T> columnsDb) : IColumnsWriteBatch<T>
+    /// <inheritdoc/>
+    public IAtomicColumnsWriteBatch<T> StartAtomicWriteBatch() => new AtomicRocksColumnsWriteBatch(this);
+
+    private sealed class AtomicRocksColumnsWriteBatch(ColumnsDb<T> columnsDb)
+        : RocksColumnsWriteBatch(columnsDb, atomic: true), IAtomicColumnsWriteBatch<T>
     {
-        internal readonly DbOnTheRocks.RocksDbWriteBatch WriteBatch = new(columnsDb._anyColumn);
+        public void Commit() =>
+            ((DbOnTheRocks.AtomicRocksDbWriteBatch)WriteBatch).Commit();
+    }
+
+    private class RocksColumnsWriteBatch(ColumnsDb<T> columnsDb, bool atomic = false) : IColumnsWriteBatch<T>
+    {
+        internal readonly DbOnTheRocks.RocksDbWriteBatch WriteBatch = atomic
+                ? (DbOnTheRocks.RocksDbWriteBatch)columnsDb._anyColumn.StartAtomicWriteBatch()
+                : new DbOnTheRocks.RocksDbWriteBatch(columnsDb._anyColumn);
         private readonly ColumnsDb<T> _columnsDb = columnsDb;
 
         public IWriteBatch GetColumnBatch(T key) => new RocksColumnWriteBatch(_columnsDb._columnDbs[key], this);
@@ -168,6 +180,7 @@ public class ColumnsDb<T>(RocksDbInstance instance, IRocksDbConfig tableConfig, 
         private readonly ReadOptions _sharedCacheMissReadOptions;
         private ReadOptions? _readAheadReadOptions;
         private int _disposed;
+        private readonly InFlightOperations _reads = new();
 
         // Use a flat array indexed by enum ordinal instead of Dictionary<T, IReadOnlyKeyValueStore>.
         // This eliminates the dictionary + backing array allocation per snapshot.
@@ -250,7 +263,10 @@ public class ColumnsDb<T>(RocksDbInstance instance, IRocksDbConfig tableConfig, 
                         _sharedCacheMissReadOptions,
                         readOptionsFactory,
                         iteratorManager,
-                        columnFamily);
+                        columnFamily)
+                    {
+                        Reads = _reads
+                    };
                 }
 
                 return readers;
@@ -310,6 +326,18 @@ public class ColumnsDb<T>(RocksDbInstance instance, IRocksDbConfig tableConfig, 
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
+            if (RocksDbReader.DrainReads(_reads, _columnsDb._anyColumn.PinnedSliceDrainTimeout))
+            {
+                Release();
+            }
+            else
+            {
+                _columnsDb._anyColumn.ReleaseSnapshotAfterReads(_reads, Release);
+            }
+        }
+
+        private void Release()
+        {
             // Iterators pin the snapshot's resources — tear the managers down before releasing anything they read through.
             foreach (RocksDbReader? reader in _readers)
             {
