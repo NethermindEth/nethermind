@@ -518,6 +518,21 @@ public class AdminModuleTests
         Assert.That(expectedResult, Is.EqualTo(serialized), $"a {expectedType} event must serialize with type '{expectedType}'");
     }
 
+    // An inbound session raises its message events with its node only once something has read it.
+    [TestCase(true, TestName = "PeerEvents_OnMsgReceivedWithoutNode_SendsNothing")]
+    [TestCase(false, TestName = "PeerEvents_OnMsgDeliveredWithoutNode_SendsNothing")]
+    public void PeerEventsSubscription_OnMessageEventWithoutNode_DoesNotThrowAndSendsNothing(bool isReceived)
+    {
+        PeerEventArgs peerEventArgs = new(null!, "BitTorrent", 1, 2);
+        ISession session = _existingSession1;
+        Action raise = isReceived
+            ? () => session.MsgReceived += Raise.EventWith(new object(), peerEventArgs)
+            : () => session.MsgDelivered += Raise.EventWith(new object(), peerEventArgs);
+
+        RaisePeerEventAndCapture(() => Assert.That(() => raise(), Throws.Nothing, "the handler runs on the p2p path"), out _,
+            disposeSubscription: true, shouldReceive: false);
+    }
+
     [TestCase(true, "msgrecv", TestName = "PeerEvents_OnMsgReceivedAcrossExistingSessions_NotifiesEach")]
     [TestCase(false, "msgsend", TestName = "PeerEvents_OnMsgDeliveredAcrossExistingSessions_NotifiesEach")]
     public void PeerEventsSubscription_OnMessageEventAcrossMultipleSessions_NotifiesEach(bool isReceived, string expectedType)
