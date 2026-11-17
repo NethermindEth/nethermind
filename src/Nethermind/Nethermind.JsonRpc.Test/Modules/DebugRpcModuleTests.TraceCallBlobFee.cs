@@ -18,6 +18,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
@@ -148,28 +149,36 @@ public partial class DebugRpcModuleTests
     }
 
     /// <summary>
-    /// As in geth's <c>debug_traceCall</c>, a <c>prevRandao</c> override decides PREVRANDAO from London on; before London
-    /// a block from before the merge reads its difficulty, also with <c>txIndex</c> and with a blob fee override.
+    /// As in geth's <c>debug_traceCall</c>, a <c>prevRandao</c> override decides PREVRANDAO from London on, judged on the
+    /// overridden block number; before London a block from before the merge reads its difficulty, also with
+    /// <c>txIndex</c> and with a blob fee override.
     /// </summary>
     [TestCase(true, null, null)]
     [TestCase(false, null, null)]
     [TestCase(false, "0x0", null)]
     [TestCase(false, null, "0x9")]
-    public async Task Debug_traceCall_takes_a_prevRandao_override_from_London_on(bool london, string? txIndex, string? blobBaseFee)
+    // London from block 1: a number override of 0 moves the London head below London.
+    [TestCase(false, null, null, "0x0")]
+    [TestCase(false, "0x0", null, "0x0")]
+    public async Task Debug_traceCall_takes_a_prevRandao_override_from_London_on(bool london, string? txIndex, string? blobBaseFee, string? number = null)
     {
+        ISpecProvider specProvider = number is null
+            ? new TestSpecProvider(london ? London.Instance : Berlin.Instance)
+            : new CustomSpecProvider(((ForkActivation)0, Berlin.Instance), ((ForkActivation)1, London.Instance));
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(builder =>
-            builder.AddSingleton<ISpecProvider>(new TestSpecProvider(london ? London.Instance : Berlin.Instance)));
+            builder.AddSingleton<ISpecProvider>(specProvider));
         BlockHeader head = chain.BlockTree.Head!.Header;
         head.Difficulty = (UInt256)5;
         head.MixHash = TestItem.KeccakH;
         head.IsPostMerge = false;
         const string address = "0xc200000000000000000000000000000000000000";
+        Dictionary<string, object> blockOverrides = new() { ["prevRandao"] = TestItem.KeccakA.ToString() };
+        if (blobBaseFee is not null) blockOverrides["blobBaseFee"] = blobBaseFee;
+        if (number is not null) blockOverrides["number"] = number;
         Dictionary<string, object> options = new()
         {
             ["stateOverrides"] = new Dictionary<string, object> { [address] = new { code = "0x4460005260206000f3" } },
-            ["blockOverrides"] = blobBaseFee is null
-                ? new { prevRandao = TestItem.KeccakA.ToString() }
-                : new { prevRandao = TestItem.KeccakA.ToString(), blobBaseFee },
+            ["blockOverrides"] = blockOverrides,
         };
         if (txIndex is not null) options["txIndex"] = txIndex;
 
@@ -178,6 +187,7 @@ public partial class DebugRpcModuleTests
 
         using (Assert.EnterMultipleScope())
         {
+            if (number is not null) Assert.That(head.Number, Is.GreaterThan(0UL), "the head is a London block");
             Assert.That(JToken.Parse(response)["result"]!["failed"]!.Value<bool>(), Is.False, response);
             Assert.That(ParseReturnValue(response), Is.EqualTo(london ? TestItem.KeccakA.Bytes.ToArray() : head.Difficulty.ToBigEndian()));
         }

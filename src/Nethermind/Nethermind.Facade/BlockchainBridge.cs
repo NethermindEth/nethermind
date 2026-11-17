@@ -282,7 +282,7 @@ namespace Nethermind.Facade
         /// <remarks>
         /// A <c>prevRandao</c> override that counts under the overridden block's spec (see <see cref="BlockOverride.PrevRandaoFor"/>)
         /// makes the copy post-merge, so PREVRANDAO returns it on a block from before the merge too. A set flag is never
-        /// cleared. Unlike a value passed in the context, the flag survives the header clones the frame-gas probes run on.
+        /// cleared. Unlike a value passed in the context, the flag survives the header clone the frame-gas search runs its probes on.
         /// </remarks>
         private bool TryBuildAndOverrideCall(BlockHeader callHeader, Dictionary<Address, AccountOverride>? stateOverride, BlockOverride? blockOverride,
             [NotNullWhen(true)] out Scope<BlockProcessingComponents>? scope)
