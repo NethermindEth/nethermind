@@ -29,7 +29,7 @@ namespace Nethermind.BeaconChain.Sync;
 /// <remarks>
 /// Gossip, timer and range-sync producers enqueue into bounded channels; only the worker owns the non-thread-safe importer,
 /// state transition and fork choice. Blocking imports run serially on <see cref="ImportThread"/>.
-/// Head steps update the engine, finality and status after drained batches and slot ticks, or every
+/// Head steps update the engine, finality and status after work batches and slot ticks, or every
 /// <see cref="HeadStepImportInterval"/> imports or <see cref="HeadStepInterval"/> while saturated.
 /// </remarks>
 public sealed class BeaconSyncOrchestrator(
@@ -98,6 +98,8 @@ public sealed class BeaconSyncOrchestrator(
 
     /// <summary>The most gossip votes and slashings verified per worker pass, so a flood of them delays queued blocks by one batch at most.</summary>
     internal const int VotesPerPass = 64;
+
+    private const int WorkItemsPerPass = 64;
 
     private const int HeadStepImportInterval = 64;
 
@@ -662,8 +664,8 @@ public sealed class BeaconSyncOrchestrator(
     internal void RoutePeerAdmissions() => peerPool.PeerAdmitted += OnPeerAdmitted;
     private void OnPeerAdmitted(IBeaconSyncPeer peer) => _work.Writer.TryWrite(new PeerAdmittedItem(peer));
 
-    /// <summary>Processes at most <see cref="VotesPerPass"/> votes and all work, placing ticks after their earlier votes,
-    /// then runs a head step if a block or payload imported; one <see cref="RunWorkerAsync"/> pass.</summary>
+    /// <summary>Processes a batch of eligible votes and up to <see cref="WorkItemsPerPass"/> work items, then updates
+    /// the head after imports. Each slot tick also processes any remaining votes that precede it.</summary>
     internal async Task ProcessQueuedAsync(CancellationToken token)
     {
         // Votes first, so one queued before a slot tick is not checked against the next slot, but none queued after a tick the worker has not reached (gloas/fork-choice.md on_payload_attestation_message).
@@ -672,7 +674,7 @@ public sealed class BeaconSyncOrchestrator(
             await ProcessVoteAsync(vote, token);
         }
 
-        while (_work.Reader.TryRead(out WorkItem? item))
+        for (int i = 0; i < WorkItemsPerPass && _work.Reader.TryRead(out WorkItem? item); i++)
         {
             if (item is SlotTickItem tick)
             {
@@ -687,12 +689,13 @@ public sealed class BeaconSyncOrchestrator(
             await ProcessItemAsync(item, token);
         }
 
-        // Cleared after the drain, which may have read the queued wake, and fenced before the peek, so leftover or later votes always wake the worker;
-        // a vote waiting for a tick not yet reached is woken by that tick.
-        Interlocked.Exchange(ref _voteWakeQueued, 0);
-        if (_votes.Reader.TryPeek(out QueuedVote next) && next.NewestSlotTick <= _reachedSlotTick)
+        // Queued work already guarantees another pass and may still contain the wake. Once empty, rearm
+        // before checking votes so an arrival racing this pass can wake the worker.
+        if (!_work.Reader.TryPeek(out _))
         {
-            WakeForVotes();
+            Interlocked.Exchange(ref _voteWakeQueued, 0);
+            if (_votes.Reader.TryPeek(out QueuedVote next) && next.NewestSlotTick <= _reachedSlotTick)
+                WakeForVotes();
         }
 
         if (_importedSinceHeadStep)

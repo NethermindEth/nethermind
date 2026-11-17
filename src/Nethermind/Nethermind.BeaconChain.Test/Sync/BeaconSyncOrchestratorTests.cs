@@ -397,7 +397,7 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(await EndsAsync(firstRound, token), Is.True);
         ulong acceptedSlot = harness.Orchestrator.SyncTip.Slot;
         await harness.Orchestrator.FeedRangeSyncRoundAsync(token);
-        await harness.Orchestrator.ProcessQueuedAsync(token);
+        await DrainQueuedWorkAsync(harness.Orchestrator, token);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(acceptedSlot, Is.EqualTo(rejectedSlot - 1));
@@ -1501,6 +1501,12 @@ public partial class BeaconSyncOrchestratorTests
         Harness harness = CreateHarness(anchorSlot: anchorSlot, peers: [peer]);
         harness.Importer.Known.Add(anchorRoot);
         return (harness, peer, chain);
+    }
+
+    internal static async Task DrainQueuedWorkAsync(BeaconSyncOrchestrator orchestrator, CancellationToken token)
+    {
+        while (orchestrator.QueuedWorkCount > 0)
+            await orchestrator.ProcessQueuedAsync(token);
     }
 
     private static async Task CompleteWorkerAsync(BeaconSyncOrchestrator orchestrator, CancellationToken token)

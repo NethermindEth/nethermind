@@ -277,6 +277,47 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
+    [Test]
+    public async Task Votes_and_head_updates_progress_while_work_keeps_arriving()
+    {
+        (ulong slot, GossipRouter router, Harness harness) = CreatePayloadVoteHarness();
+        BeaconSyncOrchestrator sync = harness.Orchestrator;
+        sync.RouteGossipEvents();
+        (_, Hash256 anchor, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 101, 102, 103);
+        harness.Importer.Known.Add(anchor);
+        List<int> votesBeforeImport = [];
+        List<ulong> publishedHeadSlots = [];
+        harness.Importer.OnImported = (block, root) =>
+        {
+            votesBeforeImport.Add(harness.Importer.GossipOperations.Count);
+            publishedHeadSlots.Add(harness.StatusHolder.CurrentStatus.HeadSlot);
+            harness.Importer.Head = CreateHead(root, block.Slot, Spec.GetEpoch(AnchorSlot));
+            int imported = votesBeforeImport.Count;
+            if (imported == chain.Length) return;
+
+            PtcVote(router, slot, validatorIndex: (ulong)imported);
+            BeaconSyncOrchestrator.PrepareSlotItem work = new(AnchorSlot);
+            for (int i = 0; i < BeaconSyncOrchestrator.WorkQueueCapacity / 2; i++)
+                sync.WorkWriter.TryWrite(work);
+            sync.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(new ForkedSignedBeaconBlock.OfFulu(chain[imported])));
+        };
+
+        sync.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(new ForkedSignedBeaconBlock.OfFulu(chain[0])));
+        await sync.ProcessQueuedAsync(CancellationToken.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sync.QueuedWorkCount, Is.Positive);
+            Assert.That(harness.StatusHolder.CurrentStatus.HeadSlot, Is.EqualTo(101UL));
+        }
+        await DrainQueuedWorkAsync(sync, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(votesBeforeImport, Is.EqualTo(new[] { 0, 1, 2 }));
+            Assert.That(publishedHeadSlots.Skip(1), Is.EqualTo(new ulong[] { 101, 102 }));
+        }
+    }
+
     // p2p-interface.md beacon_aggregate_and_proof: only accepted aggregates mark seen sets and suppress queued copies.
     [Test]
     public async Task Gossip_aggregate_marks_the_seen_sets_only_once_fork_choice_accepts_it([Values] bool accepted)
@@ -470,10 +511,7 @@ public partial class BeaconSyncOrchestratorTests
         ulong dropped = Metrics.BeaconChainGossipDropped - droppedBefore;
         await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
         await pendingTick.WaitAsync(TimeSpan.FromSeconds(10));
-        for (int pass = 0; pass < 10; pass++)
-        {
-            await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
-        }
+        await DrainQueuedWorkAsync(harness.Orchestrator, CancellationToken.None);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(dropped, Is.EqualTo((ulong)(BeaconSyncOrchestrator.VoteQueueCapacity - BeaconSyncOrchestrator.MaxVotesAheadOfTick)), "votes past the bound are dropped");

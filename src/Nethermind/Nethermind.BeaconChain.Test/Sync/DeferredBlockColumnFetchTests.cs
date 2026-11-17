@@ -1443,7 +1443,7 @@ public class DeferredBlockColumnFetchTests
         await orchestrator.FeedRangeSyncRoundAsync(token);
         if (processRound)
         {
-            await orchestrator.ProcessQueuedAsync(token);
+            await BeaconSyncOrchestratorTests.DrainQueuedWorkAsync(orchestrator, token);
         }
 
         return new HeldChain(orchestrator, server, requestedStarts, blocks);
