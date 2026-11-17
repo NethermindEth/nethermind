@@ -95,7 +95,7 @@ public class BlockStoreTests
     }
 
     [Test]
-    public async Task GetRlps_reads_each_block_as_GetRlp_does([Values] bool batching)
+    public async Task GetRlps_reads_each_block_as_GetRlp_does([Values] bool batching, [Values(16, 1024 * 1024)] int segmentSize)
     {
         await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
         MemDb db = batching ? new BatchReadMemDb() : new MemDb();
@@ -109,13 +109,13 @@ public class BlockStoreTests
         db[hashKeyed.Hash!.Bytes] = decoder.Encode(hashKeyed);
         store.InsertDeferred(pending);
 
-        using ArrayPoolList<byte> destination = new(0);
-        Range?[] ranges = new Range?[5];
+        using PooledSegmentedBuffer destination = new(segmentSize);
+        ReadOnlyMemory<byte>?[] found = new ReadOnlyMemory<byte>?[5];
         store.GetRlps(
             [(missing.Number, missing.Hash!.ValueHash256), (stored.Number, stored.Hash!.ValueHash256), (pending.Number, pending.Hash!.ValueHash256), (hashKeyed.Number, hashKeyed.Hash!.ValueHash256), (stored.Number, stored.Hash!.ValueHash256)],
             destination,
-            ranges);
-        byte[]?[] rlps = Array.ConvertAll(ranges, range => range is { } r ? destination.AsSpan()[r].ToArray() : null);
+            found);
+        byte[]?[] rlps = Array.ConvertAll(found, rlp => rlp?.ToArray());
 
         using (Assert.EnterMultipleScope())
         {

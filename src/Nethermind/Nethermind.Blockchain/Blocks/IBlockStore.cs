@@ -45,18 +45,15 @@ public interface IBlockStore
     Block? Get(ulong blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true);
     byte[]? GetRlp(ulong blockNumber, Hash256 blockHash);
 
-    /// <summary>Adds the stored encoding of each block, as <see cref="GetRlp"/> reads it, to <paramref name="destination"/>.</summary>
+    /// <summary>Copies the stored encoding of each block, as <see cref="GetRlp"/> reads it, to <paramref name="destination"/>.</summary>
     /// <param name="blocks">The number and hash of each block.</param>
-    /// <param name="destination">The list the encodings are added to, in any order.</param>
-    /// <param name="rlps">Receives where the encoding of each block is in <paramref name="destination"/>, or <see langword="null"/> when it is not stored.</param>
-    void GetRlps(ReadOnlySpan<(ulong Number, ValueHash256 Hash)> blocks, ArrayPoolList<byte> destination, Span<Range?> rlps)
+    /// <param name="destination">The buffer the encodings are copied to.</param>
+    /// <param name="rlps">Receives the encoding of each block in <paramref name="destination"/>, or <see langword="null"/> when it is not stored.</param>
+    void GetRlps(ReadOnlySpan<(ulong Number, ValueHash256 Hash)> blocks, PooledSegmentedBuffer destination, Span<ReadOnlyMemory<byte>?> rlps)
     {
         for (int i = 0; i < blocks.Length; i++)
         {
-            byte[]? rlp = GetRlp(blocks[i].Number, new Hash256(in blocks[i].Hash));
-            int start = destination.Count;
-            if (rlp is not null) destination.AddRange(rlp);
-            rlps[i] = rlp is null ? null : start..destination.Count;
+            rlps[i] = GetRlp(blocks[i].Number, new Hash256(in blocks[i].Hash)) is { } rlp ? destination.Add(rlp) : null;
         }
     }
 

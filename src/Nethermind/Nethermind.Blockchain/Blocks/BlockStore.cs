@@ -228,17 +228,17 @@ public class BlockStore : IBlockStore, IClearableCache
     /// <remarks>Reads the number-prefixed keys in one batch. Pending blocks are taken before the batch, as
     /// <see cref="GetRlp"/> does, so a block whose write lands during the batch is not missed. A block missing from the
     /// batch is read under its bare hash, as a database predating the block-number prefix stores it.</remarks>
-    public void GetRlps(ReadOnlySpan<(ulong Number, ValueHash256 Hash)> blocks, ArrayPoolList<byte> destination, Span<Range?> rlps)
+    public void GetRlps(ReadOnlySpan<(ulong Number, ValueHash256 Hash)> blocks, PooledSegmentedBuffer destination, Span<ReadOnlyMemory<byte>?> rlps)
     {
         ArgumentOutOfRangeException.ThrowIfNotEqual(rlps.Length, blocks.Length);
-        using ArrayPoolListRef<(int Index, Range Rlp)> pending = new(0);
+        using ArrayPoolListRef<(int Index, ReadOnlyMemory<byte> Rlp)> pending = new(0);
         if (_pending is not null)
         {
             for (int i = 0; i < blocks.Length; i++)
             {
                 if (_pending.TryGet(in blocks[i].Hash, out Block? pendingBlock))
                 {
-                    pending.Add((i, Add(destination, _blockDecoder.Encode(pendingBlock))));
+                    pending.Add((i, destination.Add(_blockDecoder.Encode(pendingBlock))));
                 }
             }
         }
@@ -250,23 +250,16 @@ public class BlockStore : IBlockStore, IClearableCache
         }
 
         _blockDb.GetMany(keys, NumberPrefixedKeyLength, rlps, new AddingDecoder(destination));
-        foreach ((int index, Range rlp) in pending.AsSpan()) rlps[index] = rlp;
+        foreach ((int index, ReadOnlyMemory<byte> rlp) in pending.AsSpan()) rlps[index] = rlp;
         for (int i = 0; i < rlps.Length; i++)
         {
-            if (rlps[i] is null && _blockDb.Get(blocks[i].Hash.Bytes) is { } rlp) rlps[i] = Add(destination, rlp);
+            if (rlps[i] is null && _blockDb.Get(blocks[i].Hash.Bytes) is { } rlp) rlps[i] = destination.Add(rlp);
         }
     }
 
-    private static Range Add(ArrayPoolList<byte> destination, ReadOnlySpan<byte> rlp)
+    private readonly struct AddingDecoder(PooledSegmentedBuffer destination) : IValueDecoder<ReadOnlyMemory<byte>?>
     {
-        int start = destination.Count;
-        destination.AddRange(rlp);
-        return start..destination.Count;
-    }
-
-    private readonly struct AddingDecoder(ArrayPoolList<byte> destination) : IValueDecoder<Range?>
-    {
-        public Range? Decode(ReadOnlySpan<byte> buffer) => Add(destination, buffer);
+        public ReadOnlyMemory<byte>? Decode(ReadOnlySpan<byte> buffer) => destination.Add(buffer);
     }
 
     /// <inheritdoc/>

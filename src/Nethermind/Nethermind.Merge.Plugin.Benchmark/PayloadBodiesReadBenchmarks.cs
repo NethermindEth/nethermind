@@ -32,8 +32,9 @@ namespace Nethermind.Merge.Plugin.Benchmark;
 [MemoryDiagnoser]
 public class PayloadBodiesReadBenchmarks
 {
-    private const int ChainLength = 8192;
-    private const int TransactionsPerBlock = 4;
+    private const int MinChainLength = 2560;
+    private const int ChainTransactionCount = 32 * 1024;
+    private const int DistinctTransactionCount = 1024;
     private const int TransactionDataLength = 1024;
     private const ulong RangeStart = 1024;
     private const ulong RangeCount = 1024;
@@ -47,6 +48,12 @@ public class PayloadBodiesReadBenchmarks
     private GetPayloadBodiesByHashV1Handler _hashHandler = null!;
     private Hash256[] _hashes = null!;
     private readonly PipeWriter _writer = PipeWriter.Create(Stream.Null);
+
+    /// <summary>4 transactions make a small body; 128 make a body of about 130 KB, as on mainnet.</summary>
+    [Params(4, 128)]
+    public int TransactionsPerBlock { get; set; }
+
+    private int ChainLength => Math.Max(MinChainLength, ChainTransactionCount / TransactionsPerBlock);
 
     [GlobalSetup]
     public void Setup()
@@ -86,9 +93,18 @@ public class PayloadBodiesReadBenchmarks
         Verify(chain);
     }
 
-    private static Block[] BuildChain(IBlockTree blockTree)
+    private Block[] BuildChain(IBlockTree blockTree)
     {
         Random random = new(1);
+        // Signing dominates the setup, so blocks share a set of distinct transactions.
+        Transaction[] distinct = new Transaction[DistinctTransactionCount];
+        for (int i = 0; i < distinct.Length; i++)
+        {
+            byte[] data = new byte[TransactionDataLength];
+            random.NextBytes(data);
+            distinct[i] = Build.A.Transaction.WithNonce((ulong)i).WithData(data).SignedAndResolved().TestObject;
+        }
+
         Block[] chain = new Block[ChainLength + 1];
         chain[0] = Build.A.Block.Genesis.TestObject;
         blockTree.SuggestBlock(chain[0]);
@@ -96,12 +112,8 @@ public class PayloadBodiesReadBenchmarks
         for (int number = 1; number <= ChainLength; number++)
         {
             Transaction[] transactions = new Transaction[TransactionsPerBlock];
-            for (int i = 0; i < transactions.Length; i++)
-            {
-                byte[] data = new byte[TransactionDataLength];
-                random.NextBytes(data);
-                transactions[i] = Build.A.Transaction.WithNonce((ulong)i).WithData(data).SignedAndResolved().TestObject;
-            }
+            int first = random.Next(distinct.Length);
+            for (int i = 0; i < transactions.Length; i++) transactions[i] = distinct[(first + i) % distinct.Length];
 
             chain[number] = Build.A.Block.WithParent(chain[number - 1]).WithTransactions(transactions).TestObject;
             blockTree.SuggestBlock(chain[number]);
