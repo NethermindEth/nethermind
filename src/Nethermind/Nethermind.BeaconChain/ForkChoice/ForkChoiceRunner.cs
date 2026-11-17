@@ -104,6 +104,9 @@ public sealed class ForkChoiceRunner
 
     /// <summary>specs/bellatrix/optimistic-sync.md: a Gloas payload reported VALID cannot become INVALID.</summary>
     private readonly HashSet<Hash256> _validPayloads = [];
+    private readonly HashSet<Hash256> _validPayloadHashes = [];
+    /// <summary>VALID Gloas roots whose parent payload hashes, and those of their valid ancestors, are indexed.</summary>
+    private readonly HashSet<Hash256> _indexedValidPayloadParents = [];
 
     /// <summary>The slot and proposer of each registered block, for <c>is_proposer_equivocation</c>; pruned by slot, and <see cref="_blockTimeliness"/> keeps the roots it holds, so <c>should_apply_proposer_boost</c> sees both for the same blocks.</summary>
     private readonly Dictionary<Hash256, BlockProposer> _blockProposers = [];
@@ -208,7 +211,10 @@ public sealed class ForkChoiceRunner
         IGloasBlockStateProvider gloasStateProvider,
         ILogManager? logManager = null)
         : this(spec, stateProvider, pubkeys, gloasStateProvider, GloasAnchor(spec, anchorState, anchorBlock), logManager)
-        => _parentBlockHashes[_bootstrapCheckpoint.Root] = anchorBlock.Body!.SignedExecutionPayloadBid!.Message!.ParentBlockHash!;
+    {
+        _parentBlockHashes[_bootstrapCheckpoint.Root] = anchorBlock.Body!.SignedExecutionPayloadBid!.Message!.ParentBlockHash!;
+        IndexValidPayloadAncestors(_bootstrapCheckpoint.Root);
+    }
 
     private ForkChoiceRunner(
         BeaconChainSpec spec,
@@ -371,7 +377,6 @@ public sealed class ForkChoiceRunner
     public ForkChoiceSnapshot Snapshot()
     {
         IReadOnlyList<ProtoNode> nodes = _protoArray.Nodes;
-        HashSet<Hash256> validPayloadHashes = CollectValidGloasPayloadHashes(nodes);
         ForkChoiceSnapshotNode[] copy = new ForkChoiceSnapshotNode[nodes.Count];
         for (int i = 0; i < copy.Length; i++)
         {
@@ -385,31 +390,33 @@ public sealed class ForkChoiceRunner
                 node.Weight,
                 node.ExecutionStatus,
                 node.ExecutionBlockHash,
-                node.IsGloas ? validPayloadHashes.Contains(node.ExecutionBlockHash!) : node.ExecutionStatus == ExecutionStatus.Valid);
+                node.IsGloas ? _validPayloadHashes.Contains(node.ExecutionBlockHash!) : node.ExecutionStatus == ExecutionStatus.Valid);
         }
 
         return new ForkChoiceSnapshot(_store.JustifiedCheckpoint, _store.FinalizedCheckpoint, _store.ProposerBoostRoot, copy);
     }
 
-    /// <summary>The bid <c>block_hash</c> of every Gloas payload known VALID: reported VALID itself, or one a VALID block builds on.</summary>
+    /// <summary>Rebuilds the hashes of Gloas payloads known VALID from the retained blocks and their own payload verdicts.</summary>
     /// <remarks>
     /// specs/bellatrix/optimistic-sync.md: the ancestors of a VALID payload are VALID, and so are their blocks, so the payload each VALID
     /// block builds on covers every execution ancestor. A VALID Gloas block never vouches for its own payload, which a child may have built EMPTY over.
     /// </remarks>
-    private HashSet<Hash256> CollectValidGloasPayloadHashes(IReadOnlyList<ProtoNode> nodes)
+    private void RebuildValidGloasPayloadHashes()
     {
-        HashSet<Hash256> valid = [];
-        foreach (ProtoNode node in nodes)
+        _validPayloadHashes.Clear();
+        _indexedValidPayloadParents.Clear();
+        foreach (ProtoNode node in _protoArray.Nodes)
         {
             if (!node.IsGloas)
                 continue;
             if (_validPayloads.Contains(node.Root))
-                valid.Add(node.ExecutionBlockHash!);
+                _validPayloadHashes.Add(node.ExecutionBlockHash!);
             if (node.ExecutionStatus == ExecutionStatus.Valid && _parentBlockHashes.TryGetValue(node.Root, out Hash256? builtOn))
-                valid.Add(builtOn);
+            {
+                _validPayloadHashes.Add(builtOn);
+                _indexedValidPayloadParents.Add(node.Root);
+            }
         }
-
-        return valid;
     }
 
     /// <summary>
@@ -431,6 +438,7 @@ public sealed class ForkChoiceRunner
         _payloads.RemoveWhere(root => !_protoArray.ContainsBlock(root));
         _invalidPayloads.RemoveWhere(root => !_protoArray.ContainsBlock(root));
         _validPayloads.RemoveWhere(root => !_protoArray.ContainsBlock(root));
+        RebuildValidGloasPayloadHashes();
     }
 
     /// <summary>
@@ -1244,15 +1252,7 @@ public sealed class ForkChoiceRunner
     private bool IsGloasPayloadValid(Hash256 root)
     {
         if (_validPayloads.Contains(root)) return true;
-        Hash256? hash = _protoArray.GetExecutionBlockHash(root);
-        if (hash is null) return false;
-        foreach (ProtoNode node in _protoArray.Nodes)
-        {
-            if (node.IsGloas && ((_validPayloads.Contains(node.Root) && node.ExecutionBlockHash == hash)
-                || (node.ExecutionStatus == ExecutionStatus.Valid && _parentBlockHashes.GetValueOrDefault(node.Root) == hash)))
-                return true;
-        }
-        return false;
+        return _protoArray.GetExecutionBlockHash(root) is { } hash && _validPayloadHashes.Contains(hash);
     }
 
     /// <summary>
@@ -1595,7 +1595,31 @@ public sealed class ForkChoiceRunner
     }
 
     /// <summary>Marks the payload of <paramref name="blockRoot"/> (and hence of all its ancestors) execution-valid.</summary>
-    public void OnValidExecutionPayload(Hash256 blockRoot) => _protoArray.ProcessExecutionPayloadValidation(blockRoot);
+    public void OnValidExecutionPayload(Hash256 blockRoot)
+    {
+        try
+        {
+            _protoArray.ProcessExecutionPayloadValidation(blockRoot);
+        }
+        finally
+        {
+            // Propagation can promote a prefix before refusing an invalid ancestor; index the resulting statuses too.
+            IndexValidPayloadAncestors(blockRoot);
+        }
+    }
+
+    private void IndexValidPayloadAncestors(Hash256 root)
+    {
+        foreach (ProtoNode node in _protoArray.EnumerateAncestorNodes(root))
+        {
+            if (!node.IsGloas || node.ExecutionStatus != ExecutionStatus.Valid
+                || !_parentBlockHashes.TryGetValue(node.Root, out Hash256? builtOn)
+                || !_indexedValidPayloadParents.Add(node.Root))
+                break;
+
+            _validPayloadHashes.Add(builtOn);
+        }
+    }
 
     /// <summary>
     /// Applies an engine INVALID verdict on the payload <paramref name="payloadHash"/> of the chain ending at <paramref name="chainRoot"/>:
@@ -1690,11 +1714,12 @@ public sealed class ForkChoiceRunner
 
             if (carriesPayload && _invalidPayloads.Contains(node.Root))
                 throw new ProtoArrayException($"Invalid execution payload {node.ExecutionBlockHash} became valid");
-            _protoArray.ProcessExecutionPayloadValidation(node.Root);
+            OnValidExecutionPayload(node.Root);
             if (carriesPayload)
             {
                 if (!node.IsGloas) return null;
                 _validPayloads.Add(node.Root);
+                _validPayloadHashes.Add(node.ExecutionBlockHash!);
                 return node.Root;
             }
         }

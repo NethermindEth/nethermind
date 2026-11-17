@@ -19,6 +19,144 @@ public class ForkChoiceRunnerPayloadTests
     private const ulong CommitteeSize = 64;
 
     [Test]
+    public void Payload_validity_keeps_other_contributors_until_they_are_pruned([Values] bool ownVerdict)
+    {
+        GloasForkChoiceHarness harness = new();
+        GloasForkChoiceHarness.Block first = ImportVerifiedFirst(harness);
+        GloasForkChoiceHarness.Block a = harness.Child(first, first.Slot + 1, full: !ownVerdict, 0xA1);
+        GloasForkChoiceHarness.Block b = harness.Child(first, first.Slot + 2, full: !ownVerdict, 0xA1);
+        Hash256 hash = ownVerdict ? a.BidBlockHash : first.BidBlockHash;
+        GloasForkChoiceHarness.Block probe = harness.Child(b, first.Slot + 3, full: false, hash.Bytes[0]);
+        Assert.That(probe.BidBlockHash, Is.EqualTo(hash), "fixture: the optimistic probe carries the shared payload hash");
+        harness.Import(a);
+        harness.Import(b);
+        harness.Import(probe);
+        foreach (GloasForkChoiceHarness.Block contributor in (GloasForkChoiceHarness.Block[])[a, b])
+        {
+            if (ownVerdict) harness.Runner.ValidateExecutionChain(contributor.Root, hash);
+            else harness.Runner.OnValidExecutionPayload(contributor.Root);
+        }
+
+        Func<Hash256, bool> payloadValid = PayloadValidityReader(harness.Runner);
+        Assert.That(payloadValid(probe.Root), Is.True);
+        AssertPayloadIndexMatchesScan(harness.Runner);
+
+        ForkChoiceStore store = RunnerField<ForkChoiceStore>(harness.Runner, "_store");
+        harness.Runner.PruneThreshold = 0;
+        CheckpointRef finalized = new(2, b.Root);
+        store.UpdateCheckpoints(finalized, finalized);
+        harness.Runner.Prune();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Runner.ContainsBlock(a.Root), Is.False);
+            Assert.That(payloadValid(probe.Root), Is.True, "the retained contributor still proves the shared hash");
+        }
+        AssertPayloadIndexMatchesScan(harness.Runner);
+
+        finalized = new(3, probe.Root);
+        store.UpdateCheckpoints(finalized, finalized);
+        harness.Runner.Prune();
+        Assert.That(payloadValid(probe.Root), Is.False, "all contributors were removed");
+        AssertPayloadIndexMatchesScan(harness.Runner);
+    }
+
+    [Test]
+    public void Gloas_anchor_proves_its_parent_payload_but_not_its_own_bid()
+    {
+        GloasForkChoiceHarness harness = new(gloasAnchor: true);
+        ForkChoiceRunner runner = harness.Runner;
+        ProtoArrayForkChoice tree = RunnerField<ProtoArrayForkChoice>(runner, "_protoArray");
+        Hash256 probe = TestHashes.GetRoot(1);
+        Hash256 parentHash = runner.GetParentBlockHash(harness.First.Root)!;
+        CheckpointRef anchor = runner.FinalizedCheckpoint;
+        tree.ProcessBlock(ProtoArrayTestBlocks.CreateProtoBlock(harness.First.Slot + 1, probe, harness.First.Root,
+            anchor, anchor, ExecutionStatus.Optimistic, parentHash, isGloas: true, parentBlockHash: parentHash), harness.First.Slot + 1, anchor, anchor);
+
+        Func<Hash256, bool> payloadValid = PayloadValidityReader(runner);
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(payloadValid(harness.First.Root), Is.False);
+        Assert.That(payloadValid(probe), Is.True);
+        AssertPayloadIndexMatchesScan(runner);
+    }
+
+    [Test]
+    public void Payload_validity_lookup_work_is_independent_of_tree_size([Values(16, 2048)] int nodes)
+    {
+        GloasForkChoiceHarness harness = new();
+        GloasForkChoiceHarness.Block first = ImportVerifiedFirst(harness);
+        GloasForkChoiceHarness.Block child = harness.Child(first, first.Slot + 1, full: true, 0xA1);
+        harness.Import(child);
+        harness.Runner.OnValidExecutionPayload(child.Root);
+        ProtoArrayForkChoice tree = RunnerField<ProtoArrayForkChoice>(harness.Runner, "_protoArray");
+        CheckpointRef anchor = harness.Runner.FinalizedCheckpoint;
+        for (int i = 0; i < nodes; i++)
+        {
+            Hash256 root = TestHashes.GetRoot((ulong)i);
+            tree.ProcessBlock(ProtoArrayTestBlocks.CreateProtoBlock(first.Slot + 2, root, first.Root, anchor, anchor,
+                ExecutionStatus.Optimistic, Hash(0xEE), isGloas: true, parentBlockHash: first.BidBlockHash), first.Slot + 2, anchor, anchor);
+        }
+
+        PayloadLookupCounter counter = new();
+        HashSet<Hash256> counted = [with(counter), .. RunnerField<HashSet<Hash256>>(harness.Runner, "_validPayloadHashes")];
+        typeof(ForkChoiceRunner).GetField("_validPayloadHashes", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.SetValue(harness.Runner, counted);
+        counter.HashCalls = 0;
+        Func<Hash256, bool> payloadValid = PayloadValidityReader(harness.Runner);
+        const int queries = 4096;
+        for (int i = 0; i < queries; i++) Assert.That(payloadValid(first.Root), Is.True);
+        Assert.That(counter.HashCalls, Is.EqualTo(queries), "one hash lookup per FULL vote, independent of unrelated blocks");
+    }
+
+    [Test]
+    public void Failed_validation_indexes_any_ancestor_prefix_it_promoted()
+    {
+        GloasForkChoiceHarness harness = new();
+        GloasForkChoiceHarness.Block first = ImportVerifiedFirst(harness);
+        GloasForkChoiceHarness.Block child = harness.Child(first, first.Slot + 1, full: true, 0xA1);
+        harness.Import(child);
+        harness.Runner.EnumerateAncestors(first.Root).First().ExecutionStatus = ExecutionStatus.Invalid;
+
+        Assert.That(() => harness.Runner.OnValidExecutionPayload(child.Root), Throws.TypeOf<ProtoArrayException>());
+        Assert.That(harness.Runner.GetBlockExecutionStatus(child.Root), Is.EqualTo(ExecutionStatus.Valid));
+        AssertPayloadIndexMatchesScan(harness.Runner);
+    }
+
+    private static T RunnerField<T>(ForkChoiceRunner runner, string name) =>
+        (T)typeof(ForkChoiceRunner).GetField(name, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(runner)!;
+
+    private static Func<Hash256, bool> PayloadValidityReader(ForkChoiceRunner runner) =>
+        typeof(ForkChoiceRunner).GetMethod("IsGloasPayloadValid", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+            .CreateDelegate<Func<Hash256, bool>>(runner);
+
+    private static void AssertPayloadIndexMatchesScan(ForkChoiceRunner runner)
+    {
+        HashSet<Hash256> ownVerdicts = RunnerField<HashSet<Hash256>>(runner, "_validPayloads");
+        IReadOnlyList<ProtoNode> nodes = RunnerField<ProtoArrayForkChoice>(runner, "_protoArray").Nodes;
+        HashSet<Hash256> expected = [];
+        foreach (ProtoNode node in nodes)
+        {
+            if (!node.IsGloas) continue;
+            if (ownVerdicts.Contains(node.Root)) expected.Add(node.ExecutionBlockHash!);
+            if (node.ExecutionStatus == ExecutionStatus.Valid && runner.GetParentBlockHash(node.Root) is { } parentHash) expected.Add(parentHash);
+        }
+
+        Assert.That(RunnerField<HashSet<Hash256>>(runner, "_validPayloadHashes"), Is.EquivalentTo(expected));
+        Func<Hash256, bool> payloadValid = PayloadValidityReader(runner);
+        foreach (ProtoNode node in nodes.Where(static node => node.IsGloas))
+            Assert.That(payloadValid(node.Root), Is.EqualTo(expected.Contains(node.ExecutionBlockHash!)), node.Root.ToString());
+    }
+
+    private sealed class PayloadLookupCounter : IEqualityComparer<Hash256>
+    {
+        public int HashCalls { get; set; }
+        public bool Equals(Hash256? x, Hash256? y) => x == y;
+        public int GetHashCode(Hash256 value)
+        {
+            HashCalls++;
+            return value.GetHashCode();
+        }
+    }
+
+    [Test]
     public void Block_building_on_a_full_gloas_parent_waits_for_that_parent_payload([Values] bool buildsOnFull, [Values] bool parentPayloadVerified)
     {
         ForkCrossingChain chain = ForkCrossingChain.Instance;
@@ -375,6 +513,7 @@ public class ForkChoiceRunnerPayloadTests
                 default:
                     throw new ArgumentOutOfRangeException(nameof(step));
             }
+            AssertPayloadIndexMatchesScan(harness.Runner);
         }
     }
     [Test]
