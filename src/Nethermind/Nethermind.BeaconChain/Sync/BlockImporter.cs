@@ -50,6 +50,7 @@ public sealed class BlockImporter : IBlockImporter
     private readonly BeaconChainSpec _spec;
     private readonly BeaconChainStore _store;
     private readonly PubkeyCache _pubkeys;
+    private readonly ValidatorPubkeyIndex _requestRegistry = new();
     private readonly IEngineDriver _engine;
     private readonly IBeaconChainConfig _config;
     private readonly SlotClock _clock;
@@ -331,12 +332,16 @@ public sealed class BlockImporter : IBlockImporter
             return BlockImportResult.Invalid;
         }
 
-        return block switch
+        _requestRegistry.BeginBlock(block.ParentRoot);
+        BlockImportResult resultAfterTransition = block switch
         {
             ForkedSignedBeaconBlock.OfFulu fulu => ImportFulu(fulu.Block, blockRoot, verifySignatures, receivedMs),
             ForkedSignedBeaconBlock.OfGloas gloas => ImportGloas(gloas, blockRoot, verifySignatures, receivedMs),
             _ => throw new NotSupportedException($"Unhandled block {block.GetType().Name}"),
         };
+        if (resultAfterTransition == BlockImportResult.Imported)
+            _requestRegistry.AdmitBlock(blockRoot);
+        return resultAfterTransition;
     }
 
     /// <summary>Checks on_block conditions in spec order, then block.slot &gt; parent slot, before costly process_slots (phase0/fork-choice.md).</summary>
@@ -555,6 +560,7 @@ public sealed class BlockImporter : IBlockImporter
             }
 
             ImportVerdict verdict = new(_engine);
+            cache.RequestRegistry = _requestRegistry;
             _engine.CurrentBlock = signedBlock;
             try
             {
@@ -593,6 +599,7 @@ public sealed class BlockImporter : IBlockImporter
             }
             finally
             {
+                cache.EndImportedRequests();
                 _engine.CurrentBlock = null;
             }
 
@@ -731,6 +738,7 @@ public sealed class BlockImporter : IBlockImporter
 
         bool extendsLineage = parentRoot == _gloasLineageRoot;
         EpochCache cache = extendsLineage ? _gloasLineageCache : new EpochCache { Hasher = _gloasLineageCache.Hasher };
+        cache.RequestRegistry = _requestRegistry;
         BeaconStateGloas postState;
         try
         {
@@ -747,6 +755,10 @@ public sealed class BlockImporter : IBlockImporter
             RejectGossip = verifySignatures && (e is ProposerSignatureException || e.RejectGossip) && CanRejectBlock(forked);
             MarkFailed(blockRoot, block.Slot, e);
             return BlockImportResult.Invalid;
+        }
+        finally
+        {
+            cache.EndImportedRequests();
         }
 
         if (parentPayloadUnverified)

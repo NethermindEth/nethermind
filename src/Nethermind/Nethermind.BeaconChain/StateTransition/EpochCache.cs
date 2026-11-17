@@ -35,6 +35,15 @@ public sealed class EpochCache
     internal BeaconChainSpec ResolveSigningSpec(Hash256 genesisValidatorsRoot) =>
         SigningSpec ?? BeaconChainSpec.ForGenesisValidatorsRoot(genesisValidatorsRoot);
 
+    internal ValidatorPubkeyIndex? RequestRegistry { private get; set; }
+
+    internal void EndImportedRequests()
+    {
+        RequestRegistry = null;
+        _requestValidators = null;
+        _requestIndices.Clear();
+    }
+
     private Validator[]? _requestValidators;
     private readonly Dictionary<BlsPublicKey, int> _requestIndices = [];
 
@@ -65,7 +74,13 @@ public sealed class EpochCache
 
     private void IndexWantedPubkeys(Validator[] validators)
     {
-        if (_requestIndices.Count > 0)
+        if (_requestIndices.Count > 0 && RequestRegistry is { } registry)
+        {
+            registry.Extend(validators);
+            foreach ((BlsPublicKey key, _) in _requestIndices)
+                _requestIndices[key] = registry.Find(validators, key);
+        }
+        else if (_requestIndices.Count > 0)
             for (int i = 0; i < validators.Length; i++)
                 if (_requestIndices.TryGetValue(validators[i].Pubkey, out int index) && index < 0)
                     _requestIndices[validators[i].Pubkey] = i;
