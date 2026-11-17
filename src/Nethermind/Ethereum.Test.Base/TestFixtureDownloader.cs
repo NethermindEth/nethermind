@@ -5,8 +5,10 @@ using System;
 using System.Formats.Tar;
 using System.IO;
 using System.IO.Compression;
+using System.Net;
 using System.Net.Http;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Ethereum.Test.Base;
 
@@ -18,7 +20,12 @@ namespace Ethereum.Test.Base;
 /// </summary>
 public static class TestFixtureDownloader
 {
+    internal const int MaxAttempts = 5;
+    internal const string MarkerFileName = ".completed";
+    internal const string TempDirectoryInfix = ".tmp-";
+
     private static readonly string CacheRoot = Path.Combine(Path.GetTempPath(), "nethermind-eest");
+    private static readonly TimeSpan RetryBaseDelay = TimeSpan.FromSeconds(2);
 
     /// <summary>
     /// Ensures that the archive identified by <paramref name="urlTemplate"/>,
@@ -30,11 +37,21 @@ public static class TestFixtureDownloader
     /// <param name="version">Archive version tag (e.g. "v1.6.1").</param>
     /// <param name="archiveName">Archive file name (e.g. "general.tar.gz"). The directory stem is derived by stripping extensions.</param>
     /// <returns>The path to the extracted fixtures directory.</returns>
-    public static string EnsureDownloaded(string suiteName, string urlTemplate, string version, string archiveName)
+    public static string EnsureDownloaded(string suiteName, string urlTemplate, string version, string archiveName) =>
+        EnsureDownloaded(CacheRoot, suiteName, urlTemplate, version, archiveName, null, RetryBaseDelay);
+
+    internal static string EnsureDownloaded(
+        string cacheRoot,
+        string suiteName,
+        string urlTemplate,
+        string version,
+        string archiveName,
+        HttpMessageHandler? handler,
+        TimeSpan retryBaseDelay)
     {
         string archiveStem = StripExtensions(archiveName);
-        string targetDir = Path.Combine(CacheRoot, suiteName, version, archiveStem);
-        string markerPath = Path.Combine(targetDir, ".completed");
+        string targetDir = Path.Combine(cacheRoot, suiteName, version, archiveStem);
+        string markerPath = Path.Combine(targetDir, MarkerFileName);
 
         if (File.Exists(markerPath))
             return targetDir;
@@ -53,8 +70,9 @@ public static class TestFixtureDownloader
             }
 
             Console.WriteLine($"Downloading {suiteName} fixtures ({archiveName} {version})...");
-            DownloadAndExtract(urlTemplate, version, archiveName, targetDir);
-            File.WriteAllText(markerPath, version);
+            string url = string.Format(urlTemplate, version, archiveName);
+            DeleteStaleTempDirectories(targetDir);
+            DownloadWithRetries(url, version, targetDir, handler, retryBaseDelay);
             Console.WriteLine($"{suiteName} fixtures extracted to {targetDir}");
         }
         finally
@@ -76,16 +94,57 @@ public static class TestFixtureDownloader
         return Path.GetFileNameWithoutExtension(archiveName);
     }
 
-    private static void DownloadAndExtract(string urlTemplate, string version, string archiveName, string targetDir)
+    private static void DeleteStaleTempDirectories(string targetDir)
     {
-        // Clean up any partial extraction from a previous interrupted attempt.
-        if (Directory.Exists(targetDir))
-            Directory.Delete(targetDir, true);
+        string parentDir = Path.GetDirectoryName(targetDir)!;
+        if (!Directory.Exists(parentDir))
+            return;
 
-        Directory.CreateDirectory(targetDir);
+        foreach (string staleDir in Directory.EnumerateDirectories(parentDir, Path.GetFileName(targetDir) + TempDirectoryInfix + "*"))
+            Directory.Delete(staleDir, true);
+    }
 
-        using HttpClient httpClient = new();
-        string url = string.Format(urlTemplate, version, archiveName);
+    private static void DownloadWithRetries(string url, string version, string targetDir, HttpMessageHandler? handler, TimeSpan retryBaseDelay)
+    {
+        using HttpClient httpClient = handler is null ? new() : new(handler, disposeHandler: false);
+
+        for (int attempt = 1; ; attempt++)
+        {
+            string tempDir = targetDir + TempDirectoryInfix + Guid.NewGuid().ToString("N");
+            try
+            {
+                DownloadAndExtract(httpClient, url, tempDir);
+                File.WriteAllText(Path.Combine(tempDir, MarkerFileName), version);
+                if (Directory.Exists(targetDir))
+                    Directory.Delete(targetDir, true);
+                Directory.Move(tempDir, targetDir);
+                return;
+            }
+            catch (Exception exception) when (IsTransient(exception))
+            {
+                DeleteIfExists(tempDir);
+                if (attempt >= MaxAttempts)
+                    throw new HttpRequestException(
+                        $"Failed to download test fixtures from {url} after {MaxAttempts} attempts.",
+                        exception,
+                        (exception as HttpRequestException)?.StatusCode);
+
+                TimeSpan delay = retryBaseDelay * (1 << (attempt - 1));
+                Console.WriteLine($"Attempt {attempt} of {MaxAttempts} to download {url} failed ({exception.Message}). Retrying in {delay.TotalSeconds:0.#} s.");
+                Thread.Sleep(delay);
+            }
+            catch
+            {
+                DeleteIfExists(tempDir);
+                throw;
+            }
+        }
+    }
+
+    private static void DownloadAndExtract(HttpClient httpClient, string url, string tempDir)
+    {
+        Directory.CreateDirectory(tempDir);
+
         using HttpRequestMessage request = new(HttpMethod.Get, url);
         using HttpResponseMessage response = httpClient.Send(request, HttpCompletionOption.ResponseHeadersRead);
         response.EnsureSuccessStatusCode();
@@ -93,6 +152,24 @@ public static class TestFixtureDownloader
         using Stream contentStream = response.Content.ReadAsStream();
         using GZipStream gzStream = new(contentStream, CompressionMode.Decompress);
 
-        TarFile.ExtractToDirectory(gzStream, targetDir, overwriteFiles: true);
+        TarFile.ExtractToDirectory(gzStream, tempDir, overwriteFiles: true);
+    }
+
+    private static bool IsTransient(Exception exception) => exception switch
+    {
+        HttpRequestException { StatusCode: null } => true,
+        HttpRequestException { StatusCode: HttpStatusCode status } => IsTransient(status),
+        TaskCanceledException or TimeoutException => true,
+        IOException or InvalidDataException => true,
+        _ => false
+    };
+
+    private static bool IsTransient(HttpStatusCode status) =>
+        status is HttpStatusCode.RequestTimeout or HttpStatusCode.TooManyRequests || (int)status >= 500;
+
+    private static void DeleteIfExists(string directory)
+    {
+        if (Directory.Exists(directory))
+            Directory.Delete(directory, true);
     }
 }
