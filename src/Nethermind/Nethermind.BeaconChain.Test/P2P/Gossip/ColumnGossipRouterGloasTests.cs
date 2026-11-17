@@ -863,6 +863,30 @@ public class ColumnGossipRouterGloasTests
     }
 
     [Test]
+    public void Completing_a_verdict_reopens_one_place_for_its_root_and_column()
+    {
+        (ColumnGossipRouter router, _) = Create();
+        byte[] message = Encode(Sidecar(root: UnknownRoot));
+        GossipVerdict[] held = new GossipVerdict[DataColumnSidecarPool.MaxPendingGloasCandidatesPerKey];
+        foreach (ref GossipVerdict verdict in held.AsSpan())
+        {
+            verdict = new(static _ => true, null);
+            PeerId source = new Nethermind.Libp2p.Core.Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId;
+            router.Handle(Column, true, message, verdict, source);
+            Assert.That(verdict.IsHandedOff, Is.True);
+        }
+
+        GossipVerdict next = new(static _ => true, null);
+        router.Handle(Column, true, message, next, DeliveringPeer);
+        Assert.That(next.IsHandedOff, Is.False);
+        held[0].Abandon();
+        router.Handle(Column, true, message, next, DeliveringPeer);
+        Assert.That(next.IsHandedOff, Is.True);
+        foreach (GossipVerdict verdict in held) verdict.Abandon();
+        next.Abandon();
+    }
+
+    [Test]
     public void Pending_gloas_columns_are_bounded_per_peer_and_subnet()
     {
         (ColumnGossipRouter router, DataColumnSidecarPool pool) = Create();

@@ -190,7 +190,9 @@ public sealed class ColumnGossipRouter(
     private readonly LruKeyCache<(Hash256 BlockRoot, ulong Index)> _seenGloasSidecars = new(SeenCacheSize, "beacon column gossip seen gloas sidecars");
     private readonly Lock _pendingGloasLock = new();
     private readonly Dictionary<DataColumnSidecarGloas, PendingGloasVerdict> _pendingGloasVerdicts = [with(ReferenceEqualityComparer.Instance)];
-    private sealed record PendingGloasVerdict(ulong Subnet, PeerId Source, GossipVerdict Verdict)
+    private readonly Dictionary<(Hash256 Root, ulong Column), int> _pendingGloasCounts = [];
+    private readonly Dictionary<PeerId, HashSet<ulong>> _pendingGloasSubnets = [];
+    private sealed record PendingGloasVerdict((Hash256 Root, ulong Column) Key, ulong Subnet, PeerId Source, GossipVerdict Verdict)
     {
         public int Validating;
     }
@@ -1250,20 +1252,16 @@ public sealed class ColumnGossipRouter(
         {
             if (verdict.IsCompleted || _pendingGloasVerdicts.Count >= DataColumnSidecarPool.MaxPendingGloasSidecars)
                 return Drop(reason, MessageValidity.Ignored);
-            int sameKey = 0;
-            int sameSource = 0;
-            bool sourceLimit = false;
-            foreach ((DataColumnSidecarGloas candidate, PendingGloasVerdict pending) in _pendingGloasVerdicts)
-            {
-                if (pending.Source == source && (pending.Subnet == subnet || ++sameSource >= PendingGloasVerdictsPerSource))
-                    sourceLimit = true;
-                if (candidate.BeaconBlockRoot == sidecar.BeaconBlockRoot && candidate.Index == sidecar.Index) sameKey++;
-            }
+            (Hash256 Root, ulong Column) key = (sidecar.BeaconBlockRoot!, sidecar.Index);
+            int sameKey = _pendingGloasCounts.GetValueOrDefault(key);
             if (sameKey >= DataColumnSidecarPool.MaxPendingGloasCandidatesPerKey)
                 return Drop(reason, MessageValidity.Ignored);
-            if (!sourceLimit)
+            if (!_pendingGloasSubnets.TryGetValue(source, out HashSet<ulong>? subnets))
+                _pendingGloasSubnets.Add(source, subnets = []);
+            if (subnets.Count < PendingGloasVerdictsPerSource && subnets.Add(subnet))
             {
-                _pendingGloasVerdicts.Add(sidecar, new(subnet, source, verdict));
+                _pendingGloasVerdicts.Add(sidecar, new(key, subnet, source, verdict));
+                _pendingGloasCounts[key] = sameKey + 1;
                 retainedVerdict = true;
             }
         }
@@ -1290,7 +1288,18 @@ public sealed class ColumnGossipRouter(
 
     private void RemovePendingGloas(DataColumnSidecarGloas sidecar)
     {
-        lock (_pendingGloasLock) _pendingGloasVerdicts.Remove(sidecar);
+        lock (_pendingGloasLock)
+        {
+            if (_pendingGloasVerdicts.Remove(sidecar, out PendingGloasVerdict? pending))
+            {
+                if (--_pendingGloasCounts[pending.Key] == 0)
+                    _pendingGloasCounts.Remove(pending.Key);
+                HashSet<ulong> subnets = _pendingGloasSubnets[pending.Source];
+                subnets.Remove(pending.Subnet);
+                if (subnets.Count == 0)
+                    _pendingGloasSubnets.Remove(pending.Source);
+            }
+        }
         pool?.DiscardPendingGloas(sidecar);
     }
 
