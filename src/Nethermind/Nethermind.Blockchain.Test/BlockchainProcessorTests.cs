@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
@@ -56,6 +57,34 @@ public class BlockchainProcessorTests
 
         Assert.DoesNotThrow(() =>
             BlockTraceDumper.LogDiagnosticTrace(NullBlockTracer.Instance, input, logger));
+    }
+
+    [Test]
+    public async Task Failed_enqueue_reports_an_empty_queue()
+    {
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddDecorator<IBlockTree>((_, blockTree) => new FailingLookupBlockTree(blockTree, block.Hash!))
+            .Build();
+        BlockchainProcessor processor = (BlockchainProcessor)container.Resolve<IMainProcessingContext>().BlockchainProcessor;
+        processor.SoftMaxRecoveryQueueSizeInTx = 0;
+        int queueEmptyCount = 0;
+        processor.ProcessingQueueEmpty += (_, _) => queueEmptyCount++;
+
+        await Assert.ThrowsAsync<IOException>(async () => await processor.Enqueue(block, ProcessingOptions.None));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(processor.IsEmpty, Is.True);
+            Assert.That(queueEmptyCount, Is.EqualTo(1));
+        }
+    }
+
+    private sealed class FailingLookupBlockTree(IBlockTree inner, Hash256 failingHash) : BlockTreeTestDouble(inner)
+    {
+        public override Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) =>
+            blockHash == failingHash ? throw new IOException() : base.FindBlock(blockHash, options, blockNumber);
     }
 
     [Test]

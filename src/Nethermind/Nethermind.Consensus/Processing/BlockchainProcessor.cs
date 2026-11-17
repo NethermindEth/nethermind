@@ -432,8 +432,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             }
             catch (Exception e)
             {
-                Interlocked.Decrement(ref _queueCount);
-                OnBlockRemoved(new BlockRemovedEventArgs(blockHash, ProcessingResult.QueueException, e));
+                DecrementQueue(blockHash, ProcessingResult.QueueException, e);
                 if (e is not InvalidOperationException || !_recoveryComplete)
                 {
                     throw;
