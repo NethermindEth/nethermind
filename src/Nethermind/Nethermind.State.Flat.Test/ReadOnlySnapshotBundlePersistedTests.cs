@@ -69,7 +69,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, tableData);
         PersistedSnapshotList list = new(1) { persisted };
 
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        SubstitutablePersistenceReader reader = Substitute.For<SubstitutablePersistenceReader>();
 
         using ReadOnlySnapshotBundle bundle = new(
             new SnapshotPooledList(0),
@@ -102,7 +102,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, tableData);
         PersistedSnapshotList list = new(1) { persisted };
 
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        SubstitutablePersistenceReader reader = Substitute.For<SubstitutablePersistenceReader>();
 
         using ReadOnlySnapshotBundle bundle = new(
             new SnapshotPooledList(0),
@@ -136,7 +136,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, tableData);
         PersistedSnapshotList list = new(1) { persisted };
 
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        SubstitutablePersistenceReader reader = Substitute.For<SubstitutablePersistenceReader>();
         reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(dbRlp);
 
         using ReadOnlySnapshotBundle bundle = new(
@@ -157,7 +157,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         byte[] dbRlp = [0xC0];
         TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute("path"), 4);
 
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        SubstitutablePersistenceReader reader = Substitute.For<SubstitutablePersistenceReader>();
         reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(dbRlp);
 
         using ReadOnlySnapshotBundle bundle = new(

@@ -28,6 +28,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Eth.V71;
 using Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -99,8 +100,9 @@ public class Eth72ProtocolHandler(
     private readonly Dictionary<long, SentCellRequest> _sentCellRequestIds = [];
     private readonly PooledTransactionRequests _sentPooledTransactionRequests = new(MaxSentCellRequests);
     private readonly ClockCache<ValueHash256, byte> _countedBlobAnnouncements = new(MaxCountedBlobAnnouncements, lockPartition: 1);
+    // Only transactions in our own blob pool are announced, so remembering more hashes than the pool holds buys nothing.
     private readonly Lazy<ClockCache<ValueHash256, BlobCellMask>> _announcedBlobTransactionMasks = new(
-        static () => new(MemoryAllowance.TxHashCacheSize, lockPartition: 1));
+        () => new(Math.Min(txPoolConfig.BlobsSupport.IsPersistentStorage() ? txPoolConfig.PersistentBlobStorageSize : txPoolConfig.InMemoryBlobPoolSize, MemoryAllowance.TxHashCacheSize), lockPartition: 1));
     private readonly Lazy<ClockCache<ValueHash256, DateTimeOffset>> _partialCellResponseBackoff = new(
         static () => new(MemoryAllowance.TxHashCacheSize / 10, lockPartition: 1));
     private readonly Lazy<ClockCache<ValueHash256, int>> _unansweredCellRequests = new(
@@ -157,7 +159,7 @@ public class Eth72ProtocolHandler(
 
     protected override bool HandleMessageCore(ZeroPacket message)
     {
-        int size = message.Content.ReadableBytes;
+        int size = message.Content.Length;
         switch (message.PacketType)
         {
             case Eth72MessageCode.NewPooledTransactionHashes:
@@ -165,7 +167,7 @@ public class Eth72ProtocolHandler(
                 {
                     if (IsTransactionGossipAllowed())
                     {
-                        using NewPooledTransactionHashesMessage72 newPooledTxHashesMsg = Deserialize<NewPooledTransactionHashesMessage72>(message.Content);
+                        using NewPooledTransactionHashesMessage72 newPooledTxHashesMsg = Deserialize<NewPooledTransactionHashesMessage72>(message);
                         ReportIn(newPooledTxHashesMsg, size);
                         Handle(newPooledTxHashesMsg);
                     }
@@ -188,7 +190,7 @@ public class Eth72ProtocolHandler(
             case Eth66MessageCode.PooledTransactions:
                 if (CanReceiveTransactions)
                 {
-                    if (!Eth66RequestId.TryPeek(message.Content, out long requestId))
+                    if (!Eth66RequestId.TryPeek(message.Content.Span, out long requestId))
                     {
                         throw new SubprotocolException($"Could not read request ID from {nameof(PooledTransactionsMessage66)}.");
                     }
@@ -227,7 +229,7 @@ public class Eth72ProtocolHandler(
             case Eth72MessageCode.Cells:
                 if (CanReceiveTransactions)
                 {
-                    if (!Eth66RequestId.TryPeek(message.Content, out long requestId))
+                    if (!Eth66RequestId.TryPeek(message.Content.Span, out long requestId))
                     {
                         throw new SubprotocolException($"Could not read request ID from {nameof(CellsMessage72)}.");
                     }
@@ -259,9 +261,9 @@ public class Eth72ProtocolHandler(
                     CellsMessage72 cellsMessage;
                     try
                     {
-                        cellsMessage = Deserialize<CellsMessage72>(message.Content);
+                        cellsMessage = Deserialize<CellsMessage72>(message);
                     }
-                    catch (RlpException)
+                    catch (RlpReaderException)
                     {
                         RequeueClaimedCellRequest(sentRequest, CellRequeueReason.PeerFault);
                         throw;
@@ -476,12 +478,12 @@ public class Eth72ProtocolHandler(
                 && (_blobSupportEnabled || !supportsBlobs))
             {
                 SetTxShape(in hash, (txSize, txType));
-                hashesToRequest ??= new(Math.Min(hashes.Length - i, 256));
+                hashesToRequest ??= [with(Math.Min(hashes.Length - i, 256))];
 
                 if ((txSize > packetSizeLeft && toRequestCount > 0) || toRequestCount >= 256)
                 {
                     SendPooledTransactionsRequest(hashesToRequest);
-                    hashesToRequest = new ArrayPoolList<ValueHash256>(Math.Min(hashes.Length - i, 256));
+                    hashesToRequest = [with(Math.Min(hashes.Length - i, 256))];
                     packetSizeLeft = TransactionsMessage.MaxPacketSize;
                     toRequestCount = 0;
                 }
@@ -563,6 +565,14 @@ public class Eth72ProtocolHandler(
 
     protected override bool CanServePooledTransaction(Transaction tx) => true;
 
+    /// <remarks>Always misses: the stored encoding carries the type-3 blobs that eth/72 strips.</remarks>
+    private protected override bool TryGetEncodedPooledTransactionToServe(in ValueHash256 hash, [NotNullWhen(true)] out IOwnedReadOnlyList<byte>? encodedTx, out bool unservable)
+    {
+        encodedTx = null;
+        unservable = false;
+        return false;
+    }
+
     /// <summary>Whether <paramref name="tx"/> carries blobs that this protocol version cannot fetch separately.</summary>
     /// <remarks><see cref="Transaction.SupportsBlobs"/> is type-3 only, so it does not answer this for a
     /// type-6 frame transaction, which carries blobs by presence rather than by type.</remarks>
@@ -622,9 +632,9 @@ public class Eth72ProtocolHandler(
 
         int requestHashCount = Math.Min(message.Hashes.Length, MaxCellsRequestHashes);
         int responseCapacity = Math.Min(requestHashCount, MaxCellsResponseHashes);
-        List<ValueHash256> responseHashes = new(responseCapacity);
-        List<byte[][]> cellsByTx = new(responseCapacity);
-        HashSet<ValueHash256> seenHashes = new(requestHashCount);
+        List<ValueHash256> responseHashes = [with(responseCapacity)];
+        List<byte[][]> cellsByTx = [with(responseCapacity)];
+        HashSet<ValueHash256> seenHashes = [with(requestHashCount)];
         int hashesContentLength = 0;
         int cellsContentLength = 0;
 
@@ -1946,9 +1956,9 @@ public class Eth72ProtocolHandler(
     private void SendAnnouncement(IReadOnlyList<Transaction> txs, byte[] cellMask)
     {
         int count = txs.Count;
-        ArrayPoolList<byte> types = new(count);
-        ArrayPoolList<int> sizes = new(count);
-        ArrayPoolList<ValueHash256> hashes = new(count);
+        ArrayPoolList<byte> types = [with(count)];
+        ArrayPoolList<int> sizes = [with(count)];
+        ArrayPoolList<ValueHash256> hashes = [with(count)];
 
         for (int i = 0; i < count; i++)
         {

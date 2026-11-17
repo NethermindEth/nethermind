@@ -156,6 +156,25 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public SpanBuiltByteStruct Bytes { get; set; }
     }
 
+    /// <summary>A member name that matches a local of the generated array decoder.</summary>
+    [SszContainer(isCollectionItself: true)]
+    public partial struct SpanBuiltByteListItselfNamedIndex
+    {
+        [SszList(3)]
+        public SpanBuiltBytes? Index { get; set; }
+    }
+
+    [SszContainer(isCollectionItself: true)]
+    public partial struct SpanBuiltByteStructListItselfWithConstructor
+    {
+        public SpanBuiltByteStructListItselfWithConstructor() => Marker = 7;
+
+        public readonly int Marker;
+
+        [SszList(3)]
+        public SpanBuiltByteStruct Bytes { get; set; }
+    }
+
     [SszContainer]
     public partial class StaticClassCollectionItem
     {

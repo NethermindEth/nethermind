@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -28,6 +29,7 @@ using Nethermind.State.Proofs;
 using Nethermind.Stats.Model;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.Peers;
@@ -853,6 +855,63 @@ public partial class BlockDownloaderTests
         _ = await ctx.Feed.PrepareRequest(default); // The block is validated here.
 
         ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, Arg.Any<string>());
+    }
+
+    [Test]
+    public async Task Reports_breach_on_body_that_does_not_decode([Values] bool rlpError)
+    {
+        await using IContainer node = CreateNode();
+        Context ctx = node.Resolve<Context>();
+
+        Response options = Response.AllCorrect | Response.Consistent;
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), options));
+
+        PeerInfo peerInfo = new(syncPeer);
+        syncPeer.HeadNumber.Returns(1000UL);
+        ctx.ConfigureBestPeer(peerInfo);
+
+        BlocksRequest blockRequest = await ctx.Feed.PrepareRequest(default);
+        // A body whose uncles item is a byte string instead of a sequence, or one whose uncle decode fails otherwise.
+        byte[] malformedBody = rlpError ? [0xc2, 0xc0, 0x80] : ThrowingHeaderDecoder.BodyWithUncle();
+        IMemoryOwner<byte> memory = MemoryPool<byte>.Shared.Rent(malformedBody.Length);
+        malformedBody.CopyTo(memory.Memory);
+        blockRequest.OwnedBodies = new OwnedBlockBodies(memory, [new Range(0, malformedBody.Length)],
+            rlpError ? BlockBodyDecoder.Instance : ThrowingHeaderDecoder.BodyDecoder);
+
+        SyncResponseHandlingResult result = ctx.Feed.HandleResponse(blockRequest, peerInfo);
+
+        Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.LesserQuality));
+        ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, Arg.Any<string>());
+    }
+
+    [Test]
+    public async Task Reports_breach_on_receipts_that_do_not_decode()
+    {
+        await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig { FastSync = true, SnapSync = true }));
+        Context ctx = node.Resolve<Context>();
+        SyncPeerMock syncPeer = new(101, withReceipts: true, Response.AllCorrect | Response.WithTransactions);
+        PeerInfo peerInfo = new(syncPeer);
+        ctx.ConfigureBestPeer(peerInfo);
+        ISyncFeed<BlocksRequest> feed = ctx.FastSyncFeedComponent.Feed;
+
+        BlocksRequest bodiesRequest = await feed.PrepareRequest(default);
+        await ctx.FastSyncFeedComponent.Downloader.Dispatch(peerInfo, bodiesRequest, default);
+        feed.HandleResponse(bodiesRequest, peerInfo);
+        BlocksRequest receiptsRequest = await feed.PrepareRequest(default);
+        Assert.That(receiptsRequest.ReceiptsRequests, Is.Not.Empty);
+        // Receipts kept encoded decode on the first read, so a malformed peer reply throws there.
+        IOwnedReadOnlyList<TxReceipt[]?> receipts = Substitute.For<IOwnedReadOnlyList<TxReceipt[]?>>();
+        receipts.Count.Returns(receiptsRequest.ReceiptsRequests.Count);
+        receipts[Arg.Any<int>()].Throws(new RlpReaderException("malformed"));
+        receiptsRequest.Receipts = receipts;
+
+        SyncResponseHandlingResult result = feed.HandleResponse(receiptsRequest, peerInfo);
+
+        Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.LesserQuality));
+        ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, "invalid receipts received");
     }
 
     [Test]

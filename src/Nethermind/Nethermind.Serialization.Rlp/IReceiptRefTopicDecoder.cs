@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 
 namespace Nethermind.Serialization.Rlp;
 
@@ -13,15 +14,16 @@ namespace Nethermind.Serialization.Rlp;
 /// </remarks>
 public interface IReceiptRefTopicDecoder : IReceiptRefDecoder
 {
-    /// <summary>Reads the start of a log's topics, to decode them one at a time with <see cref="DecodeTopic"/>.</summary>
+    /// <summary>Reads a log's topics sequence, to decode its topics one at a time with <see cref="DecodeTopic"/>.</summary>
     /// <remarks>
-    /// The caller decodes while <see cref="RlpReader.Position"/> is before the returned position and then checks that it
-    /// is at it, as <c>LogTopicsIterator</c> does, so the topics are rejected in the same cases as by <see cref="IReceiptRefDecoder.DecodeTopics"/>.
+    /// The caller decodes while the returned reader has items, as <c>LogTopicsIterator</c> does, so the topics are
+    /// rejected in the same cases as by <see cref="IReceiptRefDecoder.DecodeTopics"/>.
     /// </remarks>
-    /// <returns>The position past the topics.</returns>
-    int StartDecodingTopics(ref RlpReader reader);
+    /// <returns>A reader over the topics.</returns>
+    RlpReader StartDecodingTopics(scoped ref RlpReader reader);
 
     /// <summary>Decodes the next topic without allocating it.</summary>
+    /// <param name="reader">The reader that <see cref="StartDecodingTopics"/> returned.</param>
     /// <param name="index">The position of the topic in the log, used only in an error message.</param>
     /// <param name="topic">Receives the topic; must be <see cref="Hash256.Size"/> bytes.</param>
     void DecodeTopic(ref RlpReader reader, int index, scoped Span<byte> topic);

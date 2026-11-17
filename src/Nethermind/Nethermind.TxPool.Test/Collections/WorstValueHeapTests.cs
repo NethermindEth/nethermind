@@ -20,7 +20,7 @@ public class WorstValueHeapTests
     {
         Random random = new(seed);
         WorstValueHeap<Item, int> heap = new(ItemComparer.Instance);
-        SortedSet<Item> set = new(ItemComparer.Instance);
+        SortedSet<Item> set = [with(ItemComparer.Instance)];
         List<Item> members = [];
 
         for (int step = 0; step < 2_000; step++)

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -17,6 +18,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
@@ -39,24 +41,25 @@ public partial class DebugRpcModuleTests
         [Values(0, 2, SenderTestTransactions - 1)] int target)
     {
         RecoveryCount recoveries = new();
+        List<Transaction> executed = [];
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
-            .Build(builder => builder.AddDecorator<IEthereumEcdsa>((_, inner) => new RecoveryCountingEcdsa(inner, recoveries)));
+            .Build(builder => builder
+                .AddDecorator<IEthereumEcdsa>((_, inner) => new RecoveryCountingEcdsa(inner, recoveries))
+                .AddDecorator<ITransactionProcessorAdapter>((_, inner) => new ExecutedTransactionsAdapter(inner, executed)));
         Block block = await chain.AddBlock(LegacyTransfers(chain, SenderTestTransactions));
         Assert.That(block.Transactions, Has.Length.EqualTo(SenderTestTransactions), "precondition: every transaction is included");
 
         JToken fromBlock = await TraceInBlock(chain, method, block, target);
         Transaction[] traced = ClearSenders(chain, block);
         recoveries.Reset();
+        lock (executed) executed.Clear();
         JToken single = await TraceSingle(chain, method, block.Transactions[target].Hash!);
         int recovered = recoveries.Count;
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(recovered, Is.EqualTo(target + 1), "the replay runs the prefix and the target, nothing after it");
-            for (int i = 0; i < traced.Length; i++)
-            {
-                Assert.That(traced[i].SenderAddress, i <= target ? Is.EqualTo(TestItem.AddressB) : Is.Null, $"sender of transaction {i}");
-            }
+            AssertSendersRecoveredOnCopies(executed, traced, target + 1);
             Assert.That(JToken.DeepEquals(single, fromBlock), Is.True, $"{single}{Environment.NewLine}{fromBlock}");
         }
     }
@@ -69,11 +72,13 @@ public partial class DebugRpcModuleTests
         using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
         TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
         RecoveryCount recoveries = new();
+        List<Transaction> executed = [];
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .Build(builder => builder
                 .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
                 .AddSingleton<IPrefixStateSeedSource>(new ChangesetPrefixStateSeedSource(index))
-                .AddDecorator<IEthereumEcdsa>((_, inner) => new RecoveryCountingEcdsa(inner, recoveries)));
+                .AddDecorator<IEthereumEcdsa>((_, inner) => new RecoveryCountingEcdsa(inner, recoveries))
+                .AddDecorator<ITransactionProcessorAdapter>((_, inner) => new ExecutedTransactionsAdapter(inner, executed)));
         BlockHeader parent = chain.BlockTree.Head!.Header;
         Block block = await chain.AddBlock(LegacyTransfers(chain, SenderTestTransactions));
         Assert.That(block.Transactions, Has.Length.EqualTo(SenderTestTransactions), "precondition: every transaction is included");
@@ -83,26 +88,28 @@ public partial class DebugRpcModuleTests
         IndexThroughTheCapture(chain, index, block, parent);
         Transaction[] traced = ClearSenders(chain, block);
         recoveries.Reset();
+        lock (executed) executed.Clear();
         JToken seeded = await TraceSingle(chain, method, txHash);
         int recovered = recoveries.Count;
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(recovered, Is.EqualTo(1), "a seeded prefix is not executed, so only the target needs its sender");
-            for (int i = 0; i < traced.Length; i++)
-            {
-                Assert.That(traced[i].SenderAddress, i == target ? Is.EqualTo(TestItem.AddressB) : Is.Null, $"sender of transaction {i}");
-            }
+            AssertSendersRecoveredOnCopies(executed, traced, 1);
+            Assert.That(executed.Select(static tx => tx.Hash), Is.EqualTo(new[] { txHash }), "only the target executes");
             Assert.That(JToken.DeepEquals(seeded, replayed), Is.True, $"{seeded}{Environment.NewLine}{replayed}");
         }
     }
 
     /// <remarks>
     /// The first transaction is made to hash like the target. A lookup by hash stops there and traces it; the index the
-    /// request names does not. The transfers carry different values, so the two traces differ.
+    /// request names, or the stored receipts give for a request by hash, does not. The transfers carry different values,
+    /// so the two traces differ.
     /// </remarks>
     [Test]
-    public async Task Trace_by_block_and_index_uses_the_index_instead_of_a_hash_lookup()
+    public async Task Seeded_trace_uses_a_known_index_instead_of_a_hash_lookup(
+        [Values("debug_traceTransactionByBlockhashAndIndex", "debug_traceTransaction", "trace_transaction", "trace_replayTransaction")] string method,
+        [Values] bool streaming)
     {
         const int target = 2;
         using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
@@ -111,6 +118,7 @@ public partial class DebugRpcModuleTests
             .Build(builder => builder
                 .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
                 .AddSingleton<IPrefixStateSeedSource>(new ChangesetPrefixStateSeedSource(index)));
+        chain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
         ulong nonce = chain.ReadOnlyState.GetNonce(TestItem.AddressB);
         Transaction[] transfers = new Transaction[SenderTestTransactions];
         for (int i = 0; i < transfers.Length; i++)
@@ -121,16 +129,24 @@ public partial class DebugRpcModuleTests
         BlockHeader parent = chain.BlockTree.Head!.Header;
         Block block = await chain.AddBlock(transfers);
         Assert.That(block.Transactions, Has.Length.EqualTo(SenderTestTransactions), "precondition: every transaction is included");
+        Hash256 txHash = block.Transactions[target].Hash!;
         GethTraceOptions callTracer = new() { Tracer = NativeCallTracer.CallTracer };
 
-        JToken expected = await TraceByIndex(chain, block, target, callTracer);
+        JToken expected = await TraceTarget();
         IndexThroughTheCapture(chain, index, block, parent);
         Transaction[] stored = chain.BlockTree.FindBlock(block.Hash!)!.Transactions;
-        stored[0].SetPreHash(Rlp.Encode(stored[target], RlpBehaviors.SkipTypedWrapping).Bytes);
-        Assert.That(stored[0].Hash, Is.EqualTo(stored[target].Hash), "precondition: the first transaction hashes like the target");
-        JToken seeded = await TraceByIndex(chain, block, target, callTracer);
+        stored[0].SetPreHash(Rlp.Encode(stored[target], RlpBehaviors.SkipTypedWrapping));
+        Assert.That(stored[0].Hash, Is.EqualTo(txHash), "precondition: the first transaction hashes like the target");
+        JToken seeded = await TraceTarget();
 
         Assert.That(JToken.DeepEquals(seeded, expected), Is.True, $"{seeded}{Environment.NewLine}{expected}");
+
+        Task<JToken> TraceTarget() => method switch
+        {
+            "debug_traceTransactionByBlockhashAndIndex" => TraceByIndex(chain, block, target, callTracer),
+            "debug_traceTransaction" => TraceSingle(chain, method, txHash, callTracer),
+            _ => TraceSingle(chain, method, txHash),
+        };
     }
 
     private static async Task<JToken> TraceByIndex(TestRpcBlockchain chain, Block block, int index, GethTraceOptions options)
@@ -175,17 +191,17 @@ public partial class DebugRpcModuleTests
         using (Assert.EnterMultipleScope())
         {
             AuthorizationTuple tracedAuthorization = traced[1].AuthorizationList![0];
+            // The replay recovers senders into its copies of the transactions, never into the block's.
+            Assert.That(traced.Select(static tx => tx.SenderAddress), Is.All.Null);
             if (target == 0)
             {
                 Assert.That(recovered, Is.EqualTo(1), "neither the sender nor the authority after the target is recovered");
-                Assert.That(traced[1].SenderAddress, Is.Null);
                 Assert.That(tracedAuthorization.Authority, Is.Null);
             }
             else
             {
-                // The set-code sender may come from the process-wide sender cache; its authority never does.
-                Assert.That(recovered, Is.InRange(2, 3));
-                Assert.That(traced[1].SenderAddress, Is.EqualTo(TestItem.AddressB));
+                // A copy shares its authorization list with the block's transaction, so the recovered authority shows there.
+                Assert.That(recovered, Is.EqualTo(3));
                 Assert.That(tracedAuthorization.Authority, Is.EqualTo(TestItem.AddressC));
             }
             Assert.That(JToken.DeepEquals(single, fromBlock), Is.True, $"{single}{Environment.NewLine}{fromBlock}");
@@ -198,24 +214,61 @@ public partial class DebugRpcModuleTests
         [Values("debug_traceTransaction", "trace_transaction")] string method)
     {
         RecoveryCount recoveries = new();
+        List<Transaction> executed = [];
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .Build(builder => builder
                 .AddDecorator<IBlockProcessor, ForcedBlockAccessListBlockProcessor>()
-                .AddDecorator<IEthereumEcdsa>((_, inner) => new RecoveryCountingEcdsa(inner, recoveries)));
+                .AddDecorator<IEthereumEcdsa>((_, inner) => new RecoveryCountingEcdsa(inner, recoveries))
+                .AddDecorator<ITransactionProcessorAdapter>((_, inner) => new ExecutedTransactionsAdapter(inner, executed)));
         Block block = await chain.AddBlock(LegacyTransfers(chain, SenderTestTransactions));
         Assert.That(block.Transactions, Has.Length.EqualTo(SenderTestTransactions), "precondition: every transaction is included");
 
         Transaction[] traced = ClearSenders(chain, block);
         recoveries.Reset();
+        lock (executed) executed.Clear();
         await TraceSingle(chain, method, block.Transactions[0].Hash!);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(recoveries.Count, Is.EqualTo(SenderTestTransactions));
-            for (int i = 0; i < traced.Length; i++)
-            {
-                Assert.That(traced[i].SenderAddress, Is.EqualTo(TestItem.AddressB), $"sender of transaction {i}");
-            }
+            AssertSendersRecoveredOnCopies(executed, traced, SenderTestTransactions);
+        }
+    }
+
+    [Test]
+    public async Task Block_trace_recovers_senders_on_its_copies()
+    {
+        List<Transaction> executed = [];
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new ExecutedTransactionsAdapter(inner, executed)));
+        Block block = await chain.AddBlock(LegacyTransfers(chain, SenderTestTransactions));
+        Assert.That(block.Transactions, Has.Length.EqualTo(SenderTestTransactions), "precondition: every transaction is included");
+
+        Transaction[] traced = ClearSenders(chain, block);
+        lock (executed) executed.Clear();
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", block.Hash!);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(response)["error"], Is.Null, response);
+            AssertSendersRecoveredOnCopies(executed, traced, SenderTestTransactions);
+        }
+    }
+
+    /// <summary>
+    /// Asserts that the replay ran <paramref name="count"/> copies of the block's transactions with their senders
+    /// recovered, and left the block's transactions without senders.
+    /// </summary>
+    private static void AssertSendersRecoveredOnCopies(List<Transaction> executed, Transaction[] stored, int count)
+    {
+        Transaction[] ran;
+        lock (executed) ran = [.. executed];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ran, Has.Length.EqualTo(count), "the replay executed the expected transactions");
+            Assert.That(ran.Select(static tx => tx.SenderAddress), Is.All.EqualTo(TestItem.AddressB), "the replay recovers the sender of each transaction it runs");
+            Assert.That(ran, Has.None.Matches<Transaction>(tx => stored.Any(s => ReferenceEquals(s, tx))), "the replay runs copies");
+            Assert.That(stored.Select(static tx => tx.SenderAddress), Is.All.Null, "the block's transactions keep their missing senders");
         }
     }
 
@@ -225,7 +278,6 @@ public partial class DebugRpcModuleTests
         Transaction[] transactions = new Transaction[count];
         for (int i = 0; i < transactions.Length; i++)
         {
-            // Legacy transactions bypass the process-wide sender cache, so every recovery reaches the counter.
             transactions[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce + (ulong)i).WithValue(1)
                 .WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
         }
@@ -233,11 +285,16 @@ public partial class DebugRpcModuleTests
         return transactions;
     }
 
-    private static async Task<JToken> TraceSingle(TestRpcBlockchain chain, string method, Hash256 txHash)
+    private static async Task<JToken> TraceSingle(TestRpcBlockchain chain, string method, Hash256 txHash, GethTraceOptions? options = null)
     {
-        string response = method == "trace_transaction"
-            ? await RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, txHash)
-            : await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, txHash);
+        string response = method switch
+        {
+            "trace_transaction" => await RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, txHash),
+            "trace_replayTransaction" => await RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, txHash, new[] { "trace" }),
+            _ => options is null
+                ? await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, txHash)
+                : await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, txHash, options),
+        };
         JToken result = JToken.Parse(response)["result"]!;
         Assert.That(result.Type, Is.Not.EqualTo(JTokenType.Null), response);
         return result;
@@ -256,8 +313,10 @@ public partial class DebugRpcModuleTests
     }
 
     /// <summary>Clears what block production recovered on the transaction objects the block tree hands to the tracer.</summary>
-    private static Transaction[] ClearSenders(TestRpcBlockchain chain, Block block)
+    /// <remarks>Also empties the process-wide sender cache, so that every sender the replay needs is recovered again.</remarks>
+    internal static Transaction[] ClearSenders(TestRpcBlockchain chain, Block block)
     {
+        EthereumEcdsaExtensions.ClearSenderCache();
         Transaction[] stored = chain.BlockTree.FindBlock(block.Hash!)!.Transactions;
         Assert.That(stored[0], Is.SameAs(chain.BlockTree.FindBlock(block.Hash!)!.Transactions[0]), "precondition: the tracer reads these transactions");
         foreach (Transaction transaction in stored)

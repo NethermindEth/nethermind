@@ -128,9 +128,6 @@ public sealed partial class LeafData : INodeWithKey
                              MemorySizes.RefSize + // RefSize for _value._array
                              (_value.IsNotNullOrEmpty ? (int)MemorySizes.Align(_value.UnderlyingLength + MemorySizes.ArrayOverhead) : 0); // value
 
-    private readonly CappedArray<byte> _value;
-
-    public CappedArray<byte> Value => _value;
     public TrieNode? StorageRoot { get; set; }
 
     public LeafData() => _value = CappedArray<byte>.Empty;
@@ -150,5 +147,5 @@ public sealed partial class LeafData : INodeWithKey
 
     public ref object? this[int index] => throw new IndexOutOfRangeException();
 
-    INodeData INodeData.Clone() => new LeafData(Key, _value);
+    INodeData INodeData.Clone() => new LeafData(Key, Value);
 }

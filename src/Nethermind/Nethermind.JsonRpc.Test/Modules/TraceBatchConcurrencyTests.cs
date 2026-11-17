@@ -164,7 +164,10 @@ public class TraceBatchConcurrencyTests
 
         public bool TracesOverlapped => _tracesOverlapped.Task.IsCompleted;
 
-        public async ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, JsonRpcContext context)
+        public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, JsonRpcContext context) =>
+            SendRequestAsync(request, context, default);
+
+        public async ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, JsonRpcContext context, CancellationToken cancellationToken)
         {
             bool trace = request.Method == "trace_transaction";
             if (Interlocked.Increment(ref _inFlight) > 1) _overlapped.TrySetResult();
@@ -172,7 +175,7 @@ public class TraceBatchConcurrencyTests
             try
             {
                 await WaitBriefly(trace ? _tracesOverlapped.Task : _overlapped.Task);
-                return await inner.SendRequestAsync(request, context);
+                return await inner.SendRequestAsync(request, context, cancellationToken);
             }
             finally
             {

@@ -30,7 +30,7 @@ namespace Nethermind.State.Snap
         public byte[] ToRlpValue()
         {
             Account account = Account ?? throw new InvalidOperationException("An account value is required when encoding a SNAP trie entry.");
-            return (account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(account)).Bytes;
+            return account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(account);
         }
     }
 }

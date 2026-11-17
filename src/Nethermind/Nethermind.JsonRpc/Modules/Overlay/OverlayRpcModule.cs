@@ -81,6 +81,9 @@ public class OverlayRpcModule(
             {
                 Transaction deployment = new();
                 block.Transactions[creation.TxIndex].CopyTo(deployment, copyHash: true);
+                // The block's transaction may carry no recovered sender, and with the new data its signature no longer
+                // recovers it, so the deployment takes the creator the trace found.
+                deployment.SenderAddress = creation.Creator;
                 deployment.Data = code;
                 deployment.GasLimit = gasLimit;
                 deployment.GasPrice = 0;
@@ -193,9 +196,8 @@ public class OverlayRpcModule(
         }
     }
 
-    /// <summary>Re-executes a copy of <paramref name="block"/> on its parent state with <paramref name="stateOverride"/> applied.</summary>
-    /// <remarks>The replay loads each transaction nonce from the overridden state,
-    /// so it runs on copies to keep the cached canonical block unchanged.</remarks>
+    /// <summary>Re-executes <paramref name="block"/> on its parent state with <paramref name="stateOverride"/> applied.</summary>
+    /// <remarks>The tracer replays the block on copies of its transactions, so the block tree's transactions keep their values.</remarks>
     private bool TryTrace<T>(Block block, Dictionary<Address, AccountOverride>? stateOverride, IBlockTracer tracer, CancellationToken token, [NotNullWhen(false)] out ResultWrapper<T>? failure)
     {
         if (!tracerEnv.TryBuildAndOverrideAtTarget(block.Header, stateOverride, null, out Scope<ITracer>? scope))
@@ -204,16 +206,9 @@ public class OverlayRpcModule(
             return false;
         }
 
-        Transaction[] transactions = new Transaction[block.Transactions.Length];
-        for (int i = 0; i < transactions.Length; i++)
-        {
-            transactions[i] = new Transaction();
-            block.Transactions[i].CopyTo(transactions[i], copyHash: true);
-        }
-
         using (scope)
         {
-            scope.Component.Trace(new Block(block.Header.Clone(), block.Body.WithChangedTransactions(transactions)), tracer.WithCancellation(token));
+            scope.Component.Trace(new Block(block.Header.Clone(), block.Body), tracer.WithCancellation(token));
         }
 
         failure = null;

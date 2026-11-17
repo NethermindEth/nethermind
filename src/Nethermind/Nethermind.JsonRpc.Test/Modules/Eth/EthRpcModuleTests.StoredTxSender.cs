@@ -70,7 +70,7 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Eth_get_transaction_by_block_and_index_reads_one_transaction_of_an_uncached_block()
+    public async Task Eth_get_transaction_by_block_and_index_reads_one_transaction_of_an_uncached_block([Values] bool belowTheServedFloor)
     {
         using Context ctx = await Context.Create();
         TestRpcBlockchain test = ctx.Test;
@@ -79,6 +79,8 @@ public partial class EthRpcModuleTests
         Transaction expected = block.Transactions[1];
         using ArrayPoolList<byte> expectedRawList = TxDecoder.Instance.EncodeToArrayPoolList(expected, RlpBehaviors.SkipTypedWrapping);
         byte[] expectedRaw = expectedRawList.ToArray();
+        // A body still stored below the served floor keeps being served.
+        if (belowTheServedFloor) test.BlockTree.UpdateLowestServedBlock(blockNumber + 1);
         EvictBlocks(test);
 
         ResultWrapper<TransactionForRpc> byNumber = test.EthRpcModule.eth_getTransactionByBlockNumberAndIndex(new BlockParameter(blockNumber), 1);
@@ -89,14 +91,16 @@ public partial class EthRpcModuleTests
 
         using (Assert.EnterMultipleScope())
         {
-            LegacyTransactionForRpc fromNumber = (LegacyTransactionForRpc)byNumber.Data;
-            Assert.That(fromNumber.Hash, Is.EqualTo(expected.Hash));
-            Assert.That(fromNumber.From, Is.EqualTo(TestItem.AddressB));
-            Assert.That(fromNumber.BlockHash, Is.EqualTo(block.Hash));
-            Assert.That(fromNumber.TransactionIndex, Is.EqualTo((long?)1));
-            Assert.That(((LegacyTransactionForRpc)byHash.Data).Hash, Is.EqualTo(expected.Hash));
-            Assert.That(raw.Data!.ToArray(), Is.EqualTo(expectedRaw));
+            LegacyTransactionForRpc? fromNumber = byNumber.Data as LegacyTransactionForRpc;
+            Assert.That(fromNumber?.Hash, Is.EqualTo(expected.Hash));
+            Assert.That(fromNumber?.From, Is.EqualTo(TestItem.AddressB));
+            Assert.That(fromNumber?.BlockHash, Is.EqualTo(block.Hash));
+            Assert.That(fromNumber?.TransactionIndex, Is.EqualTo((long?)1));
+            Assert.That((byHash.Data as LegacyTransactionForRpc)?.Hash, Is.EqualTo(expected.Hash));
+            Assert.That(raw.Data?.ToArray(), Is.EqualTo(expectedRaw));
+            Assert.That(pastEnd.Result.ResultType, Is.EqualTo(ResultType.Success));
             Assert.That(pastEnd.Data, Is.Null);
+            Assert.That(rawPastEnd.Result.ResultType, Is.EqualTo(ResultType.Success));
             Assert.That(rawPastEnd.Data, Is.Null);
         }
     }

@@ -22,6 +22,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Evm.State;
 using Nethermind.State;
+using Nethermind.Trie.NodeBuffer;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
@@ -597,7 +598,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             TrieNode a = new(NodeType.Leaf);
             Account account = new(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
-            a.Value = Rlp.Encode(account).Bytes;
+            a.Value = Rlp.Encode(account);
             a.Key = Nibbles.BytesToNibbleBytes(TestItem.KeccakA.BytesToArray());
             a.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
 
@@ -655,7 +656,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             TrieNode a = new(NodeType.Leaf);
             Account account = new(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
-            a.Value = Rlp.Encode(account).Bytes;
+            a.Value = Rlp.Encode(account);
             a.Key = Bytes.FromHexString("abc");
             a.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
 
@@ -719,7 +720,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             TrieNode a = new(NodeType.Leaf);
             Account account = new(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
-            a.Value = Rlp.Encode(account).Bytes;
+            a.Value = Rlp.Encode(account);
             a.Key = storage1Nib[1..];
             a.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
 
@@ -728,7 +729,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             TrieNode b = new(NodeType.Leaf);
             Account accountB = new(2, 1, storage2.Keccak, Keccak.OfAnEmptyString);
-            b.Value = Rlp.Encode(accountB).Bytes;
+            b.Value = Rlp.Encode(accountB);
             b.Key = storage2Nib[1..];
             b.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
 
@@ -1478,11 +1479,11 @@ namespace Nethermind.Trie.Test.Pruning
                 {
                     if (!fullTrieStore.HasRoot(rootsToTest)) continue;
                     TrieStatsCollector collector = new(stubCodeDb, LimboLogs.Instance, expectAccounts: false);
-                    ptree.Accept(collector, rootHash: rootsToTest);
+                    ptree.Accept(new NodeRecordVisitorAdapter<TrieStatsCollector.Context>(collector), rootHash: rootsToTest);
                     Assert.That(collector.Stats.MissingNodes, Is.EqualTo(0));
 
                     collector = new TrieStatsCollector(stubCodeDb, LimboLogs.Instance, expectAccounts: false);
-                    readOnlyPTree.Accept(collector, rootHash: rootsToTest);
+                    readOnlyPTree.Accept(new NodeRecordVisitorAdapter<TrieStatsCollector.Context>(collector), rootHash: rootsToTest);
                     Assert.That(collector.Stats.MissingNodes, Is.EqualTo(0));
                 }
             }
@@ -1660,7 +1661,7 @@ namespace Nethermind.Trie.Test.Pruning
             fullTrieStore.PrunePersistedNodes();
 
             TrieStatsCollector collector = new(new MemDb(), SimpleConsoleLogManager.Instance, expectAccounts: false);
-            ptree.Accept(collector, rootHash: persistedRootHash);
+            ptree.Accept(new NodeRecordVisitorAdapter<TrieStatsCollector.Context>(collector), rootHash: persistedRootHash);
             Assert.That(collector.Stats.MissingNodes, Is.EqualTo(0));
         }
 
@@ -1713,11 +1714,11 @@ namespace Nethermind.Trie.Test.Pruning
                     Console.Error.WriteLine($"Verify {i}");
                     Hash256 rootsToTest = rootsToTests[i];
                     TrieStatsCollector collector = new(stubCodeDb, LimboLogs.Instance, expectAccounts: false);
-                    ptree.Accept(collector, rootHash: rootsToTest);
+                    ptree.Accept(new NodeRecordVisitorAdapter<TrieStatsCollector.Context>(collector), rootHash: rootsToTest);
                     Assert.That(collector.Stats.MissingNodes, Is.EqualTo(0));
 
                     collector = new TrieStatsCollector(stubCodeDb, LimboLogs.Instance, expectAccounts: false);
-                    readOnlyPTree.Accept(collector, rootHash: rootsToTest);
+                    readOnlyPTree.Accept(new NodeRecordVisitorAdapter<TrieStatsCollector.Context>(collector), rootHash: rootsToTest);
                     Assert.That(collector.Stats.MissingNodes, Is.EqualTo(0));
                 }
             }
@@ -1930,7 +1931,7 @@ namespace Nethermind.Trie.Test.Pruning
                             storageTree.Set(secondKey, [1]);
                             storageTree.Commit();
                             Account account = new(1, 1, storageTree.RootHash, Keccak.OfAnEmptyString);
-                            stateTree.Set(storageAddress.BytesToArray(), Rlp.Encode(account).Bytes);
+                            stateTree.Set(storageAddress.BytesToArray(), Rlp.Encode(account));
                         }
 
                         stateTree.Commit();

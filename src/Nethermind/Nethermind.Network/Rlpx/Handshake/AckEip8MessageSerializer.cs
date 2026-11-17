@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Rlpx.Handshake
@@ -20,12 +21,13 @@ namespace Nethermind.Network.Rlpx.Handshake
 
         public int Serialize(Span<byte> destination, AckEip8Message msg)
         {
-            RlpWriter writer = new(destination);
-            writer.StartSequence(GetContentLength(msg));
+            RlpWriter writer = RlpWriter.ContentWriter(destination);
+            RlpSequence sequence = writer.StartSequence(GetContentLength(msg));
             writer.Encode(msg.EphemeralPublicKey.Bytes);
             writer.Encode(msg.Nonce);
             writer.Encode(msg.Version);
-            return writer.Position;
+            writer.EndSequence(sequence);
+            return writer.Length;
         }
 
         private static int GetContentLength(AckEip8Message msg) =>
@@ -35,9 +37,8 @@ namespace Nethermind.Network.Rlpx.Handshake
 
         public AckEip8Message Deserialize(ReadOnlySpan<byte> msgBytes)
         {
-            RlpReader ctx = new(msgBytes);
+            RlpReader ctx = new RlpReader(msgBytes).EnterSequence(out _);
             AckEip8Message authEip8Message = new();
-            ctx.ReadSequenceLength();
             authEip8Message.EphemeralPublicKey = new PublicKey(ctx.DecodeByteArraySpan(RlpLimit.L64));
             authEip8Message.Nonce = ctx.DecodeByteArray();
             return authEip8Message;

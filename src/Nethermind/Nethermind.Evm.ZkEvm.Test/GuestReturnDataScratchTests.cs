@@ -3,18 +3,7 @@
 
 using System;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
-using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Evm.GasPolicy;
-using Nethermind.Evm.Precompiles;
-using Nethermind.Evm.State;
-using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
-using Nethermind.Logging;
-using Nethermind.Specs;
-using Nethermind.Specs.Forks;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.ZkEvm.Test;
@@ -35,25 +24,23 @@ public class GuestReturnDataScratchTests
     // A copy per output allocates Outputs * OutputSize; the rest is frame bookkeeping and the substitute world state.
     private const int AllowedAllocation = Outputs * OutputSize / 4;
 
-    private static readonly IReleaseSpec Fork = Osaka.Instance;
-    private static readonly BlockHeader Header = new(Hash256.Zero, Hash256.Zero, Address.Zero, UInt256.Zero, 1, 60_000_000, 1, []);
     private static readonly Address Sender = new("0x00000000000000000000000000000000000000ca");
     private static readonly Address Contract = new("0x00000000000000000000000000000000000000c0");
 
     [Test]
     public void Nested_outputs_reuse_one_buffer([Values(Instruction.RETURN, Instruction.REVERT)] Instruction halt)
     {
-        ScratchVirtualMachine vm = new(Output(halt));
+        GuestTransactionVirtualMachine vm = new(Output(halt), Sender, UInt256.One);
         byte[] code = CallContract(Outputs);
 
-        vm.Call(code);
+        vm.Call(code, Gas, Sender, Sender, UInt256.Zero);
         long before = GC.GetAllocatedBytesForCurrentThread();
-        int lastOutputLength = vm.Call(code);
+        vm.Call(code, Gas, Sender, Sender, UInt256.Zero);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(lastOutputLength, Is.EqualTo(OutputSize));
+            Assert.That(vm.ReturnDataBuffer.Length, Is.EqualTo(OutputSize));
             Assert.That(vm.RetainedReturnDataScratchLength, Is.GreaterThanOrEqualTo(OutputSize));
             Assert.That(allocated, Is.LessThan(AllowedAllocation));
         }
@@ -63,13 +50,13 @@ public class GuestReturnDataScratchTests
     [TestCase(Instruction.REVERT, RevertedCreateOutputSize)]
     public void Undeployable_create_outputs_reuse_one_buffer(Instruction halt, int outputSize)
     {
-        ScratchVirtualMachine vm = new([]);
+        GuestTransactionVirtualMachine vm = new([], Sender, UInt256.One);
         byte[] initCode = Output(halt, outputSize);
 
-        vm.Create(initCode);
+        vm.Create(initCode, Gas, Sender, Contract);
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < Outputs; i++)
-            vm.Create(initCode);
+            vm.Create(initCode, Gas, Sender, Contract);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
         using (Assert.EnterMultipleScope())
@@ -95,50 +82,5 @@ public class GuestReturnDataScratchTests
         for (int i = 0; i < calls; i++)
             call.CopyTo(code, i * call.Length);
         return code;
-    }
-
-    /// <summary>A virtual machine over an Osaka block whose world state holds <see cref="Contract"/> with the given code.</summary>
-    private sealed class ScratchVirtualMachine : VirtualMachine<EthereumGasPolicy>
-    {
-        private readonly IWorldState _state = Substitute.For<IWorldState>();
-
-        public ScratchVirtualMachine(byte[] contractCode)
-            : base(Substitute.For<IBlockhashProvider>(), new SingleReleaseSpecProvider(Fork, BlockchainIds.Mainnet, BlockchainIds.Mainnet), LimboLogs.Instance)
-        {
-            ICodeInfoRepository codeInfoRepository = Substitute.For<ICodeInfoRepository>();
-            CodeInfo codeInfo = new(contractCode);
-            codeInfoRepository.GetCachedCodeInfo(Arg.Any<Address>(), Arg.Any<bool>(), Arg.Any<IReleaseSpec>(), out Arg.Any<Address?>())
-                .Returns(codeInfo);
-            codeInfoRepository.GetPrecompile(Arg.Any<Address>(), Arg.Any<IReleaseSpec>()).Returns((IPrecompile?)null);
-
-            SetBlockExecutionContext(new BlockExecutionContext(Header, Fork));
-            SetTxExecutionContext(new TxExecutionContext(Sender, codeInfoRepository, null, UInt256.One));
-        }
-
-        /// <summary>Runs <paramref name="code"/> as a transaction from <see cref="Sender"/>.</summary>
-        /// <returns>The length of the last nested output.</returns>
-        public int Call(byte[] code)
-        {
-            using ExecutionEnvironment env = ExecutionEnvironment.Rent(new CodeInfo(code), Sender, Sender, Sender, 0, UInt256.Zero, default);
-            using VmState<EthereumGasPolicy> transaction = VmState<EthereumGasPolicy>.RentTopLevel(
-                EthereumGasPolicy.FromULong(Gas), ExecutionType.TRANSACTION, env, new StackAccessTracker(), default);
-            ExecuteTransaction<OffFlag>(transaction, _state, NullTxTracer.Instance);
-            return ReturnDataBuffer.Length;
-        }
-
-        /// <summary>Runs <paramref name="initCode"/> as a CREATE frame of a transaction that runs no code of its own.</summary>
-        /// <remarks>Entered directly, because the CREATE opcode derives the new address with Keccak, which a host process cannot run here.</remarks>
-        public void Create(byte[] initCode)
-        {
-            using ExecutionEnvironment env = ExecutionEnvironment.Rent(CodeInfo.Empty, Sender, Sender, Sender, 0, UInt256.Zero, default);
-            using VmState<EthereumGasPolicy> transaction = VmState<EthereumGasPolicy>.RentTopLevel(
-                EthereumGasPolicy.FromULong(Gas), ExecutionType.TRANSACTION, env, new StackAccessTracker(), default);
-            ExecutionEnvironment createEnv = ExecutionEnvironment.Rent(new CodeInfo(initCode), Contract, Sender, null, 1, UInt256.Zero, default);
-            VmState<EthereumGasPolicy> create = VmState<EthereumGasPolicy>.RentFrame(
-                EthereumGasPolicy.FromULong(Gas / 2), 0, 0, ExecutionType.CREATE, isStatic: false, isCreateOnPreExistingAccount: false,
-                createEnv, new StackAccessTracker(), default);
-            StateStack.Push(transaction);
-            ExecuteTransaction<OffFlag>(create, _state, NullTxTracer.Instance);
-        }
     }
 }

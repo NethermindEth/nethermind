@@ -6,17 +6,23 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Db;
+using Nethermind.Evm;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -76,6 +82,8 @@ public class ReceiptsSyncFeedTests
     private ISyncConfig _syncConfig;
     private ISyncReport _syncReport;
     private IBlockTree _blockTree;
+    private IBlockStore _blockStore;
+    private static readonly BlockDecoder BlockDecoder = new();
     private IDb _metadataDb;
     private IHistoryPruner _historyPruner;
 
@@ -103,6 +111,7 @@ public class ReceiptsSyncFeedTests
         _receiptStorage = Substitute.For<IReceiptStorage>();
         _syncPointers = new MemorySyncPointers();
         _blockTree = Substitute.For<IBlockTree>();
+        _blockStore = Substitute.For<IBlockStore>();
         _historyPruner = Substitute.For<IHistoryPruner>();
         _metadataDb = new TestMemDb();
 
@@ -132,11 +141,13 @@ public class ReceiptsSyncFeedTests
         _metadataDb?.Dispose();
     }
 
-    private ReceiptsSyncFeed CreateFeed() =>
+    private ReceiptsSyncFeed CreateFeed(IReceiptsRootCalculator? receiptsRootCalculator = null) =>
         new(
             _specProvider,
             _blockTree,
+            _blockStore,
             _receiptStorage,
+            receiptsRootCalculator ?? ReceiptsRootCalculator.Instance,
             _syncPointers,
             _syncPeerPool,
             _syncConfig,
@@ -153,7 +164,9 @@ public class ReceiptsSyncFeedTests
             () => _feed = new ReceiptsSyncFeed(
                 _specProvider,
                 _blockTree,
+                _blockStore,
                 _receiptStorage,
+                ReceiptsRootCalculator.Instance,
                 _syncPointers,
                 _syncPeerPool,
                 _syncConfig,
@@ -170,7 +183,9 @@ public class ReceiptsSyncFeedTests
         _feed = new ReceiptsSyncFeed(
             _specProvider,
             _blockTree,
+            _blockStore,
             NullReceiptStorage.Instance,
+            ReceiptsRootCalculator.Instance,
             _syncPointers,
             _syncPeerPool,
             _syncConfig,
@@ -305,7 +320,9 @@ public class ReceiptsSyncFeedTests
         _feed = new ReceiptsSyncFeed(
             _specProvider,
             _blockTree,
+            _blockStore,
             _receiptStorage,
+            ReceiptsRootCalculator.Instance,
             _syncPointers,
             _syncPeerPool,
             _syncConfig,
@@ -351,7 +368,9 @@ public class ReceiptsSyncFeedTests
         _feed = new ReceiptsSyncFeed(
             specProvider ?? _specProvider,
             _blockTree,
+            _blockStore,
             _receiptStorage,
+            ReceiptsRootCalculator.Instance,
             _syncPointers,
             _syncPeerPool,
             _syncConfig,
@@ -379,6 +398,10 @@ public class ReceiptsSyncFeedTests
         _blockTree.FindBlock(Keccak.Zero, BlockTreeLookupOptions.None)
             .ReturnsForAnyArgs(ci =>
                 scenario.BlocksByHash.TryGetValue(ci.Arg<Hash256>(), out Block? value) ? value : null);
+
+        _blockStore.GetOwnedRlp(default, Keccak.Zero)
+            .ReturnsForAnyArgs(ci =>
+                scenario.BlocksByHash.TryGetValue(ci.Arg<Hash256>(), out Block? value) ? new ArrayMemoryManager(BlockDecoder.Encode(value)) : null);
 
         _blockTree.FindHeader(Keccak.Zero, BlockTreeLookupOptions.None)
             .ReturnsForAnyArgs(ci =>
@@ -490,6 +513,166 @@ public class ReceiptsSyncFeedTests
         }
 
         batch.Response = response;
+    }
+
+    /// <summary>Gives each block of the batch its own receipts, which its header's receipts root matches.</summary>
+    private void FillBatchResponsesThatDifferByBlock(ReceiptsSyncBatch batch, Scenario scenario)
+    {
+        _blockTree.FindHeader(Keccak.Zero, BlockTreeLookupOptions.None).ReturnsForAnyArgs(ci =>
+        {
+            BlockHeader header = scenario.BlocksByHash[ci.Arg<Hash256>()].Header.Clone();
+            header.ReceiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(ReceiptsOf(header.Number), _specProvider.GenesisSpec, null);
+            return header;
+        });
+
+        ArrayPoolList<TxReceipt[]?> response = new(batch.Infos.Length, batch.Infos.Length);
+        for (int i = 0; i < response.Count; i++)
+        {
+            response[i] = ReceiptsOf(batch.Infos[i]!.BlockNumber);
+        }
+
+        batch.Response = response;
+    }
+
+    private static TxReceipt[] ReceiptsOf(ulong blockNumber) => [Build.A.Receipt.WithGasUsedTotal(blockNumber).TestObject];
+
+    [Test]
+    public async Task Stores_receipts_kept_encoded_as_received([Values] bool storeTakesEncoded)
+    {
+        LoadScenario(_1024BodiesWithOneTxEach);
+        List<(ulong BlockNumber, ulong GasUsedTotal)> stored = [];
+        _receiptStorage.TryInsertNetworkReceipts(default!, default, default, default).ReturnsForAnyArgs(ci =>
+        {
+            if (storeTakesEncoded)
+            {
+                RlpReader receipts = new RlpReader(ci.Arg<ReadOnlyMemory<byte>>().Span).EnterSequence(out _);
+                NetworkReceipt.TryRead(ref receipts, withBloom: true, out NetworkReceipt receipt);
+                stored.Add((ci.Arg<Block>().Number, receipt.GasUsedTotal));
+            }
+
+            return storeTakesEncoded;
+        });
+        _receiptStorage.When(static s => s.Insert(Arg.Any<Block>(), Arg.Any<TxReceipt[]>(), true))
+            .Do(ci => stored.Add((ci.Arg<Block>().Number, ci.Arg<TxReceipt[]>()[0].GasUsedTotal)));
+
+        using ReceiptsSyncBatch? batch = await _feed.PrepareRequest();
+        FillBatchResponsesThatDifferByBlock(batch!, _1024BodiesWithOneTxEach);
+        using (IOwnedReadOnlyList<TxReceipt[]?> decoded = batch!.Response!)
+        {
+            batch.Response = Encode(decoded)!;
+        }
+
+        int requested = batch.Infos.Length;
+        // A store that does not take encoded receipts is asked once only.
+        int encodedInserts = storeTakesEncoded ? requested : 1;
+
+        SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(handlingResult, Is.EqualTo(SyncResponseHandlingResult.OK));
+            Assert.That(stored, Is.EqualTo(batch.Infos.Select(static info => (info!.BlockNumber, info.BlockNumber))));
+        }
+
+        _receiptStorage.ReceivedWithAnyArgs(encodedInserts).TryInsertNetworkReceipts(default!, default, default, default);
+        _blockStore.ReceivedWithAnyArgs(encodedInserts).GetOwnedRlp(default, default!);
+    }
+
+    [Test]
+    public async Task Decodes_receipts_whose_root_the_calculator_does_not_compute_encoded()
+    {
+        LoadScenario(_1024BodiesWithOneTxEach);
+        // A calculator for receipts in another form, as a plugin registers it.
+        IReceiptsRootCalculator calculator = Substitute.For<IReceiptsRootCalculator>();
+        calculator.GetReceiptsRoot(Arg.Any<TxReceipt[]>(), Arg.Any<IReceiptSpec>(), Arg.Any<Hash256?>())
+            .Returns(ci => ReceiptsRootCalculator.Instance.GetReceiptsRoot(ci.ArgAt<TxReceipt[]>(0), ci.ArgAt<IReceiptSpec>(1), ci.ArgAt<Hash256?>(2)));
+        _feed.Dispose();
+        _feed = CreateFeed(calculator);
+        _feed.InitializeFeed();
+
+        using ReceiptsSyncBatch? batch = await _feed.PrepareRequest();
+        FillBatchResponses(batch!);
+        using (IOwnedReadOnlyList<TxReceipt[]?> decoded = batch!.Response!)
+        {
+            batch.Response = Encode(decoded)!;
+        }
+
+        SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch);
+
+        Assert.That(handlingResult, Is.EqualTo(SyncResponseHandlingResult.OK));
+        _receiptStorage.DidNotReceiveWithAnyArgs().TryInsertNetworkReceipts(default!, default, default, default);
+        _receiptStorage.Received(batch.Infos.Length).Insert(Arg.Any<Block>(), Arg.Any<TxReceipt[]>(), true);
+    }
+
+    [Test]
+    public async Task Stores_decoded_receipts_with_the_bloom_of_their_logs_when_the_store_takes_no_encoded_ones()
+    {
+        LoadScenario(_1024BodiesWithOneTxEach);
+        static TxReceipt WithLogs() => Build.A.Receipt.WithStatusCode(StatusCode.Success).WithLogs(Build.A.LogEntry.TestObject).TestObject;
+        TxReceipt withBloom = WithLogs();
+        withBloom.Bloom = new Bloom(withBloom.Logs);
+        Hash256 receiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot([withBloom], _specProvider.GenesisSpec, null);
+        _blockTree.FindHeader(Keccak.Zero, BlockTreeLookupOptions.None).ReturnsForAnyArgs(ci =>
+        {
+            BlockHeader header = _1024BodiesWithOneTxEach.BlocksByHash[ci.Arg<Hash256>()].Header.Clone();
+            header.ReceiptsRoot = receiptsRoot;
+            return header;
+        });
+
+        using ReceiptsSyncBatch? batch = await _feed.PrepareRequest();
+        using (ArrayPoolList<TxReceipt[]?> zeroBlooms = new(batch!.Infos.Length, batch.Infos.Length))
+        {
+            // The peer sends the receipts with an all-zero bloom.
+            for (int i = 0; i < zeroBlooms.Count; i++) zeroBlooms[i] = [Build.A.Receipt.WithStatusCode(StatusCode.Success).WithLogs(Build.A.LogEntry.TestObject).WithBloom(Bloom.Empty).TestObject];
+            batch.Response = Encode(zeroBlooms)!;
+        }
+
+        SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch);
+
+        Assert.That(handlingResult, Is.EqualTo(SyncResponseHandlingResult.OK));
+        _receiptStorage.Received(batch.Infos.Length).Insert(Arg.Any<Block>(), Arg.Is<TxReceipt[]>(r => r[0].Bloom == withBloom.Bloom), true);
+    }
+
+    [Test]
+    public async Task Reports_a_breach_when_receipts_kept_encoded_do_not_decode()
+    {
+        LoadScenario(_1024BodiesWithOneTxEach);
+
+        using ReceiptsSyncBatch? batch = await _feed.PrepareRequest();
+        FillBatchResponses(batch!);
+        using (IOwnedReadOnlyList<TxReceipt[]?> decoded = batch!.Response!)
+        {
+            batch.Response = Encode(decoded, static (ref RlpReader _) => throw new RlpReaderException("malformed"))!;
+        }
+
+        // A root the encoded receipts do not give, so the feed decodes them.
+        _blockTree.FindHeader(Keccak.Zero, BlockTreeLookupOptions.None).ReturnsForAnyArgs(ci =>
+        {
+            BlockHeader header = _1024BodiesWithOneTxEach.BlocksByHash[ci.Arg<Hash256>()].Header.Clone();
+            header.ReceiptsRoot = TestItem.KeccakA;
+            return header;
+        });
+        batch.ResponseSourcePeer = new PeerInfo(Substitute.For<ISyncPeer>());
+
+        _feed.HandleResponse(batch);
+
+        _syncPeerPool.Received().ReportBreachOfProtocol(Arg.Any<PeerInfo>(), DisconnectReason.InvalidReceiptRoot, Arg.Any<string>());
+    }
+
+    private static NetworkBlockReceipts Encode(IOwnedReadOnlyList<TxReceipt[]?> blocks, RefRlpReaderFunc<TxReceipt[]>? decodeBlock = null)
+    {
+        ReceiptMessageDecoder decoder = new();
+        ArrayPoolList<byte> buffer = [with(blocks.Count * 256)];
+        Range[] ranges = new Range[blocks.Count];
+        for (int i = 0; i < ranges.Length; i++)
+        {
+            int start = buffer.Count;
+            buffer.AddRange(RlpTestHelper.EncodeSequence([.. blocks[i]!.Select(receipt => decoder.Encode(receipt, RlpBehaviors.Eip658Receipts))]));
+            ranges[i] = new Range(start, buffer.Count);
+        }
+
+        return NetworkBlockReceipts.FromBuffer(buffer, ranges, withBloom: true,
+            decodeBlock ?? ((ref RlpReader reader) => reader.DecodeNonNullArray((ref RlpReader item) => decoder.Decode(ref item))!));
     }
 
     [Test]
