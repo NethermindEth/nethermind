@@ -5,11 +5,13 @@
 
 using System;
 using System.Threading;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.State;
 using NSubstitute;
@@ -84,7 +86,8 @@ public class ProcessingBranchBuilderTests
     [Test]
     public void Side_ancestor_is_a_base_only_if_it_was_processed([Values] bool sideWasProcessed)
     {
-        (IBlockTree blockTree, Block fork, Block head, Block side2, Block side3) = BuildSideBranch();
+        using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
+        (IBlockTree blockTree, Block fork, Block head, Block side2, Block side3) = BuildSideBranch(container);
         if (sideWasProcessed)
         {
             blockTree.MarkChainAsProcessed([side2]);
@@ -104,7 +107,8 @@ public class ProcessingBranchBuilderTests
     [Test]
     public void Side_ancestor_with_state_is_a_base_only_if_it_is_the_sync_pivot([Values("fork", "side", "head")] string pivot)
     {
-        (IBlockTree blockTree, Block fork, Block head, Block side2, Block side3) = BuildSideBranch();
+        using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
+        (IBlockTree blockTree, Block fork, Block head, Block side2, Block side3) = BuildSideBranch(container);
         Block pivotBlock = pivot switch { "fork" => fork, "side" => side2, _ => head };
         blockTree.SyncPivot = (pivotBlock.Number, pivotBlock.Hash!);
         bool notPivot = pivotBlock != side2;
@@ -122,7 +126,8 @@ public class ProcessingBranchBuilderTests
     [Test]
     public void Processed_side_ancestor_without_state_is_processed_again()
     {
-        (IBlockTree blockTree, Block fork, Block head, Block side2, Block side3) = BuildSideBranch();
+        using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
+        (IBlockTree blockTree, Block fork, Block head, Block side2, Block side3) = BuildSideBranch(container);
         blockTree.MarkChainAsProcessed([side2]);
 
         ProcessingBranchBuilder builder = new(blockTree, StateOnlyFor(fork, head), [], LimboLogs.Instance.GetClassLogger<ProcessingBranchBuilder>());
@@ -138,7 +143,8 @@ public class ProcessingBranchBuilderTests
     [Test]
     public void Main_chain_ancestor_with_state_is_the_base()
     {
-        (IBlockTree blockTree, Block fork, Block head, _, _) = BuildSideBranch();
+        using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
+        (IBlockTree blockTree, Block fork, Block head, _, _) = BuildSideBranch(container);
         Block next = ChildOf(head, nonce: 3);
         blockTree.SuggestBlock(next);
 
@@ -152,9 +158,9 @@ public class ProcessingBranchBuilderTests
         }
     }
 
-    private static (IBlockTree BlockTree, Block Fork, Block Head, Block Side2, Block Side3) BuildSideBranch()
+    private static (IBlockTree BlockTree, Block Fork, Block Head, Block Side2, Block Side3) BuildSideBranch(IContainer container)
     {
-        IBlockTree blockTree = Build.A.BlockTree().WithoutSettingHead.TestObject;
+        IBlockTree blockTree = container.Resolve<IBlockTree>();
         Block genesis = Build.A.Block.Genesis.TestObject;
         genesis.Header.TotalDifficulty = genesis.Header.Difficulty;
         blockTree.SuggestBlock(genesis);
