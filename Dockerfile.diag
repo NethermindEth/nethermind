@@ -20,16 +20,37 @@ COPY nuget.config .
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
   dotnet add src/Nethermind/Nethermind.Runner package JetBrains.dotMemory.Console.linux-$arch \
     --package-directory /tmp && \
+  dotnet add src/Nethermind/Nethermind.Runner package JetBrains.dotTrace.CommandLineTools.linux-$arch \
+    --package-directory /tmp && \
   dotnet publish src/Nethermind/Nethermind.Runner -c $BUILD_CONFIG -a $arch -o /publish --no-self-contained \
     -p:SourceRevisionId=$COMMIT_HASH
 
-RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
-  dotnet tool install -g dotnet-dump && \
-  dotnet tool install -g dotnet-gcdump && \
-  dotnet tool install -g dotnet-trace && \
-  curl -fsSL "https://aka.ms/dotnet-counters/linux-$arch" -o /root/.dotnet/tools/dotnet-counters && \
-  chmod +x /root/.dotnet/tools/dotnet-counters && \
-  dotnet tool install -g JetBrains.dotTrace.GlobalTools
+# `dotnet tool install` runs on $BUILDPLATFORM and writes apphosts for it, which fail with
+# "exec format error" in a cross-built image. Download the single-file builds for $TARGETARCH instead,
+# pinned to the dotnet/diagnostics v10.0.750501 release; the SHA-256 sums are of the files whose
+# SHA-512 matches the release's checksums.csv.
+RUN set -eu; \
+  case "$TARGETARCH" in \
+    amd64) set -- \
+      dotnet-counters E71238BF2ACD521D7A16828A648B3A182100B5E4942BFE7332EFFE86AD459EE8 22b000bc2c9477890fe1782edffc94127f20842354e83dd5305c9bbf6b45cc41 \
+      dotnet-dump 390423FFAC2E83313BCA324D67EE598D74E62E1592026CA511CDE24F1ADD5330 02731318a62efe45773a4cb2c5fdd2aca20adaeb831dbe2110f63f500491afd4 \
+      dotnet-gcdump DC08BD07E116A29B73555284D00C9E8C42AFBFA37A37E3795D6BC8F6FEEDE15B c4bd268ecd7c89b6115b97291752d5f44e0a0a19bf392fd9f166d89bd442713d \
+      dotnet-trace 2243FF7AD095CE742D70C2276FF3317E2C9CC3E881FF171D0D89C2FBA8B76ABB 710527310e9aff19cd9c9ee5cebb4729d53ce6aacd57b6f82c62baa3ef2f866a ;; \
+    arm64) set -- \
+      dotnet-counters 58E390A7B28187B9FFFBE222D6264D1F2D085D56DCB49C5F1C75F73CCCF98BB0 6f26c5bf3010d07e43b1e6b14b503aa675b4824e0f577a555eeb48606769258b \
+      dotnet-dump DED4BA55D112C1AC63984B2179A93E1CA9EC415E60E2255E8D4990036C0E3F81 79369b30f30c92a2cf1b0fa797383e947b69a82123be23732b97d76e41efbed7 \
+      dotnet-gcdump A60C953B335054EAFB0D3AC82C2EE97D37474C696EB2B021518CE66BF659A484 9aaf0e6cbeebf3460155d3de55d8e3882cc83737c3b033e6b4c35579f2ac5082 \
+      dotnet-trace 4362A506A076616A1D9C05804B4DFC3646B5D57A9518204F1C5CC03238BB41D8 6d55947b2070d725d911774107873689d15564fc70b2633b626014578a4c7f21 ;; \
+    *) echo "Unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
+  esac; \
+  mkdir -p /root/.dotnet/tools; \
+  while [ $# -gt 0 ]; do \
+    curl -fsSL "https://download.visualstudio.microsoft.com/download/pr/dotnet-diagnostics_20261005.1/$2/$1" \
+      -o "/root/.dotnet/tools/$1"; \
+    echo "$3  /root/.dotnet/tools/$1" | sha256sum -c -; \
+    chmod +x "/root/.dotnet/tools/$1"; \
+    shift 3; \
+  done
 
 FROM mcr.microsoft.com/dotnet/aspnet:11.0-resolute
 
@@ -45,9 +66,10 @@ EXPOSE 8545 8551 30303
 COPY --from=build /publish .
 COPY --from=build /root/.dotnet/tools /opt/diag-tools
 COPY --from=build /tmp/jetbrains.dotmemory.console.*/**/tools /opt/diag-tools/dotmemory
+COPY --from=build /tmp/jetbrains.dottrace.commandlinetools.*/**/tools /opt/diag-tools/dottrace
 COPY --chmod=0755 scripts/diag-entrypoint.sh entrypoint.sh
 
-ENV PATH="$PATH:/opt/diag-tools:/opt/diag-tools/dotmemory"
+ENV PATH="$PATH:/opt/diag-tools:/opt/diag-tools/dotmemory:/opt/diag-tools/dottrace"
 
 STOPSIGNAL SIGINT
 
