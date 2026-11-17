@@ -190,7 +190,8 @@ namespace Nethermind.Blockchain
 
         void DeleteInvalidBlock(Block invalidBlock);
 
-        void DeleteBranch(Block branchRoot);
+        void DeleteBranchWithoutBadBlockReport(BlockHeader branchRoot);
+
         /// <summary>
         /// Records <paramref name="badBlock"/> as invalid without altering the canonical chain.
         /// </summary>

@@ -54,9 +54,55 @@ public class BlockchainProcessorTests
             BlockTraceDumper.LogDiagnosticTrace(NullBlockTracer.Instance, input, logger));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task Refused_branch_is_deleted_and_the_best_suggested_block_reset_only_when_it_forks_below_the_head(bool forkBelowHead)
+    [Test]
+    public async Task Refused_branch_is_deleted_and_the_best_suggested_block_reset_only_when_it_forks_below_the_head([Values] bool forkBelowHead)
+    {
+        RefusedBranch branch = BuildRefusedBranch(forkBelowHead);
+
+        await ProcessRefused(branch.BlockTree, branch.Refused);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(branch.BlockTree.BestSuggestedHeader?.Hash, Is.EqualTo(forkBelowHead ? branch.Head.Hash : branch.Refused.Hash));
+            Assert.That(branch.BlockTree.FindBlock(branch.Refused.Hash!, BlockTreeLookupOptions.None), forkBelowHead ? Is.Null : Is.Not.Null);
+            Assert.That(branch.Builder.BadBlockStore.GetAll(), Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task Refused_branch_from_a_different_fork_is_deleted()
+    {
+        RefusedBranch branch = BuildRefusedBranch(forkBelowHead: false);
+        RefusedBranchBlockTree blockTree = new(branch.BlockTree, hiddenHeader: branch.BodylessParent.Hash);
+
+        await ProcessRefused(blockTree, branch.Refused);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(branch.BlockTree.BestSuggestedHeader?.Hash, Is.EqualTo(branch.Head.Hash));
+            Assert.That(branch.BlockTree.FindBlock(branch.Refused.Hash!, BlockTreeLookupOptions.None), Is.Null);
+            Assert.That(branch.Builder.BadBlockStore.GetAll(), Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task Refused_branch_is_kept_when_the_block_is_post_merge_or_on_the_main_chain([Values] bool postMerge)
+    {
+        RefusedBranch branch = BuildRefusedBranch(forkBelowHead: true, postMerge);
+        IBlockTree blockTree = postMerge ? branch.BlockTree : new RefusedBranchBlockTree(branch.BlockTree, mainChainBlock: branch.Refused.Hash);
+
+        await ProcessRefused(blockTree, branch.Refused);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(branch.BlockTree.BestSuggestedHeader?.Hash, Is.EqualTo(branch.Refused.Hash));
+            Assert.That(branch.BlockTree.FindBlock(branch.Refused.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
+        }
+    }
+
+    private sealed record RefusedBranch(BlockTreeBuilder Builder, IBlockTree BlockTree, Block Head, BlockHeader BodylessParent, Block Refused);
+
+    private static RefusedBranch BuildRefusedBranch(bool forkBelowHead, bool postMerge = false)
     {
         BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree().WithoutSettingHead;
         IBlockTree blockTree = blockTreeBuilder.TestObject;
@@ -75,20 +121,27 @@ public class BlockchainProcessorTests
         BlockHeader bodylessParent = Build.A.BlockHeader.WithParent(genesis.Header).WithNonce(100).WithDifficulty(1).TestObject;
         blockTree.SuggestHeader(bodylessParent);
         Block refused = Build.A.Block.WithParent(bodylessParent).WithNonce(101).WithDifficulty(10).TestObject;
+        refused.Header.IsPostMerge = postMerge;
         blockTree.SuggestBlock(refused, BlockTreeSuggestOptions.ForceDontSetAsMain);
         Assert.That(blockTree.BestSuggestedHeader?.Hash, Is.EqualTo(refused.Hash));
+        return new RefusedBranch(blockTreeBuilder, blockTree, head, bodylessParent, refused);
+    }
 
+    private static async Task ProcessRefused(IBlockTree blockTree, Block refused)
+    {
         await using BlockchainProcessor processor = new(blockTree, Substitute.For<IBranchProcessor>(), [], Substitute.For<IStateReader>(), LimboLogs.Instance,
             new BlockchainProcessor.Options(), Substitute.For<IProcessingStats>(), new BlockTreeMutationLock());
 
         Assert.Throws<InvalidBlockException>(() => processor.Process(refused, ProcessingOptions.None, NullBlockTracer.Instance));
+    }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(blockTree.BestSuggestedHeader?.Hash, Is.EqualTo(forkBelowHead ? head.Hash : refused.Hash));
-            Assert.That(blockTree.FindBlock(refused.Hash!, BlockTreeLookupOptions.None), forkBelowHead ? Is.Null : Is.Not.Null);
-            Assert.That(blockTreeBuilder.BadBlockStore.GetAll(), Is.Empty);
-        }
+    private sealed class RefusedBranchBlockTree(IBlockTree inner, Hash256? hiddenHeader = null, Hash256? mainChainBlock = null) : BlockTreeTestDouble(inner)
+    {
+        public override BlockHeader? FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) =>
+            blockHash == hiddenHeader ? null : base.FindHeader(blockHash, options, blockNumber);
+
+        public override bool IsMainChain(BlockHeader blockHeader) =>
+            blockHeader.Hash == mainChainBlock || base.IsMainChain(blockHeader);
     }
 
     private class ProcessingTestContext : IAsyncDisposable

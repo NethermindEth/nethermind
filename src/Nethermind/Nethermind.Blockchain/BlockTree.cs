@@ -861,15 +861,15 @@ namespace Nethermind.Blockchain
             DeleteBranchFrom(invalidBlock.Hash);
         }
 
-        public void DeleteBranch(Block branchRoot)
+        public void DeleteBranchWithoutBadBlockReport(BlockHeader branchRoot)
         {
             if (branchRoot.Hash is null)
             {
-                if (Logger.IsWarn) Logger.Warn($"{nameof(DeleteBranch)} call has been made for a block with a null hash.");
+                if (Logger.IsWarn) Logger.Warn($"{nameof(DeleteBranchWithoutBadBlockReport)} call has been made for a block with a null hash.");
                 return;
             }
 
-            if (Logger.IsDebug) Logger.Debug($"Deleting branch from {branchRoot.ToString(Block.Format.FullHashAndNumber)}");
+            if (Logger.IsDebug) Logger.Debug($"Deleting branch from {branchRoot.ToString(BlockHeader.Format.FullHashAndNumber)}");
 
             DeleteBranchFrom(branchRoot.Hash);
         }

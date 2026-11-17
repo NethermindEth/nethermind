@@ -966,17 +966,18 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     {
         if (suggestedBlock.IsPoS() || _blockTree.IsMainChain(suggestedBlock.Header)) return;
 
-        Block branchRoot = suggestedBlock;
-        while (_blockTree.FindParent(branchRoot.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded) is { } parent && !_blockTree.IsMainChain(parent.Header))
+        BlockHeader branchRoot = suggestedBlock.Header;
+        BlockHeader? forkPoint = _blockTree.FindParentHeader(branchRoot, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+        while (forkPoint is not null && !_blockTree.IsMainChain(forkPoint) && _blockTree.HasBlock(forkPoint.Number, forkPoint.Hash!))
         {
-            branchRoot = parent;
+            branchRoot = forkPoint;
+            forkPoint = _blockTree.FindParentHeader(branchRoot, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         }
 
-        BlockHeader? forkPoint = _blockTree.FindParentHeader(branchRoot.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         if (forkPoint is null || forkPoint.Number < (_blockTree.Head?.Number ?? 0))
         {
-            if (_logger.IsDebug) _logger.Debug($"Deleting refused branch from {branchRoot.ToString(Block.Format.FullHashAndNumber)} to {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}");
-            _blockTree.DeleteBranch(branchRoot);
+            if (_logger.IsDebug) _logger.Debug($"Deleting refused branch from {branchRoot.ToString(BlockHeader.Format.FullHashAndNumber)} to {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}");
+            _blockTree.DeleteBranchWithoutBadBlockReport(branchRoot);
         }
     }
 

@@ -220,7 +220,7 @@ public class BlockTreeTestDouble : IBlockTree
     public virtual IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse) =>
         Inner?.FindHeaders(hash, numberOfBlocks, skip, reverse) ?? new ArrayPoolList<BlockHeader>(0);
     public virtual void DeleteInvalidBlock(Block invalidBlock) => Inner?.DeleteInvalidBlock(invalidBlock);
-    public virtual void DeleteBranch(Block branchRoot) => Inner?.DeleteBranch(branchRoot);
+    public virtual void DeleteBranchWithoutBadBlockReport(BlockHeader branchRoot) => Inner?.DeleteBranchWithoutBadBlockReport(branchRoot);
     public virtual void ReportBadBlock(Block badBlock) => Inner?.ReportBadBlock(badBlock);
     public virtual void DeleteOldBlockRange(ulong fromInclusive, ulong toExclusive) => Inner?.DeleteOldBlockRange(fromInclusive, toExclusive);
     public virtual void DeleteOldBlock(ulong blockNumber, Hash256 blockHash) => Inner?.DeleteOldBlock(blockNumber, blockHash);

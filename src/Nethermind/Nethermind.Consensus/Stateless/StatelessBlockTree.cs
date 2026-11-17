@@ -172,7 +172,7 @@ public class StatelessBlockTree : IBlockTree, IBlockhashCache, IHeaderFinder
     public void DeleteInvalidBlock(Block invalidBlock)
         => throw new NotSupportedException();
 
-    public void DeleteBranch(Block branchRoot)
+    public void DeleteBranchWithoutBadBlockReport(BlockHeader branchRoot)
         => throw new NotSupportedException();
 
     public void ReportBadBlock(Block badBlock)

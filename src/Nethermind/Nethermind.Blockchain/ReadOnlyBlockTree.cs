@@ -114,7 +114,7 @@ namespace Nethermind.Blockchain
 
         public void DeleteInvalidBlock(Block invalidBlock) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(DeleteInvalidBlock)} calls");
 
-        public void DeleteBranch(Block branchRoot) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(DeleteBranch)} calls");
+        public void DeleteBranchWithoutBadBlockReport(BlockHeader branchRoot) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(DeleteBranchWithoutBadBlockReport)} calls");
 
         public void ReportBadBlock(Block badBlock) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(ReportBadBlock)} calls");
 
