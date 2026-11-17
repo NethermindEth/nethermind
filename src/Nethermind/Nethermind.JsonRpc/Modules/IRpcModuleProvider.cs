@@ -37,10 +37,6 @@ namespace Nethermind.JsonRpc.Modules
         /// <inheritdoc cref="Rent(string, bool, CancellationToken)"/>
         ValueTask<IRpcModule> Rent(ResolvedMethodInfo method, CancellationToken cancellationToken) => Rent(method);
 
-        ValueTask<IRpcModule> RentNested(ResolvedMethodInfo method, CancellationToken cancellationToken) => Rent(method, cancellationToken);
-
-        void ReturnNested(ResolvedMethodInfo method, IRpcModule rpcModule) => Return(method, rpcModule);
-
         void Return(string methodName, IRpcModule rpcModule);
         void Return(ResolvedMethodInfo method, IRpcModule rpcModule);
     }

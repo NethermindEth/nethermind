@@ -2040,9 +2040,10 @@ internal sealed class McpTransactionTools(
     private string Display(Address address) => Label(address) is { } label ? $"{label} ({McpTxFormat.Short(address)})" : McpTxFormat.Short(address);
 
     // Token metadata reads run on their own eth module, so a slow read can be left behind at the token deadline.
-    private McpDetachedEth DetachedEth(CancellationToken token) => new(async () =>
+    private McpDetachedEth DetachedEth(CancellationToken token) => new(async abandoned =>
     {
-        ModuleLease<IEthRpcModule> lease = await executor.RentAsync<IEthRpcModule>(nameof(IEthRpcModule.eth_call), token);
+        using CancellationTokenSource rental = CancellationTokenSource.CreateLinkedTokenSource(token, abandoned);
+        ModuleLease<IEthRpcModule> lease = await executor.RentAsync<IEthRpcModule>(nameof(IEthRpcModule.eth_call), rental.Token);
         return (lease.Module, lease);
     }, executor.TrackDetached);
 

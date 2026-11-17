@@ -401,10 +401,10 @@ public class McpLimitsTests
         await using McpTestNode node = await CreateWithEthCallLimit();
         McpToolExecutor executor = node.Chain.Container.Resolve<McpToolExecutor>();
 
-        CallToolResult result = await executor.ExecuteAsync("test", nameof(IEthRpcModule.eth_call), async (_, token) =>
+        CallToolResult result = await executor.ExecuteAsync("test", nameof(IEthRpcModule.eth_call), async (outerModule, token) =>
         {
             using ModuleLease<IEthRpcModule> lease = await executor.RentAsync<IEthRpcModule>(nameof(IEthRpcModule.eth_call), token).WaitAsync(WaitLimit);
-            return executor.Success(lease.Module is not null);
+            return executor.Success(ReferenceEquals(lease.Module, outerModule));
         }, CancellationToken.None);
 
         Assert.That(McpAssert.Success(result).GetBoolean(), Is.True);

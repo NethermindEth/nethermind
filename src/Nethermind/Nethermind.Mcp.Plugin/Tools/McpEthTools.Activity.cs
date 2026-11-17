@@ -277,9 +277,10 @@ internal sealed partial class McpEthTools
                     if (movement.From == owner || movement.To == owner) movements.Add((movement, log));
             }
 
-            McpDetachedEth detached = new(async () =>
+            McpDetachedEth detached = new(async abandoned =>
             {
-                ModuleLease<IEthRpcModule> lease = await _executor.RentAsync<IEthRpcModule>(nameof(IEthRpcModule.eth_call), cancellation);
+                using CancellationTokenSource rental = CancellationTokenSource.CreateLinkedTokenSource(cancellation, abandoned);
+                ModuleLease<IEthRpcModule> lease = await _executor.RentAsync<IEthRpcModule>(nameof(IEthRpcModule.eth_call), rental.Token);
                 return (lease.Module, lease);
             }, _executor.TrackDetached);
             Dictionary<(AddressAsKey Token, Hash256 BlockHash), McpTokenInfo> metadata = [];

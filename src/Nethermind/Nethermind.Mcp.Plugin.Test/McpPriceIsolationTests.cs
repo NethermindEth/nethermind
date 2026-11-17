@@ -170,14 +170,14 @@ public class McpPriceIsolationTests
             Assert.That(await Task.Run(() => started.Wait(TimeSpan.FromSeconds(3))), Is.True);
             await cancellation.CancelAsync();
             await Assert.CatchAsync<OperationCanceledException>(async () => await work);
-            Assert.That(SpinWait.SpinUntil(() => provider.ActiveEthLeases == 2, TimeSpan.FromSeconds(1)), Is.True,
-                "the body keeps its eth_call rental while the detached worker holds a nested lease");
+            Assert.That(SpinWait.SpinUntil(() => provider.ActiveEthLeases == 1, TimeSpan.FromSeconds(1)), Is.True,
+                "the detached worker reuses the body's eth_call rental, which stays taken");
             CallToolResult blocked = await executor.ExecuteAsync("blocked", nameof(IEthRpcModule.eth_call),
                 (_, _) => Task.FromResult(executor.Success(new { ok = true })), CancellationToken.None);
             McpAssert.Error(blocked, "resource_exhausted");
             release.Set();
             Assert.That(SpinWait.SpinUntil(() => provider.ActiveEthLeases == 0, TimeSpan.FromSeconds(8)), Is.True,
-                "both rentals are returned once the detached worker finishes");
+                "the rental is returned once the detached worker finishes");
         }
         finally
         {

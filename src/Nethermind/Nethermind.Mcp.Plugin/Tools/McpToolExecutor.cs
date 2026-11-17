@@ -593,9 +593,9 @@ internal sealed class McpToolExecutor(
     /// </summary>
     /// <remarks>
     /// Only call this from a body started by <see cref="ExecuteAsync{TModule}"/>; the lease must be disposed so the module goes
-    /// back to its pool. A method with a JSON-RPC concurrency limit skips that limit only while the calling body still holds a
-    /// rental under the same kind of limit; that rental then stays taken until the lease is disposed. Otherwise the rental waits
-    /// for the limit like any other call. Rental failures surface as the same exceptions <see cref="ExecuteAsync{TModule}"/>
+    /// back to its pool. A method with a JSON-RPC concurrency limit reuses the shared module of the calling body's rental when
+    /// that rental is still held and comes from the same pool; that rental then stays taken until the lease is disposed.
+    /// Otherwise the rental waits for the limit like any other call. Rental failures surface as the same exceptions <see cref="ExecuteAsync{TModule}"/>
     /// maps to error results.
     /// </remarks>
     /// <param name="rpcMethod">The JSON-RPC method whose pool and sharing mode the rental follows.</param>
@@ -609,26 +609,24 @@ internal sealed class McpToolExecutor(
             return default;
         }
 
-        McpLimitedRental? outer = method.HasConcurrencyLimit && _limitedRental.Value is { } current && current.TryRetain() ? current : null;
-        IRpcModule module;
-        try
+        if (method.HasConcurrencyLimit && _limitedRental.Value is { } outer && outer.Method.SharesPoolWith(method) && outer.TryRetain())
         {
-            module = outer is not null
-                ? await rpcModuleProvider.RentNested(method, cancellationToken)
-                : await rpcModuleProvider.Rent(method, cancellationToken);
-        }
-        catch
-        {
-            outer?.Release();
-            throw;
+            if (outer.Module is TModule shared)
+            {
+                return new ModuleLease<TModule>(rpcModuleProvider, method, shared, outer);
+            }
+
+            outer.Release();
+            return default;
         }
 
+        IRpcModule module = await rpcModuleProvider.Rent(method, cancellationToken);
         if (module is TModule typed)
         {
-            return new ModuleLease<TModule>(rpcModuleProvider, method, typed, outer);
+            return new ModuleLease<TModule>(rpcModuleProvider, method, typed, null);
         }
 
-        new ModuleLease<IRpcModule>(rpcModuleProvider, method, module, outer).Dispose();
+        new ModuleLease<IRpcModule>(rpcModuleProvider, method, module, null).Dispose();
         return default;
     }
 
@@ -683,26 +681,13 @@ internal readonly struct ModuleLease<TModule>(IRpcModuleProvider provider, RpcMo
     /// <inheritdoc/>
     public void Dispose()
     {
-        if (outer is null)
-        {
-            if (module is not null)
-            {
-                provider.Return(method, module);
-            }
-
-            return;
-        }
-
-        try
-        {
-            if (module is not null)
-            {
-                provider.ReturnNested(method, module);
-            }
-        }
-        finally
+        if (outer is not null)
         {
             outer.Release();
+        }
+        else if (module is not null)
+        {
+            provider.Return(method, module);
         }
     }
 }
@@ -710,6 +695,10 @@ internal readonly struct ModuleLease<TModule>(IRpcModuleProvider provider, RpcMo
 internal sealed class McpLimitedRental(IRpcModuleProvider provider, RpcModuleProvider.ResolvedMethodInfo method, IRpcModule module)
 {
     private int _holders = 1;
+
+    public RpcModuleProvider.ResolvedMethodInfo Method => method;
+
+    public IRpcModule Module => module;
 
     public bool TryRetain()
     {
