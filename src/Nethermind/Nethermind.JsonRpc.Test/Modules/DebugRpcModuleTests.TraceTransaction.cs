@@ -347,6 +347,53 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    [Test]
+    public async Task Debug_extensions_keep_their_javascript_compile_error_envelopes(
+        [Values("debug_simulateV1", "debug_traceCallMany", "debug_traceCallMany overrides")] string method, [Values] bool streamMode)
+    {
+        using Context context = await Context.Create();
+        await AddBlockWithTransfer(context);
+        const string valid = "{fault:function(){},result:function(){return 1;}}";
+        string before = await Send(valid);
+        Assert.That(JToken.Parse(before)["error"], Is.Null, before);
+        string response = await Send("{ ) }");
+        JToken json = JToken.Parse(response);
+        if (method == "debug_traceCallMany")
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(json["error"], Is.Null, response);
+                Assert.That((bool?)json["result"]?[0]?[0]?["failed"], Is.True, response);
+            }
+        }
+        else
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(json["result"], Is.Null, response);
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidParams), response);
+                Assert.That((string?)json["error"]?["message"], Is.EqualTo("Tracer code could not be compiled: SyntaxError: Unexpected token ')'"), response);
+            }
+        }
+        string after = await Send(valid);
+        Assert.That(JToken.Parse(after)["error"], Is.Null, after);
+
+        Task<string> Send(string tracer)
+        {
+            object call = new { from = TestItem.AddressA.ToString(), to = TestItem.AddressD.ToString(), gas = "0x186a0" };
+            object options = new { tracer, streamMode };
+            return method switch
+            {
+                "debug_simulateV1" => RpcTest.TestSerializedRequest(context.DebugRpcModule, method,
+                    new { blockStateCalls = new[] { new { calls = new[] { call } } } }, "latest", options),
+                "debug_traceCallMany" => RpcTest.TestSerializedRequest(context.DebugRpcModule, method,
+                    new[] { new { transactions = new[] { call } } }, "latest", options),
+                _ => RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceCallMany",
+                    new[] { new { transactions = new[] { call }, stateOverrides = new Dictionary<string, object>() } }, "latest", options)
+            };
+        }
+    }
+
     [TestCase("debug_traceCall", "expression", ErrorCodes.Timeout)]
     [TestCase("debug_traceCall", "setup", ErrorCodes.Timeout)]
     [TestCase("debug_traceCall indexed", "setup", ErrorCodes.Timeout)]
