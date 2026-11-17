@@ -53,7 +53,7 @@ public interface IBlockStore
     {
         for (int i = 0; i < blocks.Length; i++)
         {
-            rlps[i] = GetRlp(blocks[i].Number, new Hash256(in blocks[i].Hash)) is { } rlp ? destination.Add(rlp) : null;
+            rlps[i] = GetRlp(blocks[i].Number, new Hash256(in blocks[i].Hash)) is { } rlp ? destination.Add(rlp) : default(ReadOnlyMemory<byte>?);
         }
     }
 
