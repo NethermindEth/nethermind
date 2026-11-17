@@ -41,7 +41,7 @@ public partial class BeaconSyncOrchestratorTests
 
         using IDisposable assertions = Assert.EnterMultipleScope();
         Assert.That(ByRootRequests(peer), Is.EqualTo(1));
-        peer.Received(1).ReportFailure(PeerFailureReason.ProtocolViolation, Arg.Any<string>());
+        peer.DidNotReceive().ReportFailure(Arg.Any<PeerFailureReason>(), Arg.Any<string>());
     }
 
     [Test]

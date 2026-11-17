@@ -2610,7 +2610,6 @@ public sealed class BeaconSyncOrchestrator(
 
                 if (fetched.Block.Slot >= chain[^1].Slot || fetched.Block.Slot <= Math.Max(_anchorSlot, FinalizedSlot))
                 {
-                    fetched.Source?.ReportFailure(PeerFailureReason.ProtocolViolation, "Fetched ancestor is not between finality and its child's slot");
                     HoldRefusedBackfill(chain[0]);
                     WakeRangeSyncForAncestors();
                     EndBackfill(chain[0]);

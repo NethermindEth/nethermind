@@ -294,7 +294,7 @@ public class StateRequestLimiterTests
     [Test]
     public async Task A_client_that_stops_reading_cannot_hold_its_permit_past_the_deadline(
         [Values(1, 40)] int totalSeconds,
-        [Values(Download, "/eth/v2/beacon/blocks/head", "/eth/v1/beacon/execution_payload_envelopes/head", "/eth/v1/beacon/blobs/head", "/eth/v1/debug/fork_choice")] string path)
+        [Values(Download, "/eth/v2/beacon/blocks/head", "/eth/v1/beacon/execution_payload_envelopes/head", "/eth/v1/beacon/blobs/head", "/eth/v1/debug/fork_choice", "/eth/v1/debug/beacon/fork_choice", "/eth/v1/debug/beacon/fork_choice/")] string path)
     {
         int idleSeconds = totalSeconds == 1 ? 120 : 1;
         using StateRequestLimiter limiter = new(new BeaconApiConfig { StateDownloadsPerMinutePerClient = 0, StateResponseTimeoutSeconds = totalSeconds, StateResponseIdleTimeoutSeconds = idleSeconds });

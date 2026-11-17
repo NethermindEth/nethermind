@@ -160,6 +160,7 @@ public class ConfigSpecEndpointTests
         ];
         (string Key, string Value)[] sepolia =
         [
+            ("TERMINAL_BLOCK_HASH", "0xd07cce9785d39c0dd2409b7d8e69d6bff26a69a0fa5308ac781c63ffe2a37bc1"), ("TERMINAL_BLOCK_HASH_ACTIVATION_EPOCH", "3599"),
             ("CONFIG_NAME", "sepolia"), ("PRESET_BASE", "mainnet"), ("GENESIS_FORK_VERSION", "0x90000069"), ("MIN_GENESIS_TIME", "1655647200"),
             ("GENESIS_DELAY", "86400"), ("TERMINAL_TOTAL_DIFFICULTY", "17000000000000000"), ("MIN_GENESIS_ACTIVE_VALIDATOR_COUNT", "1300"), ("SECONDS_PER_ETH1_BLOCK", "14"),
             ("ALTAIR_FORK_VERSION", "0x90000070"), ("ALTAIR_FORK_EPOCH", "50"), ("CAPELLA_FORK_EPOCH", "56832"), ("ELECTRA_FORK_VERSION", "0x90000074"),

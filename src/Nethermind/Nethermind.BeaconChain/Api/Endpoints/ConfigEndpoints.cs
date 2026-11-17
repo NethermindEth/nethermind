@@ -152,6 +152,8 @@ internal static class ConfigEndpoints
                 data["MIN_GENESIS_TIME"] = "1655647200";
                 data["GENESIS_DELAY"] = "86400";
                 data["TERMINAL_TOTAL_DIFFICULTY"] = "17000000000000000";
+                data["TERMINAL_BLOCK_HASH"] = "0xd07cce9785d39c0dd2409b7d8e69d6bff26a69a0fa5308ac781c63ffe2a37bc1";
+                data["TERMINAL_BLOCK_HASH_ACTIVATION_EPOCH"] = "3599";
                 break;
         }
     }

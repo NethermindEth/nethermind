@@ -112,7 +112,8 @@ internal sealed class StateRequestLimiter : IDisposable
         bool largeResponse = path.StartsWithSegments("/eth/v2/beacon/blocks")
             || path.StartsWithSegments("/eth/v1/beacon/execution_payload_envelopes")
             || path.StartsWithSegments("/eth/v1/beacon/blobs")
-            || path.Equals(new PathString("/eth/v1/debug/fork_choice"));
+            || path.StartsWithSegments("/eth/v1/debug/fork_choice")
+            || path.StartsWithSegments("/eth/v1/debug/beacon/fork_choice");
         bool download = path.StartsWithSegments(DebugStatesPrefix);
         if (!download && !largeResponse)
         {
