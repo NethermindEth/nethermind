@@ -171,7 +171,6 @@ jobs:
           oauth-client-id: ${{ vars.TS_SYNC_ONE_CHAIN_CLIENT_ID }}
           audience: api.tailscale.com/${{ vars.TS_SYNC_ONE_CHAIN_CLIENT_ID }}
           tags: tag:access-dev
-          args: --accept-routes
 
       - name: Sync ${{ inputs.network }}
         uses: ./.github/actions/sync-chain
