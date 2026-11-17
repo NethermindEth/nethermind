@@ -37,7 +37,11 @@ public class OptimismTransactionProcessorCallTests
         context.Processor.SetBlockExecutionContext(context.BlockContext);
         TransactionResult result = context.Processor.CallAndRestore(CreateTransaction(TestItem.AddressC), NullTxTracer.Instance);
 
-        Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
+            context.AssertRollupFeesNotComputed();
+        }
     }
 
     [Test]
@@ -52,6 +56,7 @@ public class OptimismTransactionProcessorCallTests
         {
             Assert.That(estimation.Error, Is.Null);
             Assert.That(estimation.Gas, Is.EqualTo(GasCostOf.Transaction));
+            context.AssertRollupFeesNotComputed();
         }
     }
 
@@ -100,6 +105,7 @@ public class OptimismTransactionProcessorCallTests
     private sealed class ProcessorEnvironment : IDisposable
     {
         private readonly IDisposable _scope;
+        private readonly ICostHelper _costHelper = Substitute.For<ICostHelper>();
 
         public ProcessorEnvironment()
         {
@@ -110,9 +116,8 @@ public class OptimismTransactionProcessorCallTests
             State.CreateAccount(PreDeploys.OperatorFeeRecipient, 1);
             State.Commit(Prague.Instance);
 
-            ICostHelper costHelper = Substitute.For<ICostHelper>();
-            costHelper.ComputeL1Cost(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IWorldState>()).Returns((UInt256)L1Cost);
-            costHelper.ComputeOperatorCost(Arg.Any<ulong>(), Arg.Any<BlockHeader>(), Arg.Any<IWorldState>())
+            _costHelper.ComputeL1Cost(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IWorldState>()).Returns((UInt256)L1Cost);
+            _costHelper.ComputeOperatorCost(Arg.Any<ulong>(), Arg.Any<BlockHeader>(), Arg.Any<IWorldState>())
                 .Returns(static call => (UInt256)call.ArgAt<ulong>(0) * OperatorFeePerGas);
 
             IOptimismSpecHelper specHelper = Substitute.For<IOptimismSpecHelper>();
@@ -123,7 +128,7 @@ public class OptimismTransactionProcessorCallTests
 
             Processor = new OptimismTransactionProcessor(BlobBaseFeeCalculator.Instance, specProvider, State,
                 new EthereumVirtualMachine(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance),
-                LimboLogs.Instance, costHelper, specHelper, new EthereumCodeInfoRepository(State));
+                LimboLogs.Instance, _costHelper, specHelper, new EthereumCodeInfoRepository(State));
             BlockContext = new BlockExecutionContext(
                 Build.A.BlockHeader.WithNumber(1).WithBaseFee(0).WithGasLimit(30_000_000).TestObject, Prague.Instance);
         }
@@ -131,6 +136,12 @@ public class OptimismTransactionProcessorCallTests
         public IWorldState State { get; }
         public OptimismTransactionProcessor Processor { get; }
         public BlockExecutionContext BlockContext { get; }
+
+        public void AssertRollupFeesNotComputed()
+        {
+            _costHelper.DidNotReceiveWithAnyArgs().ComputeL1Cost(default!, default!, default!);
+            _costHelper.DidNotReceiveWithAnyArgs().ComputeOperatorCost(default, default!, default!);
+        }
 
         public void Dispose() => _scope.Dispose();
     }

@@ -40,7 +40,7 @@ public class OptimismTransactionProcessor(
         _currentTxL1Cost = null;
         // Matches op-geth, which charges neither the L1 data fee nor the operator fee for eth_call and eth_estimateGas.
         // Replays of mined transactions also run with SkipValidation, so only the restoring call mode is exempt.
-        _chargesRollupFees = !opts.HasFlag(ExecutionOptions.CommitAndRestore) || opts.HasFlag(ExecutionOptions.Warmup);
+        _chargesRollupFees = !opts.HasFlag(ExecutionOptions.CommitAndRestore);
         if (tx.IsDeposit())
         {
             WorldState.AddToBalanceAndCreateIfNotExists(tx.SenderAddress!, tx.Mint, spec);
