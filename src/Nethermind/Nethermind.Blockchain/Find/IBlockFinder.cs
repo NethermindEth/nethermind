@@ -50,6 +50,23 @@ namespace Nethermind.Blockchain.Find
             return found && bloomMatches(header!.Bloom!.Bytes) ? header : null;
         }
 
+        /// <summary>
+        /// Finds the canonical headers of consecutive blocks from <paramref name="firstBlockNumber"/>, one per element of
+        /// <paramref name="headers"/>, as <see cref="FindCanonicalHeaderIfBloomMatches"/> does each one.
+        /// </summary>
+        /// <param name="firstBlockNumber">The number of the first block.</param>
+        /// <param name="bloomMatches">Tells whether a bloom is a match.</param>
+        /// <param name="headers">Receives each header whose bloom is a match, else <see langword="null"/>.</param>
+        /// <param name="found">Receives whether a canonical header is stored at each number, whether or not its bloom is a match.</param>
+        /// <remarks>An implementation can read the levels and the headers in batches.</remarks>
+        void FindCanonicalHeadersIfBloomMatches(ulong firstBlockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, Memory<BlockHeader?> headers, Memory<bool> found)
+        {
+            for (int i = 0; i < headers.Length; i++)
+            {
+                headers.Span[i] = FindCanonicalHeaderIfBloomMatches(firstBlockNumber + (ulong)i, bloomMatches, out found.Span[i]);
+            }
+        }
+
         Hash256? FindBlockHash(ulong blockNumber);
 
         /// <summary>

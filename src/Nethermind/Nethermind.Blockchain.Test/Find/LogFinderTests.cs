@@ -998,7 +998,7 @@ public class LogFinderTests
         {
             Assert.That(logs, Is.Empty);
             index.Received().GetEnumerator(TestItem.AddressA, BoundaryFrom, BoundaryTo);
-            blockFinder.DidNotReceiveWithAnyArgs().FindCanonicalHeaderIfBloomMatches(default, default!, out _);
+            blockFinder.DidNotReceiveWithAnyArgs().FindCanonicalHeadersIfBloomMatches(default, default!, default, default);
         }
     }
 
