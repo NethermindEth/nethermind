@@ -159,7 +159,8 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void GetMany_OnLinux_PrefetchesUncachedBatchKeys([Values("default", "column")] string backend, [Values(15, 16)] int count)
+        public void GetMany_OnLinux_PrefetchesUncachedBatchKeys([Values("default", "column")] string backend, [Values(15, 16)] int count,
+            [Values(ReadFlags.None, ReadFlags.HintCacheMiss)] ReadFlags flags)
         {
             using IDisposable owner = CreateBatchDatabase(backend);
             IDb store = owner is ColumnsDb<ReceiptsColumns> columns ? columns.GetColumnDb(ReceiptsColumns.Blocks) : (IDb)owner;
@@ -173,13 +174,13 @@ namespace Nethermind.Db.Test
             long?[] output = new long?[count];
 
             long before = Metrics.PrefetchedKeys;
-            store.GetMany<long?, CountingValueDecoder>(keys, sizeof(int), output, default);
+            store.GetMany<long?, CountingValueDecoder>(keys, sizeof(int), output, default, flags);
             long afterUncached = Metrics.PrefetchedKeys;
-            store.GetMany<long?, CountingValueDecoder>(keys, sizeof(int), output, default);
+            store.GetMany<long?, CountingValueDecoder>(keys, sizeof(int), output, default, flags);
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(afterUncached - before, Is.EqualTo(OperatingSystem.IsLinux() && count >= 16 ? count : 0));
+                Assert.That(afterUncached - before, Is.EqualTo(OperatingSystem.IsLinux() && count >= 16 && flags == ReadFlags.None ? count : 0));
                 Assert.That(Metrics.PrefetchedKeys - afterUncached, Is.Zero);
                 Assert.That(output, Is.All.Not.Null);
             }

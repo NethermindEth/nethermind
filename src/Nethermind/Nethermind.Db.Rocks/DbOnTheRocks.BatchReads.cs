@@ -20,7 +20,7 @@ public partial class DbOnTheRocks
     /// <see cref="Prefetch"/> of the same keys starts first and overlaps those disk reads, so the batch finds most
     /// blocks in the block cache. Other platforms run the prefetch synchronously, which would only read twice.
     /// Starting a prefetch costs a few microseconds, so small batches and batches whose last key is already cached
-    /// skip it.
+    /// skip it. A <see cref="ReadFlags.HintCacheMiss"/> batch skips it too, because the prefetch fills the block cache.
     /// </remarks>
     internal void GetManyWithColumnFamily<T, TDecoder>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values,
         TDecoder decoder, IColumnFamilyHandle? family, ReadFlags flags) where TDecoder : IValueDecoder<T>
@@ -28,7 +28,8 @@ public partial class DbOnTheRocks
         ThrowIfDisposing();
         ArgumentNullException.ThrowIfNull(decoder);
         UpdateReadMetrics(values.Length);
-        if (OperatingSystem.IsLinux() && values.Length >= MinPrefetchedBatch && keys.Length == values.Length * keyLength
+        if (OperatingSystem.IsLinux() && (flags & ReadFlags.HintCacheMiss) == 0 && values.Length >= MinPrefetchedBatch
+            && keys.Length == values.Length * keyLength
             && !IsCached(keys[^keyLength..], family))
         {
             Prefetch(keys, keyLength, family, _defaultReadOptions);
