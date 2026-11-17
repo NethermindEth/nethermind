@@ -395,7 +395,14 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
 
     [TestCase("600160005500", "SSTORE", "out of gas: write protection", 0UL)]
     [TestCase("ff", "SELFDESTRUCT", "stack underflow (0 <=> 1)", 5000UL)]
-    public void Static_storage_fault_keeps_dynamic_gas_error(string childCode, string opcode, string error, ulong gasCost)
+    // The MSTORE8 at 0x25ec0 leaves 4922 gas, short of the constant charge Geth takes before write protection.
+    [TestCase("5f62025ec05361beefff", "SELFDESTRUCT", "out of gas", 5000UL)]
+    // Geth's struct logger has no fault hook, so only the cost of a LOG that faults with write protection is compared.
+    [TestCase("5f5f5f5fa2", "LOG2", null, 1125UL)]
+    [TestCase("5f5f60205fa2", "LOG2", null, 1384UL)]
+    [TestCase("5f5f5fa4", "LOG4", "stack underflow (3 <=> 6)", 0UL)]
+    [TestCase("5f5f5f5f5fa4", "LOG4", "stack underflow (5 <=> 6)", 0UL)]
+    public void Static_storage_fault_keeps_dynamic_gas_error(string childCode, string opcode, string? error, ulong gasCost)
     {
         TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, Bytes.FromHexString(childCode), CancunSpec);
@@ -409,7 +416,8 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(storage.Opcode, Is.EqualTo(opcode));
-            Assert.That(storage.Error, Is.EqualTo(error));
+            if (error is not null)
+                Assert.That(storage.Error, Is.EqualTo(error));
             Assert.That(storage.GasCost, Is.EqualTo(gasCost));
             Assert.That(result.Failed, Is.False);
             Assert.That(result.Entries[^1].Opcode, Is.EqualTo("STOP"));

@@ -2039,7 +2039,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TEip7708 : struct, IFlag
         where TSpec : struct, EvmInstructions.ISelfDestructSpec
     {
-        public static ulong? TraceGasCost => TSpec.UseShanghaiDDosProtection ? GasCostOf.SelfDestructEip150 : 0;
+        public static ulong? TraceGasCost => EvmInstructions.SelfDestructConstantGas<TSpec>();
         public static int? TraceStackInputs => 1;
 
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>

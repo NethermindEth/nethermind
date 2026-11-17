@@ -193,7 +193,8 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         new TestCaseData(Prepare.EvmCode.PushData(0).Op(Instruction.BLOCKHASH).Done, 22UL, GasCostOf.BlockHash).SetArgDisplayNames("BLOCKHASH"),
         new TestCaseData(Prepare.EvmCode.PushData(1).PushData(0).PushData(0).PushData(TestItem.AddressC).Op(Instruction.EXTCODECOPY).Done, 715UL,
             GasCostOf.ExtCodeEip150 + GasCostOf.Memory + GasCostOf.Memory).SetArgDisplayNames("EXTCODECOPY"),
-        new TestCaseData(Prepare.EvmCode.PushData(0).Op(Instruction.SELFDESTRUCT).Done, 4000UL, GasCostOf.SelfDestructEip150).SetArgDisplayNames("SELFDESTRUCT"),
+        // Before Berlin, Geth prices the 5000 in its gas function, with the new-account charge for an empty beneficiary.
+        new TestCaseData(Prepare.EvmCode.PushData(0).Op(Instruction.SELFDESTRUCT).Done, 4000UL, GasCostOf.SelfDestructEip150 + GasCostOf.NewAccount).SetArgDisplayNames("SELFDESTRUCT"),
     ];
 
     [Test]

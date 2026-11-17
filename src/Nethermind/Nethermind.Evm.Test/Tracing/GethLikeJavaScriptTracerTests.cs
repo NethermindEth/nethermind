@@ -475,6 +475,8 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase("680100000000000000005f5ff0", "step:32000:gas uint64 overflow", null)]
     [TestCase("5f5f5f5fa2", "step:1125:", "fault:1125:write protection")]
     [TestCase("5f5f60205fa2", "step:1384:", "fault:1384:write protection")]
+    [TestCase("5f5f5fa4", "step:0:stack underflow (3 <=> 6)", null)]
+    [TestCase("5f5f5f5f5fa4", "step:0:stack underflow (5 <=> 6)", null)]
     [TestCase("ff", "step:5000:stack underflow (0 <=> 1)", null)]
     [TestCase("61beefff", "step:5000:out of gas: write protection", null)]
     public void Static_context_preserves_precondition_and_execution_failure_callbacks(string childCode, string step, string? fault)
@@ -3237,6 +3239,9 @@ public class GethLikeJavaScriptStaticCallTracerTests : VirtualMachineTestsBase
             Is.EqualTo(JsonSerializer.Serialize(new[] { $"step:{expectedCost}:{error}" }, new JsonSerializerOptions { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping })));
     }
 
+    // Before Berlin, Geth's gas function prices the 5000 with the new-account charge; from Berlin it is constant gas.
+    [TestCase(0UL, 4999UL, 30000UL, "out of gas")]
+    [TestCase(1UL, 4999UL, 5000UL, "out of gas")]
     [TestCase(0UL, 29999UL, 30000UL, "out of gas")]
     [TestCase(0UL, 30000UL, 30000UL, "")]
     [TestCase(3UL, 7999UL, 8000UL, "out of gas: out of gas")]
@@ -3256,6 +3261,46 @@ public class GethLikeJavaScriptStaticCallTracerTests : VirtualMachineTestsBase
             """;
         Assert.That(RunTrace(block, transaction, tracerCode),
             Is.EqualTo(JsonSerializer.Serialize(new[] { $"step:{expectedCost}:{error}" }, new JsonSerializerOptions { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping })));
+    }
+
+    [TestCase(0UL, "61beefff", 50000, "step:0:out of gas: write protection")]
+    [TestCase(0UL, "61beefff", 4000, "step:0:out of gas: write protection")]
+    [TestCase(0UL, "ff", 50000, "step:0:stack underflow (0 <=> 1)")]
+    [TestCase(1UL, "61beefff", 50000, "step:5000:out of gas: write protection")]
+    [TestCase(1UL, "61beefff", 4000, "step:5000:out of gas")]
+    [TestCase(1UL, "ff", 50000, "step:5000:stack underflow (0 <=> 1)")]
+    public void Static_self_destruct_reports_constant_gas_before_write_protection(ulong fork, string childCode, long callGas, string expected)
+    {
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Bytes.FromHexString(childCode), SpecProvider.GetSpec((ForkActivation)fork));
+        byte[] code = Prepare.EvmCode.StaticCall(TestItem.AddressC, callGas).Op(Instruction.STOP).Done;
+        (Block block, Transaction transaction) = PrepareTx((fork, 0), 100000, code);
+        const string tracerCode = """
+            {
+                events: [],
+                step: function(log) { if (log.op.toNumber() === 0xff) this.events.push("step:" + log.getCost() + ":" + (log.getError() || "")); },
+                fault: function(log) { this.events.push("fault:" + log.getError()); },
+                result: function() { return this.events; }
+            }
+            """;
+        Assert.That(RunTrace(block, transaction, tracerCode),
+            Is.EqualTo(JsonSerializer.Serialize(new[] { expected }, new JsonSerializerOptions { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping })));
+    }
+
+    [Test]
+    public void SelfDestruct_warm_beneficiary_reports_constant_cost([Values(1UL, 3UL)] ulong fork, [Values("30ff", "33ff")] string code)
+    {
+        (Block block, Transaction transaction) = PrepareTx((fork, 0), 100000, Bytes.FromHexString(code));
+        const string tracerCode = """
+            {
+                events: [],
+                step: function(log) { if (log.op.toNumber() === 0xff) this.events.push("step:" + log.getCost() + ":" + (log.getError() || "")); },
+                postStep: function(log) { if (log.op.toNumber() === 0xff) this.events.push("post:" + log.getCost()); },
+                fault: function(log) { this.events.push("fault:" + log.getError()); },
+                result: function() { return this.events; }
+            }
+            """;
+        Assert.That(RunTrace(block, transaction, tracerCode), Is.EqualTo(JsonSerializer.Serialize(new[] { "step:5000:", "post:5000" })));
     }
 
     private string RunTrace(Block block, Transaction transaction, string tracerCode)

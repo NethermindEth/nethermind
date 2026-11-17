@@ -1188,7 +1188,9 @@ public static partial class EvmInstructions
         // Logging is not permitted in static call contexts.
         if (vmState.IsStatic)
         {
-            // Geth prices LOG, then raises write protection while executing it, after a step that carries no error.
+            // Geth checks the stack before it prices LOG, then raises write protection while executing it, after a step
+            // that carries no error. The depth stays as it started, so underflow diagnostics report it.
+            if (stack.Head < 2 + TOpCount.Count) goto StackUnderflow;
             if (DispatchFlags.ConstTracing && (vm.IsTracingOperationGasCost || vm.IsTracingOperationStart))
                 TraceStaticLogGasCost<TGasPolicy, TOpCount>(vm, in stack);
             goto StaticCallViolation;
@@ -1267,7 +1269,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCount : struct, IOpCount
     {
-        // Reads a copy, so the stack keeps its operands; an underflow was already reported when the step started.
+        // Reads a copy, so the stack keeps its operands; the caller checked they are all there.
         EvmStack operands = stack;
         if (!operands.PopMemoryPositionAndUInt256(out UInt256 position, out UInt256 length))
             return;
