@@ -435,7 +435,10 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     public override void ReportActionError(EvmExceptionType evmExceptionType)
     {
         base.ReportActionError(evmExceptionType);
-        InvokeExit(0, Array.Empty<byte>(), evmExceptionType.GetEvmExceptionDescription());
+        string? error = evmExceptionType.GetEvmExceptionDescription();
+        // A precompile can fail without running an opcode; its parent's last step is not its error.
+        if (_log.depth == _depth + 1) error = _log.error ?? error;
+        InvokeExit(0, Array.Empty<byte>(), error);
     }
 
     /// <inheritdoc/>

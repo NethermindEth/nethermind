@@ -232,6 +232,34 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         AssertResult(trace, new[] { "step:CALL:", "enter", "exit:out of gas", "step:POP:", "step:STOP:" });
     }
 
+    [TestCase("01", 10000L, "stack underflow (0 <=> 2)")]
+    [TestCase("600055", 10000L, "stack underflow (1 <=> 2)")]
+    [TestCase("6000600055", 2300L, "out of gas: not enough gas for reentrancy sentry")]
+    [TestCase("fe", 10000L, "invalid opcode: INVALID")]
+    [TestCase("600056", 10000L, "invalid jump destination")]
+    public void Exit_reports_frame_error_details_without_leaking_to_later_frames(string childCode, long childGas, string expected)
+    {
+        const string userTracer = """
+            {
+                errors: [],
+                enter: function(frame) { },
+                exit: function(frame) { this.errors.push(frame.getError() || ""); },
+                fault: function(log) { },
+                result: function() { return this.errors; }
+            }
+            """;
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Bytes.FromHexString(childCode), Spec);
+        byte[] code = Prepare.EvmCode
+            .Call(TestItem.AddressC, childGas).Op(Instruction.POP)
+            .Call(Sha256Precompile.Address, 10).Op(Instruction.POP)
+            .Call(TestItem.AddressD, 10000).Op(Instruction.POP)
+            .Op(Instruction.STOP).Done;
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(GetTracer(userTracer), code, MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        AssertResult(trace, new[] { expected, "out of gas", "" });
+    }
+
     [Test]
     public void Create_frame_to_is_the_creation_address_when_the_precheck_fails([Values] bool salted)
     {
