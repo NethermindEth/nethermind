@@ -331,7 +331,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
     private IEnumerable<ParityTxTraceFromStore> TraceBlockLive(Hash256 blockHash, CancellationToken cancellationToken)
     {
         BlockParameter blockParameter = new(blockHash);
-        using ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = _traceModule is TraceRpcModule liveModule
+        using ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = _traceModule is ICancellableBlockTracer liveModule
             ? liveModule.TraceBlockWithCancellation(blockParameter, null, cancellationToken)
             : _traceModule.trace_block(blockParameter);
         if (result.Result.ResultType == Core.ResultType.Failure)

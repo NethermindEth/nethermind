@@ -63,7 +63,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         IPrefixStateSeedSource prefixSeeds,
         ILogManager logManager,
         IParallelBlockTracer? parallelTracer = null)
-        : ITraceRpcModule
+        : ITraceRpcModule, ICancellableBlockTracer
     {
         private readonly TxDecoder _txDecoder = TxDecoder.Instance;
         private readonly EthereumEcdsa _ecdsa = new(specProvider.ChainId);
@@ -612,7 +612,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
         public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_block(BlockParameter blockParameter, string? fork = null) =>
             TraceBlockWithCancellation(blockParameter, fork, CancellationToken.None);
 
-        public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> TraceBlockWithCancellation(BlockParameter blockParameter, string? fork, CancellationToken cancellationToken)
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> ICancellableBlockTracer.TraceBlockWithCancellation(BlockParameter blockParameter, string? fork, CancellationToken cancellationToken) =>
+            TraceBlockWithCancellation(blockParameter, fork, cancellationToken);
+
+        internal ResultWrapper<IEnumerable<ParityTxTraceFromStore>> TraceBlockWithCancellation(BlockParameter blockParameter, string? fork, CancellationToken cancellationToken)
         {
             if (IsPending(blockParameter))
             {
