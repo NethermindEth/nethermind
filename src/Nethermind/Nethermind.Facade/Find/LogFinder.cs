@@ -301,12 +301,15 @@ namespace Nethermind.Facade.Find
             List<TLog>? logs = null;
             try
             {
-                Func<T, IEnumerable<TLog>> worker = workerFor(chunk);
-                foreach (T item in chunk)
+                if (!abandoned.IsCancellationRequested)
                 {
-                    if (abandoned.IsCancellationRequested) break;
-                    IEnumerable<TLog> found = worker(item);
-                    if (!found.TryGetNonEnumeratedCount(out int count) || count != 0) (logs ??= []).AddRange(found);
+                    Func<T, IEnumerable<TLog>> worker = workerFor(chunk);
+                    foreach (T item in chunk)
+                    {
+                        if (abandoned.IsCancellationRequested) break;
+                        IEnumerable<TLog> found = worker(item);
+                        if (!found.TryGetNonEnumeratedCount(out int count) || count != 0) (logs ??= []).AddRange(found);
+                    }
                 }
             }
             catch
@@ -314,10 +317,8 @@ namespace Nethermind.Facade.Find
                 DisposeFrom(logs, 0);
                 throw;
             }
-            finally
-            {
-                ArrayPool<T>.Shared.Return(chunk.Array!, RuntimeHelpers.IsReferenceOrContainsReferences<T>());
-            }
+
+            ArrayPool<T>.Shared.Return(chunk.Array!, RuntimeHelpers.IsReferenceOrContainsReferences<T>());
 
             return logs;
         }
