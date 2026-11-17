@@ -416,8 +416,9 @@ public static class BasePersistence
 
     /// <summary>
     /// Scans <c>[firstKey, lastKey)</c> and removes every key of <paramref name="keyLength"/> bytes whose 20-byte
-    /// account is within <c>[fromAccount, toAccount]</c> and is not <paramref name="keptAccount"/> (empty keeps none). The account is read as <paramref name="prefixLength"/> bytes at
-    /// <paramref name="prefixOffset"/> followed by the rest of its bytes at <paramref name="suffixOffset"/>.
+    /// account is within <c>[fromAccount, toAccount]</c> and is not <paramref name="keptAccount"/> (empty keeps none).
+    /// The account is read as <paramref name="prefixLength"/> bytes at <paramref name="prefixOffset"/> followed by
+    /// the rest of its bytes at <paramref name="suffixOffset"/>.
     /// </summary>
     /// <param name="flags">The batch's write flags. Without the WAL a batch commits every few hundred writes, deletes included, which bounds a long scan.</param>
     [SkipLocalsInit]
