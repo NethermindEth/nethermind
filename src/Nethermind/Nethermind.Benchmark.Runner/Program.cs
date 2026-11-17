@@ -14,16 +14,19 @@ using BenchmarkDotNet.Toolchains.CsProj;
 using BenchmarkDotNet.Toolchains.DotNetCli;
 using System.Linq;
 using BenchmarkDotNet.Columns;
+using BenchmarkDotNet.ConsoleArguments;
+using BenchmarkDotNet.ConsoleArguments.ListBenchmarks;
+using BenchmarkDotNet.Loggers;
 using Nethermind.Merge.Plugin.Benchmark;
 using Nethermind.Precompiles.Benchmark;
+using TypeFilter = BenchmarkDotNet.Running.TypeFilter;
 
 namespace Nethermind.Benchmark.Runner
 {
     public class DashboardConfig : ManualConfig
     {
-        public DashboardConfig(Job job)
+        public DashboardConfig()
         {
-            AddJob(job.AsDefault());
             AddColumnProvider(DefaultColumnProviders.Descriptor);
             AddColumnProvider(DefaultColumnProviders.Statistics);
             AddColumnProvider(DefaultColumnProviders.Params);
@@ -34,10 +37,15 @@ namespace Nethermind.Benchmark.Runner
             WithSummaryStyle(SummaryStyle.Default.WithMaxParameterColumnWidth(100));
             BuildTimeout = TimeSpan.FromMinutes(10);
         }
+
+        public DashboardConfig(Job job) : this() => AddJob(job.AsDefault());
     }
 
     public class PrecompileBenchmarkConfig : DashboardConfig
     {
+        public PrecompileBenchmarkConfig() =>
+            AddColumnProvider(new GasColumnProvider());
+
         public PrecompileBenchmarkConfig(Job job) : base(job) =>
             AddColumnProvider(new GasColumnProvider());
     }
@@ -79,10 +87,55 @@ namespace Nethermind.Benchmark.Runner
                     .Distinct()
                     .ToArray();
 
-                BenchmarkSwitcher
-                    .FromAssemblies(releaseAssemblies)
-                    .Run(benchmarkArgs, new PrecompileBenchmarkConfig(benchmarkJob));
+                Run(releaseAssemblies, benchmarkArgs, benchmarkJob);
             }
         }
+
+        private static void Run(Assembly[] assemblies, string[] args, Job runnerJob)
+        {
+            IConfig ownJobConfig = new PrecompileBenchmarkConfig();
+            ILogger logger = ConsoleLogger.Default;
+            (bool isSuccess, IConfig parsedConfig, CommandLineOptions options) = ConfigParser.Parse(args, logger, ownJobConfig);
+            if (!isSuccess)
+            {
+                return;
+            }
+
+            (bool allTypesValid, IReadOnlyList<Type> types) = TypeFilter.GetTypesWithRunnableBenchmarks([], assemblies, logger);
+            if (!allTypesValid)
+            {
+                return;
+            }
+
+            if (options.PrintInformation || options.ListBenchmarkCaseMode != ListBenchmarkCaseMode.Disabled)
+            {
+                BenchmarkSwitcher.FromTypes([.. types]).Run(args, ownJobConfig);
+                return;
+            }
+
+            ILookup<bool, Type> typesByOwnJob = types.ToLookup(DeclaresJob);
+            bool ranRunnerJobTypes = RunMatching([.. typesByOwnJob[false]], args, new PrecompileBenchmarkConfig(runnerJob), parsedConfig);
+            bool ranOwnJobTypes = RunMatching([.. typesByOwnJob[true]], args, ownJobConfig, parsedConfig);
+            if (!ranRunnerJobTypes && !ranOwnJobTypes)
+            {
+                BenchmarkSwitcher.FromTypes([.. types]).Run(args, ownJobConfig);
+            }
+        }
+
+        private static bool RunMatching(Type[] types, string[] args, IConfig config, IConfig parsedConfig)
+        {
+            if (TypeFilter.Filter(ManualConfig.Union(config, parsedConfig), types).Length == 0)
+            {
+                return false;
+            }
+
+            BenchmarkSwitcher.FromTypes(types).Run(args, config);
+            return true;
+        }
+
+        private static bool DeclaresJob(Type type) =>
+            type.GetCustomAttributes(true).OfType<IConfigSource>()
+                .Concat(type.Assembly.GetCustomAttributes().OfType<IConfigSource>())
+                .Any(static source => source.Config.GetJobs().Any());
     }
 }
