@@ -180,6 +180,7 @@ public class PseudoNethermindModuleTests
             Assert.That(container.Resolve<IPersistedSnapshotLoader>(), Is.SameAs(NullPersistedSnapshotLoader.Instance));
             Assert.That(container.Resolve<IPersistedSnapshotCompactor>(), Is.SameAs(NullPersistedSnapshotCompactor.Instance));
             Assert.That(container.Resolve<IFlatDbConfig>().EnableLongFinality, Is.False);
+            Assert.That(container.Resolve<IFlatDbConfig>().Layout, Is.EqualTo(FlatLayout.Flat));
         }
     }
 

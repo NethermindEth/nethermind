@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
@@ -53,8 +54,9 @@ namespace Nethermind.Merge.Plugin
                 return false;
             }
 
-            return poSSwitcher.IsPostMerge(header)
-                ? ValidateTheMergeChecks(header) && base.Validate<TOrphaned>(header, parent, isUncle, out error, validateHash)
+            (bool isTerminal, bool isPostMerge) = poSSwitcher.GetBlockConsensusInfo(header);
+            return isPostMerge
+                ? ValidateTheMergeChecks(header, isTerminal) && base.Validate<TOrphaned>(header, parent, isUncle, out error, validateHash)
                 : ValidatePoWTotalDifficulty(header, ref error) && (
                     typeof(TOrphaned) == typeof(OnFlag)
                         ? preMergeHeaderValidator.ValidateOrphaned(header, out error)
@@ -90,12 +92,10 @@ namespace Nethermind.Merge.Plugin
             return true;
         }
 
-        private bool ValidateTheMergeChecks(BlockHeader header)
+        private bool ValidateTheMergeChecks(BlockHeader header, bool isTerminal)
         {
-            (bool isTerminal, bool isPostMerge) = poSSwitcher.GetBlockConsensusInfo(header);
             bool terminalTotalDifficultyChecks = ValidateTerminalTotalDifficultyChecks(header, isTerminal);
-            bool valid = !isPostMerge ||
-                        ValidateHeaderField(header, header.Difficulty, UInt256.Zero, nameof(header.Difficulty))
+            bool valid = ValidateHeaderField(header, header.Difficulty, UInt256.Zero, nameof(header.Difficulty))
                         && ValidateHeaderField(header, header.Nonce, 0u, nameof(header.Nonce))
                         && ValidateHeaderField(header, header.UnclesHash, Keccak.OfAnEmptySequenceRlp, nameof(header.UnclesHash));
 
@@ -150,7 +150,7 @@ namespace Nethermind.Merge.Plugin
 
         private bool ValidateHeaderField<T>(BlockHeader header, T value, T expected, string name)
         {
-            if (!Equals(value, expected))
+            if (!EqualityComparer<T>.Default.Equals(value, expected))
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header {header.ToString(BlockHeader.Format.Full)} - the {name} is incorrect expected {expected}, got {value}. TransitionFinished: {poSSwitcher.TransitionFinished}, TTD: {_specProvider.TerminalTotalDifficulty}, IsTerminal: {header.IsTerminalBlock(_specProvider)}");
                 return false;

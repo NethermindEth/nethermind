@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
@@ -89,6 +90,18 @@ namespace Nethermind.Db.Test
             {
                 Assert.That(memDb.KeyExists(TestItem.KeccakA), Is.True);
                 Assert.That(memDb.KeyExists(TestItem.KeccakB), Is.False);
+            }
+        }
+
+        [Test]
+        public void Span_action_read_passes_an_empty_value_and_misses_only_a_missing_key()
+        {
+            MemDb memDb = new();
+            memDb.Set(TestItem.KeccakA, Array.Empty<byte>());
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(KeyValueStoreReads.Read(memDb, TestItem.KeccakA.Bytes, ReadFlags.None, spanAction: true), Is.Empty);
+                Assert.That(KeyValueStoreReads.Read(memDb, TestItem.KeccakB.Bytes, ReadFlags.None, spanAction: true), Is.Null);
             }
         }
 

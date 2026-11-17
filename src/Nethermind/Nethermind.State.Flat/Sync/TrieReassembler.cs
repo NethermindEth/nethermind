@@ -96,9 +96,10 @@ public sealed class TrieReassembler(IPersistence persistence, ILogManager logMan
     {
         token.ThrowIfCancellationRequested();
 
-        byte[]? rlp = address is null
-            ? reader.TryLoadStateRlp(path, ReadFlags.None)
-            : reader.TryLoadStorageRlp(address, path, ReadFlags.None);
+        byte[]? rlp = null;
+        _ = address is null
+            ? reader.TryLoadStateRlp(path, ReadFlags.None, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref rlp))
+            : reader.TryLoadStorageRlp(address, path, ReadFlags.None, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref rlp));
 
         if (rlp is not null)
         {
@@ -126,7 +127,7 @@ public sealed class TrieReassembler(IPersistence persistence, ILogManager logMan
             {
                 UInt256 value = default;
                 if (reader.TryGetStorageRaw(address, path.Path, ref value))
-                    return TrieNodeFactory.CreateLeaf(ReadOnlySpan<byte>.Empty, Rlp.Encode(value).Bytes);
+                    return TrieNodeFactory.CreateLeaf(ReadOnlySpan<byte>.Empty, Rlp.Encode(value));
             }
 
             return null;
@@ -227,7 +228,7 @@ public sealed class TrieReassembler(IPersistence persistence, ILogManager logMan
         Account newAccount = oldAccount.WithChangedStorageRoot(newStorageRoot);
         batch.SetAccountRaw(fullPath.Path, newAccount);
 
-        return TrieNodeFactory.CreateLeaf(node.Key!, _accountDecoder.EncodeAsBytes(newAccount));
+        return TrieNodeFactory.CreateLeaf(node.Key!, _accountDecoder.Encode(newAccount));
     }
 
     private TrieNode Persist(IPersistence.IWriteBatch batch, Hash256? address, ref TreePath path, TrieNode node)

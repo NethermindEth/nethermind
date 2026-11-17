@@ -18,6 +18,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
+using Nethermind.Blockchain.Find;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -187,7 +191,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [TearDown]
         public void TearDown() => (_txPool as IDisposable)?.Dispose();
 
-        private static Peer SetUpPeerA()
+        private static Peer SetUpPeerA(bool statusReceived = true)
         {
             Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303, true);
             node.ClientId = "Geth/v1.9.21-stable/linux-amd64/go1.15.2";
@@ -210,7 +214,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 UInt256 difficulty = 0x5ea4ed;
                 syncPeer.TotalDifficulty.Returns(difficulty);
-                syncPeer.HeadHash.Returns(TestItem.KeccakA);
+                syncPeer.HeadHash.Returns(statusReceived ? TestItem.KeccakA : null);
             }
 
             IProtocolHandler p2PProtocolHandler = Substitute.For<IProtocolHandler, IP2PProtocolHandler>();
@@ -261,15 +265,16 @@ namespace Nethermind.JsonRpc.Test.Modules
             return peer;
         }
 
-        private IParityRpcModule CreateParityRpcModule(IPeerManager? peerManager = null, ITxPool? txPool = null) => new ParityRpcModule(_ethereumEcdsa,
+        private IParityRpcModule CreateParityRpcModule(IPeerManager? peerManager = null, ITxPool? txPool = null, ISpecProvider? specProvider = null, IBlockFinder? blockFinder = null) => new ParityRpcModule(_ethereumEcdsa,
                 txPool ?? _txPool,
-                _blockTree,
+                blockFinder ?? _blockTree,
                 _receiptStorage,
                 new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 8545),
                 _signerStore,
                 new MemKeyStore(new[] { TestItem.PrivateKeyA }, Path.Combine("testKeyStoreDir", Path.GetRandomFileName())),
-                MainnetSpecProvider.Instance,
-                peerManager ?? Substitute.For<IPeerManager>());
+                specProvider ?? MainnetSpecProvider.Instance,
+                peerManager ?? Substitute.For<IPeerManager>(),
+                new BlocksConfig());
 
         [Test]
         public async Task parity_pendingTransactions()
@@ -296,6 +301,48 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_pendingTransactions", "0x0000000000000000000000000000000000000005");
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":[],\"id\":67}";
             Assert.That(serialized, Is.EqualTo(expectedResult));
+        }
+
+        [Test]
+        public async Task parity_pendingTransactions_reports_a_frame_transaction_gas_at_the_next_block_spec()
+        {
+            Transaction frameTx = FrameTxTestFrames.FrameTx(TestItem.AddressA, [], FrameTxTestFrames.SelfVerify(100_000), FrameTxTestFrames.Pay(100_000));
+            frameTx.GasLimit = 200_000;
+            frameTx.Hash = TestItem.KeccakA;
+            frameTx.ChainId = MainnetSpecProvider.Instance.ChainId;
+            frameTx.To = null;
+            ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Prague.Instance), (new ForkActivation(0, 12), Eip8141Prototype.Instance));
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.Head.Returns(Build.A.Block.WithNumber(0).WithTimestamp(0).TestObject);
+            ITxPool txPool = Substitute.For<ITxPool>();
+            txPool.GetPendingTransactions().Returns([frameTx]);
+            FrameTxValidation.TryCalculateGasBudget(frameTx, Eip8141Prototype.Instance, out _, out _, out ulong includedGas);
+
+            string serialized = await RpcTest.TestSerializedRequest(CreateParityRpcModule(txPool: txPool, specProvider: specProvider, blockFinder: blockFinder), "parity_pendingTransactions");
+
+            using JsonDocument document = JsonDocument.Parse(serialized);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(includedGas, Is.Not.EqualTo(frameTx.GasLimit), "the included gas must differ from the summed limits for the check to tell them apart");
+                Assert.That(document.RootElement.GetProperty("result")[0].GetProperty("gas").GetString(), Is.EqualTo($"0x{includedGas:x}"));
+            }
+        }
+
+        [Test]
+        public async Task parity_pendingTransactions_keeps_the_intrinsic_gas_memo_of_a_non_frame_transaction()
+        {
+            Transaction legacyTx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            IIntrinsicGasMemo memo = Substitute.For<IIntrinsicGasMemo>();
+            legacyTx.IntrinsicGasMemo = memo;
+            ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Prague.Instance), (new ForkActivation(0, 12), Eip8141Prototype.Instance));
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.Head.Returns(Build.A.Block.WithNumber(0).WithTimestamp(0).TestObject);
+            ITxPool txPool = Substitute.For<ITxPool>();
+            txPool.GetPendingTransactions().Returns([legacyTx]);
+
+            await RpcTest.TestSerializedRequest(CreateParityRpcModule(txPool: txPool, specProvider: specProvider, blockFinder: blockFinder), "parity_pendingTransactions");
+
+            Assert.That(legacyTx.IntrinsicGasMemo, Is.SameAs(memo));
         }
 
         /// <remarks>
@@ -340,6 +387,16 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_getBlockReceipts", "latest");
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":[{\"transactionHash\":\"0x026217c3c4eb1f0e9e899553759b6e909b965a789c6136d256674718617c8142\",\"transactionIndex\":\"0x0\",\"blockHash\":\"0xf7b57f94244d8d0527bbfa456fa58cf1809829ce40f50c4179429f87e7660cad\",\"blockNumber\":\"0x1\",\"cumulativeGasUsed\":\"0x7d0\",\"gasUsed\":\"0x3e8\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x0\",\"transactionIndex\":\"0x0\",\"transactionHash\":\"0x026217c3c4eb1f0e9e899553759b6e909b965a789c6136d256674718617c8142\",\"blockHash\":\"0xf7b57f94244d8d0527bbfa456fa58cf1809829ce40f50c4179429f87e7660cad\",\"blockNumber\":\"0x1\",\"blockTimestamp\":\"0xf4241\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x0\",\"type\":\"0x0\"},{\"transactionHash\":\"0xd0183bfd42ccd8fccb7722b108e052d12d2cf5a32a144b6a6f3a975c4d7d14a1\",\"transactionIndex\":\"0x1\",\"blockHash\":\"0xf7b57f94244d8d0527bbfa456fa58cf1809829ce40f50c4179429f87e7660cad\",\"blockNumber\":\"0x1\",\"cumulativeGasUsed\":\"0x7d0\",\"gasUsed\":\"0x3e8\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x1\",\"transactionIndex\":\"0x1\",\"transactionHash\":\"0xd0183bfd42ccd8fccb7722b108e052d12d2cf5a32a144b6a6f3a975c4d7d14a1\",\"blockHash\":\"0xf7b57f94244d8d0527bbfa456fa58cf1809829ce40f50c4179429f87e7660cad\",\"blockNumber\":\"0x1\",\"blockTimestamp\":\"0xf4241\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x0\",\"type\":\"0x0\"},{\"transactionHash\":\"0xf8ab484b10dc0398f03957d1062bbe3526048b74d429f8a8c9c57fa7ac5fa436\",\"transactionIndex\":\"0x2\",\"blockHash\":\"0xf7b57f94244d8d0527bbfa456fa58cf1809829ce40f50c4179429f87e7660cad\",\"blockNumber\":\"0x1\",\"cumulativeGasUsed\":\"0x7d0\",\"gasUsed\":\"0x3e8\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x2\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0xf8ab484b10dc0398f03957d1062bbe3526048b74d429f8a8c9c57fa7ac5fa436\",\"blockHash\":\"0xf7b57f94244d8d0527bbfa456fa58cf1809829ce40f50c4179429f87e7660cad\",\"blockNumber\":\"0x1\",\"blockTimestamp\":\"0xf4241\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x0\",\"type\":\"0x0\"}],\"id\":67}";
             Assert.That(serialized, Is.EqualTo(expectedResult));
+        }
+
+        [Test]
+        public async Task parity_getBlockReceipts_fails_when_the_receipts_of_a_block_with_transactions_are_missing()
+        {
+            _receiptStorage.RemoveReceipts(_blockTree.Head!);
+
+            string serialized = await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_getBlockReceipts", "latest");
+
+            Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":4444,"message":"Pruned history unavailable"},"id":67}"""));
         }
 
         [Test]
@@ -394,7 +451,22 @@ namespace Nethermind.JsonRpc.Test.Modules
         public async Task parity_netPeers_standard_case()
         {
             string serialized = await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_netPeers");
-            string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":{\"active\":3,\"connected\":5,\"max\":15,\"peers\":[{\"id\":\"", TestItem.PublicKeyA, "\",\"name\":\"Geth/v1.9.21-stable/linux-amd64/go1.15.2\",\"caps\":[\"eth/65\",\"eth/64\"],\"network\":{\"localAddress\":\"127.0.0.1\",\"remoteAddress\":\"Handshake\"},\"protocols\":{\"eth\":{\"version\":65,\"difficulty\":\"0x5ea4ed\",\"head\":\"", TestItem.KeccakA, "\"}}},{\"name\":\"Geth/v1.9.26-unstable/linux-amd64/go1.15.6\",\"caps\":[],\"network\":{\"localAddress\":\"95.217.106.25\"},\"protocols\":{\"eth\":{\"version\":0,\"difficulty\":\"0x0\"}}},{\"id\":\"", TestItem.PublicKeyB, "\",\"caps\":[],\"network\":{\"remoteAddress\":\"Handshake\"},\"protocols\":{\"eth\":{\"version\":0,\"difficulty\":\"0x0\"}}}]},\"id\":67}");
+            string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":{\"active\":3,\"connected\":5,\"max\":15,\"peers\":[{\"id\":\"", TestItem.PublicKeyA, "\",\"name\":\"Geth/v1.9.21-stable/linux-amd64/go1.15.2\",\"caps\":[\"eth/65\",\"eth/64\"],\"network\":{\"localAddress\":\"127.0.0.1\",\"remoteAddress\":\"Handshake\"},\"protocols\":{\"eth\":{\"version\":65,\"difficulty\":\"0x5ea4ed\",\"head\":\"", TestItem.KeccakA, "\"}}},{\"name\":\"Geth/v1.9.26-unstable/linux-amd64/go1.15.6\",\"caps\":[],\"network\":{\"localAddress\":\"95.217.106.25\"},\"protocols\":{}},{\"id\":\"", TestItem.PublicKeyB, "\",\"caps\":[],\"network\":{\"remoteAddress\":\"Handshake\"},\"protocols\":{}}]},\"id\":67}");
+            Assert.That(serialized, Is.EqualTo(expectedResult));
+        }
+
+        [Test]
+        public async Task parity_netPeers_eth_status_not_received()
+        {
+            Peer peer = SetUpPeerA(statusReceived: false);
+            IPeerManager peerManager = Substitute.For<IPeerManager>();
+            peerManager.ActivePeers.Returns(new List<Peer> { peer });
+            peerManager.ActivePeersCount.Returns(1);
+
+            IParityRpcModule parityRpcModule = CreateParityRpcModule(peerManager);
+
+            string serialized = await RpcTest.TestSerializedRequest(parityRpcModule, "parity_netPeers");
+            string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":{\"active\":1,\"connected\":0,\"max\":0,\"peers\":[{\"id\":\"", TestItem.PublicKeyA, "\",\"name\":\"Geth/v1.9.21-stable/linux-amd64/go1.15.2\",\"caps\":[\"eth/65\",\"eth/64\"],\"network\":{\"localAddress\":\"127.0.0.1\",\"remoteAddress\":\"Handshake\"},\"protocols\":{}}]},\"id\":67}");
             Assert.That(serialized, Is.EqualTo(expectedResult));
         }
 

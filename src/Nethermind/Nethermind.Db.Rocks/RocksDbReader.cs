@@ -96,17 +96,8 @@ public class RocksDbReader(DbOnTheRocks mainDb,
             return found;
         }
 
-        Span<byte> value = GetSpan(key, flags);
-        try
-        {
-            if (value.IsEmpty) return false;
-            action(value, arg);
-            return true;
-        }
-        finally
-        {
-            DangerousReleaseMemory(value);
-        }
+        ReadOptions readOptions = ((flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options);
+        return _mainDb.TryGetPinnedWithColumnFamily(key, _columnFamily, readOptions, action, arg);
     }
 
     public void DangerousReleaseMemory(in ReadOnlySpan<byte> span) => _mainDb.DangerousReleaseMemory(span);

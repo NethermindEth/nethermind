@@ -28,10 +28,11 @@ internal static class XdcConstants
     // XDC default gas limit per block https://github.com/XinFinOrg/XDPoSChain/blob/dev-upgrade/cicd/mainnet/start.sh#L120
     public const long DefaultTargetGasLimit = 420_000_000;
 
-    // Inputs of the reference client's transaction pool gas price floor: common.DefaultMinGasPrice, in wei
-    // (0.25 gwei), and the factor by which Gas50xBlock raises it (common.MinGasPrice50x = 50x, 12.5 gwei).
+    // Inputs of the reference client's gas price tiers (params/gas.go): common.DefaultMinGasPrice, in wei
+    // (0.25 gwei), and the factors by which Gas50xBlock (12.5 gwei) and Gas2500xBlock (625 gwei) raise it.
     public const ulong DefaultMinGasPrice = 250_000_000;
     public const uint Gas50xMultiplier = 50;
+    public const uint Gas2500xMultiplier = 2500;
 
     public const byte ConsensusVersion = 0x02;
 

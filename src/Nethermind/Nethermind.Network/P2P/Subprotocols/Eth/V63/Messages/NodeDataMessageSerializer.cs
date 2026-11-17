@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
 
@@ -14,9 +15,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 
         public int Serialize(Span<byte> destination, NodeDataMessage message)
         {
-            RlpWriter writer = new(destination);
+            RlpWriter writer = RlpWriter.ContentWriter(destination);
             writer.WriteByteArrayList(message.Data);
-            return writer.Position;
+            return writer.Length;
         }
 
         /// <remarks>Copies <paramref name="data"/>, which the message would otherwise keep referencing.</remarks>

@@ -17,7 +17,7 @@ namespace Nethermind.Trie
 
         public OldStyleTrieVisitContext Add(byte nibble) => new(Level + 1, IsStorage, nibble);
 
-        public OldStyleTrieVisitContext AddStorage(in ValueHash256 storage) => new(Level + 1, true, null);
+        public OldStyleTrieVisitContext AddStorage(Hash256? storage) => new(Level + 1, true, null);
     }
 
     public class TrieVisitContext : IDisposable

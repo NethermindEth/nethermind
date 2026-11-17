@@ -84,6 +84,27 @@ public class TransactionProcessorFeeTests
     }
 
     [Test]
+    public void Pays_fees_without_fee_tracing([Values] bool withFeeCollector)
+    {
+        _spec.FeeCollector = withFeeCollector ? TestItem.AddressC : null;
+
+        Transaction tx = Build.A.Transaction
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).WithMaxFeePerGas(10).WithMaxPriorityFeePerGas(10)
+            .WithType(TxType.EIP1559).WithGasLimit(21000).TestObject;
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBeneficiary(TestItem.AddressB).WithBaseFeePerGas(1).WithTransactions(tx).WithGasLimit(21000)
+            .TestObject;
+
+        ExecuteAndTrace(block, NullBlockTracer.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_stateProvider.GetBalance(TestItem.AddressB), Is.EqualTo((UInt256)189000));
+            Assert.That(_stateProvider.GetBalance(TestItem.AddressC), Is.EqualTo(withFeeCollector ? (UInt256)21000 : UInt256.Zero));
+        }
+    }
+
+    [Test]
     public void Base_fee_collected_is_capped_at_effective_price_when_validation_skipped()
     {
         // Regression: eth_simulateV1 with validation disabled may run a maxFeePerGas = 0 < baseFee tx.

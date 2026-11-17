@@ -8,6 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 
 namespace Nethermind.Serialization.Rlp;
 
@@ -20,6 +21,7 @@ public struct ReceiptRecoveryBlock
 {
     private readonly MemoryManager<byte>? _memoryOwner; // Can be null if loaded without span
     private readonly Memory<byte> _transactionData;
+    private readonly RlpBehaviors _inputMode;
     private int _currentTransactionPosition = 0;
 
     private readonly Transaction[]? _transactions = null;
@@ -38,12 +40,14 @@ public struct ReceiptRecoveryBlock
         TransactionCount = _transactions.Length;
     }
 
-    public ReceiptRecoveryBlock(MemoryManager<byte>? memoryOwner, BlockHeader header, Memory<byte> transactionData, int transactionCount)
+    /// <param name="inputMode"><see cref="RlpBehaviors.TrustedInput"/> when <paramref name="transactionData"/> comes from this node's database.</param>
+    public ReceiptRecoveryBlock(MemoryManager<byte>? memoryOwner, BlockHeader header, Memory<byte> transactionData, int transactionCount, RlpBehaviors inputMode = RlpBehaviors.None)
     {
         Header = header;
         _memoryOwner = memoryOwner;
         _transactionData = transactionData;
         TransactionCount = transactionCount;
+        _inputMode = inputMode & RlpBehaviors.TrustedInput;
     }
 
     public Transaction GetNextTransaction()
@@ -53,14 +57,12 @@ public struct ReceiptRecoveryBlock
             return _transactions[_currentTransactionIndex++];
         }
 
-        RlpReader decoderContext = new(_transactionData)
-        {
-            Position = _currentTransactionPosition
-        };
-        TxDecoder.Instance.Decode(ref decoderContext, ref _txBuffer, RlpBehaviors.AllowUnsigned);
-        Transaction tx = _txBuffer ?? throw new RlpException("Transaction decoding returned null.");
+        Memory<byte> transactionData = _transactionData[_currentTransactionPosition..];
+        RlpReader decoderContext = new(transactionData.Span);
+        TxDecoder.Instance.Decode(ref decoderContext, ref _txBuffer, RlpBehaviors.AllowUnsigned | _inputMode, transactionData);
+        Transaction tx = _txBuffer ?? throw new RlpReaderException("Transaction decoding returned null.");
         Hash256? _ = tx.Hash; // Force Hash evaluation
-        _currentTransactionPosition = decoderContext.Position;
+        _currentTransactionPosition += decoderContext.BytesRead;
 
         return tx;
     }
@@ -76,8 +78,8 @@ public struct ReceiptRecoveryBlock
         RlpReader reader = new(_transactionData.Span);
         for (int i = 0; i < index; i++) reader.SkipItem();
         Transaction? transaction = new();
-        TxDecoder.Instance.Decode(ref reader, ref transaction);
-        return transaction ?? throw new RlpException("Transaction decoding returned null.");
+        TxDecoder.Instance.Decode(ref reader, ref transaction, _inputMode);
+        return transaction ?? throw new RlpReaderException("Transaction decoding returned null.");
     }
 
     /// <summary>Returns the hash of the next transaction without decoding its fields.</summary>
@@ -101,9 +103,7 @@ public struct ReceiptRecoveryBlock
         Hash256? transactionHash = transaction.Hash;
         if (transactionHash is null)
         {
-            KeccakRlpWriter writer = new();
-            TxDecoder.Instance.Encode(ref writer, transaction, RlpBehaviors.SkipTypedWrapping);
-            transaction.Hash = transactionHash = writer.GetHash();
+            transaction.Hash = transactionHash = TxDecoder.Instance.ComputeHash(transaction, RlpBehaviors.SkipTypedWrapping);
         }
 
         return transactionHash;
@@ -148,50 +148,43 @@ public struct ReceiptRecoveryBlock
             ThrowNoTransactionRemaining();
         }
 
-        if ((uint)_currentTransactionPosition >= (uint)_transactionData.Length)
-        {
-            RlpHelpers.ThrowRlpDataTruncated();
-        }
+        return _inputMode != 0
+            ? ReadTransactionHashInput<OffFlag>(_transactionData.Span[_currentTransactionPosition..], out encodedLength)
+            : ReadTransactionHashInput<OnFlag>(_transactionData.Span[_currentTransactionPosition..], out encodedLength);
+    }
 
-        RlpReader decoderContext = new(_transactionData)
-        {
-            Position = _currentTransactionPosition
-        };
-
-        bool isLegacy = decoderContext.IsSequenceNext();
-        (int prefixLength, int contentLength) = decoderContext.PeekPrefixAndContentLength();
-        int bytesRemaining = decoderContext.Length - decoderContext.Position;
-        if (prefixLength > bytesRemaining || contentLength > bytesRemaining - prefixLength)
-        {
-            RlpHelpers.ThrowRlpDataTruncated();
-        }
-
-        encodedLength = prefixLength + contentLength;
-        ReadOnlySpan<byte> encodedTransaction = decoderContext.Peek(encodedLength);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ReadOnlySpan<byte> ReadTransactionHashInput<TCanonicalChecks>(ReadOnlySpan<byte> transactionData, out int encodedLength)
+        where TCanonicalChecks : struct, IFlag
+    {
+        RlpReader reader = new(transactionData);
+        bool isLegacy = reader.IsNextSequence;
         ReadOnlySpan<byte> hashInput;
         if (isLegacy)
         {
-            if (contentLength == 0)
+            RlpReader items = reader.EnterSequence<TCanonicalChecks>(out encodedLength);
+            if (!items.HasNext)
             {
                 ThrowEmptyLegacyTransaction();
             }
 
-            hashInput = encodedTransaction;
+            hashInput = transactionData[..encodedLength];
         }
         else
         {
-            if (contentLength < 2)
+            hashInput = reader.ReadBytes<TCanonicalChecks>();
+            if (hashInput.Length < 2)
             {
                 ThrowIncompleteTypedTransaction();
             }
 
-            byte transactionType = encodedTransaction[prefixLength];
+            byte transactionType = hashInput[0];
             if (transactionType is (byte)TxType.Legacy || transactionType > Transaction.MaxTxType)
             {
                 ThrowInvalidTypedTransactionType(transactionType);
             }
 
-            hashInput = encodedTransaction.Slice(prefixLength, contentLength);
+            encodedLength = reader.BytesRead;
         }
 
         return hashInput;
@@ -199,19 +192,19 @@ public struct ReceiptRecoveryBlock
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowNoTransactionRemaining()
-        => throw new RlpException("No transaction remains in the receipt recovery block.");
+        => throw new RlpReaderException("No transaction remains in the receipt recovery block.");
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowEmptyLegacyTransaction()
-        => throw new RlpException("An empty RLP list is not a valid legacy transaction.");
+        => throw new RlpReaderException("An empty RLP list is not a valid legacy transaction.");
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowIncompleteTypedTransaction()
-        => throw new RlpException("A typed transaction envelope must contain a type and payload.");
+        => throw new RlpReaderException("A typed transaction envelope must contain a type and payload.");
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowInvalidTypedTransactionType(byte transactionType)
-        => throw new RlpException($"Invalid typed transaction type {transactionType}.");
+        => throw new RlpReaderException($"Invalid typed transaction type {transactionType}.");
 
     public readonly Hash256? Hash => Header.Hash; // do not add setter here
     public readonly ulong Number => Header.Number; // do not add setter here

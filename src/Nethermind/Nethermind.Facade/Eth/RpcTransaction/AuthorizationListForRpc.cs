@@ -61,7 +61,7 @@ public class AuthorizationListForRpc : IEnumerable<RpcAuthTuple>
 
     public AuthorizationTuple[] ToAuthorizationList() => _tuples
         .Select(static tuple => new AuthorizationTuple(
-            (ulong)tuple.ChainId,
+            tuple.ChainId,
             tuple.Address,
             tuple.Nonce,
             new Signature(tuple.R, tuple.S, tuple.YParity.GetValueOrDefault() + Signature.VOffset))

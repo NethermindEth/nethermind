@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Network;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
 
@@ -14,9 +15,9 @@ internal class VoteMsgSerializer : IMessageSerializer<VoteMsg>
 
     public int Serialize(Span<byte> destination, VoteMsg message)
     {
-        RlpWriter writer = new(destination);
+        RlpWriter writer = RlpWriter.ContentWriter(destination);
         _voteDecoder.Encode(ref writer, message.Vote);
-        return writer.Position;
+        return writer.Length;
     }
 
     public VoteMsg Deserialize(ReadOnlySpan<byte> data)

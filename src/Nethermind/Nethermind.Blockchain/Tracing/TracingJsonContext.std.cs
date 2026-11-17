@@ -28,6 +28,7 @@ namespace Nethermind.Blockchain.Tracing;
 [JsonSerializable(typeof(GethTraceOptionsConverter.WireOptions))]
 [JsonSerializable(typeof(GethLikeCustomTrace))]
 [JsonSerializable(typeof(GethLikeTxTrace))]
+[JsonSerializable(typeof(GethLikeTxTrace[][]))]
 [JsonSerializable(typeof(Dictionary<string, JsonElement>))]
 [JsonSerializable(typeof(GethLikeCustomTrace.EmptyValue))]
 [JsonSerializable(typeof(FourByteIdCounts))]
