@@ -878,7 +878,7 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_call_with_accessList()
     {
-        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+        using TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .Build(new TestSpecProvider(Berlin.Instance));
 
         (byte[] code, AccessListForRpc accessList) = GetTestAccessList();

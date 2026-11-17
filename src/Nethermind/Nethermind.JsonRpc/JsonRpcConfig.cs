@@ -53,6 +53,8 @@ public class JsonRpcConfig : IJsonRpcConfig
     public string CallsFilterFilePath { get; set; } = "Data/jsonrpc.filter";
     public long? MaxRequestBodySize { get; set; } = 30000000;
     public int MaxLogsPerResponse { get; set; } = 20_000;
+    public int MaxSubscriptionsPerConnection { get; set; } = 1_000;
+    public int MaxSubscriptions { get; set; } = 10_000;
     public int OverlayMaxBlockRange { get; set; } = 1_000;
     public bool EnableTracingStreamMode { get; set; } = true;
     public bool EnableLogsStreamMode { get; set; } = false;
@@ -62,6 +64,7 @@ public class JsonRpcConfig : IJsonRpcConfig
     public int? TraceModuleConcurrentInstances { get; set; } = null;
     public int TraceBlockParallelism { get; set; } = 4;
     public int? EthModuleConcurrentInstances { get; set; } = null;
+    public int? EthCallMaxConcurrentRequests { get; set; } = null;
     public string JwtSecretFile { get; set; } = null;
     public bool UnsecureDevNoRpcAuthentication { get; set; }
     public int? MaxLoggedRequestParametersCharacters { get; set; } = null;
@@ -91,6 +94,7 @@ public class JsonRpcConfig : IJsonRpcConfig
     public string[] AllowedHosts { get; set; } = ["*"];
     public string[] EngineAllowedHosts { get; set; } = ["*"];
     public int WebSocketsProcessingConcurrency { get; set; } = 16;
+    public long MaxUnsentWebSocketResponseSize { get; set; } = 64.MiB;
     public int IpcProcessingConcurrency { get; set; } = 16;
     public int BatchProcessingConcurrency { get; set; } = 4;
     public bool EnablePerMethodMetrics { get; set; } = true;

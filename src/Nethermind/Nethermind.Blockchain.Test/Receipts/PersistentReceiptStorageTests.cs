@@ -362,7 +362,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     }
 
     [Test]
-    public void Network_receipts_store_the_same_receipts_and_index_as_decoded_ones([Values] bool eip658, [Values] bool eip7668)
+    public void Network_receipts_store_the_same_receipts_and_index_as_decoded_ones([Values] bool eip658, [Values] bool eip7668, [Values] bool inBatch)
     {
         IReleaseSpec spec = eip658 ? Byzantium.Instance : SpuriousDragon.Instance;
         _specProvider.NextForkSpec = eip7668 ? new OverridableReleaseSpec(spec) { IsEip7668Enabled = true } : spec;
@@ -403,7 +403,27 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         _storage.ReceiptsInserted += (_, args) => insertedDecoded = args.TxReceipts;
 
         _storage.Insert(stored, CreateSpecReceipts(), ensureCanonical: true);
-        bool keptEncoded = other.TryInsertNetworkReceipts(new Block(stored.Header, new BlockBody(encodedTransactions, [])), message, withBloom: true, ensureCanonical: true);
+        Block withEncodedTransactions = new(stored.Header, new BlockBody(encodedTransactions, []));
+        bool keptEncoded;
+        if (inBatch)
+        {
+            using IReceiptsInsertBatch batch = other.StartInsertBatch();
+            keptEncoded = batch.TryInsertNetworkReceipts(withEncodedTransactions, message, withBloom: true);
+            if (keptEncoded)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(other.HasBlock(stored.Number, stored.Hash!), Is.False);
+                    Assert.That(otherDb.GetColumnDb(ReceiptsColumns.Transactions).Get(block.Transactions[0].Hash!), Is.Null);
+                    Assert.That(inserted, Is.Null);
+                }
+            }
+        }
+        else
+        {
+            keptEncoded = other.TryInsertNetworkReceipts(withEncodedTransactions, message, withBloom: true, ensureCanonical: true);
+        }
+
         foreach (Transaction transaction in encodedTransactions) TxDecoder.TxObjectPool.Return(transaction);
 
         Assert.That(keptEncoded, Is.EqualTo(useCompactReceipts));
@@ -1801,6 +1821,67 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Insert_batch_stores_its_blocks_in_one_write_and_then_lowers_the_migrated_block_number()
+    {
+        _storage.MigratedBlockNumber = ulong.MaxValue;
+        (Block high, TxReceipt[] highReceipts) = PrepareBlock(BuildBlock(6, nonce: 0));
+        (Block low, TxReceipt[] lowReceipts) = PrepareBlock(BuildBlock(5, nonce: 1));
+        (Block mismatched, _) = PrepareBlock(BuildBlock(4, nonce: 2));
+        int writeBatches = _receiptsDb.WriteBatchCount;
+        int insertedEvents = 0;
+        _storage.ReceiptsInserted += (_, _) => insertedEvents++;
+
+        using (IReceiptsInsertBatch batch = _storage.StartInsertBatch())
+        {
+            batch.Insert(high, highReceipts);
+            batch.Insert(low, lowReceipts);
+            Assert.Throws<InvalidDataException>(() => batch.Insert(mismatched, []));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_storage.HasBlock(high.Number, high.Hash!), Is.False);
+                Assert.That(_storage.FindBlockHash(lowReceipts[0].TxHash!), Is.Null);
+                Assert.That(_storage.MigratedBlockNumber, Is.EqualTo(ulong.MaxValue));
+                Assert.That(insertedEvents, Is.EqualTo(0));
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_receiptsDb.WriteBatchCount - writeBatches, Is.EqualTo(1));
+            Assert.That(insertedEvents, Is.EqualTo(2));
+            Assert.That(_storage.HasBlock(high.Number, high.Hash!), Is.True);
+            Assert.That(_storage.HasBlock(low.Number, low.Hash!), Is.True);
+            Assert.That(_storage.HasBlock(mismatched.Number, mismatched.Hash!), Is.False);
+            Assert.That(_storage.FindBlockHash(lowReceipts[0].TxHash!), Is.EqualTo(low.Hash));
+            Assert.That(_storage.MigratedBlockNumber, Is.EqualTo(low.Number));
+            Assert.That(_receiptsDb.GetColumnDb(ReceiptsColumns.Default).Get(Keccak.Compute(nameof(PersistentReceiptStorage.MigratedBlockNumber)))!
+                .ToULongFromBigEndianByteArrayWithoutLeadingZeros(), Is.EqualTo(low.Number));
+        }
+
+        static Block BuildBlock(ulong number, ulong nonce) => Build.A.Block
+            .WithNumber(number)
+            .WithTransactions(Build.A.Transaction.WithNonce(nonce).SignedAndResolved().TestObject)
+            .WithReceiptsRoot(TestItem.KeccakA)
+            .TestObject;
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Insert_batch_does_not_raise_the_migrated_block_number()
+    {
+        _storage.MigratedBlockNumber = 3;
+        (Block block, TxReceipt[] receipts) = PrepareBlock(Build.A.Block.WithNumber(6)
+            .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject)
+            .WithReceiptsRoot(TestItem.KeccakA).TestObject);
+        using (IReceiptsInsertBatch batch = _storage.StartInsertBatch())
+        {
+            batch.Insert(block, receipts);
+        }
+
+        Assert.That(_storage.MigratedBlockNumber, Is.EqualTo(3ul));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Deriving_from_state_skips_bodies_on_the_processing_path()
     {
         _receiptConfig.DeriveFromState = true;
@@ -2079,8 +2160,8 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         try
         {
             Assert.That(iterator.TryGetNext(out TxReceiptStructRef receipt), Is.True);
-            iterator.RecoverLogFieldsIfNeeded(ref receipt, out Hash256? transactionHash);
-            return new RecoveredLogFields(transactionHash, receipt.Index, receipt.BlockNumber, receipt.BlockHash.ToCommitment());
+            bool recovered = iterator.RecoverLogFieldsIfNeeded(ref receipt, out ValueHash256 transactionHash);
+            return new RecoveredLogFields(recovered ? transactionHash.ToCommitment() : null, receipt.Index, receipt.BlockNumber, receipt.BlockHash.ToCommitment());
         }
         finally
         {

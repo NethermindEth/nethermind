@@ -74,6 +74,86 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         Assert.That(db.exists(address.Bytes.ToArray()), Is.EqualTo(exists));
     }
 
+    [TestCaseSource(nameof(AddressInputCases), new object[] { false })]
+    public void Javascript_address_inputs_normalize_geth_widths(string expression, string inputHex, string addressHex) =>
+        AssertAddressInputNormalization(expression, inputHex, addressHex);
+
+    [TestCaseSource(nameof(AddressInputCases), new object[] { true })]
+    public void Javascript_address_inputs_preserve_nethermind_extended_input_kinds(string expression, string inputHex, string addressHex) =>
+        AssertAddressInputNormalization(expression, inputHex, addressHex);
+
+    private void AssertAddressInputNormalization(string expression, string inputHex, string addressHex)
+    {
+        Address address = new(addressHex);
+        byte[] code = [0x60, 0x2a];
+        TestState.CreateAccount(address, 123, 7);
+        TestState.InsertCode(address, code, Spec);
+        TestState.Set(new StorageCell(address, 0), (UInt256)42);
+        using Engine engine = new(Shanghai.Instance);
+        dynamic tracer = engine.CreateTracer($$"""
+            {
+                result: function(db) {
+                    var input = {{expression}};
+                    var before = toHex(input);
+                    return [toHex(toAddress(input)), isPrecompiled(input).toString(),
+                        toHex(toContract(input, 7)), toHex(toContract2(input, "0x01", [0x60, 0x00])),
+                        db.getBalance(input).toString(), db.getNonce(input).toString(), toHex(db.getCode(input)),
+                        toHex(db.getState(input, [0])), db.exists(input).toString(), before, toHex(input)].join(":");
+                }
+            }
+            """);
+
+        string result = tracer.result(new Db(TestState));
+        string expected = string.Join(":", addressHex, Shanghai.Instance.IsPrecompile(address) ? "true" : "false",
+            ContractAddress.From(address, 7).ToString(),
+            ContractAddress.From(address, Bytes.FromHexString("01").PadLeft(32), new byte[] { 0x60, 0x00 }).ToString(),
+            "123", "7", "0x602a", "0x" + "2a".PadLeft(64, '0'), "true", inputHex, inputHex);
+        Assert.That(result, Is.EqualTo(expected));
+    }
+
+    private static IEnumerable<TestCaseData> AddressInputCases(bool nethermindExtensions)
+    {
+        if (nethermindExtensions)
+            yield return new TestCaseData("new Uint16Array([1, 2])", "0x01000200", "0x0000000000000000000000000000000001000200");
+
+        foreach (int length in new[] { 0, 1, 19, 20, 21, 32 })
+        {
+            byte[] bytes = new byte[length];
+            for (int i = 0; i < length; i++)
+                bytes[i] = (byte)(i + 1);
+            string inputHex = bytes.ToHexString(withZeroX: true);
+            string addressHex = "0x" + inputHex[2..].PadLeft(40, '0')[^40..];
+            string array = "[" + string.Join(",", bytes) + "]";
+            if (!nethermindExtensions)
+            {
+                yield return new TestCaseData(array, inputHex, addressHex);
+                yield return new TestCaseData($"new Uint8Array([238].concat({array}, [255])).subarray(1, {length + 1})", inputHex, addressHex);
+                continue;
+            }
+
+            if (length is 1 or 21)
+            {
+                yield return new TestCaseData($"new Uint8Array({array}).buffer", inputHex, addressHex);
+                yield return new TestCaseData($"new DataView(new Uint8Array([238].concat({array}, [255])).buffer, 1, {length})", inputHex, addressHex);
+            }
+            if (length is 1 or 20 or 21)
+                yield return new TestCaseData($"\"{inputHex}\"", inputHex, addressHex);
+        }
+    }
+
+    [TestCase("")]
+    [TestCase("0x")]
+    public void Address_conversion_preserves_empty_string_rejection(string input) =>
+        Assert.That(() => input.ToAddress(), Throws.TypeOf<ArgumentException>());
+
+    [Test]
+    public void Address_conversion_validates_even_discarded_bytes([Values(-1, 256)] int invalidByte, [Values(1, 21)] int length)
+    {
+        int[] input = new int[length];
+        input[0] = invalidByte;
+        Assert.That(() => input.ToAddress(), Throws.TypeOf<OverflowException>());
+    }
+
     [Test]
     public void Concurrent_custom_tracer_compilation_keeps_cached_script_alive()
     {

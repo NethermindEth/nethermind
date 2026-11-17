@@ -422,17 +422,16 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                     && !state.Submitting;
             }
 
-            Hash256 hash = trackedHash.ToHash256();
             if (remove)
             {
-                TryRemoveState(hash, state);
+                TryRemoveState(trackedHash, state);
                 continue;
             }
 
             if (transactionRetryPeer is not null || !retryMask.IsEmpty || submit)
             {
                 (cleanupActions ??= []).Add(new PeerCleanupAction(
-                    hash,
+                    trackedHash.ToHash256(),
                     state,
                     transactionRetryPeer,
                     retryMask,
@@ -467,7 +466,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     }
 
     /// <inheritdoc/>
-    public bool RecordAnnouncement(ISparseBlobPoolPeer peer, Hash256 hash, BlobCellMask announcementMask)
+    public bool RecordAnnouncement(ISparseBlobPoolPeer peer, in ValueHash256 hash, BlobCellMask announcementMask)
     {
         if (announcementMask.IsEmpty || !IsActivePeer(peer))
         {
@@ -480,13 +479,13 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         }
 
         bool added = false;
-        if (!_transactions.TryGetValue(hash.ValueHash256, out TrackedSparseBlobTx? state))
+        if (!_transactions.TryGetValue(hash, out TrackedSparseBlobTx? state))
         {
             lock (_accountingLock)
             {
                 if (_peerUsage.TryGetValue(peer.Id, out PeerUsage? usage)
                     && usage.Announcements >= MaxAnnouncementsPerPeer
-                    && !_transactions.TryGetValue(hash.ValueHash256, out state))
+                    && !_transactions.TryGetValue(hash, out state))
                 {
                     return false;
                 }
@@ -513,7 +512,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
                     accepted = true;
                 }
-                else if (TryReserveAnnouncement(peer, hash.ValueHash256, state.Submitted))
+                else if (TryReserveAnnouncement(peer, hash, state.Submitted))
                 {
                     state.Announcements.Add(peer.Id, announcementMask);
                     Touch(state, _timestamper.UtcNowOffset);
@@ -532,7 +531,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     }
 
     /// <inheritdoc/>
-    public BlobCellMask GetRequestMask(Hash256 hash, BlobCellMask announcementMask, int providerProbabilityPercent)
+    public BlobCellMask GetRequestMask(in ValueHash256 hash, BlobCellMask announcementMask, int providerProbabilityPercent)
     {
         if (announcementMask.IsEmpty)
         {
@@ -558,19 +557,19 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             : requestMask;
     }
 
-    private bool ShouldFetchFull(Hash256 hash, int providerProbabilityPercent)
+    private bool ShouldFetchFull(in ValueHash256 hash, int providerProbabilityPercent)
     {
         if (providerProbabilityPercent >= MaxProviderProbabilityPercent)
         {
             return true;
         }
 
-        Hash256 sampleHash = ComputeSamplingHash(hash, domain: 0);
+        ValueHash256 sampleHash = ComputeSamplingHash(hash, domain: 0);
         ushort sample = BinaryPrimitives.ReadUInt16BigEndian(sampleHash.Bytes[..sizeof(ushort)]);
         return sample % MaxProviderProbabilityPercent < providerProbabilityPercent;
     }
 
-    private BlobCellMask SelectExtraCellMask(Hash256 hash, BlobCellMask announcementMask, BlobCellMask alreadyRequested)
+    private BlobCellMask SelectExtraCellMask(in ValueHash256 hash, BlobCellMask announcementMask, BlobCellMask alreadyRequested)
     {
         UInt128 candidates = announcementMask.Value & ~alreadyRequested.Value;
         if (candidates == UInt128.Zero)
@@ -580,7 +579,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
         int candidateCount = new BlobCellMask(candidates).Count;
 
-        Hash256 sampleHash = ComputeSamplingHash(hash, domain: 1);
+        ValueHash256 sampleHash = ComputeSamplingHash(hash, domain: 1);
         uint sample = BinaryPrimitives.ReadUInt32BigEndian(sampleHash.Bytes[..sizeof(uint)]);
         int selectedCandidate = (int)(sample % (uint)candidateCount);
         for (int i = 0; i < BlobCellMask.CellCount; i++)
@@ -594,7 +593,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         return BlobCellMask.Empty;
     }
 
-    private Hash256 ComputeSamplingHash(Hash256 hash, byte domain)
+    private ValueHash256 ComputeSamplingHash(in ValueHash256 hash, byte domain)
     {
         const int domainLength = sizeof(byte);
         const int domainOffset = SamplingSecretLength;
@@ -603,13 +602,13 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         _samplingSecret.CopyTo(input);
         input[domainOffset] = domain;
         hash.Bytes.CopyTo(input[hashOffset..]);
-        return Keccak.Compute(input);
+        return ValueKeccak.Compute(input);
     }
 
     /// <inheritdoc/>
-    public bool TryRequestCells(Hash256 hash, BlobCellMask requestMask, PublicKey lastResortPeerId)
+    public bool TryRequestCells(in ValueHash256 hash, BlobCellMask requestMask, PublicKey lastResortPeerId)
     {
-        if (requestMask.IsEmpty || !_transactions.TryGetValue(hash.ValueHash256, out TrackedSparseBlobTx? state))
+        if (requestMask.IsEmpty || !_transactions.TryGetValue(hash, out TrackedSparseBlobTx? state))
         {
             return false;
         }
@@ -644,7 +643,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             }
             else
             {
-                ExpireInFlight(hash.ValueHash256, state);
+                ExpireInFlight(hash, state);
             }
 
             if (requestMask.IsEmpty)
@@ -673,7 +672,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                     ? InFlightReservationResult.Reserved
                     : TryReserveInFlight(
                         peer,
-                        hash.ValueHash256,
+                        hash,
                         newlyReservedMask.Count,
                         addHashReference: existingPeerMask.IsEmpty);
                 if (reservationResult is InFlightReservationResult.InactivePeer)
@@ -736,7 +735,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
     private bool TrySendReserved(
         TrackedSparseBlobTx state,
-        Hash256 hash,
+        in ValueHash256 hash,
         ISparseBlobPoolPeer peer,
         BlobCellMask sendMask,
         long reservationRevision)
@@ -770,7 +769,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
             ReleaseInFlight(
                 peer.Id,
-                hash.ValueHash256,
+                hash,
                 rollbackMask.Count,
                 releaseHashReference: remaining.IsEmpty);
         }
@@ -779,11 +778,11 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     }
 
     /// <inheritdoc/>
-    public void OnCellsRequestCompleted(Hash256 hash, BlobCellMask completedMask, ISparseBlobPoolPeer peer)
+    public void OnCellsRequestCompleted(in ValueHash256 hash, BlobCellMask completedMask, ISparseBlobPoolPeer peer)
     {
         if (completedMask.IsEmpty
             || !IsActivePeer(peer)
-            || !_transactions.TryGetValue(hash.ValueHash256, out TrackedSparseBlobTx? state))
+            || !_transactions.TryGetValue(hash, out TrackedSparseBlobTx? state))
         {
             return;
         }
@@ -812,16 +811,16 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                     state.InFlightByPeer[peerId] = remaining;
                 }
 
-                ReleaseInFlight(peerId, hash.ValueHash256, releasedWork, releaseHashReference: remaining.IsEmpty);
+                ReleaseInFlight(peerId, hash, releasedWork, releaseHashReference: remaining.IsEmpty);
             }
         }
     }
 
     /// <inheritdoc/>
-    public BlobCellMask RemoveAnnouncement(ISparseBlobPoolPeer peer, Hash256 hash)
+    public BlobCellMask RemoveAnnouncement(ISparseBlobPoolPeer peer, in ValueHash256 hash)
     {
         if (IsActivePeer(peer)
-            && _transactions.TryGetValue(hash.ValueHash256, out TrackedSparseBlobTx? state))
+            && _transactions.TryGetValue(hash, out TrackedSparseBlobTx? state))
         {
             lock (state.Lock)
             {
@@ -833,7 +832,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                 PublicKey peerId = peer.Id;
                 if (state.Announcements.Remove(peerId, out BlobCellMask announcedMask))
                 {
-                    ReleaseAnnouncement(peerId, hash.ValueHash256, state.Submitted);
+                    ReleaseAnnouncement(peerId, hash, state.Submitted);
                     return announcedMask;
                 }
             }
@@ -869,7 +868,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                 return false;
             }
 
-            Hash256 hash = entry.Key.ToHash256();
+            ValueHash256 hash = entry.Key;
             BlobCellMask requestMask = requestAllAnnouncedCells
                 ? GetMissingAnnouncedMask(hash, entry.Value)
                 : GetMissingLocalMask(hash, requestMaskTemplate);
@@ -892,7 +891,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         return !cancellationToken.IsCancellationRequested;
     }
 
-    private BlobCellMask AddProviderExtraCell(Hash256 hash, TrackedSparseBlobTx state, BlobCellMask requestMask)
+    private BlobCellMask AddProviderExtraCell(in ValueHash256 hash, TrackedSparseBlobTx state, BlobCellMask requestMask)
     {
         BlobCellMask excludedMask = requestMask;
         if (_txPool.TryGetPendingBlobCellMask(hash, out BlobCellMask localMask))
@@ -925,9 +924,9 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     }
 
     /// <inheritdoc/>
-    public bool HasRecordedTransaction(Hash256 hash)
+    public bool HasRecordedTransaction(in ValueHash256 hash)
     {
-        if (!_transactions.TryGetValue(hash.ValueHash256, out TrackedSparseBlobTx? state))
+        if (!_transactions.TryGetValue(hash, out TrackedSparseBlobTx? state))
         {
             return false;
         }
@@ -939,9 +938,9 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     }
 
     /// <inheritdoc/>
-    public int GetFullProviderAnnouncementCount(Hash256 hash)
+    public int GetFullProviderAnnouncementCount(in ValueHash256 hash)
     {
-        if (!_transactions.TryGetValue(hash.ValueHash256, out TrackedSparseBlobTx? state))
+        if (!_transactions.TryGetValue(hash, out TrackedSparseBlobTx? state))
         {
             return 0;
         }
@@ -1346,17 +1345,16 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     }
 
     /// <inheritdoc/>
-    public void Clear(Hash256 hash)
+    public void Clear(in ValueHash256 hash)
     {
-        if (_transactions.TryGetValue(hash.ValueHash256, out TrackedSparseBlobTx? state))
+        if (_transactions.TryGetValue(hash, out TrackedSparseBlobTx? state))
         {
             TryRemoveState(hash, state);
         }
     }
 
-    private TrackedSparseBlobTx GetOrAdd(Hash256 hash, out bool added)
+    private TrackedSparseBlobTx GetOrAdd(in ValueHash256 key, out bool added)
     {
-        ValueHash256 key = hash.ValueHash256;
         while (true)
         {
             if (_transactions.TryGetValue(key, out TrackedSparseBlobTx? existing))
@@ -1367,7 +1365,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
             DateTimeOffset now = _timestamper.UtcNowOffset;
             long revision = Interlocked.Increment(ref _trackedStateRevision);
-            TrackedSparseBlobTx state = new(key, now, now + GetAdmissionDelay(hash), revision);
+            TrackedSparseBlobTx state = new(key, now, now + GetAdmissionDelay(key), revision);
             if (_transactions.TryAdd(key, state))
             {
                 Interlocked.Increment(ref _trackedTransactionCount);
@@ -1377,7 +1375,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         }
     }
 
-    private bool CompleteRecord(Hash256 hash, TrackedSparseBlobTx state, bool added, bool accepted)
+    private bool CompleteRecord(in ValueHash256 hash, TrackedSparseBlobTx state, bool added, bool accepted)
     {
         if (accepted)
         {
@@ -1402,7 +1400,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             {
                 lock (_transactionOrderLock)
                 {
-                    _transactionOrder.Enqueue(new TrackedStateKey(hash.ValueHash256, state.Revision));
+                    _transactionOrder.Enqueue(new TrackedStateKey(hash, state.Revision));
                     _transactionOrderCount++;
                 }
 
@@ -1426,7 +1424,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                 && !state.Submitted
                 && !state.Submitting)
             {
-                TryRemoveTrackedState(hash.ValueHash256, state);
+                TryRemoveTrackedState(hash, state);
             }
         }
 
@@ -1961,7 +1959,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                     break;
                 }
 
-                MaintainTrackedState(entry.Key.ToHash256(), entry.Value, now);
+                MaintainTrackedState(entry.Key, entry.Value, now);
             }
 
             TrySchedulePendingCustodyUpdate();
@@ -1974,7 +1972,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         return Task.CompletedTask;
     }
 
-    private void MaintainTrackedState(Hash256 hash, TrackedSparseBlobTx state, DateTimeOffset now)
+    private void MaintainTrackedState(in ValueHash256 hash, TrackedSparseBlobTx state, DateTimeOffset now)
     {
         BlobCellMask retryMask = BlobCellMask.Empty;
         PublicKey retryFallbackPeer = NoLastResortPeer;
@@ -2008,7 +2006,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                 if (!state.InFlightMask.IsEmpty && now >= state.InFlightUntil)
                 {
                     retryMask = state.InFlightMask;
-                    retryFallbackPeer = ExpireInFlight(hash.ValueHash256, state);
+                    retryFallbackPeer = ExpireInFlight(hash, state);
                 }
 
                 if (state.AdmissionDueAt is { } admissionDueAt && now >= admissionDueAt)
@@ -2032,11 +2030,11 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
         if (submit)
         {
-            TrySubmit(hash, state);
+            TrySubmit(hash.ToHash256(), state);
         }
     }
 
-    private bool HasFullLocalBlobTransaction(Hash256 hash)
+    private bool HasFullLocalBlobTransaction(in ValueHash256 hash)
         => _txPool.TryGetPendingBlobCellMask(hash, out BlobCellMask availableMask)
             && availableMask.IsFull;
 
@@ -2049,7 +2047,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         => _peers.TryGetValue(peerId, out ISparseBlobPoolPeer? peer)
             && !peer.IsClosing;
 
-    private BlobCellMask GetMissingAnnouncedMask(Hash256 hash, TrackedSparseBlobTx state)
+    private BlobCellMask GetMissingAnnouncedMask(in ValueHash256 hash, TrackedSparseBlobTx state)
     {
         BlobCellMask announcedMask = BlobCellMask.Empty;
         lock (state.Lock)
@@ -2066,12 +2064,12 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         return GetMissingLocalMask(hash, announcedMask);
     }
 
-    private BlobCellMask GetMissingLocalMask(Hash256 hash, BlobCellMask requestedMask)
+    private BlobCellMask GetMissingLocalMask(in ValueHash256 hash, BlobCellMask requestedMask)
         => _txPool.TryGetPendingBlobCellMask(hash, out BlobCellMask availableMask)
             ? requestedMask.Except(availableMask)
             : requestedMask;
 
-    private bool TryRemoveState(Hash256 hash, TrackedSparseBlobTx state)
+    private bool TryRemoveState(in ValueHash256 hash, TrackedSparseBlobTx state)
     {
         lock (state.Lock)
         {
@@ -2081,14 +2079,14 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                 return false;
             }
 
-            if (!TryRemoveTrackedState(hash.ValueHash256, state))
+            if (!TryRemoveTrackedState(hash, state))
             {
                 return false;
             }
 
             foreach (PublicKey peerId in state.Announcements.Keys)
             {
-                ReleaseAnnouncement(peerId, hash.ValueHash256, state.Submitted);
+                ReleaseAnnouncement(peerId, hash, state.Submitted);
             }
 
             foreach (KeyValuePair<PublicKey, BlobCellMask> inFlight in state.InFlightByPeer)
@@ -2160,7 +2158,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                 if (_transactions.TryGetValue(key.Hash, out TrackedSparseBlobTx? state)
                     && state.Revision == key.Revision)
                 {
-                    TryRemoveState(key.Hash.ToHash256(), state);
+                    TryRemoveState(key.Hash, state);
                 }
             }
 
@@ -2191,8 +2189,8 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         return removed;
     }
 
-    private bool IsCurrentState(Hash256 hash, TrackedSparseBlobTx state)
-        => _transactions.TryGetValue(hash.ValueHash256, out TrackedSparseBlobTx? current)
+    private bool IsCurrentState(in ValueHash256 hash, TrackedSparseBlobTx state)
+        => _transactions.TryGetValue(hash, out TrackedSparseBlobTx? current)
             && ReferenceEquals(current, state);
 
     private void Touch(TrackedSparseBlobTx state, DateTimeOffset now)
@@ -2617,7 +2615,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         }
     }
 
-    private TimeSpan GetAdmissionDelay(Hash256 hash)
+    private TimeSpan GetAdmissionDelay(in ValueHash256 hash)
     {
         int maxMilliseconds = (int)_maxAdmissionDelay.TotalMilliseconds;
         if (maxMilliseconds <= 0)

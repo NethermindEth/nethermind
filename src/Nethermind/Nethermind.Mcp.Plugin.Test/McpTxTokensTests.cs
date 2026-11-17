@@ -789,7 +789,7 @@ public class McpTxTokensTests
         });
         IDisposable lease = Substitute.For<IDisposable>();
         List<Task> tracked = [];
-        McpDetachedEth detached = new(() => Task.FromResult<(IEthRpcModule?, IDisposable?)>((slow, lease)), tracked.Add);
+        McpDetachedEth detached = new(_ => Task.FromResult<(IEthRpcModule?, IDisposable?)>((slow, lease)), tracked.Add);
 
         (Dictionary<AddressAsKey, McpTokenInfo> found, int skipped) = McpTxTokens.LookUp(
             new McpTokenMetadata(), caller, [TestItem.AddressA, TestItem.AddressB], BlockParameter.Latest, 10, CancellationToken.None,
@@ -815,10 +815,42 @@ public class McpTxTokensTests
     }
 
     [Test]
+    public void Abandoned_token_lookup_cancels_a_rental_that_still_waits()
+    {
+        using ManualResetEventSlim renting = new();
+        IEthRpcModule caller = Substitute.For<IEthRpcModule>();
+        List<Task> tracked = [];
+        McpDetachedEth detached = new(async abandoned =>
+        {
+            renting.Set();
+            await Task.Delay(Timeout.Infinite, abandoned);
+            return (null, null);
+        }, tracked.Add);
+
+        (Dictionary<AddressAsKey, McpTokenInfo> found, int skipped) = McpTxTokens.LookUp(
+            new McpTokenMetadata(), caller, [TestItem.AddressA, TestItem.AddressB], BlockParameter.Latest, 10, CancellationToken.None,
+            () => renting.IsSet, detached);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.Empty);
+            Assert.That(skipped, Is.EqualTo(2));
+            Assert.That(tracked, Has.Count.EqualTo(1), "the abandoned rental is tracked");
+        }
+
+        bool stopped = tracked[0].ContinueWith(static _ => { }).Wait(TimeSpan.FromSeconds(10));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stopped, Is.True, "the abandoned rental stops waiting");
+            Assert.That(tracked[0].IsCanceled, Is.True);
+        }
+    }
+
+    [Test]
     public void Detached_token_lookup_finishes_normally_and_falls_back_to_the_callers_module()
     {
         IEthRpcModule fast = SlowToken(out _);
-        McpDetachedEth unavailable = new(() => Task.FromResult<(IEthRpcModule?, IDisposable?)>((null, null)), static _ => Assert.Fail("nothing is abandoned"));
+        McpDetachedEth unavailable = new(_ => Task.FromResult<(IEthRpcModule?, IDisposable?)>((null, null)), static _ => Assert.Fail("nothing is abandoned"));
 
         (Dictionary<AddressAsKey, McpTokenInfo> found, int skipped) = McpTxTokens.LookUp(
             new McpTokenMetadata(), fast, [TestItem.AddressA, TestItem.AddressB], BlockParameter.Latest, 10, CancellationToken.None,
