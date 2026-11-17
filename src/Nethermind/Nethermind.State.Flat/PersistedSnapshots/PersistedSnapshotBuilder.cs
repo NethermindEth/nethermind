@@ -58,6 +58,8 @@ public static class PersistedSnapshotBuilder
         // (off-heap) and read the node RLP from the buffer by its record pointer
         // at write time. PooledSet is used for the small Address dedup map so its
         // backing entry array is pool-rented rather than freshly allocated each block.
+        // uniqueAddresses is a pool-rented list of the snapshot's own Address instances;
+        // a large block can rent an array on the LOH, but the pool reuses it.
         NativeMemoryList<(TreePath Path, ulong Pointer)> stateTopKeys = null!, stateCompactKeys = null!, stateFallbackKeys = null!;
         NativeMemoryList<(ValueHash256 AddrHash, TreePath Path, ulong Pointer)> storTopKeys = null!, storCompactKeys = null!, storFallbackKeys = null!;
         NativeMemoryList<((ValueAddress Addr, UInt256 Slot) Key, UInt256? Value)> sortedStorages = null!;
