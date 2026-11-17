@@ -8,7 +8,6 @@ using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Transport.Channels;
 using Nethermind.Config;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -521,9 +520,9 @@ namespace Nethermind.Network.Test
         {
             await using Context ctx = new();
             ctx.PeerManager.Start();
-            Session session1 = new(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
+            Session session1 = new(30303, Substitute.For<IRlpxConnection>(), NullDisconnectsAnalyzer.Instance,
                 LimboLogs.Instance);
-            Session session2 = new(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
+            Session session2 = new(30303, Substitute.For<IRlpxConnection>(), NullDisconnectsAnalyzer.Instance,
                 LimboLogs.Instance);
             session1.RemoteHost = "1.2.3.4";
             session1.RemotePort = 12345;
@@ -571,19 +570,14 @@ namespace Nethermind.Network.Test
 
         private static Session CreateIncomingSessionTemplate(PublicKey remoteNodeId)
         {
-            Session session = new(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30303, Substitute.For<IRlpxConnection>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.RemoteHost = "1.2.3.4";
             session.RemotePort = 12345;
             session.RemoteNodeId = remoteNodeId;
             return session;
         }
 
-        private static void InitSession(Session session)
-        {
-            IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
-
-            session.Init(5, context, Substitute.For<IPacketSender>());
-        }
+        private static void InitSession(Session session) => session.Init(5, Substitute.For<IPacketSender>());
 
         [Test]
         public void Will_return_exception_in_port() =>
@@ -641,12 +635,12 @@ namespace Nethermind.Network.Test
             ctx.PeerManager.Start();
             Enode enode1 = new(enode1String);
             Node node1 = new(enode1.PublicKey, new IPEndPoint(enode1.HostIp, enode1.Port));
-            Session session1 = new(30303, node1, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
+            Session session1 = new(30303, node1, Substitute.For<IRlpxConnection>(), NullDisconnectsAnalyzer.Instance,
                 LimboLogs.Instance);
 
             Enode enode2 = new(enode2String);
             Node node2 = new(enode2.PublicKey, new IPEndPoint(enode2.HostIp, enode2.Port));
-            Session session2 = new(30303, node2, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
+            Session session2 = new(30303, node2, Substitute.For<IRlpxConnection>(), NullDisconnectsAnalyzer.Instance,
                 LimboLogs.Instance);
 
             ctx.RlpxPeer.CreateIncoming(session1, session2);
@@ -703,7 +697,7 @@ namespace Nethermind.Network.Test
 
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
-            Session session1 = new(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
+            Session session1 = new(30303, Substitute.For<IRlpxConnection>(), NullDisconnectsAnalyzer.Instance,
                 LimboLogs.Instance);
 
             session1.RemoteHost = "1.2.3.4";
@@ -744,7 +738,7 @@ namespace Nethermind.Network.Test
         public async Task Will_agree_on_which_session_to_disconnect_when_incoming_arrives_while_dialing([Values] bool keepIn)
         {
             PublicKey remoteNodeId = keepIn ? TestItem.PublicKeyB : TestItem.PublicKeyC;
-            Session incoming = new(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance)
+            Session incoming = new(30303, Substitute.For<IRlpxConnection>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance)
             {
                 RemoteHost = "1.2.3.4",
                 RemotePort = 12345,
@@ -821,7 +815,7 @@ namespace Nethermind.Network.Test
             for (int attempt = 0; attempt < attempts; attempt++)
             {
                 PublicKey remoteNodeId = new PrivateKeyGenerator().Generate().PublicKey;
-                incoming = new Session(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance)
+                incoming = new Session(30303, Substitute.For<IRlpxConnection>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance)
                 {
                     RemoteHost = "1.2.3.4",
                     RemotePort = 12345,
@@ -856,13 +850,12 @@ namespace Nethermind.Network.Test
         private static void InitializeSessions(Peer peer)
         {
             PacketSender packetSender = new(Substitute.For<IMessageSerializationService>(), LimboLogs.Instance, TimeSpan.Zero);
-            IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
 
             void EnsureSession(ISession? session)
             {
                 if (session is null) return;
                 if (session.State < SessionState.HandshakeComplete) session.Handshake(session.Node.Id);
-                if (session.State < SessionState.Initialized) session.Init(5, context, packetSender);
+                if (session.State < SessionState.Initialized) session.Init(5, packetSender);
             }
 
             EnsureSession(peer.OutSession);
@@ -1469,7 +1462,7 @@ namespace Nethermind.Network.Test
                     return Task.FromResult(false);
                 }
 
-                Session session = new(30313, node, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
+                Session session = new(30313, node, Substitute.For<IRlpxConnection>(), NullDisconnectsAnalyzer.Instance,
                     LimboLogs.Instance);
                 Track(session);
                 lock (_sessions)
@@ -1517,7 +1510,7 @@ namespace Nethermind.Network.Test
 
             public void CreateRandomIncoming()
             {
-                Session session = new(30313, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+                Session session = new(30313, Substitute.For<IRlpxConnection>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
                 Track(session);
                 lock (_sessions)
                 {
@@ -1549,7 +1542,7 @@ namespace Nethermind.Network.Test
                 List<Session> incomingSessions = [];
                 foreach (Session session in sessions)
                 {
-                    Session sessionIn = new(30313, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+                    Session sessionIn = new(30313, Substitute.For<IRlpxConnection>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
                     sessionIn.RemoteHost = session.RemoteHost;
                     sessionIn.RemotePort = session.RemotePort;
                     Track(sessionIn);
