@@ -72,7 +72,15 @@ internal static class PayloadBodiesHandlerHelper
     {
         using ArrayPoolSpan<Range?> ranges = new(blocks.Count);
         ArrayPoolList<byte> rlps = [with(blocks.Count * RlpLengthEstimate)];
-        blockStore.GetRlps(blocks.AsSpan(), rlps, ranges);
+        try
+        {
+            blockStore.GetRlps(blocks.AsSpan(), rlps, ranges);
+        }
+        catch
+        {
+            rlps.Dispose();
+            throw;
+        }
 
         ArrayPoolList<StoredBlock?> stored = new(count, count);
         for (int i = 0; i < blocks.Count; i++)
