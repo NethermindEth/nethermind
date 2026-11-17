@@ -605,6 +605,9 @@ public class KademliaAdapter(
         }
     }
 
+    /// <inheritdoc/>
+    void IKademliaAdapter.ReleasePeerCandidate(Node node) => _recentPeerCandidates.Release(node.IdHash);
+
     private static ulong? HighestSequence(ulong? first, ulong? second)
         => first is null ? second : second is null ? first : Math.Max(first.Value, second.Value);
 

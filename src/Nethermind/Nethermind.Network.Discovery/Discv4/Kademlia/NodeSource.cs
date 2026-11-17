@@ -36,7 +36,13 @@ public sealed class NodeSource(
         {
             await foreach (Node node in discv4Adapter.ReadPeerCandidates(token))
             {
-                if (!IsExcluded(node))
+                if (IsExcluded(node))
+                {
+                    // The adapter reserved this candidate before publishing it. Keep it publishable if the fork
+                    // check later accepts it, instead of waiting for unrelated candidates to evict the entry.
+                    discv4Adapter.ReleasePeerCandidate(node);
+                }
+                else
                 {
                     yield return node;
                 }

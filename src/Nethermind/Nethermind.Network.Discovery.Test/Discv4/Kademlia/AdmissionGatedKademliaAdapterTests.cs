@@ -99,6 +99,10 @@ public class AdmissionGatedKademliaAdapterTests
             // The candidate stream admits a bonded node from a fresh subnet on its own.
             Assert.That(admission.TryAdmit(CreateNode(TestItem.PublicKeyE, "203.0.114.20")), Is.False);
         }
+
+        // The filtered candidate's publish reservation is released; an admitted one keeps it to stay deduplicated.
+        inner.Received(1).ReleasePeerCandidate(filteredNode);
+        inner.DidNotReceive().ReleasePeerCandidate(admittedNode);
     }
 
     [Test]

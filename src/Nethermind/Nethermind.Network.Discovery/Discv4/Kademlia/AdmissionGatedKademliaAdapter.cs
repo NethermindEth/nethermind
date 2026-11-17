@@ -50,12 +50,19 @@ internal sealed class AdmissionGatedKademliaAdapter(
             {
                 yield return node;
             }
-            else if (_logger.IsTrace)
+            else
             {
-                _logger.Trace($"Skipping filtered discovery peer candidate: {node:hide}.");
+                _inner.ReleasePeerCandidate(node);
+
+                if (_logger.IsTrace)
+                {
+                    _logger.Trace($"Skipping filtered discovery peer candidate: {node:hide}.");
+                }
             }
         }
     }
+
+    void IKademliaAdapter.ReleasePeerCandidate(Node node) => _inner.ReleasePeerCandidate(node);
 
     public Task<bool> Ping(Node receiver, CancellationToken token) => _inner.Ping(receiver, token);
 

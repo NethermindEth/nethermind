@@ -128,6 +128,10 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             Assert.That(await moveNext.AsTask(), Is.True);
 #pragma warning restore NUnit2045
             Assert.That(enumerator.Current.Id, Is.EqualTo(compatible.Id));
+            // Both dropped candidates were already reserved by the adapter and are released for a later retry.
+            _adapter.Received(1).ReleasePeerCandidate(self);
+            _adapter.Received(1).ReleasePeerCandidate(incompatible);
+            _adapter.DidNotReceive().ReleasePeerCandidate(compatible);
         }
 
         [Test]

@@ -33,6 +33,18 @@ public interface IKademliaAdapter : IKademliaMessageSender<PublicKey, Node>, IDi
     IAsyncEnumerable<Node> ReadPeerCandidates(CancellationToken token);
 
     /// <summary>
+    /// Releases the publish reservation held for a peer candidate that a consumer discarded before using it.
+    /// </summary>
+    /// <remarks>
+    /// The adapter reserves a candidate's identity before writing it to the peer-candidate stream, so every
+    /// consumer sees a candidate whose reservation already exists. A consumer that drops a candidate must call
+    /// this; otherwise the identity stays blocked from publication until unrelated candidates evict it.
+    /// Decorators must forward the call to the adapter that made the reservation.
+    /// </remarks>
+    /// <param name="node">The candidate that was not used.</param>
+    void ReleasePeerCandidate(Node node);
+
+    /// <summary>
     /// Sends an ENR request to a node and returns the response.
     /// </summary>
     /// <param name="receiver">The node to send the request to.</param>

@@ -14,6 +14,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Core.Test.Threading;
 using Nethermind.Crypto;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
@@ -265,13 +266,16 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             return enumerator.Current;
         }
 
-        private async Task AssertNoPeerCandidate(CancellationToken token)
+        private Task AssertNoPeerCandidate(CancellationToken token)
+            => AssertNoCandidate(_adapter.ReadPeerCandidates, token);
+
+        private static async Task AssertNoCandidate(
+            Func<CancellationToken, IAsyncEnumerable<Node>> candidates,
+            CancellationToken token)
         {
             using CancellationTokenSource timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(token);
             timeoutCts.CancelAfter(TimeSpan.FromMilliseconds(100));
-            await using IAsyncEnumerator<Node> enumerator = _adapter
-                .ReadPeerCandidates(timeoutCts.Token)
-                .GetAsyncEnumerator(timeoutCts.Token);
+            await using IAsyncEnumerator<Node> enumerator = candidates(timeoutCts.Token).GetAsyncEnumerator(timeoutCts.Token);
 
             try
             {
@@ -280,6 +284,13 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !token.IsCancellationRequested)
             {
             }
+        }
+
+        private static async Task<Node> ReadGateCandidate(AdmissionGatedKademliaAdapter gate, CancellationToken token)
+        {
+            await using IAsyncEnumerator<Node> enumerator = gate.ReadPeerCandidates(token).GetAsyncEnumerator(token);
+            Assert.That(await enumerator.MoveNextAsync(), Is.True);
+            return enumerator.Current;
         }
 
         private DiscoveryMsg CreateUnsolicitedResponse(MsgType msgType) =>
@@ -1168,6 +1179,47 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
         [Test]
         [CancelAfter(10000)]
+        public async Task Filtered_peer_candidate_is_released_so_it_can_publish_after_the_window_expires(CancellationToken token)
+        {
+            ManualTimeProvider clock = new();
+            DiscoveryNodeAdmission admission = CreateAdmission(clock);
+            AdmissionGatedKademliaAdapter gate = new(_adapter, admission, _logManager);
+            Queue<PublicKey> pendingPongs = new([TestItem.PublicKeyE, TestItem.PublicKeyD]);
+            _msgSender.SendMsg(Arg.Any<PingMsg>()).Returns(ci =>
+            {
+                PingMsg sent = (PingMsg)ci[0]!;
+                // Serialization assigns the ping MDC that the pong handler matching keys on.
+                _receiverSerializationManager.SerializeToArray(sent);
+                PongMsg pong = new(pendingPongs.Dequeue(), _timestamper.UnixTime.SecondsLong + 1, sent.Mdc!.Value);
+                pong.FarAddress = sent.FarAddress;
+                return _adapter.OnIncomingMsg(pong);
+            });
+
+            // Record the /24 through admission alone, as if a node in it had already been handled.
+            Assert.That(admission.TryAdmit(new Node(TestItem.PublicKeyC, "203.0.113.10", 30303, 30303)), Is.True);
+
+            // Control: a candidate from a free subnet is published, so the ping publish path is known to work.
+            IPEndPoint admittedAddress = new(IPAddress.Parse("203.0.114.50"), 30303);
+            await gate.OnIncomingMsg(CreatePing(TestItem.PublicKeyE, admittedAddress));
+            Assert.That((await ReadGateCandidate(gate, token)).Id, Is.EqualTo(TestItem.PublicKeyE));
+
+            // An admitted candidate keeps its reservation, so a second ping must not republish it.
+            await gate.OnIncomingMsg(CreatePing(TestItem.PublicKeyE, admittedAddress));
+            await AssertNoPeerCandidate(token);
+
+            // The gate drops this candidate; the publish reservation must not outlive the rejection.
+            IPEndPoint filteredAddress = new(IPAddress.Parse("203.0.113.50"), 30303);
+            await gate.OnIncomingMsg(CreatePing(TestItem.PublicKeyD, filteredAddress));
+            await AssertNoCandidate(gate.ReadPeerCandidates, token);
+
+            clock.Advance(TimeSpan.FromMinutes(5));
+
+            await gate.OnIncomingMsg(CreatePing(TestItem.PublicKeyD, filteredAddress));
+            Assert.That((await ReadGateCandidate(gate, token)).Id, Is.EqualTo(TestItem.PublicKeyD));
+        }
+
+        [Test]
+        [CancelAfter(10000)]
         public async Task Unsolicited_response_through_the_gate_does_not_consume_admission()
         {
             INodeHealthTracker<Node> admitted = Substitute.For<INodeHealthTracker<Node>>();
@@ -1212,10 +1264,22 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         private (DiscoveryNodeAdmission Admission, FilteringNodeHealthTracker Tracker) CreateAdmission(
             INodeHealthTracker<Node> inner)
         {
+            DiscoveryNodeAdmission admission = CreateAdmission(TimeProvider.System);
+            return (admission, new FilteringNodeHealthTracker(inner, admission, _logManager));
+        }
+
+        private DiscoveryNodeAdmission CreateAdmission(TimeProvider timeProvider)
+        {
             INetworkStorage storage = Substitute.For<INetworkStorage>();
             storage.GetPersistedNodes().Returns([]);
-            NodeFilter filter = NodeFilter.Create(100, filterEnabled: true, subnetBucketing: true, IPAddress.Parse("198.51.100.1"));
-            DiscoveryNodeAdmission admission = new(
+            NodeFilter filter = new(
+                400,
+                exactMatchOnly: false,
+                IPAddress.Parse("198.51.100.1"),
+                (long)TimeSpan.FromMinutes(5).TotalMilliseconds,
+                timeProvider);
+
+            return new DiscoveryNodeAdmission(
                 filter,
                 enabled: true,
                 _routingTable,
@@ -1223,7 +1287,6 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 storage,
                 admittedCapacity: 100,
                 _logManager);
-            return (admission, new FilteringNodeHealthTracker(inner, admission, _logManager));
         }
 
         private PingMsg CreatePing(PublicKey publicKey, IPEndPoint address)
