@@ -665,6 +665,10 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
             _external.ThrowIfCancellationRequested();
             throw new GethTraceDeadlineException();
         }
+        catch (Exception exception) when (!_captureErrors && JavaScriptTraceFailure.IsRecoverable(exception, observedNullThrow))
+        {
+            throw new InvalidDataException($"{exception.Message}    in server-side tracer function '{function}'", exception);
+        }
         catch (Exception exception) when (_captureErrors
             && (_engine.TryGetInputError(exception, out string? inputError, observedNullThrow)
                 || JavaScriptTraceFailure.IsRecoverable(exception, observedNullThrow)))

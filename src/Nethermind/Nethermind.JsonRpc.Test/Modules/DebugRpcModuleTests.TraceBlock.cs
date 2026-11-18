@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Linq;
@@ -2267,7 +2268,10 @@ public partial class DebugRpcModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(json["result"], Is.Null, response);
-            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InternalError), response);
+            bool scriptThrow = resultBody.StartsWith("throw", StringComparison.Ordinal);
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(scriptThrow ? ErrorCodes.InvalidInput : ErrorCodes.InternalError), response);
+            if (scriptThrow)
+                Assert.That((string?)json["error"]?["message"], Is.EqualTo("Error: result failure    in server-side tracer function 'result'"), response);
             Assert.That(json["error"]?["data"], Is.Null, response);
             Assert.That(JToken.DeepEquals(JToken.Parse(next)["result"], JToken.Parse("""{"ok":[1]}""")), Is.True, next);
         }
@@ -3837,7 +3841,15 @@ public partial class DebugRpcModuleTests
             using GethLikeTxTrace result = Trace();
             Assert.That(result.TraceError is null, Is.EqualTo(callback == "return"));
         }
-        else Assert.Throws<ScriptEngineException>(() => Trace());
+        else
+        {
+            InvalidDataException failure = Assert.Throws<InvalidDataException>(() => Trace())!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(failure.Message, Is.EqualTo($"null    in server-side tracer function '{callback}'"));
+                Assert.That(failure.InnerException, Is.InstanceOf<ScriptEngineException>());
+            }
+        }
     }
 
     [Test]

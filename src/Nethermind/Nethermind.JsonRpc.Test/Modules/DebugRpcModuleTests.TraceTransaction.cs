@@ -39,6 +39,35 @@ namespace Nethermind.JsonRpc.Test.Modules;
 public partial class DebugRpcModuleTests
 {
     [Test]
+    public async Task Debug_single_trace_javascript_callback_errors_keep_their_message(
+        [Values("debug_traceCall", "debug_traceTransaction")] string method,
+        [Values("setup", "step", "fault", "result")] string callback, [Values] bool streamMode)
+    {
+        using Context context = await Context.Create();
+        byte[] code = Prepare.EvmCode.Op(callback == "fault" ? Instruction.INVALID : Instruction.STOP).Done;
+        Transaction transaction = Build.A.Transaction
+            .WithNonce(context.Blockchain.ReadOnlyState.GetNonce(TestItem.AddressA)).WithCode(code).WithGasLimit(100_000)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        await context.Blockchain.AddBlock(transaction);
+        string tracer = "{fault:function(){" + (callback == "fault" ? "throw Error('kaboom');" : "")
+            + "},setup:function(){" + (callback == "setup" ? "throw Error('kaboom');" : "")
+            + "},step:function(){" + (callback == "step" ? "throw Error('kaboom');" : "")
+            + "},result:function(){" + (callback == "result" ? "throw Error('kaboom');" : "return {};") + "}}";
+        object[] parameters = method == "debug_traceCall"
+            ? [new { from = TestItem.AddressA.ToString(), data = "0x" + Convert.ToHexString(code), gas = "0x186a0" }, "latest", new { tracer, streamMode }]
+            : [transaction.Hash!, new { tracer, streamMode }];
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, parameters);
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["result"], Is.Null, response);
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+            Assert.That((string?)json["error"]?["message"], Does.Contain("kaboom").And.Contain("in server-side tracer function '" + callback + "'"), response);
+            Assert.That(json["error"]?["data"], Is.Null, response);
+        }
+    }
+
+    [Test]
     public async Task Debug_traceTransaction_missing_body_returns_top_level_error(
         [Values] bool streamMode, [Values("5s", "bad")] string timeout)
     {
