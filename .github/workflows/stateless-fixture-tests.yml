@@ -6,6 +6,8 @@ name: Stateless fixture tests
 # each release, which runs this workflow as its tests.
 
 on:
+  # TEMPORARY: runs the workflow on its pull request; to drop before merge
+  pull_request:
   schedule:
     - cron: '0 4 * * *'
   workflow_call:
