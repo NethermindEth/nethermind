@@ -35,7 +35,7 @@ public class OptimismBlockValidatorTests(Fork fork)
     {
         BlockHeader parentBlock = Build.A.BlockHeader.TestObject;
         BlockBuilder builder = Build.A.Block
-            .WithWithdrawals(_timestamp >= Spec.IsthmusTimeStamp ? [] : null)
+            .WithWithdrawals(_timestamp >= Spec.CanyonTimestamp ? [] : null)
             .WithHeader(Build.A.BlockHeader
                 .WithParent(parentBlock)
                 .WithTimestamp(_timestamp)
@@ -86,11 +86,11 @@ public class OptimismBlockValidatorTests(Fork fork)
 
     private static IEnumerable<TestCaseData> WithdrawalsListTestCases()
     {
-        yield return new TestCaseData(Array.Empty<Withdrawal>(), Valid.Always)
+        yield return new TestCaseData(Array.Empty<Withdrawal>(), Valid.Since(Spec.CanyonTimestamp))
             .SetName("Empty withdrawals list");
-        yield return new TestCaseData(null, Valid.Before(Spec.IsthmusTimeStamp))
+        yield return new TestCaseData(null, Valid.Before(Spec.CanyonTimestamp))
             .SetName("Null withdrawals list");
-        yield return new TestCaseData(new[] { TestItem.WithdrawalA_1Eth }, Valid.Before(Spec.IsthmusTimeStamp))
+        yield return new TestCaseData(new[] { TestItem.WithdrawalA_1Eth }, Valid.Never)
             .SetName("Non-empty withdrawals list");
     }
 
@@ -112,6 +112,28 @@ public class OptimismBlockValidatorTests(Fork fork)
 
         Assert.That(
             validator.ValidateSuggestedBlock(block, parentHeader, out string? error),
+            Is.EqualTo(isValid.On(_timestamp)),
+            () => error!);
+    }
+
+    [TestCaseSource(nameof(WithdrawalsListTestCases))]
+    public void ValidateBodyAgainstHeader_ValidateWithdrawalsList(Withdrawal[]? withdrawals, Valid isValid)
+    {
+        (_, Block block) = BuildBlock(b => b
+            .WithWithdrawals(withdrawals)
+            .WithWithdrawalsRoot(GetWithdrawalsRoot())
+        );
+
+        OptimismBlockValidator validator = new(
+            Always.Valid,
+            Always.Valid,
+            Always.Valid,
+            Spec.BuildFor(block.Header),
+            Spec.Instance,
+            TestLogManager.Instance);
+
+        Assert.That(
+            validator.ValidateBodyAgainstHeader(block.Header, block.Body, out string? error),
             Is.EqualTo(isValid.On(_timestamp)),
             () => error!);
     }

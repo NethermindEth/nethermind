@@ -92,16 +92,31 @@ public class OptimismBlockValidator(
         }
         else if (specHelper.IsCanyon(header))
         {
+            if (body.Withdrawals is null || body.Withdrawals.Length != 0)
+            {
+                error = NonEmptyWithdrawalsList;
+                return false;
+            }
+
             if (header.WithdrawalsRoot != Keccak.EmptyTreeHash)
             {
                 error = UnexpectedWithdrawalsRootError;
                 return false;
             }
         }
-        else if (header.WithdrawalsRoot is not null)
+        else
         {
-            error = NonNullWithdrawalsRootError;
-            return false;
+            if (body.Withdrawals is not null)
+            {
+                error = BlockErrorMessages.WithdrawalsNotEnabled;
+                return false;
+            }
+
+            if (header.WithdrawalsRoot is not null)
+            {
+                error = NonNullWithdrawalsRootError;
+                return false;
+            }
         }
 
         error = null;
