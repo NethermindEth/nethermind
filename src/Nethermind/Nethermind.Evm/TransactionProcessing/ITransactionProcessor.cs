@@ -19,6 +19,9 @@ public interface ITransactionProcessor
 
     public interface IBlobBaseFeeCalculator
     {
+        bool TryCalculateFeePerBlobGas(BlockHeader header, Transaction transaction,
+            ulong blobGasPriceUpdateFraction, out UInt256 feePerBlobGas);
+
         bool TryCalculateBlobFees(BlockHeader header, Transaction transaction,
             ulong blobGasPriceUpdateFraction, out UInt256 feePerBlobGas, out UInt256 totalBlobBaseFee);
     }

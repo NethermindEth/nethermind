@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Messages;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -32,7 +33,7 @@ public partial class EthRpcModuleTests
     private const string FeePolicy1559 = "\"maxFeePerGas\":\"0x14\",\"maxPriorityFeePerGas\":\"0x3\"";
 
     private static Task<Context> FeePolicyContext(bool? chargeFees = false, bool validateLegacy = false,
-        FeePolicyExecutions? executions = null) => Context.Create(new TestSpecProvider(London.Instance), configurer: builder =>
+        FeePolicyExecutions? executions = null, IReleaseSpec? spec = null) => Context.Create(new TestSpecProvider(spec ?? London.Instance), configurer: builder =>
     {
         if (chargeFees.HasValue) builder.AddSingleton(new RpcCallExecutionPolicy(chargeFees.Value, validateLegacy));
         if (executions is not null)
@@ -168,6 +169,24 @@ public partial class EthRpcModuleTests
         JToken expected = await FeePolicyCall(withoutPolicy, request, state, "0x2");
         Assert.That(expected["error"], Is.Null, expected.ToString());
         AssertFeePolicyOutput(await FeePolicyCall(withPolicy, request, state, "0x2"), (string)expected["result"]!);
+    }
+
+    [TestCase(0, true)]
+    [TestCase(1, false)]
+    public async Task RpcCallFeePolicy_blob_fee_cap_is_compared_per_blob_gas_without_the_total_blob_fee(int baseFeeAboveCap, bool succeeds)
+    {
+        // 2^239 * 131072 blob gas exceeds 256 bits, which a fee-free call never charges.
+        UInt256 cap = UInt256.One << 239;
+        UInt256 blobBaseFee = cap + (UInt256)baseFeeAboveCap;
+        string capHex = "0x8" + new string('0', 59);
+        string blobBaseFeeHex = "0x8" + new string('0', 58) + baseFeeAboveCap;
+        using Context ctx = await FeePolicyContext(spec: Cancun.Instance);
+        JsonElement request = FeePolicyRequest("\"maxFeePerGas\":\"0x14\",\"maxPriorityFeePerGas\":\"0x0\",\"maxFeePerBlobGas\":\"" + capHex
+            + "\",\"blobVersionedHashes\":[\"0x0122000000000000000000000000000000000000000000000000000000000000\"]");
+        JToken response = JToken.Parse(await ctx.Test.TestEthRpc("eth_call", request, "latest", FeePolicyState(code: "0x00"),
+            new { baseFeePerGas = "0x1", blobBaseFee = blobBaseFeeHex }));
+        if (succeeds) AssertFeePolicyOutput(response, "0x");
+        else Assert.That((string?)response["error"]?["message"], Does.Contain(BlockErrorMessages.InsufficientMaxFeePerBlobGas(new Address(FeePolicySender), cap, blobBaseFee)), response.ToString());
     }
 
     [TestCase(32)]

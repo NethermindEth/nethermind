@@ -55,6 +55,10 @@ namespace Nethermind.Evm.TransactionProcessing
     {
         public static BlobBaseFeeCalculator Instance { get; } = new BlobBaseFeeCalculator();
 
+        public bool TryCalculateFeePerBlobGas(BlockHeader header, Transaction transaction,
+            ulong blobGasPriceUpdateFraction, out UInt256 feePerBlobGas) =>
+            BlobGasCalculator.TryCalculateFeePerBlobGas(header, blobGasPriceUpdateFraction, out feePerBlobGas);
+
         public bool TryCalculateBlobFees(BlockHeader header, Transaction transaction,
             ulong blobGasPriceUpdateFraction, out UInt256 feePerBlobGas, out UInt256 totalBlobBaseFee)
         {
@@ -1246,7 +1250,14 @@ namespace Nethermind.Evm.TransactionProcessing
                 premiumPerGas = UInt256.Zero;
                 if (tx.SupportsBlobs)
                 {
-                    TransactionResult blobFeeCapResult = ValidateMaxFeePerBlobGas(tx, header, spec, balance, out _);
+                    // Compare the per-blob-gas cap only: the total blob fee is never charged here and may exceed 256 bits.
+                    if (!_blobBaseFeeCalculator.TryCalculateFeePerBlobGas(header, tx, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas))
+                    {
+                        if (Logger.IsTrace) TraceLogInvalidTx(tx, $"BLOB_BASE_FEE_OVERFLOW: ({tx.SenderAddress})_BALANCE = {balance}");
+                        return RequiredBalanceExceeds256Bits(tx);
+                    }
+
+                    TransactionResult blobFeeCapResult = ValidateMaxFeePerBlobGas(tx, feePerBlobGas);
                     if (!blobFeeCapResult) return blobFeeCapResult;
                 }
 
@@ -1336,6 +1347,11 @@ namespace Nethermind.Evm.TransactionProcessing
                 return RequiredBalanceExceeds256Bits(tx);
             }
 
+            return ValidateMaxFeePerBlobGas(tx, feePerBlobGas);
+        }
+
+        private TransactionResult ValidateMaxFeePerBlobGas(Transaction tx, in UInt256 feePerBlobGas)
+        {
             if (tx.MaxFeePerBlobGas < feePerBlobGas)
             {
                 TraceLogInvalidTx(tx, "INSUFFICIENT_MAX_FEE_PER_BLOB_GAS");
