@@ -20,5 +20,5 @@ ln -sfn .. "$G/data/metadata"
 [[ -f $G/data/jwt/jwtsecret ]] || { mkdir -p "$G/data/jwt"; openssl rand -hex 32 > "$G/data/jwt/jwtsecret"; }
 export KURTOSIS_ENCLAVE=$ENCLAVE SYNC_NETWORK=kt-$ENCLAVE EL_CONTAINER=$(container el-1-nethermind-lighthouse) BN_CONTAINER=$(container cl-1-lighthouse-nethermind)
 export CL_HTTP_PORT=$(kurtosis port print "$ENCLAVE" cl-1-lighthouse-nethermind http | sed 's|.*:||')
-export COMPOSE_FILE=docker-compose.yml:lighthouse-distroless.override.yml:kurtosis/sync.override.yml
+export COMPOSE_FILE=docker-compose.yml:kurtosis/sync.override.yml
 ../sync.sh "$G" "${NETHERMIND_IMAGE:?}" "${LIGHTHOUSE_IMAGE:?}" genesis

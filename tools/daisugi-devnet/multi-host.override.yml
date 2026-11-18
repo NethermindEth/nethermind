@@ -1,4 +1,4 @@
-# Peering across hosts: add after lighthouse-distroless.override.yml in COMPOSE_FILE. Discovery stays off; peers are
+# Peering across hosts: add to COMPOSE_FILE after docker-compose.yml. Discovery stays off; peers are
 # static. EL_P2P_PORT and CL_P2P_PORT are the host ports this node publishes, BEACON_PUBLIC_IP the address other hosts
 # reach it at, and BEACON_PEERS a comma-separated list of the other beacon nodes'
 # /ip4/<ip>/tcp/<port>/p2p/<peer id>. The other Nethermind nodes go in <genesis dir>/nethermind/static-nodes.json.

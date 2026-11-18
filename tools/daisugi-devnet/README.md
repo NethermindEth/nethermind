@@ -16,8 +16,7 @@ From a clone of this branch, on Linux x86_64 with the tools under [Prerequisites
 
    ```bash
    cd tools/daisugi-devnet
-   export COMPOSE_FILE=docker-compose.yml:lighthouse-distroless.override.yml
-   NM=daisugi/nethermind:0260e692fc LH=daisugi/lighthouse:eip8288-lean
+   NM=daisugi/nethermind:af50ed1917 LH=daisugi/lighthouse:eip8288-lean
    LOCAL=1 ./gen-genesis.sh run/devnet-1 $(( $(date +%s) + 120 )) 3 &&
      ./up.sh run/devnet-1 $NM $LH &&
      ./check.sh run/devnet-1
@@ -26,7 +25,7 @@ From a clone of this branch, on Linux x86_64 with the tools under [Prerequisites
 3. Send a proof-bearing transaction: step 4.
 4. Stop: `GENESIS_DIR=$PWD/run/devnet-1 NETHERMIND_IMAGE=$NM LIGHTHOUSE_IMAGE=$LH DEVNET_USER=$(id -u):$(id -g) docker compose --profile replay --profile sync down && rm -rf run/devnet-1`.
 
-To test your own consensus-layer changes, build your Lighthouse image and pass it as `LH`. The override clears the image entrypoint and finds `lighthouse` in `/usr/local/bin` or `/`, so it works for both the stock and the reproducible Lighthouse `Dockerfile`. `check.sh` asserts the fork versions and the fork timestamp. Check the `25 header fields` and `missed 0` lines yourself. If it still waits for finality well past the time in step 2, the chain is not finalizing.
+To test your own consensus-layer changes, build your Lighthouse image and pass it as `LH`. The compose commands start with `lighthouse`, so the image needs it on `PATH` and no entrypoint: Lighthouse's stock `Dockerfile` and EthPandaOps' builder image work, the distroless `Dockerfile.reproducible` does not. `check.sh` asserts the fork versions and the fork timestamp. Check the `25 header fields` and `missed 0` lines yourself. If it still waits for finality well past the time in step 2, the chain is not finalizing.
 
 ## Pinned sources
 
@@ -34,10 +33,10 @@ The frozen restart stack, its validation and the operator steps: [RESTART.md](RE
 
 | Component | Source | Revision |
 | --- | --- | --- |
-| Nethermind | `NethermindEth/nethermind` `feature/eip8288-lean` `af50ed1917` (#15955, #15870 and #15961 merged; F128 leanVM, native ABI 21, leanSPHINCS key `PK.seed \|\| PK.root`), native Lean backend from `Nethermind.Crypto.Lean` 0.21.0.110 (nugettest) | `af50ed19171295395ea12513f6d9464b782f4c5a` |
+| Nethermind | `NethermindEth/nethermind` `daisugi/eip8288-lean` `af50ed1917` (frozen copy of `feature/eip8288-lean` with #15955, #15870 and #15961 merged; F128 leanVM, native ABI 21, leanSPHINCS key `PK.seed \|\| PK.root`), native Lean backend from `Nethermind.Crypto.Lean` 0.21.0.110 (nugettest) | `af50ed19171295395ea12513f6d9464b782f4c5a` |
 | Native Lean backend | `Nethermind.Crypto.Lean` 0.21.0.110, from `NethermindEth/lean-bindings` `main` `8d54d3165d453f340420cf39d8da174e497c50bc` (#22; same tree as `1209c17`) | nupkg sha256 `daecd150e646cdbc1ecaffb0fa118dff780c8a928a2ff705a7c3362fddd51ac2`; linux-x64 `libnethermind_lean.so` `aad07d8fa0f106457ef1719eadd1685a98e39fe6df3ab27308022e14637b8f00`; `AGGREGATED_VK` `e09e5acfcfe87832f337eb42acac98246d160bb915b55c55fbd8118b203cbb81` |
-| Lighthouse | `sigp/lighthouse` v8.2.2 | `e423a66763bb1bd780492d635123f208d80c3538`, archive sha256 `3f3193218d8f7228889505eb508c6176ea60a964fcfb072eb248787c1e242d4c` |
-| Lighthouse patch series | `asanso/AA-PQ` PR #10, `aggregation/frames/consensus/eip8288-lean` | `4b0a11e0e7d261bf47a2e78589bcdff050703412` |
+| Lighthouse | `manusw7/lighthouse` `daisugi/eip8288-lean`: `sigp/lighthouse` v8.2.2 `e423a667` plus the Daisugi fork (formerly asanso/AA-PQ #10's patch series) | `16a05d1e17a22d132933e3ec927a6f1b9daf0b1a` |
+| Lighthouse image recipe | `ethpandaops/eth-client-docker-image-builder` `lighthouse/Dockerfile`, as EthPandaOps builds the shared network | `19cae9e7f056971c530f66a4b496090ec468fb0c` |
 | Genesis generator | `ethpandaops/ethereum-genesis-generator` | `sha256:287f596b9a4ee72ae2aff194682f854650a8861542e489259adf0975cc0c9a54` |
 
 ## Prerequisites
@@ -69,28 +68,22 @@ unzip -oq -d $B/lean $B/lean.nupkg testing/runtimes/linux-x64/native/fixtures
 export FX=$PWD/$B/lean/testing/runtimes/linux-x64/native/fixtures && chmod +x $FX
 ```
 
-Lighthouse, from the pinned archive plus the AA-PQ patch series:
+Lighthouse, from the Daisugi fork with the Dockerfile EthPandaOps' image builder uses:
 
 ```bash
-B=tools/daisugi-devnet/build; LH=e423a66763bb1bd780492d635123f208d80c3538; mkdir -p $B
-curl -fsSL -o $B/lighthouse.tar.gz https://github.com/sigp/lighthouse/archive/$LH.tar.gz
-echo "3f3193218d8f7228889505eb508c6176ea60a964fcfb072eb248787c1e242d4c  $B/lighthouse.tar.gz" | sha256sum -c
-git clone -q https://github.com/asanso/AA-PQ $B/AA-PQ
-git -C $B/AA-PQ fetch -q origin 4b0a11e0e7d261bf47a2e78589bcdff050703412 && git -C $B/AA-PQ checkout -q FETCH_HEAD
-# apply.py checks the archive, each patch and the resulting tree against sources.lock.json.
-python3 $B/AA-PQ/aggregation/frames/consensus/eip8288-lean/apply.py lighthouse $B/lighthouse.tar.gz $B/lighthouse
-docker build -f $B/lighthouse/Dockerfile.reproducible --platform linux/amd64 \
-  --build-arg RUST_TARGET=x86_64-unknown-linux-gnu -t daisugi/lighthouse:eip8288-lean $B/lighthouse
+B=tools/daisugi-devnet/build; mkdir -p $B
+git clone -q --filter=blob:none https://github.com/manusw7/lighthouse $B/lighthouse
+git -C $B/lighthouse checkout -q 16a05d1e17a22d132933e3ec927a6f1b9daf0b1a   # daisugi/eip8288-lean
+curl -fsSL https://raw.githubusercontent.com/ethpandaops/eth-client-docker-image-builder/19cae9e7f056971c530f66a4b496090ec468fb0c/lighthouse/Dockerfile \
+  | docker build -f - -t daisugi/lighthouse:eip8288-lean $B/lighthouse
 ```
 
-- Expected Lighthouse binary sha256 (`/lighthouse` in the image): `109c9a91e128db8cb17be6939c5f614b1ae494a68da53814e9300bc5299ccd3d`.
-- The reproducible image is distroless with `ENTRYPOINT /lighthouse`. The compose commands start with `lighthouse`, so every compose call needs the override below.
+- `lighthouse --version` prints `Lighthouse v8.2.2-16a05d1`.
 
 Set this in every shell that runs the scripts:
 
 ```bash
 cd tools/daisugi-devnet
-export COMPOSE_FILE=docker-compose.yml:lighthouse-distroless.override.yml
 NM=daisugi/nethermind:af50ed1917 LH=daisugi/lighthouse:eip8288-lean
 ```
 
@@ -202,8 +195,8 @@ tools/daisugi-devnet/kurtosis/run.sh daisugi
 - Needs Kurtosis, the two images from step 1 (`daisugi/nethermind:af50ed1917`, `daisugi/lighthouse:eip8288-lean`), plus .NET SDK as for `pq.sh`. The Docker host must be no Swarm node: Kurtosis matches its network by the name `bridge` and fails on `docker_gwbridge`. Its engine binds host port 8081.
 - `network_params.yaml`: Nethermind and Lighthouse images, 64 validators, 2 s slots, chain ID 1337, Electra at genesis, the 8141 verifier and 8250 nonce manager predeploys, and `DAISUGI_FORK_EPOCH` 3.
 - `genesis.Dockerfile` wraps the pinned genesis generator. After it runs, the wrapper sets `eip8141PrototypeTime` to genesis, sets `eip8288PrototypeTime` to the Daisugi fork slot, drops the Osaka/Amsterdam/Bogota times, appends `DAISUGI_FORK_VERSION` `0xd0000038`, and removes `SECONDS_PER_SLOT`. Lighthouse rejects `SECONDS_PER_SLOT` together with `SLOT_DURATION_MS`.
-- `lighthouse.Dockerfile` adds `/bin/sh` to the distroless Lighthouse image and clears its `ENTRYPOINT`. ethereum-package starts the beacon node with `sh -c` itself, and the validator client runs `lighthouse vc ...` with the image entrypoint.
-- `run.sh` writes `NETHERMIND_IMAGE` into a copy of `network_params.yaml` under `kurtosis/run/`. It finds ports and containers by the enclave's UUID and stops when any of them is missing or the beacon API is not up within 120 s.
+- ethereum-package starts the beacon node with `sh -c`, so the Lighthouse image needs a shell: the image from step 1 has one.
+- `run.sh` writes `NETHERMIND_IMAGE` and `LIGHTHOUSE_IMAGE` into a copy of `network_params.yaml` under `kurtosis/run/`. It finds ports and containers by the enclave's UUID and stops when any of them is missing or the beacon API is not up within 120 s.
 - The PQ key defaults to the first account ethereum-package prefunds from its default mnemonic.
 - Env: `PACKAGE` (pinned ethereum-package commit), `NETHERMIND_IMAGE`, `LIGHTHOUSE_IMAGE`, `NODES` (`1`), `PQ_SERIES` (`3`), `PQ_SCHEMES` (`sphincs`; `"sphincs stark mixed"` sends one series per scheme), `FX` (required), `PQ_KEY`, `KEEP`, `MISSED_SLOTS_MAX` (`0`, for `check.sh`).
 - `kurtosis/sync.sh <enclave>` (after `KEEP=1`, with `NODES` 2 or more: a single-node enclave's beacon runs `--target-peers=0`): a late-joining Nethermind + Lighthouse pair on the enclave's network, the Compose `genesis` sync pair of step 6, peered only with node 1. Then compare it with the enclave nodes: `EL_RPC_PORTS="<node ELs> 28547" CL_HTTP_PORTS="<node beacon APIs> 25053" ./sync-check.sh <proof block>...` (the enclave's dynamic ports, node 1 first).
@@ -223,7 +216,6 @@ tools/daisugi-devnet/kurtosis/run.sh daisugi
 
 | Variable | Used by | Default |
 | --- | --- | --- |
-| `COMPOSE_FILE` | every `docker compose` call | must include `lighthouse-distroless.override.yml` for the reproducible Lighthouse image |
 | `LOCAL` | `gen-genesis.sh` | `0`; `1` allows chain ID 1337, a random or public mnemonic and one operator with all validators |
 | `CHAIN_ID`, `OPERATORS`, `VALIDATORS` | `gen-genesis.sh` | required without `LOCAL=1`; `VALIDATORS` is `64` |
 | `DEVNET_MNEMONIC`, `DEVNET_MNEMONIC_FILE` | `gen-genesis.sh` | random per run with `LOCAL=1`; required otherwise |

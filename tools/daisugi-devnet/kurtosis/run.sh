@@ -17,12 +17,9 @@ file_sha256() {
 }
 [[ $(file_sha256 "$NETHERMIND_IMAGE" /nethermind/libnethermind_lean.so) == "${NETHERMIND_LEAN_SHA256:-aad07d8fa0f106457ef1719eadd1685a98e39fe6df3ab27308022e14637b8f00}" ]] \
   || { echo "FAIL: $NETHERMIND_IMAGE does not carry the pinned libnethermind_lean.so"; exit 1; }
-[[ $(file_sha256 "$LIGHTHOUSE_IMAGE" /lighthouse) == "${LIGHTHOUSE_SHA256:-109c9a91e128db8cb17be6939c5f614b1ae494a68da53814e9300bc5299ccd3d}" ]] \
-  || { echo "FAIL: $LIGHTHOUSE_IMAGE does not carry the pinned /lighthouse"; exit 1; }
-docker build -q --build-arg LIGHTHOUSE_IMAGE="$LIGHTHOUSE_IMAGE" -f lighthouse.Dockerfile -t daisugi-kurtosis/lighthouse:eip8288-lean .
 docker build -q -f genesis.Dockerfile -t daisugi-kurtosis/genesis-generator:287f596b .
 mkdir -p run
-sed -e "s|el_image: .*|el_image: $NETHERMIND_IMAGE|" -e "s|^\( *\)count: .*|\1count: ${NODES:-1}|" network_params.yaml > "$ARGS"
+sed -e "s|el_image: .*|el_image: $NETHERMIND_IMAGE|" -e "s|\([cv]c_image:\) .*|\1 $LIGHTHOUSE_IMAGE|" -e "s|^\( *\)count: .*|\1count: ${NODES:-1}|" network_params.yaml > "$ARGS"
 kurtosis enclave rm -f "$ENCLAVE" >/dev/null 2>&1 || true
 trap 'kurtosis enclave rm -f "$ENCLAVE"' EXIT
 kurtosis run --enclave "$ENCLAVE" "$PACKAGE" --args-file "$ARGS"

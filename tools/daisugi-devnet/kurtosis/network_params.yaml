@@ -6,9 +6,9 @@ participants:
       # No blob support lets peers negotiate eth/73 and relay proof wrappers before PeerDAS.
       - --TxPool.BlobsSupport=Disabled
     cl_type: lighthouse
-    cl_image: daisugi-kurtosis/lighthouse:eip8288-lean
+    cl_image: daisugi/lighthouse:eip8288-lean
     vc_type: lighthouse
-    vc_image: daisugi-kurtosis/lighthouse:eip8288-lean
+    vc_image: daisugi/lighthouse:eip8288-lean
     count: 1
     supernode: false
     validator_count: 64
