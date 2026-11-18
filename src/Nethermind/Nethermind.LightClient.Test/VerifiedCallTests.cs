@@ -141,6 +141,45 @@ public class VerifiedCallTests
     }
 
     [Test]
+    public async Task Frame_submission_from_a_guarded_sender_is_refused_before_relay([Values] bool guarded)
+    {
+        byte[] approve = [0x60, 0x03, 0x60, 0x00, 0x60, 0x00, 0xaa, 0x00];
+        FakeSource source = new(approve, contractBalance: 1_000_000_000) { BaseFee = 1 };
+        SingleReleaseSpecProvider spec = new(new KeyedFrameSpec(), 1, 1);
+        string rulesPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.rules");
+        await File.WriteAllTextAsync(rulesPath, $"from {(guarded ? Contract : new Address("0x00000000000000000000000000000000000000aa"))}\n");
+        try
+        {
+            using VerifiedCall calls = new(source, spec, NullLogManager.Instance);
+            using VerifiedRpc rpc = new(source, () => source.Head, 1, calls, spec, () => source.Head,
+                sendPolicy: new SendPolicyRelay(rulesPath, 1, NullLogManager.Instance));
+            Transaction transaction = CreateFrameSubmission();
+            source.BlockGasLimit = 30_000_000;
+            byte[] encoded = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
+            JsonElement parameters = JsonSerializer.SerializeToElement(new object[] { "0x" + Convert.ToHexString(encoded).ToLowerInvariant() });
+            if (guarded)
+            {
+                RpcException? error = await Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync("eth_sendRawTransaction", parameters, CancellationToken.None));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(error!.Message, Does.Contain("frame transaction is not allowed"));
+                    Assert.That(source.Broadcasts, Is.Zero);
+                }
+            }
+            else
+            {
+                object? result = await rpc.InvokeAsync("eth_sendRawTransaction", parameters, CancellationToken.None);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(result, Is.EqualTo(transaction.CalculateHash().ToString()));
+                    Assert.That(source.Broadcasts, Is.EqualTo(1));
+                }
+            }
+        }
+        finally { File.Delete(rulesPath); }
+    }
+
+    [Test]
     public async Task Frame_submission_checks_the_complete_fee_budget_before_fetching_state(
         [Values("execution", "intrinsic", "blob")] string component, [Values(-1, 0, 1)] int extra)
     {
