@@ -91,7 +91,9 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
         IOwnedReadOnlyList<Hash256> hashes = req.Hashes;
         ReadOnlySpan<Hash256> hashesSpan = hashes.AsSpan();
         // A response stops after the entry that passes the soft limit, so twice the limit holds it unless that entry is larger than the limit.
-        ArrayPoolList<byte> buffer = [with((int)Math.Min((long)hashesSpan.Length * BalResponseEntryEstimate, 2L * BalResponseSoftLimit))];
+        int capacity = (int)Math.Min((long)hashesSpan.Length * BalResponseEntryEstimate, 2L * BalResponseSoftLimit);
+        // An unavailable list takes one byte, so the buffer is sized for the lists only when the first one is found.
+        ArrayPoolList<byte> buffer = [with(hashesSpan.Length)];
         Range[] entries = new Range[hashesSpan.Length];
         int count = 0;
 
@@ -106,8 +108,15 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
 
                 int start = buffer.Count;
                 using MemoryManager<byte>? balRlp = SyncServer.GetBlockAccessListRlp(hashesSpan[i]);
-                if (balRlp is null) buffer.Add(Rlp.EmptyByteArrayByte);
-                else buffer.AddRange(balRlp.Memory.Span);
+                if (balRlp is null)
+                {
+                    buffer.Add(Rlp.EmptyByteArrayByte);
+                }
+                else
+                {
+                    if (buffer.Capacity < capacity) buffer = Resize(buffer, capacity);
+                    buffer.AddRange(balRlp.Memory.Span);
+                }
                 entries[count++] = new Range(start, buffer.Count);
 
                 if (buffer.Count > BalResponseSoftLimit)
@@ -123,6 +132,14 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
             buffer.Dispose();
             throw;
         }
+    }
+
+    private static ArrayPoolList<byte> Resize(ArrayPoolList<byte> buffer, int capacity)
+    {
+        using ArrayPoolList<byte> previous = buffer;
+        ArrayPoolList<byte> resized = [with(capacity)];
+        resized.AddRange(previous.AsSpan());
+        return resized;
     }
 
     public async Task<IOwnedReadOnlyList<byte[]?>> GetBlockAccessLists(IReadOnlyList<Hash256> blockHashes, CancellationToken token)

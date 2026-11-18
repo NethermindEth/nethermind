@@ -58,6 +58,7 @@ public class Eth71BlockAccessListsServingBenchmarks
     private ServingHandler[] _handlers = null!;
     private IMessageSerializationService _serializationService = null!;
     private Hash256[] _hashes = null!;
+    private Hash256[] _unavailableHashes = null!;
     private int _nextRequest;
 
     [Params(128 * 1024)]
@@ -72,14 +73,16 @@ public class Eth71BlockAccessListsServingBenchmarks
         _directory = TempPath.GetTempDirectory();
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule())
+            .AddSingleton(static _ => new HyperClockCacheWrapper())
             .AddSingleton<IDbFactory>(ctx => new RocksDbFactory(ctx.Resolve<IRocksDbConfigFactory>(), ctx.Resolve<IDbConfig>(),
-                new HyperClockCacheWrapper(), new RealFileSystem(), LimboLogs.Instance, _directory.Path))
+                ctx.Resolve<HyperClockCacheWrapper>(), new RealFileSystem(), LimboLogs.Instance, _directory.Path))
             .Build();
 
         IBlockAccessListStore store = _container.Resolve<IBlockAccessListStore>();
         Random random = new(42);
         Dictionary<Hash256, ulong> numbers = [with(StoredBlocks)];
         _hashes = new Hash256[StoredBlocks];
+        _unavailableHashes = new Hash256[StoredBlocks];
         for (int i = 0; i < StoredBlocks; i++)
         {
             Hash256 hash = Keccak.Compute(BitConverter.GetBytes(i));
@@ -88,6 +91,7 @@ public class Eth71BlockAccessListsServingBenchmarks
             store.Insert((ulong)i, hash, accessList);
             numbers[hash] = (ulong)i;
             _hashes[i] = hash;
+            _unavailableHashes[i] = Keccak.Compute(BitConverter.GetBytes(StoredBlocks + i));
         }
 
         random.Shuffle(_hashes);
@@ -95,7 +99,7 @@ public class Eth71BlockAccessListsServingBenchmarks
         AccessListSyncServer syncServer = new(store, numbers);
         _handlers = new ServingHandler[Handlers];
         for (int i = 0; i < Handlers; i++) _handlers[i] = new ServingHandler(_serializationService, syncServer, _serializer);
-        if (Serve(0) == 0) throw new InvalidOperationException("No access list was served.");
+        if (Serve(0, _hashes) == 0) throw new InvalidOperationException("No access list was served.");
     }
 
     [GlobalCleanup]
@@ -107,18 +111,21 @@ public class Eth71BlockAccessListsServingBenchmarks
     }
 
     [Benchmark]
-    public int ServeBlockAccessLists() => Serve(0);
+    public int ServeBlockAccessLists() => Serve(0, _hashes);
+
+    [Benchmark]
+    public int ServeUnavailableBlockAccessLists() => Serve(0, _unavailableHashes);
 
     [Benchmark]
     [Arguments(8)]
     [Arguments(32)]
     public void ServeBlockAccessListsConcurrently(int requests) =>
-        Parallel.For(0, requests, i => Serve(i));
+        Parallel.For(0, requests, i => Serve(i, _hashes));
 
-    private int Serve(int handler)
+    private int Serve(int handler, Hash256[] hashes)
     {
         int start = (int)((uint)Interlocked.Increment(ref _nextRequest) * (uint)RequestedBlocks % (uint)(StoredBlocks - RequestedBlocks));
-        using GetBlockAccessListsMessage request = new(1, new ReadOnlySpan<Hash256>(_hashes, start, RequestedBlocks).ToPooledList());
+        using GetBlockAccessListsMessage request = new(1, new ReadOnlySpan<Hash256>(hashes, start, RequestedBlocks).ToPooledList());
         IByteBuffer packet = _serializationService.ZeroSerialize(request);
         try
         {

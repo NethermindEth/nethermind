@@ -210,14 +210,14 @@ public class Eth71ProtocolHandlerTests
     }
 
     [Test]
-    public void Serves_full_BAL_response_as_the_stored_lists()
+    public void Serves_full_BAL_response_as_the_stored_lists([Values(1, 3, 20)] int unavailable)
     {
         const int count = 20;
         Hash256[] hashes = [.. Enumerable.Range(0, count).Select(static i => Keccak.Compute(i.ToString()))];
         byte[]?[] entries = new byte[]?[count];
         for (int i = 0; i < count; i++)
         {
-            if (i == 1)
+            if (i < unavailable)
             {
                 _syncManager.GetBlockAccessListRlp(hashes[i]).Returns((MemoryManager<byte>?)null);
                 continue;
@@ -249,7 +249,7 @@ public class Eth71ProtocolHandlerTests
         serializer.Serialize(expected, expectedMessage);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(expected, Has.Length.GreaterThan(2 * MemorySizes.MiB));
+            Assert.That(expected, Has.Length.GreaterThan(unavailable < count ? 2 * MemorySizes.MiB : count));
             Assert.That(response, Is.EqualTo(expected));
         }
     }
