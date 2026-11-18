@@ -178,6 +178,35 @@ public partial class GossipRouterTests
         Assert.That(fixture.Validation.PendingVotes, Is.Zero);
     }
 
+    [Test]
+    public async Task A_peer_with_two_accepted_votes_can_burst_only_while_the_shared_vote_queue_is_lightly_loaded()
+    {
+        await using DeferredFixture fixture = await DeferredFixture.Create(maxPending: 16, maxPendingBytes: 1 << 20, TimeSpan.FromSeconds(30), maxPendingVotes: 128);
+        for (ulong i = 0; i < 2; i++)
+        {
+            await fixture.CompleteVoteFromAsync(fixture.Sender, i, MessageValidity.Accepted);
+            await fixture.CompleteVoteFromAsync(fixture.Neighbor, i + 2, MessageValidity.Accepted);
+        }
+
+        (GossipVerdict? Raised, Task Validation)[] burst = [.. Enumerable.Range(10, 6).Select(i => fixture.SendVote(fixture.Sender, (ulong)i))];
+        Assert.That(fixture.Validation.Verify(fixture.Sender, DeferredFixture.Vote(16)), Is.EqualTo(MessageValidity.Throttled), "twice the earned allowance");
+        (GossipVerdict? Raised, Task Validation)[] regular = [.. Enumerable.Range(20, 3).Select(i => fixture.SendVote(fixture.Neighbor, (ulong)i))];
+
+        burst[0].Raised!.Complete(MessageValidity.Ignored);
+        await burst[0].Validation;
+        Assert.That(fixture.Validation.Verify(fixture.Neighbor, DeferredFixture.Vote(23)), Is.EqualTo(MessageValidity.Throttled), "at the shared burst threshold");
+        burst[1].Raised!.Complete(MessageValidity.Ignored);
+        await burst[1].Validation;
+        await fixture.CompleteVoteFromAsync(fixture.Neighbor, 23, MessageValidity.Accepted);
+
+        foreach ((GossipVerdict? raised, Task validation) in burst[2..].Concat(regular))
+        {
+            raised!.Complete(MessageValidity.Ignored);
+            await validation;
+        }
+        Assert.That(fixture.Validation.PendingVotes, Is.Zero);
+    }
+
     // As the payload attestation rule, for votes from peers with no accepted vote, but at admission: a refused vote takes no room and leaves the
     // router no id, so another peer's copy is checked, and nothing unchecked counts against the peer.
     [Test]

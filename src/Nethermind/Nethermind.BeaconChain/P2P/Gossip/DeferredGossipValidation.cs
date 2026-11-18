@@ -26,8 +26,10 @@ namespace Nethermind.BeaconChain.P2P.Gossip;
 /// later copy is checked, and charges its sender nothing. Aggregates and payload attestations are held to their own bound of
 /// <paramref name="maxPendingVotes"/> instead, the import worker's vote queue, so their volume cannot take the room of a block.
 /// New peers share a quarter of the vote queue. Each starts with a small allowance and earns one additional pending vote for each accepted
-/// vote, up to one eighth of the queue. The node retains allowances for the <see cref="AcceptedVoteSourcesCapacity"/> most recently active
-/// peers with accepted votes. A peer whose vote is rejected loses its earned allowance and has its new votes refused for the rest of the
+/// vote, up to one eighth of the queue. After two accepted votes, a peer may use up to twice its earned allowance while fewer than one
+/// sixteenth of the queue's places are occupied. The one-eighth per-peer cap still applies. The node retains allowances for the
+/// <see cref="AcceptedVoteSourcesCapacity"/> most recently active peers with accepted votes. A peer whose vote is rejected loses its
+/// earned allowance and has its new votes refused for the rest of the
 /// wall slot (at most <paramref name="maxPendingVotes"/> peers per slot), or until one of its votes already being checked is accepted. Its votes
 /// already deferred are still checked here, and nothing unchecked counts against it; <see cref="GossipRouter"/>'s own per-slot rule for payload
 /// attestations still throttles a peer's queued payload attestations once fork choice rejected one of them.
@@ -64,6 +66,7 @@ internal sealed class DeferredGossipValidation(
     private const int NewVoteSourceShareDivisor = 512;
     // All new peers' share of the vote bound, so new ids together cannot take the room of the peers whose votes were accepted.
     private const int AllNewVoteSourcesShareDivisor = 4;
+    private const int VoteBurstOccupancyDivisor = 16;
 
     // Past the router's own expiry of a message it has not dispatched: it skips that message, so the reservation is released here instead.
     private static readonly TimeSpan ReservationSlack = TimeSpan.FromSeconds(1);
@@ -128,9 +131,10 @@ internal sealed class DeferredGossipValidation(
             return RefuseVote(source, message);
         }
 
-        int sourceLimit = !vote ? _maxPendingPerSource : Math.Max(_maxPendingVotesPerNewSource, earnedAllowance);
+        int pendingVotes = vote ? PendingVotes : 0;
+        int sourceLimit = vote ? VoteSourceLimit(earnedAllowance, pendingVotes) : _maxPendingPerSource;
         bool overSourceShare = _pendingBySource.GetValueOrDefault((source, vote, column)) >= sourceLimit;
-        bool overBound = vote ? PendingVotes >= maxPendingVotes || (newVoteSource && Volatile.Read(ref _pendingVotesOfNewSources) >= _maxPendingVotesOfAllNewSources)
+        bool overBound = vote ? pendingVotes >= maxPendingVotes || (newVoteSource && Volatile.Read(ref _pendingVotesOfNewSources) >= _maxPendingVotesOfAllNewSources)
             : column ? Volatile.Read(ref _pendingColumns) >= maxPending || Interlocked.Read(ref _pendingColumnBytes) + size > maxPendingBytes
             : Pending >= maxPending || PendingBytes + size > maxPendingBytes;
         if (overSourceShare || overBound)
@@ -161,6 +165,16 @@ internal sealed class DeferredGossipValidation(
 
         _reservations[message] = reservation;
         return MessageValidity.Deferred;
+    }
+
+    private int VoteSourceLimit(int earnedAllowance, int pendingVotes)
+    {
+        if (earnedAllowance > _maxPendingVotesPerNewSource + 1 && pendingVotes < maxPendingVotes / VoteBurstOccupancyDivisor)
+        {
+            return Math.Min(2 * earnedAllowance, _maxPendingVotesPerSource);
+        }
+
+        return Math.Max(_maxPendingVotesPerNewSource, earnedAllowance);
     }
 
     /// <summary>Releases the reservations of messages the router never dispatched, which it skips once they expire; at most once a second.</summary>
